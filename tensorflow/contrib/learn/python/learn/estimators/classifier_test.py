@@ -46,19 +46,27 @@ def logistic_model_fn(features, target, unused_mode):
   return prediction, loss, train_op
 
 
+def logistic_model_params_fn(features, target, unused_mode, params):
+  target = tf.one_hot(target, 3, 1, 0)
+  prediction, loss = tf.contrib.learn.models.logistic_regression_zero_init(
+      features, target)
+  train_op = tf.contrib.layers.optimize_loss(
+      loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
+      learning_rate=params['learning_rate'])
+  return prediction, loss, train_op
+
+
 class ClassifierTest(tf.test.TestCase):
 
   def testIrisAll(self):
-    iris = tf.contrib.learn.datasets.load_iris()
     est = tf.contrib.learn.Classifier(model_fn=logistic_model_fn, n_classes=3)
-    est.fit(iris.data, iris.target, steps=100)
-    scores = est.evaluate(x=iris.data, y=iris.target, name='eval')
-    predictions = est.predict(x=iris.data)
-    predictions_proba = est.predict_proba(x=iris.data)
-    self.assertEqual(predictions.shape[0], iris.target.shape[0])
-    self.assertAllEqual(predictions, np.argmax(predictions_proba, axis=1))
-    other_score = _sklearn.accuracy_score(iris.target, predictions)
-    self.assertAllClose(other_score, scores['accuracy'])
+    self._runIrisAll(est)
+
+  def testIrisAllWithParams(self):
+    est = tf.contrib.learn.Classifier(model_fn=logistic_model_params_fn,
+                                      n_classes=3,
+                                      params={'learning_rate': 0.01})
+    self._runIrisAll(est)
 
   def testIrisPredictAsIterable(self):
     iris = tf.contrib.learn.datasets.load_iris()
@@ -88,6 +96,17 @@ class ClassifierTest(tf.test.TestCase):
     predict_input_fn = functools.partial(iris_input_fn, num_epochs=1)
     predictions = list(est.predict(input_fn=predict_input_fn, as_iterable=True))
     self.assertEqual(len(predictions), iris.target.shape[0])
+
+  def _runIrisAll(self, est):
+    iris = tf.contrib.learn.datasets.load_iris()
+    est.fit(iris.data, iris.target, steps=100)
+    scores = est.evaluate(x=iris.data, y=iris.target, name='eval')
+    predictions = est.predict(x=iris.data)
+    predictions_proba = est.predict_proba(x=iris.data)
+    self.assertEqual(predictions.shape[0], iris.target.shape[0])
+    self.assertAllEqual(predictions, np.argmax(predictions_proba, axis=1))
+    other_score = _sklearn.accuracy_score(iris.target, predictions)
+    self.assertAllClose(other_score, scores['accuracy'])
 
 
 if __name__ == '__main__':
