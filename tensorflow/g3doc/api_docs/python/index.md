@@ -239,6 +239,7 @@
   * [`real`](../../api_docs/python/math_ops.md#real)
   * [`reduce_all`](../../api_docs/python/math_ops.md#reduce_all)
   * [`reduce_any`](../../api_docs/python/math_ops.md#reduce_any)
+  * [`reduce_logsumexp`](../../api_docs/python/math_ops.md#reduce_logsumexp)
   * [`reduce_max`](../../api_docs/python/math_ops.md#reduce_max)
   * [`reduce_mean`](../../api_docs/python/math_ops.md#reduce_mean)
   * [`reduce_min`](../../api_docs/python/math_ops.md#reduce_min)
