@@ -1490,6 +1490,57 @@ class BatchNormTest(tf.test.TestCase):
       output_false = sess.run([output], {is_training: False})
       self.assertTrue(np.allclose(output_true, output_false))
 
+  def testTrainMovingVars(self):
+    """Test that the gradients are stable while the moving_mean is updated.
+
+    Since the moving_mean is used as shift to compute the tf.momments, the
+    gradients could diverge, this test checks that gradients remains stable
+    while the moving_mean is updated.
+    """
+    height, width = 7, 7
+    num_channels = 32
+    with self.test_session() as sess:
+      image_shape = (10, height, width, num_channels)
+      image_values = np.random.rand(*image_shape) + 2
+      expected_mean = np.mean(image_values, axis=(0, 1, 2))
+      expected_var = np.var(image_values, axis=(0, 1, 2))
+      images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
+      output = tf.contrib.layers.batch_norm(images,
+                                            decay=0.2,
+                                            updates_collections=None,
+                                            is_training=True)
+      self.assertEquals(tf.get_collection(tf.GraphKeys.UPDATE_OPS), [])
+
+      objective = tf.reduce_sum(output)
+
+      [images_gradients] = tf.gradients(objective, images)
+      # Initialize all variables
+      sess.run(tf.initialize_all_variables())
+      moving_mean = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_mean')[0]
+      moving_variance = tf.contrib.framework.get_variables(
+          'BatchNorm/moving_variance')[0]
+      mean, variance = sess.run([moving_mean, moving_variance])
+      # After initialization moving_mean == 0 and moving_variance == 1.
+      self.assertAllClose(mean, [0] * num_channels)
+      self.assertAllClose(variance, [1] * num_channels)
+
+      # Initial input gradients.
+      images_gradients_value = sess.run(images_gradients)
+      for _ in range(10):
+        np_output, new_images_gradients = sess.run([output, images_gradients])
+        # The outputs should be close to 0.0 mean and 1.0 variance
+        self.assertAllClose(np.mean(np_output, axis=(0, 1, 2)),
+                            [0] * num_channels, rtol=0.1, atol=0.1)
+        self.assertAllClose(np.var(np_output, axis=(0, 1, 2)),
+                            [1] * num_channels, rtol=0.1, atol=0.1)
+        # The gradients should change slowly while updating moving_mean.
+        max_diff = np.max(np.abs(images_gradients_value - new_images_gradients))
+        self.assertGreater(max_diff, 0.0)
+        self.assertLess(max_diff, 5e-5)
+      self.assertAllClose(moving_mean.eval(), expected_mean)
+      self.assertAllClose(moving_variance.eval(), expected_var)
+
 
 class MaxPool2DTest(tf.test.TestCase):
 
