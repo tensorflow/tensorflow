@@ -79,6 +79,7 @@
   * [`count_up_to`](../../api_docs/python/state_ops.md#count_up_to)
   * [`device`](../../api_docs/python/state_ops.md#device)
   * [`export_meta_graph`](../../api_docs/python/state_ops.md#export_meta_graph)
+  * [`fixed_size_partitioner`](../../api_docs/python/state_ops.md#fixed_size_partitioner)
   * [`get_checkpoint_state`](../../api_docs/python/state_ops.md#get_checkpoint_state)
   * [`get_variable`](../../api_docs/python/state_ops.md#get_variable)
   * [`get_variable_scope`](../../api_docs/python/state_ops.md#get_variable_scope)

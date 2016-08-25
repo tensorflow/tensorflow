@@ -1783,6 +1783,24 @@ An adaptor for ones() to match the Initializer spec.
 
 - - -
 
+### `tf.fixed_size_partitioner(num_shards, axis=0)` {#fixed_size_partitioner}
+
+Partitioner to specify a fixed number of shards along given axis.
+
+##### Args:
+
+
+*  <b>`num_shards`</b>: `int`, number of shards to partition variable.
+*  <b>`axis`</b>: `int`, axis to partition on.
+
+##### Returns:
+
+  A partition function usable as the `partitioner` argument to
+  `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
+
+
+- - -
+
 ### `tf.variable_axis_size_partitioner(max_shard_bytes, axis=0, bytes_per_string_element=16, max_shards=None)` {#variable_axis_size_partitioner}
 
 Get a partitioner for VariableScope to keep shards below `max_shard_bytes`.
