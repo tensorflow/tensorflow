@@ -112,7 +112,8 @@ class Experiment(object):
       delay_secs = min(60, task_id * 5)
 
     # Start the server, if needed.
-    self._maybe_start_server()
+    if self._estimator.config.cluster_spec:
+      self._start_server()
 
     if delay_secs:
       elapsed_secs = time.time() - start
@@ -227,6 +228,17 @@ class Experiment(object):
                           delay_secs=delay_secs,
                           throttle_delay_secs=throttle_delay_secs)
 
+  def run_std_server(self):
+    """Starts a TensorFlow server and joins the serving thread.
+
+    Typically used for parameter servers.
+
+    Raises:
+      ValueError: if not enough information is available in the estimator's
+        config to create a server.
+    """
+    self._start_server().join()
+
   def test(self):
     """Tests training and evaluating the estimator both for a single step.
 
@@ -242,17 +254,19 @@ class Experiment(object):
                                     metrics=self._eval_metrics,
                                     name="one_pass")
 
-  def _maybe_start_server(self):
+  def _start_server(self):
+    """Creates, starts, and returns a server_lib.Server."""
     config = self._estimator.config
-    if config.cluster_spec:
-      if not config.job_name or not config.master or config.task is None:
-        raise ValueError("Could not start server; be sure to specify "
-                         "cluster_spec, job_name, master, and task in "
-                         "RunConfig or set the TF_CONFIG environment variable.")
-      server = server_lib.Server(
-          config.cluster_spec,
-          job_name=config.job_name,
-          task_index=config.task,
-          config=config.tf_config,
-          start=False)
-      server.start()
+    if (not config.cluster_spec or not config.job_name or not config.master or
+        config.task is None):
+      raise ValueError("Could not start server; be sure to specify "
+                       "cluster_spec, job_name, master, and task in "
+                       "RunConfig or set the TF_CONFIG environment variable.")
+    server = server_lib.Server(
+        config.cluster_spec,
+        job_name=config.job_name,
+        task_index=config.task,
+        config=config.tf_config,
+        start=False)
+    server.start()
+    return server
