@@ -1511,6 +1511,89 @@ class BatchNormTest(tf.test.TestCase):
       self.assertTrue(np.allclose(output_true, output_false))
 
 
+class LayerNormTest(tf.test.TestCase):
+
+  def testUnknownShape(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      inputs = tf.placeholder(dtype=tf.float32)
+      with self.assertRaisesRegexp(ValueError, 'undefined rank'):
+        tf.contrib.layers.layer_norm(inputs)
+
+  def testUnknownLastDim(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      inputs = tf.placeholder(dtype=tf.float32)
+      inputs.set_shape(tf.TensorShape((5, 3, 3, None)))
+      with self.assertRaisesRegexp(ValueError, 'undefined last dimension'):
+        tf.contrib.layers.layer_norm(inputs)
+
+  def testCreateOp(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = np.random.uniform(size=(5, height, width, 3))
+      output = tf.contrib.layers.layer_norm(images)
+      self.assertTrue(output.op.name.startswith('LayerNorm/batchnorm'))
+      self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
+
+  def testCreateVariables(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      tf.contrib.layers.layer_norm(images)
+      beta = tf.contrib.framework.get_variables_by_name('beta')[0]
+      gamma = tf.contrib.framework.get_variables_by_name('gamma')[0]
+      self.assertEquals(beta.op.name, 'LayerNorm/beta')
+      self.assertEquals(gamma.op.name, 'LayerNorm/gamma')
+
+  def testReuseVariables(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = tf.random_uniform((5, height, width, 3), seed=1)
+      tf.contrib.layers.layer_norm(images, scope='ln')
+      tf.contrib.layers.layer_norm(images, scope='ln', reuse=True)
+      beta = tf.contrib.framework.get_variables_by_name('beta')
+      gamma = tf.contrib.framework.get_variables_by_name('gamma')
+      self.assertEquals(len(beta), 1)
+      self.assertEquals(len(gamma), 1)
+
+  def testReuseVars(self):
+    height, width = 3, 3
+    with self.test_session() as sess:
+      image_shape = (10, height, width, 3)
+      image_values = np.random.rand(*image_shape)
+      images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
+      output_train = tf.contrib.layers.layer_norm(images, scope='LN')
+      output_eval = tf.contrib.layers.layer_norm(images,
+                                                 scope='LN',
+                                                 reuse=True)
+      # Initialize all variables
+      sess.run(tf.initialize_all_variables())
+      # output_train and output_eval should be the same.
+      self.assertAllClose(sess.run([output_train]), sess.run([output_eval]))
+
+  def doOutputTest(self, input_shape):
+    with self.test_session() as sess:
+      input_values = np.random.rand(*input_shape)
+      inputs = tf.constant(input_values, shape=input_shape, dtype=tf.float32)
+      output_op = tf.contrib.layers.layer_norm(inputs, scope='LN')
+      # Initialize all variables
+      sess.run(tf.initialize_all_variables())
+      # The mean and variance of the output should be close to 0 and 1
+      # respectively.
+      moments_axis = tuple([i for i in range(1, len(input_shape))])
+      outputs = sess.run(output_op)
+      expected_mean = np.zeros(input_shape[0])
+      expected_var = np.ones(input_shape[0])
+      mean = np.mean(outputs, axis=moments_axis)
+      var = np.var(outputs, axis=moments_axis)
+      self.assertAllClose(mean, expected_mean, rtol=1e-5)
+      self.assertAllClose(var, expected_var, rtol=1e-5)
+
+  def testOutput2DInput(self):
+    self.doOutputTest((10, 300))
+
+  def testOutput4DInput(self):
+    self.doOutputTest((100, 10, 10, 3))
+
 class MaxPool2DTest(tf.test.TestCase):
 
   def testCreateMaxPool(self):
