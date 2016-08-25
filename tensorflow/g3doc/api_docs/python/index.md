@@ -585,6 +585,7 @@
   * [`py_func`](../../api_docs/python/script_ops.md#py_func)
 
 * **[Summary Operations](../../api_docs/python/summary.md)**:
+  * [`scalar`](../../api_docs/python/summary.md#scalar)
   * [`tensor_summary`](../../api_docs/python/summary.md#tensor_summary)
 
 * **[Testing](../../api_docs/python/test.md)**:
