@@ -1031,9 +1031,9 @@ DirectSession::RunState::~RunState() {
 void DirectSession::WaitForNotification(RunState* run_state,
                                         int64 timeout_in_ms) {
   if (timeout_in_ms > 0) {
-    bool timed_out =
-        run_state->executors_done.WaitForNotificationWithTimeout(timeout_in_ms);
-    if (timed_out) {
+    bool notified = WaitForNotificationWithTimeout(&run_state->executors_done,
+                                                   timeout_in_ms);
+    if (!notified) {
       {
         mutex_lock l(run_state->mu_);
         run_state->status.Update(Status(error::DEADLINE_EXCEEDED,
