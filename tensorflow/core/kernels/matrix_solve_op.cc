@@ -28,10 +28,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <class Scalar, bool SupportsBatchOperation>
-class MatrixSolveOp : public LinearAlgebraOp<Scalar, SupportsBatchOperation> {
+template <class Scalar>
+class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
  public:
-  typedef LinearAlgebraOp<Scalar, SupportsBatchOperation> Base;
+  typedef LinearAlgebraOp<Scalar> Base;
 
   explicit MatrixSolveOp(OpKernelConstruction* context) : Base(context) {
     OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
@@ -105,9 +105,9 @@ class MatrixSolveOp : public LinearAlgebraOp<Scalar, SupportsBatchOperation> {
   TF_DISALLOW_COPY_AND_ASSIGN(MatrixSolveOp);
 };
 
-REGISTER_LINALG_OP("MatrixSolve", (MatrixSolveOp<float, false>), float);
-REGISTER_LINALG_OP("MatrixSolve", (MatrixSolveOp<double, false>), double);
-REGISTER_LINALG_OP("BatchMatrixSolve", (MatrixSolveOp<float, true>), float);
-REGISTER_LINALG_OP("BatchMatrixSolve", (MatrixSolveOp<double, true>), double);
+REGISTER_LINALG_OP("MatrixSolve", (MatrixSolveOp<float>), float);
+REGISTER_LINALG_OP("MatrixSolve", (MatrixSolveOp<double>), double);
+REGISTER_LINALG_OP("BatchMatrixSolve", (MatrixSolveOp<float>), float);
+REGISTER_LINALG_OP("BatchMatrixSolve", (MatrixSolveOp<double>), double);
 
 }  // namespace tensorflow
