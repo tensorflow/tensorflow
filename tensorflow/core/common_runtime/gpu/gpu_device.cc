@@ -597,7 +597,8 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
     n = iter->second;
   }
   std::vector<int> valid_gpu_ids;
-  GetValidDeviceIds(&valid_gpu_ids);
+  TF_RETURN_IF_ERROR(GetValidDeviceIds(
+      options.config.gpu_options().visible_device_list(), &valid_gpu_ids));
   if (static_cast<size_t>(n) > valid_gpu_ids.size()) {
     n = valid_gpu_ids.size();
   }
@@ -810,21 +811,60 @@ std::vector<CudaVersion> GetSupportedCudaComputeCapabilities() {
 
 }  // namespace
 
-void BaseGPUDeviceFactory::GetValidDeviceIds(std::vector<int>* ids) {
+Status BaseGPUDeviceFactory::GetValidDeviceIds(
+    const string& visible_device_list, std::vector<int>* ids) {
   gpu::Platform* gpu_manager = GPUMachineManager();
   if (gpu_manager == nullptr) {
-    return;
+    return Status::OK();
+  }
+
+  // If there are no GPUs visible, do nothing.
+  if (gpu_manager->VisibleDeviceCount() <= 0) {
+    return Status::OK();
   }
 
   auto cuda_supported_capabilities = GetSupportedCudaComputeCapabilities();
-  CHECK(!cuda_supported_capabilities.empty());
+  if (cuda_supported_capabilities.empty()) {
+    return errors::FailedPrecondition(
+        "No supported cuda capabilities in binary.");
+  }
   CudaVersion min_supported_capability = *std::min_element(
       cuda_supported_capabilities.begin(), cuda_supported_capabilities.end());
 
   int min_gpu_core_count = GetMinGPUMultiprocessorCount(gpu_manager);
 
-  for (int i = 0; i < gpu_manager->VisibleDeviceCount(); ++i) {
-    auto exec_status = gpu_manager->ExecutorForDevice(i);
+  // If the user wants to remap the visible to virtual GPU mapping,
+  // check for that here.
+  std::vector<int> visible_gpu_order;
+  if (visible_device_list.empty()) {
+    visible_gpu_order.resize(gpu_manager->VisibleDeviceCount());
+    // By default, visible to virtual mapping is unchanged.
+    std::iota(visible_gpu_order.begin(), visible_gpu_order.end(), 0);
+  } else {
+    std::vector<string> order_str = str_util::Split(visible_device_list, ',');
+    for (int i = 0; i < order_str.size(); ++i) {
+      const string& gpu_id_str = order_str[i];
+      int32 gpu_id;
+      if (!strings::safe_strto32(gpu_id_str, &gpu_id)) {
+        return errors::InvalidArgument(
+            "Could not parse entry in 'visible_device_list': '", gpu_id_str,
+            "'.  visible_device_list = ", visible_device_list);
+      }
+
+      if (gpu_id < 0 || gpu_id >= gpu_manager->VisibleDeviceCount()) {
+        return errors::InvalidArgument(
+            "'visible_device_list' listed an invalid GPU id '", gpu_id,
+            "' but visible device count is ",
+            gpu_manager->VisibleDeviceCount());
+      }
+
+      visible_gpu_order.push_back(gpu_id);
+    }
+  }
+
+  for (int i = 0; i < visible_gpu_order.size(); ++i) {
+    const int32 visible_gpu_id = visible_gpu_order[i];
+    auto exec_status = gpu_manager->ExecutorForDevice(visible_gpu_id);
     if (!exec_status.ok()) {
       continue;
     }
@@ -838,8 +878,9 @@ void BaseGPUDeviceFactory::GetValidDeviceIds(std::vector<int>* ids) {
     // Only GPUs with no less than the minimum supported compute capability is
     // accepted.
     if (device_capability < min_supported_capability) {
-      LOG(INFO) << "Ignoring gpu device "
-                << "(" << GetShortDeviceDescription(i, desc) << ") "
+      LOG(INFO) << "Ignoring physical gpu device "
+                << "(" << GetShortDeviceDescription(visible_gpu_id, desc)
+                << ") "
                 << "with Cuda compute capability " << device_capability
                 << ". The minimum required Cuda capability is "
                 << min_supported_capability << ".";
@@ -852,7 +893,8 @@ void BaseGPUDeviceFactory::GetValidDeviceIds(std::vector<int>* ids) {
     // variable is set, its value will be used to filter out GPUs.
     if (desc.core_count() < min_gpu_core_count) {
       LOG(INFO) << "Ignoring gpu device "
-                << "(" << GetShortDeviceDescription(i, desc) << ") "
+                << "(" << GetShortDeviceDescription(visible_gpu_id, desc)
+                << ") "
                 << "with Cuda multiprocessor count: " << desc.core_count()
                 << ". The minimum required count is " << min_gpu_core_count
                 << ". You can adjust this requirement with the env var "
@@ -861,11 +903,13 @@ void BaseGPUDeviceFactory::GetValidDeviceIds(std::vector<int>* ids) {
     }
 
     int new_id = ids->size();
-    ids->push_back(i);
+    ids->push_back(visible_gpu_id);
 
     LOG(INFO) << "Creating TensorFlow device (/gpu:" << new_id << ") -> "
-              << "(" << GetShortDeviceDescription(i, desc) << ")";
+              << "(" << GetShortDeviceDescription(visible_gpu_id, desc) << ")";
   }
+
+  return Status::OK();
 }
 
 }  // namespace tensorflow
