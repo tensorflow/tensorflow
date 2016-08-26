@@ -23,9 +23,14 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
-// Returns the version of loaded hexagon shared library. Assert if the version
-// matches the expected version.
-int hexagon_gemm_wrapper_GetVersion();
+// Returns the version of loaded hexagon wrapper shared library.
+// You should assert that the version matches the expected version before
+// calling APIs defined in this header.
+int hexagon_gemm_wrapper_GetWrapperVersion();
+// Returns the version of hexagon binary.
+// You should assert that the version matches the expected version before
+// calling APIs defined in this header.
+int hexagon_gemm_wrapper_GetHexagonBinaryVersion();
 // TODO(satok): Support gemm APIs via RPC
 #ifdef __cplusplus
 }

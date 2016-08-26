@@ -264,6 +264,7 @@ ifeq ($(TARGET),ANDROID)
 		INCLUDES += -I$(HEXAGON_INCLUDE)
 		LIBS += -lgemm_wrapper
 		LDFLAGS += -L$(HEXAGON_LIBS)
+		CXXFLAGS += -DUSE_HEXAGON_LIBS
 	endif
 
 endif  # ANDROID

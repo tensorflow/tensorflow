@@ -39,6 +39,7 @@ tensorflow/contrib/quantization/kernels/quantize_op.cc \
 tensorflow/contrib/quantization/kernels/quantized_conv_ops.cc \
 tensorflow/contrib/quantization/kernels/quantized_matmul_op.cc \
 tensorflow/contrib/quantization/kernels/quantized_matmul_op_test.cc \
+tensorflow/contrib/quantization/kernels/hexagon/quantized_matmul_op_for_hexagon_test.cc \
 tensorflow/contrib/makefile/test/test_main.cc
 
 QUANTIZATION_TEST_OBJS := $(addprefix $(OBJDIR), $(QUANTIZATION_TEST_SRCS:.cc=.o))
