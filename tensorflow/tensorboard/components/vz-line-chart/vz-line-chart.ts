@@ -512,7 +512,6 @@ module VZ {
       this.setViewBox();
     }
 
-
     /** There's an issue in Chrome where the svg overflow is a bit
      * "flickery". There is a border on the gridlines on the extreme edge of the
      * chart, which behaves inconsistently and causes the screendiffing tests to
@@ -520,9 +519,11 @@ module VZ {
      * setting the viewBox on the containing svg.
      */
     private setViewBox() {
-      let w = this.outer.width();
-      let h = this.outer.height();
-      this.targetSVG.attr('viewBox', `0 0 ${w+1} ${h+1}`);
+      let svg = this.targetSVG.node() as HTMLElement;
+      let brect = svg.getBoundingClientRect();
+      let w = brect.width;
+      let h = brect.height;
+      this.targetSVG.attr('viewBox', `0 0 ${w + 1} ${h + 1}`);
     }
 
     public redraw() {
