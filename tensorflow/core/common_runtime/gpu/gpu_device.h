@@ -123,12 +123,7 @@ class BaseGPUDeviceFactory : public DeviceFactory {
                                          Allocator* gpu_allocator,
                                          Allocator* cpu_allocator) = 0;
 
-  // Returns into 'ids' the list of valid GPU ids, in the order that
-  // they should map to logical gpu ids "/gpu:0", "/gpu:1", etc, based
-  // upon 'visible_device_list', a comma-separated list of 'visible
-  // gpu ids'.
-  Status GetValidDeviceIds(const string& visible_device_list,
-                           std::vector<int>* ids);
+  void GetValidDeviceIds(std::vector<int>* ids);
 };
 
 }  // namespace tensorflow
