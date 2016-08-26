@@ -144,6 +144,13 @@ new_git_repository(
 )
 
 new_git_repository(
+  name = "iron_icons",
+  build_file = "bower.BUILD",
+  remote = "https://github.com/polymerelements/iron-icons.git",
+  tag = "v1.1.3",
+)
+
+new_git_repository(
   name = "iron_iconset_svg",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/iron-iconset-svg.git",

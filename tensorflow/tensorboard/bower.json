@@ -48,6 +48,7 @@
     "iron-flex-layout": "PolymerElements/iron-flex-layout#1.3.0",
     "iron-form-element-behavior": "PolymerElements/iron-form-element-behavior#1.0.6",
     "iron-icon": "PolymerElements/iron-icon#1.0.8",
+    "iron-icons": "PolymerElements/iron-icons#1.1.3",
     "iron-iconset-svg": "PolymerElements/iron-iconset-svg#1.0.9",
     "iron-input": "PolymerElements/iron-input#1.0.10",
     "iron-list": "PolymerElements/iron-list#1.1.7",
