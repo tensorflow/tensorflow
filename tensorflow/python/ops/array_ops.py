@@ -143,9 +143,6 @@ def shape_internal(input, name=None, optimize=True):
     else:
       input_tensor = ops.convert_to_tensor(input)
       input_shape = input_tensor.get_shape()
-      # Static shape inference can be incorrect when loops are involved: disable
-      # shape optimization in this case to avoid generating invalid constants.
-      optimize &= input_tensor.graph._get_control_flow_context() is None
       if optimize and input_shape.is_fully_defined():
         return constant(input_shape.as_list(), dtypes.int32, name=name)
       return gen_array_ops.shape(input, name=name)
@@ -192,9 +189,6 @@ def size_internal(input, name=None, optimize=True):
     else:
       input_tensor = ops.convert_to_tensor(input)
       input_shape = input_tensor.get_shape()
-      # Static shape inference can be incorrect when loops are involved: disable
-      # shape optimization in this case to avoid generating invalid constants.
-      optimize &= input_tensor.graph._get_control_flow_context() is None
       if optimize and input_shape.is_fully_defined():
         return constant(input_shape.num_elements(), dtypes.int32, name=name)
       return gen_array_ops.size(input, name=name)
@@ -244,9 +238,6 @@ def rank_internal(input, name=None, optimize=True):
     else:
       input_tensor = ops.convert_to_tensor(input)
       input_shape = input_tensor.get_shape()
-      # Static shape inference can be incorrect when loops are involved: disable
-      # shape optimization in this case to avoid generating invalid constants.
-      optimize &= input_tensor.graph._get_control_flow_context() is None
       if optimize and input_shape.ndims is not None:
         return constant(input_shape.ndims, dtypes.int32, name=name)
       return gen_array_ops.rank(input, name=name)
