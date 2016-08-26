@@ -190,7 +190,6 @@ cuda_py_tests(
         "conv_ops_test.py",
         "depthwise_conv_op_test.py",  # http://b/30603882
         "division_future_test.py",
-        "extract_image_patches_grad_test.py",
         "fft_ops_test.py",
         "pooling_ops_3d_test.py",  # http://b/30600785
         "pooling_ops_test.py",
@@ -203,6 +202,15 @@ cuda_py_tests(
         "sparse_ops_test.py",
         "sparse_tensor_dense_matmul_op_test.py",
     ],
+)
+
+# TODO(gpapan): Revisit the gradient of extract_image_patches_op to resolve
+# http://b/31080670.
+cuda_py_test(
+    name = "extract_image_patches_grad_test",
+    size = "medium",
+    srcs = ["extract_image_patches_grad_test.py"],
+    tags = ["notap"],  # http://b/31080670
 )
 
 cuda_py_test(
