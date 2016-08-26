@@ -285,6 +285,7 @@ ifeq ($(TARGET),IOS)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch armv7 \
 		-D__thread= \
+		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-mno-thumb \
 		-DTF_LEAN_BINARY \
@@ -295,6 +296,7 @@ ifeq ($(TARGET),IOS)
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch armv7 \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
+		-framework Accelerate \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -306,6 +308,7 @@ ifeq ($(TARGET),IOS)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch armv7s \
 		-D__thread= \
+		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-mno-thumb \
 		-DTF_LEAN_BINARY \
@@ -316,6 +319,7 @@ ifeq ($(TARGET),IOS)
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch armv7s \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
+		-framework Accelerate \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -327,6 +331,7 @@ ifeq ($(TARGET),IOS)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch arm64 \
 		-D__thread= \
+		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
@@ -336,6 +341,7 @@ ifeq ($(TARGET),IOS)
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch arm64 \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
+		-framework Accelerate \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -347,6 +353,7 @@ ifeq ($(TARGET),IOS)
 		CXXFLAGS += -mios-simulator-version-min=$(MIN_SDK_VERSION) \
 		-arch i386 \
 		-D__thread= \
+		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
@@ -356,6 +363,7 @@ ifeq ($(TARGET),IOS)
 		${IPHONESIMULATOR_SYSROOT}
 		LDFLAGS := -arch i386 \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
+		-framework Accelerate \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -367,6 +375,7 @@ ifeq ($(TARGET),IOS)
 		CXXFLAGS += -mios-simulator-version-min=$(MIN_SDK_VERSION) \
 		-arch x86_64 \
 		-D__thread= \
+		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
@@ -376,6 +385,7 @@ ifeq ($(TARGET),IOS)
 		${IPHONESIMULATOR_SYSROOT}
 		LDFLAGS := -arch x86_64 \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
+		-framework Accelerate \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \

@@ -138,7 +138,12 @@ def main(unused_argv=None):
 
   status_bar.SetupStatusBarInsideGoogle('TensorBoard %s' % tag, FLAGS.port)
   print('Starting TensorBoard %s on port %d' % (tag, FLAGS.port))
-  print('(You can navigate to http://%s:%d)' % (FLAGS.host, FLAGS.port))
+
+  if FLAGS.host == "0.0.0.0":
+    print('(You can navigate to http://%s:%d)' % (socket.gethostbyname(socket.gethostname()), FLAGS.port))
+  else:
+    print('(You can navigate to http://%s:%d)' % (FLAGS.host, FLAGS.port))
+
   tb_server.serve_forever()
 
 

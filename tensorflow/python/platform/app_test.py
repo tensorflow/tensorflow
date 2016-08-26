@@ -13,18 +13,33 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Generic entry point script."""
+"""Tests for our flags implementation."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import sys
 
+from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 
+FLAGS = flags.FLAGS
+flags.DEFINE_boolean('myflag', False, '')
 
-def run(main=None):
-  f = flags.FLAGS
-  flags_passthrough = f._parse_flags()
-  main = main or sys.modules['__main__'].main
-  sys.exit(main(sys.argv[:1] + flags_passthrough))
+def main(argv):
+  if (len(argv) != 3):
+    print("Length of argv was not 3: ", argv)
+    sys.exit(-1)
+
+  if argv[1] != "--passthrough":
+    print("--passthrough argument not in argv")
+    sys.exit(-1)
+
+  if argv[2] != "extra":
+    print("'extra' argument not in argv")
+    sys.exit(-1)
+
+
+if __name__ == '__main__':
+  sys.argv.extend(["--myflag", "--passthrough", "extra"])
+  app.run()

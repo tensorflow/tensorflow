@@ -49,7 +49,7 @@ module VZ {
     private targetSVG: d3.Selection<any>;
 
     constructor(
-        xType: string, colorScale: Plottable.Scales.Color,
+        xType: string, yScaleType: string, colorScale: Plottable.Scales.Color,
         tooltip: d3.Selection<any>) {
       this.seriesNames = [];
       this.name2datasets = {};
@@ -63,10 +63,10 @@ module VZ {
       // need to do a single bind, so we can deregister the callback from
       // old Plottable.Datasets. (Deregistration is done by identity checks.)
       this.onDatasetChanged = this._onDatasetChanged.bind(this);
-      this.buildChart(xType);
+      this.buildChart(xType, yScaleType);
     }
 
-    private buildChart(xType: string) {
+    private buildChart(xType: string, yScaleType: string) {
       if (this.outer) {
         this.outer.destroy();
       }
@@ -75,7 +75,7 @@ module VZ {
       this.xScale = xComponents.scale;
       this.xAxis = xComponents.axis;
       this.xAxis.margin(0).tickLabelPadding(3);
-      this.yScale = new Plottable.Scales.Linear();
+      this.yScale = LineChart.getYScaleFromType(yScaleType);
       this.yAxis = new Plottable.Axes.Numeric(this.yScale, 'left');
       let yFormatter = VZ.ChartHelpers.multiscaleFormatter(
           VZ.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
@@ -448,6 +448,16 @@ module VZ {
         this.name2datasets[name] = new Plottable.Dataset([], {name: name});
       }
       return this.name2datasets[name];
+    }
+
+    static getYScaleFromType(yScaleType: string): Plottable.QuantitativeScale<number> {
+      if (yScaleType === 'log') {
+        return new Plottable.Scales.ModifiedLog();
+      } else if (yScaleType === 'linear') {
+        return new Plottable.Scales.Linear();
+      } else {
+        throw new Error('Unrecognized yScale type ' + yScaleType);
+      }
     }
 
     /**

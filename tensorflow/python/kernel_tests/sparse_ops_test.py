@@ -743,5 +743,28 @@ class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):
         tf.sparse_maximum(sp_zero, sp_one).eval()
 
 
+class SparseTransposeTest(tf.test.TestCase):
+
+  def _SparseTensorPlaceholder(self):
+    return tf.SparseTensor(
+        tf.placeholder(tf.int64),
+        tf.placeholder(tf.float64),
+        tf.placeholder(tf.int64))
+
+  def testTranspose(self):
+    with self.test_session(use_gpu=False) as sess:
+      np.random.seed(1618)
+      shapes = [np.random.randint(1, 10, size=rank) for rank in range(1, 6)]
+      for shape in shapes:
+        for dtype in [np.int32, np.int64, np.float32, np.float64]:
+          dn_input = np.random.randn(*shape).astype(dtype)
+          rank = tf.rank(dn_input).eval()
+          perm = np.random.choice(rank, rank, False)
+          sp_input, unused_a_nnz = _sparsify(dn_input)
+          sp_trans = tf.sparse_transpose(sp_input, perm=perm)
+          dn_trans = tf.sparse_tensor_to_dense(sp_trans).eval()
+          expected_trans = tf.transpose(dn_input, perm=perm).eval()
+          self.assertAllEqual(dn_trans, expected_trans)
+
 if __name__ == "__main__":
   googletest.main()

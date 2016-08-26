@@ -1471,11 +1471,12 @@ This operation returns N 1-D integer tensors representing shape of `input[i]s`.
 // --------------------------------------------------------------------------
 REGISTER_OP("ReverseSequence")
     .Input("input: T")
-    .Input("seq_lengths: int64")
+    .Input("seq_lengths: Tlen")
     .Output("output: T")
     .Attr("seq_dim: int")
     .Attr("batch_dim: int = 0")
     .Attr("T: type")
+    .Attr("Tlen: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
       ShapeHandle seq_lens_shape;

@@ -47,7 +47,7 @@ class ReverseSequenceTest(tf.test.TestCase):
     self._testReverseSequence(x, batch_dim, seq_dim, seq_lengths,
                               truth, False, expected_err_re)
 
-  def _testBasic(self, dtype):
+  def _testBasic(self, dtype, len_dtype=np.int64):
     x = np.asarray([
         [[1, 2, 3, 4], [5, 6, 7, 8]],
         [[9, 10, 11, 12], [13, 14, 15, 16]],
@@ -56,7 +56,7 @@ class ReverseSequenceTest(tf.test.TestCase):
     x = x.transpose([2, 1, 0, 3, 4])  # permute axes 0 <=> 2
 
     # reverse dim 2 up to (0:3, none, 0:4) along dim=0
-    seq_lengths = np.asarray([3, 0, 4], dtype=np.int64)
+    seq_lengths = np.asarray([3, 0, 4], dtype=len_dtype)
 
     truth_orig = np.asarray(
         [[[3, 2, 1, 4], [7, 6, 5, 8]],  # reverse 0:3
@@ -69,6 +69,9 @@ class ReverseSequenceTest(tf.test.TestCase):
     seq_dim = 0    # permute seq_dim and batch_dim (originally 2 and 0, resp.)
     batch_dim = 2
     self._testBothReverseSequence(x, batch_dim, seq_dim, seq_lengths, truth)
+
+  def testSeqLenghtInt32(self):
+    self._testBasic(np.float32, np.int32)
 
   def testFloatBasic(self):
     self._testBasic(np.float32)

@@ -71,6 +71,34 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "flags_test",
+    size = "small",
+    srcs = ["platform/flags_test.py"],
+    additional_deps = [
+        ":platform",
+        ":platform_test",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+)
+
+tf_py_test(
+    name = "app_test",
+    size = "small",
+    srcs = ["platform/app_test.py"],
+    additional_deps = [
+        ":platform",
+        ":platform_test",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+)
+
 cc_library(
     name = "numpy_lib",
     srcs = ["lib/core/numpy.cc"],
