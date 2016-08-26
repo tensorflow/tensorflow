@@ -67,6 +67,7 @@ mathematical functions to your graph.
 @@igammac
 @@zeta
 @@polygamma
+@@betainc
 
 ## Matrix Math Functions
 
@@ -1816,6 +1817,21 @@ def _BroadcastShape(op):
   return [common_shapes.broadcast_shape(
       op.inputs[0].get_shape(),
       op.inputs[1].get_shape())]
+
+
+@ops.RegisterShape("Betainc")
+def _BetaincOpShape(op):  # pylint: disable=invalid-name
+  """Shape function for BetaincOp."""
+  a_shape = op.inputs[0].get_shape()
+  b_shape = op.inputs[1].get_shape()
+  x_shape = op.inputs[2].get_shape()
+  merged_shape = tensor_shape.TensorShape(None)
+  for shape in (a_shape, b_shape, x_shape):
+    if shape.ndims != 0:
+      merged_shape = merged_shape.merge_with(shape)
+  # Scalars get broadcasted; non-scalar shapes must all match.
+  # Output will be the merged non-scalar shape, if any.
+  return [merged_shape if merged_shape.ndims is not None else a_shape]
 
 
 @ops.RegisterShape("SparseDenseCwiseMul")

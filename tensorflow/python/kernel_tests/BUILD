@@ -111,6 +111,7 @@ cuda_py_tests(
         "array_ops_test.py",
         "batch_matmul_op_test.py",
         "batchtospace_op_test.py",
+        "betainc_op_test.py",
         "bias_op_test.py",
         "bitcast_op_test.py",
         "check_ops_test.py",
