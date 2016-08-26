@@ -398,6 +398,7 @@
   * [`sparse_tensor_to_dense`](../../api_docs/python/sparse_ops.md#sparse_tensor_to_dense)
   * [`sparse_to_dense`](../../api_docs/python/sparse_ops.md#sparse_to_dense)
   * [`sparse_to_indicator`](../../api_docs/python/sparse_ops.md#sparse_to_indicator)
+  * [`sparse_transpose`](../../api_docs/python/sparse_ops.md#sparse_transpose)
   * [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor)
   * [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue)
 
@@ -422,6 +423,7 @@
   * [`parse_tensor`](../../api_docs/python/io_ops.md#parse_tensor)
   * [`placeholder`](../../api_docs/python/io_ops.md#placeholder)
   * [`placeholder_with_default`](../../api_docs/python/io_ops.md#placeholder_with_default)
+  * [`PriorityQueue`](../../api_docs/python/io_ops.md#PriorityQueue)
   * [`QueueBase`](../../api_docs/python/io_ops.md#QueueBase)
   * [`RandomShuffleQueue`](../../api_docs/python/io_ops.md#RandomShuffleQueue)
   * [`range_input_producer`](../../api_docs/python/io_ops.md#range_input_producer)
@@ -782,6 +784,7 @@
   * [`fully_connected`](../../api_docs/python/contrib.layers.md#fully_connected)
   * [`l1_regularizer`](../../api_docs/python/contrib.layers.md#l1_regularizer)
   * [`l2_regularizer`](../../api_docs/python/contrib.layers.md#l2_regularizer)
+  * [`layer_norm`](../../api_docs/python/contrib.layers.md#layer_norm)
   * [`max_pool2d`](../../api_docs/python/contrib.layers.md#max_pool2d)
   * [`one_hot_encoding`](../../api_docs/python/contrib.layers.md#one_hot_encoding)
   * [`optimize_loss`](../../api_docs/python/contrib.layers.md#optimize_loss)
