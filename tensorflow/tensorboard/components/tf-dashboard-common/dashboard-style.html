@@ -53,12 +53,14 @@ limitations under the License.
       }
       .card .card-bottom-row {
         position: absolute;
-        left: 75px;
         bottom: 0;
-        padding-right: 10px;
+        right: 30px;
+        width: 100%;
+        display: block;
+        pointer-events: none;
       }
 
-      .card.selected {
+      .expanded {
         height: 400px;
         width: 100%;
       }
@@ -69,14 +71,15 @@ limitations under the License.
         bottom: 0px;
         color: #2196F3;
         display: block;
+        width: 32px;
+        height: 32px;
+        padding: 4px;
+        border-radius: 100%;
+        pointer-events: auto;
       }
 
-      .log-option-button {
-        position: absolute;
-        left: 25px;
-        bottom: 0px;
-        color: #2196F3;
-        display: block;
+      .expanded .expand-button {
+        background: var(--tb-ui-light-accent);
       }
 
       #content-container{

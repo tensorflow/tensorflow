@@ -136,21 +136,21 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
                         smoothing-enabled="[[_smoothingEnabled]]"
                         smoothing-weight="[[_smoothingWeight]]"
                         tooltip-sorting-method="[[_tooltipSortingMethod]]"
-                        on-keyup="toggleSelected"
+                        on-keyup="toggleExpanded"
                         tabindex="2"
-                      ></vz-line-chart>
+                        ></vz-line-chart>
                     </tf-chart-scaffold>
                     <paper-icon-button
                       class="expand-button"
                       icon="fullscreen"
-                      on-tap="toggleSelected"
-                    ></paper-icon-button>
-                      <paper-icon-button
-                              class="log-option-button"
-                              icon="line-weight"
-                              on-tap="toggleYScale"
-                              title="Toggle y-axis scale (log, linear)"
-                              ></paper-icon-button>
+                      on-tap="toggleExpanded"
+                      ></paper-icon-button>
+                    <paper-icon-button
+                      class="log-button"
+                      icon="line-weight"
+                      on-tap="toggleLogScale"
+                      title="Toggle y-axis log scale"
+                      ></paper-icon-button>
 
                   </div>
                   <template is="dom-if" if="[[_showDownloadLinks]]">
@@ -173,6 +173,30 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
     </tf-dashboard-layout>
 
     <style include="dashboard-style"></style>
+    <style>
+      .log-button {
+        position: absolute;
+        left: 35px;
+        bottom: 0px;
+        color: #2196F3;
+        display: block;
+        background: #fff;
+        width: 32px;
+        height: 32px;
+        padding: 4px;
+        border-radius: 100%;
+        pointer-events: auto;
+      }
+
+      .log-button-selected {
+        background: var(--tb-ui-light-accent);
+      }
+
+      tf-downloader {
+        float: right;
+        pointer-events: auto;
+      }
+    </style>
 
   </template>
 
@@ -240,26 +264,24 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
       _computeSmoothingEnabled: function(_smoothingWeight) {
         return _smoothingWeight > 0;
       },
-      toggleSelected: function(e) {
+      toggleExpanded: function(e) {
         var currentTarget = Polymer.dom(e.currentTarget);
         var parentDiv = currentTarget.parentNode.parentNode;
-        parentDiv.classList.toggle("selected");
+        parentDiv.classList.toggle("expanded");
         var chartScaffold = currentTarget.previousElementSibling;
         if (chartScaffold) {
           chartScaffold.chart().redraw();
         }
       },
 
-      toggleYScale: function(e) {
+      toggleLogScale: function(e) {
         var currentTarget = Polymer.dom(e.currentTarget);
+        var button = currentTarget.parentNode.querySelector('.log-button');
+        var chart = currentTarget.parentNode.querySelector('vz-line-chart');
 
-        var b = currentTarget.parentNode.querySelector('.log-option-button');
-        var c = currentTarget.parentNode.querySelector('vz-line-chart');
-        if (c !== null) {
-          c.yScaleType = c.yScaleType === 'log' ? 'linear' : 'log';
-          b.icon = c.yScaleType === 'log' ? 'line-weight' : 'reorder';
-          c.redraw();
-        }
+        button.classList.toggle("log-button-selected");
+        chart.yScaleType = chart.yScaleType === 'log' ? 'linear' : 'log';
+        chart.redraw();
       },
 
       validRuns: function(tag, runsChange, run2tagChange) {
