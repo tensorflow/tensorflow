@@ -113,6 +113,20 @@ Status InputBuffer::ReadNBytes(int64 bytes_to_read, char* result,
   return status;
 }
 
+Status InputBuffer::ReadVarint32Fallback(uint32* result) {
+  uint8 scratch = 0;
+  char* p = reinterpret_cast<char*>(&scratch);
+  size_t unused_bytes_read = 0;
+
+  *result = 0;
+  for (int shift = 0; shift <= 28; shift += 7) {
+    TF_RETURN_IF_ERROR(ReadNBytes(1, p, &unused_bytes_read));
+    *result |= (scratch & 127) << shift;
+    if (!(scratch & 128)) return Status::OK();
+  }
+  return errors::DataLoss("Stored data is too large to be a varint32.");
+}
+
 Status InputBuffer::SkipNBytes(int64 bytes_to_skip) {
   if (bytes_to_skip < 0) {
     return errors::InvalidArgument("Can only skip forward, not ",

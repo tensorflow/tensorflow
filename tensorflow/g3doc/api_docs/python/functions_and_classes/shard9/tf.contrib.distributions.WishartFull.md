@@ -55,7 +55,7 @@ dist.pdf(x)  # Shape is [2, 2].
 ```
 - - -
 
-#### `tf.contrib.distributions.WishartFull.__init__(df, scale, cholesky_input_output_matrices=False, allow_nan_stats=False, validate_args=True, name='Wishart')` {#WishartFull.__init__}
+#### `tf.contrib.distributions.WishartFull.__init__(df, scale, cholesky_input_output_matrices=False, validate_args=True, allow_nan_stats=False, name='WishartFull')` {#WishartFull.__init__}
 
 Construct Wishart distributions.
 
@@ -71,13 +71,13 @@ Construct Wishart distributions.
     Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
     `sample_n` returns a Cholesky when
     `cholesky_input_output_matrices=True`.
+*  <b>`validate_args`</b>: Whether to validate input with asserts. If `validate_args`
+    is `False`, and the inputs are invalid, correct behavior is not
+    guaranteed.
 *  <b>`allow_nan_stats`</b>: `Boolean`, default `False`. If `False`, raise an
     exception if a statistic (e.g., mean, mode) is undefined for any batch
     member. If True, batch members with valid parameters leading to
     undefined statistics will return `NaN` for this statistic.
-*  <b>`validate_args`</b>: Whether to validate input with asserts. If `validate_args`
-    is `False`, and the inputs are invalid, correct behavior is not
-    guaranteed.
 *  <b>`name`</b>: The name scope to give class member ops.
 
 
@@ -85,14 +85,41 @@ Construct Wishart distributions.
 
 #### `tf.contrib.distributions.WishartFull.allow_nan_stats` {#WishartFull.allow_nan_stats}
 
-Boolean describing behavior when a stat is undefined for batch member.
+Python boolean describing behavior when a stat is undefined.
+
+Stats return +/- infinity when it makes sense.  E.g., the variance
+of a Cauchy distribution is infinity.  However, sometimes the
+statistic is undefined, e.g., if a distribution's pdf does not achieve a
+maximum within the support of the distribution, the mode is undefined.
+If the mean is undefined, then by definition the variance is undefined.
+E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
+it is either + or - infinity), so the variance = E[(X - mean)^2] is also
+undefined.
+
+##### Returns:
+
+
+*  <b>`allow_nan_stats`</b>: Python boolean.
 
 
 - - -
 
 #### `tf.contrib.distributions.WishartFull.batch_shape(name='batch_shape')` {#WishartFull.batch_shape}
 
-Batch dimensions of this instance as a 1-D int32 `Tensor`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
+
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -100,6 +127,18 @@ Batch dimensions of this instance as a 1-D int32 `Tensor`.
 #### `tf.contrib.distributions.WishartFull.cdf(value, name='cdf')` {#WishartFull.cdf}
 
 Cumulative distribution function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 
 - - -
@@ -127,21 +166,31 @@ Dimension of underlying vector space. The `p` in `R^(p*p)`.
 
 #### `tf.contrib.distributions.WishartFull.dtype` {#WishartFull.dtype}
 
-dtype of samples from this distribution.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
 #### `tf.contrib.distributions.WishartFull.entropy(name='entropy')` {#WishartFull.entropy}
 
-Entropy of the distribution in nats.
+Shanon entropy in nats.
 
 
 - - -
 
 #### `tf.contrib.distributions.WishartFull.event_shape(name='event_shape')` {#WishartFull.event_shape}
 
-Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -161,8 +210,8 @@ shapes = MultiVariateNormalDiag.param_shapes([batch_size, 10])
 
 # shapes has a Tensor shape for mu and sigma
 # shapes == {
-#   'mu': tf.constant([batch_size, 10]),
-#   'sigma': tf.constant([batch_size, 10]),
+#   "mu": tf.constant([batch_size, 10]),
+#   "sigma": tf.constant([batch_size, 10]),
 # }
 
 # Here we parameterize mu and sigma with the output of a linear
@@ -205,33 +254,40 @@ apply it externally and set `make_safe=False`.
 
 #### `tf.contrib.distributions.WishartFull.get_batch_shape()` {#WishartFull.get_batch_shape}
 
-`TensorShape` available at graph construction time.
+Shape of a single sample from a single event index as a `TensorShape`.
+
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
 #### `tf.contrib.distributions.WishartFull.get_event_shape()` {#WishartFull.get_event_shape}
 
-`TensorShape` available at graph construction time.
+Shape of a single sample from a single batch as a `TensorShape`.
+
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.inputs` {#WishartFull.inputs}
-
-Dictionary of inputs provided at initialization.
-
-
-- - -
-
-#### `tf.contrib.distributions.WishartFull.is_continuous()` {#WishartFull.is_continuous}
+#### `tf.contrib.distributions.WishartFull.is_continuous` {#WishartFull.is_continuous}
 
 
 
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.is_reparameterized()` {#WishartFull.is_reparameterized}
+#### `tf.contrib.distributions.WishartFull.is_reparameterized` {#WishartFull.is_reparameterized}
 
 
 
@@ -240,7 +296,19 @@ Dictionary of inputs provided at initialization.
 
 #### `tf.contrib.distributions.WishartFull.log_cdf(value, name='log_cdf')` {#WishartFull.log_cdf}
 
-Log CDF.
+Log cumulative distribution function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 
 - - -
@@ -254,26 +322,60 @@ Computes the log normalizing constant, log(Z).
 
 #### `tf.contrib.distributions.WishartFull.log_pdf(value, name='log_pdf')` {#WishartFull.log_pdf}
 
-Log of the probability density function.
+Log probability density function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`AttributeError`</b>: if not `is_continuous`.
 
 
 - - -
 
 #### `tf.contrib.distributions.WishartFull.log_pmf(value, name='log_pmf')` {#WishartFull.log_pmf}
 
-Log of the probability mass function.
-
-
-- - -
-
-#### `tf.contrib.distributions.WishartFull.log_prob(x, name='log_prob')` {#WishartFull.log_prob}
-
-Log of the probability density/mass function.
+Log probability mass function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: `float` or `double` `Tensor`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`AttributeError`</b>: if `is_continuous`.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartFull.log_prob(value, name='log_prob')` {#WishartFull.log_prob}
+
+Log probability density/mass function (depending on `is_continuous`).
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
@@ -287,7 +389,7 @@ Log of the probability density/mass function.
 
 #### `tf.contrib.distributions.WishartFull.mean(name='mean')` {#WishartFull.mean}
 
-Mean of the distribution.
+Mean.
 
 
 - - -
@@ -301,14 +403,14 @@ Computes E[log(det(X))] under this Wishart distribution.
 
 #### `tf.contrib.distributions.WishartFull.mode(name='mode')` {#WishartFull.mode}
 
-Mode of the distribution.
+Mode.
 
 
 - - -
 
 #### `tf.contrib.distributions.WishartFull.name` {#WishartFull.name}
 
-Name prepended to all ops.
+Name prepended to all ops created by this `Distribution`.
 
 
 - - -
@@ -355,74 +457,123 @@ param_shapes with static (i.e. TensorShape) shapes.
 
 - - -
 
+#### `tf.contrib.distributions.WishartFull.parameters` {#WishartFull.parameters}
+
+Dictionary of parameters used by this `Distribution`.
+
+
+- - -
+
 #### `tf.contrib.distributions.WishartFull.pdf(value, name='pdf')` {#WishartFull.pdf}
 
-The probability density function.
+Probability density function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`AttributeError`</b>: if not `is_continuous`.
 
 
 - - -
 
 #### `tf.contrib.distributions.WishartFull.pmf(value, name='pmf')` {#WishartFull.pmf}
 
-The probability mass function.
+Probability mass function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`AttributeError`</b>: if `is_continuous`.
 
 
 - - -
 
 #### `tf.contrib.distributions.WishartFull.prob(value, name='prob')` {#WishartFull.prob}
 
-Probability density/mass function.
+Probability density/mass function (depending on `is_continuous`).
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 
 - - -
 
 #### `tf.contrib.distributions.WishartFull.sample(sample_shape=(), seed=None, name='sample')` {#WishartFull.sample}
 
-Generate samples of the specified shape for each batched distribution.
+Generate samples of the specified shape.
 
 Note that a call to `sample()` without arguments will generate a single
-sample per batched distribution.
+sample.
 
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: Rank 1 `int32` `Tensor`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
-      `sample_shape + self.batch_shape + self.event_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
 
-#### `tf.contrib.distributions.WishartFull.sample_n(n, seed=None, name='sample')` {#WishartFull.sample_n}
+#### `tf.contrib.distributions.WishartFull.sample_n(n, seed=None, name='sample_n')` {#WishartFull.sample_n}
 
 Generate `n` samples.
-
-Complexity: O(nbk^3)
-
-The sampling procedure is based on the [Bartlett decomposition](
-https://en.wikipedia.org/wiki/Wishart_distribution#Bartlett_decomposition)
-and [using a Gamma distribution to generate Chi2 random variates](
-https://en.wikipedia.org/wiki/Chi-squared_distribution#Gamma.2C_exponential.2C_and_related_distributions).
 
 ##### Args:
 
 
 *  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
-*  <b>`seed`</b>: Python integer; random number generator seed.
-*  <b>`name`</b>: The name of this op.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
 
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
-      with values of type `self.dtype`.
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `n` is not an integer type.
 
 
 - - -
@@ -443,39 +594,20 @@ Wishart distribution scale matrix as an OperatorPD.
 
 #### `tf.contrib.distributions.WishartFull.std(name='std')` {#WishartFull.std}
 
-Standard deviation of the Wishart distribution.
+Standard deviation.
 
 
 - - -
 
 #### `tf.contrib.distributions.WishartFull.validate_args` {#WishartFull.validate_args}
 
-Boolean describing behavior on invalid input.
+Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
 #### `tf.contrib.distributions.WishartFull.variance(name='variance')` {#WishartFull.variance}
 
-Variance of the Wishart distribution.
-
-This function should not be confused with the covariance of the Wishart. The
-covariance matrix would have shape `q x q` where,
-`q = dimension * (dimension+1) / 2`
-and having elements corresponding to some mapping from a lower-triangular
-matrix to a vector-space.
-
-This function returns the diagonal of the Covariance matrix but shaped
-as a `dimension x dimension` matrix.
-
-##### Args:
-
-
-*  <b>`name`</b>: The name of this op.
-
-##### Returns:
-
-
-*  <b>`variance`</b>: `Tensor` of dtype `self.dtype`.
+Variance.
 
 

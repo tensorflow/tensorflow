@@ -824,7 +824,7 @@ void TF_SetAttrShapeList(TF_OperationDescription* desc, const char* attr_name,
 }
 
 void TF_SetAttrTensorShapeProto(TF_OperationDescription* desc,
-                                const char* attr_name, void* proto,
+                                const char* attr_name, const void* proto,
                                 int proto_len, TF_Status* status) {
   TensorShapeProto shape;
   if (shape.ParseFromArray(proto, proto_len)) {
@@ -997,12 +997,13 @@ int TF_OperationInputListLength(TF_Operation* oper, const char* arg_name,
 }
 
 TF_Port TF_OperationInput(TF_Port oper_in) {
-  for (const auto* edge : oper_in.oper->node.in_edges()) {
-    if (edge->dst_input() == oper_in.index) {
-      return {ToOperation(edge->src()), edge->src_output()};
-    }
+  const tensorflow::Edge* edge;
+  Status s = oper_in.oper->node.input_edge(oper_in.index, &edge);
+  if (!s.ok()) {
+    return {nullptr, -1};
   }
-  return {nullptr, -1};
+
+  return {ToOperation(edge->src()), edge->src_output()};
 }
 
 int TF_OperationOutputNumConsumers(TF_Port oper_out) {
@@ -1030,13 +1031,7 @@ int TF_OperationOutputConsumers(TF_Port oper_out, TF_Port* consumers,
 }
 
 int TF_OperationNumControlInputs(TF_Operation* oper) {
-  int count = 0;
-  for (const auto* edge : oper->node.in_edges()) {
-    if (edge->IsControlEdge()) {
-      ++count;
-    }
-  }
-  return count;
+  return oper->node.in_edges().size() - oper->node.num_inputs();
 }
 
 int TF_OperationGetControlInputs(TF_Operation* oper,
