@@ -5,14 +5,14 @@ If you're a Google-internal user using command line flags with learn_runner.py
 probably want to use learn_runner.EstimatorConfig instead.
 - - -
 
-#### `tf.contrib.learn.RunConfig.__init__(master=None, task=None, num_ps_replicas=None, num_cores=4, log_device_placement=False, gpu_memory_fraction=1, cluster_spec=None, tf_random_seed=None, save_summary_steps=100, save_checkpoints_secs=60, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000, job_name=None)` {#RunConfig.__init__}
+#### `tf.contrib.learn.RunConfig.__init__(master=None, task=None, num_ps_replicas=None, num_cores=4, log_device_placement=False, gpu_memory_fraction=1, cluster_spec=None, tf_random_seed=None, save_summary_steps=100, save_checkpoints_secs=60, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000, job_name=None, is_chief=None)` {#RunConfig.__init__}
 
 Constructor.
 
-If set to None, `master`, `task`, `num_ps_replicas`, `cluster_spec`, and
-`job_name` are set based on the TF_CONFIG environment variable, if the
-pertinent information is present; otherwise, the defaults listed in the
-Args section apply.
+If set to None, `master`, `task`, `num_ps_replicas`, `cluster_spec`,
+`job_name`, and `is_chief` are set based on the TF_CONFIG environment
+variable, if the pertinent information is present; otherwise, the defaults
+listed in the Args section apply.
 
 The TF_CONFIG environment variable is a JSON object with two relevant
 attributes: `task` and `cluster_spec`. `cluster_spec` is a JSON serialized
@@ -28,9 +28,7 @@ following properties are set on this class:
     cluster_spec.
   * `num_ps_replicas` is set by counting the number of nodes listed
     in the `ps` job of `cluster_spec`.
-
-Note that any of these values can be overridden by explicitly passing
-their value to the constructor.
+  * `is_chief`: true when `job_name` == "master" and `task` == 0.
 
 Example:
 ```
@@ -45,6 +43,7 @@ Example:
   assert config.num_ps_replicas == 2
   assert config.cluster_spec == server_lib.ClusterSpec(cluster)
   assert config.job_name == 'worker'
+  assert not config.is_chief
 ```
 
 ##### Args:
@@ -57,9 +56,9 @@ Example:
 *  <b>`log_device_placement`</b>: Log the op placement to devices (default: False).
 *  <b>`gpu_memory_fraction`</b>: Fraction of GPU memory used by the process on
     each GPU uniformly on the same machine.
-*  <b>`cluster_spec`</b>: a tf.train.ClusterSpec object that describes the cluster in
-    the case of distributed computation. If missing, reasonable assumptions
-    are made for the addresses of jobs.
+*  <b>`cluster_spec`</b>: a `tf.train.ClusterSpec` object that describes the cluster
+    in the case of distributed computation. If missing, reasonable
+    assumptions are made for the addresses of jobs.
 *  <b>`tf_random_seed`</b>: Random seed for TensorFlow initializers.
     Setting this value allows consistency between reruns.
 *  <b>`save_summary_steps`</b>: Save summaries every this many steps.
@@ -71,14 +70,23 @@ Example:
 *  <b>`keep_checkpoint_every_n_hours`</b>: Number of hours between each checkpoint
     to be saved. The default value of 10,000 hours effectively disables
     the feature.
-*  <b>`job_name`</b>: the type of task, e.g., 'ps', 'worker', etc. Must exist in
-    `cluster_spec.jobs`.
+*  <b>`job_name`</b>: the type of task, e.g., 'ps', 'worker', etc. The `job_name`
+    must exist in the `cluster_spec.jobs`.
+*  <b>`is_chief`</b>: whether or not this task (as identified by the other parameters)
+    should be the chief task.
 
 ##### Raises:
 
 
 *  <b>`ValueError`</b>: if num_ps_replicas and cluster_spec are set (cluster_spec
     may fome from the TF_CONFIG environment variable).
+
+
+- - -
+
+#### `tf.contrib.learn.RunConfig.is_chief` {#RunConfig.is_chief}
+
+
 
 
 - - -
