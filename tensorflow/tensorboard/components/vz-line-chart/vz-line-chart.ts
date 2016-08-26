@@ -46,6 +46,8 @@ module VZ {
     private tooltipSortingMethod: string;
     private tooltipPosition: string;
 
+    private targetSVG: d3.Selection<any>;
+
     constructor(
         xType: string, colorScale: Plottable.Scales.Color,
         tooltip: d3.Selection<any>) {
@@ -504,9 +506,29 @@ module VZ {
       this.tooltipPosition = position;
     }
 
-    public renderTo(target: d3.Selection<any>) { this.outer.renderTo(target); }
+    public renderTo(targetSVG: d3.Selection<any>) {
+      this.outer.renderTo(targetSVG);
+      this.targetSVG = targetSVG;
+      this.setViewBox();
+    }
 
-    public redraw() { this.outer.redraw(); }
+
+    /** There's an issue in Chrome where the svg overflow is a bit
+     * "flickery". There is a border on the gridlines on the extreme edge of the
+     * chart, which behaves inconsistently and causes the screendiffing tests to
+     * flake. We can solve this by creating 1px effective margin for the svg by
+     * setting the viewBox on the containing svg.
+     */
+    private setViewBox() {
+      let w = this.outer.width();
+      let h = this.outer.height();
+      this.targetSVG.attr('viewBox', `0 0 ${w+1} ${h+1}`);
+    }
+
+    public redraw() {
+      this.outer.redraw();
+      this.setViewBox();
+    }
 
     public destroy() { this.outer.destroy(); }
   }
