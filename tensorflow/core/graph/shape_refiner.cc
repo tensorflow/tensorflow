@@ -121,9 +121,9 @@ Status ShapeRefiner::ConstantValue(const Node* node, Tensor* tensor_storage,
   // a partial evaluation of the graph.
 
   // TODO(vrv): Handle other types of nodes, like we do in python:
-  // Size, Rank, Range, Cast, Concat, Pack.  Some of these
-  // require recursively accessing the input's inputs, while some
-  // can be computed using local information.
+  // Cast, Concat, Pack.  These require re-implementing the core
+  // kernels themselves, and we may want to switch this to partial
+  // evaluation instead of implementing these again.
   if (node->IsConstant()) {
     return Constant(node, tensor_storage, input_tensor);
   }
@@ -135,6 +135,9 @@ Status ShapeRefiner::ConstantValue(const Node* node, Tensor* tensor_storage,
   }
   if (node->type_string() == "Rank") {
     return Rank(node, tensor_storage, input_tensor);
+  }
+  if (node->type_string() == "Range") {
+    return Range(node, tensor_storage, input_tensor);
   }
 
   return Status::OK();
@@ -220,6 +223,56 @@ Status ShapeRefiner::Rank(const Node* node, Tensor* tensor_storage,
     *input_tensor = tensor_storage;
   }
 
+  return Status::OK();
+}
+
+Status ShapeRefiner::Range(const Node* node, Tensor* tensor_storage,
+                           const Tensor** input_tensor) const {
+  const Node* start_node;
+  TF_RETURN_IF_ERROR(node->input_node(0, &start_node));
+  const Node* limit_node;
+  TF_RETURN_IF_ERROR(node->input_node(1, &limit_node));
+  const Node* delta_node;
+  TF_RETURN_IF_ERROR(node->input_node(2, &delta_node));
+
+  const Tensor* start_node_tensor;
+  TF_RETURN_IF_ERROR(
+      ConstantValue(start_node, tensor_storage, &start_node_tensor));
+  if (start_node_tensor == nullptr) return Status::OK();
+  const int32 start = start_node_tensor->scalar<int32>()();
+
+  const Tensor* limit_node_tensor;
+  TF_RETURN_IF_ERROR(
+      ConstantValue(limit_node, tensor_storage, &limit_node_tensor));
+  if (limit_node_tensor == nullptr) return Status::OK();
+  const int32 limit = limit_node_tensor->scalar<int32>()();
+
+  const Tensor* delta_node_tensor;
+  TF_RETURN_IF_ERROR(
+      ConstantValue(delta_node, tensor_storage, &delta_node_tensor));
+  if (delta_node_tensor == nullptr) return Status::OK();
+  const int32 delta = delta_node_tensor->scalar<int32>()();
+
+  if (start > limit) {
+    return errors::InvalidArgument("Range requires start <= limit: ", start,
+                                   "/", limit);
+  }
+
+  if (delta <= 0) {
+    return errors::InvalidArgument("Range requires delta > 0: ", delta);
+  }
+
+  int32 size = (limit - start + delta - 1) / delta;
+  *tensor_storage = Tensor(DT_INT32, {size});
+
+  auto flat = tensor_storage->flat<int32>();
+  int32 val = start;
+  for (int32 i = 0; i < size; ++i) {
+    flat(i) = val;
+    val += delta;
+  }
+
+  *input_tensor = tensor_storage;
   return Status::OK();
 }
 

@@ -71,6 +71,8 @@ class ShapeRefiner {
               const Tensor** input_tensor) const;
   Status Rank(const Node* node, Tensor* tensor_storage,
               const Tensor** input_tensor) const;
+  Status Range(const Node* node, Tensor* tensor_storage,
+               const Tensor** input_tensor) const;
   // Stores a map from a node to its InferenceContext.
   //
   // Owns values.

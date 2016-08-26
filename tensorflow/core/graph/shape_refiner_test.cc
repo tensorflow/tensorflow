@@ -278,5 +278,28 @@ TEST(ShapeRefinerTest, PropagateRank) {
   EXPECT_EQ("[2]", ctx->DebugString(ctx->output(0)));
 }
 
+TEST(ShapeRefinerTest, PropagateRange) {
+  Scope root = Scope::NewRootScope();
+  auto begin = ops::Const(root, 1);
+  auto limit = ops::Const(root, 11);
+  auto delta = ops::Const(root, 3);
+  auto range = ops::Range(root, begin, limit, delta);
+
+  Node* shape_data;
+  TF_ASSERT_OK(NodeBuilder("Test", "ShapeData")
+                   .Input(range.node())
+                   .Finalize(root.graph(), &shape_data));
+
+  ShapeRefiner m;
+  TF_ASSERT_OK(m.AddNode(begin.node()));
+  TF_ASSERT_OK(m.AddNode(limit.node()));
+  TF_ASSERT_OK(m.AddNode(delta.node()));
+  TF_ASSERT_OK(m.AddNode(range.node()));
+  TF_ASSERT_OK(m.AddNode(shape_data));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(shape_data);
+  EXPECT_EQ("[1,4,7,10]", ctx->DebugString(ctx->output(0)));
+}
+
 }  // namespace
 }  // namespace tensorflow
