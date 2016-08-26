@@ -26,7 +26,7 @@ reparameterized distributions; it will also return None if the value type is
 ##### Args:
 
 
-*  <b>`dist_cls`</b>: a class deriving from `BaseDistribution`.
+*  <b>`dist_cls`</b>: a `Distribution` class.
 *  <b>`name`</b>: a name for this `DistributionTensor` and its ops.
 *  <b>`dist_value_type`</b>: a `_StochasticValueType`, which will determine what the
       `value` of this `DistributionTensor` will be. If not provided, the
@@ -39,6 +39,12 @@ reparameterized distributions; it will also return None if the value type is
       module for additional loss functions and baselines.
 *  <b>`**dist_args`</b>: keyword arguments to be passed through to `dist_cls` on
       construction.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `dist_cls` is not a `Distribution`.
+*  <b>`TypeError`</b>: if `loss_fn` is not `callable`.
 
 
 - - -
