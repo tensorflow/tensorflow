@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numbers
+
 import numpy as np
 
 from tensorflow.python.framework import common_shapes
@@ -1131,7 +1133,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
   """
   with ops.name_scope(name, "dropout", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    if isinstance(keep_prob, float) and not 0 < keep_prob <= 1:
+    if isinstance(keep_prob, numbers.Real) and not 0 < keep_prob <= 1:
       raise ValueError("keep_prob must be a scalar tensor or a float in the "
                        "range (0, 1], got %g" % keep_prob)
     keep_prob = ops.convert_to_tensor(keep_prob,
