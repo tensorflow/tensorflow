@@ -751,38 +751,20 @@ class SparseTransposeTest(tf.test.TestCase):
         tf.placeholder(tf.float64),
         tf.placeholder(tf.int64))
 
-  def _SparseInputTensorValue(self):
-    ind = np.array([
-        [0, 0],
-        [1, 0], [1, 3], [1, 4],
-        [3, 2], [3, 3]]).astype(np.int64)
-    val = np.array([0, 10, 13, 14, 32, 33]).astype(np.float64)
-
-    shape = np.array([5, 6]).astype(np.int64)
-    return tf.SparseTensorValue(ind, val, shape)
-
-  def _SparseOutputTensorValue(self):
-    ind = np.array([
-        [0, 0], [0, 1],
-        [2, 3],
-        [3, 1], [3, 3],
-        [4, 1]]).astype(np.int64)
-    val = np.array([0, 10, 32, 13, 33, 14]).astype(np.float64)
-
-    shape = np.array([6, 5]).astype(np.int64)
-    return tf.SparseTensorValue(ind, val, shape)
-  
   def testTranspose(self):
     with self.test_session(use_gpu=False) as sess:
-      sp_input = self._SparseTensorPlaceholder()
-      input_val = self._SparseInputTensorValue()
-      sp_output = tf.sparse_transpose(sp_input)
-      expected_output_val = self._SparseOutputTensorValue()
-      
-      output_val = sess.run(sp_output, {sp_input: input_val})
-      self.assertAllEqual(output_val.indices, expected_output_val.indices)
-      self.assertAllEqual(output_val.values, expected_output_val.values)
-      self.assertAllEqual(output_val.shape, expected_output_val.shape)
+      np.random.seed(1618)
+      shapes = [np.random.randint(1, 10, size=rank) for rank in range(1, 6)]
+      for shape in shapes:
+        for dtype in [np.int32, np.int64, np.float32, np.float64]:
+          dn_input = np.random.randn(*shape).astype(dtype)
+          rank = tf.rank(dn_input).eval()
+          perm = np.random.choice(rank, rank, False)
+          sp_input, unused_a_nnz = _sparsify(dn_input)
+          sp_trans = tf.sparse_transpose(sp_input, perm=perm)
+          dn_trans = tf.sparse_tensor_to_dense(sp_trans).eval()
+          expected_trans = tf.transpose(dn_input, perm=perm).eval()
+          self.assertAllEqual(dn_trans, expected_trans)
 
 if __name__ == "__main__":
   googletest.main()
