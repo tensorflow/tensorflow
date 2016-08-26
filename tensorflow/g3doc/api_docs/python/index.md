@@ -189,6 +189,7 @@
   * [`batch_self_adjoint_eig`](../../api_docs/python/math_ops.md#batch_self_adjoint_eig)
   * [`batch_self_adjoint_eigvals`](../../api_docs/python/math_ops.md#batch_self_adjoint_eigvals)
   * [`batch_svd`](../../api_docs/python/math_ops.md#batch_svd)
+  * [`betainc`](../../api_docs/python/math_ops.md#betainc)
   * [`ceil`](../../api_docs/python/math_ops.md#ceil)
   * [`cholesky`](../../api_docs/python/math_ops.md#cholesky)
   * [`cholesky_solve`](../../api_docs/python/math_ops.md#cholesky_solve)
