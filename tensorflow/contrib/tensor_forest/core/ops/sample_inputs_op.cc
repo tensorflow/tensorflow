@@ -23,6 +23,7 @@
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/lib/random/distribution_sampler.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
@@ -43,6 +44,7 @@ REGISTER_OP("SampleInputs")
     .Input("sparse_input_indices: int64")
     .Input("sparse_input_values: float")
     .Input("sparse_input_shape: int64")
+    .Input("input_weights: float")
     .Input("node_to_accumulator: int32")
     .Input("leaves: int32")
     .Input("candidate_split_features: int32")
@@ -53,7 +55,7 @@ REGISTER_OP("SampleInputs")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle candidate_split_features;
       TF_RETURN_IF_ERROR(
-          c->WithRank(c->input(6), 2, &candidate_split_features));
+          c->WithRank(c->input(7), 2, &candidate_split_features));
       DimensionHandle split_dim = c->Dim(candidate_split_features, 1);
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
       c->set_output(1, c->Matrix(InferenceContext::kUnknownDim, split_dim));
@@ -81,6 +83,12 @@ input_data: The features for the current batch of training data.
 sparse_input_indices: The indices tensor from the SparseTensor input.
 sparse_input_values: The values tensor from the SparseTensor input.
 sparse_input_shape: The shape tensor from the SparseTensor input.
+input_weights: For a dense input, input_weights[i] is the weight associated
+  with input_data[i].  For sparse input, input_weights[i] is the weight
+  associated with sparse_input_values[i].  Or in either case, if all the
+  weights are 1, input_weights can be empty.  SampleInputs will reject inputs
+  with weight less than Uniform([0,1)), so weights outside of that range may
+  not be what you want.
 node_to_accumulator: For a fertile node i, node_to_accumulator[i] is the
   associated accumulator slot.  For non-fertile nodes, it is -1.
 leaves: `leaves[i]` is the leaf that the i-th input landed in, as
@@ -166,17 +174,32 @@ class SampleInputs : public OpKernel {
     return false;
   }
 
+  // increment_input implements a "++" operation for the situation when
+  // you want to do something n times on an underlying iterator.
+  // In an ideal world, this would be a built-in iterator adaptor.
+  template <typename T>
+  static void increment_input(const int n, T* it, int* count) {
+    *count += 1;
+    if (*count == n) {
+      *count = 0;
+      (*it)++;
+    }
+  }
+
   void Compute(OpKernelContext* context) override {
     const Tensor& input_data = context->input(0);
     const Tensor& sparse_input_indices = context->input(1);
     const Tensor& sparse_input_values = context->input(2);
     const Tensor& sparse_input_shape = context->input(3);
-    const Tensor& node_to_accumulator = context->input(4);
-    const Tensor& leaves = context->input(5);
-    const Tensor& split_features = context->input(6);
-    const Tensor& split_thresholds = context->input(7);
+    const Tensor& input_weights = context->input(4);
+    const Tensor& node_to_accumulator = context->input(5);
+    const Tensor& leaves = context->input(6);
+    const Tensor& split_features = context->input(7);
+    const Tensor& split_thresholds = context->input(8);
 
     bool sparse_input = (sparse_input_indices.shape().dims() == 2);
+
+    bool have_weights = (input_weights.shape().dim_size(0) > 0);
 
     if (sparse_input) {
       OP_REQUIRES(context, sparse_input_shape.shape().dims() == 1,
@@ -198,10 +221,24 @@ class SampleInputs : public OpKernel {
                   errors::InvalidArgument(
                       "sparse_input_indices and sparse_input_values should "
                       "agree on the number of non-zero values"));
+      if (have_weights) {
+        OP_REQUIRES(context, sparse_input_values.shape().dim_size(0) ==
+                                 input_weights.shape().dim_size(0),
+                    errors::InvalidArgument(
+                        "sparse_input_values and input_weights should agree "
+                        "on the number of inputs"));
+      }
     } else {
       OP_REQUIRES(context, input_data.shape().dims() == 2,
                   errors::InvalidArgument(
                   "input_data should be two-dimensional"));
+      if (have_weights) {
+        OP_REQUIRES(context, input_data.shape().dim_size(0) ==
+                                 input_weights.shape().dim_size(0),
+                    errors::InvalidArgument(
+                        "input_data and input_weights should agree on the "
+                        "number of inputs"));
+      }
     }
 
     OP_REQUIRES(context, node_to_accumulator.shape().dims() == 1,
@@ -228,6 +265,7 @@ class SampleInputs : public OpKernel {
     if (!CheckTensorBounds(context, sparse_input_indices)) return;
     if (!CheckTensorBounds(context, sparse_input_values)) return;
     if (!CheckTensorBounds(context, sparse_input_shape)) return;
+    if (!CheckTensorBounds(context, input_weights)) return;
     if (!CheckTensorBounds(context, node_to_accumulator)) return;
     if (!CheckTensorBounds(context, leaves)) return;
     if (!CheckTensorBounds(context, split_features)) return;
@@ -260,6 +298,7 @@ class SampleInputs : public OpKernel {
     const auto node_map = node_to_accumulator.unaligned_flat<int32>();
     const auto features = split_features.tensor<int32, 2>();
     const auto thresholds = split_thresholds.tensor<float, 2>();
+    const auto weights = input_weights.tensor<float, 1>();
 
     const int32 num_data = static_cast<int32>(leaves.shape().dim_size(0));
     const int32 num_splits = static_cast<int32>(
@@ -338,23 +377,40 @@ class SampleInputs : public OpKernel {
             thresholds(accumulator, split);
       }
 
-      for (const int32 i : inputs_for_accumulator) {
-        VLOG(2) << "Looking at data # " << i;
-
-        int32 num_inits = split_initializations_per_input_;
-        for (int split = 0; split < num_splits && num_inits > 0; split++) {
-          if (new_split_feature_rows_flat(output_slot, split) < 0) {
-            VLOG(1) << "Over-writing @ " << output_slot << "," << split;
-            int32 index;
-            float val;
-            const bool success = get_random_feature(i, &index, &val);
-            if (success) {
-              new_split_feature_rows_flat(output_slot, split) = index;
-              new_split_threshold_rows_flat(output_slot, split) = val;
-              --num_inits;
-            } else {
+      auto it = inputs_for_accumulator.begin();
+      int input_used_count = 0;
+      for (int split = 0;
+           split < num_splits && it != inputs_for_accumulator.end(); split++) {
+        if (new_split_feature_rows_flat(output_slot, split) < 0) {
+          if (have_weights) {
+            // If we have weights, we probabilistically reject inputs with
+            // low weight.  Which means we might have to look at a bunch of
+            // inputs -- maybe even all of them -- to fill this slot.
+            while (it != inputs_for_accumulator.end()) {
+              float w = weights(*it);
+              if (rng_->RandFloat() <= w) {
+                break;
+              }
+              increment_input(split_initializations_per_input_, &it,
+                              &input_used_count);
+            }
+            if (it == inputs_for_accumulator.end()) {
               break;
             }
+          }
+          int32 index;
+          float val;
+          const bool success = get_random_feature(*it, &index, &val);
+          increment_input(split_initializations_per_input_, &it,
+                          &input_used_count);
+          if (success) {
+            VLOG(1) << "Over-writing @ " << output_slot << "," << split;
+            new_split_feature_rows_flat(output_slot, split) = index;
+            new_split_threshold_rows_flat(output_slot, split) = val;
+          } else {
+            VLOG(1) << "get_random_feature failed, bailing on output for "
+                    << "accumulator " << accumulator;
+            break;
           }
         }
       }
