@@ -714,6 +714,8 @@ tf_gen_op_wrapper_py(
         "Relu6",
         "AvgPool",
         "MaxPool",
+        "MaxUnpool",
+        "MaxPoolWithArgmaxAndMask",
     ],
     require_shape_functions = True,
 )

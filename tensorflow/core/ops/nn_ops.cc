@@ -929,6 +929,21 @@ output: The max pooled output tensor.
 argmax: 4-D.  The flattened indices of the max values chosen for each output.
 )doc");
 
+REGISTER_OP("MaxPoolWithArgmaxAndMask")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr("Targmax: {int32, int64} = DT_INT64")
+    .Attr("Tmask: type = DT_INT8")
+    .Attr(GetPaddingAttrString())
+    .Input("input: T")
+    .Output("output: T")
+    .Output("argmax: Targmax")
+    .Output("argmax_mask: Tmask")
+    .Attr("T: {float, half} = DT_FLOAT")
+    .Doc(R"doc(
+MaxPoolWithArgmax with additional output of argmax as bitmask
+)doc");
+
 REGISTER_OP("MaxPoolGradWithArgmax")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
@@ -954,6 +969,23 @@ grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t. the
   output of `max_pool`.
 argmax: The indices of the maximum values chosen for each output of `max_pool`.
 output: Gradients w.r.t. the input of `max_pool`.
+)doc");
+
+REGISTER_OP("MaxUnpool")
+    .Attr("ksize: list(int) >= 4")
+    .Attr("strides: list(int) >= 4")
+    .Attr(GetPaddingAttrString())
+    .Attr("Targmax: {int32, int64}")
+    .Input("argmax_mask: T")
+    .Input("input: T")
+    .Input("argmax: Targmax")
+    .Output("output: T")
+    .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      return UnchangedShapeWithRank(c, 4);
+    })
+    .Doc(R"doc(
+Unpooling based on the given argmax
 )doc");
 
 // --------------------------------------------------------------------------

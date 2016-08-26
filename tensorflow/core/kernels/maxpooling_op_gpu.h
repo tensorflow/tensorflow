@@ -55,6 +55,24 @@ bool MaxPoolBackwardWithArgmax(const int output_size, const int input_size,
                                Eigen::half* bottom_diff,
                                const Eigen::GpuDevice& d);
 
+// -------------------
+
+bool MaxPoolForwardWithArgmaxAndMask(
+    const float* bottom_data, const int batch, const int height,
+    const int width, const int channels, const int pooled_height,
+    const int pooled_width, const int kernel_h, const int kernel_w,
+    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
+    float* top_data, int64* mask, int8* bottom_mask, const Eigen::GpuDevice& d);
+
+bool MaxPoolForwardWithArgmaxAndMask(
+    const Eigen::half* bottom_data, const int batch, const int height,
+    const int width, const int channels, const int pooled_height,
+    const int pooled_width, const int kernel_h, const int kernel_w,
+    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
+    Eigen::half* top_data, int64* mask, int8* bottom_mask, const Eigen::GpuDevice& d);
+
+// -------------------
+
 bool MaxPoolBackwardNoMask(const float* bottom_data, const int batch,
                            const int height, const int width,
                            const int channels, const int pooled_height,

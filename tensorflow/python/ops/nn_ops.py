@@ -665,6 +665,28 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
                                 name=name)
 
 
+def max_pool_with_argmax_and_mask(value, ksize, strides, padding, name=None):
+  with ops.op_scope([value], name, "MaxPoolWithArgmaxAndMask") as name:
+    value = ops.convert_to_tensor(value, name="input")
+    return gen_nn_ops._max_pool_with_argmax_and_mask(value,
+                                                     ksize=ksize,
+                                                     strides=strides,
+                                                     padding=padding,
+                                                     name=name)
+
+
+def max_unpool(value, argmax, argmax_mask, ksize, strides, padding, name=None):
+  with ops.op_scope([value, argmax, argmax_mask], name, "MaxUnpool") as name:
+    # underlying kernel is MaxPoolGradWithArgMax
+    return gen_nn_ops._max_unpool(math_ops.to_float(argmax_mask), # kernel only uses it to recover the shape
+                                  value,
+                                  argmax,
+                                  ksize=ksize,
+                                  strides=strides,
+                                  padding=padding,
+                                  name=name)
+
+
 ops.RegisterShape("Relu")(common_shapes.unchanged_shape)
 ops.RegisterShape("Relu6")(common_shapes.unchanged_shape)
 ops.RegisterShape("Elu")(common_shapes.unchanged_shape)
@@ -777,6 +799,12 @@ def _MaxPoolWithArgMaxShape(op):
   """Shape function for MaxPoolWithArgmax op."""
   return common_shapes.max_pool_shape(op) * 2
 
+@ops.RegisterShape("MaxPoolWithArgmaxAndMask")
+def _MaxPoolWithArgMaxAndMaskShape(op):
+  """Shape function for _MaxPoolWithArgMaxAndMaskShape op."""
+  maxpool_out_shape = common_shapes.max_pool_shape(op)[0]
+  maxpool_in_shape  = op.inputs[0].get_shape().with_rank(4)
+  return [maxpool_out_shape, maxpool_out_shape, maxpool_in_shape]
 
 @ops.RegisterShape("AvgPoolGrad")
 def _AvgPoolGradShape(op):
@@ -840,6 +868,7 @@ def _DepthwiseConv2dNativeBackpropInputShape(op):
     return [tensor_shape.unknown_shape(ndims=4)]
 
 
+@ops.RegisterShape("MaxUnpool")
 @ops.RegisterShape("MaxPoolGrad")
 @ops.RegisterShape("MaxPoolGradWithArgmax")
 def _MaxPoolGradShape(op):

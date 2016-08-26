@@ -361,6 +361,36 @@ def _MaxPoolGrad(op, grad):
                                    data_format=op.get_attr("data_format"))
 
 
+@ops.RegisterGradient("MaxPoolWithArgmaxAndMask")
+def _MaxPoolWithArgMaxAndMaskGrad(op, grad, argmax_grad, argmax_mask_grad):
+  return gen_nn_ops._max_pool_grad_with_argmax(op.inputs[0],
+                                               grad,
+                                               op.outputs[1], # argmax
+                                               ksize=op.get_attr("ksize"),
+                                               strides=op.get_attr("strides"),
+                                               padding=op.get_attr("padding"))
+
+
+@ops.RegisterGradient("MaxUnpool")
+def _MaxUnpoolGrad(op, grad):
+  # retrieve inputs (order is given by gen_nn_ops function!)
+  argmax      = op.inputs[2]
+  argmax_mask = op.inputs[0] # no cast necessary, given to kernel as float32 (see nn_ops.py)
+  
+  offset      = math_ops.add(math_ops.abs(math_ops.reduce_min(grad)), 1.0)
+  prepool1    = math_ops.add(grad, offset)       # move layer by offset to make sure negative values will be larger than 0
+  prepool2    = math_ops.mul(prepool1, argmax_mask)
+  postpool1   = gen_nn_ops._max_pool(prepool2,
+                                     ksize=op.get_attr("ksize"),
+                                     strides=op.get_attr("strides"),
+                                     padding=op.get_attr("padding"),
+                                     data_format="NHWC",
+                                     name="MaxUnpoolGradCore")
+  postpool2   = math_ops.sub(postpool1, offset)   # undo offsetting
+  return None, postpool2, None                    # There is only a gradient w.r.t. value
+
+
+
 @ops.RegisterGradient("BatchNormWithGlobalNormalization")
 def _BatchNormWithGlobalNormalizationGrad(op, grad):
   """Return the gradients for the 5 inputs of BatchNormWithGlobalNormalization.

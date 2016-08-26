@@ -516,6 +516,63 @@ class MaxPoolingWithArgmaxOp : public OpKernel {
   Padding padding_;
 };
 
+// -------------------
+
+template <typename Device, typename T>
+struct LaunchMaxPoolingWithArgmaxAndMask;
+
+template <typename Device, typename T>
+class MaxPoolingWithArgmaxAndMaskOp : public OpKernel {
+ public:
+  explicit MaxPoolingWithArgmaxAndMaskOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+    OP_REQUIRES(context, ksize_.size() == 4,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES(context, stride_.size() == 4,
+                errors::InvalidArgument("Sliding window stride field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the batch dimension."));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& tensor_in = context->input(0);
+
+    PoolParameters params{context,  ksize_,      stride_,
+                          padding_, FORMAT_NHWC, tensor_in.shape()};
+    if (!context->status().ok()) {
+      return;
+    }
+
+    TensorShape out_shape({params.tensor_in_batch, params.out_height,
+                           params.out_width, params.depth});
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
+    Tensor* argmax = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(1, out_shape, &argmax));
+    Tensor* mask = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(2, tensor_in.shape(), &mask));
+    
+    // does the mask needs to be set to zero explicitely?
+    // (or do it in the kernel...)
+    
+    LaunchMaxPoolingWithArgmaxAndMask<Device, T>::launch(context, params, tensor_in,
+                                                  output, argmax, mask);    
+  }
+
+ private:
+  std::vector<int32> ksize_;
+  std::vector<int32> stride_;
+  Padding padding_;
+};
+
+// -------------------
+
 template <typename Device, typename T>
 struct LaunchMaxPoolingGradWithArgmax;
 
@@ -679,6 +736,61 @@ REGISTER_KERNEL_BUILDER(Name("MaxPoolWithArgmax")
                             .TypeConstraint<int64>("Targmax")
                             .TypeConstraint<Eigen::half>("T"),
                         MaxPoolingWithArgmaxOp<Eigen::GpuDevice, Eigen::half>);
+
+// -------------------
+
+template <typename T>
+struct LaunchMaxPoolingWithArgmaxAndMask<Eigen::GpuDevice, T> {
+  static void launch(OpKernelContext* context, const PoolParameters& params,
+                     const Tensor& input, Tensor* output, Tensor* argmax, Tensor* mask) {
+    bool status = MaxPoolForwardWithArgmaxAndMask(
+        input.flat<T>().data(), params.tensor_in_batch, params.tensor_in_rows,
+        params.tensor_in_cols, params.depth, params.out_height,
+        params.out_width, params.window_rows, params.window_cols,
+        params.row_stride, params.col_stride, params.pad_rows, params.pad_cols,
+        output->flat<T>().data(),
+        reinterpret_cast<int64*>(argmax->flat<int64>().data()),
+        mask->flat<int8>().data(),
+        context->eigen_gpu_device());
+    if (!status) {
+      context->SetStatus(
+          errors::Internal("Failed launching MaxPoolForwardWithArgmaxAndMask"));
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("MaxPoolWithArgmaxAndMask")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int64>("Targmax")
+                            .TypeConstraint<int8>("Tmask")
+                            .TypeConstraint<float>("T"),
+                        MaxPoolingWithArgmaxAndMaskOp<Eigen::GpuDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("MaxPoolWithArgmaxAndMask")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int64>("Targmax")
+                            .TypeConstraint<int8>("Tmask")
+                            .TypeConstraint<Eigen::half>("T"),
+                        MaxPoolingWithArgmaxAndMaskOp<Eigen::GpuDevice, Eigen::half>);
+
+
+// DUMMY KERNEL (copy from MaxPoolGradWithArgmax)
+// for maxunpooling, allows gradient registration
+
+REGISTER_KERNEL_BUILDER(
+    Name("MaxUnpool")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<float>("T")
+        .TypeConstraint<int64>("Targmax"),
+    MaxPoolingGradWithArgmaxOp<Eigen::GpuDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("MaxUnpool")
+        .Device(DEVICE_GPU)
+        .TypeConstraint<Eigen::half>("T")
+        .TypeConstraint<int64>("Targmax"),
+    MaxPoolingGradWithArgmaxOp<Eigen::GpuDevice, Eigen::half>);
+
+
+// -------------------
 
 template <typename T>
 struct LaunchMaxPoolingGradWithArgmax<Eigen::GpuDevice, T> {

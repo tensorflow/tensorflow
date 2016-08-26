@@ -129,6 +129,62 @@ __global__ void MaxPoolForwardNHWC(const int nthreads, const dtype* bottom_data,
   }
 }
 
+// -------------------
+
+template <typename dtype>
+__global__ void MaxPoolForward2NHWC(const int nthreads, const dtype* bottom_data,
+                                   const int height, const int width,
+                                   const int channels, const int pooled_height,
+                                   const int pooled_width, const int kernel_h,
+                                   const int kernel_w, const int stride_h,
+                                   const int stride_w, const int pad_t,
+                                   const int pad_l, dtype* top_data,
+                                   int64* mask, int8* bottom_mask) {
+  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+    int n = index;
+    int c = n % channels;
+    n /= channels;
+    int wstart = (n % pooled_width) * stride_w - pad_l;
+    n /= pooled_width;
+    int hstart = (n % pooled_height) * stride_h - pad_t;
+    n /= pooled_height;
+    int hend = min(hstart + kernel_h, height);
+    int wend = min(wstart + kernel_w, width);
+    hstart = max(hstart, 0);
+    wstart = max(wstart, 0);
+    dtype maxval = Eigen::NumTraits<dtype>::lowest();
+    int maxidx = -1;
+    
+    const dtype* bottom_data_n = bottom_data + n * height * width * channels;
+    int8* bottom_mask_n = bottom_mask + n * height * width * channels;
+    
+    for (int h = hstart; h < hend; ++h) {
+      for (int w = wstart; w < wend; ++w) {
+        int idx = (h * width + w) * channels + c;
+        
+        if (bottom_data_n[idx] > maxval) {
+          if (maxidx != -1) {
+              bottom_mask_n[maxidx] = 0;
+          }
+          
+          maxidx = idx;
+          maxval = bottom_data_n[idx];
+          bottom_mask_n[maxidx] = 1;
+        
+        }else{
+          bottom_mask_n[idx] = 0;
+        }
+      }
+    }
+    top_data[index] = maxval;
+    if (mask != nullptr) {
+      mask[index] = maxidx;
+    }
+  }
+}
+
+// -------------------
+
 template <typename dtype>
 __global__ void MaxPoolBackwardNoMaskNHWC(
     const int nthreads, const dtype* bottom_data, const int height,
@@ -235,6 +291,44 @@ bool MaxPoolForwardWithOptionalArgmax(
       top_data, mask);
   return d.ok();
 }
+
+// -------------------
+
+bool MaxPoolForwardWithArgmaxAndMask(
+    const float* bottom_data, const int batch, const int height,
+    const int width, const int channels, const int pooled_height,
+    const int pooled_width, const int kernel_h, const int kernel_w,
+    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
+    float* top_data, int64* mask, int8* bottom_mask, const Eigen::GpuDevice& d) {
+  const int kThreadsPerBlock = 1024;
+  const int output_size = batch * channels * pooled_height * pooled_width;
+
+  MaxPoolForward2NHWC<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+                       kThreadsPerBlock, 0, d.stream()>>>(
+      output_size, bottom_data, height, width, channels, pooled_height,
+      pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
+      top_data, mask, bottom_mask);
+  return d.ok();
+}
+
+bool MaxPoolForwardWithArgmaxAndMask(
+    const Eigen::half* bottom_data, const int batch, const int height,
+    const int width, const int channels, const int pooled_height,
+    const int pooled_width, const int kernel_h, const int kernel_w,
+    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
+    Eigen::half* top_data, int64* mask, int8* bottom_mask, const Eigen::GpuDevice& d) {
+  const int kThreadsPerBlock = 1024;
+  const int output_size = batch * channels * pooled_height * pooled_width;
+
+  MaxPoolForward2NHWC<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+                       kThreadsPerBlock, 0, d.stream()>>>(
+      output_size, bottom_data, height, width, channels, pooled_height,
+      pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
+      top_data, mask, bottom_mask);
+  return d.ok();
+}
+
+// -------------------
 
 bool MaxPoolBackwardNoMask(const float* bottom_data, const int batch,
                            const int height, const int width,
