@@ -182,7 +182,8 @@ You're now all set to visualize this data using TensorBoard.
 
 ## Launching TensorBoard
 
-To run TensorBoard, use the command
+To run TensorBoard, use the following command (alternatively `python -m
+tensorflow.tensorboard`)
 
 ```bash
 tensorboard --logdir=path/to/log-directory
