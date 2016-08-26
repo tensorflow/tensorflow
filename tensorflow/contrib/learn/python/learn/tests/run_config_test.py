@@ -33,8 +33,9 @@ class RunConfigTest(tf.test.TestCase):
     self.assertEquals(config.master, "")
     self.assertEquals(config.task, 0)
     self.assertEquals(config.num_ps_replicas, 0)
-    self.assertEquals(config.cluster_spec, None)
-    self.assertEquals(config.job_name, None)
+    self.assertIsNone(config.cluster_spec)
+    self.assertIsNone(config.job_name)
+    self.assertIsNone(config.is_chief)
 
   def test_values_from_tf_config(self):
     tf_config = {"cluster": {"ps": ["host1:1", "host2:2"],
@@ -49,6 +50,7 @@ class RunConfigTest(tf.test.TestCase):
     self.assertEquals(config.num_ps_replicas, 2)
     self.assertEquals(config.cluster_spec.as_dict(), tf_config["cluster"])
     self.assertEquals(config.job_name, "worker")
+    self.assertFalse(config.is_chief)
 
   def test_explicitly_specified_values(self):
     cluster_spec = tf.train.ClusterSpec({
@@ -66,6 +68,7 @@ class RunConfigTest(tf.test.TestCase):
     self.assertEquals(config.num_ps_replicas, 1)
     self.assertEquals(config.cluster_spec, cluster_spec)
     self.assertEquals(config.job_name, "my_job_name")
+    self.assertFalse(config.is_chief)
 
   def test_tf_config_with_overrides(self):
     # Purpose: to test the case where TF_CONFIG is set, but then
@@ -81,13 +84,15 @@ class RunConfigTest(tf.test.TestCase):
       # set by TF_CONFIG.
       cluster_spec_override = tf.train.ClusterSpec({
           "ps": ["my_host1:314"],
-          "my_job_name": ["my_host2:314", "my_host4:314", "my_host5:314"]
+          "my_job_name": ["my_host2:314", "my_host4:314", "my_host5:314"],
+          "master": ["my_host6:313"]
       })
       config = run_config.RunConfig(
           master="my_master",
-          task=2,
-          job_name="my_job_name",
-          cluster_spec=cluster_spec_override,)
+          task=0,
+          job_name="master",
+          cluster_spec=cluster_spec_override,
+          is_chief=True)
 
     # To protect against changes to the test itself (either
     # the TF_CONFIG variable or the manual overrides), we will assert
@@ -97,10 +102,18 @@ class RunConfigTest(tf.test.TestCase):
 
     # Now we assert that the correct values were indeed returned.
     self.assertEquals(config.master, "my_master")
-    self.assertEquals(config.task, 2)
+    self.assertEquals(config.task, 0)
     self.assertEquals(config.num_ps_replicas, 1)
     self.assertEquals(config.cluster_spec, cluster_spec_override)
-    self.assertEquals(config.job_name, "my_job_name")
+    self.assertEquals(config.job_name, "master")
+    self.assertTrue(config.is_chief)
+
+  def test_explicitly_setting_task_to_0_overrides_tf_config(self):
+    # Setup the TF_CONFIG environment variable
+    tf_config = {"task": {"index": 1}}
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      config = run_config.RunConfig(task=0)
+    self.assertEquals(config.task, 0)
 
   def test_num_ps_replicas_and_cluster_spec_are_mutually_exclusive(self):
     cluster_spec = tf.train.ClusterSpec(
@@ -170,6 +183,32 @@ class RunConfigTest(tf.test.TestCase):
         cluster_spec=tf.train.ClusterSpec({}))
     # Basically, just make sure no exception is being raised.
     self.assertEquals(config.num_ps_replicas, 2)
+
+  def test_is_chief_from_tf_config(self):
+    # is_chief should be true when ["task"]["type"] == "master" and
+    # index == 0. Note that test_values_from_tf_config covers the
+    # non-master case.
+    tf_config = {"cluster": {"ps": ["host1:1", "host2:2"],
+                             "master": ["host3:3"],
+                             "worker": ["host4:4", "host5:5", "host6:6"]},
+                 "task": {"type": "master",
+                          "index": 0}}
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      config = run_config.RunConfig()
+
+    self.assertTrue(config.is_chief)
+
+  def test_bad_is_chief_combinations_raise(self):
+    msg = "Task is 1, but only task 0 may be chief"
+    with self.assertRaisesRegexp(ValueError, msg):
+      run_config.RunConfig(is_chief=True, task=1)
+
+    msg = "job_name is \'ps\', but only masters or workers may be chiefs"
+    with self.assertRaisesRegexp(ValueError, msg):
+      run_config.RunConfig(is_chief=True, task=0, job_name="ps")
+
+    with self.assertRaisesRegexp(ValueError, "Master task 0 must be chief"):
+      run_config.RunConfig(is_chief=False, task=0, job_name="master")
 
 
 if __name__ == "__main__":

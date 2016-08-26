@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Run Config."""
 
 from __future__ import absolute_import
@@ -49,13 +48,14 @@ class RunConfig(object):
                save_checkpoints_secs=60,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
-               job_name=None):
+               job_name=None,
+               is_chief=None):
     """Constructor.
 
-    If set to None, `master`, `task`, `num_ps_replicas`, `cluster_spec`, and
-    `job_name` are set based on the TF_CONFIG environment variable, if the
-    pertinent information is present; otherwise, the defaults listed in the
-    Args section apply.
+    If set to None, `master`, `task`, `num_ps_replicas`, `cluster_spec`,
+    `job_name`, and `is_chief` are set based on the TF_CONFIG environment
+    variable, if the pertinent information is present; otherwise, the defaults
+    listed in the Args section apply.
 
     The TF_CONFIG environment variable is a JSON object with two relevant
     attributes: `task` and `cluster_spec`. `cluster_spec` is a JSON serialized
@@ -71,9 +71,7 @@ class RunConfig(object):
         cluster_spec.
       * `num_ps_replicas` is set by counting the number of nodes listed
         in the `ps` job of `cluster_spec`.
-
-    Note that any of these values can be overridden by explicitly passing
-    their value to the constructor.
+      * `is_chief`: true when `job_name` == "master" and `task` == 0.
 
     Example:
     ```
@@ -88,6 +86,7 @@ class RunConfig(object):
       assert config.num_ps_replicas == 2
       assert config.cluster_spec == server_lib.ClusterSpec(cluster)
       assert config.job_name == 'worker'
+      assert not config.is_chief
     ```
 
     Args:
@@ -98,9 +97,9 @@ class RunConfig(object):
       log_device_placement: Log the op placement to devices (default: False).
       gpu_memory_fraction: Fraction of GPU memory used by the process on
         each GPU uniformly on the same machine.
-      cluster_spec: a tf.train.ClusterSpec object that describes the cluster in
-        the case of distributed computation. If missing, reasonable assumptions
-        are made for the addresses of jobs.
+      cluster_spec: a `tf.train.ClusterSpec` object that describes the cluster
+        in the case of distributed computation. If missing, reasonable
+        assumptions are made for the addresses of jobs.
       tf_random_seed: Random seed for TensorFlow initializers.
         Setting this value allows consistency between reruns.
       save_summary_steps: Save summaries every this many steps.
@@ -112,8 +111,10 @@ class RunConfig(object):
       keep_checkpoint_every_n_hours: Number of hours between each checkpoint
         to be saved. The default value of 10,000 hours effectively disables
         the feature.
-      job_name: the type of task, e.g., 'ps', 'worker', etc. Must exist in
-        `cluster_spec.jobs`.
+      job_name: the type of task, e.g., 'ps', 'worker', etc. The `job_name`
+        must exist in the `cluster_spec.jobs`.
+      is_chief: whether or not this task (as identified by the other parameters)
+        should be the chief task.
 
     Raises:
       ValueError: if num_ps_replicas and cluster_spec are set (cluster_spec
@@ -131,7 +132,7 @@ class RunConfig(object):
     # Otherwise, use the respective default (None / 0).
     task_env = config.get('task', {})
     self._job_name = job_name or task_env.get('type') or None
-    self.task = task or task_env.get('index') or 0
+    self.task = task if task is not None else task_env.get('index') or 0
 
     self.master = (master or _get_master(self.cluster_spec, self.job_name,
                                          self.task) or '')
@@ -141,6 +142,32 @@ class RunConfig(object):
                        'Note: cluster_spec may have been set in the TF_CONFIG '
                        'environment variable.')
     self.num_ps_replicas = num_ps_replicas or _count_ps(self.cluster_spec) or 0
+
+    # Set is_chief.
+    self._is_chief = is_chief
+    # When the TF_CONFIG environment variable is set, we can set the default
+    # of is_chief to 0 when job_name is "master" and task is 0.
+    if (self._is_chief is None) and config:
+      self._is_chief = (self._job_name == 'master' and self.task == 0)
+
+    # Enforce that is_chief is only applicable to workers or masters
+    # (Cloud ML) with task == 0.
+    if self._is_chief:
+      if self.task != 0:
+        raise ValueError(
+            'Task is %d, but only task 0 may be chief. Please check is_chief '
+            'and task, which may have been set in TF_CONFIG environment '
+            'variable.' % (self.task,))
+      if self._job_name not in (None, 'master', 'worker'):
+        raise ValueError(
+            'job_name is \'%s\', but only masters or workers may be chiefs. '
+            'Please check is_chief and job_name, which may have been set in '
+            'TF_CONFIG environment variable.' % (self._job_name,))
+    elif (self._is_chief is False and self._job_name == 'master' and
+          self.task == 0):
+      raise ValueError(
+          'Master task 0 must be chief. Please check is_chief, job_name, and '
+          'task, which may have been set in TF_CONFIG environment variable.')
 
     gpu_options = GPUOptions(
         per_process_gpu_memory_fraction=gpu_memory_fraction)
@@ -155,6 +182,10 @@ class RunConfig(object):
     self.save_checkpoints_secs = save_checkpoints_secs
     self.keep_checkpoint_max = keep_checkpoint_max
     self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
+
+  @property
+  def is_chief(self):
+    return self._is_chief
 
   @property
   def job_name(self):
