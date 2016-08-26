@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -374,3 +375,27 @@ def pick_vector(cond,
     return array_ops.slice(array_ops.concat(0, (true_vector, false_vector)),
                            [math_ops.select(cond, 0, n)],
                            [math_ops.select(cond, n, -1)])
+
+
+def append_class_fun_doc(fn, doc_str):
+  """Appends the `doc_str` argument to `fn.__doc__`.
+
+  This function is primarily needed because Python 3 changes how docstrings are
+  programmatically set.
+
+  Args:
+    fn: Class function.
+    doc_str: String
+  """
+  # TODO(b/31100586): Figure out why appending accumulates rather than resets
+  # for each subclass.
+  if sys.version_info.major < 3:
+    if fn.__func__.__doc__ is None:
+      fn.__func__.__doc__ = doc_str
+    # else:
+    #   fn.__func__.__doc__ += doc_str
+  else:
+    if fn.__doc__ is None:
+      fn.__doc__ = doc_str
+    # else:
+    #   fn.__doc__ += doc_str

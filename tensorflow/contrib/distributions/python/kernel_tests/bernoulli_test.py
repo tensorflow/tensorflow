@@ -198,6 +198,20 @@ class BernoulliTest(tf.test.TestCase):
       self.assertAllClose(p, np.mean(sample_values, axis=0), atol=1e-2)
       self.assertEqual(set([0, 1]), set(sample_values.flatten()))
 
+  def testSampleActsLikeSampleN(self):
+    with self.test_session() as sess:
+      p = [0.2, 0.6]
+      dist = tf.contrib.distributions.Bernoulli(p=p)
+      n = 1000
+      seed = 42
+      self.assertAllEqual(dist.sample(n, seed).eval(),
+                          dist.sample_n(n, seed).eval())
+      n = tf.placeholder(tf.int32)
+      sample, sample_n = sess.run([dist.sample(n, seed),
+                                   dist.sample_n(n, seed)],
+                                  feed_dict={n: 1000})
+      self.assertAllEqual(sample, sample_n)
+
   def testMean(self):
     with self.test_session():
       p = np.array([[0.2, 0.7], [0.5, 0.4]], dtype=np.float32)
