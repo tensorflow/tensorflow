@@ -235,13 +235,6 @@ new_git_repository(
 )
 
 new_git_repository(
-  name = "numericjs",
-  build_file = "bower.BUILD",
-  remote = "https://github.com/sloisel/numeric.git",
-  tag = "v1.2.6",
-)
-
-new_git_repository(
   name = "paper_behaviors",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-behaviors.git",
@@ -309,13 +302,6 @@ new_git_repository(
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerelements/paper-item.git",
   tag = "v1.1.4",
-)
-
-new_git_repository(
-  name = "paper_listbox",
-  build_file = "bower.BUILD",
-  remote = "https://github.com/polymerelements/paper-listbox.git",
-  tag = "v1.1.2",
 )
 
 new_git_repository(
@@ -420,7 +406,7 @@ new_git_repository(
   name = "polymer",
   build_file = "bower.BUILD",
   remote = "https://github.com/polymer/polymer.git",
-  tag = "v1.6.1",
+  tag = "v1.6.0",
 )
 
 new_git_repository(
@@ -428,13 +414,6 @@ new_git_repository(
   build_file = "bower.BUILD",
   remote = "https://github.com/polymerlabs/promise-polyfill.git",
   tag = "v1.0.0",
-)
-
-new_git_repository(
-  name = "three_js",
-  build_file = "bower.BUILD",
-  remote = "https://github.com/mrdoob/three.js.git",
-  tag = "r77",
 )
 
 new_git_repository(
@@ -449,11 +428,4 @@ new_git_repository(
   build_file = "bower.BUILD",
   remote = "https://github.com/webcomponents/webcomponentsjs.git",
   tag = "v0.7.22",
-)
-
-new_git_repository(
-  name = "weblas",
-  build_file = "bower.BUILD",
-  remote = "https://github.com/waylonflinn/weblas.git",
-  tag = "v0.9.0",
 )

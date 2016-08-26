@@ -2,8 +2,7 @@
   "compilerOptions": {
     "noImplicitAny": false,
     "noEmitOnError": true,
-    "target": "ES5",
-    "module": "commonjs"
+    "target": "ES5"
   },
   "compileOnSave": false,
   "exclude": [
