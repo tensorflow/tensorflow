@@ -23,7 +23,7 @@ from tensorflow.python.ops import io_ops
 from tensorflow.python.training import input as input_ops
 
 
-class ReaderSource(transform.Transform):
+class ReaderSource(transform.TensorFlowTransform):
   """Produces `Tensor`s of keys and values using a `tf.Reader`."""
 
   def __init__(self,
@@ -40,8 +40,8 @@ class ReaderSource(transform.Transform):
     """Initializes a ReaderSource.
 
     Args:
-      reader_cls: A subclass of `tesorflow.ReaderBase` that will be used to read
-        from `work_units`.
+      reader_cls: A subclass of `tensorflow.ReaderBase` that will be used to
+        read from `work_units`.
       work_units: A list that describes the source(s) of data to read.
         Typically, this is a list of filenames.
       reader_kwargs: A dictionary of kwargs to be passed to `reader_cls` when it

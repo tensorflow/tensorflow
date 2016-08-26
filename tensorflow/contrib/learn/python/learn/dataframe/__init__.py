@@ -25,6 +25,7 @@ from tensorflow.contrib.learn.python.learn.dataframe.series import Series
 from tensorflow.contrib.learn.python.learn.dataframe.series import TransformedSeries
 from tensorflow.contrib.learn.python.learn.dataframe.tensorflow_dataframe import TensorFlowDataFrame
 from tensorflow.contrib.learn.python.learn.dataframe.transform import parameter
+from tensorflow.contrib.learn.python.learn.dataframe.transform import TensorFlowTransform
 from tensorflow.contrib.learn.python.learn.dataframe.transform import Transform
 
 # Transforms
@@ -34,6 +35,9 @@ from tensorflow.contrib.learn.python.learn.dataframe.transforms.hashes import Ha
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.in_memory_source import NumpySource
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.in_memory_source import PandasSource
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.reader_source import ReaderSource
+# Coming soon; multichange client hassle due to no DIFFBASE in Cider
+# from tensorflow.contrib.learn.python.learn.dataframe \
+#     .transforms.split_mask import SplitMask
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.sum import Sum
 
 
@@ -50,4 +54,5 @@ for bt_def in _bt.BINARY_TRANSFORMS:
   _bt.register_binary_op(*bt_def)
 
 __all__ = ['DataFrame', 'Series', 'PredefinedSeries', 'TransformedSeries',
-           'TensorFlowDataFrame', 'parameter', 'Transform']
+           'TensorFlowDataFrame', 'TensorFlowTransform', 'parameter',
+           'Transform']
