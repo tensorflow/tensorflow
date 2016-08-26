@@ -824,7 +824,7 @@ void TF_SetAttrShapeList(TF_OperationDescription* desc, const char* attr_name,
 }
 
 void TF_SetAttrTensorShapeProto(TF_OperationDescription* desc,
-                                const char* attr_name, void* proto,
+                                const char* attr_name, const void* proto,
                                 int proto_len, TF_Status* status) {
   TensorShapeProto shape;
   if (shape.ParseFromArray(proto, proto_len)) {
