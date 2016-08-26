@@ -148,6 +148,7 @@ filegroup(
         "//tensorflow/tensorboard/app:all_files",
         "//tensorflow/tensorboard/backend:all_files",
         "//tensorflow/tensorboard/components:all_files",
+        "//tensorflow/tensorboard/components/vz-projector:all_files",
         "//tensorflow/tensorboard/lib:all_files",
         "//tensorflow/tensorboard/lib/python:all_files",
         "//tensorflow/tensorboard/scripts:all_files",
