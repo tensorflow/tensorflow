@@ -51,10 +51,22 @@ class DataFrameTest(tf.test.TestCase):
     df2 = df.select_columns(["a", "c"])
     self.assertEqual(df2.columns(), frozenset(["a", "c"]))
 
+  def test_exclude_columns(self):
+    df = setup_test_df()
+    df2 = df.exclude_columns(["a", "c"])
+    self.assertEqual(df2.columns(), frozenset(["b"]))
+
   def test_get_item(self):
     df = setup_test_df()
     c1 = df["b"]
     self.assertEqual(mocks.MockTensor("Mock Tensor 2", tf.int32), c1.build())
+
+  def test_del_item_column(self):
+    df = setup_test_df()
+    self.assertEqual(3, len(df))
+    del df["b"]
+    self.assertEqual(2, len(df))
+    self.assertEqual(df.columns(), frozenset(["a", "c"]))
 
   def test_set_item_column(self):
     df = setup_test_df()

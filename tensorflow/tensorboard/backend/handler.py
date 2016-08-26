@@ -31,7 +31,8 @@ import mimetypes
 import os
 import re
 
-from six import BytesIO, StringIO
+from six import BytesIO
+from six import StringIO
 from six.moves import BaseHTTPServer
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin

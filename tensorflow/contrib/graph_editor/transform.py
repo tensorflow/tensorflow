@@ -20,11 +20,14 @@ from __future__ import division
 from __future__ import print_function
 
 from copy import deepcopy
+import types
 
 from six import iteritems
+from six import StringIO
 
 from tensorflow.contrib.graph_editor import edit
 from tensorflow.contrib.graph_editor import reroute
+from tensorflow.contrib.graph_editor import select
 from tensorflow.contrib.graph_editor import subgraph
 from tensorflow.contrib.graph_editor import util
 from tensorflow.python.framework import ops as tf_ops
@@ -39,6 +42,8 @@ __all__ = [
     "transform_op_in_place",
     "Transformer",
     "copy",
+    "copy_with_input_replacements",
+    "graph_replace",
 ]
 
 
@@ -232,9 +237,119 @@ class Transformer(object):
       self.transformed_ops = {}
       self.transformed_ts = {}
 
-    def create_ops_mapping(self):
-      """Return the mapping from original ops to transformed ops."""
-      return {op.name: op_.name for op, op_ in iteritems(self.transformed_ops)}
+  class ResultInfo(object):
+    """"Contains information about the result of a transform operation."""
+
+    def __init__(self, info):
+      """Constructor.
+
+      Args:
+        info: an instance of Transformer._Info containing various internal
+          information about the transform operation.
+      """
+      self._graph = info.graph
+      self._scope = info.scope
+      self._graph_ = info.graph_
+      self._scope_ = info.scope_
+      self._transformed_ops = info.transformed_ops
+      self._transformed_ts = info.transformed_ts
+
+    def _get_transformed_map(self, top):
+      """Return the correct container depending on the type of `top`."""
+      if isinstance(top, tf_ops.Operation):
+        return self._transformed_ops
+      elif isinstance(top, tf_ops.Tensor):
+        return self._transformed_ts
+      else:
+        raise TypeError(
+            "Expected a tf.Tensor or a tf.Operation, got a {}".format(
+                type(top)))
+
+    def _transformed_elem(self, original_top):
+      """Return the transformed op/tensor corresponding to the original one.
+
+      Args:
+        original_top: the original tensor/operation.
+      Returns:
+        the transformed tensor/operation (or None if no match is found).
+      """
+      transformed_map = self._get_transformed_map(original_top)
+      if isinstance(original_top, str):
+        for original, transformed in iteritems(transformed_map):
+          if original.name == original_top:
+            return transformed
+        return None
+      else:
+        if original_top not in transformed_map:
+          return None
+        return transformed_map[original_top]
+
+    def _original_elem(self, transformed_top):
+      """Return the original op/tensor corresponding to the transformed one.
+
+      Args:
+        transformed_top: the transformed tensor/operation.
+      Returns:
+        the original tensor/operation (or None if no match is found).
+      """
+      transformed_map = self._get_transformed_map(transformed_top)
+      if isinstance(transformed_top, types.StringTypes):
+        finder = lambda transformed: transformed.name == transformed_top
+      else:
+        finder = lambda transformed: transformed == transformed_top
+      for original, transformed in iteritems(transformed_map):
+        if finder(transformed):
+          return original
+      return None
+
+    def transformed(self, original):
+      """Return the transformed op/tensor corresponding to the original one.
+
+      Note that the output of this function mimics the hierarchy
+      of its input argument `original`.
+      Given an iterable, it returns a list. Given an operation or a tensor,
+      it will return an operation or a tensor.
+
+      Args:
+        original: the original tensor/operation.
+      Returns:
+        the transformed tensor/operation (or None if no match is found).
+      """
+      return util.transform_tree(original, self._transformed_elem)
+
+    def original(self, transformed):
+      """Return the original op/tensor corresponding to the transformed one.
+
+      Note that the output of this function mimics the hierarchy
+      of its input argument `transformed`.
+      Given an iterable, it returns a list. Given an operation or a tensor,
+      it will return an operation or a tensor.
+
+      Args:
+        transformed: the transformed tensor/operation.
+      Returns:
+        the original tensor/operation (or None if no match is found).
+      """
+      return util.transform_tree(transformed, self._original_elem)
+
+    def __str__(self):
+      res = StringIO()
+      print("Transform result info:", file=res)
+      if self._graph == self._graph_:
+        in_place_str = "" if self._scope_ else " IN-PLACE"
+        print("  Within graph[{}]{}".format(
+            id(self._graph), in_place_str), file=res)
+      else:
+        print("  graph[{}] => graph[{}]".format(
+            id(self._graph), id(self._graph_)), file=res)
+      if self._scope:
+        print("  Relative to source scope: {}".format(self._scope), file=res)
+      if self._scope_:
+        print("  Scope destination: {}".format(self._scope_), file=res)
+      print("Operations mapping:", file=res)
+      for op, op_ in iteritems(self._transformed_ops):
+        print("  {} => {}".format(op.name, op_.name), file=res)
+      return res.getvalue()
 
   def __init__(self):
     """Transformer constructor.
@@ -287,12 +402,13 @@ class Transformer(object):
         relative path of x/y and will be transformed into b/x/y.
       reuse_dst_scope: if True the dst_scope is re-used if it already exists.
         Otherwise, the scope is given a unique name based on the one given
-        by postfixing an underscore followed by a digit (default).
+        by appending an underscore followed by a digit (default).
     Returns:
-      A tuple `(sgv, ops_mapping)` where:
+      A tuple `(sgv, info)` where:
         `sgv` is the transformed subgraph view;
-        `ops_mapping` is a dictionary mapping the name of the original ops
-        to the name of the transformed ops.
+        `info` is an instance of Transformer.ResultInfo containing
+        information about the transform, including mapping between
+        original and transformed tensors and operations.
     Raises:
       ValueError: if the argumens are invalid.
     """
@@ -330,9 +446,9 @@ class Transformer(object):
 
     sgv_ = self._transform_sgv(sgv)
 
-    ops_mapping = self._info.create_ops_mapping()
+    res_info = Transformer.ResultInfo(self._info)
     self._info = None
-    return sgv_, ops_mapping
+    return sgv_, res_info
 
   def _transform_sgv(self, sgv):
     """Transform a subgraph view.
@@ -470,9 +586,13 @@ def copy(sgv, dst_graph=None, dst_scope="", src_scope="",
     src_scope: the source scope.
     reuse_dst_scope: if True the dst_scope is re-used if it already exists.
       Otherwise, the scope is given a unique name based on the one given
-      by postfixing an underscore followed by a digit (default).
+      by appending an underscore followed by a digit (default).
   Returns:
-    The subgraph view of the copied subgraph.
+    A tuple `(sgv, info)` where:
+      `sgv` is the transformed subgraph view;
+      `info` is an instance of Transformer.ResultInfo containing
+      information about the transform, including mapping between
+      original and transformed tensors and operations.
   Raises:
     TypeError: if dst_graph is not a tf.Graph.
     StandardError: if sgv cannot be converted to a SubGraphView using
@@ -487,3 +607,92 @@ def copy(sgv, dst_graph=None, dst_scope="", src_scope="",
   copier = Transformer()
   return copier(
       sgv, dst_graph, dst_scope, src_scope, reuse_dst_scope=reuse_dst_scope)
+
+
+def copy_with_input_replacements(sgv, replacement_ts,
+                                 dst_graph=None, dst_scope="", src_scope="",
+                                 reuse_dst_scope=False):
+  """Copy a subgraph, replacing some of its inputs.
+
+  Note a replacement only happens if the tensor to be replaced
+  is an input of the given subgraph. The inputs of a subgraph can
+  be queried using sgv.inputs.
+
+  Args:
+    sgv: the source subgraph-view. This argument is converted to a subgraph
+      using the same rules as the function subgraph.make_view.
+    replacement_ts: dictionary mapping from original tensors to the
+      replaced one.
+    dst_graph: the destination graph.
+    dst_scope: the destination scope.
+    src_scope: the source scope.
+    reuse_dst_scope: if True the dst_scope is re-used if it already exists.
+      Otherwise, the scope is given a unique name based on the one given
+      by appending an underscore followed by a digit (default).
+  Returns:
+    A tuple `(sgv, info)` where:
+      `sgv` is the transformed subgraph view;
+      `info` is an instance of Transformer.ResultInfo containing
+      information about the transform, including mapping between
+      original and transformed tensors and operations.
+  Raises:
+    TypeError: if dst_graph is not a tf.Graph.
+    StandardError: if sgv cannot be converted to a SubGraphView using
+      the same rules as the function subgraph.make_view.
+  """
+  sgv = subgraph.make_view(sgv)
+  if dst_graph is None:
+    dst_graph = sgv.graph
+  if not isinstance(dst_graph, tf_ops.Graph):
+    raise TypeError("Expected a tf.Graph, got: {}".format(type(dst_graph)))
+
+  copier = Transformer()
+  # Replace tensor if possible.
+  def replace_t_with_replacement_handler(info, t):
+    if t in replacement_ts:
+      return replacement_ts[t]
+    else:
+      return keep_t_if_possible_handler(info, t)
+  copier.transform_external_input_handler = replace_t_with_replacement_handler
+  return copier(
+      sgv, dst_graph, dst_scope, src_scope, reuse_dst_scope=reuse_dst_scope)
+
+
+def graph_replace(target_ts, replacement_ts, dst_scope="",
+                  src_scope="", reuse_dst_scope=False):
+  """Create a new graph which compute the targets from the replaced Tensors.
+
+  Args:
+    target_ts: a single tf.Tensor or an iterabble of tf.Tensor.
+    replacement_ts: dictionary mapping from original tensors to replaced tensors
+    dst_scope: the destination scope.
+    src_scope: the source scope.
+    reuse_dst_scope: if True the dst_scope is re-used if it already exists.
+      Otherwise, the scope is given a unique name based on the one given
+      by appending an underscore followed by a digit (default).
+  Returns:
+    A single tf.Tensor or a list of target tf.Tensor, depending on
+    the type of the input argument `target_ts`.
+    The returned tensors are recomputed using the tensors from replacement_ts.
+  Raises:
+    ValueError: if the targets are not connected to replacement_ts.
+  """
+  # Identify operations in the graph that will change.
+  # Start forward walk at Tensors that will be replaced, and
+  # backward walk at the target output Tensors.
+  flatten_target_ts = util.flatten_tree(target_ts)
+  # Construct the forward control dependencies edges so that
+  # the get_walks_intersection_ops can also traverse the
+  # control dependencies.
+  graph = util.get_unique_graph(flatten_target_ts, check_types=(tf_ops.Tensor))
+  control_ios = util.ControlOutputs(graph)
+  ops = select.get_walks_intersection_ops(replacement_ts.keys(),
+                                          flatten_target_ts,
+                                          control_ios=control_ios)
+  if not ops:
+    raise ValueError("Targets and replacements are not connected!")
+  # Create a copy of the relevant subgraph
+  _, info = copy_with_input_replacements(
+      ops, replacement_ts, None, dst_scope, src_scope, reuse_dst_scope)
+  # Return the transformed targets
+  return info.transformed(target_ts)

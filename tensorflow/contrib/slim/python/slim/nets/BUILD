@@ -6,7 +6,10 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 package(
-    default_visibility = ["//tensorflow:__subpackages__"],
+    default_visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow_models:__subpackages__",
+    ],
 )
 
 py_library(

@@ -773,11 +773,12 @@ void TF_SetAttrBool(TF_OperationDescription* desc, const char* attr_name,
 
 void TF_SetAttrBoolList(TF_OperationDescription* desc, const char* attr_name,
                         const unsigned char* values, int num_values) {
-  bool* b = new bool[num_values];
+  std::unique_ptr<bool[]> b(new bool[num_values]);
   for (int i = 0; i < num_values; ++i) {
     b[i] = values[i];
   }
-  desc->node_builder.Attr(attr_name, ArraySlice<const bool>(b, num_values));
+  desc->node_builder.Attr(attr_name,
+                          ArraySlice<const bool>(b.get(), num_values));
 }
 
 void TF_SetAttrType(TF_OperationDescription* desc, const char* attr_name,

@@ -4,7 +4,7 @@ Outputs a `Summary` protocol buffer with a serialized tensor.proto.
 
 The generated
 [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
-has one summary value containing input_tensor.
+has one summary value containing the input tensor.
 
 ##### Args:
 
@@ -21,7 +21,7 @@ has one summary value containing input_tensor.
        other tensors that are all in a group. (e.g. bounding boxes and images)
 *  <b>`collections`</b>: Optional list of graph collections keys. The new summary op is
     added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
-*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`name`</b>: An optional name for the generated node (optional).
 
 ##### Returns:
 

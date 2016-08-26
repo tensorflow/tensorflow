@@ -70,8 +70,10 @@ class CategoricalTest(tf.test.TestCase):
     self.assertEqual(dist.dtype, dist.mode().dtype)
     self.assertEqual(dist.logits.dtype, tf.float32)
     self.assertEqual(dist.logits.dtype, dist.entropy().dtype)
-    self.assertEqual(dist.logits.dtype, dist.pmf(0).dtype)
-    self.assertEqual(dist.logits.dtype, dist.log_pmf(0).dtype)
+    self.assertEqual(dist.logits.dtype, dist.pmf(
+        np.array(0, dtype=np.int64)).dtype)
+    self.assertEqual(dist.logits.dtype, dist.log_pmf(
+        np.array(0, dtype=np.int64)).dtype)
 
   def testUnknownShape(self):
     with self.test_session():

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import random
 import numpy as np
 
@@ -80,6 +81,55 @@ class _ArrayFeedFn(object):
     self._trav = (integer_indexes[-1] + 1) % self._max
     return {self._placeholders[0]: integer_indexes,
             self._placeholders[1]: self._array[integer_indexes]}
+
+
+class _OrderedDictNumpyFeedFn(object):
+  """Creates feed dictionaries from `OrderedDict`s of numpy arrays."""
+
+  def __init__(self,
+               placeholders,
+               ordered_dict_of_arrays,
+               batch_size,
+               random_start=False,
+               seed=None,
+               num_epochs=None):
+    if len(placeholders) != len(ordered_dict_of_arrays) + 1:
+      raise ValueError("Expected {} placeholders; got {}.".format(
+          len(ordered_dict_of_arrays), len(placeholders)))
+    self._index_placeholder = placeholders[0]
+    self._col_placeholders = placeholders[1:]
+    self._ordered_dict_of_arrays = ordered_dict_of_arrays
+    self._max = len(ordered_dict_of_arrays.values()[0])
+    for _, v in ordered_dict_of_arrays.items():
+      if len(v) != self._max:
+        raise ValueError("Array lengths must match.")
+    self._batch_size = batch_size
+    self._num_epochs = num_epochs
+    self._epoch = 0
+    random.seed(seed)
+    self._trav = random.randrange(self._max) if random_start else 0
+    self._epoch_end = (self._trav - 1) % self._max
+
+  def __call__(self):
+    if self._num_epochs and self._epoch >= self._num_epochs:
+      raise errors.OutOfRangeError(None, None,
+                                   "Already emitted %s epochs." % self._epoch)
+
+    integer_indexes = [j % self._max
+                       for j in range(self._trav, self._trav + self._batch_size)
+                      ]
+
+    if self._epoch_end in integer_indexes:
+      # after this batch we will have processed self._epoch epochs, possibly
+      # overshooting a bit to fill out a batch.
+      self._epoch += 1
+
+    self._trav = (integer_indexes[-1] + 1) % self._max
+    feed_dict = {self._index_placeholder: integer_indexes}
+    cols = [column[integer_indexes]
+            for column in self._ordered_dict_of_arrays.values()]
+    feed_dict.update(dict(zip(self._col_placeholders, cols)))
+    return feed_dict
 
 
 class _PandasFeedFn(object):
@@ -173,6 +223,11 @@ def enqueue_data(data,
       types = [dtypes.int64, dtypes.as_dtype(data.dtype)]
       queue_shapes = [(), data.shape[1:]]
       get_feed_fn = _ArrayFeedFn
+    elif isinstance(data, collections.OrderedDict):
+      types = [dtypes.int64] + [dtypes.as_dtype(col.dtype)
+                                for col in data.values()]
+      queue_shapes = [()] + [col.shape[1:] for col in data.values()]
+      get_feed_fn = _OrderedDictNumpyFeedFn
     elif HAS_PANDAS and isinstance(data, pd.DataFrame):
       types = [dtypes.as_dtype(dt)
                for dt in [data.index.dtype] + list(data.dtypes)]

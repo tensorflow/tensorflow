@@ -22,6 +22,7 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_data_flow_ops
 
 
@@ -75,7 +76,8 @@ class StackOpTest(tf.test.TestCase):
         nx = tf.sub(x, 1)
         ny = y + gen_data_flow_ops._stack_pop(h, tf.float32)
         return [nx, ny]
-      rx, ry = tf.while_loop(c1, b1, [r, v])
+      rx, ry = tf.while_loop(c1, b1, [r, v],
+                             [r.get_shape(), tensor_shape.unknown_shape()])
       self.assertAllClose(np.ones(2000) * 10.0, ry.eval())
 
   def testStackWhileSwap(self):
