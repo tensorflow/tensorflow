@@ -28,7 +28,6 @@ from tensorflow.contrib.framework.python.framework import tensor_util as contrib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -72,9 +71,9 @@ class _WishartOperatorPD(distribution.Distribution):
                df,
                scale_operator_pd,
                cholesky_input_output_matrices=False,
-               allow_nan_stats=False,
                validate_args=True,
-               name='Wishart'):
+               allow_nan_stats=False,
+               name=None):
     """Construct Wishart distributions.
 
     Args:
@@ -86,13 +85,13 @@ class _WishartOperatorPD(distribution.Distribution):
         Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
         `sample_n` returns a Cholesky when
         `cholesky_input_output_matrices=True`.
+      validate_args: Whether to validate input with asserts. If `validate_args`
+        is `False`, and the inputs are invalid, correct behavior is not
+        guaranteed.
       allow_nan_stats:  `Boolean`, default `False`. If `False`, raise an
         exception if a statistic (e.g., mean, mode) is undefined for any batch
         member. If True, batch members with valid parameters leading to
         undefined statistics will return `NaN` for this statistic.
-      validate_args: Whether to validate input with asserts. If `validate_args`
-        is `False`, and the inputs are invalid, correct behavior is not
-        guaranteed.
       name: The name to give Ops created by the initializer.
 
     Raises:
@@ -100,31 +99,29 @@ class _WishartOperatorPD(distribution.Distribution):
       TypeError: if scale.dtype != df.dtype
       ValueError: if df < k, where scale operator event shape is `(k, k)`
     """
-    self._scale_operator_pd = scale_operator_pd
     self._cholesky_input_output_matrices = cholesky_input_output_matrices
-    self._allow_nan_stats = allow_nan_stats
-    self._validate_args = validate_args
-    self._name = name
     with ops.name_scope(name):
       with ops.name_scope('init', values=[df, scale_operator_pd]):
-        if not self.dtype.is_floating:
+        if not scale_operator_pd.dtype.is_floating:
           raise TypeError(
               'scale_operator_pd.dtype=%s is not a floating-point type' %
-              self.dtype)
-        self._df = ops.convert_to_tensor(df, dtype=self.dtype, name='df')
+              scale_operator_pd.dtype)
+        self._scale_operator_pd = scale_operator_pd
+        self._df = ops.convert_to_tensor(
+            df, dtype=scale_operator_pd.dtype, name='df')
         contrib_tensor_util.assert_same_float_dtype(
-            (self._df, self.scale_operator_pd))
-        if (self.scale_operator_pd.get_shape().ndims is None or
-            self.scale_operator_pd.get_shape()[-1].value is None):
+            (self._df, self._scale_operator_pd))
+        if (self._scale_operator_pd.get_shape().ndims is None or
+            self._scale_operator_pd.get_shape()[-1].value is None):
           self._dimension = math_ops.cast(
-              self.scale_operator_pd.vector_space_dimension(),
-              dtype=self.dtype, name='dimension')
+              self._scale_operator_pd.vector_space_dimension(),
+              dtype=self._scale_operator_pd.dtype, name='dimension')
         else:
           self._dimension = ops.convert_to_tensor(
-              self.scale_operator_pd.get_shape()[-1].value,
-              dtype=self.dtype, name='dimension')
-        df_val = tensor_util.constant_value(self.df)
-        dim_val = tensor_util.constant_value(self.dimension)
+              self._scale_operator_pd.get_shape()[-1].value,
+              dtype=self._scale_operator_pd.dtype, name='dimension')
+        df_val = tensor_util.constant_value(self._df)
+        dim_val = tensor_util.constant_value(self._dimension)
         if df_val is not None and dim_val is not None:
           df_val = np.asarray(df_val)
           if not df_val.shape: df_val = (df_val,)
@@ -133,38 +130,21 @@ class _WishartOperatorPD(distribution.Distribution):
                 'Degrees of freedom (df = %s) cannot be less than dimension of '
                 'scale matrix (scale.dimension = %s)'
                 % (df_val, dim_val))
-        elif self.validate_args:
+        elif validate_args:
           assertions = check_ops.assert_less_equal(
-              self.dimension, self.df,
+              self._dimension, self._df,
               message=('Degrees of freedom (df = %s) cannot be less than '
                        'dimension of scale matrix (scale.dimension = %s)' %
-                       (self.dimension, self.df)))
+                       (self._dimension, self._df)))
           self._df = control_flow_ops.with_dependencies([assertions], self._df)
-
-  @property
-  def inputs(self):
-    """Dictionary of inputs provided at initialization."""
-    return {'scale_operator_pd': self.scale_operator_pd, 'df': self._df}
-
-  @property
-  def allow_nan_stats(self):
-    """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._allow_nan_stats
-
-  @property
-  def validate_args(self):
-    """Boolean describing behavior on invalid input."""
-    return self._validate_args
-
-  @property
-  def name(self):
-    """Name prepended to all ops."""
-    return self._name
-
-  @property
-  def dtype(self):
-    """dtype of samples from this distribution."""
-    return self.scale_operator_pd.dtype
+        super(_WishartOperatorPD, self).__init__(
+            dtype=self._scale_operator_pd.dtype,
+            parameters={'df': self._df,
+                        'scale_operator_pd': self._scale_operator_pd,
+                        'dimension': self._dimension},
+            validate_args=validate_args,
+            allow_nan_stats=allow_nan_stats,
+            name=name)
 
   @property
   def df(self):
@@ -193,240 +173,165 @@ class _WishartOperatorPD(distribution.Distribution):
     """Dimension of underlying vector space. The `p` in `R^(p*p)`."""
     return self._dimension
 
-  def is_continuous(self):
-    return True
+  def _event_shape(self):
+    s = self.scale_operator_pd.shape()
+    return array_ops.slice(s, array_ops.shape(s) - 2, [2])
 
-  def is_reparameterized(self):
-    return True
-
-  def event_shape(self, name='event_shape'):
-    """Shape of a sample from a single distribution as a 1-D int32 `Tensor`."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=list(self.inputs.values())):
-        s = self.scale_operator_pd.shape()
-        return array_ops.slice(s, array_ops.shape(s) - 2, [2])
-
-  def get_event_shape(self):
-    """`TensorShape` available at graph construction time."""
+  def _get_event_shape(self):
     return self.scale_operator_pd.get_shape()[-2:]
 
-  def batch_shape(self, name='batch_shape'):
-    """Batch dimensions of this instance as a 1-D int32 `Tensor`."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=list(self.inputs.values())):
-        return self.scale_operator_pd.batch_shape()
+  def _batch_shape(self):
+    return self.scale_operator_pd.batch_shape()
 
-  def get_batch_shape(self):
-    """`TensorShape` available at graph construction time."""
+  def _get_batch_shape(self):
     return self.scale_operator_pd.get_batch_shape()
 
-  def prob(self, value, name='prob'):
-    """Probability density/mass function."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[value]):
-        return math_ops.exp(self.log_prob(value))
+  def _sample_n(self, n, seed):
+    batch_shape = self.batch_shape()
+    event_shape = self.event_shape()
+    batch_ndims = array_ops.shape(batch_shape)[0]
 
-  def log_prob(self, x, name='log_prob'):
-    """Log of the probability density/mass function.
+    ndims = batch_ndims + 3  # sample_ndims=1, event_ndims=2
+    shape = array_ops.concat(0, ((n,), batch_shape, event_shape))
 
-    Args:
-      x: `float` or `double` `Tensor`.
-      name: The name to give this op.
+    # Complexity: O(nbk^2)
+    x = random_ops.random_normal(shape=shape,
+                                 mean=0.,
+                                 stddev=1.,
+                                 dtype=self.dtype,
+                                 seed=seed)
 
-    Returns:
-      log_prob: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
-        values of type `self.dtype`.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[x] + list(self.inputs.values())):
-        x = ops.convert_to_tensor(x, name='x')
-        contrib_tensor_util.assert_same_float_dtype(
-            (self.scale_operator_pd, x))
-        if self.cholesky_input_output_matrices:
-          x_sqrt = x
-        else:
-          # Complexity: O(nbk^3)
-          x_sqrt = linalg_ops.batch_cholesky(x)
+    # Complexity: O(nbk)
+    # This parametrization is equivalent to Chi2, i.e.,
+    # ChiSquared(k) == Gamma(alpha=k/2, beta=1/2)
+    g = random_ops.random_gamma(shape=(n,),
+                                alpha=self._multi_gamma_sequence(
+                                    0.5 * self.df, self.dimension),
+                                beta=0.5,
+                                dtype=self.dtype,
+                                seed=seed)
 
-        batch_shape = self.batch_shape()
-        event_shape = self.event_shape()
-        ndims = array_ops.rank(x_sqrt)
-        # sample_ndims = ndims - batch_ndims - event_ndims
-        sample_ndims = ndims - array_ops.shape(batch_shape)[0] - 2
-        sample_shape = array_ops.slice(
-            array_ops.shape(x_sqrt), [0], [sample_ndims])
+    # Complexity: O(nbk^2)
+    x = array_ops.batch_matrix_band_part(x, -1, 0)  # Tri-lower.
 
-        # We need to be able to pre-multiply each matrix by its corresponding
-        # batch scale matrix.  Since a Distribution Tensor supports multiple
-        # samples per batch, this means we need to reshape the input matrix `x`
-        # so that the first b dimensions are batch dimensions and the last two
-        # are of shape [dimension, dimensions*number_of_samples]. Doing these
-        # gymnastics allows us to do a batch_solve.
-        #
-        # After we're done with sqrt_solve (the batch operation) we need to undo
-        # this reshaping so what we're left with is a Tensor partitionable by
-        # sample, batch, event dimensions.
+    # Complexity: O(nbk)
+    x = array_ops.batch_matrix_set_diag(x, math_ops.sqrt(g))
 
-        # Complexity: O(nbk^2) since transpose must access every element.
-        scale_sqrt_inv_x_sqrt = x_sqrt
-        perm = array_ops.concat(0, (math_ops.range(sample_ndims, ndims),
-                                    math_ops.range(0, sample_ndims)))
-        scale_sqrt_inv_x_sqrt = array_ops.transpose(scale_sqrt_inv_x_sqrt, perm)
-        shape = array_ops.concat(
-            0, (batch_shape,
-                (math_ops.cast(self.dimension, dtype=dtypes.int32), -1)))
-        scale_sqrt_inv_x_sqrt = array_ops.reshape(scale_sqrt_inv_x_sqrt, shape)
+    # Make batch-op ready.
+    # Complexity: O(nbk^2)
+    perm = array_ops.concat(0, (math_ops.range(1, ndims), (0,)))
+    x = array_ops.transpose(x, perm)
+    shape = array_ops.concat(0, (batch_shape, (event_shape[0], -1)))
+    x = array_ops.reshape(x, shape)
 
-        # Complexity: O(nbM*k) where M is the complexity of the operator solving
-        # a vector system.  E.g., for OperatorPDDiag, each solve is O(k), so
-        # this complexity is O(nbk^2). For OperatorPDCholesky, each solve is
-        # O(k^2) so this step has complexity O(nbk^3).
-        scale_sqrt_inv_x_sqrt = self.scale_operator_pd.sqrt_solve(
-            scale_sqrt_inv_x_sqrt)
+    # Complexity: O(nbM) where M is the complexity of the operator solving a
+    # vector system.  E.g., for OperatorPDDiag, each matmul is O(k^2), so
+    # this complexity is O(nbk^2). For OperatorPDCholesky, each matmul is
+    # O(k^3) so this step has complexity O(nbk^3).
+    x = self.scale_operator_pd.sqrt_matmul(x)
 
-        # Undo make batch-op ready.
-        # Complexity: O(nbk^2)
-        shape = array_ops.concat(0, (batch_shape, event_shape, sample_shape))
-        scale_sqrt_inv_x_sqrt = array_ops.reshape(scale_sqrt_inv_x_sqrt, shape)
-        perm = array_ops.concat(0, (math_ops.range(ndims - sample_ndims, ndims),
-                                    math_ops.range(0, ndims - sample_ndims)))
-        scale_sqrt_inv_x_sqrt = array_ops.transpose(scale_sqrt_inv_x_sqrt, perm)
+    # Undo make batch-op ready.
+    # Complexity: O(nbk^2)
+    shape = array_ops.concat(0, (batch_shape, event_shape, (n,)))
+    x = array_ops.reshape(x, shape)
+    perm = array_ops.concat(0, ((ndims-1,), math_ops.range(0, ndims-1)))
+    x = array_ops.transpose(x, perm)
 
-        # Write V = SS', X = LL'. Then:
-        # tr[inv(V) X] = tr[inv(S)' inv(S) L L']
-        #              = tr[inv(S) L L' inv(S)']
-        #              = tr[(inv(S) L) (inv(S) L)']
-        #              = sum_{ik} (inv(S) L)_{ik}^2
-        # The second equality follows from the cyclic permutation property.
-        # Complexity: O(nbk^2)
-        trace_scale_inv_x = math_ops.reduce_sum(
-            math_ops.square(scale_sqrt_inv_x_sqrt),
-            reduction_indices=[-2, -1])
+    if not self.cholesky_input_output_matrices:
+      # Complexity: O(nbk^3)
+      x = math_ops.batch_matmul(x, x, adj_y=True)
 
-        # Complexity: O(nbk)
-        half_log_det_x = math_ops.reduce_sum(
-            math_ops.log(array_ops.batch_matrix_diag_part(x_sqrt)),
-            reduction_indices=[-1])
+    return x
 
-        # Complexity: O(nbk^2)
-        log_prob = ((self.df - self.dimension - 1.) * half_log_det_x -
-                    0.5 * trace_scale_inv_x -
-                    self.log_normalizing_constant())
+  def _log_prob(self, x):
+    if self.cholesky_input_output_matrices:
+      x_sqrt = x
+    else:
+      # Complexity: O(nbk^3)
+      x_sqrt = linalg_ops.batch_cholesky(x)
 
-        # Set shape hints.
-        # Try to merge what we know from the input then what we know from the
-        # parameters of this distribution.
-        if x.get_shape().ndims is not None:
-          log_prob.set_shape(x.get_shape()[:-2])
-        if (log_prob.get_shape().ndims is not None and
-            self.get_batch_shape().ndims is not None and
-            self.get_batch_shape().ndims > 0):
-          log_prob.get_shape()[-self.get_batch_shape().ndims:].merge_with(
-              self.get_batch_shape())
+    batch_shape = self.batch_shape()
+    event_shape = self.event_shape()
+    ndims = array_ops.rank(x_sqrt)
+    # sample_ndims = ndims - batch_ndims - event_ndims
+    sample_ndims = ndims - array_ops.shape(batch_shape)[0] - 2
+    sample_shape = array_ops.slice(
+        array_ops.shape(x_sqrt), [0], [sample_ndims])
 
-        return log_prob
+    # We need to be able to pre-multiply each matrix by its corresponding
+    # batch scale matrix.  Since a Distribution Tensor supports multiple
+    # samples per batch, this means we need to reshape the input matrix `x`
+    # so that the first b dimensions are batch dimensions and the last two
+    # are of shape [dimension, dimensions*number_of_samples]. Doing these
+    # gymnastics allows us to do a batch_solve.
+    #
+    # After we're done with sqrt_solve (the batch operation) we need to undo
+    # this reshaping so what we're left with is a Tensor partitionable by
+    # sample, batch, event dimensions.
 
-  def sample_n(self, n, seed=None, name='sample'):
-    # pylint: disable=line-too-long
-    """Generate `n` samples.
+    # Complexity: O(nbk^2) since transpose must access every element.
+    scale_sqrt_inv_x_sqrt = x_sqrt
+    perm = array_ops.concat(0, (math_ops.range(sample_ndims, ndims),
+                                math_ops.range(0, sample_ndims)))
+    scale_sqrt_inv_x_sqrt = array_ops.transpose(scale_sqrt_inv_x_sqrt, perm)
+    shape = array_ops.concat(
+        0, (batch_shape,
+            (math_ops.cast(self.dimension, dtype=dtypes.int32), -1)))
+    scale_sqrt_inv_x_sqrt = array_ops.reshape(scale_sqrt_inv_x_sqrt, shape)
 
-    Complexity: O(nbk^3)
+    # Complexity: O(nbM*k) where M is the complexity of the operator solving
+    # a vector system.  E.g., for OperatorPDDiag, each solve is O(k), so
+    # this complexity is O(nbk^2). For OperatorPDCholesky, each solve is
+    # O(k^2) so this step has complexity O(nbk^3).
+    scale_sqrt_inv_x_sqrt = self.scale_operator_pd.sqrt_solve(
+        scale_sqrt_inv_x_sqrt)
 
-    The sampling procedure is based on the [Bartlett decomposition](
-    https://en.wikipedia.org/wiki/Wishart_distribution#Bartlett_decomposition)
-    and [using a Gamma distribution to generate Chi2 random variates](
-    https://en.wikipedia.org/wiki/Chi-squared_distribution#Gamma.2C_exponential.2C_and_related_distributions).
+    # Undo make batch-op ready.
+    # Complexity: O(nbk^2)
+    shape = array_ops.concat(0, (batch_shape, event_shape, sample_shape))
+    scale_sqrt_inv_x_sqrt = array_ops.reshape(scale_sqrt_inv_x_sqrt, shape)
+    perm = array_ops.concat(0, (math_ops.range(ndims - sample_ndims, ndims),
+                                math_ops.range(0, ndims - sample_ndims)))
+    scale_sqrt_inv_x_sqrt = array_ops.transpose(scale_sqrt_inv_x_sqrt, perm)
 
-    Args:
-      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-        observations to sample.
-      seed: Python integer; random number generator seed.
-      name: The name of this op.
+    # Write V = SS', X = LL'. Then:
+    # tr[inv(V) X] = tr[inv(S)' inv(S) L L']
+    #              = tr[inv(S) L L' inv(S)']
+    #              = tr[(inv(S) L) (inv(S) L)']
+    #              = sum_{ik} (inv(S) L)_{ik}^2
+    # The second equality follows from the cyclic permutation property.
+    # Complexity: O(nbk^2)
+    trace_scale_inv_x = math_ops.reduce_sum(
+        math_ops.square(scale_sqrt_inv_x_sqrt),
+        reduction_indices=[-2, -1])
 
-    Returns:
-      samples: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
-          with values of type `self.dtype`.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[n] + list(self.inputs.values())):
-        n = ops.convert_to_tensor(n, name='n')
-        if n.dtype != dtypes.int32:
-          raise TypeError('n.dtype=%s which is not int32' % n.dtype)
-        batch_shape = self.batch_shape()
-        event_shape = self.event_shape()
-        batch_ndims = array_ops.shape(batch_shape)[0]
+    # Complexity: O(nbk)
+    half_log_det_x = math_ops.reduce_sum(
+        math_ops.log(array_ops.batch_matrix_diag_part(x_sqrt)),
+        reduction_indices=[-1])
 
-        ndims = batch_ndims + 3  # sample_ndims=1, event_ndims=2
-        shape = array_ops.concat(0, ((n,), batch_shape, event_shape))
+    # Complexity: O(nbk^2)
+    log_prob = ((self.df - self.dimension - 1.) * half_log_det_x -
+                0.5 * trace_scale_inv_x -
+                self.log_normalizing_constant())
 
-        # Complexity: O(nbk^2)
-        x = random_ops.random_normal(shape=shape,
-                                     mean=0.,
-                                     stddev=1.,
-                                     dtype=self.dtype,
-                                     seed=seed)
+    # Set shape hints.
+    # Try to merge what we know from the input then what we know from the
+    # parameters of this distribution.
+    if x.get_shape().ndims is not None:
+      log_prob.set_shape(x.get_shape()[:-2])
+    if (log_prob.get_shape().ndims is not None and
+        self.get_batch_shape().ndims is not None and
+        self.get_batch_shape().ndims > 0):
+      log_prob.get_shape()[-self.get_batch_shape().ndims:].merge_with(
+          self.get_batch_shape())
 
-        # Complexity: O(nbk)
-        # This parametrization is equivalent to Chi2, i.e.,
-        # ChiSquared(k) == Gamma(alpha=k/2, beta=1/2)
-        g = random_ops.random_gamma(shape=(n,),
-                                    alpha=self._multi_gamma_sequence(
-                                        0.5 * self.df, self.dimension),
-                                    beta=0.5,
-                                    dtype=self.dtype,
-                                    seed=seed)
+    return log_prob
 
-        # Complexity: O(nbk^2)
-        x = array_ops.batch_matrix_band_part(x, -1, 0)  # Tri-lower.
+  def _prob(self, x):
+    return math_ops.exp(self._log_prob(x))
 
-        # Complexity: O(nbk)
-        x = array_ops.batch_matrix_set_diag(x, math_ops.sqrt(g))
-
-        # Make batch-op ready.
-        # Complexity: O(nbk^2)
-        perm = array_ops.concat(0, (math_ops.range(1, ndims), (0,)))
-        x = array_ops.transpose(x, perm)
-        shape = array_ops.concat(0, (batch_shape, (event_shape[0], -1)))
-        x = array_ops.reshape(x, shape)
-
-        # Complexity: O(nbM) where M is the complexity of the operator solving a
-        # vector system.  E.g., for OperatorPDDiag, each matmul is O(k^2), so
-        # this complexity is O(nbk^2). For OperatorPDCholesky, each matmul is
-        # O(k^3) so this step has complexity O(nbk^3).
-        x = self.scale_operator_pd.sqrt_matmul(x)
-
-        # Undo make batch-op ready.
-        # Complexity: O(nbk^2)
-        shape = array_ops.concat(0, (batch_shape, event_shape, (n,)))
-        x = array_ops.reshape(x, shape)
-        perm = array_ops.concat(0, ((ndims-1,), math_ops.range(0, ndims-1)))
-        x = array_ops.transpose(x, perm)
-
-        if not self.cholesky_input_output_matrices:
-          # Complexity: O(nbk^3)
-          x = math_ops.batch_matmul(x, x, adj_y=True)
-
-        # Set shape hints.
-        if self.scale_operator_pd.get_shape().ndims is not None:
-          x.set_shape(tensor_shape.TensorShape(
-              [tensor_util.constant_value(n)] +
-              self.scale_operator_pd.get_shape().as_list()))
-        elif x.get_shape().ndims is not None:
-          x.get_shape()[0].merge_with(
-              tensor_shape.TensorDimension(tensor_util.constant_value(n)))
-
-        return x
-
-  def cdf(self, value, name='cdf'):
-    """Cumulative distribution function."""
-    raise NotImplementedError('cdf is not implemented')
-
-  def log_cdf(self, value, name='log_cdf'):
-    """Log CDF."""
-    raise NotImplementedError('log_cdf is not implemented')
-
-  def entropy(self, name='entropy'):
-    """Entropy of the distribution in nats."""
+  def _entropy(self):
     half_dp1 = 0.5 * self.dimension + 0.5
     half_df = 0.5 * self.df
     return (self.dimension * (half_df + half_dp1 * math.log(2.)) +
@@ -434,110 +339,74 @@ class _WishartOperatorPD(distribution.Distribution):
             self._multi_lgamma(half_df, self.dimension) +
             (half_dp1 - half_df) * self._multi_digamma(half_df, self.dimension))
 
-  def mean(self, name='mean'):
-    """Mean of the distribution."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=list(self.inputs.values())):
-        if self.cholesky_input_output_matrices:
-          return math_ops.sqrt(self.df) * self.scale_operator_pd.sqrt_to_dense()
-        else:
-          return self.df * self.scale_operator_pd.to_dense()
+  def _mean(self):
+    if self.cholesky_input_output_matrices:
+      return math_ops.sqrt(self.df) * self.scale_operator_pd.sqrt_to_dense()
+    return self.df * self.scale_operator_pd.to_dense()
 
-  def mode(self, name='mode'):
-    """Mode of the distribution."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=list(self.inputs.values())):
-        s = self.df - self.dimension - 1.
-        s = math_ops.select(
-            math_ops.less(s, 0.),
-            constant_op.constant(float('NaN'), dtype=self.dtype, name='nan'),
-            s)
-        if self.cholesky_input_output_matrices:
-          return math_ops.sqrt(s) * self.scale_operator_pd.sqrt_to_dense()
-        else:
-          return s * self.scale_operator_pd.to_dense()
+  def _variance(self):
+    x = math_ops.sqrt(self.df) * self.scale_operator_pd.to_dense()
+    d = array_ops.expand_dims(array_ops.batch_matrix_diag_part(x), -1)
+    v = math_ops.square(x) + math_ops.batch_matmul(d, d, adj_y=True)
+    if self.cholesky_input_output_matrices:
+      return linalg_ops.batch_cholesky(v)
+    return v
 
-  def std(self, name='std'):
-    """Standard deviation of the Wishart distribution."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=list(self.inputs.values())):
-        if self.cholesky_input_output_matrices:
-          raise ValueError(
-              'Computing std. dev. when is cholesky_input_output_matrices=True '
-              'does not make sense.')
-        return linalg_ops.batch_cholesky(self.variance())
+  def _std(self):
+    if self.cholesky_input_output_matrices:
+      raise ValueError(
+          'Computing std. dev. when is cholesky_input_output_matrices=True '
+          'does not make sense.')
+    return linalg_ops.batch_cholesky(self.variance())
 
-  def variance(self, name='variance'):
-    """Variance of the Wishart distribution.
-
-    This function should not be confused with the covariance of the Wishart. The
-    covariance matrix would have shape `q x q` where,
-    `q = dimension * (dimension+1) / 2`
-    and having elements corresponding to some mapping from a lower-triangular
-    matrix to a vector-space.
-
-    This function returns the diagonal of the Covariance matrix but shaped
-    as a `dimension x dimension` matrix.
-
-    Args:
-      name: The name of this op.
-
-    Returns:
-      variance: `Tensor` of dtype `self.dtype`.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=list(self.inputs.values())):
-        x = math_ops.sqrt(self.df) * self.scale_operator_pd.to_dense()
-        d = array_ops.expand_dims(array_ops.batch_matrix_diag_part(x), -1)
-        v = math_ops.square(x) + math_ops.batch_matmul(d, d, adj_y=True)
-        if self.cholesky_input_output_matrices:
-          return linalg_ops.batch_cholesky(v)
-        else:
-          return v
+  def _mode(self):
+    s = self.df - self.dimension - 1.
+    s = math_ops.select(
+        math_ops.less(s, 0.),
+        constant_op.constant(float('NaN'), dtype=self.dtype, name='nan'),
+        s)
+    if self.cholesky_input_output_matrices:
+      return math_ops.sqrt(s) * self.scale_operator_pd.sqrt_to_dense()
+    return s * self.scale_operator_pd.to_dense()
 
   def mean_log_det(self, name='mean_log_det'):
     """Computes E[log(det(X))] under this Wishart distribution."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=list(self.inputs.values())):
-        return (self._multi_digamma(0.5 * self.df, self.dimension) +
-                self.dimension * math.log(2.) +
-                self.scale_operator_pd.log_det())
+    with self._name_scope(name):
+      return (self._multi_digamma(0.5 * self.df, self.dimension) +
+              self.dimension * math.log(2.) +
+              self.scale_operator_pd.log_det())
 
   def log_normalizing_constant(self, name='log_normalizing_constant'):
     """Computes the log normalizing constant, log(Z)."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=list(self.inputs.values())):
-        return (self.df * self.scale_operator_pd.sqrt_log_det() +
-                0.5 * self.df * self.dimension * math.log(2.) +
-                self._multi_lgamma(0.5 * self.df, self.dimension))
+    with self._name_scope(name):
+      return (self.df * self.scale_operator_pd.sqrt_log_det() +
+              0.5 * self.df * self.dimension * math.log(2.) +
+              self._multi_lgamma(0.5 * self.df, self.dimension))
 
   def _multi_gamma_sequence(self, a, p, name='multi_gamma_sequence'):
     """Creates sequence used in multivariate (di)gamma; shape = shape(a)+[p]."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[a, p]):
-        # Linspace only takes scalars, so we'll add in the offset afterwards.
-        seq = math_ops.linspace(
-            constant_op.constant(0., dtype=self.dtype),
-            0.5 - 0.5 * p,
-            math_ops.cast(p, dtypes.int32))
-        return seq + array_ops.expand_dims(a, [-1])
+    with self._name_scope(name, values=[a, p]):
+      # Linspace only takes scalars, so we'll add in the offset afterwards.
+      seq = math_ops.linspace(
+          constant_op.constant(0., dtype=self.dtype),
+          0.5 - 0.5 * p,
+          math_ops.cast(p, dtypes.int32))
+      return seq + array_ops.expand_dims(a, [-1])
 
   def _multi_lgamma(self, a, p, name='multi_lgamma'):
     """Computes the log multivariate gamma function; log(Gamma_p(a))."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[a, p]):
-        seq = self._multi_gamma_sequence(a, p)
-        return (0.25 * p * (p - 1.) * math.log(math.pi) +
-                math_ops.reduce_sum(math_ops.lgamma(seq),
-                                    reduction_indices=(-1,)))
+    with self._name_scope(name, values=[a, p]):
+      seq = self._multi_gamma_sequence(a, p)
+      return (0.25 * p * (p - 1.) * math.log(math.pi) +
+              math_ops.reduce_sum(math_ops.lgamma(seq),
+                                  reduction_indices=(-1,)))
 
   def _multi_digamma(self, a, p, name='multi_digamma'):
     """Computes the multivariate digamma function; Psi_p(a)."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[a, p]):
-        seq = self._multi_gamma_sequence(a, p)
-        return math_ops.reduce_sum(math_ops.digamma(seq),
-                                   reduction_indices=(-1,))
+    with self._name_scope(name, values=[a, p]):
+      seq = self._multi_gamma_sequence(a, p)
+      return math_ops.reduce_sum(math_ops.digamma(seq),
+                                 reduction_indices=(-1,))
 
 
 class WishartCholesky(_WishartOperatorPD):
@@ -607,9 +476,9 @@ class WishartCholesky(_WishartOperatorPD):
                df,
                scale,
                cholesky_input_output_matrices=False,
-               allow_nan_stats=False,
                validate_args=True,
-               name='Wishart'):
+               allow_nan_stats=False,
+               name='WishartCholesky'):
     """Construct Wishart distributions.
 
     Args:
@@ -622,13 +491,13 @@ class WishartCholesky(_WishartOperatorPD):
         Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
         `sample_n` returns a Cholesky when
         `cholesky_input_output_matrices=True`.
+      validate_args: Whether to validate input with asserts. If `validate_args`
+        is `False`, and the inputs are invalid, correct behavior is not
+        guaranteed.
       allow_nan_stats:  `Boolean`, default `False`. If `False`, raise an
         exception if a statistic (e.g., mean, mode) is undefined for any batch
         member. If True, batch members with valid parameters leading to
         undefined statistics will return `NaN` for this statistic.
-      validate_args: Whether to validate input with asserts. If `validate_args`
-        is `False`, and the inputs are invalid, correct behavior is not
-        guaranteed.
       name: The name scope to give class member ops.
     """
     super(WishartCholesky, self).__init__(
@@ -636,8 +505,8 @@ class WishartCholesky(_WishartOperatorPD):
         scale_operator_pd=operator_pd_cholesky.OperatorPDCholesky(
             scale, verify_pd=validate_args),
         cholesky_input_output_matrices=cholesky_input_output_matrices,
-        allow_nan_stats=allow_nan_stats,
         validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
         name=name)
 
 
@@ -704,9 +573,9 @@ class WishartFull(_WishartOperatorPD):
                df,
                scale,
                cholesky_input_output_matrices=False,
-               allow_nan_stats=False,
                validate_args=True,
-               name='Wishart'):
+               allow_nan_stats=False,
+               name='WishartFull'):
     """Construct Wishart distributions.
 
     Args:
@@ -719,13 +588,13 @@ class WishartFull(_WishartOperatorPD):
         Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
         `sample_n` returns a Cholesky when
         `cholesky_input_output_matrices=True`.
+      validate_args: Whether to validate input with asserts. If `validate_args`
+        is `False`, and the inputs are invalid, correct behavior is not
+        guaranteed.
       allow_nan_stats:  `Boolean`, default `False`. If `False`, raise an
         exception if a statistic (e.g., mean, mode) is undefined for any batch
         member. If True, batch members with valid parameters leading to
         undefined statistics will return `NaN` for this statistic.
-      validate_args: Whether to validate input with asserts. If `validate_args`
-        is `False`, and the inputs are invalid, correct behavior is not
-        guaranteed.
       name: The name scope to give class member ops.
     """
     super(WishartFull, self).__init__(
@@ -733,6 +602,6 @@ class WishartFull(_WishartOperatorPD):
         scale_operator_pd=operator_pd_full.OperatorPDFull(
             scale, verify_pd=validate_args),
         cholesky_input_output_matrices=cholesky_input_output_matrices,
-        allow_nan_stats=allow_nan_stats,
         validate_args=validate_args,
+        allow_nan_stats=allow_nan_stats,
         name=name)

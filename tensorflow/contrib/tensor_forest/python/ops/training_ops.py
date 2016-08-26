@@ -69,7 +69,7 @@ def _CountExtremelyRandomStatsShape(op):
 @ops.RegisterShape('SampleInputs')
 def _SampleInputsShape(op):
   """Shape function for SampleInputs Op."""
-  num_splits = op.inputs[6].get_shape()[1].value
+  num_splits = op.inputs[7].get_shape()[1].value
   return [[None], [None, num_splits], [None, num_splits]]
 
 

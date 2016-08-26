@@ -131,7 +131,7 @@ class TensorFlowDataFrameTestCase(tf.test.TestCase):
                                                        batch_size=10,
                                                        shuffle=False)
 
-    batch = tensorflow_df.run_once()
+    batch = tensorflow_df.run_one_batch()
 
     np.testing.assert_array_equal(pandas_df.index.values, batch["index"],
                                   "Expected index {}; got {}".format(
@@ -239,7 +239,7 @@ class TensorFlowDataFrameTestCase(tf.test.TestCase):
     s = pandas_df["string"]
     for i in range(0, len(s)):
       if isinstance(s[i], float) and math.isnan(s[i]):
-        s[i] = ""
+        pandas_df.set_value(i, "string", "")
     tensorflow_df = df.TensorFlowDataFrame.from_csv_with_feature_spec(
         [data_path],
         batch_size=batch_size,

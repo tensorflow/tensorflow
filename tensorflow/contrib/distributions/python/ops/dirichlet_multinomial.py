@@ -139,9 +139,6 @@ class DirichletMultinomial(distribution.Distribution):
     ```
 
     """
-    self._allow_nan_stats = allow_nan_stats
-    self._validate_args = validate_args
-    self._name = name
     with ops.name_scope(name, values=[n, alpha]):
       # Broadcasting works because:
       # * The broadcasting convention is to prepend dimensions of size [1], and
@@ -152,16 +149,19 @@ class DirichletMultinomial(distribution.Distribution):
       #   explicitivity.
       #   * All calls involving `counts` eventually require a broadcast between
       #   `counts` and alpha.
-      self._alpha = self._check_alpha(alpha)
-      self._n = self._check_n(n)
-
+      self._alpha = self._assert_valid_alpha(alpha, validate_args)
+      self._n = self._assert_valid_n(n, validate_args)
       self._alpha_sum = math_ops.reduce_sum(
           self._alpha, reduction_indices=[-1], keep_dims=False)
-
-      self._get_batch_shape = self._alpha_sum.get_shape()
-
-      # event shape depends only on alpha, not "n".
-      self._get_event_shape = self._alpha.get_shape().with_rank_at_least(1)[-1:]
+      super(DirichletMultinomial, self).__init__(
+          dtype=self._alpha.dtype,
+          parameters={"alpha": self._alpha,
+                      "alpha_sum": self._alpha_sum,
+                      "n": self._n},
+          is_continuous=False,
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=name)
 
   @property
   def n(self):
@@ -174,195 +174,57 @@ class DirichletMultinomial(distribution.Distribution):
     return self._alpha
 
   @property
-  def allow_nan_stats(self):
-    """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._allow_nan_stats
+  def alpha_sum(self):
+    """Summation of alpha parameter."""
+    return self._alpha_sum
 
-  @property
-  def validate_args(self):
-    """Boolean describing behavior on invalid input."""
-    return self._validate_args
+  def _batch_shape(self):
+    return array_ops.shape(self.alpha_sum)
 
-  @property
-  def name(self):
-    """Name to prepend to all ops."""
-    return self._name
+  def _get_batch_shape(self):
+    return self.alpha_sum.get_shape()
 
-  @property
-  def dtype(self):
-    """dtype of samples from this distribution."""
-    return self._alpha.dtype
+  def _event_shape(self):
+    return array_ops.reverse(array_ops.shape(self.alpha), [True])[0]
 
-  def mean(self, name="mean"):
-    """Class means for every batch member."""
-    alpha = self._alpha
-    alpha_sum = self._alpha_sum
-    n = self._n
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[alpha, alpha_sum, n]):
-        mean_no_n = alpha / array_ops.expand_dims(alpha_sum, -1)
-        return array_ops.expand_dims(n, -1) * mean_no_n
+  def _get_event_shape(self):
+    # Event shape depends only on alpha, not "n".
+    return self.alpha.get_shape().with_rank_at_least(1)[-1:]
 
-  def variance(self, name="mean"):
-    """Class variances for every batch member.
+  def _log_prob(self, counts):
+    counts = self._assert_valid_counts(counts)
+    ordered_prob = (special_math_ops.lbeta(self.alpha + counts) -
+                    special_math_ops.lbeta(self.alpha))
+    log_prob = ordered_prob + distribution_util.log_combinations(
+        self.n, counts)
+    return log_prob
 
-    The variance for each batch member is defined as the following:
+  def _prob(self, counts):
+    return math_ops.exp(self._log_prob(counts))
 
-    ```
-    Var(X_j) = n * alpha_j / alpha_0 * (1 - alpha_j / alpha_0) *
-      (n + alpha_0) / (1 + alpha_0)
-    ```
+  def _mean(self):
+    normalized_alpha = self.alpha / array_ops.expand_dims(self.alpha_sum, -1)
+    return array_ops.expand_dims(self.n, -1) * normalized_alpha
 
-    where `alpha_0 = sum_j alpha_j`.
+  def _variance(self):
+    alpha_sum = array_ops.expand_dims(self.alpha_sum, -1)
+    normalized_alpha = self.alpha / alpha_sum
+    variance = -math_ops.batch_matmul(
+        array_ops.expand_dims(normalized_alpha, -1),
+        array_ops.expand_dims(normalized_alpha, -2))
+    variance = array_ops.batch_matrix_set_diag(
+        variance, normalized_alpha * (1. - normalized_alpha))
+    shared_factor = (self.n * (alpha_sum + self.n) /
+                     (alpha_sum + 1) * array_ops.ones_like(self.alpha))
+    variance *= array_ops.expand_dims(shared_factor, -1)
+    return variance
 
-    The covariance between elements in a batch is defined as:
-
-    ```
-    Cov(X_i, X_j) = -n * alpha_i * alpha_j / alpha_0 ** 2 *
-      (n + alpha_0) / (1 + alpha_0)
-    ```
-
-    Args:
-      name: The name for this op.
-
-    Returns:
-      A `Tensor` representing the variances for each batch member.
-    """
-    alpha = self._alpha
-    alpha_sum = self._alpha_sum
-    n = self._n
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[alpha, alpha_sum, n]):
-        expanded_alpha_sum = array_ops.expand_dims(alpha_sum, -1)
-        shared_factor = n * (expanded_alpha_sum + n) / (
-            expanded_alpha_sum + 1) * array_ops.ones_like(alpha)
-
-        mean_no_n = alpha / expanded_alpha_sum
-        expanded_mean_no_n = array_ops.expand_dims(mean_no_n, -1)
-        variance = -math_ops.batch_matmul(
-            expanded_mean_no_n, expanded_mean_no_n, adj_y=True)
-        variance += array_ops.batch_matrix_diag(mean_no_n)
-        variance *= array_ops.expand_dims(shared_factor, -1)
-        return variance
-
-  def batch_shape(self, name="batch_shape"):
-    """Batch dimensions of this instance as a 1-D int32 `Tensor`.
-
-    The product of the dimensions of the `batch_shape` is the number of
-    independent distributions of this kind the instance represents.
-
-    Args:
-      name: name to give to the op
-
-    Returns:
-      `Tensor` `batch_shape`
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._alpha_sum]):
-        return array_ops.shape(self._alpha_sum)
-
-  def get_batch_shape(self):
-    """`TensorShape` available at graph construction time.
-
-    Same meaning as `batch_shape`. May be only partially defined.
-
-    Returns:
-      batch shape
-    """
-    return self._get_batch_shape
-
-  def event_shape(self, name="event_shape"):
-    """Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
-
-    Args:
-      name: name to give to the op
-
-    Returns:
-      `Tensor` `event_shape`
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._alpha]):
-        return array_ops.reverse(array_ops.shape(self._alpha), [True])[0]
-
-  def get_event_shape(self):
-    """`TensorShape` available at graph construction time.
-
-    Same meaning as `event_shape`. May be only partially defined.
-
-    Returns:
-      event shape
-    """
-    return self._get_event_shape
-
-  def cdf(self, x, name="cdf"):
-    raise NotImplementedError(
-        "DirichletMultinomial does not have a well-defined cdf.")
-
-  def log_cdf(self, x, name="log_cdf"):
-    raise NotImplementedError(
-        "DirichletMultinomial does not have a well-defined cdf.")
-
-  def log_prob(self, counts, name="log_prob"):
-    """`Log(P[counts])`, computed for every batch member.
-
-    For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
-    that after sampling `n` draws from this Dirichlet Multinomial
-    distribution, the number of draws falling in class `j` is `n_j`.  Note that
-    different sequences of draws can result in the same counts, thus the
-    probability includes a combinatorial coefficient.
-
-    Args:
-      counts:  Non-negative tensor with dtype `dtype` and whose shape can be
-        broadcast with `self.alpha`.  For fixed leading dimensions, the last
-        dimension represents counts for the corresponding Dirichlet Multinomial
-        distribution in `self.alpha`. `counts` is only legal if it sums up to
-        `n` and its components are equal to integer values.
-      name:  Name to give this Op, defaults to "log_prob".
-
-    Returns:
-      Log probabilities for each record, shape `[N1,...,Nn]`.
-    """
-    n = self._n
-    alpha = self._alpha
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[n, alpha, counts]):
-        counts = self._check_counts(counts)
-
-        ordered_prob = (special_math_ops.lbeta(alpha + counts) -
-                        special_math_ops.lbeta(alpha))
-        log_prob = ordered_prob + distribution_util.log_combinations(
-            n, counts)
-        return log_prob
-
-  def prob(self, counts, name="prob"):
-    """`P[counts]`, computed for every batch member.
-
-    For each batch of counts `[c_1,...,c_k]`, `P[counts]` is the probability
-    that after sampling `sum_j c_j` draws from this Dirichlet Multinomial
-    distribution, the number of draws falling in class `j` is `c_j`.  Note that
-    different sequences of draws can result in the same counts, thus the
-    probability includes a combinatorial coefficient.
-
-    Args:
-      counts:  Non-negative tensor with dtype `dtype` and whose shape can be
-        broadcast with `self.alpha`.  For fixed leading dimensions, the last
-        dimension represents counts for the corresponding Dirichlet Multinomial
-        distribution in `self.alpha`. `counts` is only legal if it sums up to
-        `n` and its components are equal to integer values.
-      name:  Name to give this Op, defaults to "prob".
-
-    Returns:
-      Probabilities for each record, shape `[N1,...,Nn]`.
-    """
-    return super(DirichletMultinomial, self).prob(counts, name=name)
-
-  def _check_counts(self, counts):
+  def _assert_valid_counts(self, counts):
     """Check counts for proper shape, values, then return tensor version."""
     counts = ops.convert_to_tensor(counts, name="counts")
     if not self.validate_args:
       return counts
     candidate_n = math_ops.reduce_sum(counts, reduction_indices=[-1])
-
     return control_flow_ops.with_dependencies([
         check_ops.assert_non_negative(counts),
         check_ops.assert_equal(
@@ -370,26 +232,59 @@ class DirichletMultinomial(distribution.Distribution):
             message="counts do not sum to n"),
         distribution_util.assert_integer_form(counts)], counts)
 
-  def _check_alpha(self, alpha):
+  def _assert_valid_alpha(self, alpha, validate_args):
     alpha = ops.convert_to_tensor(alpha, name="alpha")
-    if not self.validate_args:
+    if not validate_args:
       return alpha
     return control_flow_ops.with_dependencies(
         [check_ops.assert_rank_at_least(alpha, 1),
          check_ops.assert_positive(alpha)], alpha)
 
-  def _check_n(self, n):
+  def _assert_valid_n(self, n, validate_args):
     n = ops.convert_to_tensor(n, name="n")
-    if not self.validate_args:
+    if not validate_args:
       return n
     return control_flow_ops.with_dependencies(
         [check_ops.assert_non_negative(n),
          distribution_util.assert_integer_form(n)], n)
 
-  @property
-  def is_continuous(self):
-    return False
 
-  @property
-  def is_reparameterized(self):
-    return False
+_prob_note = """
+
+  For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
+  that after sampling `n` draws from this Dirichlet Multinomial
+  distribution, the number of draws falling in class `j` is `n_j`.  Note that
+  different sequences of draws can result in the same counts, thus the
+  probability includes a combinatorial coefficient.
+
+  Note that input, "counts", must be a non-negative tensor with dtype `dtype`
+  and whose shape can be broadcast with `self.alpha`.  For fixed leading
+  dimensions, the last dimension represents counts for the corresponding
+  Dirichlet Multinomial distribution in `self.alpha`. `counts` is only legal if
+  it sums up to `n` and its components are equal to integer values.
+"""
+distribution_util.append_class_fun_doc(DirichletMultinomial.log_prob,
+                                       doc_str=_prob_note)
+distribution_util.append_class_fun_doc(DirichletMultinomial.prob,
+                                       doc_str=_prob_note)
+
+distribution_util.append_class_fun_doc(DirichletMultinomial.variance,
+                                       doc_str="""
+
+  The variance for each batch member is defined as the following:
+
+  ```
+  Var(X_j) = n * alpha_j / alpha_0 * (1 - alpha_j / alpha_0) *
+    (n + alpha_0) / (1 + alpha_0)
+  ```
+
+  where `alpha_0 = sum_j alpha_j`.
+
+  The covariance between elements in a batch is defined as:
+
+  ```
+  Cov(X_i, X_j) = -n * alpha_i * alpha_j / alpha_0 ** 2 *
+    (n + alpha_0) / (1 + alpha_0)
+  ```
+
+""")

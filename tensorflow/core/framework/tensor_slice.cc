@@ -82,6 +82,13 @@ void TensorSlice::Clear() {
   lengths_.clear();
 }
 
+bool TensorSlice::IsFull() const {
+  for (int d = 0; d < dims(); ++d) {
+    if (!IsFullAt(d)) return false;
+  }
+  return true;
+}
+
 void TensorSlice::SetFullSlice(int dim) {
   Clear();
   starts_.reserve(dim);

@@ -96,6 +96,9 @@ class TensorSlice {
   // If we have a full slice along dimension "d".
   bool IsFullAt(int d) const { return lengths_[d] < 0; }
 
+  // If this is a full slice, i.e. IsFullAt(d) for every d.
+  bool IsFull() const;
+
   // Set the slice to be a full slice of "dim" dimensions
   void SetFullSlice(int dim);
 

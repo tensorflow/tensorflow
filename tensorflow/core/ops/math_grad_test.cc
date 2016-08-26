@@ -684,6 +684,25 @@ TEST_F(MathGradTest, Pow) {
   }
 }
 
+TEST_F(MathGradTest, ComplexPow) {
+  auto x = test::AsTensor<complex64>({0.f, 2.f, -2.f}, TensorShape({3}));
+  auto y = test::AsTensor<complex64>({2.f, 2.f, 2.f}, TensorShape({3}));
+  Tensor dx;
+  Tensor dy;
+  auto g = [](complex64 x, complex64 y) { return y * std::pow(x, y - 1.f); };
+  auto h = [](complex64 x, complex64 y) {
+    return std::pow(x, y) * (x != complex64(0) ? std::log(x) : 0);
+  };
+  SymGrad("Pow", x, y, &dx, &dy);
+
+  test::ExpectClose(
+      dx, test::AsTensor<complex64>({g(0.f, 2.f), g(2.f, 2.f), g(-2.f, 2.f)},
+                                    TensorShape({3})));
+  test::ExpectClose(
+      dy, test::AsTensor<complex64>({h(0.f, 2.f), h(2.f, 2.f), h(-2.f, 2.f)},
+                                    TensorShape({3})));
+}
+
 TEST_F(MathGradTest, Maximum) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));

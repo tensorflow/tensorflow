@@ -628,7 +628,7 @@ def streaming_recall(predictions, labels, ignore_mask=None,
     return recall, update_op
 
 
-def _tp_fn_tn_fp(predictions, labels, thresholds, weights):
+def _tp_fn_tn_fp(predictions, labels, thresholds, weights=None):
   """Computes true_positives, false_negatives, true_negatives, false_positives.
 
   The `_tp_fn_tn_fp` function creates four local variables, `true_positives`,

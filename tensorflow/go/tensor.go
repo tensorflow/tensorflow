@@ -50,11 +50,11 @@ type Tensor struct {
 // that the resulting Tensor has a valid shape.
 func NewTensor(value interface{}) (*Tensor, error) {
 	val := reflect.ValueOf(value)
-	rank, dataType, err := rankAndDataTypeOf(val.Type())
+	dims, dataType, err := dimsAndDataTypeOf(val.Type())
 	if err != nil {
 		return nil, err
 	}
-	t := &Tensor{buf: bytes.NewBuffer(nil), dt: dataType, shape: make([]int64, rank)}
+	t := &Tensor{buf: bytes.NewBuffer(nil), dt: dataType, shape: make([]int64, dims)}
 	if err = encodeTensor(t.buf, t.shape, val); err != nil {
 		return nil, err
 	}
@@ -90,7 +90,8 @@ func (t *Tensor) Shape() []int64 {
 // supported, and this function may panic if it encounters an unsupported
 // DataType.
 //
-// The type of the output depends on the Tensor type and rank. For example:
+// The type of the output depends on the Tensor type and dimensions.
+// For example:
 // Tensor(int64, 0): int64
 // Tensor(float64, 3): [][][]float64
 func (t *Tensor) Value() interface{} {
@@ -145,18 +146,17 @@ var types = []struct {
 	{reflect.TypeOf(complex(float64(0), float64(0))), C.TF_COMPLEX128},
 }
 
-// rankAndDataTypeOf returns the data type and rank of a Go type for use when
-// encoding. We fetch them separately from encoding to support 0-sized
-// dimensions.
-func rankAndDataTypeOf(typ reflect.Type) (int, DataType, error) {
-	rank := 0
+// dimsAndDataTypeOf returns the data type and dimensions of a Go type for use
+// when encoding. We fetch them separately from encoding to support 0-D tensors.
+func dimsAndDataTypeOf(typ reflect.Type) (int, DataType, error) {
+	dims := 0
 	elem := typ
 	for ; elem.Kind() == reflect.Array || elem.Kind() == reflect.Slice; elem = elem.Elem() {
-		rank++
+		dims++
 	}
 	for _, t := range types {
 		if elem.Kind() == t.typ.Kind() {
-			return rank, DataType(t.dataType), nil
+			return dims, DataType(t.dataType), nil
 		}
 	}
 	return 0, DataType(0), fmt.Errorf("unsupported type %v", typ)

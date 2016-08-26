@@ -271,7 +271,7 @@ class SingleEvaluationTest(tf.test.TestCase):
                                    'this_file_doesnt_exist')
     log_dir = os.path.join(self.get_temp_dir(), 'error_raised')
     with self.assertRaises(ValueError):
-      slim.evaluation.evaluate_once(checkpoint_path, log_dir)
+      slim.evaluation.evaluate_once('', checkpoint_path, log_dir)
 
   def testRestoredModelPerformance(self):
     checkpoint_path = os.path.join(self.get_temp_dir(), 'model.ckpt')
@@ -291,6 +291,7 @@ class SingleEvaluationTest(tf.test.TestCase):
 
     # Run the evaluation and verify the results:
     accuracy_value = slim.evaluation.evaluate_once(
+        '',
         checkpoint_path,
         log_dir,
         eval_op=update_op,

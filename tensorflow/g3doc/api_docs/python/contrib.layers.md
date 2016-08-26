@@ -51,6 +51,18 @@ Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
 Can be used as a normalizer function for conv2d and fully_connected.
 
+Note: When is_training is True the moving_mean and moving_variance need to be
+updated, by default the update_ops are placed in tf.GraphKeys.UPDATE_OPS so
+they need to be added as a dependency to the train_op, example:
+
+  update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+  if update_ops:
+    updates = tf.group(update_ops)
+    total_loss = control_flow_ops.with_dependencies([updates], total_loss)
+
+One can set update_collections=None to force the updates in place, but that
+can have speed penalty, specially in distributed settings.
+
 ##### Args:
 
 
@@ -64,8 +76,9 @@ Can be used as a normalizer function for conv2d and fully_connected.
 *  <b>`epsilon`</b>: small float added to variance to avoid dividing by zero.
 *  <b>`activation_fn`</b>: Optional activation function.
 *  <b>`updates_collections`</b>: collections to collect the update ops for computation.
+    The updates_ops need to be excuted with the train_op.
     If None, a control dependency would be added to make sure the updates are
-    computed.
+    computed in place.
 *  <b>`is_training`</b>: whether or not the layer is in training mode. In training mode
     it would accumulate the statistics of the moments into `moving_mean` and
     `moving_variance` using an exponential moving average with the given

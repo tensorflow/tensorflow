@@ -2107,6 +2107,18 @@ max(labels.indices(labels.indices[:, 1] == b, 2))
   <= sequence_length(b) for all b.
 ```
 
+Notes:
+
+This class performs the softmax operation for you, so inputs should
+be e.g. linear projections of outputs by an LSTM.
+
+The `inputs` Tensor's innermost dimension size, `num_classes`, represents
+`num_labels + 1` classes, where num_labels is the number of true labels, and
+the largest value `(num_classes - 1)` is reserved for the blank label.
+
+For example, for a vocabulary containing 3 labels `[a, b, c]`,
+`num_classes = 4` and the labels indexing is `{a: 0, b: 1, c: 2, blank: 3}`.
+
 Regarding the arguments `preprocess_collapse_repeated` and
 `ctc_merge_repeated`:
 
@@ -2145,10 +2157,12 @@ Here is a table of the (roughly) expected first order behavior:
 
 
 *  <b>`inputs`</b>: 3-D `float` `Tensor` sized
-    `[max_time x batch_size x num_classes]`.  The logits.
+    `[max_time x batch_size x num_classes]`. The logits.
 *  <b>`labels`</b>: An `int32` `SparseTensor`.
     `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
-    the id for (batch b, time t).  See `core/ops/ctc_ops.cc` for more details.
+    the id for (batch b, time t).
+    `labels.values[i]` must take on values in `[0, num_labels)`.
+    See `core/ops/ctc_ops.cc` for more details.
 *  <b>`sequence_length`</b>: 1-D `int32` vector, size `[batch_size]`.
     The sequence lengths.
 *  <b>`preprocess_collapse_repeated`</b>: Boolean.  Default: False.

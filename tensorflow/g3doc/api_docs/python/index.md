@@ -79,6 +79,7 @@
   * [`count_up_to`](../../api_docs/python/state_ops.md#count_up_to)
   * [`device`](../../api_docs/python/state_ops.md#device)
   * [`export_meta_graph`](../../api_docs/python/state_ops.md#export_meta_graph)
+  * [`fixed_size_partitioner`](../../api_docs/python/state_ops.md#fixed_size_partitioner)
   * [`get_checkpoint_state`](../../api_docs/python/state_ops.md#get_checkpoint_state)
   * [`get_variable`](../../api_docs/python/state_ops.md#get_variable)
   * [`get_variable_scope`](../../api_docs/python/state_ops.md#get_variable_scope)
@@ -188,6 +189,7 @@
   * [`batch_self_adjoint_eig`](../../api_docs/python/math_ops.md#batch_self_adjoint_eig)
   * [`batch_self_adjoint_eigvals`](../../api_docs/python/math_ops.md#batch_self_adjoint_eigvals)
   * [`batch_svd`](../../api_docs/python/math_ops.md#batch_svd)
+  * [`betainc`](../../api_docs/python/math_ops.md#betainc)
   * [`ceil`](../../api_docs/python/math_ops.md#ceil)
   * [`cholesky`](../../api_docs/python/math_ops.md#cholesky)
   * [`cholesky_solve`](../../api_docs/python/math_ops.md#cholesky_solve)
@@ -239,6 +241,7 @@
   * [`real`](../../api_docs/python/math_ops.md#real)
   * [`reduce_all`](../../api_docs/python/math_ops.md#reduce_all)
   * [`reduce_any`](../../api_docs/python/math_ops.md#reduce_any)
+  * [`reduce_logsumexp`](../../api_docs/python/math_ops.md#reduce_logsumexp)
   * [`reduce_max`](../../api_docs/python/math_ops.md#reduce_max)
   * [`reduce_mean`](../../api_docs/python/math_ops.md#reduce_mean)
   * [`reduce_min`](../../api_docs/python/math_ops.md#reduce_min)
@@ -583,6 +586,7 @@
   * [`py_func`](../../api_docs/python/script_ops.md#py_func)
 
 * **[Summary Operations](../../api_docs/python/summary.md)**:
+  * [`scalar`](../../api_docs/python/summary.md#scalar)
   * [`tensor_summary`](../../api_docs/python/summary.md#tensor_summary)
 
 * **[Testing](../../api_docs/python/test.md)**:
@@ -708,6 +712,7 @@
   * [`ControlOutputs`](../../api_docs/python/contrib.graph_editor.md#ControlOutputs)
   * [`copy`](../../api_docs/python/contrib.graph_editor.md#copy)
   * [`copy_op_handler`](../../api_docs/python/contrib.graph_editor.md#copy_op_handler)
+  * [`copy_with_input_replacements`](../../api_docs/python/contrib.graph_editor.md#copy_with_input_replacements)
   * [`detach`](../../api_docs/python/contrib.graph_editor.md#detach)
   * [`detach_control_inputs`](../../api_docs/python/contrib.graph_editor.md#detach_control_inputs)
   * [`detach_control_outputs`](../../api_docs/python/contrib.graph_editor.md#detach_control_outputs)
@@ -727,6 +732,7 @@
   * [`get_walks_intersection_ops`](../../api_docs/python/contrib.graph_editor.md#get_walks_intersection_ops)
   * [`get_walks_union_ops`](../../api_docs/python/contrib.graph_editor.md#get_walks_union_ops)
   * [`get_within_boundary_ops`](../../api_docs/python/contrib.graph_editor.md#get_within_boundary_ops)
+  * [`graph_replace`](../../api_docs/python/contrib.graph_editor.md#graph_replace)
   * [`keep_t_if_possible_handler`](../../api_docs/python/contrib.graph_editor.md#keep_t_if_possible_handler)
   * [`make_list_of_op`](../../api_docs/python/contrib.graph_editor.md#make_list_of_op)
   * [`make_list_of_t`](../../api_docs/python/contrib.graph_editor.md#make_list_of_t)

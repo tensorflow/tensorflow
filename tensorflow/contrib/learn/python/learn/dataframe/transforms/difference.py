@@ -32,7 +32,7 @@ def _negate_sparse(sparse_tensor):
 
 
 @series.Series.register_binary_op("__sub__")
-class Difference(transform.Transform):
+class Difference(transform.TensorFlowTransform):
   """Subtracts one 'Series` from another."""
 
   def __init__(self):

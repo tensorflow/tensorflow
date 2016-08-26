@@ -17,9 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.rnn.python.ops import gru_ops
+from tensorflow.python.ops import variable_scope as vs
 
 
 class GRUBlockCellTest(tf.test.TestCase):
@@ -313,6 +315,264 @@ class GRUBlockCellTest(tf.test.TestCase):
 
 class GRUBlockCellGpuTest(GRUBlockCellTest):
   _use_gpu = True
+
+#### Benchmarking GRUBlockCell vs GRUCell.
+
+
+def time_taken_by_op(op, sess, num_runs=50):
+  """Time taken by the Op."""
+  for _ in range(2):
+    sess.run([op])
+
+  start_time = time.time()
+  for _ in range(num_runs):
+    sess.run([op])
+
+  end_time = time.time()
+  time_taken = end_time - start_time
+  return time_taken
+
+
+def training_gru_block_vs_gru_cell(batch_size,
+                                   cell_size,
+                                   input_size,
+                                   time_steps,
+                                   use_gpu=False,
+                                   iters=30):
+  """Benchmark training speed between GRUBlockCell vs GRUCell."""
+  tf.reset_default_graph()
+  with tf.Session(graph=tf.Graph()) as sess:
+    # Specify the device which is been used.
+    with tf.device("/cpu:0" if not use_gpu else "/gpu:0"):
+
+      # Random initializers.
+      seed = 1994
+      initializer = tf.random_uniform_initializer(-1, 1, seed=seed)
+      np.random.seed(seed)
+
+      # Inputs
+      concat_x = vs.get_variable("concat_x",
+                                 [time_steps, batch_size, input_size])
+      h = vs.get_variable("h", [batch_size, cell_size])
+      y = vs.get_variable("y", [time_steps, batch_size, cell_size])
+
+      # Output from the basic GRU cell implementation.
+      with tf.variable_scope("basic", initializer=initializer):
+        cell = tf.nn.rnn_cell.GRUCell(cell_size)
+
+        outputs_dynamic, _ = tf.nn.dynamic_rnn(
+            cell,
+            inputs=concat_x,
+            initial_state=h,
+            time_major=True,
+            dtype=tf.float32)
+        sess.run([tf.initialize_all_variables()])
+        cost = tf.reduce_mean(tf.square(outputs_dynamic - y))
+        learning_rate = 0.01
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(
+            cost)
+
+        # time for a training step.
+        basic_time_training = time_taken_by_op(optimizer, sess, iters)
+
+      # Output from the basic GRU cell implementation.
+      with tf.variable_scope("block", initializer=initializer):
+        cell = gru_ops.GRUBlockCell(cell_size)
+
+        outputs_dynamic, _ = tf.nn.dynamic_rnn(
+            cell,
+            inputs=concat_x,
+            initial_state=h,
+            time_major=True,
+            dtype=tf.float32)
+        sess.run([tf.initialize_all_variables()])
+        cost = tf.reduce_mean(tf.square(outputs_dynamic - y))
+        learning_rate = 0.01
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(
+            cost)
+
+        # time for a training step.
+        block_time_training = time_taken_by_op(optimizer, sess, iters)
+
+    performance_training = (
+        basic_time_training - block_time_training) * 100 / basic_time_training
+
+    print(",".join([str(batch_size), str(cell_size), str(input_size), str(
+        time_steps), str(use_gpu), str(basic_time_training), str(
+            block_time_training), str(performance_training)]))
+
+    return basic_time_training, block_time_training
+
+
+def inference_gru_block_vs_gru_cell(batch_size,
+                                    cell_size,
+                                    input_size,
+                                    time_steps,
+                                    use_gpu=False,
+                                    iters=30):
+  """Benchmark inference speed between GRUBlockCell vs GRUCell."""
+  tf.reset_default_graph()
+  with tf.Session(graph=tf.Graph()) as sess:
+    with tf.device("/cpu:0" if not use_gpu else "/gpu:0"):
+
+      # Random initializers.
+      seed = 1994
+      initializer = tf.random_uniform_initializer(-1, 1, seed=seed)
+      np.random.seed(seed)
+
+      # Inputs
+      concat_x = vs.get_variable("concat_x",
+                                 [time_steps, batch_size, input_size])
+      h = vs.get_variable("h", [batch_size, cell_size])
+
+      # Output from the basic GRU cell implementation.
+      with tf.variable_scope("basic", initializer=initializer):
+        cell = tf.nn.rnn_cell.GRUCell(cell_size)
+        outputs_dynamic, _ = tf.nn.dynamic_rnn(
+            cell,
+            inputs=concat_x,
+            initial_state=h,
+            time_major=True,
+            dtype=tf.float32)
+        sess.run([tf.initialize_all_variables()])
+        basic_time_inference = time_taken_by_op(outputs_dynamic, sess, iters)
+
+      # Output from the block GRU cell implementation.
+      with tf.variable_scope("block", initializer=initializer):
+        cell = gru_ops.GRUBlockCell(cell_size)
+        outputs_dynamic, _ = tf.nn.dynamic_rnn(
+            cell,
+            inputs=concat_x,
+            initial_state=h,
+            time_major=True,
+            dtype=tf.float32)
+        sess.run([tf.initialize_all_variables()])
+        block_time_inference = time_taken_by_op(outputs_dynamic, sess, iters)
+
+    performance_inference = (basic_time_inference - block_time_inference
+                            ) * 100 / basic_time_inference
+    print(",".join([str(batch_size), str(cell_size), str(input_size), str(
+        time_steps), str(use_gpu), str(basic_time_inference), str(
+            block_time_inference), str(performance_inference)]))
+
+    return basic_time_inference, block_time_inference
+
+
+def single_bprop_step_gru_block_vs_gru_cell(batch_size,
+                                            cell_size,
+                                            input_size,
+                                            use_gpu=False,
+                                            iters=30):
+  """Benchmark single bprop step speed between GRUBlockCell vs GRUCell."""
+  tf.reset_default_graph()
+  with tf.Session(graph=tf.Graph()) as sess:
+    with tf.device("/cpu:0" if not use_gpu else "/gpu:0"):
+      initializer = tf.random_uniform_initializer(-1, 1, seed=1989)
+      # Inputs
+      x = vs.get_variable("x", [batch_size, input_size])
+      h = vs.get_variable("h", [batch_size, cell_size])
+
+      # Output from the basic GRU cell implementation.
+      with tf.variable_scope("basic", initializer=initializer):
+        output = tf.nn.rnn_cell.GRUCell(cell_size)(tf.identity(x),
+                                                   tf.identity(h))
+        sess.run([tf.initialize_all_variables()])
+        grad_output_wrt_input = tf.gradients([output], h)
+        basic_time_bprop = time_taken_by_op(grad_output_wrt_input, sess, iters)
+
+      # Output from the block GRU cell implementation.
+      with tf.variable_scope("block", initializer=initializer):
+        output = gru_ops.GRUBlockCell(cell_size)(tf.identity(x), tf.identity(h))
+        sess.run([tf.initialize_all_variables()])
+        grad_output_wrt_input = tf.gradients([output], h)
+        block_time_bprop = time_taken_by_op(grad_output_wrt_input, sess, iters)
+
+  performance_inference = (
+      basic_time_bprop - block_time_bprop) * 100 / basic_time_bprop
+
+  print(",".join([str(batch_size), str(cell_size), str(input_size), str(
+      use_gpu), str(basic_time_bprop), str(block_time_bprop), str(
+          performance_inference)]))
+
+  return basic_time_bprop, block_time_bprop
+
+
+class BenchmarkGRUBlock(tf.test.Benchmark):
+
+  def benchmarkTrainingBlockGRUVsGRUCell(self):
+    print("Comparison GRUBlockCell vs GRUCell")
+    print("--------------------------------------------------------------")
+    print("Training speed GRUBlockCell vs GRUCell")
+    print("batch_size, cell_size, input_size, time_steps, GPU, "
+          "basic_time_training, block_time_training, performance_training[%]")
+    iters = 10
+    for use_gpu in [True, False]:
+      for batch_size in [1, 32, 128]:
+        for cell_size in [128, 512]:
+          for input_size in [128, 512]:
+            for time_steps in [50]:
+              basic_time, block_time = training_gru_block_vs_gru_cell(
+                  batch_size, cell_size, input_size, time_steps, use_gpu, iters)
+              self.report_benchmark(
+                  name="GRUCell_training_time_BS%i_CS%i_IS%i_TS%i_gpu_%s" %
+                  (batch_size, cell_size, input_size, time_steps, use_gpu),
+                  iters=iters,
+                  wall_time=basic_time)
+              self.report_benchmark(
+                  name="GRUBlockCell_training_time_BS%i_CS%i_IS%i_TS%i_gpu_%s" %
+                  (batch_size, cell_size, input_size, time_steps, use_gpu),
+                  iters=iters,
+                  wall_time=block_time)
+
+  def benchmarkInferenceBlockGRUVsGRUCell(self):
+    print("--------------------------------------------------------------")
+    print("Inference speed GRUBlockCell vs GRUCell")
+    print(
+        "batch_size, cell_size, input_size, time_steps, GPU, "
+        "basic_time_inference, block_time_inference, performance_inference[%]")
+    iters = 10
+    for use_gpu in [True, False]:
+      for batch_size in [1, 32, 128]:
+        for cell_size in [128, 512]:
+          for input_size in [128, 512]:
+            for time_steps in [50]:
+              basic_time, block_time = inference_gru_block_vs_gru_cell(
+                  batch_size, cell_size, input_size, time_steps, use_gpu, iters)
+              self.report_benchmark(
+                  name="GRUCell_inference_time_BS%i_CS%i_IS%i_TS%i_gpu_%s" %
+                  (batch_size, cell_size, input_size, time_steps, use_gpu),
+                  iters=iters,
+                  wall_time=basic_time)
+              self.report_benchmark(
+                  name="GRUBlockCell_inference_time_BS%i_CS%i_IS%i_TS%i_gpu_%s"
+                  % (batch_size, cell_size, input_size, time_steps, use_gpu),
+                  iters=iters,
+                  wall_time=block_time)
+
+  def benchmarkSingleBpropStepBlockGRUVsGRUCell(self):
+    print("--------------------------------------------------------------")
+    print("Single bprop step speed GRUBlockCell vs GRUCell")
+    print("batch_size, cell_size, input_size, GPU, basic_time, "
+          "block_time, performance_inference[%]")
+    iters = 10
+    for use_gpu in [True, False]:
+      for batch_size in [1, 32, 128]:
+        for cell_size in [128, 512]:
+          for input_size in [128, 512]:
+            basic_time, block_time = single_bprop_step_gru_block_vs_gru_cell(
+                batch_size, cell_size, input_size, use_gpu, iters)
+            self.report_benchmark(
+                name="GRUCell_Bprop_single_step_time_BS%i_CS%i_IS%i_gpu_%s" %
+                (batch_size, cell_size, input_size, use_gpu),
+                iters=iters,
+                wall_time=basic_time)
+            self.report_benchmark(
+                name="GRUBlockCell_Bprop_single_step_time_BS%i_CS%i_IS%i_gpu_%s"
+                % (batch_size, cell_size, input_size, use_gpu),
+                iters=iters,
+                wall_time=block_time)
+
+    print("--------------------------------------------------------------")
 
 
 if __name__ == "__main__":

@@ -610,9 +610,14 @@ class RandomTreeGraphs(object):
     # Sample inputs.
     update_indices, feature_updates, threshold_updates = (
         self.training_ops.sample_inputs(
-            input_data, sparse_indices, sparse_values, sparse_shape,
+            input_data,
+            sparse_indices,
+            sparse_values,
+            sparse_shape,
+            input_weights,
             self.variables.node_to_accumulator_map,
-            input_leaves, self.variables.candidate_split_features,
+            input_leaves,
+            self.variables.candidate_split_features,
             self.variables.candidate_split_thresholds,
             split_initializations_per_input=(
                 self.params.split_initializations_per_input),

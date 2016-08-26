@@ -440,7 +440,8 @@ class SubGraphView(object):
     def print_list(name, iterable, get_name):
       if iterable:
         print("** {}[{}]:".format(name, len(iterable)), file=res)
-        print("\n".join([get_name(elem) for elem in iterable]), file=res)
+        print("\n".join(["  {}".format(get_name(elem)) for elem in iterable]),
+              file=res)
       else:
         print("** {}: empty".format(name), file=res)
 
