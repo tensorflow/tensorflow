@@ -996,6 +996,7 @@ cc_header_only_library(
 
 cc_header_only_library(
     name = "stream_executor_headers_lib",
+    visibility = ["//visibility:public"],
     deps = [
         ":stream_executor",
     ],
