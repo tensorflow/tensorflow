@@ -137,6 +137,86 @@ SquarePlusOne[T:{float, double, int32, int64}](x:T) -> (y:T) {
   EXPECT_EQ(DebugString(result.gdef), e2);
 }
 
+REGISTER_OP("HasDefaultType")
+    .Output("out: T")
+    .Attr("T: {float, double, int32, int64} = DT_FLOAT");
+
+// This verifies that a function using an op before a type attr (with
+// a default) is added, still works.  This is important for backwards
+// compatibilty.
+TEST(TFunc, MissingTypeAttrOld) {
+  auto fdef = FDH::Define(  // Create a FunctionDef using Function::Nodes.
+      // Name
+      "BackCompat",
+      // Args
+      {},
+      // Return values
+      {"y: float"},
+      // Attrs
+      {},
+      // Nodes
+      {// y = HasDefaultType(x), T missing, defaults to float
+       {{"y"}, "HasDefaultType", {}, {}}});
+
+  const char* e = R"P(
+BackCompat() -> (y:float) {
+  y = HasDefaultType()
+}
+)P";
+  EXPECT_EQ(DebugString(fdef), e);
+
+  InstantiationResult result;
+  TF_ASSERT_OK(
+      InstantiateFunction(fdef, InstantiateAttrValueMap{}, GetOpSig, &result));
+  // Should get T=float from Op's default.
+  const char* e2 = R"P(
+() -> (n0:float) {
+  n0 = HasDefaultType[T=float]()
+}
+)P";
+  EXPECT_EQ(result.arg_types, DataTypeVector());
+  EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
+  EXPECT_EQ(DebugString(result.gdef), e2);
+}
+
+TEST(TFunc, MissingTypeAttrNodeDef) {
+  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+      // Name
+      "BackCompat",
+      // Args
+      {},
+      // Return values
+      {"y: float"},
+      // Attrs
+      {},
+      // Nodes
+      {// y = HasDefaultType(x), T missing, defaults to float
+       {{"a"}, "HasDefaultType", {}, {}}},
+      // Returns
+      {{"y", "a:out:0"}});
+
+  const char* e = R"P(
+BackCompat() -> (y:float) {
+  a = HasDefaultType()
+  return y = a:out:0
+}
+)P";
+  EXPECT_EQ(DebugString(fdef), e);
+
+  InstantiationResult result;
+  TF_ASSERT_OK(
+      InstantiateFunction(fdef, InstantiateAttrValueMap{}, GetOpSig, &result));
+  // Should get T=float from Op's default.
+  const char* e2 = R"P(
+() -> (n0:float) {
+  n0 = HasDefaultType[T=float]()
+}
+)P";
+  EXPECT_EQ(result.arg_types, DataTypeVector());
+  EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
+  EXPECT_EQ(DebugString(result.gdef), e2);
+}
+
 // NOTE: This is the simplest Map op. It takes a f:T->U.
 REGISTER_OP("Map")
     .Input("x: N * T")

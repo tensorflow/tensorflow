@@ -356,8 +356,6 @@ Status InstantiateNode(const FunctionDef::Node& fnode,
     (*gnode->mutable_attr())[p.first] = p.second;
   }
 
-  AddDefaultsToNodeDef(*fnode_sig, gnode);
-
   return Status::OK();
 }
 
@@ -453,8 +451,6 @@ Status InstantiateNode(const NodeDef& fnode,
   for (const auto& p : attrs) {
     (*gnode->mutable_attr())[p.first] = p.second;
   }
-
-  AddDefaultsToNodeDef(*fnode_sig, gnode);
 
   return Status::OK();
 }
@@ -731,6 +727,21 @@ string Print(const GraphDef& gdef) {
   return out;
 }
 
+Status AddDefaultAttrs(const string& op, GetFunctionSignature get_function,
+                       InstantiateAttrValueMap* attrs) {
+  const OpDef* op_def = nullptr;
+  TF_RETURN_IF_ERROR(get_function(op, &op_def));
+  AttrSlice attr_slice(attrs);
+  for (const auto& attr_def : op_def->attr()) {
+    if (attr_def.has_default_value() && !attr_slice.Find(attr_def.name())) {
+      if (!attrs->insert({attr_def.name(), attr_def.default_value()}).second) {
+        return errors::Internal("Somehow duplicated: ", attr_def.name());
+      }
+    }
+  }
+  return Status::OK();
+}
+
 }  // end namespace
 
 Status InstantiateFunction(const FunctionDef& fdef,
@@ -742,6 +753,16 @@ Status InstantiateFunction(const FunctionDef& fdef,
   gdef->Clear();
 
   TF_RETURN_IF_ERROR(ValidateSignatureWithAttrs(sig, attr_values));
+
+  NameInfoIndex name_info;
+  Status s;
+  for (const OpDef::ArgDef& arg_def : sig.input_arg()) {
+    s = BuildInputArgIndex(arg_def, attr_values, &name_info, result);
+    if (!s.ok()) {
+      errors::AppendToMessage(&s, "In ", Print(arg_def));
+      return s;
+    }
+  }
 
   auto substitute = [&attr_values](const string& name, AttrValue* val) {
     auto iter = attr_values.find(name);
@@ -764,32 +785,14 @@ Status InstantiateFunction(const FunctionDef& fdef,
           return errors::InvalidArgument("Failed to bind all placeholders in ",
                                          SummarizeAttrValue(attr.second));
         }
-        CHECK(node_attrs[i].insert(attr).second);
-      }
-    }
-  } else {  // TODO(josh11b): Eventually remove this case.
-    node_attrs.resize(fdef.node_size());
-    for (int i = 0; i < fdef.node_size(); ++i) {
-      for (auto attr : fdef.node(i).attr()) {
-        if (!SubstitutePlaceholders(substitute, &attr.second)) {
-          return errors::InvalidArgument("Failed to bind all placeholders in ",
-                                         SummarizeAttrValue(attr.second));
+        if (!node_attrs[i].insert(attr).second) {
+          return errors::Internal("Somehow duplicated: ", attr.first);
         }
-        CHECK(node_attrs[i].insert(attr).second);
       }
+      TF_RETURN_IF_ERROR(
+          AddDefaultAttrs(fdef.node_def(i).op(), get_function, &node_attrs[i]));
     }
-  }
 
-  NameInfoIndex name_info;
-  Status s;
-  for (const OpDef::ArgDef& arg_def : sig.input_arg()) {
-    s = BuildInputArgIndex(arg_def, attr_values, &name_info, result);
-    if (!s.ok()) {
-      errors::AppendToMessage(&s, "In ", Print(arg_def));
-      return s;
-    }
-  }
-  if (fdef.node_def_size() > 0) {
     for (int i = 0; i < fdef.node_def_size(); ++i) {
       s = BuildNodeOutputIndex(fdef.node_def(i), node_attrs[i], get_function,
                                gdef->node_size() + i, &name_info);
@@ -819,6 +822,21 @@ Status InstantiateFunction(const FunctionDef& fdef,
       }
     }
   } else {  // TODO(josh11b): Eventually remove this case.
+    node_attrs.resize(fdef.node_size());
+    for (int i = 0; i < fdef.node_size(); ++i) {
+      for (auto attr : fdef.node(i).attr()) {
+        if (!SubstitutePlaceholders(substitute, &attr.second)) {
+          return errors::InvalidArgument("Failed to bind all placeholders in ",
+                                         SummarizeAttrValue(attr.second));
+        }
+        if (!node_attrs[i].insert(attr).second) {
+          return errors::Internal("Somehow duplicated: ", attr.first);
+        }
+      }
+      TF_RETURN_IF_ERROR(
+          AddDefaultAttrs(fdef.node(i).op(), get_function, &node_attrs[i]));
+    }
+
     for (int i = 0; i < fdef.node_size(); ++i) {
       s = BuildNodeOutputIndex(fdef.node(i), node_attrs[i], get_function,
                                gdef->node_size() + i, &name_info);
