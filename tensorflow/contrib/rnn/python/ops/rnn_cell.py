@@ -663,11 +663,14 @@ class GridLSTMCell(rnn_cell.RNNCell):
       freq_inputs.append(cur_input)
     return freq_inputs
 
+
 class ESNCell(rnn_cell.RNNCell):
   """Echo State Network Cell.
 
     Based on http://www.faculty.jacobs-university.de/hjaeger/pubs/EchoStatesTechRep.pdf
-    It doesn't consider output feedback, specifically it models just the reservoir.
+    Only the reservoir, the randomized recurrent layer, is modelled. The readout trainable layer
+    which map reservoir output to the target output is not implemented by this cell,
+    thus neither are feedback from readout to the reservoir (a quite common technique).
 
     Here a practical guide to use Echo State Networks:
     http://minds.jacobs-university.de/sites/default/files/uploads/papers/PracticalESN.pdf
