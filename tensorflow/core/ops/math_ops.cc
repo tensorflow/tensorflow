@@ -293,6 +293,13 @@ Computes the reciprocal of x element-wise.
 I.e., \\(y = 1 / x\\).
 )doc");
 
+REGISTER_OP("InvGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+Computes the gradient for the inverse of `x` wrt its input.
+
+Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`
+is the corresponding input gradient.
+)doc");
+
 REGISTER_OP("Square")
     .UNARY()
     .Doc(R"doc(
@@ -307,11 +314,25 @@ Computes square root of x element-wise.
 I.e., \\(y = \sqrt{x} = x^{1/2}\\).
 )doc");
 
+REGISTER_OP("SqrtGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+Computes the gradient for the sqrt of `x` wrt its input.
+
+Specifically, `grad = dy * 0.5 / y`, where `y = sqrt(x)`, and `dy`
+is the corresponding input gradient.
+)doc");
+
 REGISTER_OP("Rsqrt")
     .UNARY_COMPLEX()
     .Doc(R"doc(
 Computes reciprocal of square root of x element-wise.
 I.e., \\(y = 1 / \sqrt{x}\\).
+)doc");
+
+REGISTER_OP("RsqrtGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+Computes the gradient for the rsqrt of `x` wrt its input.
+
+Specifically, `grad = dy * -0.5 * y^3`, where `y = rsqrt(x)`, and `dy`
+is the corresponding input gradient.
 )doc");
 
 REGISTER_OP("Exp")

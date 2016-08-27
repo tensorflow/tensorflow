@@ -6957,6 +6957,36 @@ op {
   description: "I.e., \\\\(y = 1 / x\\\\)."
 }
 op {
+  name: "InvGrad"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the gradient for the inv of `x` wrt its input."
+  description: "Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`\nis the corresponding input gradient."
+}
+op {
   name: "InvertPermutation"
   input_arg {
     name: "x"
@@ -11748,6 +11778,36 @@ op {
   description: "I.e., \\\\(y = 1 / \\sqrt{x}\\\\)."
 }
 op {
+  name: "RsqrtGrad"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the gradient for the rsqrt of `x` wrt its input."
+  description: "Specifically, `grad = dy * -0.5 * y^3`, where `y = rsqrt(x)`, and `dy`\nis the corresponding input gradient."
+}
+op {
   name: "SampleDistortedBoundingBox"
   input_arg {
     name: "image_size"
@@ -15031,6 +15091,36 @@ op {
   }
   summary: "Computes square root of x element-wise."
   description: "I.e., \\\\(y = \\sqrt{x} = x^{1/2}\\\\)."
+}
+op {
+  name: "SqrtGrad"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes the gradient for the sqrt of `x` wrt its input."
+  description: "Specifically, `grad = dy * 0.5 / y`, where `y = sqrt(x)`, and `dy`\nis the corresponding input gradient."
 }
 op {
   name: "Square"
