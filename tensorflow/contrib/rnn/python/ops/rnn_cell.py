@@ -714,9 +714,7 @@ class ESNCell(rnn_cell.RNNCell):
 
       wr = math_ops.mul(wr, connectivity_mask)
 
-      wr_norm2 = math_ops.sqrt(
-        math_ops.reduce_sum(
-          math_ops.square(wr)))
+      wr_norm2 = math_ops.sqrt(math_ops.reduce_sum(math_ops.square(wr)))
 
       is_norm_0 = math_ops.cast(math_ops.equal(wr_norm2, 0), dtype)
 
