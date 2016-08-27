@@ -51,6 +51,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import saver
@@ -747,7 +748,8 @@ class Estimator(BaseEstimator):
                model_fn=None,
                model_dir=None,
                config=None,
-               params=None):
+               params=None,
+               weight_column_name=None):
     """Constructs an Estimator instance.
 
     Args:
@@ -780,6 +782,9 @@ class Estimator(BaseEstimator):
       config: Configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
+      weight_column_name: A string defining feature column name representing
+        weights. It is used to down weight or boost examples during training. It
+        will be multiplied by the loss of the example.
 
     Raises:
       ValueError: parameters of `model_fn` don't match `params`.
@@ -792,10 +797,17 @@ class Estimator(BaseEstimator):
         raise ValueError('Estimator\'s model_fn (%s) has less than 4 '
                          'arguments, but not None params (%s) are passed.' %
                          (model_fn, params))
-      if params is None and 'params' in model_fn_args:
+      if (params is None and weight_column_name is None and
+          'params' in model_fn_args):
         logging.warning('Estimator\'s model_fn (%s) has includes params '
                         'argument, but params are not passed to Estimator.',
                         model_fn)
+    self.weight_column_name = weight_column_name
+    if weight_column_name is not None:
+      if params is None:
+        params = {'weight_column_name': weight_column_name}
+      else:
+        params['weight_column_name'] = weight_column_name
     self._model_fn = model_fn
     self.params = params
 
@@ -808,6 +820,11 @@ class Estimator(BaseEstimator):
       else:
         return self._model_fn(features, targets, mode=mode)
     return self._model_fn(features, targets)
+
+  def _get_weight_tensor(self, features):
+    if not self.weight_column_name:
+      return None
+    return math_ops.to_float(features[self.weight_column_name])
 
   def _get_train_ops(self, features, targets):
     """Method that builds model graph and returns trainer ops.
@@ -855,6 +872,7 @@ class Estimator(BaseEstimator):
     predictions, loss, _ = self._call_model_fn(features, targets, ModeKeys.EVAL)
     result = {'loss': metrics_lib.streaming_mean(loss)}
 
+    weights = self._get_weight_tensor(features)
     metrics = metrics or {}
     if isinstance(targets, dict) and len(targets) == 1:
       # Unpack single target into just tensor.
@@ -870,10 +888,12 @@ class Estimator(BaseEstimator):
         # Here are two options: targets are single Tensor or a dict.
         if isinstance(targets, dict) and name[1] in targets:
           # If targets are dict and the prediction name is in it, apply metric.
-          result[name[0]] = metric(predictions[name[1]], targets[name[1]])
+          result[name[0]] = metrics_lib.run_metric(
+              metric, predictions[name[1]], targets[name[1]], weights)
         else:
           # Otherwise pass the targets to the metric.
-          result[name[0]] = metric(predictions[name[1]], targets)
+          result[name[0]] = metrics_lib.run_metric(
+              metric, predictions[name[1]], targets, weights)
       else:
         # Single head metrics.
         if isinstance(predictions, dict):
@@ -881,7 +901,8 @@ class Estimator(BaseEstimator):
               'Metrics passed provide only name, no prediction, '
               'but predictions are dict. '
               'Metrics: %s, Targets: %s.' % (metrics, targets))
-        result[name] = metric(predictions, targets)
+        result[name] = metrics_lib.run_metric(
+            metric, predictions, targets, weights)
     return result
 
   def _get_predict_ops(self, features):
