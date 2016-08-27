@@ -45,7 +45,7 @@ class RunConfig(object):
                cluster_spec=None,
                tf_random_seed=None,
                save_summary_steps=100,
-               save_checkpoints_secs=60,
+               save_checkpoints_secs=600,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
                job_name=None,
