@@ -150,20 +150,23 @@ Status GrpcServer::Init() {
 
   GrpcChannelSpec channel_spec;
   for (const auto& job : server_def_.cluster().job()) {
-    int max_task_id = -1;
+    std::map<int, string> host_ports;
     for (const auto& task : job.tasks()) {
-      max_task_id = std::max(max_task_id, task.first);
-    }
-    std::vector<string> host_ports(max_task_id + 1);
-    for (const auto& task : job.tasks()) {
+      string& host_port = host_ports[task.first];
+      if (!host_port.empty()) {
+        return errors::InvalidArgument("JobDef for job \"", job.name(),
+                                       "\" specified two addresses for task \"",
+                                       task.first, "\": ", host_port, " and ",
+                                       task.second);
+      }
       if (job.name() == server_def_.job_name() &&
           task.first == server_def_.task_index()) {
-        host_ports[task.first] = strings::StrCat("localhost:", bound_port_);
+        host_port = strings::StrCat("localhost:", bound_port_);
       } else {
-        host_ports[task.first] = task.second;
+        host_port = task.second;
       }
     }
-    channel_spec.AddHostPortsJob(job.name(), host_ports, host_ports.size());
+    channel_spec.AddHostPortsJob(job.name(), host_ports);
   }
 
   std::unique_ptr<GrpcChannelCache> channel_cache(NewGrpcChannelCache(

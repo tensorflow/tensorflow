@@ -295,6 +295,14 @@ class GrpcServerTest(tf.test.TestCase):
     # self.assertEqual(1.0, sess.run(a))
     # self.assertEqual(2.0, sess.run(b))
 
+  def testSparseJob(self):
+    server = tf.train.Server({"local": {37: "localhost:0"}})
+    with tf.device("/job:local/task:37"):
+      a = tf.constant(1.0)
+
+    with tf.Session(server.target) as sess:
+      self.assertEqual(1.0, sess.run(a))
+
 
 class ServerDefTest(tf.test.TestCase):
 
@@ -356,6 +364,28 @@ class ServerDefTest(tf.test.TestCase):
     cluster_spec = tf.train.ClusterSpec(cluster_def)
     self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
 
+  def testDenseAndSparseJobs(self):
+    cluster_def = tf.train.ClusterSpec(
+        {"ps": ["ps0:2222", "ps1:2222"],
+         "worker": {0: "worker0:2222", 2: "worker2:2222"}}
+    ).as_cluster_def()
+    server_def = tf.train.ServerDef(
+        cluster=cluster_def, job_name="worker", task_index=2, protocol="grpc")
+
+    self.assertProtoEquals("""
+    cluster {
+      job { name: 'ps' tasks { key: 0 value: 'ps0:2222' }
+                       tasks { key: 1 value: 'ps1:2222' } }
+      job { name: 'worker' tasks { key: 0 value: 'worker0:2222' }
+                           tasks { key: 2 value: 'worker2:2222' } }
+    }
+    job_name: 'worker' task_index: 2 protocol: 'grpc'
+    """, server_def)
+
+    # Verifies round trip from Proto->Spec->Proto is correct.
+    cluster_spec = tf.train.ClusterSpec(cluster_def)
+    self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
+
 
 class ClusterSpecTest(tf.test.TestCase):
 
@@ -382,6 +412,44 @@ class ClusterSpecTest(tf.test.TestCase):
         expected_proto,
         tf.train.ClusterSpec(cluster_spec.as_dict()).as_cluster_def())
 
+  def testClusterSpecAccessors(self):
+    original_dict = {
+        "ps": ["ps0:2222", "ps1:2222"],
+        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"],
+        "sparse": {0: "sparse0:2222", 3: "sparse3:2222"}}
+    cluster_spec = tf.train.ClusterSpec(original_dict)
+
+    self.assertEqual(original_dict, cluster_spec.as_dict())
+
+    self.assertEqual(2, cluster_spec.num_tasks("ps"))
+    self.assertEqual(3, cluster_spec.num_tasks("worker"))
+    self.assertEqual(2, cluster_spec.num_tasks("sparse"))
+    with self.assertRaises(ValueError):
+      cluster_spec.num_tasks("unknown")
+
+    self.assertEqual("ps0:2222", cluster_spec.task_address("ps", 0))
+    self.assertEqual("sparse0:2222", cluster_spec.task_address("sparse", 0))
+    with self.assertRaises(ValueError):
+      cluster_spec.task_address("unknown", 0)
+    with self.assertRaises(ValueError):
+      cluster_spec.task_address("sparse", 2)
+
+    self.assertEqual([0, 1], cluster_spec.task_indices("ps"))
+    self.assertEqual([0, 1, 2], cluster_spec.task_indices("worker"))
+    self.assertEqual([0, 3], cluster_spec.task_indices("sparse"))
+    with self.assertRaises(ValueError):
+      cluster_spec.task_indices("unknown")
+
+    # NOTE(mrry): `ClusterSpec.job_tasks()` is not recommended for use
+    # with sparse jobs.
+    self.assertEqual(["ps0:2222", "ps1:2222"], cluster_spec.job_tasks("ps"))
+    self.assertEqual(["worker0:2222", "worker1:2222", "worker2:2222"],
+                     cluster_spec.job_tasks("worker"))
+    self.assertEqual(["sparse0:2222", None, None, "sparse3:2222"],
+                     cluster_spec.job_tasks("sparse"))
+    with self.assertRaises(ValueError):
+      cluster_spec.job_tasks("unknown")
+
   def testEmptyClusterSpecIsFalse(self):
     self.assertFalse(tf.train.ClusterSpec({}))
 
@@ -393,6 +461,9 @@ class ClusterSpecTest(tf.test.TestCase):
     self.assertEquals(
         tf.train.ClusterSpec({"job": ["host:2222"]}),
         tf.train.ClusterSpec({"job": ["host:2222"]}),)
+    self.assertEquals(
+        tf.train.ClusterSpec({"job": {0: "host:2222"}}),
+        tf.train.ClusterSpec({"job": ["host:2222"]}))
 
   def testNe(self):
     self.assertNotEquals(
