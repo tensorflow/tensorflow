@@ -166,7 +166,7 @@ class WishartCholeskyTest(tf.test.TestCase):
           chol(x[2]),
           chol(x[3])])
 
-      # Since Wishart wasn't added to SciPy until 0.16, we'll spot check some
+      # Since Wishart wasn"t added to SciPy until 0.16, we'll spot check some
       # pdfs with hard-coded results from upstream SciPy.
 
       log_prob_df_seq = np.array([
@@ -294,14 +294,14 @@ class WishartCholeskyTest(tf.test.TestCase):
 
       # Check expensive, deferred assertions.
       with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
-                                   'cannot be less than'):
+                                   "cannot be less than"):
         chol_w = distributions.WishartCholesky(df=df_deferred,
                                                scale=chol_scale_deferred)
         sess.run(chol_w.log_prob(np.asarray(x, dtype=np.float32)),
                  feed_dict={df_deferred: 2., chol_scale_deferred: chol_scale})
 
       with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
-                                   'LLT decomposition was not successful'):
+                                   "LLT decomposition was not successful"):
         chol_w = distributions.WishartFull(df=df_deferred,
                                            scale=chol_scale_deferred)
         # np.ones((3, 3)) is not positive, definite.
@@ -316,21 +316,21 @@ class WishartCholeskyTest(tf.test.TestCase):
                                              validate_args=False)
       sess.run(chol_w.log_prob(np.asarray(x, dtype=np.float32)),
                feed_dict={df_deferred: 4, chol_scale_deferred: chol_scale})
-      # Bogus log_prob, but since we have no checks running... c'est la vie.
+      # Bogus log_prob, but since we have no checks running... c"est la vie.
       sess.run(chol_w.log_prob(np.asarray(x, dtype=np.float32)),
                feed_dict={df_deferred: 4, chol_scale_deferred: np.ones((3, 3))})
 
       # Still has these assertions because they're resolveable at graph
       # construction
-      with self.assertRaisesRegexp(ValueError, 'cannot be less than'):
+      with self.assertRaisesRegexp(ValueError, "cannot be less than"):
         chol_w = distributions.WishartCholesky(
             df=2, scale=chol_scale,
             validate_args=False)
-      with self.assertRaisesRegexp(TypeError, 'not a floating-point type'):
+      with self.assertRaisesRegexp(TypeError, "not a floating-point type"):
         chol_w = distributions.WishartCholesky(
             df=4., scale=np.asarray(chol_scale, dtype=np.int32),
             validate_args=False)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

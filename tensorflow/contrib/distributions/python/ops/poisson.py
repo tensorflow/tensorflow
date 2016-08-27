@@ -121,7 +121,7 @@ class Poisson(distribution.Distribution):
 
   def _assert_valid_sample(self, x, check_integer=True):
     if not self.validate_args: return x
-    with ops.name_scope('check_x', values=[x]):
+    with ops.name_scope("check_x", values=[x]):
       dependencies = [check_ops.assert_non_negative(x)]
       if check_integer:
         dependencies += [distribution_util.assert_integer_form(

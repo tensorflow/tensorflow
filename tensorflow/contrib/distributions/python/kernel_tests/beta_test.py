@@ -77,11 +77,11 @@ class BetaTest(tf.test.TestCase):
       dist.pdf([.1, .3, .6]).eval()
       dist.pdf([.2, .3, .5]).eval()
       # Either condition can trigger.
-      with self.assertRaisesOpError('(Condition x > 0.*|Condition x < y.*)'):
+      with self.assertRaisesOpError("(Condition x > 0.*|Condition x < y.*)"):
         dist.pdf([-1., 1, 1]).eval()
-      with self.assertRaisesOpError('Condition x.*'):
+      with self.assertRaisesOpError("Condition x.*"):
         dist.pdf([0., 1, 1]).eval()
-      with self.assertRaisesOpError('Condition x < y.*'):
+      with self.assertRaisesOpError("Condition x < y.*"):
         dist.pdf([.1, .2, 1.2]).eval()
 
   def testPdfTwoBatches(self):
@@ -184,13 +184,13 @@ class BetaTest(tf.test.TestCase):
       a = np.array([1., 2, 3])
       b = np.array([2., 4, 1.2])
       dist = tf.contrib.distributions.Beta(a, b)
-      with self.assertRaisesOpError('Condition x < y.*'):
+      with self.assertRaisesOpError("Condition x < y.*"):
         dist.mode().eval()
 
       a = np.array([2., 2, 3])
       b = np.array([1., 4, 1.2])
       dist = tf.contrib.distributions.Beta(a, b)
-      with self.assertRaisesOpError('Condition x < y.*'):
+      with self.assertRaisesOpError("Condition x < y.*"):
         dist.mode().eval()
 
   def testBetaMode_enable_allow_nan_stats(self):
@@ -262,5 +262,5 @@ class BetaTest(tf.test.TestCase):
           stats.beta.mean(a, b)[1, :],
           atol=1e-1)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()
