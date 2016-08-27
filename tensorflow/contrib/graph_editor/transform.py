@@ -20,9 +20,10 @@ from __future__ import division
 from __future__ import print_function
 
 from copy import deepcopy
-import types
 
 from six import iteritems
+from six import iterkeys
+from six import string_types
 from six import StringIO
 
 from tensorflow.contrib.graph_editor import edit
@@ -274,7 +275,7 @@ class Transformer(object):
         the transformed tensor/operation (or None if no match is found).
       """
       transformed_map = self._get_transformed_map(original_top)
-      if isinstance(original_top, str):
+      if isinstance(original_top, string_types):
         for original, transformed in iteritems(transformed_map):
           if original.name == original_top:
             return transformed
@@ -293,7 +294,7 @@ class Transformer(object):
         the original tensor/operation (or None if no match is found).
       """
       transformed_map = self._get_transformed_map(transformed_top)
-      if isinstance(transformed_top, types.StringTypes):
+      if isinstance(transformed_top, string_types):
         finder = lambda transformed: transformed.name == transformed_top
       else:
         finder = lambda transformed: transformed == transformed_top
@@ -686,7 +687,7 @@ def graph_replace(target_ts, replacement_ts, dst_scope="",
   # control dependencies.
   graph = util.get_unique_graph(flatten_target_ts, check_types=(tf_ops.Tensor))
   control_ios = util.ControlOutputs(graph)
-  ops = select.get_walks_intersection_ops(replacement_ts.keys(),
+  ops = select.get_walks_intersection_ops(list(iterkeys(replacement_ts)),
                                           flatten_target_ts,
                                           control_ios=control_ios)
   if not ops:

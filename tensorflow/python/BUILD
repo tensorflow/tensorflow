@@ -79,6 +79,10 @@ tf_py_test(
         ":platform",
         ":platform_test",
     ],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 tf_py_test(
@@ -88,6 +92,10 @@ tf_py_test(
     additional_deps = [
         ":platform",
         ":platform_test",
+    ],
+    tags = [
+        "manual",
+        "notap",
     ],
 )
 

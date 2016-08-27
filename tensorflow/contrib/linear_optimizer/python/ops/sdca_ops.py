@@ -150,24 +150,20 @@ class _ShardedMutableHashTable(lookup_ops.LookupInterface):
 
     return control_flow_ops.group(*return_values)
 
-  def values_reduce_sum(self, dtype=dtypes.float64, name=None):
-    """Computes reduce_sum reducing dimension 0 across all values in all shards.
-
-    Args:
-      name: A name for the operation (optional).
+  def export_sharded(self, name=None):
+    """Returns lists of the keys and values tensors in the sharded table.
 
     Returns:
-      A tensor with the sum across all values in the same shape as the table's
-      value shape.
+      A pair of lists with the first list containing the key tensors and the
+        second list containing the value tensors from each shard.
     """
-    # TODO(andreasst): consider replacing with something like export_sharded
-    # and doing the sum in SdcaModel.
-    sums = []
+    keys_list = []
+    values_list = []
     for table_shard in self._table_shards:
-      _, exported_values = table_shard.export(name=name)
-      sums.append(math_ops.reduce_sum(
-          math_ops.cast(exported_values, dtype), 0))
-    return math_ops.add_n(sums)
+      exported_keys, exported_values = table_shard.export(name=name)
+      keys_list.append(exported_keys)
+      values_list.append(exported_values)
+    return keys_list, values_list
 
 
 class SparseFeatureColumn(object):
@@ -419,21 +415,29 @@ class SdcaModel(object):
 
   def _l1_loss(self):
     """Computes the (un-normalized) l1 loss of the model."""
-    with name_scope('l1_loss'):
-      sum = 0.0
+    with name_scope('sdca/l1_loss'):
+      sums = []
       for name in ['sparse_features_weights', 'dense_features_weights']:
         for weights in self._convert_n_to_tensor(self._variables[name]):
-          sum += math_ops.reduce_sum(math_ops.abs(weights))
+          with ops.device(weights.device):
+            sums.append(
+                math_ops.reduce_sum(
+                    math_ops.abs(math_ops.cast(weights, dtypes.float64))))
+      sum = math_ops.add_n(sums)
       # SDCA L1 regularization cost is: l1 * sum(|weights|)
       return self._options['symmetric_l1_regularization'] * sum
 
   def _l2_loss(self, l2):
     """Computes the (un-normalized) l2 loss of the model."""
-    with name_scope('l2_loss'):
-      sum = 0.0
+    with name_scope('sdca/l2_loss'):
+      sums = []
       for name in ['sparse_features_weights', 'dense_features_weights']:
         for weights in self._convert_n_to_tensor(self._variables[name]):
-          sum += math_ops.reduce_sum(math_ops.square(weights))
+          with ops.device(weights.device):
+            sums.append(
+                math_ops.reduce_sum(
+                    math_ops.square(math_ops.cast(weights, dtypes.float64))))
+      sum = math_ops.add_n(sums)
       # SDCA L2 regularization cost is: l2 * sum(weights^2) / 2
       return l2 * sum / 2.0
 
@@ -589,16 +593,23 @@ class SdcaModel(object):
       An Operation that computes the approximate duality gap over all
       examples.
     """
-    summed_values = self._hashtable.values_reduce_sum()
-    primal_loss = summed_values[1]
-    dual_loss = summed_values[2]
-    example_weights = summed_values[3]
-    # TODO(andreasst): what about handle examples_weights == 0?
-    return (
-        primal_loss + dual_loss + math_ops.to_double(self._l1_loss()) +
-        (2.0 *
-         math_ops.to_double(self._l2_loss(self._symmetric_l2_regularization())))
-    ) / example_weights
+    with name_scope('sdca/approximate_duality_gap'):
+      _, values_list = self._hashtable.export_sharded()
+      shard_sums = []
+      for values in values_list:
+        with ops.device(values.device):
+          shard_sums.append(
+              math_ops.reduce_sum(math_ops.cast(values, dtypes.float64), 0))
+      summed_values = math_ops.add_n(shard_sums)
+
+      primal_loss = summed_values[1]
+      dual_loss = summed_values[2]
+      example_weights = summed_values[3]
+      # Note: we return NaN if there are no weights or all weights are 0, e.g.
+      # if no examples have been processed
+      return (primal_loss + dual_loss + self._l1_loss() +
+              (2.0 * self._l2_loss(self._symmetric_l2_regularization()))
+             ) / example_weights
 
   def unregularized_loss(self, examples):
     """Add operations to compute the loss (without the regularization loss).
@@ -617,9 +628,12 @@ class SdcaModel(object):
                            'sparse_features', 'dense_features'], examples)
     self._assertList(['sparse_features', 'dense_features'], examples)
     with name_scope('sdca/unregularized_loss'):
-      predictions = self._linear_predictions(examples)
-      labels = convert_to_tensor(examples['example_labels'])
-      weights = convert_to_tensor(examples['example_weights'])
+      predictions = math_ops.cast(
+          self._linear_predictions(examples), dtypes.float64)
+      labels = math_ops.cast(
+          convert_to_tensor(examples['example_labels']), dtypes.float64)
+      weights = math_ops.cast(
+          convert_to_tensor(examples['example_weights']), dtypes.float64)
 
       if self._options['loss_type'] == 'logistic_loss':
         return math_ops.reduce_sum(math_ops.mul(
@@ -670,4 +684,5 @@ class SdcaModel(object):
           # (as specified by the user) and *not*
           # self._symmetric_l2_regularization().
           self._l2_loss(self._options['symmetric_l2_regularization'])) /
-              math_ops.reduce_sum(weights) + self.unregularized_loss(examples))
+              math_ops.reduce_sum(math_ops.cast(weights, dtypes.float64)) +
+              self.unregularized_loss(examples))
