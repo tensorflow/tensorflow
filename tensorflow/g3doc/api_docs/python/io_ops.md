@@ -1934,6 +1934,13 @@ The list of names for each component of a queue element.
 The underlying queue reference.
 
 
+- - -
+
+#### `tf.QueueBase.shapes` {#QueueBase.shapes}
+
+The list of shapes for each component of a queue element.
+
+
 
 - - -
 

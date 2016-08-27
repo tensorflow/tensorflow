@@ -63,4 +63,8 @@ git clone https://github.com/google/gemmlowp.git gemmlowp
 git clone https://github.com/google/protobuf.git protobuf
 git clone https://github.com/google/googletest.git googletest
 
+# TODO(satok): Remove this once protobuf/autogen.sh is fixed.
+replace_by_sed 's#https://googlemock.googlecode.com/files/gmock-1.7.0.zip#http://download.tensorflow.org/deps/gmock-1.7.0.zip#' \
+protobuf/autogen.sh
+
 echo "download_dependencies.sh completed successfully."

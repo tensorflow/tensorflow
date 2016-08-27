@@ -416,8 +416,8 @@ def inception_v3_base(inputs,
 
 def inception_v3(inputs,
                  num_classes=1000,
-                 dropout_keep_prob=0.8,
                  is_training=True,
+                 dropout_keep_prob=0.8,
                  min_depth=16,
                  depth_multiplier=1.0,
                  prediction_fn=slim.softmax,
@@ -441,8 +441,8 @@ def inception_v3(inputs,
   Args:
     inputs: a tensor of size [batch_size, height, width, channels].
     num_classes: number of predicted classes.
-    dropout_keep_prob: the percentage of activation values that are retained.
     is_training: whether is training or not.
+    dropout_keep_prob: the percentage of activation values that are retained.
     min_depth: Minimum depth value (number of channels) for all convolution ops.
       Enforced when depth_multiplier < 1, and not an active constraint when
       depth_multiplier >= 1.
@@ -555,14 +555,12 @@ def _reduced_kernel_size_for_small_input(input_tensor, kernel_size):
   return kernel_size_out
 
 
-def inception_v3_arg_scope(is_training=True,
-                           weight_decay=0.00004,
+def inception_v3_arg_scope(weight_decay=0.00004,
                            stddev=0.1,
                            batch_norm_var_collection='moving_vars'):
   """Defines the default InceptionV3 arg scope.
 
   Args:
-    is_training: Whether or not we're training the model.
     weight_decay: The weight decay to use for regularizing the model.
     stddev: The standard deviation of the trunctated normal weight initializer.
     batch_norm_var_collection: The name of the collection for the batch norm
@@ -572,11 +570,12 @@ def inception_v3_arg_scope(is_training=True,
     An `arg_scope` to use for the inception v3 model.
   """
   batch_norm_params = {
-      'is_training': is_training,
       # Decay for the moving averages.
       'decay': 0.9997,
       # epsilon to prevent 0s in variance.
       'epsilon': 0.001,
+      # collection containing update_ops.
+      'updates_collections': tf.GraphKeys.UPDATE_OPS,
       # collection containing the moving mean and moving variance.
       'variables_collections': {
           'beta': None,

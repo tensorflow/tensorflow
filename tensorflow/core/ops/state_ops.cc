@@ -19,7 +19,7 @@ limitations under the License.
 namespace tensorflow {
 
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("Variable")
     .Output("ref: Ref(dtype)")
@@ -69,7 +69,7 @@ REGISTER_OP("TemporaryVariable")
     .SetShapeFn([](InferenceContext* c) {
       TensorShapeProto shape_proto;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_proto));
-      const Shape* output;
+      ShapeHandle output;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &output));
       c->set_output(0, output);
       return Status::OK();
@@ -201,12 +201,12 @@ output_ref:= Same as "ref".  Returned as a convenience for operations that want
 namespace {
 
 Status ScatterUpdateShape(InferenceContext* c) {
-  const Shape* var_shape = c->input(0);
-  const Shape* indices_shape = c->input(1);
+  ShapeHandle var_shape = c->input(0);
+  ShapeHandle indices_shape = c->input(1);
 
-  const Shape* unused_updates_shape;
-  const Shape* concat;
-  const Shape* var_subshape;
+  ShapeHandle unused_updates_shape;
+  ShapeHandle concat;
+  ShapeHandle var_subshape;
   TF_RETURN_IF_ERROR(c->Subshape(var_shape, 1, &var_subshape));
   TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, var_subshape, &concat));
   TF_RETURN_IF_ERROR(c->Merge(c->input(2), concat, &unused_updates_shape));
@@ -354,7 +354,7 @@ REGISTER_OP("CountUpTo")
     .Attr("limit: int")
     .Attr("T: {int32, int64}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* output;
+      ShapeHandle output;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &output));
       c->set_output(0, output);
       return Status::OK();

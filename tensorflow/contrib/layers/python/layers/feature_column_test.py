@@ -52,6 +52,55 @@ class FeatureColumnTest(tf.test.TestCase):
     self.assertEqual(b.dimension, 4)
     self.assertEqual(b.combiner, "mean")
 
+  def testSharedEmbeddingColumn(self):
+    a1 = tf.contrib.layers.sparse_column_with_keys(
+        "a1", ["marlo", "omar", "stringer"])
+    a2 = tf.contrib.layers.sparse_column_with_keys(
+        "a2", ["marlo", "omar", "stringer"])
+    b = tf.contrib.layers.shared_embedding_columns(
+        [a1, a2], dimension=4, combiner="mean")
+    self.assertEqual(len(b), 2)
+    self.assertEqual(b[0].shared_embedding_name, "a1_a2_shared_embedding")
+    self.assertEqual(b[1].shared_embedding_name, "a1_a2_shared_embedding")
+
+    # Create a sparse id tensor for a1.
+    input_tensor_c1 = tf.SparseTensor(indices=[[0, 0], [1, 1], [2, 2]],
+                                      values=[0, 1, 2], shape=[3, 3])
+    # Create a sparse id tensor for a2.
+    input_tensor_c2 = tf.SparseTensor(indices=[[0, 0], [1, 1], [2, 2]],
+                                      values=[0, 1, 2], shape=[3, 3])
+    with tf.variable_scope("run_1"):
+      b1 = b[0].to_dnn_input_layer(input_tensor_c1)
+      b2 = b[1].to_dnn_input_layer(input_tensor_c2)
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      b1_value = b1.eval()
+      b2_value = b2.eval()
+    for i in range(len(b1_value)):
+      self.assertAllClose(b1_value[i], b2_value[i])
+
+    # Test the case when a shared_embedding_name is explictly specified.
+    d = tf.contrib.layers.shared_embedding_columns(
+        [a1, a2], dimension=4, combiner="mean",
+        shared_embedding_name="my_shared_embedding")
+    # a3 is a completely different sparse column with a1 and a2, but since the
+    # same shared_embedding_name is passed in, a3 will have the same embedding
+    # as a1 and a2
+    a3 = tf.contrib.layers.sparse_column_with_keys(
+        "a3", ["cathy", "tom", "anderson"])
+    e = tf.contrib.layers.shared_embedding_columns(
+        [a3], dimension=4, combiner="mean",
+        shared_embedding_name="my_shared_embedding")
+    with tf.variable_scope("run_2"):
+      d1 = d[0].to_dnn_input_layer(input_tensor_c1)
+      e1 = e[0].to_dnn_input_layer(input_tensor_c1)
+    with self.test_session() as sess:
+      sess.run(tf.initialize_all_variables())
+      d1_value = d1.eval()
+      e1_value = e1.eval()
+    for i in range(len(d1_value)):
+      self.assertAllClose(d1_value[i], e1_value[i])
+
   def testRealValuedColumn(self):
     a = tf.contrib.layers.real_valued_column("aaa")
     self.assertEqual(a.name, "aaa")
@@ -418,17 +467,22 @@ class FeatureColumnTest(tf.test.TestCase):
                                    values=[0, 1, 2, 3],
                                    shape=[4, 4])
 
-    # Invoking 'crossed_col.to_weighted_sum' will create the crossed column
-    # weights variable.
+    # Invoking 'weighted_sum_from_feature_columns' will create the crossed
+    # column weights variable.
     with tf.variable_scope("run_1"):
       with tf.variable_scope(crossed_col.name):
         # Returns looked up column weights which is same as crossed column
         # weights as well as actual references to weights variables.
-        col_weights, weights = crossed_col.to_weighted_sum(input_tensor)
+        _, col_weights, _ = (
+            tf.contrib.layers.weighted_sum_from_feature_columns(
+                {sparse_col_1.name: input_tensor,
+                 sparse_col_2.name: input_tensor},
+                [crossed_col],
+                1))
         # Update the weights since default initializer initializes all weights
         # to 0.0.
-        for weight in weights:
-          assign_op = tf.assign(weight, weight + 0.5)
+        for weight in col_weights.values():
+          assign_op = tf.assign(weight[0], weight[0] + 0.5)
 
     save = tf.train.Saver()
     checkpoint_path = os.path.join(self.get_temp_dir(), "model.ckpt")
@@ -436,21 +490,28 @@ class FeatureColumnTest(tf.test.TestCase):
     with self.test_session() as sess:
       sess.run(tf.initialize_all_variables())
       sess.run(assign_op)
-      saved_col_weights = col_weights.eval()
+      saved_col_weights = col_weights[crossed_col][0].eval()
       save.save(sess, checkpoint_path)
 
     crossed_col_initialized = tf.contrib.layers.crossed_column(
         columns=[sparse_col_1, sparse_col_2],
         hash_bucket_size=4,
         ckpt_to_load_from=checkpoint_path,
-        tensor_name_in_ckpt="run_1/col_1_X_col_2/weights")
+        tensor_name_in_ckpt=("run_1/col_1_X_col_2/"
+                             "weighted_sum_from_feature_columns/"
+                             "col_1_X_col_2/weights"))
 
     with tf.variable_scope("run_2"):
       # This will initialize the crossed column weights from provided checkpoint
       # and return a [4, 1] tensor which is same as weights variable. Since we
       # won't modify weights, this should be same as 'saved_col_weights'.
-      col_weights_from_ckpt, _ = crossed_col_initialized.to_weighted_sum(
-          input_tensor)
+      _, col_weights, _ = (
+          tf.contrib.layers.weighted_sum_from_feature_columns(
+              {sparse_col_1.name: input_tensor,
+               sparse_col_2.name: input_tensor},
+              [crossed_col_initialized],
+              1))
+      col_weights_from_ckpt = col_weights[crossed_col_initialized][0]
 
     with self.test_session() as sess:
       sess.run(tf.initialize_all_variables())

@@ -93,7 +93,7 @@ def register_unary_op(registered_name, operation, ignore_dtype=None):
     return self.return_type(result)
 
   cls = type(operation.__name__,
-             (transform.Transform,),
+             (transform.TensorFlowTransform,),
              {"name": name,
               "__doc__": doc,
               "input_valency": input_valency,

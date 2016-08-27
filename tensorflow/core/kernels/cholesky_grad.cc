@@ -22,10 +22,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <typename Scalar, bool SupportsBatchOperation>
-class CholeskyGrad : public LinearAlgebraOp<Scalar, SupportsBatchOperation> {
+template <typename Scalar>
+class CholeskyGrad : public LinearAlgebraOp<Scalar> {
  public:
-  typedef LinearAlgebraOp<Scalar, SupportsBatchOperation> Base;
+  typedef LinearAlgebraOp<Scalar> Base;
 
   explicit CholeskyGrad(OpKernelConstruction* context) : Base(context) {}
 
@@ -156,8 +156,9 @@ class CholeskyGrad : public LinearAlgebraOp<Scalar, SupportsBatchOperation> {
   }
 };
 
-REGISTER_LINALG_OP("CholeskyGrad", (CholeskyGrad<float, false>), float);
-REGISTER_LINALG_OP("CholeskyGrad", (CholeskyGrad<double, false>), double);
-REGISTER_LINALG_OP("BatchCholeskyGrad", (CholeskyGrad<float, true>), float);
-REGISTER_LINALG_OP("BatchCholeskyGrad", (CholeskyGrad<double, true>), double);
+REGISTER_LINALG_OP("CholeskyGrad", (CholeskyGrad<float>), float);
+REGISTER_LINALG_OP("CholeskyGrad", (CholeskyGrad<double>), double);
+REGISTER_LINALG_OP("BatchCholeskyGrad", (CholeskyGrad<float>), float);
+REGISTER_LINALG_OP("BatchCholeskyGrad", (CholeskyGrad<double>), double);
+
 }  // namespace tensorflow

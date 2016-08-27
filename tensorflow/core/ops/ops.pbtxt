@@ -2725,6 +2725,37 @@ op {
   description: "Rearranges (permutes) data from batch into blocks of spatial data, followed by\ncropping. This is the reverse transformation of SpaceToBatch. More specifically,\nthis op outputs a copy of the input tensor where values from the `batch`\ndimension are moved in spatial blocks to the `height` and `width` dimensions,\nfollowed by cropping along the `height` and `width` dimensions."
 }
 op {
+  name: "Betainc"
+  input_arg {
+    name: "a"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  summary: "Compute the regularized incomplete beta integral \\\\(I_x(a, b)\\\\)."
+  description: "The regularized incomplete beta integral is defined as:\n\n```\nI_x(a, b) = \\frac{B(x; a, b)}{B(a, b)}\n```\nwhere\n\n```\nB(x; a, b) = \\int_0^x t^{a-1} (1 - t)^{b-1} dt\n```\n\nis the incomplete beta function and \\\\(B(a, b)\\\\) is the *complete*\nbeta function."
+}
+op {
   name: "BiasAdd"
   input_arg {
     name: "value"
@@ -6491,6 +6522,14 @@ op {
     description: "If non-empty, this table is shared under the given name across\nmultiple sessions."
   }
   attr {
+    name: "use_node_name_sharing"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true and shared_name is empty, the table is shared\nusing the node name."
+  }
+  attr {
     name: "key_dtype"
     type: "type"
     description: "Type of the table keys."
@@ -8897,6 +8936,14 @@ op {
     description: "If non-empty, this table is shared under the given name across\nmultiple sessions."
   }
   attr {
+    name: "use_node_name_sharing"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true and shared_name is empty, the table is shared\nusing the node name."
+  }
+  attr {
     name: "key_dtype"
     type: "type"
     description: "Type of the table keys."
@@ -8933,6 +8980,13 @@ op {
       s: ""
     }
     description: "If non-empty, this table is shared under the given name across\nmultiple sessions."
+  }
+  attr {
+    name: "use_node_name_sharing"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
   attr {
     name: "key_dtype"

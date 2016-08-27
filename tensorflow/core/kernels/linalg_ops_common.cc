@@ -27,8 +27,8 @@ limitations under the License.
 namespace tensorflow {
 
 // static
-template <typename Scalar, bool SupportsBatchOperation>
-void LinearAlgebraOp<Scalar, SupportsBatchOperation>::ValidateSingleMatrix(
+template <typename Scalar>
+void LinearAlgebraOp<Scalar>::ValidateSingleMatrix(
     OpKernelContext* context, const TensorShapes& input_matrix_shapes) {
   OP_REQUIRES(context, input_matrix_shapes.size() == 1,
               errors::InvalidArgument("Expected a single input matrix, got %d.",
@@ -38,10 +38,9 @@ void LinearAlgebraOp<Scalar, SupportsBatchOperation>::ValidateSingleMatrix(
 }
 
 // static
-template <typename Scalar, bool SupportsBatchOperation>
-void LinearAlgebraOp<Scalar, SupportsBatchOperation>::
-    ValidateSingleSquareMatrix(OpKernelContext* context,
-                               const TensorShapes& input_matrix_shapes) {
+template <typename Scalar>
+void LinearAlgebraOp<Scalar>::ValidateSingleSquareMatrix(
+    OpKernelContext* context, const TensorShapes& input_matrix_shapes) {
   OP_REQUIRES(context, input_matrix_shapes.size() == 1,
               errors::InvalidArgument("Expected a single input matrix, got %d.",
                                       input_matrix_shapes.size()));
@@ -50,8 +49,8 @@ void LinearAlgebraOp<Scalar, SupportsBatchOperation>::
 }
 
 // static
-template <typename Scalar, bool SupportsBatchOperation>
-void LinearAlgebraOp<Scalar, SupportsBatchOperation>::ValidateSolver(
+template <typename Scalar>
+void LinearAlgebraOp<Scalar>::ValidateSolver(
     OpKernelContext* context, const TensorShapes& input_matrix_shapes) {
   OP_REQUIRES(context, input_matrix_shapes.size() == 2,
               errors::InvalidArgument("Expected two input matrices, got %d.",
@@ -67,8 +66,8 @@ void LinearAlgebraOp<Scalar, SupportsBatchOperation>::ValidateSolver(
 }
 
 // static
-template <typename Scalar, bool SupportsBatchOperation>
-void LinearAlgebraOp<Scalar, SupportsBatchOperation>::ValidateSquareSolver(
+template <typename Scalar>
+void LinearAlgebraOp<Scalar>::ValidateSquareSolver(
     OpKernelContext* context, const TensorShapes& input_matrix_shapes) {
   OP_REQUIRES(context, input_matrix_shapes.size() == 2,
               errors::InvalidArgument("Expected two input matrices, got %d.",
@@ -84,9 +83,8 @@ void LinearAlgebraOp<Scalar, SupportsBatchOperation>::ValidateSquareSolver(
       errors::InvalidArgument("Input matrix and rhs are incompatible."));
 }
 
-template <typename Scalar, bool SupportsBatchOperation>
-void LinearAlgebraOp<Scalar, SupportsBatchOperation>::Compute(
-    OpKernelContext* context) {
+template <typename Scalar>
+void LinearAlgebraOp<Scalar>::Compute(OpKernelContext* context) {
   TensorInputs inputs;
   TensorShapes input_matrix_shapes;
   TensorShape batch_shape;
@@ -110,27 +108,20 @@ void LinearAlgebraOp<Scalar, SupportsBatchOperation>::Compute(
         batch_shape.num_elements(), GetCostPerUnit(input_matrix_shapes), shard);
 }
 
-template <typename Scalar, bool SupportsBatchOperation>
-void LinearAlgebraOp<Scalar, SupportsBatchOperation>::AnalyzeInputs(
-    OpKernelContext* context, TensorInputs* inputs,
-    TensorShapes* input_matrix_shapes, TensorShape* batch_shape) {
+template <typename Scalar>
+void LinearAlgebraOp<Scalar>::AnalyzeInputs(OpKernelContext* context,
+                                            TensorInputs* inputs,
+                                            TensorShapes* input_matrix_shapes,
+                                            TensorShape* batch_shape) {
   int input_rank = -1;
   for (int i = 0; i < NumMatrixInputs(context); ++i) {
     const Tensor& in = context->input(i);
     if (i == 0) {
       input_rank = in.dims();
-      if (SupportsBatchOperation) {
-        OP_REQUIRES(
-            context, input_rank >= 2,
-            errors::InvalidArgument("Input tensor ", i,
-                                    " must have rank >= 2, got", input_rank));
-      } else {
-        OP_REQUIRES(
-            context, input_rank == 2,
-            errors::InvalidArgument("Input tensor ", i,
-                                    " must have rank == 2, got", input_rank));
-      }
-
+      OP_REQUIRES(
+          context, input_rank >= 2,
+          errors::InvalidArgument("Input tensor ", i,
+                                  " must have rank >= 2, got", input_rank));
       // If the tensor rank is greater than 2, we consider the inner-most
       // dimensions as matrices, and loop over all the other outer ("batch")
       // dimensions to compute the results.
@@ -163,8 +154,8 @@ void LinearAlgebraOp<Scalar, SupportsBatchOperation>::AnalyzeInputs(
   ValidateInputMatrixShapes(context, *input_matrix_shapes);
 }
 
-template <typename Scalar, bool SupportsBatchOperation>
-void LinearAlgebraOp<Scalar, SupportsBatchOperation>::PrepareOutputs(
+template <typename Scalar>
+void LinearAlgebraOp<Scalar>::PrepareOutputs(
     OpKernelContext* context, const TensorShapes& input_matrix_shapes,
     const TensorShape& batch_shape, TensorOutputs* outputs,
     TensorShapes* output_matrix_shapes) {
@@ -205,8 +196,8 @@ void LinearAlgebraOp<Scalar, SupportsBatchOperation>::PrepareOutputs(
   }
 }
 
-template <typename Scalar, bool SupportsBatchOperation>
-void LinearAlgebraOp<Scalar, SupportsBatchOperation>::ComputeTensorSlice(
+template <typename Scalar>
+void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
     OpKernelContext* context, int64 matrix_index, const TensorInputs& inputs,
     const TensorShapes& input_matrix_shapes, const TensorOutputs& outputs,
     const TensorShapes& output_matrix_shapes) {
@@ -238,15 +229,10 @@ void LinearAlgebraOp<Scalar, SupportsBatchOperation>::ComputeTensorSlice(
   ComputeMatrix(context, matrix_inputs, &matrix_outputs);
 }
 
-// Explicitly instantiate LinearAlgebraOp for the scalar types we expect to
-// use.
-template class LinearAlgebraOp<float, false>;
-template class LinearAlgebraOp<float, true>;
-template class LinearAlgebraOp<double, false>;
-template class LinearAlgebraOp<double, true>;
-template class LinearAlgebraOp<complex64, false>;
-template class LinearAlgebraOp<complex64, true>;
-template class LinearAlgebraOp<complex128, false>;
-template class LinearAlgebraOp<complex128, true>;
+// Explicitly instantiate LinearAlgebraOp for the scalar types we expect to use.
+template class LinearAlgebraOp<float>;
+template class LinearAlgebraOp<double>;
+template class LinearAlgebraOp<complex64>;
+template class LinearAlgebraOp<complex128>;
 
 }  // namespace tensorflow

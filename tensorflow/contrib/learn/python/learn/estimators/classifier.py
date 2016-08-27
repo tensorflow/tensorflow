@@ -42,7 +42,8 @@ class Classifier(estimator.Estimator):
   CLASS_OUTPUT = 'classes'
   PROBABILITY_OUTPUT = 'probabilities'
 
-  def __init__(self, model_fn, n_classes, model_dir=None, config=None):
+  def __init__(self, model_fn, n_classes, model_dir=None, config=None,
+               params=None):
     """Constructor for Classifier.
 
     Args:
@@ -52,11 +53,17 @@ class Classifier(estimator.Estimator):
         also be used to load checkpoints from the directory into a estimator to
         continue training a previously saved model.
       config: Configuration object (optional)
+      params: `dict` of hyper parameters that will be passed into `model_fn`.
     """
     self._n_classes = n_classes
     self._logits_fn = model_fn
-    super(Classifier, self).__init__(model_fn=self._classifier_model,
-                                     model_dir=model_dir, config=config)
+    if params:
+      model_fn = self._classifier_model_with_params
+    else:
+      model_fn = self._classifier_model
+    super(Classifier, self).__init__(model_fn=model_fn,
+                                     model_dir=model_dir, config=config,
+                                     params=params)
 
   def evaluate(self,
                x=None,
@@ -161,7 +168,15 @@ class Classifier(estimator.Estimator):
       return predictions[self.PROBABILITY_OUTPUT]
 
   def _classifier_model(self, features, targets, mode):
-    logits, loss, train_op = self._logits_fn(features, targets, mode)
+    return self._convert_to_estimator_model_result(
+        self._logits_fn(features, targets, mode))
+
+  def _classifier_model_with_params(self, features, targets, mode, params):
+    return self._convert_to_estimator_model_result(
+        self._logits_fn(features, targets, mode, params))
+
+  def _convert_to_estimator_model_result(self, logits_fn_result):
+    logits, loss, train_op = logits_fn_result
     return {
         'classes': math_ops.argmax(logits, len(logits.get_shape()) - 1),
         'probabilities': nn.softmax(logits)

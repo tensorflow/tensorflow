@@ -24,6 +24,5 @@ from tensorflow.contrib.framework.python.ops.arg_scope import *
 from tensorflow.contrib.framework.python.ops.embedding_ops import *
 from tensorflow.contrib.framework.python.ops.ops import *
 from tensorflow.contrib.framework.python.ops.prettyprint_ops import *
-from tensorflow.contrib.framework.python.ops.sampling_ops import *
 from tensorflow.contrib.framework.python.ops.variables import *
 # pylint: enable=wildcard-import

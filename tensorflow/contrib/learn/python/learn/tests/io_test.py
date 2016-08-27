@@ -41,10 +41,10 @@ class IOTest(tf.test.TestCase):
       iris = datasets.load_iris()
       data = pd.DataFrame(iris.data)
       labels = pd.DataFrame(iris.target)
-      classifier = learn.TensorFlowLinearClassifier(
+      classifier = learn.LinearClassifier(
           feature_columns=learn.infer_real_valued_columns_from_input(data),
           n_classes=3)
-      classifier.fit(data, labels)
+      classifier.fit(data, labels, steps=100)
       score = accuracy_score(labels[0], classifier.predict(data))
       self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
     else:
@@ -57,10 +57,10 @@ class IOTest(tf.test.TestCase):
       iris = datasets.load_iris()
       data = pd.DataFrame(iris.data)
       labels = pd.Series(iris.target)
-      classifier = learn.TensorFlowLinearClassifier(
+      classifier = learn.LinearClassifier(
           feature_columns=learn.infer_real_valued_columns_from_input(data),
           n_classes=3)
-      classifier.fit(data, labels)
+      classifier.fit(data, labels, steps=100)
       score = accuracy_score(labels, classifier.predict(data))
       self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
 
@@ -110,10 +110,10 @@ class IOTest(tf.test.TestCase):
       data = dd.from_pandas(data, npartitions=2)
       labels = pd.DataFrame(iris.target)
       labels = dd.from_pandas(labels, npartitions=2)
-      classifier = learn.TensorFlowLinearClassifier(
+      classifier = learn.LinearClassifier(
           feature_columns=learn.infer_real_valued_columns_from_input(data),
           n_classes=3)
-      classifier.fit(data, labels)
+      classifier.fit(data, labels, steps=100)
       predictions = data.map_partitions(classifier.predict).compute()
       score = accuracy_score(labels.compute(), predictions)
       self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))

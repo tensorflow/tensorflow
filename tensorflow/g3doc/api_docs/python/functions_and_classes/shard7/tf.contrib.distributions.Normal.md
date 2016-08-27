@@ -73,14 +73,28 @@ broadcasting (e.g. `mu + sigma` is a valid operation).
 
 #### `tf.contrib.distributions.Normal.allow_nan_stats` {#Normal.allow_nan_stats}
 
-Boolean describing behavior when a stat is undefined for batch member.
+Python boolean describing behavior when a stat is undefined.
+
+Stats return +/- infinity when it makes sense.  E.g., the variance
+of a Cauchy distribution is infinity.  However, sometimes the
+statistic is undefined, e.g., if a distribution's pdf does not achieve a
+maximum within the support of the distribution, the mode is undefined.
+If the mean is undefined, then by definition the variance is undefined.
+E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
+it is either + or - infinity), so the variance = E[(X - mean)^2] is also
+undefined.
+
+##### Returns:
+
+
+*  <b>`allow_nan_stats`</b>: Python boolean.
 
 
 - - -
 
 #### `tf.contrib.distributions.Normal.batch_shape(name='batch_shape')` {#Normal.batch_shape}
 
-Batch dimensions of this instance as a 1-D int32 `Tensor`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -88,69 +102,62 @@ independent distributions of this kind the instance represents.
 ##### Args:
 
 
-*  <b>`name`</b>: name to give to the op.
+*  <b>`name`</b>: name to give to the op
 
 ##### Returns:
 
-  `Tensor` `batch_shape`
+
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
 
-#### `tf.contrib.distributions.Normal.cdf(x, name='cdf')` {#Normal.cdf}
+#### `tf.contrib.distributions.Normal.cdf(value, name='cdf')` {#Normal.cdf}
 
-CDF of observations in `x` under these Normal distribution(s).
+Cumulative distribution function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: tensor of dtype `dtype`, the CDFs of `x`.
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Normal.dtype` {#Normal.dtype}
 
-
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Normal.entropy(name='entropy')` {#Normal.entropy}
 
-The entropy of Normal distribution(s).
-
-##### Args:
-
-
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`entropy`</b>: tensor of dtype `dtype`, the entropy.
+Shanon entropy in nats.
 
 
 - - -
 
 #### `tf.contrib.distributions.Normal.event_shape(name='event_shape')` {#Normal.event_shape}
 
-Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
 
-*  <b>`name`</b>: name to give to the op.
+*  <b>`name`</b>: name to give to the op
 
 ##### Returns:
 
-  `Tensor` `event_shape`
+
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -170,8 +177,8 @@ shapes = MultiVariateNormalDiag.param_shapes([batch_size, 10])
 
 # shapes has a Tensor shape for mu and sigma
 # shapes == {
-#   'mu': tf.constant([batch_size, 10]),
-#   'sigma': tf.constant([batch_size, 10]),
+#   "mu": tf.constant([batch_size, 10]),
+#   "sigma": tf.constant([batch_size, 10]),
 # }
 
 # Here we parameterize mu and sigma with the output of a linear
@@ -214,26 +221,28 @@ apply it externally and set `make_safe=False`.
 
 #### `tf.contrib.distributions.Normal.get_batch_shape()` {#Normal.get_batch_shape}
 
-`TensorShape` available at graph construction time.
+Shape of a single sample from a single event index as a `TensorShape`.
 
 Same meaning as `batch_shape`. May be only partially defined.
 
 ##### Returns:
 
-  batch shape
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
 #### `tf.contrib.distributions.Normal.get_event_shape()` {#Normal.get_event_shape}
 
-`TensorShape` available at graph construction time.
+Shape of a single sample from a single batch as a `TensorShape`.
 
 Same meaning as `event_shape`. May be only partially defined.
 
 ##### Returns:
 
-  event shape
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
@@ -252,66 +261,102 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Normal.log_cdf(x, name='log_cdf')` {#Normal.log_cdf}
+#### `tf.contrib.distributions.Normal.log_cdf(value, name='log_cdf')` {#Normal.log_cdf}
 
-Log CDF of observations `x` under these Normal distribution(s).
+Log cumulative distribution function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
 
 
-*  <b>`log_cdf`</b>: tensor of dtype `dtype`, the log-CDFs of `x`.
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Normal.log_pdf(value, name='log_pdf')` {#Normal.log_pdf}
 
-Log of the probability density function.
+Log probability density function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`AttributeError`</b>: if not `is_continuous`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Normal.log_pmf(value, name='log_pmf')` {#Normal.log_pmf}
 
-Log of the probability mass function.
-
-
-- - -
-
-#### `tf.contrib.distributions.Normal.log_prob(x, name='log_prob')` {#Normal.log_prob}
-
-Log prob of observations in `x` under these Normal distribution(s).
+Log probability mass function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`AttributeError`</b>: if `is_continuous`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.log_prob(value, name='log_prob')` {#Normal.log_prob}
+
+Log probability density/mass function (depending on `is_continuous`).
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Normal.mean(name='mean')` {#Normal.mean}
 
-Mean of this distribution.
+Mean.
 
 
 - - -
 
 #### `tf.contrib.distributions.Normal.mode(name='mode')` {#Normal.mode}
 
-Mode of this distribution.
+Mode.
 
 
 - - -
@@ -325,7 +370,7 @@ Distribution parameter for the mean.
 
 #### `tf.contrib.distributions.Normal.name` {#Normal.name}
 
-
+Name prepended to all ops created by this `Distribution`.
 
 
 - - -
@@ -372,77 +417,123 @@ param_shapes with static (i.e. TensorShape) shapes.
 
 - - -
 
+#### `tf.contrib.distributions.Normal.parameters` {#Normal.parameters}
+
+Dictionary of parameters used by this `Distribution`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Normal.pdf(value, name='pdf')` {#Normal.pdf}
 
-The probability density function.
+Probability density function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`AttributeError`</b>: if not `is_continuous`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Normal.pmf(value, name='pmf')` {#Normal.pmf}
 
-The probability mass function.
-
-
-- - -
-
-#### `tf.contrib.distributions.Normal.prob(x, name='prob')` {#Normal.prob}
-
-The PDF of observations in `x` under these Normal distribution(s).
+Probability mass function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `mu` and `sigma`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: tensor of dtype `dtype`, the prob values of `x`.
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`AttributeError`</b>: if `is_continuous`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.prob(value, name='prob')` {#Normal.prob}
+
+Probability density/mass function (depending on `is_continuous`).
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Normal.sample(sample_shape=(), seed=None, name='sample')` {#Normal.sample}
 
-Generate samples of the specified shape for each batched distribution.
+Generate samples of the specified shape.
 
 Note that a call to `sample()` without arguments will generate a single
-sample per batched distribution.
+sample.
 
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: Rank 1 `int32` `Tensor`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
-      `sample_shape + self.batch_shape + self.event_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Normal.sample_n(n, seed=None, name='sample_n')` {#Normal.sample_n}
 
-Sample `n` observations from the Normal Distributions.
+Generate `n` samples.
 
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
-*  <b>`seed`</b>: Python integer, the random seed.
-*  <b>`name`</b>: The name to give this op.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
 
 ##### Returns:
 
 
-*  <b>`samples`</b>: `[n, ...]`, a `Tensor` of `n` samples for each
-    of the distributions determined by broadcasting the hyperparameters.
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `n` is not an integer type.
 
 
 - - -
@@ -456,20 +547,20 @@ Distribution parameter for standard deviation.
 
 #### `tf.contrib.distributions.Normal.std(name='std')` {#Normal.std}
 
-Standard deviation of this distribution.
+Standard deviation.
 
 
 - - -
 
 #### `tf.contrib.distributions.Normal.validate_args` {#Normal.validate_args}
 
-Boolean describing behavior on invalid input.
+Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
 #### `tf.contrib.distributions.Normal.variance(name='variance')` {#Normal.variance}
 
-Variance of this distribution.
+Variance.
 
 

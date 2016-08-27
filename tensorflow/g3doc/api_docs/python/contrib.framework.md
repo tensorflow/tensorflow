@@ -523,6 +523,116 @@ tensor (using `assert_global_step`). Otherwise find a global step tensor using
 
 - - -
 
+### `tf.contrib.framework.assign_from_checkpoint(model_path, var_list)` {#assign_from_checkpoint}
+
+Creates an operation to assign specific variables from a checkpoint.
+
+##### Args:
+
+
+*  <b>`model_path`</b>: The full path to the model checkpoint. To get latest checkpoint
+      use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
+*  <b>`var_list`</b>: A list of `Variable` objects or a dictionary mapping names in the
+      checkpoint to the correspoing variables to initialize. If empty or None,
+      it would return  no_op(), None.
+
+##### Returns:
+
+  the restore_op and the feed_dict that need to be run to restore var_list.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the checkpoint specified at `model_path` is missing one of
+    the variables in `var_list`.
+
+
+- - -
+
+### `tf.contrib.framework.assign_from_checkpoint_fn(model_path, var_list, ignore_missing_vars=False, reshape_variables=False)` {#assign_from_checkpoint_fn}
+
+Returns a function that assigns specific variables from a checkpoint.
+
+##### Args:
+
+
+*  <b>`model_path`</b>: The full path to the model checkpoint. To get latest checkpoint
+      use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
+*  <b>`var_list`</b>: A list of `Variable` objects or a dictionary mapping names in the
+      checkpoint to the correspoing variables to initialize. If empty or None,
+      it would return  no_op(), None.
+*  <b>`ignore_missing_vars`</b>: Boolean, if True it would ignore variables missing in
+      the checkpoint with a warning instead of failing.
+*  <b>`reshape_variables`</b>: Boolean, if True it would automatically reshape variables
+      which are of different shape then the ones stored in the checkpoint but
+      which have the same number of elements.
+
+##### Returns:
+
+  A function that takes a single argument, a `tf.Session`, that applies the
+  assignment operation.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the checkpoint specified at `model_path` is missing one of
+    the variables in `var_list`.
+
+
+- - -
+
+### `tf.contrib.framework.assign_from_values(var_names_to_values)` {#assign_from_values}
+
+Creates an assignment operation from a given mapping.
+
+This function provides a mechanism for performing assignment of variables
+to values in a way that does not fill the graph with large assignment values.
+
+##### Args:
+
+
+*  <b>`var_names_to_values`</b>: A map from variable names to values.
+
+##### Returns:
+
+
+*  <b>`assign_op`</b>: An `Operation` that assigns each of the given variables to the
+    requested values.
+*  <b>`feed_dict`</b>: The feed dictionary to use when evaluating `assign_op`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if any of the given variable names were not found.
+
+
+- - -
+
+### `tf.contrib.framework.assign_from_values_fn(var_names_to_values)` {#assign_from_values_fn}
+
+Returns a function that assigns specific variables from the given values.
+
+This function provides a mechanism for performing assignment of variables
+to values in a way that does not fill the graph with large assignment values.
+
+##### Args:
+
+
+*  <b>`var_names_to_values`</b>: A map from variable names to values.
+
+##### Returns:
+
+  A function that takes a single argument, a `tf.Session`, that applies the
+  assignment operation.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if any of the given variable names were not found.
+
+
+- - -
+
 ### `tf.contrib.framework.create_global_step(graph=None)` {#create_global_step}
 
 Create global step tensor in graph.

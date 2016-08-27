@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("QuantizedMatMul")
     .Input("a: T1")
@@ -40,7 +40,7 @@ REGISTER_OP("QuantizedMatMul")
     .Attr("transpose_b: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
@@ -82,7 +82,7 @@ REGISTER_OP("QuantizeDownAndShrinkRange")
     .Attr("out_type: quantizedtype")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       c->set_output(1, c->Scalar());

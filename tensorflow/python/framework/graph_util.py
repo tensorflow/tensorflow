@@ -24,6 +24,7 @@ import re
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -81,7 +82,7 @@ def must_run_on_cpu(node, pin_variables_on_cpu=False):
   if isinstance(node, ops.Operation):
     node_def = node.node_def
   else:
-    assert isinstance(node, graph_pb2.NodeDef)
+    assert isinstance(node, node_def_pb2.NodeDef)
     node_def = node
 
   # If the op is a variable-related op, should we pin it on CPU?
@@ -235,7 +236,7 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
   output_graph_def = graph_pb2.GraphDef()
   how_many_converted = 0
   for input_node in inference_graph.node:
-    output_node = graph_pb2.NodeDef()
+    output_node = node_def_pb2.NodeDef()
     if input_node.name in found_variables:
       output_node.op = "Const"
       output_node.name = input_node.name
@@ -283,7 +284,7 @@ def remove_training_nodes(input_graph):
   for node in input_nodes:
     if node.name in names_to_remove:
       continue
-    new_node = graph_pb2.NodeDef()
+    new_node = node_def_pb2.NodeDef()
     new_node.CopyFrom(node)
     input_before_removal = node.input
     del new_node.input[:]
@@ -312,7 +313,7 @@ def remove_training_nodes(input_graph):
   for node in nodes_after_removal:
     if node.name in names_to_splice:
       continue
-    new_node = graph_pb2.NodeDef()
+    new_node = node_def_pb2.NodeDef()
     new_node.CopyFrom(node)
     input_before_removal = node.input
     del new_node.input[:]

@@ -35,39 +35,56 @@ struct ShapeInferenceTestOp {
   std::vector<const Tensor*> input_tensors;
 };
 
-// Run shape inference for <op.name>, given inputs specified by <ins>
-// and returns an error if the inferred shape does not match expected_outs.
-//
-// <ins> is a semicolon separated list of shapes. Each shape is formatted
-// according to the formatting per
-// shape_inference::InferenceContext::InferenceContext.
-//
-// <expected_outs> is a semicolon separated list of shapes. Each shape is
-// formatted as one of:
-// * ? - an unknown shape, but not matching an input shape
-// * in0|in2|... - output shape must be the same as one of these input shapes.
-// * [1,?,d0_0|d0_1] - output shape is of known rank, with comma-separated
-//      dimension values.
-//      Each dimension value is one of:
-//      * a constant, which means that constant not equal to a specific input
-//      * ?, which means an unknown dim size not equal to a specific input
-//      * d0_0|d1_2, indicating that the dim size must be equal to one of
-//            the given input dimensions; the first number is the input # and
-//            the second is which dimension in that input it corresponds to.
-// <expected_outs> can be "e"; this is used to indicate that shape inference
-// should have failed.
-Status InferShapes(ShapeInferenceTestOp op, const string& ins,
-                   const string& expected_outs);
+namespace shape_inference {
 
-#define INFER_OK(op, i, o) EXPECT_EQ("", InferShapes(op, i, o).error_message())
-#define INFER_ERROR(error_substring, op, i)                              \
-  {                                                                      \
-    string error_message = InferShapes(op, i, "e").error_message();      \
-    const string& substring = error_substring;                           \
-    EXPECT_NE("", error_message);                                        \
-    EXPECT_TRUE(StringPiece(error_message).contains(substring))          \
-        << "Expected to see '" << substring << "' in '" << error_message \
-        << "'";                                                          \
+class ShapeInferenceTestutil {
+ public:
+  // Run shape inference for <op.name>, given inputs specified by <ins>
+  // and returns an error if the inferred shape does not match expected_outs.
+  //
+  // <ins> is a semicolon separated list of shapes. Each shape is formatted
+  // according to the formatting per
+  // shape_inference::InferenceContext::InferenceContext.
+  //
+  // <expected_outs> is a semicolon separated list of shapes. Each shape is
+  // formatted as one of:
+  // * ? - an unknown shape, but not matching an input shape
+  // * in0|in2|... - output shape must be the same as one of these input shapes.
+  // * [1,?,d0_0|d0_1] - output shape is of known rank, with comma-separated
+  //      dimension values.
+  //      Each dimension value is one of:
+  //      * a constant, which means that constant not equal to a specific input
+  //      * ?, which means an unknown dim size not equal to a specific input
+  //      * d0_0|d1_2, indicating that the dim size must be equal to one of
+  //            the given input dimensions; the first number is the input # and
+  //            the second is which dimension in that input it corresponds to.
+  // <expected_outs> can be "e"; this is used to indicate that shape inference
+  // should have failed.
+  static Status InferShapes(ShapeInferenceTestOp op, const string& ins,
+                            const string& expected_outs);
+
+ private:
+  ShapeInferenceTestutil() {}
+};
+
+}  // namespace shape_inference
+
+#define INFER_OK(op, i, o)                                                    \
+  EXPECT_EQ(                                                                  \
+      "", ::tensorflow::shape_inference::ShapeInferenceTestutil::InferShapes( \
+              op, i, o)                                                       \
+              .error_message())
+#define INFER_ERROR(error_substring, op, i)                                 \
+  {                                                                         \
+    string error_message =                                                  \
+        ::tensorflow::shape_inference::ShapeInferenceTestutil::InferShapes( \
+            op, i, "e")                                                     \
+            .error_message();                                               \
+    const string& substring = error_substring;                              \
+    EXPECT_NE("", error_message);                                           \
+    EXPECT_TRUE(StringPiece(error_message).contains(substring))             \
+        << "Expected to see '" << substring << "' in '" << error_message    \
+        << "'";                                                             \
   }
 
 }  // namespace tensorflow

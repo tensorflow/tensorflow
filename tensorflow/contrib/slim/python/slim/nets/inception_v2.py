@@ -413,8 +413,8 @@ def inception_v2_base(inputs,
 
 def inception_v2(inputs,
                  num_classes=1000,
-                 dropout_keep_prob=0.8,
                  is_training=True,
+                 dropout_keep_prob=0.8,
                  min_depth=16,
                  depth_multiplier=1.0,
                  prediction_fn=slim.softmax,
@@ -431,8 +431,8 @@ def inception_v2(inputs,
   Args:
     inputs: a tensor of shape [batch_size, height, width, channels].
     num_classes: number of predicted classes.
-    dropout_keep_prob: the percentage of activation values that are retained.
     is_training: whether is training or not.
+    dropout_keep_prob: the percentage of activation values that are retained.
     min_depth: Minimum depth value (number of channels) for all convolution ops.
       Enforced when depth_multiplier < 1, and not an active constraint when
       depth_multiplier >= 1.
@@ -513,3 +513,43 @@ def _reduced_kernel_size_for_small_input(input_tensor, kernel_size):
     kernel_size_out = [min(shape[1], kernel_size[0]),
                        min(shape[2], kernel_size[1])]
   return kernel_size_out
+
+
+def inception_v2_arg_scope(weight_decay=0.00004,
+                           batch_norm_var_collection='moving_vars'):
+  """Defines the default InceptionV2 arg scope.
+
+  Args:
+    weight_decay: The weight decay to use for regularizing the model.
+    batch_norm_var_collection: The name of the collection for the batch norm
+      variables.
+
+  Returns:
+    An `arg_scope` to use for the inception v3 model.
+  """
+  batch_norm_params = {
+      # Decay for the moving averages.
+      'decay': 0.9997,
+      # epsilon to prevent 0s in variance.
+      'epsilon': 0.001,
+      # collection containing update_ops.
+      'updates_collections': tf.GraphKeys.UPDATE_OPS,
+      # collection containing the moving mean and moving variance.
+      'variables_collections': {
+          'beta': None,
+          'gamma': None,
+          'moving_mean': [batch_norm_var_collection],
+          'moving_variance': [batch_norm_var_collection],
+      }
+  }
+
+  # Set weight_decay for weights in Conv and FC layers.
+  with slim.arg_scope([slim.conv2d, slim.fully_connected],
+                      weights_regularizer=slim.l2_regularizer(weight_decay)):
+    with slim.arg_scope(
+        [slim.conv2d],
+        weights_initializer=slim.variance_scaling_initializer(),
+        activation_fn=tf.nn.relu,
+        normalizer_fn=slim.batch_norm,
+        normalizer_params=batch_norm_params) as sc:
+      return sc

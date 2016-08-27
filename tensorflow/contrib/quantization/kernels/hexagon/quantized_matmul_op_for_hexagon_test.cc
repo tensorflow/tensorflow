@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 #ifdef USE_HEXAGON_LIBS
-#include "gemm_wrapper.h"
+#include "tensorflow/core/platform/hexagon/gemm_wrapper.h"
 #endif
 
 namespace tensorflow {
@@ -39,8 +39,10 @@ class QuantizedMatMulOpForHexagonTest : public OpsTestBase {
  protected:
   void SetUp() final {
 #ifdef USE_HEXAGON_LIBS
-    LOG(INFO) << "Hexagon libs are linked (version = "
-              << hexagon_gemm_wrapper_GetVersion() << ")";
+    LOG(INFO) << "Hexagon libs are linked (wrapper version = "
+              << hexagon_gemm_wrapper_GetWrapperVersion()
+              << ", hexagon binary version = "
+              << hexagon_gemm_wrapper_GetHexagonBinaryVersion() << ")";
 #else
     LOG(WARNING) << "Hexagon libs are not linked.";
 #endif

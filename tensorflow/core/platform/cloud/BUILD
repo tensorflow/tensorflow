@@ -38,6 +38,7 @@ cc_library(
         ":google_auth_provider",
         ":http_request",
         ":retrying_file_system",
+        ":time_util",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
         "@jsoncpp_git//:jsoncpp",
@@ -122,6 +123,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "time_util",
+    srcs = [
+        "time_util.cc",
+    ],
+    hdrs = [
+        "time_util.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
 tf_cc_test(
     name = "gcs_file_system_test",
     size = "small",
@@ -187,6 +202,16 @@ tf_cc_test(
         ":retrying_file_system",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "time_util_test",
+    size = "small",
+    deps = [
+        ":time_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

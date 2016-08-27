@@ -37,9 +37,22 @@ class Node;
 class OpKernel;
 class ResourceMgr;
 
-// FunctionDefHelper::Define is a convenient helper to construct a
+// FunctionDefHelper::Create is a convenient helper to construct a
 // FunctionDef proto.
+// E.g.,
+//   FunctionDef my_func = FunctionDefHelper::Create(
+//     "my_func_name",
+//     {"x:T", "y:T" /* one string per argument */},
+//     {"z:T" /* one string per return value */},
+//     {"T: {float, double}" /* one string per attribute  */},
+//     {
+//        {{"o"}, "Mul", {"x", "y"}, {{"T", "$T"}}}
+//        /* one entry per function node */
+//     },
+//     /* Mapping between function returns and function node outputs. */
+//     {{"z", "o:z"}});
 //
+// For the old Function::Node approach, use FunctionDefHelper::Define()
 // E.g.,
 //   FunctionDef my_func = FunctionDefHelper::Define(
 //     "my_func_name",
@@ -49,10 +62,7 @@ class ResourceMgr;
 //     {
 //        {{"z"}, "Mul", {"x", "y"}, {{"T", "$T"}}}
 //        /* one entry per function node */
-//     })
-//
-// NOTE: When we have a TFLang parser, we can add another helper:
-//   FunctionDef FunctionDefHelper::Define(const string& tf_func);
+//     });
 class FunctionDefHelper {
  public:
   // AttrValueWrapper has copy constructors for the type T so that
@@ -90,6 +100,8 @@ class FunctionDefHelper {
   // lists. E.g.,
   //  Node n = {{"z"}, "Mul", {"x", "y"}, {{"T", "$T"}}};  // z = x * y
   struct Node {
+    // When constructing a NodeDef, the first entry in ret is used as
+    // the node name, the remaining values are ignored.
     std::vector<string> ret;
     string op;
     std::vector<string> arg;
@@ -97,8 +109,21 @@ class FunctionDefHelper {
     std::vector<string> dep;
 
     FunctionDef::Node ToProto() const;
+    NodeDef ToNodeDef() const;
   };
 
+  // The Create() function uses the new NodeDef field.  `ret_def`
+  // holds a mapping from the function output names from `out_def` to
+  // the node outputs from `node_def`.
+  static FunctionDef Create(const string& function_name,
+                            gtl::ArraySlice<string> in_def,
+                            gtl::ArraySlice<string> out_def,
+                            gtl::ArraySlice<string> attr_def,
+                            gtl::ArraySlice<Node> node_def,
+                            gtl::ArraySlice<std::pair<string, string>> ret_def);
+
+  // The two Define() functions use the old FunctionDef::Node field.
+  // TODO(josh11b): Get rid of these and transition to the one above.
   static FunctionDef Define(const string& function_name,
                             gtl::ArraySlice<string> arg_def,
                             gtl::ArraySlice<string> ret_def,

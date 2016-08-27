@@ -22,9 +22,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 namespace {
 
@@ -33,7 +33,7 @@ namespace {
 // unknown dims.
 Status InputTensorShapeOrUnknown(InferenceContext* c, int input_idx,
                                  int ndims) {
-  const Shape* out;
+  ShapeHandle out;
   const Tensor* input = c->input_tensor(input_idx);
   if (input == nullptr) {
     out = c->UnknownShapeOfRank(ndims);
@@ -122,17 +122,17 @@ REGISTER_OP("BatchNormWithGlobalNormalization")
     .Attr("scale_after_normalization: bool")
     .Deprecated(9, "Use tf.nn.batch_normalization()")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input;
+      ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
-      const Dimension* last_dim = c->Dim(input, 3);
+      DimensionHandle last_dim = c->Dim(input, 3);
       for (int i = 1; i < 5; ++i) {  // covers m, v, beta, gamma
-        const Shape* vec;
+        ShapeHandle vec;
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
         TF_RETURN_IF_ERROR(c->Merge(last_dim, c->Dim(vec, 0), &last_dim));
       }
 
-      const Shape* out;
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->ReplaceDim(input, 3, last_dim, &out));
       c->set_output(0, out);
       return Status::OK();
@@ -175,23 +175,23 @@ REGISTER_OP("BatchNormWithGlobalNormalizationGrad")
     .Attr("scale_after_normalization: bool")
     .Deprecated(9, "Use tf.nn.batch_normalization()")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input;
+      ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
       TF_RETURN_IF_ERROR(
           c->Merge(input, c->input(4), &input));  // with backprop
 
-      const Dimension* last_dim = c->Dim(input, 3);
+      DimensionHandle last_dim = c->Dim(input, 3);
       for (int i = 1; i < 4; ++i) {  // covers m, v, gamma
-        const Shape* vec;
+        ShapeHandle vec;
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
         TF_RETURN_IF_ERROR(c->Merge(last_dim, c->Dim(vec, 0), &last_dim));
       }
 
-      const Shape* dx;
+      ShapeHandle dx;
       TF_RETURN_IF_ERROR(c->ReplaceDim(input, 3, last_dim, &dx));
       c->set_output(0, dx);
 
-      const Shape* vector_shape = c->Vector(last_dim);
+      ShapeHandle vector_shape = c->Vector(last_dim);
       c->set_output(1, vector_shape);
       c->set_output(2, vector_shape);
       c->set_output(3, vector_shape);
@@ -586,7 +586,7 @@ REGISTER_OP("Conv3DBackpropFilter")
     .Attr(GetPaddingAttrString())
     .Deprecated(10, "Use Conv3DBackpropFilterV2")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* out;
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 5, &out));
       c->set_output(0, out);
       return Status::OK();
@@ -614,7 +614,7 @@ REGISTER_OP("Conv3DBackpropInputV2")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* s;
+      ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
@@ -645,7 +645,7 @@ REGISTER_OP("Conv3DBackpropFilterV2")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* s;
+      ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
@@ -698,7 +698,7 @@ REGISTER_OP("AvgPool3DGrad")
     .Attr(GetPaddingAttrString())
     .Attr("T: numbertype")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* s;
+      ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
@@ -829,7 +829,7 @@ REGISTER_OP("LRNGrad")
     .Attr("beta: float = 0.5")
     .Attr("T: {float, half} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* s;
+      ShapeHandle s;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &s));  // input_grads
       TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));     // input_image
       TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));     // output_image
@@ -975,9 +975,9 @@ REGISTER_OP("Dilation2D")
     .Attr("rates: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input_shape;
+      ShapeHandle input_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
-      const Shape* filter_shape;
+      ShapeHandle filter_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &filter_shape));
 
       std::vector<int32> strides;
@@ -1004,14 +1004,14 @@ REGISTER_OP("Dilation2D")
       int32 rate_rows = rates[1];
       int32 rate_cols = rates[2];
 
-      const Dimension* batch_size_dim = c->Dim(input_shape, 0);
-      const Dimension* in_rows_dim = c->Dim(input_shape, 1);
-      const Dimension* in_cols_dim = c->Dim(input_shape, 2);
-      const Dimension* filter_rows_dim = c->Dim(filter_shape, 0);
-      const Dimension* filter_cols_dim = c->Dim(filter_shape, 1);
-      const Dimension* output_depth_dim = c->Dim(filter_shape, 2);
+      DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
+      DimensionHandle in_rows_dim = c->Dim(input_shape, 1);
+      DimensionHandle in_cols_dim = c->Dim(input_shape, 2);
+      DimensionHandle filter_rows_dim = c->Dim(filter_shape, 0);
+      DimensionHandle filter_cols_dim = c->Dim(filter_shape, 1);
+      DimensionHandle output_depth_dim = c->Dim(filter_shape, 2);
 
-      const Dimension* unused;
+      DimensionHandle unused;
       TF_RETURN_IF_ERROR(
           c->Merge(c->Dim(input_shape, 3), output_depth_dim, &unused));
 
@@ -1040,7 +1040,7 @@ REGISTER_OP("Dilation2D")
           in_cols, filter_cols_eff, stride_cols, padding, &output_cols,
           &padding_before, &padding_after));
 
-      const Shape* output_shape = c->MakeShape(
+      ShapeHandle output_shape = c->MakeShape(
           {batch_size_dim, output_rows, output_cols, output_depth_dim});
       c->set_output(0, output_shape);
       return Status::OK();
@@ -1305,11 +1305,11 @@ REGISTER_OP("SoftmaxCrossEntropyWithLogits")
     .Output("backprop: T")
     .Attr("T: {half, float, double}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input;
+      ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
       TF_RETURN_IF_ERROR(c->Merge(input, c->input(1), &input));
 
-      const Dimension* batch_size = c->Dim(input, 0);
+      DimensionHandle batch_size = c->Dim(input, 0);
       c->set_output(0, c->Vector(batch_size));
       c->set_output(1, input);
       return Status::OK();
@@ -1335,12 +1335,12 @@ REGISTER_OP("SparseSoftmaxCrossEntropyWithLogits")
     .Attr("T: {half, float, double}")
     .Attr("Tlabels: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* features;
-      const Shape* labels;
+      ShapeHandle features;
+      ShapeHandle labels;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &features));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &labels));
 
-      const Dimension* batch_size;
+      DimensionHandle batch_size;
       TF_RETURN_IF_ERROR(
           c->Merge(c->Dim(features, 0), c->Dim(labels, 0), &batch_size));
       TF_RETURN_IF_ERROR(c->ReplaceDim(features, 0, batch_size, &features));
@@ -1375,11 +1375,11 @@ REGISTER_OP("InTopK")
     .Attr("k: int")
     .Attr("T: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* predictions;
-      const Shape* targets;
+      ShapeHandle predictions;
+      ShapeHandle targets;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &predictions));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &targets));
-      const Dimension* batch_size;
+      DimensionHandle batch_size;
       TF_RETURN_IF_ERROR(
           c->Merge(c->Dim(predictions, 0), c->Dim(targets, 0), &batch_size));
       c->set_output(0, c->Vector(batch_size));
@@ -1413,11 +1413,11 @@ precision: Computed Precision at `k` as a `bool Tensor`.
 namespace {
 
 Status TopKShapeFn(InferenceContext* c) {
-  const Shape* input;
+  ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input));
 
   // Get the k value, either from input tensor or attribute.
-  const Dimension* k_dim;
+  DimensionHandle k_dim;
   if (c->num_inputs() >= 2) {
     TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &k_dim));
   } else {
@@ -1429,7 +1429,7 @@ Status TopKShapeFn(InferenceContext* c) {
     k_dim = c->MakeDim(k);
   }
 
-  const Dimension* last_dim = c->Dim(input, -1);
+  DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
     return errors::InvalidArgument("input must have last dimension >= k = ",
@@ -1438,7 +1438,7 @@ Status TopKShapeFn(InferenceContext* c) {
   }
 
   // Replace last_dim with k_dim.
-  const Shape* s;
+  ShapeHandle s;
   TF_RETURN_IF_ERROR(c->Subshape(input, 0, -1, &s));
   TF_RETURN_IF_ERROR(c->Concatenate(s, c->Vector(k_dim), &s));
   c->set_output(0, s);

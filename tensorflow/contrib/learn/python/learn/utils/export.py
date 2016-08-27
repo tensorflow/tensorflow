@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import layers
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.session_bundle import exporter
 from tensorflow.contrib.session_bundle import gc
@@ -167,18 +168,34 @@ def logistic_regression_signature_fn(examples, unused_features, predictions):
 
 
 # pylint: disable=protected-access
-def default_input_fn(estimator, examples):
+def _default_input_fn(estimator, examples):
   """Creates default input parsing using Estimator's feature signatures."""
   return estimator._get_feature_ops_from_example(examples)
 
 
+@deprecated('2016-09-23', 'Please use BaseEstimator.export')
 def export_estimator(estimator,
                      export_dir,
                      signature_fn=None,
-                     input_fn=default_input_fn,
+                     input_fn=_default_input_fn,
                      default_batch_size=1,
                      exports_to_keep=None):
   """Deprecated, please use BaseEstimator.export."""
+  _export_estimator(estimator=estimator,
+                    export_dir=export_dir,
+                    signature_fn=signature_fn,
+                    input_fn=input_fn,
+                    default_batch_size=default_batch_size,
+                    exports_to_keep=exports_to_keep)
+
+
+def _export_estimator(estimator,
+                      export_dir,
+                      signature_fn,
+                      input_fn,
+                      default_batch_size,
+                      exports_to_keep):
+  input_fn = input_fn or _default_input_fn
   checkpoint_path = tf_saver.latest_checkpoint(estimator._model_dir)
   with ops.Graph().as_default() as g:
     contrib_variables.create_global_step(g)

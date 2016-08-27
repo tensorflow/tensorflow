@@ -110,8 +110,7 @@ class InceptionV1Test(tf.test.TestCase):
     batch_size = 5
     height, width = 224, 224
     inputs = tf.random_uniform((batch_size, height, width, 3))
-    with slim.arg_scope([slim.conv2d, slim.separable_conv2d],
-                        normalizer_fn=slim.batch_norm):
+    with slim.arg_scope(inception.inception_v1_arg_scope()):
       inception.inception_v1_base(inputs)
     total_params, _ = slim.model_analyzer.analyze_vars(
         slim.get_model_variables())

@@ -19,14 +19,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 namespace {
 
 Status ScalarInputsAndOutputs(InferenceContext* c) {
-  const Shape* unused;
+  ShapeHandle unused;
   for (int i = 0; i < c->num_inputs(); ++i) {
     TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &unused));
   }
@@ -44,9 +44,9 @@ REGISTER_OP("Save")
     .Input("data: T")
     .Attr("T: list(type)")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unused;
-      const Shape* s;
-      const Dimension* unused_dim;
+      ShapeHandle unused;
+      ShapeHandle s;
+      DimensionHandle unused_dim;
 
       // Validate filename.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
@@ -79,9 +79,9 @@ REGISTER_OP("SaveSlices")
     .Input("data: T")
     .Attr("T: list(type)")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unused;
-      const Shape* s;
-      const Dimension* unused_dim;
+      ShapeHandle unused;
+      ShapeHandle s;
+      DimensionHandle unused_dim;
 
       // Validate filename.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
@@ -136,7 +136,7 @@ REGISTER_OP("Restore")
     .Attr("dt: type")
     .Attr("preferred_shard: int = -1")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       c->set_output(0, c->UnknownShape());
@@ -180,7 +180,7 @@ REGISTER_OP("RestoreSlice")
     .Attr("dt: type")
     .Attr("preferred_shard: int = -1")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
@@ -353,11 +353,11 @@ REGISTER_OP("ReaderReadUpTo")
     .Output("keys: string")
     .Output("values: string")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      const Shape* out = c->Vector(InferenceContext::kUnknownDim);
+      ShapeHandle out = c->Vector(InferenceContext::kUnknownDim);
       c->set_output(0, out);
       c->set_output(1, out);
       return Status::OK();
@@ -451,7 +451,7 @@ REGISTER_OP("MatchingFiles")
     .Input("pattern: string")
     .Output("filenames: string")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
       return Status::OK();

@@ -18,14 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+import math
+
+from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
@@ -39,8 +40,8 @@ class Uniform(distribution.Distribution):
   """
 
   def __init__(self,
-               a=0.0,
-               b=1.0,
+               a=0.,
+               b=1.,
                validate_args=True,
                allow_nan_stats=False,
                name="Uniform"):
@@ -81,57 +82,19 @@ class Uniform(distribution.Distribution):
     Raises:
       InvalidArgumentError: if `a >= b` and `validate_args=True`.
     """
-    self._allow_nan_stats = allow_nan_stats
-    self._validate_args = validate_args
-    with ops.name_scope(name, values=[a, b]):
-      with ops.control_dependencies([check_ops.assert_less(
-          a, b, message="uniform not defined when a > b.")] if validate_args
-                                    else []):
-        a = array_ops.identity(a, name="a")
-        b = array_ops.identity(b, name="b")
-
-    self._a = a
-    self._b = b
-    self._name = name
-    self._batch_shape = common_shapes.broadcast_shape(
-        self._a.get_shape(), self._b.get_shape())
-    self._event_shape = tensor_shape.TensorShape([])
-
-    contrib_tensor_util.assert_same_float_dtype((a, b))
-
-  @property
-  def allow_nan_stats(self):
-    """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._allow_nan_stats
-
-  @property
-  def validate_args(self):
-    """Boolean describing behavior on invalid input."""
-    return self._validate_args
-
-  @property
-  def name(self):
-    return self._name
-
-  @property
-  def dtype(self):
-    return self.a.dtype
-
-  def batch_shape(self, name="batch_shape"):
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._a, self._b]):
-        return array_ops.shape(self._a + self._b)
-
-  def get_batch_shape(self):
-    return self._batch_shape
-
-  def event_shape(self, name="event_shape"):
-    with ops.name_scope(self.name):
-      with ops.name_scope(name):
-        return constant_op.constant([], dtype=dtypes.int32)
-
-  def get_event_shape(self):
-    return self._event_shape
+    with ops.control_dependencies([
+        check_ops.assert_less(a, b, message="uniform not defined when a > b.")
+    ] if validate_args else []):
+      self._a = array_ops.identity(a, name="a")
+      self._b = array_ops.identity(b, name="b")
+      contrib_tensor_util.assert_same_float_dtype((self._a, self._b))
+      super(Uniform, self).__init__(
+          dtype=self._a.dtype,
+          parameters={"a": self._a, "b": self._b},
+          is_reparameterized=True,
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=name)
 
   @property
   def a(self):
@@ -141,137 +104,65 @@ class Uniform(distribution.Distribution):
   def b(self):
     return self._b
 
-  def prob(self, x, name="prob"):
-    """The PDF of observations in `x` under these Uniform distribution(s).
-
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `a` and `b`.
-      name: The name to give this op.
-
-    Returns:
-      prob: tensor of dtype `dtype`, the prob values of `x`. If `x` is `nan`,
-          will return `nan`.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self.a, self.b, x]):
-        x = ops.convert_to_tensor(x, name="x")
-        if x.dtype != self.dtype:
-          raise TypeError("Input x dtype does not match dtype: %s vs. %s" %
-                          (x.dtype, self.dtype))
-
-        broadcasted_x = x * self._ones()
-        return math_ops.select(
-            math_ops.is_nan(broadcasted_x), broadcasted_x, math_ops.select(
-                math_ops.logical_or(broadcasted_x < self.a,
-                                    broadcasted_x > self.b),
-                array_ops.zeros_like(broadcasted_x),
-                (1.0 / self.range()) * array_ops.ones_like(broadcasted_x)))
-
-  def log_prob(self, x, name="log_prob"):
-    return super(Uniform, self).log_prob(x, name)
-
-  def cdf(self, x, name="cdf"):
-    """CDF of observations in `x` under these Uniform distribution(s).
-
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `a` and `b`.
-      name: The name to give this op.
-
-    Returns:
-      cdf: tensor of dtype `dtype`, the CDFs of `x`. If `x` is `nan`, will
-          return `nan`.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self.a, self.b, x]):
-        x = ops.convert_to_tensor(x, name="x")
-        if x.dtype != self.dtype:
-          raise TypeError("Input x dtype does not match dtype: %s vs. %s" %
-                          (x.dtype, self.dtype))
-
-        broadcasted_x = x * self._ones()
-        zeros = array_ops.zeros_like(x + self.a + self.b, dtype=self.dtype)
-        ones = array_ops.ones_like(x + self.a + self.b, dtype=self.dtype)
-        result_if_not_big = math_ops.select(
-            x < self.a, zeros, (broadcasted_x - self.a) / self.range())
-        return math_ops.select(x >= self.b, ones, result_if_not_big)
-
-  def log_cdf(self, x, name="log_cdf"):
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self.a, self.b, x]):
-        x = ops.convert_to_tensor(x, name="x")
-        return math_ops.log(self.cdf(x))
-
-  def entropy(self, name="entropy"):
-    """The entropy of Uniform distribution(s).
-
-    Args:
-      name: The name to give this op.
-
-    Returns:
-      entropy: tensor of dtype `dtype`, the entropy.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self.a, self.b, self.range()]):
-        return math_ops.log(self.range())
-
-  def sample_n(self, n, seed=None, name="sample_n"):
-    """Sample `n` observations from the Uniform Distributions.
-
-    Args:
-      n: `Scalar`, type int32, the number of observations to sample.
-      seed: Python integer, the random seed.
-      name: The name to give this op.
-
-    Returns:
-      samples: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
-          with values of type `self.dtype`.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self.a, self.b, n]):
-        n = ops.convert_to_tensor(n, name="n")
-        n_val = tensor_util.constant_value(n)
-
-        shape = array_ops.concat(0, ([n], self.batch_shape()))
-        samples = random_ops.random_uniform(shape=shape,
-                                            dtype=self.dtype,
-                                            seed=seed)
-
-        # Provide some hints to shape inference
-        inferred_shape = tensor_shape.vector(n_val).concatenate(
-            self.get_batch_shape())
-        samples.set_shape(inferred_shape)
-
-        return (array_ops.expand_dims(self.a, 0) + array_ops.expand_dims(
-            self.range(), 0) * samples)
-
-  def mean(self, name="mean"):
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._a, self._b]):
-        return (self.a + self.b) / 2
-
-  def variance(self, name="variance"):
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self.range()]):
-        return math_ops.square(self.range()) / 12.
-
-  def std(self, name="std"):
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self.range()]):
-        return self.range() / math_ops.sqrt(12.)
-
   def range(self, name="range"):
     """`b - a`."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self.a, self.b]):
-        return self.b - self.a
+    with self._name_scope(name):
+      return self.b - self.a
 
-  @property
-  def is_reparameterized(self):
-    return True
+  def _batch_shape(self):
+    return array_ops.shape(self._a + self._b)
 
-  def _ones(self):
-    return array_ops.ones_like(self.a + self.b)
+  def _get_batch_shape(self):
+    return common_shapes.broadcast_shape(
+        self._a.get_shape(), self._b.get_shape())
 
-  @property
-  def is_continuous(self):
-    return True
+  def _event_shape(self):
+    return constant_op.constant([], dtype=dtypes.int32)
+
+  def _get_event_shape(self):
+    return tensor_shape.scalar()
+
+  def _sample_n(self, n, seed=None):
+    shape = array_ops.concat(0, ([n], self.batch_shape()))
+    samples = random_ops.random_uniform(shape=shape,
+                                        dtype=self.dtype,
+                                        seed=seed)
+    return (array_ops.expand_dims(self.a, 0) +
+            array_ops.expand_dims(self.range(), 0) * samples)
+
+  def _log_prob(self, x):
+    return math_ops.log(self._prob(x))
+
+  def _prob(self, x):
+    broadcasted_x = x * array_ops.ones(self.batch_shape())
+    return math_ops.select(
+        math_ops.is_nan(broadcasted_x),
+        broadcasted_x,
+        math_ops.select(
+            math_ops.logical_or(broadcasted_x < self.a,
+                                broadcasted_x > self.b),
+            array_ops.zeros_like(broadcasted_x),
+            (1. / self.range()) * array_ops.ones_like(broadcasted_x)))
+
+  def _log_cdf(self, x):
+    return math_ops.log(self.cdf(x))
+
+  def _cdf(self, x):
+    broadcasted_x = x * array_ops.ones(self.batch_shape())
+    zeros = array_ops.zeros_like(x + self.a + self.b, dtype=self.dtype)
+    ones = array_ops.ones_like(x + self.a + self.b, dtype=self.dtype)
+    result_if_not_big = math_ops.select(
+        x < self.a, zeros, (broadcasted_x - self.a) / self.range())
+    return math_ops.select(x >= self.b, ones, result_if_not_big)
+
+  def _entropy(self):
+    return math_ops.log(self.range())
+
+  def _mean(self):
+    return (self.a + self.b) / 2.
+
+  def _variance(self):
+    return math_ops.square(self.range()) / 12.
+
+  def _std(self):
+    return self.range() / math.sqrt(12.)

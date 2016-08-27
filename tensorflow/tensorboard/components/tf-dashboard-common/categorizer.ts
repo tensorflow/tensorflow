@@ -81,7 +81,7 @@ module Categorizer {
       if (tags.length === 0) {
         return [];
       }
-      var sortedTags = tags.slice().sort();
+      var sortedTags = tags.slice().sort(VZ.Sorting.compareTagNames);
       var categories: Category[] = [];
       var currentCategory = {
         name: extractor(sortedTags[0]),
@@ -134,7 +134,7 @@ module Categorizer {
             tags.push(t);
           }
         });
-        var cat = { name: def.name, tags: tags.sort() };
+        var cat = {name: def.name, tags: tags.sort(VZ.Sorting.compareTagNames)};
         return cat;
       });
       var defaultCategories = fallback(remaining.values());

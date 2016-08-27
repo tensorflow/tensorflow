@@ -55,6 +55,7 @@ def tf_android_core_proto_sources_relative():
         "framework/graph.proto",
         "framework/kernel_def.proto",
         "framework/log_memory.proto",
+        "framework/node_def.proto",
         "framework/op_def.proto",
         "framework/step_stats.proto",
         "framework/summary.proto",
@@ -215,8 +216,8 @@ def tf_gen_op_wrappers_cc(name,
                     alwayslink=1,)
 
 # Invoke this rule in .../tensorflow/python to build the wrapper library.
-def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
-                         require_shape_functions=False):
+def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],
+                         require_shape_functions=False, hidden_file=None):
   # Construct a cc_binary containing the specified ops.
   tool_name = "gen_" + name + "_py_wrappers_cc"
   if not deps:
@@ -235,12 +236,33 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=[], visibility=None, deps=[],
   if not out:
     out = "ops/gen_" + name + ".py"
 
-  native.genrule(
-      name=name + "_pygenrule",
-      outs=[out],
-      tools=[tool_name],
-      cmd=("$(location " + tool_name + ") " + ",".join(hidden)
-           + " " + ("1" if require_shape_functions else "0") + " > $@"))
+  if hidden:
+    # `hidden` is a list of op names to be hidden in the generated module.
+    native.genrule(
+        name=name + "_pygenrule",
+        outs=[out],
+        tools=[tool_name],
+        cmd=("$(location " + tool_name + ") " + ",".join(hidden)
+             + " " + ("1" if require_shape_functions else "0") + " > $@"))
+  elif hidden_file:
+    # `hidden_file` is file containing a list of op names to be hidden in the
+    # generated module.
+    native.genrule(
+        name=name + "_pygenrule",
+        outs=[out],
+        srcs=[hidden_file],
+        tools=[tool_name],
+        cmd=("$(location " + tool_name + ") @$(location "
+             + hidden_file + ") " + ("1" if require_shape_functions else "0")
+             + " > $@"))
+  else:
+    # No ops should be hidden in the generated module.
+    native.genrule(
+        name=name + "_pygenrule",
+        outs=[out],
+        tools=[tool_name],
+        cmd=("$(location " + tool_name + ") "
+             + ("1" if require_shape_functions else "0") + " > $@"))
 
   # Make a py_library out of the generated python file.
   native.py_library(name=name,

@@ -121,9 +121,13 @@ class GraphIOTest(tf.test.TestCase):
 
     with tf.Graph().as_default() as g, self.test_session(graph=g) as sess:
       features = tf.contrib.learn.io.read_batch_record_features(
-          _VALID_FILE_PATTERN, batch_size, features, randomize_input=False,
-          queue_capacity=queue_capacity, reader_num_threads=2,
-          parser_num_threads=2, name=name)
+          _VALID_FILE_PATTERN,
+          batch_size,
+          features,
+          randomize_input=False,
+          queue_capacity=queue_capacity,
+          reader_num_threads=2,
+          name=name)
       self.assertEqual("%s/fifo_queue_1_Dequeue:0" % name,
                        features["feature"].name)
       file_name_queue_name = "%s/file_name_queue" % name

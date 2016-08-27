@@ -29,7 +29,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
@@ -77,88 +76,19 @@ class Laplace(distribution.Distribution):
     Raises:
       TypeError: if `loc` and `scale` are of different dtype.
     """
-    self._allow_nan_stats = allow_nan_stats
-    self._validate_args = validate_args
     with ops.name_scope(name, values=[loc, scale]):
-      loc = ops.convert_to_tensor(loc)
-      scale = ops.convert_to_tensor(scale)
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
-        self._name = name
         self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
-        self._batch_shape = common_shapes.broadcast_shape(
-            self._loc.get_shape(), self._scale.get_shape())
-        self._event_shape = tensor_shape.TensorShape([])
-
-    contrib_tensor_util.assert_same_float_dtype((loc, scale))
-
-  @property
-  def allow_nan_stats(self):
-    """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._allow_nan_stats
-
-  @property
-  def validate_args(self):
-    """Boolean describing behavior on invalid input."""
-    return self._validate_args
-
-  @property
-  def name(self):
-    return self._name
-
-  @property
-  def dtype(self):
-    return self._loc.dtype
-
-  def batch_shape(self, name="batch_shape"):
-    """Batch dimensions of this instance as a 1-D int32 `Tensor`.
-
-    The product of the dimensions of the `batch_shape` is the number of
-    independent distributions of this kind the instance represents.
-
-    Args:
-      name: name to give to the op.
-
-    Returns:
-      `Tensor` `batch_shape`
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name):
-        return array_ops.shape(self._loc + self._scale)
-
-  def get_batch_shape(self):
-    """`TensorShape` available at graph construction time.
-
-    Same meaning as `batch_shape`. May be only partially defined.
-
-    Returns:
-      batch shape
-    """
-    return self._batch_shape
-
-  def event_shape(self, name="event_shape"):
-    """Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
-
-    Args:
-      name: name to give to the op.
-
-    Returns:
-      `Tensor` `event_shape`
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name):
-        return constant_op.constant([], dtype=dtypes.int32)
-
-  def get_event_shape(self):
-    """`TensorShape` available at graph construction time.
-
-    Same meaning as `event_shape`. May be only partially defined.
-
-    Returns:
-      event shape
-    """
-    return self._event_shape
+        contrib_tensor_util.assert_same_float_dtype((self._loc, self._scale))
+        super(Laplace, self).__init__(
+            dtype=self._loc.dtype,
+            parameters={"loc": self._loc, "scale": self._scale},
+            is_reparameterized=True,
+            validate_args=validate_args,
+            allow_nan_stats=allow_nan_stats,
+            name=name)
 
   @property
   def loc(self):
@@ -170,154 +100,64 @@ class Laplace(distribution.Distribution):
     """Distribution parameter for scale."""
     return self._scale
 
-  def mean(self, name="mean"):
-    """Mean of this distribution."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._scale, self._loc]):
-        return self._loc + array_ops.zeros_like(self._scale)
+  def _batch_shape(self):
+    return array_ops.shape(self.loc + self.scale)
 
-  def median(self, name="median"):
-    """Median of this distribution."""
-    return self.mean(name="median")
+  def _get_batch_shape(self):
+    return common_shapes.broadcast_shape(self.loc.get_shape(),
+                                         self.scale.get_shape())
 
-  def mode(self, name="mode"):
-    """Mode of this distribution."""
-    return self.mean(name="mode")
+  def _event_shape(self):
+    return constant_op.constant([], dtype=dtypes.int32)
 
-  def std(self, name="std"):
-    """Standard deviation of this distribution."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._scale, self._loc]):
-        sqrt_2 = constant_op.constant(math.sqrt(2.), dtype=self.dtype)
-        return sqrt_2 * self._scale + array_ops.zeros_like(self._loc)
+  def _get_event_shape(self):
+    return tensor_shape.scalar()
 
-  def variance(self, name="variance"):
-    """Variance of this distribution."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name):
-        return math_ops.square(self.std())
+  def _sample_n(self, n, seed=None):
+    shape = array_ops.concat(0, ([n], self.batch_shape()))
+    # Sample uniformly-at-random from the open-interval (-1, 1).
+    uniform_samples = random_ops.random_uniform(
+        shape=shape,
+        minval=np.nextafter(self.dtype.as_numpy_dtype(-1.),
+                            self.dtype.as_numpy_dtype(0.)),
+        maxval=1.,
+        dtype=self.dtype,
+        seed=seed)
+    return (self.loc - self.scale * math_ops.sign(uniform_samples) *
+            math_ops.log(1. - math_ops.abs(uniform_samples)))
 
-  def prob(self, x, name="pdf"):
-    """The prob of observations in `x` under the Laplace distribution(s).
+  def _log_prob(self, x):
+    return (-math.log(2.) - math_ops.log(self.scale) -
+            math_ops.abs(x - self.loc) / self.scale)
 
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `loc` and `scale`.
-      name: The name to give this op.
+  def _prob(self, x):
+    return 0.5 / self.scale * math_ops.exp(
+        -math_ops.abs(x - self.loc) / self.scale)
 
-    Returns:
-      pdf: tensor of dtype `dtype`, the pdf values of `x`.
-    """
-    return 0.5 / self._scale * math_ops.exp(
-        -math_ops.abs(x - self._loc) / self._scale)
+  def _log_cdf(self, x):
+    return math_ops.log(self.cdf(x))
 
-  def log_prob(self, x, name="log_prob"):
-    """Log prob of observations in `x` under these Laplace distribution(s).
+  def _cdf(self, x):
+    y = x - self.loc
+    return (0.5 + 0.5 * math_ops.sign(y) *
+            (1. - math_ops.exp(-math_ops.abs(y) / self.scale)))
 
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `loc` and `scale`.
-      name: The name to give this op.
+  def _entropy(self):
+    # Use broadcasting rules to calculate the full broadcast scale.
+    scale = self.scale + array_ops.zeros_like(self.loc)
+    return math.log(2.) + 1. + math_ops.log(scale)
 
-    Returns:
-      log_prob: tensor of dtype `dtype`, the log-probability of `x`.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._loc, self._scale, x]):
-        x = ops.convert_to_tensor(x)
-        if x.dtype != self.dtype:
-          raise TypeError("Input x dtype does not match dtype: %s vs. %s"
-                          % (x.dtype, self.dtype))
-        log_2 = constant_op.constant(math.log(2.), dtype=self.dtype)
-        return (-log_2 - math_ops.log(self._scale) -
-                math_ops.abs(x - self._loc) / self._scale)
+  def _mean(self):
+    return self.loc + array_ops.zeros_like(self.scale)
 
-  def cdf(self, x, name="cdf"):
-    """CDF of observations in `x` under the Laplace distribution(s).
+  def _variance(self):
+    return math_ops.square(self._std())
 
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `loc` and `scale`.
-      name: The name to give this op.
+  def _std(self):
+    return math.sqrt(2.) * self.scale + array_ops.zeros_like(self.loc)
 
-    Returns:
-      cdf: tensor of dtype `dtype`, the CDFs of `x`.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._loc, self._scale, x]):
-        x = ops.convert_to_tensor(x)
-        if x.dtype != self.dtype:
-          raise TypeError("Input x dtype does not match dtype: %s vs. %s"
-                          % (x.dtype, self.dtype))
-        y = x - self._loc
-        return 0.5 + 0.5 * math_ops.sign(y) * (
-            1. - math_ops.exp(-math_ops.abs(y) / self._scale))
+  def _median(self):
+    return self._mean()
 
-  def log_cdf(self, x, name="log_cdf"):
-    """Log CDF of observations `x` under the Laplace distribution(s).
-
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `loc` and `scale`.
-      name: The name to give this op.
-
-    Returns:
-      log_cdf: tensor of dtype `dtype`, the log-CDFs of `x`.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._loc, self._scale, x]):
-        return math_ops.log(self.cdf(x))
-
-  def entropy(self, name="entropy"):
-    """The entropy of Laplace distribution(s).
-
-    Args:
-      name: The name to give this op.
-
-    Returns:
-      entropy: tensor of dtype `dtype`, the entropy.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._loc, self._scale]):
-        log_2_e = constant_op.constant(math.log(2.) + 1., dtype=self.dtype)
-        # Use broadcasting rules to calculate the full broadcast scale.
-        scale = self._scale + array_ops.zeros_like(self._loc)
-        return log_2_e + math_ops.log(scale)
-
-  def sample_n(self, n, seed=None, name="sample_n"):
-    """Sample `n` observations from the Laplace Distributions.
-
-    Args:
-      n: `Scalar`, type int32, the number of observations to sample.
-      seed: Python integer, the random seed.
-      name: The name to give this op.
-
-    Returns:
-      samples: `[n, ...]`, a `Tensor` of `n` samples for each
-        of the distributions determined by broadcasting the parameters.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._loc, self._scale, n]):
-        n = ops.convert_to_tensor(n)
-        n_val = tensor_util.constant_value(n)
-        shape = array_ops.concat(0, ([n], self.batch_shape()))
-        # Sample uniformly-at-random from the open-interval (-1, 1).
-        uniform_samples = random_ops.random_uniform(
-            shape=shape,
-            minval=np.nextafter(self.dtype.as_numpy_dtype(-1.),
-                                self.dtype.as_numpy_dtype(0.)),
-            maxval=self.dtype.as_numpy_dtype(1.),
-            dtype=self.dtype,
-            seed=seed)
-
-        # Provide some hints to shape inference
-        inferred_shape = tensor_shape.vector(n_val).concatenate(
-            self.get_batch_shape())
-        uniform_samples.set_shape(inferred_shape)
-
-        return (self._loc - self._scale * math_ops.sign(uniform_samples) *
-                math_ops.log(1. - math_ops.abs(uniform_samples)))
-
-  @property
-  def is_reparameterized(self):
-    return True
-
-  @property
-  def is_continuous(self):
-    return True
+  def _mode(self):
+    return self._mean()

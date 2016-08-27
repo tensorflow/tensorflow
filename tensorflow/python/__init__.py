@@ -26,6 +26,7 @@ import tensorflow as tf
 """
 
 import ctypes
+import importlib
 import inspect
 import sys
 import traceback
@@ -57,12 +58,11 @@ please exit the tensorflow source tree, and relaunch your python interpreter
 from there.""" % traceback.format_exc()
   raise ImportError(msg)
 
+from tensorflow.core.framework.node_def_pb2 import *
 from tensorflow.core.framework.summary_pb2 import *
 from tensorflow.core.framework.attr_value_pb2 import *
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
-# Import things out of contrib
-import tensorflow.contrib as contrib
 
 # Framework
 from tensorflow.python.framework.framework_lib import *
@@ -118,7 +118,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 
 # Don't export modules except for the few we really want
-_whitelist = set([app, compat, contrib, errors, flags, gfile, image, logging,
+_whitelist = set([app, compat, errors, flags, gfile, image, logging,
                   nn, python_io, resource_loader, sysconfig, test, train,
                   user_ops])
 
@@ -230,7 +230,6 @@ __all__.extend([
 # Export modules and constants.
 __all__.extend([
     'app',
-    'contrib',
     'errors',
     'flags',
     'gfile',

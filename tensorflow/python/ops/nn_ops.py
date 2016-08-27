@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numbers
+
 import numpy as np
 
 from tensorflow.python.framework import common_shapes
@@ -427,6 +429,28 @@ def bias_add_v1(value, bias, name=None):
 ops.RegisterShape("BiasAddV1")(common_shapes.bias_add_shape)
 
 ops.RegisterShape("BiasAddGradV1")(common_shapes.bias_add_grad_shape)
+
+
+def crelu(features, name=None):
+  """Computes Concatenated ReLU.
+
+  Concatenates a ReLU which selects only the positive part of the activation
+  with a ReLU which selects only the *negative* part of the activation.
+  Note that as a result this non-linearity doubles the depth of the activations.
+  Source: https://arxiv.org/abs/1603.05201
+
+  Args:
+    features: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
+      `int16`, or `int8`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as `features`.
+  """
+  with ops.name_scope(name, "CRelu", [features]) as name:
+    features = ops.convert_to_tensor(features, name="features")
+    return gen_nn_ops.relu(array_ops.concat(array_ops.rank(features) - 1,
+                                            [features, -features], name=name))
 
 
 def relu6(features, name=None):
@@ -1109,7 +1133,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
   """
   with ops.name_scope(name, "dropout", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    if isinstance(keep_prob, float) and not 0 < keep_prob <= 1:
+    if isinstance(keep_prob, numbers.Real) and not 0 < keep_prob <= 1:
       raise ValueError("keep_prob must be a scalar tensor or a float in the "
                        "range (0, 1], got %g" % keep_prob)
     keep_prob = ops.convert_to_tensor(keep_prob,

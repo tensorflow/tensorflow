@@ -10,6 +10,11 @@
 * Int32 elements of list(type) arguments are no longer placed in host memory by
   default. If necessary, a list(type) argument to a kernel can be placed in host
   memory using a HostMemory annotation.
+* uniform_unit_scaling_initializer() no longer takes a full_shape arg, instead
+  relying on the partition info passed to the initializer function when it's
+  called.
+* The NodeDef protocol message is now defined in its own file node_def.proto
+  instead of graph.proto.
 
 # Release 0.10.0
 

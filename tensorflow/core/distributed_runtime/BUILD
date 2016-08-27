@@ -145,6 +145,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:worker_proto_cc",
     ],

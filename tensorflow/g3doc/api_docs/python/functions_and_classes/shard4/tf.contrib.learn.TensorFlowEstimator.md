@@ -46,6 +46,13 @@ Initializes a TensorFlowEstimator instance.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowEstimator.config` {#TensorFlowEstimator.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowEstimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#TensorFlowEstimator.evaluate}
 
 Evaluates given model with provided evaluation data.
@@ -71,7 +78,7 @@ See superclass Estimator for more details.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowEstimator.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowEstimator.export}
+#### `tf.contrib.learn.TensorFlowEstimator.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowEstimator.export}
 
 Exports inference graph into given dir.
 

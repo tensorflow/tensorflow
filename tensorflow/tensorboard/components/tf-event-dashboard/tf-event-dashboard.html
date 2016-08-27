@@ -1,3 +1,20 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="tf-smoothing-input.html">
 <link rel="import" href="../tf-backend/tf-backend.html">
@@ -60,7 +77,7 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
               selected-item-label="{{_tooltipSortingMethod}}"
             >
               <paper-menu class="dropdown-content" selected="0">
-                <paper-item>name</paper-item>
+                <paper-item>default</paper-item>
                 <paper-item>descending</paper-item>
                 <paper-item>ascending</paper-item>
               </paper-menu>
@@ -128,6 +145,13 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
                       icon="fullscreen"
                       on-tap="toggleSelected"
                     ></paper-icon-button>
+                      <paper-icon-button
+                              class="log-option-button"
+                              icon="line-weight"
+                              on-tap="toggleYScale"
+                              title="Toggle y-axis scale (log, linear)"
+                              ></paper-icon-button>
+
                   </div>
                   <template is="dom-if" if="[[_showDownloadLinks]]">
                     <div class="card-bottom-row">
@@ -225,6 +249,19 @@ The #center div contains tf-line-charts embedded inside tf-collapsable-panes.
           chartScaffold.chart().redraw();
         }
       },
+
+      toggleYScale: function(e) {
+        var currentTarget = Polymer.dom(e.currentTarget);
+
+        var b = currentTarget.parentNode.querySelector('.log-option-button');
+        var c = currentTarget.parentNode.querySelector('vz-line-chart');
+        if (c !== null) {
+          c.yScaleType = c.yScaleType === 'log' ? 'linear' : 'log';
+          b.icon = c.yScaleType === 'log' ? 'line-weight' : 'reorder';
+          c.redraw();
+        }
+      },
+
       validRuns: function(tag, runsChange, run2tagChange) {
         var _this = this;
         var result = this.selectedRuns.filter(function(r) {

@@ -20,8 +20,10 @@ from __future__ import print_function
 
 # pylint: disable=unused-import
 from tensorflow.contrib.slim.python.slim.nets.inception_v1 import inception_v1
+from tensorflow.contrib.slim.python.slim.nets.inception_v1 import inception_v1_arg_scope
 from tensorflow.contrib.slim.python.slim.nets.inception_v1 import inception_v1_base
 from tensorflow.contrib.slim.python.slim.nets.inception_v2 import inception_v2
+from tensorflow.contrib.slim.python.slim.nets.inception_v2 import inception_v2_arg_scope
 from tensorflow.contrib.slim.python.slim.nets.inception_v2 import inception_v2_base
 from tensorflow.contrib.slim.python.slim.nets.inception_v3 import inception_v3
 from tensorflow.contrib.slim.python.slim.nets.inception_v3 import inception_v3_arg_scope

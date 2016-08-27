@@ -242,8 +242,12 @@ class Conv2DOp : public BinaryOp<T> {
       Name("Conv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       Conv2DOp<CPUDevice, T>);
 
+// If we're using the alternative GEMM-based implementation of Conv2D for the
+// CPU implementation, don't register this EigenTensor-based version.
+#if !defined(USE_GEMM_FOR_CONV)
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
+#endif  // USE_GEMM_FOR_CONV
 
 // To be used inside depthwise_conv_op.cc.
 template class LaunchConv2DOp<CPUDevice, float>;

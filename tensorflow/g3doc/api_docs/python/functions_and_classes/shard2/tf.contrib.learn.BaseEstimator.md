@@ -24,6 +24,13 @@ Initializes a BaseEstimator instance.
 
 - - -
 
+#### `tf.contrib.learn.BaseEstimator.config` {#BaseEstimator.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.BaseEstimator.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#BaseEstimator.evaluate}
 
 See `Evaluable`.
@@ -38,7 +45,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#BaseEstimator.export}
+#### `tf.contrib.learn.BaseEstimator.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#BaseEstimator.export}
 
 Exports inference graph into given dir.
 

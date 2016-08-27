@@ -23,7 +23,7 @@ from tensorflow.contrib.learn.python.learn.dataframe import transform
 from tensorflow.python.ops import sparse_ops
 
 
-class Densify(transform.Transform):
+class Densify(transform.TensorFlowTransform):
   """Transforms Sparse to Dense Tensor."""
 
   def __init__(self,

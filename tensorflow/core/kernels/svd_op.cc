@@ -28,10 +28,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <class Scalar, bool SupportsBatchOperation>
-class SvdOp : public LinearAlgebraOp<Scalar, SupportsBatchOperation> {
+template <class Scalar>
+class SvdOp : public LinearAlgebraOp<Scalar> {
  public:
-  typedef LinearAlgebraOp<Scalar, SupportsBatchOperation> Base;
+  typedef LinearAlgebraOp<Scalar> Base;
 
   explicit SvdOp(OpKernelConstruction* context) : Base(context) {
     OP_REQUIRES_OK(context, context->GetAttr("compute_uv", &compute_uv_));
@@ -97,13 +97,13 @@ class SvdOp : public LinearAlgebraOp<Scalar, SupportsBatchOperation> {
   TF_DISALLOW_COPY_AND_ASSIGN(SvdOp);
 };
 
-REGISTER_LINALG_OP("Svd", (SvdOp<float, false>), float);
-REGISTER_LINALG_OP("Svd", (SvdOp<double, false>), double);
-REGISTER_LINALG_OP("Svd", (SvdOp<complex64, false>), complex64);
-REGISTER_LINALG_OP("Svd", (SvdOp<complex128, false>), complex128);
-REGISTER_LINALG_OP("BatchSvd", (SvdOp<float, true>), float);
-REGISTER_LINALG_OP("BatchSvd", (SvdOp<double, true>), double);
-REGISTER_LINALG_OP("BatchSvd", (SvdOp<complex64, true>), complex64);
-REGISTER_LINALG_OP("BatchSvd", (SvdOp<complex128, true>), complex128);
+REGISTER_LINALG_OP("Svd", (SvdOp<float>), float);
+REGISTER_LINALG_OP("Svd", (SvdOp<double>), double);
+REGISTER_LINALG_OP("Svd", (SvdOp<complex64>), complex64);
+REGISTER_LINALG_OP("Svd", (SvdOp<complex128>), complex128);
+REGISTER_LINALG_OP("BatchSvd", (SvdOp<float>), float);
+REGISTER_LINALG_OP("BatchSvd", (SvdOp<double>), double);
+REGISTER_LINALG_OP("BatchSvd", (SvdOp<complex64>), complex64);
+REGISTER_LINALG_OP("BatchSvd", (SvdOp<complex128>), complex128);
 
 }  // namespace tensorflow

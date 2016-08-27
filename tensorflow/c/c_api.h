@@ -369,7 +369,7 @@ extern void TF_SetAttrShapeList(TF_OperationDescription* desc,
 // `proto` must point to an array of `proto_len` bytes representing a
 // binary-serialized TensorShapeProto.
 extern void TF_SetAttrTensorShapeProto(TF_OperationDescription* desc,
-                                       const char* attr_name, void* proto,
+                                       const char* attr_name, const void* proto,
                                        int proto_len, TF_Status* status);
 // `protos` and `proto_lens` must point to arrays of length `num_shapes`.
 // `protos[i]` must point to an array of `proto_lens[i]` bytes

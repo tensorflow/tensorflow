@@ -360,6 +360,19 @@ py_test(
 )
 
 py_test(
+    name = "run_config_test",
+    size = "small",
+    srcs = [
+        "python/learn/tests/run_config_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "basic_session_run_hooks_test",
     size = "small",
     srcs = ["python/learn/tests/basic_session_run_hooks_test.py"],
@@ -671,6 +684,9 @@ py_test(
     size = "small",
     srcs = ["python/learn/utils/export_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",  # http://b/31032996
+    ],
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",

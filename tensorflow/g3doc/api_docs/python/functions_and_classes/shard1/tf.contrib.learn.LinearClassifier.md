@@ -103,6 +103,13 @@ Construct a `LinearClassifier` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearClassifier.config` {#LinearClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearClassifier.dnn_bias_` {#LinearClassifier.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -131,7 +138,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#LinearClassifier.export}
+#### `tf.contrib.learn.LinearClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#LinearClassifier.export}
 
 Exports inference graph into given dir.
 

@@ -19,16 +19,15 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -119,39 +118,23 @@ class StudentT(distribution.Distribution):
     Raises:
       TypeError: if mu and sigma are different dtypes.
     """
-    self._allow_nan_stats = allow_nan_stats
-    self._validate_args = validate_args
-    with ops.name_scope(name, values=[df, mu, sigma]) as scope:
-      with ops.control_dependencies([check_ops.assert_positive(
-          df), check_ops.assert_positive(sigma)] if validate_args else []):
-        self._df = ops.convert_to_tensor(df, name="df")
-        self._mu = ops.convert_to_tensor(mu, name="mu")
-        self._sigma = ops.convert_to_tensor(sigma, name="sigma")
+    with ops.name_scope(name, values=[df, mu, sigma]):
+      with ops.control_dependencies([
+          check_ops.assert_positive(df),
+          check_ops.assert_positive(sigma),
+      ] if validate_args else []):
+        self._df = array_ops.identity(df, name="df")
+        self._mu = array_ops.identity(mu, name="mu")
+        self._sigma = array_ops.identity(sigma, name="sigma")
         contrib_tensor_util.assert_same_float_dtype(
             (self._df, self._mu, self._sigma))
-      self._name = scope
-      self._get_batch_shape = common_shapes.broadcast_shape(
-          self._sigma.get_shape(), common_shapes.broadcast_shape(
-              self._df.get_shape(), self._mu.get_shape()))
-      self._get_event_shape = tensor_shape.TensorShape([])
-
-  @property
-  def allow_nan_stats(self):
-    """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._allow_nan_stats
-
-  @property
-  def validate_args(self):
-    """Boolean describing behavior on invalid input."""
-    return self._validate_args
-
-  @property
-  def name(self):
-    return self._name
-
-  @property
-  def dtype(self):
-    return self._df.dtype
+        super(StudentT, self).__init__(
+            dtype=self._sigma.dtype,
+            parameters={"df": self._df, "mu": self._mu, "sigma": self._sigma},
+            is_reparameterized=True,
+            validate_args=validate_args,
+            allow_nan_stats=allow_nan_stats,
+            name=name)
 
   @property
   def df(self):
@@ -168,41 +151,125 @@ class StudentT(distribution.Distribution):
     """Scaling factors of these Student's t distribution(s)."""
     return self._sigma
 
-  def mean(self, name="mean"):
-    """Mean of the distribution.
+  def _batch_shape(self):
+    return array_ops.shape(self.df + self.mu + self.sigma)
+
+  def _get_batch_shape(self):
+    return common_shapes.broadcast_shape(
+        self.sigma.get_shape(),
+        common_shapes.broadcast_shape(
+            self.df.get_shape(),
+            self.mu.get_shape()))
+
+  def _event_shape(self):
+    return constant_op.constant([], dtype=math_ops.int32)
+
+  def _get_event_shape(self):
+    return tensor_shape.scalar()
+
+  def _sample_n(self, n, seed=None):
+    # We use 2 uniform random floats to generate polar random variates.
+    # http://dl.acm.org/citation.cfm?id=179631
+    # Theorem 2. Let G, H be iid variates, uniformly distributed on [0,1].
+    # Let theta = 2*pi*H, let R = sqrt(df*(G^(-2/df) - 1)) for df > 0.
+    # Let X = R*cos(theta), and let Y = R*sin(theta).
+    # Then X ~ t_df and Y ~ t_df.
+    # The variates X and Y are not independent.
+    shape = array_ops.concat(0, ([2, n], self.batch_shape()))
+    uniform = random_ops.random_uniform(shape=shape,
+                                        dtype=self.dtype,
+                                        seed=seed)
+    samples_g, samples_h = array_ops.unpack(uniform, num=2)
+    theta = (2. * math.pi) * samples_h
+    r = math_ops.sqrt(self.df *
+                      (math_ops.pow(samples_g, -2 / self.df) - 1))
+    samples = r * math_ops.cos(theta)
+    return samples * self.sigma + self.mu
+
+  def _log_prob(self, x):
+    y = (x - self.mu) / self.sigma
+    half_df = 0.5 * self.df
+    return (math_ops.lgamma(0.5 + half_df) -
+            math_ops.lgamma(half_df) -
+            0.5 * math_ops.log(self.df) -
+            0.5 * math.log(math.pi) -
+            math_ops.log(self.sigma) -
+            (0.5 + half_df) * math_ops.log(1. + math_ops.square(y) / self.df))
+
+  def _prob(self, x):
+    y = (x - self.mu) / self.sigma
+    half_df = 0.5 * self.df
+    return (math_ops.exp(math_ops.lgamma(0.5 + half_df) -
+                         math_ops.lgamma(half_df)) /
+            (math_ops.sqrt(self.df) * math.sqrt(math.pi) * self.sigma) *
+            math_ops.pow(1. + math_ops.square(y) / self.df, -(0.5 + half_df)))
+
+  def _entropy(self):
+    u = array_ops.expand_dims(self.df * self._ones(), -1)
+    v = array_ops.expand_dims(self._ones(), -1)
+    beta_arg = array_ops.concat(len(u.get_shape()) - 1, [u, v]) / 2
+    half_df = 0.5 * self.df
+    return ((0.5 + half_df) * (math_ops.digamma(0.5 + half_df) -
+                               math_ops.digamma(half_df)) +
+            0.5 * math_ops.log(self.df) +
+            special_math_ops.lbeta(beta_arg) +
+            math_ops.log(self.sigma))
+
+  def _mean(self):
+    mean = self.mu * self._ones()
+    if self.allow_nan_stats:
+      nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
+      return math_ops.select(
+          math_ops.greater(self.df, self._ones()), mean,
+          array_ops.fill(self.batch_shape(), nan, name="nan"))
+    else:
+      return control_flow_ops.with_dependencies([
+          check_ops.assert_less(
+              array_ops.ones((), dtype=self.dtype), self.df,
+              message="mean not defined for components of df <= 1"),
+      ], mean)
+
+  def _variance(self):
+    var = (self._ones() *
+           math_ops.square(self.sigma) * self.df / (self.df - 2))
+    # When 1 < df <= 2, variance is infinite.
+    inf = np.array(np.inf, dtype=self.dtype.as_numpy_dtype())
+    result_where_defined = math_ops.select(
+        math_ops.greater(self.df, array_ops.fill(self.batch_shape(), 2.)),
+        var,
+        array_ops.fill(self.batch_shape(), inf, name="inf"))
+
+    if self.allow_nan_stats:
+      nan = np.array(np.nan, dtype=self.dtype.as_numpy_dtype())
+      return math_ops.select(
+          math_ops.greater(self.df, self._ones()),
+          result_where_defined,
+          array_ops.fill(self.batch_shape(), nan, name="nan"))
+    else:
+      return control_flow_ops.with_dependencies([
+          check_ops.assert_less(
+              array_ops.ones((), dtype=self.dtype), self.df,
+              message="variance not defined for components of df <= 1"),
+      ], result_where_defined)
+
+  def _std(self):
+    return math_ops.sqrt(self.variance())
+
+  def _mode(self):
+    return array_ops.identity(self.mu)
+
+  def _ones(self):
+    return array_ops.ones(self.batch_shape(), dtype=self.dtype)
+
+
+distribution_util.append_class_fun_doc(StudentT.mean, doc_str="""
 
     The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.  If
     `self.allow_nan_stats=False`, then an exception will be raised rather than
     returning `NaN`.
+""")
 
-    Args:
-      name:  A name to give this op.
-
-    Returns:
-      The mean for every batch member, a `Tensor` with same `dtype` as self.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._mu]):
-        result_if_defined = self._mu * self._ones()
-        if self.allow_nan_stats:
-          df_gt_1 = self._df > self._ones()
-          nan = np.nan + self._zeros()
-          return math_ops.select(df_gt_1, result_if_defined, nan)
-        else:
-          one = constant_op.constant(1.0, dtype=self.dtype)
-          return control_flow_ops.with_dependencies(
-              [check_ops.assert_less(
-                  one, self._df,
-                  message="mean not defined for components of df <= 1"
-              )], result_if_defined)
-
-  def mode(self, name="mode"):
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._mu]):
-        return array_ops.identity(self._mu)
-
-  def variance(self, name="variance"):
-    """Variance of the distribution.
+distribution_util.append_class_fun_doc(StudentT.variance, doc_str="""
 
     Variance for Student's T equals
 
@@ -212,179 +279,4 @@ class StudentT(distribution.Distribution):
     NaN, when df <= 1
     ```
 
-    The NaN state occurs because mean is undefined for `df <= 1`, and if
-    `self.allow_nan_stats` is `False`, an exception will be raised if any batch
-    members fall into this state.
-
-    Args:
-      name:  A name for this op.
-
-    Returns:
-      The variance for every batch member, a `Tensor` with same `dtype` as self.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._df, self._sigma]):
-        result_where_finite = (
-            self._zeros()
-            + math_ops.square(self._sigma) * self._df / (self._df - 2))
-        # When 1 < df <= 2, variance is infinite.
-        result_where_defined = math_ops.select(
-            self._zeros() + self._df > 2,
-            result_where_finite,
-            self._zeros() + np.inf)
-
-        if self.allow_nan_stats:
-          return math_ops.select(
-              (self._zeros() + self._df > 1),
-              result_where_defined,
-              self._zeros() + np.nan)
-        else:
-          one = constant_op.constant(1.0, dtype=self.dtype)
-          return control_flow_ops.with_dependencies(
-              [check_ops.assert_less(
-                  one, self._df,
-                  message="variance not defined for components of df <= 1"
-              )], result_where_defined)
-
-  def std(self, name="std"):
-    with ops.name_scope(self.name):
-      with ops.name_scope(name):
-        return math_ops.sqrt(self.variance())
-
-  def batch_shape(self, name="batch_shape"):
-    with ops.name_scope(self.name):
-      with ops.name_scope(name):
-        return array_ops.shape(self._ones())
-
-  def get_batch_shape(self):
-    return self._get_batch_shape
-
-  def event_shape(self, name="event_shape"):
-    with ops.name_scope(self.name):
-      with ops.name_scope(name):
-        return constant_op.constant([], dtype=math_ops.int32)
-
-  def get_event_shape(self):
-    return self._event_shape
-
-  def log_prob(self, x, name="log_prob"):
-    """Log prob of observations in `x` under these Student's t-distribution(s).
-
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `mu` and `df`.
-      name: The name to give this op.
-
-    Returns:
-      log_prob: tensor of dtype `dtype`, the log-PDFs of `x`.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._df, self._mu, self._sigma, x]):
-        x = ops.convert_to_tensor(x)
-        if x.dtype != self.dtype:
-          raise TypeError("Input x dtype does not match dtype: %s vs. %s" %
-                          (x.dtype, self.dtype))
-        df_2 = self._df / 2
-        log_beta = (math_ops.lgamma(0.5) + math_ops.lgamma(df_2) -
-                    math_ops.lgamma(0.5 + df_2))
-        return (-math_ops.log(self._df) / 2 - log_beta - (self._df + 1) / 2 *
-                math_ops.log(1 + math_ops.square((x - self._mu) / self._sigma) /
-                             self._df) - math_ops.log(self._sigma))
-
-  def prob(self, x, name="prob"):
-    """The PDF of observations in `x` under these Student's t distribution(s).
-
-    Args:
-      x: tensor of dtype `dtype`, must be broadcastable with `df`, `mu`, and
-        `sigma`.
-      name: The name to give this op.
-
-    Returns:
-      prob: tensor of dtype `dtype`, the prob values of `x`.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._df, self._mu, self._sigma, x]):
-        x = ops.convert_to_tensor(x)
-        if x.dtype != self.dtype:
-          raise TypeError("Input x dtype does not match dtype: %s vs. %s" %
-                          (x.dtype, self.dtype))
-        reloc_scaled = (x - self._mu) / self._sigma
-        return (math_ops.exp(math_ops.lgamma((self._df + 1) / 2) -
-                             math_ops.lgamma(self._df / 2)) /
-                math_ops.sqrt(self._df) / math.sqrt(np.pi) *
-                math_ops.pow(1 + math_ops.square(reloc_scaled) / self._df,
-                             -(self._df + 1) / 2) / self.sigma)
-
-  def entropy(self, name="entropy"):
-    """The entropy of Student t distribution(s).
-
-    Args:
-      name: The name to give this op.
-
-    Returns:
-      entropy: tensor of dtype `dtype`, the entropy.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._df, self._sigma]):
-        u = array_ops.expand_dims(self._df + self._zeros(), -1)
-        v = array_ops.expand_dims(self._ones(), -1)
-        beta_arg = array_ops.concat(len(u.get_shape()) - 1, [u, v]) / 2
-        return ((self._df + 1) / 2 * (math_ops.digamma((self._df + 1) / 2) -
-                                      math_ops.digamma(self._df / 2)) +
-                math_ops.log(self._df) / 2 +
-                special_math_ops.lbeta(beta_arg) +
-                math_ops.log(self._sigma))
-
-  def sample_n(self, n, seed=None, name="sample_n"):
-    """Sample `n` observations from the Student t Distributions.
-
-    Args:
-      n: `Scalar`, type int32, the number of observations to sample.
-      seed: Python integer, the random seed.
-      name: The name to give this op.
-
-    Returns:
-      samples: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
-          with values of type `self.dtype`.
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self._df, self._mu, self._sigma, n]):
-        n = ops.convert_to_tensor(n, name="n")
-        n_val = tensor_util.constant_value(n)
-
-        # We use 2 uniform random floats to generate polar random variates.
-        # http://dl.acm.org/citation.cfm?id=179631
-        # Theorem 2. Let G, H be iid variates, uniformly distributed on [0,1].
-        # Let theta = 2*pi*H, let R = sqrt(df*(G^(-2/df) - 1)) for df > 0.
-        # Let X = R*cos(theta), and let Y = R*sin(theta).
-        # Then X ~ t_df and Y ~ t_df.
-        # The variates X and Y are not independent.
-        shape = array_ops.concat(0, ([2, n], self.batch_shape()))
-        uniform = random_ops.random_uniform(shape=shape,
-                                            dtype=self.dtype,
-                                            seed=seed)
-        samples_g, samples_h = array_ops.unpack(uniform, num=2)
-        theta = (2 * np.pi) * samples_h
-        r = math_ops.sqrt(self._df *
-                          (math_ops.pow(samples_g, -2 / self._df) - 1))
-        samples = r * math_ops.cos(theta)
-
-        # Provide some hints to shape inference
-        inferred_shape = tensor_shape.vector(n_val).concatenate(
-            self.get_batch_shape())
-        samples.set_shape(inferred_shape)
-
-        return samples * self._sigma + self._mu
-
-  @property
-  def is_reparameterized(self):
-    return True
-
-  def _ones(self):
-    return array_ops.ones_like(self._df + self._mu + self._sigma)
-
-  def _zeros(self):
-    return array_ops.zeros_like(self._df + self._mu + self._sigma)
-
-  @property
-  def is_continuous(self):
-    return True
+""")

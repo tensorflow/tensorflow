@@ -260,15 +260,17 @@ For other variations of valid optimization flags, see [clang optimization levels
 ## Raspberry Pi
 
 Building on the Raspberry Pi is similar to a normal Linux system. First
-download the dependencies and build protobuf:
+download the dependencies, install the required packages and build protobuf:
 
 ```bash
 tensorflow/contrib/makefile/download_dependencies.sh
+sudo apt-get install autoconf automake libtool
 cd tensorflow/contrib/makefile/downloads/protobuf/
 ./autogen.sh
 ./configure
 make
 sudo make install
+sudo ldconfig  # refresh shared library cache
 cd ../../../../..
 ```
 

@@ -18,62 +18,61 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 namespace {
 
 // Return in <out> the result of making <s> a square matrix.
-Status MakeSquareMatrix(InferenceContext* c, const Shape* s,
-                        const Shape** out) {
+Status MakeSquareMatrix(InferenceContext* c, ShapeHandle s, ShapeHandle* out) {
   TF_RETURN_IF_ERROR(c->WithRank(s, 2, &s));
-  const Dimension* d;
+  DimensionHandle d;
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(s, 0), c->Dim(s, 1), &d));
   *out = c->Matrix(d, d);
   return Status::OK();
 }
 
 Status UnchangedSquareShapeFn(InferenceContext* c) {
-  const Shape* out;
+  ShapeHandle out;
   TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &out));
   c->set_output(0, out);
   return Status::OK();
 }
 
 // Return in <out> the result of making the end of <s> a square matrix.
-Status MakeBatchSquareMatrix(InferenceContext* c, const Shape* input,
-                             const Shape** out) {
-  const Shape* s;
+Status MakeBatchSquareMatrix(InferenceContext* c, ShapeHandle input,
+                             ShapeHandle* out) {
+  ShapeHandle s;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, 2, &s));
 
-  const Dimension* d;
+  DimensionHandle d;
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(s, -2), c->Dim(s, -1), &d));
 
-  const Shape* batch_shape;
+  ShapeHandle batch_shape;
   TF_RETURN_IF_ERROR(c->Subshape(s, 0, -2, &batch_shape));
   TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(d, d), out));
   return Status::OK();
 }
 
 Status BatchUnchangedSquareShapeFn(InferenceContext* c) {
-  const Shape* out;
+  ShapeHandle out;
   TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &out));
   c->set_output(0, out);
   return Status::OK();
 }
 
 Status SquareMatrixSolveShapeFn(InferenceContext* c) {
-  const Shape* lhs;
-  const Shape* rhs;
+  ShapeHandle lhs;
+  ShapeHandle rhs;
   TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &lhs));
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &rhs));
 
   // lhs and rhs have the same number of rows. Make a new output
   // shape that uses rows to replace rhs.dim[0].
-  const Dimension* rows;
+  DimensionHandle rows;
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(lhs, 0), c->Dim(rhs, 0), &rows));
-  const Shape* out;
+  ShapeHandle out;
   TF_RETURN_IF_ERROR(c->ReplaceDim(rhs, 0, rows, &out));
   c->set_output(0, out);
   return Status::OK();
@@ -82,8 +81,8 @@ Status SquareMatrixSolveShapeFn(InferenceContext* c) {
 // Inputs are [...,M,N] and [...,M,K].  Output is [...,N,K].
 // If <square>, then input is [...,M,M].
 Status BatchMatrixSolveShapeFn(InferenceContext* c, bool square) {
-  const Shape* lhs;
-  const Shape* rhs;
+  ShapeHandle lhs;
+  ShapeHandle rhs;
   if (square) {
     TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &lhs));
   } else {
@@ -92,44 +91,44 @@ Status BatchMatrixSolveShapeFn(InferenceContext* c, bool square) {
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &rhs));
 
   // Make the common batch subshape between the two dimensions.
-  const Shape* lhs_batch_shape;
-  const Shape* batch_shape;
+  ShapeHandle lhs_batch_shape;
+  ShapeHandle batch_shape;
   TF_RETURN_IF_ERROR(c->Subshape(lhs, 0, -2, &lhs_batch_shape));
   TF_RETURN_IF_ERROR(c->Subshape(rhs, 0, -2, &batch_shape));
   TF_RETURN_IF_ERROR(c->Merge(lhs_batch_shape, batch_shape, &batch_shape));
 
   // lhs and rhs have the same value for m.
-  const Dimension* m;
+  DimensionHandle m;
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(lhs, -2), c->Dim(rhs, -2), &m));
 
-  const Dimension* n = c->Dim(lhs, -1);
+  DimensionHandle n = c->Dim(lhs, -1);
   if (square) {
     TF_RETURN_IF_ERROR(c->Merge(m, n, &n));
   }
 
   // Build final shape (batch_shape + n + k) in <out>.
-  const Shape* out;
+  ShapeHandle out;
   TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Vector(n), &out));
   TF_RETURN_IF_ERROR(c->Concatenate(out, c->Vector(c->Dim(rhs, -1)), &out));
   c->set_output(0, out);
   return Status::OK();
 }
 
-Status BatchSvdShapeHelperFn(InferenceContext* c, const Shape* input) {
-  const Dimension* m = c->Dim(input, -2);
-  const Dimension* n = c->Dim(input, -1);
-  const Dimension* p;
+Status BatchSvdShapeHelperFn(InferenceContext* c, ShapeHandle input) {
+  DimensionHandle m = c->Dim(input, -2);
+  DimensionHandle n = c->Dim(input, -1);
+  DimensionHandle p;
   TF_RETURN_IF_ERROR(c->Min(m, n, &p));
-  const Shape* batch_shape;
+  ShapeHandle batch_shape;
   TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &batch_shape));
-  const Shape* e_shape;
+  ShapeHandle e_shape;
   TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Vector(p), &e_shape));
   c->set_output(0, e_shape);
   bool compute_uv;
   TF_RETURN_IF_ERROR(c->GetAttr("compute_uv", &compute_uv));
   if (compute_uv) {
-    const Shape* u_shape;
-    const Shape* v_shape;
+    ShapeHandle u_shape;
+    ShapeHandle v_shape;
     bool full_matrices;
     TF_RETURN_IF_ERROR(c->GetAttr("full_matrices", &full_matrices));
     if (full_matrices) {
@@ -159,7 +158,7 @@ Status BatchSvdShapeHelperFn(InferenceContext* c, const Shape* input) {
 //   [M,P]; [N,P], if compute_uv is true and full_matrices is false,
 // where P = min(M,N).
 Status SvdShapeFn(InferenceContext* c) {
-  const Shape* input;
+  ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
   return BatchSvdShapeHelperFn(c, input);
 }
@@ -171,7 +170,7 @@ Status SvdShapeFn(InferenceContext* c) {
 //   [...,M,P]; [...,N,P], if compute_uv is true and full_matrices is false,
 // where P = min(M,N).
 Status BatchSvdShapeFn(InferenceContext* c) {
-  const Shape* input;
+  ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
   return BatchSvdShapeHelperFn(c, input);
 }
@@ -180,9 +179,9 @@ Status BatchSvdShapeFn(InferenceContext* c) {
 //   [N];[0], if compute_v is false,
 //   [N];[N,N], if compute_v is true.
 Status SelfAdjointEigV2ShapeFn(InferenceContext* c) {
-  const Shape* input;
+  ShapeHandle input;
   TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &input));
-  const Dimension* n;
+  DimensionHandle n;
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(input, 0), c->Dim(input, 1), &n));
   c->set_output(0, c->Vector(n));
   bool compute_v;
@@ -199,19 +198,19 @@ Status SelfAdjointEigV2ShapeFn(InferenceContext* c) {
 //   [...,N];[0], if compute_v is false,
 //   [...,N];[...,N,N], if compute_v is true.
 Status BatchSelfAdjointEigV2ShapeFn(InferenceContext* c) {
-  const Shape* input;
+  ShapeHandle input;
   TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &input));
-  const Dimension* n;
+  DimensionHandle n;
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(input, -2), c->Dim(input, -1), &n));
-  const Shape* batch_shape;
+  ShapeHandle batch_shape;
   TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &batch_shape));
-  const Shape* e_shape;
+  ShapeHandle e_shape;
   TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Vector(n), &e_shape));
   c->set_output(0, e_shape);
   bool compute_v;
   TF_RETURN_IF_ERROR(c->GetAttr("compute_v", &compute_v));
   if (compute_v) {
-    const Shape* v_shape;
+    ShapeHandle v_shape;
     TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(n, n), &v_shape));
     c->set_output(1, v_shape);
   } else {
@@ -227,7 +226,7 @@ REGISTER_OP("MatrixDeterminant")
     .Output("output: T")
     .Attr("T: {float, double}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input;
+      ShapeHandle input;
       TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &input));
       c->set_output(0, c->Scalar());
       return Status::OK();
@@ -244,14 +243,14 @@ REGISTER_OP("BatchMatrixDeterminant")
     .Output("output: T")
     .Attr("T: {float, double}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input;
+      ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
 
-      const Dimension* unused;
+      DimensionHandle unused;
       TF_RETURN_IF_ERROR(
           c->Merge(c->Dim(input, -1), c->Dim(input, -2), &unused));
 
-      const Shape* out;
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &out));
       c->set_output(0, out);
       return Status::OK();
@@ -395,11 +394,11 @@ REGISTER_OP("SelfAdjointEig")
     .Attr("T: {double, float}")
     .Deprecated(11, "Use SelfAdjointEigV2 instead.")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input;
+      ShapeHandle input;
       TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &input));
 
-      const Dimension* d = c->Dim(input, 0);
-      const Dimension* d_plus_1;
+      DimensionHandle d = c->Dim(input, 0);
+      DimensionHandle d_plus_1;
       TF_RETURN_IF_ERROR(c->Add(d, 1, &d_plus_1));
       c->set_output(0, c->Matrix(d_plus_1, d));
       return Status::OK();
@@ -423,14 +422,14 @@ REGISTER_OP("BatchSelfAdjointEig")
     .Attr("T: {double, float}")
     .Deprecated(11, "Use BatchSelfAdjointEigV2 instead.")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input;
+      ShapeHandle input;
       TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &input));
 
-      const Dimension* d = c->Dim(input, -1);
-      const Dimension* d_plus_1;
+      DimensionHandle d = c->Dim(input, -1);
+      DimensionHandle d_plus_1;
       TF_RETURN_IF_ERROR(c->Add(d, 1, &d_plus_1));
 
-      const Shape* s;
+      ShapeHandle s;
       TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &s));
       TF_RETURN_IF_ERROR(c->Concatenate(s, c->Matrix(d_plus_1, d), &s));
       c->set_output(0, s);
@@ -627,13 +626,13 @@ REGISTER_OP("MatrixSolveLs")
     .Attr("T: {double, float}")
     .Attr("fast: bool = True")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* lhs;
-      const Shape* rhs;
+      ShapeHandle lhs;
+      ShapeHandle rhs;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &lhs));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &rhs));
 
       // The matrix and right-hand side must have the same number of rows.
-      const Dimension* unused;
+      DimensionHandle unused;
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(lhs, 0), c->Dim(rhs, 0), &unused));
 
       c->set_output(0, c->Matrix(c->Dim(lhs, 1), c->Dim(rhs, 1)));

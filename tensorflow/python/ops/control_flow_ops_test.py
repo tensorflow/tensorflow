@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 from tensorflow.python.ops import control_flow_ops
@@ -31,7 +32,7 @@ from tensorflow.python.training import momentum
 class GroupTestCase(TensorFlowTestCase):
 
   def _StripNode(self, nd):
-    snode = graph_pb2.NodeDef(name=nd.name, op=nd.op, input=nd.input)
+    snode = node_def_pb2.NodeDef(name=nd.name, op=nd.op, input=nd.input)
     if nd.device:
       snode.device = nd.device
     return snode
@@ -128,7 +129,7 @@ class SwitchTestCase(TensorFlowTestCase):
         embedding = embedding_ops.embedding_lookup(embedding_matrix + 0.0, [0])
         cost += tf.reduce_sum(embedding)
         return it + 1, cost
-      _, cost = control_flow_ops.While(
+      _, cost = control_flow_ops.while_loop(
           Cond, Body, [tf.constant(0), tf.constant(0.0)])
       optimizer = momentum.MomentumOptimizer(0.1, 0.9)
       train_op = optimizer.minimize(cost)
@@ -151,7 +152,7 @@ class SwitchTestCase(TensorFlowTestCase):
                        lambda: tf.square(cost),
                        lambda: cost + tf.reduce_sum(embedding))
         return it + 1, cost
-      _, cost = control_flow_ops.While(
+      _, cost = control_flow_ops.while_loop(
           Cond, Body, [tf.constant(0), tf.constant(0.0)])
 
       dynamic_grads = tf.gradients(cost, [embedding_matrix])[0]

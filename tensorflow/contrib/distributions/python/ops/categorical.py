@@ -19,10 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -58,66 +58,45 @@ class Categorical(distribution.Distribution):
         undefined statistics will return NaN for this statistic.
       name: A name for this distribution (optional).
     """
-    self._allow_nan_stats = allow_nan_stats
-    self._name = name
-    self._dtype = dtype
-    self._validate_args = validate_args
     with ops.name_scope(name, values=[logits]):
       self._logits = ops.convert_to_tensor(logits, name="logits")
-      logits_shape = array_ops.shape(self._logits, name="logits_shape")
-      static_logits_shape = self._logits.get_shape().with_rank_at_least(1)
-      static_logits_rank = static_logits_shape.ndims
-      if static_logits_rank is not None:
+
+      logits_shape_static = self._logits.get_shape().with_rank_at_least(1)
+      if logits_shape_static.ndims is not None:
         self._batch_rank = ops.convert_to_tensor(
-            static_logits_rank - 1, dtype=dtypes.int32,
+            logits_shape_static.ndims - 1,
+            dtype=dtypes.int32,
             name="batch_rank")
       else:
-        self._batch_rank = array_ops.rank(self._logits) - 1
+        with ops.name_scope(name="batch_rank"):
+          self._batch_rank = array_ops.rank(self._logits) - 1
 
-      if static_logits_shape[-1].value is not None:
+      logits_shape = array_ops.shape(self._logits, name="logits_shape")
+      if logits_shape_static[-1].value is not None:
         self._num_classes = ops.convert_to_tensor(
-            static_logits_shape[-1].value,
-            dtype=dtypes.int32, name="num_classes")
+            logits_shape_static[-1].value,
+            dtype=dtypes.int32,
+            name="num_classes")
       else:
-        self._num_classes = array_ops.gather(logits_shape, self._batch_rank)
+        self._num_classes = array_ops.gather(logits_shape,
+                                             self._batch_rank,
+                                             name="num_classes")
 
-      self._batch_shape = logits_shape[:-1]
-
-  @property
-  def allow_nan_stats(self):
-    """Boolean describing behavior when a stat is undefined for batch member."""
-    return self._allow_nan_stats
-
-  @property
-  def validate_args(self):
-    """Boolean describing behavior on invalid input."""
-    return self._validate_args
-
-  @property
-  def name(self):
-    return self._name
-
-  @property
-  def dtype(self):
-    return self._dtype
-
-  @property
-  def is_reparameterized(self):
-    return False
-
-  def batch_shape(self, name="batch_shape"):
-    with ops.name_scope(self.name):
-      return array_ops.identity(self._batch_shape, name=name)
-
-  def get_batch_shape(self):
-    return self.logits.get_shape()[:-1]
-
-  def event_shape(self, name="event_shape"):
-    with ops.name_scope(self.name):
-      return array_ops.constant([], dtype=self._batch_shape.dtype, name=name)
-
-  def get_event_shape(self):
-    return tensor_shape.scalar()
+      if logits_shape_static[:-1].is_fully_defined():
+        self._batch_shape_val = constant_op.constant(
+            logits_shape_static[:-1].as_list(),
+            dtype=dtypes.int32,
+            name="batch_shape")
+      else:
+        with ops.name_scope(name="batch_shape"):
+          self._batch_shape_val = logits_shape[:-1]
+      super(Categorical, self).__init__(
+          dtype=dtype,
+          parameters={"logits": self._logits, "num_classes": self._num_classes},
+          is_continuous=False,
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=name)
 
   @property
   def num_classes(self):
@@ -128,89 +107,55 @@ class Categorical(distribution.Distribution):
   def logits(self):
     return self._logits
 
-  def log_prob(self, k, name="log_prob"):
-    """Log-probability of class `k`.
+  def _batch_shape(self):
+    # Use identity to inherit callers "name".
+    return array_ops.identity(self._batch_shape_val)
 
-    Args:
-      k: `int32` or `int64` Tensor. Must be broadcastable with a `batch_shape`
-        `Tensor`.
-      name: A name for this operation (optional).
+  def _get_batch_shape(self):
+    return self.logits.get_shape()[:-1]
 
-    Returns:
-      The log-probabilities of the classes indexed by `k`
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[k, self.logits]):
-        k = ops.convert_to_tensor(k, name="k")
+  def _event_shape(self):
+    return constant_op.constant([], dtype=dtypes.int32)
 
-        logits = self.logits * array_ops.ones_like(
-            array_ops.expand_dims(k, -1),
-            dtype=self.logits.dtype)
-        k *= array_ops.ones(
-            array_ops.slice(
-                array_ops.shape(logits), [0], [array_ops.rank(logits) - 1]),
-            dtype=k.dtype)
-        k.set_shape(tensor_shape.TensorShape(logits.get_shape()[:-1]))
+  def _get_event_shape(self):
+    return tensor_shape.scalar()
 
-        return -nn_ops.sparse_softmax_cross_entropy_with_logits(logits, k)
+  def _sample_n(self, n, seed=None):
+    logits_2d = array_ops.reshape(
+        self.logits, array_ops.pack([-1, self.num_classes]))
+    samples = random_ops.multinomial(logits_2d, n, seed=seed)
+    samples = math_ops.cast(samples, self.dtype)
+    ret = array_ops.reshape(
+        array_ops.transpose(samples),
+        array_ops.concat(0, ([n], self.batch_shape())))
+    return ret
 
-  def prob(self, k, name="prob"):
-    """Probability of class `k`.
+  def _log_prob(self, k):
+    k = ops.convert_to_tensor(k, name="k")
+    logits = self.logits * array_ops.ones_like(
+        array_ops.expand_dims(k, -1),
+        dtype=self.logits.dtype)
+    shape = array_ops.slice(array_ops.shape(logits), [0],
+                            [array_ops.rank(logits) - 1])
+    k *= array_ops.ones(shape, dtype=k.dtype)
+    k.set_shape(tensor_shape.TensorShape(logits.get_shape()[:-1]))
+    return -nn_ops.sparse_softmax_cross_entropy_with_logits(logits, k)
 
-    Args:
-      k: `int32` or `int64` Tensor. Must be broadcastable with logits.
-      name: A name for this operation (optional).
+  def _prob(self, k):
+    return math_ops.exp(self._log_prob(k))
 
-    Returns:
-      The probabilities of the classes indexed by `k`
-    """
-    return super(Categorical, self).prob(k, name)
+  def _entropy(self):
+    logits_2d = array_ops.reshape(
+        self.logits, array_ops.pack([-1, self.num_classes]))
+    histogram_2d = nn_ops.softmax(logits_2d)
+    ret = array_ops.reshape(
+        nn_ops.softmax_cross_entropy_with_logits(logits_2d, histogram_2d),
+        self.batch_shape())
+    ret.set_shape(self.get_batch_shape())
+    return ret
 
-  def sample_n(self, n, seed=None, name="sample_n"):
-    """Sample `n` observations from the Categorical distribution.
-
-    Args:
-      n: 0-D.  Number of independent samples to draw for each distribution.
-      seed: Random seed (optional).
-      name: A name for this operation (optional).
-
-    Returns:
-      An `int64` `Tensor` with shape `[n, batch_shape, event_shape]`
-    """
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=[self.logits, n]):
-        n = ops.convert_to_tensor(n, name="n")
-        logits_2d = array_ops.reshape(
-            self.logits, array_ops.pack([-1, self.num_classes]))
-        samples = random_ops.multinomial(logits_2d, n, seed=seed)
-        samples = math_ops.cast(samples, self._dtype)
-        ret = array_ops.reshape(
-            array_ops.transpose(samples),
-            array_ops.concat(0, ([n], self.batch_shape())))
-        ret.set_shape(tensor_shape.vector(tensor_util.constant_value(n))
-                      .concatenate(self.get_batch_shape()))
-        return ret
-
-  def entropy(self, name="sample"):
-    with ops.name_scope(self.name):
-      with ops.name_scope(name):
-        logits_2d = array_ops.reshape(
-            self.logits, array_ops.pack([-1, self.num_classes]))
-        histogram_2d = nn_ops.softmax(logits_2d)
-        ret = array_ops.reshape(
-            nn_ops.softmax_cross_entropy_with_logits(logits_2d, histogram_2d),
-            self.batch_shape())
-        ret.set_shape(self.get_batch_shape())
-        return ret
-
-  def mode(self, name="mode"):
-    with ops.name_scope(self.name):
-      with ops.name_scope(name):
-        ret = math_ops.argmax(self.logits, dimension=self._batch_rank)
-        ret = math_ops.cast(ret, self._dtype)
-        ret.set_shape(self.get_batch_shape())
-        return ret
-
-  @property
-  def is_continuous(self):
-    return False
+  def _mode(self):
+    ret = math_ops.argmax(self.logits, dimension=self._batch_rank)
+    ret = math_ops.cast(ret, self.dtype)
+    ret.set_shape(self.get_batch_shape())
+    return ret

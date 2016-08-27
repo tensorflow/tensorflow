@@ -43,6 +43,7 @@ import threading
 
 import six
 
+from tensorflow.contrib import distributions
 from tensorflow.contrib.bayesflow.python.ops import stochastic_gradient_estimators as sge
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -333,7 +334,7 @@ class DistributionTensor(StochasticTensor):
     `MeanValueType` or if `loss_fn=None`.
 
     Args:
-      dist_cls: a class deriving from `BaseDistribution`.
+      dist_cls: a `Distribution` class.
       name: a name for this `DistributionTensor` and its ops.
       dist_value_type: a `_StochasticValueType`, which will determine what the
           `value` of this `DistributionTensor` will be. If not provided, the
@@ -346,7 +347,13 @@ class DistributionTensor(StochasticTensor):
           module for additional loss functions and baselines.
       **dist_args: keyword arguments to be passed through to `dist_cls` on
           construction.
+
+    Raises:
+      TypeError: if `dist_cls` is not a `Distribution`.
+      TypeError: if `loss_fn` is not `callable`.
     """
+    if not issubclass(dist_cls, distributions.Distribution):
+      raise TypeError("dist_cls must be a subclass of Distribution")
     self._dist_cls = dist_cls
     self._dist_args = dist_args
     if dist_value_type is None:
@@ -395,12 +402,12 @@ class DistributionTensor(StochasticTensor):
     if isinstance(self._value_type, MeanValue):
       value_tensor = self._dist.mean()
     elif isinstance(self._value_type, SampleValue):
-      value_tensor = self._dist.sample_n(self._value_type.n)
+      value_tensor = self._dist.sample(self._value_type.n)
     elif isinstance(self._value_type, SampleAndReshapeValue):
       if self._value_type.n == 1:
         value_tensor = self._dist.sample()
       else:
-        samples = self._dist.sample_n(self._value_type.n)
+        samples = self._dist.sample(self._value_type.n)
         samples_shape = array_ops.shape(samples)
         samples_static_shape = samples.get_shape()
         new_batch_size = samples_shape[0] * samples_shape[1]

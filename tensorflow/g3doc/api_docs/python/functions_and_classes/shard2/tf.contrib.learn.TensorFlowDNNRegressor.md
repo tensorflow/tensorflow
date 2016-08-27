@@ -15,6 +15,13 @@
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowDNNRegressor.config` {#TensorFlowDNNRegressor.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowDNNRegressor.dnn_bias_` {#TensorFlowDNNRegressor.dnn_bias_}
 
 Returns bias of deep neural network part.
@@ -43,7 +50,7 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNRegressor.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#TensorFlowDNNRegressor.export}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowDNNRegressor.export}
 
 Exports inference graph into given dir.
 

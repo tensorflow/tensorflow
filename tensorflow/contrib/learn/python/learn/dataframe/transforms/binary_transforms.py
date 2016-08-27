@@ -42,7 +42,7 @@ _DOC_FORMAT_STRING = ("A `Transform` that wraps `{0}`. "
                       "Documentation for `{0}`: \n\n {1}")
 
 
-class SeriesBinaryTransform(transform.Transform):
+class SeriesBinaryTransform(transform.TensorFlowTransform):
   """Parent class for `Transform`s that operate on two `Series`."""
 
   @property
@@ -64,7 +64,7 @@ class SeriesBinaryTransform(transform.Transform):
     return self.return_type(self._apply_op(input_tensors[0], input_tensors[1]))
 
 
-class ScalarBinaryTransform(transform.Transform):
+class ScalarBinaryTransform(transform.TensorFlowTransform):
   """Parent class for `Transform`s that combine `Series` to a scalar."""
 
   def __init__(self, scalar):

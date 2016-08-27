@@ -282,6 +282,18 @@ class ClusterSpec(object):
                       "job names to lists of network addresses, or a "
                       "`ClusterDef` protocol buffer")
 
+  def __nonzero__(self):
+    return bool(self._cluster_spec)
+
+  # Python 3.x
+  __bool__ = __nonzero__
+
+  def __eq__(self, other):
+    return self._cluster_spec == other
+
+  def __ne__(self, other):
+    return self._cluster_spec != other
+
   def as_dict(self):
     """Returns a dictionary from job names to lists of network addresses."""
     return self._cluster_spec
