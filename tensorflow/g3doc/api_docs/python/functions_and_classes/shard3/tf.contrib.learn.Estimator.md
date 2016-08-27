@@ -1,7 +1,7 @@
 Estimator class is the basic TensorFlow model trainer/evaluator.
 - - -
 
-#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None, params=None)` {#Estimator.__init__}
+#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None, params=None, weight_column_name=None)` {#Estimator.__init__}
 
 Constructs an Estimator instance.
 
@@ -38,6 +38,9 @@ Constructs an Estimator instance.
 *  <b>`config`</b>: Configuration object.
 *  <b>`params`</b>: `dict` of hyper parameters that will be passed into `model_fn`.
           Keys are names of parameters, values are basic python types.
+*  <b>`weight_column_name`</b>: A string defining feature column name representing
+    weights. It is used to down weight or boost examples during training. It
+    will be multiplied by the loss of the example.
 
 ##### Raises:
 
