@@ -678,7 +678,7 @@ class ESNCell(rnn_cell.RNNCell):
     Since at the moment TF doesn't provide a way to compute spectral radius
     of a matrix the echo state property necessary condition `max(eig(W)) < 1` is approximated
     scaling the norm 2 of the reservoir matrix which is an upper bound of the spectral radius.
-    See https://en.wikipedia.org/wiki/Matrix_norm#Induced_norm
+    See https://en.wikipedia.org/wiki/Matrix_norm, the section on induced norms.
 
   """
 
