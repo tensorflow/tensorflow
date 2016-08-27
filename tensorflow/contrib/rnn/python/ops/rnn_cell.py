@@ -706,12 +706,11 @@ class ESNCell(rnn_cell.RNNCell):
     def _wr_initializer(shape, dtype):
       wr = wr_init(shape, dtype=dtype)
 
-      connectivity_mask = \
-        math_ops.cast(
+      connectivity_mask = math_ops.cast(
           math_ops.less_equal(
             random_ops.random_uniform(shape),
             connectivity),
-          dtype)
+        dtype)
 
       wr = math_ops.mul(wr, connectivity_mask)
 
