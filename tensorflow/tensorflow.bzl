@@ -131,14 +131,16 @@ def tf_opts_nortti_if_android():
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
-def tf_gen_op_libs(op_lib_names):
+def tf_gen_op_libs(op_lib_names, deps=None):
   # Make library out of each op so it can also be used to generate wrappers
   # for various languages.
+  if not deps:
+    deps = []
   for n in op_lib_names:
     native.cc_library(name=n + "_op_lib",
                       copts=tf_copts(),
                       srcs=["ops/" + n + ".cc"],
-                      deps=(["//tensorflow/core:framework"]),
+                      deps=deps + ["//tensorflow/core:framework"],
                       visibility=["//visibility:public"],
                       alwayslink=1,
                       linkstatic=1,)
