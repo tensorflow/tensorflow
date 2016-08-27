@@ -93,7 +93,8 @@ def _GetSvdOpTest(dtype_, shape_):
       x *= signs
       self.assertAllClose(x, y, atol=atol)
     else:
-      phases = np.sum(np.divide(y, x), -2, keepdims=True) / np.abs(np.sum(np.divide(y, x), -2, keepdims=True))
+      phases = np.divide(np.sum(np.divide(y, x), -2, keepdims=True),
+                         np.abs(np.sum(np.divide(y, x), -2, keepdims=True)))
       x *= phases
       self.assertAllClose(np.real(x), np.real(y), atol=atol)
       self.assertAllClose(np.imag(x), np.imag(y), atol=atol)
@@ -115,7 +116,8 @@ def _GetSvdOpTest(dtype_, shape_):
       elif n > m:
         zeros = tf.zeros(batch_shape + (m, n - m), dtype=dtype_)
         diag_s = tf.concat(a.ndim - 1, [diag_s, zeros])
-    a_recon = tf.batch_matmul(tf.cast(u, dtype=dtype_), tf.cast(diag_s, dtype=dtype_))
+    a_recon = tf.batch_matmul(tf.cast(u, dtype=dtype_),
+                              tf.cast(diag_s, dtype=dtype_))
     a_recon = tf.batch_matmul(a_recon, tf.cast(v, dtype=dtype_), adj_y=True)
     self.assertAllClose(np.real(a_recon.eval()),
                         np.real(a), rtol=tol, atol=tol)
@@ -141,15 +143,15 @@ def _GetSvdOpTest(dtype_, shape_):
       x = np.random.uniform(low=-1.0, high=1.0,
                             size=np.prod(shape_)).reshape(shape_).astype(dtype_)
     elif dtype == np.complex64:
-      x = np.random.uniform(
-          low=-1.0, high=1.0, size=np.prod(shape_)).reshape(shape_).astype(np.float32)
+      x = np.random.uniform(low=-1.0, high=1.0,
+                        size=np.prod(shape_)).reshape(shape_).astype(np.float32)
       + 1j * np.random.uniform(low=-1.0, high=1.0,
-                               size=np.prod(shape_)).reshape(shape_).astype(np.float32)
+                        size=np.prod(shape_)).reshape(shape_).astype(np.float32)
     else:
-      x = np.random.uniform(
-          low=-1.0, high=1.0, size=np.prod(shape_)).reshape(shape_).astype(np.float64)
+      x = np.random.uniform(low=-1.0, high=1.0,
+                        size=np.prod(shape_)).reshape(shape_).astype(np.float64)
       + 1j * np.random.uniform(low=-1.0, high=1.0,
-                               size=np.prod(shape_)).reshape(shape_).astype(np.float64)
+                        size=np.prod(shape_)).reshape(shape_).astype(np.float64)
     for compute_uv in False, True:
       for full_matrices in False, True:
         with self.test_session():
