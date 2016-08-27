@@ -225,6 +225,8 @@ REGISTER_OP("ScatterUpdate")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = true")
+    .Attr("auto_initialize: bool = false")
+    .SetAllowsUninitializedInput()
     .SetShapeFn(ScatterUpdateShape)
     .Doc(R"doc(
 Applies sparse updates to a variable reference.
@@ -260,6 +262,7 @@ output_ref:= Same as `ref`.  Returned as a convenience for operations that want
   to use the updated values after the update is done.
 use_locking: If True, the assignment will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
+auto_initialize: If True, `ref` tensor will be initialized before using.
 )doc");
 
 REGISTER_OP("ScatterAdd")
