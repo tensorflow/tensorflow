@@ -28,7 +28,7 @@ limitations under the License.
       selected-item-label="{{_run}}"
     >
       <paper-menu class="dropdown-content">
-        <template is="dom-repeat" items="[[_runs]]">
+        <template is="dom-repeat" items="[[runs]]">
           <paper-item no-label-float=true>[[item]]</paper-item>
         </template>
       </paper-menu>
@@ -69,21 +69,9 @@ limitations under the License.
       is: "tf-downloader",
       properties: {
         _run: String,
-        _runs: {
-          type: Array,
-          computed: "_computeRuns(runToTag.*, selectedRuns.*)",
-        },
-        selectedRuns: Array,
-        runToTag: Object,
+        runs: Array,
         tag: String,
         urlFn: Function,
-      },
-      _computeRuns: function(runToTagChange, selectedRunsChange) {
-        var runToTag = this.runToTag;
-        var tag = this.tag;
-        return this.selectedRuns.filter(function(x) {
-          return runToTag[x].indexOf(tag) !== -1;
-        })
       },
       _csvUrl: function(_run, urlFn) {
         return urlFn(this.tag, _run) + "&format=csv";
