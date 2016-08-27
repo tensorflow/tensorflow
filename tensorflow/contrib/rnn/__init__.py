@@ -24,7 +24,7 @@
 @@TimeFreqLSTMCell
 @@GridLSTMCell
 
-### ESN cells
+### Echo State Networks
 @@ESNCell
 
 ### RNNCell wrappers
