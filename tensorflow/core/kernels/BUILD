@@ -480,6 +480,27 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "conv_ops_test",
+    size = "small",
+    deps = [
+        ":conv_ops",
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
     name = "example_parsing_ops_test",
     size = "large",
     deps = [
@@ -1311,6 +1332,8 @@ tf_kernel_library(
     ],
     hdrs = [
         "conv_grad_ops.h",
+        "gemm_functors.h",
+        "image_resizer_state.h",
     ],
     prefix = "conv_ops",
     deps = [

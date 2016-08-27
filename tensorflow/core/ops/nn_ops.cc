@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -423,6 +424,31 @@ data_format: Specify the data format of the input and output data. With the
         [batch, in_height, in_width, in_channels].
     Alternatively, the format could be "NCHW", the data storage order of:
         [batch, in_channels, in_height, in_width].
+)doc");
+
+REGISTER_OP("FusedResizeAndPadConv2D")
+    .Input("input: T")
+    .Input("size: int32")
+    .Input("paddings: int32")
+    .Input("filter: T")
+    .Output("output: T")
+    .Attr("T: {half, float, double}")
+    .Attr("resize_align_corners: bool = false")
+    .Attr(GetMirrorPadModeAttrString())
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Doc(R"doc(
+Performs a resize and padding as a preprocess during a convolution.
+
+It's often possible to do spatial transformations more efficiently as part of
+the packing stage of a convolution, so this op allows for an optimized
+implementation where these stages are fused together. This prevents the need to
+write out the intermediate results as whole tensors, reducing memory pressure,
+and we can get some latency gains by merging the transformation calculations.
+
+strides: 1-D of length 4.  The stride of the sliding window for each dimension
+  of `input`. Must be in the same order as the dimension specified with format.
+padding: The type of padding algorithm to use.
 )doc");
 
 // --------------------------------------------------------------------------
