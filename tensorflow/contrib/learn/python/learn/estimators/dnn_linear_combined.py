@@ -22,6 +22,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib import layers
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import feature_column_ops
@@ -201,6 +202,12 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     logits = self._logits(features)
     return self._target_column.logits_to_predictions(logits, proba=True)
 
+  @deprecated(
+      "2016-09-23",
+      "The signature of the input_fn accepted by export is changing to be "
+      "consistent with what's used by tf.Learn Estimator's train/evaluate, "
+      "which makes this function useless. This will be removed after the "
+      "deprecation date.")
   def _get_feature_ops_from_example(self, examples_batch):
     column_types = layers.create_feature_spec_for_parsing((
         self._get_linear_feature_columns() or []) + (

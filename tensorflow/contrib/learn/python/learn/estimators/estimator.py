@@ -33,6 +33,7 @@ import six
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
@@ -383,18 +384,43 @@ class BaseEstimator(
   def model_dir(self):
     return self._model_dir
 
-  def export(self, export_dir, signature_fn=None, input_fn=None,
-             default_batch_size=1, exports_to_keep=None):
+  @deprecated_arg_values(
+      '2016-09-23',
+      'The signature of the input_fn accepted by export is changing to be '
+      'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate. '
+      'input_fn and input_feature_key will become required args, '
+      'and use_deprecated_input_fn will default to False &  be removed '
+      'altogether.',
+      use_deprecated_input_fn=True,
+      input_fn=None,
+      input_feature_key=None)
+  def export(self,
+             export_dir,
+             input_fn=export._default_input_fn,
+             input_feature_key=None,
+             use_deprecated_input_fn=True,
+             signature_fn=None,
+             default_batch_size=1,
+             exports_to_keep=None):
     """Exports inference graph into given dir.
 
     Args:
       export_dir: A string containing a directory to write the exported graph
         and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, targets), where features is a dict of
+        string key to `Tensor` and targets is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds to
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input.
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
         for features and `Tensor` or `dict` of `Tensor`s for predictions.
-      input_fn: Function that given `Tensor` of `Example` strings, parses it
-        into features that are then passed to the model.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
     """
@@ -403,6 +429,8 @@ class BaseEstimator(
                              export_dir=export_dir,
                              signature_fn=signature_fn,
                              input_fn=input_fn,
+                             input_feature_key=input_feature_key,
+                             use_deprecated_input_fn=use_deprecated_input_fn,
                              default_batch_size=default_batch_size,
                              exports_to_keep=exports_to_keep)
     # pylint: enable=protected-access
@@ -457,6 +485,12 @@ class BaseEstimator(
     """
     raise NotImplementedError('_get_eval_ops not implemented in BaseEstimator')
 
+  @deprecated(
+      '2016-09-23',
+      'The signature of the input_fn accepted by export is changing to be '
+      'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate, '
+      'which makes this function useless. This will be removed after the '
+      'deprecation date.')
   def _get_feature_ops_from_example(self, examples_batch):
     """Returns feature parser for given example batch using features info.
 
