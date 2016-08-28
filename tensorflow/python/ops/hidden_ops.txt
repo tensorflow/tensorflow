@@ -179,6 +179,8 @@ BiasAddV1
 Relu6
 AvgPool
 MaxPool
+Softmax
+LogSoftmax
 
 # parsing_ops
 ParseExample

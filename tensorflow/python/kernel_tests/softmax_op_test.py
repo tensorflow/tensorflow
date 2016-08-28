@@ -26,37 +26,39 @@ import tensorflow as tf
 
 class SoftmaxTest(tf.test.TestCase):
 
-  def _npSoftmax(self, features, log=False):
-    batch_dim = 0
-    class_dim = 1
-    batch_size = features.shape[batch_dim]
-    e = np.exp(features -
-               np.reshape(np.amax(features, axis=class_dim), [batch_size, 1]))
-    softmax = e / np.reshape(np.sum(e, axis=class_dim), [batch_size, 1])
+  def _npSoftmax(self, features, dim=-1, log=False):
+    if dim is -1:
+      dim = len(features.shape) - 1
+    one_only_on_dim = list(features.shape)
+    one_only_on_dim[dim] = 1
+    e = np.exp(features - np.reshape(
+        np.amax(
+            features, axis=dim), one_only_on_dim))
+    softmax = e / np.reshape(np.sum(e, axis=dim), one_only_on_dim)
     if log:
       return np.log(softmax)
     else:
       return softmax
 
-  def _testSoftmax(self, np_features, log=False, use_gpu=False):
+  def _testSoftmax(self, np_features, dim=-1, log=False, use_gpu=False):
     # A previous version of the code checked the op name rather than the op type
     # to distinguish between log and non-log.  Use an arbitrary name to catch
     # this bug in future.
     name = "arbitrary"
-    np_softmax = self._npSoftmax(np_features, log=log)
+    np_softmax = self._npSoftmax(np_features, dim=dim, log=log)
     with self.test_session(use_gpu=use_gpu):
       if log:
-        tf_softmax = tf.nn.log_softmax(np_features, name=name)
+        tf_softmax = tf.nn.log_softmax(np_features, dim=dim, name=name)
       else:
-        tf_softmax = tf.nn.softmax(np_features, name=name)
+        tf_softmax = tf.nn.softmax(np_features, dim=dim, name=name)
       out = tf_softmax.eval()
     self.assertAllCloseAccordingToType(np_softmax, out)
     self.assertShapeEqual(np_softmax, tf_softmax)
     if not log:
-      # Bonus check: the softmaxes should add to one in each
-      # batch element.
-      self.assertAllCloseAccordingToType(np.ones(out.shape[0]),
-                                         np.sum(out, axis=1))
+      # Bonus check: the softmaxes should add to one in dimension dim.
+      sum_along_dim = np.sum(out, axis=dim)
+      self.assertAllCloseAccordingToType(
+          np.ones(sum_along_dim.shape), sum_along_dim)
 
   def _testAll(self, features):
     self._testSoftmax(features, use_gpu=False)
@@ -90,17 +92,11 @@ class SoftmaxTest(tf.test.TestCase):
         np_lsm,
         rtol=1.e-5, atol=1.e-5)
 
-  def testShapeMismatch(self):
-    with self.assertRaises(ValueError):
-      tf.nn.softmax([0., 1., 2., 3.])
-    with self.assertRaises(ValueError):
-      tf.nn.log_softmax([0., 1., 2., 3.])
-
   def _testOverflow(self, use_gpu=False):
     if use_gpu:
-        type = np.float32
+      type = np.float32
     else:
-        type = np.float64
+      type = np.float64
     max = np.finfo(type).max
     features = np.array(
         [[1., 1., 1., 1.],
@@ -128,13 +124,55 @@ class SoftmaxTest(tf.test.TestCase):
         use_gpu=False)
     self._testOverflow(use_gpu=False)
 
+  def test1DTesnorAsInput(self):
+    self._testSoftmax(
+        np.array([3., 2., 3., 9.]).astype(np.float64), use_gpu=False)
+    self._testOverflow(use_gpu=False)
 
-  def testEmpty(self):
+  def test3DTensorAsInput(self):
+    self._testSoftmax(
+        np.array([[[1., 1., 1., 1.], [1., 2., 3., 4.]],
+                  [[2., 3., 4., 5.], [6., 7., 8., 9.]],
+                  [[5., 4., 3., 2.], [1., 2., 3., 4.]]]).astype(np.float32),
+        use_gpu=False)
+    self._testOverflow(use_gpu=False)
+
+  def testAlongFirstDimension(self):
+    self._testSoftmax(
+        np.array([[[1., 1., 1., 1.], [1., 2., 3., 4.]],
+                  [[2., 3., 4., 5.], [6., 7., 8., 9.]],
+                  [[5., 4., 3., 2.], [1., 2., 3., 4.]]]).astype(np.float32),
+        dim=0,
+        use_gpu=False)
+    self._testOverflow(use_gpu=False)
+
+  def testAlongSecondDimension(self):
+    self._testSoftmax(
+        np.array([[[1., 1., 1., 1.], [1., 2., 3., 4.]],
+                  [[2., 3., 4., 5.], [6., 7., 8., 9.]],
+                  [[5., 4., 3., 2.], [1., 2., 3., 4.]]]).astype(np.float32),
+        dim=1,
+        use_gpu=False)
+    self._testOverflow(use_gpu=False)
+
+  def testShapeInference(self):
+    op = tf.nn.softmax([[[1., 1., 1., 1.], [1., 2., 3., 4.]],
+                        [[2., 3., 4., 5.], [6., 7., 8., 9.]],
+                        [[5., 4., 3., 2.], [1., 2., 3., 4.]]])
+    self.assertEqual([3, 2, 4], op.get_shape())
+
+  def testEmptyInput(self):
     with self.test_session():
       x = tf.constant([[]], shape=[0, 3])
       self.assertEqual(0, tf.size(x).eval())
-      expected_y = np.array([]).reshape(0, 3)
-      np.testing.assert_array_equal(expected_y, tf.nn.softmax(x).eval())
+      # reshape would raise if logits is empty
+      with self.assertRaises(tf.errors.InvalidArgumentError):
+        tf.nn.softmax(x, dim=0).eval()
+
+  def testDimTooLarge(self):
+    with self.test_session():
+      with self.assertRaises(tf.errors.InvalidArgumentError):
+        tf.nn.softmax([1., 2., 3., 4.], dim=100).eval()
 
 
 if __name__ == "__main__":

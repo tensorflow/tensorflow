@@ -468,6 +468,129 @@ def relu6(features, name=None):
     features = ops.convert_to_tensor(features, name="features")
     return gen_nn_ops._relu6(features, name=name)
 
+def _softmax(logits, compute_op, dim=-1, name=None):
+  """Helper function for softmax and log_softmax.
+
+  It reshapes and transposes the input logits into a 2-D Tensor and then invokes
+  the tf.nn._softmax or tf.nn._log_softmax function. The output would be
+  transposed and reshaped back.
+
+  Args:
+    logits: A non-empty `Tensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    compute_op: Either gen_nn_ops._softmax or gen_nn_ops._log_softmax
+    dim: The dimension softmax would be performed on. The default is -1 which
+      indicates the last dimension.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+  Raises:
+    InvalidArgumentError: if `logits` is empty or `dim` is beyond the last
+      dimension of `logits`.
+  """
+  # Helper function to swap dim_index and last_index of logits. last_index must
+  # be logits' last dimension.
+  def _swap_axis(logits, dim_index, last_index):
+    return array_ops.transpose(logits, array_ops.concat(
+        0, [math_ops.range(dim_index), [last_index],
+            math_ops.range(dim_index + 1, last_index), [dim_index]]))
+
+  # Helper function to flatten logits' outer dimensions and keep its last
+  # dimension.
+  def _flatten_outer_dims(logits):
+    rank = array_ops.rank(logits)
+    last_dim_size = array_ops.slice(
+        array_ops.shape(logits), [math_ops.sub(rank, 1)], [1])
+    return array_ops.reshape(logits, array_ops.concat(0, [[-1], last_dim_size]))
+
+  logits = ops.convert_to_tensor(logits)
+  if logits.get_shape().ndims is 2 and dim is -1:
+    return compute_op(logits, name=name)
+
+  # We need its original shape for shape inference.
+  shape = logits.get_shape()
+
+  # If dim is the last dimension, simply reshape the logits to a matrix and
+  # apply the internal softmax.
+  if dim is -1:
+    input_shape = array_ops.shape(logits)
+    logits = _flatten_outer_dims(logits)
+    output = compute_op(logits, name=name)
+    output = array_ops.reshape(output, input_shape)
+    return output
+
+  # If dim is not the last dimension, we have to do a reshape and transpose so
+  # that we can still perform softmax on its last dimension.
+
+  # Swap logits' dimension of dim and its last dimension.
+  input_rank = array_ops.rank(logits)
+  logits = _swap_axis(logits, dim, math_ops.sub(input_rank, 1))
+  shape_after_swap = array_ops.shape(logits)
+
+  # Reshape logits into a matrix.
+  logits = _flatten_outer_dims(logits)
+
+  # Do the actual softmax on its last dimension.
+  output = compute_op(logits, name=name)
+
+  # Transform back the output tensor.
+  output = array_ops.reshape(output, shape_after_swap)
+  output = _swap_axis(output, dim, math_ops.sub(input_rank, 1))
+
+  # Make shape inference work since reshape and transpose may erase its static
+  # shape.
+  output.set_shape(shape)
+
+  return output
+
+
+def softmax(logits, dim=-1, name=None):
+  """Computes log softmax activations.
+
+  For each batch `i` and class `j` we have
+
+      softmax = exp(logits) / reduce_sum(exp(logits), dim)
+
+  Args:
+    logits: A non-empty `Tensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    dim: The dimension softmax would be performed on. The default is -1 which
+      indicates the last dimension.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+  Raises:
+    InvalidArgumentError: if `logits` is empty or `dim` is beyond the last
+      dimension of `logits`.
+  """
+  return _softmax(logits, gen_nn_ops._softmax, dim, name)
+
+
+def log_softmax(logits, dim=-1, name=None):
+  """Computes log softmax activations.
+
+  For each batch `i` and class `j` we have
+
+      logsoftmax = logits - reduce_sum(exp(logits), dim)
+
+  Args:
+    logits: A non-empty `Tensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    dim: The dimension softmax would be performed on. The default is -1 which
+      indicates the last dimension.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+
+  Raises:
+    InvalidArgumentError: if `logits` is empty or `dim` is beyond the last
+      dimension of `logits`.
+  """
+  return _softmax(logits, gen_nn_ops._log_softmax, dim, name)
+
 
 def softmax_cross_entropy_with_logits(logits, labels, name=None):
   """Computes softmax cross entropy between `logits` and `labels`.
@@ -727,9 +850,11 @@ def _LRNGradShape(op):
   return [in_grads_shape.merge_with(in_image_shape).merge_with(out_image_shape)]
 
 
-ops.RegisterShape("Softmax")(common_shapes.unchanged_shape_with_rank(2))
+ops.RegisterShape("Softmax")(common_shapes.unchanged_shape_with_rank_at_least(
+    1))
 
-ops.RegisterShape("LogSoftmax")(common_shapes.unchanged_shape_with_rank(2))
+ops.RegisterShape("LogSoftmax")(
+    common_shapes.unchanged_shape_with_rank_at_least(1))
 
 
 @ops.RegisterShape("InTopK")
