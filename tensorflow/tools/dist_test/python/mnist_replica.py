@@ -26,7 +26,7 @@ initialization. The other, non-master, sessions will wait for the master
 session to finish the initialization before proceeding to the training stage.
 
 The coordination between the multiple worker invocations occurs due to
-the definition of the parameters on the same ps devices. The parameter updates
+the definition of the para  meters on the same ps devices. The parameter updates
 from one worker is visible to all other workers. As such, the workers can
 perform forward computation and gradient calculation in parallel, which
 should lead to increased training speed for the simple model.
@@ -52,14 +52,13 @@ flags.DEFINE_string("data_dir", "/tmp/mnist-data",
 flags.DEFINE_boolean("download_only", False,
                      "Only perform downloading of data; Do not proceed to "
                      "session preparation, model definition or training")
-flags.DEFINE_integer("task_index", 0,
+flags.DEFINE_integer("task_index", None,
                      "Worker task index, should be >= 0. task_index=0 is "
                      "the master worker task the performs the variable "
                      "initialization ")
-flags.DEFINE_integer("num_workers", 2,
-                     "Total number of workers (must be >= 1)")
-flags.DEFINE_integer("num_gpu", 4,
-                     "Total number of gpus for each machine (must be >= 1")
+flags.DEFINE_integer("num_gpus", 1,
+                     "Total number of gpus for each machine."
+                     "If you don't   GPU, please set it to '0'")
 flags.DEFINE_integer("replicas_to_aggregate", None,
                      "Number of replicas to aggregate before parameter update"
                      "is applied (For sync_replicas mode only; default: "
@@ -78,7 +77,7 @@ flags.DEFINE_string("ps_hosts","localhost:2222",
                     "Comma-separated list of hostname:port pairs")
 flags.DEFINE_string("worker_hosts", "localhost:2223,localhost:2224", 
                     "Comma-separated list of hostname:port pairs")
-flags.DEFINE_string("job_name", "","job name: worker or ps")
+flags.DEFINE_string("job_name", None,"job name: worker or ps")
 
 FLAGS = flags.FLAGS
 
@@ -94,6 +93,11 @@ def main(unused_argv):
   if FLAGS.download_only:
     sys.exit(0)
 
+  if FLAGS.job_name is None or FLAGS.job_name == "":
+    raise ValueError("Must specify an explicit `job_name`")
+  if FLAGS.task_index is None or FLAGS.task_index =="":
+    raise ValueError("Must specify an explicit `task_index`")
+
   print("job name = %s" % FLAGS.job_name)
   print("task index = %d" % FLAGS.task_index)
   
@@ -101,25 +105,36 @@ def main(unused_argv):
   ps_spec = FLAGS.ps_hosts.split(",")
   worker_spec = FLAGS.worker_hosts.split(",")
 
+  # Get the number of workers 
+  num_workers = len(worker_spec)
+
   cluster = tf.train.ClusterSpec({
       "ps": ps_spec,
       "worker": worker_spec})
   server = tf.train.Server(cluster,
                            job_name=FLAGS.job_name,
                            task_index=FLAGS.task_index)
-  
+
   if FLAGS.job_name == "ps":
     server.join()
   elif FLAGS.job_name == "worker":
     is_chief = (FLAGS.task_index == 0)
-    # Avoid gpu allocation conflict: now allocate task_num -> #gpu 
-    # for each worker in the corresponding machine
-    gpu = (FLAGS.task_index % FLAGS.num_gpu)
+    if FLAGS.num_gpus > 0:
+      if FLAGS.num_gpus < num_workers:
+        raise ValueError("number of gpus is less than number of workers")
+      # Avoid gpu allocation conflict: now allocate task_num -> #gpu 
+      # for each worker in the corresponding machine
+      gpu = (FLAGS.task_index % FLAGS.num_gpus)
+      worker_device = "/job:worker/task:%d/gpu:%d" % (FLAGS.task_index, gpu)
+    elif FLAGS.num_gpus == 0:
+      # Just allocate the CPU to worker server
+      cpu = 0
+      worker_device = "/job:worker/task:%d/cpu:%d" % (FLAGS.task_index, cpu)
     # The device setter will automatically place Variables ops on separate
     # parameter servers (ps). The non-Variable ops will be placed on the workers.
     # The ps use CPU and workers use corresponding GPU
     with tf.device(tf.train.replica_device_setter(
-        worker_device="/job:worker/task:%d/gpu:%d" % (FLAGS.task_index, gpu),
+        worker_device=worker_device,
         ps_device="/job:ps/cpu:0",
         cluster=cluster)):
       global_step = tf.Variable(0, name="global_step", trainable=False)
@@ -148,18 +163,18 @@ def main(unused_argv):
       cross_entropy = -tf.reduce_sum(y_ *
                                      tf.log(tf.clip_by_value(y, 1e-10, 1.0)))
 
+      opt = tf.train.AdamOptimizer(FLAGS.learning_rate)
+      
       if FLAGS.sync_replicas:
         if FLAGS.replicas_to_aggregate is None:
-          replicas_to_aggregate = FLAGS.num_workers
+          replicas_to_aggregate = num_workers
         else:
           replicas_to_aggregate = FLAGS.replicas_to_aggregate
 
-      opt = tf.train.AdamOptimizer(FLAGS.learning_rate)
-      if FLAGS.sync_replicas:
         opt = tf.train.SyncReplicasOptimizer(
             opt,
             replicas_to_aggregate=replicas_to_aggregate,
-            total_num_replicas=FLAGS.num_workers,
+            total_num_replicas=num_workers,
             replica_id=FLAGS.task_index,
             name="mnist_sync_replicas")
 
