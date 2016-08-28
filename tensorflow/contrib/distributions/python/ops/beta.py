@@ -196,6 +196,12 @@ class Beta(distribution.Distribution):
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))
 
+  def _log_cdf(self, x):
+    return math_ops.log(self._cdf(x))
+
+  def _cdf(self, x):
+    return math_ops.betainc(self.a, self.b, x)
+
   def _entropy(self):
     return (math_ops.lgamma(self.a) -
             (self.a - 1.) * math_ops.digamma(self.a) +

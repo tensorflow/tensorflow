@@ -262,5 +262,30 @@ class BetaTest(tf.test.TestCase):
           stats.beta.mean(a, b)[1, :],
           atol=1e-1)
 
+  def testBetaCdf(self):
+    with self.test_session():
+      shape = (30, 40, 50)
+      for dt in (np.float32, np.float64):
+        a = 10. * np.random.random(shape).astype(dt)
+        b = 10. * np.random.random(shape).astype(dt)
+        x = np.random.random(shape).astype(dt)
+        actual = tf.contrib.distributions.Beta(a, b).cdf(x).eval()
+        self.assertAllEqual(np.ones(shape, dtype=np.bool), 0. <= x)
+        self.assertAllEqual(np.ones(shape, dtype=np.bool), 1. >= x)
+        self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=1e-4, atol=0)
+
+  def testBetaLogCdf(self):
+    with self.test_session():
+      shape = (30, 40, 50)
+      for dt in (np.float32, np.float64):
+        a = 10. * np.random.random(shape).astype(dt)
+        b = 10. * np.random.random(shape).astype(dt)
+        x = np.random.random(shape).astype(dt)
+        actual = tf.exp(tf.contrib.distributions.Beta(a, b).log_cdf(x)).eval()
+        self.assertAllEqual(np.ones(shape, dtype=np.bool), 0. <= x)
+        self.assertAllEqual(np.ones(shape, dtype=np.bool), 1. >= x)
+        self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=1e-4, atol=0)
+
+
 if __name__ == "__main__":
   tf.test.main()
