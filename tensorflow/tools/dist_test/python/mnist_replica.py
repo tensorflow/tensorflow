@@ -26,7 +26,7 @@ initialization. The other, non-master, sessions will wait for the master
 session to finish the initialization before proceeding to the training stage.
 
 The coordination between the multiple worker invocations occurs due to
-the definition of the para  meters on the same ps devices. The parameter updates
+the definition of the parameters on the same ps devices. The parameter updates
 from one worker is visible to all other workers. As such, the workers can
 perform forward computation and gradient calculation in parallel, which
 should lead to increased training speed for the simple model.
