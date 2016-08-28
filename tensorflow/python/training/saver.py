@@ -86,8 +86,12 @@ def ops_used_by_graph_def(graph_def):
     mark_op_as_used(node.op)
   while functions_to_process:
     fun = functions_to_process.pop()
-    for node in fun.node:
-      mark_op_as_used(node.op)
+    if fun.node_def:
+      for node in fun.node_def:
+        mark_op_as_used(node.op)
+    else:  # TODO(josh11b): Eventually remove this case.
+      for node in fun.node:
+        mark_op_as_used(node.op)
 
   return [op for op in used_ops if op not in name_to_function]
 
