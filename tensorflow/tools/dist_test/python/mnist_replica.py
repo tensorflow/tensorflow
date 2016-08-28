@@ -58,7 +58,7 @@ flags.DEFINE_integer("task_index", None,
                      "initialization ")
 flags.DEFINE_integer("num_gpus", 1,
                      "Total number of gpus for each machine."
-                     "If you don't   GPU, please set it to '0'")
+                     "If you don't use GPU, please set it to '0'")
 flags.DEFINE_integer("replicas_to_aggregate", None,
                      "Number of replicas to aggregate before parameter update"
                      "is applied (For sync_replicas mode only; default: "
