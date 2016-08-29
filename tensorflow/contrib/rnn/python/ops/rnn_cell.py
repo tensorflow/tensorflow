@@ -750,6 +750,7 @@ class ESNCell(rnn_cell.RNNCell):
           ValueError: if `inputs` or `state` tensor size mismatch the previously provided dimension.
           """
 
+    inputs = ops.convert_to_tensor(inputs)
     input_size = inputs.get_shape().as_list()[1]
     dtype = inputs.dtype
 
