@@ -105,11 +105,11 @@ class QueueRunner(object):
     self._cancel_op = cancel_op
     # Close when no more will be produced, but pending enqueues should be
     # preserved.
-    if not self._close_op:
+    if self._close_op is None:
       self._close_op = self._queue.close()
     # Close and cancel pending enqueues since there was an error and we want
     # to unblock everything so we can cleanly exit.
-    if not self._cancel_op:
+    if self._cancel_op is None:
       self._cancel_op = self._queue.close(cancel_pending_enqueues=True)
 
   def _init_from_proto(self, queue_runner_def):
