@@ -262,7 +262,10 @@ output_ref:= Same as `ref`.  Returned as a convenience for operations that want
   to use the updated values after the update is done.
 use_locking: If True, the assignment will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
-auto_initialize: If True, `ref` tensor will be initialized before using.
+auto_initialize: If True, `ref` tensor will be initialized before using. Note
+that auto initialization will fill zeros(not what you provide) to `ref`, you
+do not need to run variable initializer. This option has no effect if `ref` is
+already initialized.
 )doc");
 
 REGISTER_OP("ScatterAdd")
@@ -273,6 +276,8 @@ REGISTER_OP("ScatterAdd")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .Attr("auto_initialize: bool = false")
+    .SetAllowsUninitializedInput()
     .SetShapeFn(ScatterUpdateShape)
     .Doc(R"doc(
 Adds sparse updates to a variable reference.
@@ -307,6 +312,10 @@ output_ref:= Same as `ref`.  Returned as a convenience for operations that want
   to use the updated values after the update is done.
 use_locking: If True, the addition will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
+auto_initialize: If True, `ref` tensor will be initialized before using. Note
+that auto initialization will fill zeros(not what you provide) to `ref`, you
+do not need to run variable initializer. This option has no effect if `ref` is
+already initialized.
 )doc");
 
 REGISTER_OP("ScatterSub")
@@ -317,6 +326,8 @@ REGISTER_OP("ScatterSub")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .Attr("auto_initialize: bool = false")
+    .SetAllowsUninitializedInput()
     .SetShapeFn(ScatterUpdateShape)
     .Doc(R"doc(
 Subtracts sparse updates to a variable reference.
@@ -349,6 +360,10 @@ output_ref:= Same as `ref`.  Returned as a convenience for operations that want
   to use the updated values after the update is done.
 use_locking: If True, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
+auto_initialize: If True, `ref` tensor will be initialized before using. Note
+that auto initialization will fill zeros(not what you provide) to `ref`, you
+do not need to run variable initializer. This option has no effect if `ref` is
+already initialized.
 )doc");
 
 REGISTER_OP("ScatterMul")
