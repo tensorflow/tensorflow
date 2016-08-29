@@ -761,8 +761,10 @@ class ESNCell(rnn_cell.RNNCell):
                            trainable=False, initializer=self._wr_initializer)
       b = vs.get_variable("Bias", [self._num_units], dtype=dtype, trainable=False, initializer=self._bias_initializer)
 
-      output = (1 - self._leaky) * state + self._leaky * self._activation(
-        math_ops.matmul(inputs, win) + math_ops.matmul(state, wr) + b)
+      in_mat = array_ops.concat(1, [inputs, state])
+      weights_mat = array_ops.concat(0, [win, wr])
+
+      output = (1 - self._leaky) * state + self._leaky * self._activation(math_ops.matmul(in_mat, weights_mat) + b)
 
     return output, output
 
