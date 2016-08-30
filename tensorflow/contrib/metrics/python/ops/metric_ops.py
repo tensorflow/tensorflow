@@ -2149,7 +2149,7 @@ def run_metric(metric, predictions, targets, weights=None):
   elif hasattr(metric, 'func') and hasattr(metric, 'keywords'):
     # Partial function.
     for arg in inspect.getargspec(metric.func).args:
-      if arg not in metric.keywords.keys():
+      if metric.keywords and arg not in metric.keywords.keys():
         metric_args.append(arg)
   if 'weights' in metric_args:
     result = metric(predictions, targets, weights=weights)
