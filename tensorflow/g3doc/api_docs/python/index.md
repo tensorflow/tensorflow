@@ -473,6 +473,8 @@
   * [`embedding_lookup_sparse`](../../api_docs/python/nn.md#embedding_lookup_sparse)
   * [`erosion2d`](../../api_docs/python/nn.md#erosion2d)
   * [`fixed_unigram_candidate_sampler`](../../api_docs/python/nn.md#fixed_unigram_candidate_sampler)
+  * [`fractional_avg_pool`](../../api_docs/python/nn.md#fractional_avg_pool)
+  * [`fractional_max_pool`](../../api_docs/python/nn.md#fractional_max_pool)
   * [`in_top_k`](../../api_docs/python/nn.md#in_top_k)
   * [`l2_loss`](../../api_docs/python/nn.md#l2_loss)
   * [`l2_normalize`](../../api_docs/python/nn.md#l2_normalize)

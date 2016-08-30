@@ -1515,4 +1515,205 @@ values: The `k` largest elements along each last dimensional slice.
 indices: The indices of `values` within the last dimension of `input`.
 )doc");
 
+// --------------------------------------------------------------------------
+
+REGISTER_OP("FractionalMaxPool")
+    .Input("value: T")
+    .Output("output: T")
+    .Output("row_pooling_sequence: int64")
+    .Output("col_pooling_sequence: int64")
+    .Attr("pooling_ratio: list(float) >=4")
+    .Attr("pseudo_random: bool = false")
+    .Attr("overlapping: bool = false")
+    .Attr("deterministic: bool = false")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
+    .Attr("T: {float, double, int32, int64}")
+    .Doc(R"doc(
+Performs fractional max pooling on the input.
+
+Fractional max pooling is slightly different than regular max pooling.  In
+regular max pooling, you downsize an input set by taking the maximum value of
+smaller N x N subsections of the set (often 2x2), and try to reduce the set by
+a factor of N, where N is an integer.  Fractional max pooling, as you might
+expect from the word "fractional", means that the overall reduction ratio N
+does not have to be an integer.
+
+The sizes of the pooling regions are generated randomly but are fairly uniform.
+For example, let's look at the height dimension, and the constraints on the
+list of rows that will be pool boundaries.
+
+First we define the following:
+
+1.  input_row_length : the number of rows from the input set
+2.  output_row_length : which will be smaller than the input
+3.  alpha = input_row_length / output_row_length : our reduction ratio
+4.  K = floor(alpha)
+5.  row_pooling_sequence : this is the result list of pool boundary rows
+
+Then, row_pooling_sequence should satisfy:
+
+1.  a[0] = 0 : the first value of the sequence is 0
+2.  a[end] = input_row_length : the last value of the sequence is the size
+3.  K <= (a[i+1] - a[i]) <= K+1 : all intervals are K or K+1 size
+4.  length(row_pooling_sequence) = output_row_length+1
+
+For more details on fractional max pooling, see this paper:
+[Benjamin Graham, Fractional Max-Pooling]
+(http://arxiv.org/abs/1412.6071)
+
+value: 4-D with shape `[batch, height, width, channels]`.
+pooling_ratio: Pooling ratio for each dimension of `value`, currently only
+  supports row and col dimension and should be >= 1.0. For example, a valid
+  pooling ratio looks like [1.0, 1.44, 1.73, 1.0]. The first and last elements
+  must be 1.0 because we don't allow pooling on batch and channels
+  dimensions. 1.44 and 1.73 are pooling ratio on height and width dimensions
+  respectively.
+pseudo_random: When set to True, generates the pooling sequence in a
+  pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
+  Graham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for
+  difference between pseudorandom and random.
+overlapping: When set to True, it means when pooling, the values at the boundary
+  of adjacent pooling cells are used by both cells. For example:
+
+  `index  0  1  2  3  4`
+
+  `value  20 5  16 3  7`
+
+  If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
+  The result would be [20, 16] for fractional max pooling.
+deterministic: When set to True, a fixed pooling region will be used when
+  iterating over a FractionalMaxPool node in the computation graph. Mainly used
+  in unit test to make FractionalMaxPool deterministic.
+seed: If either seed or seed2 are set to be non-zero, the random number
+  generator is seeded by the given seed.  Otherwise, it is seeded by a
+  random seed.
+seed2: An second seed to avoid seed collision.
+output: output tensor after fractional max pooling.
+row_pooling_sequence: row pooling sequence, needed to calculate gradient.
+col_pooling_sequence: column pooling sequence, needed to calculate gradient.
+)doc");
+
+REGISTER_OP("FractionalMaxPoolGrad")
+    .Input("orig_input: T")
+    .Input("orig_output: T")
+    .Input("out_backprop: T")
+    .Input("row_pooling_sequence: int64")
+    .Input("col_pooling_sequence: int64")
+    .Output("output: T")
+    .Attr("overlapping: bool = false")
+    .Attr("T: {float, double, int32, int64}")
+    .Doc(R"doc(
+Computes gradient of the FractionalMaxPool function.
+
+orig_input: Original input for `fractional_max_pool`
+orig_output: Original output for `fractional_max_pool`
+out_backprop: 4-D with shape `[batch, height, width, channels]`.  Gradients
+  w.r.t. the output of `fractional_max_pool`.
+row_pooling_sequence: row pooling sequence, form pooling region with
+  col_pooling_sequence.
+col_pooling_sequence: column pooling sequence, form pooling region with
+  row_pooling sequence.
+overlapping: When set to True, it means when pooling, the values at the boundary
+  of adjacent pooling cells are used by both cells. For example:
+
+  `index  0  1  2  3  4`
+
+  `value  20 5  16 3  7`
+
+  If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
+  The result would be [20, 16] for fractional max pooling.
+output: 4-D.  Gradients w.r.t. the input of `fractional_max_pool`.
+)doc");
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("FractionalAvgPool")
+    .Input("value: T")
+    .Output("output: T")
+    .Output("row_pooling_sequence: int64")
+    .Output("col_pooling_sequence: int64")
+    .Attr("pooling_ratio: list(float) >=4")
+    .Attr("pseudo_random: bool = false")
+    .Attr("overlapping: bool = false")
+    .Attr("deterministic: bool = false")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
+    .Attr("T: {float, double, int32, int64}")
+    .Doc(R"doc(
+Performs fractional average pooling on the input.
+
+Fractional average pooling is similar to Fractional max pooling in the pooling
+region generation step. The only difference is that after pooling regions are
+generated, a mean operation is performed instead of a max operation in each
+pooling region.
+
+value: 4-D with shape `[batch, height, width, channels]`.
+pooling_ratio: Pooling ratio for each dimension of `value`, currently only
+  supports row and col dimension and should be >= 1.0. For example, a valid
+  pooling ratio looks like [1.0, 1.44, 1.73, 1.0]. The first and last elements
+  must be 1.0 because we don't allow pooling on batch and channels
+  dimensions. 1.44 and 1.73 are pooling ratio on height and width dimensions
+  respectively.
+pseudo_random: When set to True, generates the pooling sequence in a
+  pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
+  Graham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for
+  difference between pseudorandom and random.
+overlapping: When set to True, it means when pooling, the values at the boundary
+  of adjacent pooling cells are used by both cells. For example:
+
+  `index  0  1  2  3  4`
+
+  `value  20 5  16 3  7`
+
+  If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
+  The result would be [41/3, 26/3] for fractional avg pooling.
+deterministic: When set to True, a fixed pooling region will be used when
+  iterating over a FractionalAvgPool node in the computation graph. Mainly used
+  in unit test to make FractionalAvgPool deterministic.
+seed: If either seed or seed2 are set to be non-zero, the random number
+  generator is seeded by the given seed.  Otherwise, it is seeded by a
+  random seed.
+seed2: An second seed to avoid seed collision.
+output: output tensor after fractional avg pooling.
+row_pooling_sequence: row pooling sequence, needed to calculate gradient.
+col_pooling_sequence: column pooling sequence, needed to calculate gradient.
+)doc");
+
+REGISTER_OP("FractionalAvgPoolGrad")
+    .Input("orig_input_tensor_shape: int64")
+    .Input("out_backprop: T")
+    .Input("row_pooling_sequence: int64")
+    .Input("col_pooling_sequence: int64")
+    .Output("output: T")
+    .Attr("overlapping: bool = false")
+    .Attr("T: {float, double, int32, int64}")
+    .Doc(R"doc(
+Computes gradient of the FractionalAvgPool function.
+
+Unlike FractionalMaxPoolGrad, we don't need to find arg_max for
+FractionalAvgPoolGrad, we just need to evenly back-propagate each element of
+out_backprop to those indices that form the same pooling cell. Therefore, we
+just need to know the shape of original input tensor, instead of the whole
+tensor.
+
+orig_input_tensor_shape: Original input tensor shape for `fractional_avg_pool`
+out_backprop: 4-D with shape `[batch, height, width, channels]`.  Gradients
+  w.r.t. the output of `fractional_avg_pool`.
+row_pooling_sequence: row pooling sequence, form pooling region with
+  col_pooling_sequence.
+col_pooling_sequence: column pooling sequence, form pooling region with
+  row_pooling sequence.
+overlapping: When set to True, it means when pooling, the values at the boundary
+  of adjacent pooling cells are used by both cells. For example:
+
+  `index  0  1  2  3  4`
+
+  `value  20 5  16 3  7`
+
+  If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
+  The result would be [41/3, 26/3] for fractional avg pooling.
+output: 4-D.  Gradients w.r.t. the input of `fractional_avg_pool`.
+)doc");
+
 }  // namespace tensorflow

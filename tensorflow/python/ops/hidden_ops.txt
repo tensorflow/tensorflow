@@ -181,6 +181,8 @@ AvgPool
 MaxPool
 Softmax
 LogSoftmax
+FractionalAvgPoolGrad
+FractionalMaxPoolGrad
 
 # parsing_ops
 ParseExample

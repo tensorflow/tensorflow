@@ -941,6 +941,39 @@ def _AvgPoolGradShape(op):
     return [tensor_shape.unknown_shape(ndims=4)]
 
 
+@ops.RegisterShape("FractionalMaxPool")
+@ops.RegisterShape("FractionalAvgPool")
+def _fractional_pool_shape(op):
+  input_dims = op.inputs[0].get_shape().with_rank(4).as_list()
+  pooling_ratio = op.get_attr("pooling_ratio")
+  output_dims = np.divide(input_dims, pooling_ratio).astype(int)
+  return [
+      # output.
+      tensor_shape.TensorShape(output_dims),
+      # row_pooling_sequence.
+      tensor_shape.TensorShape([output_dims[1]]),
+      # col_pooling_sequence.
+      tensor_shape.TensorShape([output_dims[2]])
+  ]
+
+
+@ops.RegisterShape("FractionalMaxPoolGrad")
+def _fractional_max_pool_grad_shape(op):
+  """Shape function for the FractionalMaxPoolGrad op."""
+  orig_input_shape = op.inputs[0].get_shape().with_rank(4)
+  return [orig_input_shape]
+
+
+@ops.RegisterShape("FractionalAvgPoolGrad")
+def _fractional_avg_pool_grad_shape(op):
+  """Shape function for the FractionalAvgPoolGrad op."""
+  orig_input_shape = tensor_util.constant_value(op.inputs[0])
+  if orig_input_shape is not None:
+    return [tensor_shape.TensorShape(orig_input_shape.tolist())]
+  else:
+    return [tensor_shape.unknown_shape(ndims=4)]
+
+
 @ops.RegisterShape("Conv2DBackpropFilter")
 def _Conv2DBackpropFilterShape(op):
   """Shape function for the Conv2DBackpropFilter op."""
