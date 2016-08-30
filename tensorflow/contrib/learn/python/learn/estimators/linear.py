@@ -19,44 +19,255 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
+import math
+import re
+import tempfile
+
+import six
+
 from tensorflow.contrib import layers
+from tensorflow.contrib import losses
+from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.learn.python.learn import evaluable
+from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
+from tensorflow.contrib.learn.python.learn.estimators import estimator
+from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
+from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
+from tensorflow.python.training import training as train
+
+_CLASSES = "classes"
+_LOGISTIC = "logistic"
+_PROBABILITIES = "probabilities"
 
 
-# TODO(sibyl-vie3Poto): This is an interim workaround to avoid code duplication between
-# LinearClassifier and LinearRegressor. Eventually, the logic of this method
-# should be moved either to the body of get_train_step in SDCAOptimizer or to
-# _DNNLinearCombinedBaseEstimator which is the lowest common ancestor of
-# LinearClassifier, LinearRegressor.
-def _get_linear_train_and_loss_ops(features, target, linear_feature_columns,
-                                   target_column, linear_optimizer, loss_type,
-                                   centered_bias, scope_name):
-  """Returns train and loss ops for SDCAOptimizer."""
-  global_step = contrib_variables.get_global_step()
-  assert global_step
-
-  logits, columns_to_variables, _ = layers.weighted_sum_from_feature_columns(
-      columns_to_tensors=features,
-      feature_columns=linear_feature_columns,
-      num_outputs=target_column.num_label_columns,
-      weight_collections=[scope_name],
-      scope=scope_name)
-  with ops.control_dependencies([centered_bias]):
-    loss = target_column.loss(logits, target, features)
-  logging_ops.scalar_summary("loss", loss)
-
-  train_op = linear_optimizer.get_train_step(linear_feature_columns,
-                                             target_column.weight_column_name,
-                                             loss_type, features, target,
-                                             columns_to_variables, global_step)
-  return train_op, loss
+def _get_metric_args(metric):
+  if hasattr(metric, "__code__"):
+    return inspect.getargspec(metric).args
+  elif hasattr(metric, "func") and hasattr(metric, "keywords"):
+    return [arg for arg in inspect.getargspec(metric.func).args
+            if arg not in metric.keywords.keys()]
 
 
-class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
+def _wrap_metric(metric):
+  """Wraps metrics for mismatched prediction/target types."""
+  def wrapped(preds, targets):
+    targets = math_ops.cast(targets, preds.dtype)
+    return metric(preds, targets)
+
+  def wrapped_weights(preds, targets, weights):
+    targets = math_ops.cast(targets, preds.dtype)
+    if weights is not None:
+      weights = array_ops.reshape(math_ops.to_float(weights), shape=(-1,))
+    return metric(preds, targets, weights)
+
+  return wrapped_weights if "weights" in _get_metric_args(metric) else wrapped
+
+
+def _get_optimizer(spec):
+  if isinstance(spec, six.string_types):
+    return layers.OPTIMIZER_CLS_NAMES[spec](
+        learning_rate=0.2)
+  elif callable(spec):
+    return spec()
+  return spec
+
+
+# TODO(ispir): Remove this function by fixing '_infer_model' with single outputs
+# and as_iteable case.
+def _as_iterable(preds, output):
+  for pred in preds:
+    yield pred[output]
+
+
+def _centered_bias_step(targets, loss_fn, num_label_columns):
+  centered_bias = ops.get_collection("centered_bias")
+  batch_size = array_ops.shape(targets)[0]
+  logits = array_ops.reshape(
+      array_ops.tile(centered_bias[0], [batch_size]),
+      [batch_size, num_label_columns])
+  loss = loss_fn(logits, targets)
+  return train.AdagradOptimizer(0.1).minimize(loss, var_list=centered_bias)
+
+
+def _centered_bias(num_outputs):
+  centered_bias = variables.Variable(
+      array_ops.zeros([num_outputs]),
+      collections=["centered_bias", ops.GraphKeys.VARIABLES],
+      name="centered_bias_weight")
+  logging_ops.scalar_summary(
+      ["centered_bias %d" % cb for cb in range(num_outputs)],
+      array_ops.reshape(centered_bias, [-1]))
+  return centered_bias
+
+
+def _log_loss_with_two_classes(logits, target):
+  check_shape_op = logging_ops.Assert(
+      math_ops.less_equal(array_ops.rank(target), 2),
+      ["target's shape should be either [batch_size, 1] or [batch_size]"])
+  with ops.control_dependencies([check_shape_op]):
+    target = array_ops.reshape(target, shape=[array_ops.shape(target)[0], 1])
+  return nn.sigmoid_cross_entropy_with_logits(
+      logits, math_ops.to_float(target))
+
+
+def _softmax_cross_entropy_loss(logits, target):
+  check_shape_op = logging_ops.Assert(
+      math_ops.less_equal(array_ops.rank(target), 2),
+      ["target's shape should be either [batch_size, 1] or [batch_size]"])
+  with ops.control_dependencies([check_shape_op]):
+    target = array_ops.reshape(target, shape=[array_ops.shape(target)[0]])
+  return nn.sparse_softmax_cross_entropy_with_logits(logits, target)
+
+
+def _hinge_loss(logits, target):
+  check_shape_op = logging_ops.Assert(
+      math_ops.less_equal(array_ops.rank(target), 2),
+      ["target's shape should be either [batch_size, 1] or [batch_size]"])
+  with ops.control_dependencies([check_shape_op]):
+    target = array_ops.reshape(target, shape=[array_ops.shape(target)[0], 1])
+  return losses.hinge_loss(logits, target)
+
+
+def _weighted_loss(loss, weight_tensor):
+  unweighted_loss = array_ops.reshape(loss, shape=(-1,))
+  weighted_loss = math_ops.mul(
+      unweighted_loss, array_ops.reshape(weight_tensor, shape=(-1,)))
+  return math_ops.div(
+      math_ops.reduce_sum(weighted_loss),
+      math_ops.to_float(math_ops.reduce_sum(weight_tensor)),
+      name="loss")
+
+
+def _linear_classifier_model_fn(features, targets, mode, params):
+  """Estimator's linear model_fn."""
+  n_classes = params["n_classes"]
+  weight_column_name = params["weight_column_name"]
+  feature_columns = params["feature_columns"]
+  optimizer = params["optimizer"]
+  gradient_clip_norm = params.get("gradient_clip_norm", None)
+  enable_centered_bias = params.get("enable_centered_bias", True)
+  num_ps_replicas = params.get("num_ps_replicas", 0)
+
+  if not isinstance(features, dict):
+    features = {"": features}
+
+  num_label_columns = 1 if n_classes == 2 else n_classes
+  loss_fn = _softmax_cross_entropy_loss
+  if n_classes == 2:
+    loss_fn = _log_loss_with_two_classes
+
+  feat_values = features.values() if isinstance(features, dict) else [features]
+  partitioner = partitioned_variables.min_max_variable_partitioner(
+      max_partitions=num_ps_replicas,
+      min_slice_size=64 << 20)
+  with variable_scope.variable_op_scope(
+      feat_values, "linear", partitioner=partitioner) as scope:
+    logits, _, _ = (
+        layers.weighted_sum_from_feature_columns(
+            columns_to_tensors=features,
+            feature_columns=feature_columns,
+            num_outputs=num_label_columns,
+            weight_collections=["linear"],
+            scope=scope))
+
+  if enable_centered_bias:
+    logits = nn.bias_add(logits, _centered_bias(num_label_columns))
+
+  loss = None
+  if mode != estimator.ModeKeys.INFER:
+    loss = loss_fn(logits, targets)
+    if weight_column_name:
+      weight_tensor = array_ops.reshape(
+          math_ops.to_float(features[weight_column_name]), shape=(-1,))
+      loss = _weighted_loss(loss, weight_tensor)
+    else:
+      loss = math_ops.reduce_mean(loss, name="loss")
+
+  train_ops = []
+  if mode == estimator.ModeKeys.TRAIN:
+    global_step = contrib_variables.get_global_step()
+
+    my_vars = ops.get_collection("linear")
+    grads = gradients.gradients(loss, my_vars)
+    if gradient_clip_norm:
+      grads, _ = clip_ops.clip_by_global_norm(grads, gradient_clip_norm)
+    train_ops.append(optimizer.apply_gradients(
+        zip(grads, my_vars), global_step=global_step))
+    if enable_centered_bias:
+      train_ops.append(_centered_bias_step(targets, loss_fn, num_label_columns))
+
+  predictions = {}
+  if n_classes == 2:
+    predictions[_LOGISTIC] = math_ops.sigmoid(logits)
+    logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
+  predictions[_PROBABILITIES] = nn.softmax(logits)
+  predictions[_CLASSES] = math_ops.argmax(logits, 1)
+
+  return predictions, loss, control_flow_ops.group(*train_ops)
+
+
+def sdca_classifier_model_fn(features, targets, mode, params):
+  """Estimator's linear model_fn."""
+  feature_columns = params["feature_columns"]
+  optimizer = params["optimizer"]
+  weight_column_name = params["weight_column_name"]
+  loss_type = params["loss_type"]
+
+  if not isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
+    raise ValueError("Optimizer must be of type SDCAOptimizer")
+
+  loss_fn = {
+      "logistic_loss": _log_loss_with_two_classes,
+      "hinge_loss": _hinge_loss,
+  }[loss_type]
+
+  logits, columns_to_variables, _ = (
+      layers.weighted_sum_from_feature_columns(
+          columns_to_tensors=features,
+          feature_columns=feature_columns,
+          num_outputs=1))
+
+  loss = None
+  if mode != estimator.ModeKeys.INFER:
+    loss = math_ops.reduce_mean(loss_fn(logits, targets), name="loss")
+
+  train_op = None
+  if mode == estimator.ModeKeys.TRAIN:
+    global_step = contrib_variables.get_global_step()
+    train_op = optimizer.get_train_step(
+        feature_columns, weight_column_name, loss_type, features,
+        targets, columns_to_variables, global_step)
+
+  predictions = {}
+  predictions[_LOGISTIC] = math_ops.sigmoid(logits)
+  logits = array_ops.concat(1, [array_ops.zeros_like(logits), logits])
+  predictions[_PROBABILITIES] = nn.softmax(logits)
+  predictions[_CLASSES] = math_ops.argmax(logits, 1)
+
+  return predictions, loss, train_op
+
+
+# Ensures consistency with LinearComposableModel.
+def _get_default_optimizer(feature_columns):
+  learning_rate = min(0.2, 1.0 / math.sqrt(len(feature_columns)))
+  return train.FtrlOptimizer(learning_rate=learning_rate)
+
+
+class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
   """Linear classifier model.
 
   Train a linear model to classify instances into one of multiple possible
@@ -155,46 +366,136 @@ class LinearClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
 
     Returns:
       A `LinearClassifier` estimator.
+
+    Raises:
+      ValueError: if n_classes < 2.
     """
-    super(LinearClassifier, self).__init__(
-        model_dir=model_dir,
-        n_classes=n_classes,
-        weight_column_name=weight_column_name,
-        linear_feature_columns=feature_columns,
-        linear_optimizer=optimizer,
-        gradient_clip_norm=gradient_clip_norm,
-        enable_centered_bias=enable_centered_bias,
-        config=config)
-    self._feature_columns_inferred = False
+    self._model_dir = model_dir or tempfile.mkdtemp()
+    if n_classes < 2:
+      raise ValueError("Classification requires n_classes >= 2")
+    self._n_classes = n_classes
+    self._feature_columns = feature_columns
+    assert self._feature_columns
+    self._optimizer = _get_default_optimizer(feature_columns)
+    if optimizer:
+      self._optimizer = _get_optimizer(optimizer)
+    num_ps_replicas = config.num_ps_replicas if config else 0
 
-  def _get_train_ops(self, features, targets):
-    """See base class."""
-    if not isinstance(self._linear_optimizer, sdca_optimizer.SDCAOptimizer):
-      return super(LinearClassifier, self)._get_train_ops(features, targets)
+    if isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
+      model_fn = sdca_classifier_model_fn
+      params = {
+          "feature_columns": feature_columns,
+          "optimizer": self._optimizer,
+          "weight_column_name": weight_column_name,
+          "loss_type": "logistic_loss",
+      }
+    else:
+      model_fn = _linear_classifier_model_fn
+      params = {
+          "n_classes": n_classes,
+          "weight_column_name": weight_column_name,
+          "feature_columns": feature_columns,
+          "optimizer": self._optimizer,
+          "gradient_clip_norm": gradient_clip_norm,
+          "enable_centered_bias": enable_centered_bias,
+          "num_ps_replicas": num_ps_replicas,
+      }
 
-    # SDCA currently supports binary classification only.
-    if self._target_column.num_label_columns > 2:
-      raise ValueError(
-          "SDCA does not currently support multi-class classification.")
+    self._estimator = estimator.Estimator(
+        model_fn=model_fn,
+        model_dir=self._model_dir,
+        config=config,
+        params=params,
+        weight_column_name=weight_column_name)
 
-    return _get_linear_train_and_loss_ops(features, targets,
-                                          self._linear_feature_columns,
-                                          self._target_column,
-                                          self._linear_optimizer,
-                                          self._loss_type(),
-                                          self._centered_bias(),
-                                          self._linear_model.get_scope_name())
+  def get_estimator(self):
+    return self._estimator
 
-  def _loss_type(self):
-    return "logistic_loss"
+  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
+          monitors=None, max_steps=None):
+    """See trainable.Trainable."""
+    return self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
+                               batch_size=batch_size, monitors=monitors,
+                               max_steps=max_steps)
+
+  # TODO(ispir): Simplify evaluate by aligning this logic with custom Estimator.
+  def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
+               batch_size=None, steps=None, metrics=None, name=None):
+    """See evaluable.Evaluable."""
+    if not metrics:
+      metrics = {}
+      metrics[("accuracy", _CLASSES)] = metrics_lib.streaming_accuracy
+    if self._n_classes == 2:
+      metrics[("auc", _LOGISTIC)] = metrics_lib.streaming_auc
+    for metric_name, metric in metrics.items():
+      if isinstance(metric_name, tuple):
+        if len(metric_name) != 2:
+          raise ValueError("Ignoring metric %s. It returned a tuple with len  "
+                           "%s, expected 2." % (metric_name, len(metric_name)))
+
+        valid_keys = {_CLASSES, _LOGISTIC, _PROBABILITIES}
+        if metric_name[1] not in valid_keys:
+          raise ValueError("Ignoring metric %s. The 2nd element of its name "
+                           "should be in %s" % (metric_name, valid_keys))
+      metrics[metric_name] = _wrap_metric(metric)
+
+    return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
+                                    feed_fn=feed_fn, batch_size=batch_size,
+                                    steps=steps, metrics=metrics, name=name)
+
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+    """Runs inference to determine the predicted class."""
+    preds = self._estimator.predict(x=x, input_fn=input_fn,
+                                    batch_size=batch_size, outputs=[_CLASSES],
+                                    as_iterable=as_iterable)
+    if as_iterable:
+      return _as_iterable(preds, output=_CLASSES)
+    return preds[_CLASSES]
+
+  def predict_proba(self, x=None, input_fn=None, batch_size=None, outputs=None,
+                    as_iterable=False):
+    """Runs inference to determine the class probability predictions."""
+    preds = self._estimator.predict(x=x, input_fn=input_fn,
+                                    batch_size=batch_size,
+                                    outputs=[_PROBABILITIES],
+                                    as_iterable=as_iterable)
+    if as_iterable:
+      return _as_iterable(preds, output=_PROBABILITIES)
+    return preds[_PROBABILITIES]
+
+  def get_variable_names(self):
+    return [name for name, _ in checkpoints.list_variables(self._model_dir)]
+
+  def export(self, export_dir, signature_fn=None,
+             input_fn=None, default_batch_size=1,
+             exports_to_keep=None):
+    """See BasEstimator.export."""
+    def default_input_fn(unused_estimator, examples):
+      return layers.parse_feature_columns_from_examples(
+          examples, self._feature_columns)
+    self._estimator.export(export_dir=export_dir,
+                           signature_fn=signature_fn,
+                           input_fn=input_fn or default_input_fn,
+                           default_batch_size=default_batch_size,
+                           exports_to_keep=exports_to_keep)
 
   @property
   def weights_(self):
-    return self.linear_weights_
+    values = {}
+    optimizer_regex = r".*/"+self._optimizer.get_name() + r"(_\d)?$"
+    for name, _ in checkpoints.list_variables(self._model_dir):
+      if (name.startswith("linear/") and
+          name != "linear/bias_weight" and
+          not re.match(optimizer_regex, name)):
+        values[name] = checkpoints.load_variable(self._model_dir, name)
+    if len(values) == 1:
+      return values[list(values.keys())[0]]
+    return values
 
   @property
   def bias_(self):
-    return self.linear_bias_
+    return checkpoints.load_variable(self._model_dir,
+                                     name="linear/bias_weight")
 
 
 class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
@@ -288,20 +589,27 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         enable_centered_bias=enable_centered_bias,
         target_dimension=target_dimension,
         config=config)
-    self._feature_columns_inferred = False
 
   def _get_train_ops(self, features, targets):
     """See base class."""
     if not isinstance(self._linear_optimizer, sdca_optimizer.SDCAOptimizer):
       return super(LinearRegressor, self)._get_train_ops(features, targets)
+    global_step = contrib_variables.get_or_create_global_step()
 
-    return _get_linear_train_and_loss_ops(features, targets,
-                                          self._linear_feature_columns,
-                                          self._target_column,
-                                          self._linear_optimizer,
-                                          self._loss_type(),
-                                          self._centered_bias(),
-                                          self._linear_model.get_scope_name())
+    logits, columns_to_variables, _ = layers.weighted_sum_from_feature_columns(
+        columns_to_tensors=features,
+        feature_columns=self._linear_feature_columns,
+        num_outputs=self._target_column.num_label_columns,
+        weight_collections=[self._linear_model.get_scope_name()],
+        scope=self._linear_model.get_scope_name())
+    with ops.control_dependencies([self._centered_bias()]):
+      loss = self._target_column.loss(logits, targets, features)
+    logging_ops.scalar_summary("loss", loss)
+
+    train_op = self._linear_optimizer.get_train_step(
+        self._linear_feature_columns, self._target_column.weight_column_name,
+        self._loss_type(), features, targets, columns_to_variables, global_step)
+    return train_op, loss
 
   def _loss_type(self):
     return "squared_loss"

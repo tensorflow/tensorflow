@@ -25,6 +25,15 @@ import tempfile
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.contrib.learn.python.learn.estimators import _sklearn
+
+
+def _iris_input_fn():
+  iris = tf.contrib.learn.datasets.load_iris()
+  return {
+      'feature': tf.constant(iris.data, dtype=tf.float32)
+  }, tf.constant(iris.target, shape=[150, 1], dtype=tf.int32)
+
 
 class LinearClassifierTest(tf.test.TestCase):
 
@@ -51,6 +60,148 @@ class LinearClassifierTest(tf.test.TestCase):
     self.assertLess(loss2, loss1)
     self.assertLess(loss2, 0.01)
     self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
+
+  def testMultiClass(self):
+    """Tests multi-class classification using matrix data as input."""
+    feature_column = tf.contrib.layers.real_valued_column('feature',
+                                                          dimension=4)
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        n_classes=3,
+        feature_columns=[feature_column])
+
+    classifier.fit(input_fn=_iris_input_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
+    self.assertGreater(scores['accuracy'], 0.9)
+
+  def testWeightAndBiasNames(self):
+    """Tests that weight and bias names haven't changed."""
+    feature_column = tf.contrib.layers.real_valued_column('feature',
+                                                          dimension=4)
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        n_classes=3,
+        feature_columns=[feature_column])
+
+    classifier.fit(input_fn=_iris_input_fn, steps=100)
+    self.assertEqual(4, len(classifier.weights_))
+    self.assertEqual(3, len(classifier.bias_))
+
+  def testCustomOptimizerByObject(self):
+    """Tests multi-class classification using matrix data as input."""
+    feature_column = tf.contrib.layers.real_valued_column('feature',
+                                                          dimension=4)
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        n_classes=3,
+        optimizer=tf.train.FtrlOptimizer(learning_rate=0.1),
+        feature_columns=[feature_column])
+
+    classifier.fit(input_fn=_iris_input_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
+    self.assertGreater(scores['accuracy'], 0.9)
+
+  def testCustomOptimizerByString(self):
+    """Tests multi-class classification using matrix data as input."""
+    feature_column = tf.contrib.layers.real_valued_column('feature',
+                                                          dimension=4)
+
+    def _optimizer():
+      return tf.train.FtrlOptimizer(learning_rate=0.1)
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        n_classes=3,
+        optimizer=_optimizer,
+        feature_columns=[feature_column])
+
+    classifier.fit(input_fn=_iris_input_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
+    self.assertGreater(scores['accuracy'], 0.9)
+
+  def testCustomOptimizerByFunction(self):
+    """Tests multi-class classification using matrix data as input."""
+    feature_column = tf.contrib.layers.real_valued_column('feature',
+                                                          dimension=4)
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        n_classes=3,
+        optimizer='Ftrl',
+        feature_columns=[feature_column])
+
+    classifier.fit(input_fn=_iris_input_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
+    self.assertGreater(scores['accuracy'], 0.9)
+
+  def testCustomMetrics(self):
+    """Tests custom evaluation metrics."""
+
+    def _input_fn_train():
+      # Create 4 rows, one of them (y = x), three of them (y=Not(x))
+      target = tf.constant([[1], [0], [0], [0]])
+      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
+      return features, target
+
+    def _my_metric_op(predictions, targets):
+      # For the case of binary classification, the 2nd column of "predictions"
+      # denotes the model predictions.
+      predictions = tf.slice(predictions, [0, 1], [-1, 1])
+      return tf.reduce_sum(tf.mul(predictions, targets))
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        feature_columns=[tf.contrib.layers.real_valued_column('x')])
+
+    classifier.fit(input_fn=_input_fn_train, steps=100)
+    scores = classifier.evaluate(
+        input_fn=_input_fn_train,
+        steps=100,
+        metrics={
+            ('my_accuracy', 'classes'): tf.contrib.metrics.streaming_accuracy,
+            ('my_precision', 'classes'): tf.contrib.metrics.streaming_precision,
+            ('my_metric', 'probabilities'): _my_metric_op
+        })
+    self.assertTrue(
+        set(['loss', 'my_accuracy', 'my_precision', 'my_metric'
+            ]).issubset(set(scores.keys())))
+    predictions = classifier.predict(input_fn=_input_fn_train)
+    self.assertEqual(_sklearn.accuracy_score([1, 0, 0, 0], predictions),
+                     scores['my_accuracy'])
+
+    # Test the case where the 2nd element of the key is neither "classes" nor
+    # "probabilities".
+    with self.assertRaises(ValueError):
+      classifier.evaluate(
+          input_fn=_input_fn_train,
+          steps=100,
+          metrics={('bad_name', 'bad_type'): tf.contrib.metrics.streaming_auc})
+
+    # Test the case where the tuple of the key doesn't have 2 elements.
+    with self.assertRaises(ValueError):
+      classifier.evaluate(
+          input_fn=_input_fn_train,
+          steps=100,
+          metrics={
+              ('bad_length_name', 'classes', 'bad_length'):
+                  tf.contrib.metrics.streaming_accuracy
+          })
+
+  def testLogisticFractionalLabels(self):
+    """Tests logistic training with fractional labels."""
+
+    def get_input_fn(label):
+      def input_fn():
+        return {
+            'age': tf.constant([[1], [2]]),
+        }, tf.constant([[label], [0]])
+      return input_fn
+
+    age = tf.contrib.layers.real_valued_column('age')
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        feature_columns=[age])
+    classifier.fit(input_fn=get_input_fn(0.7), steps=100)
+    loss1 = classifier.evaluate(input_fn=get_input_fn(0.7), steps=1)['loss']
+    loss2 = classifier.evaluate(input_fn=get_input_fn(1.0), steps=1)['loss']
+    self.assertLess(loss1, loss2)
 
   def testTrainWithPartitionedVariables(self):
     """Tests training with partitioned variables."""
@@ -101,14 +252,47 @@ class LinearClassifierTest(tf.test.TestCase):
         feature_columns=[age, language])
     classifier.fit(input_fn=input_fn, steps=30)
     predict_input_fn = functools.partial(input_fn, num_epochs=1)
-    out1 = classifier.predict(input_fn=predict_input_fn, as_iterable=True)
+    out1_class = list(classifier.predict(input_fn=predict_input_fn,
+                                         as_iterable=True))
+    out1_proba = list(classifier.predict_proba(input_fn=predict_input_fn,
+                                               as_iterable=True))
     del classifier
 
     classifier2 = tf.contrib.learn.LinearClassifier(
         model_dir=model_dir,
         feature_columns=[age, language])
-    out2 = classifier2.predict(input_fn=predict_input_fn, as_iterable=True)
-    self.assertEqual(list(out1), list(out2))
+    out2_class = list(classifier2.predict(input_fn=predict_input_fn,
+                                          as_iterable=True))
+    out2_proba = list(classifier2.predict_proba(input_fn=predict_input_fn,
+                                                as_iterable=True))
+    self.assertTrue(np.array_equal(out1_class, out2_class))
+    self.assertTrue(np.array_equal(out1_proba, out2_proba))
+
+  def testWeightColumn(self):
+    """Test ensures that you can specify per-example weights for loss."""
+
+    def _input_fn():
+      features = {
+          'age': tf.constant([[20], [20], [20]]),
+          'weights': tf.constant([[100], [1], [1]]),
+      }
+      target = tf.constant([[1], [0], [0]])
+      return features, target
+
+    age = tf.contrib.layers.real_valued_column('age')
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        feature_columns=[age])
+    classifier.fit(input_fn=_input_fn, steps=100)
+    loss_unweighted = classifier.evaluate(input_fn=_input_fn, steps=1)['loss']
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        feature_columns=[age],
+        weight_column_name='weights')
+    classifier.fit(input_fn=_input_fn, steps=100)
+    loss_weighted = classifier.evaluate(input_fn=_input_fn, steps=1)['loss']
+
+    self.assertLess(loss_weighted, loss_unweighted)
 
   def testExport(self):
     """Tests that export model for servo works."""
@@ -182,7 +366,7 @@ class LinearClassifierTest(tf.test.TestCase):
           'language': tf.SparseTensor(values=['Swahili', 'turkish'],
                                       indices=[[0, 0], [2, 0]],
                                       shape=[3, 1])
-      }, tf.constant([[1], [1], [1]], dtype=tf.int32)
+      }, tf.constant([[1], [1], [1]])
 
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
     classifier = tf.contrib.learn.LinearClassifier(feature_columns=[language])
@@ -223,7 +407,7 @@ class LinearClassifierTest(tf.test.TestCase):
       return {
           'example_id': tf.constant(['1', '2']),
           'dense_feature': tf.constant([[500.0, 800.0], [200.0, 600.0]])
-      }, tf.constant([[0.0], [1.0]])
+      }, tf.constant([[0], [1]])
 
     dense_feature = tf.contrib.layers.real_valued_column(
         'dense_feature', dimension=2)
