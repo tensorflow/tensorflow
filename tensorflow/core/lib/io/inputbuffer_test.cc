@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/platform/env.h"
 
+#include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -284,6 +285,44 @@ TEST(InputBuffer, Seek) {
 
     EXPECT_TRUE(
         StringPiece(in.Seek(-1).ToString()).contains("negative position"));
+  }
+}
+
+TEST(InputBuffer, ReadVarint32) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/inputbuffer_test";
+
+  // Generates data.
+  std::vector<uint32> data;
+  uint32 i = 0;
+  for (; i < (1 << 10); i += 1) data.push_back(i);
+  for (; i < (1 << 15); i += 5) data.push_back(i);
+  for (; i < (1 << 31); i += 132817) data.push_back(i);
+  data.push_back(std::numeric_limits<uint32>::max());
+
+  // Writes the varints.
+  {
+    std::unique_ptr<WritableFile> file;
+    TF_CHECK_OK(env->NewWritableFile(fname, &file));
+    string varint;
+    for (uint32 number : data) {
+      varint.clear();
+      core::PutVarint32(&varint, number);
+      TF_CHECK_OK(file->Append(StringPiece(varint)));
+    }
+  }
+
+  for (auto buf_size : BufferSizes()) {
+    std::unique_ptr<RandomAccessFile> file;
+    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    io::InputBuffer in(file.get(), buf_size);
+    uint32 result = 0;
+
+    for (uint32 expected : data) {
+      TF_ASSERT_OK(in.ReadVarint32(&result));
+      EXPECT_EQ(expected, result);
+    }
+    EXPECT_TRUE(errors::IsOutOfRange(in.ReadVarint32(&result)));
   }
 }
 

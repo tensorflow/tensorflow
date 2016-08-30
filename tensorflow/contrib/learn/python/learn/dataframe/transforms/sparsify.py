@@ -29,7 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 
-class Sparsify(transform.Transform):
+class Sparsify(transform.TensorFlowTransform):
   """Transforms Dense to Sparse Tensor."""
 
   def __init__(self, strip_value):

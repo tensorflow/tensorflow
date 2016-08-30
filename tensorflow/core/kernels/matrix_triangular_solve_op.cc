@@ -27,11 +27,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <class Scalar, bool SupportsBatchOperation>
-class MatrixTriangularSolveOp
-    : public LinearAlgebraOp<Scalar, SupportsBatchOperation> {
+template <class Scalar>
+class MatrixTriangularSolveOp : public LinearAlgebraOp<Scalar> {
  public:
-  typedef LinearAlgebraOp<Scalar, SupportsBatchOperation> Base;
+  typedef LinearAlgebraOp<Scalar> Base;
 
   explicit MatrixTriangularSolveOp(OpKernelConstruction* context)
       : Base(context), lower_(true), adjoint_(false) {
@@ -104,13 +103,13 @@ class MatrixTriangularSolveOp
   TF_DISALLOW_COPY_AND_ASSIGN(MatrixTriangularSolveOp);
 };
 
-REGISTER_LINALG_OP("MatrixTriangularSolve",
-                   (MatrixTriangularSolveOp<float, false>), float);
-REGISTER_LINALG_OP("MatrixTriangularSolve",
-                   (MatrixTriangularSolveOp<double, false>), double);
+REGISTER_LINALG_OP("MatrixTriangularSolve", (MatrixTriangularSolveOp<float>),
+                   float);
+REGISTER_LINALG_OP("MatrixTriangularSolve", (MatrixTriangularSolveOp<double>),
+                   double);
 REGISTER_LINALG_OP("BatchMatrixTriangularSolve",
-                   (MatrixTriangularSolveOp<float, true>), float);
+                   (MatrixTriangularSolveOp<float>), float);
 REGISTER_LINALG_OP("BatchMatrixTriangularSolve",
-                   (MatrixTriangularSolveOp<double, true>), double);
+                   (MatrixTriangularSolveOp<double>), double);
 
 }  // namespace tensorflow

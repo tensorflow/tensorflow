@@ -39,7 +39,7 @@ limitations under the License.
 namespace tensorflow {
 
 // Base class for linear algebra operators.
-template <typename Scalar, bool SupportsBatchOperationT>
+template <typename Scalar>
 class LinearAlgebraOp : public OpKernel {
  public:
   explicit LinearAlgebraOp(OpKernelConstruction* context) : OpKernel(context) {}
@@ -164,10 +164,8 @@ class LinearAlgebraOp : public OpKernel {
 
 // Declare that LinearAlgebraOp is explicitly instantiated in
 // linalg_ops_common.cc for float and double.
-extern template class LinearAlgebraOp<float, false>;
-extern template class LinearAlgebraOp<float, true>;
-extern template class LinearAlgebraOp<double, false>;
-extern template class LinearAlgebraOp<double, true>;
+extern template class LinearAlgebraOp<float>;
+extern template class LinearAlgebraOp<double>;
 
 }  // namespace tensorflow
 

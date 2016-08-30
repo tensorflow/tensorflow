@@ -19,7 +19,7 @@ py_library(
 
 cuda_py_test(
     name = "entropy_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/entropy_test.py"],
     additional_deps = [
         ":bayesflow_py",

@@ -1103,6 +1103,7 @@ tf_kernel_libraries(
         "aggregate_ops",
         "argmax_op",
         "batch_matmul_op",
+        "betainc_op",
         "cast_op",
         "check_numerics_op",
         "cross_op",

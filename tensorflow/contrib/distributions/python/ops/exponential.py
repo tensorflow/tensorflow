@@ -21,10 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import gamma
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -41,8 +38,11 @@ class Exponential(gamma.Gamma):
   distribution, with Exponential(lam) = Gamma(1, lam).
   """
 
-  def __init__(
-      self, lam, validate_args=True, allow_nan_stats=False, name="Exponential"):
+  def __init__(self,
+               lam,
+               validate_args=True,
+               allow_nan_stats=False,
+               name="Exponential"):
     """Construct Exponential distribution with parameter `lam`.
 
     Args:
@@ -62,51 +62,28 @@ class Exponential(gamma.Gamma):
     # allow_nan_stats=False
     # through to the parent class results in unnecessary asserts.
     with ops.name_scope(name, values=[lam]):
-      lam = ops.convert_to_tensor(lam)
-      self._lam = lam
+      self._lam = ops.convert_to_tensor(lam, name="lam")
       super(Exponential, self).__init__(
-          alpha=constant_op.constant(1.0, dtype=lam.dtype),
-          beta=lam,
+          alpha=array_ops.ones((), dtype=self._lam.dtype),
+          beta=self._lam,
           allow_nan_stats=allow_nan_stats,
           validate_args=validate_args)
+      # While the Gamma distribution is not reparameterizeable, the
+      # exponential distribution is.
+      self._is_reparameterized = True
 
   @property
   def lam(self):
     return self._lam
 
-  @property
-  def is_reparameterized(self):
-    # While the Gamma distribution is not reparameterizeable, the
-    # exponential distribution is.
-    return True
-
-  def sample_n(self, n, seed=None, name="sample_n"):
-    """Sample `n` observations from the Exponential Distributions.
-
-    Args:
-      n: `Scalar` `Tensor` of type `int32` or `int64`, the number of
-        observations to sample.
-      seed: Python integer, the random seed.
-      name: The name to give this op.
-
-    Returns:
-      samples: `[n, ...]`, a `Tensor` of `n` samples for each
-        of the distributions determined by the hyperparameters.
-    """
-    broadcast_shape = self._lam.get_shape()
-    with ops.name_scope(name, "ExponentialSample", [self.lam, n]):
-      n = ops.convert_to_tensor(n, name="n")
-      shape = array_ops.concat(0, ([n], array_ops.shape(self._lam)))
-      # Sample uniformly-at-random from the open-interval (0, 1).
-      sampled = random_ops.random_uniform(
-          shape, minval=np.nextafter(
-              self.dtype.as_numpy_dtype(0.), self.dtype.as_numpy_dtype(1.)),
-          maxval=constant_op.constant(1.0, dtype=self.dtype),
-          seed=seed,
-          dtype=self.dtype)
-
-      n_val = tensor_util.constant_value(n)
-      final_shape = tensor_shape.vector(n_val).concatenate(broadcast_shape)
-      sampled.set_shape(final_shape)
-
-      return -math_ops.log(sampled) / self._lam
+  def _sample_n(self, n, seed=None):
+    shape = array_ops.concat(0, ([n], array_ops.shape(self._lam)))
+    # Sample uniformly-at-random from the open-interval (0, 1).
+    sampled = random_ops.random_uniform(
+        shape,
+        minval=np.nextafter(self.dtype.as_numpy_dtype(0.),
+                            self.dtype.as_numpy_dtype(1.)),
+        maxval=array_ops.ones((), dtype=self.dtype),
+        seed=seed,
+        dtype=self.dtype)
+    return -math_ops.log(sampled) / self._lam

@@ -992,12 +992,33 @@ class BinaryOpTest(tf.test.TestCase):
 
   def testZeroPowGrad(self):
     with self.test_session():
-      for dtype in np.float16, np.float32, np.float64:
+      for dtype in (np.float16, np.float32, np.float64, np.complex64,
+                    np.complex128):
         x = tf.constant(0.0, dtype=dtype)
         y = tf.constant(2.0, dtype=dtype)
         z = tf.pow(x, y)
         error = tf.test.compute_gradient_error(y, [], z, [])
         self.assertEqual(error, 0)
+
+  def testComplexPowGradPositiveBase(self):
+    with self.test_session():
+      for dtype in np.complex64, np.complex128:
+        x = tf.constant(2.0, dtype=dtype)
+        y = tf.constant(2.0, dtype=dtype)
+        z = tf.pow(x, y)
+        error = tf.test.compute_gradient_error(y, [], z, [])
+        self.assertLess(error, 1e-4)
+
+  def testComplexPowGradNegativeBase(self):
+    with self.test_session() as session:
+      for dtype in np.complex64, np.complex128:
+        x = tf.constant(-2.0, dtype=dtype)
+        y = tf.constant(2.0, dtype=dtype)
+        z = tf.pow(x, y)
+        expected_x_grad = -4
+        expected_y_grad = (-2)**2 * (np.log(2) + np.pi * 1j)
+        self.assertAllClose([expected_x_grad, expected_y_grad],
+                            session.run(tf.gradients(z, [x, y])))
 
 
 class ComparisonOpTest(tf.test.TestCase):

@@ -35,7 +35,7 @@ the same shape in order for this function to work.
 
 ##### Returns:
 
-  A l X l matrix represeting the confusion matrix, where l in the number of
+  A k X k matrix represeting the confusion matrix, where k is the number of
   possible labels in the classification task.
 
 ##### Raises:

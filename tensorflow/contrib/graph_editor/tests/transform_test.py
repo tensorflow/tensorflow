@@ -18,8 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import graph_editor as ge
+
+# Precision tolerance for floating-point value tests.
+ERROR_TOLERANCE = 1e-3
 
 
 class TransformTest(tf.test.TestCase):
@@ -35,9 +39,23 @@ class TransformTest(tf.test.TestCase):
 
   def test_copy(self):
     graph = tf.Graph()
-    ge.copy(self.graph, graph)
+    _, info = ge.copy(self.graph, graph)
     self.assertEqual(set(op.name for op in self.graph.get_operations()),
                      set(op.name for op in graph.get_operations()))
+    src_ops = self.graph.get_operations()
+    dst_ops = graph.get_operations()
+    for op in src_ops:
+      op_ = info.transformed(op)
+      self.assertTrue(op_ in dst_ops)
+      self.assertEqual(op.name, op_.name)
+      self.assertEqual(info.original(op_), op)
+    src_ts = ge.util.get_tensors(self.graph)
+    dst_ts = ge.util.get_tensors(graph)
+    for t in src_ts:
+      t_ = info.transformed(t)
+      self.assertTrue(t_ in dst_ts)
+      self.assertEqual(t.name, t_.name)
+      self.assertEqual(info.original(t_), t)
 
   def test_transform(self):
     transformer = ge.Transformer()
@@ -92,6 +110,31 @@ class TransformTest(tf.test.TestCase):
         "Noise_2", ge.matcher("Add_2").input_ops("Const_2", matcher1))
     top = ge.select_ops("^AddNoise_2$", graph=self.graph)[0]
     self.assertTrue(matcher2(top))
+
+  def test_copy_with_input_replacements(self):
+    with self.graph.as_default():
+      ten = tf.constant(10.0, shape=[10], name="Input")
+      sgv, _ = ge.copy_with_input_replacements(self.o.op,
+                                               {self.o.op.inputs[1]: ten})
+      with tf.Session() as sess:
+        val = sess.run(sgv.outputs[0])
+      self.assertNear(np.linalg.norm(val - np.array([11])),
+                      0.0, ERROR_TOLERANCE)
+
+  def test_graph_replace(self):
+    tf.reset_default_graph()
+    a = tf.constant(1.0, name="a")
+    b = tf.Variable(1.0, name="b")
+    eps = tf.constant(0.001, name="eps")
+    c = tf.identity(a + b + eps, name="c")
+    a_new = tf.constant(2.0, name="a_new")
+    c_new = ge.graph_replace(c, {a: a_new})
+    with tf.Session() as sess:
+      sess.run(tf.initialize_all_variables())
+      c_val, c_new_val = sess.run([c, c_new])
+    self.assertNear(c_val, 2.001, ERROR_TOLERANCE)
+    self.assertNear(c_new_val, 3.001, ERROR_TOLERANCE)
+
 
 if __name__ == "__main__":
   tf.test.main()

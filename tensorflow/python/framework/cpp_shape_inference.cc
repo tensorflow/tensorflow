@@ -64,12 +64,12 @@ Status RunCppShapeInferenceImpl(
   output_tensor_shape_protos->resize(c.num_outputs());
   TensorShapeProto out;
   for (int i = 0; i < c.num_outputs(); ++i) {
-    const shape_inference::Shape* s = c.output(i);
+    shape_inference::ShapeHandle s = c.output(i);
     out.Clear();
     if (c.RankKnown(s)) {
       const int32 rank = c.Rank(s);
       for (int i = 0; i < rank; ++i) {
-        const shape_inference::Dimension* d = c.Dim(s, i);
+        shape_inference::DimensionHandle d = c.Dim(s, i);
         auto* out_dim = out.add_dim();
         if (c.ValueKnown(d)) {
           out_dim->set_size(c.Value(d));

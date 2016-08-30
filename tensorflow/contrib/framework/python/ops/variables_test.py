@@ -472,7 +472,8 @@ class ModelVariablesTest(tf.test.TestCase):
 
   def testInitializedVariableValue(self):
     with self.test_session() as sess:
-      a = tf.contrib.framework.model_variable('a', [5], initializer=tf.ones)
+      a = tf.contrib.framework.model_variable(
+          'a', [5], initializer=tf.ones_initializer)
       sess.run(tf.initialize_all_variables())
       self.assertAllEqual(a.eval(), [1]*5)
 

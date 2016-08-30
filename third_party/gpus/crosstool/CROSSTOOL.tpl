@@ -57,13 +57,7 @@ toolchain {
   linker_flag: "-lstdc++"
   linker_flag: "-B/usr/bin/"
 
-  # TODO(bazel-team): In theory, the path here ought to exactly match the path
-  # used by gcc. That works because bazel currently doesn't track files at
-  # absolute locations and has no remote execution, yet. However, this will need
-  # to be fixed, maybe with auto-detection?
-  cxx_builtin_include_directory: "/usr/lib/gcc/"
-  cxx_builtin_include_directory: "/usr/local/include"
-  cxx_builtin_include_directory: "/usr/include"
+%{gcc_host_compiler_includes}
   tool_path { name: "gcov" path: "/usr/bin/gcov" }
 
   # C(++) compiles invoke the compiler (as that is the one knowing where

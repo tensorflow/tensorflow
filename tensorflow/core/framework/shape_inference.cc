@@ -224,7 +224,7 @@ Status InferenceContext::WithValue(DimensionHandle dim, int64 value,
 
 Status InferenceContext::Merge(DimensionHandle d0, DimensionHandle d1,
                                DimensionHandle* out) {
-  if (d0 == d1 || !ValueKnown(d1)) {
+  if (d0.SameHandle(d1) || !ValueKnown(d1)) {
     *out = d0;
     return Status::OK();
   } else if (!ValueKnown(d0)) {
@@ -266,7 +266,7 @@ Status InferenceContext::MergePrefix(ShapeHandle s, ShapeHandle prefix,
 
 Status InferenceContext::Merge(ShapeHandle s0, ShapeHandle s1,
                                ShapeHandle* out) {
-  if (s0 == s1 || !RankKnown(s1)) {
+  if (s0.SameHandle(s1) || !RankKnown(s1)) {
     *out = s0;
     return Status::OK();
   } else if (!RankKnown(s0)) {
@@ -286,7 +286,7 @@ Status InferenceContext::Merge(ShapeHandle s0, ShapeHandle s1,
   for (int i = 0; i < rank; ++i) {
     auto d0 = Dim(s0, i);
     auto d1 = Dim(s1, i);
-    if (d0 == d1) continue;
+    if (d0.SameHandle(d1)) continue;
 
     auto v0 = Value(d0);
     auto v1 = Value(d1);

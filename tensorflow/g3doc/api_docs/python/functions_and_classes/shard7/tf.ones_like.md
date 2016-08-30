@@ -18,8 +18,8 @@ tf.ones_like(tensor) ==> [[1, 1, 1], [1, 1, 1]]
 
 *  <b>`tensor`</b>: A `Tensor`.
 *  <b>`dtype`</b>: A type for the returned `Tensor`. Must be `float32`, `float64`,
-  `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, or `complex128`.
-
+    `int8`, `int16`, `int32`, `int64`, `uint8`, `complex64`, `complex128` or
+    `bool`.
 *  <b>`name`</b>: A name for the operation (optional).
 *  <b>`optimize`</b>: if true, attempt to statically determine the shape of 'tensor'
   and encode it as a constant.

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LIB_IO_INPUTBUFFER_H_
 
 #include <string>
+#include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
@@ -52,9 +53,12 @@ class InputBuffer {
   Status ReadNBytes(int64 bytes_to_read, string* result);
 
   // An overload that writes to char*.  Caller must ensure result[0,
-  // bytes_to_read) is valid to be overwritten.  Returns OK, iff "*bytes_read ==
+  // bytes_to_read) is valid to be overwritten.  Returns OK iff "*bytes_read ==
   // bytes_to_read".
   Status ReadNBytes(int64 bytes_to_read, char* result, size_t* bytes_read);
+
+  // Reads a single varint32.
+  Status ReadVarint32(uint32* result);
 
   // Like ReadNBytes() without returning the bytes read.
   Status SkipNBytes(int64 bytes_to_skip);
@@ -72,6 +76,9 @@ class InputBuffer {
  private:
   Status FillBuffer();
 
+  // Internal slow-path routine used by ReadVarint32().
+  Status ReadVarint32Fallback(uint32* result);
+
   RandomAccessFile* file_;  // Not owned
   int64 file_pos_;          // Next position to read from in "file_"
   size_t size_;             // Size of "buf_"
@@ -82,6 +89,22 @@ class InputBuffer {
 
   TF_DISALLOW_COPY_AND_ASSIGN(InputBuffer);
 };
+
+// Implementation details.
+
+// Inlined for performance.
+inline Status InputBuffer::ReadVarint32(uint32* result) {
+  if (pos_ + core::kMaxVarint32Bytes <= limit_) {
+    // Fast path: directly parse from buffered data.
+    // Reads strictly from the range [pos_, limit_).
+    const char* offset = core::GetVarint32Ptr(pos_, limit_, result);
+    if (offset == nullptr) return errors::OutOfRange("Parsed past limit.");
+    pos_ = const_cast<char*>(offset);
+    return Status::OK();
+  } else {
+    return ReadVarint32Fallback(result);
+  }
+}
 
 }  // namespace io
 }  // namespace tensorflow

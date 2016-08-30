@@ -23,7 +23,7 @@ from tensorflow.contrib.learn.python.learn.dataframe import transform
 from tensorflow.python.training import input as input_ops
 
 
-class AbstractBatchTransform(transform.Transform):
+class AbstractBatchTransform(transform.TensorFlowTransform):
   """Abstract parent class for batching Transforms."""
 
   def __init__(self,

@@ -11,9 +11,9 @@ deconvolution.
 
 
 *  <b>`value`</b>: A 4-D `Tensor` of type `float` and shape
-    `[batch, height, width, in_channels]`.
+    `[batch, in_height, in_width, in_channels]`.
 *  <b>`filter`</b>: A 4-D `Tensor` with the same type as `value` and shape
-    `[height, width, output_channels, in_channels]`.  `filter`'s
+    `[filter_height, filter_width, output_channels, in_channels]`.  `filter`'s
     `in_channels` dimension must match that of `value`.
 *  <b>`output_shape`</b>: A 1-D `Tensor` representing the output shape of the
     deconvolution op.

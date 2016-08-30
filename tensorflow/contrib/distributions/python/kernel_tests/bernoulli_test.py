@@ -197,6 +197,25 @@ class BernoulliTest(tf.test.TestCase):
       # as well as n.
       self.assertAllClose(p, np.mean(sample_values, axis=0), atol=1e-2)
       self.assertEqual(set([0, 1]), set(sample_values.flatten()))
+      # In this test we're just interested in verifying there isn't a crash
+      # owing to mismatched types. b/30940152
+      dist = tf.contrib.distributions.Bernoulli(np.log([.2, .4]))
+      self.assertAllEqual(
+          (1, 2), dist.sample_n(1, seed=42).get_shape().as_list())
+
+  def testSampleActsLikeSampleN(self):
+    with self.test_session() as sess:
+      p = [0.2, 0.6]
+      dist = tf.contrib.distributions.Bernoulli(p=p)
+      n = 1000
+      seed = 42
+      self.assertAllEqual(dist.sample(n, seed).eval(),
+                          dist.sample_n(n, seed).eval())
+      n = tf.placeholder(tf.int32)
+      sample, sample_n = sess.run([dist.sample(n, seed),
+                                   dist.sample_n(n, seed)],
+                                  feed_dict={n: 1000})
+      self.assertAllEqual(sample, sample_n)
 
   def testMean(self):
     with self.test_session():
