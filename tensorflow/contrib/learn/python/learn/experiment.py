@@ -25,15 +25,19 @@ from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
-from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
-FLAGS = flags.FLAGS
+
+__all__ = ["Experiment"]
 
 
 class Experiment(object):
   """Experiment is a class containing all information needed to train a model.
+
+  After an experiment is created (by passing an Estimator and inputs for
+  training and evaluation), an Experiment instance knows how to invoke training
+  and eval loops in a sensible fashion for distributed training.
   """
 
   def __init__(self,
@@ -48,6 +52,10 @@ class Experiment(object):
                eval_delay_secs=120,
                continuous_eval_throttle_secs=60):
     """Constructor for `Experiment`.
+
+    Creates an Experiment instance. None of the functions passed to this
+    constructor are executed at construction time. They are stored and used
+    when a method is executed which requires it.
 
     Args:
       estimator: Object implementing `Trainable` and `Evaluable`.
