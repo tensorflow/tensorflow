@@ -437,6 +437,12 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
         if metric_name[1] not in valid_keys:
           raise ValueError("Ignoring metric %s. The 2nd element of its name "
                            "should be in %s" % (metric_name, valid_keys))
+      elif isinstance(metric_name, str):
+        metrics.pop(metric_name)
+        metric_name = (metric_name, _CLASSES)
+      else:
+        raise ValueError("Ignoring metric %s. Its name is not in the correct "
+                         "form." % metric_name)
       metrics[metric_name] = _wrap_metric(metric)
 
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
