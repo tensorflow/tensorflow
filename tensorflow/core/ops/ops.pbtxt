@@ -6257,6 +6257,278 @@ op {
   summary: "Returns element-wise largest integer not greater than x."
 }
 op {
+  name: "FractionalAvgPool"
+  input_arg {
+    name: "value"
+    description: "4-D with shape `[batch, height, width, channels]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "output tensor after fractional avg pooling."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "row_pooling_sequence"
+    description: "row pooling sequence, needed to calculate gradient."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "col_pooling_sequence"
+    description: "column pooling sequence, needed to calculate gradient."
+    type: DT_INT64
+  }
+  attr {
+    name: "pooling_ratio"
+    type: "list(float)"
+    description: "Pooling ratio for each dimension of `value`, currently only\nsupports row and col dimension and should be >= 1.0. For example, a valid\npooling ratio looks like [1.0, 1.44, 1.73, 1.0]. The first and last elements\nmust be 1.0 because we don\'t allow pooling on batch and channels\ndimensions. 1.44 and 1.73 are pooling ratio on height and width dimensions\nrespectively."
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "pseudo_random"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "When set to True, generates the pooling sequence in a\npseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin\nGraham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for\ndifference between pseudorandom and random."
+  }
+  attr {
+    name: "overlapping"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "When set to True, it means when pooling, the values at the boundary\nof adjacent pooling cells are used by both cells. For example:\n\n`index  0  1  2  3  4`\n\n`value  20 5  16 3  7`\n\nIf the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.\nThe result would be [41/3, 26/3] for fractional avg pooling."
+  }
+  attr {
+    name: "deterministic"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "When set to True, a fixed pooling region will be used when\niterating over a FractionalAvgPool node in the computation graph. Mainly used\nin unit test to make FractionalAvgPool deterministic."
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "If either seed or seed2 are set to be non-zero, the random number\ngenerator is seeded by the given seed.  Otherwise, it is seeded by a\nrandom seed."
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "An second seed to avoid seed collision."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Performs fractional average pooling on the input."
+  description: "Fractional average pooling is similar to Fractional max pooling in the pooling\nregion generation step. The only difference is that after pooling regions are\ngenerated, a mean operation is performed instead of a max operation in each\npooling region."
+}
+op {
+  name: "FractionalAvgPoolGrad"
+  input_arg {
+    name: "orig_input_tensor_shape"
+    description: "Original input tensor shape for `fractional_avg_pool`"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "out_backprop"
+    description: "4-D with shape `[batch, height, width, channels]`.  Gradients\nw.r.t. the output of `fractional_avg_pool`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "row_pooling_sequence"
+    description: "row pooling sequence, form pooling region with\ncol_pooling_sequence."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "col_pooling_sequence"
+    description: "column pooling sequence, form pooling region with\nrow_pooling sequence."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output"
+    description: "4-D.  Gradients w.r.t. the input of `fractional_avg_pool`."
+    type_attr: "T"
+  }
+  attr {
+    name: "overlapping"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "When set to True, it means when pooling, the values at the boundary\nof adjacent pooling cells are used by both cells. For example:\n\n`index  0  1  2  3  4`\n\n`value  20 5  16 3  7`\n\nIf the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.\nThe result would be [41/3, 26/3] for fractional avg pooling."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Computes gradient of the FractionalAvgPool function."
+  description: "Unlike FractionalMaxPoolGrad, we don\'t need to find arg_max for\nFractionalAvgPoolGrad, we just need to evenly back-propagate each element of\nout_backprop to those indices that form the same pooling cell. Therefore, we\njust need to know the shape of original input tensor, instead of the whole\ntensor."
+}
+op {
+  name: "FractionalMaxPool"
+  input_arg {
+    name: "value"
+    description: "4-D with shape `[batch, height, width, channels]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "output tensor after fractional max pooling."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "row_pooling_sequence"
+    description: "row pooling sequence, needed to calculate gradient."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "col_pooling_sequence"
+    description: "column pooling sequence, needed to calculate gradient."
+    type: DT_INT64
+  }
+  attr {
+    name: "pooling_ratio"
+    type: "list(float)"
+    description: "Pooling ratio for each dimension of `value`, currently only\nsupports row and col dimension and should be >= 1.0. For example, a valid\npooling ratio looks like [1.0, 1.44, 1.73, 1.0]. The first and last elements\nmust be 1.0 because we don\'t allow pooling on batch and channels\ndimensions. 1.44 and 1.73 are pooling ratio on height and width dimensions\nrespectively."
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "pseudo_random"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "When set to True, generates the pooling sequence in a\npseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin\nGraham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for\ndifference between pseudorandom and random."
+  }
+  attr {
+    name: "overlapping"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "When set to True, it means when pooling, the values at the boundary\nof adjacent pooling cells are used by both cells. For example:\n\n`index  0  1  2  3  4`\n\n`value  20 5  16 3  7`\n\nIf the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.\nThe result would be [20, 16] for fractional max pooling."
+  }
+  attr {
+    name: "deterministic"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "When set to True, a fixed pooling region will be used when\niterating over a FractionalMaxPool node in the computation graph. Mainly used\nin unit test to make FractionalMaxPool deterministic."
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "If either seed or seed2 are set to be non-zero, the random number\ngenerator is seeded by the given seed.  Otherwise, it is seeded by a\nrandom seed."
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "An second seed to avoid seed collision."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Performs fractional max pooling on the input."
+  description: "Fractional max pooling is slightly different than regular max pooling.  In\nregular max pooling, you downsize an input set by taking the maximum value of\nsmaller N x N subsections of the set (often 2x2), and try to reduce the set by\na factor of N, where N is an integer.  Fractional max pooling, as you might\nexpect from the word \"fractional\", means that the overall reduction ratio N\ndoes not have to be an integer.\n\nThe sizes of the pooling regions are generated randomly but are fairly uniform.\nFor example, let\'s look at the height dimension, and the constraints on the\nlist of rows that will be pool boundaries.\n\nFirst we define the following:\n\n1.  input_row_length : the number of rows from the input set\n2.  output_row_length : which will be smaller than the input\n3.  alpha = input_row_length / output_row_length : our reduction ratio\n4.  K = floor(alpha)\n5.  row_pooling_sequence : this is the result list of pool boundary rows\n\nThen, row_pooling_sequence should satisfy:\n\n1.  a[0] = 0 : the first value of the sequence is 0\n2.  a[end] = input_row_length : the last value of the sequence is the size\n3.  K <= (a[i+1] - a[i]) <= K+1 : all intervals are K or K+1 size\n4.  length(row_pooling_sequence) = output_row_length+1\n\nFor more details on fractional max pooling, see this paper:\n[Benjamin Graham, Fractional Max-Pooling]\n(http://arxiv.org/abs/1412.6071)"
+}
+op {
+  name: "FractionalMaxPoolGrad"
+  input_arg {
+    name: "orig_input"
+    description: "Original input for `fractional_max_pool`"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "orig_output"
+    description: "Original output for `fractional_max_pool`"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "out_backprop"
+    description: "4-D with shape `[batch, height, width, channels]`.  Gradients\nw.r.t. the output of `fractional_max_pool`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "row_pooling_sequence"
+    description: "row pooling sequence, form pooling region with\ncol_pooling_sequence."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "col_pooling_sequence"
+    description: "column pooling sequence, form pooling region with\nrow_pooling sequence."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output"
+    description: "4-D.  Gradients w.r.t. the input of `fractional_max_pool`."
+    type_attr: "T"
+  }
+  attr {
+    name: "overlapping"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "When set to True, it means when pooling, the values at the boundary\nof adjacent pooling cells are used by both cells. For example:\n\n`index  0  1  2  3  4`\n\n`value  20 5  16 3  7`\n\nIf the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.\nThe result would be [20, 16] for fractional max pooling."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "Computes gradient of the FractionalMaxPool function."
+}
+op {
   name: "Gather"
   input_arg {
     name: "params"
