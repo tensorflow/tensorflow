@@ -195,16 +195,19 @@ class _DistributionShape(object):
     self._batch_ndims = batch_ndims
     self._event_ndims = event_ndims
     self._validate_args = validate_args
-    self._name = name
-    with self._name_scope("init"):
-      self._batch_ndims = self._assert_non_negative_int32_scalar(
-          ops.convert_to_tensor(batch_ndims, name="batch_ndims"))
-      self._batch_ndims_static, self._batch_ndims_is_0 = self._introspect_ndims(
-          self._batch_ndims)
-      self._event_ndims = self._assert_non_negative_int32_scalar(
-          ops.convert_to_tensor(event_ndims, name="event_ndims"))
-      self._event_ndims_static, self._event_ndims_is_0 = self._introspect_ndims(
-          self._event_ndims)
+    with ops.name_scope(name) as ns:
+      self._name = ns
+      with ops.name_scope("init"):
+        self._batch_ndims = self._assert_non_negative_int32_scalar(
+            ops.convert_to_tensor(
+                batch_ndims, name="batch_ndims"))
+        self._batch_ndims_static, self._batch_ndims_is_0 = (
+            self._introspect_ndims(self._batch_ndims))
+        self._event_ndims = self._assert_non_negative_int32_scalar(
+            ops.convert_to_tensor(
+                event_ndims, name="event_ndims"))
+        self._event_ndims_static, self._event_ndims_is_0 = (
+            self._introspect_ndims(self._event_ndims))
 
   @property
   def name(self):

@@ -58,7 +58,7 @@ class Categorical(distribution.Distribution):
         undefined statistics will return NaN for this statistic.
       name: A name for this distribution (optional).
     """
-    with ops.name_scope(name, values=[logits]):
+    with ops.name_scope(name, values=[logits]) as ns:
       self._logits = ops.convert_to_tensor(logits, name="logits")
 
       logits_shape_static = self._logits.get_shape().with_rank_at_least(1)
@@ -96,7 +96,7 @@ class Categorical(distribution.Distribution):
           is_continuous=False,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=name)
+          name=ns)
 
   @property
   def num_classes(self):

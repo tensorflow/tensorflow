@@ -127,7 +127,7 @@ class Dirichlet(distribution.Distribution):
     ```
 
     """
-    with ops.name_scope(name, values=[alpha]):
+    with ops.name_scope(name, values=[alpha]) as ns:
       alpha = ops.convert_to_tensor(alpha, name="alpha")
       with ops.control_dependencies([
           check_ops.assert_positive(alpha),
@@ -142,7 +142,7 @@ class Dirichlet(distribution.Distribution):
             parameters={"alpha": self._alpha, "alpha_sum": self._alpha_sum},
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
-            name=name)
+            name=ns)
 
   @property
   def alpha(self):

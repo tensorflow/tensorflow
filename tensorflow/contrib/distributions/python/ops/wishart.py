@@ -100,7 +100,7 @@ class _WishartOperatorPD(distribution.Distribution):
       ValueError: if df < k, where scale operator event shape is `(k, k)`
     """
     self._cholesky_input_output_matrices = cholesky_input_output_matrices
-    with ops.name_scope(name):
+    with ops.name_scope(name) as ns:
       with ops.name_scope("init", values=[df, scale_operator_pd]):
         if not scale_operator_pd.dtype.is_floating:
           raise TypeError(
@@ -144,7 +144,7 @@ class _WishartOperatorPD(distribution.Distribution):
                         "dimension": self._dimension},
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
-            name=name)
+            name=ns)
 
   @property
   def df(self):

@@ -130,7 +130,7 @@ class Beta(distribution.Distribution):
     ```
 
     """
-    with ops.name_scope(name, values=[a, b]):
+    with ops.name_scope(name, values=[a, b]) as ns:
       with ops.control_dependencies([
           check_ops.assert_positive(a),
           check_ops.assert_positive(b),
@@ -145,7 +145,7 @@ class Beta(distribution.Distribution):
             parameters={"a": self._a, "b": self._b, "a_b_sum": self._a_b_sum},
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
-            name=name)
+            name=ns)
 
   @property
   def a(self):

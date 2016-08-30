@@ -139,7 +139,7 @@ class DirichletMultinomial(distribution.Distribution):
     ```
 
     """
-    with ops.name_scope(name, values=[n, alpha]):
+    with ops.name_scope(name, values=[n, alpha]) as ns:
       # Broadcasting works because:
       # * The broadcasting convention is to prepend dimensions of size [1], and
       #   we use the last dimension for the distribution, wherease
@@ -161,7 +161,7 @@ class DirichletMultinomial(distribution.Distribution):
           is_continuous=False,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=name)
+          name=ns)
 
   @property
   def n(self):

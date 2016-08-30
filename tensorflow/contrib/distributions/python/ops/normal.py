@@ -107,7 +107,7 @@ class Normal(distribution.Distribution):
     Raises:
       TypeError: if mu and sigma are different dtypes.
     """
-    with ops.name_scope(name, values=[mu, sigma]):
+    with ops.name_scope(name, values=[mu, sigma]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(sigma)] if
                                     validate_args else []):
         self._mu = array_ops.identity(mu, name="mu")
@@ -119,7 +119,7 @@ class Normal(distribution.Distribution):
             is_reparameterized=True,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
-            name=name)
+            name=ns)
 
   @staticmethod
   def _param_shapes(sample_shape):
