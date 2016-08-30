@@ -12,8 +12,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config \
         python \
         python-dev \
-        python-numpy \
-        python-pip \
         rsync \
         software-properties-common \
         swig \
@@ -32,6 +30,7 @@ RUN pip --no-cache-dir install \
         ipykernel \
         jupyter \
         matplotlib \
+        numpy \
         && \
     python -m ipykernel.kernelspec
 
