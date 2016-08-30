@@ -36,3 +36,8 @@ def list_local_devices():
     return m
 
   return [_convert(s) for s in pywrap_tensorflow.list_devices()]
+
+
+def is_gpu_available():
+  """Returns whether TensorFlow can access a GPU."""
+  return any(x.device_type == 'GPU' for x in list_local_devices())
