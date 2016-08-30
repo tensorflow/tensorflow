@@ -70,6 +70,14 @@ Monitor API to audit the in-progress training of a neural network.
 
 [View Tutorial](../tutorials/monitors/index.md)
 
+### Building Input Functions with tf.contrib.learn
+
+This tutorial introduces you to creating input functions in tf.contrib.learn,
+and walks you through implementing an `input_fn` to train a neural network
+for predicting median house values.
+
+[View Tutorial](../tutorials/input_fn/index.md)
+
 ## TensorFlow Serving
 
 ### TensorFlow Serving
