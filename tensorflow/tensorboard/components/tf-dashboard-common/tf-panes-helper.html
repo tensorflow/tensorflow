@@ -145,7 +145,10 @@ downloadLinkUrlFunction property to an appropriate value.
         position: absolute;
         left: 0px;
         bottom: 0px;
+        width: 100%;
         display: flex;
+        flex-direction: row;
+        justify-content: space-between;
       }
 
       .expand-button {
@@ -158,6 +161,10 @@ downloadLinkUrlFunction property to an appropriate value.
 
       .card-expanded .expand-button {
         background: var(--tb-ui-light-accent);
+      }
+
+      tf-downloader {
+        margin-right: 30px;
       }
 
     </style>

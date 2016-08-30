@@ -33,17 +33,26 @@ limitations under the License.
         </template>
       </paper-menu>
     </paper-dropdown-menu>
-    <a
-      download="[[_csvName(_run)]]"
-      href="[[_csvUrl(_run, urlFn)]]"
-    >CSV</a>
-    <a
-      download="[[_jsonName(_run)]]"
-      href="[[_jsonUrl(_run, urlFn)]]"
-    >JSON</a>
+    <div class="center">
+      <span>
+        <a
+          download="[[_csvName(_run)]]"
+          href="[[_csvUrl(_run, urlFn)]]"
+          >CSV</a>
+        <a
+          download="[[_jsonName(_run)]]"
+          href="[[_jsonUrl(_run, urlFn)]]"
+          >JSON</a>
+      </span>
+    </div>
     <style>
       :host {
-        display: block;
+        display: flex;
+        height: 32px;
+      }
+      .center {
+        display: flex;
+        align-self: center;
       }
       paper-dropdown-menu {
         width: 100px;
