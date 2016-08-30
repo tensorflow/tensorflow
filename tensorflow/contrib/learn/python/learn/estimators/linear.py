@@ -503,6 +503,10 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     return checkpoints.load_variable(self._model_dir,
                                      name="linear/bias_weight")
 
+  @property
+  def config(self):
+    return self._estimator.config
+
 
 class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
   """Linear regressor model.
