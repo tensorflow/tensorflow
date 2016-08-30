@@ -2300,6 +2300,13 @@ Construct a `LinearClassifier` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearClassifier.config` {#LinearClassifier.config}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#LinearClassifier.evaluate}
 
 See evaluable.Evaluable.
