@@ -1504,7 +1504,7 @@ class _CrossedColumn(_FeatureColumn,
 
       SparseTensor referred by second column: : shape = [2, 1]
       [0, 0]: "d"
-      [1, 1]: "e"
+      [1, 0]: "e"
 
   then crossed feature will look like:
 
