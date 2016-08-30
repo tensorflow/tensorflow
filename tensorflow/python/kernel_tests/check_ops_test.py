@@ -218,6 +218,113 @@ class AssertLessEqualTest(tf.test.TestCase):
       out.eval()
 
 
+class AssertGreaterTest(tf.test.TestCase):
+
+  def test_raises_when_equal(self):
+    with self.test_session():
+      small = tf.constant([1, 2], name="small")
+      with tf.control_dependencies(
+          [tf.assert_greater(small, small, message="fail")]):
+        out = tf.identity(small)
+      with self.assertRaisesOpError("fail.*small.*small"):
+        out.eval()
+
+  def test_raises_when_less(self):
+    with self.test_session():
+      small = tf.constant([1, 2], name="small")
+      big = tf.constant([3, 4], name="big")
+      with tf.control_dependencies([tf.assert_greater(small, big)]):
+        out = tf.identity(big)
+      with self.assertRaisesOpError("small.*big"):
+        out.eval()
+
+  def test_doesnt_raise_when_greater(self):
+    with self.test_session():
+      small = tf.constant([3, 1], name="small")
+      big = tf.constant([4, 2], name="big")
+      with tf.control_dependencies([tf.assert_greater(big, small)]):
+        out = tf.identity(small)
+      out.eval()
+
+  def test_doesnt_raise_when_greater_and_broadcastable_shapes(self):
+    with self.test_session():
+      small = tf.constant([1], name="small")
+      big = tf.constant([3, 2], name="big")
+      with tf.control_dependencies([tf.assert_greater(big, small)]):
+        out = tf.identity(small)
+      out.eval()
+
+  def test_raises_when_greater_but_non_broadcastable_shapes(self):
+    with self.test_session():
+      small = tf.constant([1, 1, 1], name="small")
+      big = tf.constant([3, 2], name="big")
+      with self.assertRaisesRegexp(ValueError, "broadcast"):
+        with tf.control_dependencies([tf.assert_greater(big, small)]):
+          out = tf.identity(small)
+        out.eval()
+
+  def test_doesnt_raise_when_both_empty(self):
+    with self.test_session():
+      larry = tf.constant([])
+      curly = tf.constant([])
+      with tf.control_dependencies([tf.assert_greater(larry, curly)]):
+        out = tf.identity(larry)
+      out.eval()
+
+
+class AssertGreaterEqualTest(tf.test.TestCase):
+
+  def test_doesnt_raise_when_equal(self):
+    with self.test_session():
+      small = tf.constant([1, 2], name="small")
+      with tf.control_dependencies([tf.assert_greater_equal(small, small)]):
+        out = tf.identity(small)
+      out.eval()
+
+  def test_raises_when_less(self):
+    with self.test_session():
+      small = tf.constant([1, 2], name="small")
+      big = tf.constant([3, 4], name="big")
+      with tf.control_dependencies(
+          [tf.assert_greater_equal(small, big, message="fail")]):
+        out = tf.identity(small)
+      with self.assertRaisesOpError("fail.*small.*big"):
+        out.eval()
+
+  def test_doesnt_raise_when_greater_equal(self):
+    with self.test_session():
+      small = tf.constant([1, 2], name="small")
+      big = tf.constant([3, 2], name="big")
+      with tf.control_dependencies([tf.assert_greater_equal(big, small)]):
+        out = tf.identity(small)
+      out.eval()
+
+  def test_doesnt_raise_when_greater_equal_and_broadcastable_shapes(self):
+    with self.test_session():
+      small = tf.constant([1], name="small")
+      big = tf.constant([3, 1], name="big")
+      with tf.control_dependencies([tf.assert_greater_equal(big, small)]):
+        out = tf.identity(small)
+      out.eval()
+
+  def test_raises_when_less_equal_but_non_broadcastable_shapes(self):
+    with self.test_session():
+      small = tf.constant([1, 1, 1], name="big")
+      big = tf.constant([3, 1], name="small")
+      with self.assertRaisesRegexp(ValueError, "broadcast"):
+        with tf.control_dependencies([tf.assert_greater_equal(big, small)]):
+          out = tf.identity(small)
+        out.eval()
+
+  def test_doesnt_raise_when_both_empty(self):
+    with self.test_session():
+      larry = tf.constant([])
+      curly = tf.constant([])
+      with tf.control_dependencies([tf.assert_greater_equal(larry, curly)]):
+        out = tf.identity(larry)
+      out.eval()
+
+
 class AssertNegativeTest(tf.test.TestCase):
 
   def test_doesnt_raise_when_negative(self):
