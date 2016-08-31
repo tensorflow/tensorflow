@@ -92,7 +92,8 @@ ENV TF_NEED_CUDA 1
 RUN ./configure && \
     bazel build -c opt --config=cuda tensorflow/tools/pip_package:build_pip_package && \
     bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/pip && \
-    pip install --upgrade /tmp/pip/tensorflow-*.whl
+    pip install --no-cache-dir --upgrade /tmp/pip/tensorflow-*.whl && \
+    rm -rf /root/.cache/bazel/
 
 WORKDIR /root
 
