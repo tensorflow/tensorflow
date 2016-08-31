@@ -99,7 +99,11 @@ class SvdOp : public LinearAlgebraOp<Scalar> {
 
 REGISTER_LINALG_OP("Svd", (SvdOp<float>), float);
 REGISTER_LINALG_OP("Svd", (SvdOp<double>), double);
+REGISTER_LINALG_OP("Svd", (SvdOp<complex64>), complex64);
+REGISTER_LINALG_OP("Svd", (SvdOp<complex128>), complex128);
 REGISTER_LINALG_OP("BatchSvd", (SvdOp<float>), float);
 REGISTER_LINALG_OP("BatchSvd", (SvdOp<double>), double);
+REGISTER_LINALG_OP("BatchSvd", (SvdOp<complex64>), complex64);
+REGISTER_LINALG_OP("BatchSvd", (SvdOp<complex128>), complex128);
 
 }  // namespace tensorflow

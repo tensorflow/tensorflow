@@ -166,6 +166,8 @@ class LinearAlgebraOp : public OpKernel {
 // linalg_ops_common.cc for float and double.
 extern template class LinearAlgebraOp<float>;
 extern template class LinearAlgebraOp<double>;
+extern template class LinearAlgebraOp<complex64>;
+extern template class LinearAlgebraOp<complex128>;
 
 }  // namespace tensorflow
 
