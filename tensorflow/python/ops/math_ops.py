@@ -974,13 +974,15 @@ def range(start, limit=None, delta=1, name="range"):
   ```
 
   Args:
-    start: A 0-D (scalar) of type `int32`. First entry in sequence.
-      Defaults to 0.
+    start: A 0-D (scalar) of type `int32`. Acts as first entry in the range if
+      `limit` is not None; otherwise, acts as range limit and first entry
+      defaults to 0.
     limit: A 0-D (scalar) of type `int32`. Upper limit of sequence,
-      exclusive.
-    delta: A 0-D `Tensor` (scalar) of type `int32`. Optional. Default is 1.
-      Number that increments `start`.
-    name: A name for the operation (optional).
+      exclusive. If None, defaults to the value of `start` while the first
+      entry of the range defaults to 0.
+    delta: A 0-D `Tensor` (scalar) of type `int32`. Number that increments
+      `start`. Defaults to 1.
+    name: A name for the operation. Defaults to "range".
 
   Returns:
     An 1-D `int32` `Tensor`.
