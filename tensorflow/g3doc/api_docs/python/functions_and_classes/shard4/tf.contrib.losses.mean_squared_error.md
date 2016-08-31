@@ -1,4 +1,4 @@
-### `tf.contrib.losses.sum_of_squares(*args, **kwargs)` {#sum_of_squares}
+### `tf.contrib.losses.mean_squared_error(*args, **kwargs)` {#mean_squared_error}
 
 Adds a Sum-of-Squares loss to the training procedure. (deprecated)
 

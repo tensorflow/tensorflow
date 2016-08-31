@@ -886,6 +886,8 @@
   * [`get_total_loss`](../../api_docs/python/contrib.losses.md#get_total_loss)
   * [`hinge_loss`](../../api_docs/python/contrib.losses.md#hinge_loss)
   * [`log_loss`](../../api_docs/python/contrib.losses.md#log_loss)
+  * [`mean_pairwise_squared_error`](../../api_docs/python/contrib.losses.md#mean_pairwise_squared_error)
+  * [`mean_squared_error`](../../api_docs/python/contrib.losses.md#mean_squared_error)
   * [`sigmoid_cross_entropy`](../../api_docs/python/contrib.losses.md#sigmoid_cross_entropy)
   * [`softmax_cross_entropy`](../../api_docs/python/contrib.losses.md#softmax_cross_entropy)
   * [`sum_of_pairwise_squares`](../../api_docs/python/contrib.losses.md#sum_of_pairwise_squares)

@@ -1,4 +1,4 @@
-### `tf.contrib.losses.sum_of_pairwise_squares(*args, **kwargs)` {#sum_of_pairwise_squares}
+### `tf.contrib.losses.mean_pairwise_squared_error(*args, **kwargs)` {#mean_pairwise_squared_error}
 
 Adds a pairwise-errors-squared loss to the training procedure. (deprecated)
 
