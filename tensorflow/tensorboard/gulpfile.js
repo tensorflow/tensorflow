@@ -71,3 +71,10 @@ gulp.task('regenerate', ['first-compile', 'tslint.permissive'], getTask('vulcani
 
 // TODO(danmane): consider making bower install part of default task
 gulp.task('default', ['watch', 'server']);
+
+// Clean all compiled JS files.
+var cleanCompiledTypeScript = require('gulp-clean-compiled-typescript');
+gulp.task('clean', function () {
+  return gulp.src('./components/**/*.ts')
+      .pipe(cleanCompiledTypeScript());
+});

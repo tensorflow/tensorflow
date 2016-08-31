@@ -16,6 +16,7 @@
     "browserify": "^13.1.0",
     "gulp": "~3.9.0",
     "gulp-bower": "0.0.13",
+    "gulp-clean-compiled-typescript": "~1.0.1",
     "gulp-cli": "^1.1.0",
     "gulp-concat": "^2.6.0",
     "gulp-filter": "~3.0.1",
