@@ -33,6 +33,7 @@ import six
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
@@ -51,6 +52,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import saver
@@ -382,18 +384,43 @@ class BaseEstimator(
   def model_dir(self):
     return self._model_dir
 
-  def export(self, export_dir, signature_fn=None, input_fn=None,
-             default_batch_size=1, exports_to_keep=None):
+  @deprecated_arg_values(
+      '2016-09-23',
+      'The signature of the input_fn accepted by export is changing to be '
+      'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate. '
+      'input_fn and input_feature_key will become required args, '
+      'and use_deprecated_input_fn will default to False &  be removed '
+      'altogether.',
+      use_deprecated_input_fn=True,
+      input_fn=None,
+      input_feature_key=None)
+  def export(self,
+             export_dir,
+             input_fn=export._default_input_fn,
+             input_feature_key=None,
+             use_deprecated_input_fn=True,
+             signature_fn=None,
+             default_batch_size=1,
+             exports_to_keep=None):
     """Exports inference graph into given dir.
 
     Args:
       export_dir: A string containing a directory to write the exported graph
         and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, targets), where features is a dict of
+        string key to `Tensor` and targets is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds to
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input.
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
         for features and `Tensor` or `dict` of `Tensor`s for predictions.
-      input_fn: Function that given `Tensor` of `Example` strings, parses it
-        into features that are then passed to the model.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
     """
@@ -402,6 +429,8 @@ class BaseEstimator(
                              export_dir=export_dir,
                              signature_fn=signature_fn,
                              input_fn=input_fn,
+                             input_feature_key=input_feature_key,
+                             use_deprecated_input_fn=use_deprecated_input_fn,
                              default_batch_size=default_batch_size,
                              exports_to_keep=exports_to_keep)
     # pylint: enable=protected-access
@@ -456,6 +485,12 @@ class BaseEstimator(
     """
     raise NotImplementedError('_get_eval_ops not implemented in BaseEstimator')
 
+  @deprecated(
+      '2016-09-23',
+      'The signature of the input_fn accepted by export is changing to be '
+      'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate, '
+      'which makes this function useless. This will be removed after the '
+      'deprecation date.')
   def _get_feature_ops_from_example(self, examples_batch):
     """Returns feature parser for given example batch using features info.
 
@@ -747,7 +782,8 @@ class Estimator(BaseEstimator):
                model_fn=None,
                model_dir=None,
                config=None,
-               params=None):
+               params=None,
+               weight_column_name=None):
     """Constructs an Estimator instance.
 
     Args:
@@ -780,6 +816,9 @@ class Estimator(BaseEstimator):
       config: Configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
+      weight_column_name: A string defining feature column name representing
+        weights. It is used to down weight or boost examples during training. It
+        will be multiplied by the loss of the example.
 
     Raises:
       ValueError: parameters of `model_fn` don't match `params`.
@@ -792,10 +831,17 @@ class Estimator(BaseEstimator):
         raise ValueError('Estimator\'s model_fn (%s) has less than 4 '
                          'arguments, but not None params (%s) are passed.' %
                          (model_fn, params))
-      if params is None and 'params' in model_fn_args:
+      if (params is None and weight_column_name is None and
+          'params' in model_fn_args):
         logging.warning('Estimator\'s model_fn (%s) has includes params '
                         'argument, but params are not passed to Estimator.',
                         model_fn)
+    self.weight_column_name = weight_column_name
+    if weight_column_name is not None:
+      if params is None:
+        params = {'weight_column_name': weight_column_name}
+      else:
+        params['weight_column_name'] = weight_column_name
     self._model_fn = model_fn
     self.params = params
 
@@ -808,6 +854,11 @@ class Estimator(BaseEstimator):
       else:
         return self._model_fn(features, targets, mode=mode)
     return self._model_fn(features, targets)
+
+  def _get_weight_tensor(self, features):
+    if not self.weight_column_name:
+      return None
+    return math_ops.to_float(features[self.weight_column_name])
 
   def _get_train_ops(self, features, targets):
     """Method that builds model graph and returns trainer ops.
@@ -855,6 +906,7 @@ class Estimator(BaseEstimator):
     predictions, loss, _ = self._call_model_fn(features, targets, ModeKeys.EVAL)
     result = {'loss': metrics_lib.streaming_mean(loss)}
 
+    weights = self._get_weight_tensor(features)
     metrics = metrics or {}
     if isinstance(targets, dict) and len(targets) == 1:
       # Unpack single target into just tensor.
@@ -870,10 +922,12 @@ class Estimator(BaseEstimator):
         # Here are two options: targets are single Tensor or a dict.
         if isinstance(targets, dict) and name[1] in targets:
           # If targets are dict and the prediction name is in it, apply metric.
-          result[name[0]] = metric(predictions[name[1]], targets[name[1]])
+          result[name[0]] = metrics_lib.run_metric(
+              metric, predictions[name[1]], targets[name[1]], weights)
         else:
           # Otherwise pass the targets to the metric.
-          result[name[0]] = metric(predictions[name[1]], targets)
+          result[name[0]] = metrics_lib.run_metric(
+              metric, predictions[name[1]], targets, weights)
       else:
         # Single head metrics.
         if isinstance(predictions, dict):
@@ -881,7 +935,8 @@ class Estimator(BaseEstimator):
               'Metrics passed provide only name, no prediction, '
               'but predictions are dict. '
               'Metrics: %s, Targets: %s.' % (metrics, targets))
-        result[name] = metric(predictions, targets)
+        result[name] = metrics_lib.run_metric(
+            metric, predictions, targets, weights)
     return result
 
   def _get_predict_ops(self, features):

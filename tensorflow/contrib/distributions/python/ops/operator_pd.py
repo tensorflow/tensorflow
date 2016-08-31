@@ -118,7 +118,7 @@ class OperatorPDBase(object):
     """Data type of matrix elements of `A`."""
     pass
 
-  def add_to_tensor(self, mat, name='add_to_tensor'):
+  def add_to_tensor(self, mat, name="add_to_tensor"):
     """Add matrix represented by this operator to `mat`.  Equiv to `A + mat`.
 
     Args:
@@ -130,7 +130,7 @@ class OperatorPDBase(object):
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=self.inputs + [mat]):
-        mat = ops.convert_to_tensor(mat, name='mat')
+        mat = ops.convert_to_tensor(mat, name="mat")
         return self._add_to_tensor(mat)
 
   def _add_to_tensor(self, mat):
@@ -154,7 +154,7 @@ class OperatorPDBase(object):
       )
 
   def inv_quadratic_form_on_vectors(
-      self, x, name='inv_quadratic_form_on_vectors'):
+      self, x, name="inv_quadratic_form_on_vectors"):
     """Compute the quadratic form: `x^T A^{-1} x` where `x` is a batch vector.
 
     `x` is a batch vector with compatible shape if
@@ -174,7 +174,7 @@ class OperatorPDBase(object):
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=[x] + self.inputs):
-        x = ops.convert_to_tensor(x, name='x')
+        x = ops.convert_to_tensor(x, name="x")
         return self._inv_quadratic_form_on_vectors(x)
 
   def _inv_quadratic_form_on_vectors(self, x):
@@ -188,7 +188,7 @@ class OperatorPDBase(object):
     # return self._iqfov_via_solve(x)
     # both of which are written in this base class.
     raise NotImplementedError(
-        'inv_quadratic_form_on_vectors not implemented')
+        "inv_quadratic_form_on_vectors not implemented")
 
   def _iqfov_via_sqrt_solve(self, x):
     """Get the inverse quadratic form on vectors via a sqrt_solve."""
@@ -227,7 +227,7 @@ class OperatorPDBase(object):
     result.set_shape(x.get_shape()[:-1])
     return result
 
-  def det(self, name='det'):
+  def det(self, name="det"):
     """Determinant for every batch member.
 
     Args:
@@ -245,7 +245,7 @@ class OperatorPDBase(object):
   def _det(self):
     return math_ops.exp(self.log_det())
 
-  def log_det(self, name='log_det'):
+  def log_det(self, name="log_det"):
     """Log of the determinant for every batch member.
 
     Args:
@@ -260,14 +260,14 @@ class OperatorPDBase(object):
 
   def _batch_log_det(self):
     # Implement in derived class to enable self.log_det(x).
-    raise NotImplementedError('Log determinant (log_det) not implemented.')
+    raise NotImplementedError("Log determinant (log_det) not implemented.")
 
   def _log_det(self):
     # As implemented here, this just calls the batch version.  If a more
     # efficient non-batch version is available, override in the derived class.
     return self._batch_log_det()
 
-  def sqrt_log_det(self, name='sqrt_log_det'):
+  def sqrt_log_det(self, name="sqrt_log_det"):
     """Log of the determinant of the sqrt `S` for every batch member.
 
     Args:
@@ -333,7 +333,7 @@ class OperatorPDBase(object):
     # Derived classes get this "for free" once .get_shape() is implemented.
     return self.get_shape()[:-1]
 
-  def shape(self, name='shape'):
+  def shape(self, name="shape"):
     """Equivalent to `tf.shape(A).`  Equal to `[N1,...,Nn, k, k]`, `n >= 0`.
 
     Args:
@@ -351,7 +351,7 @@ class OperatorPDBase(object):
     # Implement in derived class to enable .shape().
     pass
 
-  def rank(self, name='rank'):
+  def rank(self, name="rank"):
     """Tensor rank.  Equivalent to `tf.rank(A)`.  Will equal `n + 2`.
 
     If this operator represents the batch matrix `A` with
@@ -368,7 +368,7 @@ class OperatorPDBase(object):
       with ops.name_scope(name, values=self.inputs):
         return array_ops.size(self.shape())
 
-  def batch_shape(self, name='batch_shape'):
+  def batch_shape(self, name="batch_shape"):
     """Shape of batches associated with this operator.
 
     If this operator represents the batch matrix `A` with
@@ -385,7 +385,7 @@ class OperatorPDBase(object):
       with ops.name_scope(name, values=self.inputs):
         return array_ops.slice(self.shape(), [0], [self.rank() - 2])
 
-  def vector_shape(self, name='vector_shape'):
+  def vector_shape(self, name="vector_shape"):
     """Shape of (batch) vectors that this (batch) matrix will multiply.
 
     If this operator represents the batch matrix `A` with
@@ -403,7 +403,7 @@ class OperatorPDBase(object):
         return array_ops.concat(
             0, (self.batch_shape(), [self.vector_space_dimension()]))
 
-  def vector_space_dimension(self, name='vector_space_dimension'):
+  def vector_space_dimension(self, name="vector_space_dimension"):
     """Dimension of vector space on which this acts.  The `k` in `R^k`.
 
     If this operator represents the batch matrix `A` with
@@ -420,7 +420,7 @@ class OperatorPDBase(object):
       with ops.name_scope(name, values=self.inputs):
         return array_ops.gather(self.shape(), self.rank() - 1)
 
-  def matmul(self, x, transpose_x=False, name='matmul'):
+  def matmul(self, x, transpose_x=False, name="matmul"):
     """Left (batch) matmul `x` by this matrix:  `Ax`.
 
     `x` is a batch matrix with compatible shape if
@@ -441,20 +441,20 @@ class OperatorPDBase(object):
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=[x] + self.inputs):
-        x = ops.convert_to_tensor(x, name='x')
+        x = ops.convert_to_tensor(x, name="x")
         return self._dispatch_based_on_batch(
             self._batch_matmul, self._matmul, x=x, transpose_x=transpose_x)
 
   def _batch_matmul(self, x, transpose_x=False):
     # Implement in derived class to enable self.matmul(x).
-    raise NotImplementedError('This operator has no batch matmul Op.')
+    raise NotImplementedError("This operator has no batch matmul Op.")
 
   def _matmul(self, x, transpose_x=False):
     # As implemented here, this just calls the batch version.  If a more
     # efficient non-batch version is available, override in the derived class.
     return self._batch_matmul(x, transpose_x=transpose_x)
 
-  def sqrt_matmul(self, x, transpose_x=False, name='sqrt_matmul'):
+  def sqrt_matmul(self, x, transpose_x=False, name="sqrt_matmul"):
     """Left (batch) matmul `x` by a sqrt of this matrix: `Sx` where `A = S S^T`.
 
     `x` is a batch matrix with compatible shape if
@@ -475,21 +475,21 @@ class OperatorPDBase(object):
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=[x] + self.inputs):
-        x = ops.convert_to_tensor(x, name='x')
+        x = ops.convert_to_tensor(x, name="x")
         return self._dispatch_based_on_batch(
             self._batch_sqrt_matmul, self._sqrt_matmul, x=x,
             transpose_x=transpose_x)
 
   def _batch_sqrt_matmul(self, x, transpose_x=False):
     # Implement in derived class to enable self.sqrt_matmul(x).
-    raise NotImplementedError('This operator has no batch_sqrt_matmul Op.')
+    raise NotImplementedError("This operator has no batch_sqrt_matmul Op.")
 
   def _sqrt_matmul(self, x, transpose_x=False):
     # As implemented here, this just calls the batch version.  If a more
     # efficient non-batch version is available, override in the derived class.
     return self._batch_sqrt_matmul(x, transpose_x=transpose_x)
 
-  def solve(self, rhs, name='solve'):
+  def solve(self, rhs, name="solve"):
     """Solve `r` batch systems: `A X = rhs`.
 
     `rhs` is a batch matrix with compatible shape if
@@ -528,7 +528,7 @@ class OperatorPDBase(object):
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=[rhs] + self.inputs):
-        rhs = ops.convert_to_tensor(rhs, name='rhs')
+        rhs = ops.convert_to_tensor(rhs, name="rhs")
         return self._dispatch_based_on_batch(
             self._batch_solve, self._solve, rhs=rhs)
 
@@ -539,9 +539,9 @@ class OperatorPDBase(object):
 
   def _batch_solve(self, rhs):
     # Implement in derived class to enable self.solve().
-    raise NotImplementedError('batch_solve not implemented for this Operator.')
+    raise NotImplementedError("batch_solve not implemented for this Operator.")
 
-  def sqrt_solve(self, rhs, name='sqrt_solve'):
+  def sqrt_solve(self, rhs, name="sqrt_solve"):
     """Solve `r` batch systems involving sqrt: `S X = rhs` where `A = SS^T`.
 
     `rhs` is a batch matrix with compatible shape if
@@ -580,7 +580,7 @@ class OperatorPDBase(object):
     """
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=[rhs] + self.inputs):
-        rhs = ops.convert_to_tensor(rhs, name='rhs')
+        rhs = ops.convert_to_tensor(rhs, name="rhs")
         return self._dispatch_based_on_batch(
             self._batch_sqrt_solve, self._sqrt_solve, rhs=rhs)
 
@@ -592,9 +592,9 @@ class OperatorPDBase(object):
   def _batch_sqrt_solve(self, rhs):
     # Implement in derived class to enable self.sqrt_solve()
     raise NotImplementedError(
-        'batch sqrt_solve not implemented for this Operator.')
+        "batch sqrt_solve not implemented for this Operator.")
 
-  def to_dense(self, name='to_dense'):
+  def to_dense(self, name="to_dense"):
     """Return a dense (batch) matrix representing this operator."""
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=self.inputs):
@@ -602,9 +602,9 @@ class OperatorPDBase(object):
 
   def _to_dense(self):
     # Implement in derived class to enable self.to_dense().
-    raise NotImplementedError('This operator has no dense representation.')
+    raise NotImplementedError("This operator has no dense representation.")
 
-  def sqrt_to_dense(self, name='sqrt_to_dense'):
+  def sqrt_to_dense(self, name="sqrt_to_dense"):
     """Return a dense (batch) matrix representing sqrt of this operator."""
     with ops.name_scope(self.name):
       with ops.name_scope(name, values=self.inputs):
@@ -612,7 +612,7 @@ class OperatorPDBase(object):
 
   def _sqrt_to_dense(self):
     # Implement in derived class to enable self.sqrt_to_dense().
-    raise NotImplementedError('This operator has no dense sqrt representation.')
+    raise NotImplementedError("This operator has no dense sqrt representation.")
 
 
 def flip_matrix_to_vector(mat, batch_shape, static_batch_shape):
@@ -649,7 +649,7 @@ def flip_matrix_to_vector(mat, batch_shape, static_batch_shape):
   Returns:
     `Tensor` with same elements as `mat` but with shape `batch_shape + [k]`.
   """
-  mat = ops.convert_to_tensor(mat, name='mat')
+  mat = ops.convert_to_tensor(mat, name="mat")
   if (static_batch_shape.is_fully_defined()
       and mat.get_shape().is_fully_defined()):
     return _flip_matrix_to_vector_static(mat, static_batch_shape)
@@ -724,7 +724,7 @@ def flip_vector_to_matrix(vec, batch_shape, static_batch_shape):
   Returns:
     `Tensor` with same `dtype` as `vec` and new shape.
   """
-  vec = ops.convert_to_tensor(vec, name='vec')
+  vec = ops.convert_to_tensor(vec, name="vec")
   if (
       vec.get_shape().is_fully_defined()
       and static_batch_shape.is_fully_defined()):
@@ -739,7 +739,7 @@ def _flip_vector_to_matrix_dynamic(vec, batch_shape):
   batch_rank = array_ops.size(batch_shape)
 
   # Shapes associated with vec.
-  vec = ops.convert_to_tensor(vec, name='vec')
+  vec = ops.convert_to_tensor(vec, name="vec")
   vec_shape = array_ops.shape(vec)
   vec_rank = array_ops.rank(vec)
   vec_batch_rank = vec_rank - 1
@@ -773,7 +773,7 @@ def _flip_vector_to_matrix_static(vec, batch_shape):
   batch_rank = batch_shape.ndims
 
   # Shapes associated with vec.
-  vec = ops.convert_to_tensor(vec, name='vec')
+  vec = ops.convert_to_tensor(vec, name="vec")
   vec_shape = vec.get_shape()
   vec_rank = len(vec_shape)
   vec_batch_rank = vec_rank - 1
@@ -801,7 +801,7 @@ def _flip_vector_to_matrix_static(vec, batch_shape):
   return array_ops.reshape(x_flipped, new_shape)
 
 
-def extract_batch_shape(x, num_event_dims, name='extract_batch_shape'):
+def extract_batch_shape(x, num_event_dims, name="extract_batch_shape"):
   """Extract the batch shape from `x`.
 
   Assuming `x.shape = batch_shape + event_shape`, when `event_shape` has
@@ -818,6 +818,6 @@ def extract_batch_shape(x, num_event_dims, name='extract_batch_shape'):
     batch_shape:  `1-D` `int32` `Tensor`
   """
   with ops.name_scope(name, values=[x]):
-    x = ops.convert_to_tensor(x, name='x')
+    x = ops.convert_to_tensor(x, name="x")
     return array_ops.slice(
         array_ops.shape(x), [0], [array_ops.rank(x) - num_event_dims])

@@ -21,64 +21,6 @@ limitations under the License.
 <dom-module id="dashboard-style">
   <template>
     <style>
-      .card {
-        height: 200px;
-        width: 300px;
-        display: flex;
-        flex-direction: column;
-        margin: 5px;
-        padding: 0 30px 30px 0;
-        -webkit-user-select: none;
-        -moz-user-select: none;
-        position: relative;
-      }
-
-      .card .card-title, .card .card-subtitle {
-        flex-grow: 0;
-        flex-shrink: 0;
-        font-size: 14px;
-        text-overflow: ellipsis;
-        overflow: hidden;
-      }
-
-      .card .card-subtitle {
-        font-size: 12px;
-      }
-
-      .card .card-content {
-        flex-grow: 1;
-        flex-shrink: 1;
-        display: flex;
-        margin-top: 10px;
-      }
-      .card .card-bottom-row {
-        position: absolute;
-        left: 75px;
-        bottom: 0;
-        padding-right: 10px;
-      }
-
-      .card.selected {
-        height: 400px;
-        width: 100%;
-      }
-
-      .expand-button {
-        position: absolute;
-        left: 0px;
-        bottom: 0px;
-        color: #2196F3;
-        display: block;
-      }
-
-      .log-option-button {
-        position: absolute;
-        left: 25px;
-        bottom: 0px;
-        color: #2196F3;
-        display: block;
-      }
-
       #content-container{
         display: block;
       }
@@ -139,7 +81,6 @@ limitations under the License.
         --paper-checkbox-unchecked-color: var(--tb-ui-dark-accent);
         font-size: 14px;
       }
-
     </style>
   </template>
 </dom-module>

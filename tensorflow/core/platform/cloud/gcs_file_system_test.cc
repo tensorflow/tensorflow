@@ -126,12 +126,12 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithReadAhead) {
            "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
            "Auth Token: fake_token\n"
            "Range: 0-8\n",
-           "01234567"),
+           "012345678"),
        new FakeHttpRequest(
            "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
            "Auth Token: fake_token\n"
            "Range: 6-14\n",
-           "6789abcd"),
+           "6789abcde"),
        new FakeHttpRequest(
            "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
            "Auth Token: fake_token\n"
@@ -140,8 +140,8 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithReadAhead) {
        new FakeHttpRequest(
            "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
            "Auth Token: fake_token\n"
-           "Range: 15-29\n",
-           "")});
+           "Range: 0-14\n",
+           "01234567")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)),
@@ -153,30 +153,45 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithReadAhead) {
   char scratch[100];
   StringPiece result;
 
-  // Read the first chunk. The cache will be updated with 4 + 5 = 9 bytes.
+  // Read the first chunk. The buffer will be updated with 4 + 5 = 9 bytes.
   TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
   EXPECT_EQ("0123", result);
 
-  // The second chunk will be fully loaded from the cache, no requests are made.
+  // The second chunk will be fully loaded from the buffer, no requests are
+  // made.
   TF_EXPECT_OK(file->Read(4, 4, &result, scratch));
   EXPECT_EQ("4567", result);
 
-  // The chunk is only partially cached -- the request will be made to
-  // reload the cache. 9 bytes will be requested (same as initial buffer size).
+  // The chunk is only partially buffered -- the request will be made to
+  // reload the buffer. 9 bytes will be requested (same as initial buffer size).
   TF_EXPECT_OK(file->Read(6, 5, &result, scratch));
   EXPECT_EQ("6789a", result);
 
-  // The range can only be partially satisfied. An attempt to fill the cache
+  // The range can only be partially satisfied. An attempt to fill the buffer
   // with 10 + 5 = 15 bytes will be made (buffer is resized for this request).
   EXPECT_EQ(errors::Code::OUT_OF_RANGE,
             file->Read(6, 10, &result, scratch).code());
   EXPECT_EQ("6789abcd", result);
 
-  // The range cannot be satisfied. An attempt to fill the cache
-  // with 15 bytes will be made (same as current buffer size).
+  // The range cannot be satisfied, and the requested offset lies within the
+  // buffer. No additional requests will be made as the EOF was reached in
+  // the last request.
   EXPECT_EQ(errors::Code::OUT_OF_RANGE,
-            file->Read(15, 10, &result, scratch).code());
+            file->Read(7, 10, &result, scratch).code());
+  EXPECT_EQ("789abcd", result);
+
+  // The range cannot be satisfied, and the requested offset is greater than the
+  // buffered range. No additional requests will be made as the EOF was reached
+  // in
+  // the last request.
+  EXPECT_EQ(errors::Code::OUT_OF_RANGE,
+            file->Read(20, 10, &result, scratch).code());
   EXPECT_TRUE(result.empty());
+
+  // The beginning of the file is not in the buffer. This call will result
+  // in another request. The buffer size is still 15.
+  TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
+  EXPECT_EQ("0123", result);
 }
 
 TEST(GcsFileSystemTest, NewWritableFile) {

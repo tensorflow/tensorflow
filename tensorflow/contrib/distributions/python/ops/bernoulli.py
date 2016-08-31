@@ -68,16 +68,16 @@ class Bernoulli(distribution.Distribution):
     """
     self._logits, self._p = distribution_util.get_logits_and_prob(
         name=name, logits=logits, p=p, validate_args=validate_args)
-    with ops.name_scope(name):
+    with ops.name_scope(name) as ns:
       with ops.name_scope("q"):
         self._q = 1. - self._p
-        super(Bernoulli, self).__init__(
-            dtype=dtype,
-            parameters={"p": self._p, "q": self._q, "logits": self._logits},
-            is_continuous=False,
-            validate_args=validate_args,
-            allow_nan_stats=allow_nan_stats,
-            name=name)
+      super(Bernoulli, self).__init__(
+          dtype=dtype,
+          parameters={"p": self._p, "q": self._q, "logits": self._logits},
+          is_continuous=False,
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)
 
   @property
   def logits(self):

@@ -112,7 +112,7 @@ class Barrier : public ResourceBase {
         OP_REQUIRES_ASYNC(
             ctx, !cancel_pending_enqueues_ &&
                      (num_inserted == 0 || !incomplete_.empty()),
-            errors::Aborted(
+            errors::Cancelled(
                 "Barrier ", name_, " is closed.  Pending enqueues cancelled: ",
                 cancel_pending_enqueues_, ".  Number of new insertions: ",
                 num_inserted, ".  Number of incomplete keys: ",
@@ -252,7 +252,7 @@ class Barrier : public ResourceBase {
     // cancel but the second one is.
     if (closed_ && (cancel_pending_enqueues_ || !cancel_pending_enqueues)) {
       ctx->SetStatus(
-          errors::Aborted("Barrier '", name_, "' is already closed."));
+          errors::Cancelled("Barrier '", name_, "' is already closed."));
       callback();
       return;
     }
@@ -310,7 +310,7 @@ class Barrier : public ResourceBase {
     if (closed_) {
       element_ptr = gtl::FindOrNull(incomplete_, keys_vec(i));
       if (element_ptr == nullptr) {
-        return errors::Aborted(
+        return errors::Cancelled(
             "Barrier ", name_,
             " is closed, but attempted to insert a brand new key: ",
             keys_vec(i), ".  Pending enqueues cancelled: ",

@@ -529,6 +529,10 @@ module VZ {
      * setting the viewBox on the containing svg.
      */
     private setViewBox() {
+      // There's an issue in Firefox where if we measure with the old viewbox
+      // set, we get horrible results.
+      this.targetSVG.attr('viewBox', '');
+
       let svg = this.targetSVG.node() as HTMLElement;
       let brect = svg.getBoundingClientRect();
       let w = brect.width;

@@ -309,10 +309,6 @@ class MonitoredSession(object):
   def scaffold(self):
     return self._scaffold
 
-  @property
-  def session(self):
-    return self._tf_sess
-
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     """Run ops in the monitored session.
 
@@ -345,20 +341,13 @@ class MonitoredSession(object):
       if not exception_type:
         for h in self._hooks:
           h.end(self._tf_sess)
-      if not self._coord.joined:
-        # We exited cleanly without stopping.  Some things now.  This will also
-        # re-raise exceptions from the coordinated threads, as needed.
-        self._coord.request_stop()
-        self._coord.join()
     finally:
-      self._sess.close()
-      self._sess = None
-      self._tf_sess = None
-      self._coord = None
-
-  @property
-  def coord(self):
-    return self._coord
+      try:
+        self._sess.close()
+      finally:
+        self._sess = None
+        self._tf_sess = None
+        self._coord = None
 
   def _is_closed(self):
     """Return True if the supervised session is closed.  For tests only.
@@ -373,7 +362,6 @@ class MonitoredSession(object):
 
   def __exit__(self, exception_type, exception_value, traceback):
     if exception_type in [errors.OutOfRangeError, StopIteration]:
-      # TODO(ispir): log error if Coordinator hasn't done already.
       exception_type = None
     self._close_internal(exception_type)
     # __exit__ should return True to suppress an exception.
@@ -446,8 +434,6 @@ class _WrappedSession(object):
     if self._sess:
       try:
         self._sess.close()
-      except Exception:  # pylint: disable=broad-except
-        pass
       finally:
         self._sess = None
 
@@ -522,24 +508,16 @@ class _CoordinatedSession(_WrappedSession):
     return self._coord.should_stop()
 
   def close(self):
+    self._coord.request_stop()
     try:
-      if not self._coord.should_stop():
-        self._coord.request_stop()
-        self._coord.join()
-    except Exception:  # pylint: disable=broad-except
-      # Don't raise exception at close
-      pass
+      self._coord.join()
     finally:
-      _WrappedSession.close(self)
-
-  def run(self, *args, **kwargs):
-    try:
-      return self._sess.run(*args, **kwargs)
-    except Exception as e:  # pylint: disable=broad-except
-      self._coord.request_stop(e)
-    finally:
-      if self._coord.should_stop():
-        self._coord.join()
+      try:
+        _WrappedSession.close(self)
+      except Exception:  # pylint: disable=broad-except
+        # We intentionally suppress exceptions from the close() here since
+        # useful exceptions are already reported by join().
+        pass
 
 
 class _HookedSession(_WrappedSession):

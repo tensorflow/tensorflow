@@ -32,6 +32,20 @@ py_library(
 )
 
 py_test(
+    name = "debug_data_test",
+    size = "small",
+    srcs = [
+        "debug_data_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_data",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "debug_utils_test",
     size = "small",
     srcs = [

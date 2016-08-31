@@ -93,6 +93,11 @@ Construct a `LinearClassifier` estimator object.
 
   A `LinearClassifier` estimator.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if n_classes < 2.
+
 
 - - -
 
@@ -110,252 +115,51 @@ Construct a `LinearClassifier` estimator object.
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.dnn_bias_` {#LinearClassifier.dnn_bias_}
-
-Returns bias of deep neural network part.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearClassifier.dnn_weights_` {#LinearClassifier.dnn_weights_}
-
-Returns weights of deep neural network part.
-
-
-- - -
-
 #### `tf.contrib.learn.LinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#LinearClassifier.evaluate}
 
-See `Evaluable`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
-      `input_fn` or `feed_fn` is provided.
-      Or if `metrics` is not `None` or `dict`.
+See evaluable.Evaluable.
 
 
 - - -
 
 #### `tf.contrib.learn.LinearClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#LinearClassifier.export}
 
-Exports inference graph into given dir.
-
-##### Args:
-
-
-*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
-    and checkpoints.
-*  <b>`signature_fn`</b>: Function that returns a default signature and a named
-    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-    for features and `Tensor` or `dict` of `Tensor`s for predictions.
-*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
-    into features that are then passed to the model.
-*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+See BasEstimator.export.
 
 
 - - -
 
 #### `tf.contrib.learn.LinearClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#LinearClassifier.fit}
 
-See `Trainable`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
-*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
+See trainable.Trainable.
 
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.get_params(deep=True)` {#LinearClassifier.get_params}
-
-Get parameters for this estimator.
-
-##### Args:
+#### `tf.contrib.learn.LinearClassifier.get_estimator()` {#LinearClassifier.get_estimator}
 
 
-*  <b>`deep`</b>: boolean, optional
-
-    If `True`, will return the parameters for this estimator and
-    contained subobjects that are estimators.
-
-##### Returns:
-
-  params : mapping of string to any
-  Parameter names mapped to their values.
 
 
 - - -
 
 #### `tf.contrib.learn.LinearClassifier.get_variable_names()` {#LinearClassifier.get_variable_names}
 
-Returns list of all variable names in this model.
-
-##### Returns:
-
-  List of names.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearClassifier.get_variable_value(name)` {#LinearClassifier.get_variable_value}
-
-Returns value of the variable given by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Numpy array - value of the tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearClassifier.linear_bias_` {#LinearClassifier.linear_bias_}
-
-Returns bias of the linear part.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearClassifier.linear_weights_` {#LinearClassifier.linear_weights_}
-
-Returns weights per feature of the linear part.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearClassifier.model_dir` {#LinearClassifier.model_dir}
-
 
 
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=None, monitors=None)` {#LinearClassifier.partial_fit}
+#### `tf.contrib.learn.LinearClassifier.predict(x=None, input_fn=None, batch_size=None, as_iterable=False)` {#LinearClassifier.predict}
 
-Incremental fit on a batch of samples.
-
-This method is expected to be called several times consecutively
-on different or the same chunks of the dataset. This either can
-implement iterative training or out-of-core/online training.
-
-This is especially useful when the whole dataset is too big to
-fit in memory at the same time. Or when model is taking long time
-to converge, and you want to split up training into subparts.
-
-##### Args:
-
-
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of targets. The training target values
-     (class labels in classification, real numbers in regression). If set,
-     `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`.
-*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-    dimension of `x`. Must be `None` if `input_fn` is provided.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-    inside the training loop.
-
-##### Returns:
-
-  `self`, for chaining.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
-      provided.
+Runs inference to determine the predicted class.
 
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.predict(*args, **kwargs)` {#LinearClassifier.predict}
+#### `tf.contrib.learn.LinearClassifier.predict_proba(x=None, input_fn=None, batch_size=None, outputs=None, as_iterable=False)` {#LinearClassifier.predict_proba}
 
-Returns predicted classes for given features. (deprecated arguments)
-
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
-Instructions for updating:
-The default behavior of predict() is changing. The default value for
-as_iterable will change to True, and then the flag will be removed
-altogether. The behavior of this flag is described below.
-
-    Args:
-      x: features.
-      input_fn: Input function. If set, x must be None.
-      batch_size: Override default batch size.
-      as_iterable: If True, return an iterable which keeps yielding predictions
-        for each example until inputs are exhausted. Note: The inputs must
-        terminate if you want the iterable to terminate (e.g. be sure to pass
-        num_epochs=1 if you are using something like read_batch_features).
-
-    Returns:
-      Numpy array of predicted classes (or an iterable of predicted classes if
-      as_iterable is True).
-
-
-- - -
-
-#### `tf.contrib.learn.LinearClassifier.predict_proba(*args, **kwargs)` {#LinearClassifier.predict_proba}
-
-Returns prediction probabilities for given features. (deprecated arguments)
-
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
-Instructions for updating:
-The default behavior of predict() is changing. The default value for
-as_iterable will change to True, and then the flag will be removed
-altogether. The behavior of this flag is described below.
-
-    Args:
-      x: features.
-      input_fn: Input function. If set, x and y must be None.
-      batch_size: Override default batch size.
-      as_iterable: If True, return an iterable which keeps yielding predictions
-        for each example until inputs are exhausted. Note: The inputs must
-        terminate if you want the iterable to terminate (e.g. be sure to pass
-        num_epochs=1 if you are using something like read_batch_features).
-
-    Returns:
-      Numpy array of predicted probabilities (or an iterable of predicted
-      probabilities if as_iterable is True).
-
-
-- - -
-
-#### `tf.contrib.learn.LinearClassifier.set_params(**params)` {#LinearClassifier.set_params}
-
-Set the parameters of this estimator.
-
-The method works on simple estimators as well as on nested objects
-(such as pipelines). The former have parameters of the form
-``<component>__<parameter>`` so that it's possible to update each
-component of a nested object.
-
-##### Args:
-
-
-*  <b>`**params`</b>: Parameters.
-
-##### Returns:
-
-  self
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If params contain invalid names.
+Runs inference to determine the class probability predictions.
 
 
 - - -

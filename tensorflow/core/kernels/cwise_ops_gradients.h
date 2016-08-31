@@ -69,6 +69,79 @@ struct functor_traits<scalar_sigmoid_gradient_op<T>> {
   };
 };
 
+// Gradient for the inverse function
+template <typename T>
+struct scalar_inverse_gradient_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_inverse_gradient_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T
+  operator()(const T& output, const T& output_gradient) const {
+    const T out_conj = numext::conj(output);
+    return -output_gradient * out_conj * out_conj;
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
+  packetOp(const Packet& output, const Packet& output_gradient) const {
+    const Packet out_conj = pconj(output);
+    return pnegate(pmul(output_gradient, pmul(out_conj, out_conj)));
+  }
+};
+template <typename T>
+struct functor_traits<scalar_inverse_gradient_op<T>> {
+  enum {
+    Cost = NumTraits<T>::AddCost + 2 * NumTraits<T>::MulCost,
+    PacketAccess = packet_traits<T>::HasMul,
+  };
+};
+
+// Gradient for the sqrt function
+template <typename T>
+struct scalar_sqrt_gradient_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_sqrt_gradient_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T
+  operator()(const T& output, const T& output_gradient) const {
+    return static_cast<T>(0.5) * output_gradient / output;
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
+  packetOp(const Packet& output, const Packet& output_gradient) const {
+    const Packet const_half = pset1<Packet>(static_cast<T>(0.5));
+    return pdiv(pmul(const_half, output_gradient), output);
+  }
+};
+template <typename T>
+struct functor_traits<scalar_sqrt_gradient_op<T>> {
+  enum {
+    PacketAccess = packet_traits<T>::HasMul & packet_traits<T>::HasDiv,
+    Cost =
+        NumTraits<T>::MulCost + NumTraits<T>::template Div<PacketAccess>::Cost,
+  };
+};
+
+// Gradient for the rsqrt function
+template <typename T>
+struct scalar_rsqrt_gradient_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_rsqrt_gradient_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T
+  operator()(const T& output, const T& output_gradient) const {
+    return static_cast<T>(-0.5) * (output_gradient * output) *
+           (output * output);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
+  packetOp(const Packet& output, const Packet& output_gradient) const {
+    const Packet const_half = pset1<Packet>(static_cast<T>(-0.5));
+    return pmul(const_half,
+                pmul(pmul(output_gradient, output), pmul(output, output)));
+  }
+};
+template <typename T>
+struct functor_traits<scalar_rsqrt_gradient_op<T>> {
+  enum {
+    Cost = 4 * NumTraits<T>::MulCost,
+    PacketAccess = packet_traits<T>::HasMul,
+  };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -101,6 +174,16 @@ struct tanh_grad : base<T, Eigen::internal::scalar_tanh_gradient_op<T>> {};
 template <typename T>
 struct sigmoid_grad : base<T, Eigen::internal::scalar_sigmoid_gradient_op<T>> {
 };
+
+template <typename T>
+struct inverse_grad : base<T, Eigen::internal::scalar_inverse_gradient_op<T>> {
+};
+
+template <typename T>
+struct sqrt_grad : base<T, Eigen::internal::scalar_sqrt_gradient_op<T>> {};
+
+template <typename T>
+struct rsqrt_grad : base<T, Eigen::internal::scalar_rsqrt_gradient_op<T>> {};
 
 }  // end namespace functor
 

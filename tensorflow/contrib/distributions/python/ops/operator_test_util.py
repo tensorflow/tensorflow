@@ -65,7 +65,7 @@ class OperatorPDDerivedClassTest(tf.test.TestCase):
     batch_shape = list(batch_shape)
     mat_shape = batch_shape + [k, k]
     # return operator, mat
-    raise NotImplementedError('Not implemented yet.')
+    raise NotImplementedError("Not implemented yet.")
 
   def test_to_dense(self):
     with self.test_session():

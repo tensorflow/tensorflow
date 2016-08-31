@@ -362,10 +362,13 @@ TEST(MathOpsTest, BatchMatMul_ShapeFn) {
   set_adj(false, false);
 
   // Rank checks.
-  INFER_ERROR("at least rank 3", op, "[1,2];?");
-  INFER_ERROR("at least rank 3", op, "?;[1,2]");
+  INFER_ERROR("at least rank 2", op, "[1];?");
+  INFER_ERROR("at least rank 2", op, "?;[2]");
 
   INFER_OK(op, "?;?", "?");
+
+  // 0 batch dims.
+  INFER_OK(op, "[?,?];[?,?]", "[d0_0,d1_1]");
 
   // 2 batch dims.
   INFER_OK(op, "[?,?,?,?];?", "[d0_0,d0_1,d0_2,?]");

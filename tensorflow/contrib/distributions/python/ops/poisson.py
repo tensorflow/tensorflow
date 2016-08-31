@@ -64,7 +64,7 @@ class Poisson(distribution.Distribution):
         undefined statistics will return NaN for this statistic.
       name: A name for this distribution.
     """
-    with ops.name_scope(name, values=[lam]):
+    with ops.name_scope(name, values=[lam]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(lam)] if
                                     validate_args else []):
         self._lam = array_ops.identity(lam, name="lam")
@@ -74,7 +74,7 @@ class Poisson(distribution.Distribution):
             is_continuous=False,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
-            name=name)
+            name=ns)
 
   @property
   def lam(self):
@@ -121,7 +121,7 @@ class Poisson(distribution.Distribution):
 
   def _assert_valid_sample(self, x, check_integer=True):
     if not self.validate_args: return x
-    with ops.name_scope('check_x', values=[x]):
+    with ops.name_scope("check_x", values=[x]):
       dependencies = [check_ops.assert_non_negative(x)]
       if check_integer:
         dependencies += [distribution_util.assert_integer_form(

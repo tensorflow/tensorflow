@@ -81,5 +81,5 @@ class Chi2Test(tf.test.TestCase):
       self.assertAllClose(chi2.entropy().eval(), expected_entropy)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

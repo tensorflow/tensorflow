@@ -861,7 +861,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       close_op.run()
 
       # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(tf.errors.AbortedError, "is closed"):
+      with self.assertRaisesRegexp(tf.errors.CancelledError, "is closed"):
         enqueue_op.run()
 
   def testEnqueueManyToClosedQueue(self):
@@ -875,7 +875,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       close_op.run()
 
       # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(tf.errors.AbortedError, "is closed"):
+      with self.assertRaisesRegexp(tf.errors.CancelledError, "is closed"):
         enqueue_op.run()
 
   def testBlockingEnqueueToFullQueue(self):
@@ -954,7 +954,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
         sess.run(blocking_enqueue_op)
 
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(tf.errors.AbortedError, "closed"):
+        with self.assertRaisesRegexp(tf.errors.CancelledError, "closed"):
           sess.run(blocking_enqueue_op)
       thread1 = self.checkedThread(target=blocking_enqueue)
       thread1.start()
@@ -997,7 +997,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
         sess.run(blocking_enqueue_op)
         # At this point the close operation will become unblocked, so the
         # next enqueue will fail.
-        with self.assertRaisesRegexp(tf.errors.AbortedError, "closed"):
+        with self.assertRaisesRegexp(tf.errors.CancelledError, "closed"):
           sess.run(blocking_enqueue_op)
       thread1 = self.checkedThread(target=blocking_enqueue)
       thread1.start()

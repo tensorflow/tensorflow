@@ -19,9 +19,9 @@ from __future__ import print_function
 
 import threading
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
 
@@ -40,67 +40,13 @@ ops.NoGradient('ScatterAddNdim')
 ops.NoGradient('UpdateFertileSlots')
 
 
-@ops.RegisterShape('CountExtremelyRandomStats')
-def _CountExtremelyRandomStatsShape(op):
-  """Shape function for CountExtremelyRandomStats Op."""
-  regression = op.get_attr('regression')
-  num_points = op.inputs[0].get_shape()[0].value
-  sparse_shape = op.inputs[3].get_shape()
-  if sparse_shape.ndims > 0:
-    num_points = None
-  num_nodes = op.inputs[7].get_shape()[0].value
-  num_classes = op.get_attr('num_classes')
-  # The output of TraverseTree is [leaf_node_index(x) for x in input_data].
-  return [tensor_shape.TensorShape([num_nodes, num_classes]),  # node sums
-          tensor_shape.TensorShape([num_nodes, num_classes]),  # node squares
-          tensor_shape.TensorShape([None, 2 if regression else 3]),
-          tensor_shape.TensorShape(
-              [None, num_classes] if regression else [None]),
-          tensor_shape.TensorShape(
-              [None, num_classes] if regression else [0]),
-          tensor_shape.TensorShape([None, 1 if regression else 2]),
-          tensor_shape.TensorShape(
-              [None, num_classes] if regression else [None]),
-          tensor_shape.TensorShape(
-              [None, num_classes] if regression else [0]),
-          tensor_shape.TensorShape([num_points])]
-
-
-@ops.RegisterShape('SampleInputs')
-def _SampleInputsShape(op):
-  """Shape function for SampleInputs Op."""
-  num_splits = op.inputs[7].get_shape()[1].value
-  return [[None], [None, num_splits], [None, num_splits]]
-
-
-@ops.RegisterShape('BestSplits')
-def _BestSplitsShape(op):
-  num_finished = op.inputs[0].get_shape()[0].value
-  return [tensor_shape.TensorShape([num_finished])]
-
-
-@ops.RegisterShape('GrowTree')
-def _GrowTreeShape(unused_op):
-  """Shape function for GrowTree Op."""
-  return [[None], [None, 2], [None], [1]]
-
-
-@ops.RegisterShape('FinishedNodes')
-def _FinishedNodesShape(unused_op):
-  """Shape function for FinishedNodes Op."""
-  return [[None], [None]]
-
-
-@ops.RegisterShape('ScatterAddNdim')
-def _ScatterAddNdimShape(unused_op):
-  """Shape function for ScatterAddNdim Op."""
-  return []
-
-
-@ops.RegisterShape('UpdateFertileSlots')
-def _UpdateFertileSlotsShape(unused_op):
-  """Shape function for UpdateFertileSlots Op."""
-  return [[2, None], [None], [None]]
+ops.RegisterShape('CountExtremelyRandomStats')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('SampleInputs')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('BestSplits')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('GrowTree')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('FinishedNodes')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('ScatterAddNdim')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('UpdateFertileSlots')(common_shapes.call_cpp_shape_fn)
 
 
 # Workaround for the fact that importing tensorflow imports contrib

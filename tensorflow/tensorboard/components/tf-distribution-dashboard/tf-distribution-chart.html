@@ -47,33 +47,44 @@ limitations under the License.
     Polymer({
       is: "tf-distribution-chart",
       properties: {
-        _chart: Object,
         colorScale: Object,
-        tag: String,
-        selectedRuns: Array,
         xType: String,
-        dataProvider: Function,
         _attached: Boolean,
+        _chart: Object,
+        _visibleSeriesCache: {
+          type: Array,
+          value: function() { return [] }
+        },
+        _seriesDataCache: {
+          type: Object,
+          value: function() { return {} }
+        },
         _makeChartAsyncCallbackId: { type: Number, value: null }
       },
       observers: [
-        "_makeChart(tag, dataProvider, xType, colorScale, _attached)",
-        "_changeRuns(_chart, selectedRuns.*)"
+        "_makeChart(xType, colorScale, _attached)",
+        "_reloadFromCache(_chart)",
       ],
-      _changeRuns: function(chart) {
-        if (chart.tag !== this.tag) {
-          return; // hack around some weird polymer bug :(
+      setVisibleSeries: function(names) {
+        this._visibleSeriesCache = names;
+        if (this._chart) {
+          this._chart.setVisibleSeries(names);
+          this.redraw();
         }
-        this._chart.changeRuns(this.selectedRuns);
-        this.redraw();
+      },
+      setSeriesData: function(name, data) {
+        this._seriesDataCache[name] = data;
+        if (this._chart) {
+          this._chart.setSeriesData(name, data);
+        }
       },
       redraw: function() {
         this._chart.redraw();
       },
-      reload: function() {
-        this._chart.reload();
+      ready: function() {
+        this.scopeSubtree(this.$.chartsvg, true);
       },
-      _makeChart: function(tag, dataProvider, xType, colorScale, _attached) {
+      _makeChart: function(xType, colorScale, _attached) {
         if (this._makeChartAsyncCallbackId === null) {
           this.cancelAsync(this._makeChartAsyncCallbackId);
         }
@@ -82,11 +93,19 @@ limitations under the License.
           this._makeChartAsyncCallbackId = null;
           if (!_attached) return;
           if (this._chart) this._chart.destroy();
-          var chart = new TF.DistributionChart(tag, dataProvider, xType, colorScale);
+          var chart = new TF.DistributionChart(xType, colorScale);
           var svg = d3.select(this.$.chartsvg);
           chart.renderTo(svg);
           this._chart = chart;
         }, 350);
+      },
+      _reloadFromCache: function() {
+        if(this._chart) {
+          this._chart.setVisibleSeries(this._visibleSeriesCache);
+          this._visibleSeriesCache.forEach(function(name) {
+            this._chart.setSeriesData(name, this._seriesDataCache[name] || []);
+          }.bind(this));
+        }
       },
       attached: function() {
         this._attached = true;

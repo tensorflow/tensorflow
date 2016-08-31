@@ -404,21 +404,13 @@ def gradients(ys,
       if ready and op._id not in to_ops_set:
         to_ops_set.add(op._id)
         queue.append(op)
+      # pylint: enable=protected-access
 
     if loop_state:
-      # The "unused" exits of the loops are added to ys. As an example,
-      # people often write:
-      #         v1, _ = While(p, b, [x1, x2])
-      #         result = gradients(v1, x1)
-      # The exit node of x2 is not included by the betweenness analysis.
-      # But we need it if x2 is involved in computing v1. So we add it
-      # back in backprop with a zeros_like gradient.
-      loop_exits = loop_state.GetAllLoopExits()
+      loop_exits = loop_state.ProcessUnusedLoopExits(pending_count, to_ops_set)
       for y in loop_exits:
-        if pending_count[y.op._id] == 0 and y.op._id not in to_ops_set:
-          if _IsFloat(y):
-            # Floating-point outputs get a zero gradient.
-            _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
+        if _IsFloat(y):
+          _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
           queue.append(y.op)
 
     # The set of 'from_ops'.
@@ -500,21 +492,64 @@ def gradients(ys,
         if loop_state:
           loop_state.ExitGradWhileContext(op, before=False)
 
-      # update pending count for the inputs of op and enqueue ready ops.
-      # pylint: disable=protected-access
-      for x in op.inputs:
-        pending_count[x.op._id] -= 1
-        ready = (pending_count[x.op._id] == 0)
-        if loop_state and not ready:
-          ready = (pending_count[x.op._id] > 0 and
-                   control_flow_ops.IsLoopSwitch(x.op))
-        if ready:
-          queue.append(x.op)
-      # pylint: enable=protected-access
+      # Update pending count for the inputs of op and enqueue ready ops.
+      _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state)
 
   if loop_state:
     loop_state.PostProcessing()
   return [_GetGrad(grads, x) for x in xs]
+
+
+def _HasAnyNotNoneGrads(grads, op):
+  """Return true iff op has real gradient."""
+  out_grads = _GetGrads(grads, op)
+  for out_grad in out_grads:
+    if isinstance(out_grad, (ops.Tensor, ops.IndexedSlices)):
+      return True
+    if out_grad and isinstance(out_grad, collections.Sequence):
+      if any([g is not None for g in out_grad]):
+        return True
+  return False
+
+
+def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state):
+  """Update pending count for the inputs of op and enqueue ready ops."""
+  for x in op.inputs:
+    # pylint: disable=protected-access
+    pending_count[x.op._id] -= 1
+    ready = (pending_count[x.op._id] == 0)
+    if loop_state and not ready:
+      ready = (pending_count[x.op._id] > 0 and
+               control_flow_ops.IsLoopSwitch(x.op))
+    # pylint: enable=protected-access
+    if ready:
+      if control_flow_ops.IsLoopExit(x.op):
+        # if x is an exit without real gradient, defer processing them.
+        grad_state = loop_state.GetGradState(x.op, before=False)
+        grad_state.deferred_exits.append(x)
+        grad_state.pending_exits_count -= 1
+        if grad_state.pending_exits_count == 0:
+          # We now have all the exits so process them.
+          has_real_grad = False
+          for y in grad_state.deferred_exits:
+            if _HasAnyNotNoneGrads(grads, y.op):
+              has_real_grad = True
+              queue.append(y.op)
+            else:
+              grad_state.unused_exits.append(y)
+          if has_real_grad:
+            # For an unused exit, if it has floating-point outputs, backprop
+            # a zero gradient. Otherwise, just ignore it.
+            for y in grad_state.unused_exits:
+              if _IsFloat(y):
+                _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
+              queue.append(y.op)
+          else:
+            # All exits are "unused" so use None as gradient.
+            for y in grad_state.unused_exits:
+              queue.append(y.op)
+      else:
+        queue.append(x.op)
 
 
 def _SetGrad(grads, t, grad):

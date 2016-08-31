@@ -119,7 +119,7 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
     Raises:
       TypeError: If `mu` and `cov` are different dtypes.
     """
-    with ops.name_scope(name):
+    with ops.name_scope(name) as ns:
       with ops.name_scope("init", values=[mu] + cov.inputs):
         self._mu = array_ops.identity(mu, name="mu")
         self._cov = cov
@@ -131,7 +131,7 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
             is_reparameterized=True,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
-            name=name)
+            name=ns)
 
   def _assert_valid_mu(self, mu):
     """Return `mu` after validity checks and possibly with assertations."""

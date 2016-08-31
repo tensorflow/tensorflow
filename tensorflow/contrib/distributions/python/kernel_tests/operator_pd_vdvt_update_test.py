@@ -47,7 +47,7 @@ class OperatorPDSqrtVDVTUpdateTest(
     batch_shape = mat_shape[:-2]
     diag_shape = mat_shape[:-2] + [v_matrix_rank]
     k = mat_shape[-1]
-    assert k == mat_shape[-2], 'Must be a square matrix'
+    assert k == mat_shape[-2], "Must be a square matrix"
     v_shape = batch_shape + [k, v_matrix_rank]
     v = self._rng.randn(*v_shape)  # anything goes with "v"!
 
@@ -118,18 +118,18 @@ class OperatorPDSqrtVDVTUpdateTest(
     v_matrix_rank = 2
     with self.test_session():
       # Make an OperatorPDFull with a matrix placeholder.
-      mat_ph = tf.placeholder(tf.float64, name='mat_ph')
+      mat_ph = tf.placeholder(tf.float64, name="mat_ph")
       mat = self._random_pd_matrix(mat_shape)
       o_made_with_mat = operator_pd_full.OperatorPDFull(mat_ph)
 
       # Make the placeholders and arrays for the updated operator.
-      v_ph = tf.placeholder(tf.float64, name='v_ph')
+      v_ph = tf.placeholder(tf.float64, name="v_ph")
       v, diag = self._random_v_and_diag(mat_shape, v_matrix_rank)
       if self._diag_is_none:
         diag_ph = None
         feed_dict = {v_ph: v, mat_ph: mat}
       else:
-        diag_ph = tf.placeholder(tf.float64, name='diag_ph')
+        diag_ph = tf.placeholder(tf.float64, name="diag_ph")
         feed_dict = {v_ph: v, diag_ph: diag, mat_ph: mat}
 
       # Make the OperatorPDSqrtVDVTUpdate with v and diag placeholders.
@@ -144,9 +144,9 @@ class OperatorPDSqrtVDVTUpdateTest(
     # We enforce that `operator` is an `OperatorPDBase`.
     with self.test_session():
       v, diag = self._random_v_and_diag((3, 3), 2)
-      operator_m = 'I am not a subclass of OperatorPDBase'
+      operator_m = "I am not a subclass of OperatorPDBase"
 
-      with self.assertRaisesRegexp(TypeError, 'not instance'):
+      with self.assertRaisesRegexp(TypeError, "not instance"):
         operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(operator_m, v, diag)
 
   def test_non_pos_def_diag_raises(self):
@@ -164,7 +164,7 @@ class OperatorPDSqrtVDVTUpdateTest(
       operator = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(
           operator_m, v, diag)
 
-      with self.assertRaisesOpError('positive'):
+      with self.assertRaisesOpError("positive"):
         operator.to_dense().eval()
 
   def test_non_pos_def_diag_doesnt_raise_if_verify_pd_false(self):
@@ -191,7 +191,7 @@ class OperatorPDSqrtVDVTUpdateTest(
 
       mat = self._random_pd_matrix((4, 3, 3))  # mat and v match
       operator_m = operator_pd_full.OperatorPDFull(mat)
-      with self.assertRaisesRegexp(ValueError, 'diag.*v.*last dimension'):
+      with self.assertRaisesRegexp(ValueError, "diag.*v.*last dimension"):
         operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(operator_m, v, diag)
 
   def test_batch_shape_mismatch_v_and_diag_raises_static(self):
@@ -201,7 +201,7 @@ class OperatorPDSqrtVDVTUpdateTest(
 
       mat = self._random_pd_matrix((4, 3, 3))  # mat and v match
       operator_m = operator_pd_full.OperatorPDFull(mat)
-      with self.assertRaisesRegexp(ValueError, 'diag.*batch shape'):
+      with self.assertRaisesRegexp(ValueError, "diag.*batch shape"):
         operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(operator_m, v, diag)
 
   def test_tensor_rank_shape_mismatch_v_and_diag_raises_static(self):
@@ -211,7 +211,7 @@ class OperatorPDSqrtVDVTUpdateTest(
 
       mat = self._random_pd_matrix((1, 2, 2, 2))  # mat and v match
       operator_m = operator_pd_full.OperatorPDFull(mat)
-      with self.assertRaisesRegexp(ValueError, 'diag.*rank'):
+      with self.assertRaisesRegexp(ValueError, "diag.*rank"):
         operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(operator_m, v, diag)
 
   def test_event_shape_mismatch_v_and_diag_raises_dynamic(self):
@@ -221,14 +221,14 @@ class OperatorPDSqrtVDVTUpdateTest(
       diag = self._rng.rand(4, 1)  # Should be shape (4, 2,) to match v.
       mat = self._random_pd_matrix((4, 3, 3))  # mat and v match
 
-      v_ph = tf.placeholder(tf.float32, name='v_ph')
-      diag_ph = tf.placeholder(tf.float32, name='diag_ph')
-      mat_ph = tf.placeholder(tf.float32, name='mat_ph')
+      v_ph = tf.placeholder(tf.float32, name="v_ph")
+      diag_ph = tf.placeholder(tf.float32, name="diag_ph")
+      mat_ph = tf.placeholder(tf.float32, name="mat_ph")
 
       operator_m = operator_pd_full.OperatorPDFull(mat_ph)
       updated = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(
           operator_m, v_ph, diag_ph)
-      with self.assertRaisesOpError('x == y'):
+      with self.assertRaisesOpError("x == y"):
         updated.to_dense().eval(feed_dict={v_ph: v, diag_ph: diag, mat_ph: mat})
 
   def test_batch_shape_mismatch_v_and_diag_raises_dynamic(self):
@@ -237,14 +237,14 @@ class OperatorPDSqrtVDVTUpdateTest(
       diag = self._rng.rand(5, 1)  # Should be shape (4, 2,) to match v.
       mat = self._random_pd_matrix((4, 3, 3))  # mat and v match
 
-      v_ph = tf.placeholder(tf.float32, name='v_ph')
-      diag_ph = tf.placeholder(tf.float32, name='diag_ph')
-      mat_ph = tf.placeholder(tf.float32, name='mat_ph')
+      v_ph = tf.placeholder(tf.float32, name="v_ph")
+      diag_ph = tf.placeholder(tf.float32, name="diag_ph")
+      mat_ph = tf.placeholder(tf.float32, name="mat_ph")
 
       operator_m = operator_pd_full.OperatorPDFull(mat_ph)
       updated = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(
           operator_m, v_ph, diag_ph)
-      with self.assertRaisesOpError('x == y'):
+      with self.assertRaisesOpError("x == y"):
         updated.to_dense().eval(feed_dict={v_ph: v, diag_ph: diag, mat_ph: mat})
 
   def test_tensor_rank_shape_mismatch_v_and_diag_raises_dynamic(self):
@@ -254,14 +254,14 @@ class OperatorPDSqrtVDVTUpdateTest(
       diag = self._rng.rand(2, 2)  # Should have rank 1 less than v.
       mat = self._random_pd_matrix((2, 2, 2, 2))  # mat and v match
 
-      v_ph = tf.placeholder(tf.float32, name='v_ph')
-      diag_ph = tf.placeholder(tf.float32, name='diag_ph')
-      mat_ph = tf.placeholder(tf.float32, name='mat_ph')
+      v_ph = tf.placeholder(tf.float32, name="v_ph")
+      diag_ph = tf.placeholder(tf.float32, name="diag_ph")
+      mat_ph = tf.placeholder(tf.float32, name="mat_ph")
 
       operator_m = operator_pd_full.OperatorPDFull(mat_ph)
       updated = operator_pd_vdvt_update.OperatorPDSqrtVDVTUpdate(
           operator_m, v_ph, diag_ph)
-      with self.assertRaisesOpError('rank'):
+      with self.assertRaisesOpError("rank"):
         updated.to_dense().eval(feed_dict={v_ph: v, diag_ph: diag, mat_ph: mat})
 
 
@@ -269,5 +269,5 @@ class OperatorPDSqrtVDVTUpdateNoneDiagTest(OperatorPDSqrtVDVTUpdateTest):
   _diag_is_none = True
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

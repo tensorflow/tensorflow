@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-# pylint: disable=g-bad-import-order
 """Example code for TensorFlow Wide & Deep Tutorial using TF.Learn API."""
 from __future__ import absolute_import
 from __future__ import division
@@ -21,6 +19,7 @@ from __future__ import print_function
 
 import tempfile
 import urllib
+
 import pandas as pd
 import tensorflow as tf
 

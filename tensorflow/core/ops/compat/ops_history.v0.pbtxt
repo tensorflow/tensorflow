@@ -10347,6 +10347,238 @@ op {
   }
 }
 op {
+  name: "FractionalAvgPool"
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "row_pooling_sequence"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "col_pooling_sequence"
+    type: DT_INT64
+  }
+  attr {
+    name: "pooling_ratio"
+    type: "list(float)"
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "pseudo_random"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "overlapping"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "deterministic"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "FractionalAvgPoolGrad"
+  input_arg {
+    name: "orig_input_tensor_shape"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "out_backprop"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "row_pooling_sequence"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "col_pooling_sequence"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "overlapping"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "FractionalMaxPool"
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "row_pooling_sequence"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "col_pooling_sequence"
+    type: DT_INT64
+  }
+  attr {
+    name: "pooling_ratio"
+    type: "list(float)"
+    has_minimum: true
+    minimum: 4
+  }
+  attr {
+    name: "pseudo_random"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "overlapping"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "deterministic"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "seed"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "seed2"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "FractionalMaxPoolGrad"
+  input_arg {
+    name: "orig_input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "orig_output"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "out_backprop"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "row_pooling_sequence"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "col_pooling_sequence"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "overlapping"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "Gather"
   input_arg {
     name: "params"
@@ -11625,6 +11857,34 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "InvGrad"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
@@ -19373,6 +19633,49 @@ op {
   }
 }
 op {
+  name: "ReverseSequence"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "seq_lengths"
+    type_attr: "Tlen"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "seq_dim"
+    type: "int"
+  }
+  attr {
+    name: "batch_dim"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tlen"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "Rsqrt"
   input_arg {
     name: "x"
@@ -19425,6 +19728,34 @@ op {
   }
   output_arg {
     name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "RsqrtGrad"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
     type_attr: "T"
   }
   attr {
@@ -24904,6 +25235,34 @@ op {
   }
   output_arg {
     name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "SqrtGrad"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
     type_attr: "T"
   }
   attr {

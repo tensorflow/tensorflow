@@ -204,9 +204,9 @@ applies gradients.
 
 ### Gating Gradients
 
-Both `minimize()` and `compute_gradients()` accept a `gate_gradients` argument
-that controls the degree of parallelism during the application of the
-gradients.
+Both `minimize()` and `compute_gradients()` accept a `gate_gradients`
+argument that controls the degree of parallelism during the application of
+the gradients.
 
 The possible values are: `GATE_NONE`, `GATE_OP`, and `GATE_GRAPH`.
 
@@ -311,7 +311,7 @@ Construct a new gradient descent optimizer.
 
 ### `class tf.train.AdadeltaOptimizer` {#AdadeltaOptimizer}
 
-Optimizer that implements the Adadelta algorithm.
+Optimizer that implements the Adadelta algorithm. 
 
 See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
 ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
@@ -1453,7 +1453,7 @@ and reporting exceptions, etc.
 The `QueueRunner`, combined with the `Coordinator`, helps handle these issues.
 - - -
 
-#### `tf.train.QueueRunner.__init__(queue=None, enqueue_ops=None, close_op=None, cancel_op=None, queue_runner_def=None)` {#QueueRunner.__init__}
+#### `tf.train.QueueRunner.__init__(queue=None, enqueue_ops=None, close_op=None, cancel_op=None, queue_closed_exception_types=None, queue_runner_def=None)` {#QueueRunner.__init__}
 
 Create a QueueRunner.
 
@@ -1473,6 +1473,11 @@ to all be the same op, but it is expected that they all enqueue tensors in
 *  <b>`enqueue_ops`</b>: List of enqueue ops to run in threads later.
 *  <b>`close_op`</b>: Op to close the queue. Pending enqueue ops are preserved.
 *  <b>`cancel_op`</b>: Op to close the queue and cancel pending enqueue ops.
+*  <b>`queue_closed_exception_types`</b>: Optional tuple of Exception types that
+    indicate that the queue has been closed when raised during an enqueue
+    operation.  Defaults to `(tf.errors.OutOfRangeError,)`.  Another common
+    case includes `(tf.errors.OutOfRangeError, tf.errors.CancelledError)`,
+    when some of the enqueue ops may dequeue from other Queues.
 *  <b>`queue_runner_def`</b>: Optional `QueueRunnerDef` protocol buffer. If specified,
     recreates the QueueRunner from its contents. `queue_runner_def` and the
     other arguments are mutually exclusive.
@@ -1583,6 +1588,13 @@ The string name of the underlying Queue.
 - - -
 
 #### `tf.train.QueueRunner.queue` {#QueueRunner.queue}
+
+
+
+
+- - -
+
+#### `tf.train.QueueRunner.queue_closed_exception_types` {#QueueRunner.queue_closed_exception_types}
 
 
 
@@ -2870,6 +2882,17 @@ cluster = tf.train.ClusterSpec({"worker": ["worker0.example.com:2222",
                                        "ps1.example.com:2222"]})
 ```
 
+Each job may also be specified as a sparse mapping from task indices
+to network addresses. This enables a server to be configured without
+needing to know the identity of (for example) all other worker
+tasks:
+
+```
+cluster = tf.train.ClusterSpec({"worker": {1: "worker1.example.com:2222"},
+                                "ps": ["ps0.example.com:2222",
+                                       "ps1.example.com:2222"]})
+```
+
 - - -
 
 #### `tf.train.ClusterSpec.as_cluster_def()` {#ClusterSpec.as_cluster_def}
@@ -2881,7 +2904,17 @@ Returns a `tf.train.ClusterDef` protocol buffer based on this cluster.
 
 #### `tf.train.ClusterSpec.as_dict()` {#ClusterSpec.as_dict}
 
-Returns a dictionary from job names to lists of network addresses.
+Returns a dictionary from job names to their tasks.
+
+For each job, if the task index space is dense, the corresponding
+value will be a list of network addresses; otherwise it will be a
+dictionary mapping (sparse) task indices to the corresponding
+addresses.
+
+##### Returns:
+
+  A dictionary mapping job names to lists or dictionaries
+  describing the tasks in those jobs.
 
 
 
@@ -2895,8 +2928,10 @@ Creates a `ClusterSpec`.
 ##### Args:
 
 
-*  <b>`cluster`</b>: A dictionary mapping one or more job names to lists of network
-    addresses, or a `tf.train.ClusterDef` protocol buffer.
+*  <b>`cluster`</b>: A dictionary mapping one or more job names to (i) a
+    list of network addresses, or (ii) a dictionary mapping integer
+    task indices to network addresses; or a `tf.train.ClusterDef`
+    protocol buffer.
 
 ##### Raises:
 
@@ -2909,7 +2944,13 @@ Creates a `ClusterSpec`.
 
 #### `tf.train.ClusterSpec.job_tasks(job_name)` {#ClusterSpec.job_tasks}
 
-Returns a list of tasks in the given job.
+Returns a mapping from task ID to address in the given job.
+
+NOTE: For backwards compatibility, this method returns a list. If
+the given job was defined with a sparse set of task indices, the
+length of this list may not reflect the number of tasks defined in
+this job. Use the [`num_tasks()`](#ClusterSpec.num_tasks) method
+to find the number of tasks defined in a particular job.
 
 ##### Args:
 
@@ -2918,8 +2959,9 @@ Returns a list of tasks in the given job.
 
 ##### Returns:
 
-  A list of strings, corresponding to the network addresses of tasks in
-  the given job, ordered by task index.
+  A list of task addresses, where the index in the list
+  corresponds to the task index of each task. The list may contain
+  `None` if the job was defined with a sparse set of task indices.
 
 ##### Raises:
 
@@ -2936,6 +2978,72 @@ Returns a list of job names in this cluster.
 ##### Returns:
 
   A list of strings, corresponding to the names of jobs in this cluster.
+
+
+- - -
+
+#### `tf.train.ClusterSpec.num_tasks(job_name)` {#ClusterSpec.num_tasks}
+
+Returns the number of tasks defined in the given job.
+
+##### Args:
+
+
+*  <b>`job_name`</b>: The string name of a job in this cluster.
+
+##### Returns:
+
+  The number of tasks defined in the given job.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `job_name` does not name a job in this cluster.
+
+
+- - -
+
+#### `tf.train.ClusterSpec.task_address(job_name, task_index)` {#ClusterSpec.task_address}
+
+Returns the address of the given task in the given job.
+
+##### Args:
+
+
+*  <b>`job_name`</b>: The string name of a job in this cluster.
+*  <b>`task_index`</b>: A non-negative integer.
+
+##### Returns:
+
+  The address of the given task in the given job.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `job_name` does not name a job in this cluster,
+  or no task with index `task_index` is defined in that job.
+
+
+- - -
+
+#### `tf.train.ClusterSpec.task_indices(job_name)` {#ClusterSpec.task_indices}
+
+Returns a list of valid task indices in the given job.
+
+##### Args:
+
+
+*  <b>`job_name`</b>: The string name of a job in this cluster.
+
+##### Returns:
+
+  A list of valid task indices in the given job.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If `job_name` does not name a job in this cluster,
+  or no task with index `task_index` is defined in that job.
 
 
 
@@ -3771,3 +3879,5 @@ Generates a checkpoint state proto.
   CheckpointState proto with model_checkpoint_path and
   all_model_checkpoint_paths updated to either absolute paths or
   relative paths to the current save_dir.
+
+

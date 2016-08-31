@@ -206,14 +206,13 @@ REGISTER_OP("StringSplit")
     .Output("values: string")
     .Output("shape: int64")
     .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle unsed_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unsed_shape));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unsed_shape));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
 
-      c->set_output(0, c->Matrix(InferenceContext::kUnknownDim,
-                                 InferenceContext::kUnknownDim));
+      c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 2));
       c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
-      c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(2, c->Vector(2));
       return Status::OK();
     })
     .Doc(R"doc(

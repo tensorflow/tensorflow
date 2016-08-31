@@ -760,16 +760,7 @@ def _PackShape(op):
   return [tensor_shape.TensorShape(input_shape)]
 
 
-@ops.RegisterShape("Unpack")
-def _UnpackShape(op):
-  input_shape = op.inputs[0].get_shape()
-  if input_shape.ndims is None:
-    return [tensor_shape.unknown_shape()] * op.get_attr("num")
-
-  input_shape = input_shape.as_list()
-  del input_shape[op.get_attr("axis")]
-  return [tensor_shape.TensorShape(input_shape)] * op.get_attr("num")
-
+ops.RegisterShape("Unpack")(common_shapes.call_cpp_shape_fn)
 
 @ops.RegisterShape("Concat")
 def _ConcatShape(op):
@@ -808,9 +799,7 @@ def _ConcatShape(op):
     return [output_shape]
 
 
-@ops.RegisterShape("ConcatOffset")
-def _ConcatOffsetShape(op):
-  return [x.get_shape() for x in op.inputs[1:]]
+ops.RegisterShape("ConcatOffset")(common_shapes.call_cpp_shape_fn)
 
 
 def boolean_mask(tensor, mask, name="boolean_mask"):
@@ -967,16 +956,7 @@ def split(split_dim, num_split, value, name="split"):
                               name=name)
 
 
-@ops.RegisterShape("Reverse")
-def _ReverseShape(op):
-  input_shape = op.inputs[0].get_shape()
-  dims_shape = op.inputs[1].get_shape().with_rank(1)
-  if dims_shape[0].value is not None:
-    input_shape = input_shape.with_rank(dims_shape[0])
-  if input_shape.ndims is not None and input_shape.ndims > 8:
-    raise ValueError(
-        "tf.reverse() does not work on tensors with more than 8 dimensions")
-  return [input_shape]
+ops.RegisterShape("Reverse")(common_shapes.call_cpp_shape_fn)
 
 
 def transpose(a, perm=None, name="transpose"):
@@ -1484,20 +1464,14 @@ def _PlaceholderShape(op):
     return [tensor_shape.unknown_shape()]
 
 
-@ops.RegisterShape("CheckNumerics")
-@ops.RegisterShape("Identity")
-@ops.RegisterShape("RefIdentity")
-@ops.RegisterShape("StopGradient")
-@ops.RegisterShape("BatchMatrixBandPart")
-@ops.RegisterShape("QuantizeAndDequantize")
-def _UnchangedShape(op):
-  return [op.inputs[0].get_shape()]
-
-
-@ops.RegisterShape("Rank")
-@ops.RegisterShape("Size")
-def _ScalarShape(unused_op):
-  return [tensor_shape.scalar()]
+ops.RegisterShape("CheckNumerics")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Identity")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RefIdentity")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("StopGradient")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BatchMatrixBandPart")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QuantizeAndDequantize")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Rank")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Size")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("Slice")
@@ -1683,121 +1657,15 @@ def _StridedSliceShape(op):
   return [tensor_shape.TensorShape(final_shape)]
 
 
-@ops.RegisterShape("Gather")
-def _GatherShape(op):
-  """Shape function for array_ops.gather."""
-  params_shape = op.inputs[0].get_shape()
-  indices_shape = op.inputs[1].get_shape()
-  return [indices_shape.concatenate(params_shape[1:])]
-
-
-@ops.RegisterShape("GatherNd")
-def _GatherNdShape(op):
-  """Shape function for array_ops.gather_nd."""
-  params_shape = op.inputs[0].get_shape()
-  indices_shape = op.inputs[1].get_shape().with_rank_at_least(1)
-  indices_rank = indices_shape.ndims
-  indices_lookup_rank = (
-      None if indices_rank is None else indices_shape[-1].value)
-  if params_shape.ndims is None or indices_lookup_rank is None:
-    return [tensor_shape.unknown_shape()]
-  else:
-    if indices_lookup_rank > params_shape.ndims:
-      raise ValueError(
-          "indices.shape[-1] must be <= params.rank, but saw indices shape: %s "
-          " and params shape: %s" % (indices_shape, params_shape))
-    indices_lookup_shape = indices_shape[:-1]
-    params_slices_shape = params_shape[indices_lookup_rank:]
-    return [indices_lookup_shape.concatenate(params_slices_shape)]
-
-
-@ops.RegisterShape("Unique")
-def _UniqueShape(op):
-  """Shape function for array_ops.Unique."""
-  # The output is a vector with data-dependent length.
-  input_shape = op.inputs[0].get_shape()
-  input_shape.assert_has_rank(1)
-  return [tensor_shape.vector(None), input_shape]
-
-
-@ops.RegisterShape("UniqueWithCounts")
-def _UniqueWithCountsShape(op):
-  """Shape function for array_ops.Unique."""
-  # The output is a vector with data-dependent length.
-  input_shape = op.inputs[0].get_shape()
-  input_shape.assert_has_rank(1)
-  return [tensor_shape.vector(None), input_shape, tensor_shape.vector(None)]
-
-
-@ops.RegisterShape("BatchMatrixDiag")
-def _BatchMatrixDiagShape(op):
-  """Shape function for array_ops.batch_matrix_diag."""
-  diag_shape = op.inputs[0].get_shape().with_rank_at_least(1)
-  return [diag_shape.concatenate(diag_shape[-1])]
-
-
-@ops.RegisterShape("BatchMatrixSetDiag")
-def _BatchMatrixSetDiagShape(op):
-  """Shape function for array_ops.batch_matrix_set_diag."""
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
-  diag_shape = op.inputs[1].get_shape().with_rank_at_least(1)
-  output_shape = diag_shape.concatenate(diag_shape[-1])
-  output_shape = output_shape.merge_with(input_shape)
-  return [output_shape]
-
-
-@ops.RegisterShape("BatchMatrixDiagPart")
-def _BatchMatrixDiagPartShape(op):
-  """Shape function for array_ops.batch_matrix_diag_part."""
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
-  # Last two dims must match
-  input_shape[-1].assert_is_compatible_with(input_shape[-2])
-  return [input_shape[:-1]]
-
-
-@ops.RegisterShape("Diag")
-def _DiagShape(op):
-  """Shape function for array_ops.diag.
-
-  This op has one input (of rank k <= 3), and one output (of rank 2k),
-  where the shape of the output is the concatenation of the input
-  shape with itself.
-
-  Args:
-    op: A Diag Operation.
-
-  Returns:
-    A single-element list containing the shape of the output.
-  """
-  input_shape = op.inputs[0].get_shape().with_rank_at_most(3)
-  return [input_shape.concatenate(input_shape)]
-
-@ops.RegisterShape("DiagPart")
-def _DiagPartShape(op):
-  """Shape function for array_ops.diag_part.
-
-  This op has one input (of rank k = 2, 4, or 6), and one output (of rank k/2),
-  where the shape of the output is the diagonal of the input shape.
-
-  Args:
-    op: A DiagPart Operation.
-
-  Returns:
-    A single-element list containing the shape of the output.
-
-  Raises:
-    ValueError: If input has odd rank or greater than 6, or the first and
-    second halves of the shape are incompatible.
-
-  """
-  input_shape = op.inputs[0].get_shape().with_rank_at_most(6)
-  rank = input_shape.ndims
-  if rank is None:
-    return [tensor_shape.unknown_shape()]
-  if rank % 2:
-    raise ValueError("Input must be even rank, got rank = " + str(rank) + ".")
-  mid = rank // 2
-  return [input_shape[:mid].merge_with(input_shape[mid:])]
+ops.RegisterShape("Gather")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("GatherNd")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Unique")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("UniqueWithCounts")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BatchMatrixDiag")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BatchMatrixSetDiag")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BatchMatrixDiagPart")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Diag")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("DiagPart")(common_shapes.call_cpp_shape_fn)
 
 @ops.RegisterShape("ExpandDims")
 def _ExpandDimsShape(op):
@@ -1828,83 +1696,8 @@ def _ExpandDimsShape(op):
   return [tensor_shape.TensorShape(result_shape)]
 
 
-@ops.RegisterShape("Squeeze")
-def _SqueezeShape(op):
-  """Determine shape for squeeze op's output tensor.
-
-  Args:
-    op: Operation for which to determine shape.
-  Returns:
-    Shape of op's output tensor.
-  Raises:
-    ValueError: if squeeze_dims includes a dimension outside of [-rank, rank),
-        where rank is the number of dimensions in the input tensor. Or, if
-        squeeze_dims includes a dimension for which input shape has a value
-        not equal to 1.
-  """
-  input_shape = op.inputs[0].get_shape()
-  if input_shape.dims is None:
-    return [tensor_shape.unknown_shape()]
-
-  squeeze_dims = op.get_attr("squeeze_dims") or []
-  wrapped_squeeze_dims = []
-  input_ndims = input_shape.ndims
-  for i, squeeze_dim in enumerate(squeeze_dims):
-    if squeeze_dim < -input_ndims or squeeze_dim >= input_ndims:
-      raise ValueError(
-          "squeeze_dims[%d]=%d not in [%d, %d)." % (
-              i, squeeze_dim, -input_ndims, input_ndims))
-    if squeeze_dim < 0:
-      squeeze_dim += input_ndims
-    wrapped_squeeze_dims.append(squeeze_dim)
-
-  result_shape = []
-  for i, dim in enumerate([d.value for d in input_shape.dims]):
-    is_explicit_match = i in wrapped_squeeze_dims
-    if dim is None:
-      if is_explicit_match:
-        # Assume that the squeezed dimension will be 1 at runtime.
-        continue
-      if not wrapped_squeeze_dims:
-        # If squeezing all 1 dimensions and we see a None, give up.
-        return [tensor_shape.unknown_shape()]
-    elif dim == 1:
-      if is_explicit_match or not wrapped_squeeze_dims:
-        continue
-    elif is_explicit_match:
-      raise ValueError(
-          "Can not squeeze dim[%d], expected a dimension of 1, got %d." % (
-              i, dim))
-    result_shape.append(dim)
-  return [tensor_shape.TensorShape(result_shape)]
-
-
-@ops.RegisterShape("Bitcast")
-def _BitcastShape(op):
-  """Shape function for Bitcast op."""
-  input_shape = op.inputs[0].get_shape()
-  if input_shape == tensor_shape.unknown_shape():
-    return [tensor_shape.unknown_shape()]
-  input_type = op.inputs[0].dtype
-  size_of_input = input_type.size
-  output = dtypes.as_dtype(op.get_attr("type"))
-  size_of_output = output.size
-  if size_of_input == size_of_output:
-    return [input_shape]
-  else:
-    if size_of_output > size_of_input:
-      new_shape = input_shape.with_rank_at_least(1).as_list()
-      last_val = new_shape[-1]
-      if last_val is None or last_val == (size_of_output // size_of_input):
-        new_shape = new_shape[:-1]
-      else:
-        raise ValueError(
-            "Cannot bitcast due to shape. %d is not evenly divisible by %d." %
-            (new_shape[-1], size_of_input // size_of_output))
-    else:
-      new_shape = input_shape
-      new_shape = new_shape.concatenate([size_of_input // size_of_output])
-    return [tensor_shape.TensorShape(new_shape)]
+ops.RegisterShape("Squeeze")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Bitcast")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("Reshape")
@@ -1951,13 +1744,7 @@ def _ReshapeShape(op):
   return [new_shape]
 
 
-@ops.RegisterShape("BroadcastGradientArgs")
-def _BroadcastGradientArgsShape(op):
-  """Shape function for the BroadcastGradientArgs op."""
-  # TODO(mrry): Implement constant_value for BroadcastGradientArgs?
-  op.inputs[0].get_shape().assert_has_rank(1)
-  op.inputs[1].get_shape().assert_has_rank(1)
-  return [tensor_shape.vector(None), tensor_shape.vector(None)]
+ops.RegisterShape("BroadcastGradientArgs")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("Fill")
@@ -1984,20 +1771,8 @@ def _FillShape(op):
   return [tensor_util.constant_value_as_shape(op.inputs[0])]
 
 
-@ops.RegisterShape("InvertPermutation")
-def _InvertPermutationShape(op):
-  """Shape function for the InvertPermutation op."""
-  return [op.inputs[0].get_shape().with_rank(1)]
-
-
-@ops.RegisterShape("ListDiff")
-def _ListDiffShape(op):
-  """Shape function for the ListDiff op."""
-  op.inputs[0].get_shape().assert_has_rank(1)
-  op.inputs[1].get_shape().assert_has_rank(1)
-  # TODO(mrry): Indicate that the length falls within an interval?
-  return [tensor_shape.vector(None)] * 2
-
+ops.RegisterShape("InvertPermutation")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ListDiff")(common_shapes.call_cpp_shape_fn)
 
 @ops.RegisterShape("Pad")
 @ops.RegisterShape("MirrorPad")
@@ -2061,51 +1836,9 @@ def _MirrorPadGradShape(op):
   return [tensor_shape.TensorShape(output_dims)]
 
 
-@ops.RegisterShape("ReverseSequence")
-def _ReverseSequenceShape(op):
-  """Shape function for the ReverseSequence op.
-
-  This op has two inputs:
-
-  * input: A rank-N tensor with size B in the 0th dimension.
-  * seq_lens: A vector of length B.
-
-  It has one output, with the same size as input.
-
-  Args:
-    op: A ReverseSequence Operation.
-
-  Returns:
-    A single-element list containing the shape of the output.
-
-  Raises:
-    ValueError: If the input shapes are incompatible or seq_dim == batch_dim.
-  """
-  input_shape = op.inputs[0].get_shape()
-  seq_lens_shape = op.inputs[1].get_shape().with_rank(1)
-  if input_shape.ndims is None:
-    return [None]
-  seq_dim = op.get_attr("seq_dim")
-  batch_dim = op.get_attr("batch_dim")
-  if input_shape.ndims is not None:
-    if batch_dim >= input_shape.ndims:
-      raise ValueError("batch_dim must be < input.dims() (%d vs %d)" %
-                       (batch_dim, input_shape.ndims))
-    if seq_dim >= input_shape.ndims:
-      raise ValueError("seq_dim must be < input.dims() (%d vs %d)" %
-                       (seq_dim, input_shape.ndims))
-  batch_size = input_shape[batch_dim].merge_with(seq_lens_shape[0])
-  input_shape = tensor_shape.TensorShape([
-      value if ix != batch_dim else batch_size
-      for ix, value in enumerate(input_shape)])
-  return [input_shape]
-
-
-@ops.RegisterShape("Shape")
-@ops.RegisterShape("ShapeN")
-def _ShapeNShape(op):
-  """Shape function for the Shape/ShapeN op."""
-  return [tensor_shape.vector(x.get_shape().ndims) for x in op.inputs]
+ops.RegisterShape("ReverseSequence")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Shape")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ShapeN")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("Transpose")
@@ -2218,17 +1951,8 @@ def _TileGradShape(op):
     return [tensor_shape.TensorShape(output_dims)]
 
 
-@ops.RegisterShape("Where")
-def _WhereShape(op):
-  """Shape function for the Where op."""
-  input_shape = op.inputs[0].get_shape()
-  return [tensor_shape.matrix(None, input_shape.ndims)]
-
-
-@ops.RegisterShape("ZerosLike")
-def _ZerosLikeShape(op):
-  """Shape function for the ZerosLike op."""
-  return [op.inputs[0].get_shape()]
+ops.RegisterShape("Where")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ZerosLike")(common_shapes.call_cpp_shape_fn)
 
 
 def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
