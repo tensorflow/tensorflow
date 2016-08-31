@@ -970,5 +970,129 @@ TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
   }
 }
 
+TEST(DirectSessionTest, TestDirectSessionRunClose) {
+  // Construct a graph with a variable and a single assign.
+  Graph g(OpRegistry::Global());
+  Tensor t(DT_FLOAT, TensorShape({}));
+  t.scalar<float>()() = {1.2};
+  Node* var_val = test::graph::Constant(&g, t);
+  Node* var = test::graph::Var(&g, DT_FLOAT, {});
+  Node* var_assign = test::graph::Assign(&g, var, var_val);
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+
+  SessionOptions options;
+  (*options.config.mutable_device_count())["CPU"] = 2;
+  std::unique_ptr<Session> session(NewSession(options));
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  // Assign a value to the var.
+  TF_ASSERT_OK(session->Run({} /* inputs */, {},
+                            {var_assign->name()} /* target_nodes */, nullptr));
+
+  // Run a read on the variable to ensure that it works.
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(session->Run(
+      {} /* inputs */, {var->name() + ":0"} /* output_names */, {}, &outputs));
+  EXPECT_EQ(t.scalar<float>()(), outputs[0].scalar<float>()());
+  outputs.clear();
+
+  // Close the session.
+  session->Close();
+
+  // Run the read on the variable to get an error.
+  Status s = session->Run({} /* inputs */, {},
+                          {var_assign->name()} /* target_nodes */, nullptr);
+  EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+}
+
+TEST(DirectSessionTest, TestDirectSessionPRunClose) {
+  GraphDef def;
+  Graph g(OpRegistry::Global());
+
+  Tensor first_value(DT_FLOAT, TensorShape({}));
+  first_value.scalar<float>()() = 1.0;
+  Node* first_const = test::graph::Constant(&g, first_value);
+  Node* first_identity = test::graph::Identity(&g, first_const);
+
+  Tensor second_value(DT_FLOAT, TensorShape({}));
+  second_value.scalar<float>()() = 2.0;
+  Node* second_const = test::graph::Constant(&g, second_value);
+  Node* second_identity = test::graph::Identity(&g, second_const);
+
+  Node* third = test::graph::Add(&g, first_identity, second_identity);
+  Node* third_identity = test::graph::Identity(&g, third);
+
+  test::graph::ToGraphDef(&g, &def);
+
+  std::unique_ptr<Session> session(CreateSession());
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  std::vector<Tensor> outputs;
+
+  string handle;
+  Status s = session->PRunSetup(
+      {first_const->name(), second_const->name()},
+      {first_identity->name() + ":0", second_identity->name() + ":0",
+       third_identity->name() + ":0"},
+      {}, &handle);
+  TF_ASSERT_OK(s);
+
+  Tensor value_11(DT_FLOAT, TensorShape({}));
+  value_11.scalar<float>()() = 11.0;
+  Tensor value_22(DT_FLOAT, TensorShape({}));
+  value_22.scalar<float>()() = 22.0;
+
+  // Close the session.
+  session->Close();
+
+  // Feed first_const, fetch first_identity
+  s = session->PRun(handle, {{first_const->name(), value_11}},
+                    {first_identity->name() + ":0"}, &outputs);
+  EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+}
+
+TEST(DirectSessionTest, TestDirectSessionReset) {
+  // Construct a graph with a variable and a single assign.
+  Graph g(OpRegistry::Global());
+  Tensor t(DT_FLOAT, TensorShape({}));
+  t.scalar<float>()() = {1.2};
+  Node* var_val = test::graph::Constant(&g, t);
+  Node* var = test::graph::Var(&g, DT_FLOAT, {});
+  Node* var_assign = test::graph::Assign(&g, var, var_val);
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+
+  SessionOptions options;
+  (*options.config.mutable_device_count())["CPU"] = 2;
+  std::unique_ptr<Session> session(NewSession(options));
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  // Assign a value to the var.
+  TF_ASSERT_OK(session->Run({} /* inputs */, {},
+                            {var_assign->name()} /* target_nodes */, nullptr));
+
+  // Run a read on the variable to ensure that it works.
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(session->Run(
+      {} /* inputs */, {var->name() + ":0"} /* output_names */, {}, &outputs));
+  EXPECT_EQ(t.scalar<float>()(), outputs[0].scalar<float>()());
+  outputs.clear();
+
+  // Reset the containers.
+  Reset(options, {});
+
+  // Run the read on the variable to get an error.
+  // TODO(suharshs): This test only works because we close the Session in Reset.
+  // If we change the behavior of Reset to not close the Session, this test will
+  // fail, since the Variable buffer is cached by var.
+  Status s = session->Run({} /* inputs */, {},
+                          {var_assign->name()} /* target_nodes */, nullptr);
+  EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
+}
+
 }  // namespace
 }  // namespace tensorflow
