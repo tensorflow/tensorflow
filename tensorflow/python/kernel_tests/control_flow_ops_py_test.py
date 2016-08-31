@@ -1648,6 +1648,42 @@ class ControlFlowTest(tf.test.TestCase):
 
       c = lambda x, y: tf.less(x, 100.0)
       def b(x, y):
+        y1 = tf.square(y)
+        x1 = tf.add(tf.square(x), y1)
+        return x1, y1
+      rx, ry = tf.while_loop(c, b, [x, y])
+
+      r = tf.gradients(rx, y)[0]
+      self.assertEqual(136.0, r.eval())
+      r = tf.gradients(ry, y)[0]
+      self.assertEqual(32.0, r.eval())
+
+      r = tf.gradients(tf.stop_gradient(rx), y)[0]
+      self.assertEqual(r, None)
+      r = tf.gradients(tf.stop_gradient(ry), y)[0]
+      self.assertEqual(r, None)
+
+      r = tf.gradients(tf.stop_gradient(tf.square(rx)), y)[0]
+      self.assertEqual(r, None)
+      r = tf.gradients(tf.stop_gradient(tf.add(rx, ry)), x)[0]
+      self.assertEqual(r, None)
+      r = tf.gradients(tf.stop_gradient(tf.add(rx, ry)), y)[0]
+      self.assertEqual(r, None)
+
+      r = tf.gradients(tf.add(rx, ry), y)[0]
+      self.assertEqual(168.0, r.eval())
+      r = tf.gradients(tf.add(rx, tf.stop_gradient(ry)), y)[0]
+      self.assertEqual(136.0, r.eval())
+      r = tf.gradients(tf.add(tf.stop_gradient(rx), ry), y)[0]
+      self.assertEqual(32.0, r.eval())
+
+  def testWhileGrad_StopGradInside(self):
+    with self.test_session():
+      x = tf.constant(3.0, name="x")
+      y = tf.constant(2.0, name="y")
+
+      c = lambda x, y: tf.less(x, 100.0)
+      def b(x, y):
         y1 = tf.stop_gradient(tf.square(y))
         x1 = tf.add(tf.square(x), y1)
         return x1, y1
@@ -1658,7 +1694,7 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.gradients(rx, x)[0]
       self.assertAllClose(156.0, r.eval())
 
-  def testWhileGradGrad(self):
+  def testWhileGradGradFail(self):
     theta = tf.Variable(initial_value=1.)
     def fn(prev, x):
       return prev + x * theta
