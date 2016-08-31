@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/deep_conv2d.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -101,6 +102,58 @@ class LaunchConv2DOp<CPUDevice, T> {
     LaunchGeneric<CPUDevice, T>::launch(ctx, input, filter, row_stride,
                                         col_stride, padding, output,
                                         data_format);
+  }
+};
+
+template <typename Device, typename T>
+class LaunchDeepConvOp {
+ public:
+  static bool Run(OpKernelContext* ctx, const Tensor& input,
+                  const Tensor& filter, int batch, int input_rows,
+                  int input_cols, int in_depth, int filter_rows,
+                  int filter_cols, int pad_rows, int pad_cols, int out_rows,
+                  int out_cols, int out_depth, int stride_rows, int stride_cols,
+                  Tensor* output, TensorFormat data_format) {
+    return false;
+  }
+};
+
+// Conditionally launches DeepConv operation based on convolution parameters.
+template <>
+class LaunchDeepConvOp<CPUDevice, float> {
+ public:
+  static bool Run(OpKernelContext* ctx, const Tensor& input,
+                  const Tensor& filter, int batch, int input_rows,
+                  int input_cols, int in_depth, int filter_rows,
+                  int filter_cols, int pad_rows, int pad_cols, int out_rows,
+                  int out_cols, int out_depth, int stride_rows, int stride_cols,
+                  Tensor* output, TensorFormat data_format) {
+    if (data_format != FORMAT_NHWC ||
+        !CanUseDeepConv2D(stride_rows, stride_cols, filter_rows, filter_cols,
+                          in_depth, out_depth, out_rows, out_cols)) {
+      return false;
+    }
+
+    Conv2DArgs args;
+    args.batch = batch;
+    args.in_rows = input_rows;
+    args.in_cols = input_cols;
+    args.in_depth = in_depth;
+    args.filter_rows = filter_rows;
+    args.filter_cols = filter_cols;
+    args.pad_rows = pad_rows;
+    args.pad_cols = pad_cols;
+    args.out_rows = out_rows;
+    args.out_cols = out_cols;
+    args.out_depth = out_depth;
+
+    auto input_ptr = input.template flat<float>().data();
+    auto filter_ptr = filter.template flat<float>().data();
+    auto output_ptr = output->template flat<float>().data();
+
+    functor::DeepConv2D<CPUDevice, float>()(ctx, args, input_ptr, filter_ptr,
+                                            output_ptr);
+    return true;
   }
 };
 
@@ -221,6 +274,14 @@ class Conv2DOp : public BinaryOp<T> {
     if (out_shape.num_elements() == 0) {
       return;
     }
+
+    if (LaunchDeepConvOp<Device, T>::Run(
+            context, input, filter, batch, input_rows, input_cols, in_depth,
+            filter_rows, filter_cols, pad_rows, pad_cols, out_rows, out_cols,
+            out_depth, stride_rows, stride_cols, output, data_format_)) {
+      return;
+    }
+
     launcher_.launch(context, use_cudnn_, cudnn_use_autotune_, input, filter,
                      stride_rows, stride_cols,
                      BrainPadding2EigenPadding(padding_), output, data_format_);

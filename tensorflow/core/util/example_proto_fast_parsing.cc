@@ -173,7 +173,7 @@ class Feature {
         auto packed_limit = stream.PushLimit(packed_length);
 
         while (!stream.ExpectAtEnd()) {
-          uint64 n;  // There is no API for int64
+          protobuf_uint64 n;  // There is no API for int64
           if (!stream.ReadVarint64(&n)) return false;
           int64_list->push_back(n);
         }
@@ -182,7 +182,7 @@ class Feature {
       } else {  // non-packed
         while (!stream.ExpectAtEnd()) {
           if (!stream.ExpectTag(kVarintTag(1))) return false;
-          uint64 n;  // There is no API for int64
+          protobuf_uint64 n;  // There is no API for int64
           if (!stream.ReadVarint64(&n)) return false;
           int64_list->push_back(n);
         }

@@ -115,12 +115,16 @@ class TruncatedNormalTest(tf.test.TestCase):
   # Checks that the CPU and GPU implementation returns the same results,
   # given the same random seed
   def testCPUGPUMatch(self):
+    # Skip the test if there is no GPU.
+    if not tf.test.is_gpu_available():
+      return
+
     for dt in tf.float16, tf.float32, tf.float64:
       results = {}
       for use_gpu in [False, True]:
         # We need a particular larger number of samples to test multiple rounds
         # on GPU
-        sampler = self._Sampler(1000000, 0.0, 1.0, dt, use_gpu=use_gpu,
+        sampler = self._Sampler(200000, 0.0, 1.0, dt, use_gpu=use_gpu,
                                 seed=12345)
         results[use_gpu] = sampler()
       if dt == tf.float16:

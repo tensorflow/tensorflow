@@ -70,7 +70,7 @@ class XentTest(tf.test.TestCase):
           [[[1., 1., 1., 1.]], [[1., 2., 3., 4.]]]).astype(dtype)
       np_labels = np.array(
           [[[0., 0., 0., 1.]], [[0., .5, .5, 0.]]]).astype(dtype)
-      self.assertRaisesRegexp(ValueError, "must have rank 2",
+      self.assertRaisesRegexp(ValueError, "must be rank 2",
                               gen_nn_ops._softmax_cross_entropy_with_logits,
                               np_features, np_labels)
 

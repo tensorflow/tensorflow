@@ -91,6 +91,31 @@ struct StridedSliceGrad {
   }
 };
 
+template <typename Device, typename T, int NDIMS>
+struct StridedSliceAssign {
+  void operator()(const Device& d, typename TTypes<T, NDIMS>::Tensor output,
+                  typename TTypes<T, NDIMS>::ConstTensor input,
+                  const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& start_indices,
+                  const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& stop_indices,
+                  const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& strides) {
+    const bool use_64bit = input.size() > Eigen::NumTraits<int>::highest();
+    if (!use_64bit &&
+        Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
+      Eigen::DSizes<int, NDIMS> start_i, stop_i, strides_i;
+      for (int i = 0; i < NDIMS; ++i) {
+        start_i[i] = start_indices[i];
+        stop_i[i] = stop_indices[i];
+        strides_i[i] = strides[i];
+      }
+      To32Bit(output).stridedSlice(start_i, stop_i, strides_i).device(d) =
+          To32Bit(input);
+    } else {
+      output.stridedSlice(start_indices, stop_indices, strides).device(d) =
+          input;
+    }
+  }
+};
+
 }  // namespace functor
 }  // namespace tensorflow
 

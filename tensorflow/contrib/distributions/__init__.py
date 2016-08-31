@@ -60,6 +60,10 @@ initialized with parameters that define the distributions.
 
 @@TransformedDistribution
 
+### Mixture Models
+
+@@Mixture
+
 ## Posterior inference with conjugate priors.
 
 Functions that transform conjugate prior/likelihood pairs to distributions
@@ -74,7 +78,6 @@ representing the posterior or posterior predictive.
 
 @@kl
 @@RegisterKL
-
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -96,6 +99,7 @@ from tensorflow.contrib.distributions.python.ops.gamma import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
 from tensorflow.contrib.distributions.python.ops.kullback_leibler import *
 from tensorflow.contrib.distributions.python.ops.laplace import *
+from tensorflow.contrib.distributions.python.ops.mixture import *
 from tensorflow.contrib.distributions.python.ops.multinomial import *
 from tensorflow.contrib.distributions.python.ops.mvn import *
 from tensorflow.contrib.distributions.python.ops.normal import *

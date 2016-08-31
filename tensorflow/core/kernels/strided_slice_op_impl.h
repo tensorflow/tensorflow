@@ -50,6 +50,13 @@ void HandleStridedSliceGradCase(OpKernelContext* context,
                                 const TensorShape& processing_shape,
                                 bool is_simple_slice, Tensor* result);
 
+template <typename Device, typename T, int NDIM>
+void HandleStridedSliceAssignCase(OpKernelContext* context,
+                                  const gtl::ArraySlice<int64>& begin,
+                                  const gtl::ArraySlice<int64>& end,
+                                  const gtl::ArraySlice<int64>& strides,
+                                  const TensorShape& processing_shape,
+                                  bool is_simple_slice, Tensor* result);
 }  // namespace tensorflow
 
 // The actual implementation. This is designed so multiple
@@ -126,6 +133,29 @@ void HandleStridedSliceGradCase(OpKernelContext* context,
       begin_di, end_di, strides_di);
 }
 
+template <typename Device, typename T, int NDIM>
+void HandleStridedSliceAssignCase(OpKernelContext* context,
+                                  const gtl::ArraySlice<int64>& begin,
+                                  const gtl::ArraySlice<int64>& end,
+                                  const gtl::ArraySlice<int64>& strides,
+                                  const TensorShape& processing_shape,
+                                  bool is_simple_slice, Tensor* result) {
+  gtl::InlinedVector<int64, 4> processing_dims = processing_shape.dim_sizes();
+  typedef typename proxy_type<Device, T>::type Proxy;
+  Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
+  Eigen::DSizes<Eigen::DenseIndex, NDIM> end_di;
+  Eigen::DSizes<Eigen::DenseIndex, NDIM> strides_di;
+  for (int i = 0; i < NDIM; ++i) {
+    begin_di[i] = begin[i];
+    end_di[i] = end[i];
+    strides_di[i] = strides[i];
+  }
+  functor::StridedSliceAssign<Device, Proxy, NDIM>()(
+      context->eigen_device<Device>(), result->bit_casted_tensor<Proxy, NDIM>(),
+      context->input(4).bit_casted_shaped<Proxy, NDIM>(processing_dims),
+      begin_di, end_di, strides_di);
+}
+
 // NODE(aselle): according to bsteiner, we need this because otherwise
 // nvcc instantiates templates that are invalid. strided_slice_op_gpu.cu
 // handles instantiates externally. It is important that this is done#
@@ -158,6 +188,14 @@ void HandleStridedSliceGradCase(OpKernelContext* context,
       const Eigen::DSizes<Eigen::DenseIndex, NDIM>& stop,          \
       const Eigen::DSizes<Eigen::DenseIndex, NDIM>& strides);      \
   extern template struct StridedSliceGrad<GPUDevice, T, NDIM>;     \
+  template <>                                                      \
+  void StridedSliceAssign<GPUDevice, T, NDIM>::operator()(         \
+      const GPUDevice& d, typename TTypes<T, NDIM>::Tensor output, \
+      typename TTypes<T, NDIM>::ConstTensor input,                 \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& start,         \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& stop,          \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& strides);      \
+  extern template struct StridedSliceAssign<GPUDevice, T, NDIM>;   \
   }  // namespace functor
 
 #else
@@ -172,6 +210,12 @@ void HandleStridedSliceGradCase(OpKernelContext* context,
       const TensorShape& processing_shape, bool is_simple_slice,      \
       Tensor* result);                                                \
   template void HandleStridedSliceGradCase<DEVICE, T, DIM>(           \
+      OpKernelContext * context, const gtl::ArraySlice<int64>& begin, \
+      const gtl::ArraySlice<int64>& end,                              \
+      const gtl::ArraySlice<int64>& strides,                          \
+      const TensorShape& processing_shape, bool is_simple_slice,      \
+      Tensor* result);                                                \
+  template void HandleStridedSliceAssignCase<DEVICE, T, DIM>(         \
       OpKernelContext * context, const gtl::ArraySlice<int64>& begin, \
       const gtl::ArraySlice<int64>& end,                              \
       const gtl::ArraySlice<int64>& strides,                          \

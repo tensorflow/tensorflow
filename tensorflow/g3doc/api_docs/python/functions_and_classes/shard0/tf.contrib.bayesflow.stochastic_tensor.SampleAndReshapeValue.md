@@ -28,7 +28,7 @@ assertEqual(dt_value_val.shape, (4, 3))
 ```
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.SampleAndReshapeValue.__init__(n=1, stop_gradient=False)` {#SampleAndReshapeValue.__init__}
+#### `tf.contrib.bayesflow.stochastic_tensor.SampleAndReshapeValue.__init__(n=1, stop_gradient=False)` {#SampleAndReshapeValue.__init__}
 
 Sample `n` times and reshape the outer 2 axes so rank does not change.
 
@@ -42,35 +42,35 @@ Sample `n` times and reshape the outer 2 axes so rank does not change.
 
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.SampleAndReshapeValue.declare_inputs(unused_stochastic_tensor, unused_inputs_dict)` {#SampleAndReshapeValue.declare_inputs}
+#### `tf.contrib.bayesflow.stochastic_tensor.SampleAndReshapeValue.declare_inputs(unused_stochastic_tensor, unused_inputs_dict)` {#SampleAndReshapeValue.declare_inputs}
 
 
 
 
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.SampleAndReshapeValue.n` {#SampleAndReshapeValue.n}
+#### `tf.contrib.bayesflow.stochastic_tensor.SampleAndReshapeValue.n` {#SampleAndReshapeValue.n}
 
 
 
 
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.SampleAndReshapeValue.popped_above(unused_value_type)` {#SampleAndReshapeValue.popped_above}
+#### `tf.contrib.bayesflow.stochastic_tensor.SampleAndReshapeValue.popped_above(unused_value_type)` {#SampleAndReshapeValue.popped_above}
 
 
 
 
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.SampleAndReshapeValue.pushed_above(unused_value_type)` {#SampleAndReshapeValue.pushed_above}
+#### `tf.contrib.bayesflow.stochastic_tensor.SampleAndReshapeValue.pushed_above(unused_value_type)` {#SampleAndReshapeValue.pushed_above}
 
 
 
 
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.SampleAndReshapeValue.stop_gradient` {#SampleAndReshapeValue.stop_gradient}
+#### `tf.contrib.bayesflow.stochastic_tensor.SampleAndReshapeValue.stop_gradient` {#SampleAndReshapeValue.stop_gradient}
 
 
 

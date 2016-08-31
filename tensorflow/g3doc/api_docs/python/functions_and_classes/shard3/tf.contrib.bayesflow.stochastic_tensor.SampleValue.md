@@ -16,7 +16,7 @@ assertEqual(dt.value().get_shape(), (4, 2, 3))
 ```
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.SampleValue.__init__(n=1, stop_gradient=False)` {#SampleValue.__init__}
+#### `tf.contrib.bayesflow.stochastic_tensor.SampleValue.__init__(n=1, stop_gradient=False)` {#SampleValue.__init__}
 
 Sample `n` times and concatenate along a new outer dimension.
 
@@ -30,35 +30,35 @@ Sample `n` times and concatenate along a new outer dimension.
 
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.SampleValue.declare_inputs(unused_stochastic_tensor, unused_inputs_dict)` {#SampleValue.declare_inputs}
+#### `tf.contrib.bayesflow.stochastic_tensor.SampleValue.declare_inputs(unused_stochastic_tensor, unused_inputs_dict)` {#SampleValue.declare_inputs}
 
 
 
 
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.SampleValue.n` {#SampleValue.n}
+#### `tf.contrib.bayesflow.stochastic_tensor.SampleValue.n` {#SampleValue.n}
 
 
 
 
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.SampleValue.popped_above(unused_value_type)` {#SampleValue.popped_above}
+#### `tf.contrib.bayesflow.stochastic_tensor.SampleValue.popped_above(unused_value_type)` {#SampleValue.popped_above}
 
 
 
 
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.SampleValue.pushed_above(unused_value_type)` {#SampleValue.pushed_above}
+#### `tf.contrib.bayesflow.stochastic_tensor.SampleValue.pushed_above(unused_value_type)` {#SampleValue.pushed_above}
 
 
 
 
 - - -
 
-#### `tf.contrib.bayesflow.stochastic_graph.SampleValue.stop_gradient` {#SampleValue.stop_gradient}
+#### `tf.contrib.bayesflow.stochastic_tensor.SampleValue.stop_gradient` {#SampleValue.stop_gradient}
 
 
 

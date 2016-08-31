@@ -1263,7 +1263,7 @@ REGISTER_OP("Softmax")
     .Output("softmax: T")
     .Attr("T: {half, float, double}")
     .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRank(c, 2);
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
     })
     .Doc(R"doc(
 Computes softmax activations.
@@ -1283,7 +1283,7 @@ REGISTER_OP("LogSoftmax")
     .Output("logsoftmax: T")
     .Attr("T: {half, float, double}")
     .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRank(c, 2);
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
     })
     .Doc(R"doc(
 Computes log softmax activations.

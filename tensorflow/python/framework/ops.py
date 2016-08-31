@@ -26,7 +26,6 @@ import linecache
 import re
 import sys
 import threading
-import weakref
 
 import six
 from tensorflow.core.framework import attr_value_pb2
@@ -3592,7 +3591,7 @@ def default_session(session):
   Returns:
     A context manager for the default session.
   """
-  return _default_session_stack.get_controller(weakref.ref(session))
+  return _default_session_stack.get_controller(session)
 
 
 def get_default_session():
@@ -3609,17 +3608,7 @@ def get_default_session():
   Returns:
     The default `Session` being used in the current thread.
   """
-  ref = _default_session_stack.get_default()
-  if ref is None:
-    # No default session has been registered.
-    return None
-  else:
-    # De-reference ref.
-    ret = ref()
-    if ret is None:
-      # This should never happen with the current session implementations.
-      raise RuntimeError("Default session has been garbage collected.")
-  return ret
+  return _default_session_stack.get_default()
 
 
 def _eval_using_default_session(tensors, feed_dict, graph, session=None):

@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.framework import deprecated
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -36,6 +37,8 @@ __all__ = ["absolute_difference",
            "get_total_loss",
            "hinge_loss",
            "log_loss",
+           "mean_pairwise_squared_error",
+           "mean_squared_error",
            "sigmoid_cross_entropy",
            "softmax_cross_entropy",
            "sum_of_pairwise_squares",
@@ -437,6 +440,7 @@ def hinge_loss(logits, target, scope=None):
     return nn_ops.relu(math_ops.sub(all_ones, math_ops.mul(labels, logits)))
 
 
+@deprecated("2016-10-01", "Use mean_squared_error.")
 def sum_of_squares(predictions, targets, weight=1.0, scope=None):
   """Adds a Sum-of-Squares loss to the training procedure.
 
@@ -473,6 +477,10 @@ def sum_of_squares(predictions, targets, weight=1.0, scope=None):
     return _compute_weighted_loss(losses, weight)
 
 
+mean_squared_error = sum_of_squares
+
+
+@deprecated("2016-10-01", "Use mean_pairwise_squared_error.")
 def sum_of_pairwise_squares(predictions, targets, weight=1.0, scope=None):
   """Adds a pairwise-errors-squared loss to the training procedure.
 
@@ -551,6 +559,9 @@ def sum_of_pairwise_squares(predictions, targets, weight=1.0, scope=None):
                                 name="value")
     add_loss(mean_loss)
     return mean_loss
+
+
+mean_pairwise_squared_error = sum_of_pairwise_squares
 
 
 def cosine_distance(predictions, targets, dim, weight=1.0, scope=None):

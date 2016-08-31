@@ -727,10 +727,12 @@ class _OneHotColumn(_FeatureColumn,
         math_ops.equal(array_ops.rank(dense_id_tensor), 2),
         ["Tensor should be of shape: [batch, max num multivalent values]"])
     with ops.control_dependencies([check_shape_op]):
+    # One hot must be float for tf.concat reasons since all other inputs to
+    # input_layer are float32.
       one_hot_id_tensor = array_ops.one_hot(
-          dense_id_tensor, depth=self.length, on_value=1, off_value=0)
+          dense_id_tensor, depth=self.length, on_value=1.0, off_value=0.0)
 
-    # Reduce to get a multi-hot per example
+    # Reduce to get a multi-hot per example.
     return math_ops.reduce_sum(one_hot_id_tensor, reduction_indices=[1])
 
   # pylint: disable=unused-argument
