@@ -731,25 +731,10 @@ def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
       return cost
 
 
-@ops.RegisterShape("SparseSoftmaxCrossEntropyWithLogits")
-def _SparseSoftmaxCrossEntropyWithLogitsShape(op):
-  """Shape function for SparseSoftmaxCrossEntropyWithLogits op."""
-  logits_shape = op.inputs[0].get_shape()
-  input_shape = logits_shape.with_rank(2)
-  batch_size = input_shape[0]
-  # labels_shape
-  op.inputs[1].get_shape().merge_with(tensor_shape.vector(batch_size))
-  return [tensor_shape.vector(batch_size.value), input_shape]
-
-
-@ops.RegisterShape("SoftmaxCrossEntropyWithLogits")
-def _SoftmaxCrossEntropyWithLogitsShape(op):
-  """Shape function for SoftmaxCrossEntropyWithLogits op."""
-  logits_shape = op.inputs[0].get_shape()
-  labels_shape = op.inputs[1].get_shape()
-  input_shape = logits_shape.merge_with(labels_shape).with_rank(2)
-  batch_size = input_shape[0]
-  return [tensor_shape.vector(batch_size.value), input_shape]
+ops.RegisterShape("SparseSoftmaxCrossEntropyWithLogits")(
+    common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SoftmaxCrossEntropyWithLogits")(
+    common_shapes.call_cpp_shape_fn)
 
 
 def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
@@ -812,58 +797,22 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
                                 name=name)
 
 
-ops.RegisterShape("Relu")(common_shapes.unchanged_shape)
-ops.RegisterShape("Relu6")(common_shapes.unchanged_shape)
-ops.RegisterShape("Elu")(common_shapes.unchanged_shape)
-ops.RegisterShape("Softplus")(common_shapes.unchanged_shape)
-ops.RegisterShape("Softsign")(common_shapes.unchanged_shape)
-
-
-@ops.RegisterShape("ReluGrad")
-@ops.RegisterShape("Relu6Grad")
-@ops.RegisterShape("EluGrad")
-@ops.RegisterShape("SoftplusGrad")
-@ops.RegisterShape("SoftsignGrad")
-def _BinaryElementwiseShape(op):
-  """Returns same shape as both inputs to op.
-
-  Args:
-    op: Input operation.
-
-  Returns:
-    Shape of both inputs to `op`.
-  """
-  return [op.inputs[0].get_shape().merge_with(op.inputs[1].get_shape())]
-
-
-ops.RegisterShape("L2Loss")(common_shapes.scalar_shape)
-
-ops.RegisterShape("LRN")(common_shapes.unchanged_shape_with_rank(4))
-
-
-@ops.RegisterShape("LRNGrad")
-def _LRNGradShape(op):
-  """Shape function for LRNGrad op."""
-  in_grads_shape = op.inputs[0].get_shape().with_rank(4)
-  in_image_shape = op.inputs[1].get_shape().with_rank(4)
-  out_image_shape = op.inputs[2].get_shape().with_rank(4)
-  return [in_grads_shape.merge_with(in_image_shape).merge_with(out_image_shape)]
-
-
-ops.RegisterShape("Softmax")(common_shapes.unchanged_shape_with_rank_at_least(
-    1))
-
-ops.RegisterShape("LogSoftmax")(
-    common_shapes.unchanged_shape_with_rank_at_least(1))
-
-
-@ops.RegisterShape("InTopK")
-def _InTopKShape(op):
-  """Shape function for InTopK op."""
-  predictions_shape = op.inputs[0].get_shape().with_rank(2)
-  targets_shape = op.inputs[1].get_shape().with_rank(1)
-  batch_size = predictions_shape[0].merge_with(targets_shape[0])
-  return [tensor_shape.vector(batch_size.value)]
+ops.RegisterShape("Relu")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Relu6")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Elu")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Softplus")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Softsign")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ReluGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Relu6Grad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("EluGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SoftplusGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SoftsignGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("L2Loss")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LRN")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LRNGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Softmax")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LogSoftmax")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("InTopK")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("TopK")
@@ -883,36 +832,10 @@ def _TopKShape(op):
   return [output_shape, output_shape]
 
 
-@ops.RegisterShape("BatchNormWithGlobalNormalization")
-def _BatchNormShape(op):
-  """Shape function for BatchNormWithGlobalNormalization op."""
-  input_shape = op.inputs[0].get_shape().with_rank(4)
-  mean_shape = op.inputs[1].get_shape().with_rank(1)
-  var_shape = op.inputs[2].get_shape().with_rank(1)
-  beta_shape = op.inputs[3].get_shape().with_rank(1)
-  gamma_shape = op.inputs[4].get_shape().with_rank(1)
-  mean_shape[0].merge_with(input_shape[3])
-  var_shape[0].merge_with(input_shape[3])
-  beta_shape[0].merge_with(input_shape[3])
-  gamma_shape[0].merge_with(input_shape[3])
-  return [input_shape]
-
-
-@ops.RegisterShape("BatchNormWithGlobalNormalizationGrad")
-def _BatchNormGradShape(op):
-  """Shape function for BatchNormWithGlobalNormalizationGrad op."""
-  input_shape = op.inputs[0].get_shape().with_rank(4)
-  mean_shape = op.inputs[1].get_shape().with_rank(1)
-  var_shape = op.inputs[2].get_shape().with_rank(1)
-  beta_shape = op.inputs[3].get_shape().with_rank(1)
-  out_backprop_shape = op.inputs[4].get_shape().with_rank(4)
-  input_shape = input_shape.merge_with(out_backprop_shape)
-  vector_dim = input_shape[3]
-  vector_dim = vector_dim.merge_with(mean_shape[0])
-  vector_dim = vector_dim.merge_with(var_shape[0])
-  vector_dim = vector_dim.merge_with(beta_shape[0])
-  return [input_shape] + ([tensor_shape.vector(vector_dim)] * 4)
-
+ops.RegisterShape("BatchNormWithGlobalNormalization")(
+    common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BatchNormWithGlobalNormalizationGrad")(
+    common_shapes.call_cpp_shape_fn)
 
 ops.RegisterShape("Conv2D")(common_shapes.conv2d_shape)
 ops.RegisterShape("DepthwiseConv2dNative")(
@@ -1022,12 +945,8 @@ def _DepthwiseConv2dNativeBackpropInputShape(op):
     return [tensor_shape.unknown_shape(ndims=4)]
 
 
-@ops.RegisterShape("MaxPoolGrad")
-@ops.RegisterShape("MaxPoolGradWithArgmax")
-def _MaxPoolGradShape(op):
-  """Shape function for the MaxPoolGrad op."""
-  orig_input_shape = op.inputs[0].get_shape().with_rank(4)
-  return [orig_input_shape]
+ops.RegisterShape("MaxPoolGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MaxPoolGradWithArgmax")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterStatistics("Conv2D", "flops")
@@ -1150,46 +1069,12 @@ def _Pool3DShape(op):
                                     channels])]
 
 
-@ops.RegisterShape("Conv3DBackpropFilter")
-def _Conv3DBackpropFilterShape(op):
-  """Shape function for the Conv3DBackpropFilter op."""
-  filter_shape = op.inputs[1].get_shape()
-  return [filter_shape.with_rank(5)]
-
-
-@ops.RegisterShape("Conv3DBackpropInput")
-def _Conv3DBackpropInputShape(op):
-  """Shape function for the Conv3DBackpropInput op."""
-  input_shape = op.inputs[0].get_shape()
-  return [input_shape.with_rank(5)]
-
-
-@ops.RegisterShape("Conv3DBackpropFilterV2")
-def _Conv3DBackpropFilterShapeV2(op):
-  """Shape function for the Conv3DBackpropFilterV2 op."""
-  filter_shape = tensor_util.constant_value(op.inputs[1])
-  return [tensor_shape.TensorShape(filter_shape).with_rank(5)]
-
-
-@ops.RegisterShape("Conv3DBackpropInputV2")
-def _Conv3DBackpropInputShapeV2(op):
-  """Shape function for the Conv3DBackpropInputV2 op."""
-  input_shape = tensor_util.constant_value(op.inputs[0])
-  return [tensor_shape.TensorShape(input_shape).with_rank(5)]
-
-
-@ops.RegisterShape("AvgPool3DGrad")
-def _AvgPool3DGradShape(op):
-  """Shape function for the AvgPool3DGrad op."""
-  orig_input_shape = tensor_util.constant_value(op.inputs[0])
-  return [tensor_shape.TensorShape(orig_input_shape).with_rank(5)]
-
-
-@ops.RegisterShape("MaxPool3DGrad")
-def _MaxPool3DGradShape(op):
-  """Shape function for the MaxPoolGrad op."""
-  orig_input_shape = op.inputs[0].get_shape().with_rank(5)
-  return [orig_input_shape]
+ops.RegisterShape("Conv3DBackpropFilter")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Conv3DBackpropInput")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Conv3DBackpropFilterV2")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Conv3DBackpropInputV2")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AvgPool3DGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MaxPool3DGrad")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterStatistics("BiasAdd", "flops")
@@ -1431,16 +1316,8 @@ def _Dilation2DShape(op):
   return [tensor_shape.TensorShape(output_shape)]
 
 
-@ops.RegisterShape("Dilation2DBackpropInput")
-def _Dilation2DBackpropInputShape(op):
-  """Shape function for Dilation2DBackpropInput op."""
-  return [op.inputs[0].get_shape()]
-
-
-@ops.RegisterShape("Dilation2DBackpropFilter")
-def _Dilation2DBackpropFilterShape(op):
-  """Shape function for Dilation2DBackpropFilter op."""
-  return [op.inputs[1].get_shape()]
+ops.RegisterShape("Dilation2DBackpropInput")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Dilation2DBackpropFilter")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterStatistics("Dilation2D", "flops")
