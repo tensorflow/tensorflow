@@ -7,11 +7,12 @@ github source.
 
 The TensorFlow Python API supports Python 2.7 and Python 3.3+.
 
-The GPU version (Linux only) works best with Cuda Toolkit 7.5 and
-cuDNN v4.  other versions are supported (Cuda toolkit >= 7.0 and
-cuDNN 6.5(v2), 7.0(v3), v5) only when installing from sources.
+The GPU version works best with Cuda Toolkit 7.5 and
+cuDNN v4 on Linux.  Other versions are supported (Cuda toolkit >= 7.0 and
+cuDNN 7.0(v3), v5) only when installing from sources. For Mac OS X,
+Cuda Toolkit 7.5 and cuDNN v5 are recommended.
 Please see [Cuda installation](#optional-install-cuda-gpus-on-linux)
-for details.
+for details. For Mac OS X, please see [Setup GPU for Mac](#optional-setup-gpu-for-mac).
 
 ## Overview
 
@@ -554,7 +555,7 @@ $ sudo apt-get install python3-numpy swig python3-dev python3-wheel
 #### Optional: Install CUDA (GPUs on Linux)
 
 In order to build or run TensorFlow with GPU support, both NVIDIA's Cuda Toolkit (>= 7.0) and
-cuDNN (>= v2) need to be installed.
+cuDNN (>= v3) need to be installed.
 
 TensorFlow GPU support requires having a GPU card with NVidia Compute Capability >= 3.0.
 Supported cards include but are not limited to:
@@ -580,8 +581,8 @@ Install the toolkit into e.g. `/usr/local/cuda`
 
 https://developer.nvidia.com/cudnn
 
-Download cuDNN v4 (v5 is currently a release candidate and is only supported when
-installing TensorFlow from sources).
+Download cuDNN v4 (v5 is only supported when
+installing TensorFlow from sources). If setting up on Mac, download cuDNN v5.
 
 Uncompress and copy the cuDNN files into the toolkit directory.  Assuming the
 toolkit is installed in `/usr/local/cuda`, run the following commands (edited
@@ -657,7 +658,7 @@ export PATH="$CUDA_HOME/bin:$PATH"
 ```
 
 Finally, you will also want to install the [CUDA Deep Neural
-Network](https://developer.nvidia.com/cudnn) (cuDNN) library which currently
+Network](https://developer.nvidia.com/cudnn) (cuDNN v5) library which currently
 requires an [Accelerated Computing Developer
 Program](https://developer.nvidia.com/accelerated-computing-developer) account.
 Once you have it downloaded locally, you can unzip and move the header and
