@@ -34,7 +34,6 @@ from tensorflow.python.ops import math_ops
 ops.NoGradient("SigmoidGrad")
 ops.NoGradient("TanhGrad")
 ops.NoGradient("InvGrad")
-ops.NoGradient("SqrtGrad")
 ops.NoGradient("RsqrtGrad")
 
 def _safe_shape_div(x, y):
@@ -268,6 +267,14 @@ def _SquareGrad(op, grad):
 def _SqrtGrad(op, grad):
   y = op.outputs[0]  # y = x^(1/2)
   return gen_math_ops._sqrt_grad(y, grad)
+
+
+@ops.RegisterGradient("SqrtGrad")
+def _SqrtGradGrad(op, grad):
+  a = op.inputs[0]
+  y = op.outputs[0]  # y = 0.5 * b / a
+  with ops.control_dependencies([grad.op]):
+    return -grad * y / a, 0.5 * grad / a
 
 
 @ops.RegisterGradient("Rsqrt")
