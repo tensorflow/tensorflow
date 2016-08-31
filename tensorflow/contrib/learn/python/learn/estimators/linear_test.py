@@ -569,7 +569,7 @@ class LinearClassifierTest(tf.test.TestCase):
     def input_fn():
       return {
           'age': tf.constant([[1], [2]]),
-          'language': tf.SparseTensor(values=['greek', 'chinise'],
+          'language': tf.SparseTensor(values=['greek', 'chinese'],
                                       indices=[[0, 0], [1, 0]],
                                       shape=[2, 1]),
       }, tf.constant([[1], [0]])
@@ -635,7 +635,7 @@ class LinearRegressorTest(tf.test.TestCase):
   def testSdcaOptimizerRealValuedLinearFeatures(self):
     """Tests LinearRegressor with SDCAOptimizer and real valued features."""
     x = [[1.2, 2.0, -1.5], [-2.0, 3.0, -0.5], [1.0, -0.5, 4.0]]
-    weights = [3.0, -1.2, 0.5]
+    weights = [[3.0], [-1.2], [0.5]]
     y = np.dot(x, weights)
 
     def input_fn():
@@ -655,7 +655,8 @@ class LinearRegressorTest(tf.test.TestCase):
     regressor.fit(input_fn=input_fn, steps=20)
     loss = regressor.evaluate(input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss, 0.01)
-    self.assertAllClose(weights, regressor.weights_.flatten(), rtol=0.1)
+    self.assertAllClose([w[0] for w in weights],
+                        regressor.weights_.flatten(), rtol=0.1)
 
   def testSdcaOptimizerMixedFeaturesArbitraryWeights(self):
     """Tests LinearRegressor with SDCAOptimizer and a mix of features."""
@@ -744,6 +745,127 @@ class LinearRegressorTest(tf.test.TestCase):
       print('Var name: %s, value: %s' %
             (var_name, no_l1_reg_weights[var_name].flatten()))
     self.assertLess(l1_reg_weights_norm, no_l1_reg_weights_norm)
+
+  def testSdcaOptimizerBiasOnly(self):
+    """Tests LinearClasssifier with SDCAOptimizer and validates bias weight."""
+
+    def input_fn():
+      """Testing the bias weight when it's the only feature present.
+
+      All of the instances in this input only have the bias feature, and a
+      1/4 of the labels are positive. This means that the expected weight for
+      the bias should be close to the average prediction, i.e 0.25.
+      Returns:
+        Training data for the test.
+      """
+      num_examples = 40
+      return {
+          'example_id': tf.constant([str(x+1) for x in range(num_examples)]),
+          # place_holder is an empty column which is always 0 (absent), because
+          # LinearClassifier requires at least one column.
+          'place_holder': tf.constant([[0.0]]*num_examples),
+      }, tf.constant([[1 if i % 4 is 0 else 0] for i in range(num_examples)])
+
+    place_holder = tf.contrib.layers.real_valued_column('place_holder')
+    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
+        example_id_column='example_id')
+    regressor = tf.contrib.learn.LinearRegressor(
+        feature_columns=[place_holder],
+        optimizer=sdca_optimizer)
+    regressor.fit(input_fn=input_fn, steps=100)
+
+    self.assertNear(regressor.get_variable_value('linear/bias_weight')[0],
+                    0.25, err=0.1)
+
+  def testSdcaOptimizerBiasAndOtherColumns(self):
+    """Tests LinearClasssifier with SDCAOptimizer and validates bias weight."""
+
+    def input_fn():
+      """Testing the bias weight when there are other features present.
+
+      1/2 of the instances in this input have feature 'a', the rest have
+      feature 'b', and we expect the bias to be added to each instance as well.
+      0.4 of all instances that have feature 'a' are positive, and 0.2 of all
+      instances that have feature 'b' are positive. The labels in the dataset
+      are ordered to appear shuffled since SDCA expects shuffled data, and
+      converges faster with this pseudo-random ordering.
+      If the bias was centered we would expect the weights to be:
+      bias: 0.3
+      a: 0.1
+      b: -0.1
+      Until b/29339026 is resolved, the bias gets regularized with the same
+      global value for the other columns, and so the expected weights get
+      shifted and are:
+      bias: 0.2
+      a: 0.2
+      b: 0.0
+      Returns:
+        The test dataset.
+      """
+      num_examples = 200
+      half = int(num_examples/2)
+      return {
+          'example_id': tf.constant([str(x+1) for x in range(num_examples)]),
+          'a': tf.constant([[1]]*int(half) + [[0]]*int(half)),
+          'b': tf.constant([[0]]*int(half) + [[1]]*int(half)),
+      }, tf.constant([[x] for x in
+                      [1, 0, 0, 1, 1, 0, 0, 0, 1, 0] * int(half/10) +
+                      [0, 1, 0, 0, 0, 0, 0, 0, 1, 0] * int(half/10)])
+
+    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
+        example_id_column='example_id')
+    regressor = tf.contrib.learn.LinearRegressor(
+        feature_columns=[tf.contrib.layers.real_valued_column('a'),
+                         tf.contrib.layers.real_valued_column('b')],
+        optimizer=sdca_optimizer)
+
+    regressor.fit(input_fn=input_fn, steps=200)
+
+    # TODO(b/29339026): Change the expected results to expect a centered bias.
+    self.assertNear(
+        regressor.get_variable_value('linear/bias_weight')[0], 0.2, err=0.05)
+    self.assertNear(regressor.weights_['linear/a/weight'][0], 0.2, err=0.05)
+    self.assertNear(regressor.weights_['linear/b/weight'][0], 0.0, err=0.05)
+
+  def testSdcaOptimizerBiasAndOtherColumnsFabricatedCentered(self):
+    """Tests LinearClasssifier with SDCAOptimizer and validates bias weight."""
+
+    def input_fn():
+      """Testing the bias weight when there are other features present.
+
+      1/2 of the instances in this input have feature 'a', the rest have
+      feature 'b', and we expect the bias to be added to each instance as well.
+      0.1 of all instances that have feature 'a' have a label of 1, and 0.1 of
+      all instances that have feature 'b' have a label of -1.
+      We can expect the weights to be:
+      bias: 0.0
+      a: 0.1
+      b: -0.1
+      Returns:
+        The test dataset.
+      """
+      num_examples = 200
+      half = int(num_examples/2)
+      return {
+          'example_id': tf.constant([str(x+1) for x in range(num_examples)]),
+          'a': tf.constant([[1]]*int(half) + [[0]]*int(half)),
+          'b': tf.constant([[0]]*int(half) + [[1]]*int(half)),
+      }, tf.constant([[1 if x%10 == 0 else 0] for x in range(half)] +
+                     [[-1 if x%10 == 0 else 0] for x in range(half)])
+
+    sdca_optimizer = tf.contrib.linear_optimizer.SDCAOptimizer(
+        example_id_column='example_id')
+    regressor = tf.contrib.learn.LinearRegressor(
+        feature_columns=[tf.contrib.layers.real_valued_column('a'),
+                         tf.contrib.layers.real_valued_column('b')],
+        optimizer=sdca_optimizer)
+
+    regressor.fit(input_fn=input_fn, steps=100)
+
+    self.assertNear(
+        regressor.get_variable_value('linear/bias_weight')[0], 0.0, err=0.05)
+    self.assertNear(regressor.weights_['linear/a/weight'][0], 0.1, err=0.05)
+    self.assertNear(regressor.weights_['linear/b/weight'][0], -0.1, err=0.05)
 
 
 def boston_input_fn():
