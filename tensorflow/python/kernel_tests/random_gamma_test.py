@@ -39,25 +39,18 @@ class RandomGammaTest(tf.test.TestCase):
 
     return func
 
-  """
-  We are not currently allowing scipy in core TF tests.
-
   def testMoments(self):
     try:
       from scipy import stats  # pylint: disable=g-import-not-at-top
       z_limit = 6.0
       for dt in tf.float16, tf.float32, tf.float64:
         for stride in 0, 1, 4, 17:
-          for alpha in .5, 3.:
-            for scale in 11, 21:
+          for alpha in 0.2, 0.7, 3.0:
+            for scale in 9, 17:
               # Gamma moments only defined for values less than the scale param.
               max_moment = scale // 2
-              sampler = self._Sampler(1000,
-                                      alpha,
-                                      1 / scale,
-                                      dt,
-                                      use_gpu=False,
-                                      seed=12345)
+              sampler = self._Sampler(
+                  1000, alpha, 1 / scale, dt, use_gpu=False, seed=137)
               moments = [0] * (max_moment + 1)
               moments_sample_count = [0] * (max_moment + 1)
               x = np.array(sampler().flat)  # sampler does 10x samples
@@ -94,8 +87,43 @@ class RandomGammaTest(tf.test.TestCase):
                     (moments[i] - moments_i_mean) / math.sqrt(total_variance))
                 self.assertLess(z_test, z_limit)
     except ImportError as e:
-      tf.logging.warn('Cannot test stats functions: %s' % str(e))
-  """
+      tf.logging.warn("Cannot test distribution moments: %s" % e)
+
+  def _testZeroDensity(self, alpha):
+    """Zero isn't in the support of the gamma distribution.
+
+    But quantized floating point math has its limits. # TODO(bjp):
+    Implement log-gamma sampler for small-shape distributions.
+
+    Args:
+      alpha: float shape value to test
+    """
+    try:
+      from scipy import stats  # pylint: disable=g-import-not-at-top
+      allowable_zeros = {
+          tf.float16: stats.gamma(alpha).cdf(np.finfo(np.float16).tiny),
+          tf.float32: stats.gamma(alpha).cdf(np.finfo(np.float32).tiny),
+          tf.float64: stats.gamma(alpha).cdf(np.finfo(np.float64).tiny)
+      }
+      failures = []
+      for use_gpu in [False, True]:
+        for dt in tf.float16, tf.float32, tf.float64:
+          sampler = self._Sampler(1000, alpha, 1.0, dt, use_gpu=use_gpu)
+          x = sampler()
+          allowable = allowable_zeros[dt] * x.size
+          allowable = allowable * 2 if allowable < 10 else allowable * 1.05
+          if np.sum(x <= 0) > allowable:
+            failures += [(use_gpu, dt)]
+      self.assertEqual([], failures)
+
+    except ImportError as e:
+      tf.logging.warn("Cannot test using gamma cdf: %s" % e)
+
+  def testNonZeroSmallShape(self):
+    self._testZeroDensity(0.01)
+
+  def testNonZeroSmallishShape(self):
+    self._testZeroDensity(0.35)
 
   # Asserts that different trials (1000 samples per trial) is unlikely
   # to see the same sequence of values. Will catch buggy
