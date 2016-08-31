@@ -55,11 +55,13 @@ tf_kernel_library(
         "strided_slice_op_inst_6.cc",
     ],
     hdrs = [
+        "dense_update_ops.h",
         "slice_op.h",
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
     ],
     gpu_srcs = [
+        "dense_update_ops.h",
         "slice_op.h",
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
