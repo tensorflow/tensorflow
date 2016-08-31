@@ -1,53 +1,64 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-slider/paper-slider.html">
 <link rel="import" href="../paper-input/paper-input.html">
 <link rel="import" href="../paper-checkbox/paper-checkbox.html">
+<link rel="import" href="../tf-imports/lodash.html">
 
 <!--
 tf-smoothing-input creates an input component for exponential smoothing.
 -->
 <dom-module id="tf-smoothing-input">
   <template>
-    <div class="smoothing-line">
-      <paper-checkbox
-        checked="{{enabled}}"
-        >Exponential smoothing</paper-checkbox>
-      <div class="smoothing-block">
-        <paper-slider
-          value="{{decay}}"
-          immediate-value="{{_immediateDecayNumberForPaperSlider}}"
-          type="number"
-          step="[[step]]"
-          min="[[min]]"
-          max="[[max]]"
-          disabled="[[!enabled]]"
-          ></paper-slider>
-        <paper-input
-          id="input"
-          label="decay"
-          no-label-float
-          value="{{_inputDecayStringForPaperInput}}"
-          type="number"
-          step="[[step]]"
-          min="[[min]]"
-          max="[[max]]"
-          disabled="[[!enabled]]"
-          ></paper-input>
-      </div>
+    <h3 class="title">Smoothing</h3>
+    <div class="smoothing-block">
+      <paper-slider
+        id="slider"
+        value="{{weight}}"
+        immediate-value="{{_immediateWeightNumberForPaperSlider}}"
+        type="number"
+        step="[[step]]"
+        min="[[min]]"
+        max="[[max]]"
+        ></paper-slider>
+      <paper-input
+        id="input"
+        label="weight"
+        no-label-float
+        value="{{_inputWeightStringForPaperInput}}"
+        type="number"
+        step="[[step]]"
+        min="[[min]]"
+        max="[[max]]"
+        ></paper-input>
     </div>
     <style>
-      .smoothing-line {
-        margin-top: 15px;
+      .title {
+        color: var(--paper-grey-800);
+        margin: 0;
+        font-weight: normal;
+        font-size: 14px;
+        margin-bottom: 5px;
       }
 
       .smoothing-block {
         display: flex;
-      }
-
-      paper-checkbox {
-        --paper-checkbox-checked-color: var(--tb-ui-dark-accent);
-        --paper-checkbox-unchecked-color: var(--tb-ui-dark-accent);
-        font-size: 14px;
       }
 
       paper-slider {
@@ -74,74 +85,52 @@ tf-smoothing-input creates an input component for exponential smoothing.
       is: "tf-smoothing-input",
 
       properties: {
-        enabled: {
-          type: Boolean,
-          value: false,
-          notify: true,
-          observer: '_enabledChanged'
-        },
-
         step: Number,
         max: Number,
         min: Number,
 
-        decay: {
+        weight: {
           type: Number,
-          value: 0.9,
+          value: 0.6,
           notify: true
         },
 
-        _immediateDecayNumberForPaperSlider: {
+        _immediateWeightNumberForPaperSlider: {
           type: Number,
           notify: true,
-          observer: '_immediateDecayNumberForPaperSliderChanged'
+          observer: '_immediateWeightNumberForPaperSliderChanged'
         },
 
         // Paper input treats values as strings even if you specify them as
         // numbers.
-        _inputDecayStringForPaperInput: {
+        _inputWeightStringForPaperInput: {
           type: String,
           notify: true,
-          observer: '_inputDecayStringForPaperInputChanged'
+          observer: '_inputWeightStringForPaperInputChanged'
         }
       },
 
-      _updateDecay: _.debounce(function(val) {
-        this.decay = val;
+      _updateWeight: _.debounce(function(val) {
+        this.weight = val;
       }, 250),
 
-      _enabledChanged: function() {
-        // Workaround for paper-input bug on firefox :(
-        // Element crashes if we change value while it is disabled.
-        if (this.enabled) {
-          this.$.input.label = '';
-          this._immediateDecayNumberForPaperSliderChanged();
-        }
+      _immediateWeightNumberForPaperSliderChanged: function() {
+        this._inputWeightStringForPaperInput =
+            this._immediateWeightNumberForPaperSlider.toString();
+        this._updateWeight.call(this, this._immediateWeightNumberForPaperSlider);
       },
 
-      _immediateDecayNumberForPaperSliderChanged: function() {
-        if(!this.enabled) {
-          return;
+      _inputWeightStringForPaperInputChanged: function() {
+        if (+this._inputWeightStringForPaperInput < 0) {
+          this._inputWeightStringForPaperInput = '0';
         }
-        this._inputDecayStringForPaperInput =
-            this._immediateDecayNumberForPaperSlider.toString();
-        this._updateDecay.call(this, this._immediateDecayNumberForPaperSlider);
-      },
-
-      _inputDecayStringForPaperInputChanged: function() {
-        if(!this.enabled) {
-           return;
-        }
-        if (+this._inputDecayStringForPaperInput < 0) {
-          this._inputDecayStringForPaperInput = '0';
-        }
-        else if (+this._inputDecayStringForPaperInput > 1) {
-          this._inputDecayStringForPaperInput = '1';
+        else if (+this._inputWeightStringForPaperInput > 1) {
+          this._inputWeightStringForPaperInput = '1';
         }
 
-        var d = +this._inputDecayStringForPaperInput;
+        var d = +this._inputWeightStringForPaperInput;
         if (!isNaN(d)) {
-          this._updateDecay.call(this, d);
+          this._updateWeight.call(this, d);
         }
       }
     });
