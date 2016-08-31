@@ -118,8 +118,8 @@ new_http_archive(
 new_http_archive(
   name = "iron_fit_behavior",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/iron-fit-behavior/archive/v1.2.1.tar.gz",
-  strip_prefix = "iron-fit-behavior-1.2.1",
+  url = "https://github.com/polymerelements/iron-fit-behavior/archive/v1.2.5.tar.gz",
+  strip_prefix = "iron-fit-behavior-1.2.5",
 )
 
 new_http_archive(
@@ -235,6 +235,13 @@ new_http_archive(
 )
 
 new_http_archive(
+  name = "numericjs",
+  build_file = "bower.BUILD",
+  url = "https://github.com/sloisel/numeric/archive/v1.2.6.tar.gz",
+  strip_prefix = "numeric-1.2.6",
+)
+
+new_http_archive(
   name = "paper_behaviors",
   build_file = "bower.BUILD",
   url = "https://github.com/polymerelements/paper-behaviors/archive/v1.0.11.tar.gz",
@@ -302,6 +309,13 @@ new_http_archive(
   build_file = "bower.BUILD",
   url = "https://github.com/polymerelements/paper-item/archive/v1.1.4.tar.gz",
   strip_prefix = "paper-item-1.1.4",
+)
+
+new_http_archive(
+  name = "paper_listbox",
+  build_file = "bower.BUILD",
+  url = "https://github.com/polymerelements/paper-listbox/archive/v1.1.2.tar.gz",
+  strip_prefix = "paper-listbox-1.1.2",
 )
 
 new_http_archive(
@@ -417,6 +431,12 @@ new_http_archive(
 )
 
 new_http_archive(
+  name = "three_js",
+  build_file = "bower.BUILD",
+  url = "https://github.com/mrdoob/three.js/archive/r77.tar.gz",
+)
+
+new_http_archive(
   name = "web_animations_js",
   build_file = "bower.BUILD",
   url = "https://github.com/web-animations/web-animations-js/archive/2.2.1.tar.gz",
@@ -428,4 +448,11 @@ new_http_archive(
   build_file = "bower.BUILD",
   url = "https://github.com/webcomponents/webcomponentsjs/archive/v0.7.22.tar.gz",
   strip_prefix = "webcomponentsjs-0.7.22",
+)
+
+new_http_archive(
+  name = "weblas",
+  build_file = "bower.BUILD",
+  url = "https://github.com/waylonflinn/weblas/archive/v0.9.0.tar.gz",
+  strip_prefix = "weblas-0.9.0",
 )
