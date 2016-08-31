@@ -68,8 +68,8 @@ class SDCAOptimizer(object):
   def get_name(self):
     return 'SDCAOptimizer'
 
-  def get_train_step(self, linear_feature_columns, weight_column_name,
-                     loss_type, features, targets, columns_to_variables,
+  def get_train_step(self, columns_to_variables,
+                     weight_column_name, loss_type, features, targets,
                      global_step):
     """Returns the training operation of an SdcaModel optimizer."""
 
@@ -102,7 +102,7 @@ class SDCAOptimizer(object):
       dense_feature_weights = []
       sparse_feature_weights, sparse_feature_with_values_weights = [], []
       # pylint: disable=protected-access
-      for column in sorted(set(linear_feature_columns), key=lambda x: x.key):
+      for column in sorted(columns_to_variables.keys(), key=lambda x: x.key):
         transformed_tensor = features[column]
         if isinstance(column, layers.feature_column._RealValuedColumn):
           # A real-valued column corresponds to a dense feature in SDCA. A
@@ -124,8 +124,8 @@ class SDCAOptimizer(object):
           sparse_feature_with_values.append(sparse_feature_column)
           # For bucketized columns, the variables list contains exactly one
           # element.
-          sparse_feature_with_values_weights.append(columns_to_variables[
-              column][0])
+          sparse_feature_with_values_weights.append(
+              columns_to_variables[column][0])
         elif isinstance(column, (layers.feature_column._CrossedColumn,
                                  layers.feature_column._SparseColumn)):
           sparse_features.append(sdca_ops.SparseFeatureColumn(
@@ -141,8 +141,8 @@ class SDCAOptimizer(object):
                   array_ops.split(1, 2, id_tensor.indices)[0], [-1]),
               array_ops.reshape(id_tensor.values, [-1]), array_ops.reshape(
                   weight_tensor.values, [-1])))
-          sparse_feature_with_values_weights.append(columns_to_variables[
-              column][0])
+          sparse_feature_with_values_weights.append(
+            columns_to_variables[column][0])
         else:
           raise ValueError('SDCAOptimizer does not support column type %s.' %
                            type(column).__name__)

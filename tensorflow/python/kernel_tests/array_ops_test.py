@@ -303,7 +303,7 @@ class StridedSliceChecker(object):
       else:
         np_specs.append(eval_if_tensor(s))
 
-    self.test.assertAllEqual(self.x_np.__getitem__(np_specs), tensor)
+    self.test.assertAllEqual(self.x_np[tuple(np_specs)], tensor)
     if self.check_type_infer:
       self.test.assertAllEqual(tensor.shape, op.get_shape())
     return tensor
@@ -334,6 +334,12 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
           _ = checker[-2::-1, :, ::1]
           # negative index tests i.e. n-2 in first component, non-unit stride
           _ = checker[-2::-1, :, ::2]
+
+          # Check rank-0 examples
+          checker2 = StridedSliceChecker(self, 5, tensor_type=tf.int32)
+          _ = checker2[None]
+          _ = checker2[...]
+          _ = checker2[tuple()]
 
   def testDegenerateSlices(self):
     for use_gpu in [False, True]:
@@ -647,6 +653,69 @@ class StridedSliceBenchmark(tf.test.Benchmark):
       slice_op = var[3::1, 3::1, 3::1]
       self.run_and_time(slice_op)
 
+
+class StridedSliceAssignChecker(object):
+
+  def __init__(self, test, x, tensor_type=tf.int32):
+    self.tensor_type = tensor_type
+    self.test = test
+    self.x = tf.cast(tf.constant(x, dtype=tf.float32), dtype=tensor_type)
+    self.x_np = np.array(x)
+
+  def __setitem__(self, index, value):
+    with self.test.test_session() as sess:
+      var = tf.Variable(self.x)
+      sess.run(tf.initialize_variables([var]))
+      val = sess.run(var[index].assign(
+          tf.constant(
+              value, dtype=self.tensor_type)))
+      valnp = np.copy(self.x_np)
+      valnp[index] = np.array(value)
+      self.test.assertAllEqual(val, valnp)
+
+
+class SliceAssignTest(test_util.TensorFlowTestCase):
+
+  def testInvalidSlice(self):
+    with self.test_session() as sess:
+      foo = tf.constant([1, 2, 3])
+      with self.assertRaisesRegexp(ValueError, "Sliced assignment"
+                                   " is only supported for variables"):
+        bar = foo[:2].assign(tf.constant([1, 2]))
+        sess.run(bar)
+
+  def testSliceAssign(self):
+    checker = StridedSliceAssignChecker(self, [[1, 2, 3], [4, 5, 6]])
+    # Check if equal
+    checker[:] = [[10, 20, 30], [40, 50, 60]]
+    # Check trivial (1,1) shape tensor
+    checker[1:2, 1:2] = [[666]]
+    # shrinks shape changes
+    checker[1:2, 1] = [666]
+    checker[1, 1:2] = [666]
+    checker[1, 1] = 666
+    # newaxis shape changes
+    checker[:, None, :] = [[[10, 20, 30]], [[40, 50, 50]]]
+    # shrink and newaxis
+    checker[None, None, 0, 0:1] = [[[999]]]
+    # Non unit strides
+    checker[::1, ::-2] = [[33, 333], [44, 444]]
+    # degenerate interval
+    checker[8:10, 0] = []
+    checker[8:10, 8:10] = [[]]
+    # Assign vector to scalar (rank-0) using newaxis
+    checker2 = StridedSliceAssignChecker(self, 2225)
+    checker2[()] = 6  # no indices
+    checker2[...] = 6  # ellipsis
+    checker2[None] = [6]  # new axis
+
+  def testUninitialized(self):
+    with self.assertRaisesRegexp(
+        errors.FailedPreconditionError,
+        "Attempting to use uninitialized value Variable"):
+      with self.test_session() as sess:
+        v = tf.Variable([1, 2])
+        sess.run(v[:].assign([1, 2]))
 
 if __name__ == "__main__":
   tf.test.main()

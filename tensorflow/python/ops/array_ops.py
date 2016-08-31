@@ -250,7 +250,7 @@ def zeros_initializer(shape, dtype=dtypes.float32, partition_info=None):
   return zeros(shape, dtype)
 
 
-def _SliceHelper(tensor, slice_spec):
+def _SliceHelper(tensor, slice_spec, var=None):
   """Overload for Tensor.__getitem__.
 
   This operation extracts the specified region from the tensor.
@@ -261,6 +261,9 @@ def _SliceHelper(tensor, slice_spec):
   Args:
     tensor: An ops.Tensor object.
     slice_spec: The arguments to Tensor.__getitem__.
+    var: In the case of variable slice assignment, the Variable
+      object to slice (i.e. tensor is the read-only view of this
+      variable).
 
   Returns:
     The appropriate slice of "tensor", based on "slice_spec".
@@ -316,16 +319,24 @@ def _SliceHelper(tensor, slice_spec):
   # correct graph
   with ops.name_scope(None, "strided_slice",
                       [tensor] + begin + end + strides) as name:
-    return strided_slice(tensor,
-                         pack(begin),
-                         pack(end),
-                         pack(strides),
-                         begin_mask=begin_mask,
-                         end_mask=end_mask,
-                         shrink_axis_mask=shrink_axis_mask,
-                         new_axis_mask=new_axis_mask,
-                         ellipsis_mask=ellipsis_mask,
-                         name=name)
+    if begin:
+      packed_begin, packed_end, packed_strides = pack(begin), pack(end), pack(
+          strides)
+    else:
+      empty = constant([], dtype=dtypes.int32)
+      packed_begin = packed_end = packed_strides = empty
+    return strided_slice(
+        tensor,
+        packed_begin,
+        packed_end,
+        packed_strides,
+        begin_mask=begin_mask,
+        end_mask=end_mask,
+        shrink_axis_mask=shrink_axis_mask,
+        new_axis_mask=new_axis_mask,
+        ellipsis_mask=ellipsis_mask,
+        var=var,
+        name=name)
 
 
 # pylint: disable=undefined-variable,protected-access
@@ -385,6 +396,7 @@ def strided_slice(input_,
                   ellipsis_mask=0,
                   new_axis_mask=0,
                   shrink_axis_mask=0,
+                  var=None,
                   name=None):
   """Extracts a strided slice from a tensor.
 
@@ -461,21 +473,49 @@ def strided_slice(input_,
     ellipsis_mask: An `int32` mask.
     new_axis_mask: An `int32` mask.
     shrink_axis_mask: An `int32` mask.
+    var: The variable coresponding to `input_` or None
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` the same type as `input`.
   """
-  return gen_array_ops.strided_slice(input_,
-                                     begin,
-                                     end,
-                                     strides,
-                                     name=name,
-                                     begin_mask=begin_mask,
-                                     end_mask=end_mask,
-                                     ellipsis_mask=ellipsis_mask,
-                                     new_axis_mask=new_axis_mask,
-                                     shrink_axis_mask=shrink_axis_mask)
+  op = gen_array_ops.strided_slice(
+      input=input_,
+      begin=begin,
+      end=end,
+      strides=strides,
+      name=name,
+      begin_mask=begin_mask,
+      end_mask=end_mask,
+      ellipsis_mask=ellipsis_mask,
+      new_axis_mask=new_axis_mask,
+      shrink_axis_mask=shrink_axis_mask)
+
+  def assign(val):
+    """Closure that holds all the arguments to create an assignment."""
+
+    if var is None:
+      raise ValueError("Sliced assignment is only supported for variables")
+
+    return gen_array_ops.strided_slice_assign(
+        ref=var,
+        begin=begin,
+        end=end,
+        strides=strides,
+        value=val,
+        name=name + "_assign",
+        begin_mask=begin_mask,
+        end_mask=end_mask,
+        ellipsis_mask=ellipsis_mask,
+        new_axis_mask=new_axis_mask,
+        shrink_axis_mask=shrink_axis_mask)
+
+  op.assign = assign
+  return op
+
+
+def _SliceHelperVar(var, slice_spec):
+  return _SliceHelper(var._AsTensor(), slice_spec, var)
 
 ops.Tensor._override_operator("__getitem__", _SliceHelper)
 
@@ -1561,6 +1601,8 @@ def _StridedSliceGradShape(op):
   return [tensor_util.constant_value(op.inputs[0])]
 
 
+ops.RegisterShape("StridedSliceAssign")(common_shapes.unchanged_shape)
+
 @ops.RegisterShape("StridedSlice")
 def _StridedSliceShape(op):
   """Shape function for array_ops.slice."""
@@ -1773,6 +1815,7 @@ def _FillShape(op):
 
 ops.RegisterShape("InvertPermutation")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ListDiff")(common_shapes.call_cpp_shape_fn)
+
 
 @ops.RegisterShape("Pad")
 @ops.RegisterShape("MirrorPad")

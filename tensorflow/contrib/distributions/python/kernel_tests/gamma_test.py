@@ -177,6 +177,29 @@ class GammaTest(tf.test.TestCase):
       self.assertEqual(gamma.entropy().get_shape(), (3,))
       self.assertAllClose(gamma.entropy().eval(), expected_entropy)
 
+  def testGammaSampleSmallAlpha(self):
+    with tf.Session():
+      alpha_v = 0.05
+      beta_v = 1.0
+      alpha = tf.constant(alpha_v)
+      beta = tf.constant(beta_v)
+      n = 100000
+      gamma = tf.contrib.distributions.Gamma(alpha=alpha, beta=beta)
+      samples = gamma.sample_n(n, seed=137)
+      sample_values = samples.eval()
+      self.assertEqual(samples.get_shape(), (n,))
+      self.assertEqual(sample_values.shape, (n,))
+      self.assertAllClose(
+          sample_values.mean(),
+          stats.gamma.mean(
+              alpha_v, scale=1 / beta_v),
+          atol=.01)
+      self.assertAllClose(
+          sample_values.var(),
+          stats.gamma.var(alpha_v, scale=1 / beta_v),
+          atol=.15)
+      self.assertTrue(self._kstest(alpha_v, beta_v, sample_values))
+
   def testGammaSample(self):
     with tf.Session():
       alpha_v = 4.0
@@ -189,9 +212,11 @@ class GammaTest(tf.test.TestCase):
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (n,))
       self.assertEqual(sample_values.shape, (n,))
-      self.assertAllClose(sample_values.mean(),
-                          stats.gamma.mean(alpha_v, scale=1 / beta_v),
-                          atol=.0011)
+      self.assertAllClose(
+          sample_values.mean(),
+          stats.gamma.mean(
+              alpha_v, scale=1 / beta_v),
+          atol=.01)
       self.assertAllClose(sample_values.var(),
                           stats.gamma.var(alpha_v, scale=1 / beta_v),
                           atol=.15)
@@ -212,8 +237,9 @@ class GammaTest(tf.test.TestCase):
       beta_bc = beta_v + zeros
       self.assertAllClose(
           sample_values.mean(axis=0),
-          stats.gamma.mean(alpha_bc, scale=1 / beta_bc),
-          atol=.25)
+          stats.gamma.mean(
+              alpha_bc, scale=1 / beta_bc),
+          rtol=.035)
       self.assertAllClose(
           sample_values.var(axis=0),
           stats.gamma.var(alpha_bc, scale=1 / beta_bc),
@@ -231,6 +257,7 @@ class GammaTest(tf.test.TestCase):
     # Uses the Kolmogorov-Smirnov test for goodness of fit.
     ks, _ = stats.kstest(samples, stats.gamma(alpha, scale=1 / beta).cdf)
     # Return True when the test passes.
+    print(ks)
     return ks < 0.02
 
   def testGammaPdfOfSampleMultiDims(self):

@@ -1,4 +1,4 @@
-### `tf.contrib.bayesflow.stochastic_graph.value_type(dist_value_type)` {#value_type}
+### `tf.contrib.bayesflow.stochastic_tensor.value_type(dist_value_type)` {#value_type}
 
 Creates a value type context for any StochasticTensor created within.
 

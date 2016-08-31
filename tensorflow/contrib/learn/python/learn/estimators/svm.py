@@ -23,6 +23,7 @@ import tempfile
 
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.layers.python.layers import target_column
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import estimator
@@ -167,8 +168,12 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
     if not metrics:
       metrics = {
           ("accuracy", linear._CLASSES): metrics_lib.streaming_accuracy,
-          ("auc", linear._LOGISTIC): metrics_lib.streaming_auc,
       }
+    additional_metrics = (
+        target_column.get_default_binary_metrics_for_eval([0.5]))
+    additional_metrics = {(name, linear._LOGISTIC): metric
+                          for name, metric in additional_metrics.items()}
+    metrics.update(additional_metrics)
     for metric_name, metric in metrics.items():
       if isinstance(metric_name, tuple):
         if len(metric_name) != 2:

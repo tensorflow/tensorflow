@@ -25,6 +25,7 @@ from __future__ import print_function
 
 from tensorflow.contrib import distributions
 from tensorflow.contrib.bayesflow.python.ops import stochastic_graph as sg
+from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor as st
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -50,7 +51,7 @@ def register_prior(variational, prior):
     ValueError: if variational is not a `DistributionTensor` or `prior` is not
       a `Distribution`.
   """
-  if not isinstance(variational, sg.DistributionTensor):
+  if not isinstance(variational, st.StochasticTensor):
     raise TypeError("variational must be a DistributionTensor")
   if not isinstance(prior, distributions.BaseDistribution):
     raise TypeError("prior must be a BaseDistribution")
@@ -309,7 +310,7 @@ def _find_variational_and_priors(model,
       variational_with_prior[q] = prior_map.get(q)
 
   if not all(
-      [isinstance(q, sg.DistributionTensor) for q in variational_with_prior]):
+      [isinstance(q, st.StochasticTensor) for q in variational_with_prior]):
     raise TypeError("variationals must be DistributionTensors")
   if not all([p is None or isinstance(p, distributions.Distribution)
               for p in variational_with_prior.values()]):

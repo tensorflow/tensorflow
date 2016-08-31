@@ -13,9 +13,15 @@
   "author": "Google",
   "license": "Apache-2.0",
   "devDependencies": {
+    "browserify": "^13.1.0",
     "gulp": "~3.9.0",
+    "gulp-bower": "0.0.13",
+    "gulp-clean-compiled-typescript": "~1.0.1",
     "gulp-cli": "^1.1.0",
+    "gulp-concat": "^2.6.0",
     "gulp-filter": "~3.0.1",
+    "gulp-header": "~1.7.1",
+    "gulp-rename": "~1.2.2",
     "gulp-replace": "~0.5.4",
     "gulp-server-livereload": "~1.5.4",
     "gulp-tslint": "~4.2.2",
@@ -24,13 +30,12 @@
     "gulp-vulcanize": "~6.1.0",
     "merge2": "~0.3.6",
     "minimist": "~1.2.0",
+    "tsify": "^0.14.8",
     "tslint": "^3.2.1",
-    "typescript": "1.8.0",
+    "typescript": "^2.0.0",
+    "typings": "~1.0.4",
+    "vinyl-source-stream": "^1.1.0",
     "vulcanize": "^1.14.0",
-    "web-component-tester": "4.2.2",
-    "gulp-header": "~1.7.1",
-    "gulp-rename": "~1.2.2",
-    "gulp-bower": "0.0.13",
-    "typings": "~1.0.4"
+    "web-component-tester": "4.2.2"
   }
 }

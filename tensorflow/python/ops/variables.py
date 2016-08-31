@@ -600,6 +600,10 @@ class Variable(object):
     """Register overloads for all operators."""
     for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
       Variable._OverloadOperator(operator)
+    # For slicing, bind getitem differently than a tensor (use SliceHelperVar
+    # instead)
+    # pylint: disable=protected-access
+    setattr(Variable, "__getitem__", array_ops._SliceHelperVar)
 
   @staticmethod
   def _OverloadOperator(operator):

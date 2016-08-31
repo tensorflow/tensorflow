@@ -50,6 +50,9 @@ class Gamma(distribution.Distribution):
 
   where GammaInc is the incomplete lower Gamma function.
 
+  WARNING: This distribution may draw 0-valued samples for small alpha values.
+      See the note on `tf.random_gamma`.
+
   Examples:
 
   ```python

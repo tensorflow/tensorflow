@@ -18,6 +18,26 @@ Example:
   samples = tf.random_gamma([30], [[1.],[3.],[5.]], beta=[[3., 4.]])
   # samples has shape [30, 3, 2], with 30 samples each of 3x2 distributions.
 
+  Note that for small alpha values, there is a chance you will draw a value of
+  exactly 0, which gets worse for lower-precision dtypes, even though zero is
+  not in the support of the gamma distribution.
+
+  Relevant cdfs (~chance you will draw a exactly-0 value):
+  ```
+    stats.gamma(.01).cdf(np.finfo(np.float16).tiny)
+        0.91269738769897879
+    stats.gamma(.01).cdf(np.finfo(np.float32).tiny)
+        0.41992668622045726
+    stats.gamma(.01).cdf(np.finfo(np.float64).tiny)
+        0.00084322740680686662
+    stats.gamma(.35).cdf(np.finfo(np.float16).tiny)
+        0.037583276135263931
+    stats.gamma(.35).cdf(np.finfo(np.float32).tiny)
+        5.9514895726818067e-14
+    stats.gamma(.35).cdf(np.finfo(np.float64).tiny)
+        2.3529843400647272e-108
+  ```
+
 ##### Args:
 
 
