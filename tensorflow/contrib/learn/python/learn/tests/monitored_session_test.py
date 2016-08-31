@@ -227,7 +227,7 @@ class CoordinatedSessionTest(tf.test.TestCase):
       coord.request_stop()
       self.assertTrue(coord_sess.should_stop())
 
-  def test_request_stop_on_exception(self):
+  def test_dont_request_stop_on_exception_in_main_thread(self):
     with self.test_session() as sess:
       c = tf.constant(0)
       v = tf.identity(c)
@@ -238,10 +238,10 @@ class CoordinatedSessionTest(tf.test.TestCase):
       self.assertEqual(1, coord_sess.run(v, feed_dict={c: 1}))
       with self.assertRaisesRegexp(TypeError, 'None has invalid type'):
         coord_sess.run([None], feed_dict={c: 2})
-      self.assertTrue(coord.should_stop())
-      self.assertTrue(coord_sess.should_stop())
+      self.assertFalse(coord.should_stop())
+      self.assertFalse(coord_sess.should_stop())
 
-  def test_stop_threads_on_exception(self):
+  def test_stop_threads_on_close_after_exception(self):
     with self.test_session() as sess:
       c = tf.constant(0)
       v = tf.identity(c)
@@ -263,6 +263,7 @@ class CoordinatedSessionTest(tf.test.TestCase):
         self.assertTrue(t.is_alive())
       with self.assertRaisesRegexp(TypeError, 'None has invalid type'):
         coord_sess.run([None], feed_dict={c: 2})
+      coord_sess.close()
       for t in threads:
         self.assertFalse(t.is_alive())
       self.assertTrue(coord.should_stop())
@@ -290,6 +291,9 @@ class AbortAtNSession(object):
   def __init__(self, sess, n):
     self._sess = sess
     self._count = n
+
+  def close(self):
+    pass
 
   def run(self, *args, **kwargs):
     if self._count == 0:
@@ -590,7 +594,7 @@ class MonitoredSessionTest(tf.test.TestCase):
         self.assertFalse(session.should_stop())
         self.assertEqual(3, session.run(do_step))
         self.assertTrue(session.should_stop())
-        save_path = scaffold.saver.save(session.session,
+        save_path = scaffold.saver.save(session._tf_sess,
                                         os.path.join(logdir, 'step-3'))
       # Run till step 5 and save.
       def load_ckpt(scaffold, sess):
@@ -623,7 +627,7 @@ class MonitoredSessionTest(tf.test.TestCase):
         self.assertFalse(session.should_stop())
         session.run(do_step)
         self.assertTrue(session.should_stop())
-        save_path = scaffold.saver.save(session.session,
+        save_path = scaffold.saver.save(session._tf_sess,
                                         os.path.join(logdir, 'step-3'))
       # Restore and do 4 steps.
       def load_ckpt(scaffold, sess):
@@ -788,6 +792,7 @@ class MonitoredSessionTest(tf.test.TestCase):
       gstep = tf.contrib.framework.get_or_create_global_step()
       scaffold = monitored_session.Scaffold()
       session = monitored_session.MonitoredSession('', scaffold=scaffold)
+      run_performed_without_error = False
       with self.assertRaisesRegexp(RuntimeError, 'a thread wants to stop'):
         with session:
           self.assertEqual(0, session.run(gstep))
@@ -795,11 +800,11 @@ class MonitoredSessionTest(tf.test.TestCase):
           try:
             raise RuntimeError('a thread wants to stop')
           except RuntimeError as e:
-            session.coord.request_stop(e)
-          # Call run() which should raise the reported exception.
+            session._coord.request_stop(e)
+          # Call run() which should perform normally.
           self.assertEqual(0, session.run(gstep))
-          # We should not hit this
-          self.assertFalse(True)
+          run_performed_without_error = True
+      self.assertTrue(run_performed_without_error)
 
   def test_regular_exception_reported_to_coord_pass_through_return(self):
     # Tests that regular exceptions reported to the coordinator from a thread
@@ -816,8 +821,7 @@ class MonitoredSessionTest(tf.test.TestCase):
           try:
             raise RuntimeError('a thread wants to stop')
           except RuntimeError as e:
-            session.coord.request_stop(e)
-          # Do not call run, just terminate the with.session block cleanly.
+            session._coord.request_stop(e)
           self.assertTrue(session.should_stop())
 
   # This set of tests, verifies the session behavior when exceptions are raised

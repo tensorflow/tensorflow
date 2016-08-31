@@ -77,11 +77,11 @@ class BetaTest(tf.test.TestCase):
       dist.pdf([.1, .3, .6]).eval()
       dist.pdf([.2, .3, .5]).eval()
       # Either condition can trigger.
-      with self.assertRaisesOpError('(Condition x > 0.*|Condition x < y.*)'):
+      with self.assertRaisesOpError("(Condition x > 0.*|Condition x < y.*)"):
         dist.pdf([-1., 1, 1]).eval()
-      with self.assertRaisesOpError('Condition x.*'):
+      with self.assertRaisesOpError("Condition x.*"):
         dist.pdf([0., 1, 1]).eval()
-      with self.assertRaisesOpError('Condition x < y.*'):
+      with self.assertRaisesOpError("Condition x < y.*"):
         dist.pdf([.1, .2, 1.2]).eval()
 
   def testPdfTwoBatches(self):
@@ -184,13 +184,13 @@ class BetaTest(tf.test.TestCase):
       a = np.array([1., 2, 3])
       b = np.array([2., 4, 1.2])
       dist = tf.contrib.distributions.Beta(a, b)
-      with self.assertRaisesOpError('Condition x < y.*'):
+      with self.assertRaisesOpError("Condition x < y.*"):
         dist.mode().eval()
 
       a = np.array([2., 2, 3])
       b = np.array([1., 4, 1.2])
       dist = tf.contrib.distributions.Beta(a, b)
-      with self.assertRaisesOpError('Condition x < y.*'):
+      with self.assertRaisesOpError("Condition x < y.*"):
         dist.mode().eval()
 
   def testBetaMode_enable_allow_nan_stats(self):
@@ -262,5 +262,30 @@ class BetaTest(tf.test.TestCase):
           stats.beta.mean(a, b)[1, :],
           atol=1e-1)
 
-if __name__ == '__main__':
+  def testBetaCdf(self):
+    with self.test_session():
+      shape = (30, 40, 50)
+      for dt in (np.float32, np.float64):
+        a = 10. * np.random.random(shape).astype(dt)
+        b = 10. * np.random.random(shape).astype(dt)
+        x = np.random.random(shape).astype(dt)
+        actual = tf.contrib.distributions.Beta(a, b).cdf(x).eval()
+        self.assertAllEqual(np.ones(shape, dtype=np.bool), 0. <= x)
+        self.assertAllEqual(np.ones(shape, dtype=np.bool), 1. >= x)
+        self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=1e-4, atol=0)
+
+  def testBetaLogCdf(self):
+    with self.test_session():
+      shape = (30, 40, 50)
+      for dt in (np.float32, np.float64):
+        a = 10. * np.random.random(shape).astype(dt)
+        b = 10. * np.random.random(shape).astype(dt)
+        x = np.random.random(shape).astype(dt)
+        actual = tf.exp(tf.contrib.distributions.Beta(a, b).log_cdf(x)).eval()
+        self.assertAllEqual(np.ones(shape, dtype=np.bool), 0. <= x)
+        self.assertAllEqual(np.ones(shape, dtype=np.bool), 1. >= x)
+        self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=1e-4, atol=0)
+
+
+if __name__ == "__main__":
   tf.test.main()

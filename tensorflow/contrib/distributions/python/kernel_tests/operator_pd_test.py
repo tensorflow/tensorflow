@@ -44,7 +44,7 @@ class OperatorShape(operator_pd.OperatorPDBase):
 
   @property
   def name(self):
-    return 'OperatorShape'
+    return "OperatorShape"
 
   def dtype(self):
     return tf.int32
@@ -356,5 +356,5 @@ class ExtractBatchShapeTest(tf.test.TestCase):
       self.assertAllEqual([2, 3], batch_shape.eval())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

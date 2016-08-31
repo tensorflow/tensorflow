@@ -52,7 +52,7 @@ class data-distribution ahead of time.
 
   # Get stratified batch according to per-class probabilities.
   target_probs = [...distribution you want...]
-  [data_batch], labels = tf.contrib.framework.sampling_ops.stratified_sample(
+  [data_batch], labels = tf.contrib.training.stratified_sample(
       [data], label, target_probs)
 
   # Run batch through network.

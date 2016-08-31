@@ -87,7 +87,7 @@ class InverseGamma(distribution.Distribution):
     Raises:
       TypeError: if `alpha` and `beta` are different dtypes.
     """
-    with ops.name_scope(name, values=[alpha, beta]):
+    with ops.name_scope(name, values=[alpha, beta]) as ns:
       with ops.control_dependencies([
           check_ops.assert_positive(alpha),
           check_ops.assert_positive(beta),
@@ -99,7 +99,7 @@ class InverseGamma(distribution.Distribution):
             parameters={"alpha": self._alpha, "beta": self._beta},
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
-            name=name)
+            name=ns)
 
   @property
   def alpha(self):

@@ -129,6 +129,10 @@ class BaseGPUDeviceFactory : public DeviceFactory {
   // gpu ids'.
   Status GetValidDeviceIds(const string& visible_device_list,
                            std::vector<int>* ids);
+
+  // visible_gpu_initialized_[gpu_id] is true if visible GPU gpu_id
+  // has been initialized by the process.
+  std::unordered_map<int, bool> visible_gpu_initialized_;
 };
 
 }  // namespace tensorflow

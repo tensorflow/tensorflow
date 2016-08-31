@@ -49,11 +49,12 @@ class StripUnusedTest(test_util.TensorFlowTestCase):
     input_graph_path = os.path.join(self.get_temp_dir(), input_graph_name)
     input_binary = False
     input_node_names = "wanted_input_node"
+    output_binary = True
     output_node_names = "output_node"
     output_graph_path = os.path.join(self.get_temp_dir(), output_graph_name)
 
     strip_unused_lib.strip_unused_from_files(input_graph_path, input_binary,
-                                             output_graph_path,
+                                             output_graph_path, output_binary,
                                              input_node_names,
                                              output_node_names,
                                              tf.float32.as_datatype_enum)

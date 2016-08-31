@@ -58,7 +58,10 @@ TEST(ImageOpsTest, DecodeImage_ShapeFn) {
     // Rank check.
     INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1]");
 
-    // Channel not set - output is unknown.
+    // Set the channel to zero - output is not known.
+    TF_ASSERT_OK(NodeDefBuilder("test", op_name)
+                     .Input({"a", 0, DT_STRING})
+                     .Finalize(&op.node_def));
     INFER_OK(op, "[]", "[?,?,?]");
 
     // Set the channel and so that part of output shape is known.

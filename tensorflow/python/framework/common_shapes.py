@@ -589,11 +589,16 @@ def broadcast_shape(shape_x, shape_y):
   return tensor_shape.TensorShape(return_dims)
 
 
-def call_cpp_shape_fn(op):
+def call_cpp_shape_fn(op, debug_python_shape_fn=None):
   """A shape function that delegates to the registered C++ shape function.
 
   Args:
     op: the node in the graph for which to compute output shapes.
+    debug_python_shape_fn: For testing only during migration to using
+      call_cpp_shape_fn. Do not submit calls that set this,
+      as the comparison is slow. If non-None, the python shape function;
+      this function will be called and its output compared to that of
+      the C++ shape function.
 
   Returns:
     A TensorShape list of the output shapes of the op, as computed using the
@@ -616,7 +621,20 @@ def call_cpp_shape_fn(op):
     raise ValueError(err.message)
 
   # Convert TensorShapeProto values in output_shapes.
-  return [
+  result = [
       tensor_shape.TensorShape(tensor_shape_pb2.TensorShapeProto.FromString(s))
       for s in output_shapes
   ]
+
+  if debug_python_shape_fn:
+    python_result = [tensor_shape.as_shape(s)
+                     for s in debug_python_shape_fn(op)]
+    if str(result) != str(python_result):
+      raise ValueError(
+          ("Python vs CPP shape mismatch.  "
+           "actual: %s vs expected: %s on node %s "
+           "with input shapes %s") % (
+               str(result), str(python_result), str(op.node_def),
+               ",".join([str(i.get_shape()) for i in op.inputs])))
+
+  return result

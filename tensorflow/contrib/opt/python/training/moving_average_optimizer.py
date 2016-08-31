@@ -51,6 +51,7 @@ from __future__ import print_function
 
 import six
 
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import moving_averages
@@ -61,7 +62,7 @@ from tensorflow.python.training import saver
 class MovingAverageOptimizer(optimizer.Optimizer):
   """Optimizer wrapper that maintains a moving average of parameters."""
 
-  def __init__(self, opt, average_decay=0.9999):
+  def __init__(self, opt, average_decay=0.9999, sequential_update=True):
     """Construct a new MovingAverageOptimizer.
 
     Args:
@@ -69,22 +70,33 @@ class MovingAverageOptimizer(optimizer.Optimizer):
       average_decay: Float.  Decay to use to maintain the moving averages
                      of trained variables.
                      See tf.train.ExponentialMovingAverage for details.
+      sequential_update: Bool. If False, will compute the moving average at the
+                         same time as the model is updated, potentially doing
+                         benign data races.
+                         If True, will update the moving average after gradient
+                         updates.
     """
     self._optimizer = opt
     self._ema = moving_averages.ExponentialMovingAverage(average_decay)
     self._variable_map = None
+    self._sequential_update = sequential_update
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     train_op = self._optimizer.apply_gradients(
         grads_and_vars, global_step=global_step, name=name)
     var_list = [x[1] for x in grads_and_vars if x[0] is not None]
-    ma_op = self._ema.apply(var_list)
     self._variable_map = {}
+    if self._sequential_update:
+      with ops.control_dependencies([train_op]):
+        ma_op = self._ema.apply(var_list)
+    else:
+      ma_op = self._ema.apply(var_list)
+
     for v in var_list:
       v_avg = self._ema.average(v)
       self._variable_map[v.op.name] = v_avg
       self._variable_map[v_avg.op.name] = v
-    return control_flow_ops.group(train_op, ma_op)
+    return control_flow_ops.group(train_op, ma_op, name="train_with_avg")
 
   def swapping_saver(self, var_list=None, name='swapping_saver', **kwargs):
     """Create a saver swapping moving averages and variables.

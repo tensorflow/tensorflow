@@ -127,7 +127,7 @@ class Binomial(distribution.Distribution):
     """
     self._logits, self._p = distribution_util.get_logits_and_prob(
         name=name, logits=logits, p=p, validate_args=validate_args)
-    with ops.name_scope(name, values=[n]):
+    with ops.name_scope(name, values=[n]) as ns:
       with ops.control_dependencies([
           check_ops.assert_non_negative(
               n, message="n has negative components."),
@@ -141,7 +141,7 @@ class Binomial(distribution.Distribution):
             is_continuous=False,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
-            name=name)
+            name=ns)
 
   @property
   def n(self):

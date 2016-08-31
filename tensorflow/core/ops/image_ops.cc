@@ -62,15 +62,15 @@ Status DecodeImageShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
   DimensionHandle channels_dim;
   int32 channels;
-  Status s = c->GetAttr("channels", &channels);
-  if (s.ok()) {
+  TF_RETURN_IF_ERROR(c->GetAttr("channels", &channels));
+  if (channels == 0) {
+    channels_dim = c->UnknownDim();
+  } else {
     if (channels < 0) {
       return errors::InvalidArgument("channels must be non-negative, got ",
                                      channels);
     }
     channels_dim = c->MakeDim(channels);
-  } else {
-    channels_dim = c->UnknownDim();
   }
 
   c->set_output(0, c->MakeShape({InferenceContext::kUnknownDim,

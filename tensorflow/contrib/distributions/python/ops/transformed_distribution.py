@@ -87,7 +87,7 @@ class TransformedDistribution(distribution.Distribution):
       TypeError: if `base_dist_cls` is not a subclass of
           `Distribution`.
     """
-    with ops.name_scope(name, values=base_dist_args.values()):
+    with ops.name_scope(name, values=base_dist_args.values()) as ns:
       self._base_dist = base_dist_cls(**base_dist_args)
       self._transform = transform
       self._inverse = inverse
@@ -98,7 +98,7 @@ class TransformedDistribution(distribution.Distribution):
           is_reparameterized=self._base_dist.is_reparameterized,
           validate_args=self._base_dist.validate_args,
           allow_nan_stats=self._base_dist.allow_nan_stats,
-          name=name)
+          name=ns)
 
   @property
   def base_distribution(self):

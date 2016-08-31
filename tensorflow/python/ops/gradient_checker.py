@@ -334,5 +334,5 @@ def compute_gradient_error(x,
   error = 0
   for j_t, j_n in grad:
     if j_t.size or j_n.size:  # Handle zero size tensors correctly
-      error = max(error, np.fabs(j_t - j_n).max())
+      error = np.maximum(error, np.fabs(j_t - j_n).max())
   return error

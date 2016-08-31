@@ -189,7 +189,10 @@ class Distribution(BaseDistribution):
         undefined statistics will return `NaN` for this statistic.
       name: A name for this distribution (optional).
     """
-    self._name = name or type(self).__name__
+    self._name = name
+    if self._name is None:
+      with ops.name_scope(type(self).__name__) as ns:
+        self._name = ns
     self._dtype = dtype
     self._parameters = parameters or {}
     self._is_continuous = is_continuous

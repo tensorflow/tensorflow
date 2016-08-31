@@ -137,7 +137,7 @@ void RandomShuffleQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
           1, callback, ctx, cm, token,
           [tuple, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
-              attempt->context->SetStatus(errors::Aborted(
+              attempt->context->SetStatus(errors::Cancelled(
                   "RandomShuffleQueue '", name_, "' is closed."));
               return kComplete;
             }
@@ -195,7 +195,7 @@ void RandomShuffleQueue::TryEnqueueMany(const Tuple& tuple,
           batch_size, callback, ctx, cm, token,
           [tuple, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
-              attempt->context->SetStatus(errors::Aborted(
+              attempt->context->SetStatus(errors::Cancelled(
                   "RandomShuffleQueue '", name_, "' is closed."));
               return kComplete;
             }

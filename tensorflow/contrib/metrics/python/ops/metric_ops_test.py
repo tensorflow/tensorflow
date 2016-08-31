@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from functools import partial
 import math
 
 import numpy as np
@@ -2848,6 +2849,38 @@ class AggregateMetricMapTest(tf.test.TestCase):
       self.assertEqual(4, names_to_updates['m2'].eval())
       self.assertEqual(2, names_to_values['m1'].eval())
       self.assertEqual(4, names_to_values['m2'].eval())
+
+
+class RunMetricTest(tf.test.TestCase):
+
+  def setUp(self):
+    tf.reset_default_graph()
+
+  def testRunMetric(self):
+    predictions = tf.constant([2, 4, 6, 8], shape=(1, 4), dtype=tf.float32)
+    labels = tf.constant([1, 3, 2, 3], shape=(1, 4), dtype=tf.float32)
+    weights = tf.constant([0, 1, 0, 1], shape=(1, 4))
+
+    error, update_op = metrics.run_metric(metrics.streaming_mean_squared_error,
+                                          predictions, labels, weights)
+    with self.test_session() as sess:
+      sess.run(tf.initialize_local_variables())
+      self.assertEqual(13, sess.run(update_op))
+      self.assertEqual(13, error.eval())
+
+  def testRunMetricsWithOutWeights(self):
+    predictions = tf.constant([2, 4, 6], shape=(1, 3), dtype=tf.float32)
+    labels = tf.constant([1, 3, 2], shape=(1, 3), dtype=tf.float32)
+
+    streaming_mean_squared_error_no_weight = partial(
+        metrics.streaming_mean_squared_error, weights=None)
+
+    error, update_op = metrics.run_metric(
+        streaming_mean_squared_error_no_weight, predictions, labels)
+    with self.test_session() as sess:
+      sess.run(tf.initialize_local_variables())
+      self.assertEqual(6, sess.run(update_op))
+      self.assertEqual(6, error.eval())
 
 
 if __name__ == '__main__':

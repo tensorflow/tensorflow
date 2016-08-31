@@ -154,6 +154,9 @@ Sigmoid
 Tanh
 SigmoidGrad
 TanhGrad
+InvGrad
+SqrtGrad
+RsqrtGrad
 
 # nn_ops
 AvgPoolGrad  # "*Grad" accessible through nn_grad instead of nn_ops.
@@ -176,6 +179,10 @@ BiasAddV1
 Relu6
 AvgPool
 MaxPool
+Softmax
+LogSoftmax
+FractionalAvgPoolGrad
+FractionalMaxPoolGrad
 
 # parsing_ops
 ParseExample

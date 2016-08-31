@@ -76,7 +76,7 @@ class Laplace(distribution.Distribution):
     Raises:
       TypeError: if `loc` and `scale` are of different dtype.
     """
-    with ops.name_scope(name, values=[loc, scale]):
+    with ops.name_scope(name, values=[loc, scale]) as ns:
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")
@@ -88,7 +88,7 @@ class Laplace(distribution.Distribution):
             is_reparameterized=True,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
-            name=name)
+            name=ns)
 
   @property
   def loc(self):

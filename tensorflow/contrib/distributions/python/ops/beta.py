@@ -130,7 +130,7 @@ class Beta(distribution.Distribution):
     ```
 
     """
-    with ops.name_scope(name, values=[a, b]):
+    with ops.name_scope(name, values=[a, b]) as ns:
       with ops.control_dependencies([
           check_ops.assert_positive(a),
           check_ops.assert_positive(b),
@@ -145,7 +145,7 @@ class Beta(distribution.Distribution):
             parameters={"a": self._a, "b": self._b, "a_b_sum": self._a_b_sum},
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
-            name=name)
+            name=ns)
 
   @property
   def a(self):
@@ -195,6 +195,12 @@ class Beta(distribution.Distribution):
 
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))
+
+  def _log_cdf(self, x):
+    return math_ops.log(self._cdf(x))
+
+  def _cdf(self, x):
+    return math_ops.betainc(self.a, self.b, x)
 
   def _entropy(self):
     return (math_ops.lgamma(self.a) -

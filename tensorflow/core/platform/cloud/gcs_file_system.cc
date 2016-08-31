@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include <stdio.h>
 #include <unistd.h>
 #include <algorithm>
@@ -28,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
 #include "tensorflow/core/platform/cloud/time_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -98,32 +98,38 @@ class GcsRandomAccessFile : public RandomAccessFile {
   /// The implementation of reads with a read-ahead buffer.
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
-    if (offset >= buffer_start_offset_ &&
-        offset + n <= buffer_start_offset_ + buffer_content_size_) {
-      // If the requested range is fully in the buffer, just return it.
-      std::memcpy(scratch, buffer_.get() + offset - buffer_start_offset_, n);
-      *result = StringPiece(scratch, n);
-      return Status::OK();
+    const bool range_start_included = offset >= buffer_start_offset_;
+    const bool range_end_included =
+        offset + n <= buffer_start_offset_ + buffer_content_size_;
+    if (range_start_included && (range_end_included || buffer_reached_eof_)) {
+      // The requested range can be filled from the buffer.
+      const size_t offset_in_buffer =
+          std::min<uint64>(offset - buffer_start_offset_, buffer_content_size_);
+      const auto copy_size =
+          std::min(n, buffer_content_size_ - offset_in_buffer);
+      std::memcpy(scratch, buffer_.get() + offset_in_buffer, copy_size);
+      *result = StringPiece(scratch, copy_size);
+    } else {
+      // Update the buffer content based on the new requested range.
+      const size_t desired_buffer_size = n + read_ahead_bytes_;
+      if (n > buffer_size_ || desired_buffer_size > 2 * buffer_size_) {
+        // Re-allocate only if buffer size increased significantly.
+        buffer_.reset(new char[desired_buffer_size]);
+        buffer_size_ = desired_buffer_size;
+      }
+
+      buffer_start_offset_ = offset;
+      buffer_content_size_ = 0;
+      StringPiece buffer_content;
+      TF_RETURN_IF_ERROR(
+          ReadFromGCS(offset, buffer_size_, &buffer_content, buffer_.get()));
+      buffer_content_size_ = buffer_content.size();
+      buffer_reached_eof_ = buffer_content_size_ < buffer_size_;
+
+      // Set the results.
+      *result = StringPiece(scratch, std::min(buffer_content_size_, n));
+      std::memcpy(scratch, buffer_.get(), result->size());
     }
-
-    // Update the buffer content based on the new requested range.
-    const size_t desired_buffer_size = n + read_ahead_bytes_;
-    if (n > buffer_size_ || desired_buffer_size > 2 * buffer_size_) {
-      // Re-allocate only if buffer size increased significantly.
-      buffer_.reset(new char[desired_buffer_size]);
-      buffer_size_ = desired_buffer_size;
-    }
-
-    buffer_start_offset_ = offset;
-    buffer_content_size_ = 0;
-    StringPiece buffer_content;
-    TF_RETURN_IF_ERROR(
-        ReadFromGCS(offset, buffer_size_, &buffer_content, buffer_.get()));
-    buffer_content_size_ = buffer_content.size();
-
-    // Set the results.
-    *result = StringPiece(scratch, std::min(buffer_content_size_, n));
-    std::memcpy(scratch, buffer_.get(), result->size());
 
     if (result->size() < n) {
       // This is not an error per se. The RandomAccessFile interface expects
@@ -168,6 +174,7 @@ class GcsRandomAccessFile : public RandomAccessFile {
   // The original file offset of the first byte in the buffer.
   mutable size_t buffer_start_offset_ = 0;
   mutable size_t buffer_content_size_ = 0;
+  mutable bool buffer_reached_eof_ = false;
 };
 
 /// \brief GCS-based implementation of a writeable file.

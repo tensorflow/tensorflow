@@ -176,30 +176,5 @@ def _ReduceJoinShape(op):
   return [tensor_shape.TensorShape(returned_dims)]
 
 
-@ops.RegisterShape("StringJoin")
-def _StringJoinShape(op):
-  """Shape function for the StringJoin op."""
-  input_shapes = [x.get_shape() for x in op.inputs]
-
-  # First check if all inputs are scalars.  In the next section
-  # we may have *some* scalars and we will be broadcasting them
-  if all([s.ndims == 0 for s in input_shapes]):
-    return [tensor_shape.scalar()]
-
-  base_shape = tensor_shape.unknown_shape()
-  for shape in input_shapes:
-    if shape.ndims != 0:
-      base_shape = base_shape.merge_with(shape)
-  return [base_shape]
-
-
-@ops.RegisterShape("StringSplit")
-def _StringSplitShape(op):
-  """Shape function for string_ops.string_split."""
-  unused_sfs_shape = op.inputs[0].get_shape().with_rank(1)
-  unused_sfs_shape = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
-
-  indices_shape = tensor_shape.TensorShape([None, 2])
-  values_shape = tensor_shape.TensorShape([None])
-  shape_shape = tensor_shape.TensorShape([2])
-  return [indices_shape, values_shape, shape_shape]
+ops.RegisterShape("StringJoin")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("StringSplit")(common_shapes.call_cpp_shape_fn)

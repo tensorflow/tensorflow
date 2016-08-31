@@ -36,6 +36,8 @@ py_tests(
         "determinant_op_test.py",
         "edit_distance_op_test.py",
         "fifo_queue_test.py",
+        "fractional_avg_pool_op_test.py",
+        "fractional_max_pool_op_test.py",
         "identity_op_py_test.py",
         "in_topk_op_test.py",
         "io_ops_test.py",

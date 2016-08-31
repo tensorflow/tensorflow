@@ -23,7 +23,6 @@ import six
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -207,12 +206,9 @@ def optimize_loss(loss,
     grad_updates = opt.apply_gradients(gradients,
                                        global_step=global_step,
                                        name="train")
-    # Make sure total_loss is valid.
-    final_loss = array_ops.check_numerics(loss, "Loss is inf or nan")
 
     # Ensure the train_tensor computes grad_updates.
-    train_tensor = control_flow_ops.with_dependencies(
-        [grad_updates], final_loss)
+    train_tensor = control_flow_ops.with_dependencies([grad_updates], loss)
 
     return train_tensor
 
