@@ -22,6 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import inspect
 import os
 import re
@@ -118,8 +119,10 @@ def collect_members(module_to_name, exclude=()):
   for module, module_name in module_to_name.items():
     all_names = getattr(module, "__all__", None)
     for name, member in inspect.getmembers(module):
-      if ((inspect.isfunction(member) or inspect.isclass(member)) and
-          not _always_drop_symbol_re.match(name) and
+      if ((inspect.isfunction(member)
+           or inspect.isclass(member)
+           or isinstance(member, functools.partial))
+          and not _always_drop_symbol_re.match(name) and
           (all_names is None or name in all_names)):
         fullname = "%s.%s" % (module_name, name)
         if fullname in exclude:
@@ -253,7 +256,8 @@ class Library(Document):
     for name, member in inspect.getmembers(cls):
       # Only show methods and properties presently.  In Python 3,
       # methods register as isfunction.
-      is_method = inspect.ismethod(member) or inspect.isfunction(member)
+      is_method = (inspect.ismethod(member) or inspect.isfunction(member)
+                   or isinstance(member, functools.partial))
       if not (is_method or isinstance(member, property)):
         continue
       if ((is_method and member.__name__ == "__init__")
@@ -418,8 +422,10 @@ class Library(Document):
 
   def _write_member_markdown_to_file(self, f, prefix, name, member):
     """Print `member` to `f`."""
-    if (inspect.isfunction(member) or inspect.ismethod(member) or
-        isinstance(member, property)):
+    if (inspect.isfunction(member) or inspect.ismethod(member)
+        or (isinstance(member, functools.partial)
+            and inspect.isfunction(member.func))
+        or isinstance(member, property)):
       print("- - -", file=f)
       print("", file=f)
       self._print_function(f, prefix, name, member)
@@ -430,7 +436,9 @@ class Library(Document):
         indivf = open(
             os.path.join(self.shard_dir(name), name + ".md"), "w+")
         self._print_function(indivf, prefix, name, member)
-    elif inspect.isclass(member):
+    elif (inspect.isclass(member)
+          or (isinstance(member, functools.partial)
+              and inspect.isclass(member.func))):
       print("- - -", file=f)
       print("", file=f)
       print("%s `class %s` {#%s}" % (prefix, name,

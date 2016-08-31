@@ -73,6 +73,17 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "stochastic_tensor_test",
+    size = "small",
+    srcs = ["python/kernel_tests/stochastic_tensor_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "reinforce_simple_example",
     size = "small",
     srcs = ["examples/reinforce_simple/reinforce_simple_example.py"],
