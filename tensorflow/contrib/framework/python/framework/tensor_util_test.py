@@ -244,8 +244,7 @@ class WithShapeTest(tf.test.TestCase):
             incompatible_shape, tensor_partial_shape)
       for incompatible_shape in [[1, 2, 1]]:
         self.assertRaisesRegexp(
-            ValueError, "Dimensions must be equal",
-            tf.contrib.framework.with_shape,
+            ValueError, "Incompatible shapes", tf.contrib.framework.with_shape,
             incompatible_shape, tensor_partial_shape)
       for incompatible_shape in [[2, 1]]:
         self.assertRaisesRegexp(

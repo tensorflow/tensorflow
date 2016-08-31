@@ -671,7 +671,7 @@ output: `R-K`-D.  The reduced Tensor.
       .Attr("T: numbertype")                                     \
       .SetShapeFn([](InferenceContext* c) {                      \
         ShapeHandle input;                                       \
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input)); \
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &input)); \
         c->set_output(0, c->Vector(c->Dim(input, 0)));           \
         return Status::OK();                                     \
       })

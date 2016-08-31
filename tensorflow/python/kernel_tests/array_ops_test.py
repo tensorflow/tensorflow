@@ -227,7 +227,7 @@ class ReverseTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, reverse_2d_t.get_shape().ndims)
 
     dims_3d_t = tf.placeholder(tf.bool, shape=[3])
-    with self.assertRaisesRegexp(ValueError, "must be rank 3"):
+    with self.assertRaisesRegexp(ValueError, "must have rank 3"):
       tf.reverse(data_2d_t, dims_3d_t)
 
 
