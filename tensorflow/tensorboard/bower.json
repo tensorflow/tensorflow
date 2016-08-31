@@ -85,7 +85,7 @@
     "paper-toolbar": "PolymerElements/paper-toolbar#1.1.4",
     "paper-tooltip": "PolymerElements/paper-tooltip#1.1.2",
     "plottable": "1.16.1",
-    "polymer": "1.6.0",
+    "polymer": "1.6.1",
     "promise-polyfill": "polymerlabs/promise-polyfill#1.0.0",
     "web-animations-js": "web-animations/web-animations-js#2.2.1",
     "webcomponentsjs": "webcomponents/webcomponentsjs#0.7.22"
@@ -161,7 +161,7 @@
     "paper-toolbar": "1.1.4",
     "paper-tooltip": "1.1.2",
     "plottable": "1.16.1",
-    "polymer": "1.6.0",
+    "polymer": "1.6.1",
     "promise-polyfill": "1.0.0",
     "web-animations-js": "2.2.1",
     "webcomponentsjs": "0.7.22"
