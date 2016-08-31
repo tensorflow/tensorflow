@@ -116,21 +116,16 @@ def _centered_bias(num_outputs):
   return centered_bias
 
 
-def _maybe_add_bias_column(feature_columns, columns_to_tensors, bias_variable,
-                           targets, enable_centered_bias, columns_to_variables):
-  train_feature_columns = list(feature_columns)  # Make a copy.
-  if enable_centered_bias:
-    # Adding a bias column.
-    # TODO(b/31008490): Move definition to a common constants place.
-    bias_column_name = "tf_virtual_bias_column"
-    if any(col.name is bias_column_name for col in feature_columns):
-      raise ValueError("%s is a reserved column name." % bias_column_name)
-    bias_column = layers.real_valued_column(bias_column_name)
-    columns_to_tensors[bias_column] = array_ops.ones_like(targets,
-                                                          dtype=dtypes.float32)
-    columns_to_variables[bias_column] = [bias_variable]
-    train_feature_columns.append(bias_column)
-  return train_feature_columns
+def _add_bias_column(feature_columns, columns_to_tensors, bias_variable,
+                           targets, columns_to_variables):
+  # TODO(b/31008490): Move definition to a common constants place.
+  bias_column_name = "tf_virtual_bias_column"
+  if any(col.name is bias_column_name for col in feature_columns):
+    raise ValueError("%s is a reserved column name." % bias_column_name)
+  bias_column = layers.real_valued_column(bias_column_name)
+  columns_to_tensors[bias_column] = array_ops.ones_like(targets,
+                                                        dtype=dtypes.float32)
+  columns_to_variables[bias_column] = [bias_variable]
 
 
 def _log_loss_with_two_classes(logits, target):
@@ -262,10 +257,9 @@ def sdca_classifier_model_fn(features, targets, mode, params):
           feature_columns=feature_columns,
           num_outputs=1))
 
-  train_feature_columns = _maybe_add_bias_column(feature_columns, features,
-                                                 bias, targets,
-                                                 enable_centered_bias,
-                                                 columns_to_variables)
+  if enable_centered_bias:
+    _add_bias_column(feature_columns, features, bias, targets,
+                     columns_to_variables)
 
   loss = None
   if mode != estimator.ModeKeys.INFER:
@@ -274,10 +268,9 @@ def sdca_classifier_model_fn(features, targets, mode, params):
   train_op = None
   if mode == estimator.ModeKeys.TRAIN:
     global_step = contrib_variables.get_global_step()
-    # TODO(zoy): Combine linear_feature_columns and columns_to_variables.
     train_op = optimizer.get_train_step(
-        train_feature_columns, weight_column_name, loss_type, features,
-        targets, columns_to_variables, global_step)
+        columns_to_variables, weight_column_name, loss_type, features,
+        targets, global_step)
 
   predictions = {}
   predictions[_LOGISTIC] = math_ops.sigmoid(logits)
@@ -650,14 +643,13 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       loss = self._target_column.loss(logits, targets, features)
     logging_ops.scalar_summary("loss", loss)
 
-    train_feature_columns = _maybe_add_bias_column(self._linear_feature_columns,
-                                                   features, bias, targets,
-                                                   self._enable_centered_bias,
-                                                   columns_to_variables)
+    if self._enable_centered_bias:
+      _add_bias_column(self._linear_feature_columns, features, bias, targets,
+                       columns_to_variables)
 
     train_op = self._linear_optimizer.get_train_step(
-        train_feature_columns, self._target_column.weight_column_name,
-        self._loss_type(), features, targets, columns_to_variables, global_step)
+        columns_to_variables, self._target_column.weight_column_name,
+        self._loss_type(), features, targets, global_step)
     return train_op, loss
 
   def _loss_type(self):
