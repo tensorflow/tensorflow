@@ -250,6 +250,29 @@ class TransformerTest(tf.test.TestCase):
 
 class CreateInputLayersForDNNsTest(tf.test.TestCase):
 
+  def testAllDNNColumns(self):
+    sparse_column = tf.contrib.layers.sparse_column_with_keys(
+        "ids", ["a", "b", "c", "unseen"])
+
+    real_valued_column = tf.contrib.layers.real_valued_column("income", 2)
+    one_hot_column = tf.contrib.layers.one_hot_column(sparse_column)
+    embedding_column = tf.contrib.layers.embedding_column(sparse_column, 10)
+    features = {
+        "ids": tf.SparseTensor(
+            values=["c", "b", "a"],
+            indices=[[0, 0], [1, 0], [2, 0]],
+            shape=[3, 1]),
+        "income": tf.constant([[20.3, 10], [110.3, 0.4], [-3.0, 30.4]])
+    }
+    output = tf.contrib.layers.input_from_feature_columns(features,
+                                                          [one_hot_column,
+                                                           embedding_column,
+                                                           real_valued_column])
+    with self.test_session():
+      tf.initialize_all_variables().run()
+      tf.initialize_all_tables().run()
+      self.assertAllEqual(output.eval().shape, [3, 2 + 4 + 10])
+
   def testRealValuedColumn(self):
     real_valued = tf.contrib.layers.real_valued_column("price")
     features = {"price": tf.constant([[20.], [110], [-3]])}
@@ -769,7 +792,7 @@ class WeightedSumTest(tf.test.TestCase):
       tf.initialize_all_variables().run()
       self.assertAllEqual(logits.eval().shape, [3, 5])
 
-  def testAllColumns(self):
+  def testAllWideColumns(self):
     real_valued = tf.contrib.layers.real_valued_column("income", 2)
     bucket = tf.contrib.layers.bucketized_column(
         tf.contrib.layers.real_valued_column("price"),
