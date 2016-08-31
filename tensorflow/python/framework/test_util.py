@@ -34,7 +34,6 @@ from google.protobuf import text_format
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
@@ -119,7 +118,6 @@ class TensorFlowTestCase(googletest.TestCase):
     self._threads = []
     self._tempdir = None
     self._cached_session = None
-    self._is_gpu_available = device_lib.is_gpu_available()
 
   def setUp(self):
     self._ClearCachedSession()
@@ -204,7 +202,7 @@ class TensorFlowTestCase(googletest.TestCase):
   def test_session(self,
                    graph=None,
                    config=None,
-                   use_gpu=None,
+                   use_gpu=False,
                    force_gpu=False):
     """Returns a TensorFlow Session for use in executing tests.
 
@@ -252,9 +250,6 @@ class TensorFlowTestCase(googletest.TestCase):
       # gpu ops on cpu
       config.graph_options.optimizer_options.opt_level = -1
       return config
-
-    if use_gpu is None:
-      use_gpu = self._is_gpu_available
 
     if graph is None:
       if self._cached_session is None:

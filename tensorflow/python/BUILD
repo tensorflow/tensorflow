@@ -277,7 +277,6 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":device_lib",
         ":framework",
         ":platform_test",
         ":pywrap_tensorflow",
