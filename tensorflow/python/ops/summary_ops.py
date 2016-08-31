@@ -24,6 +24,7 @@ from tensorflow.python.ops import gen_logging_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_logging_ops import *
+
 # pylint: enable=wildcard-import
 
 
@@ -45,7 +46,7 @@ def tensor_summary(display_name,  # pylint: disable=invalid-name
 
   The generated
   [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
-  has one summary value containing input_tensor.
+  has one summary value containing the input tensor.
 
   Args:
     display_name: A name to associate with the data series. Will be used to
@@ -60,7 +61,7 @@ def tensor_summary(display_name,  # pylint: disable=invalid-name
          other tensors that are all in a group. (e.g. bounding boxes and images)
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
-    name: A name for the operation (optional).
+    name: An optional name for the generated node (optional).
 
   Returns:
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
@@ -69,13 +70,15 @@ def tensor_summary(display_name,  # pylint: disable=invalid-name
   # pylint: enable=line-too-long
 
   with ops.name_scope(name, "TensorSummary", [tensor]) as scope:
-    val = gen_logging_ops._tensor_summary(display_name=display_name,
-                                          tensor=tensor,
-                                          description=description,
-                                          labels=labels,
-                                          name=scope)
+    val = gen_logging_ops._tensor_summary(
+        display_name=display_name,
+        tensor=tensor,
+        description=description,
+        labels=labels,
+        name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
+
 
 ops.NoGradient("TensorSummary")
 

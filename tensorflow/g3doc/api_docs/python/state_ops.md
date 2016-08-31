@@ -624,8 +624,7 @@ variables if there are any, or an empty array if there are none.
 ##### Returns:
 
   A 1-D tensor containing names of the uninitialized variables, or an empty
-  1-D
-  tensor if there are no variables or no uninitialized variables.
+  1-D tensor if there are no variables or no uninitialized variables.
 
 
 - - -
@@ -736,7 +735,7 @@ protocol buffer file in the call to `save()`.
 
 - - -
 
-#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False)` {#Saver.__init__}
+#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False, allow_empty=False)` {#Saver.__init__}
 
 Creates a `Saver`.
 
@@ -801,6 +800,9 @@ checkpoints per device.
 *  <b>`defer_build`</b>: If `True`, defer adding the save and restore ops to the
     `build()` call. In that case `build()` should be called before
     finalizing the graph or using the saver.
+*  <b>`allow_empty`</b>: If `False` (default) raise an error if there are no
+    variables in the graph. Otherwise, construct the saver anyway and make
+    it a no-op.
 
 ##### Raises:
 
@@ -845,6 +847,7 @@ path can be passed directly to a call to `restore()`.
   A string: path at which the variables were saved.  If the saver is
     sharded, this string ends with: '-?????-of-nnnnn' where 'nnnnn'
     is the number of shards created.
+  If the saver is empty, returns None.
 
 ##### Raises:
 
@@ -1776,6 +1779,24 @@ An adaptor for ones() to match the Initializer spec.
 
 
 ## Variable Partitioners for Sharding
+
+- - -
+
+### `tf.fixed_size_partitioner(num_shards, axis=0)` {#fixed_size_partitioner}
+
+Partitioner to specify a fixed number of shards along given axis.
+
+##### Args:
+
+
+*  <b>`num_shards`</b>: `int`, number of shards to partition variable.
+*  <b>`axis`</b>: `int`, axis to partition on.
+
+##### Returns:
+
+  A partition function usable as the `partitioner` argument to
+  `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
+
 
 - - -
 

@@ -12,11 +12,15 @@ Copy a subgraph.
 *  <b>`src_scope`</b>: the source scope.
 *  <b>`reuse_dst_scope`</b>: if True the dst_scope is re-used if it already exists.
     Otherwise, the scope is given a unique name based on the one given
-    by postfixing an underscore followed by a digit (default).
+    by appending an underscore followed by a digit (default).
 
 ##### Returns:
 
-  The subgraph view of the copied subgraph.
+  A tuple `(sgv, info)` where:
+    `sgv` is the transformed subgraph view;
+    `info` is an instance of Transformer.ResultInfo containing
+    information about the transform, including mapping between
+    original and transformed tensors and operations.
 
 ##### Raises:
 

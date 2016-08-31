@@ -22,4 +22,11 @@ REGISTER5(UnaryOp, CPU, "Inv", functor::inverse, float, Eigen::half, double,
 REGISTER4(UnaryOp, GPU, "Inv", functor::inverse, float, Eigen::half, double,
           int64);
 #endif
+
+REGISTER5(SimpleBinaryOp, CPU, "InvGrad", functor::inverse_grad, float,
+          Eigen::half, double, complex64, complex128);
+#if GOOGLE_CUDA
+REGISTER3(SimpleBinaryOp, GPU, "InvGrad", functor::inverse_grad, float,
+          Eigen::half, double);
+#endif
 }  // namespace tensorflow

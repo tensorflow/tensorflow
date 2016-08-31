@@ -1007,12 +1007,7 @@ ops.RegisterShape('DrawBoundingBoxes')(
     common_shapes.unchanged_shape_with_rank_at_least(3))
 
 
-@ops.RegisterShape('SampleDistortedBoundingBox')
-def _SampleDistortedBoundingBoxShape(unused_op):  # pylint: disable=invalid-name
-  """Shape function for the sample distorted bounding box."""
-  return [tensor_shape.TensorShape([3]),
-          tensor_shape.TensorShape([3]),
-          tensor_shape.TensorShape([1, 1, 4])]
+ops.RegisterShape('SampleDistortedBoundingBox')(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape('ResizeBilinear')
@@ -1034,28 +1029,16 @@ def _ResizeShape(op):
       [input_shape[0], height, width, input_shape[3]])]
 
 @ops.RegisterShape('DecodeGif')
-def _ImageDecodeShape(op):
+def _DecodeGifShape(op):
   """Shape function for decode gif."""
   unused_input_shape = op.inputs[0].get_shape().merge_with(
       tensor_shape.scalar())
   return [tensor_shape.TensorShape([None, None, None, 3])]
 
-@ops.RegisterShape('DecodeJpeg')
-@ops.RegisterShape('DecodePng')
-def _ImageDecodeShape(op):
-  """Shape function for image decoding ops."""
-  unused_input_shape = op.inputs[0].get_shape().merge_with(
-      tensor_shape.scalar())
-  channels = op.get_attr('channels') or None
-  return [tensor_shape.TensorShape([None, None, channels])]
-
-
-@ops.RegisterShape('EncodeJpeg')
-@ops.RegisterShape('EncodePng')
-def _ImageEncodeShape(op):
-  """Shape function for image encoding ops."""
-  unused_input_shape = op.inputs[0].get_shape().with_rank(3)
-  return [tensor_shape.scalar()]
+ops.RegisterShape('DecodeJpeg')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('DecodePng')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('EncodeJpeg')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('EncodePng')(common_shapes.call_cpp_shape_fn)
 
 
 def convert_image_dtype(image, dtype, saturate=False, name=None):
@@ -1194,16 +1177,8 @@ def grayscale_to_rgb(images, name=None):
 
 
 # pylint: disable=invalid-name
-@ops.RegisterShape('HSVToRGB')
-@ops.RegisterShape('RGBToHSV')
-def _ColorspaceShape(op):
-  """Shape function for colorspace ops."""
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(1)
-  input_rank = input_shape.ndims
-  if input_rank is not None:
-    input_shape = input_shape.merge_with([None] * (input_rank - 1) + [3])
-  return [input_shape]
-# pylint: enable=invalid-name
+ops.RegisterShape('HSVToRGB')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('RGBToHSV')(common_shapes.call_cpp_shape_fn)
 
 
 def random_hue(image, max_delta, seed=None):
@@ -1413,10 +1388,7 @@ def _crop_and_resize_shape(op):
       [box_shape[0], crop_height, crop_width, image_shape[3]])]
 
 
-@ops.RegisterShape('NonMaxSuppression')
-def _non_max_suppression_shape(_):
-  """Shape function for the NonMaxSuppression op."""
-  return [tensor_shape.TensorShape([None])]
+ops.RegisterShape('NonMaxSuppression')(common_shapes.call_cpp_shape_fn)
 
 
 __all__ = make_all(__name__)

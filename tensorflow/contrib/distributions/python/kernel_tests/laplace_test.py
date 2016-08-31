@@ -246,17 +246,17 @@ class LaplaceTest(tf.test.TestCase):
 
   def testLaplaceNonPositiveInitializationParamsRaises(self):
     with self.test_session():
-      loc_v = tf.constant(0.0, name='loc')
-      scale_v = tf.constant(-1.0, name='scale')
+      loc_v = tf.constant(0.0, name="loc")
+      scale_v = tf.constant(-1.0, name="scale")
       laplace = tf.contrib.distributions.Laplace(loc=loc_v, scale=scale_v)
-      with self.assertRaisesOpError('scale'):
+      with self.assertRaisesOpError("scale"):
         laplace.mean().eval()
-      loc_v = tf.constant(1.0, name='loc')
-      scale_v = tf.constant(0.0, name='scale')
+      loc_v = tf.constant(1.0, name="loc")
+      scale_v = tf.constant(0.0, name="scale")
       laplace = tf.contrib.distributions.Laplace(loc=loc_v, scale=scale_v)
-      with self.assertRaisesOpError('scale'):
+      with self.assertRaisesOpError("scale"):
         laplace.mean().eval()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

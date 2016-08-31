@@ -86,7 +86,7 @@ def variable_summaries(var, name):
     mean = tf.reduce_mean(var)
     tf.scalar_summary('mean/' + name, mean)
     with tf.name_scope('stddev'):
-      stddev = tf.sqrt(tf.reduce_sum(tf.square(var - mean)))
+      stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
     tf.scalar_summary('sttdev/' + name, stddev)
     tf.scalar_summary('max/' + name, tf.reduce_max(var))
     tf.scalar_summary('min/' + name, tf.reduce_min(var))
@@ -182,7 +182,8 @@ You're now all set to visualize this data using TensorBoard.
 
 ## Launching TensorBoard
 
-To run TensorBoard, use the command
+To run TensorBoard, use the following command (alternatively `python -m
+tensorflow.tensorboard`)
 
 ```bash
 tensorboard --logdir=path/to/log-directory

@@ -828,6 +828,151 @@ Performs 3D max pooling on the input.
   A `Tensor`. Has the same type as `input`. The max pooled output tensor.
 
 
+- - -
+
+### `tf.nn.fractional_avg_pool(value, pooling_ratio, pseudo_random=None, overlapping=None, deterministic=None, seed=None, seed2=None, name=None)` {#fractional_avg_pool}
+
+Performs fractional average pooling on the input.
+
+Fractional average pooling is similar to Fractional max pooling in the pooling
+region generation step. The only difference is that after pooling regions are
+generated, a mean operation is performed instead of a max operation in each
+pooling region.
+
+##### Args:
+
+
+*  <b>`value`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
+    4-D with shape `[batch, height, width, channels]`.
+*  <b>`pooling_ratio`</b>: A list of `floats` that has length `>= 4`.
+    Pooling ratio for each dimension of `value`, currently only
+    supports row and col dimension and should be >= 1.0. For example, a valid
+    pooling ratio looks like [1.0, 1.44, 1.73, 1.0]. The first and last elements
+    must be 1.0 because we don't allow pooling on batch and channels
+    dimensions. 1.44 and 1.73 are pooling ratio on height and width dimensions
+    respectively.
+*  <b>`pseudo_random`</b>: An optional `bool`. Defaults to `False`.
+    When set to True, generates the pooling sequence in a
+    pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
+    Graham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for
+    difference between pseudorandom and random.
+*  <b>`overlapping`</b>: An optional `bool`. Defaults to `False`.
+    When set to True, it means when pooling, the values at the boundary
+    of adjacent pooling cells are used by both cells. For example:
+
+    `index  0  1  2  3  4`
+
+    `value  20 5  16 3  7`
+
+    If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
+    The result would be [41/3, 26/3] for fractional avg pooling.
+
+*  <b>`deterministic`</b>: An optional `bool`. Defaults to `False`.
+    When set to True, a fixed pooling region will be used when
+    iterating over a FractionalAvgPool node in the computation graph. Mainly used
+    in unit test to make FractionalAvgPool deterministic.
+*  <b>`seed`</b>: An optional `int`. Defaults to `0`.
+    If either seed or seed2 are set to be non-zero, the random number
+    generator is seeded by the given seed.  Otherwise, it is seeded by a
+    random seed.
+*  <b>`seed2`</b>: An optional `int`. Defaults to `0`.
+    An second seed to avoid seed collision.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (output, row_pooling_sequence, col_pooling_sequence).
+
+*  <b>`output`</b>: A `Tensor`. Has the same type as `value`. output tensor after fractional avg pooling.
+*  <b>`row_pooling_sequence`</b>: A `Tensor` of type `int64`. row pooling sequence, needed to calculate gradient.
+*  <b>`col_pooling_sequence`</b>: A `Tensor` of type `int64`. column pooling sequence, needed to calculate gradient.
+
+
+- - -
+
+### `tf.nn.fractional_max_pool(value, pooling_ratio, pseudo_random=None, overlapping=None, deterministic=None, seed=None, seed2=None, name=None)` {#fractional_max_pool}
+
+Performs fractional max pooling on the input.
+
+Fractional max pooling is slightly different than regular max pooling.  In
+regular max pooling, you downsize an input set by taking the maximum value of
+smaller N x N subsections of the set (often 2x2), and try to reduce the set by
+a factor of N, where N is an integer.  Fractional max pooling, as you might
+expect from the word "fractional", means that the overall reduction ratio N
+does not have to be an integer.
+
+The sizes of the pooling regions are generated randomly but are fairly uniform.
+For example, let's look at the height dimension, and the constraints on the
+list of rows that will be pool boundaries.
+
+First we define the following:
+
+1.  input_row_length : the number of rows from the input set
+2.  output_row_length : which will be smaller than the input
+3.  alpha = input_row_length / output_row_length : our reduction ratio
+4.  K = floor(alpha)
+5.  row_pooling_sequence : this is the result list of pool boundary rows
+
+Then, row_pooling_sequence should satisfy:
+
+1.  a[0] = 0 : the first value of the sequence is 0
+2.  a[end] = input_row_length : the last value of the sequence is the size
+3.  K <= (a[i+1] - a[i]) <= K+1 : all intervals are K or K+1 size
+4.  length(row_pooling_sequence) = output_row_length+1
+
+For more details on fractional max pooling, see this paper:
+[Benjamin Graham, Fractional Max-Pooling]
+(http://arxiv.org/abs/1412.6071)
+
+##### Args:
+
+
+*  <b>`value`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
+    4-D with shape `[batch, height, width, channels]`.
+*  <b>`pooling_ratio`</b>: A list of `floats` that has length `>= 4`.
+    Pooling ratio for each dimension of `value`, currently only
+    supports row and col dimension and should be >= 1.0. For example, a valid
+    pooling ratio looks like [1.0, 1.44, 1.73, 1.0]. The first and last elements
+    must be 1.0 because we don't allow pooling on batch and channels
+    dimensions. 1.44 and 1.73 are pooling ratio on height and width dimensions
+    respectively.
+*  <b>`pseudo_random`</b>: An optional `bool`. Defaults to `False`.
+    When set to True, generates the pooling sequence in a
+    pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
+    Graham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for
+    difference between pseudorandom and random.
+*  <b>`overlapping`</b>: An optional `bool`. Defaults to `False`.
+    When set to True, it means when pooling, the values at the boundary
+    of adjacent pooling cells are used by both cells. For example:
+
+    `index  0  1  2  3  4`
+
+    `value  20 5  16 3  7`
+
+    If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
+    The result would be [20, 16] for fractional max pooling.
+
+*  <b>`deterministic`</b>: An optional `bool`. Defaults to `False`.
+    When set to True, a fixed pooling region will be used when
+    iterating over a FractionalMaxPool node in the computation graph. Mainly used
+    in unit test to make FractionalMaxPool deterministic.
+*  <b>`seed`</b>: An optional `int`. Defaults to `0`.
+    If either seed or seed2 are set to be non-zero, the random number
+    generator is seeded by the given seed.  Otherwise, it is seeded by a
+    random seed.
+*  <b>`seed2`</b>: An optional `int`. Defaults to `0`.
+    An second seed to avoid seed collision.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (output, row_pooling_sequence, col_pooling_sequence).
+
+*  <b>`output`</b>: A `Tensor`. Has the same type as `value`. output tensor after fractional max pooling.
+*  <b>`row_pooling_sequence`</b>: A `Tensor` of type `int64`. row pooling sequence, needed to calculate gradient.
+*  <b>`col_pooling_sequence`</b>: A `Tensor` of type `int64`. column pooling sequence, needed to calculate gradient.
+
+
 
 ## Morphological filtering
 
@@ -1266,46 +1411,62 @@ equivalent formulation
 
 - - -
 
-### `tf.nn.softmax(logits, name=None)` {#softmax}
-
-Computes softmax activations.
-
-For each batch `i` and class `j` we have
-
-    softmax[i, j] = exp(logits[i, j]) / sum_j(exp(logits[i, j]))
-
-##### Args:
-
-
-*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
-    2-D with shape `[batch_size, num_classes]`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
-
-
-- - -
-
-### `tf.nn.log_softmax(logits, name=None)` {#log_softmax}
+### `tf.nn.softmax(logits, dim=-1, name=None)` {#softmax}
 
 Computes log softmax activations.
 
 For each batch `i` and class `j` we have
 
-    logsoftmax[i, j] = logits[i, j] - log(sum(exp(logits[i])))
+    softmax = exp(logits) / reduce_sum(exp(logits), dim)
 
 ##### Args:
 
 
-*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
-    2-D with shape `[batch_size, num_classes]`.
+*  <b>`logits`</b>: A non-empty `Tensor`. Must be one of the following types: `half`,
+    `float32`, `float64`.
+*  <b>`dim`</b>: The dimension softmax would be performed on. The default is -1 which
+    indicates the last dimension.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+
+##### Raises:
+
+
+*  <b>`InvalidArgumentError`</b>: if `logits` is empty or `dim` is beyond the last
+    dimension of `logits`.
+
+
+- - -
+
+### `tf.nn.log_softmax(logits, dim=-1, name=None)` {#log_softmax}
+
+Computes log softmax activations.
+
+For each batch `i` and class `j` we have
+
+    logsoftmax = logits - reduce_sum(exp(logits), dim)
+
+##### Args:
+
+
+*  <b>`logits`</b>: A non-empty `Tensor`. Must be one of the following types: `half`,
+    `float32`, `float64`.
+*  <b>`dim`</b>: The dimension softmax would be performed on. The default is -1 which
+    indicates the last dimension.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+
+##### Raises:
+
+
+*  <b>`InvalidArgumentError`</b>: if `logits` is empty or `dim` is beyond the last
+    dimension of `logits`.
 
 
 - - -
@@ -2107,6 +2268,18 @@ max(labels.indices(labels.indices[:, 1] == b, 2))
   <= sequence_length(b) for all b.
 ```
 
+Notes:
+
+This class performs the softmax operation for you, so inputs should
+be e.g. linear projections of outputs by an LSTM.
+
+The `inputs` Tensor's innermost dimension size, `num_classes`, represents
+`num_labels + 1` classes, where num_labels is the number of true labels, and
+the largest value `(num_classes - 1)` is reserved for the blank label.
+
+For example, for a vocabulary containing 3 labels `[a, b, c]`,
+`num_classes = 4` and the labels indexing is `{a: 0, b: 1, c: 2, blank: 3}`.
+
 Regarding the arguments `preprocess_collapse_repeated` and
 `ctc_merge_repeated`:
 
@@ -2145,10 +2318,12 @@ Here is a table of the (roughly) expected first order behavior:
 
 
 *  <b>`inputs`</b>: 3-D `float` `Tensor` sized
-    `[max_time x batch_size x num_classes]`.  The logits.
+    `[max_time x batch_size x num_classes]`. The logits.
 *  <b>`labels`</b>: An `int32` `SparseTensor`.
     `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
-    the id for (batch b, time t).  See `core/ops/ctc_ops.cc` for more details.
+    the id for (batch b, time t).
+    `labels.values[i]` must take on values in `[0, num_labels)`.
+    See `core/ops/ctc_ops.cc` for more details.
 *  <b>`sequence_length`</b>: 1-D `int32` vector, size `[batch_size]`.
     The sequence lengths.
 *  <b>`preprocess_collapse_repeated`</b>: Boolean.  Default: False.

@@ -986,18 +986,39 @@ class BinaryOpTest(tf.test.TestCase):
     for func in [tf.add, tf.sub, tf.mul, tf.div, _ADD, _SUB, _MUL, _TRUEDIV,
                  _FLOORDIV]:
       with self.assertRaisesWithPredicateMatch(
-          ValueError, lambda e: "Incompatible shapes" in str(e)):
+          ValueError, lambda e: "Dimensions must" in str(e)):
         func(tf.convert_to_tensor([10.0, 20.0, 30.0]),
              tf.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
   def testZeroPowGrad(self):
     with self.test_session():
-      for dtype in np.float16, np.float32, np.float64:
+      for dtype in (np.float16, np.float32, np.float64, np.complex64,
+                    np.complex128):
         x = tf.constant(0.0, dtype=dtype)
         y = tf.constant(2.0, dtype=dtype)
         z = tf.pow(x, y)
         error = tf.test.compute_gradient_error(y, [], z, [])
         self.assertEqual(error, 0)
+
+  def testComplexPowGradPositiveBase(self):
+    with self.test_session():
+      for dtype in np.complex64, np.complex128:
+        x = tf.constant(2.0, dtype=dtype)
+        y = tf.constant(2.0, dtype=dtype)
+        z = tf.pow(x, y)
+        error = tf.test.compute_gradient_error(y, [], z, [])
+        self.assertLess(error, 1e-4)
+
+  def testComplexPowGradNegativeBase(self):
+    with self.test_session() as session:
+      for dtype in np.complex64, np.complex128:
+        x = tf.constant(-2.0, dtype=dtype)
+        y = tf.constant(2.0, dtype=dtype)
+        z = tf.pow(x, y)
+        expected_x_grad = -4
+        expected_y_grad = (-2)**2 * (np.log(2) + np.pi * 1j)
+        self.assertAllClose([expected_x_grad, expected_y_grad],
+                            session.run(tf.gradients(z, [x, y])))
 
 
 class ComparisonOpTest(tf.test.TestCase):
@@ -1125,7 +1146,7 @@ class ComparisonOpTest(tf.test.TestCase):
     for t in dtypes:
       for f in funcs:
         with self.assertRaisesWithPredicateMatch(
-            ValueError, lambda e: "Incompatible shapes" in str(e)):
+            ValueError, lambda e: "Dimensions must" in str(e)):
           f(x.astype(t), y.astype(t))
 
 
@@ -1201,7 +1222,7 @@ class LogicalOpTest(tf.test.TestCase):
     y = np.random.randint(0, 2, 6).astype(np.bool).reshape(3, 2, 1)
     for f in [tf.logical_and, tf.logical_or, tf.logical_xor]:
       with self.assertRaisesWithPredicateMatch(
-          ValueError, lambda e: "Incompatible shapes" in str(e)):
+          ValueError, lambda e: "Dimensions must" in str(e)):
         f(x, y)
 
   def testUsingAsPythonValueFails(self):

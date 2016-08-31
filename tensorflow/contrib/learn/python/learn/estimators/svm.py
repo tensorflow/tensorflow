@@ -18,12 +18,50 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
+import tempfile
+
 from tensorflow.contrib import layers
+from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.learn.python.learn import evaluable
+from tensorflow.contrib.learn.python.learn import trainable
+from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import linear
+from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 
 
-class SVM(linear.LinearClassifier):
+def _as_iterable(preds, output):
+  for pred in preds:
+    yield pred[output]
+
+
+def _get_metric_args(metric):
+  if hasattr(metric, "__code__"):
+    return inspect.getargspec(metric).args
+  elif hasattr(metric, "func") and hasattr(metric, "keywords"):
+    return [arg for arg in inspect.getargspec(metric.func).args
+            if arg not in metric.keywords.keys()]
+
+
+def _wrap_metric(metric):
+  """Wraps metrics for mismatched prediction/target types."""
+  def wrapped(preds, targets):
+    targets = math_ops.cast(targets, preds.dtype)
+    return metric(preds, targets)
+
+  def wrapped_weights(preds, targets, weights):
+    targets = math_ops.cast(targets, preds.dtype)
+    if weights is not None:
+      weights = array_ops.reshape(math_ops.to_float(weights), shape=(-1,))
+    return metric(preds, targets, weights)
+
+  return wrapped_weights if "weights" in _get_metric_args(metric) else wrapped
+
+
+class SVM(trainable.Trainable, evaluable.Evaluable):
   """Support Vector Machine (SVM) model for binary classification.
 
   Currently, only linear SVMs are supported. For the underlying optimization
@@ -88,7 +126,7 @@ class SVM(linear.LinearClassifier):
 
   def __init__(self,
                example_id_column,
-               feature_columns=None,
+               feature_columns,
                weight_column_name=None,
                model_dir=None,
                l1_regularization=0.0,
@@ -96,22 +134,108 @@ class SVM(linear.LinearClassifier):
                kernels=None,
                config=None):
     if kernels is not None:
-      raise ValueError('Kernel SVMs are not currently supported.')
-    optimizer = sdca_optimizer.SDCAOptimizer(
+      raise ValueError("Kernel SVMs are not currently supported.")
+    self._optimizer = sdca_optimizer.SDCAOptimizer(
         example_id_column=example_id_column,
         symmetric_l1_regularization=l1_regularization,
         symmetric_l2_regularization=l2_regularization)
 
-    super(SVM, self).__init__(
-        model_dir=model_dir,
-        n_classes=2,
-        weight_column_name=weight_column_name,
-        feature_columns=feature_columns,
-        optimizer=optimizer,
-        config=config)
-    self._target_column = layers.binary_svm_target(
-        weight_column_name=weight_column_name)
+    self._feature_columns = feature_columns
+    self._model_dir = model_dir or tempfile.mkdtemp()
+    self._estimator = estimator.Estimator(
+        model_fn=linear.sdca_classifier_model_fn,
+        model_dir=self._model_dir,
+        config=config,
+        params={
+            "feature_columns": feature_columns,
+            "optimizer": self._optimizer,
+            "weight_column_name": weight_column_name,
+            "loss_type": "hinge_loss",
+        })
 
-  def _loss_type(self):
-    """Loss type used by SDCA Optimizer for linear SVM classification."""
-    return 'hinge_loss'
+  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
+          monitors=None, max_steps=None):
+    """See trainable.Trainable."""
+    return self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
+                               batch_size=batch_size, monitors=monitors,
+                               max_steps=max_steps)
+
+  # pylint: disable=protected-access
+  def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
+               batch_size=None, steps=None, metrics=None, name=None):
+    """See evaluable.Evaluable."""
+    if not metrics:
+      metrics = {
+          ("accuracy", linear._CLASSES): metrics_lib.streaming_accuracy,
+          ("auc", linear._LOGISTIC): metrics_lib.streaming_auc,
+      }
+    for metric_name, metric in metrics.items():
+      if isinstance(metric_name, tuple):
+        if len(metric_name) != 2:
+          raise ValueError("Ignoring metric %s. It returned a tuple with len  "
+                           "%s, expected 2." % (metric_name, len(metric_name)))
+
+        valid_keys = {linear._CLASSES, linear._LOGISTIC, linear._PROBABILITIES}
+        if metric_name[1] not in valid_keys:
+          raise ValueError("Ignoring metric %s. The 2nd element of its name "
+                           "should be in %s" % (metric_name, valid_keys))
+      metrics[metric_name] = _wrap_metric(metric)
+    return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
+                                    feed_fn=feed_fn, batch_size=batch_size,
+                                    steps=steps, metrics=metrics, name=name)
+
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+    """Runs inference to determine the predicted class."""
+    preds = self._estimator.predict(x=x, input_fn=input_fn,
+                                    batch_size=batch_size,
+                                    outputs=[linear._CLASSES],
+                                    as_iterable=as_iterable)
+    if as_iterable:
+      return _as_iterable(preds, output=linear._CLASSES)
+    return preds[linear._CLASSES]
+
+  def predict_proba(self, x=None, input_fn=None, batch_size=None, outputs=None,
+                    as_iterable=False):
+    """Runs inference to determine the class probability predictions."""
+    preds = self._estimator.predict(x=x, input_fn=input_fn,
+                                    batch_size=batch_size,
+                                    outputs=[linear._PROBABILITIES],
+                                    as_iterable=as_iterable)
+    if as_iterable:
+      return _as_iterable(preds, output=linear._PROBABILITIES)
+    return preds[linear._PROBABILITIES]
+  # pylint: enable=protected-access
+
+  def get_variable_names(self):
+    return [name for name, _ in checkpoints.list_variables(self._model_dir)]
+
+  def export(self, export_dir, signature_fn=None,
+             input_fn=None, default_batch_size=1,
+             exports_to_keep=None):
+    """See BasEstimator.export."""
+    def default_input_fn(unused_estimator, examples):
+      return layers.parse_feature_columns_from_examples(
+          examples, self._feature_columns)
+    self._estimator.export(export_dir=export_dir,
+                           signature_fn=signature_fn,
+                           input_fn=input_fn or default_input_fn,
+                           default_batch_size=default_batch_size,
+                           exports_to_keep=exports_to_keep)
+
+  @property
+  def weights_(self):
+    values = {}
+    optimizer_regex = r".*/"+self._optimizer.get_name() + r"(_\d)?$"
+    for name, _ in checkpoints.list_variables(self._model_dir):
+      if (name.startswith("linear/") and
+          name != "linear/bias_weight" and
+          not re.match(optimizer_regex, name)):
+        values[name] = checkpoints.load_variable(self._model_dir, name)
+    if len(values) == 1:
+      return values[list(values.keys())[0]]
+    return values
+
+  @property
+  def bias_(self):
+    return checkpoints.load_variable(self._model_dir,
+                                     name="linear/bias_weight")

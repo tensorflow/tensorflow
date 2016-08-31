@@ -276,4 +276,20 @@ TEST(SparseOpsTest, SparseConcat_ShapeFn) {
   INFER_ERROR("but are 4 and 5", op, "?;?;?;?;[4];[5]");
 }
 
+TEST(SparseOpsTest, SparseDenseCwise_ShapeFn) {
+  for (const char* op_name :
+       {"SparseDenseCwiseMul", "SparseDenseCwiseDiv", "SparseDenseCwiseAdd"}) {
+    ShapeInferenceTestOp op(op_name);
+
+    // output is always a vector.
+    INFER_OK(op, "?;?;?;?", "[?]");
+
+    // input(0).dim(0) determines output[0].
+    INFER_OK(op, "[?,?];?;?;?", "[d0_0]");
+
+    // Rank checks.
+    INFER_ERROR("must be rank 2", op, "[1];?;?;?");
+  }
+}
+
 }  // end namespace tensorflow

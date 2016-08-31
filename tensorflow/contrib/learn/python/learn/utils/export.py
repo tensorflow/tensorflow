@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
+from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.session_bundle import exporter
 from tensorflow.contrib.session_bundle import gc
@@ -168,6 +169,12 @@ def logistic_regression_signature_fn(examples, unused_features, predictions):
 
 
 # pylint: disable=protected-access
+@deprecated(
+    '2016-09-23',
+    'The signature of the input_fn accepted by export is changing to be '
+    'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate, '
+    'which makes this function useless. This will be removed after the '
+    'deprecation date.')
 def _default_input_fn(estimator, examples):
   """Creates default input parsing using Estimator's feature signatures."""
   return estimator._get_feature_ops_from_example(examples)
@@ -189,20 +196,43 @@ def export_estimator(estimator,
                     exports_to_keep=exports_to_keep)
 
 
+@deprecated_arg_values(
+    '2016-09-23',
+    'The signature of the input_fn accepted by export is changing to be '
+    'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate. '
+    'input_fn and input_feature_key will become required args. '
+    'use_deprecated_input_fn will default to False and be removed. '
+    'default_batch_size will also be removed since it will now be a part of '
+    'the input_fn.',
+    use_deprecated_input_fn=True,
+    input_feature_key=None,
+    default_batch_size=1)
 def _export_estimator(estimator,
                       export_dir,
                       signature_fn,
                       input_fn,
                       default_batch_size,
-                      exports_to_keep):
-  input_fn = input_fn or _default_input_fn
+                      exports_to_keep,
+                      input_feature_key=None,
+                      use_deprecated_input_fn=True):
+  if use_deprecated_input_fn:
+    input_fn = input_fn or _default_input_fn
+  elif input_fn is None or input_feature_key is None:
+    raise ValueError('input_fn and input_feature_key must both be defined.')
+
   checkpoint_path = tf_saver.latest_checkpoint(estimator._model_dir)
   with ops.Graph().as_default() as g:
     contrib_variables.create_global_step(g)
-    examples = array_ops.placeholder(dtype=dtypes.string,
-                                     shape=[default_batch_size],
-                                     name='input_example_tensor')
-    features = input_fn(estimator, examples)
+
+    if use_deprecated_input_fn:
+      examples = array_ops.placeholder(dtype=dtypes.string,
+                                       shape=[default_batch_size],
+                                       name='input_example_tensor')
+      features = input_fn(estimator, examples)
+    else:
+      features, _ = input_fn()
+      examples = features[input_feature_key]
+
     predictions = estimator._get_predict_ops(features)
 
     # Explicit signature_fn takes priority

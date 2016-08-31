@@ -128,8 +128,8 @@ REGISTER_OP("BatchMatMul")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle a_shape;
       ShapeHandle b_shape;
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 3, &a_shape));
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 3, &b_shape));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &a_shape));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &b_shape));
 
       // Determine output rows and cols.
       bool adj_x;
@@ -293,6 +293,13 @@ Computes the reciprocal of x element-wise.
 I.e., \\(y = 1 / x\\).
 )doc");
 
+REGISTER_OP("InvGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+Computes the gradient for the inverse of `x` wrt its input.
+
+Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`
+is the corresponding input gradient.
+)doc");
+
 REGISTER_OP("Square")
     .UNARY()
     .Doc(R"doc(
@@ -307,11 +314,25 @@ Computes square root of x element-wise.
 I.e., \\(y = \sqrt{x} = x^{1/2}\\).
 )doc");
 
+REGISTER_OP("SqrtGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+Computes the gradient for the sqrt of `x` wrt its input.
+
+Specifically, `grad = dy * 0.5 / y`, where `y = sqrt(x)`, and `dy`
+is the corresponding input gradient.
+)doc");
+
 REGISTER_OP("Rsqrt")
     .UNARY_COMPLEX()
     .Doc(R"doc(
 Computes reciprocal of square root of x element-wise.
 I.e., \\(y = 1 / \sqrt{x}\\).
+)doc");
+
+REGISTER_OP("RsqrtGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
+Computes the gradient for the rsqrt of `x` wrt its input.
+
+Specifically, `grad = dy * -0.5 * y^3`, where `y = rsqrt(x)`, and `dy`
+is the corresponding input gradient.
 )doc");
 
 REGISTER_OP("Exp")
@@ -685,6 +706,30 @@ The polygamma function is defined as:
 \psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)
 ```
 where \\(\psi(x)\\) is the digamma function.
+)doc");
+
+REGISTER_OP("Betainc")
+    .Input("a: T")
+    .Input("b: T")
+    .Input("x: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .Doc(R"doc(
+Compute the regularized incomplete beta integral \\(I_x(a, b)\\).
+
+The regularized incomplete beta integral is defined as:
+
+```
+I_x(a, b) = \frac{B(x; a, b)}{B(a, b)}
+```
+where
+
+```
+B(x; a, b) = \int_0^x t^{a-1} (1 - t)^{b-1} dt
+```
+
+is the incomplete beta function and \\(B(a, b)\\) is the *complete*
+beta function.
 )doc");
 
 // --------------------------------------------------------------------------

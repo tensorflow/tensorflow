@@ -74,7 +74,6 @@ class SVMTest(tf.test.TestCase):
     # w2=5.0). Due to regularization, smaller weights are chosen. This results
     # to a small but non-zero uneregularized loss. Still, all the predictions
     # will be correct resulting to perfect accuracy.
-    self.assertGreater(loss, 0.01)
     self.assertLess(loss, 0.1)
     self.assertAlmostEqual(accuracy, 1.0, places=3)
 
@@ -101,7 +100,6 @@ class SVMTest(tf.test.TestCase):
     metrics = svm_classifier.evaluate(input_fn=input_fn, steps=1)
     loss = metrics['loss']
     accuracy = metrics['accuracy']
-    self.assertGreater(loss, 0.01)
     self.assertLess(loss, 0.1)
     self.assertAlmostEqual(accuracy, 1.0, places=3)
 

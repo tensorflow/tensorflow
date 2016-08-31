@@ -44,7 +44,7 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
   performance.
   """
 
-  def __init__(self, shape, dtype, verify_pd=True, name='OperatorPDIdentity'):
+  def __init__(self, shape, dtype, verify_pd=True, name="OperatorPDIdentity"):
     """Initialize an `OperatorPDIdentity`.
 
     Args:
@@ -58,21 +58,21 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
 
     # Grab static shape if available now.
     with ops.name_scope(name):
-      with ops.name_scope('init', values=[shape]):
+      with ops.name_scope("init", values=[shape]):
         self._dtype = dtypes.as_dtype(dtype)
         self._verify_pd = verify_pd
         self._name = name
 
         # Store the static shape (if possible) right now before adding the
         # asserts, since the asserts prevent .constant_value from working.
-        shape = ops.convert_to_tensor(shape, name='shape')
+        shape = ops.convert_to_tensor(shape, name="shape")
         self._get_shape = tensor_shape.TensorShape(
             tensor_util.constant_value(shape))
         self._shape_arg = self._check_shape(shape)
 
   def _check_shape(self, shape):
     """Check that the init arg `shape` defines a valid operator."""
-    shape = ops.convert_to_tensor(shape, name='shape')
+    shape = ops.convert_to_tensor(shape, name="shape")
     if not self._verify_pd:
       return shape
 
@@ -103,22 +103,22 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
     # real Operator.
     if self.dtype != x.dtype:
       raise TypeError(
-          'Expected argument "x" to have same dtype as this operator (%s).  '
-          'Found: %s' % (self.dtype, x.dtype))
+          "Expected argument \"x\" to have same dtype as this operator (%s).  "
+          "Found: %s" % (self.dtype, x.dtype))
 
     x_shape = x.get_shape()
     self_shape = self.get_shape()
     found_msg = (
-        'Found: operator.shape = %s,  x.shape = %s' % (self_shape, x_shape))
+        "Found: operator.shape = %s,  x.shape = %s" % (self_shape, x_shape))
     if x_shape.ndims is not None and self_shape.ndims is not None:
       if x_shape.ndims != self_shape.ndims:
         raise ValueError(
-            'Expected argument "x" to have same tensor rank as this operator.  '
-            + found_msg)
+            "Expected argument \"x\" to have same tensor rank as this "
+            "operator. " + found_msg)
       if x_shape.is_fully_defined() and self_shape.is_fully_defined():
         if x_shape[-2] != self_shape[-1]:
           raise ValueError(
-              'Incompatible shapes for matrix-matrix operation.  ' + found_msg)
+              "Incompatible shapes for matrix-matrix operation.  " + found_msg)
 
   @property
   def name(self):

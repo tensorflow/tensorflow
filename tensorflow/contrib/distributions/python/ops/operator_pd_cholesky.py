@@ -66,7 +66,7 @@ class OperatorPDCholesky(operator_pd.OperatorPDBase):
   `MultivariateNormalCholesky`.
   """
 
-  def __init__(self, chol, verify_pd=True, name='OperatorPDCholesky'):
+  def __init__(self, chol, verify_pd=True, name="OperatorPDCholesky"):
     """Initialize an OperatorPDCholesky.
 
     Args:
@@ -82,7 +82,7 @@ class OperatorPDCholesky(operator_pd.OperatorPDBase):
     self._verify_pd = verify_pd
     self._name = name
     with ops.name_scope(name):
-      with ops.name_scope('init', values=[chol]):
+      with ops.name_scope("init", values=[chol]):
         self._chol = self._check_chol(chol)
 
   @property
@@ -164,7 +164,7 @@ class OperatorPDCholesky(operator_pd.OperatorPDBase):
 
   def _check_chol(self, chol):
     """Verify that `chol` is proper."""
-    chol = ops.convert_to_tensor(chol, name='chol')
+    chol = ops.convert_to_tensor(chol, name="chol")
     if not self.verify_pd:
       return chol
 

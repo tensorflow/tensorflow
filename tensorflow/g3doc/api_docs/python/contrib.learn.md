@@ -60,22 +60,33 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.BaseEstimator.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#BaseEstimator.export}
+#### `tf.contrib.learn.BaseEstimator.export(*args, **kwargs)` {#BaseEstimator.export}
 
-Exports inference graph into given dir.
+Exports inference graph into given dir. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
+Instructions for updating:
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
 
-
-*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
-    and checkpoints.
-*  <b>`signature_fn`</b>: Function that returns a default signature and a named
-    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-    for features and `Tensor` or `dict` of `Tensor`s for predictions.
-*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
-    into features that are then passed to the model.
-*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+    Args:
+      export_dir: A string containing a directory to write the exported graph
+        and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, targets), where features is a dict of
+        string key to `Tensor` and targets is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds to
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input.
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      default_batch_size: Default batch size of the `Example` placeholder.
+      exports_to_keep: Number of exports to keep.
 
 
 - - -
@@ -258,7 +269,7 @@ component of a nested object.
 Estimator class is the basic TensorFlow model trainer/evaluator.
 - - -
 
-#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None, params=None)` {#Estimator.__init__}
+#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None, params=None, weight_column_name=None)` {#Estimator.__init__}
 
 Constructs an Estimator instance.
 
@@ -295,6 +306,9 @@ Constructs an Estimator instance.
 *  <b>`config`</b>: Configuration object.
 *  <b>`params`</b>: `dict` of hyper parameters that will be passed into `model_fn`.
           Keys are names of parameters, values are basic python types.
+*  <b>`weight_column_name`</b>: A string defining feature column name representing
+    weights. It is used to down weight or boost examples during training. It
+    will be multiplied by the loss of the example.
 
 ##### Raises:
 
@@ -325,22 +339,33 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.Estimator.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#Estimator.export}
+#### `tf.contrib.learn.Estimator.export(*args, **kwargs)` {#Estimator.export}
 
-Exports inference graph into given dir.
+Exports inference graph into given dir. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
+Instructions for updating:
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
 
-
-*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
-    and checkpoints.
-*  <b>`signature_fn`</b>: Function that returns a default signature and a named
-    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-    for features and `Tensor` or `dict` of `Tensor`s for predictions.
-*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
-    into features that are then passed to the model.
-*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+    Args:
+      export_dir: A string containing a directory to write the exported graph
+        and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, targets), where features is a dict of
+        string key to `Tensor` and targets is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds to
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input.
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      default_batch_size: Default batch size of the `Example` placeholder.
+      exports_to_keep: Number of exports to keep.
 
 
 - - -
@@ -673,22 +698,33 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#DNNClassifier.export}
+#### `tf.contrib.learn.DNNClassifier.export(*args, **kwargs)` {#DNNClassifier.export}
 
-Exports inference graph into given dir.
+Exports inference graph into given dir. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
+Instructions for updating:
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
 
-
-*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
-    and checkpoints.
-*  <b>`signature_fn`</b>: Function that returns a default signature and a named
-    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-    for features and `Tensor` or `dict` of `Tensor`s for predictions.
-*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
-    into features that are then passed to the model.
-*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+    Args:
+      export_dir: A string containing a directory to write the exported graph
+        and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, targets), where features is a dict of
+        string key to `Tensor` and targets is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds to
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input.
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      default_batch_size: Default batch size of the `Example` placeholder.
+      exports_to_keep: Number of exports to keep.
 
 
 - - -
@@ -1044,22 +1080,33 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#DNNRegressor.export}
+#### `tf.contrib.learn.DNNRegressor.export(*args, **kwargs)` {#DNNRegressor.export}
 
-Exports inference graph into given dir.
+Exports inference graph into given dir. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
+Instructions for updating:
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
 
-
-*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
-    and checkpoints.
-*  <b>`signature_fn`</b>: Function that returns a default signature and a named
-    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-    for features and `Tensor` or `dict` of `Tensor`s for predictions.
-*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
-    into features that are then passed to the model.
-*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+    Args:
+      export_dir: A string containing a directory to write the exported graph
+        and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, targets), where features is a dict of
+        string key to `Tensor` and targets is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds to
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input.
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      default_batch_size: Default batch size of the `Example` placeholder.
+      exports_to_keep: Number of exports to keep.
 
 
 - - -
@@ -1312,22 +1359,33 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowDNNClassifier.export}
+#### `tf.contrib.learn.TensorFlowDNNClassifier.export(*args, **kwargs)` {#TensorFlowDNNClassifier.export}
 
-Exports inference graph into given dir.
+Exports inference graph into given dir. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
+Instructions for updating:
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
 
-
-*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
-    and checkpoints.
-*  <b>`signature_fn`</b>: Function that returns a default signature and a named
-    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-    for features and `Tensor` or `dict` of `Tensor`s for predictions.
-*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
-    into features that are then passed to the model.
-*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+    Args:
+      export_dir: A string containing a directory to write the exported graph
+        and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, targets), where features is a dict of
+        string key to `Tensor` and targets is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds to
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input.
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      default_batch_size: Default batch size of the `Example` placeholder.
+      exports_to_keep: Number of exports to keep.
 
 
 - - -
@@ -1564,22 +1622,33 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowDNNRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowDNNRegressor.export}
+#### `tf.contrib.learn.TensorFlowDNNRegressor.export(*args, **kwargs)` {#TensorFlowDNNRegressor.export}
 
-Exports inference graph into given dir.
+Exports inference graph into given dir. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
+Instructions for updating:
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
 
-
-*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
-    and checkpoints.
-*  <b>`signature_fn`</b>: Function that returns a default signature and a named
-    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-    for features and `Tensor` or `dict` of `Tensor`s for predictions.
-*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
-    into features that are then passed to the model.
-*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+    Args:
+      export_dir: A string containing a directory to write the exported graph
+        and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, targets), where features is a dict of
+        string key to `Tensor` and targets is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds to
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input.
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      default_batch_size: Default batch size of the `Example` placeholder.
+      exports_to_keep: Number of exports to keep.
 
 
 - - -
@@ -1844,22 +1913,33 @@ See superclass Estimator for more details.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowEstimator.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowEstimator.export}
+#### `tf.contrib.learn.TensorFlowEstimator.export(*args, **kwargs)` {#TensorFlowEstimator.export}
 
-Exports inference graph into given dir.
+Exports inference graph into given dir. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
+Instructions for updating:
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
 
-
-*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
-    and checkpoints.
-*  <b>`signature_fn`</b>: Function that returns a default signature and a named
-    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-    for features and `Tensor` or `dict` of `Tensor`s for predictions.
-*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
-    into features that are then passed to the model.
-*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+    Args:
+      export_dir: A string containing a directory to write the exported graph
+        and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, targets), where features is a dict of
+        string key to `Tensor` and targets is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds to
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input.
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      default_batch_size: Default batch size of the `Example` placeholder.
+      exports_to_keep: Number of exports to keep.
 
 
 - - -
@@ -2205,6 +2285,11 @@ Construct a `LinearClassifier` estimator object.
 
   A `LinearClassifier` estimator.
 
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if n_classes < 2.
+
 
 - - -
 
@@ -2222,252 +2307,51 @@ Construct a `LinearClassifier` estimator object.
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.dnn_bias_` {#LinearClassifier.dnn_bias_}
-
-Returns bias of deep neural network part.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearClassifier.dnn_weights_` {#LinearClassifier.dnn_weights_}
-
-Returns weights of deep neural network part.
-
-
-- - -
-
 #### `tf.contrib.learn.LinearClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#LinearClassifier.evaluate}
 
-See `Evaluable`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
-      `input_fn` or `feed_fn` is provided.
-      Or if `metrics` is not `None` or `dict`.
+See evaluable.Evaluable.
 
 
 - - -
 
 #### `tf.contrib.learn.LinearClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#LinearClassifier.export}
 
-Exports inference graph into given dir.
-
-##### Args:
-
-
-*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
-    and checkpoints.
-*  <b>`signature_fn`</b>: Function that returns a default signature and a named
-    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-    for features and `Tensor` or `dict` of `Tensor`s for predictions.
-*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
-    into features that are then passed to the model.
-*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+See BasEstimator.export.
 
 
 - - -
 
 #### `tf.contrib.learn.LinearClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#LinearClassifier.fit}
 
-See `Trainable`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
-*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
+See trainable.Trainable.
 
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.get_params(deep=True)` {#LinearClassifier.get_params}
-
-Get parameters for this estimator.
-
-##### Args:
+#### `tf.contrib.learn.LinearClassifier.get_estimator()` {#LinearClassifier.get_estimator}
 
 
-*  <b>`deep`</b>: boolean, optional
-
-    If `True`, will return the parameters for this estimator and
-    contained subobjects that are estimators.
-
-##### Returns:
-
-  params : mapping of string to any
-  Parameter names mapped to their values.
 
 
 - - -
 
 #### `tf.contrib.learn.LinearClassifier.get_variable_names()` {#LinearClassifier.get_variable_names}
 
-Returns list of all variable names in this model.
-
-##### Returns:
-
-  List of names.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearClassifier.get_variable_value(name)` {#LinearClassifier.get_variable_value}
-
-Returns value of the variable given by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Numpy array - value of the tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearClassifier.linear_bias_` {#LinearClassifier.linear_bias_}
-
-Returns bias of the linear part.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearClassifier.linear_weights_` {#LinearClassifier.linear_weights_}
-
-Returns weights per feature of the linear part.
-
-
-- - -
-
-#### `tf.contrib.learn.LinearClassifier.model_dir` {#LinearClassifier.model_dir}
-
 
 
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=None, monitors=None)` {#LinearClassifier.partial_fit}
+#### `tf.contrib.learn.LinearClassifier.predict(x=None, input_fn=None, batch_size=None, as_iterable=False)` {#LinearClassifier.predict}
 
-Incremental fit on a batch of samples.
-
-This method is expected to be called several times consecutively
-on different or the same chunks of the dataset. This either can
-implement iterative training or out-of-core/online training.
-
-This is especially useful when the whole dataset is too big to
-fit in memory at the same time. Or when model is taking long time
-to converge, and you want to split up training into subparts.
-
-##### Args:
-
-
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of targets. The training target values
-     (class labels in classification, real numbers in regression). If set,
-     `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`.
-*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-    dimension of `x`. Must be `None` if `input_fn` is provided.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-    inside the training loop.
-
-##### Returns:
-
-  `self`, for chaining.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
-      provided.
+Runs inference to determine the predicted class.
 
 
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.predict(*args, **kwargs)` {#LinearClassifier.predict}
+#### `tf.contrib.learn.LinearClassifier.predict_proba(x=None, input_fn=None, batch_size=None, outputs=None, as_iterable=False)` {#LinearClassifier.predict_proba}
 
-Returns predicted classes for given features. (deprecated arguments)
-
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
-Instructions for updating:
-The default behavior of predict() is changing. The default value for
-as_iterable will change to True, and then the flag will be removed
-altogether. The behavior of this flag is described below.
-
-    Args:
-      x: features.
-      input_fn: Input function. If set, x must be None.
-      batch_size: Override default batch size.
-      as_iterable: If True, return an iterable which keeps yielding predictions
-        for each example until inputs are exhausted. Note: The inputs must
-        terminate if you want the iterable to terminate (e.g. be sure to pass
-        num_epochs=1 if you are using something like read_batch_features).
-
-    Returns:
-      Numpy array of predicted classes (or an iterable of predicted classes if
-      as_iterable is True).
-
-
-- - -
-
-#### `tf.contrib.learn.LinearClassifier.predict_proba(*args, **kwargs)` {#LinearClassifier.predict_proba}
-
-Returns prediction probabilities for given features. (deprecated arguments)
-
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-15.
-Instructions for updating:
-The default behavior of predict() is changing. The default value for
-as_iterable will change to True, and then the flag will be removed
-altogether. The behavior of this flag is described below.
-
-    Args:
-      x: features.
-      input_fn: Input function. If set, x and y must be None.
-      batch_size: Override default batch size.
-      as_iterable: If True, return an iterable which keeps yielding predictions
-        for each example until inputs are exhausted. Note: The inputs must
-        terminate if you want the iterable to terminate (e.g. be sure to pass
-        num_epochs=1 if you are using something like read_batch_features).
-
-    Returns:
-      Numpy array of predicted probabilities (or an iterable of predicted
-      probabilities if as_iterable is True).
-
-
-- - -
-
-#### `tf.contrib.learn.LinearClassifier.set_params(**params)` {#LinearClassifier.set_params}
-
-Set the parameters of this estimator.
-
-The method works on simple estimators as well as on nested objects
-(such as pipelines). The former have parameters of the form
-``<component>__<parameter>`` so that it's possible to update each
-component of a nested object.
-
-##### Args:
-
-
-*  <b>`**params`</b>: Parameters.
-
-##### Returns:
-
-  self
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If params contain invalid names.
+Runs inference to determine the class probability predictions.
 
 
 - - -
@@ -2604,22 +2488,33 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#LinearRegressor.export}
+#### `tf.contrib.learn.LinearRegressor.export(*args, **kwargs)` {#LinearRegressor.export}
 
-Exports inference graph into given dir.
+Exports inference graph into given dir. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
+Instructions for updating:
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
 
-
-*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
-    and checkpoints.
-*  <b>`signature_fn`</b>: Function that returns a default signature and a named
-    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-    for features and `Tensor` or `dict` of `Tensor`s for predictions.
-*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
-    into features that are then passed to the model.
-*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+    Args:
+      export_dir: A string containing a directory to write the exported graph
+        and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, targets), where features is a dict of
+        string key to `Tensor` and targets is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds to
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input.
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      default_batch_size: Default batch size of the `Example` placeholder.
+      exports_to_keep: Number of exports to keep.
 
 
 - - -
@@ -2914,22 +2809,33 @@ See superclass Estimator for more details.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNClassifier.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNClassifier.export}
+#### `tf.contrib.learn.TensorFlowRNNClassifier.export(*args, **kwargs)` {#TensorFlowRNNClassifier.export}
 
-Exports inference graph into given dir.
+Exports inference graph into given dir. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
+Instructions for updating:
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
 
-
-*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
-    and checkpoints.
-*  <b>`signature_fn`</b>: Function that returns a default signature and a named
-    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-    for features and `Tensor` or `dict` of `Tensor`s for predictions.
-*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
-    into features that are then passed to the model.
-*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+    Args:
+      export_dir: A string containing a directory to write the exported graph
+        and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, targets), where features is a dict of
+        string key to `Tensor` and targets is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds to
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input.
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      default_batch_size: Default batch size of the `Example` placeholder.
+      exports_to_keep: Number of exports to keep.
 
 
 - - -
@@ -3282,22 +3188,33 @@ See superclass Estimator for more details.
 
 - - -
 
-#### `tf.contrib.learn.TensorFlowRNNRegressor.export(export_dir, signature_fn=None, input_fn=None, default_batch_size=1, exports_to_keep=None)` {#TensorFlowRNNRegressor.export}
+#### `tf.contrib.learn.TensorFlowRNNRegressor.export(*args, **kwargs)` {#TensorFlowRNNRegressor.export}
 
-Exports inference graph into given dir.
+Exports inference graph into given dir. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
+Instructions for updating:
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
 
-
-*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
-    and checkpoints.
-*  <b>`signature_fn`</b>: Function that returns a default signature and a named
-    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-    for features and `Tensor` or `dict` of `Tensor`s for predictions.
-*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
-    into features that are then passed to the model.
-*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+    Args:
+      export_dir: A string containing a directory to write the exported graph
+        and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, targets), where features is a dict of
+        string key to `Tensor` and targets is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds to
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input.
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      default_batch_size: Default batch size of the `Example` placeholder.
+      exports_to_keep: Number of exports to keep.
 
 
 - - -
@@ -3573,23 +3490,60 @@ If you're a Google-internal user using command line flags with learn_runner.py
 probably want to use learn_runner.EstimatorConfig instead.
 - - -
 
-#### `tf.contrib.learn.RunConfig.__init__(master='', task=0, num_ps_replicas=0, num_cores=4, log_device_placement=False, gpu_memory_fraction=1, cluster_spec=None, tf_random_seed=None, save_summary_steps=100, save_checkpoints_secs=60, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000)` {#RunConfig.__init__}
+#### `tf.contrib.learn.RunConfig.__init__(master=None, task=None, num_ps_replicas=None, num_cores=4, log_device_placement=False, gpu_memory_fraction=1, cluster_spec=None, tf_random_seed=None, save_summary_steps=100, save_checkpoints_secs=600, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000, job_name=None, is_chief=None)` {#RunConfig.__init__}
 
 Constructor.
+
+If set to None, `master`, `task`, `num_ps_replicas`, `cluster_spec`,
+`job_name`, and `is_chief` are set based on the TF_CONFIG environment
+variable, if the pertinent information is present; otherwise, the defaults
+listed in the Args section apply.
+
+The TF_CONFIG environment variable is a JSON object with two relevant
+attributes: `task` and `cluster_spec`. `cluster_spec` is a JSON serialized
+version of the Python dict described in server_lib.py. `task` has two
+attributes: `type` and `index`, where `type` can be any of the task types
+in the cluster_spec. When TF_CONFIG contains said information, the
+following properties are set on this class:
+
+  * `job_name` is set to [`task`][`type`]
+  * `task` is set to [`task`][`index`]
+  * `cluster_spec` is parsed from [`cluster`]
+  * 'master' is determined by looking up `job_name` and `task` in the
+    cluster_spec.
+  * `num_ps_replicas` is set by counting the number of nodes listed
+    in the `ps` job of `cluster_spec`.
+  * `is_chief`: true when `job_name` == "master" and `task` == 0.
+
+Example:
+```
+  cluster = {'ps': ['host1:2222', 'host2:2222'],
+             'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
+  os.environ['TF_CONFIG'] = json.dumps({
+      {'cluster': cluster,
+       'task': {'type': 'worker', 'index': 1}}})
+  config = RunConfig()
+  assert config.master == 'host4:2222'
+  assert config.task == 1
+  assert config.num_ps_replicas == 2
+  assert config.cluster_spec == server_lib.ClusterSpec(cluster)
+  assert config.job_name == 'worker'
+  assert not config.is_chief
+```
 
 ##### Args:
 
 
-*  <b>`master`</b>: TensorFlow master. Empty string (the default) for local.
+*  <b>`master`</b>: TensorFlow master. Defaults to empty string for local.
 *  <b>`task`</b>: Task id of the replica running the training (default: 0).
 *  <b>`num_ps_replicas`</b>: Number of parameter server tasks to use (default: 0).
 *  <b>`num_cores`</b>: Number of cores to be used (default: 4).
 *  <b>`log_device_placement`</b>: Log the op placement to devices (default: False).
 *  <b>`gpu_memory_fraction`</b>: Fraction of GPU memory used by the process on
     each GPU uniformly on the same machine.
-*  <b>`cluster_spec`</b>: a tf.train.ClusterSpec object that describes the cluster in
-    the case of distributed computation. If missing, reasonable assumptions
-    are made for the addresses of jobs.
+*  <b>`cluster_spec`</b>: a `tf.train.ClusterSpec` object that describes the cluster
+    in the case of distributed computation. If missing, reasonable
+    assumptions are made for the addresses of jobs.
 *  <b>`tf_random_seed`</b>: Random seed for TensorFlow initializers.
     Setting this value allows consistency between reruns.
 *  <b>`save_summary_steps`</b>: Save summaries every this many steps.
@@ -3601,6 +3555,30 @@ Constructor.
 *  <b>`keep_checkpoint_every_n_hours`</b>: Number of hours between each checkpoint
     to be saved. The default value of 10,000 hours effectively disables
     the feature.
+*  <b>`job_name`</b>: the type of task, e.g., 'ps', 'worker', etc. The `job_name`
+    must exist in the `cluster_spec.jobs`.
+*  <b>`is_chief`</b>: whether or not this task (as identified by the other parameters)
+    should be the chief task.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if num_ps_replicas and cluster_spec are set (cluster_spec
+    may fome from the TF_CONFIG environment variable).
+
+
+- - -
+
+#### `tf.contrib.learn.RunConfig.is_chief` {#RunConfig.is_chief}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.RunConfig.job_name` {#RunConfig.job_name}
+
+
 
 
 

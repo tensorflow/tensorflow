@@ -26,7 +26,7 @@ from tensorflow.python.ops import sparse_ops
 
 
 @series.Series.register_binary_op("__add__")
-class Sum(transform.Transform):
+class Sum(transform.TensorFlowTransform):
   """Adds two `Series`."""
 
   def __init__(self):

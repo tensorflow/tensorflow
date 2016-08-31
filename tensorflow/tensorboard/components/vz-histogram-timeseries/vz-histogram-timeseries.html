@@ -475,9 +475,7 @@ visualization.
 
         var svg = d3.select(svgNode)
 
-        var svgTransition = svg.transition().duration(duration)
-            .attr("width", outerWidth)
-            .attr("height", outerHeight);
+        var svgTransition = svg.transition().duration(duration);
 
         var g = svg.select("g")
             .classed("small", function() { return (width > 0 && width <= 150); })

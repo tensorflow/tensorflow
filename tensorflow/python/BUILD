@@ -79,6 +79,10 @@ tf_py_test(
         ":platform",
         ":platform_test",
     ],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 tf_py_test(
@@ -88,6 +92,10 @@ tf_py_test(
     additional_deps = [
         ":platform",
         ":platform_test",
+    ],
+    tags = [
+        "manual",
+        "notap",
     ],
 )
 
@@ -1253,6 +1261,7 @@ py_tests(
         "summary/impl/event_file_loader_test.py",
         "summary/impl/gcs_file_loader_test.py",
         "summary/impl/reservoir_test.py",
+        "summary/summary_test.py",
     ],
     additional_deps = [
         ":summary",

@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_STREAM_EXECUTOR_UTIL_H_
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
@@ -32,6 +34,16 @@ class StreamExecutorUtil {
     T* ptr = reinterpret_cast<T*>(const_cast<char*>(t.tensor_data().data()));
     return perftools::gputools::DeviceMemory<T>(
         perftools::gputools::DeviceMemoryBase(ptr, t.TotalBytes()));
+  }
+
+  // Converts from a StreamExecutor Status to a TensorFlow Status.
+  //
+  // This assumes that the error codes between the two implementations
+  // match.
+  static Status ConvertStatus(const perftools::gputools::port::Status& s) {
+    return s.ok() ? Status::OK() : Status(static_cast<tensorflow::error::Code>(
+                                              static_cast<int>(s.code())),
+                                          s.error_message());
   }
 };
 

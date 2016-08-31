@@ -36,6 +36,8 @@
 
 * **[Asserts and boolean checks.](../../api_docs/python/check_ops.md)**:
   * [`assert_equal`](../../api_docs/python/check_ops.md#assert_equal)
+  * [`assert_greater`](../../api_docs/python/check_ops.md#assert_greater)
+  * [`assert_greater_equal`](../../api_docs/python/check_ops.md#assert_greater_equal)
   * [`assert_integer`](../../api_docs/python/check_ops.md#assert_integer)
   * [`assert_less`](../../api_docs/python/check_ops.md#assert_less)
   * [`assert_less_equal`](../../api_docs/python/check_ops.md#assert_less_equal)
@@ -79,6 +81,7 @@
   * [`count_up_to`](../../api_docs/python/state_ops.md#count_up_to)
   * [`device`](../../api_docs/python/state_ops.md#device)
   * [`export_meta_graph`](../../api_docs/python/state_ops.md#export_meta_graph)
+  * [`fixed_size_partitioner`](../../api_docs/python/state_ops.md#fixed_size_partitioner)
   * [`get_checkpoint_state`](../../api_docs/python/state_ops.md#get_checkpoint_state)
   * [`get_variable`](../../api_docs/python/state_ops.md#get_variable)
   * [`get_variable_scope`](../../api_docs/python/state_ops.md#get_variable_scope)
@@ -188,6 +191,7 @@
   * [`batch_self_adjoint_eig`](../../api_docs/python/math_ops.md#batch_self_adjoint_eig)
   * [`batch_self_adjoint_eigvals`](../../api_docs/python/math_ops.md#batch_self_adjoint_eigvals)
   * [`batch_svd`](../../api_docs/python/math_ops.md#batch_svd)
+  * [`betainc`](../../api_docs/python/math_ops.md#betainc)
   * [`ceil`](../../api_docs/python/math_ops.md#ceil)
   * [`cholesky`](../../api_docs/python/math_ops.md#cholesky)
   * [`cholesky_solve`](../../api_docs/python/math_ops.md#cholesky_solve)
@@ -239,6 +243,7 @@
   * [`real`](../../api_docs/python/math_ops.md#real)
   * [`reduce_all`](../../api_docs/python/math_ops.md#reduce_all)
   * [`reduce_any`](../../api_docs/python/math_ops.md#reduce_any)
+  * [`reduce_logsumexp`](../../api_docs/python/math_ops.md#reduce_logsumexp)
   * [`reduce_max`](../../api_docs/python/math_ops.md#reduce_max)
   * [`reduce_mean`](../../api_docs/python/math_ops.md#reduce_mean)
   * [`reduce_min`](../../api_docs/python/math_ops.md#reduce_min)
@@ -395,6 +400,7 @@
   * [`sparse_tensor_to_dense`](../../api_docs/python/sparse_ops.md#sparse_tensor_to_dense)
   * [`sparse_to_dense`](../../api_docs/python/sparse_ops.md#sparse_to_dense)
   * [`sparse_to_indicator`](../../api_docs/python/sparse_ops.md#sparse_to_indicator)
+  * [`sparse_transpose`](../../api_docs/python/sparse_ops.md#sparse_transpose)
   * [`SparseTensor`](../../api_docs/python/sparse_ops.md#SparseTensor)
   * [`SparseTensorValue`](../../api_docs/python/sparse_ops.md#SparseTensorValue)
 
@@ -419,6 +425,7 @@
   * [`parse_tensor`](../../api_docs/python/io_ops.md#parse_tensor)
   * [`placeholder`](../../api_docs/python/io_ops.md#placeholder)
   * [`placeholder_with_default`](../../api_docs/python/io_ops.md#placeholder_with_default)
+  * [`PriorityQueue`](../../api_docs/python/io_ops.md#PriorityQueue)
   * [`QueueBase`](../../api_docs/python/io_ops.md#QueueBase)
   * [`RandomShuffleQueue`](../../api_docs/python/io_ops.md#RandomShuffleQueue)
   * [`range_input_producer`](../../api_docs/python/io_ops.md#range_input_producer)
@@ -466,6 +473,8 @@
   * [`embedding_lookup_sparse`](../../api_docs/python/nn.md#embedding_lookup_sparse)
   * [`erosion2d`](../../api_docs/python/nn.md#erosion2d)
   * [`fixed_unigram_candidate_sampler`](../../api_docs/python/nn.md#fixed_unigram_candidate_sampler)
+  * [`fractional_avg_pool`](../../api_docs/python/nn.md#fractional_avg_pool)
+  * [`fractional_max_pool`](../../api_docs/python/nn.md#fractional_max_pool)
   * [`in_top_k`](../../api_docs/python/nn.md#in_top_k)
   * [`l2_loss`](../../api_docs/python/nn.md#l2_loss)
   * [`l2_normalize`](../../api_docs/python/nn.md#l2_normalize)
@@ -583,6 +592,7 @@
   * [`py_func`](../../api_docs/python/script_ops.md#py_func)
 
 * **[Summary Operations](../../api_docs/python/summary.md)**:
+  * [`scalar`](../../api_docs/python/summary.md#scalar)
   * [`tensor_summary`](../../api_docs/python/summary.md#tensor_summary)
 
 * **[Testing](../../api_docs/python/test.md)**:
@@ -708,6 +718,7 @@
   * [`ControlOutputs`](../../api_docs/python/contrib.graph_editor.md#ControlOutputs)
   * [`copy`](../../api_docs/python/contrib.graph_editor.md#copy)
   * [`copy_op_handler`](../../api_docs/python/contrib.graph_editor.md#copy_op_handler)
+  * [`copy_with_input_replacements`](../../api_docs/python/contrib.graph_editor.md#copy_with_input_replacements)
   * [`detach`](../../api_docs/python/contrib.graph_editor.md#detach)
   * [`detach_control_inputs`](../../api_docs/python/contrib.graph_editor.md#detach_control_inputs)
   * [`detach_control_outputs`](../../api_docs/python/contrib.graph_editor.md#detach_control_outputs)
@@ -727,6 +738,7 @@
   * [`get_walks_intersection_ops`](../../api_docs/python/contrib.graph_editor.md#get_walks_intersection_ops)
   * [`get_walks_union_ops`](../../api_docs/python/contrib.graph_editor.md#get_walks_union_ops)
   * [`get_within_boundary_ops`](../../api_docs/python/contrib.graph_editor.md#get_within_boundary_ops)
+  * [`graph_replace`](../../api_docs/python/contrib.graph_editor.md#graph_replace)
   * [`keep_t_if_possible_handler`](../../api_docs/python/contrib.graph_editor.md#keep_t_if_possible_handler)
   * [`make_list_of_op`](../../api_docs/python/contrib.graph_editor.md#make_list_of_op)
   * [`make_list_of_t`](../../api_docs/python/contrib.graph_editor.md#make_list_of_t)
@@ -776,6 +788,7 @@
   * [`fully_connected`](../../api_docs/python/contrib.layers.md#fully_connected)
   * [`l1_regularizer`](../../api_docs/python/contrib.layers.md#l1_regularizer)
   * [`l2_regularizer`](../../api_docs/python/contrib.layers.md#l2_regularizer)
+  * [`layer_norm`](../../api_docs/python/contrib.layers.md#layer_norm)
   * [`max_pool2d`](../../api_docs/python/contrib.layers.md#max_pool2d)
   * [`one_hot_encoding`](../../api_docs/python/contrib.layers.md#one_hot_encoding)
   * [`optimize_loss`](../../api_docs/python/contrib.layers.md#optimize_loss)
@@ -868,6 +881,7 @@
   * [`aggregate_metrics`](../../api_docs/python/contrib.metrics.md#aggregate_metrics)
   * [`auc_using_histogram`](../../api_docs/python/contrib.metrics.md#auc_using_histogram)
   * [`confusion_matrix`](../../api_docs/python/contrib.metrics.md#confusion_matrix)
+  * [`run_metric`](../../api_docs/python/contrib.metrics.md#run_metric)
   * [`set_difference`](../../api_docs/python/contrib.metrics.md#set_difference)
   * [`set_intersection`](../../api_docs/python/contrib.metrics.md#set_intersection)
   * [`set_size`](../../api_docs/python/contrib.metrics.md#set_size)

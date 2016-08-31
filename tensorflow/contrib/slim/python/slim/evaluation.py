@@ -246,9 +246,9 @@ def evaluation(sess,
 _USE_DEFAULT = 0
 
 
-def evaluate_once(checkpoint_path,
+def evaluate_once(master,
+                  checkpoint_path,
                   logdir,
-                  master='',
                   num_evals=1,
                   eval_op=None,
                   eval_op_feed_dict=None,
@@ -261,9 +261,9 @@ def evaluate_once(checkpoint_path,
   """Evaluates the model at the given checkpoint path.
 
   Args:
+    master: The BNS address of the TensorFlow master.
     checkpoint_path: The path to a checkpoint to use for evaluation.
     logdir: The directory where the TensorFlow summaries are written to.
-    master: The BNS address of the TensorFlow master.
     num_evals: The number of times to run `eval_op`.
     eval_op: A operation run `num_evals` times.
     eval_op_feed_dict: The feed dictionary to use when executing the `eval_op`.

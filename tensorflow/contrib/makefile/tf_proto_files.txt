@@ -23,7 +23,6 @@ tensorflow/core/framework/node_def.proto
 tensorflow/core/framework/log_memory.proto
 tensorflow/core/framework/kernel_def.proto
 tensorflow/core/framework/graph.proto
-tensorflow/core/framework/node_def.proto
 tensorflow/core/framework/function.proto
 tensorflow/core/framework/device_attributes.proto
 tensorflow/core/framework/cost_graph.proto

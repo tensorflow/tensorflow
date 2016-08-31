@@ -171,6 +171,22 @@ class TensorArrayCPUTest(tf.test.TestCase):
       self.assertAllEqual(convert([2.0, 2.1]), d1)
       self.assertAllEqual(convert([3.0, 3.1]), d2)
 
+      # Reset ta because we're going to change the shape, else shape
+      # inference will throw an error.
+      ta = tensor_array_ops.TensorArray(
+          dtype=tf_dtype, tensor_array_name="foo", size=3)
+
+      # Try unpacking an empty matrix, which should not cause an error.
+      w2 = ta.unpack(convert([[], [], []]))
+      r0 = w2.read(0)
+      r1 = w2.read(1)
+      r2 = w2.read(2)
+
+      d0, d1, d2 = session.run([r0, r1, r2])
+      self.assertAllEqual(convert([]), d0)
+      self.assertAllEqual(convert([]), d1)
+      self.assertAllEqual(convert([]), d2)
+
   def testTensorArrayUnpackRead(self):
     self._testTensorArrayUnpackRead(tf.float32)
     self._testTensorArrayUnpackRead(tf.float64)
@@ -720,6 +736,9 @@ class TensorArrayCPUTest(tf.test.TestCase):
           cond=lambda time, unused_1, unused_2: time < 3,
           body=body,
           loop_vars=(time_0, ta, state0),
+          shape_invariants=(time_0.get_shape(),
+                            tensor_shape.unknown_shape(),
+                            tensor_shape.unknown_shape()),
           parallel_iterations=3)
       vout = h_final.pack()
 

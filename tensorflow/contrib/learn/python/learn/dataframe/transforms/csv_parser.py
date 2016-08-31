@@ -23,7 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import parsing_ops
 
 
-class CSVParser(transform.Transform):
+class CSVParser(transform.TensorFlowTransform):
   """A Transform that parses lines from a CSV file."""
 
   def __init__(self, column_names, default_values):

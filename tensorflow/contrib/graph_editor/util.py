@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from six import iteritems
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.ops import array_ops as tf_array_ops
 
@@ -84,6 +85,54 @@ def is_iterable(obj):
   except Exception:  # pylint: disable=broad-except
     return False
   return True
+
+
+def flatten_tree(tree, leaves=None):
+  """Flatten a tree into a list.
+
+  Args:
+    tree: iterable or not. If iterable, its elements (child) can also be
+      iterable or not.
+    leaves: list to which the tree leaves are appended (None by default).
+  Returns:
+    A list of all the leaves in the tree.
+  """
+  if leaves is None:
+    leaves = []
+  if is_iterable(tree):
+    for child in tree:
+      flatten_tree(child, leaves)
+  else:
+    leaves.append(tree)
+  return leaves
+
+
+def transform_tree(tree, fn, iterable_type=tuple):
+  """Transform all the nodes of a tree.
+
+  Args:
+    tree: iterable or not. If iterable, its elements (child) can also be
+      iterable or not.
+    fn: function to apply to each leaves.
+    iterable_type: type use to construct the resulting tree for unknwon
+      iterable, typically `list` or `tuple`.
+  Returns:
+    A tree whose leaves has been transformed by `fn`.
+    The hierarchy of the output tree mimics the one of the input tree.
+  """
+  if is_iterable(tree):
+    if isinstance(tree, list):
+      return [transform_tree(child, fn) for child in tree]
+    elif isinstance(tree, tuple):
+      # this works for named tupled as well:
+      return tree.__new__(type(tree),
+                          (transform_tree(child, fn) for child in tree))
+    elif isinstance(tree, dict):
+      return {k: transform_tree(child, fn) for k, child in iteritems(tree)}
+    else:
+      return iterable_type(transform_tree(child, fn) for child in tree)
+  else:
+    return fn(tree)
 
 
 def check_graphs(*args):

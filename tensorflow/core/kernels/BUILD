@@ -1103,6 +1103,7 @@ tf_kernel_libraries(
         "aggregate_ops",
         "argmax_op",
         "batch_matmul_op",
+        "betainc_op",
         "cast_op",
         "check_numerics_op",
         "cross_op",
@@ -1447,6 +1448,9 @@ tf_kernel_library(
     srcs = [
         "avgpooling_op.cc",
         "cudnn_pooling_gpu.cc",
+        "fractional_avg_pool_op.cc",
+        "fractional_max_pool_op.cc",
+        "fractional_pool_common.cc",
         "maxpooling_op.cc",
         "pooling_ops_3d.cc",
         "pooling_ops_common.cc",
@@ -1454,6 +1458,7 @@ tf_kernel_library(
     hdrs = [
         "avgpooling_op.h",
         "cudnn_pooling_gpu.h",
+        "fractional_pool_common.h",
         "maxpooling_op.h",
         "pooling_ops_common.h",
     ],

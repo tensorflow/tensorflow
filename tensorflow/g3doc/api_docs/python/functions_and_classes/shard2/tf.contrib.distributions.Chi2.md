@@ -31,7 +31,21 @@ Construct Chi2 distributions with parameter `df`.
 
 #### `tf.contrib.distributions.Chi2.allow_nan_stats` {#Chi2.allow_nan_stats}
 
-Boolean describing behavior when a stat is undefined for batch member.
+Python boolean describing behavior when a stat is undefined.
+
+Stats return +/- infinity when it makes sense.  E.g., the variance
+of a Cauchy distribution is infinity.  However, sometimes the
+statistic is undefined, e.g., if a distribution's pdf does not achieve a
+maximum within the support of the distribution, the mode is undefined.
+If the mean is undefined, then by definition the variance is undefined.
+E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
+it is either + or - infinity), so the variance = E[(X - mean)^2] is also
+undefined.
+
+##### Returns:
+
+
+*  <b>`allow_nan_stats`</b>: Python boolean.
 
 
 - - -
@@ -45,7 +59,7 @@ Shape parameter.
 
 #### `tf.contrib.distributions.Chi2.batch_shape(name='batch_shape')` {#Chi2.batch_shape}
 
-Batch dimensions of this instance as a 1-D int32 `Tensor`.
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
 The product of the dimensions of the `batch_shape` is the number of
 independent distributions of this kind the instance represents.
@@ -57,7 +71,8 @@ independent distributions of this kind the instance represents.
 
 ##### Returns:
 
-  `Tensor` `batch_shape`
+
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -69,20 +84,21 @@ Inverse scale parameter.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.cdf(x, name='cdf')` {#Chi2.cdf}
+#### `tf.contrib.distributions.Chi2.cdf(value, name='cdf')` {#Chi2.cdf}
 
-CDF of observations `x` under these Gamma distribution(s).
+Cumulative distribution function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
 
 
-*  <b>`cdf`</b>: tensor of dtype `dtype`, the CDFs of `x`.
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 
 - - -
@@ -96,40 +112,21 @@ CDF of observations `x` under these Gamma distribution(s).
 
 #### `tf.contrib.distributions.Chi2.dtype` {#Chi2.dtype}
 
-dtype of samples from this distribution.
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.entropy(name='entropy')` {#Chi2.entropy}
 
-The entropy of Gamma distribution(s).
-
-This is defined to be
-
-```
-entropy = alpha - log(beta) + log(Gamma(alpha))
-             + (1-alpha)digamma(alpha)
-```
-
-where digamma(alpha) is the digamma function.
-
-##### Args:
-
-
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`entropy`</b>: tensor of dtype `dtype`, the entropy.
+Shanon entropy in nats.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.event_shape(name='event_shape')` {#Chi2.event_shape}
 
-Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 ##### Args:
 
@@ -138,7 +135,8 @@ Shape of a sample from a single distribution as a 1-D int32 `Tensor`.
 
 ##### Returns:
 
-  `Tensor` `event_shape`
+
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -158,8 +156,8 @@ shapes = MultiVariateNormalDiag.param_shapes([batch_size, 10])
 
 # shapes has a Tensor shape for mu and sigma
 # shapes == {
-#   'mu': tf.constant([batch_size, 10]),
-#   'sigma': tf.constant([batch_size, 10]),
+#   "mu": tf.constant([batch_size, 10]),
+#   "sigma": tf.constant([batch_size, 10]),
 # }
 
 # Here we parameterize mu and sigma with the output of a linear
@@ -202,26 +200,28 @@ apply it externally and set `make_safe=False`.
 
 #### `tf.contrib.distributions.Chi2.get_batch_shape()` {#Chi2.get_batch_shape}
 
-`TensorShape` available at graph construction time.
+Shape of a single sample from a single event index as a `TensorShape`.
 
 Same meaning as `batch_shape`. May be only partially defined.
 
 ##### Returns:
 
-  `TensorShape` object.
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.get_event_shape()` {#Chi2.get_event_shape}
 
-`TensorShape` available at graph construction time.
+Shape of a single sample from a single batch as a `TensorShape`.
 
 Same meaning as `event_shape`. May be only partially defined.
 
 ##### Returns:
 
-  `TensorShape` object.
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
@@ -240,91 +240,109 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.Chi2.log_cdf(x, name='log_cdf')` {#Chi2.log_cdf}
+#### `tf.contrib.distributions.Chi2.log_cdf(value, name='log_cdf')` {#Chi2.log_cdf}
 
-Log CDF of observations `x` under these Gamma distribution(s).
+Log cumulative distribution function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
 
 
-*  <b>`log_cdf`</b>: tensor of dtype `dtype`, the log-CDFs of `x`.
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.log_pdf(value, name='log_pdf')` {#Chi2.log_pdf}
 
-Log of the probability density function.
+Log probability density function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`AttributeError`</b>: if not `is_continuous`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.log_pmf(value, name='log_pmf')` {#Chi2.log_pmf}
 
-Log of the probability mass function.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.log_prob(x, name='log_prob')` {#Chi2.log_prob}
-
-Log prob of observations in `x` under these Gamma distribution(s).
+Log probability mass function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `x` and `alpha` are different dtypes.
+*  <b>`AttributeError`</b>: if `is_continuous`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.log_prob(value, name='log_prob')` {#Chi2.log_prob}
+
+Log probability density/mass function (depending on `is_continuous`).
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.mean(name='mean')` {#Chi2.mean}
 
-Mean of each batch member.
+Mean.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.mode(name='mode')` {#Chi2.mode}
 
-Mode of each batch member.
-
-The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
-and `NaN` otherwise.  If `self.allow_nan_stats` is `False`, an exception
-will be raised rather than returning `NaN`.
-
-##### Args:
-
-
-*  <b>`name`</b>: A name to give this op.
-
-##### Returns:
-
-  The mode for every batch member, a `Tensor` with same `dtype` as self.
+Mode.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.name` {#Chi2.name}
 
-Name to prepend to all ops.
+Name prepended to all ops created by this `Distribution`.
 
 
 - - -
@@ -371,105 +389,143 @@ param_shapes with static (i.e. TensorShape) shapes.
 
 - - -
 
+#### `tf.contrib.distributions.Chi2.parameters` {#Chi2.parameters}
+
+Dictionary of parameters used by this `Distribution`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Chi2.pdf(value, name='pdf')` {#Chi2.pdf}
 
-The probability density function.
+Probability density function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`AttributeError`</b>: if not `is_continuous`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.pmf(value, name='pmf')` {#Chi2.pmf}
 
-The probability mass function.
-
-
-- - -
-
-#### `tf.contrib.distributions.Chi2.prob(x, name='prob')` {#Chi2.prob}
-
-Pdf of observations in `x` under these Gamma distribution(s).
+Probability mass function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `alpha` and `beta`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: tensor of dtype `dtype`, the PDFs of `x`
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if `x` and `alpha` are different dtypes.
+*  <b>`AttributeError`</b>: if `is_continuous`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.prob(value, name='prob')` {#Chi2.prob}
+
+Probability density/mass function (depending on `is_continuous`).
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.sample(sample_shape=(), seed=None, name='sample')` {#Chi2.sample}
 
-Generate samples of the specified shape for each batched distribution.
+Generate samples of the specified shape.
 
 Note that a call to `sample()` without arguments will generate a single
-sample per batched distribution.
+sample.
 
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: Rank 1 `int32` `Tensor`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
-      `sample_shape + self.batch_shape + self.event_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.sample_n(n, seed=None, name='sample_n')` {#Chi2.sample_n}
 
-Draws `n` samples from the Gamma distribution(s).
-
-See the doc for tf.random_gamma for further detail.
+Generate `n` samples.
 
 ##### Args:
 
 
 *  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
     observations to sample.
-*  <b>`seed`</b>: Python integer, the random seed for this operation.
-*  <b>`name`</b>: Optional name for the operation.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
 
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
-      with values of type `self.dtype`.
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `n` is not an integer type.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.std(name='std')` {#Chi2.std}
 
-Standard deviation of this distribution.
+Standard deviation.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.validate_args` {#Chi2.validate_args}
 
-Boolean describing behavior on invalid input.
+Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
 #### `tf.contrib.distributions.Chi2.variance(name='variance')` {#Chi2.variance}
 
-Variance of each batch member.
+Variance.
 
 

@@ -333,7 +333,6 @@ class Im2ColConvFunctor {
     // by the width, then the height. This is the standard memory order in the
     // image world if it helps to visualize it.
     const int filter_value_count = filter_width * filter_height * input_depth;
-    const int patch_count = input_batches * output_width * output_height;
 
     // We don't want to allocate a buffer to hold all the patches if the size is
     // going to be extremely large, so break it into chunks if it's bigger than
@@ -345,7 +344,7 @@ class Im2ColConvFunctor {
                 errors::InvalidArgument("Im2Col patch too large for buffer"));
     const size_t patches_per_chunk =
         max_chunk_size / (filter_value_count * sizeof(T1));
-    const size_t im2col_size = patches_per_chunk * filter_value_count;
+
     // Because memory allocation is very expensive on mobile platforms, try to
     // allocate a persistent buffer that will be kept around between calls. We
     // use TensorFlow's resource management to ensure that the memory will be

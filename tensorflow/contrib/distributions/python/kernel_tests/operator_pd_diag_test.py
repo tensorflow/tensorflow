@@ -64,7 +64,7 @@ class OperatorPDDiagBaseTest(object):
     with self.test_session():
       diag = [1.0, 0.0]
       operator = operator_pd_diag.OperatorPDSqrtDiag(diag)
-      with self.assertRaisesOpError('assert_positive'):
+      with self.assertRaisesOpError("assert_positive"):
         operator.to_dense().eval()
 
   def test_non_positive_definite_matrix_does_not_raise_if_not_verify_pd(self):
@@ -99,5 +99,5 @@ class OperatorPDSqrtDiagTest(
     return operator_pd_diag.OperatorPDSqrtDiag
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

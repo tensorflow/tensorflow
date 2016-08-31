@@ -428,10 +428,21 @@ _CODE_TO_EXCEPTION_CLASS = {
     DATA_LOSS: DataLossError,
 }
 
+_EXCEPTION_CLASS_TO_CODE = dict((
+    (class_, code) for (code, class_) in _CODE_TO_EXCEPTION_CLASS.items()))
+
+
+def exception_type_from_error_code(error_code):
+  return _CODE_TO_EXCEPTION_CLASS[error_code]
+
+
+def error_code_from_exception_type(cls):
+  return _EXCEPTION_CLASS_TO_CODE[cls]
+
 
 def _make_specific_exception(node_def, op, message, error_code):
   try:
-    exc_type = _CODE_TO_EXCEPTION_CLASS[error_code]
+    exc_type = exception_type_from_error_code(error_code)
     return exc_type(node_def, op, message)
   except KeyError:
     warnings.warn("Unknown error code: %d" % error_code)

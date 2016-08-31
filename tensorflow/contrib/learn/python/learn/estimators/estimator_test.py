@@ -44,6 +44,16 @@ def boston_input_fn(num_epochs=None):
   return features, target
 
 
+def boston_input_with_weight_fn():
+  boston = tf.contrib.learn.datasets.load_boston()
+  features = {}
+  features['data'] = tf.reshape(
+      tf.constant(boston.data), [-1, _BOSTON_INPUT_DIM])
+  target = tf.reshape(tf.constant(boston.target), [-1, 1])
+  features['weight'] = tf.mul(0.5, tf.ones(target.get_shape()))
+  return features, target
+
+
 def iris_input_fn():
   iris = tf.contrib.learn.datasets.load_iris()
   features = tf.reshape(tf.constant(iris.data), [-1, _IRIS_INPUT_DIM])
@@ -80,6 +90,42 @@ def linear_model_fn(features, target, mode):
       loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
       learning_rate=0.1)
   return prediction, loss, train_op
+
+
+def linear_model_with_weights_fn(features, target, mode):
+  assert mode in ('train', 'eval', 'infer')
+  prediction, loss = (
+      tf.contrib.learn.models.linear_regression_zero_init(
+          features['data'], target)
+  )
+  train_op = tf.contrib.layers.optimize_loss(
+      loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
+      learning_rate=0.1)
+  return prediction, loss, train_op
+
+
+def linear_model_with_weights_and_params_fn(features, target, mode, params):
+  assert mode in ('train', 'eval', 'infer')
+  prediction, loss = (
+      tf.contrib.learn.models.linear_regression_zero_init(
+          features['data'], target)
+  )
+  train_op = tf.contrib.layers.optimize_loss(
+      loss, tf.contrib.framework.get_global_step(), optimizer='Adagrad',
+      learning_rate=params['learning_rate'])
+  return prediction, loss, train_op
+
+
+def squared_error_weighted_sum(predictions, targets, weights=None):
+  squared_error = tf.to_float(tf.square(predictions - targets))
+  if weights is None:
+    return tf.reduce_sum(squared_error)
+  else:
+    return tf.reduce_sum(tf.mul(squared_error, weights))
+
+
+def squared_error_no_weight(predictions, targets):
+  return squared_error_weighted_sum(predictions, targets)
 
 
 def logistic_model_no_mode_fn(features, target):
@@ -337,6 +383,40 @@ class EstimatorTest(tf.test.TestCase):
     est.fit(input_fn=boston_input_fn, steps=1)
     with self.assertRaises(ValueError):
       est.fit(input_fn=other_input_fn, steps=1)
+
+  def testEstimatorWithWeight(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_with_weights_fn,
+                                     weight_column_name='weight')
+    self.assertTrue(est.params is not None)
+    self.assertTrue('weight_column_name' in est.params)
+    est.fit(input_fn=boston_input_with_weight_fn, steps=100)
+    scores = est.evaluate(
+        input_fn=boston_input_with_weight_fn, steps=100,
+        metrics={'SEWS': squared_error_weighted_sum,
+                 'SE': squared_error_no_weight})
+    self.assertNear(scores['SEWS']*2, scores['SE'], 0.01)
+
+  def testEstimatorWithWeightAndParams(self):
+    est = tf.contrib.learn.Estimator(
+        model_fn=linear_model_with_weights_and_params_fn,
+        params={'learning_rate': 0.01},
+        weight_column_name='weight')
+    self.assertTrue('weight_column_name' in est.params)
+    est.fit(input_fn=boston_input_with_weight_fn, steps=100)
+    scores = est.evaluate(
+        input_fn=boston_input_with_weight_fn, steps=100,
+        metrics={'SEWS': squared_error_weighted_sum,
+                 'SE': squared_error_no_weight})
+    self.assertNear(scores['SEWS']*2, scores['SE'], 0.01)
+
+  def testEstimatorWithNoWeight(self):
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_with_weights_fn)
+    est.fit(input_fn=boston_input_with_weight_fn, steps=100)
+    scores = est.evaluate(
+        input_fn=boston_input_with_weight_fn, steps=100,
+        metrics={'SEWS': squared_error_weighted_sum,
+                 'SE': squared_error_no_weight})
+    self.assertNear(scores['SEWS'], scores['SE'], 0.01)
 
   def testMonitors(self):
     est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
