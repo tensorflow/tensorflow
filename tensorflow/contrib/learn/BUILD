@@ -561,7 +561,10 @@ py_test(
     size = "medium",
     srcs = ["python/learn/tests/nonlinear_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],  # http://b/29220227
+    tags = [
+        "manual",  # http://b/29220227
+        "noasan",
+    ],
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -671,6 +674,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/learn_io/graph_io_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],  # http://b/29229547
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
