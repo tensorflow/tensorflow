@@ -482,6 +482,16 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "deep_conv2d_test",
+    size = "small",
+    deps = [
+        ":conv_ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "example_parsing_ops_test",
     size = "large",
     deps = [
@@ -1310,9 +1320,12 @@ tf_kernel_library(
     srcs = [
         "conv_grad_ops.cc",
         "conv_grad_ops_3d.cc",
+        "deep_conv2d.cc",
     ],
     hdrs = [
         "conv_grad_ops.h",
+        "deep_conv2d.h",
+        "winograd_transform.h",
     ],
     prefix = "conv_ops",
     deps = [
@@ -2002,7 +2015,10 @@ filegroup(
         "cwise_op_squared_difference.cc",
         "cwise_op_sub.cc",
         "cwise_op_tanh.cc",
+        "deep_conv2d.cc",
+        "deep_conv2d.h",
         "dynamic_partition_op.cc",
+        "winograd_transform.h",
         ":android_extended_ops_headers",
     ],
 )
