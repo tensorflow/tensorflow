@@ -292,7 +292,7 @@ class _MultiClassTargetColumn(_TargetColumn):
 
   def _default_eval_metrics(self):
     if self._num_label_columns == 1:
-      return _get_default_binary_metrics_for_eval(thresholds=[.5])
+      return get_default_binary_metrics_for_eval(thresholds=[.5])
     return {}
 
   def get_eval_ops(self, features, logits, targets, metrics=None):
@@ -415,7 +415,7 @@ def _run_metrics(predictions, targets, metrics, weights):
   return result
 
 
-def _get_default_binary_metrics_for_eval(thresholds):
+def get_default_binary_metrics_for_eval(thresholds):
   """Returns a dictionary of basic metrics for logistic regression.
 
   Args:

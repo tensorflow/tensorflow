@@ -30,6 +30,7 @@ from tensorflow.contrib import layers
 from tensorflow.contrib import losses
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.layers.python.layers import target_column
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
@@ -110,7 +111,7 @@ def _centered_bias(num_outputs):
       collections=["centered_bias", ops.GraphKeys.VARIABLES],
       name="centered_bias_weight")
   logging_ops.scalar_summary(
-      ["centered_bias %d" % cb for cb in range(num_outputs)],
+      ["centered_bias_%d" % cb for cb in range(num_outputs)],
       array_ops.reshape(centered_bias, [-1]))
   return centered_bias
 
@@ -214,6 +215,7 @@ def _linear_classifier_model_fn(features, targets, mode, params):
       loss = _weighted_loss(loss, weight_tensor)
     else:
       loss = math_ops.reduce_mean(loss, name="loss")
+    logging_ops.scalar_summary("loss", loss)
 
   train_ops = []
   if mode == estimator.ModeKeys.TRAIN:
@@ -452,7 +454,11 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       metrics = {}
       metrics[("accuracy", _CLASSES)] = metrics_lib.streaming_accuracy
     if self._n_classes == 2:
-      metrics[("auc", _LOGISTIC)] = metrics_lib.streaming_auc
+      additional_metrics = (
+          target_column.get_default_binary_metrics_for_eval([0.5]))
+      additional_metrics = {(name, _LOGISTIC): metric
+                            for name, metric in additional_metrics.items()}
+      metrics.update(additional_metrics)
     for metric_name, metric in metrics.items():
       if isinstance(metric_name, tuple):
         if len(metric_name) != 2:
