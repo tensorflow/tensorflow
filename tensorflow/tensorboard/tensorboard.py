@@ -142,7 +142,7 @@ def main(unused_argv=None):
   if FLAGS.host == "0.0.0.0":
     try:
       host = socket.gethostbyname(socket.gethostname())
-      print('(You can navigate to http://%s:%d)' % (socket.gethostbyname(socket.gethostname()), FLAGS.port))
+      print('(You can navigate to http://%s:%d)' % (host, FLAGS.port))
     except socket.gaierror:
       pass
   else:
