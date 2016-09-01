@@ -140,7 +140,11 @@ def main(unused_argv=None):
   print('Starting TensorBoard %s on port %d' % (tag, FLAGS.port))
 
   if FLAGS.host == "0.0.0.0":
-    print('(You can navigate to http://%s:%d)' % (socket.gethostbyname(socket.gethostname()), FLAGS.port))
+    try:
+      host = socket.gethostbyname(socket.gethostname())
+      print('(You can navigate to http://%s:%d)' % (socket.gethostbyname(socket.gethostname()), FLAGS.port))
+    except socket.gaierror:
+      pass
   else:
     print('(You can navigate to http://%s:%d)' % (FLAGS.host, FLAGS.port))
 
