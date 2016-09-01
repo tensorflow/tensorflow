@@ -347,8 +347,6 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       Both features' `value` must be a `SparseTensor`.
     - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
       whose `value` is a `Tensor`.
-    - if `feature_columns` is `None`, then `input` must contains only real
-      valued `Tensor`.
   """
 
   def __init__(self,
@@ -577,8 +575,6 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
          key=weight column name, value=a `SparseTensor`}
     - if isinstance(column, `RealValuedColumn`):
         key=column.name, value=a `Tensor`
-    - if `feature_columns` is `None`:
-        input must contains only real valued `Tensor`.
   """
 
   def __init__(self,
