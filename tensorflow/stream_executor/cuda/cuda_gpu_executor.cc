@@ -936,7 +936,7 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
       << "could not convert SysFS file contents to integral NUMA node value: "
       << content;
 
-  fclose(f);
+  fclose(file);
   return kUnknownNumaNode;
 #endif
 }
