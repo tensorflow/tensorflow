@@ -397,6 +397,14 @@ TEST(DirectSessionTest, MultipleFeedTest) {
   ASSERT_EQ(2, outputs.size());
   ASSERT_EQ(11.0, outputs[0].flat<float>()(0));
   ASSERT_EQ(22.0, outputs[1].flat<float>()(0));
+
+  // Feed [first_const, first_const]
+  s = session->Run(
+      {{first_const->name(), value_11}, {first_const->name(), value_22}},
+      {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
+      &outputs);
+  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(StringPiece(s.error_message()).contains("fed more than once"));
 }
 
 REGISTER_OP("Darth")
