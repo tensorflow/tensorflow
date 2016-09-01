@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
 import time
 
 import numpy as np
@@ -716,6 +715,37 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
       with self.test_session() as sess:
         v = tf.Variable([1, 2])
         sess.run(v[:].assign([1, 2]))
+
+
+class ShapeSizeRankTest(test_util.TensorFlowTestCase):
+
+  def testDenseShape(self):
+    with self.test_session():
+      t_value = [[0, 42], [24, 0]]
+      self.assertAllEqual((2, 2), tf.shape(t_value).eval())
+      self.assertEqual(4, tf.size(t_value).eval())
+      self.assertEqual(2, tf.rank(t_value).eval())
+
+      t = tf.constant(t_value)
+      self.assertAllEqual((2, 2), tf.shape(t).eval())
+      self.assertEqual(4, tf.size(t).eval())
+      self.assertEqual(2, tf.rank(t).eval())
+
+  def testSparseShape(self):
+    with self.test_session():
+      sp_value = tf.SparseTensorValue(
+          indices=((0, 1), (1, 0)),
+          values=(42, 24),
+          shape=(2, 2))
+      self.assertAllEqual((2, 2), tf.shape(sp_value).eval())
+      self.assertEqual(4, tf.size(sp_value).eval())
+      self.assertEqual(2, tf.rank(sp_value).eval())
+
+      sp = tf.SparseTensor.from_value(sp_value)
+      self.assertAllEqual((2, 2), tf.shape(sp).eval())
+      self.assertEqual(4, tf.size(sp).eval())
+      self.assertEqual(2, tf.rank(sp).eval())
+
 
 if __name__ == "__main__":
   tf.test.main()
