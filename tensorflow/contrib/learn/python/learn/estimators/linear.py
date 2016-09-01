@@ -264,6 +264,7 @@ def sdca_classifier_model_fn(features, targets, mode, params):
   loss = None
   if mode != estimator.ModeKeys.INFER:
     loss = math_ops.reduce_mean(loss_fn(logits, targets), name="loss")
+    logging_ops.scalar_summary("loss", loss)
 
   train_op = None
   if mode == estimator.ModeKeys.TRAIN:
