@@ -20,6 +20,7 @@ def configure(src_base_path):
 
   git_path = os.path.join(src_base_path, ".git")
   gen_path = os.path.join(src_base_path, "tensorflow", "core", "util", "git")
+  util_path = os.path.join(src_base_path, "tensorflow", "core", "util")
 
   # Remove and recreate the path
   if os.path.exists(gen_path):
@@ -52,13 +53,16 @@ def configure(src_base_path):
       branch_ref_path = os.path.join(git_path, *os.path.split(spec["branch"]))
       os.symlink(branch_ref_path, os.path.join(gen_path, "branch_ref"))
   json.dump(spec,open(os.path.join(gen_path,"spec.json"),"w"), indent=2)
-
+  print("list %s"%gen_path)
+  print(repr(os.listdir(gen_path)))
+  print("list %s"%util_path)
+  print(repr(os.listdir(util_path)))
   print("gen path %s"%gen_path)
   print("git path %s"%git_path)
-  print("list gen path")
-  os.system("ls -l %s"%gen_path)
-  print("list base path %s"%src_base_path)
-  os.system("ls -l %s"%src_base_path)
+  #rint("list gen path %s"%gen_path)
+  #os.system("ls -l %s"%gen_path)
+  #print("list base path %s"%src_base_path)
+  #os.system("ls -l %s"%src_base_path)
 
 def generate(args):
   "Generate version_info.h"
