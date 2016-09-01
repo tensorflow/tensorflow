@@ -71,6 +71,8 @@ class StripUnusedTest(test_util.TensorFlowTestCase):
       for node in output_graph_def.node:
         self.assertNotEqual("Add", node.op)
         self.assertNotEqual("Sub", node.op)
+        if node.name == input_node_names:
+          self.assertTrue("shape" in node.attr)
 
       with tf.Session() as sess:
         input_node = sess.graph.get_tensor_by_name("wanted_input_node:0")
