@@ -822,49 +822,52 @@ def resize_images(images,
   return images
 
 
-def per_image_whitening(image):
-  """Linearly scales `image` to have zero mean and unit norm.
+def per_image_whitening(images):
+  """Linearly scales `images` to have zero mean and unit norm.
 
   This op computes `(x - mean) / adjusted_stddev`, where `mean` is the average
-  of all values in image, and
-  `adjusted_stddev = max(stddev, 1.0/sqrt(image.NumElements()))`.
+  of all values in images, and
+  `adjusted_stddev = max(stddev, 1.0/sqrt(images.NumElements()))`.
 
-  `stddev` is the standard deviation of all values in `image`. It is capped
+  `stddev` is the standard deviation of all values in `images`. It is capped
   away from zero to protect against division by 0 when handling uniform images.
 
   Note that this implementation is limited:
-  *  It only whitens based on the statistics of an individual image.
+  *  It only whitens based on the marginal statistics of the supplied images.
+      A single standard deviation and mean is calculated for all images provided
+      as input to this function.
   *  It does not take into account the covariance structure.
 
   Args:
-    image: 3-D tensor of shape `[height, width, channels]`.
+    images: 4-D Tensor of shape [batch, height, width, channels] or
+            3-D Tensor of shape [height, width, channels].
 
   Returns:
-    The whitened image with same shape as `image`.
+    An output tensor with same shape as `images`.
 
   Raises:
-    ValueError: if the shape of 'image' is incompatible with this function.
+    ValueError: if the shape of 'images' is incompatible with this function.
   """
-  image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=False)
-  num_pixels = math_ops.reduce_prod(array_ops.shape(image))
+  images = ops.convert_to_tensor(images, name='images')
+  _CheckAtLeast3DImage(images)
+  num_pixels = math_ops.reduce_prod(array_ops.shape(images))
 
-  image = math_ops.cast(image, dtype=dtypes.float32)
-  image_mean = math_ops.reduce_mean(image)
+  images = math_ops.cast(images, dtype=dtypes.float32)
+  images_mean = math_ops.reduce_mean(images)
 
-  variance = (math_ops.reduce_mean(math_ops.square(image)) -
-              math_ops.square(image_mean))
+  variance = (math_ops.reduce_mean(math_ops.square(images)) -
+              math_ops.square(images_mean))
   variance = gen_nn_ops.relu(variance)
   stddev = math_ops.sqrt(variance)
 
   # Apply a minimum normalization that protects us against uniform images.
   min_stddev = math_ops.rsqrt(math_ops.cast(num_pixels, dtypes.float32))
   pixel_value_scale = math_ops.maximum(stddev, min_stddev)
-  pixel_value_offset = image_mean
+  pixel_value_offset = images_mean
 
-  image = math_ops.sub(image, pixel_value_offset)
-  image = math_ops.div(image, pixel_value_scale)
-  return image
+  images = math_ops.sub(images, pixel_value_offset)
+  images = math_ops.div(images, pixel_value_scale)
+  return images
 
 
 def random_brightness(image, max_delta, seed=None):

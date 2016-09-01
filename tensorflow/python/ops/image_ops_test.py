@@ -482,8 +482,27 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
       y_tf = y.eval()
       self.assertAllClose(y_tf, y_np, atol=1e-4)
 
+  def testBatch(self):
+    x_shape = [5, 9, 3, 3]
+    x_np = np.arange(0, np.prod(x_shape), dtype=np.int32).reshape(x_shape)
+    y_np = self._NumpyPerImageWhitening(x_np)
+
+    with self.test_session():
+      x = constant_op.constant(x_np, shape=x_shape)
+      y = image_ops.per_image_whitening(x)
+      y_tf = y.eval()
+      self.assertAllClose(y_tf, y_np, atol=1e-4)
+
   def testUniformImage(self):
     im_np = np.ones([19, 19, 3]).astype(np.float32) * 249
+    im = constant_op.constant(im_np)
+    whiten = image_ops.per_image_whitening(im)
+    with self.test_session():
+      whiten_np = whiten.eval()
+      self.assertFalse(np.any(np.isnan(whiten_np)))
+
+  def testUniformImage4d(self):
+    im_np = np.ones([19, 19, 3, 3]).astype(np.float32) * 249
     im = constant_op.constant(im_np)
     whiten = image_ops.per_image_whitening(im)
     with self.test_session():

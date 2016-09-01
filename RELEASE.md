@@ -53,6 +53,11 @@ Alex Rothberg, Andrew Royer, Austin Marshall, @BlackCoal, Bob Adolf, Brian Diese
 We are also grateful to all who filed issues or helped resolve them, asked and 
 answered questions, and were part of inspiring discussions. 
 
+
+## Big Fixes and Other Changes
+ * `tf.nn.per_image_whitening(images)` is now able to handle batches.
+    Parameter got renamed from `image` to `images`.
+
 # Release 0.9.0
 
 ## Major Features and Improvements
