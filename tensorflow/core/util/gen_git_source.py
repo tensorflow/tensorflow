@@ -47,9 +47,9 @@ def configure(src_base_path):
       branch_ref_path = os.path.join(git_path, *os.path.split(spec["branch"]))
       os.symlink(branch_ref_path, os.path.join(gen_path, "branch_ref"))
   json.dump(spec,open(os.path.join(gen_path,"spec.json"),"w"), indent=2)
-  print "gen path %s"%gen_path
-  print "git path %s"%git_path
-  print "list gen path"
+  print("gen path %s"%gen_path)
+  print("git path %s"%git_path)
+  print("list gen path")
   os.system("ls -l %s"%gen_path)
 
 def generate(args):

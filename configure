@@ -3,9 +3,13 @@
 DO_NOT_SUBMIT_WARNING="Unofficial setting. DO NOT SUBMIT!!!"
 
 # Find out the absolute path to where ./configure resides
-pushd `dirname $0` > /dev/null
+echo pushd `dirname $0`
+pushd `dirname $0` #> /dev/null
 SOURCE_BASE_DIR=`pwd -P`
-popd > /dev/null
+echo got pwd = `pwd`
+echo "got pwd -P = ${SOURCE_BASE_DIR}"
+echo popd #> /dev/null
+popd #> /dev/null
 
 ## Set up python-related environment settings
 while true; do
