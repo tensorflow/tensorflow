@@ -27,6 +27,7 @@ namespace profile_utils {
 class ICpuUtilsHelper {
  public:
   ICpuUtilsHelper() = default;
+  virtual ~ICpuUtilsHelper() = default;
   // Initialize CpuUtilsHelper.
   // This method is called only once when CpuUtils is loaded.
   virtual void Initialize() = 0;
