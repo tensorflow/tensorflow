@@ -87,6 +87,7 @@ filegroup(
         "//tensorflow/contrib/ffmpeg/default:all_files",
         "//tensorflow/contrib/framework:all_files",
         "//tensorflow/contrib/graph_editor:all_files",
+        "//tensorflow/contrib/grid_rnn:all_files",
         "//tensorflow/contrib/layers:all_files",
         "//tensorflow/contrib/layers/kernels:all_files",
         "//tensorflow/contrib/learn:all_files",
