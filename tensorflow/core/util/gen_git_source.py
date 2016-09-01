@@ -30,10 +30,15 @@ def configure(src_base_path):
   and remove manually""" % gen_path)
   os.makedirs(gen_path)
 
+  if not os.path.isdir(gen_path):
+    print("Failed to create dir")
+
   spec = {}
   if not os.path.isdir(git_path):
+    print("Not git")
     spec["git"] = False
   else:
+    print("Git worked")
     spec["git"] = True
     spec["path"] = src_base_path
     git_head_path = os.path.join(git_path,"HEAD")
@@ -47,6 +52,7 @@ def configure(src_base_path):
       branch_ref_path = os.path.join(git_path, *os.path.split(spec["branch"]))
       os.symlink(branch_ref_path, os.path.join(gen_path, "branch_ref"))
   json.dump(spec,open(os.path.join(gen_path,"spec.json"),"w"), indent=2)
+
   print("gen path %s"%gen_path)
   print("git path %s"%git_path)
   print("list gen path")
