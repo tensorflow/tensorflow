@@ -680,15 +680,6 @@ $ popd
 $ ~/cuda-samples/bin/x86_64/darwin/release/deviceQuery
 ```
 
-If you want to compile tensorflow and have the XCode 7.3 installed, note that
-Xcode 7.3 is not yet compatible with CUDA 7.5. You will need to download Xcode
-7.2 and select it as your default:
-
-```bash
-$ sudo xcode-select -s /Application/Xcode-7.2/Xcode.app
-```
-
-
 ### Configure the installation
 
 Run the `configure` script at the root of the tree.  The configure script
