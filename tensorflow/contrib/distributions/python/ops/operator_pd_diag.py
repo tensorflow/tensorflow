@@ -29,8 +29,8 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
 __all__ = [
-    'OperatorPDDiag',
-    'OperatorPDSqrtDiag',
+    "OperatorPDDiag",
+    "OperatorPDSqrtDiag",
 ]
 
 
@@ -38,16 +38,16 @@ __all__ = [
 class OperatorPDDiagBase(operator_pd.OperatorPDBase):
   """Base class for diagonal operators."""
 
-  def __init__(self, diag, verify_pd=True, name='OperatorPDDiagBase'):
+  def __init__(self, diag, verify_pd=True, name="OperatorPDDiagBase"):
     self._verify_pd = verify_pd
     self._name = name
     with ops.name_scope(name):
-      with ops.name_scope('init', values=[diag]):
+      with ops.name_scope("init", values=[diag]):
         self._diag = self._check_diag(diag)
 
   def _check_diag(self, diag):
     """Verify that `diag` is positive."""
-    diag = ops.convert_to_tensor(diag, name='diag')
+    diag = ops.convert_to_tensor(diag, name="diag")
     if not self.verify_pd:
       return diag
     deps = [check_ops.assert_positive(diag)]
@@ -163,7 +163,7 @@ class OperatorPDDiag(OperatorPDDiagBase):
   `MultivariateNormalDiag`.
   """
 
-  def __init__(self, diag, verify_pd=True, name='OperatorPDDiag'):
+  def __init__(self, diag, verify_pd=True, name="OperatorPDDiag"):
     """Initialize an OperatorPDDiag.
 
     Args:
@@ -254,7 +254,7 @@ class OperatorPDSqrtDiag(OperatorPDDiagBase):
   `MultivariateNormalDiag`.
   """
 
-  def __init__(self, diag, verify_pd=True, name='OperatorPDSqrtDiag'):
+  def __init__(self, diag, verify_pd=True, name="OperatorPDSqrtDiag"):
     """Initialize an OperatorPDSqrtDiag.
 
     Args:

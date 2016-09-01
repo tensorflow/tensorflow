@@ -115,7 +115,18 @@ class TF_ManagedBuffer : public TensorBuffer {
   }
 };
 
-void deallocate_realigned_buffer(void* data, size_t len, void* arg) {
+void* allocate_tensor(const char* operation, size_t len) {
+  void* data =
+      tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES, len);
+  if (tensorflow::LogMemory::IsEnabled()) {
+    tensorflow::LogMemory::RecordRawAllocation(
+        operation, tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID,
+        len, data, tensorflow::cpu_allocator());
+  }
+  return data;
+}
+
+void deallocate_buffer(void* data, size_t len, void* arg) {
   if (tensorflow::LogMemory::IsEnabled()) {
     tensorflow::LogMemory::RecordRawDeallocation(
         "TensorFlow C Api",
@@ -132,6 +143,13 @@ struct TF_Tensor {
   TensorBuffer* buffer;
 };
 
+TF_Tensor* TF_AllocateTensor(TF_DataType dtype, const int64_t* dims,
+                             int num_dims, size_t len) {
+  void* data = allocate_tensor("TF_AllocateTensor", len);
+  return TF_NewTensor(dtype, dims, num_dims, data, len, deallocate_buffer,
+                      nullptr);
+}
+
 TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
                         void* data, size_t len,
                         void (*deallocator)(void* data, size_t len, void* arg),
@@ -146,16 +164,9 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
   if (reinterpret_cast<intptr_t>(data) % EIGEN_MAX_ALIGN_BYTES != 0) {
     // Copy the data into a buffer that satisfies Eigen's alignment
     // requirements.
-    buf->data_ =
-        tensorflow::cpu_allocator()->AllocateRaw(EIGEN_MAX_ALIGN_BYTES, len);
-    if (tensorflow::LogMemory::IsEnabled()) {
-      tensorflow::LogMemory::RecordRawAllocation(
-          "TF_NewTensor",
-          tensorflow::LogMemory::EXTERNAL_TENSOR_ALLOCATION_STEP_ID, len,
-          buf->data_, tensorflow::cpu_allocator());
-    }
+    buf->data_ = allocate_tensor("TF_NewTensor", len);
     std::memcpy(buf->data_, data, len);
-    buf->deallocator_ = deallocate_realigned_buffer;
+    buf->deallocator_ = deallocate_buffer;
     buf->deallocator_arg_ = nullptr;
     // Free the original buffer.
     deallocator(data, len, deallocator_arg);
@@ -678,8 +689,7 @@ tensorflow::string PortName(const TF_Port& port) {
 
 }  // namespace
 
-// TF_OperationDescription functions
-// -----------------------------------------------
+// TF_OperationDescription functions ------------------------------------------
 
 extern "C" {
 
@@ -763,11 +773,12 @@ void TF_SetAttrBool(TF_OperationDescription* desc, const char* attr_name,
 
 void TF_SetAttrBoolList(TF_OperationDescription* desc, const char* attr_name,
                         const unsigned char* values, int num_values) {
-  bool* b = new bool[num_values];
+  std::unique_ptr<bool[]> b(new bool[num_values]);
   for (int i = 0; i < num_values; ++i) {
     b[i] = values[i];
   }
-  desc->node_builder.Attr(attr_name, ArraySlice<const bool>(b, num_values));
+  desc->node_builder.Attr(attr_name,
+                          ArraySlice<const bool>(b.get(), num_values));
 }
 
 void TF_SetAttrType(TF_OperationDescription* desc, const char* attr_name,
@@ -813,7 +824,7 @@ void TF_SetAttrShapeList(TF_OperationDescription* desc, const char* attr_name,
 }
 
 void TF_SetAttrTensorShapeProto(TF_OperationDescription* desc,
-                                const char* attr_name, void* proto,
+                                const char* attr_name, const void* proto,
                                 int proto_len, TF_Status* status) {
   TensorShapeProto shape;
   if (shape.ParseFromArray(proto, proto_len)) {
@@ -986,12 +997,13 @@ int TF_OperationInputListLength(TF_Operation* oper, const char* arg_name,
 }
 
 TF_Port TF_OperationInput(TF_Port oper_in) {
-  for (const auto* edge : oper_in.oper->node.in_edges()) {
-    if (edge->dst_input() == oper_in.index) {
-      return {ToOperation(edge->src()), edge->src_output()};
-    }
+  const tensorflow::Edge* edge;
+  Status s = oper_in.oper->node.input_edge(oper_in.index, &edge);
+  if (!s.ok()) {
+    return {nullptr, -1};
   }
-  return {nullptr, -1};
+
+  return {ToOperation(edge->src()), edge->src_output()};
 }
 
 int TF_OperationOutputNumConsumers(TF_Port oper_out) {
@@ -1019,13 +1031,7 @@ int TF_OperationOutputConsumers(TF_Port oper_out, TF_Port* consumers,
 }
 
 int TF_OperationNumControlInputs(TF_Operation* oper) {
-  int count = 0;
-  for (const auto* edge : oper->node.in_edges()) {
-    if (edge->IsControlEdge()) {
-      ++count;
-    }
-  }
-  return count;
+  return oper->node.in_edges().size() - oper->node.num_inputs();
 }
 
 int TF_OperationGetControlInputs(TF_Operation* oper,

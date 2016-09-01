@@ -12,6 +12,7 @@ tensorflow/core/kernels/tile_ops_cpu_impl_2.cc
 tensorflow/core/kernels/tile_ops_cpu_impl_3.cc
 tensorflow/core/kernels/tile_ops_cpu_impl_4.cc
 tensorflow/core/kernels/tile_ops_cpu_impl_5.cc
+tensorflow/core/kernels/tile_ops_cpu_impl_6.cc
 tensorflow/core/kernels/strided_slice_op_inst_6.cc
 tensorflow/core/kernels/strided_slice_op_inst_5.cc
 tensorflow/core/kernels/strided_slice_op_inst_4.cc
@@ -98,6 +99,7 @@ tensorflow/core/kernels/cwise_op_equal_to.cc
 tensorflow/core/kernels/cwise_op_div.cc
 tensorflow/core/kernels/cwise_op_add.cc
 tensorflow/core/kernels/ctc_decoder_ops.cc
+tensorflow/core/kernels/conv_ops_using_gemm.cc
 tensorflow/core/kernels/conv_ops.cc
 tensorflow/core/kernels/conv_grad_ops.cc
 tensorflow/core/kernels/control_flow_ops.cc

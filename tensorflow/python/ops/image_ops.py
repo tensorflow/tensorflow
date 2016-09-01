@@ -164,12 +164,16 @@ from __future__ import print_function
 
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -184,7 +188,6 @@ from tensorflow.python.ops.gen_image_ops import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.util.all_util import make_all
-from tensorflow.contrib.framework.python.framework import is_tensor
 
 
 ops.NoGradient('RandomCrop')
@@ -212,13 +215,25 @@ def _assert(cond, ex_type, msg):
   Returns:
     A list, containing at most one assert op.
   """
-  if is_tensor(cond):
+  if _is_tensor(cond):
     return [logging_ops.Assert(cond, [msg])]
   else:
     if not cond:
       raise ex_type(msg)
     else:
       return []
+
+
+def _is_tensor(x):
+  """Returns `True` if `x` is a symbolic tensor-like object.
+
+  Args:
+    x: A python object to check.
+
+  Returns:
+    `True` if `x` is a `tf.Tensor` or `tf.Variable`, otherwise `False`.
+  """
+  return isinstance(x, (ops.Tensor, variables.Variable))
 
 
 def _slice_channels(image):
@@ -571,7 +586,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
     [3, 2])
   padded = array_ops.pad(image, paddings)
 
-  padded_shape = [None if is_tensor(i) else i
+  padded_shape = [None if _is_tensor(i) else i
                   for i in [target_height, target_width, depth]]
   padded.set_shape(padded_shape)
 
@@ -630,7 +645,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     array_ops.pack([offset_height, offset_width, 0]),
     array_ops.pack([target_height, target_width, -1]))
 
-  cropped_shape = [None if is_tensor(i) else i
+  cropped_shape = [None if _is_tensor(i) else i
                    for i in [target_height, target_width, depth]]
   cropped.set_shape(cropped_shape)
 
@@ -673,26 +688,26 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   image = control_flow_ops.with_dependencies(assert_ops, image)
   # `crop_to_bounding_box` and `pad_to_bounding_box` have their own checks.
   # Make sure our checks come first, so that error messages are clearer.
-  if is_tensor(target_height):
+  if _is_tensor(target_height):
     target_height = control_flow_ops.with_dependencies(
       assert_ops, target_height)
-  if is_tensor(target_width):
+  if _is_tensor(target_width):
     target_width = control_flow_ops.with_dependencies(assert_ops, target_width)
 
   def max_(x, y):
-    if is_tensor(x) or is_tensor(y):
+    if _is_tensor(x) or _is_tensor(y):
       return math_ops.maximum(x, y)
     else:
       return max(x, y)
 
   def min_(x, y):
-    if is_tensor(x) or is_tensor(y):
+    if _is_tensor(x) or _is_tensor(y):
       return math_ops.minimum(x, y)
     else:
       return min(x, y)
 
   def equal_(x, y):
-    if is_tensor(x) or is_tensor(y):
+    if _is_tensor(x) or _is_tensor(y):
       return math_ops.equal(x, y)
     else:
       return x == y
@@ -1059,28 +1074,16 @@ def _ResizeShape(op):
       [input_shape[0], height, width, input_shape[3]])]
 
 @ops.RegisterShape('DecodeGif')
-def _ImageDecodeShape(op):
+def _DecodeGifShape(op):
   """Shape function for decode gif."""
   unused_input_shape = op.inputs[0].get_shape().merge_with(
       tensor_shape.scalar())
   return [tensor_shape.TensorShape([None, None, None, 3])]
 
-@ops.RegisterShape('DecodeJpeg')
-@ops.RegisterShape('DecodePng')
-def _ImageDecodeShape(op):
-  """Shape function for image decoding ops."""
-  unused_input_shape = op.inputs[0].get_shape().merge_with(
-      tensor_shape.scalar())
-  channels = op.get_attr('channels') or None
-  return [tensor_shape.TensorShape([None, None, channels])]
-
-
-@ops.RegisterShape('EncodeJpeg')
-@ops.RegisterShape('EncodePng')
-def _ImageEncodeShape(op):
-  """Shape function for image encoding ops."""
-  unused_input_shape = op.inputs[0].get_shape().with_rank(3)
-  return [tensor_shape.scalar()]
+ops.RegisterShape('DecodeJpeg')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('DecodePng')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('EncodeJpeg')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('EncodePng')(common_shapes.call_cpp_shape_fn)
 
 
 def convert_image_dtype(image, dtype, saturate=False, name=None):
@@ -1219,16 +1222,8 @@ def grayscale_to_rgb(images, name=None):
 
 
 # pylint: disable=invalid-name
-@ops.RegisterShape('HSVToRGB')
-@ops.RegisterShape('RGBToHSV')
-def _ColorspaceShape(op):
-  """Shape function for colorspace ops."""
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(1)
-  input_rank = input_shape.ndims
-  if input_rank is not None:
-    input_shape = input_shape.merge_with([None] * (input_rank - 1) + [3])
-  return [input_shape]
-# pylint: enable=invalid-name
+ops.RegisterShape('HSVToRGB')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('RGBToHSV')(common_shapes.call_cpp_shape_fn)
 
 
 def random_hue(image, max_delta, seed=None):
@@ -1433,10 +1428,7 @@ def _crop_and_resize_shape(op):
       [box_shape[0], crop_height, crop_width, image_shape[3]])]
 
 
-@ops.RegisterShape('NonMaxSuppression')
-def _non_max_suppression_shape(_):
-  """Shape function for the NonMaxSuppression op."""
-  return [tensor_shape.TensorShape([None])]
+ops.RegisterShape('NonMaxSuppression')(common_shapes.call_cpp_shape_fn)
 
 
 __all__ = make_all(__name__)

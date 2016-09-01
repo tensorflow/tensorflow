@@ -55,11 +55,13 @@ tf_kernel_library(
         "strided_slice_op_inst_6.cc",
     ],
     hdrs = [
+        "dense_update_ops.h",
         "slice_op.h",
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
     ],
     gpu_srcs = [
+        "dense_update_ops.h",
         "slice_op.h",
         "strided_slice_op.h",
         "strided_slice_op_impl.h",
@@ -476,6 +478,16 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "deep_conv2d_test",
+    size = "small",
+    deps = [
+        ":conv_ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -1103,6 +1115,7 @@ tf_kernel_libraries(
         "aggregate_ops",
         "argmax_op",
         "batch_matmul_op",
+        "betainc_op",
         "cast_op",
         "check_numerics_op",
         "cross_op",
@@ -1307,9 +1320,12 @@ tf_kernel_library(
     srcs = [
         "conv_grad_ops.cc",
         "conv_grad_ops_3d.cc",
+        "deep_conv2d.cc",
     ],
     hdrs = [
         "conv_grad_ops.h",
+        "deep_conv2d.h",
+        "winograd_transform.h",
     ],
     prefix = "conv_ops",
     deps = [
@@ -1328,6 +1344,7 @@ tf_kernel_library(
     name = "depthwise_conv_op",
     prefix = "depthwise_conv_op",
     deps = [
+        ":conv_ops",
         ":ops_util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -1446,6 +1463,9 @@ tf_kernel_library(
     srcs = [
         "avgpooling_op.cc",
         "cudnn_pooling_gpu.cc",
+        "fractional_avg_pool_op.cc",
+        "fractional_max_pool_op.cc",
+        "fractional_pool_common.cc",
         "maxpooling_op.cc",
         "pooling_ops_3d.cc",
         "pooling_ops_common.cc",
@@ -1453,6 +1473,7 @@ tf_kernel_library(
     hdrs = [
         "avgpooling_op.h",
         "cudnn_pooling_gpu.h",
+        "fractional_pool_common.h",
         "maxpooling_op.h",
         "pooling_ops_common.h",
     ],
@@ -1936,6 +1957,7 @@ filegroup(
         "batch_norm_op.h",
         "control_flow_ops.h",
         "conv_2d.h",
+        "conv_ops.h",
         "image_resizer_state.h",
         "maxpooling_op.h",
         "pad_op.h",
@@ -1993,7 +2015,10 @@ filegroup(
         "cwise_op_squared_difference.cc",
         "cwise_op_sub.cc",
         "cwise_op_tanh.cc",
+        "deep_conv2d.cc",
+        "deep_conv2d.h",
         "dynamic_partition_op.cc",
+        "winograd_transform.h",
         ":android_extended_ops_headers",
     ],
 )
@@ -2033,6 +2058,7 @@ filegroup(
         "tile_ops_cpu_impl_3.cc",
         "tile_ops_cpu_impl_4.cc",
         "tile_ops_cpu_impl_5.cc",
+        "tile_ops_cpu_impl_6.cc",
         "topk_op.cc",
         "training_ops.cc",
         "transpose_functor_cpu.cc",

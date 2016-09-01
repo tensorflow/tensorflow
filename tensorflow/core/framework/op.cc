@@ -156,7 +156,7 @@ string OpRegistry::DebugString(bool include_internal) const {
 bool OpRegistry::MustCallDeferred() const {
   if (initialized_) return false;
   initialized_ = true;
-  for (int i = 0; i < deferred_.size(); ++i) {
+  for (size_t i = 0; i < deferred_.size(); ++i) {
     TF_QCHECK_OK(RegisterAlreadyLocked(deferred_[i]));
   }
   deferred_.clear();
@@ -166,7 +166,7 @@ bool OpRegistry::MustCallDeferred() const {
 Status OpRegistry::CallDeferred() const {
   if (initialized_) return Status::OK();
   initialized_ = true;
-  for (int i = 0; i < deferred_.size(); ++i) {
+  for (size_t i = 0; i < deferred_.size(); ++i) {
     Status s = RegisterAlreadyLocked(deferred_[i]);
     if (!s.ok()) {
       return s;

@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include <stdio.h>
 #include <unistd.h>
 #include <algorithm>
@@ -28,7 +27,9 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
+#include "tensorflow/core/platform/cloud/time_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
@@ -97,27 +98,38 @@ class GcsRandomAccessFile : public RandomAccessFile {
   /// The implementation of reads with a read-ahead buffer.
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
-    if (offset >= buffer_start_offset_ &&
-        offset + n <= buffer_start_offset_ + buffer_content_size_) {
-      // If the requested range is fully in the buffer, just return it.
-      std::memcpy(scratch, buffer_.get() + offset - buffer_start_offset_, n);
-      *result = StringPiece(scratch, n);
-      return Status::OK();
+    const bool range_start_included = offset >= buffer_start_offset_;
+    const bool range_end_included =
+        offset + n <= buffer_start_offset_ + buffer_content_size_;
+    if (range_start_included && (range_end_included || buffer_reached_eof_)) {
+      // The requested range can be filled from the buffer.
+      const size_t offset_in_buffer =
+          std::min<uint64>(offset - buffer_start_offset_, buffer_content_size_);
+      const auto copy_size =
+          std::min(n, buffer_content_size_ - offset_in_buffer);
+      std::memcpy(scratch, buffer_.get() + offset_in_buffer, copy_size);
+      *result = StringPiece(scratch, copy_size);
+    } else {
+      // Update the buffer content based on the new requested range.
+      const size_t desired_buffer_size = n + read_ahead_bytes_;
+      if (n > buffer_size_ || desired_buffer_size > 2 * buffer_size_) {
+        // Re-allocate only if buffer size increased significantly.
+        buffer_.reset(new char[desired_buffer_size]);
+        buffer_size_ = desired_buffer_size;
+      }
+
+      buffer_start_offset_ = offset;
+      buffer_content_size_ = 0;
+      StringPiece buffer_content;
+      TF_RETURN_IF_ERROR(
+          ReadFromGCS(offset, buffer_size_, &buffer_content, buffer_.get()));
+      buffer_content_size_ = buffer_content.size();
+      buffer_reached_eof_ = buffer_content_size_ < buffer_size_;
+
+      // Set the results.
+      *result = StringPiece(scratch, std::min(buffer_content_size_, n));
+      std::memcpy(scratch, buffer_.get(), result->size());
     }
-
-    // Update the buffer content based on the new requested range.
-    auto buffer_size = n + read_ahead_bytes_;
-    buffer_.reset(new char[buffer_size]);
-    buffer_start_offset_ = offset;
-    buffer_content_size_ = 0;
-    StringPiece buffer_content;
-    TF_RETURN_IF_ERROR(
-        ReadFromGCS(offset, buffer_size, &buffer_content, buffer_.get()));
-    buffer_content_size_ = buffer_content.size();
-
-    // Set the results.
-    *result = StringPiece(scratch, std::min(buffer_content_size_, n));
-    std::memcpy(scratch, buffer_.get(), result->size());
 
     if (result->size() < n) {
       // This is not an error per se. The RandomAccessFile interface expects
@@ -144,7 +156,8 @@ class GcsRandomAccessFile : public RandomAccessFile {
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(request->SetRange(offset, offset + n - 1));
     TF_RETURN_IF_ERROR(request->SetResultBuffer(scratch, n, result));
-    TF_RETURN_IF_ERROR(request->Send());
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading gs://",
+                                    bucket_, "/", object_);
     return Status::OK();
   }
 
@@ -157,9 +170,11 @@ class GcsRandomAccessFile : public RandomAccessFile {
   // The buffer-related members need to be mutable, because they are modified
   // by the const Read() method.
   mutable std::unique_ptr<char[]> buffer_;
+  mutable size_t buffer_size_ = 0;
   // The original file offset of the first byte in the buffer.
   mutable size_t buffer_start_offset_ = 0;
   mutable size_t buffer_content_size_ = 0;
+  mutable bool buffer_reached_eof_ = false;
 };
 
 /// \brief GCS-based implementation of a writeable file.
@@ -232,7 +247,8 @@ class GcsWritableFile : public WritableFile {
         request->EscapeString(object_))));
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(request->SetPostRequest(tmp_content_filename_));
-    TF_RETURN_IF_ERROR(request->Send());
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when writing to gs://",
+                                    bucket_, "/", object_);
     return Status::OK();
   }
 
@@ -417,7 +433,7 @@ Status GcsFileSystem::GetChildren(const string& dirname,
     TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
     TF_RETURN_IF_ERROR(
         request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
-    TF_RETURN_IF_ERROR(request->Send());
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading ", dirname);
     std::stringstream response_stream;
     response_stream << response_piece;
     Json::Value root;
@@ -464,7 +480,67 @@ Status GcsFileSystem::GetChildren(const string& dirname,
 }
 
 Status GcsFileSystem::Stat(const string& fname, FileStatistics* stat) {
-  return errors::Unimplemented("Stat unimplemented");
+  if (!stat) {
+    return errors::Internal("'stat' cannot be nullptr.");
+  }
+  string bucket, object_prefix;
+  TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object_prefix));
+
+  string auth_token;
+  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
+
+  std::unique_ptr<char[]> scratch(new char[kBufferSize]);
+  StringPiece response_piece;
+
+  std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
+  TF_RETURN_IF_ERROR(request->Init());
+  TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
+      kGcsUriBase, "b/", bucket, "/o/", request->EscapeString(object_prefix),
+      "?fields=size%2Cupdated")));
+  TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
+  TF_RETURN_IF_ERROR(
+      request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading metadata of ",
+                                  fname);
+  std::stringstream response_stream;
+  response_stream << response_piece;
+
+  Json::Value root;
+  Json::Reader reader;
+  if (!reader.parse(response_stream.str(), root)) {
+    return errors::Internal("Couldn't parse JSON response from GCS.");
+  }
+
+  // Parse file size.
+  const auto size = root.get("size", Json::Value::null);
+  if (size == Json::Value::null) {
+    return errors::Internal("'size' was expected in the JSON response.");
+  }
+  if (size.isNumeric()) {
+    stat->length = size.asUInt64();
+  } else if (size.isString()) {
+    if (!strings::safe_strto64(size.asString().c_str(), &(stat->length))) {
+      return errors::Internal("'size' couldn't be parsed as a nubmer.");
+    }
+  } else {
+    return errors::Internal("'size' is not a number in the JSON response.");
+  }
+
+  // Parse file modification time.
+  const auto updated = root.get("updated", Json::Value::null);
+  if (updated == Json::Value::null) {
+    return errors::Internal("'updated' was expected in the JSON response.");
+  }
+  if (!updated.isString()) {
+    return errors::Internal(
+        "'updated' is expected to be a string in the JSON response.");
+  }
+  TF_RETURN_IF_ERROR(ParseRfc3339Time(updated.asString(), &(stat->mtime_nsec)));
+
+  // Converting GCS ACL into mode_t is hard, return -rw------- instead.
+  stat->mode = 0600;
+
+  return Status::OK();
 }
 
 Status GcsFileSystem::DeleteFile(const string& fname) {
@@ -480,7 +556,7 @@ Status GcsFileSystem::DeleteFile(const string& fname) {
       kGcsUriBase, "b/", bucket, "/o/", request->EscapeString(object))));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetDeleteRequest());
-  TF_RETURN_IF_ERROR(request->Send());
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when deleting ", fname);
   return Status::OK();
 }
 
@@ -499,45 +575,12 @@ Status GcsFileSystem::DeleteDir(const string& dirname) {
 }
 
 Status GcsFileSystem::GetFileSize(const string& fname, uint64* file_size) {
-  string bucket, object_prefix;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object_prefix));
-
-  string auth_token;
-  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
-
-  std::unique_ptr<char[]> scratch(new char[kBufferSize]);
-  StringPiece response_piece;
-
-  std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  TF_RETURN_IF_ERROR(request->Init());
-  TF_RETURN_IF_ERROR(request->SetUri(
-      strings::StrCat(kGcsUriBase, "b/", bucket, "/o/",
-                      request->EscapeString(object_prefix), "?fields=size")));
-  TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
-  TF_RETURN_IF_ERROR(
-      request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
-  TF_RETURN_IF_ERROR(request->Send());
-  std::stringstream response_stream;
-  response_stream << response_piece;
-
-  Json::Value root;
-  Json::Reader reader;
-  if (!reader.parse(response_stream.str(), root)) {
-    return errors::Internal("Couldn't parse JSON response from GCS.");
+  if (!file_size) {
+    return errors::Internal("'file_size' cannot be nullptr.");
   }
-  const auto size = root.get("size", Json::Value::null);
-  if (size == Json::Value::null) {
-    return errors::Internal("'size' was expected in the JSON response.");
-  }
-  if (size.isNumeric()) {
-    *file_size = size.asUInt64();
-  } else if (size.isString()) {
-    if (!strings::safe_strtou64(size.asString().c_str(), file_size)) {
-      return errors::Internal("'size' couldn't be parsed as a nubmer.");
-    }
-  } else {
-    return errors::Internal("'size' is not a number in the JSON response.");
-  }
+  FileStatistics stat;
+  TF_RETURN_IF_ERROR(Stat(fname, &stat));
+  *file_size = stat.length;
   return Status::OK();
 }
 
@@ -558,7 +601,8 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
       request->EscapeString(target_object))));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetPostRequest());
-  TF_RETURN_IF_ERROR(request->Send());
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when renaming ", src,
+                                  " to ", target);
 
   TF_RETURN_IF_ERROR(DeleteFile(src));
   return Status::OK();

@@ -34,6 +34,7 @@ limitations under the License.
 namespace tensorflow {
 namespace protobuf = ::google::protobuf;
 using protobuf_int64 = ::google::protobuf::int64;
+using protobuf_uint64 = ::google::protobuf::uint64;
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_PROTOBUF_H_

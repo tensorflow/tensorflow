@@ -37,7 +37,7 @@ class RegressionTest(tf.test.TestCase):
     weights = 10 * rng.randn(n_weights)
     y = np.dot(x, weights)
     y += rng.randn(len(x)) * 0.05 + rng.normal(bias, 0.01)
-    regressor = learn.TensorFlowLinearRegressor(
+    regressor = learn.LinearRegressor(
         feature_columns=learn.infer_real_valued_columns_from_input(x),
         optimizer="SGD")
     regressor.fit(x, y, steps=200)

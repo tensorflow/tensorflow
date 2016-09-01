@@ -49,7 +49,7 @@ class Conv2DBackpropFilterGradTest(tf.test.TestCase):
                                                [in_shape, out_backprop_shape],
                                                output, filter_shape)
           print("conv2d_backprop_filter gradient err = %g " % err)
-          err_tolerance = 1e-3
+          err_tolerance = 2e-3
           self.assertLess(err, err_tolerance)
 
 

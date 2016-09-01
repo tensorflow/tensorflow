@@ -952,9 +952,9 @@ class SdcaFprintTest(SdcaModelTest):
       in_data = tf.constant(['abc', 'very looooooong string', 'def'])
       out_data = _sdca_ops.sdca_fprint(in_data)
       self.assertAllEqual(
-          [b'\x04l\x12\xd2\xaf\xb2\x809E\x9e\x02\x13\x90\xf0\x85\xa0',
-           b'\x9f\x0f\x91P\x9aG.Ql\xf2Y\xf9M%Z\xbc',
-           b'"0\xe00"\x18_\x08\x12?\xa0\x17\xd8\x9c\x99y'], out_data.eval())
+          [b'\x04l\x12\xd2\xaf\xb2\x809E\x9e\x02\x13',
+           b'\x9f\x0f\x91P\x9aG.Ql\xf2Y\xf9',
+           b'"0\xe00"\x18_\x08\x12?\xa0\x17'], out_data.eval())
 
 
 class ShardedMutableHashTableTest(SdcaModelTest):
@@ -982,7 +982,27 @@ class ShardedMutableHashTableTest(SdcaModelTest):
         result = output.eval()
         self.assertAllEqual([0, 1, -1], result)
 
-        self.assertAllEqual(3, table.values_reduce_sum().eval())
+  def testExportSharded(self):
+    with self._single_threaded_test_session():
+      default_val = -1
+      num_shards = 2
+      keys = tf.constant(['a1', 'b1', 'c2'])
+      values = tf.constant([0, 1, 2], tf.int64)
+      table = _ShardedMutableHashTable(
+          tf.string, tf.int64, default_val, num_shards=num_shards)
+      self.assertAllEqual(0, table.size().eval())
+
+      table.insert(keys, values).run()
+      self.assertAllEqual(3, table.size().eval())
+
+      keys_list, values_list = table.export_sharded()
+      self.assertAllEqual(num_shards, len(keys_list))
+      self.assertAllEqual(num_shards, len(values_list))
+
+      self.assertAllEqual(set([b'b1', b'c2']), set(keys_list[0].eval()))
+      self.assertAllEqual([b'a1'], keys_list[1].eval())
+      self.assertAllEqual(set([1, 2]), set(values_list[0].eval()))
+      self.assertAllEqual([0], values_list[1].eval())
 
 
 if __name__ == '__main__':

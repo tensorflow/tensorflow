@@ -77,12 +77,21 @@ TEST(CollectionRegistryDeathTest, DuplicateRegistration) {
       "/tensorflow/metric");
 }
 
-auto* counter_with_labels =
-    Counter<2>::New("/tensorflow/test/counter_with_labels",
-                    "Counter with one label.", "MyLabel0", "MyLabel1");
-auto* counter_without_labels = Counter<0>::New(
-    "/tensorflow/test/counter_without_labels", "Counter without any labels.");
+TEST(CollectMetricsTest, NoMetrics) {
+  auto* collection_registry = CollectionRegistry::Default();
+  const std::unique_ptr<CollectedMetrics> collected_metrics =
+      collection_registry->CollectMetrics({});
+  EXPECT_EQ(0, collected_metrics->metric_descriptor_map.size());
+  EXPECT_EQ(0, collected_metrics->point_set_map.size());
+}
+
 TEST(CollectMetricsTest, Counter) {
+  auto counter_with_labels = std::unique_ptr<Counter<2>>(
+      Counter<2>::New("/tensorflow/test/counter_with_labels",
+                      "Counter with labels.", "MyLabel0", "MyLabel1"));
+  auto counter_without_labels = std::unique_ptr<Counter<0>>(Counter<0>::New(
+      "/tensorflow/test/counter_without_labels", "Counter without labels."));
+
   counter_with_labels->GetCell("Label00", "Label10")->IncrementBy(42);
   counter_with_labels->GetCell("Label01", "Label11")->IncrementBy(58);
   counter_without_labels->GetCell()->IncrementBy(7);
@@ -103,7 +112,7 @@ TEST(CollectMetricsTest, Counter) {
       const MetricDescriptor& ld = *collected_metrics->metric_descriptor_map.at(
           "/tensorflow/test/counter_with_labels");
       EXPECT_EQ("/tensorflow/test/counter_with_labels", ld.name);
-      EXPECT_EQ("Counter with one label.", ld.description);
+      EXPECT_EQ("Counter with labels.", ld.description);
       ASSERT_EQ(2, ld.label_names.size());
       EXPECT_EQ("MyLabel0", ld.label_names[0]);
       EXPECT_EQ("MyLabel1", ld.label_names[1]);
@@ -113,7 +122,7 @@ TEST(CollectMetricsTest, Counter) {
       const MetricDescriptor& ud = *collected_metrics->metric_descriptor_map.at(
           "/tensorflow/test/counter_without_labels");
       EXPECT_EQ("/tensorflow/test/counter_without_labels", ud.name);
-      EXPECT_EQ("Counter without any labels.", ud.description);
+      EXPECT_EQ("Counter without labels.", ud.description);
       ASSERT_EQ(0, ud.label_names.size());
       EXPECT_EQ(MetricKind::kCumulative, ud.metric_kind);
       EXPECT_EQ(ValueType::kInt64, ud.value_type);

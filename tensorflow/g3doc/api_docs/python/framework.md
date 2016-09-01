@@ -820,7 +820,7 @@ with g.container('experiment0'):
     q3 = tf.FIFOQueue(30, tf.float32)
 
 # Resets container "experiment0", after which the state of v1, v2, v4, q1
-# will become undefined (such as unitialized).
+# will become undefined (such as uninitialized).
 tf.Session.reset(target, ["experiment0"])
 ```
 
@@ -1028,8 +1028,8 @@ regular expression:
 ##### Args:
 
 
-*  <b>`node_def`</b>: `graph_pb2.NodeDef`.  `NodeDef` for the `Operation`.
-    Used for attributes of `graph_pb2.NodeDef`, typically `name`,
+*  <b>`node_def`</b>: `node_def_pb2.NodeDef`.  `NodeDef` for the `Operation`.
+    Used for attributes of `node_def_pb2.NodeDef`, typically `name`,
     `op`, and `device`.  The `input` attribute is irrelevant here
     as it will be computed when generating the model.
 *  <b>`g`</b>: `Graph`. The parent graph.
@@ -1076,7 +1076,7 @@ Returns a serialized `NodeDef` representation of this operation.
 ##### Returns:
 
   A
-  [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+  [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/node_def.proto)
   protocol buffer.
 
 

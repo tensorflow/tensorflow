@@ -123,5 +123,5 @@ class ExponentialTest(tf.test.TestCase):
             0.01)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

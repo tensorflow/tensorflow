@@ -35,6 +35,7 @@ sh_binary(
         "//tensorflow/contrib/slim/python/slim/data:all_files",
         "//tensorflow/contrib/slim/python/slim/nets:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
+        "//tensorflow/contrib/tensor_forest/hybrid:all_files",
         "//tensorflow/core:framework_headers",
         "//tensorflow/examples/tutorials/mnist:package",
         "//tensorflow/models/embedding:package",

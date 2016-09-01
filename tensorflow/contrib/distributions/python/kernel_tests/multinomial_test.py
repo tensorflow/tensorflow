@@ -72,9 +72,9 @@ class MultinomialTest(tf.test.TestCase):
       dist = tf.contrib.distributions.Multinomial(n=n, p=p)
       dist.pmf([2., 3, 0]).eval()
       dist.pmf([3., 0, 2]).eval()
-      with self.assertRaisesOpError('Condition x >= 0.*'):
+      with self.assertRaisesOpError("Condition x >= 0.*"):
         dist.pmf([-1., 4, 2]).eval()
-      with self.assertRaisesOpError('counts do not sum to n'):
+      with self.assertRaisesOpError("counts do not sum to n"):
         dist.pmf([3., 3, 0]).eval()
 
   def testPmf_non_integer_counts(self):
@@ -86,10 +86,10 @@ class MultinomialTest(tf.test.TestCase):
       multinom.pmf([2., 1, 2]).eval()
       multinom.pmf([3., 0, 2]).eval()
       # Counts don't sum to n.
-      with self.assertRaisesOpError('counts do not sum to n'):
+      with self.assertRaisesOpError("counts do not sum to n"):
         multinom.pmf([2., 3, 2]).eval()
       # Counts are non-integers.
-      with self.assertRaisesOpError('Condition x == y.*'):
+      with self.assertRaisesOpError("Condition x == y.*"):
         multinom.pmf([1.0, 2.5, 1.5]).eval()
 
       multinom = tf.contrib.distributions.Multinomial(
@@ -222,5 +222,5 @@ class MultinomialTest(tf.test.TestCase):
       self.assertEqual((3, 5, 4, 4), variance.get_shape())
       self.assertEqual((6, 3, 3, 3), variance2.get_shape())
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

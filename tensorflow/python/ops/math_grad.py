@@ -33,7 +33,8 @@ from tensorflow.python.ops import math_ops
 # Gradient ops that do not have gradients themselves.
 ops.NoGradient("SigmoidGrad")
 ops.NoGradient("TanhGrad")
-
+ops.NoGradient("InvGrad")
+ops.NoGradient("RsqrtGrad")
 
 def _safe_shape_div(x, y):
   """Divides `x / y` assuming `x, y >= 0`, treating `0 / 0 = 0`."""
@@ -249,11 +250,7 @@ def _NegGrad(_, grad):
 def _InvGrad(op, grad):
   """Returns -grad * (1 / x^2)."""
   y = op.outputs[0]  # y = 1 / x
-  # Added control dependencies to prevent -x^2 from being computed too early.
-  with ops.control_dependencies([grad.op]):
-    if y.dtype.is_complex:
-      y = math_ops.conj(y)
-    return grad * (- math_ops.square(y))
+  return gen_math_ops._inv_grad(y, grad)
 
 
 @ops.RegisterGradient("Square")
@@ -269,16 +266,21 @@ def _SquareGrad(op, grad):
 @ops.RegisterGradient("Sqrt")
 def _SqrtGrad(op, grad):
   y = op.outputs[0]  # y = x^(1/2)
+  return gen_math_ops._sqrt_grad(y, grad)
+
+
+@ops.RegisterGradient("SqrtGrad")
+def _SqrtGradGrad(op, grad):
+  a = op.inputs[0]
+  y = op.outputs[0]  # y = 0.5 * b / a
   with ops.control_dependencies([grad.op]):
-    return grad * (.5 * math_ops.inv(y))
+    return -grad * y / a, 0.5 * grad / a
 
 
 @ops.RegisterGradient("Rsqrt")
 def _RsqrtGrad(op, grad):
-  x = op.inputs[0]
   y = op.outputs[0]  # y = x^(-1/2)
-  with ops.control_dependencies([grad.op]):
-    return grad * ((-0.5) * math_ops.inv(x) * y)
+  return gen_math_ops._rsqrt_grad(y, grad)
 
 
 @ops.RegisterGradient("Exp")
@@ -552,7 +554,13 @@ def _PowGrad(op, grad):
   gx = array_ops.reshape(
       math_ops.reduce_sum(grad * y * math_ops.pow(x, y - 1), rx), sx)
   # Avoid false singularity at x = 0
-  log_x = math_ops.select(x > 0, math_ops.log(x), array_ops.zeros_like(x))
+  if x.dtype.is_complex:
+    # real(x) < 0 is fine for the complex case
+    log_x = math_ops.select(
+        math_ops.not_equal(x, 0), math_ops.log(x), array_ops.zeros_like(x))
+  else:
+    # There's no sensible real value to return if x < 0, so return 0
+    log_x = math_ops.select(x > 0, math_ops.log(x), array_ops.zeros_like(x))
   gy = array_ops.reshape(
       math_ops.reduce_sum(grad * z * log_x, ry), sy)
   return gx, gy

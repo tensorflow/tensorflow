@@ -246,7 +246,7 @@ class StudentTTest(tf.test.TestCase):
           df=[0.5, 5., 7.],
           mu=mu,
           sigma=[3., 2., 1.])
-      with self.assertRaisesOpError('x < y'):
+      with self.assertRaisesOpError("x < y"):
         student.mean().eval()
 
   def testMeanAllowNanStatsIsTrueReturnsNaNForUndefinedBatchMembers(self):
@@ -301,14 +301,14 @@ class StudentTTest(tf.test.TestCase):
       # df <= 1 ==> variance not defined
       student = tf.contrib.distributions.StudentT(
           df=1.0, mu=0.0, sigma=1.0)
-      with self.assertRaisesOpError('x < y'):
+      with self.assertRaisesOpError("x < y"):
         student.variance().eval()
 
     with tf.Session():
       # df <= 1 ==> variance not defined
       student = tf.contrib.distributions.StudentT(
           df=0.5, mu=0.0, sigma=1.0)
-      with self.assertRaisesOpError('x < y'):
+      with self.assertRaisesOpError("x < y"):
         student.variance().eval()
 
   def testStd(self):
@@ -396,8 +396,8 @@ class StudentTTest(tf.test.TestCase):
       student = tf.contrib.distributions.StudentT(df=[2, -5.],
                                                   mu=0.,
                                                   sigma=1.,
-                                                  name='S')
-      with self.assertRaisesOpError(r'Condition x > 0 did not hold'):
+                                                  name="S")
+      with self.assertRaisesOpError(r"Condition x > 0 did not hold"):
         student.mean().eval()
 
   def testNegativeScaleFails(self):
@@ -405,10 +405,10 @@ class StudentTTest(tf.test.TestCase):
       student = tf.contrib.distributions.StudentT(df=[5.],
                                                   mu=0.,
                                                   sigma=[[3.], [-2.]],
-                                                  name='S')
-      with self.assertRaisesOpError(r'Condition x > 0 did not hold'):
+                                                  name="S")
+      with self.assertRaisesOpError(r"Condition x > 0 did not hold"):
         student.mean().eval()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

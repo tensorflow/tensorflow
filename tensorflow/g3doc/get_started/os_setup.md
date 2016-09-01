@@ -7,7 +7,7 @@ github source.
 
 The TensorFlow Python API supports Python 2.7 and Python 3.3+.
 
-The GPU version (Linux only) works best with Cuda Toolkit 7.5 and
+The GPU version (Linux & Mac OS X only) works best with Cuda Toolkit 7.5 and
 cuDNN v4.  other versions are supported (Cuda toolkit >= 7.0 and
 cuDNN 6.5(v2), 7.0(v3), v5) only when installing from sources.
 Please see [Cuda installation](#optional-install-cuda-gpus-on-linux)
@@ -240,7 +240,7 @@ packages needed by TensorFlow.
 *  Activate the conda environment and install TensorFlow in it.
 *  After the install you will activate the conda environment each time you
    want to use TensorFlow.
-*  Optionally install ipython and other packages into the conda environment 
+*  Optionally install ipython and other packages into the conda environment
 
 Install Anaconda:
 
@@ -358,7 +358,7 @@ $ source activate tensorflow
 
 ### Install IPython
 
-To use tensorflow with IPython it may be necessary to install IPython into the tensorflow environment: 
+To use tensorflow with IPython it may be necessary to install IPython into the tensorflow environment:
 
 ```bash
 $ source activate tensorflow
@@ -366,7 +366,7 @@ $ source activate tensorflow
 ```
 
 Similarly, other Python packages like pandas may need to get installed into the tensorflow environment
-before they can be used together with tensorflow.  
+before they can be used together with tensorflow.
 
 
 ## Docker installation

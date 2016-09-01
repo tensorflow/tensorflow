@@ -283,10 +283,34 @@ class MatMulTest(tf.test.TestCase):
     b = tf.placeholder(tf.float32, [36, 2])
     c = tf.placeholder(tf.float32, [37])
     with self.assertRaisesRegexp(
-        ValueError, "Dimensions 37 and 36 are not compatible"):
+        ValueError, "Dimensions must be equal, but are 37 and 36"):
       tf.matmul(a, b)
-    with self.assertRaisesRegexp(ValueError, "must have rank 2"):
+    with self.assertRaisesRegexp(ValueError, "must be rank 2"):
       tf.matmul(a, c)
+
+  def testShapeInference(self):
+    """Tests common_shapes.call_cpp_shape_fn."""
+    a = tf.constant([2] * 6, shape=[3, 2])
+    b = tf.constant([2] * 2, shape=[2, 1])
+    mm = tf.matmul(a, b)
+    self.assertEqual([3, 1], mm.get_shape())
+
+    # Transpose arguments are respected.
+    a = tf.constant([2] * 6, shape=[2, 3])
+    b = tf.constant([2] * 2, shape=[1, 2])
+    mm = tf.matmul(a, b, transpose_a=True, transpose_b=True)
+    self.assertEqual([3, 1], mm.get_shape())
+
+    # Unknown dims come through in output.
+    a = tf.placeholder(np.float32)
+    b = tf.placeholder(np.float32)
+    mm = tf.matmul(a, b)
+    self.assertEqual([None, None], mm.get_shape().as_list())
+
+    a = tf.constant([1] * 6, shape=[2, 3])
+    b = tf.constant([2] * 2, shape=[1, 2])
+    with self.assertRaisesRegexp(ValueError, ".*must be equal.*"):
+      tf.matmul(a, b, transpose_a=False, transpose_b=True)
 
 
 # TODO(zhifengc): Figures out how to test matmul gradients on GPU.

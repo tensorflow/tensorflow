@@ -53,17 +53,17 @@ class OperatorPDIdentityTest(operator_test_util.OperatorPDDerivedClassTest):
 
       operator.matmul(x_good).eval()  # Should not raise.
 
-      with self.assertRaisesRegexp(TypeError, 'dtype'):
+      with self.assertRaisesRegexp(TypeError, "dtype"):
         operator.matmul(x_bad)
 
-      with self.assertRaisesRegexp(TypeError, 'dtype'):
+      with self.assertRaisesRegexp(TypeError, "dtype"):
         operator.solve(x_bad)
 
-      with self.assertRaisesRegexp(TypeError, 'dtype'):
+      with self.assertRaisesRegexp(TypeError, "dtype"):
         operator.sqrt_solve(x_bad)
 
   def test_bad_rank_args_raise(self):
-    # Prepend a singleton dimension, changing the rank of 'x', but not the size.
+    # Prepend a singleton dimension, changing the rank of "x", but not the size.
     dtype = np.float32
     batch_shape = [2, 3]
     k = 4
@@ -76,13 +76,13 @@ class OperatorPDIdentityTest(operator_test_util.OperatorPDDerivedClassTest):
 
       operator.matmul(x_good).eval()  # Should not raise.
 
-      with self.assertRaisesRegexp(ValueError, 'tensor rank'):
+      with self.assertRaisesRegexp(ValueError, "tensor rank"):
         operator.matmul(x_bad)
 
-      with self.assertRaisesRegexp(ValueError, 'tensor rank'):
+      with self.assertRaisesRegexp(ValueError, "tensor rank"):
         operator.solve(x_bad)
 
-      with self.assertRaisesRegexp(ValueError, 'tensor rank'):
+      with self.assertRaisesRegexp(ValueError, "tensor rank"):
         operator.sqrt_solve(x_bad)
 
   def test_incompatible_shape_args_raise(self):
@@ -101,15 +101,15 @@ class OperatorPDIdentityTest(operator_test_util.OperatorPDDerivedClassTest):
 
       operator.matmul(x_good).eval()  # Should not raise.
 
-      with self.assertRaisesRegexp(ValueError, 'Incompatible'):
+      with self.assertRaisesRegexp(ValueError, "Incompatible"):
         operator.matmul(x_bad)
 
-      with self.assertRaisesRegexp(ValueError, 'Incompatible'):
+      with self.assertRaisesRegexp(ValueError, "Incompatible"):
         operator.solve(x_bad)
 
-      with self.assertRaisesRegexp(ValueError, 'Incompatible'):
+      with self.assertRaisesRegexp(ValueError, "Incompatible"):
         operator.sqrt_solve(x_bad)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

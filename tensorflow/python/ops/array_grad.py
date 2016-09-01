@@ -25,9 +25,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 
 
 @ops.RegisterGradient("Pack")
@@ -276,13 +276,14 @@ ops.NoGradient("ZerosLike")
 @ops.RegisterGradient("Gather")
 def _GatherGrad(op, grad):
   """Gradient for Gather op."""
+  # params can be large, so colocate the shape calculation with it.
   params = op.inputs[0]
-  indices = op.inputs[1]
-  # Colocate shape computations with params and indices
   with ops.colocate_with(params):
     params_shape = array_ops.shape(params)
-  with ops.colocate_with(indices):
-    size = array_ops.expand_dims(array_ops.size(indices), 0)
+
+  # Build appropriately shaped IndexedSlices
+  indices = op.inputs[1]
+  size = array_ops.expand_dims(array_ops.size(indices), 0)
   values_shape = array_ops.concat(0, [size, params_shape[1:]])
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(indices, size)
@@ -297,7 +298,8 @@ def _GatherNdGrad(unused_op, unused_grad):
 @ops.RegisterGradient("CheckNumerics")
 def _CheckNumericsGrad(_, grad):
   """Gradient for check_numerics op."""
-  return grad
+  return array_ops.check_numerics(
+      grad, "Not a number (NaN) or infinity (Inf) values detected in gradient.")
 
 
 @ops.RegisterGradient("Identity")
@@ -487,13 +489,13 @@ def _ExtractImagePatchesGrad(op, grad):
   ksize_r_eff = ksize_r + (ksize_r - 1) * (rate_r - 1)
   ksize_c_eff = ksize_c + (ksize_c - 1) * (rate_c - 1)
 
-  if padding == 'SAME':
+  if padding == b'SAME':
     rows_out = int(ceil(rows_in / stride_r))
     cols_out = int(ceil(cols_in / stride_h))
     pad_rows = ((rows_out - 1) * stride_r + ksize_r_eff - rows_in) // 2
     pad_cols = ((cols_out - 1) * stride_h + ksize_c_eff - cols_in) // 2
 
-  elif padding == 'VALID':
+  elif padding == b'VALID':
     rows_out = int(ceil((rows_in - ksize_r_eff + 1) / stride_r))
     cols_out = int(ceil((cols_in - ksize_c_eff + 1) / stride_h))
     pad_rows = (rows_out - 1) * stride_r + ksize_r_eff - rows_in

@@ -535,81 +535,87 @@ class HingeLossTest(tf.test.TestCase):
           loss.eval(), [[[0.0], [1.4], [0.0], [2.1]]], atol=1e-3)
 
 
-class SumOfSquaresLossTest(tf.test.TestCase):
+class MeanSquaredErrorTest(tf.test.TestCase):
 
   def setUp(self):
     self._predictions = tf.constant([4, 8, 12, 8, 1, 3], shape=(2, 3))
     self._targets = tf.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
 
-  def testValueErrorThrownWhenWeightIsNone(self):
-    with self.test_session():
-      with self.assertRaises(ValueError):
-        tf.contrib.losses.sum_of_squares(
-            self._predictions, self._predictions, weight=None)
-
-  def testAllCorrectNoLossWeight(self):
+  def testDeprecatedName(self):
     loss = tf.contrib.losses.sum_of_squares(
         self._predictions, self._predictions)
     with self.test_session():
       self.assertAlmostEqual(0.0, loss.eval(), 3)
 
+  def testValueErrorThrownWhenWeightIsNone(self):
+    with self.test_session():
+      with self.assertRaises(ValueError):
+        tf.contrib.losses.mean_squared_error(
+            self._predictions, self._predictions, weight=None)
+
+  def testAllCorrectNoLossWeight(self):
+    loss = tf.contrib.losses.mean_squared_error(
+        self._predictions, self._predictions)
+    with self.test_session():
+      self.assertAlmostEqual(0.0, loss.eval(), 3)
+
   def testNonZeroLoss(self):
-    loss = tf.contrib.losses.sum_of_squares(
+    loss = tf.contrib.losses.mean_squared_error(
         self._predictions, self._targets)
     with self.test_session():
       self.assertAlmostEqual(49.5, loss.eval(), 3)
 
   def testNonZeroLossWithPythonScalarWeight(self):
     weight = 2.3
-    loss = tf.contrib.losses.sum_of_squares(
+    loss = tf.contrib.losses.mean_squared_error(
         self._predictions, self._targets, weight)
     with self.test_session():
       self.assertAlmostEqual(49.5 * weight, loss.eval(), 3)
 
   def testNonZeroLossWithScalarTensorWeight(self):
     weight = 2.3
-    loss = tf.contrib.losses.sum_of_squares(
+    loss = tf.contrib.losses.mean_squared_error(
         self._predictions, self._targets, tf.constant(weight))
     with self.test_session():
       self.assertAlmostEqual(49.5 * weight, loss.eval(), 3)
 
   def testNonZeroLossWithOneDimBatchSpecificWeights(self):
     weight = tf.constant([1.2, 3.4], shape=[2,])
-    loss = tf.contrib.losses.sum_of_squares(
+    loss = tf.contrib.losses.mean_squared_error(
         self._predictions, self._targets, weight)
     with self.test_session():
       self.assertAlmostEqual(767.8 / 6.0, loss.eval(), 3)
 
   def testNonZeroLossWithTwoDimBatchSpecificWeights(self):
     weight = tf.constant([1.2, 3.4], shape=[2, 1])
-    loss = tf.contrib.losses.sum_of_squares(
+    loss = tf.contrib.losses.mean_squared_error(
         self._predictions, self._targets, weight)
     with self.test_session():
       self.assertAlmostEqual(767.8 / 6.0, loss.eval(), 3)
 
   def testNonZeroLossWithSampleSpecificWeights(self):
     weight = tf.constant([3, 6, 5, 0, 4, 2], shape=[2, 3])
-    loss = tf.contrib.losses.sum_of_squares(
+    loss = tf.contrib.losses.mean_squared_error(
         self._predictions, self._targets, weight)
     with self.test_session():
       self.assertAlmostEqual(587 / 5.0, loss.eval(), 3)
 
   def testNonZeroLossWithSampleSpecificWeightsMostZero(self):
     weight = tf.constant([0, 0, 0, 0, 0, 2], shape=[2, 3])
-    loss = tf.contrib.losses.sum_of_squares(
+    loss = tf.contrib.losses.mean_squared_error(
         self._predictions, self._targets, weight)
     with self.test_session():
       self.assertAlmostEqual(18.0, loss.eval(), 3)
 
   def testLossWithSampleSpecificWeightsAllZero(self):
     weight = tf.zeros((2, 3))
-    loss = tf.contrib.losses.sum_of_squares(
+    loss = tf.contrib.losses.mean_squared_error(
         self._predictions, self._targets, weight)
     with self.test_session():
       self.assertAlmostEqual(0.0, loss.eval(), 3)
 
 
-class SumOfPairwiseSquaresLossTest(tf.test.TestCase):
+class MeanPairwiseSquaresErrorTest(tf.test.TestCase):
 
   def setUp(self):
     self._predictions = np.array([[4, 8, 12],
@@ -631,23 +637,30 @@ class SumOfPairwiseSquaresLossTest(tf.test.TestCase):
 
     self._expected_losses = np.divide(total, 9.0)
 
+  def testDeprecatedName(self):
+    loss = tf.contrib.losses.sum_of_pairwise_squares(
+        predictions=tf.constant(self._predictions),
+        targets=tf.constant(self._targets))
+    with self.test_session():
+      self.assertAlmostEqual(np.sum(self._expected_losses), loss.eval(), 3)
+
   def testValueErrorThrownWhenWeightIsNone(self):
     with self.test_session():
       with self.assertRaises(ValueError):
-        tf.contrib.losses.sum_of_pairwise_squares(
+        tf.contrib.losses.mean_pairwise_squared_error(
             predictions=tf.constant(self._targets),
             targets=tf.constant(self._targets),
             weight=None)
 
   def testAllCorrectNoLossWeight(self):
-    loss = tf.contrib.losses.sum_of_pairwise_squares(
+    loss = tf.contrib.losses.mean_pairwise_squared_error(
         predictions=tf.constant(self._targets),
         targets=tf.constant(self._targets))
     with self.test_session():
       self.assertAlmostEqual(0.0, loss.eval(), 3)
 
   def testNonZeroLoss(self):
-    loss = tf.contrib.losses.sum_of_pairwise_squares(
+    loss = tf.contrib.losses.mean_pairwise_squared_error(
         predictions=tf.constant(self._predictions),
         targets=tf.constant(self._targets))
     with self.test_session():
@@ -664,7 +677,7 @@ class SumOfPairwiseSquaresLossTest(tf.test.TestCase):
       predictions = tf.matmul(inputs, weights)
 
       optimizer = tf.train.MomentumOptimizer(learning_rate=0.001, momentum=0.9)
-      loss = tf.contrib.losses.sum_of_pairwise_squares(
+      loss = tf.contrib.losses.mean_pairwise_squared_error(
           predictions,
           predictions,
           0)
@@ -681,7 +694,7 @@ class SumOfPairwiseSquaresLossTest(tf.test.TestCase):
 
   def testNonZeroLossWithPythonScalarWeight(self):
     weight = 2.3
-    loss = tf.contrib.losses.sum_of_pairwise_squares(
+    loss = tf.contrib.losses.mean_pairwise_squared_error(
         predictions=tf.constant(self._predictions),
         targets=tf.constant(self._targets),
         weight=weight)
@@ -691,7 +704,7 @@ class SumOfPairwiseSquaresLossTest(tf.test.TestCase):
 
   def testNonZeroLossWithScalarTensorWeight(self):
     weight = 2.3
-    loss = tf.contrib.losses.sum_of_pairwise_squares(
+    loss = tf.contrib.losses.mean_pairwise_squared_error(
         predictions=tf.constant(self._predictions),
         targets=tf.constant(self._targets),
         weight=tf.constant(weight))
@@ -701,7 +714,7 @@ class SumOfPairwiseSquaresLossTest(tf.test.TestCase):
 
   def testNonZeroLossWithScalarZeroWeight(self):
     weight = 0
-    loss = tf.contrib.losses.sum_of_pairwise_squares(
+    loss = tf.contrib.losses.mean_pairwise_squared_error(
         predictions=tf.constant(self._predictions),
         targets=tf.constant(self._targets),
         weight=tf.constant(weight))
@@ -712,7 +725,7 @@ class SumOfPairwiseSquaresLossTest(tf.test.TestCase):
     weight = 2.3
     tf_predictions = tf.placeholder(tf.float32, shape=self._predictions.shape)
     tf_targets = tf.placeholder(tf.float32, shape=self._targets.shape)
-    loss = tf.contrib.losses.sum_of_pairwise_squares(
+    loss = tf.contrib.losses.mean_pairwise_squared_error(
         predictions=tf_predictions,
         targets=tf_targets,
         weight=tf.constant(weight))
@@ -727,7 +740,7 @@ class SumOfPairwiseSquaresLossTest(tf.test.TestCase):
     weight = np.asarray([2.0, 1.0]).reshape((2, 1))
     expected_losses = np.multiply(weight, self._expected_losses)
 
-    loss = tf.contrib.losses.sum_of_pairwise_squares(
+    loss = tf.contrib.losses.mean_pairwise_squared_error(
         predictions=tf.constant(self._predictions),
         targets=tf.constant(self._targets),
         weight=tf.constant(weight, shape=[2]))
@@ -736,7 +749,7 @@ class SumOfPairwiseSquaresLossTest(tf.test.TestCase):
 
   def testZeroLossWithOneDimBatchZeroWeights(self):
     weight = np.asarray([0.0, 0.0]).reshape((2, 1))
-    loss = tf.contrib.losses.sum_of_pairwise_squares(
+    loss = tf.contrib.losses.mean_pairwise_squared_error(
         predictions=tf.constant(self._predictions),
         targets=tf.constant(self._targets),
         weight=tf.constant(weight, shape=[2]))
@@ -749,7 +762,7 @@ class SumOfPairwiseSquaresLossTest(tf.test.TestCase):
 
     tf_predictions = tf.placeholder(tf.float32, shape=self._predictions.shape)
     tf_targets = tf.placeholder(tf.int32, shape=self._targets.shape)
-    loss = tf.contrib.losses.sum_of_pairwise_squares(
+    loss = tf.contrib.losses.mean_pairwise_squared_error(
         predictions=tf_predictions,
         targets=tf_targets,
         weight=tf.constant(weight, shape=[2]))
@@ -763,7 +776,7 @@ class SumOfPairwiseSquaresLossTest(tf.test.TestCase):
 
   def testLossWithAllZeroBatchSpecificWeights(self):
     weight = np.zeros((2, 1))
-    loss = tf.contrib.losses.sum_of_pairwise_squares(
+    loss = tf.contrib.losses.mean_pairwise_squared_error(
         predictions=tf.constant(self._predictions),
         targets=tf.constant(self._targets),
         weight=tf.constant(weight, shape=[2]))

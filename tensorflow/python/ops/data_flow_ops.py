@@ -22,6 +22,8 @@ from __future__ import print_function
 import collections
 import re
 
+import six
+
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
@@ -86,6 +88,18 @@ def _as_name_list(names, dtypes):
     raise ValueError("List of names must have the same length as the list "
                      "of dtypes")
   return list(names)
+
+
+def _shape_common(s1, s2):
+  """The greatest lower bound (ordered by specificity) TensorShape."""
+  s1 = tensor_shape.TensorShape(s1)
+  s2 = tensor_shape.TensorShape(s2)
+  if s1.ndims is None or s2.ndims is None or s1.ndims != s2.ndims:
+    return tensor_shape.unknown_shape()
+  d = [
+      d1 if d1 is not None and d1 == d2 else None
+      for (d1, d2) in zip(s1.as_list(), s2.as_list())]
+  return tensor_shape.TensorShape(d)
 
 
 # pylint: disable=protected-access
@@ -186,10 +200,13 @@ class QueueBase(object):
     if not all([names == q.names for q in queues[1:]]):
       raise TypeError("Queues do not have matching component names.")
 
+    queue_shapes = [q.shapes for q in queues]
+    reduced_shapes = [
+        six.moves.reduce(_shape_common, s) for s in zip(*queue_shapes)]
+
     queue_refs = [x.queue_ref for x in queues]
     selected_queue = control_flow_ops.ref_select(index, queue_refs)
-    # TODO(josh11b): Unify the shapes of the queues too?
-    return QueueBase(dtypes=dtypes, shapes=None, names=names,
+    return QueueBase(dtypes=dtypes, shapes=reduced_shapes, names=names,
                      queue_ref=selected_queue)
 
   @property
@@ -206,6 +223,11 @@ class QueueBase(object):
   def dtypes(self):
     """The list of dtypes for each component of a queue element."""
     return self._dtypes
+
+  @property
+  def shapes(self):
+    """The list of shapes for each component of a queue element."""
+    return self._shapes
 
   @property
   def names(self):
@@ -280,7 +302,7 @@ class QueueBase(object):
     At runtime, this operation may raise an error if the queue is
     [closed](#QueueBase.close) before or during its execution. If the
     queue is closed before this operation runs,
-    `tf.errors.AbortedError` will be raised. If this operation is
+    `tf.errors.CancelledError` will be raised. If this operation is
     blocked, and either (i) the queue is closed by a close operation
     with `cancel_pending_enqueues=True`, or (ii) the session is
     [closed](../../api_docs/python/client.md#Session.close),
@@ -318,7 +340,7 @@ class QueueBase(object):
     At runtime, this operation may raise an error if the queue is
     [closed](#QueueBase.close) before or during its execution. If the
     queue is closed before this operation runs,
-    `tf.errors.AbortedError` will be raised. If this operation is
+    `tf.errors.CancelledError` will be raised. If this operation is
     blocked, and either (i) the queue is closed by a close operation
     with `cancel_pending_enqueues=True`, or (ii) the session is
     [closed](../../api_docs/python/client.md#Session.close),
@@ -595,7 +617,7 @@ class RandomShuffleQueue(QueueBase):
 
 
 class FIFOQueue(QueueBase):
-  """A queue implementation that dequeues elements in first-in-first out order.
+  """A queue implementation that dequeues elements in first-in first-out order.
 
   See [`tf.QueueBase`](#QueueBase) for a description of the methods on
   this class.

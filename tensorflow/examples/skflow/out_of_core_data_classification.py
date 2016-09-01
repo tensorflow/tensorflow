@@ -50,12 +50,12 @@ x_train, y_train, x_test, y_test = [
     for data in [x_train, y_train, x_test, y_test]]
 
 # Initialize a TensorFlow linear classifier
-classifier = learn.TensorFlowLinearClassifier(
+classifier = learn.LinearClassifier(
     feature_columns=learn.infer_real_valued_columns_from_input(x_train),
     n_classes=3)
 
 # Fit the model using training set.
-classifier.fit(x_train, y_train)
+classifier.fit(x_train, y_train, steps=200)
 # Make predictions on each partitions of testing data
 predictions = x_test.map_partitions(classifier.predict).compute()
 # Calculate accuracy

@@ -21,6 +21,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/io/buffered_inputstream.h"
+#include "tensorflow/core/lib/io/inputstream_interface.h"
+#include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/match.h"
 #include "tensorflow/core/platform/env.h"
@@ -155,6 +158,20 @@ void Stat(const string& filename, FileStatistics* stats,
     Set_TF_Status_from_Status(out_status, status);
   }
 }
+
+tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
+    const string& filename, size_t buffer_size) {
+  std::unique_ptr<tensorflow::RandomAccessFile> file;
+  if (!tensorflow::Env::Default()->NewRandomAccessFile(filename, &file).ok()) {
+    return nullptr;
+  }
+  std::unique_ptr<tensorflow::io::RandomAccessInputStream> input_stream(
+      new tensorflow::io::RandomAccessInputStream(file.release()));
+  std::unique_ptr<tensorflow::io::BufferedInputStream> buffered_input_stream(
+      new tensorflow::io::BufferedInputStream(input_stream.release(),
+                                              buffer_size));
+  return buffered_input_stream.release();
+}
 %}
 
 // Wrap the above functions.
@@ -174,6 +191,15 @@ void DeleteRecursively(const string& dirname, TF_Status* out_status);
 bool IsDirectory(const string& dirname, TF_Status* out_status);
 void Stat(const string& filename, tensorflow::FileStatistics* stats,
           TF_Status* out_status);
+tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
+    const string& filename, size_t buffer_size);
+
+%ignoreall
+%unignore tensorflow::io::BufferedInputStream;
+%unignore tensorflow::io::BufferedInputStream::ReadLineAsString;
+%include "tensorflow/core/lib/io/inputstream_interface.h"
+%include "tensorflow/core/lib/io/buffered_inputstream.h"
+%unignoreall
 
 %include "tensorflow/core/lib/io/path.h"
 %include "tensorflow/core/platform/file_statistics.h"

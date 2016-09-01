@@ -12,7 +12,7 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 The activation ops provide different types of nonlinearities for use in neural
 networks.  These include smooth nonlinearities (`sigmoid`, `tanh`, `elu`,
 `softplus`, and `softsign`), continuous but not everywhere differentiable
-functions (`relu`, `relu6`, and `relu_x`), and random regularization
+functions (`relu`, `relu6`, `crelu` and `relu_x`), and random regularization
 (`dropout`).
 
 All activation ops apply componentwise, and produce a tensor of the same
@@ -40,6 +40,29 @@ Computes rectified linear: `max(features, 0)`.
 ### `tf.nn.relu6(features, name=None)` {#relu6}
 
 Computes Rectified Linear 6: `min(max(features, 0), 6)`.
+
+##### Args:
+
+
+*  <b>`features`</b>: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
+    `int16`, or `int8`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` with the same type as `features`.
+
+
+- - -
+
+### `tf.nn.crelu(features, name=None)` {#crelu}
+
+Computes Concatenated ReLU.
+
+Concatenates a ReLU which selects only the positive part of the activation
+with a ReLU which selects only the *negative* part of the activation.
+Note that as a result this non-linearity doubles the depth of the activations.
+Source: https://arxiv.org/abs/1603.05201
 
 ##### Args:
 
@@ -805,6 +828,151 @@ Performs 3D max pooling on the input.
   A `Tensor`. Has the same type as `input`. The max pooled output tensor.
 
 
+- - -
+
+### `tf.nn.fractional_avg_pool(value, pooling_ratio, pseudo_random=None, overlapping=None, deterministic=None, seed=None, seed2=None, name=None)` {#fractional_avg_pool}
+
+Performs fractional average pooling on the input.
+
+Fractional average pooling is similar to Fractional max pooling in the pooling
+region generation step. The only difference is that after pooling regions are
+generated, a mean operation is performed instead of a max operation in each
+pooling region.
+
+##### Args:
+
+
+*  <b>`value`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
+    4-D with shape `[batch, height, width, channels]`.
+*  <b>`pooling_ratio`</b>: A list of `floats` that has length `>= 4`.
+    Pooling ratio for each dimension of `value`, currently only
+    supports row and col dimension and should be >= 1.0. For example, a valid
+    pooling ratio looks like [1.0, 1.44, 1.73, 1.0]. The first and last elements
+    must be 1.0 because we don't allow pooling on batch and channels
+    dimensions. 1.44 and 1.73 are pooling ratio on height and width dimensions
+    respectively.
+*  <b>`pseudo_random`</b>: An optional `bool`. Defaults to `False`.
+    When set to True, generates the pooling sequence in a
+    pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
+    Graham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for
+    difference between pseudorandom and random.
+*  <b>`overlapping`</b>: An optional `bool`. Defaults to `False`.
+    When set to True, it means when pooling, the values at the boundary
+    of adjacent pooling cells are used by both cells. For example:
+
+    `index  0  1  2  3  4`
+
+    `value  20 5  16 3  7`
+
+    If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
+    The result would be [41/3, 26/3] for fractional avg pooling.
+
+*  <b>`deterministic`</b>: An optional `bool`. Defaults to `False`.
+    When set to True, a fixed pooling region will be used when
+    iterating over a FractionalAvgPool node in the computation graph. Mainly used
+    in unit test to make FractionalAvgPool deterministic.
+*  <b>`seed`</b>: An optional `int`. Defaults to `0`.
+    If either seed or seed2 are set to be non-zero, the random number
+    generator is seeded by the given seed.  Otherwise, it is seeded by a
+    random seed.
+*  <b>`seed2`</b>: An optional `int`. Defaults to `0`.
+    An second seed to avoid seed collision.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (output, row_pooling_sequence, col_pooling_sequence).
+
+*  <b>`output`</b>: A `Tensor`. Has the same type as `value`. output tensor after fractional avg pooling.
+*  <b>`row_pooling_sequence`</b>: A `Tensor` of type `int64`. row pooling sequence, needed to calculate gradient.
+*  <b>`col_pooling_sequence`</b>: A `Tensor` of type `int64`. column pooling sequence, needed to calculate gradient.
+
+
+- - -
+
+### `tf.nn.fractional_max_pool(value, pooling_ratio, pseudo_random=None, overlapping=None, deterministic=None, seed=None, seed2=None, name=None)` {#fractional_max_pool}
+
+Performs fractional max pooling on the input.
+
+Fractional max pooling is slightly different than regular max pooling.  In
+regular max pooling, you downsize an input set by taking the maximum value of
+smaller N x N subsections of the set (often 2x2), and try to reduce the set by
+a factor of N, where N is an integer.  Fractional max pooling, as you might
+expect from the word "fractional", means that the overall reduction ratio N
+does not have to be an integer.
+
+The sizes of the pooling regions are generated randomly but are fairly uniform.
+For example, let's look at the height dimension, and the constraints on the
+list of rows that will be pool boundaries.
+
+First we define the following:
+
+1.  input_row_length : the number of rows from the input set
+2.  output_row_length : which will be smaller than the input
+3.  alpha = input_row_length / output_row_length : our reduction ratio
+4.  K = floor(alpha)
+5.  row_pooling_sequence : this is the result list of pool boundary rows
+
+Then, row_pooling_sequence should satisfy:
+
+1.  a[0] = 0 : the first value of the sequence is 0
+2.  a[end] = input_row_length : the last value of the sequence is the size
+3.  K <= (a[i+1] - a[i]) <= K+1 : all intervals are K or K+1 size
+4.  length(row_pooling_sequence) = output_row_length+1
+
+For more details on fractional max pooling, see this paper:
+[Benjamin Graham, Fractional Max-Pooling]
+(http://arxiv.org/abs/1412.6071)
+
+##### Args:
+
+
+*  <b>`value`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`.
+    4-D with shape `[batch, height, width, channels]`.
+*  <b>`pooling_ratio`</b>: A list of `floats` that has length `>= 4`.
+    Pooling ratio for each dimension of `value`, currently only
+    supports row and col dimension and should be >= 1.0. For example, a valid
+    pooling ratio looks like [1.0, 1.44, 1.73, 1.0]. The first and last elements
+    must be 1.0 because we don't allow pooling on batch and channels
+    dimensions. 1.44 and 1.73 are pooling ratio on height and width dimensions
+    respectively.
+*  <b>`pseudo_random`</b>: An optional `bool`. Defaults to `False`.
+    When set to True, generates the pooling sequence in a
+    pseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin
+    Graham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for
+    difference between pseudorandom and random.
+*  <b>`overlapping`</b>: An optional `bool`. Defaults to `False`.
+    When set to True, it means when pooling, the values at the boundary
+    of adjacent pooling cells are used by both cells. For example:
+
+    `index  0  1  2  3  4`
+
+    `value  20 5  16 3  7`
+
+    If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used twice.
+    The result would be [20, 16] for fractional max pooling.
+
+*  <b>`deterministic`</b>: An optional `bool`. Defaults to `False`.
+    When set to True, a fixed pooling region will be used when
+    iterating over a FractionalMaxPool node in the computation graph. Mainly used
+    in unit test to make FractionalMaxPool deterministic.
+*  <b>`seed`</b>: An optional `int`. Defaults to `0`.
+    If either seed or seed2 are set to be non-zero, the random number
+    generator is seeded by the given seed.  Otherwise, it is seeded by a
+    random seed.
+*  <b>`seed2`</b>: An optional `int`. Defaults to `0`.
+    An second seed to avoid seed collision.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (output, row_pooling_sequence, col_pooling_sequence).
+
+*  <b>`output`</b>: A `Tensor`. Has the same type as `value`. output tensor after fractional max pooling.
+*  <b>`row_pooling_sequence`</b>: A `Tensor` of type `int64`. row pooling sequence, needed to calculate gradient.
+*  <b>`col_pooling_sequence`</b>: A `Tensor` of type `int64`. column pooling sequence, needed to calculate gradient.
+
+
 
 ## Morphological filtering
 
@@ -974,7 +1142,8 @@ dimension `dim`.
 
 
 *  <b>`x`</b>: A `Tensor`.
-*  <b>`dim`</b>: Dimension along which to normalize.
+*  <b>`dim`</b>: Dimension along which to normalize.  A scalar or a vector of
+    integers.
 *  <b>`epsilon`</b>: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
     divisor if `norm < sqrt(epsilon)`.
 *  <b>`name`</b>: A name for this operation (optional).
@@ -1242,46 +1411,62 @@ equivalent formulation
 
 - - -
 
-### `tf.nn.softmax(logits, name=None)` {#softmax}
-
-Computes softmax activations.
-
-For each batch `i` and class `j` we have
-
-    softmax[i, j] = exp(logits[i, j]) / sum_j(exp(logits[i, j]))
-
-##### Args:
-
-
-*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
-    2-D with shape `[batch_size, num_classes]`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
-
-
-- - -
-
-### `tf.nn.log_softmax(logits, name=None)` {#log_softmax}
+### `tf.nn.softmax(logits, dim=-1, name=None)` {#softmax}
 
 Computes log softmax activations.
 
 For each batch `i` and class `j` we have
 
-    logsoftmax[i, j] = logits[i, j] - log(sum(exp(logits[i])))
+    softmax = exp(logits) / reduce_sum(exp(logits), dim)
 
 ##### Args:
 
 
-*  <b>`logits`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`.
-    2-D with shape `[batch_size, num_classes]`.
+*  <b>`logits`</b>: A non-empty `Tensor`. Must be one of the following types: `half`,
+    `float32`, `float64`.
+*  <b>`dim`</b>: The dimension softmax would be performed on. The default is -1 which
+    indicates the last dimension.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+
+##### Raises:
+
+
+*  <b>`InvalidArgumentError`</b>: if `logits` is empty or `dim` is beyond the last
+    dimension of `logits`.
+
+
+- - -
+
+### `tf.nn.log_softmax(logits, dim=-1, name=None)` {#log_softmax}
+
+Computes log softmax activations.
+
+For each batch `i` and class `j` we have
+
+    logsoftmax = logits - reduce_sum(exp(logits), dim)
+
+##### Args:
+
+
+*  <b>`logits`</b>: A non-empty `Tensor`. Must be one of the following types: `half`,
+    `float32`, `float64`.
+*  <b>`dim`</b>: The dimension softmax would be performed on. The default is -1 which
+    indicates the last dimension.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+
+##### Raises:
+
+
+*  <b>`InvalidArgumentError`</b>: if `logits` is empty or `dim` is beyond the last
+    dimension of `logits`.
 
 
 - - -
@@ -1767,6 +1952,95 @@ RNN that accepts a state saver for time-truncated RNN calculation.
 
 - - -
 
+### `tf.nn.bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None, initial_state_fw=None, initial_state_bw=None, dtype=None, parallel_iterations=None, swap_memory=False, time_major=False, scope=None)` {#bidirectional_dynamic_rnn}
+
+Creates a dynamic version of bidirectional recurrent neural network.
+
+Similar to the unidirectional case above (rnn) but takes input and builds
+independent forward and backward RNNs. The input_size of forward and
+backward cell must match. The initial state for both directions is zero by
+default (but can be set optionally) and no intermediate states are ever
+returned -- the network is fully unrolled for the given (passed in)
+length(s) of the sequence(s) or completely unrolled if length(s) is not
+given.
+
+##### Args:
+
+
+*  <b>`cell_fw`</b>: An instance of RNNCell, to be used for forward direction.
+*  <b>`cell_bw`</b>: An instance of RNNCell, to be used for backward direction.
+*  <b>`inputs`</b>: The RNN inputs.
+    If time_major == False (default), this must be a tensor of shape:
+      `[batch_size, max_time, input_size]`.
+    If time_major == True, this must be a tensor of shape:
+      `[max_time, batch_size, input_size]`.
+    [batch_size, input_size].
+*  <b>`sequence_length`</b>: An int32/int64 vector, size `[batch_size]`,
+    containing the actual lengths for each of the sequences.
+*  <b>`initial_state_fw`</b>: (optional) An initial state for the forward RNN.
+    This must be a tensor of appropriate type and shape
+    `[batch_size x cell_fw.state_size]`.
+    If `cell_fw.state_size` is a tuple, this should be a tuple of
+    tensors having shapes `[batch_size, s] for s in cell_fw.state_size`.
+*  <b>`initial_state_bw`</b>: (optional) Same as for `initial_state_fw`, but using
+    the corresponding properties of `cell_bw`.
+*  <b>`dtype`</b>: (optional) The data type for the initial states and expected output.
+    Required if initial_states are not provided or RNN states have a
+    heterogeneous dtype.
+*  <b>`parallel_iterations`</b>: (Default: 32).  The number of iterations to run in
+    parallel.  Those operations which do not have any temporal dependency
+    and can be run in parallel, will be.  This parameter trades off
+    time for space.  Values >> 1 use more memory but take less time,
+    while smaller values use less memory but computations take longer.
+*  <b>`swap_memory`</b>: Transparently swap the tensors produced in forward inference
+    but needed for back prop from GPU to CPU.  This allows training RNNs
+    which would typically not fit on a single GPU, with very minimal (or no)
+    performance penalty.
+*  <b>`time_major`</b>: The shape format of the `inputs` and `outputs` Tensors.
+    If true, these `Tensors` must be shaped `[max_time, batch_size, depth]`.
+    If false, these `Tensors` must be shaped `[batch_size, max_time, depth]`.
+    Using `time_major = True` is a bit more efficient because it avoids
+    transposes at the beginning and end of the RNN calculation.  However,
+    most TensorFlow data is batch-major, so by default this function
+    accepts input and emits output in batch-major form.
+*  <b>`dtype`</b>: (optional) The data type for the initial state.  Required if
+    initial_state is not provided.
+*  <b>`sequence_length`</b>: An int32/int64 vector, size `[batch_size]`,
+    containing the actual lengths for each of the sequences.
+    either of the initial states are not provided.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "BiRNN"
+
+##### Returns:
+
+  A tuple (outputs, output_states) where:
+
+*  <b>`outputs`</b>: A tuple (output_fw, output_bw) containing the forward and
+      the backward rnn output `Tensor`.
+      If time_major == False (default),
+        output_fw will be a `Tensor` shaped:
+        `[batch_size, max_time, cell_fw.output_size]`
+        and output_bw will be a `Tensor` shaped:
+        `[batch_size, max_time, cell_bw.output_size]`.
+      If time_major == True,
+        output_fw will be a `Tensor` shaped:
+        `[max_time, batch_size, cell_fw.output_size]`
+        and output_bw will be a `Tensor` shaped:
+        `[max_time, batch_size, cell_bw.output_size]`.
+      It returns a tuple instead of a single concatenated `Tensor`, unlike
+      in the `bidirectional_rnn`. If the concatenated one is preferred,
+      the forward and backward outputs can be concatenated as
+      `tf.concat(2, outputs)`.
+*  <b>`output_states`</b>: A tuple (output_state_fw, output_state_bw) containing
+      the forward and the backward final states of bidirectional rnn.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
+
+
+- - -
+
 ### `tf.nn.bidirectional_rnn(cell_fw, cell_bw, inputs, initial_state_fw=None, initial_state_bw=None, dtype=None, sequence_length=None, scope=None)` {#bidirectional_rnn}
 
 Creates a bidirectional recurrent neural network.
@@ -1815,6 +2089,159 @@ length(s) of the sequence(s) or completely unrolled if length(s) is not given.
 *  <b>`ValueError`</b>: If inputs is None or an empty list.
 
 
+- - -
+
+### `tf.nn.raw_rnn(cell, loop_fn, initial_state, parallel_iterations=None, swap_memory=False, scope=None)` {#raw_rnn}
+
+Creates an `RNN` specified by RNNCell `cell` and loop function `loop_fn`.
+
+**NOTE: This method is still in testing, and the API may change.**
+
+This function is a more primitive version of `dynamic_rnn` that provides
+more direct access to the inputs each iteration.  It also provides more
+control over when to start and finish reading the sequence, and
+what to emit for the output.
+
+For example, it can be used to implement the dynamic decoder of a seq2seq
+model.
+
+Instead of working with `Tensor` objects, most operations work with
+`TensorArray` objects directly.
+
+The operation of `raw_rnn`, in pseudo-code, is basically the following:
+```
+emit_ta = TensorArray(dynamic_size=True, dtype=initial_state.dtype)
+time = tf.constant(0, dtype=tf.int32)
+(finished, next_input, _, loop_state) = loop_fn(
+    time=time, cell_output=None, loop_state=None)
+state = initial_state
+while not all(finished):
+  (output, next_state) = cell(next_input, state)
+  (next_finished, next_input, emit, loop_state) = loop_fn(
+      time=time + 1, cell_output=output, loop_state=loop_state)
+  # Emit zeros and copy forward state for minibatch entries that are finished.
+  state = tf.select(finished, state, next_state)
+  emit = tf.select(finished, tf.zeros_like(emit), emit)
+  emit_ta = emit_ta.write(time, emit)
+  # If any new minibatch entries are marked as finished, mark these
+  finished = tf.logical_or(finished, next_finished)
+  time += 1
+return (emit_ta, state, loop_state)
+```
+
+with the additional properties that output and state may be (possibly nested)
+tuples, as determined by `cell.output_size` and `cell.state_size`, and
+as a result the final `state` and `emit_ta` may themselves be tuples.
+
+A simple implementation of `dynamic_rnn` via `raw_rnn` looks like this:
+
+```python
+inputs = tf.placeholder(shape=(max_time, batch_size, input_depth),
+                        dtype=tf.float32)
+sequence_length = tf.placeholder(shape=(batch_size,), dtype=tf.int32)
+inputs_ta = tf.TensorArray(dtype=tf.float32, size=max_time)
+inputs_ta = inputs_ta.unpack(inputs)
+
+def loop_fn(time, cell_output, loop_state):
+  emit_output = cell_output  # == None for time == 0
+  elements_finished = (time >= sequence_length)
+  finished = tf.reduce_all(elements_finished)
+  next_input = tf.cond(
+      finished,
+      lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
+      lambda: inputs_ta.read(time))
+  next_loop_state = None
+  return (elements_finished, next_input, emit_output, next_loop_state)
+
+cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+initial_state = cell.zero_state(batch_size, tf.float32)
+outputs_ta, final_state, _ = raw_rnn(cell, loop_fn, initial_state)
+outputs = outputs_ta.pack()
+```
+
+##### Args:
+
+
+*  <b>`cell`</b>: An instance of RNNCell.
+*  <b>`loop_fn`</b>: A callable that takes inputs `(time, cell_output, loop_state)` and
+    returns the tuple `(finished, next_input, emit_output, next_loop_state)`.
+    Here `time` is an int32 scalar `Tensor`, `cell_output` is a
+    `Tensor` or (possibly nested) tuple of tensors as determined by
+    `cell.output_size`.  In addition, `finished` is a boolean `Tensor` of
+    shape `[batch_size]`, `next_input` is the next input to feed to `cell`,
+    and `emit_output` is the output to store for this iteration.  Note that
+    `emit_output` should be a `Tensor` or (possibly nested) tuple of tensors
+    with shapes and structure matching `cell.output_size` and `cell_output`
+    above.  The parameter `loop_state` and output `next_loop_state` may be
+    either a single or (possibly nested) tuple of tensors.  This paramter
+    may be ignored by `loop_fn` and the return value may be `None`.  If it
+    is not `None`, then the `loop_state` will be propagated through the RNN
+    loop, for use purely by `loop_fn` to keep track of its own state.
+    The `next_loop_state` parameter returned may be `None`.
+
+    The first call to `loop_fn` will be `time = 0`, `cell_output = None`,
+    and `loop_state = None`.  Its `emit_output` value in this case may be
+    either `None` or a (possibly nested) tuple structure of Tensors, e.g.,
+    `(tf.zeros(shape_0, dtype=dtype_0), tf.zeros(shape_1, dtype=dtype_1))`.
+    If this first `emit_output` return value is `None`,
+    then the `emit_ta` result of `raw_rnn` will have the same structure and
+    dtypes as `cell.output_size`.  Otherwise `emit_ta` will have the same
+    structure, shapes (prepended with a `batch_size` dimension), and dtypes
+    as `emit_output`.  The actual values returned for `emit_output` at this
+    initializing call are ignored.  Note, this emit structure must be
+    consistent across all time steps.
+
+
+*  <b>`initial_state`</b>: An initial state for the RNN.
+    If `cell.state_size` is an integer, this must be
+    a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
+    If `cell.state_size` is a `TensorShape`, this must be a `Tensor` of
+    appropriate type and shape `[batch_size] + cell.state_size`.
+    If `cell.state_size` is a (possibly nested) tuple of ints or
+    `TensorShape`, this will be a tuple having the corresponding shapes.
+*  <b>`parallel_iterations`</b>: (Default: 32).  The number of iterations to run in
+    parallel.  Those operations which do not have any temporal dependency
+    and can be run in parallel, will be.  This parameter trades off
+    time for space.  Values >> 1 use more memory but take less time,
+    while smaller values use less memory but computations take longer.
+*  <b>`swap_memory`</b>: Transparently swap the tensors produced in forward inference
+    but needed for back prop from GPU to CPU.  This allows training RNNs
+    which would typically not fit on a single GPU, with very minimal (or no)
+    performance penalty.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "RNN".
+
+##### Returns:
+
+  A tuple `(emit_ta, final_state, final_loop_state)` where:
+
+    `emit_ta`: The RNN output `TensorArray`.
+       If `loop_fn` returns a (possibly nested) set of Tensors for
+       `emit_output` during initialization, (inputs `time = 0`,
+       `cell_output = None`, and `loop_state = None`), then `emit_ta` will
+       have the same structure, dtypes, and shapes as `emit_output` instead.
+       If `loop_fn` returns `emit_output = None` during this call,
+       the structure of `cell.output_size` is used:
+
+       If `cell.output_size` is a (possibly nested) tuple of integers
+       or `TensorShape` objects, then `emit_ta` will be a tuple having the
+       same structure as `cell.output_size`, containing TensorArrays whose
+       elements' shapes correspond to the shape data in `cell.output_size`.
+
+    `final_state`: The final cell state.  If `cell.state_size` is an int, this
+      will be shaped `[batch_size, cell.state_size]`.  If it is a
+      `TensorShape`, this will be shaped `[batch_size] + cell.state_size`.
+      If it is a (possibly nested) tuple of ints or `TensorShape`, this will
+      be a tuple having the corresponding shapes.
+
+    `final_loop_state`: The final loop state as returned by `loop_fn`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `cell` is not an instance of RNNCell, or `loop_fn` is not
+    a `callable`.
+
+
 
 ## Conectionist Temporal Classification (CTC)
 
@@ -1840,6 +2267,18 @@ sequence_length(b) <= time for all b
 max(labels.indices(labels.indices[:, 1] == b, 2))
   <= sequence_length(b) for all b.
 ```
+
+Notes:
+
+This class performs the softmax operation for you, so inputs should
+be e.g. linear projections of outputs by an LSTM.
+
+The `inputs` Tensor's innermost dimension size, `num_classes`, represents
+`num_labels + 1` classes, where num_labels is the number of true labels, and
+the largest value `(num_classes - 1)` is reserved for the blank label.
+
+For example, for a vocabulary containing 3 labels `[a, b, c]`,
+`num_classes = 4` and the labels indexing is `{a: 0, b: 1, c: 2, blank: 3}`.
 
 Regarding the arguments `preprocess_collapse_repeated` and
 `ctc_merge_repeated`:
@@ -1879,10 +2318,12 @@ Here is a table of the (roughly) expected first order behavior:
 
 
 *  <b>`inputs`</b>: 3-D `float` `Tensor` sized
-    `[max_time x batch_size x num_classes]`.  The logits.
+    `[max_time x batch_size x num_classes]`. The logits.
 *  <b>`labels`</b>: An `int32` `SparseTensor`.
     `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
-    the id for (batch b, time t).  See `core/ops/ctc_ops.cc` for more details.
+    the id for (batch b, time t).
+    `labels.values[i]` must take on values in `[0, num_labels)`.
+    See `core/ops/ctc_ops.cc` for more details.
 *  <b>`sequence_length`</b>: 1-D `int32` vector, size `[batch_size]`.
     The sequence lengths.
 *  <b>`preprocess_collapse_repeated`</b>: Boolean.  Default: False.

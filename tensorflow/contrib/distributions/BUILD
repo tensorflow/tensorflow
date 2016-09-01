@@ -101,6 +101,7 @@ cuda_py_tests(
         ":distributions_py",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["notsan"],  #http://b/31216497
 )
 
 cuda_py_tests(
@@ -216,6 +217,17 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
+    name = "mixture_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/mixture_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
     name = "normal_test",
     size = "small",
     srcs = ["python/kernel_tests/normal_test.py"],
@@ -294,6 +306,17 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/transformed_distribution_test.py"],
     additional_deps = [
         ":distributions_py",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "distribution_util_test",
+    size = "small",
+    srcs = ["python/kernel_tests/distribution_util_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
 )

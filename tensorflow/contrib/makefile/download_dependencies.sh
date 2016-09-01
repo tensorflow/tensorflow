@@ -46,9 +46,9 @@ ln -s eigen-eigen-${EIGEN_HASH} eigen-latest
 # so work around it by patching the source.
 function replace_by_sed() {
   if echo "${OSTYPE}" | grep -q darwin; then
-    sed -e $1 -i '' $2
+    sed -e "$1" -i '' "$2"
   else
-    sed -e $1 -i $2
+    sed -e "$1" -i "$2"
   fi
 }
 replace_by_sed 's#static uint32x4_t p4ui_CONJ_XOR = vld1q_u32( conj_XOR_DATA );#static uint32x4_t p4ui_CONJ_XOR; // = vld1q_u32( conj_XOR_DATA ); - Removed by script#' \
@@ -61,5 +61,10 @@ eigen-latest/Eigen/src/Core/arch/NEON/Complex.h
 git clone https://github.com/google/re2.git re2
 git clone https://github.com/google/gemmlowp.git gemmlowp
 git clone https://github.com/google/protobuf.git protobuf
+git clone https://github.com/google/googletest.git googletest
+
+# TODO(satok): Remove this once protobuf/autogen.sh is fixed.
+replace_by_sed 's#https://googlemock.googlecode.com/files/gmock-1.7.0.zip#http://download.tensorflow.org/deps/gmock-1.7.0.zip#' \
+protobuf/autogen.sh
 
 echo "download_dependencies.sh completed successfully."

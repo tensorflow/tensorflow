@@ -186,6 +186,18 @@ extern TF_Tensor* TF_NewTensor(TF_DataType, const int64_t* dims, int num_dims,
                                                    void* arg),
                                void* deallocator_arg);
 
+// Allocate and return a new Tensor.
+//
+// This function is an alternative to TF_NewTensor and should be used when
+// memory is allocated to pass the Tensor to the C API. The allocated memory
+// satisfies TensorFlow's memory alignment preferences and should be preferred
+// over calling malloc and free.
+//
+// The caller must set the Tensor values by writing them to the pointer returned
+// by TF_TensorData with length TF_TensorByteSize.
+extern TF_Tensor* TF_AllocateTensor(TF_DataType, const int64_t* dims,
+                                    int num_dims, size_t len);
+
 // Destroy a tensor.
 extern void TF_DeleteTensor(TF_Tensor*);
 
@@ -357,7 +369,7 @@ extern void TF_SetAttrShapeList(TF_OperationDescription* desc,
 // `proto` must point to an array of `proto_len` bytes representing a
 // binary-serialized TensorShapeProto.
 extern void TF_SetAttrTensorShapeProto(TF_OperationDescription* desc,
-                                       const char* attr_name, void* proto,
+                                       const char* attr_name, const void* proto,
                                        int proto_len, TF_Status* status);
 // `protos` and `proto_lens` must point to arrays of length `num_shapes`.
 // `protos[i]` must point to an array of `proto_lens[i]` bytes

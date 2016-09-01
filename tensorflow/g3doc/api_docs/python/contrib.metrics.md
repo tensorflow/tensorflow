@@ -1129,7 +1129,7 @@ the same shape in order for this function to work.
 
 ##### Returns:
 
-  A l X l matrix represeting the confusion matrix, where l in the number of
+  A k X k matrix represeting the confusion matrix, where k is the number of
   possible labels in the classification task.
 
 ##### Raises:
@@ -1192,6 +1192,30 @@ and update ops when the list of metrics is long. For example:
 
   A dictionary from metric names to value ops and a dictionary from metric
   names to update ops.
+
+
+- - -
+
+### `tf.contrib.metrics.run_metric(metric, predictions, targets, weights=None)` {#run_metric}
+
+Runs a single metric.
+
+This function runs metric on given predictions and targets. weights will be
+used if metric contains 'weights' in its argument.
+
+##### Args:
+
+
+*  <b>`metric`</b>: A function that evaluates targets given predictions.
+*  <b>`predictions`</b>: A `Tensor` of arbitrary shape.
+*  <b>`targets`</b>: A `Tensor` of the same shape as `predictions`.
+*  <b>`weights`</b>: A set of weights that can be used in metric function to compute
+    weighted result.
+
+##### Returns:
+
+
+*  <b>`result`</b>: result returned by metric function.
 
 
 

@@ -1166,6 +1166,8 @@ def raw_rnn(cell, loop_fn, initial_state,
   if not callable(loop_fn):
     raise TypeError("loop_fn must be a callable")
 
+  parallel_iterations = parallel_iterations or 32
+
   # Create a new scope in which the caching device is either
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.

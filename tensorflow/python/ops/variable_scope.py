@@ -39,6 +39,133 @@ __all__ = ["VariableScope", "get_variable_scope",
            "no_regularizer"]
 
 
+class _PartitionInfo(object):
+  """Holds partition info used by initializer functions.
+  """
+
+  def __init__(self, full_shape, var_offset):
+    """Constructor.
+
+    Args:
+      full_shape: Tuple or list of `int` indicating the full combined shape
+        of the partitioned variables.
+      var_offset: Tuple or list of `int` specifying offset of this partition
+        with respect to the full variable for each dimension.
+
+    Raises:
+      TypeError: If `full_shape` or `var_offset` is not a sequence.
+      ValueError: If `full_shape` or `var_offset` differ in length. If
+        `var_offset` exceeds `full_shape` in any dimension.
+    """
+    if not isinstance(full_shape, collections_lib.Sequence) or isinstance(
+        full_shape, six.string_types):
+      raise TypeError(
+          "`full_shape` must be a sequence (like tuple or list) instead of " +
+          type(full_shape).__name__)
+
+    if not isinstance(var_offset, collections_lib.Sequence) or isinstance(
+        var_offset, six.string_types):
+      raise TypeError(
+          "`var_offset` must be a sequence (like tuple or list) instead of " +
+          type(var_offset).__name__)
+
+    if len(var_offset) != len(full_shape):
+      raise ValueError(
+          "Expected equal length, but `var_offset` is of length {} while "
+          "full_shape is of length {}.".format(
+              len(var_offset), len(full_shape)))
+
+    for i in xrange(len(full_shape)):
+      offset = var_offset[i]
+      shape = full_shape[i]
+      if offset < 0 or offset >= shape:
+        raise ValueError(
+            "Expected 0 <= offset < shape but found offset={}, shape={} for "
+            "var_offset={}, full_shape={}".format(offset, shape, var_offset,
+                                                  full_shape))
+
+    self._full_shape = full_shape
+    self._var_offset = var_offset
+
+  @property
+  def full_shape(self):
+    return self._full_shape
+
+  @property
+  def var_offset(self):
+    return self._var_offset
+
+  def single_offset(self, shape):
+    """Returns the offset when the variable is partitioned in at most one dim.
+
+    Args:
+      shape: Tuple or list of `int` indicating the shape of one specific
+        variable partition.
+
+    Returns:
+      `int` representing the offset in the dimension along which the variable is
+       partitioned. Returns 0 if the variable is not being partitioned.
+
+    Raises:
+      ValueError: Depending on self.single_slice_dim().
+    """
+
+    single_slice_dim = self.single_slice_dim(shape)
+    # If this variable is not being partitioned at all, single_slice_dim() could
+    # return None.
+    if single_slice_dim is None:
+      return 0
+    return self.var_offset[single_slice_dim]
+
+  def single_slice_dim(self, shape):
+    """Returns the slice dim when the variable is partitioned only in one dim.
+
+    Args:
+      shape: Tuple or list of `int` indicating the shape of one specific
+        variable partition.
+
+    Returns:
+      `int` representing the dimension that the variable is partitioned in, or
+      `None` if the variable doesn't seem to be partitioned at all.
+
+    Raises:
+      TypeError: If `shape` is not a sequence.
+      ValueError: If `shape` is not the same length as `self.full_shape`. If
+        the variable is partitioned in more than one dimension.
+    """
+    if not isinstance(shape, collections_lib.Sequence) or isinstance(
+        shape, six.string_types):
+      raise TypeError(
+          "`shape` must be a sequence (like tuple or list) instead of " +
+          type(shape).__name__)
+
+    if len(shape) != len(self.full_shape):
+      raise ValueError(
+          "Expected equal length, but received shape={} of length {} while "
+          "self.full_shape={} is of length {}.".format(shape, len(
+              shape), self.full_shape, len(self.full_shape)))
+
+    for i in xrange(len(shape)):
+      if self.var_offset[i] + shape[i] > self.full_shape[i]:
+        raise ValueError(
+            "With self.var_offset={}, a partition of shape={} would exceed "
+            "self.full_shape={} in dimension {}.".format(
+                self.var_offset, shape, self.full_shape, i))
+
+    slice_dim = None
+    for i in xrange(len(shape)):
+      if shape[i] == self.full_shape[i]:
+        continue
+      if slice_dim is not None:
+        raise ValueError(
+            "Cannot use single_slice_dim() with shape={} and "
+            "self.full_shape={} since slice dim could be either dimension {} "
+            "or {}.".format(shape, self.full_shape, i, slice_dim))
+      slice_dim = i
+
+    return slice_dim
+
+
 class _VariableStore(object):
   """Variable store that carries a number of named Variables.
 
@@ -390,6 +517,8 @@ class _VariableStore(object):
     for i in xrange(num_slices):
       var_shape = slice_shape[:]
       var_offset = slice_offset[:]
+      partition_info = _PartitionInfo(
+          full_shape=shape.as_list(), var_offset=var_offset)
       if i < num_slices_with_excess:
         var_shape[slice_dim] += 1
       slice_offset[slice_dim] += var_shape[slice_dim]
@@ -397,8 +526,7 @@ class _VariableStore(object):
       var_full_name = "%s/part_%d" % (name, i)
       with ops.name_scope(var_full_name + "/PartitionedInitializer"):
         if initializer is None:
-          init = init_ops.uniform_unit_scaling_initializer(
-              full_shape=shape.as_list())
+          init = init_ops.uniform_unit_scaling_initializer()
           init_shape = var_shape
         elif callable(initializer):
           init = initializer
@@ -419,6 +547,7 @@ class _VariableStore(object):
             shape=init_shape,
             dtype=dtype,
             initializer=init,
+            partition_info=partition_info,
             regularizer=regularizer,
             reuse=reuse,
             trainable=trainable,
@@ -443,10 +572,18 @@ class _VariableStore(object):
     self._partitioned_vars[name] = partitioned_var
     return partitioned_var
 
-  def _get_single_variable(self, name, shape=None, dtype=dtypes.float32,
-                           initializer=None, regularizer=None, reuse=None,
-                           trainable=True, collections=None,
-                           caching_device=None, validate_shape=True):
+  def _get_single_variable(self,
+                           name,
+                           shape=None,
+                           dtype=dtypes.float32,
+                           initializer=None,
+                           regularizer=None,
+                           partition_info=None,
+                           reuse=None,
+                           trainable=True,
+                           collections=None,
+                           caching_device=None,
+                           validate_shape=True):
     """Get or create a single Variable (e.g. a shard or entire variable).
 
     See the documentation of get_variable above (ignore partitioning components)
@@ -458,6 +595,7 @@ class _VariableStore(object):
       dtype: see get_variable.
       initializer: see get_variable.
       regularizer: see get_variable.
+      partition_info: _PartitionInfo object.
       reuse: see get_variable.
       trainable: see get_variable.
       collections: see get_variable.
@@ -523,7 +661,8 @@ class _VariableStore(object):
         init_val = initializer
         variable_dtype = None
       else:
-        init_val = lambda: initializer(shape.as_list(), dtype=dtype)
+        init_val = lambda: initializer(
+            shape.as_list(), dtype=dtype, partition_info=partition_info)
         variable_dtype = dtype.base_dtype
 
     # Create the variable.

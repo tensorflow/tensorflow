@@ -27,6 +27,7 @@ common machine learning algorithms.
 @@convolution2d_transpose
 @@flatten
 @@fully_connected
+@@layer_norm
 @@max_pool2d
 @@one_hot_encoding
 @@repeat

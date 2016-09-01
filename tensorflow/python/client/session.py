@@ -519,10 +519,17 @@ class BaseSession(SessionInterface):
           tf_session.TF_CloseSession(self._session, status)
 
   def __del__(self):
-    self.close()
+    # cleanly ignore all exceptions
+    try:
+      self.close()
+    except Exception:  # pylint: disable=broad-except
+      pass
     if self._session is not None:
-      with errors.raise_exception_on_not_ok_status() as status:
+      try:
+        status = tf_session.TF_NewStatus()
         tf_session.TF_DeleteSession(self._session, status)
+      finally:
+        tf_session.TF_DeleteStatus(status)
       self._session = None
 
   @property
@@ -1129,19 +1136,31 @@ class Session(BaseSession):
 
     """
     super(Session, self).__init__(target, graph, config=config)
-    self._context_managers = [self.graph.as_default(), self.as_default()]
+    # NOTE(mrry): Create these on first `__enter__` to avoid a reference cycle.
+    self._default_graph_context_manager = None
+    self._default_session_context_manager = None
 
   def __enter__(self):
-    for context_manager in self._context_managers:
-      context_manager.__enter__()
-    return self
+    if self._default_graph_context_manager is None:
+      self._default_graph_context_manager = self.graph.as_default()
+    else:
+      raise RuntimeError('Session context managers are not re-entrant. '
+                         'Use `Session.as_default()` if you want to enter '
+                         'a session multiple times.')
+    if self._default_session_context_manager is None:
+      self._default_session_context_manager = self.as_default()
+    self._default_graph_context_manager.__enter__()
+    return self._default_session_context_manager.__enter__()
 
   def __exit__(self, exec_type, exec_value, exec_tb):
     if exec_type is errors.OpError:
       logging.error('Session closing due to OpError: %s', (exec_value,))
+    self._default_session_context_manager.__exit__(
+        exec_type, exec_value, exec_tb)
+    self._default_graph_context_manager.__exit__(exec_type, exec_value, exec_tb)
 
-    for context_manager in reversed(self._context_managers):
-      context_manager.__exit__(exec_type, exec_value, exec_tb)
+    self._default_session_context_manager = None
+    self._default_graph_context_manager = None
 
     self.close()
 

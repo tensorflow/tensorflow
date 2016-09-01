@@ -1111,7 +1111,7 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
       close_op.run()
 
       # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(tf.errors.AbortedError, "is closed"):
+      with self.assertRaisesRegexp(tf.errors.CancelledError, "is closed"):
         enqueue_op.run()
 
   def testEnqueueManyToClosedQueue(self):
@@ -1125,7 +1125,7 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
       close_op.run()
 
       # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(tf.errors.AbortedError, "is closed"):
+      with self.assertRaisesRegexp(tf.errors.CancelledError, "is closed"):
         enqueue_op.run()
 
   def testBlockingEnqueueToFullQueue(self):
@@ -1481,6 +1481,56 @@ class PaddingFIFOQueueTest(tf.test.TestCase):
   def testUnknownRank(self):
     with self.assertRaisesRegexp(ValueError, "must have a defined rank"):
       tf.PaddingFIFOQueue(32, [tf.float32], [tf.TensorShape(None)])
+
+
+class QueueFromListTest(tf.test.TestCase):
+
+  def testQueueFromListShapes(self):
+    which = tf.constant(1)
+    def _cmp(expected, *shapes):
+      qs = [
+          tf.PaddingFIFOQueue(10, [tf.float32], [tf.TensorShape(s)])
+          for s in shapes]
+      s_expected = tf.TensorShape(expected)
+      s = tf.QueueBase.from_list(which, qs).shapes[0]
+      if s_expected.ndims is None:
+        self.assertEqual(s_expected.ndims, s.ndims)
+      else:
+        self.assertEqual(s_expected.as_list(), s.as_list())
+
+    _cmp(None, [1, None], [None])
+    _cmp([None], [1], [2])
+    _cmp([1, None], [1, 1], [1, 2])
+    _cmp([1, None], [1, 1], [1, None])
+    _cmp([None, None], [None, 1], [1, None])
+    _cmp([1], [1], [1], [1])
+    _cmp([None], [1], [None], [1])
+    _cmp(None, [1, None], [1], [1])
+
+  def testQueueFromListShapesMultipleComponents(self):
+    q_u_u = tf.PaddingFIFOQueue(
+        10,
+        [tf.float32, tf.int32],
+        [tf.TensorShape([None]), tf.TensorShape([None])])
+    q_u_f = tf.PaddingFIFOQueue(
+        10, [tf.float32, tf.int32],
+        [tf.TensorShape([None]), tf.TensorShape([1, 2])])
+    q_f_f = tf.PaddingFIFOQueue(
+        10, [tf.float32, tf.int32],
+        [tf.TensorShape([3, 4]), tf.TensorShape([1, 2])])
+    which = tf.constant(1)
+
+    s_cmp_1 = tf.QueueBase.from_list(which, [q_u_u, q_u_u, q_u_u]).shapes
+    self.assertEqual([1, 1], [x.ndims for x in s_cmp_1])
+    self.assertEqual([None, None], [x.as_list()[0] for x in s_cmp_1])
+
+    s_cmp_2 = tf.QueueBase.from_list(which, [q_u_u, q_u_u, q_u_f]).shapes
+    self.assertEqual([1, None], [x.ndims for x in s_cmp_2])
+    self.assertEqual([None], s_cmp_2[0].as_list())
+
+    s_cmp_3 = tf.QueueBase.from_list(which, [q_f_f, q_f_f]).shapes
+    self.assertEqual([2, 2], [x.ndims for x in s_cmp_3])
+    self.assertEqual([[3, 4], [1, 2]], [x.as_list() for x in s_cmp_3])
 
 
 if __name__ == "__main__":

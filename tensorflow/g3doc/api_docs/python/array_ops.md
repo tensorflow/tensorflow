@@ -477,11 +477,14 @@ instructions for the first two dimensions are swapped.
 Examples:
 
 Calling `X, Y = meshgrid(x, y)` with the tensors
+
 ```prettyprint
   x = [1, 2, 3]
   y = [4, 5, 6]
 ```
+
 results in
+
 ```prettyprint
   X = [[1, 1, 1],
        [2, 2, 2],
@@ -562,7 +565,7 @@ tf.slice(input, [1, 0, 0], [2, 1, 3]) ==> [[[3, 3, 3]],
 
 - - -
 
-### `tf.strided_slice(input_, begin, end, strides, begin_mask=0, end_mask=0, ellipsis_mask=0, new_axis_mask=0, shrink_axis_mask=0, name=None)` {#strided_slice}
+### `tf.strided_slice(input_, begin, end, strides, begin_mask=0, end_mask=0, ellipsis_mask=0, new_axis_mask=0, shrink_axis_mask=0, var=None, name=None)` {#strided_slice}
 
 Extracts a strided slice from a tensor.
 
@@ -582,7 +585,7 @@ not the same dimensionality as `input`.
 
 For the ith spec,
 `begin_mask`, `end_mask`, `ellipsis_mask`, `new_axis_mask`,
-and `shrink_axis_mask` will have the ith bit corrsponding to
+and `shrink_axis_mask` will have the ith bit corresponding to
 the ith spec.
 
 If the ith bit of `begin_mask` is non-zero, `begin[i]` is ignored and
@@ -641,6 +644,7 @@ tf.slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
 *  <b>`ellipsis_mask`</b>: An `int32` mask.
 *  <b>`new_axis_mask`</b>: An `int32` mask.
 *  <b>`shrink_axis_mask`</b>: An `int32` mask.
+*  <b>`var`</b>: The variable coresponding to `input_` or None
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -997,7 +1001,7 @@ output[2:, :, 3, :, ...] = input[2:, :, 3, :, ...]
 
 
 *  <b>`input`</b>: A `Tensor`. The input to reverse.
-*  <b>`seq_lengths`</b>: A `Tensor` of type `int64`.
+*  <b>`seq_lengths`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D with length `input.dims(batch_dim)` and
     `max(seq_lengths) < input.dims(seq_dim)`
 *  <b>`seq_dim`</b>: An `int`. The dimension which is partially reversed.

@@ -3,7 +3,7 @@
 # Graph Editor (contrib)
 [TOC]
 
-# TensorFlow Graph Editor.
+TensorFlow Graph Editor.
 
 The TensorFlow Graph Editor library allows for modification of an existing
 tf.Graph instance in-place.
@@ -52,7 +52,7 @@ Note that this procedure is very costly because a new session must be created
 after any modifications. Among other things, it takes time because the entire
 graph state must be saved and restored again.
 
-### Sub-graph
+## Sub-graph
 
 Most of the functions in the Graph Editor library operate on *sub-graph*.
 More precisely, they take as input arguments instances of the SubGraphView class
@@ -85,7 +85,7 @@ to avoid any confusion, the default graph is never used and the graph on
 which to operate must always be explicitely given. This is the reason why
 *graph=tf.get_default_graph()* is used in the code snippets above.
 
-### Modules overview
+## Modules overview
 
 * util: utility functions.
 * select: various selection methods of TensorFlow tensors and operations.
@@ -100,7 +100,7 @@ which to operate must always be explicitely given. This is the reason why
 * transform: the Transformer class, which enables transforming
   (or simply copying) a subgraph into another one.
 
-### Module: util
+## Module: util
 
 - - -
 
@@ -348,7 +348,7 @@ tensor argument).
 
 
 
-### Module: select
+## Module: select
 
 - - -
 
@@ -836,7 +836,7 @@ Helper to select operations and tensors.
 
 
 
-### Module: subgraph
+## Module: subgraph
 
 - - -
 
@@ -1280,7 +1280,7 @@ Make a subgraph from a name scope.
 
 
 
-### Module: reroute
+## Module: reroute
 
 - - -
 
@@ -1490,7 +1490,7 @@ Warning: this function is directly manipulating the internals of the tf.Graph.
 
 
 
-### Module: edit
+## Module: edit
 
 - - -
 
@@ -1665,7 +1665,7 @@ Bypass the given subgraph by connecting its inputs to its outputs.
 
 
 
-### Module: transform
+## Module: transform
 
 - - -
 
@@ -1857,11 +1857,15 @@ Copy a subgraph.
 *  <b>`src_scope`</b>: the source scope.
 *  <b>`reuse_dst_scope`</b>: if True the dst_scope is re-used if it already exists.
     Otherwise, the scope is given a unique name based on the one given
-    by postfixing an underscore followed by a digit (default).
+    by appending an underscore followed by a digit (default).
 
 ##### Returns:
 
-  The subgraph view of the copied subgraph.
+  A tuple `(sgv, info)` where:
+    `sgv` is the transformed subgraph view;
+    `info` is an instance of Transformer.ResultInfo containing
+    information about the transform, including mapping between
+    original and transformed tensors and operations.
 
 ##### Raises:
 
@@ -1871,8 +1875,77 @@ Copy a subgraph.
     the same rules than the function subgraph.make_view.
 
 
+- - -
 
-### Module: match
+### `tf.contrib.graph_editor.copy_with_input_replacements(sgv, replacement_ts, dst_graph=None, dst_scope='', src_scope='', reuse_dst_scope=False)` {#copy_with_input_replacements}
+
+Copy a subgraph, replacing some of its inputs.
+
+Note a replacement only happens if the tensor to be replaced
+is an input of the given subgraph. The inputs of a subgraph can
+be queried using sgv.inputs.
+
+##### Args:
+
+
+*  <b>`sgv`</b>: the source subgraph-view. This argument is converted to a subgraph
+    using the same rules as the function subgraph.make_view.
+*  <b>`replacement_ts`</b>: dictionary mapping from original tensors to the
+    replaced one.
+*  <b>`dst_graph`</b>: the destination graph.
+*  <b>`dst_scope`</b>: the destination scope.
+*  <b>`src_scope`</b>: the source scope.
+*  <b>`reuse_dst_scope`</b>: if True the dst_scope is re-used if it already exists.
+    Otherwise, the scope is given a unique name based on the one given
+    by appending an underscore followed by a digit (default).
+
+##### Returns:
+
+  A tuple `(sgv, info)` where:
+    `sgv` is the transformed subgraph view;
+    `info` is an instance of Transformer.ResultInfo containing
+    information about the transform, including mapping between
+    original and transformed tensors and operations.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if dst_graph is not a tf.Graph.
+*  <b>`StandardError`</b>: if sgv cannot be converted to a SubGraphView using
+    the same rules as the function subgraph.make_view.
+
+
+- - -
+
+### `tf.contrib.graph_editor.graph_replace(target_ts, replacement_ts, dst_scope='', src_scope='', reuse_dst_scope=False)` {#graph_replace}
+
+Create a new graph which compute the targets from the replaced Tensors.
+
+##### Args:
+
+
+*  <b>`target_ts`</b>: a single tf.Tensor or an iterabble of tf.Tensor.
+*  <b>`replacement_ts`</b>: dictionary mapping from original tensors to replaced tensors
+*  <b>`dst_scope`</b>: the destination scope.
+*  <b>`src_scope`</b>: the source scope.
+*  <b>`reuse_dst_scope`</b>: if True the dst_scope is re-used if it already exists.
+    Otherwise, the scope is given a unique name based on the one given
+    by appending an underscore followed by a digit (default).
+
+##### Returns:
+
+  A single tf.Tensor or a list of target tf.Tensor, depending on
+  the type of the input argument `target_ts`.
+  The returned tensors are recomputed using the tensors from replacement_ts.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if the targets are not connected to replacement_ts.
+
+
+
+## Module: match
 
 - - -
 
@@ -1928,7 +2001,7 @@ Add output matches.
 
 
 
-### Useful aliases
+## Useful aliases
 
 - - -
 

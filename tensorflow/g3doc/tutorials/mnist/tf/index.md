@@ -356,11 +356,11 @@ if step % 100 == 0:
 #### Visualize the Status
 
 In order to emit the events files used by [TensorBoard](../../../how_tos/summaries_and_tensorboard/index.md),
-all of the summaries (in this case, only one) are collected into a single op
+all of the summaries (in this case, only one) are collected into a single Tensor
 during the graph building phase.
 
 ```python
-summary_op = tf.merge_all_summaries()
+summary = tf.merge_all_summaries()
 ```
 
 And then after the session is created, a [`tf.train.SummaryWriter`](../../../api_docs/python/train.md#SummaryWriter)
@@ -372,11 +372,11 @@ summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
 ```
 
 Lastly, the events file will be updated with new summary values every time the
-`summary_op` is run and the output passed to the writer's `add_summary()`
+`summary` is evaluated and the output passed to the writer's `add_summary()`
 function.
 
 ```python
-summary_str = sess.run(summary_op, feed_dict=feed_dict)
+summary_str = sess.run(summary, feed_dict=feed_dict)
 summary_writer.add_summary(summary_str, step)
 ```
 

@@ -61,7 +61,7 @@ def strip_unused(input_graph_def, input_node_names, output_node_names,
 
 
 def strip_unused_from_files(input_graph, input_binary, output_graph,
-                            input_node_names, output_node_names,
+                            output_binary, input_node_names, output_node_names,
                             placeholder_type_enum):
   """Removes unused nodes from a graph file."""
 
@@ -85,6 +85,10 @@ def strip_unused_from_files(input_graph, input_binary, output_graph,
                                   output_node_names.split(","),
                                   placeholder_type_enum)
 
-  with tf.gfile.GFile(output_graph, "wb") as f:
-    f.write(output_graph_def.SerializeToString())
+  if output_binary:
+    with tf.gfile.GFile(output_graph, "wb") as f:
+      f.write(output_graph_def.SerializeToString())
+  else:
+    with tf.gfile.GFile(output_graph, "w") as f:
+      f.write(text_format.MessageToString(output_graph_def))
   print("%d ops in the final graph." % len(output_graph_def.node))

@@ -44,7 +44,11 @@ static const char* const kRetOp = "_Retval";
 static const char* const kGradientOp = "SymbolicGradient";
 static const char* const kNodeLabel = "Func";
 static const char* const kFuncAttr = "f";
-static const char* const kNoinlineAttr = "noinline";
+// kNoinlineAttr must start with an "_" to avoid collisions with
+// user-specified attrs.
+static const char* const kNoinlineAttr = "_noinline";
+// Old graphs use no "_".
+static const char* const kOldNoinlineAttr = "noinline";
 
 // Represents the index-th output of a node.
 struct Endpoint {
@@ -247,6 +251,7 @@ class CallOp : public AsyncOpKernel {
                       done);
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
+    opts.step_resource_manager = ctx->step_resource_manager();
     opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
@@ -356,6 +361,8 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
                                      func.name());
     }
     FunctionDef grad_fdef;
+    // TODO(josh11b): Should filter out the attrs from func that aren't used
+    // by the gradient function.
     TF_RETURN_IF_ERROR(creator(AttrSlice(&func.attr()), &grad_fdef));
     TF_RETURN_IF_ERROR(FunctionDefToBody(grad_fdef, func.attr(), g_body));
   } else {
@@ -525,6 +532,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   Executor::Args exec_args;
   // Inherit the step_id from the caller.
   exec_args.step_id = opts.step_id;
+  exec_args.step_resource_manager = opts.step_resource_manager;
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
   exec_args.runner = *opts.runner;
@@ -865,12 +873,16 @@ static void InlineFunctionBody(Graph* g, Node* caller,
 }
 
 // Given a node's NodeDef, returns false iff the node explicitly
-// specified noinline. This gives ExpandInlineFunctions a heuristic to
+// specified _noinline. This gives ExpandInlineFunctions a heuristic to
 // decide whether to inline the function.
-bool ShouldInline(const NodeDef& ndef) {
+// `old` is true for GraphDef versions older than 12, when the
+// `noinline` attr was renamed to `_noinline` to avoid conflicts with
+// user-specified attrs.
+bool ShouldInline(const NodeDef& ndef, bool old) {
   bool noinline = false;
-  if (GetNodeAttr(ndef, kNoinlineAttr, &noinline).ok()) {
-    // If the node specifies attribute 'noinlne', returns accordingly.
+  const char* const attr = old ? kOldNoinlineAttr : kNoinlineAttr;
+  if (GetNodeAttr(ndef, attr, &noinline).ok()) {
+    // If the node specifies attribute '_noinline', returns accordingly.
     return !noinline;
   }
   if (ndef.op() != kGradientOp) {
@@ -879,7 +891,7 @@ bool ShouldInline(const NodeDef& ndef) {
     return true;
   }
   // If the node is a SymbolicGradient, we use the forward
-  // function's attribute 'noinline' instead.
+  // function's attribute '_noinline' instead.
   const NameAttrList* forward_func_attrs;
   Status s =
       GetNodeAttr(AttrSlice(&ndef.attr()), kFuncAttr, &forward_func_attrs);
@@ -888,10 +900,9 @@ bool ShouldInline(const NodeDef& ndef) {
     // continue and the runtime will error out.
     return false;
   }
-  s = GetNodeAttr(AttrSlice(&forward_func_attrs->attr()), kNoinlineAttr,
-                  &noinline);
+  s = GetNodeAttr(AttrSlice(&forward_func_attrs->attr()), attr, &noinline);
   if (!s.ok()) {
-    // The forward function doesn't specify 'noinline' attr, we should
+    // The forward function doesn't specify '_noinline' attr, we should
     // be free to decide.
     return true;
   }
@@ -901,9 +912,11 @@ bool ShouldInline(const NodeDef& ndef) {
 
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   std::vector<std::pair<Node*, const FunctionBody*>> candidates;
+  // Identify old graphs before the 'noinline' attr was renamed '_noinline'.
+  const bool old_inline_attr = graph->versions().producer() < 12;
   for (Node* node : graph->nodes()) {
     VLOG(3) << "Expanding " << node->DebugString();
-    if (!ShouldInline(node->def())) {
+    if (!ShouldInline(node->def(), old_inline_attr)) {
       VLOG(3) << "noinline: " << node->DebugString();
       continue;
     }

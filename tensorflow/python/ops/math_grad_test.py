@@ -148,5 +148,18 @@ class SegmentMinOrMaxGradientTest(tf.test.TestCase):
       self.assertLess(error, 1e-4)
 
 
+class SqrtGradGradTest(tf.test.TestCase):
+
+  def testSqrtGradGrad(self):
+    inputs_numpy = np.array([0.5, 1.0, 2.0])
+    inputs = tf.constant(inputs_numpy, dtype=tf.float32)
+    sqrt = tf.sqrt(inputs)
+    sqrt_grad = tf.gradients(sqrt, inputs)[0]
+    with self.test_session():
+      error = tf.test.compute_gradient_error(inputs, [3], sqrt_grad, [3],
+                                             x_init_value=inputs_numpy)
+      self.assertLess(error, 1e-4)
+
+
 if __name__ == "__main__":
   tf.test.main()

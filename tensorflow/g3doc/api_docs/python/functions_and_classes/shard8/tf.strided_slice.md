@@ -1,4 +1,4 @@
-### `tf.strided_slice(input_, begin, end, strides, begin_mask=0, end_mask=0, ellipsis_mask=0, new_axis_mask=0, shrink_axis_mask=0, name=None)` {#strided_slice}
+### `tf.strided_slice(input_, begin, end, strides, begin_mask=0, end_mask=0, ellipsis_mask=0, new_axis_mask=0, shrink_axis_mask=0, var=None, name=None)` {#strided_slice}
 
 Extracts a strided slice from a tensor.
 
@@ -18,7 +18,7 @@ not the same dimensionality as `input`.
 
 For the ith spec,
 `begin_mask`, `end_mask`, `ellipsis_mask`, `new_axis_mask`,
-and `shrink_axis_mask` will have the ith bit corrsponding to
+and `shrink_axis_mask` will have the ith bit corresponding to
 the ith spec.
 
 If the ith bit of `begin_mask` is non-zero, `begin[i]` is ignored and
@@ -77,6 +77,7 @@ tf.slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
 *  <b>`ellipsis_mask`</b>: An `int32` mask.
 *  <b>`new_axis_mask`</b>: An `int32` mask.
 *  <b>`shrink_axis_mask`</b>: An `int32` mask.
+*  <b>`var`</b>: The variable coresponding to `input_` or None
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

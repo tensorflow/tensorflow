@@ -13,6 +13,8 @@ file(GLOB_RECURSE tf_core_kernels_exclude_srcs
    "${tensorflow_source_dir}/tensorflow/core/kernels/*testutil.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*main.cc"
    "${tensorflow_source_dir}/tensorflow/core/kernels/*.cu.cc"
+   "${tensorflow_source_dir}/tensorflow/core/kernels/debug_ops.h"
+   "${tensorflow_source_dir}/tensorflow/core/kernels/debug_ops.cc"
 )
 
 list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_exclude_srcs}) 

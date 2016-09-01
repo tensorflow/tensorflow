@@ -210,7 +210,7 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
     with self.test_session():
       lower_mat = [[1.0, 0.0], [2.0, 0.0]]
       operator = operator_pd_cholesky.OperatorPDCholesky(lower_mat)
-      with self.assertRaisesOpError('x > 0 did not hold'):
+      with self.assertRaisesOpError("x > 0 did not hold"):
         operator.to_dense().eval()
 
   def test_non_positive_definite_matrix_does_not_raise_if_not_verify_pd(self):
@@ -226,7 +226,7 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
     # should raise.
     with self.test_session():
       batch_vec = [[1.0], [2.0]]  # shape 2 x 1
-      with self.assertRaisesRegexp(ValueError, '.*Dimensions.*'):
+      with self.assertRaisesRegexp(ValueError, ".*Dimensions.*"):
         operator = operator_pd_cholesky.OperatorPDCholesky(batch_vec)
         operator.to_dense().eval()
 
@@ -286,5 +286,5 @@ class BatchMatrixDiagTransformTest(tf.test.TestCase):
       self.assertAllClose(mat, chol.eval())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

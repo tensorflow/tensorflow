@@ -34,7 +34,8 @@ class SaverLargePartitionedVariableTest(tf.test.TestCase):
       with tf.device("/cpu:0"):
         # Create a partitioned variable which is larger than int32 size but
         # split into smaller sized variables.
-        init = lambda shape, dtype: tf.constant(True, dtype, shape)
+        init = lambda shape, dtype, partition_info: tf.constant(
+            True, dtype, shape)
         partitioned_var = tf.create_partitioned_variables(
             [1 << 31], [4], init, dtype=tf.bool, name=var_name)
         tf.initialize_all_variables().run()

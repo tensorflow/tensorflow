@@ -53,6 +53,8 @@ tf.app.flags.DEFINE_boolean("input_binary", False,
                             """Whether the input files are in binary format.""")
 tf.app.flags.DEFINE_string("output_graph", "",
                            """Output 'GraphDef' file name.""")
+tf.app.flags.DEFINE_boolean("output_binary", True,
+                            """Whether to write a binary format graph.""")
 tf.app.flags.DEFINE_string("input_node_names", "",
                            """The name of the input nodes, comma separated.""")
 tf.app.flags.DEFINE_string("output_node_names", "",
@@ -66,6 +68,7 @@ def main(unused_args):
   strip_unused_lib.strip_unused_from_files(FLAGS.input_graph,
                                            FLAGS.input_binary,
                                            FLAGS.output_graph,
+                                           FLAGS.output_binary,
                                            FLAGS.input_node_names,
                                            FLAGS.output_node_names,
                                            FLAGS.placeholder_type_enum)

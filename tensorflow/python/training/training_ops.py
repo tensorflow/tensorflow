@@ -95,6 +95,20 @@ def _ApplyFtrlShape(op):
   return [grad_shape]
 
 
+@ops.RegisterShape("ApplyAdagradDA")
+def ApplyAdagradDAShape(op):
+  """Shape function for the ApplyAdagradDAOp op."""
+  var_shape = op.inputs[0].get_shape()
+  g_accum_shape = op.inputs[1].get_shape().merge_with(var_shape)
+  gg_accum_shape = op.inputs[2].get_shape().merge_with(g_accum_shape)
+  grad_shape = op.inputs[3].get_shape().merge_with(gg_accum_shape)
+  _AssertInputIsScalar(op, 4)  # lr
+  _AssertInputIsScalar(op, 5)  # l1
+  _AssertInputIsScalar(op, 6)  # l2
+  _AssertInputIsScalar(op, 7)  # global_step
+  return [grad_shape]
+
+
 @ops.RegisterShape("ApplyAdam")
 def _ApplyAdamShape(op):
   """Shape function for the ApplyAdam op."""
@@ -189,18 +203,18 @@ def _SparseApplyRMSPropShape(op):
 
 @ops.RegisterShape("SparseApplyAdadelta")
 def _SparseApplyAdadeltaShape(op):
-   """Shape function for the SparseApplyAdadelta op."""
-   var_shape = op.inputs[0].get_shape()
-   accum_grad_shape = op.inputs[1].get_shape().merge_with(var_shape)
-   accum_update_shape = op.inputs[2].get_shape().merge_with(accum_grad_shape)
-   _AssertInputIsScalar(op, 3)  # lr
-   _AssertInputIsScalar(op, 4)  # decay_rate
-   _AssertInputIsScalar(op, 5)  # epsilon
-   grad_shape = op.inputs[6].get_shape().merge_with(
-       tensor_shape.TensorShape([None]).concatenate(accum_update_shape[1:]))
-   unused_indices_shape = op.inputs[7].get_shape().merge_with(
-       tensor_shape.vector(grad_shape[0]))
-   return [accum_update_shape]
+  """Shape function for the SparseApplyAdadelta op."""
+  var_shape = op.inputs[0].get_shape()
+  accum_grad_shape = op.inputs[1].get_shape().merge_with(var_shape)
+  accum_update_shape = op.inputs[2].get_shape().merge_with(accum_grad_shape)
+  _AssertInputIsScalar(op, 3)  # lr
+  _AssertInputIsScalar(op, 4)  # decay_rate
+  _AssertInputIsScalar(op, 5)  # epsilon
+  grad_shape = op.inputs[6].get_shape().merge_with(
+      tensor_shape.TensorShape([None]).concatenate(accum_update_shape[1:]))
+  unused_indices_shape = op.inputs[7].get_shape().merge_with(
+      tensor_shape.vector(grad_shape[0]))
+  return [accum_update_shape]
 
 
 @ops.RegisterShape("SparseApplyAdagrad")
@@ -246,6 +260,23 @@ def _SparseApplyFtrlShape(op):
   _AssertInputIsScalar(op, 7)  # l2
   _AssertInputIsScalar(op, 8)  # lr_power
   return [linear_shape]
+
+
+@ops.RegisterShape("SparseApplyAdagradDA")
+def _SparseApplyAdagradDAShape(op):
+  """Shape function for the SparseApplyAdagradDA op."""
+  var_shape = op.inputs[0].get_shape()
+  g_accum_shape = op.inputs[1].get_shape().merge_with(var_shape)
+  gg_accum_shape = op.inputs[2].get_shape().merge_with(g_accum_shape)
+  grad_shape = op.inputs[3].get_shape().merge_with(
+      tensor_shape.TensorShape([None]).concatenate(gg_accum_shape[1:]))
+  unused_indices_shape = op.inputs[4].get_shape().merge_with(
+      tensor_shape.vector(grad_shape[0]))
+  _AssertInputIsScalar(op, 5)  # lr
+  _AssertInputIsScalar(op, 6)  # l1
+  _AssertInputIsScalar(op, 7)  # l2
+  _AssertInputIsScalar(op, 8)  # global_step
+  return [gg_accum_shape]
 
 
 @ops.RegisterShape("SparseApplyMomentum")

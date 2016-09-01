@@ -75,22 +75,22 @@ Status UnchangedShape(shape_inference::InferenceContext* c) {
 }
 
 Status MatMulShape(shape_inference::InferenceContext* c) {
-  const Shape* a;
+  ShapeHandle a;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &a));
 
-  const Shape* b;
+  ShapeHandle b;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &b));
 
   bool transpose_a, transpose_b;
   TF_RETURN_IF_ERROR(c->GetAttr("transpose_a", &transpose_a));
   TF_RETURN_IF_ERROR(c->GetAttr("transpose_b", &transpose_b));
-  const Dimension* output_rows = transpose_a ? c->Dim(a, 1) : c->Dim(a, 0);
-  const Dimension* output_cols = transpose_b ? c->Dim(b, 0) : c->Dim(b, 1);
+  DimensionHandle output_rows = transpose_a ? c->Dim(a, 1) : c->Dim(a, 0);
+  DimensionHandle output_cols = transpose_b ? c->Dim(b, 0) : c->Dim(b, 1);
 
   // Validate that the inner shapes are compatible.
-  const Dimension* inner_a = transpose_a ? c->Dim(a, 0) : c->Dim(a, 1);
-  const Dimension* inner_b = transpose_b ? c->Dim(b, 1) : c->Dim(b, 0);
-  const Dimension* merged;
+  DimensionHandle inner_a = transpose_a ? c->Dim(a, 0) : c->Dim(a, 1);
+  DimensionHandle inner_b = transpose_b ? c->Dim(b, 1) : c->Dim(b, 0);
+  DimensionHandle merged;
   TF_RETURN_IF_ERROR(c->Merge(inner_a, inner_b, &merged));
 
   c->set_output(0, c->Matrix(output_rows, output_cols));
@@ -98,7 +98,7 @@ Status MatMulShape(shape_inference::InferenceContext* c) {
 }
 
 Status BiasAddShape(shape_inference::InferenceContext* c) {
-  const Shape* input_shape;
+  ShapeHandle input_shape;
 
   // Fetch the data_format attribute, which may not exist.
   string data_format;
@@ -110,9 +110,9 @@ Status BiasAddShape(shape_inference::InferenceContext* c) {
     TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input_shape));
   }
 
-  const Shape* bias_shape;
+  ShapeHandle bias_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &bias_shape));
-  const Dimension* bias_dim = c->Dim(bias_shape, 0);
+  DimensionHandle bias_dim = c->Dim(bias_shape, 0);
 
   // If rank unknown, return unknown shape.
   if (!c->RankKnown(input_shape)) {
@@ -122,32 +122,32 @@ Status BiasAddShape(shape_inference::InferenceContext* c) {
 
   // Output has the same shape as the input, and matches the length of
   // the bias in its bias dimension.
-  const Shape* output_shape;
+  ShapeHandle output_shape;
   if (s.ok() && data_format == "NCHW") {
     // Merge the length of bias_shape into the third to last dimension
-    const Shape* first;
+    ShapeHandle first;
     TF_RETURN_IF_ERROR(c->Subshape(input_shape, 0, -3, &first));
 
-    const Shape* last;
+    ShapeHandle last;
     TF_RETURN_IF_ERROR(c->Subshape(input_shape, -2, &last));
 
-    const Dimension* input_bias_dim = c->Dim(input_shape, -3);
-    const Dimension* merged_bias_dim;
+    DimensionHandle input_bias_dim = c->Dim(input_shape, -3);
+    DimensionHandle merged_bias_dim;
     TF_RETURN_IF_ERROR(c->Merge(input_bias_dim, bias_dim, &merged_bias_dim));
-    const Shape* merged_bias = c->Vector(merged_bias_dim);
+    ShapeHandle merged_bias = c->Vector(merged_bias_dim);
 
-    const Shape* temp;
+    ShapeHandle temp;
     TF_RETURN_IF_ERROR(c->Concatenate(first, merged_bias, &temp));
     TF_RETURN_IF_ERROR(c->Concatenate(temp, last, &output_shape));
   } else {
-    const Shape* all_but_bias;
+    ShapeHandle all_but_bias;
     TF_RETURN_IF_ERROR(c->Subshape(input_shape, 0, -1, &all_but_bias));
 
-    const Dimension* input_bias_dim = c->Dim(input_shape, -1);
-    const Dimension* merged_bias_dim;
+    DimensionHandle input_bias_dim = c->Dim(input_shape, -1);
+    DimensionHandle merged_bias_dim;
     TF_RETURN_IF_ERROR(c->Merge(input_bias_dim, bias_dim, &merged_bias_dim));
 
-    const Shape* merged_bias = c->Vector(merged_bias_dim);
+    ShapeHandle merged_bias = c->Vector(merged_bias_dim);
     TF_RETURN_IF_ERROR(
         c->Concatenate(all_but_bias, merged_bias, &output_shape));
   }
@@ -157,7 +157,7 @@ Status BiasAddShape(shape_inference::InferenceContext* c) {
 }
 
 Status BiasAddGradShape(shape_inference::InferenceContext* c) {
-  const Shape* input_shape;
+  ShapeHandle input_shape;
   // Fetch the data_format attribute, which may not exist.
   string data_format;
   Status s = c->GetAttr("data_format", &data_format);
@@ -174,9 +174,9 @@ Status BiasAddGradShape(shape_inference::InferenceContext* c) {
 }
 
 Status Conv2DShape(shape_inference::InferenceContext* c) {
-  const Shape* input_shape;
+  ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
-  const Shape* filter_shape;
+  ShapeHandle filter_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &filter_shape));
 
   string data_format;
@@ -205,12 +205,12 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
     stride_cols = strides[2];
   }
 
-  const Dimension* batch_size_dim = c->Dim(input_shape, 0);
-  const Dimension* in_rows_dim = c->Dim(input_shape, 1);
-  const Dimension* in_cols_dim = c->Dim(input_shape, 2);
-  const Dimension* filter_rows_dim = c->Dim(filter_shape, 0);
-  const Dimension* filter_cols_dim = c->Dim(filter_shape, 1);
-  const Dimension* output_depth_dim = c->Dim(filter_shape, 3);
+  DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
+  DimensionHandle in_rows_dim = c->Dim(input_shape, 1);
+  DimensionHandle in_cols_dim = c->Dim(input_shape, 2);
+  DimensionHandle filter_rows_dim = c->Dim(filter_shape, 0);
+  DimensionHandle filter_cols_dim = c->Dim(filter_shape, 1);
+  DimensionHandle output_depth_dim = c->Dim(filter_shape, 3);
 
   // At the moment we need to know the values of several fields.
   TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
@@ -223,7 +223,7 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
   auto filter_rows = c->Value(filter_rows_dim);
   auto filter_cols = c->Value(filter_cols_dim);
 
-  const Dimension* unused;
+  DimensionHandle unused;
   TF_RETURN_IF_ERROR(
       c->Merge(c->Dim(input_shape, 3), c->Dim(filter_shape, 2), &unused));
 
@@ -239,7 +239,7 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
       in_cols, filter_cols, stride_cols, padding, &output_cols, &padding_before,
       &padding_after));
 
-  const Shape* output_shape;
+  ShapeHandle output_shape;
   if (data_format == "NCHW") {
     output_shape = c->MakeShape(
         {batch_size_dim, output_depth_dim, output_rows, output_cols});
@@ -253,9 +253,9 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
 }
 
 Status Conv3DShape(shape_inference::InferenceContext* c) {
-  const Shape* input_shape;
+  ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &input_shape));
-  const Shape* filter_shape;
+  ShapeHandle filter_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 5, &filter_shape));
 
   std::vector<int32> strides;
@@ -270,15 +270,15 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
   int32 stride_rows = strides[2];
   int32 stride_cols = strides[3];
 
-  const Dimension* batch_size_dim = c->Dim(input_shape, 0);
-  const Dimension* in_planes_dim = c->Dim(input_shape, 1);
-  const Dimension* in_rows_dim = c->Dim(input_shape, 2);
-  const Dimension* in_cols_dim = c->Dim(input_shape, 3);
+  DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
+  DimensionHandle in_planes_dim = c->Dim(input_shape, 1);
+  DimensionHandle in_rows_dim = c->Dim(input_shape, 2);
+  DimensionHandle in_cols_dim = c->Dim(input_shape, 3);
 
-  const Dimension* filter_planes_dim = c->Dim(filter_shape, 0);
-  const Dimension* filter_rows_dim = c->Dim(filter_shape, 1);
-  const Dimension* filter_cols_dim = c->Dim(filter_shape, 2);
-  const Dimension* output_depth_dim = c->Dim(filter_shape, 4);
+  DimensionHandle filter_planes_dim = c->Dim(filter_shape, 0);
+  DimensionHandle filter_rows_dim = c->Dim(filter_shape, 1);
+  DimensionHandle filter_cols_dim = c->Dim(filter_shape, 2);
+  DimensionHandle output_depth_dim = c->Dim(filter_shape, 4);
 
   // At the moment we need to know the values of several fields.
   TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_planes_dim, "in_planes"));
@@ -295,7 +295,7 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
   auto filter_rows = c->Value(filter_rows_dim);
   auto filter_cols = c->Value(filter_cols_dim);
 
-  const Dimension* unused;
+  DimensionHandle unused;
   TF_RETURN_IF_ERROR(
       c->Merge(c->Dim(input_shape, 4), c->Dim(filter_shape, 3), &unused));
 
@@ -314,7 +314,7 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
       in_cols, filter_cols, stride_cols, padding, &output_cols, &padding_before,
       &padding_after));
 
-  const Shape* output_shape =
+  ShapeHandle output_shape =
       c->MakeShape({batch_size_dim, output_planes, output_rows, output_cols,
                     output_depth_dim});
   c->set_output(0, output_shape);
@@ -322,9 +322,9 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
 }
 
 Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
-  const Shape* input_shape;
+  ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
-  const Shape* filter_shape;
+  ShapeHandle filter_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &filter_shape));
 
   std::vector<int32> strides;
@@ -337,13 +337,13 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
         strides.size());
   }
 
-  const Dimension* batch_size_dim = c->Dim(input_shape, 0);
-  const Dimension* in_rows_dim = c->Dim(input_shape, 1);
-  const Dimension* in_cols_dim = c->Dim(input_shape, 2);
-  const Dimension* filter_rows_dim = c->Dim(filter_shape, 0);
-  const Dimension* filter_cols_dim = c->Dim(filter_shape, 1);
-  const Dimension* input_depth = c->Dim(filter_shape, 2);
-  const Dimension* depth_multiplier = c->Dim(filter_shape, 3);
+  DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
+  DimensionHandle in_rows_dim = c->Dim(input_shape, 1);
+  DimensionHandle in_cols_dim = c->Dim(input_shape, 2);
+  DimensionHandle filter_rows_dim = c->Dim(filter_shape, 0);
+  DimensionHandle filter_cols_dim = c->Dim(filter_shape, 1);
+  DimensionHandle input_depth = c->Dim(filter_shape, 2);
+  DimensionHandle depth_multiplier = c->Dim(filter_shape, 3);
 
   // At the moment we need to know the values of several fields.
   TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
@@ -357,7 +357,7 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(
       c->Merge(c->Dim(input_shape, 3), input_depth, &input_depth));
 
-  const Dimension* output_depth;
+  DimensionHandle output_depth;
   TF_RETURN_IF_ERROR(c->Multiply(input_depth, depth_multiplier, &output_depth));
 
   const int32 stride_rows = strides[1];
@@ -383,14 +383,14 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
       in_cols, filter_cols, stride_cols, padding, &output_cols, &padding_before,
       &padding_after));
 
-  const Shape* output_shape =
+  ShapeHandle output_shape =
       c->MakeShape({batch_size_dim, output_rows, output_cols, output_depth});
   c->set_output(0, output_shape);
   return Status::OK();
 }
 
 Status AvgPoolShape(shape_inference::InferenceContext* c) {
-  const Shape* input_shape;
+  ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
 
   string data_format;
@@ -432,10 +432,10 @@ Status AvgPoolShape(shape_inference::InferenceContext* c) {
     kernel_cols = kernel_sizes[2];
   }
 
-  const Dimension* batch_size_dim = c->Dim(input_shape, 0);
-  const Dimension* in_rows_dim = c->Dim(input_shape, 1);
-  const Dimension* in_cols_dim = c->Dim(input_shape, 2);
-  const Dimension* output_depth_dim = c->Dim(input_shape, 3);
+  DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
+  DimensionHandle in_rows_dim = c->Dim(input_shape, 1);
+  DimensionHandle in_cols_dim = c->Dim(input_shape, 2);
+  DimensionHandle output_depth_dim = c->Dim(input_shape, 3);
 
   // At the moment we need to know the values of several fields.
   TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
@@ -459,7 +459,7 @@ Status AvgPoolShape(shape_inference::InferenceContext* c) {
       in_cols, kernel_cols, stride_cols, padding, &output_cols, &padding_before,
       &padding_after));
 
-  const Shape* output_shape;
+  ShapeHandle output_shape;
   if (data_format == "NCHW") {
     output_shape = c->MakeShape(
         {batch_size_dim, output_depth_dim, output_rows, output_cols});
@@ -473,7 +473,7 @@ Status AvgPoolShape(shape_inference::InferenceContext* c) {
 }
 
 Status MaxPoolShape(shape_inference::InferenceContext* c) {
-  const Shape* input_shape;
+  ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
 
   string data_format;
@@ -519,10 +519,10 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
     kernel_depth = kernel_sizes[3];
   }
 
-  const Dimension* batch_size_dim = c->Dim(input_shape, 0);
-  const Dimension* in_rows_dim = c->Dim(input_shape, 1);
-  const Dimension* in_cols_dim = c->Dim(input_shape, 2);
-  const Dimension* in_depth_dim = c->Dim(input_shape, 3);
+  DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
+  DimensionHandle in_rows_dim = c->Dim(input_shape, 1);
+  DimensionHandle in_cols_dim = c->Dim(input_shape, 2);
+  DimensionHandle in_depth_dim = c->Dim(input_shape, 3);
 
   // At the moment we need to know the values of several fields.
   TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
@@ -551,7 +551,7 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
       in_depth, kernel_depth, stride_depth, padding, &output_depth,
       &padding_before, &padding_after));
 
-  const Shape* output_shape =
+  ShapeHandle output_shape =
       c->MakeShape({batch_size_dim, output_rows, output_cols, output_depth});
 
   if (data_format == "NCHW") {
@@ -566,7 +566,7 @@ Status MaxPoolShape(shape_inference::InferenceContext* c) {
 }
 
 Status Pool3DShape(shape_inference::InferenceContext* c) {
-  const Shape* input_shape;
+  ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &input_shape));
 
   std::vector<int32> strides;
@@ -596,11 +596,11 @@ Status Pool3DShape(shape_inference::InferenceContext* c) {
   kernel_rows = kernel_sizes[2];
   kernel_cols = kernel_sizes[3];
 
-  const Dimension* batch_size_dim = c->Dim(input_shape, 0);
-  const Dimension* in_planes_dim = c->Dim(input_shape, 1);
-  const Dimension* in_rows_dim = c->Dim(input_shape, 2);
-  const Dimension* in_cols_dim = c->Dim(input_shape, 3);
-  const Dimension* output_depth_dim = c->Dim(input_shape, 4);
+  DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
+  DimensionHandle in_planes_dim = c->Dim(input_shape, 1);
+  DimensionHandle in_rows_dim = c->Dim(input_shape, 2);
+  DimensionHandle in_cols_dim = c->Dim(input_shape, 3);
+  DimensionHandle output_depth_dim = c->Dim(input_shape, 4);
 
   // At the moment we need to know the values of several fields.
   TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_planes_dim, "in_planes"));
@@ -629,7 +629,7 @@ Status Pool3DShape(shape_inference::InferenceContext* c) {
       in_cols, kernel_cols, stride_cols, padding, &output_cols, &padding_before,
       &padding_after));
 
-  const Shape* output_shape =
+  ShapeHandle output_shape =
       c->MakeShape({batch_size_dim, output_planes, output_rows, output_cols,
                     output_depth_dim});
 
@@ -645,9 +645,9 @@ Status UnknownShape(shape_inference::InferenceContext* c) {
 }
 
 Status ReductionShape(InferenceContext* c) {
-  const Shape* input = c->input(0);
+  ShapeHandle input = c->input(0);
 
-  const Shape* indices;
+  ShapeHandle indices;
   TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &indices));
 
   const Tensor* reduction_indices_t = c->input_tensor(1);
@@ -679,7 +679,7 @@ Status ReductionShape(InferenceContext* c) {
       wrapped_index += input_rank;
     }
 
-    const Dimension* reduce_dim = c->Dim(input, wrapped_index);
+    DimensionHandle reduce_dim = c->Dim(input, wrapped_index);
     if (c->ValueKnown(reduce_dim) && c->Value(reduce_dim) == 0) {
       return errors::InvalidArgument("Cannot reduce dimension ",
                                      reduction_index, " with size 0");
@@ -688,7 +688,7 @@ Status ReductionShape(InferenceContext* c) {
     true_indices.insert(wrapped_index);
   }
 
-  std::vector<const Dimension*> dims;
+  std::vector<DimensionHandle> dims;
   bool reduce_all = reduction_indices_t->NumElements() == 0;
   for (int i = 0; i < input_rank; ++i) {
     if (reduce_all || true_indices.count(i) > 0) {
@@ -705,7 +705,7 @@ Status ReductionShape(InferenceContext* c) {
 }
 
 Status ConcatShape(InferenceContext* c) {
-  const Shape* unused;
+  ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
 
   const Tensor* concat_dim_t = c->input_tensor(0);
@@ -730,7 +730,7 @@ Status ConcatShape(InferenceContext* c) {
           "Can't concatenate scalars (use tf.pack instead)");
     }
     // Build result of <rank> different unknown dims.
-    std::vector<const Dimension*> dims;
+    std::vector<DimensionHandle> dims;
     for (int i = 0; i < rank; ++i) dims.push_back(c->UnknownDim());
     c->set_output(0, c->MakeShape(dims));
     return Status::OK();
@@ -744,22 +744,22 @@ Status ConcatShape(InferenceContext* c) {
                                    concat_dim);
   }
 
-  const Shape* output_before;
-  const Shape* output_after;
+  ShapeHandle output_before;
+  ShapeHandle output_after;
 
-  const Shape* input = c->input(c->num_inputs() - 1);
+  ShapeHandle input = c->input(c->num_inputs() - 1);
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, concat_dim + 1, &input));
   TF_RETURN_IF_ERROR(c->Subshape(input, 0, concat_dim, &output_before));
-  const Dimension* output_middle = c->Dim(input, concat_dim);
+  DimensionHandle output_middle = c->Dim(input, concat_dim);
   TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &output_after));
 
   for (int i = c->num_inputs() - 2; i > 0; --i) {
-    const Shape* before;
-    const Shape* after;
+    ShapeHandle before;
+    ShapeHandle after;
     input = c->input(i);
     TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, concat_dim + 1, &input));
     TF_RETURN_IF_ERROR(c->Subshape(input, 0, concat_dim, &before));
-    const Dimension* middle = c->Dim(input, concat_dim);
+    DimensionHandle middle = c->Dim(input, concat_dim);
     TF_RETURN_IF_ERROR(c->Subshape(input, concat_dim + 1, &after));
 
     TF_RETURN_IF_ERROR(c->Merge(before, output_before, &output_before));
@@ -767,7 +767,7 @@ Status ConcatShape(InferenceContext* c) {
     TF_RETURN_IF_ERROR(c->Merge(after, output_after, &output_after));
   }
 
-  const Shape* s;
+  ShapeHandle s;
   TF_RETURN_IF_ERROR(
       c->Concatenate(output_before, c->Vector(output_middle), &s));
   TF_RETURN_IF_ERROR(c->Concatenate(s, output_after, &s));

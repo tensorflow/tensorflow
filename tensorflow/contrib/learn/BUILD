@@ -360,6 +360,19 @@ py_test(
 )
 
 py_test(
+    name = "run_config_test",
+    size = "small",
+    srcs = [
+        "python/learn/tests/run_config_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "basic_session_run_hooks_test",
     size = "small",
     srcs = ["python/learn/tests/basic_session_run_hooks_test.py"],
@@ -459,6 +472,10 @@ py_test(
     size = "medium",
     srcs = ["python/learn/estimators/rnn_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "notap",  # http://b/30843204
+    ],
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -544,7 +561,10 @@ py_test(
     size = "medium",
     srcs = ["python/learn/tests/nonlinear_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],  # http://b/29220227
+    tags = [
+        "manual",  # http://b/29220227
+        "noasan",
+    ],
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -654,6 +674,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/learn_io/graph_io_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],  # http://b/29229547
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -668,8 +689,7 @@ py_test(
     srcs = ["python/learn/utils/export_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "manual",
-        "notap",  # http://b/29829657
+        "manual",  # http://b/31032996
     ],
     deps = [
         ":learn",

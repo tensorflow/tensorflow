@@ -488,21 +488,6 @@ class SessionManagerTest(tf.test.TestCase):
                                  "Attempting to use uninitialized value v"):
       sm2.prepare_session("", init_op=None)
 
-  def testPrepareSessionReadyWithInit(self):
-    with tf.Graph().as_default():
-      v = tf.Variable(1, name="v")
-      is_v_initialized = tf.is_variable_initialized(v)
-      with self.test_session():
-        self.assertEqual(False, is_v_initialized.eval())
-      sm = tf.train.SessionManager()
-
-      # Prepare session returns a session even though v is not initialized
-      # because no ready_op was provided, so model is trivially ready
-      sess = sm.prepare_session("")
-      self.assertEqual(False, sess.run(is_v_initialized))
-      sess.run(v.initializer)
-      self.assertEqual(True, sess.run(is_v_initialized))
-
 
 class ObsoleteSessionManagerTest(tf.test.TestCase):
 

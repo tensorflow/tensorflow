@@ -222,7 +222,7 @@ Status SingleExampleProtoToTensors(
   const auto& feature_dict = features.feature();
 
   // Handle dense features.
-  for (int d = 0; d < fixed_len_features.size(); ++d) {
+  for (size_t d = 0; d < fixed_len_features.size(); ++d) {
     const FixedLenFeature& feature_config = fixed_len_features[d];
     const string& key = feature_config.key;
     const DataType& dtype = feature_config.dtype;
@@ -263,7 +263,7 @@ Status SingleExampleProtoToTensors(
   }
 
   // Handle sparse features.
-  for (int d = 0; d < var_len_features.size(); ++d) {
+  for (size_t d = 0; d < var_len_features.size(); ++d) {
     const VarLenFeature& feature_config = var_len_features[d];
     const string& key = feature_config.key;
     const DataType& dtype = feature_config.dtype;
@@ -338,7 +338,7 @@ Status BatchExampleProtoToTensors(
       fixed_len_features.size());
 
   // Preallocate dense_values, since we know their sizes.
-  for (int d = 0; d < fixed_len_features.size(); ++d) {
+  for (size_t d = 0; d < fixed_len_features.size(); ++d) {
     const FixedLenFeature& config = fixed_len_features[d];
     TensorShape out_shape;
     out_shape.AddDim(batch_size);
@@ -352,11 +352,11 @@ Status BatchExampleProtoToTensors(
   // Temporary vector to hold sparse values.
   std::vector<std::vector<Tensor>> sparse_values_tmp(var_len_features.size());
 
-  for (int d = 0; d < var_len_features.size(); ++d) {
+  for (size_t d = 0; d < var_len_features.size(); ++d) {
     sparse_values_tmp[d] = std::vector<Tensor>(batch_size);
   }
 
-  for (int b = 0; b < examples.size(); ++b) {
+  for (size_t b = 0; b < examples.size(); ++b) {
     const Example& ex = *(examples[b]);
     const string& example_name = (has_names) ? names[b] : "<unknown>";
     SingleExampleProtoToTensors(
@@ -364,7 +364,7 @@ Status BatchExampleProtoToTensors(
         &output_dense_values_tensor_ptrs, &sparse_values_tmp);
   }
 
-  for (int d = 0; d < var_len_features.size(); ++d) {
+  for (size_t d = 0; d < var_len_features.size(); ++d) {
     const VarLenFeature& feature_config = var_len_features[d];
     const DataType& dtype = feature_config.dtype;
     const std::vector<Tensor>& sparse_values_tensor = sparse_values_tmp[d];

@@ -154,7 +154,7 @@ Status DebugNodeInserter::InsertNodes(
 
       // Create all requested debug nodes and their edges to the Copy node.
       std::vector<Node*> node_added_debug_nodes;
-      for (int i = 0; i < tensor_watches[tensor_name].size(); ++i) {
+      for (size_t i = 0; i < tensor_watches[tensor_name].size(); ++i) {
         const string& debug_op_name = tensor_watches[tensor_name][i];
 
         Node* debug_node;

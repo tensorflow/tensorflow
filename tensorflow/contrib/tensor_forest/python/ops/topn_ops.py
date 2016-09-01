@@ -21,6 +21,7 @@ import threading
 
 import tensorflow as tf
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 
 TOPN_OPS_FILE = '_topn_ops.so'
@@ -32,16 +33,8 @@ ops.NoGradient('TopNInsert')
 ops.NoGradient('TopNRemove')
 
 
-@ops.RegisterShape('TopNInsert')
-def Insert(unused_op):
-  """Shape function for Insert Op."""
-  return [[None], [None], [None]]
-
-
-@ops.RegisterShape('TopNRemove')
-def Remove(unused_op):
-  """Shape function for Remove Op."""
-  return [[None], [None]]
+ops.RegisterShape('TopNInsert')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('TopNRemove')(common_shapes.call_cpp_shape_fn)
 
 
 # Workaround for the fact that importing tensorflow imports contrib

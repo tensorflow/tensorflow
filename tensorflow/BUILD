@@ -87,6 +87,7 @@ filegroup(
         "//tensorflow/contrib:all_files",
         "//tensorflow/contrib/bayesflow:all_files",
         "//tensorflow/contrib/copy_graph:all_files",
+        "//tensorflow/contrib/cudnn_rnn:all_files",
         "//tensorflow/contrib/distributions:all_files",
         "//tensorflow/contrib/factorization:all_files",
         "//tensorflow/contrib/factorization/kernels:all_files",
@@ -107,12 +108,16 @@ filegroup(
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/quantization:all_files",
         "//tensorflow/contrib/quantization/kernels:all_files",
+        "//tensorflow/contrib/quantization/kernels/hexagon:all_files",
         "//tensorflow/contrib/quantization/tools:all_files",
+        "//tensorflow/contrib/rnn:all_files",
         "//tensorflow/contrib/session_bundle:all_files",
         "//tensorflow/contrib/session_bundle/example:all_files",
         "//tensorflow/contrib/slim:all_files",
         "//tensorflow/contrib/slim/python/slim/data:all_files",
+        "//tensorflow/contrib/slim/python/slim/nets:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
+        "//tensorflow/contrib/tensor_forest/hybrid:all_files",
         "//tensorflow/contrib/testing:all_files",
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
@@ -135,6 +140,7 @@ filegroup(
         "//tensorflow/examples/tutorials/word2vec:all_files",
         "//tensorflow/g3doc/how_tos/adding_an_op:all_files",
         "//tensorflow/g3doc/tutorials:all_files",
+        "//tensorflow/go:all_files",
         "//tensorflow/models/embedding:all_files",
         "//tensorflow/models/image/alexnet:all_files",
         "//tensorflow/models/image/cifar10:all_files",
@@ -151,6 +157,8 @@ filegroup(
         "//tensorflow/tensorboard/app:all_files",
         "//tensorflow/tensorboard/backend:all_files",
         "//tensorflow/tensorboard/components:all_files",
+        "//tensorflow/tensorboard/components/vz-data-summary:all_files",
+        "//tensorflow/tensorboard/components/vz-projector:all_files",
         "//tensorflow/tensorboard/lib:all_files",
         "//tensorflow/tensorboard/lib/python:all_files",
         "//tensorflow/tensorboard/scripts:all_files",
@@ -172,6 +180,16 @@ cc_binary(
     name = "libtensorflow.so",
     linkshared = 1,
     deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+cc_binary(
+    name = "libtensorflow_c.so",
+    linkshared = 1,
+    deps = [
+        "//tensorflow/c:c_api",
         "//tensorflow/core:tensorflow",
     ],
 )
@@ -180,6 +198,7 @@ cc_binary(
     name = "libtensorflow_cc.so",
     linkshared = 1,
     deps = [
+        "//tensorflow/c:c_api",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:tensorflow",
     ],

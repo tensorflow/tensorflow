@@ -82,14 +82,41 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 
 #### `tf.contrib.distributions.StudentT.allow_nan_stats` {#StudentT.allow_nan_stats}
 
-Boolean describing behavior when a stat is undefined for batch member.
+Python boolean describing behavior when a stat is undefined.
+
+Stats return +/- infinity when it makes sense.  E.g., the variance
+of a Cauchy distribution is infinity.  However, sometimes the
+statistic is undefined, e.g., if a distribution's pdf does not achieve a
+maximum within the support of the distribution, the mode is undefined.
+If the mean is undefined, then by definition the variance is undefined.
+E.g. the mean for Student's T for df = 1 is undefined (no clear way to say
+it is either + or - infinity), so the variance = E[(X - mean)^2] is also
+undefined.
+
+##### Returns:
+
+
+*  <b>`allow_nan_stats`</b>: Python boolean.
 
 
 - - -
 
 #### `tf.contrib.distributions.StudentT.batch_shape(name='batch_shape')` {#StudentT.batch_shape}
 
+Shape of a single sample from a single event index as a 1-D `Tensor`.
 
+The product of the dimensions of the `batch_shape` is the number of
+independent distributions of this kind the instance represents.
+
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `Tensor`.
 
 
 - - -
@@ -97,6 +124,18 @@ Boolean describing behavior when a stat is undefined for batch member.
 #### `tf.contrib.distributions.StudentT.cdf(value, name='cdf')` {#StudentT.cdf}
 
 Cumulative distribution function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`cdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 
 - - -
@@ -110,31 +149,31 @@ Degrees of freedom in these Student's t distribution(s).
 
 #### `tf.contrib.distributions.StudentT.dtype` {#StudentT.dtype}
 
-
+The `DType` of `Tensor`s handled by this `Distribution`.
 
 
 - - -
 
 #### `tf.contrib.distributions.StudentT.entropy(name='entropy')` {#StudentT.entropy}
 
-The entropy of Student t distribution(s).
-
-##### Args:
-
-
-*  <b>`name`</b>: The name to give this op.
-
-##### Returns:
-
-
-*  <b>`entropy`</b>: tensor of dtype `dtype`, the entropy.
+Shanon entropy in nats.
 
 
 - - -
 
 #### `tf.contrib.distributions.StudentT.event_shape(name='event_shape')` {#StudentT.event_shape}
 
+Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
+##### Args:
+
+
+*  <b>`name`</b>: name to give to the op
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `Tensor`.
 
 
 - - -
@@ -154,8 +193,8 @@ shapes = MultiVariateNormalDiag.param_shapes([batch_size, 10])
 
 # shapes has a Tensor shape for mu and sigma
 # shapes == {
-#   'mu': tf.constant([batch_size, 10]),
-#   'sigma': tf.constant([batch_size, 10]),
+#   "mu": tf.constant([batch_size, 10]),
+#   "sigma": tf.constant([batch_size, 10]),
 # }
 
 # Here we parameterize mu and sigma with the output of a linear
@@ -198,14 +237,28 @@ apply it externally and set `make_safe=False`.
 
 #### `tf.contrib.distributions.StudentT.get_batch_shape()` {#StudentT.get_batch_shape}
 
+Shape of a single sample from a single event index as a `TensorShape`.
 
+Same meaning as `batch_shape`. May be only partially defined.
+
+##### Returns:
+
+
+*  <b>`batch_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
 
 #### `tf.contrib.distributions.StudentT.get_event_shape()` {#StudentT.get_event_shape}
 
+Shape of a single sample from a single batch as a `TensorShape`.
 
+Same meaning as `event_shape`. May be only partially defined.
+
+##### Returns:
+
+
+*  <b>`event_shape`</b>: `TensorShape`, possibly unknown.
 
 
 - - -
@@ -226,66 +279,100 @@ apply it externally and set `make_safe=False`.
 
 #### `tf.contrib.distributions.StudentT.log_cdf(value, name='log_cdf')` {#StudentT.log_cdf}
 
-Log CDF.
+Log cumulative distribution function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 
 - - -
 
 #### `tf.contrib.distributions.StudentT.log_pdf(value, name='log_pdf')` {#StudentT.log_pdf}
 
-Log of the probability density function.
+Log probability density function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`AttributeError`</b>: if not `is_continuous`.
 
 
 - - -
 
 #### `tf.contrib.distributions.StudentT.log_pmf(value, name='log_pmf')` {#StudentT.log_pmf}
 
-Log of the probability mass function.
-
-
-- - -
-
-#### `tf.contrib.distributions.StudentT.log_prob(x, name='log_prob')` {#StudentT.log_prob}
-
-Log prob of observations in `x` under these Student's t-distribution(s).
+Log probability mass function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `mu` and `df`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
 
 
-*  <b>`log_prob`</b>: tensor of dtype `dtype`, the log-PDFs of `x`.
+*  <b>`log_pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`AttributeError`</b>: if `is_continuous`.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.log_prob(value, name='log_prob')` {#StudentT.log_prob}
+
+Log probability density/mass function (depending on `is_continuous`).
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 
 - - -
 
 #### `tf.contrib.distributions.StudentT.mean(name='mean')` {#StudentT.mean}
 
-Mean of the distribution.
-
-The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.  If
-`self.allow_nan_stats=False`, then an exception will be raised rather than
-returning `NaN`.
-
-##### Args:
-
-
-*  <b>`name`</b>: A name to give this op.
-
-##### Returns:
-
-  The mean for every batch member, a `Tensor` with same `dtype` as self.
+Mean.
 
 
 - - -
 
 #### `tf.contrib.distributions.StudentT.mode(name='mode')` {#StudentT.mode}
 
-
+Mode.
 
 
 - - -
@@ -299,7 +386,7 @@ Locations of these Student's t distribution(s).
 
 #### `tf.contrib.distributions.StudentT.name` {#StudentT.name}
 
-
+Name prepended to all ops created by this `Distribution`.
 
 
 - - -
@@ -346,78 +433,123 @@ param_shapes with static (i.e. TensorShape) shapes.
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.parameters` {#StudentT.parameters}
+
+Dictionary of parameters used by this `Distribution`.
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.pdf(value, name='pdf')` {#StudentT.pdf}
 
-The probability density function.
+Probability density function.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`AttributeError`</b>: if not `is_continuous`.
 
 
 - - -
 
 #### `tf.contrib.distributions.StudentT.pmf(value, name='pmf')` {#StudentT.pmf}
 
-The probability mass function.
-
-
-- - -
-
-#### `tf.contrib.distributions.StudentT.prob(x, name='prob')` {#StudentT.prob}
-
-The PDF of observations in `x` under these Student's t distribution(s).
+Probability mass function.
 
 ##### Args:
 
 
-*  <b>`x`</b>: tensor of dtype `dtype`, must be broadcastable with `df`, `mu`, and
-    `sigma`.
+*  <b>`value`</b>: `float` or `double` `Tensor`.
 *  <b>`name`</b>: The name to give this op.
 
 ##### Returns:
 
 
-*  <b>`prob`</b>: tensor of dtype `dtype`, the prob values of `x`.
+*  <b>`pmf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
+
+##### Raises:
+
+
+*  <b>`AttributeError`</b>: if `is_continuous`.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.prob(value, name='prob')` {#StudentT.prob}
+
+Probability density/mass function (depending on `is_continuous`).
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+
+*  <b>`prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
+    values of type `self.dtype`.
 
 
 - - -
 
 #### `tf.contrib.distributions.StudentT.sample(sample_shape=(), seed=None, name='sample')` {#StudentT.sample}
 
-Generate samples of the specified shape for each batched distribution.
+Generate samples of the specified shape.
 
 Note that a call to `sample()` without arguments will generate a single
-sample per batched distribution.
+sample.
 
 ##### Args:
 
 
-*  <b>`sample_shape`</b>: Rank 1 `int32` `Tensor`. Shape of the generated samples.
+*  <b>`sample_shape`</b>: 0D or 1D `int32` `Tensor`. Shape of the generated samples.
 *  <b>`seed`</b>: Python integer seed for RNG
 *  <b>`name`</b>: name to give to the op.
 
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` of dtype `self.dtype` and shape
-      `sample_shape + self.batch_shape + self.event_shape`.
+*  <b>`samples`</b>: a `Tensor` with prepended dimensions `sample_shape`.
 
 
 - - -
 
 #### `tf.contrib.distributions.StudentT.sample_n(n, seed=None, name='sample_n')` {#StudentT.sample_n}
 
-Sample `n` observations from the Student t Distributions.
+Generate `n` samples.
 
 ##### Args:
 
 
-*  <b>`n`</b>: `Scalar`, type int32, the number of observations to sample.
-*  <b>`seed`</b>: Python integer, the random seed.
-*  <b>`name`</b>: The name to give this op.
+*  <b>`n`</b>: `Scalar` `Tensor` of type `int32` or `int64`, the number of
+    observations to sample.
+*  <b>`seed`</b>: Python integer seed for RNG
+*  <b>`name`</b>: name to give to the op.
 
 ##### Returns:
 
 
-*  <b>`samples`</b>: a `Tensor` of shape `(n,) + self.batch_shape + self.event_shape`
-      with values of type `self.dtype`.
+*  <b>`samples`</b>: a `Tensor` with a prepended dimension (n,).
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `n` is not an integer type.
 
 
 - - -
@@ -431,41 +563,20 @@ Scaling factors of these Student's t distribution(s).
 
 #### `tf.contrib.distributions.StudentT.std(name='std')` {#StudentT.std}
 
-
+Standard deviation.
 
 
 - - -
 
 #### `tf.contrib.distributions.StudentT.validate_args` {#StudentT.validate_args}
 
-Boolean describing behavior on invalid input.
+Python boolean indicated possibly expensive checks are enabled.
 
 
 - - -
 
 #### `tf.contrib.distributions.StudentT.variance(name='variance')` {#StudentT.variance}
 
-Variance of the distribution.
-
-Variance for Student's T equals
-
-```
-df / (df - 2), when df > 2
-infinity, when 1 < df <= 2
-NaN, when df <= 1
-```
-
-The NaN state occurs because mean is undefined for `df <= 1`, and if
-`self.allow_nan_stats` is `False`, an exception will be raised if any batch
-members fall into this state.
-
-##### Args:
-
-
-*  <b>`name`</b>: A name for this op.
-
-##### Returns:
-
-  The variance for every batch member, a `Tensor` with same `dtype` as self.
+Variance.
 
 

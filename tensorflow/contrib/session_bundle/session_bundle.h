@@ -47,8 +47,7 @@ struct SessionBundle {
   MetaGraphDef meta_graph_def;
 };
 
-// Loads a manifest and initialized session using the output of an Exporter
-// using the format defined at go/tf-exporter.
+// Loads a manifest and initialized session using the output of an Exporter.
 Status LoadSessionBundleFromPath(const SessionOptions& options,
                                  const StringPiece export_dir,
                                  SessionBundle* bundle);

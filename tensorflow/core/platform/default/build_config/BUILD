@@ -9,7 +9,7 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("//third_party/gpus/cuda:platform.bzl", "cuda_library_path")
+load("@local_config_cuda//cuda:platform.bzl", "cuda_library_path")
 
 cc_library(
     name = "gtest",
@@ -32,7 +32,7 @@ tf_cuda_library(
     deps = [
         "//tensorflow/stream_executor",
     ] + select({
-        "//third_party/gpus/cuda:darwin": ["IOKit"],
+        "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],
     }),
 )
@@ -91,20 +91,20 @@ filegroup(
 cc_library(
     name = "cuda",
     data = [
-        "//third_party/gpus/cuda:{}".format(cuda_library_path("cudart")),
+        "@local_config_cuda//cuda:{}".format(cuda_library_path("cudart")),
     ],
     linkopts = select({
-        "//third_party/gpus/cuda:darwin": [
-            "-Wl,-rpath,third_party/gpus/cuda/lib",
-            "-Wl,-rpath,third_party/gpus/cuda/extras/CUPTI/lib",
+        "@local_config_cuda//cuda:darwin": [
+            "-Wl,-rpath,../local_config_cuda/cuda/lib",
+            "-Wl,-rpath,../local_config_cuda/cuda/extras/CUPTI/lib",
         ],
         "//conditions:default": [
-            "-Wl,-rpath,third_party/gpus/cuda/lib64",
-            "-Wl,-rpath,third_party/gpus/cuda/extras/CUPTI/lib64",
+            "-Wl,-rpath,../local_config_cuda/cuda/lib64",
+            "-Wl,-rpath,../local_config_cuda/cuda/extras/CUPTI/lib64",
         ],
     }),
     deps = [
-        "//third_party/gpus/cuda:cudart",
+        "@local_config_cuda//cuda:cudart",
     ],
 )
 

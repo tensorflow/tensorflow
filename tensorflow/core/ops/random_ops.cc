@@ -19,14 +19,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 namespace {
 
 Status RandomShape(InferenceContext* c) {
-  const Shape* out;
+  ShapeHandle out;
   TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
   c->set_output(0, out);
   return Status::OK();
@@ -217,9 +217,9 @@ REGISTER_OP("Multinomial")
     .Attr("seed2: int = 0")
     .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* logits_shape;
-      const Shape* unused;
-      const Dimension* num_samples;
+      ShapeHandle logits_shape;
+      ShapeHandle unused;
+      DimensionHandle num_samples;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &logits_shape));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &num_samples));
@@ -249,7 +249,7 @@ REGISTER_OP("RandomGamma")
     .Attr("S: {int32, int64}")
     .Attr("T: {half, float, double}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* out;
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
       TF_RETURN_IF_ERROR(c->Concatenate(out, c->input(1), &out));
       c->set_output(0, out);

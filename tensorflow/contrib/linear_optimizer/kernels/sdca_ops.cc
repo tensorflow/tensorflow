@@ -64,7 +64,8 @@ using UnalignedInt64Vector = TTypes<const int64>::UnalignedConstVec;
 struct ExampleStatistics {
   // feature_weights dot feature_values for the example.
   double wx = 0;
-
+  // dot product using the previous weights
+  double prev_wx = 0;
   // sum of squared feature values occurring in the example divided by
   // L2 * sum(example_weights).
   double normalized_squared_norm = 0;
@@ -279,7 +280,7 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
   result.normalized_squared_norm =
       squared_norm_ / regularization.symmetric_l2();
 
-  // Compute the w \dot x.
+  // Compute the w \dot x and prev_w \dot x.
 
   // Sparse features contribution.
   for (size_t j = 0; j < sparse_features_.size(); ++j) {
@@ -294,6 +295,9 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
       const double feature_weight =
           sparse_weights.nominals(feature_index) +
           sparse_weights.deltas(feature_index) * num_partitions;
+      result.prev_wx +=
+          feature_value *
+          regularization.Shrink(sparse_weights.nominals(feature_index));
       result.wx += feature_value * regularization.Shrink(feature_weight);
     }
   }
@@ -306,9 +310,14 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
     const Eigen::Tensor<float, 1, Eigen::RowMajor> feature_weights =
         dense_weights.nominals +
         dense_weights.deltas * dense_weights.deltas.constant(num_partitions);
+    const Eigen::Tensor<float, 0, Eigen::RowMajor> prev_prediction =
+        (dense_vector.row() *
+         regularization.EigenShrink(dense_weights.nominals))
+            .sum();
     const Eigen::Tensor<float, 0, Eigen::RowMajor> prediction =
         (dense_vector.row() * regularization.EigenShrink(feature_weights))
             .sum();
+    result.prev_wx += prev_prediction();
     result.wx += prediction();
   }
 
@@ -583,8 +592,7 @@ void Examples::ComputeSquaredNormPerExample(
     }
   };
   // TODO(sibyl-Aix6ihai): Compute the cost optimally.
-  const int64 kCostPerUnit =
-      num_examples * (num_dense_features + num_sparse_features);
+  const int64 kCostPerUnit = num_dense_features + num_sparse_features;
   Shard(worker_threads.num_threads, worker_threads.workers, num_examples,
         kCostPerUnit, compute_example_norm);
 }
@@ -700,7 +708,7 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
         // Update example data.
         example_state_data(example_index, 0) = new_dual;
         example_state_data(example_index, 1) = loss_updater_->ComputePrimalLoss(
-            example_statistics.wx, example_label, example_weight);
+            example_statistics.prev_wx, example_label, example_weight);
         example_state_data(example_index, 2) =
             loss_updater_->ComputeDualLoss(dual, example_label, example_weight);
         example_state_data(example_index, 3) = example_weight;
@@ -708,8 +716,7 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
     };
     // TODO(sibyl-Aix6ihai): Tune this properly based on sparsity of the data,
     // number of cpus, and cost per example.
-    const int64 kCostPerUnit =
-        examples.num_examples() * examples.num_features();
+    const int64 kCostPerUnit = examples.num_features();
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers,
@@ -777,7 +784,7 @@ REGISTER_KERNEL_BUILDER(Name("SdcaShrinkL1").Device(DEVICE_CPU), SdcaShrinkL1);
 // persistent storage, as its implementation may change in the future.
 //
 // The current probability of at least one collision for 1B example_ids is
-// approximately 10^-21 (ie 2^60 / 2^129).
+// approximately 10^-11 (ie 2^60 / 2^97).
 class SdcaFprint : public OpKernel {
  public:
   explicit SdcaFprint(OpKernelConstruction* const context)
@@ -797,12 +804,13 @@ class SdcaFprint : public OpKernel {
   }
 
  private:
-  // Returns a 16 character binary string of the fprint.
-  // The string object typically occupies 32 bytes of memory on 64-bit systems.
+  // Returns a 12 character binary string of the fprint.
+  // We use 12 of the 16 fingerprint bytes to save memory, in particular in
+  // string implementations that use a short string optimization.
   static string Fp128ToBinaryString(const Fprint128& fprint) {
     string result;
     core::PutFixed64(&result, fprint.low64);
-    core::PutFixed64(&result, fprint.high64);
+    core::PutFixed32(&result, fprint.high64);
     return result;
   }
 };

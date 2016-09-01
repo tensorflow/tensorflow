@@ -27,10 +27,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <class Scalar, bool SupportsBatchOperation>
-class DeterminantOp : public LinearAlgebraOp<Scalar, SupportsBatchOperation> {
+template <class Scalar>
+class DeterminantOp : public LinearAlgebraOp<Scalar> {
  public:
-  typedef LinearAlgebraOp<Scalar, SupportsBatchOperation> Base;
+  typedef LinearAlgebraOp<Scalar> Base;
 
   explicit DeterminantOp(OpKernelConstruction* context) : Base(context) {}
 
@@ -60,11 +60,9 @@ class DeterminantOp : public LinearAlgebraOp<Scalar, SupportsBatchOperation> {
   }
 };
 
-REGISTER_LINALG_OP("MatrixDeterminant", (DeterminantOp<float, false>), float);
-REGISTER_LINALG_OP("MatrixDeterminant", (DeterminantOp<double, false>), double);
-REGISTER_LINALG_OP("BatchMatrixDeterminant", (DeterminantOp<float, true>),
-                   float);
-REGISTER_LINALG_OP("BatchMatrixDeterminant", (DeterminantOp<double, true>),
-                   double);
+REGISTER_LINALG_OP("MatrixDeterminant", (DeterminantOp<float>), float);
+REGISTER_LINALG_OP("MatrixDeterminant", (DeterminantOp<double>), double);
+REGISTER_LINALG_OP("BatchMatrixDeterminant", (DeterminantOp<float>), float);
+REGISTER_LINALG_OP("BatchMatrixDeterminant", (DeterminantOp<double>), double);
 
 }  // namespace tensorflow

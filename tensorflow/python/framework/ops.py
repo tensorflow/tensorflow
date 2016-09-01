@@ -26,12 +26,12 @@ import linecache
 import re
 import sys
 import threading
-import weakref
 
 import six
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -908,16 +908,29 @@ class SparseTensor(object):
   `indices`, `values`, and `shape` tensors, wrap them in a `SparseTensor`
   object before passing to the ops below.
 
-  Concretely, the sparse tensor `SparseTensor(indices, values, shape)` is
+  Concretely, the sparse tensor `SparseTensor(indices, values, shape)`
+  comprises the following components, where `N` and `ndims` are the number
+  of values and number of dimensions in the `SparseTensor`, respectively:
 
-  * `indices`: A 2-D int64 tensor of shape `[N, ndims]`.
-  * `values`: A 1-D tensor of any type and shape `[N]`.
-  * `shape`: A 1-D int64 tensor of shape `[ndims]`.
+  * `indices`: A 2-D int64 tensor of shape `[N, ndims]`, which specifies
+    the indices of the elements in the sparse tensor that contain nonzero
+    values (elements are zero-indexed). For example, `indices=[[1,3], [2,4]]`
+    specifies that the elements with indexes of [1,3] and [2,4] have
+    nonzero values.
 
-  where `N` and `ndims` are the number of values, and number of dimensions in
-  the `SparseTensor` respectively.
+  * `values`: A 1-D tensor of any type and shape `[N]`, which supplies the
+    values for each element in `indices`. For example, given
+    `indices=[[1,3], [2,4]]`, the parameter `values=[18, 3.6]` specifies
+    that element [1,3] of the sparse tensor has a value of 18, and element
+    [2,4] of the tensor has a value of 3.6.
 
-  The corresponding dense tensor satisfies
+  * `shape`: A 1-D int64 tensor of shape `[ndims]`, which specifies the shape
+    of the sparse tensor. Takes a list indicating the number of elements in
+    each dimension. For example, `shape=[3,6]` specifies a two-dimensional 3x6
+    tensor, `shape=[2,3,4]` specifies a three-dimensional 2x3x4 tensor, and
+    `shape=[9]` specifies a one-dimensional tensor with 9 elements.
+
+  The corresponding dense tensor satisfies:
 
   ```python
   dense.shape = shape
@@ -925,7 +938,7 @@ class SparseTensor(object):
   ```
 
   By convention, `indices` should be sorted in row-major order (or equivalently
-  lexicographic order on the tuples `indices[i]`).  This is not enforced when
+  lexicographic order on the tuples `indices[i]`). This is not enforced when
   `SparseTensor` objects are constructed, but most ops assume correct ordering.
   If the ordering of sparse tensor `st` is wrong, a fixed version can be
   obtained by calling `tf.sparse_reorder(st)`.
@@ -1090,9 +1103,9 @@ def _NodeDef(op_type, name, device=None, attrs=None):
       AttrValue).
 
   Returns:
-    A graph_pb2.NodeDef protocol buffer.
+    A node_def_pb2.NodeDef protocol buffer.
   """
-  node_def = graph_pb2.NodeDef()
+  node_def = node_def_pb2.NodeDef()
   node_def.op = compat.as_bytes(op_type)
   node_def.name = compat.as_bytes(name)
   if attrs is not None:
@@ -1157,8 +1170,8 @@ class Operation(object):
         [A-Za-z0-9.][A-Za-z0-9_.\\-/]*
 
     Args:
-      node_def: `graph_pb2.NodeDef`.  `NodeDef` for the `Operation`.
-        Used for attributes of `graph_pb2.NodeDef`, typically `name`,
+      node_def: `node_def_pb2.NodeDef`.  `NodeDef` for the `Operation`.
+        Used for attributes of `node_def_pb2.NodeDef`, typically `name`,
         `op`, and `device`.  The `input` attribute is irrelevant here
         as it will be computed when generating the model.
       g: `Graph`. The parent graph.
@@ -1186,7 +1199,7 @@ class Operation(object):
         or if `inputs` and `input_types` are incompatible.
       ValueError: if the `node_def` name is not valid.
     """
-    if not isinstance(node_def, graph_pb2.NodeDef):
+    if not isinstance(node_def, node_def_pb2.NodeDef):
       raise TypeError("node_def needs to be a NodeDef: %s" % node_def)
     if node_def.ByteSize() >= (1 << 31) or node_def.ByteSize() < 0:
       raise ValueError(
@@ -1488,7 +1501,7 @@ class Operation(object):
 
     Returns:
       A
-      [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+      [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/node_def.proto)
       protocol buffer.
     """
     return self._node_def
@@ -3578,7 +3591,7 @@ def default_session(session):
   Returns:
     A context manager for the default session.
   """
-  return _default_session_stack.get_controller(weakref.ref(session))
+  return _default_session_stack.get_controller(session)
 
 
 def get_default_session():
@@ -3595,17 +3608,7 @@ def get_default_session():
   Returns:
     The default `Session` being used in the current thread.
   """
-  ref = _default_session_stack.get_default()
-  if ref is None:
-    # No default session has been registered.
-    return None
-  else:
-    # De-reference ref.
-    ret = ref()
-    if ret is None:
-      # This should never happen with the current session implementations.
-      raise RuntimeError("Default session has been garbage collected.")
-  return ret
+  return _default_session_stack.get_default()
 
 
 def _eval_using_default_session(tensors, feed_dict, graph, session=None):

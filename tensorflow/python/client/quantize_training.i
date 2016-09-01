@@ -58,8 +58,10 @@ def do_quantize_training_on_graphdef(input_graph, num_bits):
   from tensorflow.python.framework import errors
   with errors.raise_exception_on_not_ok_status() as status:
     graph = GraphDef()
-    graph.ParseFromString(DoQuantizeTrainingOnGraphDefHelper(
-        input_graph.SerializeToString(), num_bits, status))
+    result_graph_string = DoQuantizeTrainingOnGraphDefHelper(
+        input_graph.SerializeToString(), num_bits, status)
+
+  graph.ParseFromString(result_graph_string)
   return graph
 %}
 

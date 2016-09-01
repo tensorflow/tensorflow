@@ -83,18 +83,55 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoReadAhead) {
   EXPECT_EQ("6789", result);
 }
 
+TEST(GcsFileSystemTest, NewRandomAccessFile_NoReadAhead_differentN) {
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-2\n",
+           "012"),
+       new FakeHttpRequest(
+           "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
+           "Auth Token: fake_token\n"
+           "Range: 3-12\n",
+           "3456789")});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
+
+  std::unique_ptr<RandomAccessFile> file;
+  TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
+
+  char small_scratch[3];
+  StringPiece result;
+
+  // Read the first chunk.
+  TF_EXPECT_OK(file->Read(0, sizeof(small_scratch), &result, small_scratch));
+  EXPECT_EQ("012", result);
+
+  // Read the second chunk that is larger. Requires allocation of new buffer.
+  char large_scratch[10];
+
+  EXPECT_EQ(errors::Code::OUT_OF_RANGE,
+            file->Read(sizeof(small_scratch), sizeof(large_scratch), &result,
+                       large_scratch)
+                .code());
+  EXPECT_EQ("3456789", result);
+}
+
 TEST(GcsFileSystemTest, NewRandomAccessFile_WithReadAhead) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
            "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
            "Auth Token: fake_token\n"
            "Range: 0-8\n",
-           "01234567"),
+           "012345678"),
        new FakeHttpRequest(
            "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
            "Auth Token: fake_token\n"
-           "Range: 6-15\n",
-           "6789abcd"),
+           "Range: 6-14\n",
+           "6789abcde"),
        new FakeHttpRequest(
            "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
            "Auth Token: fake_token\n"
@@ -103,8 +140,8 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithReadAhead) {
        new FakeHttpRequest(
            "Uri: https://bucket.storage.googleapis.com/random_access.txt\n"
            "Auth Token: fake_token\n"
-           "Range: 15-29\n",
-           "")});
+           "Range: 0-14\n",
+           "01234567")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)),
@@ -116,30 +153,45 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithReadAhead) {
   char scratch[100];
   StringPiece result;
 
-  // Read the first chunk. The cache will be updated with 4 + 5 = 9 bytes.
+  // Read the first chunk. The buffer will be updated with 4 + 5 = 9 bytes.
   TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
   EXPECT_EQ("0123", result);
 
-  // The second chunk will be fully loaded from the cache, no requests are made.
+  // The second chunk will be fully loaded from the buffer, no requests are
+  // made.
   TF_EXPECT_OK(file->Read(4, 4, &result, scratch));
   EXPECT_EQ("4567", result);
 
-  // The chunk is only partially cached -- the request will be made to
-  // reload the cache. 5 + 5 = 10 bytes will be requested.
+  // The chunk is only partially buffered -- the request will be made to
+  // reload the buffer. 9 bytes will be requested (same as initial buffer size).
   TF_EXPECT_OK(file->Read(6, 5, &result, scratch));
   EXPECT_EQ("6789a", result);
 
-  // The range can only be partially satisfied. An attempt to fill the cache
-  // with 10 + 5 = 15 bytes will be made.
+  // The range can only be partially satisfied. An attempt to fill the buffer
+  // with 10 + 5 = 15 bytes will be made (buffer is resized for this request).
   EXPECT_EQ(errors::Code::OUT_OF_RANGE,
             file->Read(6, 10, &result, scratch).code());
   EXPECT_EQ("6789abcd", result);
 
-  // The range cannot be satisfied. An attempt to fill the cache
-  // with 10 + 5 = 15 bytes will be made.
+  // The range cannot be satisfied, and the requested offset lies within the
+  // buffer. No additional requests will be made as the EOF was reached in
+  // the last request.
   EXPECT_EQ(errors::Code::OUT_OF_RANGE,
-            file->Read(15, 10, &result, scratch).code());
+            file->Read(7, 10, &result, scratch).code());
+  EXPECT_EQ("789abcd", result);
+
+  // The range cannot be satisfied, and the requested offset is greater than the
+  // buffered range. No additional requests will be made as the EOF was reached
+  // in
+  // the last request.
+  EXPECT_EQ(errors::Code::OUT_OF_RANGE,
+            file->Read(20, 10, &result, scratch).code());
   EXPECT_TRUE(result.empty());
+
+  // The beginning of the file is not in the buffer. This call will result
+  // in another request. The buffer size is still 15.
+  TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
+  EXPECT_EQ("0123", result);
 }
 
 TEST(GcsFileSystemTest, NewWritableFile) {
@@ -192,9 +244,10 @@ TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
-           "path%2Frandom_access.txt?fields=size\n"
+           "path%2Frandom_access.txt?fields=size%2Cupdated\n"
            "Auth Token: fake_token\n",
-           strings::StrCat("{\"size\": \"", content.size(), "\"}")),
+           strings::StrCat("{\"size\": \"", content.size(),
+                           "\", \"updated\": \"2016-04-29T23:15:24.896Z\"}")),
        new FakeHttpRequest(
            strings::StrCat("Uri: https://bucket.storage.googleapis.com/"
                            "path%2Frandom_access.txt\n"
@@ -398,9 +451,10 @@ TEST(GcsFileSystemTest, DeleteDir_NonEmpty) {
 TEST(GcsFileSystemTest, GetFileSize) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
-      "file.txt?fields=size\n"
+      "file.txt?fields=size%2Cupdated\n"
       "Auth Token: fake_token\n",
-      strings::StrCat("{\"size\": \"1010\"}"))});
+      strings::StrCat("{\"size\": \"1010\","
+                      "\"updated\": \"2016-04-29T23:15:24.896Z\"}"))});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)),
@@ -432,6 +486,25 @@ TEST(GcsFileSystemTest, RenameFile) {
 
   TF_EXPECT_OK(
       fs.RenameFile("gs://bucket/path/src.txt", "gs://bucket/path/dst.txt"));
+}
+
+TEST(GcsFileSystemTest, Stat) {
+  std::vector<HttpRequest*> requests({new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+      "file.txt?fields=size%2Cupdated\n"
+      "Auth Token: fake_token\n",
+      strings::StrCat("{\"size\": \"1010\","
+                      "\"updated\": \"2016-04-29T23:15:24.896Z\"}"))});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */);
+
+  FileStatistics stat;
+  TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", &stat));
+  EXPECT_EQ(1010, stat.length);
+  EXPECT_EQ(1461971724896, stat.mtime_nsec / 1000 / 1000);
+  EXPECT_EQ(0600, stat.mode);
 }
 
 }  // namespace

@@ -30,7 +30,7 @@ class NormalTest(tf.test.TestCase):
   def _testParamShapes(self, sample_shape, expected):
     with self.test_session():
       param_shapes = tf.contrib.distributions.Normal.param_shapes(sample_shape)
-      mu_shape, sigma_shape = param_shapes['mu'], param_shapes['sigma']
+      mu_shape, sigma_shape = param_shapes["mu"], param_shapes["sigma"]
       self.assertAllEqual(expected, mu_shape.eval())
       self.assertAllEqual(expected, sigma_shape.eval())
       mu = tf.zeros(mu_shape)
@@ -42,7 +42,7 @@ class NormalTest(tf.test.TestCase):
   def _testParamStaticShapes(self, sample_shape, expected):
     param_shapes = tf.contrib.distributions.Normal.param_static_shapes(
         sample_shape)
-    mu_shape, sigma_shape = param_shapes['mu'], param_shapes['sigma']
+    mu_shape, sigma_shape = param_shapes["mu"], param_shapes["sigma"]
     self.assertEqual(expected, mu_shape)
     self.assertEqual(expected, sigma_shape)
 
@@ -88,7 +88,7 @@ class NormalTest(tf.test.TestCase):
 
     mu = tf.zeros((10, 3))
     rho = tf.ones((10, 3)) * -2.
-    with self.assertRaisesRegexp(TypeError, '_safe_transforms not implemented'):
+    with self.assertRaisesRegexp(TypeError, "_safe_transforms not implemented"):
       NormalNoMakeSafe.from_params(mu=mu, sigma=rho)
 
   def testNormalLogPDF(self):
@@ -295,8 +295,8 @@ class NormalTest(tf.test.TestCase):
       normal = tf.contrib.distributions.Normal(
           mu=[1.],
           sigma=[-5.],
-          name='G')
-      with self.assertRaisesOpError('Condition x > 0 did not hold'):
+          name="G")
+      with self.assertRaisesOpError("Condition x > 0 did not hold"):
         normal.mean().eval()
 
   def testNormalShape(self):
@@ -348,5 +348,5 @@ class NormalTest(tf.test.TestCase):
       self.assertAllClose(kl_val, kl_expected)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

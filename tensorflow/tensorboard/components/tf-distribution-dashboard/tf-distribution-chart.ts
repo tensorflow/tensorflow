@@ -16,8 +16,6 @@ limitations under the License.
 
 module TF {
   export class DistributionChart {
-    protected dataFn: VZ.ChartHelpers.DataFn;
-    protected tag: string;
     private run2datasets: {[run: string]: Plottable.Dataset};
     protected runs: string[];
 
@@ -32,49 +30,17 @@ module TF {
     protected yLabel: Plottable.Components.AxisLabel;
     protected outer: Plottable.Components.Table;
     protected colorScale: Plottable.Scales.Color;
-    protected tooltip: d3.Selection<any>;
     private plots: Plottable.XYPlot<number|Date, number>[];
 
-    constructor(
-        tag: string, dataFn: VZ.ChartHelpers.DataFn, xType: string,
-        colorScale: Plottable.Scales.Color, tooltip: d3.Selection<any>) {
-      this.dataFn = dataFn;
+    constructor(xType: string, colorScale: Plottable.Scales.Color) {
       this.run2datasets = {};
-      this.tag = tag;
       this.colorScale = colorScale;
-      this.tooltip = tooltip;
       this.buildChart(xType);
-    }
-
-    /**
-     * Change the runs on the chart. The work of actually setting the dataset
-     * on the plot is deferred to the subclass because it is impl-specific.
-     * Changing runs automatically triggers a reload; this ensures that the
-     * newly selected run will have data, and that all the runs will be current
-     * (it would be weird if one run was ahead of the others, and the display
-     * depended on the order in which runs were added)
-     */
-    public changeRuns(runs: string[]) {
-      this.runs = runs;
-      this.reload();
-      let datasets = runs.map((r) => this.getDataset(r));
-      this.plots.forEach((p) => p.datasets(datasets));
-    }
-
-    /**
-     * Reload data for each run in view.
-     */
-    public reload() {
-      this.runs.forEach((run) => {
-        let dataset = this.getDataset(run);
-        this.dataFn(this.tag, run).then((x) => dataset.data(x));
-      });
     }
 
     protected getDataset(run: string) {
       if (this.run2datasets[run] === undefined) {
-        this.run2datasets[run] =
-            new Plottable.Dataset([], {run: run, tag: this.tag});
+        this.run2datasets[run] = new Plottable.Dataset([], {run: run});
       }
       return this.run2datasets[run];
     }
@@ -142,6 +108,19 @@ module TF {
 
       this.plots = plots;
       return new Plottable.Components.Group(plots);
+    }
+
+    public setVisibleSeries(runs: string[]) {
+      this.runs = runs;
+      let datasets = runs.map((r) => this.getDataset(r));
+      this.plots.forEach((p) => p.datasets(datasets));
+    }
+
+    /**
+     * Set the data of a series on the chart.
+     */
+    public setSeriesData(name: string, data: any) {
+      this.getDataset(name).data(data);
     }
 
     public renderTo(target: d3.Selection<any>) { this.outer.renderTo(target); }
