@@ -92,8 +92,8 @@ class RandomGammaTest(tf.test.TestCase):
   def _testZeroDensity(self, alpha):
     """Zero isn't in the support of the gamma distribution.
 
-    But quantized floating point math has its limits. # TODO(bjp):
-    Implement log-gamma sampler for small-shape distributions.
+    But quantized floating point math has its limits.
+    TODO(bjp): Implement log-gamma sampler for small-shape distributions.
 
     Args:
       alpha: float shape value to test
@@ -108,10 +108,11 @@ class RandomGammaTest(tf.test.TestCase):
       failures = []
       for use_gpu in [False, True]:
         for dt in tf.float16, tf.float32, tf.float64:
-          sampler = self._Sampler(1000, alpha, 1.0, dt, use_gpu=use_gpu)
+          sampler = self._Sampler(1000, alpha, 1.0, dt, use_gpu=use_gpu,
+                                  seed=12345)
           x = sampler()
           allowable = allowable_zeros[dt] * x.size
-          allowable = allowable * 2 if allowable < 10 else allowable * 1.05
+          allowable = allowable * 3 if allowable < 10 else allowable * 1.05
           if np.sum(x <= 0) > allowable:
             failures += [(use_gpu, dt)]
       self.assertEqual([], failures)

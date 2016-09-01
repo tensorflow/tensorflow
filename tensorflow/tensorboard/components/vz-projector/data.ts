@@ -74,7 +74,6 @@ function hasWebGLSupport(): boolean {
 }
 
 const WEBGL_SUPPORT = hasWebGLSupport();
-const MAX_TSNE_ITERS = 500;
 /**
  * Sampling is used when computing expensive operations such as PCA, or T-SNE.
  */
@@ -258,7 +257,7 @@ export class DataSet implements scatter.DataSet {
     let iter = 0;
 
     let step = () => {
-      if (this.tSNEShouldStop || iter > MAX_TSNE_ITERS) {
+      if (this.tSNEShouldStop) {
         stepCallback(null);
         return;
       }

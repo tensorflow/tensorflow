@@ -32,7 +32,15 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
---><meta charset="UTF-8">
+--><meta charset="UTF-8"><link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../iron-icons/iron-icons.html">
+<link rel="import" href="../paper-tabs/paper-tabs.html">
+<link rel="import" href="../paper-dialog/paper-dialog.html">
+<link rel="import" href="../paper-checkbox/paper-checkbox.html">
+<link rel="import" href="../paper-toolbar/paper-toolbar.html">
+<link rel="import" href="../paper-button/paper-button.html">
+<link rel="import" href="../paper-header-panel/paper-header-panel.html">
+
 <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -126,6 +134,9 @@ var TF;
 </script>
 </dom-module>
 
+<script src="../lodash/lodash.min.js"></script>
+<link rel="import" href="../paper-slider/paper-slider.html">
+<link rel="import" href="../paper-input/paper-input.html">
 
 <dom-module id="tf-smoothing-input" assetpath="../tf-event-dashboard/">
   <template>
@@ -222,6 +233,7 @@ var TF;
     });
   </script>
 </dom-module>
+<script src="../d3/d3.js"></script>
 <script>/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -1249,6 +1261,826 @@ var TF;
     })();
   </script>
 </dom-module>
+<link rel="import" href="../paper-styles/paper-styles.html">
+
+<dom-module id="scrollbar-style" assetpath="../tf-dashboard-common/">
+  <template>
+    <style>
+      .scrollbar::-webkit-scrollbar-track
+      {
+        visibility: hidden;
+      }
+
+      .scrollbar::-webkit-scrollbar
+      {
+        width: 10px;
+      }
+
+      .scrollbar::-webkit-scrollbar-thumb
+      {
+        border-radius: 10px;
+        -webkit-box-shadow: inset 0 0 2px rgba(0,0,0,.3);
+        background-color: var(--paper-grey-500);
+        color: var(--paper-grey-900);
+      }
+      .scrollbar {
+        box-sizing: border-box;
+      }
+    </style>
+  </template>
+</dom-module>
+<style is="custom-style">
+
+  :root {
+    --tb-orange-weak: #ffa726;
+    --tb-orange-strong: #f57c00;
+    --tb-grey-darker: #e2e2e2;
+    --tb-grey-lighter: #f3f3f3;
+    --tb-ui-dark-accent: #757575;
+    --tb-ui-light-accent: #e0e0e0;
+    --tb-graph-faded: #e0d4b3;
+  }
+
+</style>
+
+<dom-module id="tf-dashboard-layout" assetpath="../tf-dashboard-common/">
+  <template>
+    <div id="sidebar">
+      <content select=".sidebar"></content>
+    </div>
+
+    <div id="center" class="scrollbar">
+      <content select=".center"></content>
+    </div>
+    <style include="scrollbar-style"></style>
+    <style>
+      #sidebar {
+        width: inherit;
+        height: 100%;
+        overflow: ellipsis;
+        flex-grow: 0;
+        flex-shrink: 0;
+      }
+
+      #center {
+        height: 100%;
+        overflow-y: auto;
+        flex-grow: 1;
+        flex-shrink: 1;
+      }
+
+      .tf-graph-dashboard #center {
+        background: white;
+      }
+
+      :host {
+        display: flex;
+        flex-direction: row;
+        height: 100%;
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-dashboard-layout",
+    });
+  </script>
+</dom-module>
+<dom-module id="dashboard-style" assetpath="../tf-dashboard-common/">
+  <template>
+    <style>
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        margin-right: 20px;
+      }
+
+      .sidebar-section {
+        border-top: solid 1px rgba(0, 0, 0, 0.12);
+        padding: 20px 0px 20px 30px;
+      }
+
+      .sidebar-section:first-child {
+        border: none;
+      }
+
+      .sidebar-section:last-child {
+        flex-grow: 1;
+        display: flex;
+      }
+
+      paper-checkbox {
+        --paper-checkbox-checked-color: var(--tb-ui-dark-accent);
+        --paper-checkbox-unchecked-color: var(--tb-ui-dark-accent);
+        font-size: 14px;
+        margin-top: 5px;
+      }
+    </style>
+  </template>
+</dom-module>
+<link rel="import" href="../paper-dropdown-menu/paper-dropdown-menu.html">
+<link rel="import" href="../paper-menu/paper-menu.html">
+<link rel="import" href="../paper-item/paper-item.html">
+
+<dom-module id="tf-downloader" assetpath="../tf-dashboard-common/">
+  <template>
+    <paper-dropdown-menu no-label-float="true" label="run to download" selected-item-label="{{_run}}">
+      <paper-menu class="dropdown-content">
+        <template is="dom-repeat" items="[[runs]]">
+          <paper-item no-label-float="true">[[item]]</paper-item>
+        </template>
+      </paper-menu>
+    </paper-dropdown-menu>
+    <div class="center">
+      <span>
+        <a download="[[_csvName(_run)]]" href="[[_csvUrl(_run, urlFn)]]">CSV</a>
+        <a download="[[_jsonName(_run)]]" href="[[_jsonUrl(_run, urlFn)]]">JSON</a>
+      </span>
+    </div>
+    <style>
+      :host {
+        display: flex;
+        height: 32px;
+      }
+      .center {
+        display: flex;
+        align-self: center;
+      }
+      paper-dropdown-menu {
+        width: 100px;
+        --paper-input-container-label: {
+          font-size: 10px;
+        }
+        --paper-input-container-input: {
+          font-size: 10px;
+        }
+      }
+      a {
+        font-size: 10px;
+        border-radius: 3px;
+        border: 1px solid #EEE;
+      }
+      paper-input {
+        font-size: 22px;
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-downloader",
+      properties: {
+        _run: String,
+        runs: Array,
+        tag: String,
+        urlFn: Function,
+      },
+      _csvUrl: function(_run, urlFn) {
+        return urlFn(this.tag, _run) + "&format=csv";
+      },
+      _jsonUrl: function(_run, urlFn) {
+        return urlFn(this.tag, _run);
+      },
+      _csvName: function(_run) {
+        return "run_" + _run + ",tag_" + this.tag + ".csv";
+      },
+      _jsonName: function(_run) {
+        return "run-" + _run + "-tag-" + this.tag + ".json";
+      },
+    });
+  </script>
+</dom-module>
+
+<dom-module id="tf-no-data-warning" assetpath="../tf-dashboard-common/">
+  <template>
+    <template is="dom-if" if="[[showWarning]]">
+      <div class="warning">
+        <template is="dom-if" if="[[graphMode]]">
+          <h3>
+            No graph definition files were found.
+          </h3>
+          <p>
+            To store a graph, create a
+            <code>tf.train.SummaryWriter</code>
+            and pass the graph either via the constructor, or by calling its
+            <code>add_graph()</code> method.
+            You may want to check out the
+            <a href="https://www.tensorflow.org/versions/master/how_tos/graph_viz/index.html">
+              graph visualizer tutorial
+            </a>
+            .
+          </p>
+        </template>
+        <template is="dom-if" if="[[!graphMode]]">
+          <h3>
+            No <span>[[dataType]]</span> data was found.
+          </h3>
+          <p>
+            Probable causes:
+            </p><ul>
+              <li>
+                You haven't written any <span>[[dataType]]</span> data
+                to your event files.
+              </li>
+              <li>
+                TensorBoard can't find your event files.
+              </li>
+            </ul>
+          <p></p>
+        </template>
+        <p>
+          If you're new to using TensorBoard, and want to find out how to add
+          data and set up your event files, check out the
+          <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/README.md">
+            README
+          </a>
+          and perhaps the
+          <a href="https://www.tensorflow.org/versions/master/how_tos/summaries_and_tensorboard/index.html">
+            TensorBoard tutorial
+          </a>.
+        </p>
+
+        <p>
+          If you think TensorBoard is configured properly, please see the
+          <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/README.md#my-tensorboard-isnt-showing-any-data-whats-wrong">
+            section of the README devoted to missing data problems
+          </a>
+          and consider filing an issue on GitHub.
+        </p>
+
+      </div>
+    </template>
+    <style>
+      .warning {
+        max-width: 540px;
+        margin: 80px auto 0 auto;
+      }
+    </style>
+  </template>
+
+  <script>
+    Polymer({
+      is: "tf-no-data-warning",
+      properties: {
+        dataType: String,
+        showWarning: Boolean,
+        graphMode: {type: Boolean, computed: "_isGraph(dataType)"},
+      },
+      _isGraph: function(dataType) {
+        return dataType === "graph";
+      },
+    });
+  </script>
+</dom-module>
+<script>/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+var TF;
+(function (TF) {
+    var Dashboard;
+    (function (Dashboard) {
+        /**
+         * ReloadBehavior: A simple behavior for dashboards where the
+         * frontendReload() function should find every child element with a
+         * given tag name (e.g. "tf-line-chart" or "tf-image-loader")
+         * and call a `reload` method on that child.
+         * May later extend it so it has more sophisticated logic, e.g. reloading
+         * only tags that are in view.
+         */
+        function ReloadBehavior(tagName) {
+            return {
+                properties: {
+                    reloadTag: {
+                        type: String,
+                        value: tagName,
+                    },
+                },
+                frontendReload: function () {
+                    var elements = this.getElementsByTagName(this.reloadTag);
+                    Array.prototype.forEach.call(elements, function (x) { x.reload(); });
+                },
+            };
+        }
+        Dashboard.ReloadBehavior = ReloadBehavior;
+    })(Dashboard = TF.Dashboard || (TF.Dashboard = {}));
+})(TF || (TF = {}));
+</script>
+
+<dom-module id="tf-option-selector" assetpath="../tf-dashboard-common/">
+  <template>
+    <div id="wrap">
+      <h3>[[name]]</h3>
+      <div class="content-wrapper"><content></content></div>
+    </div>
+    <style>
+      .content-wrapper ::content > * {
+        width: 30%;
+        font-size: 13px;
+        background: none;
+        margin-top: 10px;
+        color: var(--tb-ui-dark-accent);
+      }
+
+      .content-wrapper ::content :first-of-type {
+        margin-left: 0;
+      }
+
+      .content-wrapper ::content .selected {
+        background-color: var(--tb-ui-dark-accent);
+        color: white!important;
+      }
+
+      h3 {
+        color: var(--paper-grey-800);
+        margin: 0;
+        font-weight: normal;
+        font-size: 14px;
+        margin-bottom: 5px;
+        display: block;
+        pointer-events: none;
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-option-selector",
+      properties: {
+        name: String,
+        selectedId: {
+          type: String,
+          notify: true,
+          observer: '_selectedIdChanged'
+        }
+      },
+      attached: function() {
+        this.async(function() {
+          this.getEffectiveChildren().forEach(function(node) {
+            this.listen(node, 'tap', '_selectTarget');
+          }.bind(this));
+        });
+      },
+      _selectTarget: function(e) {
+        this.selectedId = e.currentTarget.id;
+      },
+      _selectedIdChanged: function() {
+        var selected = this.queryEffectiveChildren('#' + this.selectedId);
+        if (!selected) {
+          return;
+        }
+
+        this.getEffectiveChildren().forEach(function(node) {
+          node.classList.remove("selected");
+        });
+        selected.classList.add("selected");
+      }
+    });
+  </script>
+</dom-module>
+<link rel="import" href="../iron-collapse/iron-collapse.html">
+
+<dom-module id="tf-collapsable-pane" assetpath="../tf-dashboard-common/">
+  <template>
+    <button class="heading" on-tap="togglePane" open-button$="[[opened]]">
+    <span class="name">[[name]]</span>
+    <span class="count">
+      <span>[[count]]</span>
+    </span>
+  </button>
+    <iron-collapse opened="[[opened]]">
+      <div class="content">
+        <template is="dom-if" if="[[opened]]" restamp="[[restamp]]">
+          <content></content>
+        </template>
+      </div>
+    </iron-collapse>
+    <style>
+      :host {
+        display: block;
+        margin: 0 5px 1px 10px;
+      }
+
+      :host:first-of-type {
+        margin-top: 20px;
+      }
+      
+      :host:last-of-type {
+        margin-bottom: 20px;
+      }
+
+      .heading {
+        background-color: white;
+        border: none;
+        cursor: pointer;
+        width: 100%;
+        font-size: 15px;
+        line-height: 1;
+        box-shadow: 0 1px 5px rgba(0,0,0,0.2);
+        padding: 10px 15px;
+      }
+
+      .content {
+        padding: 15px;
+        border: 1px solid #dedede;
+        border-top: none;
+        border-bottom-left-radius: 2px;
+        border-bottom-right-radius: 2px;
+        background: white;
+      }
+
+      [open-button] {
+        border-bottom-left-radius: 0px !important;
+        border-bottom-right-radius: 0px !important;
+      }
+
+      .name {
+        float: left;
+      }
+
+      .count {
+        float: right;
+        margin-right: 5px;
+        font-size: 12px;
+        color: var(--paper-grey-500);
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-collapsable-pane",
+      properties: {
+        opened: {type: Boolean, value: false},
+        restamp: {type: Boolean, value: true},
+        name: {type: String, observer: "hide"},
+        count: {type: Number},
+      },
+      hide: function() {
+        this.opened = false;
+      },
+      togglePane: function() {
+        this.opened = !this.opened;
+      }
+    });
+  </script>
+
+</dom-module>
+<script src="../plottable/plottable.js"></script>
+<link rel="stylesheet" type="text/css" href="../plottable/plottable.css">
+
+<dom-module id="tf-chart-scaffold" assetpath="../tf-dashboard-common/">
+  <template>
+    <content></content>
+    <style>
+      :host {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+        flex-shrink: 1;
+        position: relative;
+      }
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-chart-scaffold",
+      properties: {
+        tag: String,
+        dataProvider: Function,
+        visibleSeries: Array,
+        _attached: {
+          type: Boolean,
+          value: false
+        }
+      },
+      observers: [
+        "reload(tag, dataProvider)",
+        "_changeSeries(visibleSeries.*)"
+      ],
+      ready: function() {
+        this.fire('ready');
+      },
+      attached: function() {
+        this._attached = true;
+        this._changeSeries();
+      },
+      detached: function() {
+        this._attached = false;
+      },
+      reload: function() {
+        if (!this._attached) {
+          return;
+        }
+        else if (!this.dataProvider) {
+          throw new Error('tf-chart-scaffold requires a dataProvider.');
+        }
+        else if (!this.tag) {
+          throw new Error('tf-chart-scaffold requires a tag.');
+        }
+
+        this.visibleSeries.forEach(function(name) {
+          this.dataProvider(this.tag, name).then(function(data) {
+            this.chart().setSeriesData(name, data);
+          }.bind(this));
+        }.bind(this));
+      },
+      _changeSeries: function() {
+        if (!this._attached) {
+           return;
+        }
+        else if (!this.visibleSeries) {
+          throw new Error('tf-chart-scaffold requires a visibleSeries.');
+        }
+
+        this.chart().setVisibleSeries(this.visibleSeries);
+        this.reload();
+      },
+      chart: function() {
+        var children = this.getEffectiveChildren();
+        if (!children.length) {
+          throw new Error('tf-chart-scaffold has no children');
+        }
+
+        var child = children[0];
+        if (!child.setVisibleSeries || !child.setSeriesData) {
+          throw new Error("tf-chart-scaffold's content doesn't implement the " +
+              "required interface");
+        }
+        return child;
+      }
+    });
+  </script>
+</dom-module>
+
+<dom-module id="tf-panes-helper" assetpath="../tf-dashboard-common/">
+  <template>
+    <content></content> 
+    <tf-no-data-warning data-type="[[dataType]]" show-warning="[[dataNotFound]]"></tf-no-data-warning>
+
+    <template is="dom-repeat" items="[[categories]]" as="category">
+      <tf-collapsable-pane name="[[category.name]]" count="[[_count(category.tags, selectedRuns.*)]]">
+        <div class="layout horizontal wrap">
+          <template is="dom-repeat" items="[[_categoryCards(category, selectedRuns.*, run2tag.*)]]">
+              <div class="card">
+                <span class="card-title">[[item.tag]]</span>
+                <template is="dom-if" if="[[repeatForRuns]]">
+                  <span class="card-subtitle">[[item.run]]</span>
+                </template>
+                <div class="card-content">
+                  <tf-chart-scaffold tag="[[item.tag]]" data-provider="[[dataProvider]]" visible-series="[[item.runs]]" on-ready="_instantiateTemplate">
+                    
+                  </tf-chart-scaffold>
+                </div>
+                <div class="card-bottom-row">
+                  <paper-icon-button class="expand-button" icon="fullscreen" on-tap="_toggleExpanded"></paper-icon-button>
+                  <template is="dom-if" if="[[showDownloadLinks]]">
+                    <tf-downloader runs="[[item.runs]]" tag="[[item.tag]]" url-fn="[[downloadLinkUrlFunction]]">
+                    </tf-downloader>
+                  </template>
+                </div>
+              </div>
+          </template>
+        </div>
+      </tf-collapsable-pane>
+    </template>
+
+    <style>
+      .card {
+        height: var(--card-height, 200px);
+        width: var(--card-width, 300px);
+        display: flex;
+        flex-direction: column;
+        margin: 5px;
+        padding: 0 30px 30px 0;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        position: relative;
+      }
+
+      .card-expanded {
+        height: var(--card-expanded-height, 400px);
+        width: var(--card-expanded-width, 100%);
+      }
+
+      .card-title, .card-subtitle {
+        flex-grow: 0;
+        flex-shrink: 0;
+        font-size: 14px;
+        text-overflow: ellipsis;
+        overflow: hidden;
+      }
+
+      .card-subtitle {
+        font-size: 12px;
+      }
+
+      .card-content {
+        flex-grow: 1;
+        flex-shrink: 1;
+        display: flex;
+        margin-top: 10px;
+      }
+
+      .card-bottom-row {
+        position: absolute;
+        left: 0px;
+        bottom: 0px;
+        width: 100%;
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        pointer-events: none;
+      }
+
+      .expand-button {
+        color: #2196F3;
+        width: 32px;
+        height: 32px;
+        padding: 4px;
+        border-radius: 100%;
+        pointer-events: auto;
+      }
+
+      .card-expanded .expand-button {
+        background: var(--tb-ui-light-accent);
+      }
+
+      tf-downloader {
+        margin-right: 30px;
+        pointer-events: auto;
+      }
+
+    </style>
+  </template>
+  <script>
+    Polymer({
+      is: "tf-panes-helper",
+      properties: {
+        /**
+         * Categories that separate the template instances. Each category will
+         * be given its own collapsible pane. The category must be an array of
+         * objects, each with a 'name' property and a 'tags' array of strings.
+         */
+        categories: Array,
+
+        /**
+         * The name of the data type that is used by this dashboard. This will
+         * be used to display what is missing when there is no data available.
+         */
+        dataType: String,
+
+        /**
+         * The function that requests and returns a promise with the data of the
+         * required type for the templates from the backend.
+         */
+        dataProvider: Object,
+
+        /**
+         * If false, instantiates one template for each tag and calls
+         * setVisibleSeries on the first element of the template with all valid
+         * runs the tag has. If true, instantiates one template for each run of
+         * each tag, and calls setVisibleSeries of the first element of the
+         * instantiated template with just the one run.
+         */
+        repeatForRuns: {
+          type: Boolean,
+          value: false
+        },
+
+        /**
+         * Map from runs to the valid tags that have them.
+         */
+        run2tag: Object,
+
+        /**
+         * Array with the runs that are selected by the user (i.e. valid to be
+         * displayed).
+         */
+        selectedRuns: Array,
+
+        /**
+         * If true, shows a menu with download links for the template data.
+         * If this is set to true, urlFn must also be provided.
+         */
+        showDownloadLinks: Boolean,
+
+        /**
+         * Function that returns the route to get data to download. Must be
+         * provided if showDownloadLinks is enabled.
+         */
+        downloadLinkUrlFunction: Function,
+        _contentTemplate: {
+          type: Object,
+          value: null
+        },
+        _stampedTemplates: {
+          type: Array,
+          value: function() { return [] }
+        }
+      },
+      behaviors: [
+        Polymer.Templatizer,
+      ],
+
+      /**
+       * Initializes the Polymer.Templatizer behavior with the template supplied
+       * by the user. With this, all calls to this.stamp() will produce an
+       * instance of the user template.
+       */
+      _initTemplatizer: function() {
+        if (!this._contentTemplate) {
+          // First template is used as the content.
+          this._contentTemplate = Polymer.dom(this).querySelector('template');
+          this.templatize(this._contentTemplate);
+        }
+      },
+
+      /**
+       * Called every time a tf-chart-scaffold is ready, stamps the user
+       * template inside the scaffold element (before it is attached) and
+       * stores the stamped template in an array to use for data binding
+       * (forwardParentProp/Path).
+       */
+      _instantiateTemplate: function(e) {
+        var scaffold = e.target;
+        this._initTemplatizer();
+        var instance = this.stamp();
+        this._stampedTemplates.push(instance);
+        Polymer.dom(scaffold).appendChild(instance.root);
+      },
+      _toggleExpanded: function(e) {
+        var currentTarget = Polymer.dom(e.currentTarget);
+        var card = currentTarget.node.closest('.card');
+        var scaffold = card.querySelector('tf-chart-scaffold');
+        card.classList.toggle('card-expanded');
+        scaffold.chart().redraw();
+      },
+      _count: function(tags) {
+        if (!this.repeatForRuns) {
+          return tags.length;
+        }
+
+        var targetTags = d3.set(tags);
+        var count = 0;
+        this.selectedRuns.forEach(function(r) {
+          this.run2tag[r].forEach(function(t) {
+            if (targetTags.has(t)) {
+              count++;
+            }
+          });
+        }.bind(this));
+        return count;
+      },
+      _categoryCards: function(category) {
+        var cards = [];
+        category.tags.forEach(function(tag) {
+          var runs = this.selectedRuns.filter(function(r) {
+            return this.run2tag[r] && this.run2tag[r].indexOf(tag) !== -1;
+          }.bind(this));
+
+          if (this.repeatForRuns) {
+            runs.forEach(function(run) {
+              cards.push({tag: tag, run: run, runs: [run]});
+            });
+          } else {
+            cards.push({tag: tag, runs: runs});
+          }
+        }.bind(this));
+
+        return cards;
+      },
+
+      /*
+       * Polymer data binding forwarding functions. Check the
+       * Polymer.Templatizer documentation for more information.
+       */
+
+      _forwardParentProp: function(property, value) {
+        this._stampedTemplates.forEach(function(instance) {
+          instance[property] = value;
+        });
+      },
+      _forwardParentPath: function(path, value) {
+        this._stampedTemplates.forEach(function(instance) {
+          instance.notifyPath(path, value, true);
+        });
+      },
+      // TODO(renatoutsch): implement the instance forwarding for two-way data
+      // binding.
+    });
+  </script>
+</dom-module>
 <dom-module id="tf-storage" assetpath="../tf-storage/">
  <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
@@ -1570,6 +2402,7 @@ var TF;
 })(TF || (TF = {}));
 </script>
 </dom-module>
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
 
 <dom-module id="tf-regex-group" assetpath="../tf-dashboard-common/">
   <template>
@@ -1683,19 +2516,7 @@ var TF;
     });
   </script>
 </dom-module>
-<style is="custom-style">
-
-  :root {
-    --tb-orange-weak: #ffa726;
-    --tb-orange-strong: #f57c00;
-    --tb-grey-darker: #e2e2e2;
-    --tb-grey-lighter: #f3f3f3;
-    --tb-ui-dark-accent: #757575;
-    --tb-ui-light-accent: #e0e0e0;
-    --tb-graph-faded: #e0d4b3;
-  }
-
-</style>
+<link rel="import" href="../paper-toggle-button/paper-toggle-button.html">
 
 <dom-module id="tf-categorizer" assetpath="../tf-dashboard-common/">
   <template>
@@ -1877,580 +2698,6 @@ var Categorizer;
       },
       _splitOnUnderscoreObserver: TF.URIStorage.getBooleanObserver(
           'splitOnUnderscore', false)
-    });
-  </script>
-</dom-module>
-
-<dom-module id="tf-chart-scaffold" assetpath="../tf-dashboard-common/">
-  <template>
-    <content></content>
-    <style>
-      :host {
-        -webkit-user-select: none;
-        -moz-user-select: none;
-        display: flex;
-        flex-direction: column;
-        flex-grow: 1;
-        flex-shrink: 1;
-        position: relative;
-      }
-    </style>
-  </template>
-  <script>
-    Polymer({
-      is: "tf-chart-scaffold",
-      properties: {
-        tag: String,
-        dataProvider: Function,
-        visibleSeries: Array,
-        _attached: {
-          type: Boolean,
-          value: false
-        }
-      },
-      observers: [
-        "reload(tag, dataProvider)",
-        "_changeSeries(visibleSeries.*)"
-      ],
-      ready: function() {
-        this.fire('ready');
-      },
-      attached: function() {
-        this._attached = true;
-        this._changeSeries();
-      },
-      detached: function() {
-        this._attached = false;
-      },
-      reload: function() {
-        if (!this._attached) {
-          return;
-        }
-        else if (!this.dataProvider) {
-          throw new Error('tf-chart-scaffold requires a dataProvider.');
-        }
-        else if (!this.tag) {
-          throw new Error('tf-chart-scaffold requires a tag.');
-        }
-
-        this.visibleSeries.forEach(function(name) {
-          this.dataProvider(this.tag, name).then(function(data) {
-            this.chart().setSeriesData(name, data);
-          }.bind(this));
-        }.bind(this));
-      },
-      _changeSeries: function() {
-        if (!this._attached) {
-           return;
-        }
-        else if (!this.visibleSeries) {
-          throw new Error('tf-chart-scaffold requires a visibleSeries.');
-        }
-
-        this.chart().setVisibleSeries(this.visibleSeries);
-        this.reload();
-      },
-      chart: function() {
-        var children = this.getEffectiveChildren();
-        if (!children.length) {
-          throw new Error('tf-chart-scaffold has no children');
-        }
-
-        var child = children[0];
-        if (!child.setVisibleSeries || !child.setSeriesData) {
-          throw new Error("tf-chart-scaffold's content doesn't implement the " +
-              "required interface");
-        }
-        return child;
-      }
-    });
-  </script>
-</dom-module>
-
-<dom-module id="tf-collapsable-pane" assetpath="../tf-dashboard-common/">
-  <template>
-    <button class="heading" on-tap="togglePane" open-button$="[[opened]]">
-    <span class="name">[[name]]</span>
-    <span class="count">
-      <span>[[count]]</span>
-    </span>
-  </button>
-    <iron-collapse opened="[[opened]]">
-      <div class="content">
-        <template is="dom-if" if="[[opened]]" restamp="[[restamp]]">
-          <content></content>
-        </template>
-      </div>
-    </iron-collapse>
-    <style>
-      :host {
-        display: block;
-        margin: 0 5px 1px 10px;
-      }
-
-      :host:first-of-type {
-        margin-top: 20px;
-      }
-      
-      :host:last-of-type {
-        margin-bottom: 20px;
-      }
-
-      .heading {
-        background-color: white;
-        border: none;
-        cursor: pointer;
-        width: 100%;
-        font-size: 15px;
-        line-height: 1;
-        box-shadow: 0 1px 5px rgba(0,0,0,0.2);
-        padding: 10px 15px;
-      }
-
-      .content {
-        padding: 15px;
-        border: 1px solid #dedede;
-        border-top: none;
-        border-bottom-left-radius: 2px;
-        border-bottom-right-radius: 2px;
-        background: white;
-      }
-
-      [open-button] {
-        border-bottom-left-radius: 0px !important;
-        border-bottom-right-radius: 0px !important;
-      }
-
-      .name {
-        float: left;
-      }
-
-      .count {
-        float: right;
-        margin-right: 5px;
-        font-size: 12px;
-        color: var(--paper-grey-500);
-      }
-    </style>
-  </template>
-  <script>
-    Polymer({
-      is: "tf-collapsable-pane",
-      properties: {
-        opened: {type: Boolean, value: false},
-        restamp: {type: Boolean, value: true},
-        name: {type: String, observer: "hide"},
-        count: {type: Number},
-      },
-      hide: function() {
-        this.opened = false;
-      },
-      togglePane: function() {
-        this.opened = !this.opened;
-      }
-    });
-  </script>
-
-</dom-module>
-
-<dom-module id="scrollbar-style" assetpath="../tf-dashboard-common/">
-  <template>
-    <style>
-      .scrollbar::-webkit-scrollbar-track
-      {
-        visibility: hidden;
-      }
-
-      .scrollbar::-webkit-scrollbar
-      {
-        width: 10px;
-      }
-
-      .scrollbar::-webkit-scrollbar-thumb
-      {
-        border-radius: 10px;
-        -webkit-box-shadow: inset 0 0 2px rgba(0,0,0,.3);
-        background-color: var(--paper-grey-500);
-        color: var(--paper-grey-900);
-      }
-      .scrollbar {
-        box-sizing: border-box;
-      }
-    </style>
-  </template>
-</dom-module>
-
-<dom-module id="tf-dashboard-layout" assetpath="../tf-dashboard-common/">
-  <template>
-    <div id="sidebar">
-      <content select=".sidebar"></content>
-    </div>
-
-    <div id="center" class="scrollbar">
-      <content select=".center"></content>
-    </div>
-    <style include="scrollbar-style"></style>
-    <style>
-      #sidebar {
-        width: inherit;
-        height: 100%;
-        overflow: ellipsis;
-        flex-grow: 0;
-        flex-shrink: 0;
-      }
-
-      #center {
-        height: 100%;
-        overflow-y: auto;
-        flex-grow: 1;
-        flex-shrink: 1;
-      }
-
-      .tf-graph-dashboard #center {
-        background: white;
-      }
-
-      :host {
-        display: flex;
-        flex-direction: row;
-        height: 100%;
-      }
-    </style>
-  </template>
-  <script>
-    Polymer({
-      is: "tf-dashboard-layout",
-    });
-  </script>
-</dom-module>
-<dom-module id="dashboard-style" assetpath="../tf-dashboard-common/">
-  <template>
-    <style>
-      #content-container{
-        display: block;
-      }
-
-      .sidebar {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        margin-right: 20px;
-      }
-
-      #categorizer {
-        flex-shrink: 0;
-      }
-
-      #xTypeSelector {
-        flex-shrink: 0;
-        margin: 20px 0;
-      }
-
-      #runSelector {
-        flex-shrink: 1;
-        flex-grow: 1;
-      }
-
-      #tooltip-sorting {
-        display: flex;
-        font-size: 14px;
-      }
-
-      #tooltip-sorting-label {
-        margin-top: 13px;
-        margin-left: 28px;
-      }
-
-      #tooltip-sorting paper-dropdown-menu {
-        margin-left: 10px;
-        --paper-input-container-focus-color: var(--tb-orange-strong);
-        width: 105px;
-      }
-
-      .sidebar-section {
-        border-top: solid 1px rgba(0, 0, 0, 0.12);
-        padding: 20px 0px 20px 30px;
-      }
-
-      .sidebar-section:first-child {
-        border: none;
-      }
-
-      .sidebar-section:last-child {
-        flex-grow: 1;
-        display: flex;
-      }
-
-      paper-checkbox {
-        --paper-checkbox-checked-color: var(--tb-ui-dark-accent);
-        --paper-checkbox-unchecked-color: var(--tb-ui-dark-accent);
-        font-size: 14px;
-      }
-    </style>
-  </template>
-</dom-module>
-
-<dom-module id="tf-downloader" assetpath="../tf-dashboard-common/">
-  <template>
-    <paper-dropdown-menu no-label-float="true" label="run to download" selected-item-label="{{_run}}">
-      <paper-menu class="dropdown-content">
-        <template is="dom-repeat" items="[[runs]]">
-          <paper-item no-label-float="true">[[item]]</paper-item>
-        </template>
-      </paper-menu>
-    </paper-dropdown-menu>
-    <div class="center">
-      <span>
-        <a download="[[_csvName(_run)]]" href="[[_csvUrl(_run, urlFn)]]">CSV</a>
-        <a download="[[_jsonName(_run)]]" href="[[_jsonUrl(_run, urlFn)]]">JSON</a>
-      </span>
-    </div>
-    <style>
-      :host {
-        display: flex;
-        height: 32px;
-      }
-      .center {
-        display: flex;
-        align-self: center;
-      }
-      paper-dropdown-menu {
-        width: 100px;
-        --paper-input-container-label: {
-          font-size: 10px;
-        }
-        --paper-input-container-input: {
-          font-size: 10px;
-        }
-      }
-      a {
-        font-size: 10px;
-        border-radius: 3px;
-        border: 1px solid #EEE;
-      }
-      paper-input {
-        font-size: 22px;
-      }
-    </style>
-  </template>
-  <script>
-    Polymer({
-      is: "tf-downloader",
-      properties: {
-        _run: String,
-        runs: Array,
-        tag: String,
-        urlFn: Function,
-      },
-      _csvUrl: function(_run, urlFn) {
-        return urlFn(this.tag, _run) + "&format=csv";
-      },
-      _jsonUrl: function(_run, urlFn) {
-        return urlFn(this.tag, _run);
-      },
-      _csvName: function(_run) {
-        return "run_" + _run + ",tag_" + this.tag + ".csv";
-      },
-      _jsonName: function(_run) {
-        return "run-" + _run + "-tag-" + this.tag + ".json";
-      },
-    });
-  </script>
-</dom-module>
-
-<dom-module id="tf-no-data-warning" assetpath="../tf-dashboard-common/">
-  <template>
-    <template is="dom-if" if="[[showWarning]]">
-      <div class="warning">
-        <template is="dom-if" if="[[graphMode]]">
-          <h3>
-            No graph definition files were found.
-          </h3>
-          <p>
-            To store a graph, create a
-            <code>tf.train.SummaryWriter</code>
-            and pass the graph either via the constructor, or by calling its
-            <code>add_graph()</code> method.
-            You may want to check out the
-            <a href="https://www.tensorflow.org/versions/master/how_tos/graph_viz/index.html">
-              graph visualizer tutorial
-            </a>
-            .
-          </p>
-        </template>
-        <template is="dom-if" if="[[!graphMode]]">
-          <h3>
-            No <span>[[dataType]]</span> data was found.
-          </h3>
-          <p>
-            Probable causes:
-            </p><ul>
-              <li>
-                You haven't written any <span>[[dataType]]</span> data
-                to your event files.
-              </li>
-              <li>
-                TensorBoard can't find your event files.
-              </li>
-            </ul>
-          <p></p>
-        </template>
-        <p>
-          If you're new to using TensorBoard, and want to find out how to add
-          data and set up your event files, check out the
-          <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/README.md">
-            README
-          </a>
-          and perhaps the
-          <a href="https://www.tensorflow.org/versions/master/how_tos/summaries_and_tensorboard/index.html">
-            TensorBoard tutorial
-          </a>.
-        </p>
-
-        <p>
-          If you think TensorBoard is configured properly, please see the
-          <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/README.md#my-tensorboard-isnt-showing-any-data-whats-wrong">
-            section of the README devoted to missing data problems
-          </a>
-          and consider filing an issue on GitHub.
-        </p>
-
-      </div>
-    </template>
-    <style>
-      .warning {
-        max-width: 540px;
-        margin: 80px auto 0 auto;
-      }
-    </style>
-  </template>
-
-  <script>
-    Polymer({
-      is: "tf-no-data-warning",
-      properties: {
-        dataType: String,
-        showWarning: Boolean,
-        graphMode: {type: Boolean, computed: "_isGraph(dataType)"},
-      },
-      _isGraph: function(dataType) {
-        return dataType === "graph";
-      },
-    });
-  </script>
-</dom-module>
-<script>/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
-var TF;
-(function (TF) {
-    var Dashboard;
-    (function (Dashboard) {
-        /**
-         * ReloadBehavior: A simple behavior for dashboards where the
-         * frontendReload() function should find every child element with a
-         * given tag name (e.g. "tf-line-chart" or "tf-image-loader")
-         * and call a `reload` method on that child.
-         * May later extend it so it has more sophisticated logic, e.g. reloading
-         * only tags that are in view.
-         */
-        function ReloadBehavior(tagName) {
-            return {
-                properties: {
-                    reloadTag: {
-                        type: String,
-                        value: tagName,
-                    },
-                },
-                frontendReload: function () {
-                    var elements = this.getElementsByTagName(this.reloadTag);
-                    Array.prototype.forEach.call(elements, function (x) { x.reload(); });
-                },
-            };
-        }
-        Dashboard.ReloadBehavior = ReloadBehavior;
-    })(Dashboard = TF.Dashboard || (TF.Dashboard = {}));
-})(TF || (TF = {}));
-</script>
-
-<dom-module id="tf-option-selector" assetpath="../tf-dashboard-common/">
-  <template>
-    <div id="wrap">
-      <h3>[[name]]</h3>
-      <div class="content-wrapper"><content></content></div>
-    </div>
-    <style>
-      .content-wrapper ::content > * {
-        width: 30%;
-        font-size: 13px;
-        background: none;
-        margin-top: 10px;
-        color: var(--tb-ui-dark-accent);
-      }
-
-      .content-wrapper ::content :first-of-type {
-        margin-left: 0;
-      }
-
-      .content-wrapper ::content .selected {
-        background-color: var(--tb-ui-dark-accent);
-        color: white!important;
-      }
-
-      h3 {
-        color: var(--paper-grey-800);
-        margin: 0;
-        font-weight: normal;
-        font-size: 14px;
-        margin-bottom: 5px;
-        display: block;
-        pointer-events: none;
-      }
-    </style>
-  </template>
-  <script>
-    Polymer({
-      is: "tf-option-selector",
-      properties: {
-        name: String,
-        selectedId: {
-          type: String,
-          notify: true,
-          observer: '_selectedIdChanged'
-        }
-      },
-      attached: function() {
-        this.async(function() {
-          this.getEffectiveChildren().forEach(function(node) {
-            this.listen(node, 'tap', '_selectTarget');
-          }.bind(this));
-        });
-      },
-      _selectTarget: function(e) {
-        this.selectedId = e.currentTarget.id;
-      },
-      _selectedIdChanged: function() {
-        var selected = this.queryEffectiveChildren('#' + this.selectedId);
-        if (!selected) {
-          return;
-        }
-
-        this.getEffectiveChildren().forEach(function(node) {
-          node.classList.remove("selected");
-        });
-        selected.classList.add("selected");
-      }
     });
   </script>
 </dom-module>
@@ -2781,140 +3028,72 @@ var TF;
   </script>
 </dom-module>
 
-<dom-module id="tf-panes-helper" assetpath="../tf-dashboard-common/">
+<dom-module id="tf-sidebar-helper" assetpath="../tf-dashboard-common/">
   <template>
-    <content></content> 
-    <tf-no-data-warning data-type="[[dataType]]" show-warning="[[dataNotFound]]"></tf-no-data-warning>
-
-    <template is="dom-repeat" items="[[categories]]" as="category">
-      <tf-collapsable-pane name="[[category.name]]" count="[[_count(category.tags, selectedRuns.*)]]">
-        <div class="layout horizontal wrap">
-          <template is="dom-repeat" items="[[_categoryCards(category, selectedRuns.*, run2tag.*)]]">
-              <div class="card">
-                <span class="card-title">[[item.tag]]</span>
-                <template is="dom-if" if="[[repeatForRuns]]">
-                  <span class="card-subtitle">[[item.run]]</span>
-                </template>
-                <div class="card-content">
-                  <tf-chart-scaffold tag="[[item.tag]]" data-provider="[[dataProvider]]" visible-series="[[item.runs]]" on-ready="_instantiateTemplate">
-                    
-                  </tf-chart-scaffold>
-                </div>
-                <div class="card-bottom-row">
-                  <paper-icon-button class="expand-button" icon="fullscreen" on-tap="_toggleExpanded"></paper-icon-button>
-                  <template is="dom-if" if="[[showDownloadLinks]]">
-                    <tf-downloader runs="[[item.runs]]" tag="[[item.tag]]" url-fn="[[downloadLinkUrlFunction]]">
-                    </tf-downloader>
-                  </template>
-                </div>
-              </div>
-          </template>
-        </div>
-      </tf-collapsable-pane>
-    </template>
-
+    <div class="sidebar-section">
+      <tf-categorizer id="categorizer" tags="[[_visibleTags]]" categories="{{categories}}"></tf-categorizer>
+      <content select=".extend-first-section"></content>
+    </div>
+    <content></content>
+    <div class="sidebar-section">
+      <tf-run-selector id="runSelector" runs="[[runs]]" color-scale="[[colorScale]]" out-selected="{{selectedRuns}}"></tf-run-selector>
+    </div>
+    <style include="dashboard-style"></style>
     <style>
-      .card {
-        height: var(--card-height, 200px);
-        width: var(--card-width, 300px);
+      :host {
         display: flex;
         flex-direction: column;
-        margin: 5px;
-        padding: 0 30px 30px 0;
-        -webkit-user-select: none;
-        -moz-user-select: none;
-        position: relative;
+        height: 100%;
       }
 
-      .card-expanded {
-        height: var(--card-expanded-height, 400px);
-        width: var(--card-expanded-width, 100%);
-      }
-
-      .card-title, .card-subtitle {
-        flex-grow: 0;
+      #categorizer {
         flex-shrink: 0;
-        font-size: 14px;
-        text-overflow: ellipsis;
-        overflow: hidden;
       }
 
-      .card-subtitle {
-        font-size: 12px;
-      }
-
-      .card-content {
-        flex-grow: 1;
+      #runSelector {
         flex-shrink: 1;
+        flex-grow: 1;
+      }
+
+      .sidebar-section {
+        border-top: solid 1px rgba(0, 0, 0, 0.12);
+        padding: 20px 0px 20px 30px;
+      }
+
+      .sidebar-section:first-child {
+        border: none;
+      }
+
+      .sidebar-section:last-child {
+        flex-grow: 1;
         display: flex;
-        margin-top: 10px;
       }
 
-      .card-bottom-row {
-        position: absolute;
-        left: 0px;
-        bottom: 0px;
-        width: 100%;
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-        pointer-events: none;
+      paper-checkbox {
+        --paper-checkbox-checked-color: var(--tb-ui-dark-accent);
+        --paper-checkbox-unchecked-color: var(--tb-ui-dark-accent);
+        font-size: 14px;
       }
-
-      .expand-button {
-        color: #2196F3;
-        width: 32px;
-        height: 32px;
-        padding: 4px;
-        border-radius: 100%;
-        pointer-events: auto;
-      }
-
-      .card-expanded .expand-button {
-        background: var(--tb-ui-light-accent);
-      }
-
-      tf-downloader {
-        margin-right: 30px;
-        pointer-events: auto;
-      }
-
     </style>
   </template>
   <script>
     Polymer({
-      is: "tf-panes-helper",
+      is: "tf-sidebar-helper",
       properties: {
         /**
-         * Categories that separate the template instances. Each category will
-         * be given its own collapsible pane. The category must be an array of
-         * objects, each with a 'name' property and a 'tags' array of strings.
+         * This is an output of the categories that the user selected to
+         * separate the different tags. Each category here should be given its
+         * own collapsible pane.
          */
-        categories: Array,
-
-        /**
-         * The name of the data type that is used by this dashboard. This will
-         * be used to display what is missing when there is no data available.
-         */
-        dataType: String,
-
-        /**
-         * The function that requests and returns a promise with the data of the
-         * required type for the templates from the backend.
-         */
-        dataProvider: Object,
-
-        /**
-         * If false, instantiates one template for each tag and calls
-         * setVisibleSeries on the first element of the template with all valid
-         * runs the tag has. If true, instantiates one template for each run of
-         * each tag, and calls setVisibleSeries of the first element of the
-         * instantiated template with just the one run.
-         */
-        repeatForRuns: {
-          type: Boolean,
-          value: false
+        categories: {
+          type: Array,
+          notify: true,
         },
+
+        /**
+         * Input of the colors that are used for the user's runs.
+         */
+        colorScale: Object,
 
         /**
          * Map from runs to the valid tags that have them.
@@ -2922,121 +3101,30 @@ var TF;
         run2tag: Object,
 
         /**
-         * Array with the runs that are selected by the user (i.e. valid to be
-         * displayed).
+         * Input of all valid runs that can be selected by the user.
          */
-        selectedRuns: Array,
+        runs: Array,
 
         /**
-         * If true, shows a menu with download links for the template data.
-         * If this is set to true, urlFn must also be provided.
+         * Outputs an array with the runs that are selected by the user (i.e.
+         * valid to be displayed).
          */
-        showDownloadLinks: Boolean,
-
-        /**
-         * Function that returns the route to get data to download. Must be
-         * provided if showDownloadLinks is enabled.
-         */
-        downloadLinkUrlFunction: Function,
-        _contentTemplate: {
-          type: Object,
-          value: null
-        },
-        _stampedTemplates: {
+        selectedRuns: {
           type: Array,
-          value: function() { return [] }
-        }
-      },
-      behaviors: [
-        Polymer.Templatizer,
-      ],
+          notify: true,
+        },
 
-      /**
-       * Initializes the Polymer.Templatizer behavior with the template supplied
-       * by the user. With this, all calls to this.stamp() will produce an
-       * instance of the user template.
-       */
-      _initTemplatizer: function() {
-        if (!this._contentTemplate) {
-          // First template is used as the content.
-          this._contentTemplate = Polymer.dom(this).querySelector('template');
-          this.templatize(this._contentTemplate);
-        }
+        _visibleTags: {
+          type: Array,
+          computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
+        },
       },
-
-      /**
-       * Called every time a tf-chart-scaffold is ready, stamps the user
-       * template inside the scaffold element (before it is attached) and
-       * stores the stamped template in an array to use for data binding
-       * (forwardParentProp/Path).
-       */
-      _instantiateTemplate: function(e) {
-        var scaffold = e.target;
-        this._initTemplatizer();
-        var instance = this.stamp();
-        this._stampedTemplates.push(instance);
-        Polymer.dom(scaffold).appendChild(instance.root);
+      _getVisibleTags: function() {
+        var keys = this.selectedRuns;
+        var dict = this.run2tag;
+        return _.union.apply(null, keys.map(function(k) {return dict[k]}));
       },
-      _toggleExpanded: function(e) {
-        var currentTarget = Polymer.dom(e.currentTarget);
-        var card = currentTarget.node.closest('.card');
-        var scaffold = card.querySelector('tf-chart-scaffold');
-        card.classList.toggle('card-expanded');
-        scaffold.chart().redraw();
-      },
-      _count: function(tags) {
-        if (!this.repeatForRuns) {
-          return tags.length;
-        }
-
-        var targetTags = d3.set(tags);
-        var count = 0;
-        this.selectedRuns.forEach(function(r) {
-          this.run2tag[r].forEach(function(t) {
-            if (targetTags.has(t)) {
-              count++;
-            }
-          });
-        }.bind(this));
-        return count;
-      },
-      _categoryCards: function(category) {
-        var cards = [];
-        category.tags.forEach(function(tag) {
-          var runs = this.selectedRuns.filter(function(r) {
-            return this.run2tag[r] && this.run2tag[r].indexOf(tag) !== -1;
-          }.bind(this));
-
-          if (this.repeatForRuns) {
-            runs.forEach(function(run) {
-              cards.push({tag: tag, run: run, runs: [run]});
-            });
-          } else {
-            cards.push({tag: tag, runs: runs});
-          }
-        }.bind(this));
-
-        return cards;
-      },
-
-      /*
-       * Polymer data binding forwarding functions. Check the
-       * Polymer.Templatizer documentation for more information.
-       */
-
-      _forwardParentProp: function(property, value) {
-        this._stampedTemplates.forEach(function(instance) {
-          instance[property] = value;
-        });
-      },
-      _forwardParentPath: function(path, value) {
-        this._stampedTemplates.forEach(function(instance) {
-          instance.notifyPath(path, value, true);
-        });
-      },
-      // TODO(renatoutsch): implement the instance forwarding for two-way data
-      // binding.
-    });
+    })
   </script>
 </dom-module>
 
@@ -4144,43 +4232,41 @@ var VZ;
 <dom-module id="tf-event-dashboard" assetpath="../tf-event-dashboard/">
   <template>
     <div id="plumbing">
-      <tf-color-scale id="colorScale" runs="[[runs]]" out-color-scale="{{colorScale}}"></tf-color-scale>
+      <tf-color-scale id="colorScale" runs="[[runs]]" out-color-scale="{{_colorScale}}"></tf-color-scale>
     </div>
 
     <tf-dashboard-layout>
       <div class="sidebar">
-        <div class="sidebar-section">
-          <tf-categorizer id="categorizer" tags="[[_visibleTags]]" categories="{{categories}}"></tf-categorizer>
-          <paper-checkbox id="download-option" checked="{{_showDownloadLinks}}">Data download links</paper-checkbox>
-          <div id="tooltip-sorting">
-            <div id="tooltip-sorting-label">Tooltip sorting method:</div>
-            <paper-dropdown-menu no-label-float="" selected-item-label="{{_tooltipSortingMethod}}">
-              <paper-menu class="dropdown-content" selected="0">
-                <paper-item>default</paper-item>
-                <paper-item>descending</paper-item>
-                <paper-item>ascending</paper-item>
-              </paper-menu>
-            </paper-dropdown-menu>
+        <tf-sidebar-helper categories="{{_categories}}" color-scale="[[_colorScale]]" run2tag="[[run2tag]]" runs="[[runs]]" selected-runs="{{_selectedRuns}}">
+          <div class="extend-first-section">
+            <paper-checkbox id="download-option" checked="{{_showDownloadLinks}}">Data download links</paper-checkbox>
+            <div id="tooltip-sorting">
+              <div id="tooltip-sorting-label">Tooltip sorting method:</div>
+              <paper-dropdown-menu no-label-float="" selected-item-label="{{_tooltipSortingMethod}}">
+                <paper-menu class="dropdown-content" selected="0">
+                  <paper-item>default</paper-item>
+                  <paper-item>descending</paper-item>
+                  <paper-item>ascending</paper-item>
+                </paper-menu>
+              </paper-dropdown-menu>
+            </div>
           </div>
-        </div>
-        <div class="sidebar-section">
-          <tf-smoothing-input weight="{{_smoothingWeight}}" step="0.001" min="0" max="1"></tf-smoothing-input>
-        </div>
-        <div class="sidebar-section">
-          <tf-option-selector id="xTypeSelector" name="Horizontal Axis" selected-id="{{_xType}}">
-            <paper-button id="step">step</paper-button>
-            <paper-button id="relative">relative</paper-button>
-            <paper-button id="wall_time">wall</paper-button>
-          </tf-option-selector>
-        </div>
-        <div class="sidebar-section">
-          <tf-run-selector id="runSelector" runs="[[runs]]" color-scale="[[colorScale]]" out-selected="{{selectedRuns}}"></tf-run-selector>
-        </div>
+          <div class="sidebar-section">
+            <tf-smoothing-input weight="{{_smoothingWeight}}" step="0.001" min="0" max="1"></tf-smoothing-input>
+          </div>
+          <div class="sidebar-section">
+            <tf-option-selector id="xTypeSelector" name="Horizontal Axis" selected-id="{{_xType}}">
+              <paper-button id="step">step</paper-button>
+              <paper-button id="relative">relative</paper-button>
+              <paper-button id="wall_time">wall</paper-button>
+            </tf-option-selector>
+          </div>
+        </tf-sidebar-helper>
       </div>
       <div class="center">
-        <tf-panes-helper categories="[[categories]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" run2tag="[[run2tag]]" selected-runs="[[selectedRuns]]" show-download-links="[[_showDownloadLinks]]" download-link-url-function="[[scalarUrl]]">
+        <tf-panes-helper categories="[[_categories]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" run2tag="[[run2tag]]" selected-runs="[[_selectedRuns]]" show-download-links="[[_showDownloadLinks]]" download-link-url-function="[[scalarUrl]]">
           <template>
-            <vz-line-chart x-type="[[_xType]]" color-scale="[[colorScale]]" smoothing-enabled="[[_smoothingEnabled]]" smoothing-weight="[[_smoothingWeight]]" tooltip-sorting-method="[[_tooltipSortingMethod]]"></vz-line-chart>
+            <vz-line-chart x-type="[[_xType]]" color-scale="[[_colorScale]]" smoothing-enabled="[[_smoothingEnabled]]" smoothing-weight="[[_smoothingWeight]]" tooltip-sorting-method="[[_tooltipSortingMethod]]"></vz-line-chart>
             <paper-icon-button class="log-button" icon="line-weight" on-tap="toggleLogScale" title="Toggle y-axis log scale"></paper-icon-button>
           </template>
         </tf-panes-helper>
@@ -4204,6 +4290,23 @@ var VZ;
       .log-button-selected {
         background: var(--tb-ui-light-accent);
       }
+
+      #tooltip-sorting {
+        display: flex;
+        font-size: 14px;
+        margin-top: 5px;
+      }
+
+      #tooltip-sorting-label {
+        margin-top: 13px;
+        margin-left: 28px;
+      }
+
+      #tooltip-sorting paper-dropdown-menu {
+        margin-left: 10px;
+        --paper-input-container-focus-color: var(--tb-orange-strong);
+        width: 105px;
+      }
     </style>
 
   </template>
@@ -4225,10 +4328,6 @@ var VZ;
           type: Function,
           computed: "_getScalarUrl(router)"
         },
-        _visibleTags: {
-          type: Array,
-          computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
-        },
         _showDownloadLinks: {
           type: Boolean,
           notify: true,
@@ -4246,10 +4345,6 @@ var VZ;
           type: Boolean,
           computed: '_computeSmoothingEnabled(_smoothingWeight)'
         },
-        colorScale: {
-          type: Object,
-          notify: true,
-        },
         _xType: {
           type: String,
           value: "step"
@@ -4262,11 +4357,6 @@ var VZ;
       },
       _getScalarUrl: function() {
         return this.router.scalars;
-      },
-      _getVisibleTags: function() {
-        var keys = this.selectedRuns;
-        var dict = this.run2tag;
-        return _.union.apply(null, keys.map(function(k) {return dict[k]}));
       },
       _showDownloadLinksObserver: TF.URIStorage.getBooleanObserver(
           '_showDownloadLinks', false),
@@ -4629,14 +4719,12 @@ var VZ;
 <dom-module id="tf-distribution-dashboard" assetpath="../tf-distribution-dashboard/">
   <template>
     <div id="plumbing">
-      <tf-color-scale id="colorScale" runs="[[runs]]" out-color-scale="{{colorScale}}"></tf-color-scale>
+      <tf-color-scale id="colorScale" runs="[[runs]]" out-color-scale="{{_colorScale}}"></tf-color-scale>
     </div>
 
     <tf-dashboard-layout>
       <div class="sidebar">
-        <div class="sidebar-section">
-          <tf-categorizer id="categorizer" tags="[[_visibleTags]]" categories="{{categories}}"></tf-categorizer>
-        </div>
+        <tf-sidebar-helper categories="{{_categories}}" color-scale="[[_colorScale]]" run2tag="[[run2tag]]" runs="[[runs]]" selected-runs="{{_selectedRuns}}">
         <div class="sidebar-section">
           <tf-option-selector id="xTypeSelector" name="Horizontal Axis" selected-id="{{_xType}}">
             <paper-button id="step">step</paper-button>
@@ -4644,15 +4732,13 @@ var VZ;
             <paper-button id="wall_time">wall</paper-button>
           </tf-option-selector>
         </div>
-        <div class="sidebar-section">
-          <tf-run-selector id="runSelector" runs="[[runs]]" color-scale="[[colorScale]]" out-selected="{{selectedRuns}}"></tf-run-selector>
-          </div>
+        </tf-sidebar-helper>
       </div>
 
       <div class="center">
-        <tf-panes-helper categories="[[categories]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" run2tag="[[run2tag]]" selected-runs="[[selectedRuns]]" repeat-for-runs="">
+        <tf-panes-helper categories="[[_categories]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" run2tag="[[run2tag]]" selected-runs="[[_selectedRuns]]" repeat-for-runs="">
           <template>
-            <tf-distribution-chart x-type="[[_xType]]" color-scale="[[colorScale]]"></tf-distribution-chart>
+            <tf-distribution-chart x-type="[[_xType]]" color-scale="[[_colorScale]]"></tf-distribution-chart>
           </template>
         </tf-panes-helper>
       </div>
@@ -4669,20 +4755,11 @@ var VZ;
         TF.Backend.Behavior,
       ],
       properties: {
-        _visibleTags: {
-          type: Array,
-          computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
-        },
         _xType: {
           type: String,
           value: "step"
         },
         dataType: {value: "compressedHistogram"},
-      },
-      _getVisibleTags: function() {
-        var keys = this.selectedRuns;
-        var dict = this.run2tag;
-        return _.union.apply(null, keys.map(function(k) {return dict[k]}));
       },
     });
   </script>
@@ -5371,34 +5448,30 @@ var VZ;
 <dom-module id="tf-histogram-dashboard" assetpath="../tf-histogram-dashboard/">
   <template>
     <div id="plumbing">
-      <tf-color-scale id="colorScale" runs="[[runs]]" out-color-scale="{{colorScale}}"></tf-color-scale>
+      <tf-color-scale id="colorScale" runs="[[runs]]" out-color-scale="{{_colorScale}}"></tf-color-scale>
     </div>
 
     <tf-dashboard-layout>
       <div class="sidebar">
-        <div class="sidebar-section">
-          <tf-categorizer id="categorizer" tags="[[_visibleTags]]" categories="{{categories}}"></tf-categorizer>
-        </div>
-        <div class="sidebar-section">
-          <tf-option-selector id="histogramModeSelector" name="Histogram Mode" selected-id="{{_histogramMode}}">
-            <paper-button id="overlay">overlay</paper-button>
-            <paper-button id="offset">offset</paper-button>
-          </tf-option-selector>
-        </div>
-        <div class="sidebar-section">
-          <tf-option-selector id="timePropertySelector" name="Offset Time Axis" selected-id="{{_timeProperty}}">
-            <paper-button id="step">step</paper-button>
-            <paper-button id="relative">relative</paper-button>
-            <paper-button id="wall_time">wall</paper-button>
-          </tf-option-selector>
-        </div>
-        <div class="sidebar-section">
-          <tf-run-selector id="runSelector" runs="[[runs]]" color-scale="[[colorScale]]" out-selected="{{selectedRuns}}"></tf-run-selector>
+        <tf-sidebar-helper categories="{{_categories}}" color-scale="[[_colorScale]]" run2tag="[[run2tag]]" runs="[[runs]]" selected-runs="{{_selectedRuns}}" show-download-links="{{_showDownloadLinks}}">
+          <div class="sidebar-section">
+            <tf-option-selector id="histogramModeSelector" name="Histogram Mode" selected-id="{{_histogramMode}}">
+              <paper-button id="overlay">overlay</paper-button>
+              <paper-button id="offset">offset</paper-button>
+            </tf-option-selector>
           </div>
-      </div>
+          <div class="sidebar-section">
+            <tf-option-selector id="timePropertySelector" name="Offset Time Axis" selected-id="{{_timeProperty}}">
+              <paper-button id="step">step</paper-button>
+              <paper-button id="relative">relative</paper-button>
+              <paper-button id="wall_time">wall</paper-button>
+            </tf-option-selector>
+          
+       </div>
+      </tf-sidebar-helper></div>
 
       <div class="center">
-        <tf-panes-helper categories="[[categories]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" run2tag="[[run2tag]]" selected-runs="[[selectedRuns]]" repeat-for-runs="">
+        <tf-panes-helper categories="[[_categories]]" data-type="[[dataType]]" data-provider="[[dataProvider]]" run2tag="[[run2tag]]" selected-runs="[[_selectedRuns]]" repeat-for-runs="">
           <template>
             <vz-histogram-timeseries time-property="[[_timeProperty]]" mode="[[_histogramMode]]" color-scale="[[_colorScaleFunction]]"></vz-histogram-timeseries>
           </template>
@@ -5423,6 +5496,10 @@ var VZ;
         TF.Backend.Behavior,
       ],
       properties: {
+        dataType: {
+          type: String,
+          value: "histogram"
+        },
         _histogramMode: {
           type: String,
           value: "offset"
@@ -5431,60 +5508,18 @@ var VZ;
           type: String,
           value: "step"
         },
-        _visibleTags: {
-          type: Array,
-          computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
-        },
         _colorScaleFunction: {
           type: Function,
-          computed: "_getColorScaleFunction(colorScale)"
+          computed: "_getColorScaleFunction(_colorScale)"
         },
-        colorScale: Object,
-        dataType: {
-          type: String,
-          value: "histogram"
-        }
       },
       attached: function() {
         this.async(function() {
           this.fire("rendered");
         });
       },
-      _array: function(x) {
-        return [x];
-      },
-      _count: function(tags) {
-        var targetTags = {};
-        tags.forEach(function(t) {
-          targetTags[t] = true;
-        });
-        var count = 0;
-        var _this = this;
-        this.selectedRuns.forEach(function(r) {
-          _this.run2tag[r].forEach(function(t) {
-            if (targetTags[t]) {
-              count++;
-            }
-          });
-        });
-        return count;
-      },
-      _getVisibleTags: function() {
-        var keys = this.selectedRuns;
-        var dict = this.run2tag;
-        return _.union.apply(null, keys.map(function(k) {return dict[k]}));
-      },
       _getColorScaleFunction: function() {
-        return this.colorScale.scale.bind(this.colorScale);
-      },
-      toggleSelected: function(e) {
-        var currentTarget = Polymer.dom(e.currentTarget);
-        var parentDiv = currentTarget.parentNode.parentNode;
-        parentDiv.classList.toggle("selected");
-        var chartScaffold = currentTarget.previousElementSibling;
-        if (chartScaffold) {
-          chartScaffold.chart().redraw();
-        }
+        return this._colorScale.scale.bind(this._colorScale);
       },
     });
   </script>
@@ -6049,6 +6084,11 @@ Polymer({
   }
 });
 </script>
+<script src="../lodash/lodash.min.js"></script>
+<script src="../graphlib/dist/graphlib.core.js"></script>
+<script src="../dagre/dist/dagre.core.js"></script>
+<script src="../lodash/lodash.min.js"></script>
+<script src="../graphlib/dist/graphlib.core.js"></script>
 <script>/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the 'License');
@@ -13740,6 +13780,7 @@ Polymer({
 });
 </script>
 </dom-module>
+<link rel="import" href="../iron-flex-layout/iron-flex-layout.html">
 <dom-module id="tf-graph" assetpath="../tf-graph/">
 <template>
 <style>
@@ -14368,6 +14409,8 @@ Polymer({
     })();
   </script>
 </dom-module>
+<link rel="import" href="../iron-list/iron-list.html">
+<link rel="import" href="../paper-item/all-imports.html">
 <dom-module id="tf-node-info" assetpath="../tf-graph-info/">
   <style>
   .sub-list-group {
@@ -15009,6 +15052,7 @@ h2 {
 })();
 </script>
 </dom-module>
+<link rel="import" href="../paper-progress/paper-progress.html">
 
 
 <dom-module id="tf-graph-board" assetpath="../tf-graph-board/">
@@ -15183,6 +15227,8 @@ Polymer({
   }
 });
 </script>
+<link rel="import" href="../paper-radio-group/paper-radio-group.html">
+<link rel="import" href="../paper-tooltip/paper-tooltip.html">
 <dom-module id="tf-graph-controls" assetpath="../tf-graph/">
 <template>
 <style>

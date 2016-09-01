@@ -128,8 +128,8 @@ REGISTER_OP("BatchMatMul")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle a_shape;
       ShapeHandle b_shape;
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &a_shape));
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &b_shape));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 3, &a_shape));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 3, &b_shape));
 
       // Determine output rows and cols.
       bool adj_x;

@@ -97,7 +97,7 @@ class AssertEqualTest(tf.test.TestCase):
     with self.test_session():
       small = tf.constant([1, 1, 1], name="small")
       small_2 = tf.constant([1, 1], name="small_2")
-      with self.assertRaisesRegexp(ValueError, "must be"):
+      with self.assertRaisesRegexp(ValueError, "broadcast"):
         with tf.control_dependencies([tf.assert_equal(small, small_2)]):
           out = tf.identity(small)
         out.eval()
@@ -151,7 +151,7 @@ class AssertLessTest(tf.test.TestCase):
     with self.test_session():
       small = tf.constant([1, 1, 1], name="small")
       big = tf.constant([3, 2], name="big")
-      with self.assertRaisesRegexp(ValueError, "must be"):
+      with self.assertRaisesRegexp(ValueError, "broadcast"):
         with tf.control_dependencies([tf.assert_less(small, big)]):
           out = tf.identity(small)
         out.eval()
@@ -204,7 +204,7 @@ class AssertLessEqualTest(tf.test.TestCase):
     with self.test_session():
       small = tf.constant([1, 1, 1], name="small")
       big = tf.constant([3, 1], name="big")
-      with self.assertRaisesRegexp(ValueError, "must be"):
+      with self.assertRaisesRegexp(ValueError, "broadcast"):
         with tf.control_dependencies([tf.assert_less_equal(small, big)]):
           out = tf.identity(small)
         out.eval()
@@ -258,7 +258,7 @@ class AssertGreaterTest(tf.test.TestCase):
     with self.test_session():
       small = tf.constant([1, 1, 1], name="small")
       big = tf.constant([3, 2], name="big")
-      with self.assertRaisesRegexp(ValueError, "must be"):
+      with self.assertRaisesRegexp(ValueError, "broadcast"):
         with tf.control_dependencies([tf.assert_greater(big, small)]):
           out = tf.identity(small)
         out.eval()
@@ -311,7 +311,7 @@ class AssertGreaterEqualTest(tf.test.TestCase):
     with self.test_session():
       small = tf.constant([1, 1, 1], name="big")
       big = tf.constant([3, 1], name="small")
-      with self.assertRaisesRegexp(ValueError, "Dimensions must be equal"):
+      with self.assertRaisesRegexp(ValueError, "broadcast"):
         with tf.control_dependencies([tf.assert_greater_equal(big, small)]):
           out = tf.identity(small)
         out.eval()

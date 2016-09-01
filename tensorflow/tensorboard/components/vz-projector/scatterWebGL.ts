@@ -219,6 +219,8 @@ export class ScatterWebGL implements Scatter {
   private pointSize3D: number;
   /** The buffer attribute that holds the positions of the points. */
   private positionBufferArray: THREE.BufferAttribute;
+  private tracePositionBufferArray: {[trace: number]:
+                                         THREE.BufferAttribute} = {};
 
   // Accessors for rendering and labeling the points.
   private xAccessor: (index: number) => number;
@@ -313,13 +315,38 @@ export class ScatterWebGL implements Scatter {
 
   /** Updates the positions buffer array to reflect the actual data. */
   private updatePositionsArray() {
+    // Update the points.
     for (let i = 0; i < this.dataSet.points.length; i++) {
       // Set position based on projected point.
       let pp = this.dataSet.points[i].projectedPoint;
       this.positionBufferArray.setXYZ(i, pp.x, pp.y, pp.z);
     }
+
+    // Update the traces.
+    for (let i = 0; i < this.dataSet.traces.length; i++) {
+      let dataTrace = this.dataSet.traces[i];
+
+      let vertexCount = 0;
+      for (let j = 0; j < dataTrace.pointIndices.length - 1; j++) {
+        let point1 = this.dataSet.points[dataTrace.pointIndices[j]];
+        let point2 = this.dataSet.points[dataTrace.pointIndices[j + 1]];
+
+        this.tracePositionBufferArray[i].setXYZ(
+            vertexCount, point1.projectedPoint.x, point1.projectedPoint.y,
+            point1.projectedPoint.z);
+        this.tracePositionBufferArray[i].setXYZ(
+            vertexCount + 1, point2.projectedPoint.x, point2.projectedPoint.y,
+            point2.projectedPoint.z);
+        vertexCount += 2;
+      }
+    }
+
     if (this.geometry) {
       this.positionBufferArray.needsUpdate = true;
+
+      for (let i = 0; i < this.dataSet.traces.length; i++) {
+        this.tracePositionBufferArray[i].needsUpdate = true;
+      }
     }
   }
 
@@ -539,22 +566,11 @@ export class ScatterWebGL implements Scatter {
       let dataTrace = this.dataSet.traces[i];
 
       let geometry = new THREE.BufferGeometry();
-      let vertices: number[] = [];
       let colors: number[] = [];
 
       for (let j = 0; j < dataTrace.pointIndices.length - 1; j++) {
         this.dataSet.points[dataTrace.pointIndices[j]].traceIndex = i;
         this.dataSet.points[dataTrace.pointIndices[j + 1]].traceIndex = i;
-
-        let point1 = this.dataSet.points[dataTrace.pointIndices[j]];
-        let point2 = this.dataSet.points[dataTrace.pointIndices[j + 1]];
-
-        vertices.push(
-            point1.projectedPoint.x, point1.projectedPoint.y,
-            point1.projectedPoint.z);
-        vertices.push(
-            point2.projectedPoint.x, point2.projectedPoint.y,
-            point2.projectedPoint.z);
 
         let color1 =
             this.getPointInTraceColor(j, dataTrace.pointIndices.length);
@@ -566,9 +582,9 @@ export class ScatterWebGL implements Scatter {
             color2.g / 255, color2.b / 255);
       }
 
-      geometry.addAttribute(
-          'position',
-          new THREE.BufferAttribute(new Float32Array(vertices), XYZ_NUM_BYTES));
+      geometry.addAttribute('position', this.tracePositionBufferArray[i]);
+      this.tracePositionBufferArray[i].needsUpdate = true;
+
       geometry.addAttribute(
           'color',
           new THREE.BufferAttribute(new Float32Array(colors), RGB_NUM_BYTES));
@@ -1304,10 +1320,21 @@ export class ScatterWebGL implements Scatter {
   setDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
     this.dataSet = dataSet;
     this.calibratePointSize();
+
     let positions =
         new Float32Array(this.dataSet.points.length * XYZ_NUM_BYTES);
     this.positionBufferArray =
         new THREE.BufferAttribute(positions, XYZ_NUM_BYTES);
+
+    // Set up the position buffer arrays for each trace.
+    for (let i = 0; i < this.dataSet.traces.length; i++) {
+      let dataTrace = this.dataSet.traces[i];
+      let traces = new Float32Array(
+          2 * (dataTrace.pointIndices.length - 1) * XYZ_NUM_BYTES);
+      this.tracePositionBufferArray[i] =
+          new THREE.BufferAttribute(traces, XYZ_NUM_BYTES);
+    }
+
     this.image = spriteImage;
     this.shuffledData = new Array(this.dataSet.points.length);
     for (let i = 0; i < this.dataSet.points.length; i++) {
