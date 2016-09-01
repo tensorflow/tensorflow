@@ -42,7 +42,7 @@ std::vector<Device*> FilterSupportedDevices(
     const std::vector<Device*>& devices,
     const DeviceTypeVector& supported_device_types) {
   std::vector<Device*> filtered_devices;
-  for (DeviceType d : supported_device_types) {
+  for (const DeviceType& d : supported_device_types) {
     for (Device* device : devices) {
       if (DeviceType(device->attributes().device_type()) == d) {
         filtered_devices.emplace_back(device);
@@ -495,7 +495,7 @@ class ColocationGraph {
                                 "' does not match any device");
       }
 
-      for (DeviceType d : member->supported_device_types) {
+      for (const DeviceType& d : member->supported_device_types) {
         if (DeviceType(assigned_device->attributes().device_type()) == d) {
           return Status::OK();
         }
@@ -545,9 +545,9 @@ class ColocationGraph {
     target->clear();
 
     // Iterate in priority order.
-    for (DeviceType device_type : temp) {
+    for (const DeviceType& device_type : temp) {
       bool found = false;
-      for (DeviceType other_device_type : other) {
+      for (const DeviceType& other_device_type : other) {
         if (device_type == other_device_type) {
           found = true;
           break;
