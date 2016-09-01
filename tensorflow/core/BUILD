@@ -940,17 +940,20 @@ cc_library(
 
 genrule(
     name = "version_info_gen",
-    srcs = ["util/git/spec.json", "util/git/head",
-            "util/git/branch_ref"],
+    srcs = [
+        "util/git/spec.json",
+        "util/git/head",
+        "util/git/branch_ref",
+    ],
     outs = ["util/version_info.cc"],
     cmd = "$(location util/gen_git_source.py) --generate $(SRCS) \"$@\"",
     local = 1,
-    tools = ["util/gen_git_source.py"]
+    tools = ["util/gen_git_source.py"],
 )
 
 cc_library(
     name = "version_lib",
-    srcs = ["util/version_info.cc"]
+    srcs = ["util/version_info.cc"],
 )
 
 tf_cuda_library(
