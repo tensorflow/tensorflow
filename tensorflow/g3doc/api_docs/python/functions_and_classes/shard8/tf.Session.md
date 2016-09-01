@@ -68,7 +68,7 @@ the session constructor.
 
 
 *  <b>`target`</b>: (Optional.) The execution engine to connect to.
-    Defaults to using an in-process engine. See [Distributed Tensorflow]
+    Defaults to using an in-process engine. See [Distributed TensorFlow]
     (https://www.tensorflow.org/how_tos/distributed/index.html)
     for more examples.
 *  <b>`graph`</b>: (Optional.) The `Graph` to be launched (described above).

@@ -2,7 +2,7 @@
 
 TF-Slim is a lightweight library for defining, training and evaluating complex
 models in TensorFlow. Components of tf-slim can be freely mixed with native
-tensorflow, as well as other frameworks, such as tf.contrib.learn.
+TensorFlow, as well as other frameworks, such as tf.contrib.learn.
 
 ## Usage
 ```python
@@ -11,7 +11,7 @@ import tensorflow.contrib.slim as slim
 
 ## Why TF-Slim?
 
-TF-Slim is a library that makes building, training and evaluation neural
+TF-Slim is a library that makes building, training and evaluating neural
 networks simple:
 
 * Allows the user to define models much more compactly by eliminating
@@ -36,7 +36,7 @@ algorithms by using pieces of pre-existing model checkpoints.
 
 ## What are the various components of TF-Slim?
 
-TF-Slim is composed of several parts which were design to exist independently.
+TF-Slim is composed of several parts which were designed to exist independently.
 These include the following main pieces (explained in detail below).
 
 * [arg_scope](https://www.tensorflow.org/code/tensorflow/contrib/framework/python/ops/arg_scope.py):
@@ -80,13 +80,13 @@ provides convenience wrappers for variable creation and manipulation.
 ## Defining Models
 
 Models can be succinctly defined using TF-Slim by combining its variables,
-layers and scopes. Each of these elements are defined below.
+layers and scopes. Each of these elements is defined below.
 
 ### Variables
 
 Creating
 [`Variables`](https://www.tensorflow.org/how_tos/variables/index.html)
-in native tensorflow requires either a predefined value or an initialization
+in native TensorFlow requires either a predefined value or an initialization
 mechanism (e.g. randomly sampled from a Gaussian). Furthermore, if a variable
 needs to be created
 on a specific device, such as a GPU, the specification must be
@@ -110,7 +110,7 @@ weights = variables.variable('weights',
 
 Note that in native TensorFlow, there are two types of variables: regular
 variables and local (transient) variables. The vast majority of variables are
-regular variables: once created, they can be saved to disk using a
+regular variables. Once created, they can be saved to disk using a
 [saver](https://www.tensorflow.org/versions/r0.9/api_docs/python/state_ops.html#Saver).
 Local variables are those variables that only exist for the duration of a
 session and are not saved to disk.
@@ -164,7 +164,7 @@ slim.add_model_variable(my_model_variable)
 
 While the set of TensorFlow operations is quite extensive, developers of
 neural networks typically think of models in terms of higher level concepts
-like "layers", "losses", "metrics", and "networks". A layer,
+like "layers", "losses", "metrics", and "networks." A layer,
 such as a Convolutional Layer, a Fully Connected Layer or a BatchNorm Layer
 are more abstract than a single TensorFlow operation and typically involve
 several operations. Furthermore, a layer usually (but not always) has
@@ -341,7 +341,7 @@ net = slim.conv2d(net, 256, [11, 11],
 ```
 
 This solution ensures that all three convolutions share the exact same parameter
-values but doesn't reduce completely the code clutter. By using an `arg_scope`,
+values, but doesn't completely reduce the code clutter. By using an `arg_scope`,
 we can both ensure that each layer uses the same values and simplify the code:
 
 ```python
@@ -354,7 +354,7 @@ we can both ensure that each layer uses the same values and simplify the code:
 ```
 
 As the example illustrates, the use of arg_scope makes the code cleaner,
-simpler and easier to maintain. Notice that while argument values are specifed
+simpler and easier to maintain. Notice that while argument values are specified
 in the arg_scope, they can be overwritten locally. In particular, while
 the padding argument has been set to 'SAME', the second convolution overrides
 it with the value of 'VALID'.
@@ -413,7 +413,7 @@ def vgg16(inputs):
 
 ## Training Models
 
-Training Tensorflow models requires a model, a loss function, the gradient
+Training TensorFlow models requires a model, a loss function, the gradient
 computation and a training routine that iteratively computes the gradients
 of the model weights relative to the loss and updates the weights accordingly.
 TF-Slim provides both common loss functions and a set of helper functions

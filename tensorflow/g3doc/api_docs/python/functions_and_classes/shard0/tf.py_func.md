@@ -1,6 +1,6 @@
 ### `tf.py_func(func, inp, Tout, stateful=True, name=None)` {#py_func}
 
-Wraps a python function and uses it as a tensorflow op.
+Wraps a python function and uses it as a TensorFlow op.
 
 Given a python function `func`, which takes numpy arrays as its
 inputs and returns numpy arrays as its outputs. E.g.,
@@ -21,7 +21,7 @@ sinh(x) as an op in the graph.
 
 *  <b>`func`</b>: A python function.
 *  <b>`inp`</b>: A list of `Tensor`.
-*  <b>`Tout`</b>: A list of tensorflow data types indicating what `func`
+*  <b>`Tout`</b>: A list of TensorFlow data types indicating what `func`
         returns.
 *  <b>`stateful`</b>: A boolean indicating whether the function should be considered
             stateful or stateless. I.e. whether it, given the same input, will

@@ -1,6 +1,6 @@
 # `class tensorflow::Env`
 
-An interface used by the tensorflow implementation to access operating system functionality like the filesystem etc.
+An interface used by the TensorFlow implementation to access operating system functionality like the filesystem etc.
 
 Callers may wish to provide a custom Env object to get fine grain control.
 

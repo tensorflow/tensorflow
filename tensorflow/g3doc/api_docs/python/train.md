@@ -311,7 +311,7 @@ Construct a new gradient descent optimizer.
 
 ### `class tf.train.AdadeltaOptimizer` {#AdadeltaOptimizer}
 
-Optimizer that implements the Adadelta algorithm. 
+Optimizer that implements the Adadelta algorithm.
 
 See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
 ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
@@ -1897,7 +1897,7 @@ following values for the --master flag:
 
 * Specifying `'grpc://hostname:port'` requests a session that uses
   the RPC interface to a specific , and also allows the in-process
-  master to access remote tensorflow workers. Often, it is
+  master to access remote TensorFlow workers. Often, it is
   appropriate to pass `server.target` (for some `tf.train.Server`
   named `server).
 

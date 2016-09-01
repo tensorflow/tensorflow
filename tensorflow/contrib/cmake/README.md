@@ -185,9 +185,9 @@ You should see an output similar to:
 
      Running main() from gmock_main.cc
      [==========] Running 1546 tests from 165 test cases.
-     
+
      ...
-     
+
      [==========] 1546 tests from 165 test cases ran. (2529 ms total)
      [  PASSED  ] 1546 tests.
 
@@ -207,7 +207,7 @@ To run specific tests:
      [ RUN      ] AnyTest.TestIs
      [       OK ] AnyTest.TestIs (0 ms)
      [----------] 3 tests from AnyTest (1 ms total)
-     
+
      [----------] Global test environment tear-down
      [==========] 3 tests from 1 test case ran. (2 ms total)
      [  PASSED  ] 3 tests.
@@ -231,7 +231,7 @@ You can also build project *INSTALL* from Visual Studio solution.
 It sounds not so strange and it works.
 
 This will create the following folders under the *install* location:
-  * bin - that contains tensorflow binaries;
+  * bin - that contains TensorFlow binaries;
   * include - that contains C++ headers and TensorFlow *.proto files;
   * lib - that contains linking libraries and *CMake* configuration files for
     *tensorflow* package.
@@ -276,7 +276,7 @@ public interface, and that you statically link them into your library.
 Notes on Compiler Warnings
 ==========================
 
-The following warnings have been disabled while building the tensorflow
+The following warnings have been disabled while building the TensorFlow
 libraries and binaries.  You may have to disable some of them in your own
 project as well, or live with them.
 
