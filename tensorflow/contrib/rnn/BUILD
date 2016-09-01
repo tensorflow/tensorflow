@@ -28,6 +28,7 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/rnn_cell_test.py"],
     additional_deps = [
         ":rnn_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -39,6 +40,7 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/lstm_ops_test.py"],
     additional_deps = [
         ":rnn_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -82,6 +84,7 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/gru_ops_test.py"],
     additional_deps = [
         ":rnn_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],

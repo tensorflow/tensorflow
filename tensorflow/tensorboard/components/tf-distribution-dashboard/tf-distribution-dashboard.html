@@ -18,12 +18,10 @@ limitations under the License.
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../tf-backend/tf-backend.html">
 <link rel="import" href="../tf-color-scale/tf-color-scale.html">
-<link rel="import" href="../tf-dashboard-common/tf-categorizer.html">
-<link rel="import" href="../tf-dashboard-common/tf-collapsable-pane.html">
 <link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
 <link rel="import" href="../tf-dashboard-common/tf-option-selector.html">
-<link rel="import" href="../tf-dashboard-common/tf-run-selector.html">
 <link rel="import" href="../tf-dashboard-common/tf-panes-helper.html">
+<link rel="import" href="../tf-dashboard-common/tf-sidebar-helper.html">
 <link rel="import" href="../tf-imports/lodash.html">
 <link rel="import" href="tf-distribution-chart.html">
 <link rel="import" href="../iron-collapse/iron-collapse.html">
@@ -33,17 +31,16 @@ limitations under the License.
 tf-distribution-dashboard is a complete frontend that loads runs from a backend,
 and creates chart panes that display data for those runs.
 
-It provides a categorizer, run selector, and x type selector, by which the user
-can customize how data is organized and displayed.
+It provides a x type selector and the normal tf-sidebar-helper options, by
+which the user can customize how data is organized and displayed.
 
-Each chart has a button that can toggle whether it is "selected"; selectedRuns
+Each chart has a button that can toggle whether it is "expanded"; expanded
 charts are larger.
 
 Organizationally, the #plumbing div contains components that have no concrete
-manifestation and just effect data bindings or data loading. The #sidebar contains
-shared controls like the tf-categorizer, tf-run-selector, and tf-x-type-selector.
-The #center div contains tf-distribution-charts embedded inside
-tf-collapsable-panes.
+manifestation and just effect data bindings or data loading. The .sidebar div
+contains shared controls provided by tf-sidebar-helper. The .center div
+contains tf-distribution-charts embedded inside tf-panes-helper's.
 -->
 <dom-module id="tf-distribution-dashboard">
   <template>
@@ -51,19 +48,19 @@ tf-collapsable-panes.
       <tf-color-scale
         id="colorScale"
         runs="[[runs]]"
-        out-color-scale="{{colorScale}}"
+        out-color-scale="{{_colorScale}}"
       ></tf-color-scale>
     </div>
 
     <tf-dashboard-layout>
       <div class="sidebar">
-        <div class="sidebar-section">
-          <tf-categorizer
-            id="categorizer"
-            tags="[[_visibleTags]]"
-            categories="{{categories}}"
-          ></tf-categorizer>
-        </div>
+        <tf-sidebar-helper
+          categories="{{_categories}}"
+          color-scale="[[_colorScale]]"
+          run2tag="[[run2tag]]"
+          runs="[[runs]]"
+          selected-runs="{{_selectedRuns}}"
+          >
         <div class="sidebar-section">
           <tf-option-selector
             id="xTypeSelector"
@@ -75,29 +72,22 @@ tf-collapsable-panes.
             <paper-button id="wall_time">wall</paper-button>
           </tf-option-selector>
         </div>
-        <div class="sidebar-section">
-          <tf-run-selector
-            id="runSelector"
-            runs="[[runs]]"
-            color-scale="[[colorScale]]"
-            out-selected="{{selectedRuns}}"
-          ></tf-run-selector>
-          </div>
+        </tf-sidebar-helper>
       </div>
 
       <div class="center">
         <tf-panes-helper
-          categories="[[categories]]"
+          categories="[[_categories]]"
           data-type="[[dataType]]"
           data-provider="[[dataProvider]]"
           run2tag="[[run2tag]]"
-          selected-runs="[[selectedRuns]]"
+          selected-runs="[[_selectedRuns]]"
           repeat-for-runs
           >
           <template>
             <tf-distribution-chart
               x-type="[[_xType]]"
-              color-scale="[[colorScale]]"
+              color-scale="[[_colorScale]]"
               ></tf-distribution-chart>
           </template>
         </tf-panes-helper>
@@ -115,20 +105,11 @@ tf-collapsable-panes.
         TF.Backend.Behavior,
       ],
       properties: {
-        _visibleTags: {
-          type: Array,
-          computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
-        },
         _xType: {
           type: String,
           value: "step"
         },
         dataType: {value: "compressedHistogram"},
-      },
-      _getVisibleTags: function() {
-        var keys = this.selectedRuns;
-        var dict = this.run2tag;
-        return _.union.apply(null, keys.map(function(k) {return dict[k]}));
       },
     });
   </script>

@@ -17,6 +17,7 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_HEXAGON_PROFILEUTILS_CPU_UTILS_H__
 #define TENSORFLOW_PLATFORM_HEXAGON_PROFILEUTILS_CPU_UTILS_H__
 
+#include "tensorflow/core/platform/hexagon/profile_utils/i_cpu_utils_helper.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -35,12 +36,12 @@ class CpuUtils {
   static constexpr int64 INVALID_FREQUENCY = -1;
   static constexpr uint64 DUMMY_CYCLE_CLOCK = 1;
 
-  // Return cpu count obtained by rdtsc. This function is designed to
+  // Return current clock cycle. This function is designed to
   // minimize the overhead to get clock and maximize the accuracy of
   // time for profile.
   // This returns unsigned int because there is no guarantee that rdtsc
   // is less than 2 ^ 61.
-  static inline uint64 GetCurrentCycleClock() {
+  static inline uint64 GetCurrentClockCycle() {
 // ----------------------------------------------------------------
 #if defined(__x86_64__) || defined(__amd64__)
     uint64_t high, low;
@@ -95,12 +96,40 @@ class CpuUtils {
   // there is no overhead except function call to call this method.
   static double GetMicroSecPerClock();
 
+  // Initialize CpuUtils
+  // This method is called from the static initializer declared in cpu_utils.cc
+  // This initializes state and cached static variables declared in functions.
+  static void Initialize();
+
+  // Reset clock cycle
+  // Resetting clock cycle is recommended to prevent
+  // clock cycle counters from overflowing on some platforms.
+  static void ResetClockCycle();
+
+  // Enable clock cycle profile
+  // You can enable / disable profile if it's supported by the platform
+  static void EnableClockCycleProfile(bool enable);
+
  private:
+  class DefaultCpuUtilsHelper : public ICpuUtilsHelper {
+   public:
+    DefaultCpuUtilsHelper() = default;
+    void Initialize() final {}
+    void ResetClockCycle() final {}
+    uint64 GetCurrentClockCycle() final { return DUMMY_CYCLE_CLOCK; }
+    void EnableClockCycleProfile(bool /* enable */) final {}
+
+   private:
+    TF_DISALLOW_COPY_AND_ASSIGN(DefaultCpuUtilsHelper);
+  };
+
   // Return cpu frequency.
   // CAVEAT: as this method calls system call and parse the mssage,
   // this call may be slow. This is why this class caches the value by
   // StaticVariableInitializer.
   static int64 GetCpuFrequencyImpl();
+
+  static ICpuUtilsHelper& GetCpuUtilsHelper();
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuUtils);
 };

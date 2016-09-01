@@ -267,7 +267,6 @@ py_library(
 py_library(
     name = "extra_py_tests_deps",
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_library(
@@ -357,6 +356,7 @@ cuda_py_tests(
     srcs = ["framework/function_test.py"],
     additional_deps = [
         ":functional_ops_lib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -913,6 +913,7 @@ cuda_py_tests(
     ],
     additional_deps = [
         ":device_lib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -934,6 +935,7 @@ py_tests(
     ],
     additional_deps = [
         ":net_lib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -1028,6 +1030,7 @@ py_test(
         ":framework",
         ":framework_test_lib",
         ":session",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -1037,6 +1040,7 @@ cuda_py_test(
     srcs = [
         "training/localhost_cluster_performance_test.py",
     ],
+    additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_library(
@@ -1079,6 +1083,7 @@ cuda_py_test(
     srcs = ["client/timeline_test.py"],
     additional_deps = [
         ":timeline",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -1117,12 +1122,18 @@ cuda_py_tests(
         "ops/math_grad_test.py",
         "ops/math_ops_test.py",
     ],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
 )
 
 cuda_py_test(
     name = "special_math_ops_test",
     size = "small",
     srcs = ["ops/special_math_ops_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
 )
 
 cuda_py_tests(
@@ -1133,12 +1144,18 @@ cuda_py_tests(
         "ops/nn_test.py",
         "ops/nn_xent_test.py",
     ],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
 )
 
 cuda_py_test(
     name = "image_ops_test",
     size = "small",
     srcs = ["ops/image_ops_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
     data = [
         "//tensorflow/core:image_testdata",
     ],
@@ -1173,6 +1190,7 @@ cuda_py_tests(
     ],
     additional_deps = [
         ":training",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -1208,7 +1226,10 @@ cuda_py_test(
     name = "session_manager_test",
     size = "medium",  # TODO(irving): Can this be made small?
     srcs = ["training/session_manager_test.py"],
-    additional_deps = [":training"],
+    additional_deps = [
+        ":training",
+        "//tensorflow:tensorflow_py",
+    ],
     main = "training/session_manager_test.py",
 )
 
@@ -1220,6 +1241,7 @@ py_test(
     deps = [
         ":extra_py_tests_deps",
         ":training",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -1266,6 +1288,7 @@ py_tests(
     additional_deps = [
         ":summary",
         ":training",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -1324,6 +1347,7 @@ cuda_py_test(
     srcs = [
         "ops/accumulate_n_benchmark.py",
     ],
+    additional_deps = ["//tensorflow:tensorflow_py"],
     main = "ops/accumulate_n_benchmark.py",
 )
 
@@ -1332,5 +1356,6 @@ cuda_py_test(
     srcs = [
         "ops/batch_norm_benchmark.py",
     ],
+    additional_deps = ["//tensorflow:tensorflow_py"],
     main = "ops/batch_norm_benchmark.py",
 )

@@ -139,6 +139,23 @@ class TensorUtilTest(tf.test.TestCase):
                                     [10.0, 10.0, 10.0, 10.0],
                                     [10.0, 10.0, 10.0, 10.0]], dtype=nptype), a)
 
+  def testHalf(self):
+    t = tensor_util.make_tensor_proto(np.array([10.0, 20.0], dtype=np.float16))
+    self.assertProtoEquals("""
+      dtype: DT_HALF
+      tensor_shape {
+        dim {
+          size: 2
+        }
+      }
+      half_val: 18688
+      half_val: 19712
+      """, t)
+
+    a = tensor_util.MakeNdarray(t)
+    self.assertEquals(np.float16, a.dtype)
+    self.assertAllClose(np.array([10.0, 20.0], dtype=np.float16), a)
+
   def testInt(self):
     t = tensor_util.make_tensor_proto(10)
     self.assertProtoEquals("""

@@ -48,7 +48,7 @@ class BatchMatrixDiagTest(tf.test.TestCase):
       self.assertAllEqual(v_batch_diag.eval(), mat_batch)
 
   def testInvalidShape(self):
-    with self.assertRaisesRegexp(ValueError, "must be at least rank 1"):
+    with self.assertRaisesRegexp(ValueError, "must have rank at least 1"):
       tf.batch_matrix_diag(0)
 
   def testInvalidShapeAtEval(self):
@@ -112,9 +112,9 @@ class BatchMatrixSetDiagTest(tf.test.TestCase):
       self.assertAllEqual(mat_set_diag_batch, output.eval())
 
   def testInvalidShape(self):
-    with self.assertRaisesRegexp(ValueError, "must be at least rank 2"):
+    with self.assertRaisesRegexp(ValueError, "must have rank at least 2"):
       tf.batch_matrix_set_diag(0, [0])
-    with self.assertRaisesRegexp(ValueError, "must be at least rank 1"):
+    with self.assertRaisesRegexp(ValueError, "must have rank at least 1"):
       tf.batch_matrix_set_diag([[0]], 0)
 
   def testInvalidShapeAtEval(self):
@@ -189,9 +189,9 @@ class BatchMatrixDiagPartTest(tf.test.TestCase):
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
 
   def testInvalidShape(self):
-    with self.assertRaisesRegexp(ValueError, "must be at least rank 2"):
+    with self.assertRaisesRegexp(ValueError, "must have rank at least 2"):
       tf.batch_matrix_diag_part(0)
-    with self.assertRaisesRegexp(ValueError, r"Dimensions must be equal"):
+    with self.assertRaisesRegexp(ValueError, r"Dimensions .* not compatible"):
       tf.batch_matrix_diag_part([[0, 1], [1, 0], [0, 0]])
 
   def testInvalidShapeAtEval(self):

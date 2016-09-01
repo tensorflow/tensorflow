@@ -100,9 +100,6 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
         whose `value` is a `SparseTensor`.
       - if `column` is a `RealValuedColumn, a feature with `key=column.name`
         whose `value` is a `Tensor`.
-      - if `feature_columns` is None, then `input` must contains only real
-        valued `Tensor`.
-
 
   Parameters:
     example_id_column: A string defining the feature column name representing

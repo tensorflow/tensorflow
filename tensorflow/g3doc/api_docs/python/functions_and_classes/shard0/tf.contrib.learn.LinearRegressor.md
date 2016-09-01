@@ -40,8 +40,6 @@ Input of `fit` and `evaluate` should have following features,
        key=weight column name, value=a `SparseTensor`}
   - if isinstance(column, `RealValuedColumn`):
       key=column.name, value=a `Tensor`
-  - if `feature_columns` is `None`:
-      input must contains only real valued `Tensor`.
 - - -
 
 #### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, target_dimension=1, config=None)` {#LinearRegressor.__init__}

@@ -127,6 +127,7 @@ py_test(
     name = "optimizers_test",
     srcs = ["python/layers/optimizers_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],  # http://b/31223979
     deps = [
         ":layers_py",
         "//tensorflow:tensorflow_py",

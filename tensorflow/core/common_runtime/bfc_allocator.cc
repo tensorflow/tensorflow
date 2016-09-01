@@ -157,7 +157,7 @@ bool BFCAllocator::Extend(size_t rounded_bytes) {
   InsertFreeChunkIntoBin(h);
 
   // Invoke visitors on newly allocated region.
-  for (auto visitor : region_visitors_) {
+  for (const auto& visitor : region_visitors_) {
     visitor(mem_addr, bytes);
   }
   return true;

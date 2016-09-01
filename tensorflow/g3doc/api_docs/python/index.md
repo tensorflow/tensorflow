@@ -632,6 +632,7 @@
   * [`InverseGammaTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#InverseGammaTensor)
   * [`LaplaceTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#LaplaceTensor)
   * [`MeanValue`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#MeanValue)
+  * [`MixtureTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#MixtureTensor)
   * [`MultinomialTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#MultinomialTensor)
   * [`MultivariateNormalCholeskyTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#MultivariateNormalCholeskyTensor)
   * [`MultivariateNormalDiagPlusVDVTTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#MultivariateNormalDiagPlusVDVTTensor)
@@ -671,6 +672,7 @@
   * [`InverseGamma`](../../api_docs/python/contrib.distributions.md#InverseGamma)
   * [`kl`](../../api_docs/python/contrib.distributions.md#kl)
   * [`Laplace`](../../api_docs/python/contrib.distributions.md#Laplace)
+  * [`Mixture`](../../api_docs/python/contrib.distributions.md#Mixture)
   * [`Multinomial`](../../api_docs/python/contrib.distributions.md#Multinomial)
   * [`MultivariateNormalCholesky`](../../api_docs/python/contrib.distributions.md#MultivariateNormalCholesky)
   * [`MultivariateNormalDiag`](../../api_docs/python/contrib.distributions.md#MultivariateNormalDiag)
@@ -932,6 +934,8 @@
 
 * **[Training (contrib)](../../api_docs/python/contrib.training.md)**:
   * [`batch_sequences_with_states`](../../api_docs/python/contrib.training.md#batch_sequences_with_states)
+  * [`bucket`](../../api_docs/python/contrib.training.md#bucket)
+  * [`bucket_by_sequence_length`](../../api_docs/python/contrib.training.md#bucket_by_sequence_length)
   * [`NextQueuedSequenceBatch`](../../api_docs/python/contrib.training.md#NextQueuedSequenceBatch)
   * [`SequenceQueueingStateSaver`](../../api_docs/python/contrib.training.md#SequenceQueueingStateSaver)
   * [`stratified_sample`](../../api_docs/python/contrib.training.md#stratified_sample)
