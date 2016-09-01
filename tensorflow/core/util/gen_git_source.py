@@ -45,20 +45,23 @@ def configure(src_base_path):
     git_head_path = os.path.join(git_path,"HEAD")
     head = open(git_head_path).read().strip()
     branch = parse_branch_ref(head)
+    os.symlink(git_head_path, os.path.join(gen_path, "head"))
     if branch == None:
       spec["branch"] = None
+      # just link the branch ref to be the head
+      os.symlink(git_head_path, os.path.join(gen_path, "branch_ref"))
     else:
       spec["branch"] = branch
-      os.symlink(git_head_path, os.path.join(gen_path, "head"))
       branch_ref_path = os.path.join(git_path, *os.path.split(spec["branch"]))
       os.symlink(branch_ref_path, os.path.join(gen_path, "branch_ref"))
   json.dump(spec,open(os.path.join(gen_path,"spec.json"),"w"), indent=2)
   print("list %s"%gen_path)
   print(repr(os.listdir(gen_path)))
-  print("list %s"%util_path)
-  print(repr(os.listdir(util_path)))
-  print("gen path %s"%gen_path)
-  print("git path %s"%git_path)
+  print("spec is %r"%spec)
+  # print("list %s"%util_path)
+  # print(repr(os.listdir(util_path)))
+  # print("gen path %s"%gen_path)
+  # print("git path %s"%git_path)
   #rint("list gen path %s"%gen_path)
   #os.system("ls -l %s"%gen_path)
   #print("list base path %s"%src_base_path)
