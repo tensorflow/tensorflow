@@ -9,6 +9,7 @@
     "mocha": "registry:dt/mocha#2.2.5+20160317120654",
     "polymer": "registry:dt/polymer#1.1.6+20160317120654",
     "sinon": "registry:dt/sinon#1.16.0+20160517064723",
+    "three": "registry:dt/three#0.0.0+20160802154944",
     "webcomponents.js": "registry:dt/webcomponents.js#0.6.0+20160317120654"
   }
 }

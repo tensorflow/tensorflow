@@ -41,11 +41,15 @@ module VZ {
     private datasets: Plottable.Dataset[];
     private onDatasetChanged: (dataset: Plottable.Dataset) => void;
     private nanDataset: Plottable.Dataset;
-    private smoothingDecay: number;
+    private smoothingWeight: number;
     private smoothingEnabled: Boolean;
+    private tooltipSortingMethod: string;
+    private tooltipPosition: string;
+
+    private targetSVG: d3.Selection<any>;
 
     constructor(
-        xType: string, colorScale: Plottable.Scales.Color,
+        xType: string, yScaleType: string, colorScale: Plottable.Scales.Color,
         tooltip: d3.Selection<any>) {
       this.seriesNames = [];
       this.name2datasets = {};
@@ -59,10 +63,10 @@ module VZ {
       // need to do a single bind, so we can deregister the callback from
       // old Plottable.Datasets. (Deregistration is done by identity checks.)
       this.onDatasetChanged = this._onDatasetChanged.bind(this);
-      this.buildChart(xType);
+      this.buildChart(xType, yScaleType);
     }
 
-    private buildChart(xType: string) {
+    private buildChart(xType: string, yScaleType: string) {
       if (this.outer) {
         this.outer.destroy();
       }
@@ -71,7 +75,7 @@ module VZ {
       this.xScale = xComponents.scale;
       this.xAxis = xComponents.axis;
       this.xAxis.margin(0).tickLabelPadding(3);
-      this.yScale = new Plottable.Scales.Linear();
+      this.yScale = LineChart.getYScaleFromType(yScaleType);
       this.yAxis = new Plottable.Axes.Numeric(this.yScale, 'left');
       let yFormatter = VZ.ChartHelpers.multiscaleFormatter(
           VZ.ChartHelpers.Y_AXIS_FORMATTER_PRECISION);
@@ -289,7 +293,25 @@ module VZ {
       let dist = (p: VZ.ChartHelpers.Point) =>
           Math.pow(p.x - target.x, 2) + Math.pow(p.y - target.y, 2);
       let closestDist = _.min(points.map(dist));
-      points = _.sortBy(points, (d) => d.dataset.metadata().name);
+
+      let valueSortMethod = this.scalarAccessor;
+      if (this.smoothingEnabled) {
+        valueSortMethod = this.smoothedAccessor;
+      }
+
+      if (this.tooltipSortingMethod === 'ascending') {
+        points =
+            _.sortBy(points, (d) => valueSortMethod(d.datum, -1, d.dataset));
+      } else if (this.tooltipSortingMethod === 'descending') {
+        points =
+            _.sortBy(points, (d) => valueSortMethod(d.datum, -1, d.dataset))
+                .reverse();
+      } else {
+        // The 'default' sorting method maintains the order of names passed to
+        // setVisibleSeries(). However we reverse that order when defining the
+        // datasets. So we must call reverse again to restore the order.
+        points = points.slice(0).reverse();
+      }
 
       let rows = this.tooltip.select('tbody')
                      .html('')
@@ -350,9 +372,15 @@ module VZ {
       let parentRect = node.parentElement.getBoundingClientRect();
       let nodeRect = node.getBoundingClientRect();
       // prevent it from falling off the right side of the screen
-      let left =
-          Math.min(0, documentWidth - parentRect.left - nodeRect.width - 60);
-      let top = parentRect.height + VZ.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET;
+      let left = documentWidth - parentRect.left - nodeRect.width - 60, top = 0;
+
+      if (this.tooltipPosition === 'right') {
+        left = Math.min(parentRect.width, left);
+      } else {  // 'bottom'
+        left = Math.min(0, left);
+        top = parentRect.height + VZ.ChartHelpers.TOOLTIP_Y_PIXEL_OFFSET;
+      }
+
       this.tooltip.style(
           'transform', 'translate(' + left + 'px,' + top + 'px)');
       this.tooltip.style('opacity', 1);
@@ -388,15 +416,29 @@ module VZ {
     }
 
     private resmoothDataset(dataset: Plottable.Dataset) {
+      // When increasing the smoothing window, it smoothes a lot with the first
+      // few points and then starts to gradually smooth slower, so using an
+      // exponential function makes the slider more consistent. 1000^x has a
+      // range of [1, 1000], so subtracting 1 and dividing by 999 results in a
+      // range of [0, 1], which can be used as the percentage of the data, so
+      // that the kernel size can be specified as a percentage instead of a
+      // hardcoded number, what would be bad with multiple series.
+      let factor = (Math.pow(1000, this.smoothingWeight) - 1) / 999;
       let data = dataset.data();
+      let kernelRadius = Math.floor(data.length * factor / 2);
 
-      // EMA with first step initialized to first element.
       data.forEach((d, i) => {
-        if (i === 0) {
+        let actualKernelRadius = Math.min(kernelRadius, i, data.length - i - 1);
+        let start = i - actualKernelRadius;
+        let end = i + actualKernelRadius + 1;
+
+        // Only smooth finite numbers.
+        if (!_.isFinite(d.scalar)) {
           d.smoothed = d.scalar;
         } else {
-          d.smoothed = (1.0 - this.smoothingDecay) * d.scalar +
-              this.smoothingDecay * data[i - 1].smoothed;
+          d.smoothed = d3.mean(
+              data.slice(start, end).filter((d) => _.isFinite(d.scalar)),
+              (d) => d.scalar);
         }
       });
     }
@@ -406,6 +448,16 @@ module VZ {
         this.name2datasets[name] = new Plottable.Dataset([], {name: name});
       }
       return this.name2datasets[name];
+    }
+
+    static getYScaleFromType(yScaleType: string): Plottable.QuantitativeScale<number> {
+      if (yScaleType === 'log') {
+        return new Plottable.Scales.ModifiedLog();
+      } else if (yScaleType === 'linear') {
+        return new Plottable.Scales.Linear();
+      } else {
+        throw new Error('Unrecognized yScale type ' + yScaleType);
+      }
     }
 
     /**
@@ -432,8 +484,8 @@ module VZ {
       this.getDataset(name).data(data);
     }
 
-    public smoothingUpdate(decay: number) {
-      this.smoothingDecay = decay;
+    public smoothingUpdate(weight: number) {
+      this.smoothingWeight = weight;
       this.datasets.forEach((d) => this.resmoothDataset(d));
 
       if (!this.smoothingEnabled) {
@@ -456,9 +508,42 @@ module VZ {
       }
     }
 
-    public renderTo(target: d3.Selection<any>) { this.outer.renderTo(target); }
+    public setTooltipSortingMethod(method: string) {
+      this.tooltipSortingMethod = method;
+    }
 
-    public redraw() { this.outer.redraw(); }
+    public setTooltipPosition(position: string) {
+      this.tooltipPosition = position;
+    }
+
+    public renderTo(targetSVG: d3.Selection<any>) {
+      this.outer.renderTo(targetSVG);
+      this.targetSVG = targetSVG;
+      this.setViewBox();
+    }
+
+    /** There's an issue in Chrome where the svg overflow is a bit
+     * "flickery". There is a border on the gridlines on the extreme edge of the
+     * chart, which behaves inconsistently and causes the screendiffing tests to
+     * flake. We can solve this by creating 1px effective margin for the svg by
+     * setting the viewBox on the containing svg.
+     */
+    private setViewBox() {
+      // There's an issue in Firefox where if we measure with the old viewbox
+      // set, we get horrible results.
+      this.targetSVG.attr('viewBox', '');
+
+      let svg = this.targetSVG.node() as HTMLElement;
+      let brect = svg.getBoundingClientRect();
+      let w = brect.width;
+      let h = brect.height;
+      this.targetSVG.attr('viewBox', `0 0 ${w + 1} ${h + 1}`);
+    }
+
+    public redraw() {
+      this.outer.redraw();
+      this.setViewBox();
+    }
 
     public destroy() { this.outer.destroy(); }
   }
