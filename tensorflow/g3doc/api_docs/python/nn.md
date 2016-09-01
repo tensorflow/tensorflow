@@ -2111,10 +2111,10 @@ Instead of working with `Tensor` objects, most operations work with
 The operation of `raw_rnn`, in pseudo-code, is basically the following:
 
 ```
-emit_ta = TensorArray(dynamic_size=True, dtype=initial_state.dtype)
 time = tf.constant(0, dtype=tf.int32)
 (finished, next_input, initial_state, _, loop_state) = loop_fn(
     time=time, cell_output=None, cell_state=None, loop_state=None)
+emit_ta = TensorArray(dynamic_size=True, dtype=initial_state.dtype)
 state = initial_state
 while not all(finished):
   (output, cell_state) = cell(next_input, state)
@@ -2144,7 +2144,7 @@ sequence_length = tf.placeholder(shape=(batch_size,), dtype=tf.int32)
 inputs_ta = tf.TensorArray(dtype=tf.float32, size=max_time)
 inputs_ta = inputs_ta.unpack(inputs)
 
-cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+cell = tf.nn.rnn_cell.LSTMCell(num_units)
 
 def loop_fn(time, cell_output, cell_state, loop_state):
   emit_output = cell_output  # == None for time == 0
