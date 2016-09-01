@@ -77,8 +77,8 @@ echo "$SWIG_PATH" > tensorflow/tools/swig/swig_path
 # Invoke python_config and set up symlinks to python includes
 (./util/python/python_config.sh --setup "$PYTHON_BIN_PATH";) || exit -1
 
+echo ${PYTHON_BIN_PATH} tensorflow/core/util/gen_git_source.py --configure ${SOURCE_BASE_DIR}
 ${PYTHON_BIN_PATH} tensorflow/core/util/gen_git_source.py --configure ${SOURCE_BASE_DIR}
-
 ## Set up Cuda-related environment settings
 
 while [ "$TF_NEED_CUDA" == "" ]; do

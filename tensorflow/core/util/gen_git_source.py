@@ -51,6 +51,8 @@ def configure(src_base_path):
   print("git path %s"%git_path)
   print("list gen path")
   os.system("ls -l %s"%gen_path)
+  print("list base path %s"%src_base_path)
+  os.system("ls -l %s"%src_base_path)
 
 def generate(args):
   "Generate version_info.h"
