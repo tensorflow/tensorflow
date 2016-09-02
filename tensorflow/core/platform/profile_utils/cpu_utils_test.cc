@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 // This class is designed to get accurate profiles for programs
 
-#include "tensorflow/core/platform/hexagon/profile_utils/cpu_utils.h"
+#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 

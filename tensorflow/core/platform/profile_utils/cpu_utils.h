@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 // This class is designed to get accurate profile for programs.
 
-#ifndef TENSORFLOW_PLATFORM_HEXAGON_PROFILEUTILS_CPU_UTILS_H__
-#define TENSORFLOW_PLATFORM_HEXAGON_PROFILEUTILS_CPU_UTILS_H__
+#ifndef TENSORFLOW_PLATFORM_PROFILEUTILS_CPU_UTILS_H__
+#define TENSORFLOW_PLATFORM_PROFILEUTILS_CPU_UTILS_H__
 
-#include "tensorflow/core/platform/hexagon/profile_utils/i_cpu_utils_helper.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/profile_utils/i_cpu_utils_helper.h"
 #include "tensorflow/core/platform/types.h"
 
 #if defined(ARMV6) || defined(__ARM_ARCH_7A__)
@@ -138,4 +138,4 @@ class CpuUtils {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_HEXAGON_PROFILEUTILS_CPU_UTILS_H__
+#endif  // TENSORFLOW_PLATFORM_PROFILEUTILS_CPU_UTILS_H__
