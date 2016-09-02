@@ -69,6 +69,7 @@ cuda_py_test(
     additional_deps = [
         ":debug_data",
         ":debug_utils",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:session",

@@ -294,7 +294,7 @@ void Generator::AppendFieldValueAppend(const FieldDescriptor& field,
 }
 
 void Generator::AppendFieldAppend(const FieldDescriptor& field) {
-  const string name = field.name();
+  const string& name = field.name();
 
   if (field.is_map()) {
     Print("{").Nest();
@@ -445,7 +445,7 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
   Unnest().Print("}");
   for (int i = 0; i < md.field_count(); ++i) {
     const FieldDescriptor* field = md.field(i);
-    const string field_name = field->name();
+    const string& field_name = field->name();
     string mutable_value_expr;
     string set_value_prefix;
     if (map_append) {
@@ -530,7 +530,7 @@ void Generator::AppendParseMessageFunction(const Descriptor& md) {
 
       for (int enum_i = 0; enum_i < enum_d->value_count(); ++enum_i) {
         const auto* value_d = enum_d->value(enum_i);
-        const string value_name = value_d->name();
+        const string& value_name = value_d->name();
         string condition = StrCat("value == \"", value_name,
                                   "\" || value == \"", value_d->number(), "\"");
         if (value_d->number() == 0) {

@@ -381,7 +381,7 @@ class OpKernelBuilderTest : public ::testing::Test {
     DeviceTypeVector devices;
     TF_EXPECT_OK(SupportedDeviceTypesForNode(DeviceTypes(), def, &devices));
     bool found = false;
-    for (DeviceType dt : devices) {
+    for (const DeviceType& dt : devices) {
       if (dt == device_type) {
         found = true;
       }
@@ -414,7 +414,7 @@ class OpKernelBuilderTest : public ::testing::Test {
       DeviceTypeVector devices;
       if (errors::IsNotFound(status)) {
         TF_EXPECT_OK(SupportedDeviceTypesForNode(DeviceTypes(), def, &devices));
-        for (DeviceType dt : devices) {
+        for (const DeviceType& dt : devices) {
           EXPECT_NE(dt, device_type);
         }
       } else {

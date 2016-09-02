@@ -419,6 +419,7 @@ $(wildcard tensorflow/core/graph/*.cc) \
 $(wildcard tensorflow/core/lib/*/*.cc) \
 $(wildcard tensorflow/core/platform/*.cc) \
 $(wildcard tensorflow/core/platform/*/*.cc) \
+$(wildcard tensorflow/core/platform/*/*/*.cc) \
 $(wildcard tensorflow/core/util/*.cc) \
 $(wildcard tensorflow/core/util/*/*.cc)
 CORE_CC_EXCLUDE_SRCS := \
