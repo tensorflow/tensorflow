@@ -174,13 +174,18 @@ def log_ndtr(x, series_order=3, name=None):
     # * We use one fixed series_order for all of 'x', rather than adaptive.
     # * Our docstring properly reflects that this is an asymptotic series, not a
     #   Tayor series.  We also provided a correct bound on the remainder.
-
+    # * We need to use the max/min in the _log_ndtr_lower arg to avoid nan when
+    #   x=0. This happens even though the branch is unchosen because when x=0
+    #   the gradient of a select involves the calculation 1*dy+0*(-inf)=nan
+    #   regardless of whether dy is finite. Note that the minimum is a NOP if
+    #   the branch is chosen.
     return math_ops.select(
         math_ops.greater(x, upper_segment),
         -_ndtr(-x),  # log(1-x) ~= -x, x << 1
         math_ops.select(math_ops.greater(x, lower_segment),
-                        math_ops.log(_ndtr(x)),
-                        _log_ndtr_lower(x, series_order)))
+                        math_ops.log(_ndtr(math_ops.maximum(x, lower_segment))),
+                        _log_ndtr_lower(math_ops.minimum(x, lower_segment),
+                                        series_order)))
 
 
 def _log_ndtr_lower(x, series_order):

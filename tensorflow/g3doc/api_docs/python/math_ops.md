@@ -2133,7 +2133,7 @@ tf.complex_abs(x) ==> [5.25594902, 6.60492229]
 
 - - -
 
-### `tf.conj(input, name=None)` {#conj}
+### `tf.conj(x, name=None)` {#conj}
 
 Returns the complex conjugate of a complex number.
 
@@ -2146,20 +2146,25 @@ The complex conjugate returned by this operation is of the form \\(a - bj\\).
 
 For example:
 
-```
-# tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
-```
+    # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+    tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
+
+If `x` is real, it is returned unchanged.
 
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`, `complex128`.
+*  <b>`x`</b>: `Tensor` to conjugate.  Must have numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`.
+  A `Tensor` that is the conjugate of `x` (with the same type).
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `x` is not a numeric tensor.
 
 
 - - -
@@ -2211,11 +2216,12 @@ For example:
 tf.real(input) ==> [-2.25, 3.25]
 ```
 
+If `input` is already real, it is returned unchanged.
+
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`,
-       `complex128`.
+*  <b>`input`</b>: A `Tensor`. Must have numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

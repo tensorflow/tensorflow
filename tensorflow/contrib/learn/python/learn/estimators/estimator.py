@@ -37,6 +37,7 @@ from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
+from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn import trainable
@@ -52,7 +53,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
 from tensorflow.python.training import saver
@@ -172,6 +172,76 @@ def _get_replica_device_setter(config):
         cluster=config.cluster_spec)
   else:
     return None
+
+
+def _make_metrics_ops(metrics, features, targets, predictions):
+  """Add metrics to run on features, targets, and predictions dicts or tensors.
+
+  `metrics` contains a specification for how to run metrics. It is a dict
+  mapping friendly names to either `MetricSpec` objects, or directly to a metric
+  function (assuming that predictions and targets are single tensors), or to
+  a `(pred_name, metric)` tuples, which passes `predictions[pred_name]` and
+  targets to `metric` (assuming targets is a single tensor).
+
+  Users are encouraged to use `MetricSpec` objects, which are more flexible and
+  cleaner. They also lead to clearer errors.
+
+  Args:
+    metrics: A dict mapping names to metrics specification, for example
+      `MetricSpec` objects.
+    features: A dict of tensors returned from an input_fn as features/inputs.
+    targets: A single tensor or a dict of tensors returned from an input_fn as
+      labels.
+    predictions: A single tensor or a dict of tensors output from a model as
+      predictions.
+
+  Returns:
+    A dict mapping the friendly given in `metrics` to the result of calling the
+    given metric function.
+
+  Raises:
+    ValueError: If metrics specifications do not work with the type of
+      features/targets/predictions provided. Mostly, a dict is given but no
+      pred_name specified.
+  """
+  metrics = metrics or {}
+  if isinstance(targets, dict) and len(targets) == 1:
+    # Unpack single target into just tensor.
+    targets = targets[list(targets.keys())[0]]
+  result = {}
+  for name, metric in six.iteritems(metrics):
+    if isinstance(metric, metric_spec.MetricSpec):
+      result[name] = metric.create_metric_ops(features, targets, predictions)
+      continue
+
+    # TODO(b/31229024): Remove the rest of this loop
+    logging.warning('Please specify metrics using MetricSpec. Using bare '
+                    'functions or (key, fn) tuples is deprecated and support '
+                    'for it will be removed on Oct 1, 2016.')
+
+    if isinstance(name, tuple):
+      # Multi-head metrics.
+      if not isinstance(predictions, dict):
+        raise ValueError(
+            'Metrics passed provide (name, prediction), '
+            'but predictions are not dict. '
+            'Metrics: %s, Predictions: %s.' % (metrics, predictions))
+      # Here are two options: targets are single Tensor or a dict.
+      if isinstance(targets, dict) and name[1] in targets:
+        # If targets are dict and the prediction name is in it, apply metric.
+        result[name[0]] = metric(predictions[name[1]], targets[name[1]])
+      else:
+        # Otherwise pass the targets to the metric.
+        result[name[0]] = metric(predictions[name[1]], targets)
+    else:
+      # Single head metrics.
+      if isinstance(predictions, dict):
+        raise ValueError(
+            'Metrics passed provide only name, no prediction, '
+            'but predictions are dict. '
+            'Metrics: %s, Targets: %s.' % (metrics, targets))
+      result[name] = metric(predictions, targets)
+  return result
 
 
 class BaseEstimator(
@@ -389,7 +459,7 @@ class BaseEstimator(
       'The signature of the input_fn accepted by export is changing to be '
       'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate. '
       'input_fn and input_feature_key will become required args, '
-      'and use_deprecated_input_fn will default to False &  be removed '
+      'and use_deprecated_input_fn will default to False and be removed '
       'altogether.',
       use_deprecated_input_fn=True,
       input_fn=None,
@@ -470,15 +540,14 @@ class BaseEstimator(
     Args:
       features: `Tensor` or `dict` of `Tensor` objects.
       targets: `Tensor` or `dict` of `Tensor` objects.
-      metrics: Dict of metric ops to run. If None, the default metric functions
-        are used; if {}, no metrics are used. If model has one output (i.e.,
-        returning single predction), keys are `str`, e.g. `'accuracy'` - just a
-        name of the metric that will show up in the logs / summaries.
-        Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
-        - name of the metric and name of `Tensor` in the predictions to run
-        this metric on. Metric ops should support streaming, e.g., returning
+      metrics: Dict of metrics to run. If None, the default metric functions
+        are used; if {}, no metrics are used. Otherwise, `metrics` should map
+        friendly names for the metric to a `MetricSpec` object defining which
+        model outputs to evaluate against which targets with which metric
+        function. Metric ops should support streaming, e.g., returning
         update_op and value tensors. See more details in
-        ../../../../metrics/python/metrics/ops/streaming_metrics.py.
+        `../../../../metrics/python/metrics/ops/streaming_metrics.py` and
+        `../metric_spec.py`.
 
     Returns:
       metrics: `dict` of `Tensor` objects.
@@ -782,8 +851,7 @@ class Estimator(BaseEstimator):
                model_fn=None,
                model_dir=None,
                config=None,
-               params=None,
-               weight_column_name=None):
+               params=None):
     """Constructs an Estimator instance.
 
     Args:
@@ -795,7 +863,7 @@ class Estimator(BaseEstimator):
           * `(features, targets, mode) -> (predictions, loss, train_op)`
           * `(features, targets, mode, params) -> (predictions, loss, train_op)`
 
-      Where
+        Where
 
           * `features` are single `Tensor` or `dict` of `Tensor`s
                  (depending on data passed to `fit`),
@@ -816,9 +884,6 @@ class Estimator(BaseEstimator):
       config: Configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
-      weight_column_name: A string defining feature column name representing
-        weights. It is used to down weight or boost examples during training. It
-        will be multiplied by the loss of the example.
 
     Raises:
       ValueError: parameters of `model_fn` don't match `params`.
@@ -831,17 +896,10 @@ class Estimator(BaseEstimator):
         raise ValueError('Estimator\'s model_fn (%s) has less than 4 '
                          'arguments, but not None params (%s) are passed.' %
                          (model_fn, params))
-      if (params is None and weight_column_name is None and
-          'params' in model_fn_args):
+      if params is None and 'params' in model_fn_args:
         logging.warning('Estimator\'s model_fn (%s) has includes params '
                         'argument, but params are not passed to Estimator.',
                         model_fn)
-    self.weight_column_name = weight_column_name
-    if weight_column_name is not None:
-      if params is None:
-        params = {'weight_column_name': weight_column_name}
-      else:
-        params['weight_column_name'] = weight_column_name
     self._model_fn = model_fn
     self.params = params
 
@@ -854,11 +912,6 @@ class Estimator(BaseEstimator):
       else:
         return self._model_fn(features, targets, mode=mode)
     return self._model_fn(features, targets)
-
-  def _get_weight_tensor(self, features):
-    if not self.weight_column_name:
-      return None
-    return math_ops.to_float(features[self.weight_column_name])
 
   def _get_train_ops(self, features, targets):
     """Method that builds model graph and returns trainer ops.
@@ -887,15 +940,14 @@ class Estimator(BaseEstimator):
     Args:
       features: `Tensor` or `dict` of `Tensor` objects.
       targets: `Tensor` or `dict` of `Tensor` objects.
-      metrics: Dict of metric ops to run. If None, the default metric functions
-        are used; if {}, no metrics are used. If model has one output (i.e.,
-        returning single predction), keys are `str`, e.g. `'accuracy'` - just a
-        name of the metric that will show up in the logs / summaries.
-        Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
-        - name of the metric and name of `Tensor` in the predictions to run
-        this metric on. Metric ops should support streaming, e.g., returning
+      metrics: Dict of metrics to run. If None, the default metric functions
+        are used; if {}, no metrics are used. Otherwise, `metrics` should map
+        friendly names for the metric to a `MetricSpec` object defining which
+        model outputs to evaluate against which targets with which metric
+        function. Metric ops should support streaming, e.g., returning
         update_op and value tensors. See more details in
-        ../../../../metrics/python/metrics/ops/streaming_metrics.py.
+        `../../../../metrics/python/metrics/ops/streaming_metrics.py` and
+        `../metric_spec.py`.
 
     Returns:
       metrics: `dict` of `Tensor` objects.
@@ -905,38 +957,7 @@ class Estimator(BaseEstimator):
     """
     predictions, loss, _ = self._call_model_fn(features, targets, ModeKeys.EVAL)
     result = {'loss': metrics_lib.streaming_mean(loss)}
-
-    weights = self._get_weight_tensor(features)
-    metrics = metrics or {}
-    if isinstance(targets, dict) and len(targets) == 1:
-      # Unpack single target into just tensor.
-      targets = targets[list(targets.keys())[0]]
-    for name, metric in six.iteritems(metrics):
-      if isinstance(name, tuple):
-        # Multi-head metrics.
-        if not isinstance(predictions, dict):
-          raise ValueError(
-              'Metrics passed provide (name, prediction), '
-              'but predictions are not dict. '
-              'Metrics: %s, Predictions: %s.' % (metrics, predictions))
-        # Here are two options: targets are single Tensor or a dict.
-        if isinstance(targets, dict) and name[1] in targets:
-          # If targets are dict and the prediction name is in it, apply metric.
-          result[name[0]] = metrics_lib.run_metric(
-              metric, predictions[name[1]], targets[name[1]], weights)
-        else:
-          # Otherwise pass the targets to the metric.
-          result[name[0]] = metrics_lib.run_metric(
-              metric, predictions[name[1]], targets, weights)
-      else:
-        # Single head metrics.
-        if isinstance(predictions, dict):
-          raise ValueError(
-              'Metrics passed provide only name, no prediction, '
-              'but predictions are dict. '
-              'Metrics: %s, Targets: %s.' % (metrics, targets))
-        result[name] = metrics_lib.run_metric(
-            metric, predictions, targets, weights)
+    result.update(_make_metrics_ops(metrics, features, targets, predictions))
     return result
 
   def _get_predict_ops(self, features):

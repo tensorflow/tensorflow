@@ -54,7 +54,8 @@ def main(unused_argv):
       feature_columns=learn.infer_real_valued_columns_from_input(x_train),
       hidden_units=[10, 20, 10], n_classes=3, model_dir=model_dir)
   classifier1.fit(x=x_train, y=y_train, steps=2000)
-  score1 = metrics.accuracy_score(y_test, classifier1.predict(x_test))
+  predictions1 = list(classifier1.predict(x_test, as_iterable=True))
+  score1 = metrics.accuracy_score(y_test, predictions1)
 
   model_dir = '/tmp/iris_model_val'
   clean_folder(model_dir)
@@ -66,7 +67,8 @@ def main(unused_argv):
       hidden_units=[10, 20, 10], n_classes=3, model_dir=model_dir,
       config=tf.contrib.learn.RunConfig(save_checkpoints_secs=1))
   classifier2.fit(x=x_train, y=y_train, steps=2000, monitors=[val_monitor])
-  score2 = metrics.accuracy_score(y_test, classifier2.predict(x_test))
+  predictions2 = list(classifier2.predict(x_test, as_iterable=True))
+  score2 = metrics.accuracy_score(y_test, predictions2)
 
   # In many applications, the score is improved by using early stopping
   print('score1: ', score1)

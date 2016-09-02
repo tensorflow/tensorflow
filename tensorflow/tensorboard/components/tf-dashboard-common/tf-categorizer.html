@@ -48,8 +48,8 @@ categories are exclusive.
     </div>
     <div id="underscore-categorization">
       <paper-checkbox
-        checked="{{splitOnUnderscore}}"
-      >Split on underscores</paper-checkbox>
+        checked="{{useLegacyCategorizer}}"
+      >Use Legacy Categorizer</paper-checkbox>
     </div>
     <style>
       :host {
@@ -76,14 +76,14 @@ categories are exclusive.
         categoriesAreExclusive: {type: Boolean, value: true},
         fallbackCategorizer: {
           type: String,
-          computed: "chooseFallbackCategorizer(splitOnUnderscore)"
+          computed: "chooseFallbackCategorizer(useLegacyCategorizer)"
         },
-        splitOnUnderscore: {
+        useLegacyCategorizer: {
           type: Boolean,
           notify: true,
-          value: TF.URIStorage.getBooleanInitializer('splitOnUnderscore',
+          value: TF.URIStorage.getBooleanInitializer('useLegacyCategorizer',
               false),
-          observer: '_splitOnUnderscoreObserver'
+          observer: '_useLegacyCategorizerObserver'
         },
         categorizer: {
           type: Object,
@@ -106,15 +106,15 @@ categories are exclusive.
           this._setCategories(categories);
         })
       },
-      chooseFallbackCategorizer: function(splitOnUnderscore) {
-        if (splitOnUnderscore) {
-          return "LegacyUnderscoreCategorizer";
+      chooseFallbackCategorizer: function(useLegacyCategorizer) {
+        if (useLegacyCategorizer) {
+          return "RootNameUnderscoreCategorizer";
         } else {
-          return "TopLevelNamespaceCategorizer";
+          return "DirectoryNameCategorizer";
         }
       },
-      _splitOnUnderscoreObserver: TF.URIStorage.getBooleanObserver(
-          'splitOnUnderscore', false)
+      _useLegacyCategorizerObserver: TF.URIStorage.getBooleanObserver(
+          'useLegacyCategorizer', false)
     });
   </script>
 </dom-module>

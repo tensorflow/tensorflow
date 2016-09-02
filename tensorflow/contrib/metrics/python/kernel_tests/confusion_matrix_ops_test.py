@@ -121,7 +121,7 @@ class ConfusionMatrixTest(tf.test.TestCase):
     predictions = np.asarray([1, 2, 3])
     labels = np.asarray([1, 2])
     self.assertRaisesRegexp(
-        ValueError, "are not compatible",
+        ValueError, "must be equal",
         tf.contrib.metrics.confusion_matrix, predictions, labels)
 
   def testOutputIsInt32(self):

@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/hexagon/profile_utils/cpu_utils.h"
-
+#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -24,11 +23,7 @@ namespace {
 
 const class StaticVariableInitializer {
  public:
-  StaticVariableInitializer() {
-    CpuUtils::GetCpuFrequency();
-    CpuUtils::GetClockPerMicroSec();
-    CpuUtils::GetMicroSecPerClock();
-  }
+  StaticVariableInitializer() { CpuUtils::Initialize(); }
 } STATIC_VARIABLE_INITIALIZER;
 
 }  // anonymous namespace for initializer
@@ -50,6 +45,21 @@ const class StaticVariableInitializer {
   static const double micro_sec_per_clock =
       (1000.0 * 1000.0) / static_cast<double>(GetCpuFrequency());
   return micro_sec_per_clock;
+}
+
+/* static */ void CpuUtils::Initialize() {
+  CpuUtils::GetCpuFrequency();
+  CpuUtils::GetClockPerMicroSec();
+  CpuUtils::GetMicroSecPerClock();
+  GetCpuUtilsHelper().Initialize();
+}
+
+/* static */ void CpuUtils::ResetClockCycle() {
+  GetCpuUtilsHelper().ResetClockCycle();
+}
+
+/* static */ void CpuUtils::EnableClockCycleProfile(const bool enable) {
+  GetCpuUtilsHelper().EnableClockCycleProfile(enable);
 }
 
 /* static */ int64 CpuUtils::GetCpuFrequencyImpl() {
@@ -80,6 +90,12 @@ const class StaticVariableInitializer {
   // Return INVALID_FREQUENCY on unsupported OS
   return INVALID_FREQUENCY;
 #endif
+}
+
+/* static */ ICpuUtilsHelper& CpuUtils::GetCpuUtilsHelper() {
+  // TODO(satok): Change CpuUtilsHelper by cpu architecture
+  static DefaultCpuUtilsHelper cpu_utils_helper;
+  return cpu_utils_helper;
 }
 
 }  // namespace profile_utils
