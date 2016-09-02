@@ -69,10 +69,12 @@ downloadLinkUrlFunction property to an appropriate value.
         <div class="layout horizontal wrap">
           <template is="dom-repeat" items="[[_categoryCards(category, selectedRuns.*, run2tag.*)]]">
               <div class="card">
-                <span class="card-title">[[item.tag]]</span>
-                <template is="dom-if" if="[[repeatForRuns]]">
-                  <span class="card-subtitle">[[item.run]]</span>
-                </template>
+                <div class="card-title-container" style="border-color: [[_titleBorderColor(item.run)]]">
+                  <span class="card-title">[[item.tag]]</span>
+                  <template is="dom-if" if="[[repeatForRuns]]">
+                    <span class="card-subtitle">[[item.run]]</span>
+                  </template>
+                </div>
                 <div class="card-content">
                   <tf-chart-scaffold
                     tag="[[item.tag]]"
@@ -130,6 +132,10 @@ downloadLinkUrlFunction property to an appropriate value.
         overflow: hidden;
       }
 
+      .card-title {
+        display: block;
+      }
+
       .card-subtitle {
         font-size: 12px;
       }
@@ -150,6 +156,11 @@ downloadLinkUrlFunction property to an appropriate value.
         flex-direction: row;
         justify-content: space-between;
         pointer-events: none;
+      }
+
+      .card-title-container {
+        border-left: 4px solid;
+        padding-left: 5px;
       }
 
       .expand-button {
@@ -182,6 +193,11 @@ downloadLinkUrlFunction property to an appropriate value.
          * objects, each with a 'name' property and a 'tags' array of strings.
          */
         categories: Array,
+
+        /**
+         * Input of the colors that are used for the user's runs.
+         */
+        colorScale: Object,
 
         /**
          * The name of the data type that is used by this dashboard. This will
@@ -308,6 +324,9 @@ downloadLinkUrlFunction property to an appropriate value.
         }.bind(this));
 
         return cards;
+      },
+      _titleBorderColor: function(run) {
+        return this.repeatForRuns ? this.colorScale.scale(run) : 'white';
       },
 
       /*

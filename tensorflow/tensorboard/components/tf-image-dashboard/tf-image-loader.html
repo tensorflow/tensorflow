@@ -41,7 +41,6 @@ future for loading older images.
 
       img {
         image-rendering: pixelated;
-        border: 2px solid;
         display: block;
         width: 100%;
         height: auto;
@@ -60,10 +59,6 @@ future for loading older images.
       },
       setSeriesData: function(run, data) {
         var last = _.last(data);
-
-        d3.select(this.$.img)
-          .style('border-color', this.colorScale.scale(run));
-
         this.redraw(last.url);
       },
       redraw: function(newUrl) {
