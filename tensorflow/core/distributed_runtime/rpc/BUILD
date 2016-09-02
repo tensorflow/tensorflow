@@ -144,7 +144,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cuda_library(
     name = "grpc_worker_service",
     srcs = ["grpc_worker_service.cc"],
     hdrs = ["grpc_worker_service.h"],
