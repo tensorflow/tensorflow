@@ -181,11 +181,23 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
   // different numa_nodes.  For now, just one.
   numa_node = 0;
   mutex_lock lock(mu_);
+
+  // CUDAHost alloc the same across all gpus, so just get the executor for the
+  // first valid device. We can't just use 0 because 0 may not be a valid device
+  // in this tensorflow session.
+  gpu::Platform* gpu_platform = GPUMachineManager();
+  gpu::StreamExecutor* se = nullptr;
+  for (int gpu_id = 0;
+          gpu_id < static_cast<int64>(gpu_allocators_.size());
+          ++gpu_id) {
+      if(gpu_allocators_[gpu_id] != nullptr) {
+          se = gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
+          break;
+      }
+  }
+  CHECK_NE(se, nullptr);
+
   while (static_cast<int>(cuda_host_allocators_.size()) <= numa_node) {
-    // CUDAHost alloc the same across all gpus, so just get the
-    // executor for the first device.
-    gpu::Platform* gpu_platform = GPUMachineManager();
-    gpu::StreamExecutor* se = gpu_platform->ExecutorForDevice(0).ValueOrDie();
     CHECK(se);
     Allocator* allocator = nullptr;
     static constexpr bool kCudaHostMemoryUseBFC = true;
