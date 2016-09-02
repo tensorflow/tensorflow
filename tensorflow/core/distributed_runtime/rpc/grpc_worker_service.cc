@@ -323,7 +323,10 @@ class GrpcWorkerService : public AsyncServiceInterface {
       return;
     }
     StepStatsCollector* collector = nullptr;
-    // TODO(mrry): Collect results from a profiler if available.
+    if (call->request.exec_opts().record_timeline()) {
+      collector = new StepStatsCollector(call->response.mutable_step_stats());
+      // TODO(mrry,pbar): GPU tracing for distributed steps.
+    }
     CancellationManager* cm = new CancellationManager;
     call->SetCancelCallback([this, cm, step_id]() {
       cm->StartCancel();
@@ -338,7 +341,8 @@ class GrpcWorkerService : public AsyncServiceInterface {
     }
     env_->graph_mgr->ExecuteAsync(
         call->request.graph_handle(), step_id, call->request.exec_opts(),
-        collector, cm, in, out, [this, call, cm, out, token](Status s) {
+        collector, cm, in, out,
+        [this, call, cm, out, token, collector](Status s) {
           call->ClearCancelCallback();
           {
             mutex_lock l(mu_);
@@ -357,6 +361,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
               val.AsProtoField(proto);
             }
           }
+          delete collector;
           delete out;
           call->SendResponse(ToGrpcStatus(s));
         });
