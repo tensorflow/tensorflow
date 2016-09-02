@@ -1598,22 +1598,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
             ref, var_name=var.op.name, name=name)
 
 
-@ops.RegisterShape("BatchMatMul")
-def _BatchMatMulShape(op):
-  """Shape function for BatchMatMul op."""
-  a_shape = op.inputs[0].get_shape()
-  adj_a = op.get_attr("adj_x")
-  b_shape = op.inputs[1].get_shape()
-  adj_b = op.get_attr("adj_y")
-  if a_shape.dims is None and b_shape.dims is None:
-    return [tensor_shape.unknown_shape()]
-  batch_dims = a_shape[:-2].merge_with(b_shape[:-2])
-  output_rows = a_shape[-1] if adj_a else a_shape[-2]
-  output_cols = b_shape[-2] if adj_b else b_shape[-1]
-  inner_a = a_shape[-2] if adj_a else a_shape[-1]
-  inner_b = b_shape[-1] if adj_b else b_shape[-2]
-  inner_a.assert_is_compatible_with(inner_b)
-  return [batch_dims.concatenate([output_rows, output_cols])]
+ops.RegisterShape("BatchMatMul")(common_shapes.call_cpp_shape_fn)
 
 
 def sigmoid(x, name=None):
@@ -1836,28 +1821,30 @@ ops.RegisterShape("Cumsum")(common_shapes.unchanged_shape)
 ops.RegisterShape("Cumprod")(common_shapes.unchanged_shape)
 
 
-@ops.RegisterShape("Add")
-@ops.RegisterShape("Complex")
-@ops.RegisterShape("Div")
-@ops.RegisterShape("Equal")
-@ops.RegisterShape("Greater")
-@ops.RegisterShape("GreaterEqual")
-@ops.RegisterShape("Igamma")
-@ops.RegisterShape("Igammac")
-@ops.RegisterShape("Zeta")
-@ops.RegisterShape("Polygamma")
-@ops.RegisterShape("Less")
-@ops.RegisterShape("LessEqual")
-@ops.RegisterShape("LogicalAnd")
-@ops.RegisterShape("LogicalOr")
-@ops.RegisterShape("Maximum")
-@ops.RegisterShape("Minimum")
-@ops.RegisterShape("Mod")
-@ops.RegisterShape("Mul")
-@ops.RegisterShape("NotEqual")
-@ops.RegisterShape("Pow")
-@ops.RegisterShape("Sub")
-@ops.RegisterShape("SquaredDifference")
+ops.RegisterShape("Add")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Complex")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Div")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Equal")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Greater")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("GreaterEqual")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Igamma")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Igammac")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Zeta")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Polygamma")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Less")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LessEqual")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LogicalAnd")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LogicalOr")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Maximum")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Minimum")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Mod")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Mul")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("NotEqual")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Pow")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Sub")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SquaredDifference")(common_shapes.call_cpp_shape_fn)
+
+
 def _BroadcastShape(op):
   """Common shape function for binary operators that broadcast their inputs."""
   return [common_shapes.broadcast_shape(
@@ -1880,21 +1867,10 @@ def _BetaincOpShape(op):  # pylint: disable=invalid-name
   return [merged_shape if merged_shape.ndims is not None else a_shape]
 
 
-@ops.RegisterShape("SparseDenseCwiseMul")
-@ops.RegisterShape("SparseDenseCwiseDiv")
-@ops.RegisterShape("SparseDenseCwiseAdd")
-def _SparseDenseBinaryOpShape(op):  # pylint: disable=invalid-name
-  """Common shape for 'sparse <binary cwise op> dense -> sparse' operators."""
-  nnz = op.inputs[1].get_shape()[0]
-  return [tensor_shape.TensorShape(nnz)]
-
-
-@ops.RegisterShape("AddN")
-def _AddNShape(op):
-  merged_shape = tensor_shape.unknown_shape()
-  for input_ in op.inputs:
-    merged_shape = merged_shape.merge_with(input_.get_shape())
-  return [merged_shape]
+ops.RegisterShape("SparseDenseCwiseMul")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseDenseCwiseDiv")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseDenseCwiseAdd")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AddN")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("Select")
@@ -1995,31 +1971,14 @@ def _ReductionShape(op):
   return [tensor_shape.TensorShape(returned_dims)]
 
 
-@ops.RegisterShape("SegmentMax")
-@ops.RegisterShape("SegmentMean")
-@ops.RegisterShape("SegmentMin")
-@ops.RegisterShape("SegmentProd")
-@ops.RegisterShape("SegmentSum")
-def _SegmentReductionShape(op):
-  """Common shape function for segment reduction ops."""
-  data_shape = op.inputs[0].get_shape()
-  segment_ids_shape = op.inputs[1].get_shape()
-  segment_ids_shape.assert_has_rank(1)
-  return [tensor_shape.TensorShape([None]).concatenate(data_shape[1:])]
-
-
-@ops.RegisterShape("SparseSegmentMean")
-@ops.RegisterShape("SparseSegmentSqrtN")
-@ops.RegisterShape("SparseSegmentSum")
-def _SparseSegmentReductionShape(op):
-  """Common shape function for sparse segment reduction ops."""
-  data_shape = op.inputs[0].get_shape()
-  indices_shape = op.inputs[1].get_shape()
-  indices_shape.assert_has_rank(1)
-  segment_ids_shape = op.inputs[2].get_shape()
-  segment_ids_shape.assert_has_rank(1)
-  indices_shape.assert_is_compatible_with(segment_ids_shape)
-  return [tensor_shape.TensorShape([None]).concatenate(data_shape[1:])]
+ops.RegisterShape("SegmentMax")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SegmentMean")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SegmentMin")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SegmentProd")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SegmentSum")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseSegmentMean")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseSegmentSqrtN")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseSegmentSum")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("SparseSegmentMeanGrad")
