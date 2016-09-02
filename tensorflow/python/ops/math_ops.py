@@ -523,16 +523,20 @@ def real(input, name=None):
   tf.real(input) ==> [-2.25, 3.25]
   ```
 
+  If `input` is already real, it is returned unchanged.
+
   Args:
-    input: A `Tensor`. Must be one of the following types: `complex64`,
-         `complex128`.
+    input: A `Tensor`. Must have numeric type.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Real", [input]) as name:
-    return gen_math_ops.real(input, Tout=input.dtype.real_dtype, name=name)
+    real_dtype = input.dtype.real_dtype
+    if input.dtype.base_dtype == real_dtype:
+      return input
+    return gen_math_ops.real(input, Tout=real_dtype, name=name)
 
 
 def imag(input, name=None):
@@ -1739,6 +1743,43 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
     x = ops.convert_to_tensor(x, name="x")
     return gen_math_ops.cumprod(
         x, axis, exclusive=exclusive, reverse=reverse, name=name)
+
+
+def conj(x, name=None):
+  r"""Returns the complex conjugate of a complex number.
+
+  Given a tensor `input` of complex numbers, this operation returns a tensor of
+  complex numbers that are the complex conjugate of each element in `input`. The
+  complex numbers in `input` must be of the form \\(a + bj\\), where *a* is the
+  real part and *b* is the imaginary part.
+
+  The complex conjugate returned by this operation is of the form \\(a - bj\\).
+
+  For example:
+
+      # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+      tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
+
+  If `x` is real, it is returned unchanged.
+
+  Args:
+    x: `Tensor` to conjugate.  Must have numeric type.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` that is the conjugate of `x` (with the same type).
+
+  Raises:
+    TypeError: If `x` is not a numeric tensor.
+  """
+  with ops.name_scope(name, "Conj", [x]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    if x.dtype.is_complex:
+      return gen_math_ops._conj(x, name=name)
+    elif x.dtype.is_floating or x.dtype.is_integer:
+      return x
+    else:
+      raise TypeError("Expected numeric tensor, got dtype %r" % x.dtype)
 
 
 ops.RegisterShape("Abs")(common_shapes.unchanged_shape)

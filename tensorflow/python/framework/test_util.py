@@ -432,7 +432,8 @@ class TensorFlowTestCase(googletest.TestCase):
       # absolute difference atol are added together to compare against
       # the absolute difference between a and b.  Here, we want to
       # print out which elements violate such conditions.
-      cond = np.abs(a - b) > atol + rtol * np.abs(b)
+      cond = np.logical_or(
+          np.abs(a - b) > atol + rtol * np.abs(b), np.isnan(a) != np.isnan(b))
       if a.ndim:
         x = a[np.where(cond)]
         y = b[np.where(cond)]
@@ -444,6 +445,7 @@ class TensorFlowTestCase(googletest.TestCase):
       print("not close rhs = ", y)
       print("not close dif = ", np.abs(x - y))
       print("not close tol = ", atol + rtol * np.abs(y))
+      print("dtype = %s, shape = %s" % (a.dtype, a.shape))
       np.testing.assert_allclose(a, b, rtol=rtol, atol=atol)
 
   def assertAllCloseAccordingToType(self, a, b, rtol=1e-6, atol=1e-6):

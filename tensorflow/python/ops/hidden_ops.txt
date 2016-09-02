@@ -141,6 +141,7 @@ All
 Any
 BatchMatMul
 Complex
+Conj
 Max
 Mean
 Min
