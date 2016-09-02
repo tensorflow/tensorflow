@@ -1,4 +1,4 @@
-FROM nvidia/cuda:7.5-cudnn4-devel
+FROM nvidia/cuda:7.5-cudnn5-devel
 
 MAINTAINER Craig Citro <craigcitro@google.com>
 
@@ -87,7 +87,7 @@ WORKDIR /tensorflow
 
 # Configure the build for our CUDA configuration.
 ENV CUDA_TOOLKIT_PATH /usr/local/cuda
-ENV CUDNN_INSTALL_PATH /usr/local/cuda
+ENV CUDNN_INSTALL_PATH /usr/lib/x86_64-linux-gnu
 ENV TF_NEED_CUDA 1
 
 RUN ./configure && \
