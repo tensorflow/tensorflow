@@ -222,6 +222,7 @@ DirectSession::DirectSession(const SessionOptions& options,
       device_mgr_(device_mgr),
       factory_(factory),
       cancellation_manager_(new CancellationManager()),
+      closed_(false),
       operation_timeout_in_ms_(options_.config.operation_timeout_in_ms()) {
   if (options_.config.session_inter_op_thread_pool_size() > 0) {
     for (int i = 0; i < options_.config.session_inter_op_thread_pool_size();
@@ -807,8 +808,10 @@ Status DirectSession::GetOrCreateExecutors(
                                      run_state_args->is_partial_run);
 
   // Set the handle.
-  run_state_args->handle =
-      strings::StrCat(key, ";", handle_name_counter_.fetch_add(1));
+  {
+    mutex_lock l(mu_);
+    run_state_args->handle = strings::StrCat(key, ";", name_counter_++);
+  }
 
   // See if we already have the executors for this run.
   {
@@ -961,7 +964,10 @@ Status DirectSession::CreateGraphs(
     prune_options.session_options = &options_;
     temp_exec_state_holder.reset(new SimpleGraphExecutionState(
         execution_state_->original_graph_def().library(), prune_options));
-    temp_exec_state_holder->SetStatefulPlacements(stateful_placements_);
+    {
+      mutex_lock l(mu_);
+      temp_exec_state_holder->SetStatefulPlacements(stateful_placements_);
+    }
 
     TF_RETURN_IF_ERROR(temp_exec_state_holder->Extend(
         execution_state_->original_graph_def(), &temp_exec_state_holder));
@@ -971,25 +977,28 @@ Status DirectSession::CreateGraphs(
   }
 
   TF_RETURN_IF_ERROR(execution_state->BuildGraph(options, &client_graph));
-  auto current_stateful_placements = execution_state->GetStatefulPlacements();
-  // Update our current state based on the execution_state's
-  // placements.  If there are any mismatches for a node,
-  // we should fail, as this should never happen.
-  for (auto placement_pair : current_stateful_placements) {
-    const string& node_name = placement_pair.first;
-    const string& placement = placement_pair.second;
-    auto iter = stateful_placements_.find(node_name);
-    if (iter == stateful_placements_.end()) {
-      stateful_placements_.insert(std::make_pair(node_name, placement));
-    } else if (iter->second != placement) {
-      return errors::Internal(
-          "Stateful placement mismatch. "
-          "Current assignment of ",
-          node_name, " to ", iter->second, " does not match ", placement);
+  {
+    auto current_stateful_placements = execution_state->GetStatefulPlacements();
+    mutex_lock l(mu_);
+    // Update our current state based on the execution_state's
+    // placements.  If there are any mismatches for a node,
+    // we should fail, as this should never happen.
+    for (auto placement_pair : current_stateful_placements) {
+      const string& node_name = placement_pair.first;
+      const string& placement = placement_pair.second;
+      auto iter = stateful_placements_.find(node_name);
+      if (iter == stateful_placements_.end()) {
+        stateful_placements_.insert(std::make_pair(node_name, placement));
+      } else if (iter->second != placement) {
+        return errors::Internal(
+            "Stateful placement mismatch. "
+            "Current assignment of ",
+            node_name, " to ", iter->second, " does not match ", placement);
+      }
     }
-  }
 
-  stateful_placements_ = execution_state->GetStatefulPlacements();
+    stateful_placements_ = execution_state->GetStatefulPlacements();
+  }
 
   // Remember the graph in run state if this is a partial run.
   if (run_state_args->is_partial_run) {
@@ -1003,7 +1012,8 @@ Status DirectSession::CreateGraphs(
     return node->assigned_device_name();
   };
   popts.new_name = [this](const string& prefix) {
-    return strings::StrCat(prefix, "/_", edge_name_counter_.fetch_add(1));
+    mutex_lock l(mu_);
+    return strings::StrCat(prefix, "/_", name_counter_++);
   };
   popts.get_incarnation = [](const string& name) {
     // The direct session does not have changing incarnation numbers.
@@ -1079,7 +1089,7 @@ Status DirectSession::CreateGraphs(
 ::tensorflow::Status DirectSession::Close() {
   cancellation_manager_->StartCancel();
   {
-    mutex_lock l(closed_lock_);
+    mutex_lock l(mu_);
     if (closed_) return ::tensorflow::Status::OK();
     closed_ = true;
   }

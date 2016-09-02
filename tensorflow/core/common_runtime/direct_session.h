@@ -211,7 +211,7 @@ class DirectSession : public Session {
   void WaitForNotification(RunState* run_state, int64 timeout_in_ms);
 
   ::tensorflow::Status CheckNotClosed() {
-    mutex_lock l(closed_lock_);
+    mutex_lock l(mu_);
     if (closed_) return errors::Cancelled("Session has been closed.");
     return ::tensorflow::Status::OK();
   }
@@ -253,12 +253,14 @@ class DirectSession : public Session {
   DirectSessionFactory* const factory_;  // not owned
   CancellationManager* cancellation_manager_;
 
+  // Saves and restores device placements for stateful nodes.
+  mutex mu_;
+
   // Map of placed stateful nodes, i.e. nodes for which is_stateful()
   // is true, such as "params" and "queue" nodes.  Once placed these
   // nodes can not be moved to a different device.  Maps node names to
   // device names.
-  std::unordered_map<string, string> stateful_placements_
-      GUARDED_BY(graph_def_lock_);
+  std::unordered_map<string, string> stateful_placements_ GUARDED_BY(mu_);
 
   // Execution_state; used when placing the entire graph.
   std::unique_ptr<SimpleGraphExecutionState> execution_state_
@@ -270,12 +272,10 @@ class DirectSession : public Session {
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
 
   // true if the Session has been Closed.
-  mutex closed_lock_;
-  bool closed_ GUARDED_BY(closed_lock_) = false;
+  bool closed_ GUARDED_BY(mu_);
 
-  // For generating unique names for this session instance.
-  std::atomic<int64> edge_name_counter_;
-  std::atomic<int64> handle_name_counter_;
+  // For generating unique names.
+  int64 name_counter_ GUARDED_BY(mu_) = 0;
 
   // For generating step ids that are unique across all sessions.
   static std::atomic_int_fast64_t step_id_counter_;
