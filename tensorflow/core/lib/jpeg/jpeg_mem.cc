@@ -23,6 +23,7 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "tensorflow/core/lib/jpeg/jpeg_handle.h"
 #include "tensorflow/core/platform/logging.h"
@@ -52,7 +53,7 @@ class FewerArgsForCompiler {
       : datasize_(datasize),
         flags_(flags),
         pnwarn_(nwarn),
-        allocate_output_(allocate_output),
+        allocate_output_(std::move(allocate_output)),
         height_read_(0),
         height_(0),
         stride_(0) {

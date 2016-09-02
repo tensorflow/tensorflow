@@ -92,7 +92,7 @@ class GcsRandomAccessFile : public RandomAccessFile {
       : bucket_(bucket),
         object_(object),
         auth_provider_(auth_provider),
-        http_request_factory_(std::move(http_request_factory)),
+        http_request_factory_(http_request_factory),
         read_ahead_bytes_(read_ahead_bytes) {}
 
   /// The implementation of reads with a read-ahead buffer.
@@ -189,7 +189,7 @@ class GcsWritableFile : public WritableFile {
       : bucket_(bucket),
         object_(object),
         auth_provider_(auth_provider),
-        http_request_factory_(std::move(http_request_factory)) {
+        http_request_factory_(http_request_factory) {
     if (GetTmpFilename(&tmp_content_filename_).ok()) {
       outfile_.open(tmp_content_filename_,
                     std::ofstream::binary | std::ofstream::app);
@@ -208,7 +208,7 @@ class GcsWritableFile : public WritableFile {
       : bucket_(bucket),
         object_(object),
         auth_provider_(auth_provider),
-        http_request_factory_(std::move(http_request_factory)) {
+        http_request_factory_(http_request_factory) {
     tmp_content_filename_ = tmp_content_filename;
     outfile_.open(tmp_content_filename_,
                   std::ofstream::binary | std::ofstream::app);

@@ -129,7 +129,7 @@ TEST_F(GpuStreamUtilTest, StreamOverrides) {
   // Nodes should be assigned to streams by op type.
   for (const auto& it : node_to_stream_id) {
     Node* n = g.FindNodeId(it.first);
-    const string op = n->type_string();
+    const string& op = n->type_string();
     const int stream = it.second;
     if (op == "Const") {
       EXPECT_EQ(stream, 90);

@@ -104,7 +104,9 @@ _baseslice = slice
 # Aliases for some automatically-generated names.
 listdiff = gen_array_ops.list_diff
 
+
 def shape(input, name=None):
+  # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
 
   This operation returns a 1-D integer tensor representing the shape of `input`.
@@ -127,6 +129,7 @@ def shape(input, name=None):
 
 
 def shape_internal(input, name=None, optimize=True):
+  # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
 
   Args:
@@ -138,7 +141,7 @@ def shape_internal(input, name=None, optimize=True):
     A `Tensor` of type `int32`.
   """
   with ops.name_scope(name, "Shape", [input]) as name:
-    if isinstance(input, ops.SparseTensor):
+    if isinstance(input, (ops.SparseTensor, ops.SparseTensorValue)):
       return gen_math_ops.cast(input.shape, dtypes.int32)
     else:
       input_tensor = ops.convert_to_tensor(input)
@@ -149,6 +152,7 @@ def shape_internal(input, name=None, optimize=True):
 
 
 def size(input, name=None):
+  # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
 
   This operation returns an integer representing the number of elements in
@@ -172,6 +176,7 @@ def size(input, name=None):
 
 
 def size_internal(input, name=None, optimize=True):
+  # pylint: disable=redefined-builtin,protected-access
   """Returns the size of a tensor.
 
   Args:
@@ -183,7 +188,7 @@ def size_internal(input, name=None, optimize=True):
     A `Tensor` of type `int32`.
   """
   with ops.name_scope(name, "Size", [input]) as name:
-    if isinstance(input, ops.SparseTensor):
+    if isinstance(input, (ops.SparseTensor, ops.SparseTensorValue)):
       return gen_math_ops._prod(gen_math_ops.cast(input.shape, dtypes.int32), 0,
                                 name=name)
     else:
@@ -195,6 +200,7 @@ def size_internal(input, name=None, optimize=True):
 
 
 def rank(input, name=None):
+  # pylint: disable=redefined-builtin
   """Returns the rank of a tensor.
 
   This operation returns an integer representing the rank of `input`.
@@ -222,6 +228,7 @@ def rank(input, name=None):
 
 
 def rank_internal(input, name=None, optimize=True):
+  # pylint: disable=redefined-builtin
   """Returns the rank of a tensor.
 
   Args:
@@ -233,7 +240,7 @@ def rank_internal(input, name=None, optimize=True):
     A `Tensor` of type `int32`.
   """
   with ops.name_scope(name, "Rank", [input]) as name:
-    if isinstance(input, ops.SparseTensor):
+    if isinstance(input, (ops.SparseTensor, ops.SparseTensorValue)):
       return gen_array_ops.size(input.shape, name=name)
     else:
       input_tensor = ops.convert_to_tensor(input)
@@ -341,6 +348,7 @@ def _SliceHelper(tensor, slice_spec, var=None):
 
 # pylint: disable=undefined-variable,protected-access
 def slice(input_, begin, size, name=None):
+  # pylint: disable=redefined-builtin
   """Extracts a slice from a tensor.
 
   This operation extracts a slice of size `size` from a tensor `input` starting
@@ -784,23 +792,9 @@ def concat(concat_dim, values, name="concat"):
                                name=name)
 
 
-@ops.RegisterShape("Pack")
-def _PackShape(op):
-  input_shape = op.inputs[0].get_shape()
-  if input_shape.ndims is None:
-    return [tensor_shape.unknown_shape()]
-
-  for inp in op.inputs[1:]:
-    input_shape = input_shape.merge_with(inp.get_shape())
-
-  input_shape = input_shape.as_list()
-  axis = op.get_attr("axis")
-  if axis < 0: axis += len(input_shape) + 1
-  input_shape.insert(axis, len(op.inputs))
-  return [tensor_shape.TensorShape(input_shape)]
-
-
+ops.RegisterShape("Pack")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Unpack")(common_shapes.call_cpp_shape_fn)
+
 
 @ops.RegisterShape("Concat")
 def _ConcatShape(op):
@@ -1603,6 +1597,7 @@ def _StridedSliceGradShape(op):
 
 ops.RegisterShape("StridedSliceAssign")(common_shapes.unchanged_shape)
 
+
 @ops.RegisterShape("StridedSlice")
 def _StridedSliceShape(op):
   """Shape function for array_ops.slice."""
@@ -1699,7 +1694,14 @@ def _StridedSliceShape(op):
   return [tensor_shape.TensorShape(final_shape)]
 
 
-ops.RegisterShape("Gather")(common_shapes.call_cpp_shape_fn)
+@ops.RegisterShape("Gather")
+def _GatherShape(op):
+  """Shape function for array_ops.gather."""
+  params_shape = op.inputs[0].get_shape()
+  indices_shape = op.inputs[1].get_shape()
+  return [indices_shape.concatenate(params_shape[1:])]
+
+
 ops.RegisterShape("GatherNd")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Unique")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("UniqueWithCounts")(common_shapes.call_cpp_shape_fn)
@@ -2057,10 +2059,10 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   Raises:
     TypeError: If either `hypothesis` or `truth` are not a `SparseTensor`.
   """
-  if not isinstance(hypothesis, ops.SparseTensor):
-    raise TypeError("Hypothesis must be a SparseTensor")
-  if not isinstance(truth, ops.SparseTensor):
-    raise TypeError("Truth must be a SparseTensor")
+  if not isinstance(hypothesis, (ops.SparseTensor, ops.SparseTensorValue)):
+    raise TypeError("Hypothesis must be a SparseTensor.")
+  if not isinstance(truth, (ops.SparseTensor, ops.SparseTensorValue)):
+    raise TypeError("Truth must be a SparseTensor.")
 
   return gen_array_ops._edit_distance(hypothesis.indices,
                                       hypothesis.values,

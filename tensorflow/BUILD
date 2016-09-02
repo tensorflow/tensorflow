@@ -30,6 +30,15 @@ config_setting(
 )
 
 config_setting(
+    name = "android_arm64",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "android_cpu": "arm64-v8a",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
     visibility = ["//visibility:public"],
@@ -95,6 +104,7 @@ filegroup(
         "//tensorflow/contrib/ffmpeg/default:all_files",
         "//tensorflow/contrib/framework:all_files",
         "//tensorflow/contrib/graph_editor:all_files",
+        "//tensorflow/contrib/grid_rnn:all_files",
         "//tensorflow/contrib/layers:all_files",
         "//tensorflow/contrib/layers/kernels:all_files",
         "//tensorflow/contrib/learn:all_files",

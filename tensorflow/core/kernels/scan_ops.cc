@@ -58,7 +58,7 @@ public:
         errors::InvalidArgument("ScanOp: Expected scan axis in the range [", 0,
                                 ", ", input.dims(), "), but got ", axis));
 
-    TensorShape output_shape = input.shape();
+    const TensorShape& output_shape = input.shape();
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output));
 

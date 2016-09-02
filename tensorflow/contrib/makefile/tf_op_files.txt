@@ -76,6 +76,7 @@ tensorflow/core/kernels/example_parsing_ops.cc
 tensorflow/core/kernels/dynamic_stitch_op.cc
 tensorflow/core/kernels/dynamic_partition_op.cc
 tensorflow/core/kernels/dense_update_ops.cc
+tensorflow/core/kernels/deep_conv2d.cc
 tensorflow/core/kernels/cwise_ops_common.cc
 tensorflow/core/kernels/cwise_op_tanh.cc
 tensorflow/core/kernels/cwise_op_sub.cc
@@ -100,6 +101,7 @@ tensorflow/core/kernels/cwise_op_div.cc
 tensorflow/core/kernels/cwise_op_add.cc
 tensorflow/core/kernels/ctc_decoder_ops.cc
 tensorflow/core/kernels/conv_ops_using_gemm.cc
+tensorflow/core/kernels/conv_ops_fused.cc
 tensorflow/core/kernels/conv_ops.cc
 tensorflow/core/kernels/conv_grad_ops.cc
 tensorflow/core/kernels/control_flow_ops.cc

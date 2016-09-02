@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_linalg_ops import *
@@ -179,11 +180,9 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
     output: Matrix of shape `[N, K]` containing the matrix that solves
       `matrix * output = rhs` in the least-squares sense.
   """
-  return gen_linalg_ops.matrix_solve_ls(matrix,
-                                        rhs,
-                                        l2_regularizer,
-                                        fast=fast,
-                                        name=name)
+  # pylint: disable=protected-access
+  return gen_linalg_ops._matrix_solve_ls(
+      matrix, rhs, l2_regularizer, fast=fast, name=name)
 
 
 def batch_matrix_solve_ls(matrix,
@@ -241,11 +240,9 @@ def batch_matrix_solve_ls(matrix,
       `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least
       squares sense.
   """
-  return gen_linalg_ops.batch_matrix_solve_ls(matrix,
-                                              rhs,
-                                              l2_regularizer,
-                                              fast=fast,
-                                              name=name)
+  # pylint: disable=protected-access
+  return gen_linalg_ops._batch_matrix_solve_ls(
+      matrix, rhs, l2_regularizer, fast=fast, name=name)
 
 
 def self_adjoint_eig(matrix, name=None):
@@ -263,7 +260,8 @@ def self_adjoint_eig(matrix, name=None):
     v: Eigenvectors. Shape is `[N, N]`. The columns contain the eigenvectors of
       `matrix`.
   """
-  e, v = gen_linalg_ops.self_adjoint_eig_v2(matrix, compute_v=True, name=name)
+  # pylint: disable=protected-access
+  e, v = gen_linalg_ops._self_adjoint_eig_v2(matrix, compute_v=True, name=name)
   return e, v
 
 
@@ -284,7 +282,8 @@ def batch_self_adjoint_eig(tensor, name=None):
     matrices
       contain eigenvectors of the corresponding matrices in `tensor`
   """
-  e, v = gen_linalg_ops.batch_self_adjoint_eig_v2(
+  # pylint: disable=protected-access
+  e, v = gen_linalg_ops._batch_self_adjoint_eig_v2(
       tensor, compute_v=True, name=name)
   return e, v
 
@@ -299,7 +298,8 @@ def self_adjoint_eigvals(matrix, name=None):
   Returns:
     e: Eigenvalues of `matrix`. Shape is `[N]`.
   """
-  e, _ = gen_linalg_ops.self_adjoint_eig_v2(matrix, compute_v=False, name=name)
+  # pylint: disable=protected-access
+  e, _ = gen_linalg_ops._self_adjoint_eig_v2(matrix, compute_v=False, name=name)
   return e
 
 
@@ -314,7 +314,8 @@ def batch_self_adjoint_eigvals(tensor, name=None):
     e: Eigenvalues. Shape is `[..., N]`. The vector `e[..., :]` contains the `N`
       eigenvalues of `tensor[..., :, :]`.
   """
-  e, _ = gen_linalg_ops.batch_self_adjoint_eig_v2(
+  # pylint: disable=protected-access
+  e, _ = gen_linalg_ops._batch_self_adjoint_eig_v2(
       tensor, compute_v=False, name=name)
   return e
 
@@ -353,13 +354,13 @@ def svd(matrix, compute_uv=True, full_matrices=False, name=None):
       shape is `[N, P]`. If `full_matrices` is `True` then shape is
       `[N, N]`. Not returned if `compute_uv` is `False`.
   """
-  s, u, v = gen_linalg_ops.svd(matrix,
-                               compute_uv=compute_uv,
-                               full_matrices=full_matrices)
+  # pylint: disable=protected-access
+  s, u, v = gen_linalg_ops._svd(
+      matrix, compute_uv=compute_uv, full_matrices=full_matrices)
   if compute_uv:
-    return s, u, v
+    return math_ops.real(s), u, v
   else:
-    return s
+    return math_ops.real(s)
 
 
 def batch_svd(tensor, compute_uv=True, full_matrices=False, name=None):
@@ -398,12 +399,13 @@ def batch_svd(tensor, compute_uv=True, full_matrices=False, name=None):
       shape is `[..., N, P]`. If `full_matrices` is `True` then shape is
       `[..., N, N]`. Not returned if `compute_uv` is `False`.
   """
-  s, u, v = gen_linalg_ops.batch_svd(
+  # pylint: disable=protected-access
+  s, u, v = gen_linalg_ops._batch_svd(
       tensor, compute_uv=compute_uv, full_matrices=full_matrices)
   if compute_uv:
-    return s, u, v
+    return math_ops.real(s), u, v
   else:
-    return s
+    return math_ops.real(s)
 
 
 # pylint: enable=invalid-name

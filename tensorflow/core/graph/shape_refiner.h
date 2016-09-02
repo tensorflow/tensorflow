@@ -46,6 +46,14 @@ class ShapeRefiner {
   //  - The shape inference function returns an error.
   Status AddNode(const Node* node);
 
+  // Sets 'node's 'output_port' output to have shape 'shape'.
+  //
+  // Returns an error if 'node' was not previously added to this
+  // object, if 'output_port' is invalid, or if 'shape' is
+  // not compatible with the existing shape of the output.
+  Status SetShape(const Node* node, int output_port,
+                  shape_inference::ShapeHandle shape);
+
   // Returns the InferenceContext for 'node', if present.
   shape_inference::InferenceContext* GetContext(const Node* node) const {
     auto it = node_to_context_.find(node);

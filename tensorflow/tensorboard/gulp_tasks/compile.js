@@ -49,8 +49,8 @@ module.exports = function() {
     // Collect all the typescript files across the components.
     entries = entries.concat(glob(
         'components/' + component.name + '/**/*.ts',
-        // Do not include tests.
-        {ignore: 'components/' + component.name + '/**/*_test.ts'}));
+        // Do not include tests or IDE-purposed files.
+        {ignore: ['**/*_test.ts', '**/deps.d.ts']}));
     // Collect the unique external deps across all components using es6 modules.
     component.deps.forEach(function(dep) { deps['components/' + dep] = true; });
   });

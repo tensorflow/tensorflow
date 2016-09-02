@@ -27,6 +27,8 @@ the network is used only for inference. These include:
 
  - Folding batch normalization ops into the pre-calculated weights.
 
+ - Fusing common operations into unified versions.
+
 This script takes a frozen GraphDef file (where the weight variables have been
 converted into constants by the freeze_graph script) and outputs a new GraphDef
 with the optimizations applied.
@@ -37,8 +39,8 @@ bazel build tensorflow/python/tools:optimize_for_inference && \
 bazel-bin/tensorflow/python/tools/optimize_for_inference \
 --input_graph=some_graph_def.pb \
 --output_graph=/tmp/optimized_graph.pb \
---input_node_names=Mul
---output_node_names=softmax
+--input_names=Mul \
+--output_names=softmax
 
 """
 
@@ -74,13 +76,42 @@ def optimize_for_inference(input_graph_def, input_node_names,
   Returns:
     An optimized version of the input graph.
   """
-  stripped_graph_def = strip_unused_lib.strip_unused(input_graph_def,
-                                                     input_node_names,
-                                                     output_node_names,
-                                                     placeholder_type_enum)
-  detrained_graph_def = graph_util.remove_training_nodes(stripped_graph_def)
-  folded_graph_def = fold_batch_norms(detrained_graph_def)
-  return folded_graph_def
+  ensure_graph_is_valid(input_graph_def)
+  optimized_graph_def = input_graph_def
+  optimized_graph_def = strip_unused_lib.strip_unused(optimized_graph_def,
+                                                      input_node_names,
+                                                      output_node_names,
+                                                      placeholder_type_enum)
+  optimized_graph_def = graph_util.remove_training_nodes(optimized_graph_def)
+  optimized_graph_def = fold_batch_norms(optimized_graph_def)
+  optimized_graph_def = fuse_resize_and_conv(optimized_graph_def)
+  ensure_graph_is_valid(optimized_graph_def)
+  return optimized_graph_def
+
+
+def ensure_graph_is_valid(graph_def):
+  """Makes sure that the graph is internally consistent.
+
+  Checks basic properties of the graph def and raises an exception if there are
+  input references to missing nodes, duplicated names, or other logic errors.
+
+  Args:
+    graph_def: Definition of a graph to be checked.
+
+  Raises:
+    ValueError: If the graph is incorrectly constructed.
+  """
+  node_map = {}
+  for node in graph_def.node:
+    if node.name not in node_map.keys():
+      node_map[node.name] = node
+    else:
+      raise ValueError("Duplicate node names detected for ", node.name)
+  for node in graph_def.node:
+    for input_name in node.input:
+      input_node_name = node_name_from_input(input_name)
+      if input_node_name not in node_map.keys():
+        raise ValueError("Input for ", node.name, " not found: ", input_name)
 
 
 def node_name_from_input(node_name):
@@ -161,7 +192,7 @@ def fold_batch_norms(input_graph_def):
     if node.name not in input_node_map.keys():
       input_node_map[node.name] = node
     else:
-      raise ValueError("Duplicate node names detected.")
+      raise ValueError("Duplicate node names detected for ", node.name)
 
   nodes_to_skip = {}
   new_ops = []
@@ -292,6 +323,97 @@ def fold_batch_norms(input_graph_def):
     bias_add_op.attr["T"].CopyFrom(conv_op.attr["T"])
     bias_add_op.input.extend([new_conv_op.name, offset_op.name])
     new_ops.extend([scaled_weights_op, new_conv_op, offset_op, bias_add_op])
+
+  result_graph_def = tf.GraphDef()
+  for node in input_graph_def.node:
+    if node.name in nodes_to_skip:
+      continue
+    new_node = tf.NodeDef()
+    new_node.CopyFrom(node)
+    result_graph_def.node.extend([new_node])
+
+  result_graph_def.node.extend(new_ops)
+  return result_graph_def
+
+
+def fuse_resize_and_conv(input_graph_def):
+  """Merges preceding resize and mirror pad ops into a specialized convolution.
+
+  There's a common pattern of enlarging the input to a convolution using a
+  resize operation, and also using MirrorPad to extend the boundaries to that
+  zero edge pixels don't bleed inwards when convolving. This routine looks for
+  that pattern of operations, and fuses them together into a Conv2DWithResizeOp.
+
+  Args:
+    input_graph_def: A GraphDef containing a model.
+
+  Returns:
+    Modified graph with resize and pad ops merged.
+
+  Raises:
+    ValueError: If the graph is badly formed with duplicate node names.
+  """
+
+  input_node_map = {}
+  for node in input_graph_def.node:
+    if node.name not in input_node_map.keys():
+      input_node_map[node.name] = node
+    else:
+      raise ValueError("Duplicate node names detected for ", node.name)
+
+  nodes_to_skip = {}
+  new_ops = []
+  for node in input_graph_def.node:
+
+    if node.op != "Conv2D":
+      continue
+    conv_op = node
+
+    input_op = node_from_map(input_node_map, conv_op.input[0])
+    if input_op.op == "MirrorPad":
+      mirror_pad_op = input_op
+      resize_op = node_from_map(input_node_map, mirror_pad_op.input[0])
+    else:
+      mirror_pad_op = None
+      resize_op = input_op
+
+    if resize_op.op != "ResizeBilinear":
+      continue
+
+    nodes_to_skip[conv_op.name] = True
+    if mirror_pad_op:
+      nodes_to_skip[mirror_pad_op.name] = True
+    nodes_to_skip[resize_op.name] = True
+
+    fused_conv_op = tf.NodeDef()
+    fused_conv_op.op = "FusedResizeAndPadConv2D"
+    fused_conv_op.name = conv_op.name
+    if mirror_pad_op:
+      mirror_paddings_name = mirror_pad_op.input[1]
+      mirror_paddings_mode = mirror_pad_op.attr["mode"]
+    else:
+      # If there was no MirrorPad op, then create settings that make the padding
+      # stage of the fused operation a no-op.
+      paddings_op = tf.NodeDef()
+      paddings_op.op = "Const"
+      paddings_op.name = conv_op.name + "_dummy_paddings"
+      paddings_op.attr["dtype"].CopyFrom(tf.AttrValue(
+          type=tf.int32.as_datatype_enum))
+      paddings_op.attr["value"].CopyFrom(tf.AttrValue(
+          tensor=tensor_util.make_tensor_proto(
+              [0, 0, 0, 0, 0, 0, 0, 0], tf.int32, [4, 2])))
+      new_ops.extend([paddings_op])
+      mirror_paddings_name = paddings_op.name
+      mirror_paddings_mode = tf.AttrValue(s=b"REFLECT")
+    fused_conv_op.input.extend([resize_op.input[0], resize_op.input[1],
+                                mirror_paddings_name, conv_op.input[1]])
+    fused_conv_op.attr["T"].CopyFrom(conv_op.attr["T"])
+    fused_conv_op.attr["resize_align_corners"].CopyFrom(
+        resize_op.attr["align_corners"])
+    fused_conv_op.attr["mode"].CopyFrom(mirror_paddings_mode)
+    fused_conv_op.attr["strides"].CopyFrom(conv_op.attr["strides"])
+    fused_conv_op.attr["padding"].CopyFrom(conv_op.attr["padding"])
+    new_ops.extend([fused_conv_op])
 
   result_graph_def = tf.GraphDef()
   for node in input_graph_def.node:

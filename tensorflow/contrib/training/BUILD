@@ -11,6 +11,7 @@ py_library(
     name = "training_py",
     srcs = [
         "__init__.py",
+        "python/training/bucket_ops.py",
         "python/training/sampling_ops.py",
         "python/training/sequence_queueing_state_saver.py",
     ],
@@ -60,6 +61,18 @@ py_test(
     srcs = ["python/training/sampling_ops_threading_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
+    deps = [
+        ":training_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "bucket_ops_test",
+    size = "medium",
+    srcs = ["python/training/bucket_ops_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":training_py",
         "//tensorflow:tensorflow_py",

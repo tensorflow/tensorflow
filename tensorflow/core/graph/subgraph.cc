@@ -235,7 +235,15 @@ Status RewriteGraphForExecution(
         "Must specify at least one target to fetch or execute.");
   }
 
-  std::unordered_set<string> endpoints(fed_outputs.begin(), fed_outputs.end());
+  std::unordered_set<string> endpoints;
+  for (const string& endpoint_name : fed_outputs) {
+    auto result = endpoints.insert(endpoint_name);
+    if (!result.second) {
+      return errors::InvalidArgument("Endpoint \"", endpoint_name,
+                                     "\" fed more than once.");
+    }
+  }
+
   for (const auto& fetch : fetch_outputs) {
     if (endpoints.count(fetch) > 0) {
       return errors::InvalidArgument(fetch, " is both fed and fetched.");

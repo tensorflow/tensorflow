@@ -379,9 +379,6 @@ def _TileGrad(op, grad):
   return [input_grad, None]
 
 
-ops.NoGradient("TileGrad")
-
-
 ops.NoGradient("BroadcastGradientArgs")
 
 

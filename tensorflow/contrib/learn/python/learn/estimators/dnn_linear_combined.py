@@ -253,9 +253,11 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     logits = array_ops.reshape(
         array_ops.tile(centered_bias[0], [batch_size]),
         [batch_size, self._target_column.num_label_columns])
-    training_loss = self._target_column.training_loss(logits, targets, features)
-    # Learn central bias by an optimizer. 0.1 is a convervative lr for a single
-    # variable.
+    with ops.name_scope(None, "centered_bias", (targets, features)):
+      training_loss = self._target_column.training_loss(
+          logits, targets, features)
+    # Learn central bias by an optimizer. 0.1 is a convervative lr for a
+    # single variable.
     return training.AdagradOptimizer(0.1).minimize(
         training_loss, var_list=centered_bias)
 
