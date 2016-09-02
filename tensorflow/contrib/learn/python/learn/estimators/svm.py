@@ -25,13 +25,12 @@ from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.layers.python.layers import target_column
 from tensorflow.contrib.learn.python.learn import evaluable
+from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import linear
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 
 
 def _as_iterable(preds, output):
@@ -45,21 +44,6 @@ def _get_metric_args(metric):
   elif hasattr(metric, "func") and hasattr(metric, "keywords"):
     return [arg for arg in inspect.getargspec(metric.func).args
             if arg not in metric.keywords.keys()]
-
-
-def _wrap_metric(metric):
-  """Wraps metrics for mismatched prediction/target types."""
-  def wrapped(preds, targets):
-    targets = math_ops.cast(targets, preds.dtype)
-    return metric(preds, targets)
-
-  def wrapped_weights(preds, targets, weights):
-    targets = math_ops.cast(targets, preds.dtype)
-    if weights is not None:
-      weights = array_ops.reshape(math_ops.to_float(weights), shape=(-1,))
-    return metric(preds, targets, weights)
-
-  return wrapped_weights if "weights" in _get_metric_args(metric) else wrapped
 
 
 class SVM(trainable.Trainable, evaluable.Evaluable):
@@ -163,15 +147,24 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
                batch_size=None, steps=None, metrics=None, name=None):
     """See evaluable.Evaluable."""
     if not metrics:
-      metrics = {
-          ("accuracy", linear._CLASSES): metrics_lib.streaming_accuracy,
-      }
+      metrics = {}
+      metrics["accuracy"] = metric_spec.MetricSpec(
+          metric_fn=metrics_lib.streaming_accuracy,
+          prediction_key=linear._CLASSES)
     additional_metrics = (
         target_column.get_default_binary_metrics_for_eval([0.5]))
-    additional_metrics = {(name, linear._LOGISTIC): metric
-                          for name, metric in additional_metrics.items()}
+    additional_metrics = {
+        name: metric_spec.MetricSpec(metric_fn=metric,
+                                     prediction_key=linear._LOGISTIC)
+        for name, metric in additional_metrics.items()
+    }
     metrics.update(additional_metrics)
+
+    # TODO(b/31229024): Remove this loop
     for metric_name, metric in metrics.items():
+      if isinstance(metric, metric_spec.MetricSpec):
+        continue
+
       if isinstance(metric_name, tuple):
         if len(metric_name) != 2:
           raise ValueError("Ignoring metric %s. It returned a tuple with len  "
@@ -181,7 +174,7 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
         if metric_name[1] not in valid_keys:
           raise ValueError("Ignoring metric %s. The 2nd element of its name "
                            "should be in %s" % (metric_name, valid_keys))
-      metrics[metric_name] = _wrap_metric(metric)
+      metrics[metric_name] = linear._wrap_metric(metric)
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
                                     feed_fn=feed_fn, batch_size=batch_size,
                                     steps=steps, metrics=metrics, name=name)

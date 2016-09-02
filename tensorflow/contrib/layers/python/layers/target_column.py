@@ -408,8 +408,10 @@ def _run_metrics(predictions, targets, metrics, weights):
   result = {}
   targets = math_ops.cast(targets, predictions.dtype)
   for name, metric in six.iteritems(metrics or {}):
-    result[name] = metrics_lib.run_metric(
-        metric, predictions, targets, weights=weights)
+    if weights is not None:
+      result[name] = metric(predictions, targets, weights=weights)
+    else:
+      result[name] = metric(predictions, targets)
 
   return result
 
