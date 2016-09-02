@@ -238,11 +238,15 @@ class ColocationGraph {
       // members_[old_root].supported_device_types.
       MergeSupportedDevices(&members_[new_root].supported_device_types,
                             members_[old_root].supported_device_types);
-      if (members_[x_root].supported_device_types.size() == 0) {
+      if (members_[new_root].supported_device_types.size() == 0) {
+        string debug_info;
+        AddDebugInfo(x_root, &debug_info);
+        AddDebugInfo(y_root, &debug_info);
         return errors::InvalidArgument(
             "Cannot colocate nodes '", x.name(), "' and '", y.name(),
             "' because no device type supports both of those nodes and the "
-            "other nodes colocated with them");
+            "other nodes colocated with them.",
+            debug_info);
       }
     }
     return Status::OK();
