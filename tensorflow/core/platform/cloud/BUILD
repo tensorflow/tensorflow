@@ -104,7 +104,7 @@ cc_library(
         ":http_request",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@boringssl_git//:crypto",
+        "@boringssl//:crypto",
         "@jsoncpp_git//:jsoncpp",
     ],
 )
