@@ -108,6 +108,7 @@ export class DataSet implements scatter.DataSet {
   tSNEShouldStop = true;
   dim = [0, 0];
   private tsne: TSNE;
+  private hasTSNERun: boolean = false;
 
   /**
    * Creates a new Dataset by copying out data from an array of datapoints.
@@ -238,10 +239,22 @@ export class DataSet implements scatter.DataSet {
         return newV;
       });
       for (let j = 0; j < NUM_PCA_COMPONENTS; j++) {
-        let label = 'pca-' + j;
-        this.projections.add(label);
-        this.points.forEach(
-            (d, i) => { d.projections[label] = pcaVectors[i][j]; });
+        let labels = ['pca-' + j];
+        // If t-SNE hasn't run, initialize those projections with PCA
+        // projections so we see something when going to the t-SNE view.
+        if (!this.hasTSNERun && j < 3) {
+          labels.push('tsne-' + j);
+        }
+
+        for (let i = 0; i < labels.length; i++) {
+          this.projections.add(labels[i]);
+        }
+
+        this.points.forEach((d, i) => {
+          for (let k = 0; k < labels.length; k++) {
+            d.projections[labels[k]] = pcaVectors[i][j];
+          }
+        });
       }
     });
   }
@@ -250,6 +263,7 @@ export class DataSet implements scatter.DataSet {
   projectTSNE(
       perplexity: number, learningRate: number, tsneDim: number,
       stepCallback: (iter: number) => void) {
+    this.hasTSNERun = true;
     let k = Math.floor(3 * perplexity);
     let opt = {epsilon: learningRate, perplexity: perplexity, dim: tsneDim};
     this.tsne = new TSNE(opt);
