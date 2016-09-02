@@ -33,8 +33,7 @@ from tensorflow.python.ops import math_ops
 # Gradient ops that do not have gradients themselves.
 ops.NoGradient("SigmoidGrad")
 ops.NoGradient("TanhGrad")
-ops.NoGradient("InvGrad")
-ops.NoGradient("RsqrtGrad")
+
 
 def _safe_shape_div(x, y):
   """Divides `x / y` assuming `x, y >= 0`, treating `0 / 0 = 0`."""
