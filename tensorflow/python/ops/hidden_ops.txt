@@ -121,7 +121,14 @@ TFRecordReader
 WholeFileReader
 
 # linalg_ops
-# (None)
+BatchMatrixSolveLs
+BatchSelfAdjointEig
+BatchSelfAdjointEigV2
+BatchSvd
+MatrixSolveLs
+SelfAdjointEig
+SelfAdjointEigV2
+Svd
 
 # logging_ops
 Assert
