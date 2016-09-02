@@ -195,6 +195,12 @@ independent distributions of this kind the instance represents.
 
 Cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
+
 ##### Args:
 
 
@@ -344,6 +350,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -422,6 +438,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Distribution.log_survival_function(value, name='log_survival_function')` {#Distribution.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -617,6 +662,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.Distribution.survival_function(value, name='survival_function')` {#Distribution.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Distribution.validate_args` {#Distribution.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -776,6 +847,12 @@ independent distributions of this kind the instance represents.
 
 Cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
+
 ##### Args:
 
 
@@ -925,6 +1002,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -1003,6 +1090,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Binomial.log_survival_function(value, name='log_survival_function')` {#Binomial.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -1219,6 +1335,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.Binomial.survival_function(value, name='survival_function')` {#Binomial.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Binomial.validate_args` {#Binomial.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -1317,6 +1459,12 @@ independent distributions of this kind the instance represents.
 #### `tf.contrib.distributions.Bernoulli.cdf(value, name='cdf')` {#Bernoulli.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -1467,6 +1615,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -1545,6 +1703,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Bernoulli.log_survival_function(value, name='log_survival_function')` {#Bernoulli.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -1761,6 +1948,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.Bernoulli.survival_function(value, name='survival_function')` {#Bernoulli.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Bernoulli.validate_args` {#Bernoulli.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -1943,6 +2156,12 @@ independent distributions of this kind the instance represents.
 
 Cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
+
 ##### Args:
 
 
@@ -2092,6 +2311,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -2170,6 +2399,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Beta.log_survival_function(value, name='log_survival_function')` {#Beta.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -2365,6 +2623,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.Beta.survival_function(value, name='survival_function')` {#Beta.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Beta.validate_args` {#Beta.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -2454,6 +2738,12 @@ independent distributions of this kind the instance represents.
 #### `tf.contrib.distributions.Categorical.cdf(value, name='cdf')` {#Categorical.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -2604,6 +2894,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -2682,6 +2982,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Categorical.log_survival_function(value, name='log_survival_function')` {#Categorical.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -2891,6 +3220,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.Categorical.survival_function(value, name='survival_function')` {#Categorical.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Categorical.validate_args` {#Categorical.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -2997,6 +3352,12 @@ Inverse scale parameter.
 #### `tf.contrib.distributions.Chi2.cdf(value, name='cdf')` {#Chi2.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -3154,6 +3515,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -3232,6 +3603,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Chi2.log_survival_function(value, name='log_survival_function')` {#Chi2.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -3427,6 +3827,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.Chi2.survival_function(value, name='survival_function')` {#Chi2.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Chi2.validate_args` {#Chi2.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -3533,6 +3959,12 @@ Inverse scale parameter.
 #### `tf.contrib.distributions.Exponential.cdf(value, name='cdf')` {#Exponential.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -3690,6 +4122,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -3768,6 +4210,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Exponential.log_survival_function(value, name='log_survival_function')` {#Exponential.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -3963,6 +4434,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.Exponential.survival_function(value, name='survival_function')` {#Exponential.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Exponential.validate_args` {#Exponential.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -4096,6 +4593,12 @@ Inverse scale parameter.
 #### `tf.contrib.distributions.Gamma.cdf(value, name='cdf')` {#Gamma.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -4246,6 +4749,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -4324,6 +4837,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Gamma.log_survival_function(value, name='log_survival_function')` {#Gamma.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -4519,6 +5061,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.Gamma.survival_function(value, name='survival_function')` {#Gamma.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Gamma.validate_args` {#Gamma.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -4648,6 +5216,12 @@ Scale parameter.
 #### `tf.contrib.distributions.InverseGamma.cdf(value, name='cdf')` {#InverseGamma.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -4798,6 +5372,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -4876,6 +5460,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.InverseGamma.log_survival_function(value, name='log_survival_function')` {#InverseGamma.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -5071,6 +5684,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.InverseGamma.survival_function(value, name='survival_function')` {#InverseGamma.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.InverseGamma.validate_args` {#InverseGamma.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -5175,6 +5814,12 @@ independent distributions of this kind the instance represents.
 #### `tf.contrib.distributions.Laplace.cdf(value, name='cdf')` {#Laplace.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -5332,6 +5977,16 @@ Distribution parameter for the location.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -5410,6 +6065,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Laplace.log_survival_function(value, name='log_survival_function')` {#Laplace.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -5612,6 +6296,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.Laplace.survival_function(value, name='survival_function')` {#Laplace.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Laplace.validate_args` {#Laplace.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -5746,6 +6456,12 @@ independent distributions of this kind the instance represents.
 #### `tf.contrib.distributions.Normal.cdf(value, name='cdf')` {#Normal.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -5896,6 +6612,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -5974,6 +6700,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Normal.log_survival_function(value, name='log_survival_function')` {#Normal.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -6183,6 +6938,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.Normal.survival_function(value, name='survival_function')` {#Normal.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Normal.validate_args` {#Normal.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -6278,6 +7059,12 @@ independent distributions of this kind the instance represents.
 #### `tf.contrib.distributions.Poisson.cdf(value, name='cdf')` {#Poisson.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -6435,6 +7222,16 @@ Rate parameter.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -6513,6 +7310,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Poisson.log_survival_function(value, name='log_survival_function')` {#Poisson.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -6708,6 +7534,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.Poisson.survival_function(value, name='survival_function')` {#Poisson.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Poisson.validate_args` {#Poisson.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -6851,6 +7703,12 @@ independent distributions of this kind the instance represents.
 #### `tf.contrib.distributions.StudentT.cdf(value, name='cdf')` {#StudentT.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -7008,6 +7866,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -7086,6 +7954,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.StudentT.log_survival_function(value, name='log_survival_function')` {#StudentT.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -7295,6 +8192,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.StudentT.survival_function(value, name='survival_function')` {#StudentT.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.StudentT.validate_args` {#StudentT.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -7421,6 +8344,12 @@ independent distributions of this kind the instance represents.
 #### `tf.contrib.distributions.Uniform.cdf(value, name='cdf')` {#Uniform.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -7571,6 +8500,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -7649,6 +8588,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Uniform.log_survival_function(value, name='log_survival_function')` {#Uniform.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -7851,6 +8819,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.Uniform.survival_function(value, name='survival_function')` {#Uniform.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Uniform.validate_args` {#Uniform.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -7996,6 +8990,12 @@ independent distributions of this kind the instance represents.
 #### `tf.contrib.distributions.MultivariateNormalDiag.cdf(value, name='cdf')` {#MultivariateNormalDiag.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -8146,6 +9146,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -8231,6 +9241,35 @@ Log probability density/mass function (depending on `is_continuous`).
 #### `tf.contrib.distributions.MultivariateNormalDiag.log_sigma_det(name='log_sigma_det')` {#MultivariateNormalDiag.log_sigma_det}
 
 Log of determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiag.log_survival_function(value, name='log_survival_function')` {#MultivariateNormalDiag.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -8447,6 +9486,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalDiag.survival_function(value, name='survival_function')` {#MultivariateNormalDiag.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalDiag.validate_args` {#MultivariateNormalDiag.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -8579,6 +9644,12 @@ independent distributions of this kind the instance represents.
 #### `tf.contrib.distributions.MultivariateNormalFull.cdf(value, name='cdf')` {#MultivariateNormalFull.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -8729,6 +9800,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -8814,6 +9895,35 @@ Log probability density/mass function (depending on `is_continuous`).
 #### `tf.contrib.distributions.MultivariateNormalFull.log_sigma_det(name='log_sigma_det')` {#MultivariateNormalFull.log_sigma_det}
 
 Log of determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalFull.log_survival_function(value, name='log_survival_function')` {#MultivariateNormalFull.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -9030,6 +10140,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.MultivariateNormalFull.survival_function(value, name='survival_function')` {#MultivariateNormalFull.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.MultivariateNormalFull.validate_args` {#MultivariateNormalFull.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -9171,6 +10307,12 @@ independent distributions of this kind the instance represents.
 #### `tf.contrib.distributions.MultivariateNormalCholesky.cdf(value, name='cdf')` {#MultivariateNormalCholesky.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -9321,6 +10463,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -9406,6 +10558,35 @@ Log probability density/mass function (depending on `is_continuous`).
 #### `tf.contrib.distributions.MultivariateNormalCholesky.log_sigma_det(name='log_sigma_det')` {#MultivariateNormalCholesky.log_sigma_det}
 
 Log of determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.log_survival_function(value, name='log_survival_function')` {#MultivariateNormalCholesky.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -9618,6 +10799,32 @@ Determinant of covariance matrix.
 #### `tf.contrib.distributions.MultivariateNormalCholesky.std(name='std')` {#MultivariateNormalCholesky.std}
 
 Standard deviation.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalCholesky.survival_function(value, name='survival_function')` {#MultivariateNormalCholesky.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -9854,6 +11061,12 @@ independent distributions of this kind the instance represents.
 
 Cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
+
 ##### Args:
 
 
@@ -10003,6 +11216,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -10081,6 +11304,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Dirichlet.log_survival_function(value, name='log_survival_function')` {#Dirichlet.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -10276,6 +11528,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.Dirichlet.survival_function(value, name='survival_function')` {#Dirichlet.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Dirichlet.validate_args` {#Dirichlet.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -10461,6 +11739,12 @@ independent distributions of this kind the instance represents.
 
 Cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
+
 ##### Args:
 
 
@@ -10610,6 +11894,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -10688,6 +11982,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.DirichletMultinomial.log_survival_function(value, name='log_survival_function')` {#DirichletMultinomial.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -10890,6 +12213,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.DirichletMultinomial.survival_function(value, name='survival_function')` {#DirichletMultinomial.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.DirichletMultinomial.validate_args` {#DirichletMultinomial.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -11057,6 +12406,12 @@ independent distributions of this kind the instance represents.
 
 Cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
+
 ##### Args:
 
 
@@ -11206,6 +12561,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -11284,6 +12649,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Multinomial.log_survival_function(value, name='log_survival_function')` {#Multinomial.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -11500,6 +12894,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.Multinomial.survival_function(value, name='survival_function')` {#Multinomial.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.Multinomial.validate_args` {#Multinomial.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -11650,6 +13070,12 @@ independent distributions of this kind the instance represents.
 #### `tf.contrib.distributions.WishartCholesky.cdf(value, name='cdf')` {#WishartCholesky.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -11821,6 +13247,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -11906,6 +13342,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartCholesky.log_survival_function(value, name='log_survival_function')` {#WishartCholesky.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -12122,6 +13587,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.WishartCholesky.survival_function(value, name='survival_function')` {#WishartCholesky.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.WishartCholesky.validate_args` {#WishartCholesky.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -12268,6 +13759,12 @@ independent distributions of this kind the instance represents.
 #### `tf.contrib.distributions.WishartFull.cdf(value, name='cdf')` {#WishartFull.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -12439,6 +13936,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -12524,6 +14031,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.WishartFull.log_survival_function(value, name='log_survival_function')` {#WishartFull.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -12740,6 +14276,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.WishartFull.survival_function(value, name='survival_function')` {#WishartFull.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.WishartFull.validate_args` {#WishartFull.validate_args}
 
 Python boolean indicated possibly expensive checks are enabled.
@@ -12875,6 +14437,12 @@ independent distributions of this kind the instance represents.
 #### `tf.contrib.distributions.TransformedDistribution.cdf(value, name='cdf')` {#TransformedDistribution.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -13032,6 +14600,16 @@ Inverse function of transform, y => x.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -13117,6 +14695,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.log_survival_function(value, name='log_survival_function')` {#TransformedDistribution.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -13312,6 +14919,32 @@ Standard deviation.
 
 - - -
 
+#### `tf.contrib.distributions.TransformedDistribution.survival_function(value, name='survival_function')` {#TransformedDistribution.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
+
+
+- - -
+
 #### `tf.contrib.distributions.TransformedDistribution.transform` {#TransformedDistribution.transform}
 
 Function transforming x => y.
@@ -13478,6 +15111,12 @@ independent distributions of this kind the instance represents.
 #### `tf.contrib.distributions.Mixture.cdf(value, name='cdf')` {#Mixture.cdf}
 
 Cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
 
 ##### Args:
 
@@ -13681,6 +15320,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -13759,6 +15408,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Mixture.log_survival_function(value, name='log_survival_function')` {#Mixture.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -13957,6 +15635,32 @@ Generate `n` samples.
 #### `tf.contrib.distributions.Mixture.std(name='std')` {#Mixture.std}
 
 Standard deviation.
+
+
+- - -
+
+#### `tf.contrib.distributions.Mixture.survival_function(value, name='survival_function')` {#Mixture.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -14364,6 +16068,12 @@ independent distributions of this kind the instance represents.
 
 Cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
+
 ##### Args:
 
 
@@ -14513,6 +16223,16 @@ Same meaning as `event_shape`. May be only partially defined.
 
 Log cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
+
 ##### Args:
 
 
@@ -14598,6 +16318,35 @@ Log probability density/mass function (depending on `is_continuous`).
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_sigma_det(name='log_sigma_det')` {#MultivariateNormalDiagPlusVDVT.log_sigma_det}
 
 Log of determinant of covariance matrix.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_survival_function(value, name='log_survival_function')` {#MultivariateNormalDiagPlusVDVT.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -14810,6 +16559,32 @@ Determinant of covariance matrix.
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.std(name='std')` {#MultivariateNormalDiagPlusVDVT.std}
 
 Standard deviation.
+
+
+- - -
+
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.survival_function(value, name='survival_function')` {#MultivariateNormalDiagPlusVDVT.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
