@@ -58,12 +58,12 @@ cc_library(
     copts = tf_copts(),
     deps = [
         "//tensorflow/core:protos_cc",
+        "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
         "@gif_archive//:gif",
         "@highwayhash//:sip_hash",
         "@jpeg_archive//:jpeg",
         "@png_archive//:png",
-        "@re2//:re2",
     ],
 )
 

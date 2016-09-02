@@ -173,7 +173,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@boringssl_git//:crypto",
+        "@boringssl//:crypto",
     ],
 )
 
