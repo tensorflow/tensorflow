@@ -116,6 +116,7 @@ weighted average over the individual prediction errors:
 @@mean_squared_error
 @@sigmoid_cross_entropy
 @@softmax_cross_entropy
+@@sparse_softmax_cross_entropy
 
 The following are deprecated in favor of `mean_pairwise_squared_error` and
 `mean_squared_error`.
