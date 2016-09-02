@@ -54,9 +54,6 @@ function getNonTensorBoardComponents() {
       .map(function(dir) { return '/' + dir + '/'; });
 }
 
-var linkRegex = /<link rel="[^"]*" (type="[^"]*" )?href="[^"]*">\n/g;
-var scriptRegex = /<script src="[^"]*"><\/script>\n/g;
-
 module.exports = function(overwrite) {
   return function() {
     var suffix = overwrite ? '' : '.OPENSOURCE';
@@ -68,10 +65,6 @@ module.exports = function(overwrite) {
           stripComments: true,
           excludes: getNonTensorBoardComponents(),
         }))
-        // TODO(danmane): Remove this worrisome brittleness when vulcanize
-        // fixes https://github.com/Polymer/vulcanize/issues/273
-        .pipe(replace(linkRegex, ''))
-        .pipe(replace(scriptRegex, ''))
         .pipe(header(HEADER_STR))
         .pipe(rename('tf-tensorboard.html' + suffix))
         .pipe(gulp.dest('./dist'));

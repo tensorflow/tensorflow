@@ -90,6 +90,12 @@ def if_android_arm(a):
       "//conditions:default": [],
   })
 
+def if_android_arm64(a):
+  return select({
+      "//tensorflow:android_arm64": a,
+      "//conditions:default": [],
+  })
+
 def if_not_android(a):
   return select({
       "//tensorflow:android": [],

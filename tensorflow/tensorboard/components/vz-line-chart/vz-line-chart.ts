@@ -450,7 +450,8 @@ module VZ {
       return this.name2datasets[name];
     }
 
-    static getYScaleFromType(yScaleType: string): Plottable.QuantitativeScale<number> {
+    static getYScaleFromType(yScaleType: string):
+        Plottable.QuantitativeScale<number> {
       if (yScaleType === 'log') {
         return new Plottable.Scales.ModifiedLog();
       } else if (yScaleType === 'linear') {

@@ -23,17 +23,17 @@ namespace profile_utils {
 
 static constexpr bool DBG = false;
 
-TEST(CpuUtils, CheckGetCurrentCycleClock) {
+TEST(CpuUtils, CheckGetCurrentClockCycle) {
   static constexpr int LOOP_COUNT = 10;
-  const uint64 start_clock_count = CpuUtils::GetCurrentCycleClock();
+  const uint64 start_clock_count = CpuUtils::GetCurrentClockCycle();
   CHECK_GT(start_clock_count, 0);
   uint64 prev_clock_count = start_clock_count;
   for (int i = 0; i < LOOP_COUNT; ++i) {
-    const uint64 clock_count = CpuUtils::GetCurrentCycleClock();
+    const uint64 clock_count = CpuUtils::GetCurrentClockCycle();
     CHECK_GE(clock_count, prev_clock_count);
     prev_clock_count = clock_count;
   }
-  const uint64 end_clock_count = CpuUtils::GetCurrentCycleClock();
+  const uint64 end_clock_count = CpuUtils::GetCurrentClockCycle();
   if (DBG) {
     LOG(INFO) << "start clock = " << start_clock_count;
     LOG(INFO) << "end clock = " << end_clock_count;

@@ -272,7 +272,7 @@ class MaxPoolingGradOp : public OpKernel {
     OP_REQUIRES(context, out_backprop.dims() == 4,
                 errors::InvalidArgument("out_backprop must be 4-dimensional"));
 
-    TensorShape output_shape = tensor_in.shape();
+    const TensorShape& output_shape = tensor_in.shape();
 
     Tensor tensor_out_dup;
     OP_REQUIRES_OK(context,

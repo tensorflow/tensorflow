@@ -51,6 +51,9 @@ def strip_unused(input_graph_def, input_node_names, output_node_names,
       placeholder_node.name = node.name
       placeholder_node.attr["dtype"].CopyFrom(tf.AttrValue(
           type=placeholder_type_enum))
+      if "_output_shapes" in node.attr:
+        placeholder_node.attr["_output_shapes"].CopyFrom(
+            node.attr["_output_shapes"])
       inputs_replaced_graph_def.node.extend([placeholder_node])
     else:
       inputs_replaced_graph_def.node.extend([copy.deepcopy(node)])

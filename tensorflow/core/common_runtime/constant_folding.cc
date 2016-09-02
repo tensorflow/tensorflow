@@ -279,7 +279,7 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
       edges_to_remove.push_back(out_edge);
     }
   }
-  string node_name = n->name();
+  const string& node_name = n->name();
   Node* constant_node;
   auto builder = NodeDefBuilder(strings::StrCat(graph->NewName(node_name),
                                                 "__cf__", UniqueConstantId()),

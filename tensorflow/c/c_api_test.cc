@@ -87,7 +87,7 @@ TEST(CApi, AllocateTensor) {
 static void TestEncodeDecode(int line,
                              const std::vector<tensorflow::string>& data) {
   const tensorflow::int64 n = data.size();
-  for (std::vector<tensorflow::int64> dims :
+  for (const std::vector<tensorflow::int64>& dims :
        std::vector<std::vector<tensorflow::int64>>{
            {n}, {1, n}, {n, 1}, {n / 2, 2}}) {
     // Create C++ Tensor
