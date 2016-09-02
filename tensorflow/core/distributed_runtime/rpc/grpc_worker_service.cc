@@ -23,7 +23,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
+#endif  // GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
@@ -428,6 +430,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
             {
               // Non-DMA cases.
               if (src_dev->tensorflow_gpu_device_info() && (!on_host)) {
+#if GOOGLE_CUDA
                 RecvTensorResponse* tmp = new RecvTensorResponse;
                 tmp->set_is_dead(is_dead);
                 CHECK(send_dev_context)
@@ -455,6 +458,10 @@ class GrpcWorkerService : public AsyncServiceInterface {
                 GPUUtil::SetProtoFromGPU(val, src_dev, send_dev_context,
                                          tmp->mutable_tensor(), is_dead,
                                          response_ready);
+#else
+                call->SendResponse(ToGrpcStatus(
+                    errors::Internal("No GPU device in process")));
+#endif  // GOOGLE_CUDA
               } else {
                 grpc::EncodeTensorToByteBuffer(is_dead, val, &call->response);
                 call->SendResponse(ToGrpcStatus(Status::OK()));

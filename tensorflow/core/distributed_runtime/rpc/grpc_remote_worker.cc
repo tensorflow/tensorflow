@@ -132,8 +132,8 @@ class GrpcRemoteWorker : public WorkerInterface {
             // the RecvTensor response can not have been sent before
             // the RecvTensor request, and must have been sent before
             // it was received.
-            send_start_usec =
-                std::max(start_usec, response->metadata().send_start_micros());
+            send_start_usec = std::max(start_usec, static_cast<int64>(
+                response->metadata().send_start_micros()));
             send_start_usec = std::min(send_start_usec, end_usec - 1);
           }
           const string& key = request->rendezvous_key();
