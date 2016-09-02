@@ -21,10 +21,11 @@ INCLUDE(${SWIG_USE_FILE})
 include(FindPythonInterp)
 if(NOT PYTHON_INCLUDE_DIR)
   set(PYTHON_NOT_FOUND false)
-  exec_program("${PYTHON_INCLUDE_DIR}"
+  exec_program("${PYTHON_EXECUTABLE}"
     ARGS "-c 'import distutils.sysconfig; print distutils.sysconfig.get_python_inc()'"
     OUTPUT_VARIABLE PYTHON_INCLUDE_DIR
     RETURN_VALUE PYTHON_NOT_FOUND)
+  message(${PYTHON_INCLUDE_DIR})
   if(${PYTHON_NOT_FOUND})
     message(FATAL_ERROR
             "Cannot get Python include directory. Is distutils installed?")
@@ -380,7 +381,6 @@ add_dependencies(_pywrap_tensorflow
     tf_core_distributed_runtime
     tf_core_framework
     python_deps
-    tf_python_create_destination_dir
     tf_python_copy_scripts_to_destination
     tf_python_ops
     tf_python_touchup_modules
