@@ -56,13 +56,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/kernels/conv_ops.h"
+#include "tensorflow/core/kernels/gemm_functors.h"
+#include "tensorflow/core/kernels/image_resizer_state.h"
+#include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
-
-#if defined(__APPLE__)
-#include <Accelerate/Accelerate.h>
-#define USE_ACCELERATE_GEMM
-#endif  // __APPLE__
 
 namespace tensorflow {
 
@@ -189,87 +188,6 @@ class ReferenceConvFunctor {
   }
 };
 
-// A readable but slow implementation of matrix multiplication, useful for
-// debugging and understanding the algorithm. Use instead of FastGemmFunctor in
-// the Im2ColConvFunctor template definition inside the op registration to
-// enable. Assumes row-major ordering of the values in memory.
-template <class T1, class T2, class T3>
-class ReferenceGemmFunctor {
- public:
-  void operator()(size_t m, size_t n, size_t k, const T1* a, size_t lda,
-                  const T2* b, size_t ldb, T3* c, size_t ldc) {
-    const size_t a_i_stride = lda;
-    const size_t a_l_stride = 1;
-    const size_t b_j_stride = 1;
-    const size_t b_l_stride = ldb;
-    const size_t c_i_stride = ldc;
-    const size_t c_j_stride = 1;
-    size_t i, j, l;
-    for (j = 0; j < n; j++) {
-      for (i = 0; i < m; i++) {
-        T3 total(0);
-        for (l = 0; l < k; l++) {
-          const size_t a_index = ((i * a_i_stride) + (l * a_l_stride));
-          const T1 a_value = a[a_index];
-          const size_t b_index = ((j * b_j_stride) + (l * b_l_stride));
-          const T2 b_value = b[b_index];
-          total += (a_value * b_value);
-        }
-        const size_t c_index = ((i * c_i_stride) + (j * c_j_stride));
-        c[c_index] = total;
-      }
-    }
-  }
-};
-
-// Uses the optimized Eigen library to implement the matrix multiplication
-// required by the Im2ColConvFunctor class. We supply the two input and one
-// output types so that the accumulator can potentially be higher-precision than
-// the inputs, even though we don't currently take advantage of this.
-template <class T1, class T2, class T3>
-class FastGemmFunctor {
- public:
-  // Convenience wrappers for the Eigen matrix types we'll be using.
-  typedef Eigen::Map<
-      const Eigen::Matrix<T1, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
-      ConstMatrixT1;
-  typedef Eigen::Map<
-      const Eigen::Matrix<T2, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
-      ConstMatrixT2;
-  typedef Eigen::Map<
-      Eigen::Matrix<T3, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
-      MatrixT3;
-  void operator()(size_t m, size_t n, size_t k, const T1* a, size_t lda,
-                  const T2* b, size_t ldb, T3* c, size_t ldc) {
-    ConstMatrixT1 a_matrix(a, m, k);
-    ConstMatrixT2 b_matrix(b, k, n);
-    MatrixT3 c_matrix(c, m, n);
-    c_matrix.noalias() = a_matrix * b_matrix;
-  }
-};
-
-// If we have Apple's Accelerate framework, use their implementation of GEMM to
-// get a performance boost for float.
-#if defined(USE_ACCELERATE_GEMM)
-template <>
-class FastGemmFunctor<float, float, float> {
- public:
-  void operator()(size_t m, size_t n, size_t k, const float* a, size_t lda,
-                  const float* b, size_t ldb, float* c, size_t ldc) {
-    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, m, n, k, 1.0f, a,
-                lda, b, ldb, 0.0f, c, ldc);
-  }
-};
-#endif  // USE_ACCELERATE_GEMM
-
-// Used to keep track of persistent memory buffers used within the op.
-template <class T, size_t size>
-struct Im2ColBufferResource : public ResourceBase {
-  mutex mu;
-  T data[size];
-  string DebugString() { return "Im2ColBufferResource"; }
-};
-
 // Implements convolution as a two stage process, first packing the patches of
 // the input image into columns (im2col) and then running GEMM to produce the
 // final result.
@@ -344,7 +262,6 @@ class Im2ColConvFunctor {
                 errors::InvalidArgument("Im2Col patch too large for buffer"));
     const size_t patches_per_chunk =
         max_chunk_size / (filter_value_count * sizeof(T1));
-
     // Because memory allocation is very expensive on mobile platforms, try to
     // allocate a persistent buffer that will be kept around between calls. We
     // use TensorFlow's resource management to ensure that the memory will be
