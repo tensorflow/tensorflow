@@ -84,4 +84,9 @@ limitations under the License.
 #define TF_CHECKPOINT_VERSION_MIN_CONSUMER 0
 #define TF_CHECKPOINT_VERSION 1
 
+/// Compiler version (declared elsewhere to be __VERSION__
+extern const char* tf_compiler_version;
+/// The git commit hash (or "internal")
+extern const char* tf_git_version;
+
 #endif  // TENSORFLOW_CORE_PUBLIC_VERSION_H_

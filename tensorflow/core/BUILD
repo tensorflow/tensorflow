@@ -938,6 +938,24 @@ cc_library(
     ],
 )
 
+genrule(
+    name = "version_info_gen",
+    srcs = [
+        "util/git/spec.json",
+        "util/git/head",
+        "util/git/branch_ref",
+    ],
+    outs = ["util/version_info.cc"],
+    cmd = "$(location util/gen_git_source.py) --generate $(SRCS) \"$@\"",
+    local = 1,
+    tools = ["util/gen_git_source.py"],
+)
+
+cc_library(
+    name = "version_lib",
+    srcs = ["util/version_info.cc"],
+)
+
 tf_cuda_library(
     name = "framework_internal",
     srcs = glob(
@@ -980,6 +998,7 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
+        ":version_lib",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
     ],

@@ -2,6 +2,15 @@
 
 DO_NOT_SUBMIT_WARNING="Unofficial setting. DO NOT SUBMIT!!!"
 
+# Find out the absolute path to where ./configure resides
+echo pushd `dirname $0`
+pushd `dirname $0` #> /dev/null
+SOURCE_BASE_DIR=`pwd -P`
+echo got pwd = `pwd`
+echo "got pwd -P = ${SOURCE_BASE_DIR}"
+echo popd #> /dev/null
+popd #> /dev/null
+
 ## Set up python-related environment settings
 while true; do
   fromuser=""
@@ -68,6 +77,8 @@ echo "$SWIG_PATH" > tensorflow/tools/swig/swig_path
 # Invoke python_config and set up symlinks to python includes
 (./util/python/python_config.sh --setup "$PYTHON_BIN_PATH";) || exit -1
 
+echo ${PYTHON_BIN_PATH} tensorflow/core/util/gen_git_source.py --configure ${SOURCE_BASE_DIR}
+${PYTHON_BIN_PATH} tensorflow/core/util/gen_git_source.py --configure ${SOURCE_BASE_DIR}
 ## Set up Cuda-related environment settings
 
 while [ "$TF_NEED_CUDA" == "" ]; do
