@@ -418,7 +418,6 @@ class GrpcWorkerService : public AsyncServiceInterface {
           call->ClearCancelCallback();
           Status s = status;
           if (s.ok()) {
-#if GOOGLE_CUDA
             // DMA can only be used for Tensors that do not fall into
             // the following three odd edge cases: 1) a zero-size
             // buffer, 2) a dead tensor which has an uninit value, and
@@ -431,6 +430,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
             {
               // Non-DMA cases.
               if (src_dev->tensorflow_gpu_device_info() && (!on_host)) {
+#if GOOGLE_CUDA
                 RecvTensorResponse* tmp = new RecvTensorResponse;
                 tmp->set_is_dead(is_dead);
                 CHECK(send_dev_context)
@@ -458,15 +458,15 @@ class GrpcWorkerService : public AsyncServiceInterface {
                 GPUUtil::SetProtoFromGPU(val, src_dev, send_dev_context,
                                          tmp->mutable_tensor(), is_dead,
                                          response_ready);
+#else
+                call->SendResponse(ToGrpcStatus(
+                    errors::Internal("No GPU device in process")));
+#endif  // GOOGLE_CUDA
               } else {
                 grpc::EncodeTensorToByteBuffer(is_dead, val, &call->response);
                 call->SendResponse(ToGrpcStatus(Status::OK()));
               }
             }
-#else
-            call->SendResponse(
-                ToGrpcStatus(errors::Internal("No GPU device in process.")));
-#endif  // GOOGLE_CUDA
           } else {
             //  !s.ok()
             call->SendResponse(ToGrpcStatus(s));
