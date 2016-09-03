@@ -9,7 +9,7 @@ graph, and show additional data like images that pass through it. When
 TensorBoard is fully configured, it looks like this:
 
 [![MNIST TensorBoard](../../images/mnist_tensorboard.png "MNIST TensorBoard")](http://tensorflow.org/tensorboard)  
-[*Click try a TensorBoard with data from this tutorial!*](http://tensorflow.org/tensorboard)
+[*Click to try TensorBoard with data from this tutorial!*](http://tensorflow.org/tensorboard)
 
 This tutorial is intended to get you started with simple TensorBoard usage.
 There are other resources available as well! The [TensorBoard README](https://www.tensorflow.org/code/tensorflow/tensorboard/README.md)
