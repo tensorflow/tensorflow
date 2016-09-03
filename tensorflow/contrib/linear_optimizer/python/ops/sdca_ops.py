@@ -367,6 +367,7 @@ class SdcaModel(object):
 
     logging_ops.scalar_summary('approximate_duality_gap',
                                self.approximate_duality_gap())
+    logging_ops.scalar_summary('examples_seen', self._hashtable.size())
 
   def _symmetric_l1_regularization(self):
     return self._options['symmetric_l1_regularization']
