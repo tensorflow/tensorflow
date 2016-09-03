@@ -891,7 +891,7 @@ cc_library(
         "lib/io/snappy/snappy_inputbuffer.h",
         "lib/io/snappy/snappy_outputbuffer.h",
         "lib/io/zlib_compression_options.h",
-        "lib/io/zlib_inputbuffer.h",
+        "lib/io/zlib_inputstream.h",
         "lib/io/zlib_outputbuffer.h",
         "lib/jpeg/jpeg_handle.h",
         "lib/png/png_io.h",
