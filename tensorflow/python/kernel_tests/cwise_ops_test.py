@@ -425,21 +425,21 @@ class UnaryOpTest(tf.test.TestCase):
   def testGradGrad(self):
     np.random.seed(7)
     shape = (5,)
-    dtype_tols = [(np.float32, 5e-4), (np.float64, 1e-6), (np.complex64, 1e-3),
+    dtype_tols = [(np.float32, 1e-3), (np.float64, 1e-6), (np.complex64, 1e-3),
                   (np.complex128, 1e-6)]
-    op_ranges = [(gen_math_ops._sigmoid_grad, [-1.5, 1.5], [-2, 2]),
-                 (gen_math_ops._sqrt_grad, [1, 3], [-2, -2]),
-                 (gen_math_ops._tanh_grad, [-1.5, 1.5], [-2, 2]),]
+    op_range = [(gen_math_ops._inv_grad, [-2, 2]),
+                (gen_math_ops._sigmoid_grad, [-2, 2]),
+                (gen_math_ops._sqrt_grad, [1, 3]),
+                (gen_math_ops._tanh_grad, [-2, 2]),]
 
     def rand(dtype):
       x = np.random.uniform(
           real_range[0], real_range[1], size=shape[0]).astype(dtype)
       if dtype in (np.complex64, np.complex128):
-        x += 1j * np.random.uniform(
-            imag_range[0], imag_range[1], size=shape[0]).astype(dtype)
+        x += 1j * np.random.uniform(-2, 2, size=shape[0]).astype(dtype)
       return x
 
-    for op, real_range, imag_range in op_ranges:
+    for op, real_range in op_range:
       with self.test_session():
         for dtype, tol in dtype_tols:
           x = tf.constant(rand(dtype))

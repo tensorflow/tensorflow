@@ -246,7 +246,19 @@ def _NegGrad(_, grad):
 def _InvGrad(op, grad):
   """Returns -grad * (1 / x^2)."""
   y = op.outputs[0]  # y = 1 / x
+  # pylint: disable=protected-access
   return gen_math_ops._inv_grad(y, grad)
+
+
+@ops.RegisterGradient("InvGrad")
+def _InvGradGrad(op, grad):
+  b = op.inputs[1]
+  # op.output[0]: y = -b * conj(a)^2
+  with ops.control_dependencies([grad.op]):
+    ca = math_ops.conj(op.inputs[0])
+    cg = math_ops.conj(grad)
+    # pylint: disable=protected-access
+    return cg * -2.0 * b * ca, gen_math_ops._inv_grad(ca, grad)
 
 
 @ops.RegisterGradient("Square")
@@ -313,7 +325,7 @@ def _TanhGradGrad(op, grad):
     a = math_ops.conj(op.inputs[0])
     b = math_ops.conj(op.inputs[1])
     # pylint: disable=protected-access
-    return grad * -2 * b * a, gen_math_ops._tanh_grad(a, grad)
+    return grad * -2.0 * b * a, gen_math_ops._tanh_grad(a, grad)
 
 
 @ops.RegisterGradient("Erf")
@@ -433,7 +445,7 @@ def _SigmoidGradGrad(op, grad):
     b = math_ops.conj(op.inputs[1])
     gb = grad * b
     # pylint: disable=protected-access
-    return gb - 2 * gb * a, gen_math_ops._sigmoid_grad(a, grad)
+    return gb - 2.0 * gb * a, gen_math_ops._sigmoid_grad(a, grad)
 
 
 @ops.RegisterGradient("Sign")
