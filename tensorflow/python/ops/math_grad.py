@@ -30,11 +30,6 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 
 
-# Gradient ops that do not have gradients themselves.
-ops.NoGradient("SigmoidGrad")
-ops.NoGradient("TanhGrad")
-
-
 def _safe_shape_div(x, y):
   """Divides `x / y` assuming `x, y >= 0`, treating `0 / 0 = 0`."""
   return x // math_ops.maximum(y, 1)
@@ -308,7 +303,17 @@ def _TanhGrad(op, grad):
   y = op.outputs[0]  # y = tanh(x)
   with ops.control_dependencies([grad.op]):
     y = math_ops.conj(y)
+    # pylint: disable=protected-access
     return gen_math_ops._tanh_grad(y, grad)
+
+
+@ops.RegisterGradient("TanhGrad")
+def _TanhGradGrad(op, grad):
+  with ops.control_dependencies([grad.op]):
+    a = math_ops.conj(op.inputs[0])
+    b = math_ops.conj(op.inputs[1])
+    # pylint: disable=protected-access
+    return grad * -2 * b * a, gen_math_ops._tanh_grad(a, grad)
 
 
 @ops.RegisterGradient("Erf")
@@ -417,7 +422,18 @@ def _SigmoidGrad(op, grad):
   y = op.outputs[0]  # y = sigmoid(x)
   with ops.control_dependencies([grad.op]):
     y = math_ops.conj(y)
+    # pylint: disable=protected-access
     return gen_math_ops._sigmoid_grad(y, grad)
+
+
+@ops.RegisterGradient("SigmoidGrad")
+def _SigmoidGradGrad(op, grad):
+  with ops.control_dependencies([grad.op]):
+    a = math_ops.conj(op.inputs[0])
+    b = math_ops.conj(op.inputs[1])
+    gb = grad * b
+    # pylint: disable=protected-access
+    return gb - 2 * gb * a, gen_math_ops._sigmoid_grad(a, grad)
 
 
 @ops.RegisterGradient("Sign")

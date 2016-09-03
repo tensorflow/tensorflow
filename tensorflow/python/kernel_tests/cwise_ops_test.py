@@ -422,27 +422,35 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(y, complex_sign, tf.sign)
     self._compareBothSparse(y, complex_sign, tf.sign)
 
-  def testSqrtGradGrad(self):
+  def testGradGrad(self):
     np.random.seed(7)
     shape = (5,)
-    dtype_tols = [(np.float32, 1e-4), (np.float64, 1e-6), (np.complex64, 1e-4),
+    dtype_tols = [(np.float32, 5e-4), (np.float64, 1e-6), (np.complex64, 1e-3),
                   (np.complex128, 1e-6)]
+    op_ranges = [(gen_math_ops._sigmoid_grad, [-1.5, 1.5], [-2, 2]),
+                 (gen_math_ops._sqrt_grad, [1, 3], [-2, -2]),
+                 (gen_math_ops._tanh_grad, [-1.5, 1.5], [-2, 2]),]
 
     def rand(dtype):
-      x = np.random.uniform(1, 3, size=5).astype(dtype)
+      x = np.random.uniform(
+          real_range[0], real_range[1], size=shape[0]).astype(dtype)
       if dtype in (np.complex64, np.complex128):
-        x += 1j * np.random.uniform(-2, 2, size=5).astype(dtype)
+        x += 1j * np.random.uniform(
+            imag_range[0], imag_range[1], size=shape[0]).astype(dtype)
       return x
 
-    with self.test_session():
-      for dtype, tol in dtype_tols:
-        x = tf.constant(rand(dtype))
-        y = tf.constant(rand(dtype))
-        z = gen_math_ops._sqrt_grad(x, y)
-        error = tf.test.compute_gradient_error(
-            [x, y], [shape, shape], z, shape,
-            x_init_value=[rand(dtype), rand(dtype)])
-        self.assertLess(error, tol)
+    for op, real_range, imag_range in op_ranges:
+      with self.test_session():
+        for dtype, tol in dtype_tols:
+          x = tf.constant(rand(dtype))
+          y = tf.constant(rand(dtype))
+          z = op(x, y)
+          error = tf.test.compute_gradient_error(
+              [x, y], [shape, shape],
+              z,
+              shape,
+              x_init_value=[rand(dtype), rand(dtype)])
+          self.assertLess(error, tol)
 
 
 class BinaryOpTest(tf.test.TestCase):
