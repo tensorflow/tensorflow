@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 
 #include <atomic>
+#include <utility>
 #include <vector>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -26,7 +27,9 @@ namespace {
 
 struct RegistrationInfo {
   RegistrationInfo(DeviceType s, DeviceType r, CopyTensor::CopyFunction cf)
-      : sender_device_type(s), receiver_device_type(r), copy_function(cf) {}
+      : sender_device_type(std::move(s)),
+        receiver_device_type(r),
+        copy_function(cf) {}
   DeviceType sender_device_type;
   DeviceType receiver_device_type;
   CopyTensor::CopyFunction copy_function;

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
+#include <utility>
 #include <vector>
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/framework/versions.h"
@@ -107,7 +108,7 @@ TensorSliceReader::TensorSliceReader(const string& filepattern,
 TensorSliceReader::TensorSliceReader(const string& filepattern,
                                      OpenTableFunction open_function,
                                      int preferred_shard)
-    : filepattern_(filepattern), open_function_(open_function) {
+    : filepattern_(filepattern), open_function_(std::move(open_function)) {
   VLOG(1) << "TensorSliceReader for " << filepattern;
   Status s = io::GetMatchingFiles(Env::Default(), filepattern, &fnames_);
   if (!s.ok()) {

@@ -60,7 +60,7 @@ Status AllowedTypeValue(DataType dt, const OpDef::AttrDef& attr) {
 
 Status AllowedStringValue(const string& str, const OpDef::AttrDef& attr) {
   const AttrValue& allowed_values(attr.allowed_values());
-  for (auto allowed : allowed_values.list().s()) {
+  for (const auto& allowed : allowed_values.list().s()) {
     if (str == allowed) {
       return Status::OK();
     }

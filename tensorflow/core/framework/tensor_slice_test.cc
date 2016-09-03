@@ -273,8 +273,8 @@ TEST(TensorSliceTest, Deserialization) {
   TensorSlice ts3(proto3);
 
   // Both serializations should be interpreted the same.
-  EXPECT_EQ("0,5:0,10:14,1:-:-", ts2.DebugString());
-  EXPECT_EQ("0,5:0,10:14,1:-:-", ts3.DebugString());
+  EXPECT_EQ("0,5:0,10:14,1:1,-1:-", ts2.DebugString());
+  EXPECT_EQ("0,5:0,10:14,1:1,-1:-", ts3.DebugString());
 }
 
 TEST(TensorSliceTest, UpdateToCover) {

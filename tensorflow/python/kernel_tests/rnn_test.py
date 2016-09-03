@@ -1631,8 +1631,14 @@ class RawRNNTest(tf.test.TestCase):
       inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
       inputs_ta = inputs_ta.unpack(inputs)
 
-      def loop_fn(time_, cell_output, unused_loop_state):
+      cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+
+      def loop_fn(time_, cell_output, cell_state, unused_loop_state):
         emit_output = cell_output  # == None for time == 0
+        if cell_output is None:  # time == 0
+          next_state = cell.zero_state(batch_size, tf.float32)
+        else:
+          next_state = cell_state  # copy state through
         elements_finished = (time_ >= sequence_length)
         finished = tf.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
@@ -1640,16 +1646,14 @@ class RawRNNTest(tf.test.TestCase):
             finished,
             lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
             lambda: inputs_ta.read(time_))
-        return (elements_finished, next_input, emit_output, None)
+        return (elements_finished, next_input, next_state, emit_output, None)
 
-      cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
-      initial_state = cell.zero_state(batch_size, tf.float32)
-      outputs_ta, final_state, _ = tf.nn.raw_rnn(cell, loop_fn, initial_state)
+      outputs_ta, final_state, _ = tf.nn.raw_rnn(cell, loop_fn)
       outputs = outputs_ta.pack()
 
       tf.get_variable_scope().reuse_variables()
       outputs_dynamic_rnn, final_state_dynamic_rnn = tf.nn.dynamic_rnn(
-          cell, inputs, time_major=True, initial_state=initial_state,
+          cell, inputs, time_major=True, dtype=tf.float32,
           sequence_length=sequence_length)
 
       variables = tf.trainable_variables()
@@ -1717,11 +1721,15 @@ class RawRNNTest(tf.test.TestCase):
       inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
       inputs_ta = inputs_ta.unpack(inputs)
 
-      def loop_fn(time_, cell_output, loop_state):
+      cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+
+      def loop_fn(time_, cell_output, cell_state, loop_state):
         if cell_output is None:
           loop_state = tf.constant([0])
+          next_state = cell.zero_state(batch_size, tf.float32)
         else:
           loop_state = tf.pack([tf.squeeze(loop_state) + 1])
+          next_state = cell_state
         emit_output = cell_output  # == None for time == 0
         elements_finished = tf.tile([time_ >= max_time], [batch_size])
         finished = tf.reduce_all(elements_finished)
@@ -1730,11 +1738,10 @@ class RawRNNTest(tf.test.TestCase):
             finished,
             lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
             lambda: inputs_ta.read(time_))
-        return (elements_finished, next_input, emit_output, loop_state)
+        return (elements_finished, next_input,
+                next_state, emit_output, loop_state)
 
-      cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
-      initial_state = cell.zero_state(batch_size, tf.float32)
-      r = tf.nn.raw_rnn(cell, loop_fn, initial_state)
+      r = tf.nn.raw_rnn(cell, loop_fn)
       loop_state = r[-1]
       self.assertEqual([10], loop_state.eval())
 
@@ -1749,14 +1756,17 @@ class RawRNNTest(tf.test.TestCase):
       inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
       inputs_ta = inputs_ta.unpack(inputs)
 
-      def loop_fn(time_, cell_output, loop_state):
+      cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+      def loop_fn(time_, cell_output, cell_state, loop_state):
         if cell_output is None:
           loop_state = tf.TensorArray(
               dynamic_size=True, size=0, dtype=tf.int32, clear_after_read=False)
           loop_state = loop_state.write(0, 1)
+          next_state = cell.zero_state(batch_size, tf.float32)
         else:
           loop_state = loop_state.write(
               time_, loop_state.read(time_ - 1) + time_)
+          next_state = cell_state
         emit_output = cell_output  # == None for time == 0
         elements_finished = tf.tile([time_ >= max_time], [batch_size])
         finished = tf.reduce_all(elements_finished)
@@ -1765,11 +1775,10 @@ class RawRNNTest(tf.test.TestCase):
             finished,
             lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
             lambda: inputs_ta.read(time_))
-        return (elements_finished, next_input, emit_output, loop_state)
+        return (elements_finished, next_input,
+                next_state, emit_output, loop_state)
 
-      cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
-      initial_state = cell.zero_state(batch_size, tf.float32)
-      r = tf.nn.raw_rnn(cell, loop_fn, initial_state)
+      r = tf.nn.raw_rnn(cell, loop_fn)
       loop_state = r[-1]
       loop_state = loop_state.pack()
       self.assertAllEqual([1, 2, 2 + 2, 4 + 3, 7 + 4], loop_state.eval())
@@ -1785,14 +1794,16 @@ class RawRNNTest(tf.test.TestCase):
       inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
       inputs_ta = inputs_ta.unpack(inputs)
 
-      def loop_fn(time_, cell_output, _):
+      cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+      def loop_fn(time_, cell_output, cell_state, _):
         if cell_output is None:
           emit_output = (tf.zeros([2, 3], dtype=tf.int32),
                          tf.zeros([1], dtype=tf.int64))
+          next_state = cell.zero_state(batch_size, tf.float32)
         else:
           emit_output = (tf.ones([batch_size, 2, 3], dtype=tf.int32),
                          tf.ones([batch_size, 1], dtype=tf.int64))
-
+          next_state = cell_state
         elements_finished = tf.tile([time_ >= max_time], [batch_size])
         finished = tf.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
@@ -1800,11 +1811,9 @@ class RawRNNTest(tf.test.TestCase):
             finished,
             lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
             lambda: inputs_ta.read(time_))
-        return (elements_finished, next_input, emit_output, None)
+        return (elements_finished, next_input, next_state, emit_output, None)
 
-      cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
-      initial_state = cell.zero_state(batch_size, tf.float32)
-      r = tf.nn.raw_rnn(cell, loop_fn, initial_state)
+      r = tf.nn.raw_rnn(cell, loop_fn)
       output_ta = r[0]
       self.assertEqual(2, len(output_ta))
       self.assertEqual([tf.int32, tf.int64], [ta.dtype for ta in output_ta])
@@ -1848,8 +1857,14 @@ class RawRNNTest(tf.test.TestCase):
       inputs_ta = tf.TensorArray(dtype=tf.float32, size=tf.shape(inputs)[0])
       inputs_ta = inputs_ta.unpack(inputs)
 
-      def loop_fn(time_, cell_output, unused_loop_state):
+      cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
+      def loop_fn(time_, cell_output, cell_state, unused_loop_state):
         emit_output = cell_output  # == None for time == 0
+        if cell_output is None:  # time == 0
+          next_state = cell.zero_state(batch_size, tf.float32)
+        else:
+          next_state = cell_state
+
         elements_finished = (time_ >= sequence_length)
         finished = tf.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
@@ -1857,11 +1872,9 @@ class RawRNNTest(tf.test.TestCase):
             finished,
             lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
             lambda: inputs_ta.read(time_))
-        return (elements_finished, next_input, emit_output, None)
+        return (elements_finished, next_input, next_state, emit_output, None)
 
-      cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
-      initial_state = cell.zero_state(batch_size, tf.float32)
-      return tf.nn.raw_rnn(cell, loop_fn, initial_state, scope=scope)
+      return tf.nn.raw_rnn(cell, loop_fn, scope=scope)
 
     self._testScope(factory, use_outer_scope=True)
     self._testScope(factory, use_outer_scope=False)

@@ -144,7 +144,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
 
   void Init(const std::vector<FunctionDef>& flib) {
     FunctionDefLibrary proto;
-    for (auto fdef : flib) *(proto.add_function()) = fdef;
+    for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     delete lib_def_;
     lib_def_ = new FunctionLibraryDefinition(OpRegistry::Global(), proto);
     delete lib_;

@@ -22,7 +22,7 @@ limitations under the License.
 <link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
 <link rel="import" href="../tf-dashboard-common/tf-panes-helper.html">
 <link rel="import" href="../tf-dashboard-common/tf-option-selector.html">
-<link rel="import" href="../tf-dashboard-common/tf-run-selector.html">
+<link rel="import" href="../tf-dashboard-common/tf-sidebar-helper.html">
 <link rel="import" href="../tf-imports/lodash.html">
 <link rel="import" href="../vz-histogram-timeseries/vz-histogram-timeseries.html">
 <link rel="import" href="../iron-collapse/iron-collapse.html">
@@ -32,17 +32,17 @@ limitations under the License.
 tf-histogram-dashboard is a complete frontend that loads runs from a backend,
 and creates chart panes that display data for those runs.
 
-It provides a categorizer, run selector, and x type selector, by which the user
-can customize how data is organized and displayed.
+It provides a mode and time property selector, together with the selectors
+provided by tf-sidebar-helper, by which the user can customize how data is
+organized and displayed.
 
 Each chart has a button that can toggle whether it is "selected"; selectedRuns
 charts are larger.
 
 Organizationally, the #plumbing div contains components that have no concrete
-manifestation and just effect data bindings or data loading. The #sidebar contains
-shared controls like the tf-categorizer, tf-run-selector, and tf-x-type-selector.
-The #center div contains vz-histogram-timeseries embedded inside
-tf-collapsable-panes.
+manifestation and just effect data bindings or data loading. The .sidebar div
+contains shared controls provided by tf-sidebar-helper. The .center div
+contains vz-histogram-timeseries embedded inside tf-panes-helper's.
 -->
 <dom-module id="tf-histogram-dashboard">
   <template>
@@ -50,57 +50,52 @@ tf-collapsable-panes.
       <tf-color-scale
         id="colorScale"
         runs="[[runs]]"
-        out-color-scale="{{colorScale}}"
+        out-color-scale="{{_colorScale}}"
       ></tf-color-scale>
     </div>
 
     <tf-dashboard-layout>
       <div class="sidebar">
-        <div class="sidebar-section">
-          <tf-categorizer
-            id="categorizer"
-            tags="[[_visibleTags]]"
-            categories="{{categories}}"
-          ></tf-categorizer>
-        </div>
-        <div class="sidebar-section">
-          <tf-option-selector
-            id="histogramModeSelector"
-            name="Histogram Mode"
-            selected-id="{{_histogramMode}}"
-            >
-            <paper-button id="overlay">overlay</paper-button>
-            <paper-button id="offset">offset</paper-button>
-          </tf-option-selector>
-        </div>
-        <div class="sidebar-section">
-          <tf-option-selector
-            id="timePropertySelector"
-            name="Offset Time Axis"
-            selected-id="{{_timeProperty}}"
-            >
-            <paper-button id="step">step</paper-button>
-            <paper-button id="relative">relative</paper-button>
-            <paper-button id="wall_time">wall</paper-button>
-          </tf-option-selector>
-        </div>
-        <div class="sidebar-section">
-          <tf-run-selector
-            id="runSelector"
-            runs="[[runs]]"
-            color-scale="[[colorScale]]"
-            out-selected="{{selectedRuns}}"
-          ></tf-run-selector>
+        <tf-sidebar-helper
+          categories="{{_categories}}"
+          color-scale="[[_colorScale]]"
+          run2tag="[[run2tag]]"
+          runs="[[runs]]"
+          selected-runs="{{_selectedRuns}}"
+          show-download-links="{{_showDownloadLinks}}"
+          >
+          <div class="sidebar-section">
+            <tf-option-selector
+              id="histogramModeSelector"
+              name="Histogram Mode"
+              selected-id="{{_histogramMode}}"
+              >
+              <paper-button id="overlay">overlay</paper-button>
+              <paper-button id="offset">offset</paper-button>
+            </tf-option-selector>
           </div>
+          <div class="sidebar-section">
+            <tf-option-selector
+              id="timePropertySelector"
+              name="Offset Time Axis"
+              selected-id="{{_timeProperty}}"
+              >
+              <paper-button id="step">step</paper-button>
+              <paper-button id="relative">relative</paper-button>
+              <paper-button id="wall_time">wall</paper-button>
+            </tf-option-selector>
+          </tf-sidebar-helper>
+       </div>
       </div>
 
       <div class="center">
         <tf-panes-helper
-          categories="[[categories]]"
+          categories="[[_categories]]"
+          color-scale="[[_colorScale]]"
           data-type="[[dataType]]"
           data-provider="[[dataProvider]]"
           run2tag="[[run2tag]]"
-          selected-runs="[[selectedRuns]]"
+          selected-runs="[[_selectedRuns]]"
           repeat-for-runs
           >
           <template>
@@ -131,6 +126,10 @@ tf-collapsable-panes.
         TF.Backend.Behavior,
       ],
       properties: {
+        dataType: {
+          type: String,
+          value: "histogram"
+        },
         _histogramMode: {
           type: String,
           value: "offset"
@@ -139,60 +138,18 @@ tf-collapsable-panes.
           type: String,
           value: "step"
         },
-        _visibleTags: {
-          type: Array,
-          computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
-        },
         _colorScaleFunction: {
           type: Function,
-          computed: "_getColorScaleFunction(colorScale)"
+          computed: "_getColorScaleFunction(_colorScale)"
         },
-        colorScale: Object,
-        dataType: {
-          type: String,
-          value: "histogram"
-        }
       },
       attached: function() {
         this.async(function() {
           this.fire("rendered");
         });
       },
-      _array: function(x) {
-        return [x];
-      },
-      _count: function(tags) {
-        var targetTags = {};
-        tags.forEach(function(t) {
-          targetTags[t] = true;
-        });
-        var count = 0;
-        var _this = this;
-        this.selectedRuns.forEach(function(r) {
-          _this.run2tag[r].forEach(function(t) {
-            if (targetTags[t]) {
-              count++;
-            }
-          });
-        });
-        return count;
-      },
-      _getVisibleTags: function() {
-        var keys = this.selectedRuns;
-        var dict = this.run2tag;
-        return _.union.apply(null, keys.map(function(k) {return dict[k]}));
-      },
       _getColorScaleFunction: function() {
-        return this.colorScale.scale.bind(this.colorScale);
-      },
-      toggleSelected: function(e) {
-        var currentTarget = Polymer.dom(e.currentTarget);
-        var parentDiv = currentTarget.parentNode.parentNode;
-        parentDiv.classList.toggle("selected");
-        var chartScaffold = currentTarget.previousElementSibling;
-        if (chartScaffold) {
-          chartScaffold.chart().redraw();
-        }
+        return this._colorScale.scale.bind(this._colorScale);
       },
     });
   </script>

@@ -173,7 +173,7 @@ class SoftmaxCrossEntropyLossTest(tf.test.TestCase):
       loss = tf.contrib.losses.softmax_cross_entropy(logits, labels, weight)
       self.assertAlmostEqual(loss.eval(), (1.2 + 3.4 + 5.6) * 10.0 / 3.0, 3)
 
-  def testAllWrongAllMissing(self):
+  def testAllWrongAllWeightsMissing(self):
     logits = tf.constant([[10.0, 0.0, 0.0],
                           [0.0, 10.0, 0.0],
                           [0.0, 0.0, 10.0]])
@@ -185,7 +185,7 @@ class SoftmaxCrossEntropyLossTest(tf.test.TestCase):
       loss = tf.contrib.losses.softmax_cross_entropy(logits, labels, weight)
       self.assertAlmostEqual(loss.eval(), 0.0, 3)
 
-  def testSomeMissing(self):
+  def testSomeWeightsMissing(self):
     logits = tf.constant([[10.0, 0.0, 0.0],
                           [0.0, 10.0, 0.0],
                           [0.0, 0.0, 10.0]])
@@ -233,6 +233,216 @@ class SoftmaxCrossEntropyLossTest(tf.test.TestCase):
       self.assertEquals(loss.op.name, 'softmax_cross_entropy_loss/value')
       expected_value = 400.0 * label_smoothing / 3.0
       self.assertAlmostEqual(loss.eval(), expected_value, 3)
+
+
+class SparseSoftmaxCrossEntropyLossTest(tf.test.TestCase):
+
+  def testNoneWeightRaisesValueError(self):
+    logits = tf.constant([[10.0, 0.0, 0.0],
+                          [0.0, 10.0, 0.0],
+                          [0.0, 0.0, 10.0]])
+    labels = tf.constant([[0], [1], [2]])
+    with self.test_session():
+      with self.assertRaises(ValueError):
+        tf.contrib.losses.sparse_softmax_cross_entropy(
+            logits, labels, weight=None)
+
+  def testAllCorrectInt32Labels(self):
+    with self.test_session():
+      logits = tf.constant([[10.0, 0.0, 0.0],
+                            [0.0, 10.0, 0.0],
+                            [0.0, 0.0, 10.0]])
+      labels = tf.constant([[0], [1], [2]], dtype=tf.int32)
+      loss = tf.contrib.losses.sparse_softmax_cross_entropy(logits, labels)
+      self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
+      self.assertAlmostEqual(loss.eval(), 0.0, 3)
+
+  def testAllCorrectInt64Labels(self):
+    with self.test_session():
+      logits = tf.constant([[10.0, 0.0, 0.0],
+                            [0.0, 10.0, 0.0],
+                            [0.0, 0.0, 10.0]])
+      labels = tf.constant([[0], [1], [2]], dtype=tf.int64)
+      loss = tf.contrib.losses.sparse_softmax_cross_entropy(logits, labels)
+      self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
+      self.assertAlmostEqual(loss.eval(), 0.0, 3)
+
+  def testAllCorrectNonColumnLabels(self):
+    with self.test_session():
+      logits = tf.constant([[10.0, 0.0, 0.0],
+                            [0.0, 10.0, 0.0],
+                            [0.0, 0.0, 10.0]])
+      labels = tf.constant([0, 1, 2])
+      loss = tf.contrib.losses.sparse_softmax_cross_entropy(logits, labels)
+      self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
+      self.assertAlmostEqual(loss.eval(), 0.0, 3)
+
+  def testAllWrongInt32Labels(self):
+    logits = tf.constant([[10.0, 0.0, 0.0],
+                          [0.0, 10.0, 0.0],
+                          [0.0, 0.0, 10.0]])
+    labels = tf.constant([[2], [0], [1]], dtype=tf.int32)
+
+    with self.test_session():
+      loss = tf.contrib.losses.sparse_softmax_cross_entropy(logits, labels)
+      self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
+      self.assertAlmostEqual(loss.eval(), 10.0, 3)
+
+  def testAllWrongInt64Labels(self):
+    logits = tf.constant([[10.0, 0.0, 0.0],
+                          [0.0, 10.0, 0.0],
+                          [0.0, 0.0, 10.0]])
+    labels = tf.constant([[2], [0], [1]], dtype=tf.int64)
+
+    with self.test_session():
+      loss = tf.contrib.losses.sparse_softmax_cross_entropy(logits, labels)
+      self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
+      self.assertAlmostEqual(loss.eval(), 10.0, 3)
+
+  def testAllWrongNonColumnLabels(self):
+    logits = tf.constant([[10.0, 0.0, 0.0],
+                          [0.0, 10.0, 0.0],
+                          [0.0, 0.0, 10.0]])
+    labels = tf.constant([2, 0, 1])
+
+    with self.test_session():
+      loss = tf.contrib.losses.sparse_softmax_cross_entropy(logits, labels)
+      self.assertEquals(loss.op.name, 'sparse_softmax_cross_entropy_loss/value')
+      self.assertAlmostEqual(loss.eval(), 10.0, 3)
+
+  def testNonZeroLossWithPythonScalarWeight(self):
+    logits = tf.constant([[10.0, 0.0, 0.0],
+                          [0.0, 10.0, 0.0],
+                          [0.0, 0.0, 10.0]])
+    labels = tf.constant([[2], [0], [1]])
+    weight = 2.3
+    with self.test_session():
+      loss = tf.contrib.losses.sparse_softmax_cross_entropy(
+          logits, labels, weight)
+      self.assertAlmostEqual(loss.eval(), weight * 10.0, 3)
+
+  def testNonZeroLossWithScalarTensorWeight(self):
+    logits = tf.constant([[10.0, 0.0, 0.0],
+                          [0.0, 10.0, 0.0],
+                          [0.0, 0.0, 10.0]])
+    labels = tf.constant([[2], [0], [1]])
+    weight = 2.3
+    with self.test_session():
+      loss = tf.contrib.losses.sparse_softmax_cross_entropy(
+          logits, labels, tf.constant(weight))
+      self.assertAlmostEqual(loss.eval(), weight * 10.0, 3)
+
+  def testNonZeroLossWithOneDimBatchSpecificWeights(self):
+    logits = tf.constant([[10.0, 0.0, 0.0],
+                          [0.0, 10.0, 0.0],
+                          [0.0, 0.0, 10.0]])
+    labels = tf.constant([[2], [0], [1]])
+    weight = tf.constant([1.2, 3.4, 5.6], shape=[3])
+    with self.test_session():
+      loss = tf.contrib.losses.sparse_softmax_cross_entropy(
+          logits, labels, weight)
+      self.assertAlmostEqual(loss.eval(), (1.2 + 3.4 + 5.6) * 10.0 / 3.0, 3)
+
+  def testNonZeroLossWithColumnWeights(self):
+    logits = tf.constant([[10.0, 0.0, 0.0],
+                          [0.0, 10.0, 0.0],
+                          [0.0, 0.0, 10.0]])
+    labels = tf.constant([[2], [0], [1]])
+    weight = tf.constant([[1.2], [3.4], [5.6]])
+    with self.test_session():
+      loss = tf.contrib.losses.sparse_softmax_cross_entropy(
+          logits, labels, weight)
+      self.assertAlmostEqual(loss.eval(), (1.2 + 3.4 + 5.6) * 10.0 / 3.0, 3)
+
+  def testAllWrongAllWeightsMissing(self):
+    logits = tf.constant([[10.0, 0.0, 0.0],
+                          [0.0, 10.0, 0.0],
+                          [0.0, 0.0, 10.0]])
+    labels = tf.constant([[2], [0], [1]])
+    weight = tf.constant([0, 0, 0], shape=[3])
+    with self.test_session():
+      loss = tf.contrib.losses.sparse_softmax_cross_entropy(
+          logits, labels, weight)
+      self.assertAlmostEqual(loss.eval(), 0.0, 3)
+
+  def testSomeWeightsMissing(self):
+    logits = tf.constant([[10.0, 0.0, 0.0],
+                          [0.0, 10.0, 0.0],
+                          [0.0, 0.0, 10.0]])
+    labels = tf.constant([[2], [0], [1]])
+    weight = tf.constant([1.2, 0, 0], shape=[3])
+    with self.test_session():
+      loss = tf.contrib.losses.sparse_softmax_cross_entropy(
+          logits, labels, weight)
+      self.assertAlmostEqual(loss.eval(), 12.0, 3)
+
+  def testMeasurementSpecificWeightsRaisesException(self):
+    with self.test_session():
+      logits = tf.constant([[100.0, -100.0, -100.0],
+                            [-100.0, 100.0, -100.0],
+                            [-100.0, -100.0, 100.0]])
+      labels = tf.constant([[0], [1], [2]])
+      weight = tf.constant([[3, 4, 5],
+                            [2, 6, 0],
+                            [8, 0, 1]])
+
+      with self.assertRaises(ValueError):
+        tf.contrib.losses.sparse_softmax_cross_entropy(
+            logits, labels, weight=weight).eval()
+
+  def testInconsistentWeightSizeRaisesException(self):
+    """The weight tensor has incorrect number of elements."""
+    with self.test_session():
+      logits = tf.constant([[100.0, -100.0, -100.0],
+                            [-100.0, 100.0, -100.0],
+                            [-100.0, -100.0, 100.0]])
+      labels = tf.constant([[0], [1], [2]])
+      weight = tf.constant([1.2, 3.4, 5.6, 7.8])
+
+      with self.assertRaises(ValueError):
+        tf.contrib.losses.sparse_softmax_cross_entropy(
+            logits, labels, weight=weight).eval()
+
+  def testInconsistentLabelSizeRaisesException(self):
+    """The label tensor has incorrect number of elements."""
+    with self.test_session():
+      logits = tf.constant([[100.0, -100.0, -100.0],
+                            [-100.0, 100.0, -100.0],
+                            [-100.0, -100.0, 100.0]])
+      labels = tf.constant([[0], [1], [2], [3]])
+      weight = tf.constant([1.2, 3.4, 5.6])
+
+      with self.assertRaises(ValueError):
+        tf.contrib.losses.sparse_softmax_cross_entropy(
+            logits, labels, weight=weight).eval()
+
+  def testInconsistentWeightShapeRaisesException(self):
+    """The weight tensor has incorrect shape."""
+    with self.test_session():
+      logits = tf.constant([[100.0, -100.0, -100.0, -100.0],
+                            [-100.0, 100.0, -100.0, -100.0],
+                            [-100.0, -100.0, 100.0, -100.0],
+                            [-100.0, -100.0, -100.0, 100.0]])
+      labels = tf.constant([[0], [1], [2], [3]])
+      weight = tf.constant([[1.2, 3.4], [5.6, 7.8]])
+
+      with self.assertRaises(ValueError):
+        tf.contrib.losses.sparse_softmax_cross_entropy(
+            logits, labels, weight=weight).eval()
+
+  def testInconsistentLabelShapeRaisesException(self):
+    """The label tensor has incorrect shape."""
+    with self.test_session():
+      logits = tf.constant([[100.0, -100.0, -100.0, -100.0],
+                            [-100.0, 100.0, -100.0, -100.0],
+                            [-100.0, -100.0, 100.0, -100.0],
+                            [-100.0, -100.0, -100.0, 100.0]])
+      labels = tf.constant([[0, 1], [2, 3]])
+      weight = tf.constant([1.2, 3.4, 5.6, 7.8])
+
+      with self.assertRaises(tf.errors.InvalidArgumentError):
+        tf.contrib.losses.sparse_softmax_cross_entropy(
+            logits, labels, weight=weight).eval()
 
 
 class SigmoidCrossEntropyLossTest(tf.test.TestCase):

@@ -900,6 +900,7 @@ class GradLoopState(object):
         branch = (1 - cond_ctxt.branch) if dead_branch else cond_ctxt.branch
         history_value = _SwitchRefOrTensor(history_value, pred)[branch]
       pop = gen_data_flow_ops._stack_pop(history_value, value.dtype.base_dtype)
+      pop.set_shape(value.get_shape())
       self.grad_context.Exit()
     parallel_iterations = self.grad_context.parallel_iterations
     if parallel_iterations > 1:
@@ -1411,6 +1412,9 @@ class CondContext(ControlFlowContext):
     if self.GetWhileContext():
       self.GetWhileContext().back_prop
     return False
+
+  def GetControlPivot(self):
+    return self._pivot
 
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
@@ -1984,8 +1988,7 @@ class WhileContext(ControlFlowContext):
         if self.outer_context: self.outer_context.Exit()
       else:
         shape_acc = array_ops.zeros_like(
-            array_ops.shape_internal(
-                op.inputs[0], optimize=False),
+            array_ops.shape_internal(op.inputs[0], optimize=False),
             optimize=False)
 
     if self.outer_context: self.outer_context.Exit()
@@ -2056,6 +2059,13 @@ class WhileContext(ControlFlowContext):
                            parallel_iterations=self._parallel_iterations,
                            use_input_shape=(shape_invariants is None))
                     for x in real_vars]
+    if self._outer_context:
+      control_pivot = self._outer_context.GetControlPivot().op
+      for var in enter_vars:
+        if _IsLoopConstantEnter(var.op.inputs[0].op):
+          # pylint: disable=protected-access
+          var.op._add_control_input(control_pivot)
+          # pylint: enable=protected-access
     _SetShapeInvariants(real_vars, enter_vars, shape_invariants)
 
     # Fix the control inputs and control flow context of these enter ops.

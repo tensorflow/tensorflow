@@ -41,6 +41,7 @@ __all__ = ["absolute_difference",
            "mean_squared_error",
            "sigmoid_cross_entropy",
            "softmax_cross_entropy",
+           "sparse_softmax_cross_entropy",
            "sum_of_pairwise_squares",
            "sum_of_squares"]
 
@@ -354,8 +355,8 @@ def softmax_cross_entropy(logits, onehot_labels, weight=1.0,
     A scalar `Tensor` representing the loss value.
 
   Raises:
-    ValueError: If the shape of `predictions` doesn't match that of `targets` or
-      if the shape of `weight` is invalid or if `weight` is None.
+    ValueError: If the shape of `logits` doesn't match that of `onehot_labels`
+      or if the shape of `weight` is invalid or if `weight` is None.
   """
   with ops.name_scope(scope, "softmax_cross_entropy_loss",
                       [logits, onehot_labels]):
@@ -372,6 +373,39 @@ def softmax_cross_entropy(logits, onehot_labels, weight=1.0,
 
     losses = nn.softmax_cross_entropy_with_logits(logits, onehot_labels,
                                                   name="xentropy")
+    return _compute_weighted_loss(losses, weight)
+
+
+def sparse_softmax_cross_entropy(logits, labels, weight=1.0, scope=None):
+  """Cross-entropy loss using tf.nn.sparse_softmax_cross_entropy_with_logits.
+
+  `weight` acts as a coefficient for the loss. If a scalar is provided,
+  then the loss is simply scaled by the given value. If `weight` is a
+  tensor of size [`batch_size`], then the loss weights apply to each
+  corresponding sample.
+
+  Args:
+    logits: [batch_size, num_classes] logits outputs of the network .
+    labels: [batch_size, 1] or [batch_size] target labels of dtype `int32` or
+      `int64` in the range `[0, num_classes)`.
+    weight: Coefficients for the loss. The tensor must be a scalar or a tensor
+      of shape [batch_size] or [batch_size, 1].
+    scope: the scope for the operations performed in computing the loss.
+
+  Returns:
+    A scalar `Tensor` representing the loss value.
+
+  Raises:
+    ValueError: If the shapes of logits, labels, and weight are incompatible, or
+      if `weight` is None.
+  """
+  with ops.name_scope(scope, "sparse_softmax_cross_entropy_loss",
+                      [logits, labels]):
+    labels = array_ops.reshape(labels, shape=[array_ops.shape(labels)[0]])
+    weight = array_ops.squeeze(weight)
+
+    losses = nn.sparse_softmax_cross_entropy_with_logits(logits, labels,
+                                                         name="xentropy")
     return _compute_weighted_loss(losses, weight)
 
 

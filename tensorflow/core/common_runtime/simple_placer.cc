@@ -42,7 +42,7 @@ std::vector<Device*> FilterSupportedDevices(
     const std::vector<Device*>& devices,
     const DeviceTypeVector& supported_device_types) {
   std::vector<Device*> filtered_devices;
-  for (DeviceType d : supported_device_types) {
+  for (const DeviceType& d : supported_device_types) {
     for (Device* device : devices) {
       if (DeviceType(device->attributes().device_type()) == d) {
         filtered_devices.emplace_back(device);
@@ -238,11 +238,15 @@ class ColocationGraph {
       // members_[old_root].supported_device_types.
       MergeSupportedDevices(&members_[new_root].supported_device_types,
                             members_[old_root].supported_device_types);
-      if (members_[x_root].supported_device_types.size() == 0) {
+      if (members_[new_root].supported_device_types.size() == 0) {
+        string debug_info;
+        AddDebugInfo(x_root, &debug_info);
+        AddDebugInfo(y_root, &debug_info);
         return errors::InvalidArgument(
             "Cannot colocate nodes '", x.name(), "' and '", y.name(),
             "' because no device type supports both of those nodes and the "
-            "other nodes colocated with them");
+            "other nodes colocated with them.",
+            debug_info);
       }
     }
     return Status::OK();
@@ -495,7 +499,7 @@ class ColocationGraph {
                                 "' does not match any device");
       }
 
-      for (DeviceType d : member->supported_device_types) {
+      for (const DeviceType& d : member->supported_device_types) {
         if (DeviceType(assigned_device->attributes().device_type()) == d) {
           return Status::OK();
         }
@@ -545,9 +549,9 @@ class ColocationGraph {
     target->clear();
 
     // Iterate in priority order.
-    for (DeviceType device_type : temp) {
+    for (const DeviceType& device_type : temp) {
       bool found = false;
-      for (DeviceType other_device_type : other) {
+      for (const DeviceType& other_device_type : other) {
         if (device_type == other_device_type) {
           found = true;
           break;
