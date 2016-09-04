@@ -27,7 +27,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
-
+import tensorflow as tf
 
 class Optimizer(object):
   """Base class for optimizers.
@@ -282,8 +282,14 @@ class Optimizer(object):
     # This is a default implementation of apply_gradients() that can be shared
     # by most optimizers.  It relies on the subclass implementing the following
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
+
+    grads_to_tensors_list = []
+    vars_list = []
     grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works
     for g, v in grads_and_vars:
+      # Check if gradient is Variable. If so, convert it to tensor
+      if isinstance(g, (variables.Variable)):
+        g = tf.convert_to_tensor(g)
       if not isinstance(g, (ops.Tensor, ops.IndexedSlices, type(None))):
         raise TypeError(
             "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
@@ -292,6 +298,13 @@ class Optimizer(object):
             "Variable must be a tf.Variable: %s" % v)
       if g is not None:
         self._assert_valid_dtypes([g, v])
+      # If all is well, append g and v to corresponding list separately 
+      grads_to_tensors_list.append(g)
+      vars_list.append(v) 
+
+    # Remake the grads_and_vars after checking and converting 
+    grads_and_vars = tuple(zip(grads_to_tensors_list, vars_list))
+    
     var_list = [v for g, v in grads_and_vars if g is not None]
     if not var_list:
       raise ValueError("No gradients provided for any variable: %s" %
