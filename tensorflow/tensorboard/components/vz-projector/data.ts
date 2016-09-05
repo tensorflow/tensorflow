@@ -20,7 +20,6 @@ import * as scatter from './scatter';
 import {shuffle} from './util';
 import * as vector from './vector';
 
-
 /**
  * A DataSource is our ground truth data. The original parsed data should never
  * be modified, only copied out.
@@ -184,7 +183,6 @@ export class DataSet implements scatter.DataSet {
     return traces;
   }
 
-
   /**
    * Computes the centroid, shifts all points to that centroid,
    * then makes them all unit norm.
@@ -311,7 +309,6 @@ export class DataSet implements scatter.DataSet {
       runAsyncTask('Initializing T-SNE...', () => {
         this.tsne.initDataDist(this.nearest);
       }).then(step);
-
 
     });
   }

@@ -740,7 +740,7 @@ export class ScatterWebGL implements Scatter {
       }
     } else if (
         !e.ctrlKey &&
-        this.cameraControls.mouseButtons.ORBIT == THREE.MOUSE.RIGHT) {
+        this.cameraControls.mouseButtons.ORBIT === THREE.MOUSE.RIGHT) {
       // The user happened to press the ctrl key when the tab was active,
       // unpressed the ctrl when the tab was inactive, and now he/she
       // is back to the projector tab.
@@ -748,13 +748,12 @@ export class ScatterWebGL implements Scatter {
       this.cameraControls.mouseButtons.PAN = THREE.MOUSE.RIGHT;
     } else if (
         e.ctrlKey &&
-        this.cameraControls.mouseButtons.ORBIT == THREE.MOUSE.LEFT) {
+        this.cameraControls.mouseButtons.ORBIT === THREE.MOUSE.LEFT) {
       // Similarly to the situation above.
       this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.RIGHT;
       this.cameraControls.mouseButtons.PAN = THREE.MOUSE.LEFT;
     }
   }
-
 
   /** When we stop dragging/zooming, return to normal behavior. */
   private onMouseUp(e: any) {
@@ -793,7 +792,7 @@ export class ScatterWebGL implements Scatter {
     } else if (!this.mouseIsDown) {
       let lastNearestPoint = this.nearestPoint;
       this.setNearestPointToMouse(e);
-      if (lastNearestPoint != this.nearestPoint) {
+      if (lastNearestPoint !== this.nearestPoint) {
         this.onHoverListeners.forEach(l => l(this.nearestPoint));
       }
     }
@@ -849,7 +848,7 @@ export class ScatterWebGL implements Scatter {
     // Interpret the pixel as an ID.
     let id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | pixelBuffer[2];
     this.nearestPoint =
-        id != 0xffffff && id < this.dataSet.points.length ? id : null;
+        id !== 0xffffff && id < this.dataSet.points.length ? id : null;
   }
 
   /** Returns the squared distance to the mouse for the i-th point. */

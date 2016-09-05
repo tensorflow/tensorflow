@@ -15,7 +15,6 @@ limitations under the License.
 
 import {assert} from './util';
 
-
 /**
  * @fileoverview Useful vector utilities.
  */
@@ -25,7 +24,7 @@ export type Point2D = [number, number];
 
 /** Returns the dot product of two vectors. */
 export function dot(a: Vector, b: Vector): number {
-  assert(a.length == b.length, 'Vectors a and b must be of same length');
+  assert(a.length === b.length, 'Vectors a and b must be of same length');
   let result = 0;
   for (let i = 0; i < a.length; ++i) {
     result += a[i] * b[i];
@@ -44,7 +43,7 @@ export function sum(a: Vector): number {
 
 /** Returns the sum of two vectors, i.e. a + b */
 export function add(a: Vector, b: Vector): Vector {
-  assert(a.length == b.length, 'Vectors a and b must be of same length');
+  assert(a.length === b.length, 'Vectors a and b must be of same length');
   let result = new Array(a.length);
   for (let i = 0; i < a.length; ++i) {
     result[i] = a[i] + b[i];
@@ -54,7 +53,7 @@ export function add(a: Vector, b: Vector): Vector {
 
 /** Subtracts vector b from vector a, i.e. returns a - b */
 export function sub(a: Vector, b: Vector): Vector {
-  assert(a.length == b.length, 'Vectors a and b must be of same length');
+  assert(a.length === b.length, 'Vectors a and b must be of same length');
   let result = new Array(a.length);
   for (let i = 0; i < a.length; ++i) {
     result[i] = a[i] - b[i];
@@ -78,7 +77,7 @@ export function dist(a: Vector, b: Vector): number {
 
 /** Returns the square euclidean distance between two vectors. */
 export function dist2(a: Vector, b: Vector): number {
-  assert(a.length == b.length, 'Vectors a and b must be of same length');
+  assert(a.length === b.length, 'Vectors a and b must be of same length');
   let result = 0;
   for (let i = 0; i < a.length; ++i) {
     let diff = a[i] - b[i];
@@ -107,7 +106,7 @@ export function dist2_3D(a: Vector, b: Vector): number {
  * exit (returns -1) if the distance is >= to the provided limit.
  */
 export function dist2WithLimit(a: Vector, b: Vector, limit: number): number {
-  assert(a.length == b.length, 'Vectors a and b must be of same length');
+  assert(a.length === b.length, 'Vectors a and b must be of same length');
   let result = 0;
   for (let i = 0; i < a.length; ++i) {
     let diff = a[i] - b[i];
@@ -184,7 +183,7 @@ export type Predicate<T> = (a: T) => boolean;
 export function centroid<T>(
     dataPoints: T[], predicate: Predicate<T>,
     accessor?: (a: T) => Vector): {centroid: Vector, numMatches: number} {
-  if (accessor == null) {
+  if (accessor === null) {
     accessor = (a: T) => <any>a;
   }
   assert(dataPoints.length >= 0, '`vectors` must be of length >= 1');
@@ -201,7 +200,7 @@ export function centroid<T>(
       centroid[j] += vector[j];
     }
   }
-  if (n == 0) {
+  if (n === 0) {
     return {centroid: null, numMatches: 0};
   }
   for (let j = 0; j < centroid.length; ++j) {

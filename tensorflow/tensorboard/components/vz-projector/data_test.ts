@@ -15,7 +15,6 @@ limitations under the License.
 
 import {DataPoint, DataSet} from './data';
 
-
 /**
  * Helper method that makes a list of points given an array of
  * trace indexes.
