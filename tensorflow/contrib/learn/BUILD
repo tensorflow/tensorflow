@@ -302,7 +302,7 @@ py_test(
 py_test(
     name = "metric_spec_test",
     size = "small",
-    srcs = ["python/learn/metric_spec_test.py"],
+    srcs = ["python/learn/tests/metric_spec_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
