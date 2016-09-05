@@ -572,6 +572,7 @@ class Projector extends ProjectorPolymer {
     this.scatter.setZAccessor(
         dimension === 3 ? (i => this.points[i].projections['tsne-2']) : null);
     this.scatter.setAxisLabels('tsne-0', 'tsne-1');
+    this.scatter.update();
   }
 
   private runTSNE() {

@@ -28,6 +28,6 @@ If `label_smoothing` is nonzero, smooth the labels towards 1/num_classes:
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If the shape of `predictions` doesn't match that of `targets` or
-    if the shape of `weight` is invalid or if `weight` is None.
+*  <b>`ValueError`</b>: If the shape of `logits` doesn't match that of `onehot_labels`
+    or if the shape of `weight` is invalid or if `weight` is None.
 

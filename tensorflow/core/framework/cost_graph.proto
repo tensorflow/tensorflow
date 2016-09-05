@@ -39,6 +39,9 @@ message CostGraphDef {
     // Temporary memory used by this node.
     int64 temporary_memory_size = 6;
 
+    // Estimate of the computational cost of this node.
+    int64 compute_cost = 9;
+
     // If true, the output is permanent: it can't be discarded, because this
     // node is part of the "final output". Nodes may depend on final nodes.
     bool is_final = 7;

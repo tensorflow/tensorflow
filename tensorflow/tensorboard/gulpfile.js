@@ -75,6 +75,6 @@ gulp.task('default', ['watch', 'server']);
 // Clean all compiled JS files.
 var cleanCompiledTypeScript = require('gulp-clean-compiled-typescript');
 gulp.task('clean', function () {
-  return gulp.src('./components/**/*.ts')
+  return gulp.src(['./components/**/*.ts', '!./components/**/deps.d.ts'])
       .pipe(cleanCompiledTypeScript());
 });

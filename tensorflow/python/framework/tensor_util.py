@@ -456,6 +456,17 @@ def MakeNdarray(tensor):
 
   if tensor.tensor_content:
     return np.fromstring(tensor.tensor_content, dtype=dtype).reshape(shape)
+  elif tensor_dtype == dtypes.float16:
+    # the half_val field of the TensorProto stores the binary representation
+    # of the fp16: we need to reinterpret this as a proper float16
+    if len(tensor.half_val) == 1:
+      tmp = np.array(tensor.half_val[0], dtype=np.uint16)
+      tmp.dtype = np.float16
+      return np.repeat(tmp, num_elements).reshape(shape)
+    else:
+      tmp = np.fromiter(tensor.half_val, dtype=np.uint16)
+      tmp.dtype = np.float16
+      return tmp.reshape(shape)
   elif tensor_dtype == dtypes.float32:
     if len(tensor.float_val) == 1:
       return np.repeat(np.array(tensor.float_val[0], dtype=dtype),

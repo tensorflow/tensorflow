@@ -53,7 +53,7 @@ class GatherNdOp : public OpKernel {
             "index innermost dimension length must be <= params rank; saw: ",
             indices.dim_size(indices.dims() - 1), " vs. ", params.dims()));
 
-    TensorShape indices_shape(indices.shape());
+    const TensorShape& indices_shape(indices.shape());
     const int64 indices_nd = indices_shape.dim_size(indices_shape.dims() - 1);
 
     // Check that we have enough index space
@@ -79,7 +79,7 @@ class GatherNdOp : public OpKernel {
       N_result *= indices_shape.dim_size(i);
     }
 
-    TensorShape params_shape(params.shape());
+    const TensorShape& params_shape(params.shape());
     Index total_nd = params_shape.dims();
 
     TensorShape result_shape(indices_shape);

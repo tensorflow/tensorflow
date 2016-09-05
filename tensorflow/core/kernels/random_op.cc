@@ -34,6 +34,16 @@ limitations under the License.
 #include "tensorflow/core/util/guarded_philox_random.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#if EIGEN_COMP_GNUC && __cplusplus > 199711L
+#define DISABLE_FLOAT_EQUALITY_WARNING \
+  _Pragma("GCC diagnostic push")       \
+      _Pragma("GCC diagnostic ignored \"-Wfloat-equal\"")
+#define ENABLE_FLOAT_EQUALITY_WARNING _Pragma("GCC diagnostic pop")
+#else
+#define DISABLE_FLOAT_EQUALITY_WARNING
+#define ENABLE_FLOAT_EQUALITY_WARNING
+#endif
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -355,47 +365,23 @@ class RandomGammaOp : public OpKernel {
         // Several calculations can be done on a per-alpha basis.
         const double alpha = static_cast<double>(alpha_flat[alpha_idx]);
 
-        if (alpha < 0.3) {
-          // For very small alpha, we use the log-space algorithm proposed in
-          // "Simulating from a gamma distribution with small shape parameter",
-          // http://arxiv.org/abs/1302.1884
-          const double lambda = 1 / alpha - 1;
-          const double w = alpha / (M_E /* exp(1) */ * (1 - alpha));
-          const double r = 1 / (1 + w);
-
-          // Compute the rest of the samples for the current alpha value.
+        DISABLE_FLOAT_EQUALITY_WARNING
+        if (alpha == double(1.0)) {
+          ENABLE_FLOAT_EQUALITY_WARNING
+          // Sample from an exponential distribution.
           for (int64 sample_idx = output_idx % num_samples;
                sample_idx < num_samples && output_idx < limit_output;
                sample_idx++, output_idx++) {
-            // Since each sample may use a variable number of normal/uniform
-            // samples, and we want data stable regardless of sharding
+            // As we want data stable regardless of sharding
             // (including eventually on GPU), we skip on a per-sample basis.
             PhiloxRandom gen = rng;
             gen.Skip(kReservedSamplesPerOutput * output_idx);
             short uniform_remaining = 0;
-
-            // Keep trying until we don't reject a sample. In practice, we
-            // expect a low rejection rate.
-            while (true) {
-              UNIFORM(u);
-              double z;
-              if (u <= r) {
-                z = -log(u / r);
-              } else {
-                UNIFORM(v);
-                z = log(v) / lambda;
-              }
-              double eta = z >= 0 ? exp(-z) : w * lambda * exp(lambda * z);
-              UNIFORM(v);
-              double h = exp(-z - exp(-z / alpha));
-              if (h > eta * v) {
-                samples_alpha_offset[sample_idx * num_alphas] =
-                    static_cast<T>(exp(-z / alpha));
-                break;
-              }
-            }     // while: true
-          }       // for: sample_idx
-        } else {  // so, alpha >= 0.3
+            UNIFORM(u);
+            const double res = -log(1.0 - u);
+            samples_alpha_offset[sample_idx * num_alphas] = static_cast<T>(res);
+          }       // for (sample_idx)
+        } else {  // if alpha != 1.0
           // Transformation-rejection from pairs of uniform and normal random
           // variables. http://dl.acm.org/citation.cfm?id=358414
           //
@@ -454,7 +440,7 @@ class RandomGammaOp : public OpKernel {
               }
             }  // while: true
           }    // for: sample_idx
-        }      // if: alpha < 0.3
+        }      // if (alpha == 1.0)
       }        // for: output_idx
     };         // DoWork
 #undef UNIFORM
@@ -463,9 +449,7 @@ class RandomGammaOp : public OpKernel {
     // Other ops: sqrt, +, *, /, %... something like 15 of these, at 3-6 cycles
     // each = ~60.
     // All of this /0.95 due to the rejection possibility = ~85.
-    // All of this * ~2 to incorporate possibility of the log/exp branch for
-    // low-alpha. (1 log, 4 exp, 3/, 3*)
-    static const int kElementCost = 170 + 2 * Normal::kElementCost +
+    static const int kElementCost = 85 + 2 * Normal::kElementCost +
                                     Uniform::kElementCost +
                                     3 * PhiloxRandom::kElementCost;
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());

@@ -540,6 +540,16 @@ class Distribution(BaseDistribution):
   def log_cdf(self, value, name="log_cdf"):
     """Log cumulative distribution function.
 
+    Given random variable `X`, the cumulative distribution function `cdf` is:
+
+    ```
+    log_cdf(x) := Log[ P[X <= x] ]
+    ```
+
+    Often, a numerical approximation can be used for `log_cdf(x)` that yields
+    a more accurate answer than simply taking the logarithm of the `cdf` when
+    `x << -1`.
+
     Args:
       value: `float` or `double` `Tensor`.
       name: The name to give this op.
@@ -556,6 +566,12 @@ class Distribution(BaseDistribution):
   def cdf(self, value, name="cdf"):
     """Cumulative distribution function.
 
+    Given random variable `X`, the cumulative distribution function `cdf` is:
+
+    ```
+    cdf(x) := P[X <= x]
+    ```
+
     Args:
       value: `float` or `double` `Tensor`.
       name: The name to give this op.
@@ -568,6 +584,57 @@ class Distribution(BaseDistribution):
     with self._name_scope(name, values=[value]):
       value = ops.convert_to_tensor(value, name="value")
       return self._cdf(value)
+
+  def log_survival_function(self, value, name="log_survival_function"):
+    """Log survival function.
+
+    Given random variable `X`, the survival function is defined:
+
+    ```
+    log_survival_function(x) = Log[ P[X > x] ]
+                             = Log[ 1 - P[X <= x] ]
+                             = Log[ 1 - cdf(x) ]
+    ```
+
+    Typically, different numerical approximations can be used for the log
+    survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+    Args:
+      value: `float` or `double` `Tensor`.
+      name: The name to give this op.
+
+    Returns:
+      `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+        `self.dtype`.
+    """
+    self._check_hasattr(self._log_survival_function)
+    with self._name_scope(name, values=[value]):
+      value = ops.convert_to_tensor(value, name="value")
+      return self._log_survival_function(value)
+
+  def survival_function(self, value, name="survival_function"):
+    """Survival function.
+
+    Given random variable `X`, the survival function is defined:
+
+    ```
+    survival_function(x) = P[X > x]
+                         = 1 - P[X <= x]
+                         = 1 - cdf(x).
+    ```
+
+    Args:
+      value: `float` or `double` `Tensor`.
+      name: The name to give this op.
+
+    Returns:
+      Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+        `self.dtype`.
+    """
+    self._check_hasattr(self._survival_function)
+    with self._name_scope(name, values=[value]):
+      value = ops.convert_to_tensor(value, name="value")
+      return self._survival_function(value)
 
   def entropy(self, name="entropy"):
     """Shanon entropy in nats."""
