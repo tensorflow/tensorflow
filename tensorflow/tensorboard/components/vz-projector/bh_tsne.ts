@@ -375,7 +375,7 @@ export class TSNE {
     let annotateTree =
         (node: AugmSPNode): {numCells: number, yCell: number[]} => {
           let numCells = node.points ? node.points.length : 0;
-          if (node.children === null) {
+          if (node.children == null) {
             // Update the current node and tell the parent.
             node.numCells = numCells;
             // TODO(smilkov): yCell should be average across all points.
@@ -387,7 +387,7 @@ export class TSNE {
               node.points ? node.points[0].slice() : zerosArray(this.dim);
           for (let i = 0; i < node.children.length; ++i) {
             let child = node.children[i];
-            if (child === null) {
+            if (child == null) {
               continue;
             }
             let result = annotateTree(child as AugmSPNode);
@@ -432,7 +432,7 @@ export class TSNE {
       tree.visit((node: AugmSPNode) => {
         let squaredDistToCell = this.dist2(pointI, node.yCell);
         // Squared distance from point i to cell.
-        if (node.children === null ||
+        if (node.children == null ||
             (node.rCell / Math.sqrt(squaredDistToCell) < THETA)) {
           let qijZ = 1 / (1 + squaredDistToCell);
           let dZ = node.numCells * qijZ;
