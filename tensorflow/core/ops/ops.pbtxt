@@ -4058,6 +4058,7 @@ op {
   }
   summary: "Copy Op."
   description: "Performs CPU-to-CPU or GPU-to-GPU deep-copying of tensor, depending on the\ndevice on which the tensor is allocated.\n\nUnlike the CopyHost Op, this op does not have HostMemory constraint on its\ninput or output."
+  allows_uninitialized_input: true
 }
 op {
   name: "CopyHost"
@@ -4085,6 +4086,7 @@ op {
   }
   summary: "Copy Host Op."
   description: "Performs CPU-to-CPU deep-copying of tensor.\n\nUnlike the Copy Op, this op has HostMemory constraint on its input or output."
+  allows_uninitialized_input: true
 }
 op {
   name: "Cos"
@@ -4498,6 +4500,7 @@ op {
   }
   summary: "Debug Identity Op."
   description: "Provides an identity mapping of the non-Ref type input tensor for debugging."
+  allows_uninitialized_input: true
 }
 op {
   name: "DebugNanCount"
@@ -4534,6 +4537,7 @@ op {
   }
   summary: "Debug NaN Value Counter Op"
   description: "Counts number of NaNs in the input tensor, for debugging."
+  allows_uninitialized_input: true
 }
 op {
   name: "DecodeBase64"
