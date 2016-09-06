@@ -26,8 +26,6 @@ from tensorflow.contrib.learn.python.learn.estimators.base import TensorFlowEsti
 from tensorflow.contrib.learn.python.learn.estimators.classifier import Classifier
 from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNClassifier
 from tensorflow.contrib.learn.python.learn.estimators.dnn import DNNRegressor
-from tensorflow.contrib.learn.python.learn.estimators.dnn import TensorFlowDNNClassifier
-from tensorflow.contrib.learn.python.learn.estimators.dnn import TensorFlowDNNRegressor
 from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedClassifier
 from tensorflow.contrib.learn.python.learn.estimators.dnn_linear_combined import DNNLinearCombinedRegressor
 from tensorflow.contrib.learn.python.learn.estimators.estimator import BaseEstimator
