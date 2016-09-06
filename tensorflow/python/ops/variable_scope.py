@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections as collections_lib
 import contextlib
+import functools
 import traceback
 
 import six
@@ -35,8 +36,8 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
 __all__ = ["VariableScope", "get_variable_scope",
-           "get_variable", "variable_scope", "variable_op_scope",
-           "no_regularizer"]
+           "get_variable", "get_local_variable", "variable_scope",
+           "variable_op_scope", "no_regularizer"]
 
 
 class _PartitionInfo(object):
@@ -1010,6 +1011,19 @@ def get_variable(name,
       collections=collections, caching_device=caching_device,
       partitioner=partitioner, validate_shape=validate_shape,
       custom_getter=custom_getter)
+
+
+@functools.wraps(get_variable)
+def get_local_variable(*args, **kwargs):
+  kwargs["trainable"] = False
+  if "collections" in kwargs:
+    kwargs["collections"] += [ops.GraphKeys.LOCAL_VARIABLES]
+  else:
+    kwargs["collections"] = [ops.GraphKeys.LOCAL_VARIABLES]
+  get_local_variable.__doc__ = (
+      "Gets an existing local variable or creates a new one.\n\n" +
+      get_local_variable.__doc__)
+  return get_variable(*args, **kwargs)
 
 
 def _get_partitioned_variable(name,
