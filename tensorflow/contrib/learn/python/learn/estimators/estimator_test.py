@@ -503,6 +503,20 @@ class ReplicaDeviceSetterTest(tf.test.TestCase):
     self.assertDeviceEqual('', table._table_ref.device)
     self.assertDeviceEqual('', output.device)
 
+  def testTaskIsSetOnWorkerWhenJobNameIsSet(self):
+    with tf.device(
+        estimator._get_replica_device_setter(
+            tf.contrib.learn.RunConfig(
+                num_ps_replicas=1, job_name='worker', task=3))):
+      v = tf.Variable([1, 2])
+      w = tf.Variable([2, 1])
+      a = v + w
+    self.assertDeviceEqual('/job:ps/task:0', v.device)
+    self.assertDeviceEqual('/job:ps/task:0', v.initializer.device)
+    self.assertDeviceEqual('/job:ps/task:0', w.device)
+    self.assertDeviceEqual('/job:ps/task:0', w.initializer.device)
+    self.assertDeviceEqual('/job:worker/task:3', a.device)
+
 
 if __name__ == '__main__':
   tf.test.main()

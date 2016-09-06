@@ -117,7 +117,7 @@ def _get_default_schedule(config):
     # than one masters or explicitly disallow.
     return 'local_run'
   elif config.job_name == 'ps':
-    return 'serve'
+    return 'run_std_server'
   elif config.job_name == 'worker':
     return 'train'
 
