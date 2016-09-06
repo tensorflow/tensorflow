@@ -127,7 +127,6 @@ time.
 
 @@aggregate_metrics
 @@aggregate_metric_map
-@@run_metric
 
 ## Set `Ops`
 
@@ -147,7 +146,6 @@ from tensorflow.contrib.metrics.python.ops.confusion_matrix_ops import confusion
 from tensorflow.contrib.metrics.python.ops.histogram_ops import auc_using_histogram
 from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metric_map
 from tensorflow.contrib.metrics.python.ops.metric_ops import aggregate_metrics
-from tensorflow.contrib.metrics.python.ops.metric_ops import run_metric
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_accuracy
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_auc
 from tensorflow.contrib.metrics.python.ops.metric_ops import streaming_mean

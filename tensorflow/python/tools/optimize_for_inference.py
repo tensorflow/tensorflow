@@ -27,6 +27,8 @@ the network is used only for inference. These include:
 
  - Folding batch normalization ops into the pre-calculated weights.
 
+ - Fusing common operations into unified versions.
+
 This script takes a frozen GraphDef file (where the weight variables have been
 converted into constants by the freeze_graph script) and outputs a new GraphDef
 with the optimizations applied.

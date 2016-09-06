@@ -17,6 +17,7 @@ limitations under the License.
 
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../tf-imports/lodash.html">
+<link rel="import" href="../tf-imports/d3.html">
 
 <!--
 tf-image-loader loads an individual image from the TensorBoard backend.
@@ -25,49 +26,45 @@ Right now it always loads the most recent image. We should add support in the
 future for loading older images.
 -->
 <dom-module id="tf-image-loader">
-  <style>
-  :host {
-    display: block;
-  }
-  img {
-    image-rendering: pixelated;
-    border: 1px solid #555;
-  }
-  </style>
   <template>
-    <img src="[[imageUrl]]"
-         width="300"
-         height="[[height]]"
-         on-error="reload">
+    <img
+      id="img"
+      src="[[imageUrl]]"
+      on-error="reload">
+    <style>
+      :host {
+        display: block;
+        width: 100%;
+        height: auto;
+        position: relative;
+      }
+
+      img {
+        image-rendering: pixelated;
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+    </style>
   </template>
   <script>
     Polymer({
       is: "tf-image-loader",
       properties: {
-        run: String,
-        tag: String,
-        imagesGenerator: Function,
+        colorScale: Object,
         imageUrl: String,
-        height: {
-          type: Number,
-          value: 300
-        }
       },
-      reload: function() {
-        var _this = this;
-        this.imageUrl = ""; // force reload
-        this.imagesGenerator(this.tag, this.run).then(function(metadatas) {
-          var last_metadata = _.last(metadatas);
-          _this.imageUrl = last_metadata.url;
-          _this.height = 300 / last_metadata.width * last_metadata.height;
-        });
+      setVisibleSeries: function(runs) {
+        // Do nothing.
       },
-      ready: function() {
-        // Need to test so that it will not error if it is constructed w/o
-        // all properties (so that it's possible to use stub to mock it out)
-        if (this.run != null && this.tag != null && this.imagesGenerator != null) {
-          this.reload();
-        }
+      setSeriesData: function(run, data) {
+        var last = _.last(data);
+        this.redraw(last.url);
+      },
+      redraw: function(newUrl) {
+        var url = newUrl || this.imageUrl;
+        this.imageUrl = ""; // Force redraw
+        this.imageUrl = url;
       },
     });
   </script>

@@ -130,7 +130,8 @@ function getTextColor(hexTripletColor: string) {
       color = convertedHex;
     } else {
       // RGB string is currently not handled.
-      console.log(
+      /* tslint:disable:no-console */
+      console.warn(
           'WARNING: Could not convert color to hex,' +
           'please specify color as name or hex string.');
       return 'black';

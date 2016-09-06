@@ -30,15 +30,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 
-ops.NoGradient("CholeskyGrad")
-ops.NoGradient("BatchCholeskyGrad")
-ops.NoGradient("SelfAdjointEig")
-ops.NoGradient("BatchSelfAdjointEig")
-ops.NoGradient("SelfAdjointEigV2")
-ops.NoGradient("BatchSelfAdjointEigV2")
-ops.NoGradient("Svd")
-ops.NoGradient("BatchSvd")
-
 
 @ops.RegisterGradient("MatrixInverse")
 def _MatrixInverseGrad(op, grad):

@@ -21,7 +21,6 @@ export interface Point3D {
   /** Original z coordinate. */
   z: number;
 }
-;
 
 /** The spacial data of points and lines that will be shown in the projector. */
 export interface DataSet {
@@ -74,7 +73,7 @@ export interface Scatter {
   setMode(mode: Mode): void;
   /** Returns the interaction mode. */
   getMode(): Mode;
-  /** Resets the zoom level to 1.*/
+  /** Resets the zoom level to 1. */
   resetZoom(): void;
   /**
    * Increases/decreases the zoom level.

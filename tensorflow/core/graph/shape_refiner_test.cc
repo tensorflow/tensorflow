@@ -92,6 +92,33 @@ TEST(ShapeRefinerTest, BadShapes) {
   ASSERT_EQ("Dimensions must be equal, but are 1 and 2", s.error_message());
 }
 
+TEST(ShapeRefinerTest, SetShape) {
+  ShapeRefiner m;
+
+  Scope root = Scope::NewRootScope();
+  auto a = ops::Const(root, {{1.0f}, {2.0f}});
+
+  TF_ASSERT_OK(m.AddNode(a.node()));
+
+  auto ic = m.GetContext(a.node());
+  ASSERT_NE(nullptr, ic);
+  shape_inference::ShapeHandle h = ic->MakeShape({2, ic->UnknownDim()});
+  TF_ASSERT_OK(m.SetShape(a.node(), 0, h));
+  EXPECT_SHAPE("[2,?]", m, a, 0);
+
+  // Out of range.
+  ASSERT_FALSE(m.SetShape(a.node(), 1, h).ok());
+  ASSERT_FALSE(m.SetShape(a.node(), -1, h).ok());
+
+  auto b = ops::Const(root, {{1.0f}, {2.0f}});
+  // Forget to add node first.
+  ASSERT_FALSE(m.SetShape(b.node(), 0, h).ok());
+
+  // Set an incompatible shape (3 vs 2)
+  h = ic->MakeShape({3, ic->UnknownDim()});
+  ASSERT_FALSE(m.SetShape(a.node(), 0, h).ok());
+}
+
 TEST(ShapeRefinerTest, PropagateConstants) {
   // Reduction dimension is a variable, so we don't know its value.
   // So the output shape value is unknown (though its rank is known).

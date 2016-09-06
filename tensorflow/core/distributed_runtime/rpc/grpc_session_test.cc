@@ -75,6 +75,9 @@ static SessionOptions Options(const string& target, int placement_period) {
   // string.
   options.target = strings::StrCat("grpc://", target);
   options.config.set_placement_period(placement_period);
+  options.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_opt_level(OptimizerOptions::L0);
   return options;
 }
 
@@ -307,9 +310,29 @@ TEST(GrpcSessionTest, MultiDevices) {
         TF_CHECK_OK(session->Create(def));
         {
           std::vector<Tensor> outputs;
-          TF_CHECK_OK(session->Run({}, {c->name()}, {}, &outputs));
+          RunOptions options;
+          options.set_trace_level(RunOptions::FULL_TRACE);
+          RunMetadata metadata;
+          TF_CHECK_OK(
+              session->Run(options, {}, {c->name()}, {}, &outputs, &metadata));
           ASSERT_EQ(1, outputs.size());
           IsSingleFloatValue(outputs[0], 6.0 * kSize);
+
+          const StepStats& ss = metadata.step_stats();
+          // NOTE(mrry): We only assert that `c` is placed correctly,
+          // because the current placement algorithm will move its
+          // inputs to be colocated with it, when it is the sole
+          // consumer.
+          bool c_placed_correctly = false;
+          for (const auto& dev : ss.dev_stats()) {
+            for (const auto& node : dev.node_stats()) {
+              if (node.node_name() == c->name() &&
+                  dev.device() == c_dev.name()) {
+                c_placed_correctly = true;
+              }
+            }
+          }
+          ASSERT_TRUE(c_placed_correctly);
         }
         TF_CHECK_OK(session->Close());
       }

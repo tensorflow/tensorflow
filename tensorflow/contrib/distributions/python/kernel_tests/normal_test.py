@@ -27,6 +27,14 @@ import tensorflow as tf
 
 class NormalTest(tf.test.TestCase):
 
+  def setUp(self):
+    self._rng = np.random.RandomState(123)
+
+  def assertAllFinite(self, tensor):
+    is_finite = np.isfinite(tensor.eval())
+    all_true = np.ones_like(is_finite, dtype=np.bool)
+    self.assertAllEqual(all_true, is_finite)
+
   def _testParamShapes(self, sample_shape, expected):
     with self.test_session():
       param_shapes = tf.contrib.distributions.Normal.param_shapes(sample_shape)
@@ -143,20 +151,93 @@ class NormalTest(tf.test.TestCase):
 
   def testNormalCDF(self):
     with self.test_session():
-      batch_size = 6
-      mu = tf.constant([3.0] * batch_size)
-      sigma = tf.constant([math.sqrt(10.0)] * batch_size)
-      x = np.array([-2.5, 2.5, 4.0, 0.0, -1.0, 2.0], dtype=np.float32)
+      batch_size = 50
+      mu = self._rng.randn(batch_size)
+      sigma = self._rng.rand(batch_size) + 1.0
+      x = np.linspace(-8.0, 8.0, batch_size).astype(np.float64)
 
       normal = tf.contrib.distributions.Normal(mu=mu, sigma=sigma)
-      expected_cdf = stats.norm(mu.eval(), sigma.eval()).cdf(x)
+      expected_cdf = stats.norm(mu, sigma).cdf(x)
 
       cdf = normal.cdf(x)
-      self.assertAllClose(expected_cdf, cdf.eval())
+      self.assertAllClose(expected_cdf, cdf.eval(), atol=0)
       self.assertAllEqual(normal.batch_shape().eval(), cdf.get_shape())
       self.assertAllEqual(normal.batch_shape().eval(), cdf.eval().shape)
       self.assertAllEqual(normal.get_batch_shape(), cdf.get_shape())
       self.assertAllEqual(normal.get_batch_shape(), cdf.eval().shape)
+
+  def testNormalSurvivalFunction(self):
+    with self.test_session():
+      batch_size = 50
+      mu = self._rng.randn(batch_size)
+      sigma = self._rng.rand(batch_size) + 1.0
+      x = np.linspace(-8.0, 8.0, batch_size).astype(np.float64)
+
+      normal = tf.contrib.distributions.Normal(mu=mu, sigma=sigma)
+      expected_sf = stats.norm(mu, sigma).sf(x)
+
+      sf = normal.survival_function(x)
+      self.assertAllClose(expected_sf, sf.eval(), atol=0)
+      self.assertAllEqual(normal.batch_shape().eval(), sf.get_shape())
+      self.assertAllEqual(normal.batch_shape().eval(), sf.eval().shape)
+      self.assertAllEqual(normal.get_batch_shape(), sf.get_shape())
+      self.assertAllEqual(normal.get_batch_shape(), sf.eval().shape)
+
+  def testNormalLogCDF(self):
+    with self.test_session():
+      batch_size = 50
+      mu = self._rng.randn(batch_size)
+      sigma = self._rng.rand(batch_size) + 1.0
+      x = np.linspace(-100.0, 10.0, batch_size).astype(np.float64)
+
+      normal = tf.contrib.distributions.Normal(mu=mu, sigma=sigma)
+      expected_cdf = stats.norm(mu, sigma).logcdf(x)
+
+      cdf = normal.log_cdf(x)
+      self.assertAllClose(expected_cdf, cdf.eval(), atol=0, rtol=1e-5)
+      self.assertAllEqual(normal.batch_shape().eval(), cdf.get_shape())
+      self.assertAllEqual(normal.batch_shape().eval(), cdf.eval().shape)
+      self.assertAllEqual(normal.get_batch_shape(), cdf.get_shape())
+      self.assertAllEqual(normal.get_batch_shape(), cdf.eval().shape)
+
+  def testFiniteGradientAtDifficultPoints(self):
+    with self.test_session():
+      for dtype in [np.float32, np.float64]:
+        mu = tf.Variable(dtype(0.0))
+        sigma = tf.Variable(dtype(1.0))
+        dist = tf.contrib.distributions.Normal(mu=mu, sigma=sigma)
+        tf.initialize_all_variables().run()
+        for func in [
+            dist.cdf,
+            dist.log_cdf,
+            dist.survival_function,
+            dist.log_survival_function,
+            dist.log_prob,
+            dist.prob]:
+          x = np.array([-100., -20., -5., 0., 5., 20., 100.]).astype(dtype)
+          value = func(x)
+          grads = tf.gradients(value, [mu, sigma])
+
+          self.assertAllFinite(value)
+          self.assertAllFinite(grads[0])
+          self.assertAllFinite(grads[1])
+
+  def testNormalLogSurvivalFunction(self):
+    with self.test_session():
+      batch_size = 50
+      mu = self._rng.randn(batch_size)
+      sigma = self._rng.rand(batch_size) + 1.0
+      x = np.linspace(-10.0, 100.0, batch_size).astype(np.float64)
+
+      normal = tf.contrib.distributions.Normal(mu=mu, sigma=sigma)
+      expected_sf = stats.norm(mu, sigma).logsf(x)
+
+      sf = normal.log_survival_function(x)
+      self.assertAllClose(expected_sf, sf.eval(), atol=0, rtol=1e-5)
+      self.assertAllEqual(normal.batch_shape().eval(), sf.get_shape())
+      self.assertAllEqual(normal.batch_shape().eval(), sf.eval().shape)
+      self.assertAllEqual(normal.get_batch_shape(), sf.get_shape())
+      self.assertAllEqual(normal.get_batch_shape(), sf.eval().shape)
 
   def testNormalEntropyWithScalarInputs(self):
     # Scipy.stats.norm cannot deal with the shapes in the other test.

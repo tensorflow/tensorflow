@@ -22,8 +22,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 
 from tensorflow.contrib.metrics.python.ops import confusion_matrix_ops
@@ -467,6 +465,8 @@ def streaming_accuracy(predictions, labels, weights=None,
   predictions, labels = metric_ops_util.remove_squeezable_dimensions(
       predictions, labels)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+  if labels.dtype != predictions.dtype:
+    predictions = math_ops.cast(predictions, labels.dtype)
   is_correct = math_ops.to_float(math_ops.equal(predictions, labels))
   return streaming_mean(is_correct, weights, metrics_collections,
                         updates_collections, name or 'accuracy')
@@ -2124,39 +2124,6 @@ def aggregate_metric_map(names_to_tuples):
   metric_names = names_to_tuples.keys()
   value_ops, update_ops = zip(*names_to_tuples.values())
   return dict(zip(metric_names, value_ops)), dict(zip(metric_names, update_ops))
-
-
-def run_metric(metric, predictions, targets, weights=None):
-  """Runs a single metric.
-
-  This function runs metric on given predictions and targets. weights will be
-  used if metric contains 'weights' in its argument.
-
-  Args:
-    metric: A function that evaluates targets given predictions.
-    predictions: A `Tensor` of arbitrary shape.
-    targets: A `Tensor` of the same shape as `predictions`.
-    weights: A set of weights that can be used in metric function to compute
-      weighted result.
-
-  Returns:
-    result: result returned by metric function.
-  """
-  metric_args = []
-  if hasattr(metric, '__code__'):
-    # Regular function.
-    metric_args = inspect.getargspec(metric).args
-  elif hasattr(metric, 'func') and hasattr(metric, 'keywords'):
-    # Partial function.
-    for arg in inspect.getargspec(metric.func).args:
-      if metric.keywords and arg not in metric.keywords.keys():
-        metric_args.append(arg)
-  if 'weights' in metric_args:
-    result = metric(predictions, targets, weights=weights)
-  else:
-    result = metric(predictions, targets)
-
-  return result
 
 
 __all__ = make_all(__name__)

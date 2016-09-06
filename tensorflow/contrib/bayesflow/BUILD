@@ -23,6 +23,7 @@ cuda_py_test(
     srcs = ["python/kernel_tests/entropy_test.py"],
     additional_deps = [
         ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -34,6 +35,7 @@ cuda_py_test(
     srcs = ["python/kernel_tests/monte_carlo_test.py"],
     additional_deps = [
         ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -45,6 +47,7 @@ cuda_py_test(
     srcs = ["python/kernel_tests/special_math_test.py"],
     additional_deps = [
         ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -56,6 +59,7 @@ cuda_py_test(
     srcs = ["python/kernel_tests/stochastic_graph_test.py"],
     additional_deps = [
         ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -67,6 +71,7 @@ cuda_py_test(
     srcs = ["python/kernel_tests/variational_inference_test.py"],
     additional_deps = [
         ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -78,6 +83,7 @@ cuda_py_test(
     srcs = ["python/kernel_tests/stochastic_tensor_test.py"],
     additional_deps = [
         ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -89,6 +95,7 @@ cuda_py_test(
     srcs = ["examples/reinforce_simple/reinforce_simple_example.py"],
     additional_deps = [
         ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
