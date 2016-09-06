@@ -85,7 +85,6 @@ write the graph to a file.
 @@TensorShapeUtils
 @@PartialTensorShape
 @@PartialTensorShapeUtils
-@@TF_Buffer
 
 ## Thread
 
