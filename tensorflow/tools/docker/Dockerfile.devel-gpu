@@ -85,8 +85,10 @@ RUN git clone -b r0.10 --recursive --recurse-submodules https://github.com/tenso
 WORKDIR /tensorflow
 
 # Configure the build for our CUDA configuration.
+ENV CUDA_PATH /usr/local/cuda
 ENV CUDA_TOOLKIT_PATH /usr/local/cuda
-ENV CUDNN_INSTALL_PATH /usr/local/cuda
+ENV CUDNN_INSTALL_PATH /usr/lib/x86_64-linux-gnu
+ENV LD_LIBRARY_PATH /usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64
 ENV TF_NEED_CUDA 1
 
 RUN ./configure && \
@@ -95,9 +97,6 @@ RUN ./configure && \
     pip install --upgrade /tmp/pip/tensorflow-*.whl
 
 WORKDIR /root
-
-# Set up CUDA variables
-ENV CUDA_PATH /usr/local/cuda
 
 # TensorBoard
 EXPOSE 6006
