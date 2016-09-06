@@ -185,6 +185,7 @@ class OpsTestBase : public ::testing::Test {
     test::SetOutputAttrs(params_.get(), &attrs);
     checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
     params_.get()->slice_reader_cache = &slice_reader_cache_wrapper;
+    params_.get()->resource_manager = device_.get()->resource_manager();
 
     context_.reset(new OpKernelContext(params_.get()));
     device_->Compute(kernel_.get(), context_.get());

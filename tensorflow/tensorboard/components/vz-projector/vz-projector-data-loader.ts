@@ -17,7 +17,6 @@ import {runAsyncTask, updateMessage} from './async';
 import {DataPoint, DataSet, DatasetMetadata, DataSource} from './data';
 import {PolymerElement} from './vz-projector-util';
 
-
 /** Prefix added to the http requests when asking the server for data. */
 const DATA_URL = 'data';
 
@@ -145,7 +144,7 @@ class DataLoader extends DataLoaderPolymer {
     let names = Object.keys(info.tensors)
                     .filter(name => {
                       let shape = info.tensors[name];
-                      return shape.length == 2 && shape[0] > 1 && shape[1] > 1;
+                      return shape.length === 2 && shape[0] > 1 && shape[1] > 1;
                     })
                     .sort((a, b) => info.tensors[b][0] - info.tensors[a][0]);
     this.tensorNames =
@@ -157,7 +156,7 @@ class DataLoader extends DataLoaderPolymer {
     let labelIndex = -1;
     this.labelOptions = columnStats.length > 1 ? columnStats.map((stats, i) => {
       // Make the default label by the first non-numeric column.
-      if (!stats.isNumeric && labelIndex == -1) {
+      if (!stats.isNumeric && labelIndex === -1) {
         labelIndex = i;
       }
       return stats.name;
@@ -169,7 +168,7 @@ class DataLoader extends DataLoaderPolymer {
     let standardColorOption: ColorOption[] = [
       {name: 'No color map'},
       // TODO(smilkov): Implement this.
-      //{name: 'Distance of neighbors',
+      // {name: 'Distance of neighbors',
       //    desc: 'How far is each point from its neighbors'}
     ];
     let metadataColorOption: ColorOption[] =
@@ -185,7 +184,7 @@ class DataLoader extends DataLoaderPolymer {
                 // Re-order the range.
                 let newRange = range.map((color, i) => {
                   let index = (i * 2) % (range.length - 1);
-                  if (index == 0) {
+                  if (index === 0) {
                     index = range.length - 1;
                   }
                   return range[index];
@@ -217,12 +216,12 @@ class DataLoader extends DataLoaderPolymer {
 
     // Demo dataset dropdown
     let demoDatasetChanged = (demoDataSet: DemoDataset) => {
-      if (demoDataSet == null) {
+      if (demoDataSet === null) {
         return;
       }
 
       this.dom.selectAll('.file-name').style('display', 'none');
-      let separator = demoDataSet.fpath.substr(-3) == 'tsv' ? '\t' : ' ';
+      let separator = demoDataSet.fpath.substr(-3) === 'tsv' ? '\t' : ' ';
       fetchDemoData(`${DATA_URL}/${demoDataSet.fpath}`, separator)
           .then(points => {
 
@@ -391,7 +390,7 @@ function parseTensors(content: string, delim = '\t'): Promise<DataPoint[]> {
     let lines = content.split('\n');
     lines.forEach(line => {
       line = line.trim();
-      if (line == '') {
+      if (line === '') {
         return;
       }
       let row = line.split(delim);
@@ -403,17 +402,17 @@ function parseTensors(content: string, delim = '\t'): Promise<DataPoint[]> {
         projectedPoint: null
       };
       // If the first label is not a number, take it as the label.
-      if (isNaN(row[0] as any) || numDim == row.length - 1) {
+      if (isNaN(row[0] as any) || numDim === row.length - 1) {
         dataPoint.metadata['label'] = row[0];
         dataPoint.vector = row.slice(1).map(Number);
       } else {
         dataPoint.vector = row.map(Number);
       }
       data.push(dataPoint);
-      if (numDim == null) {
+      if (numDim === null) {
         numDim = dataPoint.vector.length;
       }
-      if (numDim != dataPoint.vector.length) {
+      if (numDim !== dataPoint.vector.length) {
         updateMessage('Parsing failed. Vector dimensions do not match');
         throw Error('Parsing failed');
       }
@@ -439,10 +438,10 @@ function parseAndMergeMetadata(
     content: string, data: DataPoint[]): Promise<ColumnStats[]> {
   return runAsyncTask('Parsing metadata...', () => {
     let lines = content.split('\n').filter(line => line.trim().length > 0);
-    let hasHeader = (lines.length - 1 == data.length);
+    let hasHeader = (lines.length - 1 === data.length);
 
     // Dimension mismatch.
-    if (lines.length != data.length && !hasHeader) {
+    if (lines.length !== data.length && !hasHeader) {
       throw Error('Dimensions do not match');
     }
 

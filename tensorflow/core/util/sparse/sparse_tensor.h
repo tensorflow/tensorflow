@@ -344,7 +344,9 @@ bool SparseTensor::ToDense(Tensor* out, bool initialize) {
 
   std::vector<int64> strides(dims_);
   const auto& out_shape = out->shape();
-  strides[dims_ - 1] = 1;
+  if (dims_ > 0) {
+    strides[dims_ - 1] = 1;
+  }
   for (int d = dims_ - 2; d >= 0; --d) {
     strides[d] = strides[d + 1] * out_shape.dim_size(d + 1);
   }

@@ -33,7 +33,6 @@ limitations under the License.
 namespace tensorflow {
 
 class CancellationManager;
-class Node;
 class OpKernel;
 class ResourceMgr;
 

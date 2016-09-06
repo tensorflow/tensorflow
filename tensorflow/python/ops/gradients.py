@@ -235,9 +235,10 @@ def _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops):
   return grad_ys
 
 
-def _IsFloat(tensor):
+def _IsTrainable(tensor):
   dtype = dtypes.as_dtype(tensor.dtype)
-  return dtype.base_dtype in (dtypes.float32, dtypes.float64)
+  return dtype.base_dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
+                              dtypes.complex64, dtypes.complex128)
 
 
 def _VerifyGeneratedGradients(grads, op):
@@ -409,7 +410,7 @@ def gradients(ys,
     if loop_state:
       loop_exits = loop_state.ProcessUnusedLoopExits(pending_count, to_ops_set)
       for y in loop_exits:
-        if _IsFloat(y):
+        if _IsTrainable(y):
           _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
           queue.append(y.op)
 
@@ -451,7 +452,7 @@ def gradients(ys,
           # therefore dC/doutput[i] is 0.
           for i, out_grad in enumerate(out_grads):
             if (not isinstance(out_grad, ops.Tensor)
-                and not out_grad) and _IsFloat(op.outputs[i]):
+                and not out_grad) and _IsTrainable(op.outputs[i]):
               # Only floating-point outputs get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
               if loop_state:
@@ -541,7 +542,7 @@ def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state):
             # For an unused exit, if it has floating-point outputs, backprop
             # a zero gradient. Otherwise, just ignore it.
             for y in grad_state.unused_exits:
-              if _IsFloat(y):
+              if _IsTrainable(y):
                 _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
               queue.append(y.op)
           else:

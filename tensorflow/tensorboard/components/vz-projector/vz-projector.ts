@@ -21,7 +21,6 @@ import * as vector from './vector';
 import {ColorOption} from './vz-projector-data-loader';
 import {PolymerElement} from './vz-projector-util';
 
-
 /** T-SNE perplexity. Roughly how many neighbors each point influences. */
 let perplexity: number = 30;
 /** T-SNE learning rate. */
@@ -366,7 +365,7 @@ class Projector extends ProjectorPolymer {
     searchButton.on('click', () => {
       let mode = this.scatter.getMode();
       this.scatter.setMode(mode === Mode.SEARCH ? Mode.HOVER : Mode.SEARCH);
-      if (this.scatter.getMode() == Mode.HOVER) {
+      if (this.scatter.getMode() === Mode.HOVER) {
         this.selectedPoints = [];
         this.selectionWasUpdated();
       } else {
@@ -441,8 +440,8 @@ class Projector extends ProjectorPolymer {
         let pointHighlightColor = modeIsNight ? POINT_HIGHLIGHT_COLOR_NIGHT :
                                                 POINT_HIGHLIGHT_COLOR_DAY;
         this.highlightedPoints = pointIndices.map((index, i) => {
-          let color = i == 0 ? pointHighlightColor :
-                               this.dist2color(neighbors[i - 1].dist, minDist);
+          let color = i === 0 ? pointHighlightColor :
+                                this.dist2color(neighbors[i - 1].dist, minDist);
           return {index: index, color: color};
         });
       }
@@ -486,18 +485,18 @@ class Projector extends ProjectorPolymer {
     if (!selectedPoints.length) {
       this.selectedPoints = [];
       this.updateNNList([]);
-    }
+
     // If only one point is selected, we want to get its nearest neighbors
     // and change the UI accordingly.
-    else if (selectedPoints.length === 1) {
+    } else if (selectedPoints.length === 1) {
       let selectedPoint = selectedPoints[0];
       this.showTab('inspector');
       let neighbors = this.findNeighbors(selectedPoint);
       this.selectedPoints = [selectedPoint].concat(neighbors.map(n => n.index));
       this.updateNNList(neighbors);
-    }
+
     // Otherwise, select all points and hide nearest neighbors list.
-    else {
+    } else {
       this.selectedPoints = selectedPoints as number[];
       this.highlightedPoints = [];
       this.updateNNList([]);
@@ -512,7 +511,7 @@ class Projector extends ProjectorPolymer {
       let x = this.pcaX;
       let y = this.pcaY;
       let z = this.pcaZ;
-      let hasZ = dimension == 3;
+      let hasZ = dimension === 3;
       this.scatter.setXAccessor(i => this.points[i].projections['pca-' + x]);
       this.scatter.setYAccessor(i => this.points[i].projections['pca-' + y]);
       this.scatter.setZAccessor(
@@ -572,6 +571,7 @@ class Projector extends ProjectorPolymer {
     this.scatter.setZAccessor(
         dimension === 3 ? (i => this.points[i].projections['tsne-2']) : null);
     this.scatter.setAxisLabels('tsne-0', 'tsne-1');
+    this.scatter.update();
   }
 
   private runTSNE() {
@@ -594,23 +594,25 @@ class Projector extends ProjectorPolymer {
       let selectedPoint = this.points[this.selectedPoints[0]];
 
       for (let metadataKey in selectedPoint.metadata) {
-        let rowElement = document.createElement('div');
-        rowElement.className = 'ink-panel-metadata-row vz-projector';
+        if (selectedPoint.hasOwnProperty(metadataKey)) {
+          let rowElement = document.createElement('div');
+          rowElement.className = 'ink-panel-metadata-row vz-projector';
 
-        let keyElement = document.createElement('div');
-        keyElement.className = 'ink-panel-metadata-key vz-projector';
-        keyElement.textContent = metadataKey;
+          let keyElement = document.createElement('div');
+          keyElement.className = 'ink-panel-metadata-key vz-projector';
+          keyElement.textContent = metadataKey;
 
-        let valueElement = document.createElement('div');
-        valueElement.className = 'ink-panel-metadata-value vz-projector';
-        valueElement.textContent = '' + selectedPoint.metadata[metadataKey];
+          let valueElement = document.createElement('div');
+          valueElement.className = 'ink-panel-metadata-value vz-projector';
+          valueElement.textContent = '' + selectedPoint.metadata[metadataKey];
 
-        rowElement.appendChild(keyElement);
-        rowElement.appendChild(valueElement);
+          rowElement.appendChild(keyElement);
+          rowElement.appendChild(valueElement);
 
-        metadataContainerElement.append(function() {
-          return this.appendChild(rowElement);
-        });
+          metadataContainerElement.append(function() {
+            return this.appendChild(rowElement);
+          });
+        }
       }
 
       display = true;
@@ -631,7 +633,7 @@ class Projector extends ProjectorPolymer {
           NN_HIGHLIGHT_COLOR;
     };
     let favor = (i: number) => {
-      return i == 0 || (i < this.highlightedPoints.length ? false : true);
+      return i === 0 || (i < this.highlightedPoints.length ? false : true);
     };
     this.scatter.highlightPoints(allPoints, stroke, favor);
     this.updateIsolateButton();
@@ -667,7 +669,7 @@ class Projector extends ProjectorPolymer {
     let nnlist = this.dom.select('.nn-list');
     nnlist.html('');
 
-    if (neighbors.length == 0) {
+    if (neighbors.length === 0) {
       this.dom.select('#nn-title').text('');
       return;
     }
@@ -727,7 +729,7 @@ class Projector extends ProjectorPolymer {
     if (pattern == null) {
       return {numMatches: 0};
     }
-    if (pattern == '') {
+    if (pattern === '') {
       if (this.allCentroid == null) {
         this.allCentroid =
             vector.centroid(this.points, () => true, accessor).centroid;
@@ -738,7 +740,8 @@ class Projector extends ProjectorPolymer {
     let regExp: RegExp;
     let predicate: (a: DataPoint) => boolean;
     // Check for a regex.
-    if (pattern.charAt(0) == '/' && pattern.charAt(pattern.length - 1) == '/') {
+    if (pattern.charAt(0) === '/' &&
+        pattern.charAt(pattern.length - 1) === '/') {
       pattern = pattern.slice(1, pattern.length - 1);
       try {
         regExp = new RegExp(pattern, 'i');
@@ -749,7 +752,7 @@ class Projector extends ProjectorPolymer {
           (a: DataPoint) => { return regExp.test('' + a.metadata['label']); };
       // else does an exact match
     } else {
-      predicate = (a: DataPoint) => { return a.metadata['label'] == pattern; };
+      predicate = (a: DataPoint) => { return a.metadata['label'] === pattern; };
     }
     return vector.centroid(this.points, predicate, accessor);
   }

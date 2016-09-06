@@ -159,6 +159,21 @@ class NdtrGradientTest(tf.test.TestCase):
   _use_log = False
   _grid = GridSpec(min=-100., max=100., shape=[1, 2, 3, 8])
 
+  def assert_all_true(self, v):
+    self.assertAllEqual(np.ones_like(v, dtype=np.bool), v)
+
+  def assert_all_false(self, v):
+    self.assertAllEqual(np.zeros_like(v, dtype=np.bool), v)
+
+  def _test_grad_finite(self, dtype):
+    with self.test_session():
+      x = tf.Variable([-100., 0., 100.], dtype=dtype)
+      output = (sm.log_ndtr(x) if self._use_log else sm.ndtr(x))
+      grad_output = tf.gradients(output, x)
+      tf.initialize_all_variables().run()
+      self.assert_all_true(np.isfinite(output.eval()))
+      self.assert_all_true(np.isfinite(grad_output[0].eval()))
+
   def _test_grads_are_positive(self, dtype, grid_spec):
     grid = tf.convert_to_tensor(_make_grid(dtype, grid_spec))
     with self.test_session():
@@ -169,20 +184,24 @@ class NdtrGradientTest(tf.test.TestCase):
       # grad_eval.shape = (N, N), with grad_eval[i, j] the partial derivative of
       # the ith output point w.r.t. the jth grid point.  We only expect the
       # diagonal to be nonzero.
+      # TODO(b/31131137): Replace tf.test.compute_gradient with our own custom
+      # gradient evaluation to ensure we correctly handle small function delta.
       grad_eval, _ = tf.test.compute_gradient(
           grid, grid_spec.shape, output, grid_spec.shape)
       grad_eval = np.diag(grad_eval)
 
       # Check for NaN separately in order to get informative failures.
-      self.assertFalse(np.isnan(grad_eval).any())
-      self.assertTrue((grad_eval > 0).all())
-      self.assertTrue(np.isfinite(grad_eval).all())
+      self.assert_all_false(np.isnan(grad_eval))
+      self.assert_all_true(grad_eval > 0.)
+      self.assert_all_true(np.isfinite(grad_eval))
 
   def test_float32(self):
     self._test_grads_are_positive(np.float32, self._grid)
+    self._test_grad_finite(np.float32)
 
   def test_float64(self):
     self._test_grads_are_positive(np.float64, self._grid)
+    self._test_grad_finite(np.float64)
 
 
 class LogNdtrGradientTest(NdtrGradientTest):

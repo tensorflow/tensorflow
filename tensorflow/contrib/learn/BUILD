@@ -300,6 +300,18 @@ py_test(
 )
 
 py_test(
+    name = "metric_spec_test",
+    size = "small",
+    srcs = ["python/learn/tests/metric_spec_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "experiment_test",
     size = "small",
     srcs = ["python/learn/tests/experiment_test.py"],

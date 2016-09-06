@@ -18,7 +18,11 @@ var tslint = require('gulp-tslint');
 
 module.exports = function(strict) {
   return function() {
-    return gulp.src(['components/tf-*/**/*.ts', 'components/vz-*/**/*.ts'])
+    return gulp.src([
+      'components/tf-*/**/*.ts',
+      'components/vz-*/**/*.ts',
+      '!./components/**/deps.d.ts'
+    ])
         .pipe(tslint())
         .pipe(tslint.report('verbose', {
           emitError: strict,

@@ -113,6 +113,36 @@ Status ShapeRefiner::AddNode(const Node* node) {
   return Status::OK();
 }
 
+Status ShapeRefiner::SetShape(const Node* node, int output_port,
+                              shape_inference::ShapeHandle shape) {
+  auto c = GetContext(node);
+  if (c == nullptr) {
+    return errors::Internal("Could not find context for ", node->name());
+  }
+
+  if (output_port < 0 || output_port >= node->num_outputs()) {
+    return errors::InvalidArgument(
+        "output_port '", output_port, "' is out of range, ", "node '",
+        node->name(), "' has ", node->num_outputs(), " outputs");
+  }
+
+  // Check compatibility
+  shape_inference::ShapeHandle existing_shape = c->output(output_port);
+  shape_inference::ShapeHandle unused;
+  TF_RETURN_IF_ERROR(c->Merge(existing_shape, shape, &unused));
+
+  c->set_output(output_port, shape);
+
+  // TODO(vrv): Do we need to propagate the new shape through all
+  // consumers that change their outputs?  At the moment, python
+  // does not do this, but this seems like a nice feature.
+
+  // TODO(vrv): We might need to keep track of the fact that the
+  // existing shape is invalidated, in case we need to propagate
+  // this information to remote workers.
+  return Status::OK();
+}
+
 Status ShapeRefiner::ConstantValue(const Node* node, Tensor* tensor_storage,
                                    const Tensor** input_tensor) const {
   *input_tensor = nullptr;

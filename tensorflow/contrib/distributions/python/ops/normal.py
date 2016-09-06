@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import math
 
+from tensorflow.contrib.bayesflow.python.ops import special_math
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
@@ -169,20 +170,22 @@ class Normal(distribution.Distribution):
 
   def _log_prob(self, x):
     return (-0.5 * math.log(2. * math.pi) - math_ops.log(self.sigma)
-            -0.5 * math_ops.square((x - self.mu) / self.sigma))
+            -0.5 * math_ops.square(self._z(x)))
 
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))
 
   def _log_cdf(self, x):
-    return math_ops.log(self._cdf(x))
+    return special_math.log_ndtr(self._z(x))
 
   def _cdf(self, x):
-    # TODO(ebrevdo): wrap this in a Defun with a custom Defun
-    # gradient because the analytic gradient may be faster than
-    # automatic differentiation.
-    return (0.5 + 0.5*math_ops.erf(
-        1. / (math.sqrt(2.) * self.sigma) * (x - self.mu)))
+    return special_math.ndtr(self._z(x))
+
+  def _log_survival_function(self, x):
+    return special_math.log_ndtr(-self._z(x))
+
+  def _survival_function(self, x):
+    return special_math.ndtr(-self._z(x))
 
   def _entropy(self):
     # Use broadcasting rules to calculate the full broadcast sigma.
@@ -200,6 +203,11 @@ class Normal(distribution.Distribution):
 
   def _mode(self):
     return self._mean()
+
+  def _z(self, x):
+    """Standardize input `x` to a unit normal."""
+    with ops.name_scope("standardize", values=[x]):
+      return (x - self.mu) / self.sigma
 
 
 @kullback_leibler.RegisterKL(Normal, Normal)

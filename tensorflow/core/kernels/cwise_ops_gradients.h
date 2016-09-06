@@ -99,13 +99,15 @@ struct scalar_sqrt_gradient_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_sqrt_gradient_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T
   operator()(const T& output, const T& output_gradient) const {
-    return static_cast<T>(0.5) * output_gradient / output;
+    const T out_conj = numext::conj(output);
+    return static_cast<T>(0.5) * output_gradient / out_conj;
   }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
   packetOp(const Packet& output, const Packet& output_gradient) const {
     const Packet const_half = pset1<Packet>(static_cast<T>(0.5));
-    return pdiv(pmul(const_half, output_gradient), output);
+    const Packet out_conj = pconj(output);
+    return pdiv(pmul(const_half, output_gradient), out_conj);
   }
 };
 template <typename T>
@@ -123,15 +125,17 @@ struct scalar_rsqrt_gradient_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_rsqrt_gradient_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T
   operator()(const T& output, const T& output_gradient) const {
-    return static_cast<T>(-0.5) * (output_gradient * output) *
-           (output * output);
+    const T out_conj = numext::conj(output);
+    return static_cast<T>(-0.5) * (output_gradient * out_conj) *
+           (out_conj * out_conj);
   }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
   packetOp(const Packet& output, const Packet& output_gradient) const {
     const Packet const_half = pset1<Packet>(static_cast<T>(-0.5));
-    return pmul(const_half,
-                pmul(pmul(output_gradient, output), pmul(output, output)));
+    const Packet out_conj = pconj(output);
+    return pmul(const_half, pmul(pmul(output_gradient, out_conj),
+                                 pmul(out_conj, out_conj)));
   }
 };
 template <typename T>

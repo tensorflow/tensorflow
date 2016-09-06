@@ -2688,6 +2688,8 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -6527,6 +6529,80 @@ op {
     }
   }
   summary: "Computes gradient of the FractionalMaxPool function."
+}
+op {
+  name: "FusedResizeAndPadConv2D"
+  input_arg {
+    name: "input"
+    description: "4-D with shape `[batch, in_height, in_width, in_channels]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "size"
+    description: "A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The\nnew size for the images."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "paddings"
+    description: "A two-column matrix specifying the padding sizes. The number of\nrows must be the same as the rank of `input`."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "filter"
+    description: "4-D with shape\n`[filter_height, filter_width, in_channels, out_channels]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "resize_align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, rescale input by (new_height - 1) / (height - 1),\nwhich exactly aligns the 4 corners of images and resized images. If false, rescale\nby new_height / height. Treat similarly the width dimension."
+  }
+  attr {
+    name: "mode"
+    type: "string"
+    allowed_values {
+      list {
+        s: "REFLECT"
+        s: "SYMMETRIC"
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D of length 4.  The stride of the sliding window for each dimension\nof `input`. Must be in the same order as the dimension specified with format."
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Performs a resize and padding as a preprocess during a convolution."
+  description: "It\'s often possible to do spatial transformations more efficiently as part of\nthe packing stage of a convolution, so this op allows for an optimized\nimplementation where these stages are fused together. This prevents the need to\nwrite out the intermediate results as whole tensors, reducing memory pressure,\nand we can get some latency gains by merging the transformation calculations.\nThe data_format attribute for Conv2D isn\'t supported by this op, and defaults to\n\'NHWC\' order.\nInternally this op uses a single per-graph scratch buffer, which means that it\nwill block if multiple versions are being run in parallel. This is because this\noperator is primarily an optimization to minimize memory usage."
 }
 op {
   name: "Gather"
@@ -16111,6 +16187,8 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }

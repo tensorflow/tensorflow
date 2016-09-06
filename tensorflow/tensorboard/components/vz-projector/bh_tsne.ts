@@ -67,10 +67,9 @@ function zerosArray(length: number): number[] {
   return result;
 }
 
-
 /** Returns the square euclidean distance between two vectors. */
 export function dist2(a: number[], b: number[]): number {
-  if (a.length != b.length) {
+  if (a.length !== b.length) {
     throw new Error('Vectors a and b must be of same length');
   }
 
@@ -105,7 +104,7 @@ function gaussRandom(rng: () => number): number {
   let u = 2 * rng() - 1;
   let v = 2 * rng() - 1;
   let r = u * u + v * v;
-  if (r == 0 || r > 1) {
+  if (r === 0 || r > 1) {
     return gaussRandom(rng);
   }
   let c = Math.sqrt(-2 * Math.log(r) / r);
@@ -173,7 +172,7 @@ function nearest2P(
       let psum = 0.0;
       for (let k = 0; k < neighbors.length; ++k) {
         let neighbor = neighbors[k];
-        let pij = (i == neighbor.index) ? 0 : Math.exp(-neighbor.dist * beta);
+        let pij = (i === neighbor.index) ? 0 : Math.exp(-neighbor.dist * beta);
         pRow[k] = pij;
         psum += pij;
       }
@@ -273,9 +272,9 @@ export class TSNE {
     this.epsilon = opt.epsilon || 10;
     this.rng = opt.rng || Math.random;
     this.dim = opt.dim;
-    if (opt.dim == 2) {
+    if (opt.dim === 2) {
       this.dist2 = dist2_2D;
-    } else if (opt.dim == 3) {
+    } else if (opt.dim === 3) {
       this.dist2 = dist2_3D;
     } else {
       this.dist2 = dist2;
@@ -376,7 +375,7 @@ export class TSNE {
     let annotateTree =
         (node: AugmSPNode): {numCells: number, yCell: number[]} => {
           let numCells = node.points ? node.points.length : 0;
-          if (node.children == null) {
+          if (node.children === null) {
             // Update the current node and tell the parent.
             node.numCells = numCells;
             // TODO(smilkov): yCell should be average across all points.
@@ -388,7 +387,7 @@ export class TSNE {
               node.points ? node.points[0].slice() : zerosArray(this.dim);
           for (let i = 0; i < node.children.length; ++i) {
             let child = node.children[i];
-            if (child == null) {
+            if (child === null) {
               continue;
             }
             let result = annotateTree(child as AugmSPNode);
@@ -433,7 +432,7 @@ export class TSNE {
       tree.visit((node: AugmSPNode) => {
         let squaredDistToCell = this.dist2(pointI, node.yCell);
         // Squared distance from point i to cell.
-        if (node.children == null ||
+        if (node.children === null ||
             (node.rCell / Math.sqrt(squaredDistToCell) < THETA)) {
           let qijZ = 1 / (1 + squaredDistToCell);
           let dZ = node.numCells * qijZ;

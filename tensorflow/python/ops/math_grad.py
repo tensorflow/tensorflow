@@ -30,12 +30,6 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 
 
-# Gradient ops that do not have gradients themselves.
-ops.NoGradient("SigmoidGrad")
-ops.NoGradient("TanhGrad")
-ops.NoGradient("InvGrad")
-ops.NoGradient("RsqrtGrad")
-
 def _safe_shape_div(x, y):
   """Divides `x / y` assuming `x, y >= 0`, treating `0 / 0 = 0`."""
   return x // math_ops.maximum(y, 1)
@@ -127,13 +121,15 @@ def _ProdGrad(op, grad):
 
   # Pack all reduced dimensions into a single one, so we can perform the
   # cumprod ops. If the reduction dims list is empty, it defaults to float32,
-  # so we need to cast here.
-  reduced = math_ops.cast(reduction_indices, dtypes.int32)
-  idx = math_ops.range(0, array_ops.rank(op.inputs[0]))
-  other, _ = array_ops.listdiff(idx, reduced)
-  perm = array_ops.concat(0, [reduced, other])
-  reduced_num = math_ops.reduce_prod(array_ops.gather(input_shape, reduced))
-  other_num = math_ops.reduce_prod(array_ops.gather(input_shape, other))
+  # so we need to cast here.  We put all the shape-related ops on CPU to avoid
+  # copying back and forth, and since listdiff is CPU only.
+  with ops.device("/cpu:0"):
+    reduced = math_ops.cast(reduction_indices, dtypes.int32)
+    idx = math_ops.range(0, array_ops.rank(op.inputs[0]))
+    other, _ = array_ops.listdiff(idx, reduced)
+    perm = array_ops.concat(0, [reduced, other])
+    reduced_num = math_ops.reduce_prod(array_ops.gather(input_shape, reduced))
+    other_num = math_ops.reduce_prod(array_ops.gather(input_shape, other))
   permuted = array_ops.transpose(op.inputs[0], perm)
   permuted_shape = array_ops.shape(permuted)
   reshaped = array_ops.reshape(permuted, (reduced_num, other_num))
@@ -245,14 +241,26 @@ def _AbsGrad(op, grad):
 @ops.RegisterGradient("Neg")
 def _NegGrad(_, grad):
   """Returns -grad."""
-  return - grad
+  return -grad
 
 
 @ops.RegisterGradient("Inv")
 def _InvGrad(op, grad):
   """Returns -grad * (1 / x^2)."""
   y = op.outputs[0]  # y = 1 / x
+  # pylint: disable=protected-access
   return gen_math_ops._inv_grad(y, grad)
+
+
+@ops.RegisterGradient("InvGrad")
+def _InvGradGrad(op, grad):
+  b = op.inputs[1]
+  # op.output[0]: y = -b * conj(a)^2
+  with ops.control_dependencies([grad.op]):
+    ca = math_ops.conj(op.inputs[0])
+    cg = math_ops.conj(grad)
+    # pylint: disable=protected-access
+    return cg * -2.0 * b * ca, gen_math_ops._inv_grad(ca, grad)
 
 
 @ops.RegisterGradient("Square")
@@ -260,8 +268,7 @@ def _SquareGrad(op, grad):
   x = op.inputs[0]
   # Added control dependencies to prevent 2*x from being computed too early.
   with ops.control_dependencies([grad.op]):
-    if x.dtype.is_complex:
-      x = math_ops.conj(x)
+    x = math_ops.conj(x)
     return grad * (2.0 * x)
 
 
@@ -274,9 +281,10 @@ def _SqrtGrad(op, grad):
 @ops.RegisterGradient("SqrtGrad")
 def _SqrtGradGrad(op, grad):
   a = op.inputs[0]
-  y = op.outputs[0]  # y = 0.5 * b / a
+  y = op.outputs[0]  # y = 0.5 * b / conj(a)
   with ops.control_dependencies([grad.op]):
-    return -grad * y / a, 0.5 * grad / a
+    ga = grad / a
+    return -math_ops.conj(ga) * y, 0.5 * ga
 
 
 @ops.RegisterGradient("Rsqrt")
@@ -290,8 +298,7 @@ def _ExpGrad(op, grad):
   """Returns grad * exp(x)."""
   y = op.outputs[0]  # y = e^x
   with ops.control_dependencies([grad.op]):
-    if y.dtype.is_complex:
-      y = math_ops.conj(y)
+    y = math_ops.conj(y)
     return grad * y
 
 
@@ -300,6 +307,7 @@ def _LogGrad(op, grad):
   """Returns grad * (1/x)."""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
     return grad * math_ops.inv(x)
 
 
@@ -308,9 +316,18 @@ def _TanhGrad(op, grad):
   """Returns grad * (1 - tanh(x) * tanh(x))."""
   y = op.outputs[0]  # y = tanh(x)
   with ops.control_dependencies([grad.op]):
-    if y.dtype.is_complex:
-      y = math_ops.conj(y)
+    y = math_ops.conj(y)
+    # pylint: disable=protected-access
     return gen_math_ops._tanh_grad(y, grad)
+
+
+@ops.RegisterGradient("TanhGrad")
+def _TanhGradGrad(op, grad):
+  with ops.control_dependencies([grad.op]):
+    a = math_ops.conj(op.inputs[0])
+    b = math_ops.conj(op.inputs[1])
+    # pylint: disable=protected-access
+    return grad * -2.0 * b * a, gen_math_ops._tanh_grad(a, grad)
 
 
 @ops.RegisterGradient("Erf")
@@ -319,7 +336,8 @@ def _ErfGrad(op, grad):
   x = op.inputs[0]
   two_over_root_pi = constant_op.constant(2 / np.sqrt(np.pi), dtype=grad.dtype)
   with ops.control_dependencies([grad.op]):
-    return  grad * two_over_root_pi * math_ops.exp(-math_ops.square(x))
+    x = math_ops.conj(x)
+    return grad * two_over_root_pi * math_ops.exp(-math_ops.square(x))
 
 
 @ops.RegisterGradient("Erfc")
@@ -329,7 +347,8 @@ def _ErfcGrad(op, grad):
   minus_two_over_root_pi = constant_op.constant(-2 / np.sqrt(np.pi),
                                                 dtype=grad.dtype)
   with ops.control_dependencies([grad.op]):
-    return  grad * minus_two_over_root_pi * math_ops.exp(-math_ops.square(x))
+    x = math_ops.conj(x)
+    return grad * minus_two_over_root_pi * math_ops.exp(-math_ops.square(x))
 
 
 @ops.RegisterGradient("Lgamma")
@@ -337,6 +356,7 @@ def _LgammaGrad(op, grad):
   """Returns grad * digamma(x)."""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
     return grad * math_ops.digamma(x)
 
 
@@ -345,6 +365,7 @@ def _DigammaGrad(op, grad):
   """Compute gradient of the digamma function with respect to its argument."""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
     return grad * math_ops.polygamma(array_ops.constant(1, dtype=x.dtype), x)
 
 
@@ -383,6 +404,8 @@ def _ZetaGrad(op, grad):
   unused_rx, rq = gen_array_ops._broadcast_gradient_args(sx, sq)
   # Evaluate gradient
   with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
+    q = math_ops.conj(q)
     partial_q = -x * math_ops.zeta(x + 1, q)
     return (None,
             array_ops.reshape(math_ops.reduce_sum(partial_q * grad, rq), sq))
@@ -400,6 +423,8 @@ def _PolygammaGrad(op, grad):
   unused_rn, rx = gen_array_ops._broadcast_gradient_args(sn, sx)
   # Evaluate gradient
   with ops.control_dependencies([grad.op]):
+    n = math_ops.conj(n)
+    x = math_ops.conj(x)
     partial_x = math_ops.polygamma(n + 1, x)
     return (None,
             array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
@@ -410,9 +435,19 @@ def _SigmoidGrad(op, grad):
   """Returns grad * sigmoid(x) * (1 - sigmoid(x))."""
   y = op.outputs[0]  # y = sigmoid(x)
   with ops.control_dependencies([grad.op]):
-    if y.dtype.is_complex:
-      y = math_ops.conj(y)
+    y = math_ops.conj(y)
+    # pylint: disable=protected-access
     return gen_math_ops._sigmoid_grad(y, grad)
+
+
+@ops.RegisterGradient("SigmoidGrad")
+def _SigmoidGradGrad(op, grad):
+  with ops.control_dependencies([grad.op]):
+    a = math_ops.conj(op.inputs[0])
+    b = math_ops.conj(op.inputs[1])
+    gb = grad * b
+    # pylint: disable=protected-access
+    return gb - 2.0 * gb * a, gen_math_ops._sigmoid_grad(a, grad)
 
 
 @ops.RegisterGradient("Sign")
@@ -427,8 +462,7 @@ def _SinGrad(op, grad):
   """Returns grad * cos(x)."""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
-    if x.dtype.is_complex:
-      x = math_ops.conj(x)
+    x = math_ops.conj(x)
     return grad * math_ops.cos(x)
 
 
@@ -437,8 +471,7 @@ def _CosGrad(op, grad):
   """Returns grad * -sin(x)."""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
-    if x.dtype.is_complex:
-      x = math_ops.conj(x)
+    x = math_ops.conj(x)
     return -grad * math_ops.sin(x)
 
 
@@ -447,6 +480,7 @@ def _TanGrad(op, grad):
   """Returns grad * 1/sec^2(x)."""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
     secx = math_ops.inv(math_ops.cos(x))
     secx2 = math_ops.square(secx)
     return grad * secx2
@@ -457,6 +491,7 @@ def _AsinGrad(op, grad):
   """Returns grad * 1/sqrt(1-x^2)."""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
     den = math_ops.sqrt(math_ops.sub(one, x2))
@@ -469,6 +504,7 @@ def _AcosGrad(op, grad):
   """Returns grad * -1/sqrt(1-x^2)."""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
     den = math_ops.sqrt(math_ops.sub(one, x2))
@@ -481,6 +517,7 @@ def _AtanGrad(op, grad):
   """Returns grad * 1/ (1 + x^2)"""
   x = op.inputs[0]
   with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
     inv = math_ops.inv(math_ops.add(one, x2))
@@ -525,9 +562,8 @@ def _MulGrad(op, grad):
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
-  if x.dtype.is_complex:
-    x = math_ops.conj(x)
-    y = math_ops.conj(y)
+  x = math_ops.conj(x)
+  y = math_ops.conj(y)
   return (array_ops.reshape(math_ops.reduce_sum(grad * y, rx), sx),
           array_ops.reshape(math_ops.reduce_sum(x * grad, ry), sy))
 
@@ -539,6 +575,8 @@ def _DivGrad(op, grad):
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)  # pylint: disable=protected-access
+  x = math_ops.conj(x)
+  y = math_ops.conj(y)
   return (array_ops.reshape(math_ops.reduce_sum(grad / y, rx), sx),
           array_ops.reshape(math_ops.reduce_sum(grad *
                                          (-x / math_ops.square(y)), ry), sy))
@@ -553,6 +591,9 @@ def _PowGrad(op, grad):
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
+  x = math_ops.conj(x)
+  y = math_ops.conj(y)
+  z = math_ops.conj(z)
   gx = array_ops.reshape(
       math_ops.reduce_sum(grad * y * math_ops.pow(x, y - 1), rx), sx)
   # Avoid false singularity at x = 0

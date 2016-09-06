@@ -45,7 +45,8 @@ def main(unused_argv):
   regressor.fit(x_train, y_train, steps=5000, batch_size=1)
 
   # Predict and score
-  y_predicted = regressor.predict(scaler.transform(x_test))
+  y_predicted = list(
+      regressor.predict(scaler.transform(x_test), as_iterable=True))
   score = metrics.mean_squared_error(y_predicted, y_test)
 
   print('MSE: {0:f}'.format(score))

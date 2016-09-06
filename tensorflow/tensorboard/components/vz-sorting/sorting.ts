@@ -28,8 +28,12 @@ module VZ.Sorting {
     let ai = 0;
     let bi = 0;
     while (true) {
-      if (ai === a.length) return bi === b.length ? 0 : -1;
-      if (bi === b.length) return 1;
+      if (ai === a.length) {
+        return bi === b.length ? 0 : -1;
+      }
+      if (bi === b.length) {
+        return 1;
+      }
       if (isDigit(a[ai]) && isDigit(b[bi])) {
         const ais = ai;
         const bis = bi;
@@ -37,12 +41,18 @@ module VZ.Sorting {
         bi = consumeNumber(b, bi + 1);
         const an = parseFloat(a.slice(ais, ai));
         const bn = parseFloat(b.slice(bis, bi));
-        if (an < bn) return -1;
-        if (an > bn) return 1;
+        if (an < bn) {
+          return -1;
+        }
+        if (an > bn) {
+          return 1;
+        }
         continue;
       }
       if (isBreak(a[ai])) {
-        if (!isBreak(b[bi])) return -1;
+        if (!isBreak(b[bi])) {
+          return -1;
+        }
       } else if (isBreak(b[bi])) {
         return 1;
       } else if (a[ai] < b[bi]) {
@@ -80,7 +90,9 @@ module VZ.Sorting {
           break;
         }
       } else if (state === State.EXPONENT) {
-        if (!isDigit(s[i])) break;
+        if (!isDigit(s[i])) {
+          break;
+        }
       }
     }
     return i;

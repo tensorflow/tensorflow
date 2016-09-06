@@ -21,6 +21,7 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/grid_rnn_test.py"],
     additional_deps = [
         ":grid_rnn_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],

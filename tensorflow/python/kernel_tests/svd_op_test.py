@@ -26,13 +26,16 @@ class SvdOpTest(tf.test.TestCase):
   def testWrongDimensions(self):
     # The input to svd should be 2-dimensional tensor.
     scalar = tf.constant(1.)
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Shape must be rank 2 but is rank 0"):
       tf.svd(scalar)
     vector = tf.constant([1., 2.])
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Shape must be rank 2 but is rank 1"):
       tf.svd(vector)
     tensor = tf.constant([[[1., 2.], [3., 4.]], [[1., 2.], [3., 4.]]])
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Shape must be rank 2 but is rank 3"):
       tf.svd(tensor)
     scalar = tf.constant(1. + 1.0j)
     with self.assertRaises(ValueError):
@@ -47,10 +50,12 @@ class SvdOpTest(tf.test.TestCase):
 
     # The input to batch_svd should be a tensor of at least rank 2.
     scalar = tf.constant(1.)
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Shape must be at least rank 2 but is rank 0"):
       tf.batch_svd(scalar)
     vector = tf.constant([1., 2.])
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Shape must be at least rank 2 but is rank 1"):
       tf.batch_svd(vector)
     scalar = tf.constant(1. + 1.0j)
     with self.assertRaises(ValueError):
@@ -62,8 +67,11 @@ class SvdOpTest(tf.test.TestCase):
 
 def _GetSvdOpTest(dtype_, shape_):
 
+  is_complex = dtype_ in (np.complex64, np.complex128)
+  is_single = dtype_ in (np.float32, np.complex64)
+
   def CompareSingularValues(self, x, y):
-    if dtype_ in (np.float32, np.complex64):
+    if is_single:
       tol = 5e-5
     else:
       tol = 1e-14
@@ -73,10 +81,10 @@ def _GetSvdOpTest(dtype_, shape_):
                         atol=(np.imag(x)[0] + np.imag(y)[0]) * tol)
 
   def CompareSingularVectors(self, x, y, rank):
-    if dtype_ in (np.float32, np.complex64):
+    if is_single:
       atol = 5e-4
     else:
-      atol = 1e-14
+      atol = 5e-14
     # We only compare the first 'rank' singular vectors since the
     # remainder form an arbitrary orthonormal basis for the
     # (row- or column-) null space, whose exact value depends on
@@ -128,7 +136,7 @@ def _GetSvdOpTest(dtype_, shape_):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
     xx = tf.batch_matmul(x, x, adj_x=True)
     identity = tf.batch_matrix_band_part(tf.ones_like(xx), 0, 0)
-    if dtype_ in (np.float32, np.complex64):
+    if is_single:
       tol = 1e-5
     else:
       tol = 1e-14
@@ -139,6 +147,7 @@ def _GetSvdOpTest(dtype_, shape_):
 
   def Test(self):
     np.random.seed(1)
+
     if dtype_ in (np.float32, np.float64):
       x = np.random.uniform(low=-1.0, high=1.0,
                             size=np.prod(shape_)).reshape(shape_).astype(dtype_)
@@ -152,6 +161,7 @@ def _GetSvdOpTest(dtype_, shape_):
                         size=np.prod(shape_)).reshape(shape_).astype(np.float64)
       + 1j * np.random.uniform(low=-1.0, high=1.0,
                         size=np.prod(shape_)).reshape(shape_).astype(np.float64)
+
     for compute_uv in False, True:
       for full_matrices in False, True:
         with self.test_session():
@@ -186,8 +196,8 @@ def _GetSvdOpTest(dtype_, shape_):
           CompareSingularValues(self, np_s, tf_s.eval())
           if compute_uv:
             CompareSingularVectors(self, np_u, tf_u.eval(), min(shape_[-2:]))
-            CompareSingularVectors(self, np.swapaxes(np_v, -2, -1), tf_v.eval(),
-                                   min(shape_[-2:]))
+            CompareSingularVectors(self, np.conj(np.swapaxes(np_v, -2, -1)),
+                                   tf_v.eval(), min(shape_[-2:]))
             CheckApproximation(self, x, tf_u, tf_s, tf_v, full_matrices)
             CheckUnitary(self, tf_u)
             CheckUnitary(self, tf_v)
@@ -195,12 +205,12 @@ def _GetSvdOpTest(dtype_, shape_):
   return Test
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   for dtype in np.float32, np.float64, np.complex64, np.complex128:
     for rows in 1, 2, 5, 10, 32, 100:
       for cols in 1, 2, 5, 10, 32, 100:
         for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
           shape = batch_dims + (rows, cols)
-          name = '%s_%s' % (dtype.__name__, '_'.join(map(str, shape)))
-          setattr(SvdOpTest, 'testSvd_' + name, _GetSvdOpTest(dtype, shape))
+          name = "%s_%s" % (dtype.__name__, "_".join(map(str, shape)))
+          setattr(SvdOpTest, "testSvd_" + name, _GetSvdOpTest(dtype, shape))
   tf.test.main()

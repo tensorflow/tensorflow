@@ -271,7 +271,8 @@ export class Minimap {
       let blob = new Blob([svgXml], {type: 'image/svg+xml;charset=utf-8'});
       image.src = URL.createObjectURL(blob);
     };
-    image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgXml);
+    image.src =
+        'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgXml);
   }
 
   /**
