@@ -73,6 +73,7 @@ void TestAllCombinations(CompressionOptions input_options,
 
         ZlibOutputBuffer out(file_writer.get(), input_buf_size, output_buf_size,
                              output_options);
+        TF_CHECK_OK(out.Init());
 
         TF_CHECK_OK(out.Write(StringPiece(data)));
         TF_CHECK_OK(out.Close());
@@ -120,6 +121,7 @@ void TestMultipleWrites(uint8 input_buf_size, uint8 output_buf_size,
   TF_CHECK_OK(env->NewWritableFile(fname, &file_writer));
   ZlibOutputBuffer out(file_writer.get(), input_buf_size, output_buf_size,
                        output_options);
+  TF_CHECK_OK(out.Init());
 
   for (int i = 0; i < num_writes; i++) {
     TF_CHECK_OK(out.Write(StringPiece(data)));
@@ -172,6 +174,7 @@ TEST(ZlibInputStream, FailsToReadIfWindowBitsAreIncompatible) {
   string result;
   ZlibOutputBuffer out(file_writer.get(), input_buf_size, output_buf_size,
                        output_options);
+  TF_CHECK_OK(out.Init());
 
   TF_CHECK_OK(out.Write(StringPiece(data)));
   TF_CHECK_OK(out.Close());
