@@ -95,8 +95,27 @@ but as a high level overview, you need to create or modify the following,
 * `/tensorflow/core/util/device_name_utils.cc` - Add parsing support for the SPU name
 * `/tensorflow/python/framework/device.py` - Python bindings to SPU name
 
-The [minimal changes](fake_device.md) to these files will create 
+The [minimal changes](fack_device.md) to these files will create 
 a fake device that runs on the CPU just as would a normal
 CPU TensorFlow device specification, but allows a separation of code
 so that we can begin replacing the underlying elements of for
 the computation and make it run on our hardware.
+
+## Creating a Fake GPU-style Device
+
+We will now engage in a slightly more complicated,
+but more useful, exercise because most new devices
+will sit on the PCI Bus and have a similar interface
+as GPUs. Also, because their memory is off the host
+memory, it needs better management.
+
+For this section, I will refer to my device as a JPU
+(because J is next to G!). Just and FYI, I am leaving
+my SPU code intact from the previous section. I
+doubt this will cause problems, but it is left to 
+the reader to adapt as needed if not anything arises.
+
+Much more has to be done for a GPU kind of device.
+
+* [Memory Allocator](jpu_allocator.md)
+* [Device and Factory](jpu_device.md)
