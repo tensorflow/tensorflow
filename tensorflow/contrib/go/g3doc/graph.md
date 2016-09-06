@@ -18,27 +18,69 @@ func NewGraph() *Graph
 
 NewGraph returns an initialized instance of the Graph struct.
 
-### NewGraphFromReader
+### NewGraphFromBuffer
 
 ```go
-func NewGraphFromReader(reader io.Reader, asText bool) (*Graph, error)
+func NewGraphFromBuffer(b []byte) (*Graph, error)
 ```
 
-NewGraphFromReader reads from reader until an error or EOF and loads the content
+NewGraphFromBuffer reads from reader until an error or EOF and loads the content
 into a new graph. Use the asText parameter to specify if the graph from the
 reader is provided in Text format.
 
 ```Go
 Example:
-	// Load the Graph from from a file who contains a previously generated
-	// Graph as text.
-	reader, _ := os.Open("/tmp/graph/test_graph.pb")
-	graph, _ := tensorflow.NewGraphFromReader(reader, true)
+	// Load the Graph from from a file containing a serialized
+	// Graph.
+	b, _ := ioutil.ReadFile("/tmp/graph/test_graph.pb")
+	graph, _ := tensorflow.NewGraphFromBuffer(b)
 	
 	// Create the Session and extend the Graph on it.
 	s, _ := tensorflow.NewSession()
 	s.ExtendGraph(graph)
 
+```
+
+### NewGraphFromString
+
+```go
+func NewGraphFromString(s string) (*Graph, error)
+```
+
+NewGraphFromString reads from reader until an error or EOF and loads the content
+into a new graph. Use the asText parameter to specify if the graph from the
+reader is provided in Text format.
+
+```Go
+Example:
+	graph, err := tensorflow.NewGraphFromString(`
+	    node {
+	        name: "output"
+	        op: "Const"
+	        attr {
+	            key: "dtype"
+	            value {
+	                type: DT_FLOAT
+	            }
+	        }
+	        attr {
+	            key: "value"
+	            value {
+	                tensor {
+	                    dtype: DT_FLOAT
+	                    tensor_shape {
+	                    }
+	                    float_val: 1.5 
+	                }
+	            }
+	        }
+	    }
+	    version: 5`)
+	if err != nil {
+	    return
+	}
+	
+	fmt.Print(graph)
 
 ```
 
@@ -64,7 +106,6 @@ Example:
 	    {1, 2},
 	    {3, 4},
 	})
-
 
 ```
 
@@ -110,9 +151,8 @@ Example:
 	
 	for i := 0; i < len(inputSlice1); i++ {
 	    val, _ := out[0].GetVal(int64(i))
-	    fmt.Println("The result of: %d + (%d*%d) is: %d", inputSlice1[i], inputSlice2[i], additions, val)
+	    fmt.Printf("The result of: %d + (%d*%d) is: %d\n", inputSlice1[i], inputSlice2[i], additions, val)
 	}
-
 
 ```
 
@@ -131,7 +171,6 @@ Example:
 	// Add Placeholder named 'input1' that must allocate a three element
 	// DTInt32 tensor.
 	graph.Placeholder("input1", tensorflow.DTInt32, []int64{3})
-
 
 ```
 
@@ -183,7 +222,6 @@ Example:
 	    out, _ = s.Run(nil, []string{"input1"}, []string{"assign_inp1"})
 	    fmt.Println(out[0].Int32s())
 	}
-
 
 ```
 

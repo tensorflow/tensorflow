@@ -41,7 +41,6 @@ Example:
 	// 'input1' variable.
 	s.ExtendAndInitializeAllVariables(graph)
 
-
 ```
 
 #### ExtendGraph
@@ -63,7 +62,6 @@ Example:
 	s, _ := tensorflow.NewSession()
 	s.ExtendGraph(graph)
 
-
 ```
 
 #### FreeAllocMem
@@ -82,10 +80,10 @@ func (s *Session) Run(inputs map[string]*Tensor, outputs []string, targets []str
 ```
 
 Run runs the operations on the target nodes, or all the operations if not
-targets are specified. the Parameter Input is a dictionary where the key is the
-Tensor name on the Graph, and the value, the Tensor. The parameter outputs is
-used to specify the tensors from the graph to be returned in the same order as
-they occur on the slice.
+targets are specified. The first parameter is a dictionary where the key is the
+name of a Tensor in the Graph and the value is a Tensor. The parameter outputs
+is used to specify the tensors from the graph to be returned in the same order
+as they occur on the slice. Targets .. ?
 
 ```Go
 Example:
@@ -104,7 +102,6 @@ Example:
 	// The first of the output corresponds to the node 'input1' specified
 	// on the second param.
 	fmt.Println(out[0])
-
 
 ```
 

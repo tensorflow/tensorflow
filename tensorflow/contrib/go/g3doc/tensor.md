@@ -28,13 +28,11 @@ and shape is deduced from the data parameter. ex:
 Example:
 	tensorflow.NewTensor("Hello TensorFlow")
 
-
 Example:
 	tensorflow.NewTensor([][]int64{
 	    {1, 2, 3, 4},
 	    {5, 6, 7, 8},
 	})
-
 
 ```
 
@@ -61,7 +59,6 @@ Example:
 	// Create Tensor with a single dimension of 3.
 	t2, _ := tensorflow.NewTensorWithShape([]int64{3}, []int64{3, 4, 5})
 	fmt.Println(t2.Int64s())
-
 
 ```
 
@@ -167,7 +164,6 @@ Example:
 	// Print the number 8 that is in the second position of the first
 	// dimension and the third of the second dimension.
 	fmt.Println(t.GetVal(1, 3))
-
 
 ```
 
