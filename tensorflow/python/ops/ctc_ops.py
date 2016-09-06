@@ -113,8 +113,8 @@ def ctc_loss(inputs, labels, sequence_length,
       If True, repeated labels are collapsed prior to the CTC calculation.
     ctc_merge_repeated: Boolean.  Default: True.
     time_major: The shape format of the `inputs` Tensors.
-      If true, these `Tensors` must be shaped `[max_time, batch_size, num_classes]`.
-      If false, these `Tensors` must be shaped `[batch_size, max_time, num_classes]`.
+      If True, these `Tensors` must be shaped `[max_time, batch_size, num_classes]`.
+      If False, these `Tensors` must be shaped `[batch_size, max_time, num_classes]`.
       Using `time_major = True` (default) is a bit more efficient because it avoids
       transposes at the beginning of the ctc_loss calculation.  However, most
       TensorFlow data is batch-major, so by this function also accepts inputs
