@@ -3364,6 +3364,7 @@ REGISTER_OP("Copy")
     .Output("output: T")
     .Attr("T: type")
     .Attr("tensor_name: string = ''")
+    .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Copy Op.
 
@@ -3383,6 +3384,7 @@ REGISTER_OP("CopyHost")
     .Output("output: T")
     .Attr("T: type")
     .Attr("tensor_name: string = ''")
+    .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Copy Host Op.
 
@@ -3401,6 +3403,7 @@ REGISTER_OP("DebugIdentity")
     .Attr("T: type")
     .Attr("tensor_name: string = ''")
     .Attr("debug_urls: list(string) = []")
+    .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Debug Identity Op.
 
@@ -3419,6 +3422,7 @@ REGISTER_OP("DebugNanCount")
     .Attr("T: type")
     .Attr("tensor_name: string = ''")
     .Attr("debug_urls: list(string) = []")
+    .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Debug NaN Value Counter Op
 
