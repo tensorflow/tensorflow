@@ -35,6 +35,12 @@ tensorflow::ImportNumpy();
 %constant int GRAPH_DEF_VERSION_MIN_CONSUMER = TF_GRAPH_DEF_VERSION_MIN_CONSUMER;
 %constant int GRAPH_DEF_VERSION_MIN_PRODUCER = TF_GRAPH_DEF_VERSION_MIN_PRODUCER;
 
+// Git version information
+%constant const char* __git_version__ = tf_git_version();
+
+// Compiler
+%constant const char* __compiler_version__ = tf_compiler_version();
+
 // Release the Python GIL for the duration of most methods.
 %exception {
   Py_BEGIN_ALLOW_THREADS;

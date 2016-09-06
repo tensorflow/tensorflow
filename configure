@@ -2,6 +2,11 @@
 
 DO_NOT_SUBMIT_WARNING="Unofficial setting. DO NOT SUBMIT!!!"
 
+# Find out the absolute path to where ./configure resides
+pushd `dirname $0` #> /dev/null
+SOURCE_BASE_DIR=`pwd -P`
+popd > /dev/null
+
 ## Set up python-related environment settings
 while true; do
   fromuser=""
@@ -67,6 +72,12 @@ echo "$SWIG_PATH" > tensorflow/tools/swig/swig_path
 
 # Invoke python_config and set up symlinks to python includes
 (./util/python/python_config.sh --setup "$PYTHON_BIN_PATH";) || exit -1
+
+# Run the gen_git_source to create links where bazel can track dependencies for
+# git hash propagation
+GEN_GIT_SOURCE=tensorflow/tools/git/gen_git_source.py
+chmod a+x ${GEN_GIT_SOURCE}
+${PYTHON_BIN_PATH} ${GEN_GIT_SOURCE} --configure ${SOURCE_BASE_DIR}
 
 ## Set up Cuda-related environment settings
 

@@ -813,3 +813,18 @@ def tf_genrule_cmd_append_to_srcs(to_append):
     return ("cat $(SRCS) > $(@) && " +
             "echo >> $(@) && " +
             "echo " + to_append + " >> $(@)")
+
+
+def tf_version_info_genrule():
+  native.genrule(
+      name = "version_info_gen",
+      srcs = [
+          "//tensorflow/tools/git:gen/spec.json",
+          "//tensorflow/tools/git:gen/head",
+          "//tensorflow/tools/git:gen/branch_ref",
+      ],
+      outs = ["util/version_info.cc"],
+      cmd = "$(location //tensorflow/tools/git:gen_git_source.py) --generate $(SRCS) \"$@\"",
+      local = 1,
+      tools = ["//tensorflow/tools/git:gen_git_source.py"],
+  )
