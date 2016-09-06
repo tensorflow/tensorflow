@@ -245,8 +245,7 @@ export class ScatterWebGL implements Scatter {
   private height: number;
   private width: number;
   private mode: Mode;
-  /** Whether the user has turned labels on or off. */
-  private labelsAreOn = true;
+
   /** Whether the label canvas has been already cleared. */
   private labelCanvasIsCleared = true;
 
@@ -1024,19 +1023,17 @@ export class ScatterWebGL implements Scatter {
    * collision grid.
    */
   private makeLabels() {
-    // Don't make labels if they are turned off.
-    if (!this.labelsAreOn || this.points == null) {
+    if (this.points == null) {
       return;
     }
     // First, remove all old labels.
     this.removeAllLabels();
 
-    this.labelCanvasIsCleared = false;
-    // If we are passed no points to label (that is, not mousing over any
-    // points) then want to label ALL the points that we can.
     if (!this.labeledPoints.length) {
-      this.labeledPoints = this.shuffledData;
+      return;
     }
+
+    this.labelCanvasIsCleared = false;
 
     // We never render more than ~500 labels, so when we get much past that
     // point, just break.
@@ -1434,15 +1431,6 @@ export class ScatterWebGL implements Scatter {
   }
 
   getHighlightedPoints(): number[] { return this.highlightedPoints; }
-
-  showLabels(show: boolean) {
-    this.labelsAreOn = show;
-    if (this.labelsAreOn) {
-      this.makeLabels();
-    } else {
-      this.removeAllLabels();
-    }
-  }
 
   /**
    * Toggles between day and night mode (resets corresponding variables for

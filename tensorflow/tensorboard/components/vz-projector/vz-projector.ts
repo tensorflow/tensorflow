@@ -404,14 +404,6 @@ class Projector extends ProjectorPolymer {
       this.updateMenuButtons();
     });
 
-    let showLabels = true;
-    let showLabelsButton = this.dom.select('.show-labels');
-    showLabelsButton.on('click', () => {
-      showLabels = !showLabels;
-      this.scatter.showLabels(showLabels);
-      showLabelsButton.classed('selected', showLabels);
-    });
-
     let dayNightModeButton = this.dom.select('.nightDayMode');
     let modeIsNight = dayNightModeButton.classed('selected');
     dayNightModeButton.on('click', () => {
