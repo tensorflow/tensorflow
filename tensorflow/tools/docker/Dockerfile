@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python \
         python-dev \
         rsync \
+        software-properties-common \
         unzip \
         && \
     apt-get clean && \
