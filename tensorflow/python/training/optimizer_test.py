@@ -17,7 +17,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from tensorflow.python.framework import ops
 import tensorflow as tf
 
 
@@ -128,10 +127,11 @@ class OptimizerTest(tf.test.TestCase):
         convert_ops = [tf.assign(converted_grads[i], gv[0]) for i,gv in enumerate(grads_and_vars)]
         
         converted_grads_and_vars = list(zip(converted_grads, [var0, var1]))
-        with ops.control_dependencies(convert_ops):
-            opt_op = sgd_op.apply_gradients(converted_grads_and_vars, global_step)
+        opt_op = sgd_op.apply_gradients(converted_grads_and_vars, global_step)
 
         tf.initialize_all_variables().run()
+        # Run convert_ops to achieve the gradietns converting
+        sess.run(convert_ops)
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], var0.eval())
         self.assertAllClose([3.0, 4.0], var1.eval())
