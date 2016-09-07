@@ -68,6 +68,7 @@ tf_cc_test(
         ":c_api",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

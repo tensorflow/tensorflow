@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/log_memory.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -135,6 +136,21 @@ void deallocate_buffer(void* data, size_t len, void* arg) {
   }
   tensorflow::cpu_allocator()->DeallocateRaw(data);
 }
+
+Status MessageToBuffer(const tensorflow::protobuf::Message& in,
+                       TF_Buffer* out) {
+  if (out->data != nullptr) {
+    return InvalidArgument("Passing non-empty TF_Buffer is invalid.");
+  }
+  const auto proto_size = in.ByteSize();
+  void* buf = malloc(proto_size);
+  in.SerializeToArray(buf, proto_size);
+  out->data = buf;
+  out->length = proto_size;
+  out->data_deallocator = [](void* data, size_t length) { free(data); };
+  return Status::OK();
+}
+
 }  // namespace
 
 struct TF_Tensor {
@@ -479,14 +495,8 @@ static void TF_Run_Helper(
 
     // Serialize back to upstream client, who now owns the new buffer
     if (run_metadata != nullptr) {
-      int proto_size = run_metadata_proto.ByteSize();
-      void* str_buf = malloc(proto_size);
-      run_metadata_proto.SerializeToArray(str_buf, proto_size);
-      run_metadata->data = str_buf;
-      run_metadata->length = proto_size;
-      run_metadata->data_deallocator = [](void* data, size_t length) {
-        free(data);
-      };
+      status->status = MessageToBuffer(run_metadata_proto, run_metadata);
+      if (!status->status.ok()) return;
     }
   } else {
     // NOTE(zongheng): PRun does not support RunOptions yet.
@@ -685,6 +695,18 @@ TF_Operation* ToOperation(Node* node) {
 
 tensorflow::string PortName(const TF_Port& port) {
   return tensorflow::strings::StrCat(port.oper->node.name(), ":", port.index);
+}
+
+const tensorflow::AttrValue* GetAttrValue(TF_Operation* oper,
+                                          const char* attr_name,
+                                          TF_Status* status) {
+  const tensorflow::AttrValue* attr =
+      tensorflow::AttrSlice(oper->node.def()).Find(attr_name);
+  if (attr == nullptr) {
+    status->status =
+        InvalidArgument("Operation has no attr named '", attr_name, "'.");
+  }
+  return attr;
 }
 
 }  // namespace
@@ -901,9 +923,9 @@ void TF_SetAttrTensorList(TF_OperationDescription* desc, const char* attr_name,
   if (ok) desc->node_builder.Attr(attr_name, t);
 }
 
-void TF_SetAttrToAttrValueProto(TF_OperationDescription* desc,
-                                const char* attr_name, const void* proto,
-                                size_t proto_len, TF_Status* status) {
+void TF_SetAttrValueProto(TF_OperationDescription* desc, const char* attr_name,
+                          const void* proto, size_t proto_len,
+                          TF_Status* status) {
   tensorflow::AttrValue attr_value;
   if (attr_value.ParseFromArray(proto, proto_len)) {
     desc->node_builder.Attr(attr_name, attr_value);
@@ -1074,53 +1096,296 @@ int TF_OperationGetControlOutputs(TF_Operation* oper,
   return count;
 }
 
+TF_Attr_Metadata TF_OperationGetAttrMetadata(TF_Operation* oper,
+                                             const char* attr_name,
+                                             TF_Status* status) {
+  TF_Attr_Metadata metadata;
+  const auto* attr = GetAttrValue(oper, attr_name, status);
+  if (!status->status.ok()) return metadata;
+  switch (attr->value_case()) {
+#define SINGLE_CASE(kK, attr_type, size_expr) \
+  case tensorflow::AttrValue::kK:             \
+    metadata.is_list = 0;                     \
+    metadata.list_size = -1;                  \
+    metadata.type = attr_type;                \
+    metadata.total_size = size_expr;          \
+    break;
+
+    SINGLE_CASE(kS, TF_ATTR_STRING, attr->s().length());
+    SINGLE_CASE(kI, TF_ATTR_INT, -1);
+    SINGLE_CASE(kF, TF_ATTR_FLOAT, -1);
+    SINGLE_CASE(kB, TF_ATTR_BOOL, -1);
+    SINGLE_CASE(kType, TF_ATTR_TYPE, -1);
+    SINGLE_CASE(kShape, TF_ATTR_SHAPE,
+                attr->shape().unknown_rank() ? -1 : attr->shape().dim_size());
+    SINGLE_CASE(kTensor, TF_ATTR_TENSOR, -1);
+#undef SINGLE_CASE
+
+    case tensorflow::AttrValue::kList:
+      metadata.is_list = 1;
+      metadata.list_size = 0;
+      metadata.total_size = -1;
+#define LIST_CASE(field, attr_type, ...)              \
+  if (attr->list().field##_size() > 0) {              \
+    metadata.type = attr_type;                        \
+    metadata.list_size = attr->list().field##_size(); \
+    __VA_ARGS__;                                      \
+    break;                                            \
+  }
+
+      LIST_CASE(s, TF_ATTR_STRING, metadata.total_size = 0;
+                for (int i = 0; i < attr->list().s_size();
+                     ++i) { metadata.total_size += attr->list().s(i).size(); });
+      LIST_CASE(i, TF_ATTR_INT);
+      LIST_CASE(f, TF_ATTR_FLOAT);
+      LIST_CASE(b, TF_ATTR_BOOL);
+      LIST_CASE(type, TF_ATTR_TYPE);
+      LIST_CASE(shape, TF_ATTR_SHAPE, metadata.total_size = 0;
+                for (int i = 0; i < attr->list().shape_size(); ++i) {
+                  const auto& s = attr->list().shape(i);
+                  metadata.total_size += s.unknown_rank() ? 0 : s.dim_size();
+                });
+      LIST_CASE(tensor, TF_ATTR_TENSOR);
+#undef LIST_CASE
+      // All lists empty, determine the type from the OpDef.
+      if (metadata.list_size == 0) {
+        for (int i = 0; i < oper->node.op_def().attr_size(); ++i) {
+          const auto& a = oper->node.op_def().attr(i);
+          if (a.name().compare(attr_name) != 0) continue;
+          const tensorflow::string& typestr = a.type();
+          if (typestr == "list(string)") {
+            metadata.type = TF_ATTR_STRING;
+          } else if (typestr == "list(int)") {
+            metadata.type = TF_ATTR_INT;
+          } else if (typestr == "list(float)") {
+            metadata.type = TF_ATTR_FLOAT;
+          } else if (typestr == "list(bool)") {
+            metadata.type = TF_ATTR_BOOL;
+          } else if (typestr == "list(type)") {
+            metadata.type = TF_ATTR_TYPE;
+          } else if (typestr == "list(shape)") {
+            metadata.type = TF_ATTR_SHAPE;
+          } else if (typestr == "list(tensor)") {
+            metadata.type = TF_ATTR_TENSOR;
+          } else {
+            status->status = InvalidArgument(
+                "Attribute '", attr_name,
+                "' has an empty value of an unrecognized type '", typestr, "'");
+            return metadata;
+          }
+        }
+      }
+      break;
+
+    case tensorflow::AttrValue::kPlaceholder:
+      metadata.is_list = 0;
+      metadata.list_size = -1;
+      metadata.type = TF_ATTR_PLACEHOLDER;
+      metadata.total_size = -1;
+      break;
+
+    case tensorflow::AttrValue::kFunc:
+      metadata.is_list = 0;
+      metadata.list_size = -1;
+      metadata.type = TF_ATTR_FUNC;
+      metadata.total_size = -1;
+      break;
+
+    case tensorflow::AttrValue::VALUE_NOT_SET:
+      status->status =
+          InvalidArgument("Attribute '", attr_name, "' has no value set");
+      break;
+  }
+  return metadata;
+}
+
+void TF_OperationGetAttrString(TF_Operation* oper, const char* attr_name,
+                               void* value, int max_length, TF_Status* status) {
+  const auto* attr = GetAttrValue(oper, attr_name, status);
+  if (!status->status.ok()) return;
+  if (attr->value_case() != tensorflow::AttrValue::kS) {
+    status->status =
+        InvalidArgument("Attribute '", attr_name, "' is not a string");
+    return;
+  }
+  if (max_length <= 0) {
+    return;
+  }
+  const auto& s = attr->s();
+  std::memcpy(value, s.data(), std::min<size_t>(s.length(), max_length));
+}
+
+void TF_OperationGetAttrStringList(TF_Operation* oper, const char* attr_name,
+                                   void** values, int* lengths, int max_values,
+                                   void* storage, size_t storage_size,
+                                   TF_Status* status) {
+  const auto* attr = GetAttrValue(oper, attr_name, status);
+  if (!status->status.ok()) return;
+  if (attr->value_case() != tensorflow::AttrValue::kList) {
+    status->status =
+        InvalidArgument("Value for '", attr_name, "' is not a list");
+    return;
+  }
+  const auto len = std::min(max_values, attr->list().s_size());
+  char* p = static_cast<char*>(storage);
+  for (int i = 0; i < len; ++i) {
+    const tensorflow::string& s = attr->list().s(i);
+    values[i] = p;
+    lengths[i] = s.size();
+    if ((p + s.size()) > (static_cast<char*>(storage) + storage_size)) {
+      status->status = InvalidArgument(
+          "Not enough storage to hold the requested list of strings");
+      return;
+    }
+    memcpy(values[i], s.data(), s.size());
+    p += s.size();
+  }
+}
+
+#define DEFINE_GETATTR(func, c_type, cpp_type, list_field)                     \
+  void func(TF_Operation* oper, const char* attr_name, c_type* value,          \
+            TF_Status* status) {                                               \
+    cpp_type v;                                                                \
+    status->status = tensorflow::GetNodeAttr(oper->node.def(), attr_name, &v); \
+    *value = static_cast<c_type>(v);                                           \
+  }                                                                            \
+  void func##List(TF_Operation* oper, const char* attr_name, c_type* values,   \
+                  int max_values, TF_Status* status) {                         \
+    const auto* attr = GetAttrValue(oper, attr_name, status);                  \
+    if (!status->status.ok()) return;                                          \
+    if (attr->value_case() != tensorflow::AttrValue::kList) {                  \
+      status->status =                                                         \
+          InvalidArgument("Value for '", attr_name, "' is not a list.");       \
+      return;                                                                  \
+    }                                                                          \
+    const auto len = std::min(max_values, attr->list().list_field##_size());   \
+    for (int i = 0; i < len; ++i) {                                            \
+      values[i] = static_cast<c_type>(attr->list().list_field(i));             \
+    }                                                                          \
+  }
+DEFINE_GETATTR(TF_OperationGetAttrInt, int64_t, tensorflow::int64, i);
+DEFINE_GETATTR(TF_OperationGetAttrFloat, float, float, f);
+DEFINE_GETATTR(TF_OperationGetAttrBool, unsigned char, bool, b);
+DEFINE_GETATTR(TF_OperationGetAttrType, TF_DataType, DataType, type);
+#undef DEFINE_GETATTR
+
+void TF_OperationGetAttrShape(TF_Operation* oper, const char* attr_name,
+                              int64_t* value, int num_dims, TF_Status* status) {
+  PartialTensorShape shape;
+  status->status = tensorflow::GetNodeAttr(oper->node.def(), attr_name, &shape);
+  if (!status->status.ok()) return;
+  auto len = std::min(shape.dims(), num_dims);
+  for (int i = 0; i < len; ++i) {
+    value[i] = shape.dim_size(i);
+  }
+}
+
+void TF_OperationGetAttrShapeList(TF_Operation* oper, const char* attr_name,
+                                  int64_t** values, int* num_dims,
+                                  int max_values, int64_t* storage,
+                                  int storage_size, TF_Status* status) {
+  std::vector<PartialTensorShape> shapes;
+  status->status =
+      tensorflow::GetNodeAttr(oper->node.def(), attr_name, &shapes);
+  if (!status->status.ok()) return;
+  auto len = std::min(static_cast<int>(shapes.size()), max_values);
+  int64_t* p = storage;
+  int storage_left = storage_size;
+  for (int i = 0; i < len; ++i) {
+    // shapes[i].dims() == -1 for shapes with an unknown rank.
+    int64_t n = shapes[i].dims();
+    num_dims[i] = n;
+    values[i] = p;
+    if (n < 0) {
+      continue;
+    }
+    if (storage_left < n) {
+      status->status = InvalidArgument(
+          "Not enough storage to hold the requested list of shapes");
+      return;
+    }
+    storage_left -= n;
+    for (int j = 0; j < n; ++j, ++p) {
+      *p = shapes[i].dim_size(j);
+    }
+  }
+}
+
+void TF_OperationGetAttrTensorShapeProto(TF_Operation* oper,
+                                         const char* attr_name,
+                                         TF_Buffer* value, TF_Status* status) {
+  const auto* attr = GetAttrValue(oper, attr_name, status);
+  if (!status->status.ok()) return;
+  if (attr->value_case() != tensorflow::AttrValue::kShape) {
+    status->status =
+        InvalidArgument("Value for '", attr_name, "' is not a shape.");
+    return;
+  }
+  status->status = MessageToBuffer(attr->shape(), value);
+}
+
+void TF_OperationGetAttrTensorShapeProtoList(TF_Operation* oper,
+                                             const char* attr_name,
+                                             TF_Buffer** values, int max_values,
+                                             TF_Status* status) {
+  const auto* attr = GetAttrValue(oper, attr_name, status);
+  if (!status->status.ok()) return;
+  if (attr->value_case() != tensorflow::AttrValue::kList) {
+    status->status =
+        InvalidArgument("Value for '", attr_name, "' is not a list");
+    return;
+  }
+  const auto len = std::min(max_values, attr->list().shape_size());
+  for (int i = 0; i < len; ++i) {
+    values[i] = TF_NewBuffer();
+    status->status = MessageToBuffer(attr->list().shape(i), values[i]);
+    if (!status->status.ok()) {
+      // Delete everything allocated to far, the operation has failed.
+      for (int j = 0; j <= i; ++j) {
+        TF_DeleteBuffer(values[j]);
+      }
+      return;
+    }
+  }
+}
+
+void TF_OperationGetAttrTensor(TF_Operation* oper, const char* attr_name,
+                               TF_Tensor** value, TF_Status* status) {
+  *value = nullptr;
+  Tensor t;
+  status->status = tensorflow::GetNodeAttr(oper->node.def(), attr_name, &t);
+  if (!status->status.ok()) return;
+  *value = new TF_Tensor{static_cast<TF_DataType>(t.dtype()), t.shape(),
+                         tensorflow::TensorCApi::Buffer(t)};
+  (*value)->buffer->Ref();
+}
+
+void TF_OperationGetAttrTensorList(TF_Operation* oper, const char* attr_name,
+                                   TF_Tensor** values, int max_values,
+                                   TF_Status* status) {
+  std::vector<Tensor> ts;
+  status->status = tensorflow::GetNodeAttr(oper->node.def(), attr_name, &ts);
+  if (!status->status.ok()) return;
+  const auto len = std::min(max_values, static_cast<int>(ts.size()));
+  for (int i = 0; i < len; ++i) {
+    const Tensor& t = ts[i];
+    values[i] = new TF_Tensor{static_cast<TF_DataType>(t.dtype()), t.shape(),
+                              tensorflow::TensorCApi::Buffer(t)};
+    values[i]->buffer->Ref();
+  }
+}
+
 void TF_OperationGetAttrValueProto(TF_Operation* oper, const char* attr_name,
                                    TF_Buffer* output_attr_value,
                                    TF_Status* status) {
-  if (output_attr_value->data != nullptr) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Passing non-empty output_attr_value is invalid.");
-    return;
-  }
-
-  const auto& attr_map = oper->node.def().attr();
-  auto iter = attr_map.find(attr_name);
-  if (iter == attr_map.end()) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Operation has no attr named '", attr_name, "'.");
-    return;
-  }
-
-  const auto& attr = iter->second;
-  const auto proto_size = attr.ByteSize();
-  void* str_buf = malloc(proto_size);
-  attr.SerializeToArray(str_buf, proto_size);
-  output_attr_value->data = str_buf;
-  output_attr_value->length = proto_size;
-  output_attr_value->data_deallocator = [](void* data, size_t length) {
-    free(data);
-  };
-  status->status = Status::OK();
+  const auto* attr = GetAttrValue(oper, attr_name, status);
+  if (!status->status.ok()) return;
+  status->status = MessageToBuffer(*attr, output_attr_value);
 }
 
 void TF_OperationToNodeDef(TF_Operation* oper, TF_Buffer* output_node_def,
                            TF_Status* status) {
-  if (output_node_def->data != nullptr) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Passing non-empty output_node_def is invalid.");
-    return;
-  }
-
-  const NodeDef& def = oper->node.def();
-  const auto proto_size = def.ByteSize();
-  void* str_buf = malloc(proto_size);
-  def.SerializeToArray(str_buf, proto_size);
-  output_node_def->data = str_buf;
-  output_node_def->length = proto_size;
-  output_node_def->data_deallocator = [](void* data, size_t length) {
-    free(data);
-  };
-  status->status = Status::OK();
+  status->status = MessageToBuffer(oper->node.def(), output_node_def);
 }
 
 // TF_Graph functions ---------------------------------------------------------
@@ -1170,27 +1435,12 @@ TF_Operation* TF_GraphNextOperation(TF_Graph* graph, size_t* pos) {
 
 void TF_GraphToGraphDef(TF_Graph* graph, TF_Buffer* output_graph_def,
                         TF_Status* status) {
-  if (output_graph_def->data != nullptr) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Passing non-empty output_graph_def is invalid.");
-    return;
-  }
-
   GraphDef def;
   {
     mutex_lock l(graph->mu);
     graph->graph.ToGraphDef(&def);
   }
-
-  const auto proto_size = def.ByteSize();
-  void* str_buf = malloc(proto_size);
-  def.SerializeToArray(str_buf, proto_size);
-  output_graph_def->data = str_buf;
-  output_graph_def->length = proto_size;
-  output_graph_def->data_deallocator = [](void* data, size_t length) {
-    free(data);
-  };
-  status->status = Status::OK();
+  status->status = MessageToBuffer(def, output_graph_def);
 }
 
 // TF_SessionWithGraph functions ----------------------------------------------
