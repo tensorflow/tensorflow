@@ -281,6 +281,51 @@ typedef struct TF_Port {
   int index;  // Specifies the index of the input or output within oper.
 } TF_Port;
 
+// Sets the shape of the Tensor referenced by `port` in `graph` to
+// the shape described by `dims` and `num_dims`.
+//
+// If the number of dimensions is unknown, `num_dims` must be
+// set to -1 and dims can be null. If a dimension is unknown,
+// the corresponding entry in the `dims` array must be -1.
+//
+// This does not overwrite the existing shape associated with `port`,
+// but merges the input shape with the existing shape.  For example,
+// setting a shape of [-1, 2] with an existing shape [2, -1] would set
+// a final shape of [2, 2] based on shape merging semantics.
+//
+// Returns an error into `status` if:
+//   * `port` is not in `graph`.
+//   * An invalid shape is being set (e.g., the shape being set
+//     is incompatible with the existing shape).
+extern void TF_GraphSetTensorShape(TF_Graph* graph, TF_Port port,
+                                   const int64_t* dims, const int num_dims,
+                                   TF_Status* status);
+
+// Returns the number of dimensions of the Tensor referenced by `port`
+// in `graph`.
+//
+// If the number of dimensions in the shape is unknown, returns -1.
+//
+// Returns an error into `status` if:
+//   * `port` is not in `graph`.
+extern int TF_GraphGetTensorNumDims(TF_Graph* graph, TF_Port port,
+                                    TF_Status* status);
+
+// Returns the shape of the Tensor referenced by `port` in `graph`
+// into `dims`. `dims` must be an array large enough to hold `num_dims`
+// entries (e.g., the return value of TF_GraphGetTensorNumDims).
+//
+// If the number of dimensions in the shape is unknown or the shape is
+// a scalar, `dims` will remain untouched. Otherwise, each element of
+// `dims` will be set corresponding to the size of the dimension. An
+// unknown dimension is represented by `-1`.
+//
+// Returns an error into `status` if:
+//   * `port` is not in `graph`.
+//   * `num_dims` does not match the actual number of dimensions.
+extern void TF_GraphGetTensorShape(TF_Graph* graph, TF_Port port, int64_t* dims,
+                                   int num_dims, TF_Status* status);
+
 // Operation will only be added to *graph when TF_FinishOperation() is
 // called (assuming TF_FinishOperation() does not return an error).
 // *graph must not be deleted until after TF_FinishOperation() is

@@ -361,11 +361,91 @@ bool GetAttrValue(TF_Operation* oper, const char* attr_name,
   return ret;
 }
 
+TEST(CAPI, SetShape) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  TF_Operation* feed = Placeholder(graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_Port feed_out_0 = TF_Port{feed, 0};
+  int num_dims;
+
+  // Fetch the shape, it should be completely unknown.
+  num_dims = TF_GraphGetTensorNumDims(graph, feed_out_0, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(-1, num_dims);
+
+  // Set the shape to be 2 x Unknown
+  int64_t dims[] = {2, -1};
+  TF_GraphSetTensorShape(graph, feed_out_0, dims, 2, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Fetch the shape and validate it is 2 by -1.
+  num_dims = TF_GraphGetTensorNumDims(graph, feed_out_0, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(2, num_dims);
+
+  // Resize the dimension vector appropriately.
+  int64_t returned_dims[2];
+  TF_GraphGetTensorShape(graph, feed_out_0, returned_dims, num_dims, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(dims[0], returned_dims[0]);
+  EXPECT_EQ(dims[1], returned_dims[1]);
+
+  // Set to a new valid shape: [2, 3]
+  dims[1] = 3;
+  TF_GraphSetTensorShape(graph, feed_out_0, dims, 2, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Fetch and see that the new value is returned.
+  TF_GraphGetTensorShape(graph, feed_out_0, returned_dims, num_dims, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(dims[0], returned_dims[0]);
+  EXPECT_EQ(dims[1], returned_dims[1]);
+
+  // Try to set 'unknown' on the shape and see that
+  // it doesn't change.
+  dims[0] = -1;
+  dims[1] = -1;
+  TF_GraphSetTensorShape(graph, feed_out_0, dims, 2, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  // Fetch and see that the new value is returned.
+  TF_GraphGetTensorShape(graph, feed_out_0, returned_dims, num_dims, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(2, num_dims);
+  EXPECT_EQ(2, returned_dims[0]);
+  EXPECT_EQ(3, returned_dims[1]);
+
+  // Try to fetch a shape with the wrong num_dims
+  TF_GraphGetTensorShape(graph, feed_out_0, returned_dims, 5, s);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s)) << TF_Message(s);
+
+  // Try to set an invalid shape (cannot change 2x3 to a 2x5).
+  dims[1] = 5;
+  TF_GraphSetTensorShape(graph, feed_out_0, dims, 2, s);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s)) << TF_Message(s);
+
+  // Test for a scalar.
+  TF_Operation* three = ScalarConst(3, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_Port three_out_0 = TF_Port{three, 0};
+
+  num_dims = TF_GraphGetTensorNumDims(graph, three_out_0, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(0, num_dims);
+  TF_GraphGetTensorShape(graph, three_out_0, returned_dims, num_dims, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Clean up
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
 TEST(CAPI, Graph) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
 
-  // Make a placeholder oper.
+  // Make a placeholder operation.
   TF_Operation* feed = Placeholder(graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 

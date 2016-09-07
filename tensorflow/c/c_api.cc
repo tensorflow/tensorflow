@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/graph/shape_refiner.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 
@@ -648,17 +650,22 @@ extern "C" {
 struct TF_Graph {
   TF_Graph()
       : graph(OpRegistry::Global()), num_sessions(0), delete_requested(false) {}
-  mutex mu;  // protects all of the following
-  Graph graph;
-  std::unordered_map<tensorflow::string, Node*> name_map;
+  mutex mu;
+  Graph graph GUARDED_BY(mu);
+
+  // Runs shape inference.
+  tensorflow::ShapeRefiner refiner GUARDED_BY(mu);
+
+  // Maps from name of an operation to the Node* in 'graph'.
+  std::unordered_map<tensorflow::string, Node*> name_map GUARDED_BY(mu);
 
   // TF_Graph may only / must be deleted when
   //   num_sessions == 0 && delete_requested == true
 
   // num_sessions incremented by TF_NewSessionWithGraph, and decremented by
   // TF_DeleteSessionWithGraph.
-  int num_sessions;
-  bool delete_requested;  // set true by TF_DeleteGraph
+  int num_sessions GUARDED_BY(mu);
+  bool delete_requested GUARDED_BY(mu);  // set true by TF_DeleteGraph
 };
 
 struct TF_OperationDescription {
@@ -710,6 +717,96 @@ const tensorflow::AttrValue* GetAttrValue(TF_Operation* oper,
 }
 
 }  // namespace
+
+// Shape functions -----------------------------------------------------------
+
+void TF_GraphSetTensorShape(TF_Graph* graph, TF_Port port, const int64_t* dims,
+                            const int num_dims, TF_Status* status) {
+  Node* node = &port.oper->node;
+
+  mutex_lock l(graph->mu);
+  // Set the shape.
+  tensorflow::shape_inference::InferenceContext* ic =
+      graph->refiner.GetContext(node);
+  if (ic == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Node ", node->name(), " was not found in the graph");
+    return;
+  }
+
+  std::vector<tensorflow::shape_inference::DimensionHandle> dim_vec;
+  for (int i = 0; i < num_dims; ++i) {
+    dim_vec.push_back(ic->MakeDim(dims[i]));
+  }
+
+  tensorflow::shape_inference::ShapeHandle new_shape = ic->MakeShape(dim_vec);
+  status->status = graph->refiner.SetShape(node, port.index, new_shape);
+}
+
+int TF_GraphGetTensorNumDims(TF_Graph* graph, TF_Port port, TF_Status* status) {
+  Node* node = &port.oper->node;
+
+  mutex_lock l(graph->mu);
+  tensorflow::shape_inference::InferenceContext* ic =
+      graph->refiner.GetContext(node);
+  if (ic == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Node ", node->name(), " was not found in the graph");
+    return -1;
+  }
+
+  tensorflow::shape_inference::ShapeHandle shape = ic->output(port.index);
+
+  // Unknown rank means the number of dimensions is -1.
+  if (!ic->RankKnown(shape)) {
+    return -1;
+  }
+
+  return ic->Rank(shape);
+}
+
+void TF_GraphGetTensorShape(TF_Graph* graph, TF_Port port, int64_t* dims,
+                            int num_dims, TF_Status* status) {
+  Node* node = &port.oper->node;
+
+  mutex_lock l(graph->mu);
+  tensorflow::shape_inference::InferenceContext* ic =
+      graph->refiner.GetContext(node);
+  if (ic == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Node ", node->name(), " was not found in the graph");
+    return;
+  }
+
+  tensorflow::shape_inference::ShapeHandle shape = ic->output(port.index);
+
+  int rank = -1;
+  if (ic->RankKnown(shape)) {
+    rank = ic->Rank(shape);
+  }
+
+  if (num_dims != rank) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Expected rank is ", num_dims, " but actual rank is ", rank);
+    return;
+  }
+
+  if (num_dims == 0) {
+    // Output shape is a scalar.
+    return;
+  }
+
+  // Rank is greater than 0, so fill in the values, if known, and
+  // -1 for unknown values.
+  for (int i = 0; i < num_dims; ++i) {
+    auto dim = ic->Dim(shape, i);
+    tensorflow::int64 value = -1;
+    if (ic->ValueKnown(dim)) {
+      value = ic->Value(dim);
+    }
+    dims[i] = value;
+  }
+}
 
 // TF_OperationDescription functions ------------------------------------------
 
@@ -946,7 +1043,16 @@ TF_Operation* TF_FinishOperation(TF_OperationDescription* desc,
         "Duplicate node name in graph: '", desc->node_builder.node_name(), "'");
   } else {
     status->status = desc->node_builder.Finalize(&desc->graph->graph, &ret);
+
     if (status->status.ok()) {
+      // Run shape inference function for newly added node.
+      //
+      // TODO(b/28152992): Enable returning the result of this
+      // code-path once we have converted all python shape functions
+      // to call their C++ versions.
+      desc->graph->refiner.AddNode(ret);
+
+      // Add the node to the name-to-node mapping.
       desc->graph->name_map[ret->name()] = ret;
     }
   }
