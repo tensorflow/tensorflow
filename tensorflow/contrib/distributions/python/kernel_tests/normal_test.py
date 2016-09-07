@@ -376,6 +376,7 @@ class NormalTest(tf.test.TestCase):
       normal = tf.contrib.distributions.Normal(
           mu=[1.],
           sigma=[-5.],
+          validate_args=True,
           name="G")
       with self.assertRaisesOpError("Condition x > 0 did not hold"):
         normal.mean().eval()

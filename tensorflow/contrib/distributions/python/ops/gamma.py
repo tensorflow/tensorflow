@@ -65,8 +65,8 @@ class Gamma(distribution.Distribution):
   def __init__(self,
                alpha,
                beta,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Gamma"):
     """Construct Gamma distributions with parameters `alpha` and `beta`.
 
@@ -80,10 +80,11 @@ class Gamma(distribution.Distribution):
       beta: Floating point tensor, the inverse scale params of the
         distribution(s).
         beta must contain only positive values.
-      validate_args: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
-        the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
-        and the inputs are invalid, correct behavior is not guaranteed.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert that
+        `a > 0`, `b > 0`, and that `x > 0` in the methods `prob(x)` and
+        `log_prob(x)`.  If `validate_args` is `False` and the inputs are
+        invalid, correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -105,6 +106,8 @@ class Gamma(distribution.Distribution):
             parameters={"alpha": self._alpha, "beta": self._beta},
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
+            is_continuous=True,
+            is_reparameterized=False,
             name=ns)
 
   @property

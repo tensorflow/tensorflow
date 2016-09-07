@@ -148,11 +148,11 @@ class _DistributionShape(object):
     ```
 
   Argument Validation:
-    When `validate_args=True`, checks that cannot be done during
+    When `validate_args=False`, checks that cannot be done during
     graph construction are performed at graph execution. This may result in a
     performance degradation because data must be switched from GPU to CPU.
 
-    For example, when `validate_args=True` and `event_ndims` is a
+    For example, when `validate_args=False` and `event_ndims` is a
     non-constant `Tensor`, it is checked to be a non-negative integer at graph
     execution. (Same for `batch_ndims`).  Constant `Tensor`s and non-`Tensor`
     arguments are always checked for correctness since this can be done for
@@ -162,7 +162,7 @@ class _DistributionShape(object):
   def __init__(self,
                batch_ndims=None,
                event_ndims=None,
-               validate_args=True,
+               validate_args=False,
                name="DistributionShape"):
     """Construct `DistributionShape` with fixed `batch_ndims`, `event_ndims`.
 
@@ -181,9 +181,9 @@ class _DistributionShape(object):
         indexes of a `Tensor`. An "event" is what is sampled from a
         distribution, i.e., a trivariate Normal has an event shape of [3] and a
         4 dimensional Wishart has an event shape of [4, 4].
-      validate_args: `Boolean`. When `True`, non-`tf.constant` `Tensor`
-        arguments are checked for correctness. (`tf.constant` arguments are
-        always checked.)
+      validate_args: `Boolean`, default `False`. When `True`, non-`tf.constant`
+        `Tensor` arguments are checked for correctness. (`tf.constant`
+        arguments are always checked.)
       name: `String`. The name prepended to Ops created by this class.
 
     Raises:

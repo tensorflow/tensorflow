@@ -142,11 +142,11 @@ class Distribution(BaseDistribution):
   b = tf.exp(tf.matmul(logits, weights_b))
 
   # Will raise exception if ANY batch member has a < 1 or b < 1.
-  dist = distributions.beta(a, b, allow_nan_stats=False)  # default is False
+  dist = distributions.beta(a, b, allow_nan_stats=False)
   mode = dist.mode().eval()
 
   # Will return NaN for batch members with either a < 1 or b < 1.
-  dist = distributions.beta(a, b, allow_nan_stats=True)
+  dist = distributions.beta(a, b, allow_nan_stats=True)  # Default behavior
   mode = dist.mode().eval()
   ```
 
@@ -162,28 +162,30 @@ class Distribution(BaseDistribution):
   """
 
   def __init__(self,
-               dtype=None,
-               parameters=None,
-               is_continuous=True,
-               is_reparameterized=False,
-               validate_args=True,
-               allow_nan_stats=False,
+               dtype,
+               parameters,
+               is_continuous,
+               is_reparameterized,
+               validate_args,
+               allow_nan_stats,
                name=None):
     """Constructs the `Distribution`.
+
+    **This is a private method for subclass use.**
 
     Args:
       dtype: The type of the event samples. `None` implies no type-enforcement.
       parameters: Python dictionary of parameters used by this `Distribution`.
-      is_continuous: Python boolean, default `True`. If `True` this
+      is_continuous: Python boolean. If `True` this
         `Distribution` is continuous over its supported domain.
-      is_reparameterized: Python boolean, default `False`. If `True` this
+      is_reparameterized: Python boolean. If `True` this
         `Distribution` can be reparameterized in terms of some standard
         distribution with a function whose Jacobian is constant for the support
         of the standard distribution.
-      validate_args: Whether to validate input with asserts. If `validate_args`
-        is `False`, and the inputs are invalid, correct behavior is not
-        guaranteed.
-      allow_nan_stats: Python boolean, default `False`. If `False`, raise an
+      validate_args: Python boolean.  Whether to validate input with asserts.
+        If `validate_args` is `False`, and the inputs are invalid,
+        correct behavior is not guaranteed.
+      allow_nan_stats: Pytho nboolean.  If `False`, raise an
         exception if a statistic (e.g., mean, mode) is undefined for any batch
         member. If True, batch members with valid parameters leading to
         undefined statistics will return `NaN` for this statistic.

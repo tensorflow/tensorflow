@@ -135,7 +135,7 @@ class InverseGammaTest(tf.test.TestCase):
       alpha_v = np.array([1.0, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       inv_gamma = tf.contrib.distributions.InverseGamma(
-          alpha=alpha_v, beta=beta_v)
+          alpha=alpha_v, beta=beta_v, allow_nan_stats=False)
       with self.assertRaisesOpError("x < y"):
         inv_gamma.mean().eval()
 
@@ -168,7 +168,8 @@ class InverseGammaTest(tf.test.TestCase):
       alpha_v = np.array([1.5, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       inv_gamma = tf.contrib.distributions.InverseGamma(alpha=alpha_v,
-                                                        beta=beta_v)
+                                                        beta=beta_v,
+                                                        allow_nan_stats=False)
       with self.assertRaisesOpError("x < y"):
         inv_gamma.variance().eval()
 
@@ -290,14 +291,14 @@ class InverseGammaTest(tf.test.TestCase):
     with self.test_session():
       alpha_v = tf.constant(0.0, name="alpha")
       beta_v = tf.constant(1.0, name="beta")
-      inv_gamma = tf.contrib.distributions.InverseGamma(alpha=alpha_v,
-                                                        beta=beta_v)
+      inv_gamma = tf.contrib.distributions.InverseGamma(
+          alpha=alpha_v, beta=beta_v, validate_args=True)
       with self.assertRaisesOpError("alpha"):
         inv_gamma.mean().eval()
       alpha_v = tf.constant(1.0, name="alpha")
       beta_v = tf.constant(0.0, name="beta")
-      inv_gamma = tf.contrib.distributions.InverseGamma(alpha=alpha_v,
-                                                        beta=beta_v)
+      inv_gamma = tf.contrib.distributions.InverseGamma(
+          alpha=alpha_v, beta=beta_v, validate_args=True)
       with self.assertRaisesOpError("beta"):
         inv_gamma.mean().eval()
 

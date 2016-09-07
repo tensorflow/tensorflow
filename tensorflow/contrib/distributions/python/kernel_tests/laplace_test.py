@@ -248,12 +248,14 @@ class LaplaceTest(tf.test.TestCase):
     with self.test_session():
       loc_v = tf.constant(0.0, name="loc")
       scale_v = tf.constant(-1.0, name="scale")
-      laplace = tf.contrib.distributions.Laplace(loc=loc_v, scale=scale_v)
+      laplace = tf.contrib.distributions.Laplace(
+          loc=loc_v, scale=scale_v, validate_args=True)
       with self.assertRaisesOpError("scale"):
         laplace.mean().eval()
       loc_v = tf.constant(1.0, name="loc")
       scale_v = tf.constant(0.0, name="scale")
-      laplace = tf.contrib.distributions.Laplace(loc=loc_v, scale=scale_v)
+      laplace = tf.contrib.distributions.Laplace(
+          loc=loc_v, scale=scale_v, validate_args=True)
       with self.assertRaisesOpError("scale"):
         laplace.mean().eval()
 

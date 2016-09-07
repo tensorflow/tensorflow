@@ -61,14 +61,14 @@ class BernoulliTest(tf.test.TestCase):
     for p in invalid_ps:
       with self.test_session():
         with self.assertRaisesOpError("p has components greater than 1"):
-          dist = tf.contrib.distributions.Bernoulli(p=p)
+          dist = tf.contrib.distributions.Bernoulli(p=p, validate_args=True)
           dist.p.eval()
 
     invalid_ps = [-0.01, -3.]
     for p in invalid_ps:
       with self.test_session():
         with self.assertRaisesOpError("Condition x >= 0"):
-          dist = tf.contrib.distributions.Bernoulli(p=p)
+          dist = tf.contrib.distributions.Bernoulli(p=p, validate_args=True)
           dist.p.eval()
 
     valid_ps = [0.0, 0.5, 1.0]

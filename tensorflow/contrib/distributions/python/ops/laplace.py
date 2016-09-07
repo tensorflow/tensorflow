@@ -51,8 +51,8 @@ class Laplace(distribution.Distribution):
   def __init__(self,
                loc,
                scale,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Laplace"):
     """Construct Laplace distribution with parameters `loc` and `scale`.
 
@@ -64,10 +64,10 @@ class Laplace(distribution.Distribution):
         of the distribution.
       scale: Positive floating point tensor which characterizes the spread of
         the distribution.
-      validate_args: Whether to validate input with asserts.  If `validate_args`
-        is `False`, and the inputs are invalid, correct behavior is not
-        guaranteed.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to validate input
+        with asserts.  If `validate_args` is `False`, and the inputs are
+        invalid, correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -85,6 +85,7 @@ class Laplace(distribution.Distribution):
         super(Laplace, self).__init__(
             dtype=self._loc.dtype,
             parameters={"loc": self._loc, "scale": self._scale},
+            is_continuous=True,
             is_reparameterized=True,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,

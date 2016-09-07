@@ -71,8 +71,8 @@ class _WishartOperatorPD(distribution.Distribution):
                df,
                scale_operator_pd,
                cholesky_input_output_matrices=False,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name=None):
     """Construct Wishart distributions.
 
@@ -85,10 +85,10 @@ class _WishartOperatorPD(distribution.Distribution):
         Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
         `sample_n` returns a Cholesky when
         `cholesky_input_output_matrices=True`.
-      validate_args: Whether to validate input with asserts. If `validate_args`
-        is `False`, and the inputs are invalid, correct behavior is not
-        guaranteed.
-      allow_nan_stats:  `Boolean`, default `False`. If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to validate input with
+        asserts. If `validate_args` is `False`, and the inputs are invalid,
+        correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`. If `False`, raise an
         exception if a statistic (e.g., mean, mode) is undefined for any batch
         member. If True, batch members with valid parameters leading to
         undefined statistics will return `NaN` for this statistic.
@@ -144,6 +144,8 @@ class _WishartOperatorPD(distribution.Distribution):
                         "dimension": self._dimension},
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
+            is_continuous=True,
+            is_reparameterized=True,
             name=ns)
 
   @property
@@ -476,8 +478,8 @@ class WishartCholesky(_WishartOperatorPD):
                df,
                scale,
                cholesky_input_output_matrices=False,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="WishartCholesky"):
     """Construct Wishart distributions.
 
@@ -491,10 +493,10 @@ class WishartCholesky(_WishartOperatorPD):
         Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
         `sample_n` returns a Cholesky when
         `cholesky_input_output_matrices=True`.
-      validate_args: Whether to validate input with asserts. If `validate_args`
-        is `False`, and the inputs are invalid, correct behavior is not
-        guaranteed.
-      allow_nan_stats:  `Boolean`, default `False`. If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to validate input
+        with asserts. If `validate_args` is `False`, and the inputs are invalid,
+        correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`. If `False`, raise an
         exception if a statistic (e.g., mean, mode) is undefined for any batch
         member. If True, batch members with valid parameters leading to
         undefined statistics will return `NaN` for this statistic.
@@ -573,8 +575,8 @@ class WishartFull(_WishartOperatorPD):
                df,
                scale,
                cholesky_input_output_matrices=False,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="WishartFull"):
     """Construct Wishart distributions.
 
@@ -588,10 +590,10 @@ class WishartFull(_WishartOperatorPD):
         Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
         `sample_n` returns a Cholesky when
         `cholesky_input_output_matrices=True`.
-      validate_args: Whether to validate input with asserts. If `validate_args`
-        is `False`, and the inputs are invalid, correct behavior is not
-        guaranteed.
-      allow_nan_stats:  `Boolean`, default `False`. If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to validate input with
+        asserts. If `validate_args` is `False`, and the inputs are invalid,
+        correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`. If `False`, raise an
         exception if a statistic (e.g., mean, mode) is undefined for any batch
         member. If True, batch members with valid parameters leading to
         undefined statistics will return `NaN` for this statistic.

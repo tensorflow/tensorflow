@@ -134,7 +134,7 @@ class GammaTest(tf.test.TestCase):
       alpha_v = np.array([0.5, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       gamma = tf.contrib.distributions.Gamma(
-          alpha=alpha_v, beta=beta_v)
+          alpha=alpha_v, beta=beta_v, allow_nan_stats=False)
       with self.assertRaisesOpError("x < y"):
         gamma.mode().eval()
 
@@ -298,12 +298,14 @@ class GammaTest(tf.test.TestCase):
     with self.test_session():
       alpha_v = tf.constant(0.0, name="alpha")
       beta_v = tf.constant(1.0, name="beta")
-      gamma = tf.contrib.distributions.Gamma(alpha=alpha_v, beta=beta_v)
+      gamma = tf.contrib.distributions.Gamma(alpha=alpha_v, beta=beta_v,
+                                             validate_args=True)
       with self.assertRaisesOpError("alpha"):
         gamma.mean().eval()
       alpha_v = tf.constant(1.0, name="alpha")
       beta_v = tf.constant(0.0, name="beta")
-      gamma = tf.contrib.distributions.Gamma(alpha=alpha_v, beta=beta_v)
+      gamma = tf.contrib.distributions.Gamma(alpha=alpha_v, beta=beta_v,
+                                             validate_args=True)
       with self.assertRaisesOpError("beta"):
         gamma.mean().eval()
 

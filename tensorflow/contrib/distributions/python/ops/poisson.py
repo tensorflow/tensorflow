@@ -46,19 +46,19 @@ class Poisson(distribution.Distribution):
 
   def __init__(self,
                lam,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Poisson"):
     """Construct Poisson distributions.
 
     Args:
       lam: Floating point tensor, the rate parameter of the
         distribution(s). `lam` must be positive.
-      validate_args: Whether to assert that `lam > 0` as well as inputs to
-        pmf computations are non-negative integers. If validate_args is
-        `False`, then `pmf` computations might return NaN, as well as
-        can be evaluated at any real value.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert that
+        `lam > 0` as well as inputs to pmf computations are non-negative
+        integers. If validate_args is `False`, then `pmf` computations might
+        return `NaN`, but can be evaluated at any real value.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -72,6 +72,7 @@ class Poisson(distribution.Distribution):
             dtype=self._lam.dtype,
             parameters={"lam": self._lam},
             is_continuous=False,
+            is_reparameterized=False,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             name=ns)

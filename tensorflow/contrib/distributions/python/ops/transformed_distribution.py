@@ -95,6 +95,12 @@ class TransformedDistribution(distribution.Distribution):
       self._inverse_cache = {}
       super(TransformedDistribution, self).__init__(
           dtype=self._base_dist.dtype,
+          parameters={"base_dist_cls": base_dist_cls,
+                      "transform": transform,
+                      "inverse": inverse,
+                      "log_det_jacobian": log_det_jacobian,
+                      "base_dist_args": base_dist_args},
+          is_continuous=self._base_dist.is_continuous,
           is_reparameterized=self._base_dist.is_reparameterized,
           validate_args=self._base_dist.validate_args,
           allow_nan_stats=self._base_dist.allow_nan_stats,

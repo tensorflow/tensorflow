@@ -100,7 +100,8 @@ def assert_symmetric(matrix):
 
 
 def get_logits_and_prob(
-    logits=None, p=None, multidimensional=False, validate_args=True, name=None):
+    logits=None, p=None,
+    multidimensional=False, validate_args=False, name=None):
   """Converts logits to probabilities and vice-versa, and returns both.
 
   Args:
@@ -111,8 +112,9 @@ def get_logits_and_prob(
       This will additionally assert that the values in the last dimension
       sum to one. If `False`, will instead assert that each value is in
       `[0, 1]`.
-    validate_args: Whether to assert `0 <= p <= 1` if multidimensional is
-      `False`, otherwise that the last dimension of `p` sums to one.
+    validate_args: `Boolean`, default `False`.  Whether to assert `0 <= p <= 1`
+      if multidimensional is `False`, otherwise that the last dimension of `p`
+      sums to one.
     name: A name for this operation (optional).
 
   Returns:
@@ -256,7 +258,7 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
   numpy.transpose(x, numpy.roll(numpy.arange(len(x.shape)), shift))
   ```
 
-  When `validate_args=True` additional graph-runtime checks are
+  When `validate_args=False` additional graph-runtime checks are
   performed. These checks entail moving data from to GPU to CPU.
 
   Example:

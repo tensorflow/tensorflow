@@ -89,8 +89,8 @@ class StudentT(distribution.Distribution):
                df,
                mu,
                sigma,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="StudentT"):
     """Construct Student's t distributions.
 
@@ -106,10 +106,10 @@ class StudentT(distribution.Distribution):
       sigma: Floating point tensor, the scaling factor for the
         distribution(s). `sigma` must contain only positive values.
         Note that `sigma` is not the standard deviation of this distribution.
-      validate_args: Whether to assert that `df > 0, sigma > 0`. If
-        `validate_args` is `False` and inputs are invalid, correct behavior is
-        not guaranteed.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert that
+        `df > 0` and `sigma > 0`. If `validate_args` is `False` and inputs are
+        invalid, correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -131,6 +131,7 @@ class StudentT(distribution.Distribution):
         super(StudentT, self).__init__(
             dtype=self._sigma.dtype,
             parameters={"df": self._df, "mu": self._mu, "sigma": self._sigma},
+            is_continuous=True,
             is_reparameterized=True,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
@@ -265,7 +266,7 @@ class StudentT(distribution.Distribution):
 distribution_util.append_class_fun_doc(StudentT.mean, doc_str="""
 
     The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.  If
-    `self.allow_nan_stats=False`, then an exception will be raised rather than
+    `self.allow_nan_stats=True`, then an exception will be raised rather than
     returning `NaN`.
 """)
 

@@ -40,18 +40,19 @@ class Exponential(gamma.Gamma):
 
   def __init__(self,
                lam,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Exponential"):
     """Construct Exponential distribution with parameter `lam`.
 
     Args:
       lam: Floating point tensor, the rate of the distribution(s).
         `lam` must contain only positive values.
-      validate_args: Whether to assert that `lam > 0`, and that `x > 0` in the
-        methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
-        and the inputs are invalid, correct behavior is not guaranteed.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert that
+        `lam > 0`, and that `x > 0` in the methods `prob(x)` and `log_prob(x)`.
+        If `validate_args` is `False` and the inputs are invalid, correct
+        behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member. If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -59,7 +60,7 @@ class Exponential(gamma.Gamma):
     """
     # Even though all statistics of are defined for valid inputs, this is not
     # true in the parent class "Gamma."  Therefore, passing
-    # allow_nan_stats=False
+    # allow_nan_stats=True
     # through to the parent class results in unnecessary asserts.
     with ops.name_scope(name, values=[lam]) as ns:
       self._lam = ops.convert_to_tensor(lam, name="lam")

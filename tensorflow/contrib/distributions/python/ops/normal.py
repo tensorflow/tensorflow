@@ -85,8 +85,8 @@ class Normal(distribution.Distribution):
   def __init__(self,
                mu,
                sigma,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Normal"):
     """Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
@@ -97,9 +97,10 @@ class Normal(distribution.Distribution):
       mu: Floating point tensor, the means of the distribution(s).
       sigma: Floating point tensor, the stddevs of the distribution(s).
         sigma must contain only positive values.
-      validate_args: Whether to assert that `sigma > 0`. If `validate_args` is
-        `False`, correct output is not guaranteed when input is invalid.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert that
+        `sigma > 0`. If `validate_args` is `False`, correct output is not
+        guaranteed when input is invalid.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -117,6 +118,7 @@ class Normal(distribution.Distribution):
         super(Normal, self).__init__(
             dtype=self._sigma.dtype,
             parameters={"mu": self._mu, "sigma": self._sigma},
+            is_continuous=True,
             is_reparameterized=True,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,

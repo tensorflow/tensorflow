@@ -41,8 +41,8 @@ class Bernoulli(distribution.Distribution):
                logits=None,
                p=None,
                dtype=dtypes.int32,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Bernoulli"):
     """Construct Bernoulli distributions.
 
@@ -55,9 +55,10 @@ class Bernoulli(distribution.Distribution):
           event. Each entry in the `Tensor` parameterizes an independent
           Bernoulli distribution.
       dtype: dtype for samples.
-      validate_args: Whether to assert that `0 <= p <= 1`. If not validate_args,
-       `log_pmf` may return nans.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to validate that
+        `0 <= p <= 1`. If `validate_args` is `False`, and the inputs are
+        invalid, methods like `log_pmf` may return `NaN` values.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -75,6 +76,7 @@ class Bernoulli(distribution.Distribution):
           dtype=dtype,
           parameters={"p": self._p, "q": self._q, "logits": self._logits},
           is_continuous=False,
+          is_reparameterized=False,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
