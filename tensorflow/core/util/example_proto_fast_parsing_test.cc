@@ -178,6 +178,15 @@ string MakeSerializedExample() {
   return serialized;
 }
 
+TEST(TestFastParseExample, Empty) {
+  Result result;
+  FastParseExampleConfig config;
+  config.sparse.push_back({"test", DT_STRING});
+  Status status = FastParseExample(config, gtl::ArraySlice<string>(),
+                                   gtl::ArraySlice<string>(), nullptr, &result);
+  EXPECT_TRUE(status.ok()) << status;
+}
+
 }  // namespace
 
 }  // namespace example
