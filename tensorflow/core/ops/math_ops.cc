@@ -1015,10 +1015,11 @@ matrix multiply on one platform was 30% zero values in the sparse matrix.
 // dimensions of the input.
 REGISTER_OP("Sum")
     .Input("input: T")
-    .Input("reduction_indices: int32")
+    .Input("reduction_indices: Tidx")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the sum of elements across dimensions of a tensor.
@@ -1036,10 +1037,11 @@ output: The reduced tensor.
 
 REGISTER_OP("Mean")
     .Input("input: T")
-    .Input("reduction_indices: int32")
+    .Input("reduction_indices: Tidx")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the mean of elements across dimensions of a tensor.
@@ -1057,10 +1059,11 @@ output: The reduced tensor.
 
 REGISTER_OP("Prod")
     .Input("input: T")
-    .Input("reduction_indices: int32")
+    .Input("reduction_indices: Tidx")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the product of elements across dimensions of a tensor.
@@ -1078,10 +1081,11 @@ output: The reduced tensor.
 
 REGISTER_OP("Min")
     .Input("input: T")
-    .Input("reduction_indices: int32")
+    .Input("reduction_indices: Tidx")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the minimum of elements across dimensions of a tensor.
@@ -1099,10 +1103,11 @@ output: The reduced tensor.
 
 REGISTER_OP("Max")
     .Input("input: T")
-    .Input("reduction_indices: int32")
+    .Input("reduction_indices: Tidx")
     .Output("output: T")
     .Attr("keep_dims: bool = false")
     .Attr("T: numbertype")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the maximum of elements across dimensions of a tensor.
@@ -1149,7 +1154,13 @@ Status ArgOpShape(shape_inference::InferenceContext* c) {
     return Status::OK();
   }
 
-  const int32 dimension_val = dim_t->scalar<int32>()();
+  int64 dimension_val;
+  if (dim_t->dtype() == DT_INT32) {
+    dimension_val = dim_t->scalar<int32>()();
+  } else {
+    dimension_val = dim_t->scalar<int64>()();
+  }
+
   if (dimension_val < 0 || dimension_val >= input_rank) {
     return errors::InvalidArgument("Dimension (", dimension_val,
                                    ") must be in the range [0, ", input_rank,
@@ -1172,9 +1183,10 @@ Status ArgOpShape(shape_inference::InferenceContext* c) {
 
 REGISTER_OP("ArgMax")
     .Input("input: T")
-    .Input("dimension: int32")
+    .Input("dimension: Tidx")
     .Output("output: int64")
     .Attr("T: numbertype")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the largest value across dimensions of a tensor.
@@ -1185,9 +1197,10 @@ dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
 
 REGISTER_OP("ArgMin")
     .Input("input: T")
-    .Input("dimension: int32")
+    .Input("dimension: Tidx")
     .Output("output: int64")
     .Attr("T: numbertype")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the smallest value across dimensions of a tensor.
@@ -1490,10 +1503,11 @@ output: Has same shape as data, except for the first `segment_ids.rank`
 
 REGISTER_OP("SparseSegmentSum")
     .Input("data: T")
-    .Input("indices: int32")
+    .Input("indices: Tidx")
     .Input("segment_ids: int32")
     .Output("output: T")
     .Attr("T: realnumbertype")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the sum along sparse segments of a tensor.
@@ -1538,10 +1552,11 @@ output: Has same shape as data, except for dimension 0 which
 
 REGISTER_OP("SparseSegmentMean")
     .Input("data: T")
-    .Input("indices: int32")
+    .Input("indices: Tidx")
     .Input("segment_ids: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the mean along sparse segments of a tensor.
@@ -1564,11 +1579,12 @@ output: Has same shape as data, except for dimension 0 which
 
 REGISTER_OP("SparseSegmentMeanGrad")
     .Input("grad: T")
-    .Input("indices: int32")
+    .Input("indices: Tidx")
     .Input("segment_ids: int32")
     .Input("output_dim0: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn)
     .Doc(R"doc(
 Computes gradients for SparseSegmentMean.
@@ -1584,10 +1600,11 @@ output_dim0: dimension 0 of "data" passed to SparseSegmentMean op.
 
 REGISTER_OP("SparseSegmentSqrtN")
     .Input("data: T")
-    .Input("indices: int32")
+    .Input("indices: Tidx")
     .Input("segment_ids: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionShapeFn)
     .Doc(R"doc(
 Computes the sum along sparse segments of a tensor divided by the sqrt of N.
@@ -1609,11 +1626,12 @@ output: Has same shape as data, except for dimension 0 which
 
 REGISTER_OP("SparseSegmentSqrtNGrad")
     .Input("grad: T")
-    .Input("indices: int32")
+    .Input("indices: Tidx")
     .Input("segment_ids: int32")
     .Input("output_dim0: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn)
     .Doc(R"doc(
 Computes gradients for SparseSegmentSqrtN.
@@ -1629,9 +1647,10 @@ output_dim0: dimension 0 of "data" passed to SparseSegmentSqrtN op.
 
 REGISTER_OP("All")
     .Input("input: bool")
-    .Input("reduction_indices: int32")
+    .Input("reduction_indices: Tidx")
     .Output("output: bool")
     .Attr("keep_dims: bool = false")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the "logical and" of elements across dimensions of a tensor.
@@ -1649,9 +1668,10 @@ output: The reduced tensor.
 
 REGISTER_OP("Any")
     .Input("input: bool")
-    .Input("reduction_indices: int32")
+    .Input("reduction_indices: Tidx")
     .Attr("keep_dims: bool = false")
     .Output("output: bool")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape)
     .Doc(R"doc(
 Computes the "logical or" of elements across dimensions of a tensor.
@@ -1670,10 +1690,11 @@ output: The reduced tensor.
 // --------------------------------------------------------------------------
 
 REGISTER_OP("Range")
-    .Input("start: int32")
-    .Input("limit: int32")
-    .Input("delta: int32")
-    .Output("output: int32")
+    .Input("start: Tidx")
+    .Input("limit: Tidx")
+    .Input("delta: Tidx")
+    .Output("output: Tidx")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(0), 0, &unused),
@@ -1689,9 +1710,17 @@ REGISTER_OP("Range")
         c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
         return Status::OK();
       }
-      const int32 start = start_t->scalar<int32>()();
-      const int32 limit = limit_t->scalar<int32>()();
-      const int32 delta = delta_t->scalar<int32>()();
+      // TODO
+      int64 start, limit, delta;
+      if (start_t->dtype() == DT_INT32) {
+        start = start_t->scalar<int32>()();
+        limit = limit_t->scalar<int32>()();
+        delta = delta_t->scalar<int32>()();
+      } else {
+        start = start_t->scalar<int64>()();
+        limit = limit_t->scalar<int64>()();
+        delta = delta_t->scalar<int64>()();
+      }
       if (start > limit) {
         return errors::InvalidArgument("Requires start <= limit: ", start, "/",
                                        limit);
@@ -1699,7 +1728,7 @@ REGISTER_OP("Range")
       if (delta <= 0) {
         return errors::InvalidArgument("Requires delta > 0: ", delta);
       }
-      const int32 size = (limit - start + delta - 1) / delta;
+      const int64 size = (limit - start + delta - 1) / delta;
       c->set_output(0, c->Vector(size));
       return Status::OK();
     })
@@ -1727,9 +1756,10 @@ output: 1-D.
 REGISTER_OP("LinSpace")
     .Input("start: T")
     .Input("stop: T")
-    .Input("num: int32")
+    .Input("num: Tidx")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(0), 0, &unused),
@@ -1743,7 +1773,13 @@ REGISTER_OP("LinSpace")
         c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
         return Status::OK();
       }
-      const int64 num = num_t->scalar<int32>()();
+
+      int64 num;
+      if (num_t->dtype() == DT_INT32) {
+        num = num_t->scalar<int32>()();
+      } else {
+        num = num_t->scalar<int64>()();
+      }
       if (num <= 0) return errors::InvalidArgument("Requires num > 0: ", num);
       c->set_output(0, c->Vector(num));
       return Status::OK();
@@ -2057,11 +2093,12 @@ product: Pairwise cross product of the vectors in `a` and `b`.
 
 REGISTER_OP("Cumsum")
     .Input("x: T")
-    .Input("axis: int32")
+    .Input("axis: Tidx")
     .Attr("exclusive: bool = false")
     .Attr("reverse: bool = false")
     .Output("out: T")
     .Attr("T: numbertype")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .Doc(R"doc(
 Compute the cumulative sum of the tensor `x` along `axis`.
 
@@ -2092,11 +2129,12 @@ tf.cumsum([a, b, c], exclusive=True, reverse=True) ==> [b + c, c, 0]
 
 REGISTER_OP("Cumprod")
     .Input("x: T")
-    .Input("axis: int32")
+    .Input("axis: Tidx")
     .Attr("exclusive: bool = false")
     .Attr("reverse: bool = false")
     .Output("out: T")
     .Attr("T: numbertype")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .Doc(R"doc(
 Compute the cumulative product of the tensor `x` along `axis`.
 

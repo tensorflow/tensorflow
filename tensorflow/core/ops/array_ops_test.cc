@@ -293,8 +293,8 @@ TEST(ArrayOpsTest, PadD_ShapeFn) {
     // Make the paddings tensor known and verify padding values get added.
     // E.g., if padding is ((1,10),(2,20),(3,30)) then values 11,22,23 are added
     // to input dims to get output.
-    Tensor paddings_t(DT_INT32, TensorShape{3, 2});
-    test::FillValues<int32>(&paddings_t, {1, 10, 2, 20, 3, 30});
+    Tensor paddings_t(DT_INT64, TensorShape{3, 2});
+    test::FillValues<int64>(&paddings_t, {1, 10, 2, 20, 3, 30});
     op.input_tensors[1] = &paddings_t;
     INFER_OK(op, "[100,200,300];[3,2]", "[111,222,333]");
     INFER_OK(op, "[100,?,300];[3,2]", "[111,?,333]");
@@ -326,8 +326,8 @@ TEST(ArrayOpsTest, MirrorPadGrad_ShapeFn) {
   // Make the paddings tensor known and verify padding values get
   // subtracted.  E.g., if padding is ((1,10),(2,20),(3,30)) then
   // values 11,22,23 are subtracted to input dims to get output.
-  Tensor paddings_t(DT_INT32, TensorShape{3, 2});
-  test::FillValues<int32>(&paddings_t, {1, 10, 2, 20, 3, 30});
+  Tensor paddings_t(DT_INT64, TensorShape{3, 2});
+  test::FillValues<int64>(&paddings_t, {1, 10, 2, 20, 3, 30});
   op.input_tensors[1] = &paddings_t;
 
   INFER_OK(op, "[111,222,333];[3,2]", "[100,200,300]");
@@ -823,6 +823,9 @@ TEST(ArrayOpsTest, Tile_ShapeFn) {
   Tensor multiples = test::AsTensor<int32>({2, 3, 4, 5});
   op.input_tensors[1] = &multiples;
   INFER_OK(op, "[2,3,1,4];[4]", "[4,9,4,20]");
+  // Test 64-bit tensor type
+  multiples = test::AsTensor<int64>({2, 3, 4, 5});
+  INFER_OK(op, "[2,3,1,4];[4]", "[4,9,4,20]");
 }
 
 TEST(ArrayOpsTest, EditDistance_ShapeFn) {
@@ -933,6 +936,8 @@ TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
   Tensor paddings = test::AsTensor<int32>({4, 2, 2, 4}, {{2, 2}});
   op.input_tensors[1] = &paddings;
   INFER_OK(op, "[1,10,10,3];[2,2]", "[4,8,8,d0_3]");
+  paddings = test::AsTensor<int64>({4, 2, 2, 4}, {{2, 2}});
+  INFER_OK(op, "[1,10,10,3];[2,2]", "[4,8,8,d0_3]");
 
   // Bad paddings values
   paddings = test::AsTensor<int32>({1, 2, 3, 4}, {{2, 2}});
@@ -970,7 +975,7 @@ TEST(ArrayOpsTest, BatchToSpace_ShapeFn) {
   INFER_ERROR("BatchToSpace requires crops with shape [2,2]", op,
               "[4,8,8,3];[2,3]");
 
-  Tensor croppings = test::AsTensor<int32>({4, 2, 2, 4}, {{2, 2}});
+  Tensor croppings = test::AsTensor<int64>({4, 2, 2, 4}, {{2, 2}});
   op.input_tensors[1] = &croppings;
   INFER_OK(op, "[4,8,8,3];[2,2]", "[1,10,10,d0_3]");
 

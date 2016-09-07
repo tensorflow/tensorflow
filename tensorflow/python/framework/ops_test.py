@@ -280,6 +280,31 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(tensor_shape.unknown_shape(),
                      _apply_op(g, "an_op", [], [dtypes.float32]).get_shape())
 
+  def testConvertToTensorPreferred(self):
+    with self.test_session():
+      values = [2, 3, 5, 7]
+      tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.float32)
+      self.assertEqual(dtypes.float32, tensor.dtype)
+
+    with self.test_session():
+      # Convert empty tensor to anything
+      values = []
+      tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.int64)
+      self.assertEqual(dtypes.int64, tensor.dtype)
+
+    with self.test_session():
+      # The preferred dtype is a type error and will convert to
+      # float32 instead.
+      values = [1.23]
+      tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.int64)
+      self.assertEqual(dtypes.float32, tensor.dtype)
+
+  def testConvertToInvalidTensorType(self):
+    with self.assertRaises(TypeError):
+      # Forcing an invalid dtype should fail with a type error.
+      values = [1.23]
+      _ = ops.convert_to_tensor(values, dtype=dtypes.int64)
+
   def testNoConvert(self):
     # Operation cannot be converted to Tensor
     op = control_flow_ops.no_op()
