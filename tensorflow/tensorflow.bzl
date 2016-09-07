@@ -531,7 +531,7 @@ _py_wrap_cc = rule(
             allow_files = True,
         ),
         "swig_includes": attr.label_list(
-            cfg = DATA_CFG,
+            cfg = "data",
             allow_files = True,
         ),
         "deps": attr.label_list(
@@ -545,7 +545,7 @@ _py_wrap_cc = rule(
         "py_module_name": attr.string(mandatory = True),
         "swig_binary": attr.label(
             default = Label("//tensorflow:swig"),
-            cfg = HOST_CFG,
+            cfg = "host",
             executable = True,
             allow_files = True,
         ),
