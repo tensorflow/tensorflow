@@ -425,11 +425,12 @@ class UnaryOpTest(tf.test.TestCase):
   def testGradGrad(self):
     np.random.seed(7)
     shape = (5,)
-    dtype_tols = [(np.float32, 1e-3), (np.float64, 1e-6), (np.complex64, 1e-3),
+    dtype_tols = [(np.float32, 5e-4), (np.float64, 1e-6), (np.complex64, 5e-4),
                   (np.complex128, 1e-6)]
     op_range = [(gen_math_ops._inv_grad, [-2, 2]),
+                (gen_math_ops._rsqrt_grad, [0.1, 3]),
                 (gen_math_ops._sigmoid_grad, [-2, 2]),
-                (gen_math_ops._sqrt_grad, [1, 3]),
+                (gen_math_ops._sqrt_grad, [0.1, 3]),
                 (gen_math_ops._tanh_grad, [-2, 2]),]
 
     def rand(dtype):
@@ -445,12 +446,15 @@ class UnaryOpTest(tf.test.TestCase):
           x = tf.constant(rand(dtype))
           y = tf.constant(rand(dtype))
           z = op(x, y)
-          error = tf.test.compute_gradient_error(
+          grads = tf.test.compute_gradient(
               [x, y], [shape, shape],
               z,
               shape,
               x_init_value=[rand(dtype), rand(dtype)])
-          self.assertLess(error, tol)
+          if isinstance(grads, tuple):
+            grads = [grads]
+          for analytical, numerical in grads:
+            self.assertAllClose(analytical, numerical, rtol=tol, atol=tol)
 
 
 class BinaryOpTest(tf.test.TestCase):
