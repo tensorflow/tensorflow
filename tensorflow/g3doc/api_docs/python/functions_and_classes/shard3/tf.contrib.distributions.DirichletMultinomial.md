@@ -67,7 +67,7 @@ dist.pmf(counts)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, validate_args=True, allow_nan_stats=False, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
+#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, validate_args=False, allow_nan_stats=True, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
 
 Initialize a batch of DirichletMultinomial distributions.
 
@@ -83,10 +83,10 @@ Initialize a batch of DirichletMultinomial distributions.
     `n` with shape broadcastable to `[N1,..., Nm, k]` `m >= 0`.  Defines
     this as a batch of `N1 x ... x Nm` different `k` class Dirichlet
     multinomial distributions.
-*  <b>`validate_args`</b>: Whether to assert valid values for parameters `alpha` and
-    `n`, and `x` in `prob` and `log_prob`.  If `False`, correct behavior is
-    not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid
+    values for parameters `alpha` and `n`, and `x` in `prob` and
+    `log_prob`.  If `False`, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.

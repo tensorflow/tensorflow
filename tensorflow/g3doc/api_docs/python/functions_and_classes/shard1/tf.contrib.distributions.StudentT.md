@@ -45,7 +45,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, validate_args=True, allow_nan_stats=False, name='StudentT')` {#StudentT.__init__}
+#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, validate_args=False, allow_nan_stats=True, name='StudentT')` {#StudentT.__init__}
 
 Construct Student's t distributions.
 
@@ -63,10 +63,10 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 *  <b>`sigma`</b>: Floating point tensor, the scaling factor for the
     distribution(s). `sigma` must contain only positive values.
     Note that `sigma` is not the standard deviation of this distribution.
-*  <b>`validate_args`</b>: Whether to assert that `df > 0, sigma > 0`. If
-    `validate_args` is `False` and inputs are invalid, correct behavior is
-    not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
+    `df > 0` and `sigma > 0`. If `validate_args` is `False` and inputs are
+    invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.

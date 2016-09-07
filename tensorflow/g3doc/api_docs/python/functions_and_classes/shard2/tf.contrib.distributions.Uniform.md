@@ -3,7 +3,7 @@ Uniform distribution with `a` and `b` parameters.
 The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
 - - -
 
-#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, validate_args=True, allow_nan_stats=False, name='Uniform')` {#Uniform.__init__}
+#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, validate_args=False, allow_nan_stats=True, name='Uniform')` {#Uniform.__init__}
 
 Construct Uniform distributions with `a` and `b`.
 
@@ -33,9 +33,10 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 
 *  <b>`a`</b>: Floating point tensor, the minimum endpoint.
 *  <b>`b`</b>: Floating point tensor, the maximum endpoint. Must be > `a`.
-*  <b>`validate_args`</b>: Whether to assert that `a > b`. If `validate_args` is
-    `False` and inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
+    asserts. If `validate_args` is `False`, and the inputs are invalid,
+    correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -44,7 +45,7 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 ##### Raises:
 
 
-*  <b>`InvalidArgumentError`</b>: if `a >= b` and `validate_args=True`.
+*  <b>`InvalidArgumentError`</b>: if `a >= b` and `validate_args=False`.
 
 
 - - -

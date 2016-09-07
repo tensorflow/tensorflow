@@ -10,7 +10,7 @@ Note that the Laplace distribution can be thought of two exponential
 distributions spliced together "back-to-back."
 - - -
 
-#### `tf.contrib.distributions.Laplace.__init__(loc, scale, validate_args=True, allow_nan_stats=False, name='Laplace')` {#Laplace.__init__}
+#### `tf.contrib.distributions.Laplace.__init__(loc, scale, validate_args=False, allow_nan_stats=True, name='Laplace')` {#Laplace.__init__}
 
 Construct Laplace distribution with parameters `loc` and `scale`.
 
@@ -24,10 +24,10 @@ broadcasting (e.g., `loc / scale` is a valid operation).
     of the distribution.
 *  <b>`scale`</b>: Positive floating point tensor which characterizes the spread of
     the distribution.
-*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
-    is `False`, and the inputs are invalid, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
+    with asserts.  If `validate_args` is `False`, and the inputs are
+    invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.

@@ -8,7 +8,7 @@ Note that the Chi2 distribution is a special case of the Gamma distribution,
 with Chi2(df) = Gamma(df/2, 1/2).
 - - -
 
-#### `tf.contrib.distributions.Chi2.__init__(df, validate_args=True, allow_nan_stats=False, name='Chi2')` {#Chi2.__init__}
+#### `tf.contrib.distributions.Chi2.__init__(df, validate_args=False, allow_nan_stats=True, name='Chi2')` {#Chi2.__init__}
 
 Construct Chi2 distributions with parameter `df`.
 
@@ -17,10 +17,11 @@ Construct Chi2 distributions with parameter `df`.
 
 *  <b>`df`</b>: Floating point tensor, the degrees of freedom of the
     distribution(s).  `df` must contain only positive values.
-*  <b>`validate_args`</b>: Whether to assert that `df > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`. If `validate_args` is `False`
-    and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
+    `df > 0`, and that `x > 0` in the methods `prob(x)` and `log_prob(x)`.
+    If `validate_args` is `False` and the inputs are invalid, correct
+    behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.

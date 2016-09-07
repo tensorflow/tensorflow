@@ -60,7 +60,7 @@ dist.pdf(x)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.Beta.__init__(a, b, validate_args=True, allow_nan_stats=False, name='Beta')` {#Beta.__init__}
+#### `tf.contrib.distributions.Beta.__init__(a, b, validate_args=False, allow_nan_stats=True, name='Beta')` {#Beta.__init__}
 
 Initialize a batch of Beta distributions.
 
@@ -74,10 +74,10 @@ Initialize a batch of Beta distributions.
 *  <b>`b`</b>: Positive floating point tensor with shape broadcastable to
     `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different Beta distributions.
-*  <b>`validate_args`</b>: Whether to assert valid values for parameters `a` and `b`,
-    and `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid
+    values for parameters `a`, `b`, and `x` in `prob` and `log_prob`.
+    If `False` and inputs are invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.

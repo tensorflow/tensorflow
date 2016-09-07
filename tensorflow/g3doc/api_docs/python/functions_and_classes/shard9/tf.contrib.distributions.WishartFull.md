@@ -55,7 +55,7 @@ dist.pdf(x)  # Shape is [2, 2].
 ```
 - - -
 
-#### `tf.contrib.distributions.WishartFull.__init__(df, scale, cholesky_input_output_matrices=False, validate_args=True, allow_nan_stats=False, name='WishartFull')` {#WishartFull.__init__}
+#### `tf.contrib.distributions.WishartFull.__init__(df, scale, cholesky_input_output_matrices=False, validate_args=False, allow_nan_stats=True, name='WishartFull')` {#WishartFull.__init__}
 
 Construct Wishart distributions.
 
@@ -71,10 +71,10 @@ Construct Wishart distributions.
     Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
     `sample_n` returns a Cholesky when
     `cholesky_input_output_matrices=True`.
-*  <b>`validate_args`</b>: Whether to validate input with asserts. If `validate_args`
-    is `False`, and the inputs are invalid, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `False`. If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
+    asserts. If `validate_args` is `False`, and the inputs are invalid,
+    correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`. If `False`, raise an
     exception if a statistic (e.g., mean, mode) is undefined for any batch
     member. If True, batch members with valid parameters leading to
     undefined statistics will return `NaN` for this statistic.

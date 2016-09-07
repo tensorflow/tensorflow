@@ -8,7 +8,7 @@ Note that the Exponential distribution is a special case of the Gamma
 distribution, with Exponential(lam) = Gamma(1, lam).
 - - -
 
-#### `tf.contrib.distributions.Exponential.__init__(lam, validate_args=True, allow_nan_stats=False, name='Exponential')` {#Exponential.__init__}
+#### `tf.contrib.distributions.Exponential.__init__(lam, validate_args=False, allow_nan_stats=True, name='Exponential')` {#Exponential.__init__}
 
 Construct Exponential distribution with parameter `lam`.
 
@@ -17,10 +17,11 @@ Construct Exponential distribution with parameter `lam`.
 
 *  <b>`lam`</b>: Floating point tensor, the rate of the distribution(s).
     `lam` must contain only positive values.
-*  <b>`validate_args`</b>: Whether to assert that `lam > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
-    and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
+    `lam > 0`, and that `x > 0` in the methods `prob(x)` and `log_prob(x)`.
+    If `validate_args` is `False` and the inputs are invalid, correct
+    behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member. If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.

@@ -51,7 +51,7 @@ dist.prob(counts)  # Shape [5, 7, 3]
 ```
 - - -
 
-#### `tf.contrib.distributions.Binomial.__init__(n, logits=None, p=None, validate_args=True, allow_nan_stats=False, name='Binomial')` {#Binomial.__init__}
+#### `tf.contrib.distributions.Binomial.__init__(n, logits=None, p=None, validate_args=False, allow_nan_stats=True, name='Binomial')` {#Binomial.__init__}
 
 Initialize a batch of Binomial distributions.
 
@@ -69,10 +69,10 @@ Initialize a batch of Binomial distributions.
 *  <b>`p`</b>: Positive floating point tensor with shape broadcastable to
     `[N1,..., Nm]` `m >= 0`, `p in [0, 1]`. Each entry represents the
     probability of success for independent Binomial distributions.
-*  <b>`validate_args`</b>: Whether to assert valid values for parameters `n` and `p`,
-    and `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid values
+    for parameters `n`, `p`, and `x` in `prob` and `log_prob`.
+    If `False` and inputs are invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.

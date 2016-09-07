@@ -46,7 +46,7 @@ Trainable (batch) Choesky matrices can be created with
 `tf.contrib.distributions.batch_matrix_diag_transform()`
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.__init__(mu, chol, validate_args=True, allow_nan_stats=False, name='MultivariateNormalCholesky')` {#MultivariateNormalCholesky.__init__}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.__init__(mu, chol, validate_args=False, allow_nan_stats=True, name='MultivariateNormalCholesky')` {#MultivariateNormalCholesky.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
@@ -61,10 +61,10 @@ factors, such that the covariance of each batch member is `chol chol^T`.
 *  <b>`chol`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
     `[N1,...,Nb, k, k]`.  The upper triangular part is ignored (treated as
     though it is zero), and the diagonal must be positive.
-*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
-    is `False`, and the inputs are invalid, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
+    with asserts.  If `validate_args` is `False`, and the inputs are
+    invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.

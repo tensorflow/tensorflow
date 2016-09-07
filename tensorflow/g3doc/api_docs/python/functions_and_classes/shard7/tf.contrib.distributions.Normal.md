@@ -42,7 +42,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.Normal.__init__(mu, sigma, validate_args=True, allow_nan_stats=False, name='Normal')` {#Normal.__init__}
+#### `tf.contrib.distributions.Normal.__init__(mu, sigma, validate_args=False, allow_nan_stats=True, name='Normal')` {#Normal.__init__}
 
 Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
@@ -55,9 +55,10 @@ broadcasting (e.g. `mu + sigma` is a valid operation).
 *  <b>`mu`</b>: Floating point tensor, the means of the distribution(s).
 *  <b>`sigma`</b>: Floating point tensor, the stddevs of the distribution(s).
     sigma must contain only positive values.
-*  <b>`validate_args`</b>: Whether to assert that `sigma > 0`. If `validate_args` is
-    `False`, correct output is not guaranteed when input is invalid.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
+    `sigma > 0`. If `validate_args` is `False`, correct output is not
+    guaranteed when input is invalid.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.

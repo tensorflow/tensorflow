@@ -59,7 +59,7 @@ dist.prob(counts)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.Multinomial.__init__(n, logits=None, p=None, validate_args=True, allow_nan_stats=False, name='Multinomial')` {#Multinomial.__init__}
+#### `tf.contrib.distributions.Multinomial.__init__(n, logits=None, p=None, validate_args=False, allow_nan_stats=True, name='Multinomial')` {#Multinomial.__init__}
 
 Initialize a batch of Multinomial distributions.
 
@@ -79,10 +79,10 @@ Initialize a batch of Multinomial distributions.
     a batch of `N1 x ... x Nm` different `k` class Multinomial
     distributions. `p`'s components in the last portion of its shape should
     sum up to 1.
-*  <b>`validate_args`</b>: Whether to assert valid values for parameters `n` and `p`,
-    and `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid
+    values for parameters `n` and `p`, and `x` in `prob` and `log_prob`.
+    If `False`, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.

@@ -62,7 +62,7 @@ dist.pdf(x)
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.__init__(mu, diag_large, v, diag_small=None, validate_args=True, allow_nan_stats=False, name='MultivariateNormalDiagPlusVDVT')` {#MultivariateNormalDiagPlusVDVT.__init__}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.__init__(mu, diag_large, v, diag_small=None, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiagPlusVDVT')` {#MultivariateNormalDiagPlusVDVT.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
@@ -92,10 +92,10 @@ D = is diagonal (r x r), optional (defaults to identity).
 *  <b>`diag_small`</b>: Rank `n + 1` floating point tensor, shape
     `[N1,...,Nn, k]` `n >= 0`.  Defines the diagonal matrix `D`.  Default
     is `None`, which means `D` will be the identity matrix.
-*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
-    is `False`,
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
+    with asserts.  If `validate_args` is `False`,
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `False`.  If `False`, raise an
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.

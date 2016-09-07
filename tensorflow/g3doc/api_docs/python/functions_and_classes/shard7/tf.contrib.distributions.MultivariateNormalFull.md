@@ -39,7 +39,7 @@ dist.pdf(x)
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.__init__(mu, sigma, validate_args=True, allow_nan_stats=False, name='MultivariateNormalFull')` {#MultivariateNormalFull.__init__}
+#### `tf.contrib.distributions.MultivariateNormalFull.__init__(mu, sigma, validate_args=False, allow_nan_stats=True, name='MultivariateNormalFull')` {#MultivariateNormalFull.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
@@ -52,10 +52,10 @@ User must provide means `mu` and `sigma`, the mean and covariance.
     `b >= 0`.
 *  <b>`sigma`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
     `[N1,...,Nb, k, k]`.  Each batch member must be positive definite.
-*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
-    is `False`, and the inputs are invalid, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
+    with asserts.  If `validate_args` is `False`, and the inputs are
+    invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.

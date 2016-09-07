@@ -4,7 +4,7 @@ The Bernoulli distribution is parameterized by p, the probability of a
 positive event.
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.__init__(logits=None, p=None, dtype=tf.int32, validate_args=True, allow_nan_stats=False, name='Bernoulli')` {#Bernoulli.__init__}
+#### `tf.contrib.distributions.Bernoulli.__init__(logits=None, p=None, dtype=tf.int32, validate_args=False, allow_nan_stats=True, name='Bernoulli')` {#Bernoulli.__init__}
 
 Construct Bernoulli distributions.
 
@@ -19,9 +19,10 @@ Construct Bernoulli distributions.
       event. Each entry in the `Tensor` parameterizes an independent
       Bernoulli distribution.
 *  <b>`dtype`</b>: dtype for samples.
-*  <b>`validate_args`</b>: Whether to assert that `0 <= p <= 1`. If not validate_args,
-   `log_pmf` may return nans.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate that
+    `0 <= p <= 1`. If `validate_args` is `False`, and the inputs are
+    invalid, methods like `log_pmf` may return `NaN` values.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.

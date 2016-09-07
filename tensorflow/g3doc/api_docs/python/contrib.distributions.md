@@ -105,11 +105,11 @@ a = tf.exp(tf.matmul(logits, weights_a))
 b = tf.exp(tf.matmul(logits, weights_b))
 
 # Will raise exception if ANY batch member has a < 1 or b < 1.
-dist = distributions.beta(a, b, allow_nan_stats=False)  # default is False
+dist = distributions.beta(a, b, allow_nan_stats=False)
 mode = dist.mode().eval()
 
 # Will return NaN for batch members with either a < 1 or b < 1.
-dist = distributions.beta(a, b, allow_nan_stats=True)
+dist = distributions.beta(a, b, allow_nan_stats=True)  # Default behavior
 mode = dist.mode().eval()
 ```
 
@@ -123,25 +123,27 @@ dist.mean().eval()
 ```
 - - -
 
-#### `tf.contrib.distributions.Distribution.__init__(dtype=None, parameters=None, is_continuous=True, is_reparameterized=False, validate_args=True, allow_nan_stats=False, name=None)` {#Distribution.__init__}
+#### `tf.contrib.distributions.Distribution.__init__(dtype, parameters, is_continuous, is_reparameterized, validate_args, allow_nan_stats, name=None)` {#Distribution.__init__}
 
 Constructs the `Distribution`.
+
+**This is a private method for subclass use.**
 
 ##### Args:
 
 
 *  <b>`dtype`</b>: The type of the event samples. `None` implies no type-enforcement.
 *  <b>`parameters`</b>: Python dictionary of parameters used by this `Distribution`.
-*  <b>`is_continuous`</b>: Python boolean, default `True`. If `True` this
+*  <b>`is_continuous`</b>: Python boolean. If `True` this
     `Distribution` is continuous over its supported domain.
-*  <b>`is_reparameterized`</b>: Python boolean, default `False`. If `True` this
+*  <b>`is_reparameterized`</b>: Python boolean. If `True` this
     `Distribution` can be reparameterized in terms of some standard
     distribution with a function whose Jacobian is constant for the support
     of the standard distribution.
-*  <b>`validate_args`</b>: Whether to validate input with asserts. If `validate_args`
-    is `False`, and the inputs are invalid, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: Python boolean, default `False`. If `False`, raise an
+*  <b>`validate_args`</b>: Python boolean.  Whether to validate input with asserts.
+    If `validate_args` is `False`, and the inputs are invalid,
+    correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: Pytho nboolean.  If `False`, raise an
     exception if a statistic (e.g., mean, mode) is undefined for any batch
     member. If True, batch members with valid parameters leading to
     undefined statistics will return `NaN` for this statistic.
@@ -761,7 +763,7 @@ dist.prob(counts)  # Shape [5, 7, 3]
 ```
 - - -
 
-#### `tf.contrib.distributions.Binomial.__init__(n, logits=None, p=None, validate_args=True, allow_nan_stats=False, name='Binomial')` {#Binomial.__init__}
+#### `tf.contrib.distributions.Binomial.__init__(n, logits=None, p=None, validate_args=False, allow_nan_stats=True, name='Binomial')` {#Binomial.__init__}
 
 Initialize a batch of Binomial distributions.
 
@@ -779,10 +781,10 @@ Initialize a batch of Binomial distributions.
 *  <b>`p`</b>: Positive floating point tensor with shape broadcastable to
     `[N1,..., Nm]` `m >= 0`, `p in [0, 1]`. Each entry represents the
     probability of success for independent Binomial distributions.
-*  <b>`validate_args`</b>: Whether to assert valid values for parameters `n` and `p`,
-    and `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid values
+    for parameters `n`, `p`, and `x` in `prob` and `log_prob`.
+    If `False` and inputs are invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -1384,7 +1386,7 @@ The Bernoulli distribution is parameterized by p, the probability of a
 positive event.
 - - -
 
-#### `tf.contrib.distributions.Bernoulli.__init__(logits=None, p=None, dtype=tf.int32, validate_args=True, allow_nan_stats=False, name='Bernoulli')` {#Bernoulli.__init__}
+#### `tf.contrib.distributions.Bernoulli.__init__(logits=None, p=None, dtype=tf.int32, validate_args=False, allow_nan_stats=True, name='Bernoulli')` {#Bernoulli.__init__}
 
 Construct Bernoulli distributions.
 
@@ -1399,9 +1401,10 @@ Construct Bernoulli distributions.
       event. Each entry in the `Tensor` parameterizes an independent
       Bernoulli distribution.
 *  <b>`dtype`</b>: dtype for samples.
-*  <b>`validate_args`</b>: Whether to assert that `0 <= p <= 1`. If not validate_args,
-   `log_pmf` may return nans.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate that
+    `0 <= p <= 1`. If `validate_args` is `False`, and the inputs are
+    invalid, methods like `log_pmf` may return `NaN` values.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -2053,7 +2056,7 @@ dist.pdf(x)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.Beta.__init__(a, b, validate_args=True, allow_nan_stats=False, name='Beta')` {#Beta.__init__}
+#### `tf.contrib.distributions.Beta.__init__(a, b, validate_args=False, allow_nan_stats=True, name='Beta')` {#Beta.__init__}
 
 Initialize a batch of Beta distributions.
 
@@ -2067,10 +2070,10 @@ Initialize a batch of Beta distributions.
 *  <b>`b`</b>: Positive floating point tensor with shape broadcastable to
     `[N1,..., Nm]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different Beta distributions.
-*  <b>`validate_args`</b>: Whether to assert valid values for parameters `a` and `b`,
-    and `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid
+    values for parameters `a`, `b`, and `x` in `prob` and `log_prob`.
+    If `False` and inputs are invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -2672,7 +2675,7 @@ The categorical distribution is parameterized by the log-probabilities
 of a set of classes.
 - - -
 
-#### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, validate_args=True, allow_nan_stats=False, name='Categorical')` {#Categorical.__init__}
+#### `tf.contrib.distributions.Categorical.__init__(logits, dtype=tf.int32, validate_args=False, allow_nan_stats=True, name='Categorical')` {#Categorical.__init__}
 
 Initialize Categorical distributions using class log-probabilities.
 
@@ -2685,7 +2688,7 @@ Initialize Categorical distributions using class log-probabilities.
       indexes into the classes.
 *  <b>`dtype`</b>: The type of the event samples (default: int32).
 *  <b>`validate_args`</b>: Unused in this distribution.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -3273,7 +3276,7 @@ Note that the Chi2 distribution is a special case of the Gamma distribution,
 with Chi2(df) = Gamma(df/2, 1/2).
 - - -
 
-#### `tf.contrib.distributions.Chi2.__init__(df, validate_args=True, allow_nan_stats=False, name='Chi2')` {#Chi2.__init__}
+#### `tf.contrib.distributions.Chi2.__init__(df, validate_args=False, allow_nan_stats=True, name='Chi2')` {#Chi2.__init__}
 
 Construct Chi2 distributions with parameter `df`.
 
@@ -3282,10 +3285,11 @@ Construct Chi2 distributions with parameter `df`.
 
 *  <b>`df`</b>: Floating point tensor, the degrees of freedom of the
     distribution(s).  `df` must contain only positive values.
-*  <b>`validate_args`</b>: Whether to assert that `df > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`. If `validate_args` is `False`
-    and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
+    `df > 0`, and that `x > 0` in the methods `prob(x)` and `log_prob(x)`.
+    If `validate_args` is `False` and the inputs are invalid, correct
+    behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -3880,7 +3884,7 @@ Note that the Exponential distribution is a special case of the Gamma
 distribution, with Exponential(lam) = Gamma(1, lam).
 - - -
 
-#### `tf.contrib.distributions.Exponential.__init__(lam, validate_args=True, allow_nan_stats=False, name='Exponential')` {#Exponential.__init__}
+#### `tf.contrib.distributions.Exponential.__init__(lam, validate_args=False, allow_nan_stats=True, name='Exponential')` {#Exponential.__init__}
 
 Construct Exponential distribution with parameter `lam`.
 
@@ -3889,10 +3893,11 @@ Construct Exponential distribution with parameter `lam`.
 
 *  <b>`lam`</b>: Floating point tensor, the rate of the distribution(s).
     `lam` must contain only positive values.
-*  <b>`validate_args`</b>: Whether to assert that `lam > 0`, and that `x > 0` in the
-    methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
-    and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
+    `lam > 0`, and that `x > 0` in the methods `prob(x)` and `log_prob(x)`.
+    If `validate_args` is `False` and the inputs are invalid, correct
+    behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member. If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -4502,7 +4507,7 @@ dist2 = Gamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, validate_args=True, allow_nan_stats=False, name='Gamma')` {#Gamma.__init__}
+#### `tf.contrib.distributions.Gamma.__init__(alpha, beta, validate_args=False, allow_nan_stats=True, name='Gamma')` {#Gamma.__init__}
 
 Construct Gamma distributions with parameters `alpha` and `beta`.
 
@@ -4518,10 +4523,11 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
 *  <b>`beta`</b>: Floating point tensor, the inverse scale params of the
     distribution(s).
     beta must contain only positive values.
-*  <b>`validate_args`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
-    the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
-    and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
+    `a > 0`, `b > 0`, and that `x > 0` in the methods `prob(x)` and
+    `log_prob(x)`.  If `validate_args` is `False` and the inputs are
+    invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -5126,7 +5132,7 @@ dist2 = InverseGamma(alpha=[3.0, 4.0], beta=[2.0, 3.0])
 ```
 - - -
 
-#### `tf.contrib.distributions.InverseGamma.__init__(alpha, beta, validate_args=True, allow_nan_stats=False, name='InverseGamma')` {#InverseGamma.__init__}
+#### `tf.contrib.distributions.InverseGamma.__init__(alpha, beta, validate_args=False, allow_nan_stats=True, name='InverseGamma')` {#InverseGamma.__init__}
 
 Construct InverseGamma distributions with parameters `alpha` and `beta`.
 
@@ -5141,10 +5147,11 @@ broadcasting (e.g. `alpha + beta` is a valid operation).
     alpha must contain only positive values.
 *  <b>`beta`</b>: Floating point tensor, the scale params of the distribution(s).
     beta must contain only positive values.
-*  <b>`validate_args`</b>: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
-    the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
-    and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
+    `a > 0`, `b > 0`, and that `x > 0` in the methods `prob(x)` and
+    `log_prob(x)`.  If `validate_args` is `False` and the inputs are
+    invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -5739,7 +5746,7 @@ Note that the Laplace distribution can be thought of two exponential
 distributions spliced together "back-to-back."
 - - -
 
-#### `tf.contrib.distributions.Laplace.__init__(loc, scale, validate_args=True, allow_nan_stats=False, name='Laplace')` {#Laplace.__init__}
+#### `tf.contrib.distributions.Laplace.__init__(loc, scale, validate_args=False, allow_nan_stats=True, name='Laplace')` {#Laplace.__init__}
 
 Construct Laplace distribution with parameters `loc` and `scale`.
 
@@ -5753,10 +5760,10 @@ broadcasting (e.g., `loc / scale` is a valid operation).
     of the distribution.
 *  <b>`scale`</b>: Positive floating point tensor which characterizes the spread of
     the distribution.
-*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
-    is `False`, and the inputs are invalid, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
+    with asserts.  If `validate_args` is `False`, and the inputs are
+    invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -6383,7 +6390,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.Normal.__init__(mu, sigma, validate_args=True, allow_nan_stats=False, name='Normal')` {#Normal.__init__}
+#### `tf.contrib.distributions.Normal.__init__(mu, sigma, validate_args=False, allow_nan_stats=True, name='Normal')` {#Normal.__init__}
 
 Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
@@ -6396,9 +6403,10 @@ broadcasting (e.g. `mu + sigma` is a valid operation).
 *  <b>`mu`</b>: Floating point tensor, the means of the distribution(s).
 *  <b>`sigma`</b>: Floating point tensor, the stddevs of the distribution(s).
     sigma must contain only positive values.
-*  <b>`validate_args`</b>: Whether to assert that `sigma > 0`. If `validate_args` is
-    `False`, correct output is not guaranteed when input is invalid.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
+    `sigma > 0`. If `validate_args` is `False`, correct output is not
+    guaranteed when input is invalid.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -6993,7 +7001,7 @@ pmf(k) = e^(-lam) * lam^k / k!,  k >= 0
 ```
 - - -
 
-#### `tf.contrib.distributions.Poisson.__init__(lam, validate_args=True, allow_nan_stats=False, name='Poisson')` {#Poisson.__init__}
+#### `tf.contrib.distributions.Poisson.__init__(lam, validate_args=False, allow_nan_stats=True, name='Poisson')` {#Poisson.__init__}
 
 Construct Poisson distributions.
 
@@ -7002,11 +7010,11 @@ Construct Poisson distributions.
 
 *  <b>`lam`</b>: Floating point tensor, the rate parameter of the
     distribution(s). `lam` must be positive.
-*  <b>`validate_args`</b>: Whether to assert that `lam > 0` as well as inputs to
-    pmf computations are non-negative integers. If validate_args is
-    `False`, then `pmf` computations might return NaN, as well as
-    can be evaluated at any real value.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
+    `lam > 0` as well as inputs to pmf computations are non-negative
+    integers. If validate_args is `False`, then `pmf` computations might
+    return `NaN`, but can be evaluated at any real value.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -7624,7 +7632,7 @@ dist.pdf(3.0)
 ```
 - - -
 
-#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, validate_args=True, allow_nan_stats=False, name='StudentT')` {#StudentT.__init__}
+#### `tf.contrib.distributions.StudentT.__init__(df, mu, sigma, validate_args=False, allow_nan_stats=True, name='StudentT')` {#StudentT.__init__}
 
 Construct Student's t distributions.
 
@@ -7642,10 +7650,10 @@ broadcasting (e.g. `df + mu + sigma` is a valid operation).
 *  <b>`sigma`</b>: Floating point tensor, the scaling factor for the
     distribution(s). `sigma` must contain only positive values.
     Note that `sigma` is not the standard deviation of this distribution.
-*  <b>`validate_args`</b>: Whether to assert that `df > 0, sigma > 0`. If
-    `validate_args` is `False` and inputs are invalid, correct behavior is
-    not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert that
+    `df > 0` and `sigma > 0`. If `validate_args` is `False` and inputs are
+    invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -8240,7 +8248,7 @@ Uniform distribution with `a` and `b` parameters.
 The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
 - - -
 
-#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, validate_args=True, allow_nan_stats=False, name='Uniform')` {#Uniform.__init__}
+#### `tf.contrib.distributions.Uniform.__init__(a=0.0, b=1.0, validate_args=False, allow_nan_stats=True, name='Uniform')` {#Uniform.__init__}
 
 Construct Uniform distributions with `a` and `b`.
 
@@ -8270,9 +8278,10 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 
 *  <b>`a`</b>: Floating point tensor, the minimum endpoint.
 *  <b>`b`</b>: Floating point tensor, the maximum endpoint. Must be > `a`.
-*  <b>`validate_args`</b>: Whether to assert that `a > b`. If `validate_args` is
-    `False` and inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
+    asserts. If `validate_args` is `False`, and the inputs are invalid,
+    correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -8281,7 +8290,7 @@ u1 = Uniform(3.0, [5.0, 6.0, 7.0])  # 3 distributions
 ##### Raises:
 
 
-*  <b>`InvalidArgumentError`</b>: if `a >= b` and `validate_args=True`.
+*  <b>`InvalidArgumentError`</b>: if `a >= b` and `validate_args=False`.
 
 
 - - -
@@ -8913,7 +8922,7 @@ dist.pdf(x)
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiag.__init__(mu, diag_stdev, validate_args=True, allow_nan_stats=False, name='MultivariateNormalDiag')` {#MultivariateNormalDiag.__init__}
+#### `tf.contrib.distributions.MultivariateNormalDiag.__init__(mu, diag_stdev, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiag')` {#MultivariateNormalDiag.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
@@ -8929,10 +8938,10 @@ The mean of `X_i` is `mu[i]`, and the standard deviation is `diag_stdev[i]`.
     `b >= 0`.
 *  <b>`diag_stdev`</b>: Rank `N + 1` `Tensor` with same `dtype` and shape as `mu`,
     representing the standard deviations.  Must be positive.
-*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
-    is `False`,
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate
+    input with asserts.  If `validate_args` is `False`,
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `False`.  If `False`, raise an
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -9570,7 +9579,7 @@ dist.pdf(x)
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalFull.__init__(mu, sigma, validate_args=True, allow_nan_stats=False, name='MultivariateNormalFull')` {#MultivariateNormalFull.__init__}
+#### `tf.contrib.distributions.MultivariateNormalFull.__init__(mu, sigma, validate_args=False, allow_nan_stats=True, name='MultivariateNormalFull')` {#MultivariateNormalFull.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
@@ -9583,10 +9592,10 @@ User must provide means `mu` and `sigma`, the mean and covariance.
     `b >= 0`.
 *  <b>`sigma`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
     `[N1,...,Nb, k, k]`.  Each batch member must be positive definite.
-*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
-    is `False`, and the inputs are invalid, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
+    with asserts.  If `validate_args` is `False`, and the inputs are
+    invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -10231,7 +10240,7 @@ Trainable (batch) Choesky matrices can be created with
 `tf.contrib.distributions.batch_matrix_diag_transform()`
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalCholesky.__init__(mu, chol, validate_args=True, allow_nan_stats=False, name='MultivariateNormalCholesky')` {#MultivariateNormalCholesky.__init__}
+#### `tf.contrib.distributions.MultivariateNormalCholesky.__init__(mu, chol, validate_args=False, allow_nan_stats=True, name='MultivariateNormalCholesky')` {#MultivariateNormalCholesky.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
@@ -10246,10 +10255,10 @@ factors, such that the covariance of each batch member is `chol chol^T`.
 *  <b>`chol`</b>: `(N+2)-D` `Tensor` with same `dtype` as `mu` and shape
     `[N1,...,Nb, k, k]`.  The upper triangular part is ignored (treated as
     though it is zero), and the diagonal must be positive.
-*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
-    is `False`, and the inputs are invalid, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
+    with asserts.  If `validate_args` is `False`, and the inputs are
+    invalid, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -10968,7 +10977,7 @@ dist.prob(x)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.Dirichlet.__init__(alpha, validate_args=True, allow_nan_stats=False, name='Dirichlet')` {#Dirichlet.__init__}
+#### `tf.contrib.distributions.Dirichlet.__init__(alpha, validate_args=False, allow_nan_stats=True, name='Dirichlet')` {#Dirichlet.__init__}
 
 Initialize a batch of Dirichlet distributions.
 
@@ -10978,10 +10987,10 @@ Initialize a batch of Dirichlet distributions.
 *  <b>`alpha`</b>: Positive floating point tensor with shape broadcastable to
     `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
      different `k` class Dirichlet distributions.
-*  <b>`validate_args`</b>: Whether to assert valid values for parameters `alpha` and
-    `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid values
+    for parameters `alpha` and `x` in `prob` and `log_prob`.  If `False`,
+    correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -11640,7 +11649,7 @@ dist.pmf(counts)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, validate_args=True, allow_nan_stats=False, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
+#### `tf.contrib.distributions.DirichletMultinomial.__init__(n, alpha, validate_args=False, allow_nan_stats=True, name='DirichletMultinomial')` {#DirichletMultinomial.__init__}
 
 Initialize a batch of DirichletMultinomial distributions.
 
@@ -11656,10 +11665,10 @@ Initialize a batch of DirichletMultinomial distributions.
     `n` with shape broadcastable to `[N1,..., Nm, k]` `m >= 0`.  Defines
     this as a batch of `N1 x ... x Nm` different `k` class Dirichlet
     multinomial distributions.
-*  <b>`validate_args`</b>: Whether to assert valid values for parameters `alpha` and
-    `n`, and `x` in `prob` and `log_prob`.  If `False`, correct behavior is
-    not guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid
+    values for parameters `alpha` and `n`, and `x` in `prob` and
+    `log_prob`.  If `False`, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -12317,7 +12326,7 @@ dist.prob(counts)  # Shape [2]
 ```
 - - -
 
-#### `tf.contrib.distributions.Multinomial.__init__(n, logits=None, p=None, validate_args=True, allow_nan_stats=False, name='Multinomial')` {#Multinomial.__init__}
+#### `tf.contrib.distributions.Multinomial.__init__(n, logits=None, p=None, validate_args=False, allow_nan_stats=True, name='Multinomial')` {#Multinomial.__init__}
 
 Initialize a batch of Multinomial distributions.
 
@@ -12337,10 +12346,10 @@ Initialize a batch of Multinomial distributions.
     a batch of `N1 x ... x Nm` different `k` class Multinomial
     distributions. `p`'s components in the last portion of its shape should
     sum up to 1.
-*  <b>`validate_args`</b>: Whether to assert valid values for parameters `n` and `p`,
-    and `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to assert valid
+    values for parameters `n` and `p`, and `x` in `prob` and `log_prob`.
+    If `False`, correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -12998,7 +13007,7 @@ dist.pdf(x)  # Shape is [2, 2].
 ```
 - - -
 
-#### `tf.contrib.distributions.WishartCholesky.__init__(df, scale, cholesky_input_output_matrices=False, validate_args=True, allow_nan_stats=False, name='WishartCholesky')` {#WishartCholesky.__init__}
+#### `tf.contrib.distributions.WishartCholesky.__init__(df, scale, cholesky_input_output_matrices=False, validate_args=False, allow_nan_stats=True, name='WishartCholesky')` {#WishartCholesky.__init__}
 
 Construct Wishart distributions.
 
@@ -13014,10 +13023,10 @@ Construct Wishart distributions.
     Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
     `sample_n` returns a Cholesky when
     `cholesky_input_output_matrices=True`.
-*  <b>`validate_args`</b>: Whether to validate input with asserts. If `validate_args`
-    is `False`, and the inputs are invalid, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `False`. If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
+    with asserts. If `validate_args` is `False`, and the inputs are invalid,
+    correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`. If `False`, raise an
     exception if a statistic (e.g., mean, mode) is undefined for any batch
     member. If True, batch members with valid parameters leading to
     undefined statistics will return `NaN` for this statistic.
@@ -13687,7 +13696,7 @@ dist.pdf(x)  # Shape is [2, 2].
 ```
 - - -
 
-#### `tf.contrib.distributions.WishartFull.__init__(df, scale, cholesky_input_output_matrices=False, validate_args=True, allow_nan_stats=False, name='WishartFull')` {#WishartFull.__init__}
+#### `tf.contrib.distributions.WishartFull.__init__(df, scale, cholesky_input_output_matrices=False, validate_args=False, allow_nan_stats=True, name='WishartFull')` {#WishartFull.__init__}
 
 Construct Wishart distributions.
 
@@ -13703,10 +13712,10 @@ Construct Wishart distributions.
     Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
     `sample_n` returns a Cholesky when
     `cholesky_input_output_matrices=True`.
-*  <b>`validate_args`</b>: Whether to validate input with asserts. If `validate_args`
-    is `False`, and the inputs are invalid, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `False`. If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input with
+    asserts. If `validate_args` is `False`, and the inputs are invalid,
+    correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`. If `False`, raise an
     exception if a statistic (e.g., mean, mode) is undefined for any batch
     member. If True, batch members with valid parameters leading to
     undefined statistics will return `NaN` for this statistic.
@@ -14982,7 +14991,7 @@ Methods supported include `log_prob`, `prob`, `mean`, `sample`, and
 `entropy_lower_bound`.
 - - -
 
-#### `tf.contrib.distributions.Mixture.__init__(cat, components, validate_args=True, allow_nan_stats=False, name='Mixture')` {#Mixture.__init__}
+#### `tf.contrib.distributions.Mixture.__init__(cat, components, validate_args=False, allow_nan_stats=True, name='Mixture')` {#Mixture.__init__}
 
 Initialize a Mixture distribution.
 
@@ -15030,11 +15039,11 @@ time and match `len(distributions)`.
     Each `Distribution` instance created by calling
     `constructor(**batch_tensor_params)` must have the same type, be defined
     on the same domain, and have matching `event_shape` and `batch_shape`.
-*  <b>`validate_args`</b>: Boolean, default `True`.  If `True`, raise a runtime error
-    if batch or event ranks are inconsistent between cat and any of the
-    distributions.  This is only checked if the ranks cannot be determined
-    statically at graph construction time.
-*  <b>`allow_nan_stats`</b>: Boolean, default `False`.  If `False`, raise an
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  If `True`, raise a runtime
+    error if batch or event ranks are inconsistent between cat and any of
+    the distributions.  This is only checked if the ranks cannot be
+    determined statically at graph construction time.
+*  <b>`allow_nan_stats`</b>: Boolean, default `True`.  If `False`, raise an
    exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member.  If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
@@ -15981,7 +15990,7 @@ dist.pdf(x)
 ```
 - - -
 
-#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.__init__(mu, diag_large, v, diag_small=None, validate_args=True, allow_nan_stats=False, name='MultivariateNormalDiagPlusVDVT')` {#MultivariateNormalDiagPlusVDVT.__init__}
+#### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.__init__(mu, diag_large, v, diag_small=None, validate_args=False, allow_nan_stats=True, name='MultivariateNormalDiagPlusVDVT')` {#MultivariateNormalDiagPlusVDVT.__init__}
 
 Multivariate Normal distributions on `R^k`.
 
@@ -16011,10 +16020,10 @@ D = is diagonal (r x r), optional (defaults to identity).
 *  <b>`diag_small`</b>: Rank `n + 1` floating point tensor, shape
     `[N1,...,Nn, k]` `n >= 0`.  Defines the diagonal matrix `D`.  Default
     is `None`, which means `D` will be the identity matrix.
-*  <b>`validate_args`</b>: Whether to validate input with asserts.  If `validate_args`
-    is `False`,
+*  <b>`validate_args`</b>: `Boolean`, default `False`.  Whether to validate input
+    with asserts.  If `validate_args` is `False`,
     and the inputs are invalid, correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: `Boolean`, default `False`.  If `False`, raise an
+*  <b>`allow_nan_stats`</b>: `Boolean`, default `True`.  If `False`, raise an
     exception if a statistic (e.g. mean/mode/etc...) is undefined for any
     batch member If `True`, batch members with valid parameters leading to
     undefined statistics will return NaN for this statistic.
