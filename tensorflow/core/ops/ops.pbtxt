@@ -217,7 +217,7 @@ op {
   input_arg {
     name: "reduction_indices"
     description: "The dimensions to reduce."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -231,6 +231,19 @@ op {
       b: false
     }
     description: "If true, retain reduced dimensions with length 1."
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Computes the \"logical and\" of elements across dimensions of a tensor."
   description: "Reduces `input` along the dimensions given in `reduction_indices`. Unless\n`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in\n`reduction_indices`. If `keep_dims` is true, the reduced dimensions are\nretained with length 1."
@@ -305,7 +318,7 @@ op {
   input_arg {
     name: "reduction_indices"
     description: "The dimensions to reduce."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -319,6 +332,19 @@ op {
       b: false
     }
     description: "If true, retain reduced dimensions with length 1."
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Computes the \"logical or\" of elements across dimensions of a tensor."
   description: "Reduces `input` along the dimensions given in `reduction_indices`. Unless\n`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in\n`reduction_indices`. If `keep_dims` is true, the reduced dimensions are\nretained with length 1."
@@ -1090,7 +1116,7 @@ op {
   input_arg {
     name: "dimension"
     description: "int32, 0 <= dimension < rank(input).  Describes which dimension\nof the input Tensor to reduce across. For vectors, use dimension = 0."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -1118,6 +1144,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
   summary: "Returns the index with the largest value across dimensions of a tensor."
 }
 op {
@@ -1129,7 +1168,7 @@ op {
   input_arg {
     name: "dimension"
     description: "int32, 0 <= dimension < rank(input).  Describes which dimension\nof the input Tensor to reduce across. For vectors, use dimension = 0."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -1154,6 +1193,19 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -2706,7 +2758,7 @@ op {
   input_arg {
     name: "crops"
     description: "2-D tensor of non-negative integers with shape `[2, 2]`. It specifies\nhow many elements to crop from the intermediate result across the spatial\ndimensions as follows:\n\n    crops = [[crop_top, crop_bottom], [crop_left, crop_right]]"
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -2722,6 +2774,19 @@ op {
     type: "int"
     has_minimum: true
     minimum: 2
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "BatchToSpace for 4-D tensors of type T."
   description: "Rearranges (permutes) data from batch into blocks of spatial data, followed by\ncropping. This is the reverse transformation of SpaceToBatch. More specifically,\nthis op outputs a copy of the input tensor where values from the `batch`\ndimension are moved in spatial blocks to the `height` and `width` dimensions,\nfollowed by cropping along the `height` and `width` dimensions."
@@ -2967,19 +3032,32 @@ op {
   name: "BroadcastGradientArgs"
   input_arg {
     name: "s0"
-    type: DT_INT32
+    type_attr: "T"
   }
   input_arg {
     name: "s1"
-    type: DT_INT32
+    type_attr: "T"
   }
   output_arg {
     name: "r0"
-    type: DT_INT32
+    type_attr: "T"
   }
   output_arg {
     name: "r1"
-    type: DT_INT32
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Return the reduction indices for computing gradients of s0 op s1 with broadcast."
   description: "This is typically used by gradient computations for a broadcasting operation."
@@ -4367,7 +4445,7 @@ op {
   }
   input_arg {
     name: "axis"
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "out"
@@ -4409,6 +4487,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
   summary: "Compute the cumulative product of the tensor `x` along `axis`."
   description: "By default, this op performs an inclusive cumprod, which means that the first\nelement of the input is identical to the first element of the output:\n```prettyprint\ntf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumprod is\nperformed instead:\n```prettyprint\ntf.cumprod([a, b, c], exclusive=True) ==> [0, a, a * b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumprod is performed in the\nopposite direction:\n```prettyprint\ntf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]\n```\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n```prettyprint\ntf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 0]\n```"
 }
@@ -4420,7 +4511,7 @@ op {
   }
   input_arg {
     name: "axis"
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "out"
@@ -4459,6 +4550,19 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -5824,7 +5928,7 @@ op {
   input_arg {
     name: "dim"
     description: "0-D (scalar). Specifies the dimension index at which to\nexpand the shape of `input`."
-    type: DT_INT32
+    type_attr: "Tdim"
   }
   output_arg {
     name: "output"
@@ -5834,6 +5938,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tdim"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Inserts a dimension of 1 into a tensor\'s shape."
   description: "Given a tensor `input`, this operation inserts a dimension of 1 at the\ndimension index `dim` of `input`\'s shape. The dimension index `dim` starts at\nzero; if you specify a negative number for `dim` it is counted backward from\nthe end.\n\nThis operation is useful if you want to add a batch dimension to a single\nelement. For example, if you have a single image of shape `[height, width,\nchannels]`, you can make it a batch of 1 image with `expand_dims(image, 0)`,\nwhich will make the shape `[1, height, width, channels]`.\n\nOther examples:\n\n```prettyprint\n# \'t\' is a tensor of shape [2]\nshape(expand_dims(t, 0)) ==> [1, 2]\nshape(expand_dims(t, 1)) ==> [2, 1]\nshape(expand_dims(t, -1)) ==> [2, 1]\n\n# \'t2\' is a tensor of shape [2, 3, 5]\nshape(expand_dims(t2, 0)) ==> [1, 2, 3, 5]\nshape(expand_dims(t2, 2)) ==> [2, 3, 1, 5]\nshape(expand_dims(t2, 3)) ==> [2, 3, 5, 1]\n```\n\nThis operation requires that:\n\n`-1-input.dims() <= dim <= input.dims()`\n\nThis operation is related to `squeeze()`, which removes dimensions of\nsize 1."
@@ -7343,12 +7460,25 @@ op {
   input_arg {
     name: "x"
     description: "1-D."
-    type: DT_INT32
+    type_attr: "T"
   }
   output_arg {
     name: "y"
     description: "1-D."
-    type: DT_INT32
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Computes the inverse permutation of a tensor."
   description: "This operation computes the inverse of an index permutation. It takes a 1-D\ninteger tensor `x`, which represents the indices of a zero-based array, and\nswaps each value with its index position. In other words, for an output tensor\n`y` and an input tensor `x`, this operation computes the following:\n\n`y[x[i]] = i for i in [0, 1, ..., len(x) - 1]`\n\nThe values must include 0. There can be no duplicate values or negative values.\n\nFor example:\n\n```prettyprint\n# tensor `x` is [3, 4, 0, 2, 1]\ninvert_permutation(x) ==> [2, 4, 3, 0, 1]\n```"
@@ -7781,7 +7911,7 @@ op {
   input_arg {
     name: "num"
     description: "Number of values to generate."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -7795,6 +7925,19 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -7821,11 +7964,24 @@ op {
   output_arg {
     name: "idx"
     description: "1-D. Positions of `x` values preserved in `out`."
-    type: DT_INT32
+    type_attr: "out_idx"
   }
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "out_idx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Computes the difference between two lists of numbers or strings."
   description: "Given a list `x` and a list `y`, this operation returns a list `out` that\nrepresents all values that are in `x` but not in `y`. The returned list `out`\nis sorted in the same order that the numbers appear in `x` (duplicates are\npreserved). This operation also returns a list `idx` that represents the\nposition of each `out` element in `x`. In other words:\n\n`out[i] = x[idx[i]] for i in [0, 1, ..., len(out) - 1]`\n\nFor example, given this input:\n\n```prettyprint\nx = [1, 2, 3, 4, 5, 6]\ny = [1, 3, 5]\n```\n\nThis operation would return:\n\n```prettyprint\nout ==> [2, 4, 6]\nidx ==> [1, 3, 5]\n```"
@@ -8398,7 +8554,7 @@ op {
   input_arg {
     name: "reduction_indices"
     description: "The dimensions to reduce."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -8432,6 +8588,19 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -8895,7 +9064,7 @@ op {
   input_arg {
     name: "reduction_indices"
     description: "The dimensions to reduce."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -8929,6 +9098,19 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -8998,7 +9180,7 @@ op {
   input_arg {
     name: "reduction_indices"
     description: "The dimensions to reduce."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -9032,6 +9214,19 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -9079,7 +9274,7 @@ op {
   input_arg {
     name: "paddings"
     description: "A two-column matrix specifying the padding sizes. The number of\nrows must be the same as the rank of `input`."
-    type: DT_INT32
+    type_attr: "Tpaddings"
   }
   output_arg {
     name: "output"
@@ -9089,6 +9284,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tpaddings"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   attr {
     name: "mode"
@@ -9114,7 +9322,7 @@ op {
   input_arg {
     name: "paddings"
     description: "A two-column matrix specifying the padding sizes. The number of\nrows must be the same as the rank of `input`."
-    type: DT_INT32
+    type_attr: "Tpaddings"
   }
   output_arg {
     name: "output"
@@ -9124,6 +9332,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tpaddings"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   attr {
     name: "mode"
@@ -9619,7 +9840,7 @@ op {
   }
   input_arg {
     name: "paddings"
-    type: DT_INT32
+    type_attr: "Tpaddings"
   }
   output_arg {
     name: "output"
@@ -9628,6 +9849,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tpaddings"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Pads a tensor with zeros."
   description: "This operation pads a `input` with zeros according to the `paddings` you\nspecify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is the\nrank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates\nhow many zeros to add before the contents of `input` in that dimension, and\n`paddings[D, 1]` indicates how many zeros to add after the contents of `input`\nin that dimension.\n\nThe padded size of each dimension D of the output is:\n\n`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`\n\nFor example:\n\n```prettyprint\n# \'t\' is [[1, 1], [2, 2]]\n# \'paddings\' is [[1, 1], [2, 2]]\n# rank of \'t\' is 2\npad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]\n                      [0, 0, 1, 1, 0, 0]\n                      [0, 0, 2, 2, 0, 0]\n                      [0, 0, 0, 0, 0, 0]]\n```"
@@ -10294,7 +10528,7 @@ op {
   input_arg {
     name: "reduction_indices"
     description: "The dimensions to reduce."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -10328,6 +10562,19 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -11085,22 +11332,35 @@ op {
   input_arg {
     name: "start"
     description: "0-D (scalar). First entry in the sequence."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   input_arg {
     name: "limit"
     description: "0-D (scalar). Upper limit of sequence, exclusive."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   input_arg {
     name: "delta"
     description: "0-D (scalar). Optional. Default is 1. Number that increments `start`."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
     description: "1-D."
-    type: DT_INT32
+    type_attr: "Tidx"
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Creates a sequence of integers."
   description: "This operation creates a sequence of integers that begins at `start` and\nextends by increments of `delta` up to but not including `limit`.\n\nFor example:\n\n```\n# \'start\' is 3\n# \'limit\' is 18\n# \'delta\' is 3\ntf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]\n```"
@@ -11677,7 +11937,7 @@ op {
   input_arg {
     name: "shape"
     description: "Defines the shape of the output tensor."
-    type: DT_INT32
+    type_attr: "Tshape"
   }
   output_arg {
     name: "output"
@@ -11686,6 +11946,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tshape"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Reshapes a tensor."
   description: "Given `tensor`, this operation returns a tensor that has the same values\nas `tensor` with shape `shape`.\n\nIf one component of `shape` is the special value -1, the size of that dimension\nis computed so that the total size remains constant.  In particular, a `shape`\nof `[-1]` flattens into 1-D.  At most one component of `shape` can be -1.\n\nIf `shape` is 1-D or higher, then the operation returns a tensor with shape\n`shape` filled with the values of `tensor`. In this case, the number of elements\nimplied by `shape` must be the same as the number of elements in `tensor`.\n\nFor example:\n\n```prettyprint\n# tensor \'t\' is [1, 2, 3, 4, 5, 6, 7, 8, 9]\n# tensor \'t\' has shape [9]\nreshape(t, [3, 3]) ==> [[1, 2, 3],\n                        [4, 5, 6],\n                        [7, 8, 9]]\n\n# tensor \'t\' is [[[1, 1], [2, 2]],\n#                [[3, 3], [4, 4]]]\n# tensor \'t\' has shape [2, 2, 2]\nreshape(t, [2, 4]) ==> [[1, 1, 2, 2],\n                        [3, 3, 4, 4]]\n\n# tensor \'t\' is [[[1, 1, 1],\n#                 [2, 2, 2]],\n#                [[3, 3, 3],\n#                 [4, 4, 4]],\n#                [[5, 5, 5],\n#                 [6, 6, 6]]]\n# tensor \'t\' has shape [3, 2, 3]\n# pass \'[-1]\' to flatten \'t\'\nreshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]\n\n# -1 can also be used to infer the shape\n\n# -1 is inferred to be 9:\nreshape(t, [2, -1]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],\n                         [4, 4, 4, 5, 5, 5, 6, 6, 6]]\n# -1 is inferred to be 2:\nreshape(t, [-1, 9]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],\n                         [4, 4, 4, 5, 5, 5, 6, 6, 6]]\n# -1 is inferred to be 3:\nreshape(t, [ 2, -1, 3]) ==> [[[1, 1, 1],\n                              [2, 2, 2],\n                              [3, 3, 3]],\n                             [[4, 4, 4],\n                              [5, 5, 5],\n                              [6, 6, 6]]]\n\n# tensor \'t\' is [7]\n# shape `[]` reshapes to a scalar\nreshape(t, []) ==> 7\n```"
@@ -12940,11 +13213,24 @@ op {
   }
   output_arg {
     name: "output"
-    type: DT_INT32
+    type_attr: "out_type"
   }
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Returns the shape of a tensor."
   description: "This operation returns a 1-D integer tensor representing the shape of `input`.\n\nFor example:\n\n```prettyprint\n# \'t\' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]\nshape(t) ==> [2, 2, 3]\n```"
@@ -12958,7 +13244,7 @@ op {
   }
   output_arg {
     name: "output"
-    type: DT_INT32
+    type_attr: "out_type"
     number_attr: "N"
   }
   attr {
@@ -12970,6 +13256,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Returns shape of tensors."
   description: "This operation returns N 1-D integer tensors representing shape of `input[i]s`."
@@ -13128,11 +13427,24 @@ op {
   }
   output_arg {
     name: "output"
-    type: DT_INT32
+    type_attr: "out_type"
   }
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Returns the size of a tensor."
   description: "This operation returns an integer representing the number of elements in\n`input`.\n\nFor example:\n\n```prettyprint\n# \'t\' is [[[1, 1,, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]\nsize(t) ==> 12\n```"
@@ -13450,7 +13762,7 @@ op {
   input_arg {
     name: "paddings"
     description: "2-D tensor of non-negative integers with shape `[2, 2]`. It specifies\n  the padding of the input with zeros across the spatial dimensions as follows:\n\n      paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]\n\n  The effective spatial dimensions of the zero-padded input tensor will be:\n\n      height_pad = pad_top + height + pad_bottom\n      width_pad = pad_left + width + pad_right\n\nThe attr `block_size` must be greater than one. It indicates the block size.\n\n  * Non-overlapping blocks of size `block_size x block size` in the height and\n    width dimensions are rearranged into the batch dimension at each location.\n  * The batch of the output tensor is `batch * block_size * block_size`.\n  * Both height_pad and width_pad must be divisible by block_size.\n\nThe shape of the output will be:\n\n    [batch*block_size*block_size, height_pad/block_size, width_pad/block_size,\n     depth]\n\nSome examples:\n\n(1) For the following input of shape `[1, 2, 2, 1]` and block_size of 2:\n\n```prettyprint\nx = [[[[1], [2]], [[3], [4]]]]\n```\n\nThe output tensor has shape `[4, 1, 1, 1]` and value:\n\n```prettyprint\n[[[[1]]], [[[2]]], [[[3]]], [[[4]]]]\n```\n\n(2) For the following input of shape `[1, 2, 2, 3]` and block_size of 2:\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThe output tensor has shape `[4, 1, 1, 3]` and value:\n\n```prettyprint\n[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]\n```\n\n(3) For the following input of shape `[1, 4, 4, 1]` and block_size of 2:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]],\n      [[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```\n\nThe output tensor has shape `[4, 2, 2, 1]` and value:\n\n```prettyprint\nx = [[[[1], [3]], [[5], [7]]],\n     [[[2], [4]], [[10], [12]]],\n     [[[5], [7]], [[13], [15]]],\n     [[[6], [8]], [[14], [16]]]]\n```\n\n(4) For the following input of shape `[2, 2, 4, 1]` and block_size of 2:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]]],\n     [[[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```\n\nThe output tensor has shape `[8, 1, 2, 1]` and value:\n\n```prettyprint\nx = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],\n     [[[5], [7]]], [[[13], [15]]], [[[6], [8]]], [[[14], [16]]]]\n```\n\nAmong others, this operation is useful for reducing atrous convolution into\nregular convolution."
-    type: DT_INT32
+    type_attr: "Tpaddings"
   }
   output_arg {
     name: "output"
@@ -13459,6 +13771,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tpaddings"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   attr {
     name: "block_size"
@@ -14781,7 +15106,7 @@ op {
   input_arg {
     name: "indices"
     description: "A 1-D tensor. Has same rank as `segment_ids`."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   input_arg {
     name: "segment_ids"
@@ -14803,6 +15128,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
   summary: "Computes the mean along sparse segments of a tensor."
   description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nLike `SegmentMean`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension 0, specified by `indices`."
 }
@@ -14816,7 +15154,7 @@ op {
   input_arg {
     name: "indices"
     description: "indices passed to the corresponding SparseSegmentMean op."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   input_arg {
     name: "segment_ids"
@@ -14842,6 +15180,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
   summary: "Computes gradients for SparseSegmentMean."
   description: "Returns tensor \"output\" with same shape as grad, except for dimension 0 whose\nvalue is output_dim0."
 }
@@ -14854,7 +15205,7 @@ op {
   input_arg {
     name: "indices"
     description: "A 1-D tensor. Has same rank as `segment_ids`."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   input_arg {
     name: "segment_ids"
@@ -14876,6 +15227,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
   summary: "Computes the sum along sparse segments of a tensor divided by the sqrt of N."
   description: "N is the size of the segment being reduced.\n\nRead [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments."
 }
@@ -14889,7 +15253,7 @@ op {
   input_arg {
     name: "indices"
     description: "indices passed to the corresponding SparseSegmentSqrtN op."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   input_arg {
     name: "segment_ids"
@@ -14915,6 +15279,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
   summary: "Computes gradients for SparseSegmentSqrtN."
   description: "Returns tensor \"output\" with same shape as grad, except for dimension 0 whose\nvalue is output_dim0."
 }
@@ -14927,7 +15304,7 @@ op {
   input_arg {
     name: "indices"
     description: "A 1-D tensor. Has same rank as `segment_ids`."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   input_arg {
     name: "segment_ids"
@@ -14953,6 +15330,19 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -16106,7 +16496,7 @@ op {
   input_arg {
     name: "reduction_indices"
     description: "The dimensions to reduce."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -16140,6 +16530,19 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -16865,7 +17268,7 @@ op {
   input_arg {
     name: "multiples"
     description: "1-D. Length must be the same as the number of dimensions in `input`"
-    type: DT_INT32
+    type_attr: "Tmultiples"
   }
   output_arg {
     name: "output"
@@ -16874,6 +17277,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tmultiples"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Constructs a tensor by tiling a given tensor."
   description: "This operation creates a new tensor by replicating `input` `multiples` times.\nThe output tensor\'s i\'th dimension has `input.dims(i) * multiples[i]` elements,\nand the values of `input` are replicated `multiples[i]` times along the \'i\'th\ndimension. For example, tiling `[a b c d]` by `[2]` produces\n`[a b c d a b c d]`."
@@ -17016,7 +17432,7 @@ op {
   }
   input_arg {
     name: "perm"
-    type: DT_INT32
+    type_attr: "Tperm"
   }
   output_arg {
     name: "y"
@@ -17025,6 +17441,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tperm"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Shuffle dimensions of x according to a permutation."
   description: "The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:\n  `y.shape[i] == x.shape[perm[i]] for i in [0, 1, ..., rank(x) - 1]`"
@@ -17165,11 +17594,24 @@ op {
   output_arg {
     name: "idx"
     description: "1-D."
-    type: DT_INT32
+    type_attr: "out_idx"
   }
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "out_idx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Finds unique elements in a 1-D tensor."
   description: "This operation returns a tensor `y` containing all of the unique elements of `x`\nsorted in the same order that they occur in `x`. This operation also returns a\ntensor `idx` the same size as `x` that contains the index of each value of `x`\nin the unique output `y`. In other words:\n\n`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`\n\nFor example:\n\n```prettyprint\n# tensor \'x\' is [1, 1, 2, 4, 4, 4, 7, 8, 8]\ny, idx = unique(x)\ny ==> [1, 2, 4, 7, 8]\nidx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]\n```"
@@ -17189,16 +17631,29 @@ op {
   output_arg {
     name: "idx"
     description: "1-D."
-    type: DT_INT32
+    type_attr: "out_idx"
   }
   output_arg {
     name: "count"
     description: "1-D."
-    type: DT_INT32
+    type_attr: "out_idx"
   }
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "out_idx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Finds unique elements in a 1-D tensor."
   description: "This operation returns a tensor `y` containing all of the unique elements of `x`\nsorted in the same order that they occur in `x`. This operation also returns a\ntensor `idx` the same size as `x` that contains the index of each value of `x`\nin the unique output `y`. Finally, it returns a third tensor `count` that\ncontains the count of each element of `y` in `x`. In other words:\n\n`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`\n\nFor example:\n\n```prettyprint\n# tensor \'x\' is [1, 1, 2, 4, 4, 4, 7, 8, 8]\ny, idx, count = unique_with_counts(x)\ny ==> [1, 2, 4, 7, 8]\nidx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]\ncount ==> [2, 1, 3, 1, 2]\n```"
