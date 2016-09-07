@@ -58,7 +58,6 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import training
 from tensorflow.python.util.all_util import make_all
@@ -180,11 +179,12 @@ def get_mean_baseline(ema_decay=0.99, name="MeanBaseline"):
   def mean_baseline(_, loss):
     with ops.name_scope(name):
       ema = training.ExponentialMovingAverage(decay=ema_decay)
-      update_op = ema.apply(math_ops.reduce_mean(loss))
-      with control_flow_ops.control_dependencies([update_op]):
+      reduced_loss = math_ops.reduce_mean(loss)
+      update_op = ema.apply([reduced_loss])
+      with ops.control_dependencies([update_op]):
         # TODO(rsepassi): Possibly implement the initialization bias correction
         # term from Adam (section 3 of https://arxiv.org/pdf/1412.6980v8.pdf).
-        baseline = ema.average(loss)
+        baseline = ema.average(reduced_loss)
       return baseline
 
   return mean_baseline

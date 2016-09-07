@@ -1977,7 +1977,7 @@ class WhileContext(ControlFlowContext):
     else:
       values_shape = array_ops.shape_internal(op.inputs[0], optimize=False)[1:]
       values_shape = array_ops.concat(0, [[1], values_shape])
-      values_acc = array_ops.zeros(values_shape)
+      values_acc = array_ops.zeros(values_shape, dtype=values.dtype)
     indices_acc = constant_op.constant([0], indices.dtype)
     shape_acc = None
     if dense_shape is not None:

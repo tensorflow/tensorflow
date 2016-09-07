@@ -37,9 +37,10 @@ class NonLinearTest(tf.test.TestCase):
   def testIrisDNN(self):
     iris = tf.contrib.learn.datasets.load_iris()
     feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
-    classifier = tf.contrib.learn.TensorFlowDNNClassifier(
-        feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3)
-    classifier.fit(iris.data, iris.target)
+    classifier = tf.contrib.learn.DNNClassifier(
+        feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3,
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+    classifier.fit(iris.data, iris.target, max_steps=200)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertGreater(score, 0.9, "Failed with score = {0}".format(score))
     weights = classifier.weights_
@@ -53,10 +54,11 @@ class NonLinearTest(tf.test.TestCase):
   def testBostonDNN(self):
     boston = tf.contrib.learn.datasets.load_boston()
     feature_columns = [tf.contrib.layers.real_valued_column("", dimension=13)]
-    regressor = tf.contrib.learn.TensorFlowDNNRegressor(
-        feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=0,
-        batch_size=boston.data.shape[0], steps=300, learning_rate=0.01)
-    regressor.fit(boston.data, boston.target)
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=feature_columns, hidden_units=[10, 20, 10],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+    regressor.fit(
+        boston.data, boston.target, steps=300, batch_size=boston.data.shape[0])
     score = mean_squared_error(boston.target, regressor.predict(boston.data))
     self.assertLess(score, 110, "Failed with score = {0}".format(score))
     weights = regressor.weights_
@@ -71,10 +73,10 @@ class NonLinearTest(tf.test.TestCase):
     # Dropout prob == 0.
     iris = tf.contrib.learn.datasets.load_iris()
     feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
-    classifier = tf.contrib.learn.TensorFlowDNNClassifier(
+    classifier = tf.contrib.learn.DNNClassifier(
         feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3,
-        dropout=0.0)
-    classifier.fit(iris.data, iris.target)
+        dropout=0.0, config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+    classifier.fit(iris.data, iris.target, max_steps=200)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertGreater(score, 0.9, "Failed with score = {0}".format(score))
 
@@ -82,10 +84,10 @@ class NonLinearTest(tf.test.TestCase):
     # Dropping only a little.
     iris = tf.contrib.learn.datasets.load_iris()
     feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
-    classifier = tf.contrib.learn.TensorFlowDNNClassifier(
+    classifier = tf.contrib.learn.DNNClassifier(
         feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3,
-        dropout=0.1)
-    classifier.fit(iris.data, iris.target)
+        dropout=0.1, config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+    classifier.fit(iris.data, iris.target, max_steps=200)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     # If the quality is lower - dropout is not working.
     self.assertGreater(score, 0.9, "Failed with score = {0}".format(score))
@@ -94,10 +96,10 @@ class NonLinearTest(tf.test.TestCase):
     # Dropping out most of it.
     iris = tf.contrib.learn.datasets.load_iris()
     feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
-    classifier = tf.contrib.learn.TensorFlowDNNClassifier(
+    classifier = tf.contrib.learn.DNNClassifier(
         feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3,
-        dropout=0.9)
-    classifier.fit(iris.data, iris.target)
+        dropout=0.9, config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+    classifier.fit(iris.data, iris.target, max_steps=200)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertGreater(score, 0.3, "Failed with score = {0}".format(score))
     # If the quality is higher - dropout is not working.

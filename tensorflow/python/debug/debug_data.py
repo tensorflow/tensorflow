@@ -35,12 +35,20 @@ def load_tensor_from_event_file(event_file_path):
     event_file_path: Path to the event file.
 
   Returns:
-    The tensor value loaded from the event file.
+    The tensor value loaded from the event file. For uninitialized tensors,
+    return None.
   """
   event = event_pb2.Event()
   with open(event_file_path, "rb") as f:
     event.ParseFromString(f.read())
-    tensor_value = tensor_util.MakeNdarray(event.summary.value[0].tensor)
+
+    if (event.summary.value[0].tensor.tensor_content or
+        event.summary.value[0].tensor.string_val):
+      # Initialized tensor.
+      tensor_value = tensor_util.MakeNdarray(event.summary.value[0].tensor)
+    else:
+      # Uninitialized tensor.
+      tensor_value = None
 
   return tensor_value
 

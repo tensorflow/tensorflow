@@ -854,8 +854,6 @@
   * [`run_feeds`](../../api_docs/python/contrib.learn.md#run_feeds)
   * [`run_n`](../../api_docs/python/contrib.learn.md#run_n)
   * [`RunConfig`](../../api_docs/python/contrib.learn.md#RunConfig)
-  * [`TensorFlowDNNClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowDNNClassifier)
-  * [`TensorFlowDNNRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowDNNRegressor)
   * [`TensorFlowEstimator`](../../api_docs/python/contrib.learn.md#TensorFlowEstimator)
   * [`TensorFlowRNNClassifier`](../../api_docs/python/contrib.learn.md#TensorFlowRNNClassifier)
   * [`TensorFlowRNNRegressor`](../../api_docs/python/contrib.learn.md#TensorFlowRNNRegressor)

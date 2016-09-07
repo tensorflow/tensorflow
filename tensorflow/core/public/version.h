@@ -84,4 +84,12 @@ limitations under the License.
 #define TF_CHECKPOINT_VERSION_MIN_CONSUMER 0
 #define TF_CHECKPOINT_VERSION 1
 
+/// Version query functions (defined in generated version_info.cc)
+
+// Host compiler version (declared elsewhere to be __VERSION__)
+extern const char* tf_compiler_version();
+// The git commit designator when tensorflow was built
+// If no git repository, this will be "internal".
+extern const char* tf_git_version();
+
 #endif  // TENSORFLOW_CORE_PUBLIC_VERSION_H_

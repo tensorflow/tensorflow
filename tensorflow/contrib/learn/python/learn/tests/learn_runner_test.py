@@ -44,8 +44,8 @@ class TestExperiment(tf.contrib.learn.Experiment):
   def train(self):
     return "train"
 
-  def serve(self):
-    return "serve"
+  def run_std_server(self):
+    return "run_std_server"
 
   def simple_task(self):
     return "simple_task, default=%s." % self.default
@@ -92,7 +92,7 @@ class MainTest(tf.test.TestCase):
                          output_dir="/tmp"))
 
   def test_schedule_from_config_runs_train_and_evaluate_on_master(self):
-    config = run_config.RunConfig(job_name="master")
+    config = run_config.RunConfig(job_name="master", task=0, is_chief=True)
     self.assertEqual(
         "train_and_evaluate",
         learn_runner.run(lambda output_dir: TestExperiment(config=config),
@@ -101,7 +101,7 @@ class MainTest(tf.test.TestCase):
   def test_schedule_from_config_runs_serve_on_ps(self):
     config = run_config.RunConfig(job_name="ps")
     self.assertEqual(
-        "serve",
+        "run_std_server",
         learn_runner.run(lambda output_dir: TestExperiment(config=config),
                          output_dir="/tmp"))
 

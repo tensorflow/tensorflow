@@ -41,19 +41,18 @@ class InferredfeatureColumnTest(tf.test.TestCase):
                                                         test_size=0.2,
                                                         random_state=42)
 
-    def custom_optimizer(learning_rate):
-      return tf.train.MomentumOptimizer(learning_rate, 0.9)
+    def custom_optimizer():
+      return tf.train.MomentumOptimizer(learning_rate=0.01, momentum=0.9)
 
     cont_features = [
         tf.contrib.layers.real_valued_column("", dimension=4)]
-    classifier = learn.TensorFlowDNNClassifier(
+    classifier = learn.DNNClassifier(
         feature_columns=cont_features,
         hidden_units=[10, 20, 10],
         n_classes=3,
-        steps=400,
-        learning_rate=0.01,
-        optimizer=custom_optimizer)
-    classifier.fit(x_train, y_train)
+        optimizer=custom_optimizer,
+        config=learn.RunConfig(tf_random_seed=1))
+    classifier.fit(x_train, y_train, steps=400)
     score = accuracy_score(y_test, classifier.predict(x_test))
 
     self.assertGreater(score, 0.65, "Failed with score = {0}".format(score))
@@ -71,17 +70,16 @@ class CustomOptimizer(tf.test.TestCase):
                                                         test_size=0.2,
                                                         random_state=42)
 
-    def custom_optimizer(learning_rate):
-      return tf.train.MomentumOptimizer(learning_rate, 0.9)
+    def custom_optimizer():
+      return tf.train.MomentumOptimizer(learning_rate=0.01, momentum=0.9)
 
-    classifier = learn.TensorFlowDNNClassifier(
+    classifier = learn.DNNClassifier(
         hidden_units=[10, 20, 10],
         feature_columns=learn.infer_real_valued_columns_from_input(x_train),
         n_classes=3,
-        steps=400,
-        learning_rate=0.01,
-        optimizer=custom_optimizer)
-    classifier.fit(x_train, y_train)
+        optimizer=custom_optimizer,
+        config=learn.RunConfig(tf_random_seed=1))
+    classifier.fit(x_train, y_train, steps=400)
     score = accuracy_score(y_test, classifier.predict(x_test))
 
     self.assertGreater(score, 0.65, "Failed with score = {0}".format(score))
