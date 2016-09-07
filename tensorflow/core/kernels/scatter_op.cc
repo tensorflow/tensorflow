@@ -89,21 +89,6 @@ static bool ValidShapes(const Tensor& params, const Tensor& updates,
   return true;
 }
 
-static void DoAutoInitialization(OpKernelContext* c, Tensor& params,
-    int cIndex, bool use_exclusive_lock) {
-  if (!params.IsInitialized()) {
-    AllocatorAttributes attr;
-    attr.set_gpu_compatible(true);
-    attr.set_nic_compatible(true);
-    PersistentTensor out_persistent;
-    Tensor* out_tensor = nullptr;
-    OP_REQUIRES_OK(c, c->allocate_persistent(params.dtype(), params.shape(),
-          &out_persistent, &out_tensor, attr));
-    c->replace_ref_input(cIndex, *out_tensor, true);
-    params = c->mutable_input(cIndex, use_exclusive_lock);
-  }
-}
-
 static void DoValidationChecking(OpKernelContext* c, const Tensor& params,
                                  const Tensor& indices, const Tensor& updates) {
   OP_REQUIRES(c, params.IsInitialized(),
@@ -130,7 +115,6 @@ class ScatterUpdateOp : public OpKernel {
   //   in the graph?
   explicit ScatterUpdateOp(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("use_locking", &use_exclusive_lock_));
-    OP_REQUIRES_OK(c, c->GetAttr("auto_initialize", &auto_initialize_));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -145,15 +129,11 @@ class ScatterUpdateOp : public OpKernel {
 
  private:
   bool use_exclusive_lock_;
-  bool auto_initialize_;
 
   void DoCompute(OpKernelContext* c) {
     Tensor params = c->mutable_input(0, use_exclusive_lock_);
     const Tensor& indices = c->input(1);
     const Tensor& updates = c->input(2);
-    if (auto_initialize_) {
-      DoAutoInitialization(c, params, 0, use_exclusive_lock_);
-    }
     DoValidationChecking(c, params, indices, updates);
     if (!c->status().ok()) return;
 
