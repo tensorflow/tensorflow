@@ -421,7 +421,8 @@ $(wildcard tensorflow/core/platform/*.cc) \
 $(wildcard tensorflow/core/platform/*/*.cc) \
 $(wildcard tensorflow/core/platform/*/*/*.cc) \
 $(wildcard tensorflow/core/util/*.cc) \
-$(wildcard tensorflow/core/util/*/*.cc)
+$(wildcard tensorflow/core/util/*/*.cc) \
+tensorflow/core/util/version_info.cc
 CORE_CC_EXCLUDE_SRCS := \
 $(wildcard tensorflow/core/*/*test.cc) \
 $(wildcard tensorflow/core/*/*testutil*) \
@@ -476,6 +477,11 @@ BENCHMARK_OBJS := $(addprefix $(OBJDIR), $(BENCHMARK_SRCS:.cc=.o))
 all: $(LIB_PATH) $(BENCHMARK_NAME)
 
 # Rules for target compilation.
+
+
+.phony_version_info:
+tensorflow/core/util/version_info.cc: .phony_version_info
+	python tensorflow/tools/git/gen_git_source.py --raw_generate $@
 
 # Gathers together all the objects we've compiled into a single '.a' archive.
 $(LIB_PATH): $(LIB_OBJS)
@@ -553,6 +559,7 @@ $(HOST_GENDIR)%.pb.cc $(HOST_GENDIR)%.pb.h: %.proto
 # Gets rid of all generated files.
 clean:
 	rm -rf $(MAKEFILE_DIR)/gen
+	rm -rf tensorflow/core/util/version_info.cc
 
 # Gets rid of target files only, leaving the host alone. Also leaves the lib
 # directory untouched deliberately, so we can persist multiple architectures

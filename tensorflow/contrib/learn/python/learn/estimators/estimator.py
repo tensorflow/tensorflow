@@ -166,10 +166,16 @@ def _get_replica_device_setter(config):
   """
   ps_ops = ['Variable', 'AutoReloadVariable',
             'MutableHashTable', 'MutableHashTableOfTensors']
+
+  if config.job_name:
+    worker_device = '/job:%s/task:%d' % (config.job_name, config.task)
+  else:
+    worker_device = '/job:worker'
+
   if config.num_ps_replicas > 0:
     return device_setter.replica_device_setter(
-        ps_tasks=config.num_ps_replicas, merge_devices=False, ps_ops=ps_ops,
-        cluster=config.cluster_spec)
+        ps_tasks=config.num_ps_replicas, worker_device=worker_device,
+        merge_devices=False, ps_ops=ps_ops, cluster=config.cluster_spec)
   else:
     return None
 
@@ -653,7 +659,7 @@ class BaseEstimator(
           if not isinstance(m, session_run_hook.SessionRunHook)
       ]
 
-      supervisor_is_chief = (self._config.task == 0)
+      supervisor_is_chief = self._config.is_chief
       if not supervisor_is_chief:
         # Prune list of monitor to the ones runnable on all workers.
         deprecated_monitors = [m for m in deprecated_monitors
@@ -746,7 +752,7 @@ class BaseEstimator(
           eval_dict=eval_dict,
           update_op=update_op,
           global_step_tensor=global_step,
-          supervisor_master=self._config.master,
+          supervisor_master=self._config.evaluation_master,
           feed_fn=feed_fn,
           max_steps=steps)
 

@@ -605,6 +605,27 @@ class VariableScopeTest(tf.test.TestCase):
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer_1/default/scope2/")
 
+  def testGetLocalVar(self):
+    with self.test_session():
+      # Check that local variable respects naming.
+      with tf.variable_scope("outer") as outer:
+        with tf.variable_scope(outer, "default", []):
+          local_var = variable_scope.get_local_variable(
+              "w", [], collections=["foo"])
+          self.assertEqual(local_var.name, "outer/w:0")
+
+      # Since variable is local, it should be in the local variable collection
+      # but not the the trainable collection.
+      self.assertIn(local_var, tf.get_collection(tf.GraphKeys.LOCAL_VARIABLES))
+      self.assertIn(local_var, tf.get_collection("foo"))
+      self.assertNotIn(
+          local_var, tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES))
+
+      # Check that local variable respects `reuse`.
+      with tf.variable_scope(outer, "default", reuse=True):
+        self.assertEqual(variable_scope.get_local_variable("w", []).name,
+                         "outer/w:0")
+
 
 def axis0_into1_partitioner(shape=None, **unused_kwargs):
   part = [1] * len(shape)

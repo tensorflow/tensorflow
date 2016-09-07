@@ -30,6 +30,8 @@ class DebugIO {
   // Args:
   //   tensor_name: Name of the tensor being published: node_name followed by
   //     a colon, followed by the output slot index. E.g., "node_a:0".
+  //     N.B.: Use the original tensor name, i.e., name of the input tensor to
+  //     the debug op, even if the debug_op is not DebugIdentity.
   //   debug_op: Name of the debug op, e.g., "DebugIdentity".
   //   tensor: The Tensor object being published.
   //   wall_time_us: Time stamp for the Tensor. Unit: microseconds (us).

@@ -245,4 +245,8 @@ __all__.extend([
     'train',
 ])
 
-__all__.append('__version__')
+__all__.extend([
+    '__version__',
+    '__git_version__',
+    '__compiler_version__',
+])

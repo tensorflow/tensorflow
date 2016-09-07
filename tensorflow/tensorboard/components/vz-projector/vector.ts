@@ -183,7 +183,7 @@ export type Predicate<T> = (a: T) => boolean;
 export function centroid<T>(
     dataPoints: T[], predicate: Predicate<T>,
     accessor?: (a: T) => Vector): {centroid: Vector, numMatches: number} {
-  if (accessor === null) {
+  if (accessor == null) {
     accessor = (a: T) => <any>a;
   }
   assert(dataPoints.length >= 0, '`vectors` must be of length >= 1');

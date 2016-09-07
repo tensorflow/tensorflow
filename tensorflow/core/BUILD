@@ -68,6 +68,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
+load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
 
 # For platform specific build config
 load(
@@ -938,6 +939,13 @@ cc_library(
     ],
 )
 
+tf_version_info_genrule()
+
+cc_library(
+    name = "version_lib",
+    srcs = ["util/version_info.cc"],
+)
+
 tf_cuda_library(
     name = "framework_internal",
     srcs = glob(
@@ -980,6 +988,7 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
+        ":version_lib",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
     ],

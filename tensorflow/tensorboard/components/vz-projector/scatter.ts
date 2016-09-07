@@ -93,8 +93,6 @@ export interface Scatter {
   highlightPoints(
       pointIndexes: number[], highlightStroke?: (index: number) => string,
       favorLabels?: (index: number) => boolean): void;
-  /** Whether to show labels or not. */
-  showLabels(show: boolean): void;
   /** Toggle between day and night modes. */
   setDayNightMode(isNight: boolean): void;
   /** Show/hide tick labels. */

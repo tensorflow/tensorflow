@@ -62,17 +62,17 @@ class SaverTest(tf.test.TestCase):
     # self.assertGreater(score, 0.5, 'Failed with score = {0}'.format(score))
 
   def testDNN(self):
-    path = tf.test.get_temp_dir() + '/tmp_saver3'
     random.seed(42)
     iris = datasets.load_iris()
     cont_features = [
         tf.contrib.layers.real_valued_column('', dimension=4)]
-    classifier = learn.TensorFlowDNNClassifier(feature_columns=cont_features,
-                                               hidden_units=[10, 20, 10],
-                                               n_classes=3)
-    classifier.fit(iris.data, iris.target)
-    classifier.save(path)
+    classifier = learn.DNNClassifier(feature_columns=cont_features,
+                                     hidden_units=[10, 20, 10],
+                                     n_classes=3)
+    classifier.fit(iris.data, iris.target, max_steps=100)
     # TODO(ipolosukhin): Remove or restore.
+    # path = tf.test.get_temp_dir() + '/tmp_saver3'
+    # classifier.save(path)
     # new_classifier = learn.TensorFlowEstimator.restore(path)
     # self.assertEqual(type(new_classifier), type(classifier))
     # score = accuracy_score(iris.target, new_classifier.predict(iris.data))
@@ -83,17 +83,17 @@ class SaverTest(tf.test.TestCase):
       learn.TensorFlowEstimator.restore('no_model_path')
 
   def testNoCheckpoints(self):
-    path = tf.test.get_temp_dir() + '/tmp/tmp.saver4'
     random.seed(42)
     iris = datasets.load_iris()
     cont_features = [
         tf.contrib.layers.real_valued_column('', dimension=4)]
-    classifier = learn.TensorFlowDNNClassifier(feature_columns=cont_features,
-                                               hidden_units=[10, 20, 10],
-                                               n_classes=3)
-    classifier.fit(iris.data, iris.target)
-    classifier.save(path)
+    classifier = learn.DNNClassifier(feature_columns=cont_features,
+                                     hidden_units=[10, 20, 10],
+                                     n_classes=3)
+    classifier.fit(iris.data, iris.target, max_steps=100)
     # TODO(ipolosukhin): Remove or restore.
+    # path = tf.test.get_temp_dir() + '/tmp/tmp.saver4'
+    # classifier.save(path)
 #     os.remove(os.path.join(path, 'checkpoint'))
 #     with self.assertRaises(NotImplementedError):
 #       learn.TensorFlowEstimator.restore(path)

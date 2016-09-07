@@ -216,7 +216,7 @@ class DataLoader extends DataLoaderPolymer {
 
     // Demo dataset dropdown
     let demoDatasetChanged = (demoDataSet: DemoDataset) => {
-      if (demoDataSet === null) {
+      if (demoDataSet == null) {
         return;
       }
 
@@ -409,7 +409,7 @@ function parseTensors(content: string, delim = '\t'): Promise<DataPoint[]> {
         dataPoint.vector = row.map(Number);
       }
       data.push(dataPoint);
-      if (numDim === null) {
+      if (numDim == null) {
         numDim = dataPoint.vector.length;
       }
       if (numDim !== dataPoint.vector.length) {

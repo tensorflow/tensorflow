@@ -21,6 +21,8 @@ import collections
 import os.path
 import threading
 
+import numpy as np
+
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf.config_pb2 import RunMetadata
 from tensorflow.core.util.event_pb2 import SessionLog
@@ -438,110 +440,23 @@ class EventAccumulator(object):
       self.most_recent_step = event.step
       self.most_recent_wall_time = event.wall_time
 
-  def _Percentile(self, compression_bps, bucket_limit, cumsum_weights,
-                  histo_min, histo_max, histo_num):
-    """Linearly interpolates a histogram weight for a particular basis point.
-
-    Uses clamping methods on `histo_min` and `histo_max` to produce tight
-    linear estimates of the histogram weight at a particular basis point.
-
-    Args:
-      compression_bps: The desired basis point at which to estimate the weight
-      bucket_limit: An array of the RHS histogram bucket limits
-      cumsum_weights: A cumulative sum of the fraction of weights in each
-        histogram bucket, represented in basis points.
-      histo_min: The minimum weight observed in the weight histogram
-      histo_max: The maximum weight observed in the weight histogram
-      histo_num: The number of items in the weight histogram
-
-    Returns:
-      A linearly interpolated value of the histogram weight estimate.
-    """
-    if histo_num == 0:
-      return 0
-
-    for i, cumsum in enumerate(cumsum_weights):
-      if cumsum >= compression_bps:
-        cumsum_prev = cumsum_weights[i - 1] if i > 0 else 0
-        # Prevent cumsum = 0, cumsum_prev = 0, lerp divide by zero.
-        if cumsum == cumsum_prev:
-          continue
-
-        # Calculate the lower bound of interpolation
-        lhs = bucket_limit[i - 1] if (i > 0 and cumsum_prev > 0) else histo_min
-        lhs = max(lhs, histo_min)
-
-        # Calculate the upper bound of interpolation
-        rhs = bucket_limit[i]
-        rhs = min(rhs, histo_max)
-
-        weight = _Remap(compression_bps, cumsum_prev, cumsum, lhs, rhs)
-        return weight
-
-    ## We have not exceeded cumsum, so return the max observed.
-    return histo_max
-
-  def _ProcessCompressedHistogram(self, tag, wall_time, step, histo):
-    """Processes a histogram by adding a compression to accumulated state.
-
-    Adds a compressed histogram by linearly interpolating histogram buckets to
-    represent the histogram weight at multiple compression points. Uses
-    self._compression_bps (passed to EventAccumulator constructor) as the
-    compression points (represented in basis points, 1/100ths of a precent).
-
-    Args:
-      tag: A string name of the tag for which histograms are retrieved.
-      wall_time: Time in seconds since epoch
-      step: Number of steps that have passed
-      histo: proto2 histogram Object
-    """
-
-    def _CumulativeSum(arr):
-      return [sum(arr[:i + 1]) for i in range(len(arr))]
-
-    # Convert from proto repeated field into a Python list.
-    bucket = list(histo.bucket)
-    bucket_limit = list(histo.bucket_limit)
-
-    bucket_total = sum(bucket)
-    if bucket_total == 0:
-      bucket_total = 1
-    fraction_weights = [10000 * x / bucket_total for x in bucket]
-    cumsum_weights = _CumulativeSum(fraction_weights)
-
-    percentiles = [
-        self._Percentile(bps, bucket_limit, cumsum_weights, histo.min,
-                         histo.max, histo.num) for bps in self._compression_bps
-    ]
-
-    compressed_histogram_values = [CompressedHistogramValue(
-        basis_point=bps,
-        value=value) for bps, value in zip(self._compression_bps, percentiles)]
-    histogram_event = CompressedHistogramEvent(
-        wall_time=wall_time,
-        step=step,
-        compressed_histogram_values=compressed_histogram_values)
-
-    self._compressed_histograms.AddItem(tag, histogram_event)
+  def _ConvertHistogramProtoToTuple(self, histo):
+    return HistogramValue(min=histo.min,
+                          max=histo.max,
+                          num=histo.num,
+                          sum=histo.sum,
+                          sum_squares=histo.sum_squares,
+                          bucket_limit=list(histo.bucket_limit),
+                          bucket=list(histo.bucket))
 
   def _ProcessHistogram(self, tag, wall_time, step, histo):
-    """Processes a histogram by adding it to accumulated state."""
-
-    # Also process the compressed histogram
-    self._ProcessCompressedHistogram(tag, wall_time, step, histo)
-
-    histogram_value = HistogramValue(min=histo.min,
-                                     max=histo.max,
-                                     num=histo.num,
-                                     sum=histo.sum,
-                                     sum_squares=histo.sum_squares,
-                                     # Convert from proto repeated to list.
-                                     bucket_limit=list(histo.bucket_limit),
-                                     bucket=list(histo.bucket),)
-    histogram_event = HistogramEvent(wall_time=wall_time,
-                                     step=step,
-                                     histogram_value=histogram_value,)
-    self._histograms.AddItem(tag, histogram_event)
+    """Processes a proto histogram by adding it to accumulated state."""
+    histo = self._ConvertHistogramProtoToTuple(histo)
+    self._histograms.AddItem(tag, HistogramEvent(wall_time, step, histo))
+    self._compressed_histograms.AddItem(
+        tag,
+        CompressedHistogramEvent(
+            wall_time, step, _CompressHistogram(histo, self._compression_bps)))
 
   def _ProcessImage(self, tag, wall_time, step, image):
     """Processes an image by adding it to accumulated state."""
@@ -656,6 +571,55 @@ def _ParseFileVersion(file_version):
     logging.warn(('Invalid event.proto file_version. Defaulting to use of '
                   'out-of-order event.step logic for purging expired events.'))
     return -1
+
+
+def _CompressHistogram(histo, bps):
+  """Creates fixed size histogram by adding compression to accumulated state.
+
+  This routine transforms a histogram at a particular step by linearly
+  interpolating its variable number of buckets to represent their cumulative
+  weight at a constant number of compression points. This significantly reduces
+  the size of the histogram and makes it suitable for a two-dimensional area
+  plot where the output of this routine constitutes the ranges for a single x
+  coordinate.
+
+  Args:
+    histo: A HistogramValue namedtuple.
+    bps: Compression points represented in basis points, 1/100ths of a percent.
+
+  Returns:
+    List of CompressedHistogramValue namedtuples.
+  """
+  # See also: Histogram::Percentile() in core/lib/histogram/histogram.cc
+  if not histo.num:
+    return [CompressedHistogramValue(b, 0.0) for b in bps]
+  bucket = np.array(histo.bucket)
+  weights = (bucket * bps[-1] / (bucket.sum() or 1.0)).cumsum()
+  values = []
+  j = 0
+  while j < len(bps):
+    i = np.searchsorted(weights, bps[j], side='right')
+    while i < len(weights):
+      cumsum = weights[i]
+      cumsum_prev = weights[i - 1] if i > 0 else 0.0
+      if cumsum == cumsum_prev:  # prevent remap divide by zero
+        i += 1
+        continue
+      if not i or not cumsum_prev:
+        lhs = histo.min
+      else:
+        lhs = max(histo.bucket_limit[i - 1], histo.min)
+      rhs = min(histo.bucket_limit[i], histo.max)
+      weight = _Remap(bps[j], cumsum_prev, cumsum, lhs, rhs)
+      values.append(CompressedHistogramValue(bps[j], weight))
+      j += 1
+      break
+    else:
+      break
+  while j < len(bps):
+    values.append(CompressedHistogramValue(bps[j], histo.max))
+    j += 1
+  return values
 
 
 def _Remap(x, x0, x1, y0, y1):

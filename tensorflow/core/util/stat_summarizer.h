@@ -176,7 +176,7 @@ class StatSummarizer {
     std::vector<TensorDescription> outputs;
   };
 
-  enum struct SortingMetric {
+  enum SortingMetric {
     BY_TOTAL,
     BY_RUN_ORDER,
   };
