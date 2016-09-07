@@ -282,26 +282,37 @@ class Optimizer(object):
     # This is a default implementation of apply_gradients() that can be shared
     # by most optimizers.  It relies on the subclass implementing the following
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
+
     grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works
+    converted_grads_and_vars = []
     for g, v in grads_and_vars:
+      if g is not None:
+        try:
+          # Convert the grad to Tensor or IndexedSlices if necessary
+          g = ops.convert_to_tensor_or_indexed_slices(g)
+        except TypeError:
+          raise TypeError(
+              "Gradient must be convertible to a Tensor or IndexedSlices, or None: %s" %g)  
       if not isinstance(g, (ops.Tensor, ops.IndexedSlices, type(None))):
         raise TypeError(
             "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
       if not isinstance(v, variables.Variable):
         raise TypeError(
             "Variable must be a tf.Variable: %s" % v)
-      if g is not None:
-        self._assert_valid_dtypes([g, v])
-    var_list = [v for g, v in grads_and_vars if g is not None]
+
+      converted_grads_and_vars.append((g,v))
+    
+    converted_grads_and_vars = tuple(converted_grads_and_vars)
+    var_list = [v for g, v in converted_grads_and_vars if g is not None]
     if not var_list:
       raise ValueError("No gradients provided for any variable: %s" %
-                       (grads_and_vars,))
+                       (converted_grads_and_vars,))
     with ops.control_dependencies(None):
       self._create_slots(var_list)
     update_ops = []
     with ops.name_scope(name, self._name) as name:
       self._prepare()
-      for grad, var in grads_and_vars:
+      for grad, var in converted_grads_and_vars:
         if grad is None:
           continue
         # We colocate all ops created in _apply_dense or _apply_sparse
