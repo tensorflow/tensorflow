@@ -52,7 +52,7 @@ class SparseSplitOpTest(tf.test.TestCase):
     shape = np.array([5, 7]).astype(np.int64)
     return tf.SparseTensor(ind, val, shape)
 
-  def _SparseTensor_3x4x2(self):
+  def _SparseTensorValue_3x4x2(self):
     #  slice(:,:, 0)
     #  ['a0'|    |'b0'|    ]
     #  [    |'c0'|    |'d0']
@@ -66,7 +66,10 @@ class SparseSplitOpTest(tf.test.TestCase):
                     [2, 2, 0], [2, 2, 1]]).astype(np.int64)
     val = np.array(['a0', 'a1', 'b0', 'b1', 'c0', 'c1', 'd0', 'd1', 'e0', 'e1'])
     shape = np.array([3, 4, 2]).astype(np.int64)
-    return tf.SparseTensor(ind, val, shape)
+    return tf.SparseTensorValue(ind, val, shape)
+
+  def _SparseTensor_3x4x2(self):
+    return tf.SparseTensor.from_value(self._SparseTensorValue_3x4x2())
 
   def testSplitMatrixRows(self):
     with self.test_session(use_gpu=False):
@@ -222,12 +225,14 @@ class SparseSplitOpTest(tf.test.TestCase):
       self.assertAllEqual(sparse_tensors[5].shape.eval(), [4, 1])
 
   def testSliceConcat(self):
-    with self.test_session(use_gpu=False):
-      sparse_tensors = tf.sparse_split(1, 2, self._SparseTensor_3x4x2())
-      concat_tensor = tf.sparse_concat(1, sparse_tensors)
-      expected_output = self._SparseTensor_3x4x2()
-      self.assertAllEqual(concat_tensor.indices.eval(),
-                          expected_output.indices.eval())
+    for sp_input in (
+        self._SparseTensorValue_3x4x2(), self._SparseTensor_3x4x2()):
+      with self.test_session(use_gpu=False):
+        sparse_tensors = tf.sparse_split(1, 2, sp_input)
+        concat_tensor = tf.sparse_concat(1, sparse_tensors)
+        expected_output = self._SparseTensor_3x4x2()
+        self.assertAllEqual(concat_tensor.indices.eval(),
+                            expected_output.indices.eval())
 
 
 if __name__ == '__main__':

@@ -66,7 +66,8 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
     sp_value = ops.SparseTensorValue(indices, values, shape)
     for sp in [
         ops.SparseTensor(indices, values, shape),
-        ops.SparseTensor.from_value(sp_value)]:
+        ops.SparseTensor.from_value(sp_value),
+        ops.SparseTensor.from_value(ops.SparseTensor(indices, values, shape))]:
       self.assertEqual(sp.indices.dtype, dtypes.int64)
       self.assertEqual(sp.values.dtype, dtypes.string)
       self.assertEqual(sp.shape.dtype, dtypes.int64)

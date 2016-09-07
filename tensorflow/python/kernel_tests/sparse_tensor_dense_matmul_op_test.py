@@ -51,18 +51,25 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
     x_shape = x.shape
 
     with self.test_session(use_gpu=use_gpu):
-      sp_x = tf.SparseTensor(indices=x_indices, values=x_values, shape=x_shape)
-      tf_ans = sparse_ops.sparse_tensor_dense_matmul(
-          sp_x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
-      out = tf_ans.eval()
-    # Ensure that the RHS shape is known at least.
-    self.assertEqual(tf_ans.get_shape()[1], np_ans.shape[1])
-    if x.dtype == np.float32:
-      self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
-    elif x.dtype == np.float64:
-      self.assertAllClose(np_ans, out, rtol=1e-6, atol=1e-6)
-    else:
-      self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
+      sp_x_value = tf.SparseTensorValue(
+          indices=x_indices, values=x_values, shape=x_shape)
+      tf_value_ans = sparse_ops.sparse_tensor_dense_matmul(
+          sp_x_value, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
+      tf_tensor_ans = sparse_ops.sparse_tensor_dense_matmul(
+          tf.SparseTensor.from_value(sp_x_value), y, adjoint_a=adjoint_a,
+          adjoint_b=adjoint_b)
+
+      # Ensure that the RHS shape is known at least.
+      self.assertEqual(tf_value_ans.get_shape()[1], np_ans.shape[1])
+      self.assertEqual(tf_tensor_ans.get_shape()[1], np_ans.shape[1])
+
+      for out in (tf_value_ans.eval(), tf_tensor_ans.eval()):
+        if x.dtype == np.float32:
+          self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
+        elif x.dtype == np.float64:
+          self.assertAllClose(np_ans, out, rtol=1e-6, atol=1e-6)
+        else:
+          self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
 
   def _testBasic(self, np_dtype):
     x = _maybe_complex(np.random.rand(10, 10).astype(np_dtype))
