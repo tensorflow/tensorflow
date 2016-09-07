@@ -174,6 +174,10 @@ tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
 }
 %}
 
+// Ensure that the returned object is destroyed when its wrapper is
+// garbage collected.
+%newobject CreateBufferedInputStream;
+
 // Wrap the above functions.
 inline bool FileExists(const string& filename);
 inline void DeleteFile(const string& filename, TF_Status* out_status);
@@ -196,6 +200,7 @@ tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
 
 %ignoreall
 %unignore tensorflow::io::BufferedInputStream;
+%unignore tensorflow::io::BufferedInputStream::~BufferedInputStream;
 %unignore tensorflow::io::BufferedInputStream::ReadLineAsString;
 %include "tensorflow/core/lib/io/inputstream_interface.h"
 %include "tensorflow/core/lib/io/buffered_inputstream.h"
