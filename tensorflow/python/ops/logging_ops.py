@@ -21,7 +21,6 @@ from __future__ import print_function
 
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_logging_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -58,7 +57,7 @@ def Assert(condition, data, summarize=None, name=None):
   return gen_logging_ops._assert(condition, data, summarize, name)
 
 
-ops.RegisterShape("Assert")(common_shapes.no_outputs)
+ops.RegisterShape("Assert")(common_shapes.call_cpp_shape_fn)
 
 
 def Print(input_, data, message=None, first_n=None, summarize=None,
@@ -89,7 +88,7 @@ def _PrintGrad(op, *grad):
   return list(grad) + [None] * (len(op.inputs) - 1)
 
 
-ops.RegisterShape("Print")(common_shapes.unchanged_shape)
+ops.RegisterShape("Print")(common_shapes.call_cpp_shape_fn)
 
 
 def _Collect(val, collections, default_collections):
@@ -327,11 +326,10 @@ ops.NoGradient("MergeSummary")
 ops.NoGradient("ScalarSummary")
 
 
-@ops.RegisterShape("HistogramAccumulatorSummary")
-@ops.RegisterShape("HistogramSummary")
-@ops.RegisterShape("ImageSummary")
-@ops.RegisterShape("AudioSummary")
-@ops.RegisterShape("MergeSummary")
-@ops.RegisterShape("ScalarSummary")
-def _ScalarShape(unused_op):
-  return [tensor_shape.scalar()]
+ops.RegisterShape("HistogramAccumulatorSummary")(
+    common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("HistogramSummary")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ImageSummary")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AudioSummary")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MergeSummary")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ScalarSummary")(common_shapes.call_cpp_shape_fn)
