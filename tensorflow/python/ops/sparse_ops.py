@@ -61,8 +61,6 @@ import numpy as np
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -507,14 +505,7 @@ ops.RegisterShape("SparseSplit")(common_shapes.call_cpp_shape_fn)
 
 @ops.RegisterShape("SparseToDense")
 def _SparseToDenseShape(op):
-  input_shape = tensor_util.constant_value(op.inputs[1])
-  if input_shape is not None:
-    if np.ndim(input_shape) > 1:
-      raise ValueError("Input shape should be a vector")
-    return [tensor_shape.TensorShape(input_shape)]
-  else:
-    input_shape_shape = op.inputs[1].get_shape().with_rank(1)
-    return [tensor_shape.unknown_shape(ndims=input_shape_shape[0].value)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 def sparse_to_dense(sparse_indices,

@@ -499,12 +499,11 @@ class IdentityReader(ReaderBase):
 ops.NoGradient("IdentityReader")
 
 
-ops.RegisterShape("FixedLengthRecordReader")(common_shapes.scalar_shape)
-ops.RegisterShape("IdentityReader")(common_shapes.scalar_shape)
-ops.RegisterShape("TextLineReader")(common_shapes.scalar_shape)
-ops.RegisterShape("WholeFileReader")(common_shapes.scalar_shape)
-ops.RegisterShape("TFRecordReader")(common_shapes.scalar_shape)
-
+ops.RegisterShape("FixedLengthRecordReader")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("IdentityReader")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("TextLineReader")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("WholeFileReader")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("TFRecordReader")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ReaderNumRecordsProduced")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ReaderNumWorkUnitsCompleted")(
     common_shapes.call_cpp_shape_fn)

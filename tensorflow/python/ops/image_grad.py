@@ -18,10 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_image_ops
 
@@ -71,47 +70,18 @@ def _ResizeBilinearGrad(op, grad):
 
 @ops.RegisterShape("ResizeNearestNeighborGrad")
 def _ResizeShape(op):
-  """Shape function for the resize grad ops."""
-  input_shape = op.inputs[0].get_shape().with_rank(4)
-  size = tensor_util.constant_value(op.inputs[1])
-  if size is not None:
-    height = size[0]
-    width = size[1]
-  else:
-    height = None
-    width = None
-  return [
-      tensor_shape.TensorShape([input_shape[0], height, width, input_shape[3]])
-  ]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
-@ops.RegisterShape("ResizeBilinearGrad")
-def _ResizeBilinearGradShape(op):
-  """Shape function for ResizeBilinearGrad."""
-  return [op.inputs[1].get_shape()]
+ops.RegisterShape("ResizeBilinearGrad")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("CropAndResizeGradImage")
 def _CropAndResizeGradImageShape(op):
-  """Shape function for CropAndResizeGradImage."""
-  image_size = tensor_util.constant_value(op.inputs[3])
-  if image_size is not None:
-    batch = image_size[0]
-    height = image_size[1]
-    width = image_size[2]
-    depth = image_size[3]
-  else:
-    batch = None
-    height = None
-    width = None
-    depth = None
-  return [tensor_shape.TensorShape([batch, height, width, depth])]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[3])
 
 
-@ops.RegisterShape("CropAndResizeGradBoxes")
-def _CropAndResizeGradBoxesShape(op):
-  """Shape function for CropAndResizeGradBoxes."""
-  return [op.inputs[2].get_shape()]
+ops.RegisterShape("CropAndResizeGradBoxes")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient("CropAndResize")

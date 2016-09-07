@@ -172,8 +172,8 @@ def py_func(func, inp, Tout, stateful=True, name=None):
     # pylint: enable=protected-access
 
 
-ops.RegisterShape("PyFunc")(common_shapes.unknown_shape)
-ops.RegisterShape("PyFuncStateless")(common_shapes.unknown_shape)
+ops.RegisterShape("PyFunc")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("PyFuncStateless")(common_shapes.call_cpp_shape_fn)
 
 ops.NoGradient("PyFunc")
 ops.NoGradient("PyFuncStateless")
