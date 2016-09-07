@@ -1052,15 +1052,17 @@ REGISTER_OP("Dilation2D")
       DimensionHandle filter_cols_dim = c->Dim(filter_shape, 1);
       DimensionHandle output_depth_dim = c->Dim(filter_shape, 2);
 
+      if (!c->ValueKnown(in_rows_dim) || !c->ValueKnown(in_cols_dim) ||
+          !c->ValueKnown(filter_rows_dim) || !c->ValueKnown(filter_cols_dim)) {
+        ShapeHandle output_shape =
+            c->MakeShape({batch_size_dim, InferenceContext::kUnknownDim,
+                          InferenceContext::kUnknownDim, output_depth_dim});
+        c->set_output(0, output_shape);
+        return Status::OK();
+      }
       DimensionHandle unused;
       TF_RETURN_IF_ERROR(
           c->Merge(c->Dim(input_shape, 3), output_depth_dim, &unused));
-
-      // At the moment we need to know the values of several fields.
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_rows_dim, "filter_rows"));
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_cols_dim, "filter_cols"));
 
       auto in_rows = c->Value(in_rows_dim);
       auto in_cols = c->Value(in_cols_dim);

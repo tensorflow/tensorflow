@@ -344,9 +344,10 @@ class InferenceContext {
   Status GetAttr(StringPiece attr_name, T* value) const;
 
   // Returns in <out> the result of dividing <dividend> by <divisor>.
-  // Returns an error if <divisor>  is not positive or does not evenly
-  // divide <dividend>.
-  Status Divide(DimensionHandle dividend, int64 divisor, DimensionHandle* out);
+  // Returns an error if <divisor>  is not positive or if <evenly_divisible>
+  // and <divisor> does not evenly divide <dividend>.
+  Status Divide(DimensionHandle dividend, int64 divisor, bool evenly_divisible,
+                DimensionHandle* out);
 
   // Returns in <out> the sum of <first> and <second>.
   Status Add(DimensionHandle first, DimensionOrConstant second,
@@ -372,16 +373,6 @@ class InferenceContext {
              DimensionHandle* out);
 
   Status construction_status() const { return construction_status_; }
-
-  // Validates that 'dim' has a known value, and prints an error
-  // message containing 'name' if validation fails.
-  Status ValidateKnownDim(DimensionHandle dim, const char* name) {
-    if (!ValueKnown(dim)) {
-      return errors::InvalidArgument("Cannot infer shape because dimension ",
-                                     name, " is not known.");
-    }
-    return Status::OK();
-  }
 
   // Validates the 3 component tensors of a sparse tensor have the proper
   // shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.

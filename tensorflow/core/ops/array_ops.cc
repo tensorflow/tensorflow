@@ -308,7 +308,8 @@ REGISTER_OP("Split")
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
         DimensionHandle split_dim_size;
         TF_RETURN_WITH_CONTEXT_IF_ERROR(
-            c->Divide(c->Dim(input, split_dim), num_split, &split_dim_size),
+            c->Divide(c->Dim(input, split_dim), num_split,
+                      true /* evenly_divisible */, &split_dim_size),
             "Number of ways to split should evenly divide the split dimension");
         TF_RETURN_IF_ERROR(
             c->ReplaceDim(input, split_dim, split_dim_size, &out));
@@ -1195,8 +1196,9 @@ REGISTER_OP("Reshape")
           }
         }
         DimensionHandle inferred_dim;
-        TF_RETURN_IF_ERROR(
-            c->Divide(num_in_elems, c->Value(known_elems), &inferred_dim));
+        TF_RETURN_IF_ERROR(c->Divide(num_in_elems, c->Value(known_elems),
+                                     true /* evenly_divisible */,
+                                     &inferred_dim));
         TF_RETURN_IF_ERROR(c->ReplaceDim(out, unknown_idx, inferred_dim, &out));
       }
 
@@ -2565,8 +2567,11 @@ REGISTER_OP("SpaceToBatch")
           c->Multiply(c->Dim(input, 0), block_size * block_size, &batch));
 
       // Will return an error if block_size does not evenly divide.
-      TF_RETURN_IF_ERROR(c->Divide(output_height, block_size, &output_height));
-      TF_RETURN_IF_ERROR(c->Divide(output_width, block_size, &output_width));
+      TF_RETURN_IF_ERROR(c->Divide(output_height, block_size,
+                                   true /* evenly_divisible */,
+                                   &output_height));
+      TF_RETURN_IF_ERROR(c->Divide(output_width, block_size,
+                                   true /* evenly_divisible */, &output_width));
 
       c->set_output(0, c->MakeShape({batch, output_height, output_width,
                                      c->Dim(input, 3)}));
@@ -2704,8 +2709,8 @@ REGISTER_OP("BatchToSpace")
 
       DimensionHandle batch;
       // Will return an error if does not evenly divide
-      TF_RETURN_IF_ERROR(
-          c->Divide(c->Dim(input, 0), block_size * block_size, &batch));
+      TF_RETURN_IF_ERROR(c->Divide(c->Dim(input, 0), block_size * block_size,
+                                   true /* evenly_divisible */, &batch));
 
       DimensionHandle output_height;
       DimensionHandle output_width;
@@ -2856,10 +2861,11 @@ REGISTER_OP("SpaceToDepth")
       DimensionHandle output_width;
       DimensionHandle output_depth;
       // Will return an error if does not evenly divide
-      TF_RETURN_IF_ERROR(
-          c->Divide(c->Dim(input, 1), block_size, &output_height));
-      TF_RETURN_IF_ERROR(
-          c->Divide(c->Dim(input, 2), block_size, &output_width));
+      TF_RETURN_IF_ERROR(c->Divide(c->Dim(input, 1), block_size,
+                                   true /* evenly_divisible */,
+                                   &output_height));
+      TF_RETURN_IF_ERROR(c->Divide(c->Dim(input, 2), block_size,
+                                   true /* evenly_divisible */, &output_width));
 
       TF_RETURN_IF_ERROR(c->Multiply(c->Dim(input, 3), block_size * block_size,
                                      &output_depth));
@@ -2966,8 +2972,8 @@ REGISTER_OP("DepthToSpace")
           c->Multiply(c->Dim(input, 1), block_size, &output_height));
       TF_RETURN_IF_ERROR(
           c->Multiply(c->Dim(input, 2), block_size, &output_width));
-      TF_RETURN_IF_ERROR(
-          c->Divide(c->Dim(input, 3), block_size * block_size, &output_depth));
+      TF_RETURN_IF_ERROR(c->Divide(c->Dim(input, 3), block_size * block_size,
+                                   true /* evenly_divisible */, &output_depth));
 
       c->set_output(0, c->MakeShape({c->Dim(input, 0), output_height,
                                      output_width, output_depth}));
@@ -3116,9 +3122,13 @@ REGISTER_OP("ExtractImagePatches")
       DimensionHandle in_cols_dim = c->Dim(input_shape, 2);
       DimensionHandle output_depth_dim = c->Dim(input_shape, 3);
 
-      // At the moment we need to know the values of several fields.
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
+      if (!c->ValueKnown(in_rows_dim) || !c->ValueKnown(in_cols_dim)) {
+        ShapeHandle output_shape =
+            c->MakeShape({batch_size_dim, InferenceContext::kUnknownDim,
+                          InferenceContext::kUnknownDim, output_depth_dim});
+        c->set_output(0, output_shape);
+        return Status::OK();
+      }
       auto in_rows = c->Value(in_rows_dim);
       auto in_cols = c->Value(in_cols_dim);
 

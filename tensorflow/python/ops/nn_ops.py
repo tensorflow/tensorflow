@@ -836,12 +836,10 @@ ops.RegisterShape("BatchNormWithGlobalNormalization")(
     common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("BatchNormWithGlobalNormalizationGrad")(
     common_shapes.call_cpp_shape_fn)
-
-ops.RegisterShape("Conv2D")(common_shapes.conv2d_shape)
-ops.RegisterShape("DepthwiseConv2dNative")(
-    common_shapes.depthwise_conv2d_native_shape)
-ops.RegisterShape("AvgPool")(common_shapes.avg_pool_shape)
-ops.RegisterShape("MaxPool")(common_shapes.max_pool_shape)
+ops.RegisterShape("Conv2D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("DepthwiseConv2dNative")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AvgPool")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MaxPool")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("FusedResizeAndPadConv2D")

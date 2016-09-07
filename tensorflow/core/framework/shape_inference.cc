@@ -539,7 +539,7 @@ Status InferenceContext::MakeDimForScalarInput(int idx, DimensionHandle* out) {
 }
 
 Status InferenceContext::Divide(DimensionHandle dividend, int64 divisor,
-                                DimensionHandle* out) {
+                                bool evenly_divisible, DimensionHandle* out) {
   if (divisor == 1) {
     *out = dividend;
   } else if (!ValueKnown(dividend)) {
@@ -550,9 +550,10 @@ Status InferenceContext::Divide(DimensionHandle dividend, int64 divisor,
       return errors::InvalidArgument("Divisor must be positive but is ",
                                      divisor);
     }
-    if ((v % divisor) != 0) {
-      return errors::InvalidArgument("Dimension size must be divisible by ",
-                                     divisor, " but is ", v);
+    if (evenly_divisible && (v % divisor) != 0) {
+      return errors::InvalidArgument(
+          "Dimension size must be evenly divisible by ", divisor, " but is ",
+          v);
     }
     *out = MakeDim(v / divisor);
   }

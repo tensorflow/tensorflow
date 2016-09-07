@@ -551,8 +551,10 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // The first dimension is inferred:
   new_shape = test::AsTensor<int32>({2, -1});
   INFER_OK(op, "[3,4];[2]", "[2,6]");
-  // The total number of elements must be divisible by the known dimensions.
-  INFER_ERROR("Dimension size must be divisible by 2 but is 7", op, "[7];[2]");
+  // The total number of elements must be evenly divisible by the known
+  // dimensions.
+  INFER_ERROR("Dimension size must be evenly divisible by 2 but is 7", op,
+              "[7];[2]");
   // Multiple missing dimensions cannot be inferred.
   new_shape = test::AsTensor<int32>({-1, -1, 2});
   INFER_ERROR("Cannot infer multiple unknown dimensions in shape [?,?,2]", op,
@@ -797,7 +799,8 @@ TEST(ArrayOpsTest, Split_ShapeFn) {
   INFER_OK(op, "?;[?,?]", "[d1_0,?];[d1_0,?]");
   INFER_OK(op, "?;[1,4]", "[d1_0,2];[d1_0,2]");
   INFER_OK(op, "?;[1,?]", "[d1_0,?];[d1_0,?]");
-  INFER_ERROR("Dimension size must be divisible by 2 but is 5", op, "?;[1,5]");
+  INFER_ERROR("Dimension size must be evenly divisible by 2 but is 5", op,
+              "?;[1,5]");
 }
 
 TEST(ArrayOpsTest, Tile_ShapeFn) {
@@ -942,7 +945,7 @@ TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
   // Bad paddings values
   paddings = test::AsTensor<int32>({1, 2, 3, 4}, {{2, 2}});
   op.input_tensors[1] = &paddings;
-  INFER_ERROR("Dimension size must be divisible by 2 but is 13", op,
+  INFER_ERROR("Dimension size must be evenly divisible by 2 but is 13", op,
               "[1,10,10,3];[2,2]");
 
   // Negative paddsings
@@ -964,7 +967,7 @@ TEST(ArrayOpsTest, BatchToSpace_ShapeFn) {
   INFER_OK(op, "[4,8,8,3];[2,2]", "[1,?,?,d0_3]");
 
   // block_size not compatible with batch size
-  INFER_ERROR("Dimension size must be divisible by 4 but is 5", op,
+  INFER_ERROR("Dimension size must be evenly divisible by 4 but is 5", op,
               "[5,8,8,3];[2,2]");
 
   // Unknown croppings means unknown shape
@@ -1005,9 +1008,9 @@ TEST(ArrayOpsTest, SpaceToDepth_ShapeFn) {
   INFER_OK(op, "[1,2,4,4]", "[d0_0,1,2,16]");
 
   // block_size not compatible with space
-  INFER_ERROR("Dimension size must be divisible by 2 but is 3", op,
+  INFER_ERROR("Dimension size must be evenly divisible by 2 but is 3", op,
               "[1,3,8,4]");
-  INFER_ERROR("Dimension size must be divisible by 2 but is 5", op,
+  INFER_ERROR("Dimension size must be evenly divisible by 2 but is 5", op,
               "[1,2,5,4]");
 
   // Unknown depth --> Unknown depth.
@@ -1024,7 +1027,7 @@ TEST(ArrayOpsTest, DepthToSpace_ShapeFn) {
   INFER_OK(op, "[1,1,2,16]", "[d0_0,2,4,4]");
 
   // Bad depth
-  INFER_ERROR("Dimension size must be divisible by 4 but is 15", op,
+  INFER_ERROR("Dimension size must be evenly divisible by 4 but is 15", op,
               "[1,1,2,15]");
 
   // Unknown depth --> Unknown depth.

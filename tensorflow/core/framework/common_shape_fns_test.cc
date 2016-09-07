@@ -369,11 +369,13 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   // Invalid rank for filter
   INFER_ERROR("must be rank 4", op, "[1,4,4,1];[2,1,1]");
 
-  // No unknown dims in the critical fields.
-  INFER_ERROR("is not known", op, "[1,?,2,1];[1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,?,1];[1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[?,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[1,?,1,1]");
+  // Unknown dims in the critical fields lead to partial inference.
+  INFER_OK(op, "[1,4,4,1];[2,1,1,1]", "[d0_0,3,2,d1_3]");
+  INFER_OK(op, "[1,?,4,1];[2,1,1,1]", "[d0_0,?,2,d1_3]");
+  INFER_OK(op, "[1,4,?,1];[2,1,1,1]", "[d0_0,3,?,d1_3]");
+  INFER_OK(op, "[1,4,4,?];[2,1,1,1]", "[d0_0,3,2,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[?,1,1,1]", "[d0_0,?,2,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[2,?,1,1]", "[d0_0,3,?,d1_3]");
 
   // input depths must match.
   INFER_ERROR("Dimensions must be equal, but are 10 and 10000", op,
@@ -404,11 +406,11 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
 
   // 4x4 input, 1x1 filter, 1x1 stride
   set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
-  INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,4,4,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // 3x3 input, 2x2 filter, 1x1 stride
   set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
-  INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,3,3,d1_3]");
+  INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // 4x4 input, 2x2 filter, 2x2 stride
   set_op({{1, 2, 2, 1}}, "SAME", "NHWC");
@@ -416,7 +418,25 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
 
   // 4x4 input, 2x2 filter, 1x1 stride
   set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
-  INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,4,4,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
+
+  // With stride 1x1 and SAME, unknown dims don't matter - filter dims except
+  // for output channels are ignored for output, so all inputs are carried
+  // through to output.
+  set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
+  INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,?,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,4,?,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,4,4,?];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+
+  // With stride != 1, the input HW dims are divided to produce output dims.
+  set_op({{1, 2, 2, 1}}, "SAME", "NHWC");
+  INFER_OK(op, "[?,4,4,1];[?,?,?,?]", "[d0_0,2,2,d1_3]");
+  INFER_OK(op, "[1,?,4,1];[?,?,?,?]", "[d0_0,?,2,d1_3]");
+  INFER_OK(op, "[1,4,?,1];[?,?,?,?]", "[d0_0,2,?,d1_3]");
+  INFER_OK(op, "[1,4,4,?];[?,?,?,?]", "[d0_0,2,2,d1_3]");
 }
 
 TEST(CommonShapeFnsTest, Conv3DShapeTest) {
@@ -440,12 +460,16 @@ TEST(CommonShapeFnsTest, Conv3DShapeTest) {
   // Invalid rank for filter
   INFER_ERROR("must be rank 5", op, "[1,4,4,1];[2,1,1]");
 
-  // No unknown dims in the critical fields.
-  INFER_ERROR("is not known", op, "[1,?,2,2,1];[1,1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,?,2,1];[1,1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,?,1];[1,1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,2,1];[?,1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,2,1];[1,?,1,1,1]");
+  // unknown dims in the critical fields give partial inference.
+  INFER_OK(op, "[1,2,2,2,1];[1,1,1,1,1]", "[d0_0,2,2,2,d1_4]");
+  INFER_OK(op, "[1,?,2,2,1];[1,1,1,1,1]", "[d0_0,?,2,2,d1_4]");
+  INFER_OK(op, "[1,2,?,2,1];[1,1,1,1,1]", "[d0_0,2,?,2,d1_4]");
+  INFER_OK(op, "[1,2,2,?,1];[1,1,1,1,1]", "[d0_0,2,2,?,d1_4]");
+  INFER_OK(op, "[1,2,2,2,1];[?,1,1,1,1]", "[d0_0,?,2,2,d1_4]");
+  INFER_OK(op, "[1,2,2,2,1];[1,?,1,1,1]", "[d0_0,2,?,2,d1_4]");
+  INFER_OK(op, "[1,2,2,2,1];[1,1,?,1,1]", "[d0_0,2,2,?,d1_4]");
+  INFER_OK(op, "[1,2,2,2,1];[1,1,1,?,1]", "[d0_0,2,2,2,d1_4]");
+  INFER_OK(op, "[1,2,2,2,1];[1,1,1,1,?]", "[d0_0,2,2,2,d1_4]");
 
   // input depths must match.
   INFER_ERROR("Dimensions must be equal, but are 10 and 10000", op,
@@ -465,7 +489,34 @@ TEST(CommonShapeFnsTest, Conv3DShapeTest) {
 
   // 4x4 input, 2x2 filter, 1x1 stride
   set_op({{1, 1, 1, 1, 1}}, "SAME");
-  INFER_OK(op, "[1,4,4,4,1];[2,2,2,1,1]", "[d0_0,4,4,4,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+
+  // with SAME, filter doesn't matter except for last dim.
+  set_op({{1, 1, 1, 1, 1}}, "SAME");
+  INFER_OK(op, "[?,4,4,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,?,4,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,?,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,?,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,?];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[?,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[2,?,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[2,2,?,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[2,2,2,?,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[2,2,2,1,?]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+
+  // with SAME, and stride != 1, division happens to produce output.
+  set_op({{1, 2, 3, 4, 1}}, "SAME");
+  INFER_OK(op, "[1,4,9,4,1];[2,2,2,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[?,4,9,4,1];[2,2,2,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,?,9,4,1];[2,2,2,1,1]", "[d0_0,?,3,1,d1_4]");
+  INFER_OK(op, "[1,4,?,4,1];[2,2,2,1,1]", "[d0_0,2,?,1,d1_4]");
+  INFER_OK(op, "[1,4,9,?,1];[2,2,2,1,1]", "[d0_0,2,3,?,d1_4]");
+  INFER_OK(op, "[1,4,9,4,?];[2,2,2,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,4,9,4,1];[?,2,2,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,4,9,4,1];[2,?,2,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,4,9,4,1];[2,2,?,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,4,9,4,1];[2,2,2,?,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,4,9,4,1];[2,2,2,1,?]", "[d0_0,2,3,1,d1_4]");
 }
 
 TEST(CommonShapeFnsTest, DepthwiseConv2DShapeTest) {
@@ -489,12 +540,14 @@ TEST(CommonShapeFnsTest, DepthwiseConv2DShapeTest) {
               "[1,2,2,3];[1,1,12,4]");
 
   // No unknown dims in the critical fields.
-  INFER_ERROR("is not known", op, "[1,?,2,1];[1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,?,1];[1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[?,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[1,?,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[1,1,?,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[1,1,1,?]");
+  INFER_OK(op, "[1,2,2,3];[1,1,3,4]", "[d0_0,2,2,12]");
+  INFER_OK(op, "[1,?,2,3];[1,1,3,4]", "[d0_0,?,2,12]");
+  INFER_OK(op, "[1,2,?,3];[1,1,3,4]", "[d0_0,2,?,12]");
+  INFER_OK(op, "[1,2,2,3];[?,1,3,4]", "[d0_0,?,2,12]");
+  INFER_OK(op, "[1,2,2,3];[1,?,3,4]", "[d0_0,2,?,12]");
+  INFER_OK(op, "[1,2,2,3];[1,1,?,4]", "[d0_0,2,2,12]");
+  INFER_OK(op, "[1,2,2,?];[1,1,?,4]", "[d0_0,2,2,?]");
+  INFER_OK(op, "[1,2,2,3];[1,1,3,?]", "[d0_0,2,2,?]");
 }
 
 TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
@@ -522,9 +575,11 @@ TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
   set_op({1, 1, 2, 1}, {1, 2, 1, 1}, "VALID", "NHWC");
   INFER_OK(op, "[1,4,4,1]", "[d0_0,3,2,d0_3]");
 
-  // No unknown dims in the critical fields.  Assumes NHWC format.
-  INFER_ERROR("is not known", op, "[1,?,2,1]");
-  INFER_ERROR("is not known", op, "[1,2,?,1]");
+  // 4x4 input, 2x1 ksize, 1x2 stride
+  // unknown dims in the critical fields lead to partial inference.
+  // Assumes NHWC format.
+  INFER_OK(op, "[1,?,4,1]", "[d0_0,?,2,d0_3]");
+  INFER_OK(op, "[1,4,?,1]", "[d0_0,3,?,d0_3]");
 
   // 4x4 input, 2x1 ksize, 1x2 stride, NCHW format
   set_op({{1, 1, 1, 2}}, {1, 1, 2, 1}, "VALID", "NCHW");
