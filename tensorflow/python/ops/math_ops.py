@@ -227,7 +227,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -998,14 +997,7 @@ def range(start, limit=None, delta=1, name="range"):
 
 @ops.RegisterShape("Range")
 def _RangeShape(op):
-  start_value = tensor_util.constant_value(op.inputs[0])
-  limit_value = tensor_util.constant_value(op.inputs[1])
-  delta_value = tensor_util.constant_value(op.inputs[2])
-  if start_value is None or limit_value is None or delta_value is None:
-    return [tensor_shape.vector(None)]
-  else:
-    return [tensor_shape.vector((limit_value - start_value + delta_value - 1) //
-                                delta_value)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0, 1, 2])
 
 
 # Reduction operations
@@ -1901,29 +1893,7 @@ def _SelectShape(op):
 @ops.RegisterShape("ArgMax")
 @ops.RegisterShape("ArgMin")
 def _ArgOpShape(op):
-  """Common shape function for arg-reduction ops."""
-  dimension_shape = op.inputs[1].get_shape()
-  dimension_shape.assert_is_compatible_with(tensor_shape.scalar())
-  input_shape = op.inputs[0].get_shape()
-  if input_shape.ndims is None:
-    return [tensor_shape.unknown_shape()]
-  elif input_shape.ndims <= 1:
-    return [tensor_shape.scalar()]
-
-  dimension = tensor_util.constant_value(op.inputs[1])
-  if dimension is None:
-    return [tensor_shape.unknown_shape(ndims=input_shape.ndims - 1)]
-  elif 0 <= dimension and dimension < input_shape.ndims:
-    returned_shape = []
-    for i, dim in enumerate(input_shape.dims):
-      if i != dimension:
-        returned_shape.append(dim)
-    return [tensor_shape.TensorShape(returned_shape)]
-  else:
-    raise ValueError(
-        "dimension (%d) must be in the range [0, %d), where %d is the number "
-        "of dimensions in the input"
-        % (dimension, input_shape.ndims, input_shape.ndims))
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 @ops.RegisterShape("All")
@@ -1934,41 +1904,7 @@ def _ArgOpShape(op):
 @ops.RegisterShape("Prod")
 @ops.RegisterShape("Sum")
 def _ReductionShape(op):
-  """Common shape function for reduction ops."""
-  input_shape = op.inputs[0].get_shape()
-  op.inputs[1].get_shape().with_rank_at_most(1)
-  reduction_indices = tensor_util.constant_value(op.inputs[1])
-  keep_dims = op.get_attr("keep_dims")
-  if reduction_indices is None or input_shape.ndims is None:
-    if keep_dims:
-      return [tensor_shape.unknown_shape(ndims=input_shape.ndims)]
-    else:
-      return [tensor_shape.unknown_shape()]
-
-  # Turn reduction_indices from scalar to vector if necessary
-  reduction_indices = np.ravel(reduction_indices)
-
-  for reduction_index in reduction_indices:
-    if (reduction_index < -input_shape.ndims or
-        reduction_index >= input_shape.ndims):
-      raise ValueError("Invalid reduction dimension %d for input with %d "
-                       "dimensions" % (reduction_index, input_shape.ndims))
-
-  reduction_indices = set([(x + input_shape.ndims) % input_shape.ndims
-                           for x in reduction_indices])
-
-  returned_dims = []
-  if keep_dims:
-    for i, dim in enumerate(input_shape.dims):
-      if i in reduction_indices:
-        returned_dims.append(1)
-      else:
-        returned_dims.append(dim)
-  else:
-    for i, dim in enumerate(input_shape.dims):
-      if i not in reduction_indices:
-        returned_dims.append(dim)
-  return [tensor_shape.TensorShape(returned_dims)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 ops.RegisterShape("SegmentMax")(common_shapes.call_cpp_shape_fn)
@@ -1985,35 +1921,18 @@ ops.RegisterShape("SparseSegmentSum")(common_shapes.call_cpp_shape_fn)
 @ops.RegisterShape("SparseSegmentSqrtNGrad")
 # pylint: disable=invalid-name
 def _SparseSegmentReductionGradShape(op):
-  """Shape function for the SparseSegment[Mean|SqrtN]Grad ops."""
-  input_shape = op.inputs[0].get_shape()
-  indices_shape = op.inputs[1].get_shape().with_rank(1)
-  unused_segment_ids_shape = op.inputs[2].get_shape().merge_with(indices_shape)
-  unused_output_dim0_shape = op.inputs[3].get_shape().merge_with(
-      tensor_shape.scalar())
-  dim0 = tensor_util.constant_value(op.inputs[3])
-  return [tensor_shape.TensorShape([dim0]).concatenate(input_shape[1:])]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[3])
 # pylint: enable=invalid-name
 
 
 @ops.RegisterShape("UnsortedSegmentSum")
 def _UnsortedSegmentSumShape(op):
-  """Shape function for UnsortedSegmentSum."""
-  data_shape = op.inputs[0].get_shape()
-  segment_ids_shape = op.inputs[1].get_shape()
-  mid = segment_ids_shape.ndims
-  if mid is None:
-    return [tensor_shape.unknown_shape()]
-  else:
-    num_segments = tensor_util.constant_value(op.inputs[2])
-    return [tensor_shape.TensorShape([num_segments]).concatenate(
-        data_shape[mid:])]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2])
 
 
 @ops.RegisterShape("LinSpace")
 def _LinspaceShape(op):
-  num = tensor_util.constant_value(op.inputs[2])
-  return [tensor_shape.vector(num)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2])
 
 
 def reduced_shape(input_shape, axes):

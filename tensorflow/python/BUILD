@@ -202,9 +202,13 @@ cc_library(
     hdrs = ["framework/cpp_shape_inference.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":numpy_lib",
+        ":py_func_lib",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_cc",
+        "//third_party/py/numpy:headers",
+        "//util/python:python_headers",
     ],
 )
 

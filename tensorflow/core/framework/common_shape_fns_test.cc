@@ -615,15 +615,13 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
 
   // Reduction indices not available, so output is unknown.
   INFER_OK(op, "[2,4,5];[2]", "?");
+  INFER_OK(op, "?;[2]", "?");
 
   Tensor indices = test::AsTensor<int32>({1, 2});
   op.input_tensors[1] = &indices;
 
   // Reduction indices available
   INFER_OK(op, "[2,4,5];[2]", "[d0_0]");
-
-  // Unknown input rank
-  INFER_OK(op, "?;[2]", "?");
 
   // Wrapped indices
   indices = test::AsTensor<int32>({-1, -2});
@@ -635,11 +633,6 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
   op.input_tensors[1] = &indices;
   INFER_OK(op, "[2,4,5];[]", "[d0_1,d0_2]");
 
-  // Cannot reduce 0 dimension
-  indices = test::AsTensor<int32>({-1, -2});
-  op.input_tensors[1] = &indices;
-  INFER_ERROR("Cannot reduce dimension -2 with size 0", op, "[2,0,5];[2]");
-
   indices = test::AsScalar<int32>(-4);
   op.input_tensors[1] = &indices;
   INFER_ERROR("Invalid reduction dimension", op, "[2,4,5];[]");
@@ -647,7 +640,7 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
   // Empty reduction indices
   indices = test::AsTensor<int32>({});
   op.input_tensors[1] = &indices;
-  INFER_OK(op, "[2,4,5];[0]", "[]");
+  INFER_OK(op, "[2,4,5];[0]", "[d0_0,d0_1,d0_2]");
 
   // Keep dims = true
   TF_ASSERT_OK(NodeDefBuilder("test", "Sum")
@@ -658,6 +651,12 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
   indices = test::AsTensor<int32>({-1, -2});
   op.input_tensors[1] = &indices;
   INFER_OK(op, "[2,4,5];[2]", "[d0_0, 1, 1]");
+
+  // input rank is known, but reduction indices are not (with keep_dim=true).
+  // The output rank matches input rank (because of keep_dims=true).
+  op.input_tensors[1] = nullptr;
+  INFER_OK(op, "[?,?,?];?", "[?,?,?]");
+  INFER_OK(op, "[?,?,?];[2]", "[?,?,?]");
 }
 
 }  // namespace shape_inference

@@ -650,20 +650,24 @@ Status ReductionShape(InferenceContext* c) {
   ShapeHandle indices;
   TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &indices));
 
+  bool keep_dims;
+  TF_RETURN_IF_ERROR(c->GetAttr("keep_dims", &keep_dims));
+
   const Tensor* reduction_indices_t = c->input_tensor(1);
   if (reduction_indices_t == nullptr || !c->RankKnown(input)) {
     // If we do not have the reduction values at runtime, or the
     // rank of the input, we don't know the output shape.
-    return shape_inference::UnknownShape(c);
+
+    if (keep_dims && c->RankKnown(input)) {
+      // output rank matches input input if <keep_dims>.
+      c->set_output(0, c->UnknownShapeOfRank(c->Rank(input)));
+      return Status::OK();
+    } else {
+      return shape_inference::UnknownShape(c);
+    }
   }
 
-  bool keep_dims;
-  TF_RETURN_IF_ERROR(c->GetAttr("keep_dims", &keep_dims));
-
-  // Validate rank of input.
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, 1, &input));
   const int32 input_rank = c->Rank(input);
-
   std::set<int32> true_indices;
   auto reduction_indices = reduction_indices_t->flat<int32>();
   for (int i = 0; i < reduction_indices_t->NumElements(); ++i) {
@@ -679,19 +683,12 @@ Status ReductionShape(InferenceContext* c) {
       wrapped_index += input_rank;
     }
 
-    DimensionHandle reduce_dim = c->Dim(input, wrapped_index);
-    if (c->ValueKnown(reduce_dim) && c->Value(reduce_dim) == 0) {
-      return errors::InvalidArgument("Cannot reduce dimension ",
-                                     reduction_index, " with size 0");
-    }
-
     true_indices.insert(wrapped_index);
   }
 
   std::vector<DimensionHandle> dims;
-  bool reduce_all = reduction_indices_t->NumElements() == 0;
   for (int i = 0; i < input_rank; ++i) {
-    if (reduce_all || true_indices.count(i) > 0) {
+    if (true_indices.count(i) > 0) {
       if (keep_dims) {
         dims.emplace_back(c->MakeDim(1));
       }
