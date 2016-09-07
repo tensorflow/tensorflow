@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataPoint, DataSet, DataSource} from './data';
+import {DataPoint, DataSet, DataSource, PCA_SAMPLE_DIM, SAMPLE_SIZE} from './data';
 import {DataProvider, getDataProvider} from './data-loader';
 import * as knn from './knn';
 import {Mode, Scatter} from './scatter';
@@ -711,6 +711,10 @@ export class Projector extends ProjectorPolymer {
       clearButton.style('display', 'none');
     }
   }
+
+  getPcaSampledDim() { return PCA_SAMPLE_DIM.toLocaleString(); }
+
+  getTsneSampleSize() { return SAMPLE_SIZE.toLocaleString(); }
 
   private getCentroid(pattern: string): CentroidResult {
     let accessor = (a: DataPoint) => a.vector;

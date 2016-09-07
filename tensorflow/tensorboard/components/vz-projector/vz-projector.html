@@ -466,7 +466,7 @@ paper-listbox .pca-item {
     <!-- TSNE Controls -->
     <div data-panel="tsne" class="ink-panel-content">
       <p><a href="https://en.wikipedia.org/wiki/T-distributed_stochastic_neighbor_embedding">t-distributed stochastic neighbor embedding</a> is a dimensionality reduction technique</p>
-      <p style="color: #880E4F; font-weight: bold;">For fast results, your data will be sampled down to 10,000 points.</p>
+      <p style="color: #880E4F; font-weight: bold;">For fast results, your data will be sampled down to [[getTsneSampleSize()]] points.</p>
       <div class="slider"><label>Dimension</label><div class="two-way-toggle"><span>2D</span><paper-toggle-button id="tsne-toggle" noink checked>3D</paper-toggle-button></div></div>
       <div class="slider tsne-perplexity">
         <label>Perplexity</label>
@@ -488,7 +488,8 @@ paper-listbox .pca-item {
     </div>
     <!-- PCA Controls -->
     <div data-panel="pca" class="ink-panel-content">
-      <p><a href="https://en.wikipedia.org/wiki/Principal_component_analysis">Principal component analysis</a> is a dimensionality reduction technique</p>
+      <p><a href="https://en.wikipedia.org/wiki/Principal_component_analysis">Principal component analysis</a> is a dimensionality reduction technique.</p>
+      <p style="color: #880E4F; font-weight: bold;">For fast results, your data will be sampled down to [[getPcaSampledDim()]] dimensions, so the PCA computation is approximate.</p>
       <label>X</label>
       <paper-listbox class="has-border" selected="{{pcaX}}">
         <template is="dom-repeat" items="[[pcaComponents]]">
