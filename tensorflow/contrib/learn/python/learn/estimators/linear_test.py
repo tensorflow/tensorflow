@@ -275,6 +275,55 @@ class LinearClassifierTest(tf.test.TestCase):
     self.assertTrue(np.array_equal(out1_proba, out2_proba))
 
   def testWeightColumn(self):
+    """Tests training with given weight column."""
+
+    def _input_fn_train():
+      # Create 4 rows, one of them (y = x), three of them (y=Not(x))
+      # First row has more weight than others. Model should fit (y=x) better
+      # than (y=Not(x)) due to the relative higher weight of the first row.
+      target = tf.constant([[1], [0], [0], [0]])
+      features = {
+          'x': tf.ones(shape=[4, 1], dtype=tf.float32),
+          'w': tf.constant([[100.], [3.], [2.], [2.]])
+      }
+      return features, target
+
+    def _input_fn_eval():
+      # Create 4 rows (y = x)
+      target = tf.constant([[1], [1], [1], [1]])
+      features = {
+          'x': tf.ones(shape=[4, 1], dtype=tf.float32),
+          'w': tf.constant([[1.], [1.], [1.], [1.]])
+      }
+      return features, target
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        weight_column_name='w',
+        feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+
+    classifier.fit(input_fn=_input_fn_train, steps=100)
+    scores = classifier.evaluate(input_fn=_input_fn_eval, steps=1)
+    # All examples in eval data set are y=x.
+    self.assertGreater(scores['labels/actual_target_mean'], 0.9)
+    # If there were no weight column, model would learn y=Not(x). Because of
+    # weights, it learns y=x.
+    self.assertGreater(scores['labels/prediction_mean'], 0.9)
+    # All examples in eval data set are y=x. So if weight column were ignored,
+    # then accuracy would be zero. Because of weights, accuracy should be close
+    # to 1.0.
+    self.assertGreater(scores['accuracy'], 0.9)
+
+    scores_train_set = classifier.evaluate(input_fn=_input_fn_train, steps=1)
+    # Considering weights, the mean target should be close to 1.0.
+    # If weights were ignored, it would be 0.25.
+    self.assertGreater(scores_train_set['labels/actual_target_mean'], 0.9)
+    # The classifier has learned y=x.  If weight column were ignored in
+    # evaluation, then accuracy for the train set would be 0.25.
+    # Because weight is not ignored, accuracy is greater than 0.6.
+    self.assertGreater(scores_train_set['accuracy'], 0.6)
+
+  def testWeightColumnLoss(self):
     """Test ensures that you can specify per-example weights for loss."""
 
     def _input_fn():

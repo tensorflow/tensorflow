@@ -433,36 +433,59 @@ def get_default_binary_metrics_for_eval(thresholds):
   # a reminder to users.
   metrics[_MetricKeys.ACCURACY_BASELINE] = _targets_streaming_mean
 
-  metrics[_MetricKeys.AUC] = metrics_lib.streaming_auc
+  metrics[_MetricKeys.AUC] = _streaming_auc
 
   for threshold in thresholds:
-    metrics[_MetricKeys.ACCURACY_MEAN % threshold] = _streaming_with_threshold(
-        metrics_lib.streaming_accuracy, threshold)
+    metrics[_MetricKeys.ACCURACY_MEAN % threshold] = _accuracy_at_threshold(
+        threshold)
     # Precision for positive examples.
-    metrics[_MetricKeys.PRECISION_MEAN % threshold] = _streaming_with_threshold(
-        metrics_lib.streaming_precision, threshold)
+    metrics[_MetricKeys.PRECISION_MEAN % threshold] = _streaming_at_threshold(
+        metrics_lib.streaming_precision_at_thresholds, threshold)
     # Recall for positive examples.
-    metrics[_MetricKeys.RECALL_MEAN % threshold] = _streaming_with_threshold(
-        metrics_lib.streaming_recall, threshold)
+    metrics[_MetricKeys.RECALL_MEAN % threshold] = _streaming_at_threshold(
+        metrics_lib.streaming_recall_at_thresholds, threshold)
 
   return metrics
 
 
-# TODO(zakaria): support weights.
-def _targets_streaming_mean(unused_predictions, targets):
-  return metrics_lib.streaming_mean(targets)
+def _float_weights_or_none(weights):
+  if weights is None:
+    return None
+  return math_ops.to_float(weights)
 
 
-def _predictions_streaming_mean(predictions, unused_targets):
-  return metrics_lib.streaming_mean(predictions)
+def _targets_streaming_mean(unused_predictions, targets, weights=None):
+  return metrics_lib.streaming_mean(targets, weights=weights)
 
 
-def _streaming_with_threshold(streaming_metrics_fn, threshold):
+def _predictions_streaming_mean(predictions, unused_targets, weights=None):
+  return metrics_lib.streaming_mean(predictions, weights=weights)
 
-  def _streaming_metrics(predictions, targets):
-    return streaming_metrics_fn(predictions=math_ops.to_float(
-        math_ops.greater_equal(predictions, threshold)),
-                                labels=targets)
+
+def _streaming_auc(predictions, targets, weights=None):
+  return metrics_lib.streaming_auc(predictions, targets,
+                                   weights=_float_weights_or_none(weights))
+
+
+def _accuracy_at_threshold(threshold):
+
+  def _accuracy_metric(predictions, targets, weights=None):
+    threshold_predictions = math_ops.to_float(
+        math_ops.greater_equal(predictions, threshold))
+    return metrics_lib.streaming_accuracy(predictions=threshold_predictions,
+                                          labels=targets,
+                                          weights=weights)
+
+  return _accuracy_metric
+
+
+def _streaming_at_threshold(streaming_metrics_fn, threshold):
+
+  def _streaming_metrics(predictions, targets, weights=None):
+    precision_tensor, update_op = streaming_metrics_fn(
+        predictions, labels=targets, thresholds=[threshold],
+        weights=_float_weights_or_none(weights))
+    return array_ops.squeeze(precision_tensor), update_op
 
   return _streaming_metrics
 

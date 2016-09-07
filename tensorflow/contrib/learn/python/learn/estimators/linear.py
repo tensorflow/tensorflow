@@ -396,6 +396,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     self._n_classes = n_classes
     self._feature_columns = feature_columns
     assert self._feature_columns
+    self._weight_column_name = weight_column_name
     self._optimizer = _get_default_optimizer(feature_columns)
     if optimizer:
       self._optimizer = _get_optimizer(optimizer)
@@ -445,14 +446,16 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     if not metrics:
       metrics = {}
       metrics["accuracy"] = metric_spec.MetricSpec(
-          metric_fn=metrics_lib.streaming_accuracy,
-          prediction_key=_CLASSES)
+          metric_fn=_wrap_metric(metrics_lib.streaming_accuracy),
+          prediction_key=_CLASSES,
+          weight_key=self._weight_column_name)
     if self._n_classes == 2:
       additional_metrics = (
           target_column.get_default_binary_metrics_for_eval([0.5]))
       additional_metrics = {
           name: metric_spec.MetricSpec(metric_fn=metric,
-                                       prediction_key=_LOGISTIC)
+                                       prediction_key=_LOGISTIC,
+                                       weight_key=self._weight_column_name)
           for name, metric in additional_metrics.items()
       }
       metrics.update(additional_metrics)
