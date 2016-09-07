@@ -468,6 +468,33 @@ def relu6(features, name=None):
     features = ops.convert_to_tensor(features, name="features")
     return gen_nn_ops._relu6(features, name=name)
 
+
+def _flatten_outer_dims(logits):
+  """Flattens logits' outer dimensions and keep its last dimension."""
+  rank = array_ops.rank(logits)
+  last_dim_size = array_ops.slice(
+      array_ops.shape(logits), [math_ops.sub(rank, 1)], [1])
+  output = array_ops.reshape(logits, array_ops.concat(0, [[-1], last_dim_size]))
+
+  # Set output shape if known.
+  shape = logits.get_shape()
+  if shape is not None and shape.dims is not None:
+    shape = shape.as_list()
+    product = 1
+    product_valid = True
+    for d in shape[:-1]:
+      if d is None:
+        product_valid = False
+        break
+      else:
+        product *= d
+    if product_valid:
+      output_shape = [product, shape[-1]]
+      output.set_shape(output_shape)
+
+  return output
+
+
 def _softmax(logits, compute_op, dim=-1, name=None):
   """Helper function for softmax and log_softmax.
 
@@ -489,20 +516,11 @@ def _softmax(logits, compute_op, dim=-1, name=None):
     InvalidArgumentError: if `logits` is empty or `dim` is beyond the last
       dimension of `logits`.
   """
-  # Helper function to swap dim_index and last_index of logits. last_index must
-  # be logits' last dimension.
   def _swap_axis(logits, dim_index, last_index):
+    """Swaps logits's dim_index and last_index."""
     return array_ops.transpose(logits, array_ops.concat(
         0, [math_ops.range(dim_index), [last_index],
             math_ops.range(dim_index + 1, last_index), [dim_index]]))
-
-  # Helper function to flatten logits' outer dimensions and keep its last
-  # dimension.
-  def _flatten_outer_dims(logits):
-    rank = array_ops.rank(logits)
-    last_dim_size = array_ops.slice(
-        array_ops.shape(logits), [math_ops.sub(rank, 1)], [1])
-    return array_ops.reshape(logits, array_ops.concat(0, [[-1], last_dim_size]))
 
   logits = ops.convert_to_tensor(logits)
   if logits.get_shape().ndims is 2 and dim is -1:
@@ -592,7 +610,7 @@ def log_softmax(logits, dim=-1, name=None):
   return _softmax(logits, gen_nn_ops._log_softmax, dim, name)
 
 
-def softmax_cross_entropy_with_logits(logits, labels, name=None):
+def softmax_cross_entropy_with_logits(logits, labels, dim=-1, name=None):
   """Computes softmax cross entropy between `logits` and `labels`.
 
   Measures the probability error in discrete classification tasks in which the
@@ -618,6 +636,7 @@ def softmax_cross_entropy_with_logits(logits, labels, name=None):
   Args:
     logits: Unscaled log probabilities.
     labels: Each row `labels[i]` must be a valid probability distribution.
+    dim: The class dimension. Defaulted to -1 which is the last dimension.
     name: A name for the operation (optional).
 
   Returns:
@@ -629,13 +648,47 @@ def softmax_cross_entropy_with_logits(logits, labels, name=None):
   # results.
 
   logits = ops.convert_to_tensor(logits)
+  labels = ops.convert_to_tensor(labels)
   precise_logits = math_ops.cast(logits, dtypes.float32) if (
       logits.dtype == dtypes.float16) else logits
+  input_rank = array_ops.rank(precise_logits)
+  # For shape inference.
+  shape = logits.get_shape()
 
+  # Move the dim to the end if dim is not the last dimension.
+  if dim is not -1:
+    def _move_dim_to_end(tensor, dim_index, rank):
+      return array_ops.transpose(tensor, array_ops.concat(
+          0, [math_ops.range(dim_index), math_ops.range(dim_index + 1, rank),
+              [dim_index]]))
+
+    precise_logits = _move_dim_to_end(precise_logits, dim, input_rank)
+    labels = _move_dim_to_end(labels, dim, input_rank)
+
+  input_shape = array_ops.shape(precise_logits)
+
+  # Make precise_logits and labels into matrices.
+  precise_logits = _flatten_outer_dims(precise_logits)
+  labels = _flatten_outer_dims(labels)
+
+  # Do the actual op computation.
   # The second output tensor contains the gradients.  We use it in
   # _CrossEntropyGrad() in nn_grad but not here.
   cost, unused_backprop = gen_nn_ops._softmax_cross_entropy_with_logits(
       precise_logits, labels, name=name)
+
+  # The output cost shape should be the input minus dim.
+  output_shape = array_ops.slice(input_shape, [0],
+                                 [math_ops.sub(input_rank, 1)])
+  cost = array_ops.reshape(cost, output_shape)
+
+  # Make shape inference work since reshape and transpose may erase its static
+  # shape.
+  if shape is not None and shape.dims is not None:
+    shape = shape.as_list()
+    del shape[dim]
+    cost.set_shape(shape)
+
   if logits.dtype == dtypes.float16:
     return math_ops.cast(cost, dtypes.float16)
   else:
