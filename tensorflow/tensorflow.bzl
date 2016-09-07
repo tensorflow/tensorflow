@@ -114,6 +114,20 @@ def if_ios(a):
       "//conditions:default": [],
   })
 
+def if_mobile(a):
+  return select({
+      "//tensorflow:android": a,
+      "//tensorflow:ios": a,
+      "//conditions:default": [],
+  })
+
+def if_not_mobile(a):
+  return select({
+      "//tensorflow:android": [],
+      "//tensorflow:ios": [],
+      "//conditions:default": a,
+  })
+
 def tf_copts():
   return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY"] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +

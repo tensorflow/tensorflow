@@ -116,6 +116,11 @@ cc_library(
     name = "lib_proto_parsing",
     srcs = glob(tf_additional_proto_srcs()),
     hdrs = [
+        "lib/core/errors.h",
+        "lib/core/status.h",
+        "lib/core/stringpiece.h",
+        "lib/strings/numbers.h",
+        "lib/strings/strcat.h",
         "platform/init_main.h",
         "platform/logging.h",
         "platform/macros.h",
@@ -124,6 +129,7 @@ cc_library(
         "platform/types.h",
     ],
     deps = [
+        ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:proto_parsing",
     ],
 )
@@ -680,6 +686,25 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "ios_tensorflow_test_lib",
+    testonly = 1,
+    srcs = if_ios([":android_test_srcs"]),
+    copts = tf_copts() + ["-Os"],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":android_test_proto_lib",
+        ":ios_tensorflow_lib",
+        "//base",
+        "//tensorflow/core/platform/default/build_config:gtest",
+        "//third_party/eigen3",
+    ],
+)
+
 # Full TensorFlow library with operator support. Use this unless reducing
 # binary size (by packaging a reduced operator set) is a concern.
 cc_library(
@@ -748,6 +773,21 @@ filegroup(
     srcs = [
         "//tensorflow/core:framework/fake_input.cc",
         "//tensorflow/core:framework/fake_input.h",
+        "//tensorflow/core:framework/shape_inference_testutil.cc",
+        "//tensorflow/core:framework/shape_inference_testutil.h",
+        "//tensorflow/core:framework/tensor_testutil.cc",
+        "//tensorflow/core:framework/tensor_testutil.h",
+        "//tensorflow/core:platform/test.h",
+        "//tensorflow/core:util/reporter.cc",
+        "//tensorflow/core:util/reporter.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# This is like android_test_srcs, minus the things that are already in android_srcs.
+filegroup(
+    name = "android_test_srcs_no_core",
+    srcs = [
         "//tensorflow/core:framework/shape_inference_testutil.cc",
         "//tensorflow/core:framework/shape_inference_testutil.h",
         "//tensorflow/core:framework/tensor_testutil.cc",

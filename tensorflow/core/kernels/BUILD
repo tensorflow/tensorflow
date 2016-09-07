@@ -20,6 +20,7 @@ load(
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
+    "tf_opts_nortti_if_android",
     "tf_kernel_libraries",
     "tf_kernel_library",
     "cc_header_only_library",
@@ -2162,6 +2163,30 @@ cc_library(
     deps = [
         "//tensorflow/core:android_tensorflow_lib_lite",
         "//tensorflow/core:protos_cc",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "android_tensorflow_kernels_no_rtti_lite_runtime",
+    srcs = select({
+        "//tensorflow:android": [
+            "//tensorflow/core/kernels:android_core_ops",
+            "//tensorflow/core/kernels:android_extended_ops",
+        ],
+        "//conditions:default": [],
+    }),
+    copts = tf_copts() + tf_opts_nortti_if_android(),
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//base",
+        "//tensorflow/core:android_proto_lib_no_rtti_lite_runtime",
+        "//tensorflow/core:android_tensorflow_lib_lite_no_rtti_lite_runtime",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
