@@ -3163,7 +3163,7 @@ tf.segment_sum(c, tf.constant([0, 0, 1]))
 
 
 *  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`indices`</b>: A `Tensor` of type `int32`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor. Has same rank as `segment_ids`.
 *  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
     A 1-D tensor. Values should be sorted and can be repeated.
@@ -3193,7 +3193,7 @@ dimension, selecting a subset of dimension 0, specified by `indices`.
 
 
 *  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-*  <b>`indices`</b>: A `Tensor` of type `int32`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor. Has same rank as `segment_ids`.
 *  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
     A 1-D tensor. Values should be sorted and can be repeated.
@@ -3222,7 +3222,7 @@ of segments.
 
 
 *  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-*  <b>`indices`</b>: A `Tensor` of type `int32`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor. Has same rank as `segment_ids`.
 *  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
     A 1-D tensor. Values should be sorted and can be repeated.
@@ -3254,7 +3254,7 @@ Returns the index with the smallest value across dimensions of a tensor.
 
 
 *  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`dimension`</b>: A `Tensor` of type `int32`.
+*  <b>`dimension`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     int32, 0 <= dimension < rank(input).  Describes which dimension
     of the input Tensor to reduce across. For vectors, use dimension = 0.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -3274,7 +3274,7 @@ Returns the index with the largest value across dimensions of a tensor.
 
 
 *  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`dimension`</b>: A `Tensor` of type `int32`.
+*  <b>`dimension`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     int32, 0 <= dimension < rank(input).  Describes which dimension
     of the input Tensor to reduce across. For vectors, use dimension = 0.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -3287,7 +3287,7 @@ Returns the index with the largest value across dimensions of a tensor.
 
 - - -
 
-### `tf.listdiff(x, y, name=None)` {#listdiff}
+### `tf.listdiff(x, y, out_idx=None, name=None)` {#listdiff}
 
 Computes the difference between two lists of numbers or strings.
 
@@ -3318,6 +3318,7 @@ idx ==> [1, 3, 5]
 
 *  <b>`x`</b>: A `Tensor`. 1-D. Values to keep.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`. 1-D. Values to remove.
+*  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -3325,7 +3326,7 @@ idx ==> [1, 3, 5]
   A tuple of `Tensor` objects (out, idx).
 
 *  <b>`out`</b>: A `Tensor`. Has the same type as `x`. 1-D. Values present in `x` but not in `y`.
-*  <b>`idx`</b>: A `Tensor` of type `int32`. 1-D. Positions of `x` values preserved in `out`.
+*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D. Positions of `x` values preserved in `out`.
 
 
 - - -
@@ -3379,7 +3380,7 @@ where(input) ==> [[0, 0, 0],
 
 - - -
 
-### `tf.unique(x, name=None)` {#unique}
+### `tf.unique(x, out_idx=None, name=None)` {#unique}
 
 Finds unique elements in a 1-D tensor.
 
@@ -3403,6 +3404,7 @@ idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 
 
 *  <b>`x`</b>: A `Tensor`. 1-D.
+*  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -3410,7 +3412,7 @@ idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
   A tuple of `Tensor` objects (y, idx).
 
 *  <b>`y`</b>: A `Tensor`. Has the same type as `x`. 1-D.
-*  <b>`idx`</b>: A `Tensor` of type `int32`. 1-D.
+*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D.
 
 
 
@@ -3508,12 +3510,12 @@ invert_permutation(x) ==> [2, 4, 3, 0, 1]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `int32`. 1-D.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`. 1-D.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `int32`. 1-D.
+  A `Tensor`. Has the same type as `x`. 1-D.
 
 
 
@@ -3558,7 +3560,7 @@ value is output_dim0.
 
 *  <b>`grad`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     gradient propagated to the SparseSegmentSqrtN op.
-*  <b>`indices`</b>: A `Tensor` of type `int32`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     indices passed to the corresponding SparseSegmentSqrtN op.
 *  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
     segment_ids passed to the corresponding SparseSegmentSqrtN op.
