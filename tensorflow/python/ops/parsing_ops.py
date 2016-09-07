@@ -28,7 +28,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_parsing_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,undefined-variable
@@ -492,7 +491,7 @@ def _parse_single_example_raw(serialized,
         raise ValueError("Input serialized must be a scalar")
     else:
       serialized = control_flow_ops.with_dependencies(
-          [logging_ops.Assert(
+          [control_flow_ops.Assert(
               math_ops.equal(array_ops.rank(serialized), 0),
               ["Input serialized must be a scalar"],
               name="SerializedIsScalar")],
@@ -507,7 +506,7 @@ def _parse_single_example_raw(serialized,
           raise ValueError("Input names must be a scalar")
       else:
         names = control_flow_ops.with_dependencies(
-            [logging_ops.Assert(
+            [control_flow_ops.Assert(
                 math_ops.equal(array_ops.rank(names), 0),
                 ["Input names must be a scalar"],
                 name="NamesIsScalar")],

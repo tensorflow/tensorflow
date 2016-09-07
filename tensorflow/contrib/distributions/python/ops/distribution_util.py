@@ -28,7 +28,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -65,7 +64,7 @@ def assert_close(
           y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.less_equal(math_ops.abs(x-y), tol))
-    return logging_ops.Assert(
+    return control_flow_ops.Assert(
         condition, data, summarize=summarize)
 
 

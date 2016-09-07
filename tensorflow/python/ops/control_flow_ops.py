@@ -84,7 +84,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 # go/tf-wildcard-import
@@ -101,6 +101,45 @@ _basetuple = tuple
 
 
 # pylint: disable=protected-access
+
+
+# Assert and Print are special symbols in python, so we must
+# use an upper-case version of them.
+def Assert(condition, data, summarize=None, name=None):
+  """Asserts that the given condition is true.
+
+  If `condition` evaluates to false, print the list of tensors in `data`.
+  `summarize` determines how many entries of the tensors to print.
+
+  NOTE: To ensure that Assert executes, one usually attaches a dependency:
+
+  ```python
+   # Ensure maximum element of x is smaller or equal to 1
+  assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
+  x = tf.with_dependencies([assert_op], x)
+  ```
+
+  Args:
+    condition: The condition to evaluate.
+    data: The tensors to print out when condition is false.
+    summarize: Print this many entries of each tensor.
+    name: A name for this operation (optional).
+
+  Returns:
+    assert_op: An `Operation` that, when executed, raises a
+    `tf.errors.InvalidArgumentError` if `condition` is not true.
+  """
+  with ops.name_scope(name, "Assert", [condition, data]) as name:
+    condition = ops.convert_to_tensor(condition, name="Condition")
+    def true_assert():
+      return gen_logging_ops._assert(
+          condition, data, summarize, name="Assert")
+    # TODO(ebrevdo): Remove the cond once when can tell all inputs are on host.
+    guarded_assert = cond(
+        condition, no_op, true_assert, name="AssertGuard")
+    return guarded_assert.op
+
+
 def _Identity(data, name=None):
   """Return a tensor with the same shape and contents as the input tensor.
 
@@ -2672,8 +2711,8 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
            % ", ".join([p.name for p in preds])),
           preds_c]
       with ops.control_dependencies([
-          logging_ops.Assert(condition=at_most_one_true_condition,
-                             data=error_msg, summarize=len(preds))]):
+          Assert(condition=at_most_one_true_condition,
+                 data=error_msg, summarize=len(preds))]):
         case_seq = _build_case()
     else:
       case_seq = _build_case()

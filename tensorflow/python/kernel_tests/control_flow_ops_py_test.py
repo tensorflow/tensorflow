@@ -26,12 +26,13 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from tensorflow.python.client import device_lib
 from tensorflow.python.framework import function
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.util import nest
 
@@ -65,6 +66,39 @@ def isum(s):
   b = lambda i, s: [tf.add(i, 1), tf.add(i, s)]
   _, r_s = tf.while_loop(c, b, [i, s])
   return r_s
+
+
+class AssertTest(tf.test.TestCase):
+
+  def testGuardedAssertDoesNotCopyWhenTrue(self):
+    with self.test_session(use_gpu=True) as sess:
+      with tf.device("/gpu:0"):
+        value = tf.constant(1.0)
+      with tf.device("/cpu:0"):
+        true = tf.constant(True)
+        guarded_assert = tf.Assert(true, [value], name="guarded")
+        unguarded_assert = gen_logging_ops._assert(
+            true, [value], name="unguarded")
+      opts = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+      guarded_metadata = tf.RunMetadata()
+      sess.run(guarded_assert, options=opts, run_metadata=guarded_metadata)
+      unguarded_metadata = tf.RunMetadata()
+      sess.run(unguarded_assert, options=opts, run_metadata=unguarded_metadata)
+      guarded_nodestat_names = [
+          n.node_name for d in guarded_metadata.step_stats.dev_stats
+          for n in d.node_stats]
+      unguarded_nodestat_names = [
+          n.node_name for d in unguarded_metadata.step_stats.dev_stats
+          for n in d.node_stats]
+      guarded_memcpy_nodestat_names = [
+          n for n in guarded_nodestat_names if "MEMCPYDtoH" in n]
+      unguarded_memcpy_nodestat_names = [
+          n for n in unguarded_nodestat_names if "MEMCPYDtoH" in n]
+      if "GPU" in [d.device_type for d in device_lib.list_local_devices()]:
+        # A copy was performed for the unguarded assert
+        self.assertLess(0, len(unguarded_memcpy_nodestat_names))
+      # No copy was performed for the guarded assert
+      self.assertEqual([], guarded_memcpy_nodestat_names)
 
 
 class ControlFlowTest(tf.test.TestCase):

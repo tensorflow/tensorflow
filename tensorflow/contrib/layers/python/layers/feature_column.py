@@ -85,8 +85,8 @@ from tensorflow.contrib.lookup import lookup_ops as contrib_lookup_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
@@ -723,7 +723,7 @@ class _OneHotColumn(_FeatureColumn,
         self.sparse_id_column.id_tensor(transformed_input_tensor),
         default_value=-1)
 
-    check_shape_op = logging_ops.Assert(
+    check_shape_op = control_flow_ops.Assert(
         math_ops.equal(array_ops.rank(dense_id_tensor), 2),
         ["Tensor should be of shape: [batch, max num multivalent values]"])
     with ops.control_dependencies([check_shape_op]):

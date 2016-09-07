@@ -85,8 +85,8 @@ from tensorflow.python.framework import tensor_util
 # 'Constant' gets imported in the module 'array_ops'.
 from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import logging_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
@@ -1464,7 +1464,10 @@ def meshgrid(*args, **kwargs):
     num_inputs = len(args)
     ones = (1,) * num_inputs
 
-    asserts = [logging_ops.Assert(
+    # Cannot import Assert from control_flow_ops, so we incur the
+    # penalty of possibly copying from GPU to CPU regardless of the
+    # equality of the predicate.
+    asserts = [gen_logging_ops._assert(
                  gen_math_ops.equal(rank(x), 1),
                  ["Input %d needs to have rank 1: " % i, rank(x)],
                ) for i, x in enumerate(args)]

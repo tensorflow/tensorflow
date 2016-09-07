@@ -130,7 +130,7 @@ def _add_bias_column(feature_columns, columns_to_tensors, bias_variable,
 
 
 def _log_loss_with_two_classes(logits, target):
-  check_shape_op = logging_ops.Assert(
+  check_shape_op = control_flow_ops.Assert(
       math_ops.less_equal(array_ops.rank(target), 2),
       ["target's shape should be either [batch_size, 1] or [batch_size]"])
   with ops.control_dependencies([check_shape_op]):
@@ -140,7 +140,7 @@ def _log_loss_with_two_classes(logits, target):
 
 
 def _softmax_cross_entropy_loss(logits, target):
-  check_shape_op = logging_ops.Assert(
+  check_shape_op = control_flow_ops.Assert(
       math_ops.less_equal(array_ops.rank(target), 2),
       ["target's shape should be either [batch_size, 1] or [batch_size]"])
   with ops.control_dependencies([check_shape_op]):
@@ -149,7 +149,7 @@ def _softmax_cross_entropy_loss(logits, target):
 
 
 def _hinge_loss(logits, target):
-  check_shape_op = logging_ops.Assert(
+  check_shape_op = control_flow_ops.Assert(
       math_ops.less_equal(array_ops.rank(target), 2),
       ["target's shape should be either [batch_size, 1] or [batch_size]"])
   with ops.control_dependencies([check_shape_op]):

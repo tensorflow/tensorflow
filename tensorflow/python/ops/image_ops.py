@@ -173,10 +173,10 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_nn_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -212,7 +212,7 @@ def _assert(cond, ex_type, msg):
     A list, containing at most one assert op.
   """
   if _is_tensor(cond):
-    return [logging_ops.Assert(cond, [msg])]
+    return [control_flow_ops.Assert(cond, [msg])]
   else:
     if not cond:
       raise ex_type(msg)

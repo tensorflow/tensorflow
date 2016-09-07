@@ -25,7 +25,7 @@ from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 
@@ -348,7 +348,7 @@ class _BinarySvmTargetColumn(_MultiClassTargetColumn):
 
   def __init__(self, label_name, weight_column_name):
     def loss_fn(logits, target):
-      check_shape_op = logging_ops.Assert(
+      check_shape_op = control_flow_ops.Assert(
           math_ops.less_equal(array_ops.rank(target), 2),
           ["target's shape should be either [batch_size, 1] or [batch_size]"])
       with ops.control_dependencies([check_shape_op]):
