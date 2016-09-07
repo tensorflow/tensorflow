@@ -105,7 +105,7 @@ _baseslice = slice
 listdiff = gen_array_ops.list_diff
 
 
-def shape(input, name=None):
+def shape(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
 
@@ -121,14 +121,16 @@ def shape(input, name=None):
   Args:
     input: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
+    out_type: (Optional) The specified output type of the operation
+      (`int32` or `int64`). Defaults to tf.int32.
 
   Returns:
-    A `Tensor` of type `int32`.
+    A `Tensor` of type `out_type`.
   """
-  return shape_internal(input, name, optimize=True)
+  return shape_internal(input, name, optimize=True, out_type=out_type)
 
 
-def shape_internal(input, name=None, optimize=True):
+def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
 
@@ -136,22 +138,25 @@ def shape_internal(input, name=None, optimize=True):
     input: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
     optimize: if true, encode the shape as a constant when possible.
+    out_type: (Optional) The specified output type of the operation
+      (`int32` or `int64`). Defaults to tf.int32.
 
   Returns:
-    A `Tensor` of type `int32`.
+    A `Tensor` of type `out_type`.
+
   """
   with ops.name_scope(name, "Shape", [input]) as name:
     if isinstance(input, (ops.SparseTensor, ops.SparseTensorValue)):
-      return gen_math_ops.cast(input.shape, dtypes.int32)
+      return gen_math_ops.cast(input.shape, out_type)
     else:
       input_tensor = ops.convert_to_tensor(input)
       input_shape = input_tensor.get_shape()
       if optimize and input_shape.is_fully_defined():
-        return constant(input_shape.as_list(), dtypes.int32, name=name)
-      return gen_array_ops.shape(input, name=name)
+        return constant(input_shape.as_list(), out_type, name=name)
+      return gen_array_ops.shape(input, name=name, out_type=out_type)
 
 
-def size(input, name=None):
+def size(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
 
@@ -168,14 +173,16 @@ def size(input, name=None):
   Args:
     input: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
+    out_type: (Optional) The specified output type of the operation
+      (`int32` or `int64`). Defaults to tf.int32.
 
   Returns:
-    A `Tensor` of type `int32`.
+    A `Tensor` of type `out_type`. Defaults to tf.int32.
   """
-  return size_internal(input, name, optimize=True)
+  return size_internal(input, name, optimize=True, out_type=out_type)
 
 
-def size_internal(input, name=None, optimize=True):
+def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin,protected-access
   """Returns the size of a tensor.
 
@@ -183,20 +190,22 @@ def size_internal(input, name=None, optimize=True):
     input: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
     optimize: if true, encode the size as a constant when possible.
+    out_type: (Optional) The specified output type of the operation
+      (`int32` or `int64`). Defaults to tf.int32.
 
   Returns:
-    A `Tensor` of type `int32`.
+    A `Tensor` of type `out_type`.
   """
   with ops.name_scope(name, "Size", [input]) as name:
     if isinstance(input, (ops.SparseTensor, ops.SparseTensorValue)):
-      return gen_math_ops._prod(gen_math_ops.cast(input.shape, dtypes.int32), 0,
-                                name=name)
+      return gen_math_ops._prod(
+          gen_math_ops.cast(input.shape, out_type), 0, name=name)
     else:
       input_tensor = ops.convert_to_tensor(input)
       input_shape = input_tensor.get_shape()
       if optimize and input_shape.is_fully_defined():
-        return constant(input_shape.num_elements(), dtypes.int32, name=name)
-      return gen_array_ops.size(input, name=name)
+        return constant(input_shape.num_elements(), out_type, name=name)
+      return gen_array_ops.size(input, name=name, out_type=out_type)
 
 
 def rank(input, name=None):
