@@ -20,7 +20,7 @@ limitations under the License.
 <link rel="import" href="../paper-listbox/paper-listbox.html">
 <link rel="import" href="../paper-item/paper-item.html">
 <link rel="import" href="../paper-checkbox/paper-checkbox.html">
-<link rel="import" href="vz-projector-data-loader.html">
+<link rel="import" href="vz-projector-data-panel.html">
 
 <dom-module id='vz-projector'>
 <template>
@@ -616,7 +616,7 @@ paper-listbox .pca-item {
 
     <!-- Data UI controls -->
     <div data-panel="data" class="active ink-panel-content">
-      <vz-projector-data-loader data-source="{{dataSource}}" label-option="{{labelOption}}" color-option="{{colorOption}}"></vz-projector-data-loader>
+      <vz-projector-data-panel id="data-panel" label-option="{{labelOption}}" color-option="{{colorOption}}"></vz-projector-data-panel>
     </div>
   </div>
 </div>

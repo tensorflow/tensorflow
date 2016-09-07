@@ -1363,7 +1363,7 @@ export class ScatterWebGL implements Scatter {
 
   setLabelAccessor(labelAccessor: (index: number) => string) {
     this.labelAccessor = labelAccessor;
-    this.render();
+    this.makeLabels();
   }
 
   setMode(mode: Mode) {
