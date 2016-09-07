@@ -41,6 +41,18 @@ filegroup(
     ),
 )
 
+cc_library(
+    name = "all_ops",
+    srcs = [":custom_op_sources"],
+    hdrs = [":custom_op_headers"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf//:protobuf",
+    ],
+    alwayslink = 1,
+)
+
 py_library(
     name = "constants",
     srcs = [
