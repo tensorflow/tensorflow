@@ -587,7 +587,7 @@ toolkit is installed in `/usr/local/cuda`, run the following commands (edited
 to reflect the cuDNN version you downloaded):
 
 ``` bash
-tar xvzf cudnn-7.5-linux-x64-v5.0-ga.tgz
+tar xvzf cudnn-7.5-linux-x64-v5.1-ga.tgz
 sudo cp cuda/include/cudnn.h /usr/local/cuda/include
 sudo cp cuda/lib64/libcudnn* /usr/local/cuda/lib64
 sudo chmod a+r /usr/local/cuda/include/cudnn.h /usr/local/cuda/lib64/libcudnn*
@@ -730,7 +730,7 @@ Configuration finished
 
 This creates a canonical set of symbolic links to the Cuda libraries on your system.
 Every time you change the Cuda library paths you need to run this step again before
-you invoke the bazel build command. For the cuDNN libraries, use '7.0' for R3, and '4.0.4' for R4-RC.
+you invoke the bazel build command. For the cuDNN libraries, use '7.0' for R3, and '4.0.7' for R4.
 
 #### Build your target with GPU support
 From the root of your source tree, run:
