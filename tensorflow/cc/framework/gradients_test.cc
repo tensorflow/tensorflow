@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
+#include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -28,8 +29,6 @@ using namespace ops;  // NOLINT(build/namespaces)
 namespace {
 
 // TODO(andydavis) Add more unit tests once more gradient functions are ported.
-// TODO(andydavis) Add unit test that adds gradients to compute two Outputs,
-// where the gradient w.r.t. one Output depends on the other.
 class GradientsTest : public ::testing::Test {
  protected:
   GradientsTest()
@@ -38,9 +37,9 @@ class GradientsTest : public ::testing::Test {
 
   void CompareTestAndExpectedGraphs() {
     GraphDef gdef_test;
-    TF_EXPECT_OK(scope_test_.ToGraphDef(&gdef_test));
+    TF_ASSERT_OK(scope_test_.ToGraphDef(&gdef_test));
     GraphDef gdef_exp;
-    TF_EXPECT_OK(scope_expected_.ToGraphDef(&gdef_exp));
+    TF_ASSERT_OK(scope_expected_.ToGraphDef(&gdef_exp));
     TF_EXPECT_GRAPH_EQ(gdef_test, gdef_exp);
   }
 
@@ -74,13 +73,13 @@ class GradientsTest : public ::testing::Test {
 //
 
 TEST_F(GradientsTest, OneMatMul) {
-  bool expected = false;
-  for (Scope scope : {scope_test_, scope_expected_}) {
+  for (const bool expected : {false, true}) {
+    const Scope& scope = expected ? scope_expected_ : scope_test_;
     // Construct forward graph.
     auto x = Const(scope, {{1.0, 2.0}, {3.0, 4.0}});
     auto y = Const(scope, {{1.0, 0.0}, {0.0, 1.0}});
     auto z = MatMul(scope, x, y);
-    TF_EXPECT_OK(scope.status());
+    TF_ASSERT_OK(scope.status());
     CHECK_NOTNULL(z.node());
 
     if (expected) {
@@ -92,17 +91,16 @@ TEST_F(GradientsTest, OneMatMul) {
       // Call AddSymbolicGradients.
       auto dz = Const(scope, {{1.0, 1.0}, {1.0, 1.0}});
       std::vector<ops::Output> grad_outputs;
-      TF_EXPECT_OK(
+      TF_ASSERT_OK(
           AddSymbolicGradients(scope, {z}, {x, y}, {dz}, &grad_outputs));
     }
-    expected = true;
   }
   CompareTestAndExpectedGraphs();
 }
 
 TEST_F(GradientsTest, TwoMatMuls_Chained) {
-  bool expected = false;
-  for (Scope scope : {scope_test_, scope_expected_}) {
+  for (const bool expected : {false, true}) {
+    const Scope& scope = expected ? scope_expected_ : scope_test_;
     // Construct forward graph.
     auto u = Const(scope, {{1.0, 2.0}, {3.0, 4.0}});
     auto v = Const(scope, {{1.0, 0.0}, {0.0, 1.0}});
@@ -111,7 +109,7 @@ TEST_F(GradientsTest, TwoMatMuls_Chained) {
     auto y = Const(scope, {{1.0, 0.0}, {0.0, 1.0}});
     auto z = MatMul(scope, x, y);
 
-    TF_EXPECT_OK(scope.status());
+    TF_ASSERT_OK(scope.status());
     CHECK_NOTNULL(z.node());
 
     if (expected) {
@@ -126,28 +124,27 @@ TEST_F(GradientsTest, TwoMatMuls_Chained) {
       // Call AddSymbolicGradients.
       auto dz = Const(scope, {{1.0, 1.0}, {1.0, 1.0}});
       std::vector<ops::Output> grad_outputs;
-      TF_EXPECT_OK(
+      TF_ASSERT_OK(
           AddSymbolicGradients(scope, {z}, {u, v}, {dz}, &grad_outputs));
     }
-    expected = true;
   }
   CompareTestAndExpectedGraphs();
 }
 
 TEST_F(GradientsTest, TwoMatMuls_Independent) {
-  bool expected = false;
-  for (Scope scope : {scope_test_, scope_expected_}) {
+  for (const bool expected : {false, true}) {
+    const Scope& scope = expected ? scope_expected_ : scope_test_;
     // Construct forward graph.
     auto t = Const(scope, {{1.0, 2.0}, {3.0, 4.0}});
     auto u = Const(scope, {{1.0, 0.0}, {0.0, 1.0}});
     auto v = MatMul(scope, t, u);
-    TF_EXPECT_OK(scope.status());
+    TF_ASSERT_OK(scope.status());
     CHECK_NOTNULL(v.node());
 
     auto x = Const(scope, {{5.0, 6.0}, {7.0, 8.0}});
     auto y = Const(scope, {{1.0, 0.0}, {0.0, 1.0}});
     auto z = MatMul(scope, x, y);
-    TF_EXPECT_OK(scope.status());
+    TF_ASSERT_OK(scope.status());
     CHECK_NOTNULL(z.node());
 
     if (expected) {
@@ -161,15 +158,147 @@ TEST_F(GradientsTest, TwoMatMuls_Independent) {
       auto dy = MatMul(scope, x, dz, MatMul::TransposeA(true));
     } else {
       // Call AddSymbolicGradients.
-      auto dv = Const(scope_test_, {{1.0, 1.0}, {1.0, 1.0}});
-      auto dz = Const(scope_test_, {{1.0, 1.0}, {1.0, 1.0}});
+      auto dv = Const(scope, {{1.0, 1.0}, {1.0, 1.0}});
+      auto dz = Const(scope, {{1.0, 1.0}, {1.0, 1.0}});
       std::vector<ops::Output> grad_outputs;
-      TF_EXPECT_OK(AddSymbolicGradients(scope, {v, z}, {t, u, x, y}, {dv, dz},
+      TF_ASSERT_OK(AddSymbolicGradients(scope, {v, z}, {t, u, x, y}, {dv, dz},
                                         &grad_outputs));
     }
-    expected = true;
   }
   CompareTestAndExpectedGraphs();
+}
+
+TEST_F(GradientsTest, PackUnpack_Chained) {
+  for (const bool expected : {false, true}) {
+    const Scope& scope = expected ? scope_expected_ : scope_test_;
+    // Construct forward graph.
+    auto a = Const(scope, 1, {4, 2});
+    auto b = Const(scope, 2, {4, 2});
+    auto c = Const(scope, 3, {4, 2});
+
+    auto pack = Pack(scope, {a, b, c});
+    auto unpack = Unpack(scope, pack.output, 3);
+    TF_ASSERT_OK(scope.status());
+
+    // Construct grad inputs.
+    auto dx = Const(scope, 4, {4, 2});
+    auto dy = Const(scope, 5, {4, 2});
+    auto dz = Const(scope, 6, {4, 2});
+
+    if (expected) {
+      // Construct backward graph.
+      auto unpack_grad = Pack(scope, {dx, dy, dz});
+      auto pack_grad = Unpack(scope, unpack_grad.output, 3);
+    } else {
+      // Call AddSymbolicGradients.
+      std::vector<ops::Output> grad_outputs;
+      TF_ASSERT_OK(AddSymbolicGradients(scope, unpack.output, {a, b, c},
+                                        {dx, dy, dz}, &grad_outputs));
+    }
+  }
+  CompareTestAndExpectedGraphs();
+}
+
+TEST_F(GradientsTest, PackUnpack_StopBackprop) {
+  // Tests that backprop stops before calculating gradients for Pack (because
+  // only gradients w.r.t the output of Pack are requested).
+  for (const bool expected : {false, true}) {
+    const Scope& scope = expected ? scope_expected_ : scope_test_;
+    // Construct forward graph.
+    auto a = Const(scope, 1, {4, 2});
+    auto b = Const(scope, 2, {4, 2});
+    auto c = Const(scope, 3, {4, 2});
+
+    auto pack = Pack(scope, {a, b, c});
+    auto unpack = Unpack(scope, pack.output, 3);
+    TF_ASSERT_OK(scope.status());
+
+    // Construct grad inputs.
+    auto dx = Const(scope, 4, {4, 2});
+    auto dy = Const(scope, 5, {4, 2});
+    auto dz = Const(scope, 6, {4, 2});
+
+    if (expected) {
+      // Construct backward graph.
+      // NOTE: We should only expect the grad function for unpack in the
+      // gradients graph, based on the requested grad outputs.
+      auto unpack_grad = Pack(scope, {dx, dy, dz});
+    } else {
+      // Call AddSymbolicGradients.
+      std::vector<ops::Output> grad_outputs;
+      TF_ASSERT_OK(AddSymbolicGradients(scope, unpack.output, {pack},
+                                        {dx, dy, dz}, &grad_outputs));
+    }
+  }
+  CompareTestAndExpectedGraphs();
+}
+
+TEST_F(GradientsTest, DependentGradOutputs) {
+  // Tests that dependant gradients (in this case the gradients w.r.t to the
+  // output and one input of MatMul) are computed properly.
+
+  // Create two chained MatMul ops.
+  auto u = Const(scope_test_, {{2}});
+  auto v = Const(scope_test_, {{3}});
+  auto x = MatMul(scope_test_, u, v);
+
+  auto y = Const(scope_test_, {{4}});
+  auto z = MatMul(scope_test_, x, y);
+
+  TF_ASSERT_OK(scope_test_.status());
+  CHECK_NOTNULL(z.node());
+
+  // Call AddSymbolicGradients with '5' as initial gradients for 'dz'.
+  // The gradient w.r.t to 'v' (returned in grad_outputs[0]) is dependent on
+  // the gradient w.r.t. to 'x' (returned in grad_outputs[1]).
+  auto dz = Const(scope_test_, {{5}});
+  std::vector<ops::Output> grad_outputs;
+  TF_ASSERT_OK(
+      AddSymbolicGradients(scope_test_, {z}, {v, x}, {dz}, &grad_outputs));
+
+  std::vector<Tensor> outputs;
+  test::GetTensors(scope_test_, {grad_outputs[0], grad_outputs[1]}, &outputs);
+
+  // The gradients w.r.t to 'dz' are passed into AddSymbolicGradients as '5'.
+  // Since z = MatMul(x, y), the gradients w.r.t 'x' are computed as:
+  //   'dx' = 5 * 'y' = 5 * 4 = 20.
+  // Since x = MatMul(u, v), the gradients w.r.t. 'v' are computed as:
+  //   'dv' = 'dx' * 'u' = 20 * 2 = 40.
+  test::ExpectTensorEqual<int>(outputs[0], test::AsTensor<int>({40}, {1, 1}));
+  test::ExpectTensorEqual<int>(outputs[1], test::AsTensor<int>({20}, {1, 1}));
+}
+
+TEST_F(GradientsTest, MultipleNodeOutputGrads) {
+  // Tests that gradients for multiple outputs of the same node are returned.
+  auto x = Const(scope_test_, 1, {3, 4, 2});
+  auto unpack = Unpack(scope_test_, x, 3);
+  auto pack = Pack(scope_test_, unpack.output);
+
+  // clang-format off
+  auto dx = Const(scope_test_, {40, 41, 42, 43, 44, 45, 46, 47,
+                                50, 51, 52, 53, 55, 55, 56, 57,
+                                60, 61, 62, 63, 66, 66, 66, 67},
+                               {3, 4, 2});
+  // clang-format on
+
+  std::vector<ops::Output> grad_outputs;
+  TF_ASSERT_OK(AddSymbolicGradients(scope_test_, {pack}, unpack.output, {dx},
+                                    &grad_outputs));
+
+  std::vector<Tensor> outputs;
+  test::GetTensors(scope_test_,
+                   {grad_outputs[0], grad_outputs[1], grad_outputs[2]},
+                   &outputs);
+
+  test::ExpectTensorEqual<int>(
+      outputs[0],
+      test::AsTensor<int>({40, 41, 42, 43, 44, 45, 46, 47}, {4, 2}));
+  test::ExpectTensorEqual<int>(
+      outputs[1],
+      test::AsTensor<int>({50, 51, 52, 53, 55, 55, 56, 57}, {4, 2}));
+  test::ExpectTensorEqual<int>(
+      outputs[2],
+      test::AsTensor<int>({60, 61, 62, 63, 66, 66, 66, 67}, {4, 2}));
 }
 
 }  // namespace

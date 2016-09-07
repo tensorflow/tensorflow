@@ -111,8 +111,8 @@ class SymbolicGradientBuilder {
   std::unordered_set<int> output_nodes_;
 
   // The set of node ids in `inputs_`. Used to identify nodes at backprop
-  // frontier.
-  std::unordered_set<int> input_nodes_;
+  // frontier. Maps from Output -> index into `grad_outputs_`.
+  std::unordered_map<Output, int, OutputHash, OutputEq> input_nodes_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientBuilder);
 };
@@ -173,10 +173,10 @@ Status SymbolicGradientBuilder::Initialize() {
   for (int i = 0; i < outputs_.size(); ++i) {
     output_nodes_.insert(outputs_[i].node()->id());
   }
-  // Populate `input_nodes_` from node ids in `inputs_`.
+  // Populate `input_nodes_` from Outputs in `inputs_`.
   input_nodes_.reserve(inputs_.size());
   for (int i = 0; i < inputs_.size(); ++i) {
-    input_nodes_.insert(inputs_[i].node()->id());
+    input_nodes_.insert({inputs_[i], i});
   }
 
   // TODO(andydavis) Consider a more efficient data structure for `pending_` to
@@ -187,8 +187,10 @@ Status SymbolicGradientBuilder::Initialize() {
     std::unordered_set<Node*> visited;
     std::deque<Node*> queue;
     for (const Output& nout : inputs_) {
-      queue.push_back(nout.node());
-      visited.insert(nout.node());
+      if (visited.find(nout.node()) == visited.end()) {
+        queue.push_back(nout.node());
+        visited.insert(nout.node());
+      }
     }
 
     // Going forward to figure out which endpoints need backprop-ed.
@@ -286,19 +288,31 @@ Status SymbolicGradientBuilder::AddGradients() {
     Node* n = ready_.front();
     ready_.pop_front();
 
-    // Check if `n` is a member of `input_nodes_` where we terminate backprop.
-    auto iter = input_nodes_.find(n->id());
-    if (iter != input_nodes_.end()) {
-      // Stop backprop.
-      continue;
-    }
-
     // dy[i] is the sum of i-th output's backpropped gradients.
     const int num_y = n->num_outputs();
     dy.clear();
     dy.resize(num_y, {nullptr, 0});
     for (int i = 0; i < num_y; ++i) {
       TF_RETURN_IF_ERROR(SumGradients({n, i}, &dy[i]));
+      auto iter = input_nodes_.find({n, i});
+      if (iter != input_nodes_.end()) {
+        // Return gradients for Output in 'grad_outputs_'.
+        (*grad_outputs_)[iter->second] = dy[i];
+      }
+    }
+
+    // Stop backprop if none of the inputs to `n` are in `backprops_'.
+    bool stop_node = true;
+    for (const Edge* e : n->in_edges()) {
+      if (e->IsControlEdge()) continue;
+      if (backprops_.find({e->src(), e->src_output()}) != backprops_.end()) {
+        stop_node = false;
+        break;
+      }
+    }
+
+    if (stop_node) {
+      continue;
     }
 
     if (IsPrimitiveOpWithNoGrad(n->type_string())) {
@@ -331,12 +345,6 @@ Status SymbolicGradientBuilder::AddGradients() {
           BackpropAlongEdge(dx[dx_index++], {e->src(), e->src_output()}));
     }
   }
-
-  // Return gradients for `inputs_` in `grad_outputs_`.
-  for (int i = 0; i < inputs_.size(); ++i) {
-    TF_RETURN_IF_ERROR(SumGradients(inputs_[i], &(*grad_outputs_)[i]));
-  }
-
   return Status::OK();
 }
 
