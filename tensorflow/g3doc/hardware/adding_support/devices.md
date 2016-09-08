@@ -29,11 +29,15 @@ these replace the normal CPU interface to enable CUDA DMA and
 other optimizations.
 
 The GPU compatible devices get registered with a higher priority than
-the non-compatible devices via the expansion of
+the non-compatible devices via the macro expansion of
 
 ```C++
 REGISTER_LOCAL_DEVICE_FACTORY("CPU", GPUCompatibleCPUDeviceFactory, 50);
 ```
+We want `GPUCompatibleCPUDevice` with higher priority so that CPU 
+kernels can pass data faster to the GPU devices for processing. With
+this macro, all the CPU devices will be run with the GPU compatible
+code for optimized preformance.
 
 which expands to,
 ```C++
