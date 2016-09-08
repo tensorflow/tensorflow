@@ -70,9 +70,9 @@ downloadLinkUrlFunction property to an appropriate value.
           <template is="dom-repeat" items="[[_categoryCards(category, selectedRuns.*, run2tag.*)]]">
               <div class="card">
                 <div class="card-title-container" style="border-color: [[_titleBorderColor(item.run)]]">
-                  <span class="card-title">[[item.tag]]</span>
+                  <div class="card-title">[[item.tag]]</div>
                   <template is="dom-if" if="[[repeatForRuns]]">
-                    <span class="card-subtitle">[[item.run]]</span>
+                    <div class="card-subtitle" title="[[item.run]]">[[item.run]]</div>
                   </template>
                 </div>
                 <div class="card-content">
@@ -130,10 +130,6 @@ downloadLinkUrlFunction property to an appropriate value.
         font-size: 14px;
         text-overflow: ellipsis;
         overflow: hidden;
-      }
-
-      .card-title {
-        display: block;
       }
 
       .card-subtitle {
