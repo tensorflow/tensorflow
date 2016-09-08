@@ -223,8 +223,7 @@ void TF_SetTarget(TF_SessionOptions* options, const char* target) {
 void TF_SetConfig(TF_SessionOptions* options, const void* proto,
                   size_t proto_len, TF_Status* status) {
   if (!options->options.config.ParseFromArray(proto, proto_len)) {
-    status->status =
-        tensorflow::errors::InvalidArgument("Unparseable ConfigProto");
+    status->status = InvalidArgument("Unparseable ConfigProto");
   }
 }
 // --------------------------------------------------------------------------
@@ -281,7 +280,7 @@ void TF_ExtendGraph(TF_Session* s, const void* proto, size_t proto_len,
                     TF_Status* status) {
   GraphDef g;
   if (!tensorflow::ParseProtoUnlimited(&g, proto, proto_len)) {
-    status->status = tensorflow::errors::InvalidArgument("Invalid GraphDef");
+    status->status = InvalidArgument("Invalid GraphDef");
     return;
   }
   status->status = s->session->Extend(g);
@@ -481,13 +480,12 @@ static void TF_Run_Helper(
     if (run_options != nullptr &&
         !run_options_proto.ParseFromArray(run_options->data,
                                           run_options->length)) {
-      status->status =
-          tensorflow::errors::InvalidArgument("Unparseable RunOptions proto");
+      status->status = InvalidArgument("Unparseable RunOptions proto");
       return;
     }
     if (run_metadata != nullptr && run_metadata->data != nullptr) {
-      status->status = tensorflow::errors::InvalidArgument(
-          "Passing non-empty run_metadata is invalid.");
+      status->status =
+          InvalidArgument("Passing non-empty run_metadata is invalid.");
       return;
     }
 
@@ -729,8 +727,8 @@ void TF_GraphSetTensorShape(TF_Graph* graph, TF_Port port, const int64_t* dims,
   tensorflow::shape_inference::InferenceContext* ic =
       graph->refiner.GetContext(node);
   if (ic == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Node ", node->name(), " was not found in the graph");
+    status->status =
+        InvalidArgument("Node ", node->name(), " was not found in the graph");
     return;
   }
 
@@ -750,8 +748,8 @@ int TF_GraphGetTensorNumDims(TF_Graph* graph, TF_Port port, TF_Status* status) {
   tensorflow::shape_inference::InferenceContext* ic =
       graph->refiner.GetContext(node);
   if (ic == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Node ", node->name(), " was not found in the graph");
+    status->status =
+        InvalidArgument("Node ", node->name(), " was not found in the graph");
     return -1;
   }
 
@@ -773,8 +771,8 @@ void TF_GraphGetTensorShape(TF_Graph* graph, TF_Port port, int64_t* dims,
   tensorflow::shape_inference::InferenceContext* ic =
       graph->refiner.GetContext(node);
   if (ic == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Node ", node->name(), " was not found in the graph");
+    status->status =
+        InvalidArgument("Node ", node->name(), " was not found in the graph");
     return;
   }
 
@@ -786,8 +784,8 @@ void TF_GraphGetTensorShape(TF_Graph* graph, TF_Port port, int64_t* dims,
   }
 
   if (num_dims != rank) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Expected rank is ", num_dims, " but actual rank is ", rank);
+    status->status = InvalidArgument("Expected rank is ", num_dims,
+                                     " but actual rank is ", rank);
     return;
   }
 
@@ -950,8 +948,7 @@ void TF_SetAttrTensorShapeProto(TF_OperationDescription* desc,
     desc->node_builder.Attr(attr_name, shape);
     status->status = Status::OK();
   } else {
-    status->status =
-        tensorflow::errors::InvalidArgument("Unparseable TensorShapeProto");
+    status->status = InvalidArgument("Unparseable TensorShapeProto");
   }
 }
 
@@ -964,8 +961,8 @@ void TF_SetAttrTensorShapeProtoList(TF_OperationDescription* desc,
   shapes.resize(num_shapes);
   for (int i = 0; i < num_shapes; ++i) {
     if (!shapes[i].ParseFromArray(protos[i], proto_lens[i])) {
-      status->status = tensorflow::errors::InvalidArgument(
-          "Unparseable TensorShapeProto at index ", i);
+      status->status =
+          InvalidArgument("Unparseable TensorShapeProto at index ", i);
       return;
     }
   }
@@ -1028,8 +1025,7 @@ void TF_SetAttrValueProto(TF_OperationDescription* desc, const char* attr_name,
     desc->node_builder.Attr(attr_name, attr_value);
     status->status = Status::OK();
   } else {
-    status->status =
-        tensorflow::errors::InvalidArgument("Unparseable AttrValue proto");
+    status->status = InvalidArgument("Unparseable AttrValue proto");
   }
 }
 
@@ -1039,8 +1035,8 @@ TF_Operation* TF_FinishOperation(TF_OperationDescription* desc,
   mutex_lock l(desc->graph->mu);
 
   if (desc->graph->name_map.count(desc->node_builder.node_name())) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Duplicate node name in graph: '", desc->node_builder.node_name(), "'");
+    status->status = InvalidArgument("Duplicate node name in graph: '",
+                                     desc->node_builder.node_name(), "'");
   } else {
     status->status = desc->node_builder.Finalize(&desc->graph->graph, &ret);
 
@@ -1094,8 +1090,7 @@ int TF_OperationOutputListLength(TF_Operation* oper, const char* arg_name,
   if (!status->status.ok()) return -1;
   auto iter = name_ranges.find(arg_name);
   if (iter == name_ranges.end()) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Input arg '", arg_name, "' not found");
+    status->status = InvalidArgument("Input arg '", arg_name, "' not found");
     return -1;
   }
   return iter->second.second - iter->second.first;
@@ -1117,8 +1112,7 @@ int TF_OperationInputListLength(TF_Operation* oper, const char* arg_name,
   if (!status->status.ok()) return -1;
   auto iter = name_ranges.find(arg_name);
   if (iter == name_ranges.end()) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Input arg '", arg_name, "' not found");
+    status->status = InvalidArgument("Input arg '", arg_name, "' not found");
     return -1;
   }
   return iter->second.second - iter->second.first;

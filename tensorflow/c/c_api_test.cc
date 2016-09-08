@@ -47,10 +47,10 @@ namespace {
 TEST(CApi, Status) {
   TF_Status* s = TF_NewStatus();
   EXPECT_EQ(TF_OK, TF_GetCode(s));
-  EXPECT_EQ(tensorflow::string(), TF_Message(s));
+  EXPECT_EQ(string(), TF_Message(s));
   TF_SetStatus(s, TF_CANCELLED, "cancel");
   EXPECT_EQ(TF_CANCELLED, TF_GetCode(s));
-  EXPECT_EQ(tensorflow::string("cancel"), TF_Message(s));
+  EXPECT_EQ(string("cancel"), TF_Message(s));
   TF_DeleteStatus(s);
 }
 
@@ -91,8 +91,7 @@ TEST(CApi, AllocateTensor) {
   TF_DeleteTensor(t);
 }
 
-static void TestEncodeDecode(int line,
-                             const std::vector<tensorflow::string>& data) {
+static void TestEncodeDecode(int line, const std::vector<string>& data) {
   const tensorflow::int64 n = data.size();
   for (const std::vector<tensorflow::int64>& dims :
        std::vector<std::vector<tensorflow::int64>>{
@@ -100,7 +99,7 @@ static void TestEncodeDecode(int line,
     // Create C++ Tensor
     Tensor src(tensorflow::DT_STRING, TensorShape(dims));
     for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
-      src.flat<tensorflow::string>()(i) = data[i];
+      src.flat<string>()(i) = data[i];
     }
     TF_Tensor* dst = TF_Tensor_EncodeStrings(src);
 
@@ -111,7 +110,7 @@ static void TestEncodeDecode(int line,
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << line;
     ASSERT_EQ(src.NumElements(), output.NumElements()) << line;
     for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
-      ASSERT_EQ(data[i], output.flat<tensorflow::string>()(i)) << line;
+      ASSERT_EQ(data[i], output.flat<string>()(i)) << line;
     }
 
     TF_DeleteStatus(status);
@@ -125,7 +124,7 @@ TEST(CApi, TensorEncodeDecodeStrings) {
   TestEncodeDecode(__LINE__,
                    {"the", "quick", "brown", "fox", "jumped", "over"});
 
-  tensorflow::string big(1000, 'a');
+  string big(1000, 'a');
   TestEncodeDecode(__LINE__, {"small", big, "small2"});
 }
 
@@ -211,12 +210,12 @@ TEST(CAPI, StatusEnum) {
 }
 
 static void Int32Deallocator(void* data, size_t, void* arg) {
-  delete[] static_cast<tensorflow::int32*>(data);
+  delete[] static_cast<int32*>(data);
 }
 
 static TF_Tensor* Int32Tensor(int32 v) {
-  const int num_bytes = sizeof(tensorflow::int32);
-  tensorflow::int32* values = new tensorflow::int32[1];
+  const int num_bytes = sizeof(int32);
+  int32* values = new int32[1];
   values[0] = v;
   return TF_NewTensor(TF_INT32, nullptr, 0, values, num_bytes,
                       &Int32Deallocator, nullptr);
@@ -750,9 +749,8 @@ TEST(CAPI, SessionWithGraph) {
   ASSERT_TRUE(out != nullptr);
   EXPECT_EQ(TF_INT32, TF_TensorType(out));
   EXPECT_EQ(0, TF_NumDims(out));  // scalar
-  ASSERT_EQ(sizeof(tensorflow::int32), TF_TensorByteSize(out));
-  tensorflow::int32* output_contents =
-      static_cast<tensorflow::int32*>(TF_TensorData(out));
+  ASSERT_EQ(sizeof(int32), TF_TensorByteSize(out));
+  int32* output_contents = static_cast<int32*>(TF_TensorData(out));
   EXPECT_EQ(3 + 2, *output_contents);
 
   // Add another operation to the graph.
@@ -768,8 +766,8 @@ TEST(CAPI, SessionWithGraph) {
   ASSERT_TRUE(out != nullptr);
   EXPECT_EQ(TF_INT32, TF_TensorType(out));
   EXPECT_EQ(0, TF_NumDims(out));  // scalar
-  ASSERT_EQ(sizeof(tensorflow::int32), TF_TensorByteSize(out));
-  output_contents = static_cast<tensorflow::int32*>(TF_TensorData(out));
+  ASSERT_EQ(sizeof(int32), TF_TensorByteSize(out));
+  output_contents = static_cast<int32*>(TF_TensorData(out));
   EXPECT_EQ(-(7 + 2), *output_contents);
 
   // Clean up
