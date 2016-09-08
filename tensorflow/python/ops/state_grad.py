@@ -35,3 +35,9 @@ ops.NoGradient("ScatterAdd")
 
 
 ops.NoGradient("ScatterSub")
+
+
+ops.NoGradient("ScatterMul")
+
+
+ops.NoGradient("ScatterDiv")

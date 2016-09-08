@@ -88,6 +88,8 @@ automatically by the optimizers in most cases.
 @@scatter_update
 @@scatter_add
 @@scatter_sub
+@@scatter_mul
+@@scatter_div
 @@sparse_mask
 @@IndexedSlices
 
@@ -227,6 +229,8 @@ def _CountUpToShape(op):
 
 @ops.RegisterShape("ScatterAdd")
 @ops.RegisterShape("ScatterSub")
+@ops.RegisterShape("ScatterMul")
+@ops.RegisterShape("ScatterDiv")
 @ops.RegisterShape("ScatterUpdate")
 def _ScatterUpdateShape(op):
   """Shape function for the sparse update ops."""
