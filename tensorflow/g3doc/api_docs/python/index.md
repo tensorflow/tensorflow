@@ -103,6 +103,8 @@
   * [`report_uninitialized_variables`](../../api_docs/python/state_ops.md#report_uninitialized_variables)
   * [`Saver`](../../api_docs/python/state_ops.md#Saver)
   * [`scatter_add`](../../api_docs/python/state_ops.md#scatter_add)
+  * [`scatter_div`](../../api_docs/python/state_ops.md#scatter_div)
+  * [`scatter_mul`](../../api_docs/python/state_ops.md#scatter_mul)
   * [`scatter_sub`](../../api_docs/python/state_ops.md#scatter_sub)
   * [`scatter_update`](../../api_docs/python/state_ops.md#scatter_update)
   * [`sparse_mask`](../../api_docs/python/state_ops.md#sparse_mask)
