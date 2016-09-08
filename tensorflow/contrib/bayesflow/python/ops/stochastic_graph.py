@@ -147,6 +147,10 @@ def surrogate_loss(sample_losses,
     for (stoch_node, dependent_losses) in stoch_dependencies_map.items():
       dependent_losses = list(dependent_losses)
 
+      logging.info("Losses influenced by StochasticTensor %s: [%s]",
+                   stoch_node.name, ", ".join(
+                       [loss.name for loss in dependent_losses]))
+
       # Sum up the downstream losses for this ST
       influenced_loss = _add_n_or_sum(dependent_losses)
 
