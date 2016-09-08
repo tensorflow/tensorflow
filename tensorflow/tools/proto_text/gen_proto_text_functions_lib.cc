@@ -224,9 +224,15 @@ string GetProtoHeaderName(const FileDescriptor& fd) {
 
 // Returns the C++ class name for the given proto field.
 string GetCppClass(const FieldDescriptor& d) {
-  return d.cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE
+  string cpp_class = d.cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE
              ? GetQualifiedName(*d.message_type())
              : d.cpp_type_name();
+
+  if (cpp_class == "int64") {
+    cpp_class = "::tensorflow::protobuf::int64";
+  }
+
+  return cpp_class;
 }
 
 // Returns the string that can be used for a header guard for the generated

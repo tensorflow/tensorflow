@@ -25,6 +25,8 @@ namespace tensorflow {
 namespace test {
 namespace {
 
+typedef protobuf::int64 pb_int64_t;
+
 // Convert <input> to text depending on <short_debug>, then parse that into a
 // new message using the generated parse function. Return the new message.
 template <typename T>
@@ -90,7 +92,7 @@ TEST(CreateProtoDebugStringLibTest, ValidSimpleTypes) {
   // Max numeric values.
   proto.Clear();
   proto.set_optional_int32(std::numeric_limits<int32>::max());
-  proto.set_optional_int64(std::numeric_limits<int64>::max());
+  proto.set_optional_int64(std::numeric_limits<pb_int64_t>::max());
   proto.set_optional_uint32(std::numeric_limits<uint32>::max());
   proto.set_optional_uint64(std::numeric_limits<uint64>::max());
   proto.set_optional_float(std::numeric_limits<float>::max());
@@ -106,7 +108,7 @@ TEST(CreateProtoDebugStringLibTest, ValidSimpleTypes) {
   // Lowest numeric values.
   proto.Clear();
   proto.set_optional_int32(std::numeric_limits<int32>::lowest());
-  proto.set_optional_int64(std::numeric_limits<int64>::lowest());
+  proto.set_optional_int64(std::numeric_limits<pb_int64_t>::lowest());
   proto.set_optional_float(std::numeric_limits<float>::lowest());
   proto.set_optional_double(std::numeric_limits<double>::lowest());
   EXPECT_TEXT_TRANSFORMS_MATCH();
@@ -394,7 +396,7 @@ TEST(CreateProtoDebugStringLibTest, Map) {
   {
     auto& map = *proto.mutable_map_string_to_int64();
     map["def"] = 0;
-    map["abc"] = std::numeric_limits<int64>::max();
+    map["abc"] = std::numeric_limits<pb_int64_t>::max();
     map[""] = 20;
   }
   EXPECT_TEXT_TRANSFORMS_MATCH();
@@ -404,7 +406,7 @@ TEST(CreateProtoDebugStringLibTest, Map) {
   {
     auto& map = *proto.mutable_map_int64_to_string();
     map[0] = "def";
-    map[std::numeric_limits<int64>::max()] = "";
+    map[std::numeric_limits<pb_int64_t>::max()] = "";
     map[20] = "abc";
   }
   EXPECT_TEXT_TRANSFORMS_MATCH();
