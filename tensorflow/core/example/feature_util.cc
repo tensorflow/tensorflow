@@ -28,7 +28,7 @@ namespace internal {
 }  //  namespace internal
 
 template <>
-bool ExampleHasFeature<int64>(const string& name, const Example& example) {
+bool ExampleHasFeature<pb_int64_t>(const string& name, const Example& example) {
   auto it = example.features().feature().find(name);
   return (it != example.features().feature().end()) &&
          (it->second.kind_case() == Feature::KindCase::kInt64List);
@@ -49,13 +49,13 @@ bool ExampleHasFeature<string>(const string& name, const Example& example) {
 }
 
 template <>
-const protobuf::RepeatedField<int64>& GetFeatureValues<int64>(
+const protobuf::RepeatedField<pb_int64_t>& GetFeatureValues<pb_int64_t>(
     const string& name, const Example& example) {
   return example.features().feature().at(name).int64_list().value();
 }
 
 template <>
-protobuf::RepeatedField<int64>* GetFeatureValues<int64>(const string& name,
+protobuf::RepeatedField<pb_int64_t>* GetFeatureValues<pb_int64_t>(const string& name,
                                                         Example* example) {
   return internal::ExampleFeature(name, example)
       .mutable_int64_list()
