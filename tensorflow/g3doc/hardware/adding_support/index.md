@@ -95,10 +95,10 @@ but as a high level overview, you need to create or modify the following,
 * `/tensorflow/core/util/device_name_utils.cc` - Add parsing support for the SPU name
 * `/tensorflow/python/framework/device.py` - Python bindings to SPU name
 
-The [minimal changes](fack_device.md) to these files will create 
+The [minimal changes](fake_device.md) to these files will create 
 a fake device that runs on the CPU just as would a normal
 CPU TensorFlow device specification, but allows a separation of code
-so that we can begin replacing the underlying elements of for
+so that we can begin replacing the underlying elements of TensorFlow for
 the computation and make it run on our hardware.
 
 ## Creating a Fake GPU-style Device
