@@ -60,6 +60,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+typedef protobuf::int64 pb_int64_t;
+
 namespace internal {
 
 // Returns a reference to a feature corresponding to the name.
@@ -73,8 +75,8 @@ template <typename FeatureType>
 struct RepeatedFieldTrait;
 
 template <>
-struct RepeatedFieldTrait<int64> {
-  using Type = protobuf::RepeatedField<int64>;
+struct RepeatedFieldTrait<pb_int64_t> {
+  using Type = protobuf::RepeatedField<pb_int64_t>;
 };
 
 template <>
@@ -95,7 +97,7 @@ struct FeatureTrait;
 template <typename ValueType>
 struct FeatureTrait<ValueType, typename std::enable_if<
                                    std::is_integral<ValueType>::value>::type> {
-  using Type = int64;
+  using Type = pb_int64_t;
 };
 
 template <typename ValueType>
@@ -178,7 +180,7 @@ void AppendFeatureValues(std::initializer_list<ValueType> container,
 }
 
 template <>
-bool ExampleHasFeature<int64>(const string& name, const Example& example);
+bool ExampleHasFeature<pb_int64_t>(const string& name, const Example& example);
 
 template <>
 bool ExampleHasFeature<float>(const string& name, const Example& example);
@@ -187,11 +189,11 @@ template <>
 bool ExampleHasFeature<string>(const string& name, const Example& example);
 
 template <>
-const protobuf::RepeatedField<int64>& GetFeatureValues<int64>(
+const protobuf::RepeatedField<pb_int64_t>& GetFeatureValues<pb_int64_t>(
     const string& name, const Example& example);
 
 template <>
-protobuf::RepeatedField<int64>* GetFeatureValues<int64>(const string& name,
+protobuf::RepeatedField<pb_int64_t>* GetFeatureValues<pb_int64_t>(const string& name,
                                                         Example* example);
 
 template <>

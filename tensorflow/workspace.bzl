@@ -90,7 +90,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.git_repository(
     name = "protobuf",
     remote = "https://github.com/google/protobuf",
-    commit = "ed87c1fe2c6e1633cadb62cf54b2723b2b25c280",
+    commit = "e8ae137c96444ea313485ed1118c5e43b2099cf1",  # Release 3.0.0.
   )
 
   native.new_http_archive(
