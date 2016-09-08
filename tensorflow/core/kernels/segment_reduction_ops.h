@@ -1,8 +1,11 @@
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -52,7 +55,7 @@ struct UnsortedSegmentSumFunctor {
 // 'data': input data tensor.
 // 'output': output reshaped to {output_rows, output.size/output_rows}
 template <typename Device, typename T, typename Index>
-struct UnsortedSegmentSumFunctor {
+struct UnsortedSegmentMaxFunctor {
   void operator()(OpKernelContext* ctx, const Device& d,
                   const Index output_rows, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
