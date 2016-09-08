@@ -378,8 +378,7 @@ def convolution2d(inputs,
     rate: integer. If less than or equal to 1, a standard convolution is used.
       If greater than 1, than the a'trous convolution is applied and `stride`
       must be set to 1.
-    activation_fn: activation function.
-      set to None for linear activation
+    activation_fn: activation function, set to None to skip it and maintain a linear activation.
     normalizer_fn: normalization function to use instead of `biases`. If
       `normalize_fn` is provided then `biases_initializer` and
       `biases_regularizer` are ignored and `biases` are not created nor added.
