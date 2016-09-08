@@ -34,7 +34,7 @@ the metrics and finally call the `evaluation` method:
       "mse": slim.metrics.mean_squared_error(predictions, labels),
   })
 
-  init_op = tf.group(
+  inital_op = tf.group(
       tf.initialize_all_variables(),
       tf.initialize_local_variables())
 
@@ -42,7 +42,7 @@ the metrics and finally call the `evaluation` method:
     metric_values = slim.evaluation(
         sess,
         num_evals=1,
-        init_op=init_op,
+        inital_op=initial_op,
         eval_op=names_to_updates.values(),
         final_op=name_to_values.values())
 
@@ -126,10 +126,7 @@ import time
 
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
-from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import summary_io
@@ -174,8 +171,8 @@ def wait_for_new_checkpoint(checkpoint_dir,
 
 def evaluation(sess,
                num_evals=1,
-               init_op=None,
-               init_op_feed_dict=None,
+               initial_op=None,
+               initial_op_feed_dict=None,
                eval_op=None,
                eval_op_feed_dict=None,
                final_op=None,
@@ -194,8 +191,8 @@ def evaluation(sess,
   Args:
     sess: The current TensorFlow `Session`.
     num_evals: The number of times to execute `eval_op`.
-    init_op: An operation run at the beginning of evaluation.
-    init_op_feed_dict: A feed dictionary to use when executing `init_op`.
+    initial_op: An operation run at the beginning of evaluation.
+    initial_op_feed_dict: A feed dictionary to use when executing `initial_op`.
     eval_op: A operation run `num_evals` times.
     eval_op_feed_dict: The feed dictionary to use when executing the `eval_op`.
     final_op: An operation to execute after all of the `eval_op` executions. The
@@ -214,9 +211,9 @@ def evaluation(sess,
   Raises:
     ValueError: if `summary_op` is provided but `global_step` is `None`.
   """
-  if init_op is not None:
-    logging.info('Executing init op')
-    sess.run(init_op, init_op_feed_dict)
+  if initial_op is not None:
+    logging.info('Executing initial eval op')
+    sess.run(initial_op, initial_op_feed_dict)
 
   if eval_op is not None:
     logging.info('Executing eval ops')
@@ -250,6 +247,8 @@ def evaluate_once(master,
                   checkpoint_path,
                   logdir,
                   num_evals=1,
+                  initial_op=None,
+                  initial_op_feed_dict=None,
                   eval_op=None,
                   eval_op_feed_dict=None,
                   final_op=None,
@@ -265,6 +264,8 @@ def evaluate_once(master,
     checkpoint_path: The path to a checkpoint to use for evaluation.
     logdir: The directory where the TensorFlow summaries are written to.
     num_evals: The number of times to run `eval_op`.
+    initial_op: An operation run at the beginning of evaluation.
+    initial_op_feed_dict: A feed dictionary to use when executing `initial_op`.
     eval_op: A operation run `num_evals` times.
     eval_op_feed_dict: The feed dictionary to use when executing the `eval_op`.
     final_op: An operation to execute after all of the `eval_op` executions. The
@@ -288,10 +289,6 @@ def evaluate_once(master,
 
   global_step = variables.get_or_create_global_step()
 
-  init_op = control_flow_ops.group(tf_variables.initialize_all_variables(),
-                                   tf_variables.initialize_local_variables(),
-                                   data_flow_ops.initialize_all_tables())
-
   saver = tf_saver.Saver(variables_to_restore or
                          variables.get_variables_to_restore())
 
@@ -299,7 +296,6 @@ def evaluate_once(master,
 
   sv = supervisor.Supervisor(graph=ops.get_default_graph(),
                              logdir=logdir,
-                             init_op=init_op,
                              summary_op=None,
                              summary_writer=None,
                              global_step=None,
@@ -313,6 +309,8 @@ def evaluate_once(master,
     sv.start_queue_runners(sess)
     final_op_value = evaluation(sess,
                                 num_evals=num_evals,
+                                initial_op=initial_op,
+                                initial_op_feed_dict=initial_op_feed_dict,
                                 eval_op=eval_op,
                                 eval_op_feed_dict=eval_op_feed_dict,
                                 final_op=final_op,
@@ -332,6 +330,8 @@ def evaluation_loop(master,
                     checkpoint_dir,
                     logdir,
                     num_evals=1,
+                    initial_op=None,
+                    initial_op_feed_dict=None,
                     eval_op=None,
                     eval_op_feed_dict=None,
                     final_op=None,
@@ -349,6 +349,8 @@ def evaluation_loop(master,
     checkpoint_dir: The directory where checkpoints are stored.
     logdir: The directory where the TensorFlow summaries are written to.
     num_evals: The number of times to run `eval_op`.
+    initial_op: An operation run at the beginning of evaluation.
+    initial_op_feed_dict: A feed dictionary to use when executing `initial_op`.
     eval_op: A operation run `num_evals` times.
     eval_op_feed_dict: The feed dictionary to use when executing the `eval_op`.
     final_op: An operation to execute after all of the `eval_op` executions. The
@@ -375,10 +377,6 @@ def evaluation_loop(master,
 
   global_step = variables.get_or_create_global_step()
 
-  init_op = control_flow_ops.group(tf_variables.initialize_all_variables(),
-                                   tf_variables.initialize_local_variables(),
-                                   data_flow_ops.initialize_all_tables())
-
   saver = tf_saver.Saver(variables_to_restore or
                          variables.get_variables_to_restore())
 
@@ -386,7 +384,6 @@ def evaluation_loop(master,
 
   sv = supervisor.Supervisor(graph=ops.get_default_graph(),
                              logdir=logdir,
-                             init_op=init_op,
                              summary_op=None,
                              summary_writer=None,
                              global_step=None,
@@ -406,6 +403,8 @@ def evaluation_loop(master,
       sv.start_queue_runners(sess)
       final_op_value = evaluation(sess,
                                   num_evals=num_evals,
+                                  initial_op=initial_op,
+                                  initial_op_feed_dict=initial_op_feed_dict,
                                   eval_op=eval_op,
                                   eval_op_feed_dict=eval_op_feed_dict,
                                   final_op=final_op,

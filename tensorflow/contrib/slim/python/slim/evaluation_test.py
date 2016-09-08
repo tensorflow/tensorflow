@@ -75,23 +75,23 @@ class EvaluationTest(tf.test.TestCase):
   def testUpdateOpsAreEvaluated(self):
     accuracy, update_op = slim.metrics.streaming_accuracy(
         self._predictions, self._labels)
-    init_op = tf.group(tf.initialize_all_variables(),
-                       tf.initialize_local_variables())
+    initial_op = tf.group(tf.initialize_all_variables(),
+                          tf.initialize_local_variables())
 
     with self.test_session() as sess:
       slim.evaluation.evaluation(
-          sess, init_op=init_op, eval_op=update_op)
+          sess, initial_op=initial_op, eval_op=update_op)
       self.assertAlmostEqual(accuracy.eval(), self._expected_accuracy)
 
   def testFinalOpsIsEvaluated(self):
     _, update_op = slim.metrics.streaming_accuracy(
         self._predictions, self._labels)
-    init_op = tf.group(tf.initialize_all_variables(),
-                       tf.initialize_local_variables())
+    initial_op = tf.group(tf.initialize_all_variables(),
+                          tf.initialize_local_variables())
 
     with self.test_session() as sess:
       accuracy_value = slim.evaluation.evaluation(
-          sess, init_op=init_op, final_op=update_op)
+          sess, initial_op=initial_op, final_op=update_op)
       self.assertAlmostEqual(accuracy_value, self._expected_accuracy)
 
   def testFinalOpsOnEvaluationLoop(self):
@@ -163,14 +163,14 @@ class EvaluationTest(tf.test.TestCase):
 
     summary_writer = tf.train.SummaryWriter(output_dir)
 
-    init_op = tf.group(tf.initialize_all_variables(),
-                       tf.initialize_local_variables())
+    initial_op = tf.group(tf.initialize_all_variables(),
+                          tf.initialize_local_variables())
     eval_op = tf.group(*names_to_updates.values())
 
     with self.test_session() as sess:
       slim.evaluation.evaluation(
           sess,
-          init_op=init_op,
+          initial_op=initial_op,
           eval_op=eval_op,
           summary_op=tf.merge_all_summaries(),
           summary_writer=summary_writer,
@@ -194,14 +194,14 @@ class EvaluationTest(tf.test.TestCase):
 
     summary_writer = tf.train.SummaryWriter(output_dir)
 
-    init_op = tf.group(tf.initialize_all_variables(),
-                       tf.initialize_local_variables())
+    initial_op = tf.group(tf.initialize_all_variables(),
+                          tf.initialize_local_variables())
     eval_op = tf.group(*names_to_updates.values())
 
     with self.test_session() as sess:
       slim.evaluation.evaluation(
           sess,
-          init_op=init_op,
+          initial_op=initial_op,
           eval_op=eval_op,
           summary_op=tf.merge_all_summaries(),
           summary_writer=summary_writer)
@@ -213,13 +213,13 @@ class EvaluationTest(tf.test.TestCase):
   def testWithFeedDict(self):
     accuracy, update_op = slim.metrics.streaming_accuracy(
         self._predictions, self._labels)
-    init_op = tf.group(tf.initialize_all_variables(),
-                       tf.initialize_local_variables())
+    initial_op = tf.group(tf.initialize_all_variables(),
+                          tf.initialize_local_variables())
 
     with self.test_session() as sess:
       slim.evaluation.evaluation(
           sess,
-          init_op=init_op,
+          initial_op=initial_op,
           eval_op=update_op,
           eval_op_feed_dict={self._scale: np.ones([], dtype=np.float32)})
       self.assertAlmostEqual(accuracy.eval(), self._expected_accuracy)
@@ -231,12 +231,12 @@ class EvaluationTest(tf.test.TestCase):
     accuracy, update_op = slim.metrics.streaming_accuracy(
         self._predictions, self._labels)
 
-    init_op = tf.group(tf.initialize_all_variables(),
-                       tf.initialize_local_variables())
+    initial_op = tf.group(tf.initialize_all_variables(),
+                          tf.initialize_local_variables())
 
     with self.test_session() as sess:
       slim.evaluation.evaluation(
-          sess, init_op=init_op, eval_op=update_op)
+          sess, initial_op=initial_op, eval_op=update_op)
       self.assertAlmostEqual(accuracy.eval(), self._expected_accuracy)
 
   def testLatestCheckpointReturnsNoneAfterTimeout(self):
