@@ -28,7 +28,10 @@ filegroup(
             "core/ops/*.cc",
             "data/*.cc",
         ],
-        exclude = ["core/ops/*_test.cc"],
+        exclude = [
+            "core/ops/*_test.cc",
+            "data/*_test.cc",
+        ],
     ),
 )
 
@@ -305,6 +308,20 @@ cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//third_party/eigen3",
+    ],
+)
+
+cc_test(
+    name = "sparse_values_to_indices_test",
+    size = "small",
+    srcs = ["data/sparse_values_to_indices_test.cc"],
+    deps = [
+        ":all_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
     ],
 )
 

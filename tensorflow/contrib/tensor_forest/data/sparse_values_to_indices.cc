@@ -34,11 +34,12 @@ int64 Convert(const string& in, int32 offset_bits) {
   std::size_t hashed = std::hash<string>()(in);
   // Mask off the offset_bits msb's
   int64 mask = static_cast<int64>(pow(2, offset_bits) - 1)
-               << (32 - offset_bits);
+               << (26 - offset_bits);
   // TODO(gilberth): Use int64 to store feature indices in tensor_forest.
-  // Only use the lower 31 bits because that's what we currently store as
-  // feature indices.
-  mask = ~mask & 0x7FFFFFFF;
+  // Only use the lower 26 bits because we only store 32 and need to keep
+  // max number of elements down under 2^41 when comined with other
+  // features.
+  mask = ~mask & 0x03FFFFFF;
   return static_cast<int64>(hashed & mask);
 }
 
@@ -51,7 +52,11 @@ void Evaluate(const Tensor& sparse_indices, const Tensor& sparse_values,
 
   for (int32 i = start; i < end; ++i) {
     out_data(i, 0) = indices(i, 0);
-    out_data(i, 1) = Convert(values(i), offset_bits) + offset;
+    int64 c = Convert(values(i), offset_bits);
+    int64 ind = c + offset;
+    CHECK_LT(ind, kint32max) << "convert is more than int32: " << c << ", "
+                             << offset;
+    out_data(i, 1) = ind;
   }
 }
 

@@ -106,8 +106,8 @@ def _ParseSparse(data):
   num_features = len(data)
   offset_bits = int(math.ceil(math.log(num_features, 2)))
 
-  # We condense data to 31 bits, see sparse_values_to_indices.cc
-  offset_increment = int(math.pow(2, 31 - offset_bits))
+  # We condense data to 26 bits, see sparse_values_to_indices.cc
+  offset_increment = int(math.pow(2, 26 - offset_bits))
   offset = 0
 
   sparse_tensors = []
@@ -115,7 +115,8 @@ def _ParseSparse(data):
     if isinstance(data[k], ops.SparseTensor):
       sparse_indices = data[k].indices
       sparse_values = data[k].values
-      new_shape = data[k].shape
+      new_shape = array_ops.concat(
+          0, [array_ops.slice(data[k].shape, [0], [1]), [offset_increment]])
 
       new_indices, new_values = convert_ops.sparse_values_to_indices(
           sparse_indices,
@@ -128,7 +129,6 @@ def _ParseSparse(data):
     sparse_tensors.append(ops.SparseTensor(indices=new_indices,
                                            values=new_values,
                                            shape=new_shape))
-    offset += offset_increment
 
   return (sparse_ops.sparse_concat(1, sparse_tensors),
           [constants.DATA_CATEGORICAL])

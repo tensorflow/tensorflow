@@ -24,6 +24,8 @@ using tensorflow::Tensor;
 DataColumnTypes FeatureSpec(int32 input_feature, const Tensor& spec) {
   const int32 spec_feature =
       (input_feature + 1 < spec.NumElements()) ? input_feature : 0;
+  CHECK(spec_feature >= 0) << "spec feature is not >= than zero: "
+                           << spec_feature;
   return static_cast<DataColumnTypes>(
       spec.unaligned_flat<int32>()(spec_feature));
 }
