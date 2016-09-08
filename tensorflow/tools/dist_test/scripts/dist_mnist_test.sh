@@ -68,7 +68,9 @@ while true; do
     N_GPUS=$2
   elif [[ "$1" == "--sync-replicas" ]]; then
     SYNC_REPLICAS="1"
-    break
+    die "ERROR: --sync-replicas (synchronized-replicas) mode is not fully "\
+"supported by this test yet."
+    # TODO(cais): Remove error message once sync-replicas is fully supported
   fi
   shift 2
 
