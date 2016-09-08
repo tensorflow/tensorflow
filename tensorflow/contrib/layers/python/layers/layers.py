@@ -379,9 +379,11 @@ def convolution2d(inputs,
       If greater than 1, than the a'trous convolution is applied and `stride`
       must be set to 1.
     activation_fn: activation function.
+      set to None for linear activation
     normalizer_fn: normalization function to use instead of `biases`. If
       `normalize_fn` is provided then `biases_initializer` and
       `biases_regularizer` are ignored and `biases` are not created nor added.
+      default set to None for no normalize function
     normalizer_params: normalization function parameters.
     weights_initializer: An initializer for the weights.
     weights_regularizer: Optional regularizer for the weights.
@@ -427,7 +429,7 @@ def convolution2d(inputs,
     else:
       outputs = nn.conv2d(inputs, weights, [1, stride_h, stride_w, 1],
                           padding=padding)
-    if normalizer_fn:
+    if normalizer_fn is not None:
       normalizer_params = normalizer_params or {}
       outputs = normalizer_fn(outputs, **normalizer_params)
     else:
@@ -442,7 +444,7 @@ def convolution2d(inputs,
                                           collections=biases_collections,
                                           trainable=trainable)
         outputs = nn.bias_add(outputs, biases)
-    if activation_fn:
+    if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections,
                                        sc.original_name_scope, outputs)
