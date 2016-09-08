@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/public/tensor_c_api.h"
+#include "../../c/c_api.h"
 
 namespace tensorflow {
 
