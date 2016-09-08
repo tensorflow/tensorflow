@@ -22,8 +22,6 @@ from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_random_ops
@@ -359,11 +357,8 @@ def multinomial(logits, num_samples, seed=None, name=None):
 
 
 @ops.RegisterShape("Multinomial")
-def _MultinomialShape(op):  # pylint: disable=invalid-name
-  logits_shape = op.inputs[0].get_shape().with_rank(2)
-  batch_size = logits_shape[0]
-  num_samples_or_none = tensor_util.constant_value(op.inputs[1])
-  return [tensor_shape.matrix(batch_size, num_samples_or_none)]
+def _MultinomialShape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 ops.NoGradient("Multinomial")
@@ -449,15 +444,8 @@ def random_gamma(shape,
 
 
 @ops.RegisterShape("RandomGamma")
-def _RandomGammaShape(op):  # pylint: disable=invalid-name
-  alphas_shape = op.inputs[1].get_shape()
-  shape_val = tensor_util.constant_value(op.inputs[0])
-  if shape_val is not None:
-    return [tensor_shape.TensorShape(shape_val).concatenate(alphas_shape)]
-  else:
-    shape_shape = op.inputs[0].get_shape().with_rank(1)
-    return [tensor_shape.unknown_shape(
-        ndims=shape_shape[0].value).concatenate(alphas_shape)]
+def _RandomGammaShape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
 ops.NoGradient("RandomGamma")
@@ -469,12 +457,7 @@ ops.NoGradient("RandomGamma")
 @ops.RegisterShape("RandomUniform")
 @ops.RegisterShape("RandomUniformInt")
 def _RandomShape(op):
-  shape_val = tensor_util.constant_value(op.inputs[0])
-  if shape_val is not None:
-    return [tensor_shape.TensorShape(shape_val)]
-  else:
-    shape_shape = op.inputs[0].get_shape().with_rank(1)
-    return [tensor_shape.unknown_shape(ndims=shape_shape[0].value)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
 ops.RegisterShape("RandomShuffle")(common_shapes.unchanged_shape)

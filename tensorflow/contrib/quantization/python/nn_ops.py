@@ -77,12 +77,7 @@ def _QuantizedMaxPoolShape(op):
           tensor_shape.scalar()]
 
 
-@ops.RegisterShape("QuantizedRelu")
-@ops.RegisterShape("QuantizedRelu6")
-@ops.RegisterShape("QuantizedReluX")
-@ops.RegisterShape("QuantizeDownAndShrinkRange")
-def _QuantizedSameShape(op):
-  unused_min = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
-  unused_max = op.inputs[2].get_shape().merge_with(tensor_shape.scalar())
-  return [op.inputs[0].get_shape(), tensor_shape.scalar(),
-          tensor_shape.scalar()]
+ops.RegisterShape("QuantizedRelu")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QuantizedRelu6")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QuantizedReluX")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QuantizeDownAndShrinkRange")(common_shapes.call_cpp_shape_fn)

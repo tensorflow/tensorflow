@@ -540,24 +540,7 @@ def _parse_single_example_raw(serialized,
     return outputs
 
 
-@ops.RegisterShape("ParseExample")
-def _ParseExampleShape(op):  # pylint: disable=invalid-name
-  """Shape function for the ParseExample op."""
-  input_shape = op.inputs[0].get_shape().with_rank(1)
-  op.inputs[1].get_shape().with_rank(1)  # names
-  num_sparse = op.get_attr("Nsparse")
-  num_dense = op.get_attr("Ndense")
-  dense_shapes = op.get_attr("dense_shapes")
-  sparse_index_shapes = [
-      tensor_shape.matrix(None, 2) for _ in range(num_sparse)]
-  sparse_value_shapes = [tensor_shape.vector(None) for _ in range(num_sparse)]
-  sparse_shape_shapes = [tensor_shape.vector(2) for _ in range(num_sparse)]
-  assert num_dense == len(dense_shapes)
-  dense_shapes = [
-      input_shape.concatenate(dense_shape)
-      for dense_shape in dense_shapes]
-  return (sparse_index_shapes + sparse_value_shapes + sparse_shape_shapes +
-          dense_shapes)
+ops.RegisterShape("ParseExample")(common_shapes.call_cpp_shape_fn)
 
 
 def parse_single_sequence_example(
@@ -881,64 +864,9 @@ def _parse_single_sequence_example_raw(serialized,
     return (context_output, feature_list_output)
 
 
-@ops.RegisterShape("ParseSingleSequenceExample")
-def _ParseSingleSequenceExampleShape(op):  # pylint: disable=invalid-name
-  """Shape function for the ParseExample op."""
-  op.inputs[0].get_shape().with_rank(0)  # input
-  # feature_list_dense_missing_assumed_empty
-  op.inputs[1].get_shape().with_rank(1)
-  num_context_sparse = op.get_attr("Ncontext_sparse")
-  num_context_dense = op.get_attr("Ncontext_dense")
-  num_feature_list_dense = op.get_attr("Nfeature_list_dense")
-  context_dense_shapes = op.get_attr("context_dense_shapes")
-  num_feature_list_sparse = op.get_attr("Nfeature_list_sparse")
-  feature_list_dense_shapes = op.get_attr("feature_list_dense_shapes")
-  context_sparse_index_shapes = [
-      tensor_shape.matrix(None, 1) for _ in range(num_context_sparse)]
-  context_sparse_value_shapes = [
-      tensor_shape.vector(None) for _ in range(num_context_sparse)]
-  context_sparse_shape_shapes = [
-      tensor_shape.vector(1) for _ in range(num_context_sparse)]
-  context_dense_shapes = [
-      tensor_shape.TensorShape(dense_shape)
-      for dense_shape in context_dense_shapes]
-  feature_list_sparse_index_shapes = [
-      tensor_shape.matrix(None, 2) for _ in range(num_feature_list_sparse)]
-  feature_list_sparse_value_shapes = [
-      tensor_shape.vector(None) for _ in range(num_feature_list_sparse)]
-  feature_list_sparse_shape_shapes = [
-      tensor_shape.vector(2) for _ in range(num_feature_list_sparse)]
-  feature_list_dense_shapes = [
-      tensor_shape.vector(None).concatenate(dense_shape)
-      for dense_shape in feature_list_dense_shapes]
-  assert num_context_dense == len(context_dense_shapes)
-  assert num_feature_list_dense == len(feature_list_dense_shapes)
-  return (context_sparse_index_shapes + context_sparse_value_shapes +
-          context_sparse_shape_shapes + context_dense_shapes +
-          feature_list_sparse_index_shapes + feature_list_sparse_value_shapes +
-          feature_list_sparse_shape_shapes + feature_list_dense_shapes)
-
-
-ops.RegisterShape("DecodeJSONExample")(common_shapes.unchanged_shape)
-ops.RegisterShape("ParseTensor")(common_shapes.unknown_shape)
-ops.RegisterShape("StringToNumber")(common_shapes.unchanged_shape)
-
-
-@ops.RegisterShape("DecodeRaw")
-def _DecodeRawShape(op):  # pylint: disable=invalid-name
-  """Shape function for the DecodeRaw op."""
-  # NOTE(mrry): Last dimension is data-dependent.
-  return [op.inputs[0].get_shape().concatenate([None])]
-
-
-@ops.RegisterShape("DecodeCSV")
-def _DecodeCSVShape(op):  # pylint: disable=invalid-name
-  """Shape function for the DecodeCSV op."""
-  input_shape = op.inputs[0].get_shape()
-  # Optionally check that all of other inputs are scalar or empty.
-  for default_input in op.inputs[1:]:
-    default_input_shape = default_input.get_shape().with_rank(1)
-    if default_input_shape[0] > 1:
-      raise ValueError(
-          "Shape of a default must be a length-0 or length-1 vector.")
-  return [input_shape] * len(op.outputs)
+ops.RegisterShape("ParseSingleSequenceExample")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ParseTensor")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("DecodeJSONExample")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("StringToNumber")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("DecodeRaw")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("DecodeCSV")(common_shapes.call_cpp_shape_fn)

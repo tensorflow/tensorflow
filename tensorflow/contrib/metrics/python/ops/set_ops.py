@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.framework.python.framework import tensor_util
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
@@ -36,10 +37,7 @@ _VALID_DTYPES = set([
     dtypes.uint8, dtypes.uint16, dtypes.string])
 
 
-@ops.RegisterShape("SetSize")
-def _size_shape(unused_op):
-  """Shape function for SetSize op."""
-  return [tensor_shape.unknown_shape()]
+ops.RegisterShape("SetSize")(common_shapes.call_cpp_shape_fn)
 
 
 def set_size(a, validate_indices=True):

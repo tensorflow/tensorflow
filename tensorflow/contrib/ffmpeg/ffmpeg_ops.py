@@ -20,31 +20,15 @@ from __future__ import print_function
 
 from tensorflow.contrib.ffmpeg.ops import gen_decode_audio_op_py
 from tensorflow.contrib.ffmpeg.ops import gen_encode_audio_op_py
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
 
 
-@ops.RegisterShape('DecodeAudio')
-def _decode_audio_shape(op):
-  """Computes the shape of a DecodeAudio operation.
-
-  Args:
-    op: A DecodeAudio operation.
-
-  Returns:
-    A list of output shapes. There's exactly one output, the sampled audio.
-    This is a rank 2 tensor with an unknown number of samples and a
-    known number of channels.
-  """
-  try:
-    channels = op.get_attr('channel_count')
-  except ValueError:
-    channels = None
-  return [tensor_shape.TensorShape([None, channels])]
+ops.RegisterShape('DecodeAudio')(common_shapes.call_cpp_shape_fn)
 
 
 def decode_audio(contents, file_format=None, samples_per_second=None,
@@ -78,15 +62,7 @@ def decode_audio(contents, file_format=None, samples_per_second=None,
 ops.NoGradient('DecodeAudio')
 
 
-@ops.RegisterShape('EncodeAudio')
-def _encode_audio_shape(unused_op):
-  """Computes the shape of an EncodeAudio operation.
-
-  Returns:
-    A list of output shapes. There's exactly one output, the formatted audio
-    file. This is a rank 0 tensor.
-  """
-  return [tensor_shape.TensorShape([])]
+ops.RegisterShape('EncodeAudio')(common_shapes.call_cpp_shape_fn)
 
 
 def encode_audio(audio, file_format=None, samples_per_second=None):
