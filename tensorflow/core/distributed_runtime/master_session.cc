@@ -139,9 +139,6 @@ class MasterSession : public MasterSessionInterface {
   std::unique_ptr<SimpleGraphExecutionState> execution_state_;
   int64 graph_version_;
 
-  int32 steps_since_last_scheduling_ GUARDED_BY(mu_) = 0;
-  int32 scheduling_period_steps_ GUARDED_BY(mu_) = 10;
-
   // We keep a map from a signature of a run request to the
   // ReffedClientGraph the can execute it.  We keep up to one old copy
   // of each ReffedClientGraph around because if it gets deallocated
@@ -179,7 +176,7 @@ class MasterSession : public MasterSessionInterface {
   TF_DISALLOW_COPY_AND_ASSIGN(MasterSession);
 };
 
-// Session wraps ClientGraph in a reference counted object.  This way,
+// Session wraps SimpleClientGraph in a reference counted object.  This way,
 // Session can clear up the cache mapping Run requests to compiled
 // graphs while the compiled graph is still being used.
 //
@@ -663,7 +660,6 @@ class CleanupBroadcastHelper {
 
 }  // namespace
 
-
 void MasterSession::ReffedClientGraph::CleanupPartitionsAsync(
     int64 step_id, StatusCallback done) {
   const int num = partitions_.size();
@@ -775,6 +771,9 @@ MasterSession::MasterSession(const SessionOptions& opt, const MasterEnv* env,
     }
     num_local_devices++;
   }
+  LOG(INFO) << "Start master session " << handle_
+            << " with config: " << std::endl
+            << session_opts_.config.DebugString();
 }
 
 MasterSession::~MasterSession() {
