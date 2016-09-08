@@ -646,7 +646,7 @@ def call_cpp_shape_fn(op, input_tensors_needed=None,
     if str(result) != str(python_result):
       raise ValueError(
           ("Python vs CPP shape mismatch.  "
-           "python: %s vs CPP: %s on node %s "
+           "CPP: %s vs python: %s on node %s "
            "with input shapes %s") % (
                str(result), str(python_result), str(op.node_def),
                ",".join([str(i.get_shape()) for i in op.inputs])))

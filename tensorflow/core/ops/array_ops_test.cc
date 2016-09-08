@@ -385,7 +385,6 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
 
   // With unknown dim tensor value, output is unknown.
   INFER_OK(op, "?;?", "?");
-  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;[1]");
   Tensor dim_t;
   op.input_tensors[1] = &dim_t;
 
@@ -399,9 +398,19 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
     dim_t = test::AsScalar<int32>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,1,d0_1,d0_2]");
+
+    // Repeat with int64.
+    dim_t = test::AsScalar<int64>(idx);
+    INFER_OK(op, "?;?", "?");
+    INFER_OK(op, "[5,?,7];?", "[d0_0,1,d0_1,d0_2]");
   }
   for (int32 idx : {2, -2}) {
     dim_t = test::AsScalar<int32>(idx);
+    INFER_OK(op, "?;?", "?");
+    INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,1,d0_2]");
+
+    // Repeat with int64.
+    dim_t = test::AsScalar<int64>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,1,d0_2]");
   }
@@ -411,7 +420,26 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
     dim_t = test::AsScalar<int32>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,d0_2,1]");
+
+    // Repeat with int64.
+    dim_t = test::AsScalar<int64>(idx);
+    INFER_OK(op, "?;?", "?");
+    INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,d0_2,1]");
   }
+
+  // Expand using an input vector tensor.
+  std::vector<int32> dims;
+  dims.push_back(0);
+  dim_t = test::AsTensor<int32>(dims);
+  INFER_OK(op, "?;?", "?");
+  INFER_OK(op, "[5,?,7];?", "[1,d0_0,d0_1,d0_2]");
+
+  // Expand using too many input elements.
+  dims.push_back(1);
+  dim_t = test::AsTensor<int32>(dims);
+  INFER_ERROR("'dim' input must be a tensor with a single", op, "?;?");
+  INFER_ERROR("'dim' input must be a tensor with a single", op, "[5,6,7];?");
+
   // Examples from ExpandDims doc.
   dim_t = test::AsScalar<int32>(0);
   INFER_OK(op, "[2];[]", "[1,d0_0]");
@@ -928,8 +956,8 @@ TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
   // Paddings not known, but batch size can be computed.
   INFER_OK(op, "[1,10,10,3];[2,2]", "[4,?,?,d0_3]");
 
-  // Unknown paddings means unknown shape
-  INFER_OK(op, "[1,10,10,3];?", "?");
+  // Unknown paddings means unknown shape of rank 4.
+  INFER_OK(op, "[1,10,10,3];?", "[?,?,?,?]");
 
   // Paddings not correct shape
   INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[1,10,10,3];[4]");
@@ -971,7 +999,7 @@ TEST(ArrayOpsTest, BatchToSpace_ShapeFn) {
               "[5,8,8,3];[2,2]");
 
   // Unknown croppings means unknown shape
-  INFER_OK(op, "[4,8,8,3];?", "?");
+  INFER_OK(op, "[4,8,8,3];?", "[?,?,?,?]");
 
   // croppings not correct shape
   INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[4,8,8,3];[4]");

@@ -270,14 +270,12 @@ class InferenceContext {
   // Returns in <*out> a sub-shape of <s> with dimensions [start:].
   // <start> can be negative to index from the end of the shape. If <start> >
   // rank of <s>, then an empty subshape is returned.
-  // Returns an error if the rank of <s> is < <start>.
   Status Subshape(ShapeHandle s, int64 start,
                   ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Returns in <*out> a sub-shape of <s>, with dimensions [start:end].
   // <start> and <end> can be negative, to index from the end of the shape.
   // <start> and <end> are set to the rank of <s> if > rank of <s>.
-  // Returns an error if the rank of <s> is insufficient.
   Status Subshape(ShapeHandle s, int64 start, int64 end,
                   ShapeHandle* out) TF_MUST_USE_RESULT;
 

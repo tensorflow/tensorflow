@@ -2281,10 +2281,12 @@ REGISTER_OP("ExpandDims")
     .Attr("Tdim: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
-      ShapeHandle expand_dim;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &expand_dim));
 
       const Tensor* dim_t = c->input_tensor(1);
+      if (dim_t != nullptr && dim_t->NumElements() != 1) {
+        return errors::InvalidArgument(
+            "'dim' input must be a tensor with a single value");
+      }
       if (dim_t == nullptr || !c->RankKnown(input)) {
         c->set_output(0, c->UnknownShape());
         return Status::OK();
@@ -2516,7 +2518,8 @@ REGISTER_OP("SpaceToBatch")
       DimensionHandle pad1_dim = c->Dim(paddings, 1);
 
       if (!c->ValueKnown(pad0_dim) || !c->ValueKnown(pad1_dim)) {
-        return shape_inference::UnknownShape(c);
+        c->set_output(0, c->UnknownShapeOfRank(4));
+        return Status::OK();
       }
 
       int64 pad0 = c->Value(pad0_dim);
@@ -2694,7 +2697,8 @@ REGISTER_OP("BatchToSpace")
       DimensionHandle crops1_dim = c->Dim(crops, 1);
 
       if (!c->ValueKnown(crops0_dim) || !c->ValueKnown(crops1_dim)) {
-        return shape_inference::UnknownShape(c);
+        c->set_output(0, c->UnknownShapeOfRank(4));
+        return Status::OK();
       }
 
       int64 crops0 = c->Value(crops0_dim);
