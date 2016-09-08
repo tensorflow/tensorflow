@@ -262,7 +262,6 @@ cuda_py_tests(
     srcs = [
         "batch_matrix_band_part_op_test.py",
         "conv_ops_3d_test.py",
-        "cwise_ops_test.py",
         "embedding_ops_test.py",
         "linalg_grad_test.py",
         "svd_op_test.py",
@@ -270,8 +269,18 @@ cuda_py_tests(
     additional_deps = [
         "//tensorflow:tensorflow_py",
     ],
+    shard_count = 20,
+)
+
+cuda_py_test(
+    name = "cwise_ops_test",
+    size = "medium",
+    srcs = ["cwise_ops_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
     shard_count = 50,
-    tags = ["notap"],  # b/30226163
+    tags = ["notap"],  # http://b/30226163
 )
 
 filegroup(
