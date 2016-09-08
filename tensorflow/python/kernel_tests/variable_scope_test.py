@@ -87,7 +87,7 @@ class VariableScopeTest(tf.test.TestCase):
 
       w = tf.get_variable("w",
                           initializer=numpy.array([1, 2, 3]),
-                          dtype=tf.int32)
+                          dtype=tf.int64)
       sess.run(tf.initialize_variables([w]))
       self.assertAllClose(w.eval(), [1, 2, 3])
 
@@ -178,6 +178,15 @@ class VariableScopeTest(tf.test.TestCase):
         v = tf.get_variable("v")
         sess.run(tf.initialize_variables([v]))
         self.assertAllClose(v.eval(), 0.1)
+
+      # Check that non-float32 initializer creates a non-float32 variable.
+      init = tf.constant(1, dtype=tf.int32)
+      t = tf.get_variable("t", initializer=init)
+      self.assertEqual(t.dtype.base_dtype, tf.int32)
+
+      # Raise error if `initializer` dtype and `dtype` are not identical.
+      with self.assertRaisesRegexp(ValueError, "don't match"):
+        tf.get_variable("s", initializer=init, dtype=tf.float64)
 
   def testControlDeps(self):
     with self.test_session() as sess:
