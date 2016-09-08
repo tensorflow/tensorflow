@@ -13,7 +13,17 @@ This folder contains examples of how to build applications for iOS devices using
  - Download
    [Inception v1](https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip),
    and extract the label and graph files into the data folders inside both the
-   simple and camera examples.
+   simple and camera examples:
+
+```bash
+mkdir -p ~/graphs
+curl -o ~/graphs/inception.zip \
+ https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip \
+ && unzip ~/graphs/inception.zip -d ~/graphs/inception
+cp ~/graphs/inception/* tensorflow/contrib/ios_examples/benchmark/data/
+cp ~/graphs/inception/* tensorflow/contrib/ios_examples/camera/data/
+cp ~/graphs/inception/* tensorflow/contrib/ios_examples/simple/data/
+```
 
  - Load the Xcode project inside the `simple` subfolder, and press Command-R to
    build and run it on the simulator or your connected device.
