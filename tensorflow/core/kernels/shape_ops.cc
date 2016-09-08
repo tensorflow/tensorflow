@@ -231,7 +231,6 @@ class SizeOp : public OpKernel {
     const int64 size = inp.NumElements();
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
-    LOG(INFO) << size << " And " << DataTypeString(out->dtype());
     if (out->dtype() == DT_INT32) {
       OP_REQUIRES(
           ctx, FastBoundsCheck(size, std::numeric_limits<int32>::max()),
