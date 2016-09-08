@@ -40,7 +40,7 @@ schemes for their given allocation methods. For example, [class GPUBFCAllocator 
 is basically a wrapper around BFCAllocator which interfaces with the
 GPUMemAllocator just through the constructor. Novel hardware should
 implement a SubAllocator for their specific hardware and then implement
-and Allocator that wraps around.
+an Allocator that wraps around.
 
 ## Simple CPU Allocator
 
