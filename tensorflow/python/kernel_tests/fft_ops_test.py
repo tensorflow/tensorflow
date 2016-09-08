@@ -146,11 +146,13 @@ class BatchFFTOpsTest(BaseFFTOpsTest):
       for rank in VALID_FFT_RANKS:
         for dims in xrange(0, rank):
           x = np.zeros((1,) * dims).astype(np.complex64)
-          with self.assertRaisesOpError(
-              "Input must have rank of at least {}".format(rank)):
+          with self.assertRaisesWithPredicateMatch(
+              ValueError,
+              "Shape must be .*rank {}.*".format(rank)):
             self._tfFFT(x, rank)
-          with self.assertRaisesOpError(
-              "Input must have rank of at least {}".format(rank)):
+          with self.assertRaisesWithPredicateMatch(
+              ValueError,
+              "Shape must be .*rank {}.*".format(rank)):
             self._tfIFFT(x, rank)
 
   def testGrad_Simple(self):
@@ -226,11 +228,13 @@ class FFTOpsTest(BaseFFTOpsTest):
       for rank in VALID_FFT_RANKS:
         for dims in list(range(0, rank)) + [rank + 1]:
           x = np.zeros((1,) * dims).astype(np.complex64)
-          with self.assertRaisesOpError(
-              "Input must be of rank {} but got:".format(rank)):
+          with self.assertRaisesWithPredicateMatch(
+              ValueError,
+              "Shape must be .*rank {}.*".format(rank)):
             self._tfFFT(x, rank)
-          with self.assertRaisesOpError(
-              "Input must be of rank {} but got:".format(rank)):
+          with self.assertRaisesWithPredicateMatch(
+              ValueError,
+              "Shape must be .*rank {}.*".format(rank)):
             self._tfIFFT(x, rank)
 
   def testGrad_Simple(self):

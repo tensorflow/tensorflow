@@ -107,8 +107,6 @@ from __future__ import print_function
 
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_state_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -151,20 +149,9 @@ def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
 # NOTE(mrry): Shapes are conditionally set in the Python wrapper.
 ops.RegisterShape("Variable")(common_shapes.unknown_shape)
 
-ops.RegisterShape("IsVariableInitialized")(common_shapes.scalar_shape)
-
-
-@ops.RegisterShape("TemporaryVariable")
-def _TemporaryVariableShape(op):
-  """Shape function for the TemporaryVariable op."""
-  shape = tensor_util.TensorShapeProtoToList(op.get_attr("shape"))
-  return [tensor_shape.TensorShape(shape)]
-
-
-@ops.RegisterShape("DestroyTemporaryVariable")
-def _DestroyTemporaryVariableShape(op):
-  """Shape function for the DestroyTemporaryVariable op."""
-  return [op.inputs[0].get_shape()]
+ops.RegisterShape("IsVariableInitialized")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("TemporaryVariable")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("DestroyTemporaryVariable")(common_shapes.call_cpp_shape_fn)
 
 
 def init_variable(v, init, name="init"):
@@ -202,40 +189,12 @@ def init_variable(v, init, name="init"):
           return gen_state_ops.assign(v, init, name=scope)
 
 
-@ops.RegisterShape("Assign")
-def _AssignShape(op):
-  """Shape function for the Assign op."""
-  if op.get_attr("validate_shape"):
-    # NOTE(mrry): Return a known shape here. This makes it awkward to
-    # chain a validated-shape assignment and a reshaping assignment,
-    # but that is a sufficiently niche case that supporting it does
-    # not seem worthwhile.
-    return [op.inputs[0].get_shape().merge_with(op.inputs[1].get_shape())]
-  return [op.inputs[1].get_shape()]
-
-
-@ops.RegisterShape("AssignAdd")
-@ops.RegisterShape("AssignSub")
-def _AssignUpdateShape(op):
-  """Shape function for the AssignAdd and AssignSub dense update ops."""
-  return [op.inputs[0].get_shape().merge_with(op.inputs[1].get_shape())]
-
-
-@ops.RegisterShape("CountUpTo")
-def _CountUpToShape(op):
-  """Shape function for the CountUpTo op."""
-  return [op.inputs[0].get_shape().merge_with(tensor_shape.scalar())]
-
-
-@ops.RegisterShape("ScatterAdd")
-@ops.RegisterShape("ScatterSub")
-@ops.RegisterShape("ScatterMul")
-@ops.RegisterShape("ScatterDiv")
-@ops.RegisterShape("ScatterUpdate")
-def _ScatterUpdateShape(op):
-  """Shape function for the sparse update ops."""
-  var_shape = op.inputs[0].get_shape()
-  indices_shape = op.inputs[1].get_shape()
-  unused_updates_shape = op.inputs[2].get_shape().merge_with(
-      indices_shape.concatenate(var_shape[1:]))
-  return [var_shape]
+ops.RegisterShape("Assign")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AssignAdd")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AssignSub")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("CountUpTo")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ScatterAdd")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ScatterDiv")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ScatterMul")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ScatterSub")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ScatterUpdate")(common_shapes.call_cpp_shape_fn)

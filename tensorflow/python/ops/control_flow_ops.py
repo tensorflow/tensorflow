@@ -2720,15 +2720,15 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
     return case_seq
 
 
-ops.RegisterShape("Enter")(common_shapes.unknown_shape)
-ops.RegisterShape("Exit")(common_shapes.unchanged_shape)
-ops.RegisterShape("NextIteration")(common_shapes.unchanged_shape)
-ops.RegisterShape("RefEnter")(common_shapes.unchanged_shape)
-ops.RegisterShape("RefExit")(common_shapes.unchanged_shape)
-ops.RegisterShape("RefNextIteration")(common_shapes.unchanged_shape)
-ops.RegisterShape("ControlTrigger")(common_shapes.no_outputs)
-ops.RegisterShape("NoOp")(common_shapes.no_outputs)
-ops.RegisterShape("Abort")(common_shapes.no_outputs)
+ops.RegisterShape("Enter")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Exit")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("NextIteration")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RefEnter")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RefExit")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RefNextIteration")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ControlTrigger")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("NoOp")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Abort")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("LoopCond")
@@ -2737,7 +2737,9 @@ def _LoopCondShape(op):
   return [op.inputs[0].get_shape().merge_with(tensor_shape.scalar())]
 
 
-@ops.RegisterShape("Merge")
+ops.RegisterShape("Merge")(common_shapes.call_cpp_shape_fn)
+
+
 def _MergeShape(op):
   """Shape function for the Merge op.
 
@@ -2775,40 +2777,6 @@ def _MergeShape(op):
 ops.RegisterShape("RefMerge")(_MergeShape)
 
 
-@ops.RegisterShape("RefSelect")
-def _RefSelectShape(op):
-  """Shape function for the RefSelect op.
-
-  The RefSelect takes one scalar input and N inputs of arbitrary
-  shapes, and produces one output, which is one of those N inputs.
-
-  This function conservatively assumes that if any of the N inputs is
-  not fully defined, the output shape is unknown. If all of the N
-  inputs have the exact same known shape, the output must have that
-  shape.
-
-  Args:
-    op: A RefSelect Operation.
-
-  Returns:
-    A single-element list containing the Shape of the RefSelect op.
-  """
-  unused_shape = op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  first_input_shape = op.inputs[1].get_shape()
-  if first_input_shape.is_fully_defined():
-    for input_ in op.inputs[2:]:
-      input_shape = input_.get_shape()
-      if (not input_shape.is_fully_defined()
-          or not input_shape.is_compatible_with(first_input_shape)):
-        return [tensor_shape.unknown_shape()]
-    return [first_input_shape]
-  else:
-    return [tensor_shape.unknown_shape()]
-
-
-@ops.RegisterShape("RefSwitch")
-@ops.RegisterShape("Switch")
-def _SwitchShape(op):
-  input_shape = op.inputs[0].get_shape()
-  unused_pred_shape = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
-  return [input_shape] * 2
+ops.RegisterShape("RefSelect")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RefSwitch")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Switch")(common_shapes.call_cpp_shape_fn)

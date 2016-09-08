@@ -190,7 +190,7 @@ REGISTER_OP("Enter")
     .Attr("frame_name: string")
     .Attr("is_constant: bool = false")
     .Attr("parallel_iterations: int = 10")
-    .SetShapeFn(shape_inference::UnchangedShape)
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Creates or finds a child frame, and makes `data` available to the child frame.
 

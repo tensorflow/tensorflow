@@ -2099,6 +2099,7 @@ REGISTER_OP("Cumsum")
     .Output("out: T")
     .Attr("T: numbertype")
     .Attr("Tidx: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Compute the cumulative sum of the tensor `x` along `axis`.
 
@@ -2135,6 +2136,7 @@ REGISTER_OP("Cumprod")
     .Output("out: T")
     .Attr("T: numbertype")
     .Attr("Tidx: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Compute the cumulative product of the tensor `x` along `axis`.
 

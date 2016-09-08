@@ -123,12 +123,12 @@ ops.NoGradient("AsString")
 ops.NoGradient("EncodeBase64")
 ops.NoGradient("DecodeBase64")
 
-ops.RegisterShape("StringToHashBucket")(common_shapes.unchanged_shape)
-ops.RegisterShape("StringToHashBucketFast")(common_shapes.unchanged_shape)
-ops.RegisterShape("StringToHashBucketStrong")(common_shapes.unchanged_shape)
-ops.RegisterShape("AsString")(common_shapes.unchanged_shape)
-ops.RegisterShape("EncodeBase64")(common_shapes.unchanged_shape)
-ops.RegisterShape("DecodeBase64")(common_shapes.unchanged_shape)
+ops.RegisterShape("StringToHashBucket")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("StringToHashBucketFast")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("StringToHashBucketStrong")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AsString")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("EncodeBase64")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("DecodeBase64")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("ReduceJoin")
