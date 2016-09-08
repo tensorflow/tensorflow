@@ -117,5 +117,5 @@ the reader to adapt as needed if not anything arises.
 
 Much more has to be done for a GPU kind of device.
 
-* [Memory Allocator](jpu_allocator.md)
-* [Device and Factory](jpu_device.md)
+* [Memory Allocator](allocators.md)
+* [Device and Factory](devices.md)

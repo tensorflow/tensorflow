@@ -124,3 +124,8 @@ Note that `ps->GetCUDAHostAllocator(0)` gives a special allocator
 for GPU interfacing and in the case this isn't supported,
 the standard `CPUAllocator` is returned from the `ThreadPoolDevice`
 superclass.
+
+
+## Next Steps
+
+* [Device and Factory](devices.md)
