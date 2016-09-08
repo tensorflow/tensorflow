@@ -95,8 +95,10 @@ TEST(EnvTest, DeleteRecursively) {
   TF_EXPECT_OK(env->CreateDir(parent_dir));
   const string root_file1 = io::JoinPath(parent_dir, "root_file1");
   const string root_file2 = io::JoinPath(parent_dir, "root_file2");
+  const string root_file3 = io::JoinPath(parent_dir, ".root_file3");
   CreateTestFile(env, root_file1, 100);
   CreateTestFile(env, root_file2, 100);
+  CreateTestFile(env, root_file3, 100);
   TF_EXPECT_OK(env->CreateDir(child_dir1));
   const string child1_file1 = io::JoinPath(child_dir1, "child1_file1");
   CreateTestFile(env, child1_file1, 100);
@@ -107,8 +109,10 @@ TEST(EnvTest, DeleteRecursively) {
       env->DeleteRecursively(parent_dir, &undeleted_files, &undeleted_dirs));
   EXPECT_EQ(0, undeleted_files);
   EXPECT_EQ(0, undeleted_dirs);
-  EXPECT_FALSE(env->FileExists(io::JoinPath(parent_dir, "root_file1")));
-  EXPECT_FALSE(env->FileExists(io::JoinPath(child_dir1, "child1_file1")));
+  EXPECT_FALSE(env->FileExists(root_file1));
+  EXPECT_FALSE(env->FileExists(root_file2));
+  EXPECT_FALSE(env->FileExists(root_file3));
+  EXPECT_FALSE(env->FileExists(child1_file1));
 }
 
 TEST(EnvTest, DeleteRecursivelyFail) {
@@ -153,8 +157,9 @@ TEST(EnvTest, LocalFileSystem) {
 class InterPlanetaryFileSystem : public NullFileSystem {
  public:
   Status GetChildren(const string& dir, std::vector<string>* result) override {
-    std::vector<string> Planets = {"Mercury", "Venus",  "Earth",  "Mars",
-                                   "Jupiter", "Saturn", "Uranus", "Neptune"};
+    std::vector<string> Planets = {"Mercury", "Venus",   "Earth",
+                                   "Mars",    "Jupiter", "Saturn",
+                                   "Uranus",  "Neptune", ".PlanetX"};
     result->insert(result->end(), Planets.begin(), Planets.end());
     return Status::OK();
   }
@@ -167,8 +172,9 @@ TEST(EnvTest, IPFS) {
   std::vector<string> planets;
   TF_EXPECT_OK(env->GetChildren("ipfs://solarsystem", &planets));
   int c = 0;
-  std::vector<string> Planets = {"Mercury", "Venus",  "Earth",  "Mars",
-                                 "Jupiter", "Saturn", "Uranus", "Neptune"};
+  std::vector<string> Planets = {"Mercury", "Venus",   "Earth",
+                                 "Mars",    "Jupiter", "Saturn",
+                                 "Uranus",  "Neptune", ".PlanetX"};
   for (auto p : Planets) {
     EXPECT_EQ(p, planets[c++]);
   }
