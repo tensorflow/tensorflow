@@ -89,7 +89,7 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
                activation_fn=nn.relu,
                dropout=None,
                gradient_clip_norm=None,
-               enable_centered_bias=True,
+               enable_centered_bias=None,
                config=None):
     """Initializes a DNNClassifier instance.
 
@@ -125,6 +125,9 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
     Returns:
       A `DNNClassifier` estimator.
     """
+    if enable_centered_bias is None:
+      enable_centered_bias = True
+      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
     super(DNNClassifier, self).__init__(
         model_dir=model_dir,
         n_classes=n_classes,
@@ -218,7 +221,7 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                activation_fn=nn.relu,
                dropout=None,
                gradient_clip_norm=None,
-               enable_centered_bias=True,
+               enable_centered_bias=None,
                config=None):
     """Initializes a `DNNRegressor` instance.
 
@@ -252,6 +255,9 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     Returns:
       A `DNNRegressor` estimator.
     """
+    if enable_centered_bias is None:
+      enable_centered_bias = True
+      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
     super(DNNRegressor, self).__init__(
         model_dir=model_dir,
         weight_column_name=weight_column_name,

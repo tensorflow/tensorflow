@@ -358,7 +358,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
                weight_column_name=None,
                optimizer=None,
                gradient_clip_norm=None,
-               enable_centered_bias=True,
+               enable_centered_bias=None,
                config=None):
     """Construct a `LinearClassifier` estimator object.
 
@@ -390,6 +390,9 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     Raises:
       ValueError: if n_classes < 2.
     """
+    if enable_centered_bias is None:
+      enable_centered_bias = True
+      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
     self._model_dir = model_dir or tempfile.mkdtemp()
     if n_classes < 2:
       raise ValueError("Classification requires n_classes >= 2")
@@ -597,7 +600,7 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                weight_column_name=None,
                optimizer=None,
                gradient_clip_norm=None,
-               enable_centered_bias=True,
+               enable_centered_bias=None,
                target_dimension=1,
                config=None):
     """Construct a `LinearRegressor` estimator object.
@@ -626,6 +629,9 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     Returns:
       A `LinearRegressor` estimator.
     """
+    if enable_centered_bias is None:
+      enable_centered_bias = True
+      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
     super(LinearRegressor, self).__init__(
         model_dir=model_dir,
         weight_column_name=weight_column_name,
