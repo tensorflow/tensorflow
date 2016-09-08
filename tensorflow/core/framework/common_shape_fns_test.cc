@@ -243,6 +243,19 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
   }
 
   {
+    // NCHW format with input rank 3
+    TF_CHECK_OK(NodeDefBuilder("test", "BiasAdd")
+                    .Input("a", 0, DT_FLOAT)
+                    .Input("b", 0, DT_FLOAT)
+                    .Attr("data_format", "NCHW")
+                    .Finalize(&def));
+    InferenceContext c(&def, op_def, {"[10,11,12]", "[10]"}, {});
+    TF_EXPECT_OK(BiasAddShape(&c));
+    ShapeHandle output = c.output(0);
+    EXPECT_EQ("[10,11,12]", c.DebugString(output));
+  }
+
+  {
     // Input rank not high enough
     InferenceContext c(&def, op_def, {"[3]", "[3]"}, {});
     EXPECT_FALSE(BiasAddShape(&c).ok());
@@ -256,7 +269,7 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
                     .Attr("data_format", "NCHW")
                     .Finalize(&def));
     // NCHW format
-    InferenceContext c(&def, op_def, {"[2,3,4]", "[3]"}, {});
+    InferenceContext c(&def, op_def, {"[2,3]", "[3]"}, {});
     EXPECT_FALSE(BiasAddShape(&c).ok());
   }
 }
@@ -314,6 +327,18 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
   }
 
   {
+    // NCHW format with input rank 3
+    TF_CHECK_OK(NodeDefBuilder("test", "BiasAddGrad")
+                    .Input("a", 0, DT_FLOAT)
+                    .Attr("data_format", "NCHW")
+                    .Finalize(&def));
+    InferenceContext c(&def, op_def, {"[10,11,12]"}, {});
+    TF_EXPECT_OK(BiasAddGradShape(&c));
+    ShapeHandle output = c.output(0);
+    EXPECT_EQ(10, c.Value(c.Dim(output, 0)));
+  }
+
+  {
     // Input rank not high enough
     InferenceContext c(&def, op_def, {"[3]"}, {});
     EXPECT_FALSE(BiasAddGradShape(&c).ok());
@@ -326,7 +351,7 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
                     .Attr("data_format", "NCHW")
                     .Finalize(&def));
     // NCHW format
-    InferenceContext c(&def, op_def, {"[2,3,4]"}, {});
+    InferenceContext c(&def, op_def, {"[2,3]"}, {});
     EXPECT_FALSE(BiasAddGradShape(&c).ok());
   }
 }

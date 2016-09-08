@@ -929,30 +929,12 @@ class PoolingTest(tf.test.TestCase):
         pool_func(tf.placeholder(tf.float32, shape=[1, 3]),
                   ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1], padding="SAME")
 
-    # Illegal strides.
-    with self.assertRaisesRegexp(ValueError, "strides in the batch"):
-      tf.nn.max_pool_with_argmax(
-          tf.placeholder(tf.float32),
-          ksize=[1, 1, 1, 1],
-          strides=[2, 1, 1, 1],
-          padding="SAME")
-
-    # Filter larger than input.
-    for pool_func in [tf.nn.max_pool_with_argmax]:
-      with self.assertRaisesRegexp(ValueError,
-                                   "Filter must not be larger than the input"):
-        pool_func(tf.placeholder(tf.float32,
-                                        shape=[32, 20, 20, 3]),
-                  ksize=[1, 20, 21, 1], strides=[1, 1, 1, 1], padding="SAME")
-      with self.assertRaisesRegexp(ValueError,
-                                   "Filter must not be larger than the input"):
-        pool_func(tf.placeholder(tf.float32,
-                                        shape=[32, 20, 20, 3]),
-                  ksize=[1, 21, 20, 1], strides=[1, 1, 1, 1], padding="SAME")
-
   def testOpEdgeCases(self):
     with self.test_session() as sess:
-      for pool_func in [tf.nn.max_pool, tf.nn.avg_pool]:
+      pool_funcs = [tf.nn.max_pool, tf.nn.avg_pool]
+      if tf.test.is_gpu_available():
+        pool_funcs.append(tf.nn.max_pool_with_argmax)
+      for pool_func in pool_funcs:
         # Illegal strides.
         with self.assertRaisesRegexp(
             tf.errors.UnimplementedError,

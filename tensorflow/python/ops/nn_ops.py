@@ -393,9 +393,10 @@ def bias_add(value, bias, data_format=None, name=None):
     return gen_nn_ops._bias_add(value, bias, data_format=data_format, name=name)
 
 
-ops.RegisterShape("BiasAdd")(common_shapes.bias_add_shape)
-
-ops.RegisterShape("BiasAddGrad")(common_shapes.bias_add_grad_shape)
+ops.RegisterShape("BiasAddV1")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BiasAdd")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BiasAddGradV1")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BiasAddGrad")(common_shapes.call_cpp_shape_fn)
 
 
 # pylint: disable=protected-access
@@ -424,11 +425,6 @@ def bias_add_v1(value, bias, name=None):
     value = ops.convert_to_tensor(value, name="input")
     bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
     return gen_nn_ops._bias_add_v1(value, bias, name=name)
-
-
-ops.RegisterShape("BiasAddV1")(common_shapes.bias_add_shape)
-
-ops.RegisterShape("BiasAddGradV1")(common_shapes.bias_add_grad_shape)
 
 
 def crelu(features, name=None):
@@ -866,23 +862,12 @@ ops.RegisterShape("LRNGrad")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Softmax")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("LogSoftmax")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("InTopK")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("TopK")(common_shapes.call_cpp_shape_fn)
 
 
-@ops.RegisterShape("TopK")
 @ops.RegisterShape("TopKV2")
-def _TopKShape(op):
-  """Shape function for TopK and TopKV2 ops."""
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(1)
-  if len(op.inputs) >= 2:
-    k = tensor_util.constant_value(op.inputs[1])
-  else:
-    k = op.get_attr("k")
-  last = input_shape[-1].value
-  if last is not None and k is not None and last < k:
-    raise ValueError("input.shape %s must have last dimension >= k = %d" %
-                     (input_shape, k))
-  output_shape = input_shape[:-1].concatenate([k])
-  return [output_shape, output_shape]
+def _TopKV2Shape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 ops.RegisterShape("BatchNormWithGlobalNormalization")(
@@ -960,24 +945,12 @@ def _FusedResizeAndPadConv2DShape(op):
   return [tensor_shape.TensorShape(output_shape)]
 
 
-@ops.RegisterShape("MaxPoolWithArgmax")
-def _MaxPoolWithArgMaxShape(op):
-  """Shape function for MaxPoolWithArgmax op."""
-  return common_shapes.max_pool_shape(op) * 2
+ops.RegisterShape("MaxPoolWithArgmax")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("AvgPoolGrad")
 def _AvgPoolGradShape(op):
-  """Shape function for the AvgPoolGrad op."""
-  orig_input_shape = tensor_util.constant_value(op.inputs[0])
-  if orig_input_shape is not None:
-    return [tensor_shape.TensorShape(orig_input_shape.tolist())]
-  else:
-    # NOTE(mrry): We could in principle work out the shape from the
-    # gradients and the attrs, but if we do not know orig_input_shape
-    # statically, then we are unlikely to know the shape of the
-    # gradients either.
-    return [tensor_shape.unknown_shape(ndims=4)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
 @ops.RegisterShape("FractionalMaxPool")
@@ -1015,50 +988,22 @@ def _fractional_avg_pool_grad_shape(op):
 
 @ops.RegisterShape("Conv2DBackpropFilter")
 def _Conv2DBackpropFilterShape(op):
-  """Shape function for the Conv2DBackpropFilter op."""
-  filter_shape = tensor_util.constant_value(op.inputs[1])
-  if filter_shape is not None:
-    return [tensor_shape.TensorShape(filter_shape.tolist())]
-  else:
-    # NOTE(mrry): We could in principle work out the shape from the
-    # gradients and the attrs, but if we do not know filter_shape
-    # statically, then we are unlikely to know the shape of the
-    # gradients either.
-    return [tensor_shape.unknown_shape(ndims=4)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 @ops.RegisterShape("Conv2DBackpropInput")
 def _Conv2DBackpropInputShape(op):
-  """Shape function for the Conv2DBackpropInput op."""
-  input_shape = tensor_util.constant_value(op.inputs[0])
-  if input_shape is not None:
-    return [tensor_shape.TensorShape(input_shape.tolist())]
-  else:
-    # NOTE(mrry): We could in principle work out the shape from the
-    # gradients and the attrs, but if we do not know input_shape
-    # statically, then we are unlikely to know the shape of the
-    # gradients either.
-    return [tensor_shape.unknown_shape(ndims=4)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
 @ops.RegisterShape("DepthwiseConv2dNativeBackpropFilter")
 def _DepthwiseConv2dNativeBackpropFilterShape(op):
-  """Shape function for the DepthwiseConv2dNativeBackpropFilter op."""
-  filter_shape = tensor_util.constant_value(op.inputs[1])
-  if filter_shape is not None:
-    return [tensor_shape.TensorShape(filter_shape.tolist())]
-  else:
-    return [tensor_shape.unknown_shape(ndims=4)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 @ops.RegisterShape("DepthwiseConv2dNativeBackpropInput")
 def _DepthwiseConv2dNativeBackpropInputShape(op):
-  """Shape function for the DepthwiseConv2dNativeBackpropInput op."""
-  input_shape = tensor_util.constant_value(op.inputs[0])
-  if input_shape is not None:
-    return [tensor_shape.TensorShape(input_shape.tolist())]
-  else:
-    return [tensor_shape.unknown_shape(ndims=4)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
 ops.RegisterShape("MaxPoolGrad")(common_shapes.call_cpp_shape_fn)
@@ -1136,55 +1081,9 @@ def _calc_depthwise_conv_weight_params(graph, node):
                                            filter_channel_multiplier))
 
 
-@ops.RegisterShape("Conv3D")
-def _Conv3DShape(op):
-  """Shape function for Conv3D."""
-  input_shape = op.inputs[0].get_shape().with_rank(5)
-  filter_shape = op.inputs[1].get_shape().with_rank(5)
-
-  batch_size = input_shape[0]
-  out_channels = filter_shape[4]
-  # Check that the input number of channels is compatible between
-  # input data and filter size.
-  input_shape[4].assert_is_compatible_with(filter_shape[3])
-
-  stride_b, stride_p, stride_r, stride_c, stride_d = op.get_attr("strides")
-  assert stride_b == 1
-  assert stride_d == 1
-
-  padding_type = op.get_attr("padding")
-  out_planes, out_rows, out_cols = common_shapes.get_conv_output_size(
-      input_shape[1:4], filter_shape[0:3], (stride_p, stride_r, stride_c),
-      padding_type)
-
-  return [tensor_shape.TensorShape([batch_size, out_planes, out_rows, out_cols,
-                                    out_channels])]
-
-
-@ops.RegisterShape("MaxPool3D")
-@ops.RegisterShape("AvgPool3D")
-def _Pool3DShape(op):
-  """Shape function for Max/AvgPool3D."""
-  input_shape = op.inputs[0].get_shape().with_rank(5)
-  ksize_b, ksize_p, ksize_r, ksize_c, ksize_d = op.get_attr("ksize")
-  assert ksize_b == 1
-  assert ksize_d == 1
-
-  stride_b, stride_p, stride_r, stride_c, stride_d = op.get_attr("strides")
-  assert stride_b == 1
-  assert stride_d == 1
-
-  batch_size = input_shape[0]
-  channels = input_shape[4]
-
-  padding = op.get_attr("padding")
-  out_planes, out_rows, out_cols = common_shapes.get_conv_output_size(
-      input_shape[1:4], (ksize_p, ksize_r, ksize_c),
-      (stride_p, stride_r, stride_c), padding)
-  return [tensor_shape.TensorShape([batch_size, out_planes, out_rows, out_cols,
-                                    channels])]
-
-
+ops.RegisterShape("Conv3D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MaxPool3D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AvgPool3D")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Conv3DBackpropFilter")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Conv3DBackpropInput")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Conv3DBackpropFilterV2")(common_shapes.call_cpp_shape_fn)
@@ -1392,46 +1291,7 @@ def conv1d(value, filters, stride, padding,
     return array_ops.squeeze(result, [1])
 
 
-@ops.RegisterShape("Dilation2D")
-def _Dilation2DShape(op):
-  """Shape function for Dilation2D op."""
-  input_shape = op.inputs[0].get_shape().with_rank(4)
-  filter_shape = op.inputs[1].get_shape().with_rank(3)
-
-  batch_size = input_shape[0]
-  in_rows = input_shape[1]
-  in_cols = input_shape[2]
-  depth = input_shape[3]
-
-  filter_rows = filter_shape[0]
-  filter_cols = filter_shape[1]
-  # Check that the input depths are compatible.
-  input_shape[3].assert_is_compatible_with(filter_shape[2])
-
-  stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
-  if stride_b != 1 or stride_d != 1:
-    raise ValueError("Current implementation does not yet support "
-                     "strides in the batch and depth dimensions.")
-
-  rate_b, rate_r, rate_c, rate_d = op.get_attr("rates")
-  if rate_b != 1 or rate_d != 1:
-    raise ValueError("Current implementation does not yet support "
-                     "rates in the batch and depth dimensions.")
-
-  filter_rows_eff = filter_rows + (filter_rows - 1) * (rate_r - 1)
-  filter_cols_eff = filter_cols + (filter_cols - 1) * (rate_c - 1)
-
-  padding = op.get_attr("padding")
-  out_rows, out_cols = common_shapes.get2d_conv_output_size(in_rows, in_cols,
-                                                            filter_rows_eff,
-                                                            filter_cols_eff,
-                                                            stride_r, stride_c,
-                                                            padding)
-
-  output_shape = [batch_size, out_rows, out_cols, depth]
-  return [tensor_shape.TensorShape(output_shape)]
-
-
+ops.RegisterShape("Dilation2D")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Dilation2DBackpropInput")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Dilation2DBackpropFilter")(common_shapes.call_cpp_shape_fn)
 

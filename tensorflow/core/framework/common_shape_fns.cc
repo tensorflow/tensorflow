@@ -135,7 +135,7 @@ Status BiasAddShape(shape_inference::InferenceContext* c) {
   Status s = c->GetAttr("data_format", &data_format);
 
   if (s.ok() && data_format == "NCHW") {
-    TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 4, &input_shape));
+    TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 3, &input_shape));
   } else {
     TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input_shape));
   }
@@ -193,7 +193,7 @@ Status BiasAddGradShape(shape_inference::InferenceContext* c) {
   Status s = c->GetAttr("data_format", &data_format);
 
   if (s.ok() && data_format == "NCHW") {
-    TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 4, &input_shape));
+    TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 3, &input_shape));
     c->set_output(0, c->Vector(c->Dim(input_shape, -3)));
   } else {
     TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input_shape));
