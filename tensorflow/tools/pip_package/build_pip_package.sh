@@ -17,6 +17,14 @@
 
 set -e
 
+function cp_external() {
+  local src_dir=$1
+  local dest_dir=$2
+  for f in `find "$src_dir" -maxdepth 1 -mindepth 1 ! -name '*local_config_cuda*'`; do
+    cp -R "$f" "$dest_dir"
+  done
+}
+
 function main() {
   if [ $# -lt 1 ] ; then
     echo "No destination dir provided"
@@ -36,15 +44,23 @@ function main() {
   if [ ! -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow ]; then
     # Really old (0.2.1-) runfiles, without workspace name.
     cp -R \
-      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/{tensorflow,external} \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/tensorflow \
       "${TMPDIR}"
+    mkdir "${TMPDIR}/external"
+    cp_external \
+      bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/external \
+      "${TMPDIR}/external"
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles
   else
     if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
       # Old-style runfiles structure (--legacy_external_runfiles).
       cp -R \
-        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/{tensorflow,external} \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
+      mkdir "${TMPDIR}/external"
+      cp_external \
+        bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
+        "${TMPDIR}/external"
     else
       # New-style runfiles structure (--nolegacy_external_runfiles).
       cp -R \
@@ -52,7 +68,7 @@ function main() {
         "${TMPDIR}"
       mkdir "${TMPDIR}/external"
       # Note: this makes an extra copy of org_tensorflow.
-      cp -R \
+      cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${TMPDIR}/external"
     fi
