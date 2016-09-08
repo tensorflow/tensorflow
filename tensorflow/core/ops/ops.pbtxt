@@ -12700,6 +12700,140 @@ op {
   description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] += updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] += updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions add.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterAdd.png\" alt>\n</div>"
 }
 op {
+  name: "ScatterDiv"
+  input_arg {
+    name: "ref"
+    description: "Should be from a `Variable` node."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    description: "A tensor of indices into the first dimension of `ref`."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    description: "A tensor of values that `ref` is divided by."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_ref"
+    description: "= Same as `ref`.  Returned as a convenience for operations that want\nto use the updated values after the update is done."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, the operation will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Divides a variable reference by sparse updates."
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] /= updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] /= updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] /= updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions divide.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`."
+}
+op {
+  name: "ScatterMul"
+  input_arg {
+    name: "ref"
+    description: "Should be from a `Variable` node."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    description: "A tensor of indices into the first dimension of `ref`."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    description: "A tensor of updated values to multiply to `ref`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_ref"
+    description: "= Same as `ref`.  Returned as a convenience for operations that want\nto use the updated values after the update is done."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, the operation will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Multiplies sparse updates into a variable reference."
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] *= updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] *= updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] *= updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions multiply.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`."
+}
+op {
   name: "ScatterSub"
   input_arg {
     name: "ref"
