@@ -616,7 +616,6 @@ filegroup(
             "**/*testutil*",
             "**/*testlib*",
             "**/*main.cc",
-            "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
             "lib/gif/**/*",
