@@ -958,6 +958,14 @@ extern TF_Library* TF_LoadLibrary(const char* library_filename,
 // ops defined in the library.
 extern TF_Buffer TF_GetOpList(TF_Library* lib_handle);
 
+// Get the OpList of all OpDefs defined in this address space.
+// Returns a TF_Buffer, ownership of which is transferred to the caller
+// (and can be freed using TF_DeleteBuffer).
+//
+// The data in the buffer will be the serialized OpList proto for ops registered
+// in this address space.
+extern TF_Buffer* TF_GetAllOpList();
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

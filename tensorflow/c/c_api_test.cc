@@ -209,6 +209,14 @@ TEST(CAPI, StatusEnum) {
   EXPECT_EQ(TF_DATA_LOSS, static_cast<TF_Code>(tensorflow::error::DATA_LOSS));
 }
 
+TEST(CApi, GetAllOpList) {
+  TF_Buffer* buf = TF_GetAllOpList();
+  tensorflow::OpList op_list;
+  EXPECT_TRUE(op_list.ParseFromArray(buf->data, buf->length));
+  EXPECT_GT(op_list.op_size(), 0);
+  TF_DeleteBuffer(buf);
+}
+
 static void Int32Deallocator(void* data, size_t, void* arg) {
   delete[] static_cast<int32*>(data);
 }

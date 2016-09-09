@@ -636,6 +636,18 @@ TF_Library* TF_LoadLibrary(const char* library_filename, TF_Status* status) {
 
 TF_Buffer TF_GetOpList(TF_Library* lib_handle) { return lib_handle->op_list; }
 
+TF_Buffer* TF_GetAllOpList() {
+  std::vector<tensorflow::OpDef> op_defs;
+  tensorflow::OpRegistry::Global()->GetRegisteredOps(&op_defs);
+  tensorflow::OpList op_list;
+  for (const auto& op : op_defs) {
+    *(op_list.add_op()) = op;
+  }
+  TF_Buffer* ret = TF_NewBuffer();
+  MessageToBuffer(op_list, ret);
+  return ret;
+}
+
 }  // end extern "C"
 
 // --------------------------------------------------------------------------
