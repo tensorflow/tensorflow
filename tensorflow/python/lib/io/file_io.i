@@ -86,6 +86,14 @@ void CreateDir(const string& dirname, TF_Status* out_status) {
   }
 }
 
+void RecursivelyCreateDir(const string& dirname, TF_Status* out_status) {
+  tensorflow::Status status = tensorflow::Env::Default()->RecursivelyCreateDir(
+      dirname);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+  }
+}
+
 void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
               TF_Status* out_status) {
   // If overwrite is false and the newpath file exists then it's an error.
@@ -212,6 +220,7 @@ void WriteStringToFile(const string& filename, const string& file_content,
 std::vector<string> GetMatchingFiles(const string& filename,
                                      TF_Status* out_status);
 void CreateDir(const string& dirname, TF_Status* out_status);
+void RecursivelyCreateDir(const string& dirname, TF_Status* out_status);
 void CopyFile(const string& oldpath, const string& newpath, bool overwrite,
               TF_Status* out_status);
 void RenameFile(const string& oldname, const string& newname, bool overwrite,
@@ -225,7 +234,7 @@ tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
 tensorflow::WritableFile* CreateWritableFile(const string& filename);
 void AppendToFile(const string& file_content, tensorflow::WritableFile* file,
                   TF_Status* out_status);
-void FlushWritableFile(tensorflow::WritableFile* file, TF_Status* out_status);                  
+void FlushWritableFile(tensorflow::WritableFile* file, TF_Status* out_status);
 
 %ignoreall
 %unignore tensorflow::io::BufferedInputStream;

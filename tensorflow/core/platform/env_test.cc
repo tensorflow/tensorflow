@@ -128,6 +128,41 @@ TEST(EnvTest, DeleteRecursivelyFail) {
   EXPECT_EQ(1, undeleted_dirs);
 }
 
+TEST(EnvTest, RecursivelyCreateDir) {
+  Env* env = Env::Default();
+  const string create_path = io::JoinPath(testing::TmpDir(), "a/b/c/d");
+  TF_CHECK_OK(env->RecursivelyCreateDir(create_path));
+  TF_CHECK_OK(env->RecursivelyCreateDir(create_path));  // repeat creation.
+  EXPECT_TRUE(env->FileExists(create_path));
+
+  // Clean up.
+  // TODO(rohanj): Do this more elegantly using SetUp() and TearDown() methods.
+  int64 undeleted_files, undeleted_dirs;
+  TF_CHECK_OK(env->DeleteRecursively(io::JoinPath(testing::TmpDir(), "a"),
+                                     &undeleted_files, &undeleted_dirs));
+}
+
+TEST(EnvTest, RecursivelyCreateDirSubdirsExist) {
+  Env* env = Env::Default();
+  // First create a/b.
+  const string subdir_path = io::JoinPath(testing::TmpDir(), "a/b");
+  TF_CHECK_OK(env->CreateDir(io::JoinPath(testing::TmpDir(), "a")));
+  TF_CHECK_OK(env->CreateDir(subdir_path));
+  EXPECT_TRUE(env->FileExists(subdir_path));
+
+  // Now try to recursively create a/b/c/d/
+  const string create_path = io::JoinPath(testing::TmpDir(), "a/b/c/d/");
+  TF_CHECK_OK(env->RecursivelyCreateDir(create_path));
+  TF_CHECK_OK(env->RecursivelyCreateDir(create_path));  // repeat creation.
+  EXPECT_TRUE(env->FileExists(create_path));
+  EXPECT_TRUE(env->FileExists(io::JoinPath(testing::TmpDir(), "a/b/c")));
+
+  // Clean up.
+  int64 undeleted_files, undeleted_dirs;
+  TF_CHECK_OK(env->DeleteRecursively(io::JoinPath(testing::TmpDir(), "a"),
+                                     &undeleted_files, &undeleted_dirs));
+}
+
 TEST(EnvTest, LocalFileSystem) {
   // Test filename with file:// syntax.
   Env* env = Env::Default();

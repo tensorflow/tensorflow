@@ -95,6 +95,7 @@ class FileIoTest(tf.test.TestCase):
   def testCreateRecursiveDir(self):
     dir_path = os.path.join(self._base_dir, "temp_dir/temp_dir1/temp_dir2")
     file_io.recursive_create_dir(dir_path)
+    file_io.recursive_create_dir(dir_path)  # repeat creation
     file_path = os.path.join(dir_path, "temp_file")
     file_io.FileIO(file_path, mode="w").write("testing")
     self.assertTrue(file_io.file_exists(file_path))
