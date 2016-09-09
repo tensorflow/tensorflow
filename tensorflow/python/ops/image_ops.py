@@ -174,8 +174,12 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import variables
 
 # go/tf-wildcard-import
@@ -230,6 +234,16 @@ def _is_tensor(x):
     `True` if `x` is a `tf.Tensor` or `tf.Variable`, otherwise `False`.
   """
   return isinstance(x, (ops.Tensor, variables.Variable))
+
+
+def _slice_channels(image):
+  """Slices a tensor into one tensor for each 'channel' (the last dimension).
+  Args:
+    images: Tensor containing the images to be sliced.
+  Returns:
+    list of tensors, one for each channel.
+  """
+  return array_ops.unpack(image, axis=array_ops.rank(image)-1)
 
 
 def _ImageDimensions(images, static_only=True):
@@ -304,57 +318,83 @@ def _CheckAtLeast3DImage(image):
                      image.get_shape())
 
 
-def random_flip_up_down(image, seed=None):
+def _flip_images(images, image_dim_to_flip, random=False, seed=None):
+  """Convenience function for flipping image(s) generically.
+
+  Can optionally flip randomly with a 1 in 2 chance.
+
+  Args:
+    images: A tensor of at least rank 3, where the three last dimensions are expected to be `[height, width, channels].`
+    image_dim_to_flip: An int telling which of the image dimensions to flip.
+    random: Optionally only flip randomly.
+    seed: A Python integer. Used to create a random seed. See
+      [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
+      for behavior.
+
+  Returns:
+    A tensor of the same type and shape as `images`.
+
+  Raises:
+    ValueError: if the shape of `image` not supported.
+  """
+  uniform_random = 0.
+  if random:
+      uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
+
+  rank = array_ops.rank(images)
+  mirror = variables.Variable(array_ops.ones([rank]))
+  mirror = gen_state_ops.scatter_update(mirror, [rank - (3 - image_dim_to_flip)], [uniform_random])
+  mirror = math_ops.less(array_ops.pack(mirror), 0.5)
+  return array_ops.reverse(images, mirror)
+
+
+def random_flip_up_down(images, seed=None):
   """Randomly flips an image vertically (upside down).
 
   With a 1 in 2 chance, outputs the contents of `image` flipped along the first
   dimension, which is `height`.  Otherwise output the image as-is.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels].`
+    images: A tensor of at least rank 3, where the three last dimensions are expected to be `[height, width, channels].`
     seed: A Python integer. Used to create a random seed. See
       [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
       for behavior.
 
   Returns:
-    A 3-D tensor of the same type and shape as `image`.
+   A tensor of the same type and shape as `images`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=False)
-  uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
-  mirror = math_ops.less(array_ops.pack([uniform_random, 1.0, 1.0]), 0.5)
-  return array_ops.reverse(image, mirror)
+  images = ops.convert_to_tensor(images, name='image')
+  _CheckAtLeast3DImage(images)
+  return _flip_images(images, 0, True, seed)
 
 
-def random_flip_left_right(image, seed=None):
+def random_flip_left_right(images, seed=None):
   """Randomly flip an image horizontally (left to right).
 
   With a 1 in 2 chance, outputs the contents of `image` flipped along the
   second dimension, which is `width`.  Otherwise output the image as-is.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels].`
+    images: A tensor of at least rank 3, where the three last dimensions are expected to be `[height, width, channels].`
     seed: A Python integer. Used to create a random seed. See
       [`set_random_seed`](../../api_docs/python/constant_op.md#set_random_seed)
       for behavior.
 
   Returns:
-    A 3-D tensor of the same type and shape as `image`.
+    A tensor of the same type and shape as `images`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=False)
-  uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
-  mirror = math_ops.less(array_ops.pack([1.0, uniform_random, 1.0]), 0.5)
-  return array_ops.reverse(image, mirror)
+  images = ops.convert_to_tensor(images, name='image')
+  _CheckAtLeast3DImage(images)
+  return _flip_images(images, 1, True, seed)
 
 
-def flip_left_right(image):
+def flip_left_right(images):
   """Flip an image horizontally (left to right).
 
   Outputs the contents of `image` flipped along the second dimension, which is
@@ -363,20 +403,20 @@ def flip_left_right(image):
   See also `reverse()`.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels].`
+    images: A tensor of at least rank 3, where the three last dimensions are expected to be `[height, width, channels].`
 
   Returns:
-    A 3-D tensor of the same type and shape as `image`.
+    A tensor of the same type and shape as `images`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=False)
-  return array_ops.reverse(image, [False, True, False])
+  images = ops.convert_to_tensor(images, name='image')
+  _CheckAtLeast3DImage(images)
+  return _flip_images(images, 1)
 
 
-def flip_up_down(image):
+def flip_up_down(images):
   """Flip an image horizontally (upside down).
 
   Outputs the contents of `image` flipped along the first dimension, which is
@@ -385,17 +425,17 @@ def flip_up_down(image):
   See also `reverse()`.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels].`
+    images: A tensor of at least rank 3, where the three last dimensions are expected to be `[height, width, channels].`
 
   Returns:
-    A 3-D tensor of the same type and shape as `image`.
+    A tensor of the same type and shape as `images`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=False)
-  return array_ops.reverse(image, [True, False, False])
+  images = ops.convert_to_tensor(images, name='image')
+  _CheckAtLeast3DImage(images)
+  return _flip_images(images, 0)
 
 
 def rot90(image, k=1):
@@ -1007,7 +1047,12 @@ ops.RegisterShape('DrawBoundingBoxes')(
     common_shapes.unchanged_shape_with_rank_at_least(3))
 
 
-ops.RegisterShape('SampleDistortedBoundingBox')(common_shapes.call_cpp_shape_fn)
+@ops.RegisterShape('SampleDistortedBoundingBox')
+def _SampleDistortedBoundingBoxShape(unused_op):  # pylint: disable=invalid-name
+  """Shape function for the sample distorted bounding box."""
+  return [tensor_shape.TensorShape([3]),
+          tensor_shape.TensorShape([3]),
+          tensor_shape.TensorShape([1, 1, 4])]
 
 
 @ops.RegisterShape('ResizeBilinear')
@@ -1243,15 +1288,13 @@ def adjust_hue(image, delta, name=None):
 
     hsv = gen_image_ops.rgb_to_hsv(flt_image)
 
-    hue = array_ops.slice(hsv, [0, 0, 0], [-1, -1, 1])
-    saturation = array_ops.slice(hsv, [0, 0, 1], [-1, -1, 1])
-    value = array_ops.slice(hsv, [0, 0, 2], [-1, -1, 1])
+    hue, saturation, value = _slice_channels(hsv)
 
     # Note that we add 2*pi to guarantee that the resulting hue is a positive
     # floating point number since delta is [-0.5, 0.5].
     hue = math_ops.mod(hue + (delta + 1.), 1.)
 
-    hsv_altered = array_ops.concat(2, [hue, saturation, value])
+    hsv_altered = array_ops.concat(array_ops.rank(image)-1, [hue, saturation, value])
     rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
 
     return convert_image_dtype(rgb_altered, orig_dtype)
@@ -1317,15 +1360,12 @@ def adjust_saturation(image, saturation_factor, name=None):
     flt_image = convert_image_dtype(image, dtypes.float32)
 
     hsv = gen_image_ops.rgb_to_hsv(flt_image)
-
-    hue = array_ops.slice(hsv, [0, 0, 0], [-1, -1, 1])
-    saturation = array_ops.slice(hsv, [0, 0, 1], [-1, -1, 1])
-    value = array_ops.slice(hsv, [0, 0, 2], [-1, -1, 1])
+    hue, saturation, value = _slice_channels(hsv)
 
     saturation *= saturation_factor
     saturation = clip_ops.clip_by_value(saturation, 0.0, 1.0)
 
-    hsv_altered = array_ops.concat(2, [hue, saturation, value])
+    hsv_altered = array_ops.concat(array_ops.rank(image) - 1, [hue, saturation, value])
     rgb_altered = gen_image_ops.hsv_to_rgb(hsv_altered)
 
     return convert_image_dtype(rgb_altered, orig_dtype)
