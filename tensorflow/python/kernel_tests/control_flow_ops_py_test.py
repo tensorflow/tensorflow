@@ -1728,6 +1728,27 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.gradients(rx, x)[0]
       self.assertAllClose(156.0, r.eval())
 
+  def testWhileGrad_StopGradInsideNoShape(self):
+    with self.test_session() as sess:
+      x = tf.placeholder(tf.float32)
+      y = tf.placeholder(tf.float32)
+
+      c = lambda x, y: tf.less(tf.reduce_sum(x), 100.0)
+      def b(x, y):
+        y1 = tf.stop_gradient(tf.square(y, name="stopped"))
+        x1 = tf.add(tf.square(x), y1)
+        return x1, y1
+      rx, _ = tf.while_loop(c, b, [x, y])
+
+      r = tf.gradients(rx, y)[0]
+      feed_dict = {x: [3.0, 4.0], y: [2.0, 3.0]}
+      self.assertAllClose([0.0, 0.0], sess.run(r, feed_dict=feed_dict))
+      r = tf.gradients(rx, x)[0]
+      self.assertAllClose([156.0, 400.0], sess.run(r, feed_dict=feed_dict))
+      name = "gradients/while/stopped_grad"
+      all_ops = x.graph.get_operations()
+      self.assertFalse(any([name in op.name for op in all_ops]))
+
   def testWhileGradGradFail(self):
     theta = tf.Variable(initial_value=1.)
     def fn(prev, x):
