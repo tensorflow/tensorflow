@@ -376,8 +376,9 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
       grad_func = function.Defun(x=tf.float32, b=tf.float32, g=tf.float32)(
           self.XSquarePlusBGradient)
       with self.assertRaisesRegexp(ValueError, "Gradient defined twice"):
-        _ = self._GetFunc(grad_func=grad_func,
+        f = self._GetFunc(grad_func=grad_func,
                           python_grad_func=self._PythonGradient)
+        f.add_to_graph(tf.Graph())
 
 
 class StopGradientTest(test_util.TensorFlowTestCase):

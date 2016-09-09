@@ -1520,12 +1520,12 @@ class MetaGraphTest(tf.test.TestCase):
   def testStrippedOpListNestedFunctions(self):
     with self.test_session():
       # Square two levels deep
+      @function.Defun(tf.int32)
       def f0(x):
         return tf.square(x)
-      f0 = function.define_function(f0, {"x": tf.int32})
+      @function.Defun(tf.int32)
       def f1(x):
-        return function.call_function(f0, x)
-      f1 = function.define_function(f1, {"x": tf.int32})
+        return f0(x)
 
       # At this point we've defined two functions but haven't called them, so
       # there should be no used ops.
@@ -1534,7 +1534,7 @@ class MetaGraphTest(tf.test.TestCase):
       self.assertEquals(len(op_list.op), 0)
 
       # If we call the function on a constant, there should be two ops
-      function.call_function(f1, tf.constant(7))
+      _ = f1(tf.constant(7))
       op_list = tf.contrib.util.stripped_op_list_for_graph(
           tf.get_default_graph().as_graph_def())
       self.assertEquals(["Const", "Square"], [op.name for op in op_list.op])
