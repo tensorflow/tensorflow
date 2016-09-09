@@ -329,7 +329,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "transformed_distribution_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/transformed_distribution_test.py"],
     additional_deps = [
         ":distributions_py",
