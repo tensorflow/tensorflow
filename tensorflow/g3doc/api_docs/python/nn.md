@@ -1796,7 +1796,7 @@ for correctness than performance, unlike in rnn().
 *  <b>`sequence_length`</b>: (optional) An int32/int64 vector sized `[batch_size]`.
 *  <b>`initial_state`</b>: (optional) An initial state for the RNN.
     If `cell.state_size` is an integer, this must be
-    a `Tensor` of appropriate type and shape `[batch_size x cell.state_size]`.
+    a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
     If `cell.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell.state_size`.
 *  <b>`dtype`</b>: (optional) The data type for the initial state and expected output.
@@ -1980,7 +1980,7 @@ given.
     containing the actual lengths for each of the sequences.
 *  <b>`initial_state_fw`</b>: (optional) An initial state for the forward RNN.
     This must be a tensor of appropriate type and shape
-    `[batch_size x cell_fw.state_size]`.
+    `[batch_size, cell_fw.state_size]`.
     If `cell_fw.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell_fw.state_size`.
 *  <b>`initial_state_bw`</b>: (optional) Same as for `initial_state_fw`, but using
@@ -2064,7 +2064,7 @@ length(s) of the sequence(s) or completely unrolled if length(s) is not given.
     [batch_size, input_size], or a nested tuple of such elements.
 *  <b>`initial_state_fw`</b>: (optional) An initial state for the forward RNN.
     This must be a tensor of appropriate type and shape
-    `[batch_size x cell_fw.state_size]`.
+    `[batch_size, cell_fw.state_size]`.
     If `cell_fw.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell_fw.state_size`.
 *  <b>`initial_state_bw`</b>: (optional) Same as for `initial_state_fw`, but using
