@@ -686,14 +686,6 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
       pointIndexes: number[], highlightStroke: (i: number) => string,
       favorLabels: (i: number) => boolean) {
     this.colorSprites(highlightStroke);
-    this.makeLabels();
-  }
-
-  protected onAnimationStart() {
-  }
-
-  protected onAnimationStop() {
-    this.makeLabels();
   }
 
   protected onSetColorAccessor() {
@@ -727,18 +719,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
       this.traces[this.dataSet.points[selection].traceIndex]
           .material.needsUpdate = true;
     }
-    this.makeLabels();
     return true;
-  }
-
-  protected onStartOrbit() {}
-
-  protected onChangeOrbit() {
-    this.makeLabels();
-  }
-
-  protected onEndOrbit() {
-    this.makeLabels();
   }
 
   protected onSetDayNightMode(isNight: boolean) {
@@ -765,7 +746,6 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     this.getPointsCoordinates();
     this.updatePositionsArray();
     if (this.geometry) {
-      this.makeLabels();
       this.render();
     }
   }
@@ -774,6 +754,8 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     if (!this.dataSet) {
       return;
     }
+
+    this.makeLabels();
 
     // We want to determine which point the user is hovering over. So, rather
     // than linearly iterating through each point to see if it is under the

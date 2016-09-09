@@ -116,8 +116,6 @@ export abstract class ScatterWebGL implements Scatter {
   protected selecting = false;  // whether or not we are selecting points.
 
   protected abstract onRecreateScene();
-  protected abstract onAnimationStart();
-  protected abstract onAnimationStop();
   protected abstract removeAllGeometry();
   protected abstract onDataSet(spriteImage: HTMLImageElement);
   protected abstract onSetColorAccessor();
@@ -129,9 +127,6 @@ export abstract class ScatterWebGL implements Scatter {
   protected abstract onUpdate();
   protected abstract onResize();
   protected abstract onMouseClickInternal(e?: MouseEvent): boolean;
-  protected abstract onStartOrbit();
-  protected abstract onChangeOrbit();
-  protected abstract onEndOrbit();
   protected abstract onSetDayNightMode(isNight: boolean);
 
   private containerNode: HTMLElement;
@@ -216,20 +211,17 @@ export abstract class ScatterWebGL implements Scatter {
     // Start is called when the user stars interacting with
     // orbit controls.
     this.cameraControls.addEventListener('start', () => {
-      this.onStartOrbit();
       this.cameraControls.autoRotate = false;
       cancelAnimationFrame(this.lazySusanAnimation);
     });
     // Change is called everytime the user interacts with the
     // orbit controls.
     this.cameraControls.addEventListener('change', () => {
-      this.onChangeOrbit();
       this.render();
     });
     // End is called when the user stops interacting with the
     // orbit controls (e.g. on mouse up, after dragging).
     this.cameraControls.addEventListener('end', () => {
-      this.onEndOrbit();
     });
   }
 
@@ -390,7 +382,6 @@ export abstract class ScatterWebGL implements Scatter {
       // Cancel the lazy susan.
       this.cameraControls.autoRotate = false;
       cancelAnimationFrame(this.lazySusanAnimation);
-      this.onAnimationStop();
     }
 
     // A quick check to make sure data has come in.
@@ -540,7 +531,6 @@ export abstract class ScatterWebGL implements Scatter {
     let currTarget = this.cameraControls.target;
     let speed = 3;
     this.animating = true;
-    this.onAnimationStart();
     let interp = (a: THREE.Vector3, b: THREE.Vector3) => {
       let x = (a.x - b.x) / speed + b.x;
       let y = (a.y - b.y) / speed + b.y;
@@ -563,7 +553,6 @@ export abstract class ScatterWebGL implements Scatter {
       this.animating = false;
       this.cameraControls.target.set(target.x, target.y, target.z);
       this.cameraControls.update();
-      this.onAnimationStop();
       this.render();
       if (callback) {
         callback();
