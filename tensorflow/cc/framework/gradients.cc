@@ -56,6 +56,8 @@ class SymbolicGradientBuilder {
 
   Status AddGradients();
 
+  static Output NoGradient() { return Output(nullptr, -1); }
+
  private:
   Status Initialize();
 
@@ -64,7 +66,6 @@ class SymbolicGradientBuilder {
   // to `dst` in the graph. This will add `dst_grad` to the list of pending
   // gradients for the node associated with `src`.
   Status BackpropAlongEdge(const Output& dst_grad, const Output& src);
-  Status BackpropZerosAlongEdge(const Output& src);
 
   // Adds a node to the graph (returned in`grad`) that sums the in-bound
   // gradients to `src` (if there are more than one).
@@ -141,19 +142,6 @@ Status SymbolicGradientBuilder::BackpropAlongEdge(const Output& dst_grad,
   if (iter != backprops_.end()) {
     auto* grads = &iter->second;
     grads->push_back(dst_grad);
-    if (--pending_[src.node()->id()] == 0) {
-      ready_.push_back(src.node());
-    }
-  }
-  return Status::OK();
-}
-
-Status SymbolicGradientBuilder::BackpropZerosAlongEdge(const Output& src) {
-  if (src.node() == nullptr) {
-    return errors::Internal("Attempted to backprop along an invalid edge.");
-  }
-  auto iter = backprops_.find(src);
-  if (iter != backprops_.end()) {
     if (--pending_[src.node()->id()] == 0) {
       ready_.push_back(src.node());
     }
@@ -243,20 +231,27 @@ Status SymbolicGradientBuilder::SumGradients(const Output& src, Output* grad) {
         "Unable to find backprop list for node.id ", src.node()->name());
   }
   const auto& grads = iter->second;
-  if (grads.empty()) {
-    // Nothing propagated back. The best we can come up is zeros.
-    // TODO(andydavis) Optimize graph (where possible) by removing useless
-    // computation with zero gradients. Considering running constant propagation
-    // pass after the gradients graph is constructed.
-    *grad = ZerosLike(scope_, src);
-  } else if (grads.size() == 1) {
+  // Filter any backproped 'NoGradient' Outputs from 'grads' (if needed).
+  // Return any valid backproped gradients that remain after filtering,
+  // or 'NoGradient' otherwise.
+  std::vector<Output> grads_to_keep;
+  for (const Output& o : grads) {
+    if (o == NoGradient()) continue;
+    grads_to_keep.push_back(o);
+  }
+
+  if (grads_to_keep.empty()) {
+    // Nothing propagated back. Return 'NoGradient'.
+    *grad = NoGradient();
+  } else if (grads_to_keep.size() == 1) {
     // Just one backprop edge.
-    *grad = grads[0];
+    *grad = grads_to_keep[0];
   } else {
     // Otherwise, adds backprop-ed gradients.
     // TODO(andydavis) Use a better accumulator here.
-    *grad = AddN(scope_, grads);
+    *grad = AddN(scope_, grads_to_keep);
   }
+
   return Status::OK();
 }
 
@@ -292,8 +287,12 @@ Status SymbolicGradientBuilder::AddGradients() {
     const int num_y = n->num_outputs();
     dy.clear();
     dy.resize(num_y, {nullptr, 0});
+    std::vector<int> no_grad_dy_indices;
     for (int i = 0; i < num_y; ++i) {
       TF_RETURN_IF_ERROR(SumGradients({n, i}, &dy[i]));
+      if (dy[i] == NoGradient()) {
+        no_grad_dy_indices.push_back(i);
+      }
       auto iter = input_nodes_.find({n, i});
       if (iter != input_nodes_.end()) {
         // Return gradients for Output in 'grad_outputs_'.
@@ -315,13 +314,27 @@ Status SymbolicGradientBuilder::AddGradients() {
       continue;
     }
 
-    if (IsPrimitiveOpWithNoGrad(n->type_string())) {
-      // No grad defined for this op: Backprop zeros along the in edges.
+    const int num_no_grad = no_grad_dy_indices.size();
+    if (IsPrimitiveOpWithNoGrad(n->type_string()) || num_no_grad == num_y) {
+      // No grad defined for this op, or all outputs returned 'NoGradient':
+      // Backprop 'NoGradient' along the in edges.
       for (const Edge* e : n->in_edges()) {
         if (e->IsControlEdge()) continue;
-        TF_RETURN_IF_ERROR(BackpropZerosAlongEdge({e->src(), e->src_output()}));
+        TF_RETURN_IF_ERROR(
+            BackpropAlongEdge(NoGradient(), {e->src(), e->src_output()}));
       }
       continue;
+    }
+
+    if (num_no_grad > 0 && num_no_grad < num_y) {
+      // The outputs of 'n' returned a mixture of valid gradients and
+      // 'NoGradient'. Therefore, we need to add 'ZerosLike' nodes for each
+      // 'NoGradient' output before we call the gradient function for 'n'.
+      // TODO(andydavis) If static shapes are known, replace 'ZerosLike' with
+      // zero-filled Constant node of appropriate shape.
+      for (const int dy_index : no_grad_dy_indices) {
+        dy[dy_index] = ZerosLike(scope_, Output(n, dy_index));
+      }
     }
 
     // TODO(andydavis) Add option to encapsulate grad function in
@@ -359,5 +372,7 @@ Status AddSymbolicGradients(const Scope& scope,
                                   inputs, grad_inputs, grad_outputs);
   return builder.AddGradients();
 }
+
+Output NoGradient() { return SymbolicGradientBuilder::NoGradient(); }
 
 }  // end namespace tensorflow

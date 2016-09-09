@@ -21,9 +21,6 @@ namespace tensorflow {
 namespace ops {
 namespace {
 
-// TODO(andydavis) Move this to a more appropriate file.
-REGISTER_NO_GRADIENT_OP("Const");
-
 // MatMulGrad helper function used to compute two MatMul operations
 // based on input matrix transposition combinations.
 Status MatMulGradHelper(const Scope& scope, const bool is_batch,
@@ -46,7 +43,7 @@ Status MatMulGradHelper(const Scope& scope, const bool is_batch,
         BatchMatMul(scope, y0, y1, BatchMatMul::AdjX(adj_y0).AdjY(adj_y1));
     grad_outputs->push_back(dy);
   }
-  return Status::OK();
+  return scope.status();
 }
 
 // MatMulGrad common used to read and check node attr state, and determine

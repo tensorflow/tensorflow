@@ -23,6 +23,9 @@ namespace tensorflow {
 namespace ops {
 namespace {
 
+REGISTER_NO_GRADIENT_OP("Const");
+REGISTER_NO_GRADIENT_OP("StopGradient");
+
 Status PackGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,
                 std::vector<Output>* grad_outputs) {
@@ -49,6 +52,14 @@ Status UnpackGrad(const Scope& scope, const Operation& op,
   return Status::OK();
 }
 REGISTER_GRADIENT_OP("Unpack", UnpackGrad);
+
+Status IdentityGrad(const Scope& scope, const Operation& op,
+                    const std::vector<Output>& grad_inputs,
+                    std::vector<Output>* grad_outputs) {
+  grad_outputs->push_back(Identity(scope, grad_inputs[0]));
+  return Status::OK();
+}
+REGISTER_GRADIENT_OP("Identity", IdentityGrad);
 
 }  // anonymous namespace
 }  // namespace ops

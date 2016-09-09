@@ -301,5 +301,184 @@ TEST_F(GradientsTest, MultipleNodeOutputGrads) {
       test::AsTensor<int>({60, 61, 62, 63, 66, 66, 66, 67}, {4, 2}));
 }
 
+// StopGradientSingleOutputMultiEdgeTest tests combinations of valid and
+// 'NoGradient' (induced by StopGradient op) returned along multiple edges from
+// a single nodes output.
+class StopGradientSingleOutputMultiEdgeTest : public ::testing::Test {
+ protected:
+  StopGradientSingleOutputMultiEdgeTest() : scope_(Scope::NewRootScope()) {}
+
+  void CheckGrad(const std::vector<bool>& stop_outputs,
+                 const Tensor& expected_grad) {
+    CHECK_EQ(3, stop_outputs.size());
+
+    auto x = Const(scope_, {{1, 0}, {0, 1}});
+    auto y = Const(scope_, {{1, 0}, {0, 1}});
+    auto z = MatMul(scope_, x, y);
+
+    // Create three output going edges from 'z'.
+    // Add StopGradients according to 'stop_outputs'.
+    auto out0 = stop_outputs[0]
+                    ? StopGradient(scope_, (Identity(scope_, z))).output
+                    : Identity(scope_, z).output;
+    auto out1 = stop_outputs[1]
+                    ? StopGradient(scope_, (Identity(scope_, z))).output
+                    : Identity(scope_, z).output;
+    auto out2 = stop_outputs[2]
+                    ? StopGradient(scope_, (Identity(scope_, z))).output
+                    : Identity(scope_, z).output;
+
+    auto g0 = Const(scope_, {{1, 2}, {3, 4}});
+    auto g1 = Const(scope_, {{5, 6}, {7, 8}});
+    auto g2 = Const(scope_, {{9, 10}, {11, 12}});
+
+    // Call AddSymbolicGradients and compare against 'expected_grad'.
+    std::vector<ops::Output> grad_outputs;
+    TF_EXPECT_OK(AddSymbolicGradients(scope_, {out0, out1, out2}, {z},
+                                      {g0, g1, g2}, &grad_outputs));
+
+    if (expected_grad.NumElements() > 0) {
+      Tensor output;
+      test::GetTensor(scope_, grad_outputs[0], &output);
+      test::ExpectTensorEqual<int>(output, expected_grad);
+    } else {
+      EXPECT_EQ(NoGradient(), grad_outputs[0]);
+    }
+  }
+
+  Scope scope_;
+};
+
+TEST_F(StopGradientSingleOutputMultiEdgeTest, ValidGradAllEdges) {
+  CheckGrad({false, false, false},
+            test::AsTensor<int>({15, 18, 21, 24}, {2, 2}));
+}
+
+TEST_F(StopGradientSingleOutputMultiEdgeTest, StopGradFirstEdge) {
+  CheckGrad({true, false, false},
+            test::AsTensor<int>({14, 16, 18, 20}, {2, 2}));
+}
+
+TEST_F(StopGradientSingleOutputMultiEdgeTest, StopGradSecondEdge) {
+  CheckGrad({false, true, false},
+            test::AsTensor<int>({10, 12, 14, 16}, {2, 2}));
+}
+
+TEST_F(StopGradientSingleOutputMultiEdgeTest, StopGradThirdEdge) {
+  CheckGrad({false, false, true}, test::AsTensor<int>({6, 8, 10, 12}, {2, 2}));
+}
+
+TEST_F(StopGradientSingleOutputMultiEdgeTest, StopGradFirstAndSecondEdges) {
+  CheckGrad({true, true, false}, test::AsTensor<int>({9, 10, 11, 12}, {2, 2}));
+}
+
+TEST_F(StopGradientSingleOutputMultiEdgeTest, StopGradSecondAndThirdEdges) {
+  CheckGrad({false, true, true}, test::AsTensor<int>({1, 2, 3, 4}, {2, 2}));
+}
+
+TEST_F(StopGradientSingleOutputMultiEdgeTest, StopGradFirstAndThirdEdges) {
+  CheckGrad({true, false, true}, test::AsTensor<int>({5, 6, 7, 8}, {2, 2}));
+}
+
+TEST_F(StopGradientSingleOutputMultiEdgeTest, StopGradAllEdges) {
+  CheckGrad({true, true, true}, Tensor());
+}
+
+// StopGradientMultiOutputTest tests combinations of valid and 'NoGradient'
+// (induced by StopGradient op) returned along a single nodes multiple outputs.
+class StopGradientMultiOutputTest : public ::testing::Test {
+ protected:
+  StopGradientMultiOutputTest() : scope_(Scope::NewRootScope()) {}
+
+  void CheckGrad(const std::vector<bool>& stop_outputs,
+                 const Tensor& expected_grad) {
+    CHECK_EQ(3, stop_outputs.size());
+    auto x = ops::Const(scope_, 1, {3, 2, 4});
+    auto y = Unpack(scope_, x, 3);
+    TF_ASSERT_OK(scope_.status());
+
+    // Add StopGradients according to 'stop_outputs'.
+    auto out0 =
+        stop_outputs[0] ? StopGradient(scope_, y.output[0]) : y.output[0];
+    auto out1 =
+        stop_outputs[1] ? StopGradient(scope_, y.output[1]) : y.output[1];
+    auto out2 =
+        stop_outputs[2] ? StopGradient(scope_, y.output[2]) : y.output[2];
+
+    auto g0 = Const(scope_, {1, 2, 3, 4, 5, 6, 7, 8}, {2, 4});
+    auto g1 = Const(scope_, {9, 10, 11, 12, 13, 14, 15, 16}, {2, 4});
+    auto g2 = Const(scope_, {17, 18, 19, 20, 21, 22, 23, 24}, {2, 4});
+
+    // Call AddSymbolicGradients and compare against 'expected_grad'.
+    std::vector<ops::Output> grad_outputs;
+    TF_EXPECT_OK(AddSymbolicGradients(scope_, {out0, out1, out2}, {x},
+                                      {g0, g1, g2}, &grad_outputs));
+
+    if (expected_grad.NumElements() > 0) {
+      Tensor output;
+      test::GetTensor(scope_, grad_outputs[0], &output);
+      test::ExpectTensorEqual<int>(output, expected_grad);
+    } else {
+      EXPECT_EQ(NoGradient(), grad_outputs[0]);
+    }
+  }
+
+  Scope scope_;
+};
+
+TEST_F(StopGradientMultiOutputTest, ValidGradAllOutputs) {
+  // clang-format off
+  CheckGrad({false, false, false}, test::AsTensor<int>(
+    {1, 2, 3, 4, 5, 6, 7, 8,
+     9, 10, 11, 12, 13, 14, 15, 16,
+     17, 18, 19, 20, 21, 22, 23, 24},
+    {3, 2, 4}));
+  // clang-format on
+}
+
+TEST_F(StopGradientMultiOutputTest, StopGradFirstOutput) {
+  // clang-format off
+  CheckGrad({true, false, false}, test::AsTensor<int>(
+    {0, 0, 0, 0, 0, 0, 0, 0,
+     9, 10, 11, 12, 13, 14, 15, 16,
+     17, 18, 19, 20, 21, 22, 23, 24},
+    {3, 2, 4}));
+  // clang-format on
+}
+
+TEST_F(StopGradientMultiOutputTest, StopGradSecondOutput) {
+  // clang-format off
+  CheckGrad({false, true, false}, test::AsTensor<int>(
+    {1, 2, 3, 4, 5, 6, 7, 8,
+     0, 0, 0, 0, 0, 0, 0, 0,
+     17, 18, 19, 20, 21, 22, 23, 24},
+    {3, 2, 4}));
+  // clang-format on
+}
+
+TEST_F(StopGradientMultiOutputTest, StopGradThirdOutput) {
+  // clang-format off
+  CheckGrad({false, false, true}, test::AsTensor<int>(
+    {1, 2, 3, 4, 5, 6, 7, 8,
+     9, 10, 11, 12, 13, 14, 15, 16,
+     0, 0, 0, 0, 0, 0, 0, 0},
+    {3, 2, 4}));
+  // clang-format on
+}
+
+TEST_F(StopGradientMultiOutputTest, StopGradFirstAndThirdOutputs) {
+  // clang-format off
+  CheckGrad({true, false, true}, test::AsTensor<int>(
+    {0, 0, 0, 0, 0, 0, 0, 0,
+     9, 10, 11, 12, 13, 14, 15, 16,
+     0, 0, 0, 0, 0, 0, 0, 0},
+    {3, 2, 4}));
+  // clang-format on
+}
+
+TEST_F(StopGradientMultiOutputTest, StopAllOutputs) {
+  CheckGrad({true, true, true}, Tensor());
+}
+
 }  // namespace
 }  // namespace tensorflow

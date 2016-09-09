@@ -107,5 +107,31 @@ TEST_F(UnpackGradTest, Axis1) {
   CheckGrad({g0, g1}, 2, 1);
 }
 
+TEST(IdentityGradTest, Basic) {
+  Scope scope = Scope::NewRootScope();
+
+  auto x = Const(scope, 1, {4, 2, 3});
+
+  auto y = Identity(scope, x);
+  TF_ASSERT_OK(scope.status());
+
+  Tensor dy_tensor(DT_INT32, {4, 2, 3});
+  test::FillIota<int32>(&dy_tensor, 1);
+
+  auto dy = Const(scope, dy_tensor);
+
+  std::vector<Output> grad_outputs;
+  TF_ASSERT_OK(
+      test::CallGradFunction(scope, Operation(y.node()), {dy}, &grad_outputs));
+
+  Tensor expected_output(DT_INT32, {4, 2, 3});
+  test::FillIota<int32>(&expected_output, 1);
+
+  Tensor output;
+  test::GetTensor(scope, grad_outputs[0], &output);
+
+  test::ExpectTensorEqual<int>(output, expected_output);
+}
+
 }  // namespace
 }  // namespace tensorflow
