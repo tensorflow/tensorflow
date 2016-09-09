@@ -165,7 +165,6 @@ from __future__ import print_function
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -999,14 +998,9 @@ def adjust_contrast(images, contrast_factor):
     return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 
 
-ops.RegisterShape('AdjustContrast')(
-    common_shapes.unchanged_shape_with_rank_at_least(3))
-ops.RegisterShape('AdjustContrastv2')(
-    common_shapes.unchanged_shape_with_rank_at_least(3))
-ops.RegisterShape('DrawBoundingBoxes')(
-    common_shapes.unchanged_shape_with_rank_at_least(3))
-
-
+ops.RegisterShape('AdjustContrast')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('AdjustContrastv2')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('DrawBoundingBoxes')(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape('SampleDistortedBoundingBox')(common_shapes.call_cpp_shape_fn)
 
 
@@ -1015,26 +1009,9 @@ ops.RegisterShape('SampleDistortedBoundingBox')(common_shapes.call_cpp_shape_fn)
 @ops.RegisterShape('ResizeBicubic')
 @ops.RegisterShape('ResizeArea')
 def _ResizeShape(op):
-  """Shape function for the resize_bilinear and resize_nearest_neighbor ops."""
-  input_shape = op.inputs[0].get_shape().with_rank(4)
-  unused_size_shape = op.inputs[1].get_shape().merge_with([2])
-  size = tensor_util.constant_value(op.inputs[1])
-  if size is not None:
-    height = size[0]
-    width = size[1]
-  else:
-    height = None
-    width = None
-  return [tensor_shape.TensorShape(
-      [input_shape[0], height, width, input_shape[3]])]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
-@ops.RegisterShape('DecodeGif')
-def _DecodeGifShape(op):
-  """Shape function for decode gif."""
-  unused_input_shape = op.inputs[0].get_shape().merge_with(
-      tensor_shape.scalar())
-  return [tensor_shape.TensorShape([None, None, None, 3])]
-
+ops.RegisterShape('DecodeGif')(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape('DecodeJpeg')(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape('DecodePng')(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape('EncodeJpeg')(common_shapes.call_cpp_shape_fn)
@@ -1334,58 +1311,20 @@ def adjust_saturation(image, saturation_factor, name=None):
 # TODO(irving): Remove once the C++ RandomCrop op is deprecated.
 @ops.RegisterShape('RandomCrop')
 def _random_crop_shape(op):
-  """Shape function for RandomCrop op."""
-  image_shape = op.inputs[0].get_shape().with_rank(3)
-  if image_shape.ndims is not None:
-    channels = image_shape[-1].value
-  else:
-    channels = None
-
-  size = tensor_util.constant_value(op.inputs[1])
-  if size is None:
-    output_shape = [None, None, channels]
-  elif size.shape == (2,):
-    output_shape = [size[0], size[1], channels]
-  else:
-    raise ValueError('Input "size" must be a vector of two elements.')
-
-  return [tensor_shape.TensorShape(output_shape)]
+  return common_shapes.call_cpp_shape_fn(
+      op, input_tensors_needed=[1])
 
 
 @ops.RegisterShape('ExtractGlimpse')
 def _extract_glimpse_shape(op):
-  """Shape function for ExtractGlimpse op."""
-  input_shape = op.inputs[0].get_shape().with_rank(4)
-  unused_size_shape = op.inputs[1].get_shape().merge_with(
-      tensor_shape.vector(2))
-  offsets_shape = op.inputs[2].get_shape().merge_with(
-      input_shape[:1].concatenate([2]))
-  offsets_shape = offsets_shape
-  size_value = tensor_util.constant_value(op.inputs[1])
-  if size_value is not None:
-    height = size_value[0]
-    width = size_value[1]
-  else:
-    height = None
-    width = None
-  return [tensor_shape.TensorShape(
-      [input_shape[0], height, width, input_shape[3]])]
+  return common_shapes.call_cpp_shape_fn(
+      op, input_tensors_needed=[1])
 
 
 @ops.RegisterShape('CropAndResize')
 def _crop_and_resize_shape(op):
-  """Shape function for the CropAndResize op."""
-  image_shape = op.inputs[0].get_shape().with_rank(4)
-  box_shape = op.inputs[1].get_shape().with_rank(2)
-  crop_size = tensor_util.constant_value(op.inputs[3])
-  if crop_size is not None:
-    crop_height = crop_size[0]
-    crop_width = crop_size[1]
-  else:
-    crop_height = None
-    crop_width = None
-  return [tensor_shape.TensorShape(
-      [box_shape[0], crop_height, crop_width, image_shape[3]])]
+  return common_shapes.call_cpp_shape_fn(
+      op, input_tensors_needed=[3])
 
 
 ops.RegisterShape('NonMaxSuppression')(common_shapes.call_cpp_shape_fn)
