@@ -92,6 +92,7 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+    shard_count = 5,
     tags = ["notap"],  # http://b/30441813
 )
 
