@@ -17,7 +17,7 @@ import {DataPoint, DataSet, DataSource, PCA_SAMPLE_DIM, SAMPLE_SIZE} from './dat
 import {DataProvider, getDataProvider} from './data-loader';
 import * as knn from './knn';
 import {Mode, Scatter} from './scatter';
-import {ScatterWebGL} from './scatterWebGL';
+import {ScatterWebGLPointsCanvasLabels} from './scatterWebGLPointsCanvasLabels';
 import * as vector from './vector';
 import {ColorOption, DataPanel} from './vz-projector-data-panel';
 // tslint:disable-next-line:no-unused-variable
@@ -420,7 +420,7 @@ export class Projector extends ProjectorPolymer {
     window.addEventListener('resize', () => { this.scatter.resize(); });
 
     // Canvas
-    this.scatter = new ScatterWebGL(
+    this.scatter = new ScatterWebGLPointsCanvasLabels(
         this.dom.select('#scatter'),
         i => '' + this.points[i].metadata['label']);
     this.scatter.onHover(hoveredIndex => {
