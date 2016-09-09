@@ -678,10 +678,6 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     this.image = spriteImage;
   }
 
-  protected onSetLabelAccessor() {
-    this.makeLabels();
-  }
-
   protected onHighlightPoints(
       pointIndexes: number[], highlightStroke: (i: number) => string,
       favorLabels: (i: number) => boolean) {

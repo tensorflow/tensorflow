@@ -119,7 +119,6 @@ export abstract class ScatterWebGL implements Scatter {
   protected abstract removeAllGeometry();
   protected abstract onDataSet(spriteImage: HTMLImageElement);
   protected abstract onSetColorAccessor();
-  protected abstract onSetLabelAccessor();
   protected abstract onHighlightPoints(
       pointIndexes: number[], highlightStroke: (i: number) => string,
       favorLabels: (i: number) => boolean);
@@ -317,7 +316,6 @@ export abstract class ScatterWebGL implements Scatter {
   }
 
   // DYNAMIC (post-load) CHANGES
-
 
   /** When we stop dragging/zooming, return to normal behavior. */
   private onClick(e?: MouseEvent) {
@@ -655,7 +653,6 @@ export abstract class ScatterWebGL implements Scatter {
 
   setLabelAccessor(labelAccessor: (index: number) => string) {
     this.labelAccessor = labelAccessor;
-    this.onSetLabelAccessor();
   }
 
   setMode(mode: Mode) {
