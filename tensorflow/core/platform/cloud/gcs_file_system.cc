@@ -541,8 +541,9 @@ Status GcsFileSystem::Stat(const string& fname, FileStatistics* stat) {
   }
   TF_RETURN_IF_ERROR(ParseRfc3339Time(updated.asString(), &(stat->mtime_nsec)));
 
-  // Converting GCS ACL into mode_t is hard, return -rw------- instead.
-  stat->mode = 0600;
+  // TODO(b/31382815): Devise convention for treating some GCS names
+  // as directories.
+  stat->is_directory = false;
 
   return Status::OK();
 }

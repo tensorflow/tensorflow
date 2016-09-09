@@ -168,6 +168,9 @@ class FileIoTest(tf.test.TestCase):
     file_io.FileIO(file_path, mode="w").write("test")
     # False for a file.
     self.assertFalse(file_io.is_directory(file_path))
+    # Test that the value returned from `stat()` has `is_directory` set.
+    file_statistics = file_io.stat(dir_path)
+    self.assertTrue(file_statistics.is_directory)
 
   def testListDirectory(self):
     dir_path = os.path.join(self._base_dir, "test_dir")
@@ -278,10 +281,7 @@ class FileIoTest(tf.test.TestCase):
     self.assertEqual(7, file_statistics.length)
     self.assertEqual(
         int(os_statistics.st_mtime), int(file_statistics.mtime_nsec / 1e9))
-
-    # 644 and 666 are the two possible default permissions of newly-created
-    # files.
-    self.assertTrue(file_statistics.mode in [0o100644, 0o100666])
+    self.assertFalse(file_statistics.is_directory)
 
   def testReadLine(self):
     file_path = os.path.join(self._base_dir, "temp_file")

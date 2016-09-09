@@ -55,7 +55,7 @@ TEST(EnvTest, ReadFileToString) {
     FileStatistics stat;
     TF_EXPECT_OK(env->Stat(filename, &stat));
     EXPECT_EQ(length, stat.length);
-    EXPECT_TRUE(S_ISREG(stat.mode));
+    EXPECT_FALSE(stat.is_directory);
   }
 }
 
@@ -79,7 +79,7 @@ TEST(EnvTest, FileToReadonlyMemoryRegion) {
     FileStatistics stat;
     TF_EXPECT_OK(env->Stat(filename, &stat));
     EXPECT_EQ(length, stat.length);
-    EXPECT_TRUE(S_ISREG(stat.mode));
+    EXPECT_FALSE(stat.is_directory);
   }
 }
 
@@ -150,7 +150,7 @@ TEST(EnvTest, LocalFileSystem) {
     FileStatistics stat;
     TF_EXPECT_OK(env->Stat(filename, &stat));
     EXPECT_EQ(length, stat.length);
-    EXPECT_TRUE(S_ISREG(stat.mode));
+    EXPECT_FALSE(stat.is_directory);
   }
 }
 

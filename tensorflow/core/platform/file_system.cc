@@ -36,7 +36,7 @@ Status FileSystem::IsDirectory(const string& name) {
   }
   FileStatistics stat;
   TF_RETURN_IF_ERROR(Stat(name, &stat));
-  if (S_ISDIR(stat.mode)) {
+  if (stat.is_directory) {
     return Status::OK();
   }
   return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
