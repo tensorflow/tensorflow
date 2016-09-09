@@ -24,7 +24,7 @@ This operation results in an output matrix with `self.output_size` columns.
 If `self.state_size` is an integer, this operation also results in a new
 state matrix with `self.state_size` columns.  If `self.state_size` is a
 tuple of integers, then it results in a tuple of `len(state_size)` state
-matrices, each with the a column size corresponding to values in `state_size`.
+matrices, each with a column size corresponding to values in `state_size`.
 
 This module provides a number of basic commonly used RNN cells, such as
 LSTM (Long Short Term Memory) or GRU (Gated Recurrent Unit), and a number
