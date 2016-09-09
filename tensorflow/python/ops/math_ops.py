@@ -1842,21 +1842,7 @@ def _BroadcastShape(op):
       op.inputs[1].get_shape())]
 
 
-@ops.RegisterShape("Betainc")
-def _BetaincOpShape(op):  # pylint: disable=invalid-name
-  """Shape function for BetaincOp."""
-  a_shape = op.inputs[0].get_shape()
-  b_shape = op.inputs[1].get_shape()
-  x_shape = op.inputs[2].get_shape()
-  merged_shape = tensor_shape.TensorShape(None)
-  for shape in (a_shape, b_shape, x_shape):
-    if shape.ndims != 0:
-      merged_shape = merged_shape.merge_with(shape)
-  # Scalars get broadcasted; non-scalar shapes must all match.
-  # Output will be the merged non-scalar shape, if any.
-  return [merged_shape if merged_shape.ndims is not None else a_shape]
-
-
+ops.RegisterShape("Betainc")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("SparseDenseCwiseMul")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("SparseDenseCwiseDiv")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("SparseDenseCwiseAdd")(common_shapes.call_cpp_shape_fn)

@@ -714,6 +714,38 @@ REGISTER_OP("Betainc")
     .Input("x: T")
     .Output("z: T")
     .Attr("T: {float, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      const int num_inputs = 3;
+      ShapeHandle output = c->UnknownShape();
+      int num_scalars = 0;
+      ShapeHandle some_non_scalar;
+      for (int i = 0; i < num_inputs; ++i) {
+        ShapeHandle in = c->input(i);
+        if (!c->RankKnown(in)) {
+          some_non_scalar = in;
+          // An input with unknown rank could be either a scalar (to be
+          // broadcast) or some other shape.
+        } else if (c->Rank(in) == 0) {
+          // Input is a scalar, it will be broadcast to the output shape.
+          ++num_scalars;
+        } else {
+          TF_RETURN_IF_ERROR(c->Merge(output, in, &output));
+          some_non_scalar = output;
+        }
+      }
+
+      if (num_scalars == num_inputs - 1) {
+        // If all but one input is known to be a scalar, then output is the
+        // remaining input.
+        output = some_non_scalar;
+      } else if (num_scalars == num_inputs) {
+        // If all are scalars, output is scalar; pick the first one arbitrarily.
+        output = c->input(0);
+      }
+
+      c->set_output(0, output);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Compute the regularized incomplete beta integral \\(I_x(a, b)\\).
 

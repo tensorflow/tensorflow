@@ -147,8 +147,7 @@ def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
 
 
 # NOTE(mrry): Shapes are conditionally set in the Python wrapper.
-ops.RegisterShape("Variable")(common_shapes.unknown_shape)
-
+ops.RegisterShape("Variable")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("IsVariableInitialized")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("TemporaryVariable")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("DestroyTemporaryVariable")(common_shapes.call_cpp_shape_fn)
