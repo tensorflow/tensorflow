@@ -211,6 +211,7 @@ cc_library(
 tf_cc_test(
     name = "ops_util_test",
     size = "small",
+    srcs = ["ops_util_test.cc"],
     deps = [
         ":ops_util",
         "//tensorflow/core:test",
@@ -434,6 +435,7 @@ tf_kernel_libraries(
 tf_cc_test(
     name = "batch_norm_op_test",
     size = "small",
+    srcs = ["batch_norm_op_test.cc"],
     deps = [
         ":batch_norm_op",
         ":ops_testutil",
@@ -451,6 +453,7 @@ tf_cc_test(
 tf_cc_test(
     name = "concat_op_test",
     size = "small",
+    srcs = ["concat_op_test.cc"],
     deps = [
         ":concat_op",
         ":ops_testutil",
@@ -468,6 +471,7 @@ tf_cc_test(
 tf_cc_test(
     name = "constant_op_test",
     size = "small",
+    srcs = ["constant_op_test.cc"],
     deps = [
         ":constant_op",
         ":ops_testutil",
@@ -485,6 +489,7 @@ tf_cc_test(
 tf_cc_test(
     name = "deep_conv2d_test",
     size = "small",
+    srcs = ["deep_conv2d_test.cc"],
     deps = [
         ":conv_ops",
         "//tensorflow/core:test",
@@ -495,6 +500,7 @@ tf_cc_test(
 tf_cc_test(
     name = "conv_ops_test",
     size = "small",
+    srcs = ["conv_ops_test.cc"],
     deps = [
         ":conv_ops",
         ":image",
@@ -516,6 +522,7 @@ tf_cc_test(
 tf_cc_test(
     name = "example_parsing_ops_test",
     size = "large",
+    srcs = ["example_parsing_ops_test.cc"],
     deps = [
         ":example_parsing_ops",
         ":ops_testutil",
@@ -533,6 +540,7 @@ tf_cc_test(
 tf_cuda_cc_test(
     name = "gather_op_test",
     size = "small",
+    srcs = ["gather_op_test.cc"],
     deps = [
         ":gather_op",
         ":ops_testutil",
@@ -550,6 +558,7 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "gather_nd_op_test",
     size = "small",
+    srcs = ["gather_nd_op_test.cc"],
     deps = [
         ":gather_nd_op",
         ":ops_testutil",
@@ -567,6 +576,7 @@ tf_cuda_cc_test(
 tf_cc_test(
     name = "identity_op_test",
     size = "small",
+    srcs = ["identity_op_test.cc"],
     deps = [
         ":identity_op",
         ":ops_testutil",
@@ -584,6 +594,7 @@ tf_cc_test(
 tf_cc_test(
     name = "debug_ops_test",
     size = "small",
+    srcs = ["debug_ops_test.cc"],
     deps = [
         ":debug_ops",
         ":ops_testutil",
@@ -601,6 +612,7 @@ tf_cc_test(
 tf_cc_test(
     name = "quantize_and_dequantize_op_test",
     size = "small",
+    srcs = ["quantize_and_dequantize_op_test.cc"],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -618,6 +630,7 @@ tf_cc_test(
 tf_cc_test(
     name = "reverse_op_test",
     size = "small",
+    srcs = ["reverse_op_test.cc"],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -636,6 +649,7 @@ tf_cc_test(
 tf_cc_test(
     name = "slice_op_test",
     size = "small",
+    srcs = ["slice_op_test.cc"],
     linkopts = select({
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -657,6 +671,7 @@ tf_cc_test(
 tf_cc_test(
     name = "strided_slice_op_test",
     size = "small",
+    srcs = ["strided_slice_op_test.cc"],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -675,6 +690,7 @@ tf_cc_test(
 tf_cc_test(
     name = "unique_op_test",
     size = "small",
+    srcs = ["unique_op_test.cc"],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -730,6 +746,7 @@ cc_library(
 tf_cc_test(
     name = "range_sampler_test",
     size = "small",
+    srcs = ["range_sampler_test.cc"],
     deps = [
         ":range_sampler",
         "//tensorflow/core:framework",
@@ -766,6 +783,7 @@ tf_kernel_library(
 tf_cc_test(
     name = "control_flow_ops_test",
     size = "small",
+    srcs = ["control_flow_ops_test.cc"],
     deps = [
         ":control_flow_ops",
         ":ops_testutil",
@@ -819,9 +837,9 @@ tf_kernel_libraries(
 
 tf_cc_tests(
     size = "small",
-    tests = [
-        "dynamic_partition_op_test",
-        "dynamic_stitch_op_test",
+    srcs = [
+        "dynamic_partition_op_test.cc",
+        "dynamic_stitch_op_test.cc",
     ],
     deps = [
         ":data_flow",
@@ -933,13 +951,13 @@ tf_kernel_libraries(
 
 tf_cc_tests(
     size = "small",
-    tests = [
-        "eigen_activations_test",
-        "eigen_attention_test",
-        "eigen_backward_spatial_convolutions_test",
-        "eigen_pooling_test",
-        "eigen_softmax_test",
-        "eigen_spatial_convolutions_test",
+    srcs = [
+        "eigen_activations_test.cc",
+        "eigen_attention_test.cc",
+        "eigen_backward_spatial_convolutions_test.cc",
+        "eigen_pooling_test.cc",
+        "eigen_softmax_test.cc",
+        "eigen_spatial_convolutions_test.cc",
     ],
     deps = [
         ":eigen_helpers",
@@ -954,8 +972,8 @@ tf_cc_tests(
 
 tf_cc_tests(
     size = "small",
-    tests = [
-        "basic_ops_benchmark_test",
+    srcs = [
+        "basic_ops_benchmark_test.cc",
     ],
     deps = [
         ":math",
@@ -970,19 +988,19 @@ tf_cc_tests(
 )
 
 tf_cc_tests(
+    srcs = [
+        "adjust_contrast_op_test.cc",
+        "colorspace_op_test.cc",
+        "crop_and_resize_op_test.cc",
+        "non_max_suppression_op_test.cc",
+        "resize_bicubic_op_test.cc",
+        "resize_bilinear_op_test.cc",
+        "resize_nearest_neighbor_op_test.cc",
+    ],
     linkopts = select({
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    tests = [
-        "adjust_contrast_op_test",
-        "colorspace_op_test",
-        "crop_and_resize_op_test",
-        "non_max_suppression_op_test",
-        "resize_bicubic_op_test",
-        "resize_bilinear_op_test",
-        "resize_nearest_neighbor_op_test",
-    ],
     deps = [
         ":image",
         ":ops_testutil",
@@ -998,6 +1016,7 @@ tf_cc_tests(
 
 tf_cuda_cc_test(
     name = "adjust_contrast_op_benchmark_test",
+    srcs = ["adjust_contrast_op_benchmark_test.cc"],
     deps = [
         ":image",
         ":ops_testutil",
@@ -1037,9 +1056,9 @@ tf_kernel_libraries(
 
 tf_cc_tests(
     size = "small",
-    tests = [
-        "restore_op_test",
-        "save_op_test",
+    srcs = [
+        "restore_op_test.cc",
+        "save_op_test.cc",
     ],
     deps = [
         ":io",
@@ -1112,11 +1131,11 @@ tf_kernel_libraries(
 
 tf_cc_tests(
     size = "small",
-    tests = [
-        "logging_ops_test",
-        "summary_audio_op_test",
-        "summary_image_op_test",
-        "summary_op_test",
+    srcs = [
+        "logging_ops_test.cc",
+        "summary_audio_op_test.cc",
+        "summary_image_op_test.cc",
+        "summary_op_test.cc",
     ],
     deps = [
         ":logging",
@@ -1167,6 +1186,7 @@ tf_kernel_libraries(
 tf_cuda_cc_test(
     name = "cast_op_test",
     size = "small",
+    srcs = ["cast_op_test.cc"],
     deps = [
         ":cast_op",
         ":ops_testutil",
@@ -1184,6 +1204,7 @@ tf_cuda_cc_test(
 tf_cc_test(
     name = "cross_op_test",
     size = "small",
+    srcs = ["cross_op_test.cc"],
     deps = [
         ":cross_op",
         ":ops_testutil",
@@ -1200,10 +1221,10 @@ tf_cc_test(
 
 tf_cc_tests(
     size = "small",
-    tests = [
-        "sparse_add_op_test",
-        "sparse_dense_binary_op_shared_test",
-        "sparse_reduce_sum_op_test",
+    srcs = [
+        "sparse_add_op_test.cc",
+        "sparse_dense_binary_op_shared_test.cc",
+        "sparse_reduce_sum_op_test.cc",
     ],
     deps = [
         ":ops_testutil",
@@ -1224,6 +1245,7 @@ tf_cc_tests(
 tf_cuda_cc_test(
     name = "cwise_ops_test",
     size = "small",
+    srcs = ["cwise_ops_test.cc"],
     deps = [
         ":bounds_check",
         ":cwise_op",
@@ -1243,6 +1265,7 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "matmul_op_test",
     size = "small",
+    srcs = ["matmul_op_test.cc"],
     deps = [
         ":matmul_op",
         ":ops_testutil",
@@ -1260,6 +1283,7 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "reduction_ops_test",
     size = "small",
+    srcs = ["reduction_ops_test.cc"],
     linkopts = select({
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -1281,6 +1305,7 @@ tf_cuda_cc_test(
 tf_cc_test(
     name = "segment_reduction_ops_test",
     size = "small",
+    srcs = ["segment_reduction_ops_test.cc"],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -1299,6 +1324,7 @@ tf_cc_test(
 tf_cuda_cc_test(
     name = "sparse_matmul_op_test",
     size = "small",
+    srcs = ["sparse_matmul_op_test.cc"],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -1315,6 +1341,7 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "immutable_constant_op_test",
+    srcs = ["immutable_constant_op_test.cc"],
     deps = [
         ":array",
         ":immutable_constant_op",
@@ -1427,6 +1454,7 @@ tf_kernel_libraries(
 
 tf_cuda_cc_test(
     name = "lrn_op_test",
+    srcs = ["lrn_op_test.cc"],
     deps = [
         ":nn",
         ":ops_testutil",
@@ -1446,6 +1474,7 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "xent_op_test",
+    srcs = ["xent_op_test.cc"],
     deps = [
         ":nn",
         ":ops_testutil",
@@ -1465,6 +1494,7 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "nn_ops_test",
+    srcs = ["nn_ops_test.cc"],
     deps = [
         ":nn",
         ":ops_testutil",
@@ -1631,6 +1661,7 @@ tf_kernel_libraries(
 tf_cuda_cc_test(
     name = "random_op_test",
     size = "small",
+    srcs = ["random_op_test.cc"],
     deps = [
         ":random_ops",
         "//tensorflow/core:core_cpu",
@@ -1689,10 +1720,10 @@ tf_kernel_libraries(
 
 tf_cuda_cc_tests(
     size = "small",
-    tests = [
-        "sparse_tensor_dense_matmul_op_test",
-        "sparse_to_dense_op_test",
-        "sparse_xent_op_test",
+    srcs = [
+        "sparse_tensor_dense_matmul_op_test.cc",
+        "sparse_to_dense_op_test.cc",
+        "sparse_xent_op_test.cc",
     ],
     deps = [
         ":ops_testutil",
@@ -1730,6 +1761,7 @@ tf_kernel_libraries(
 tf_cc_test(
     name = "scatter_op_test",
     size = "small",
+    srcs = ["scatter_op_test.cc"],
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -1776,6 +1808,7 @@ tf_kernel_library(
 tf_cc_test(
     name = "training_ops_test",
     size = "small",
+    srcs = ["training_ops_test.cc"],
     deps = [
         ":ops_util",
         ":training_ops",
@@ -1801,6 +1834,7 @@ tf_kernel_library(
 tf_cuda_cc_test(
     name = "multinomial_op_test",
     size = "small",
+    srcs = ["multinomial_op_test.cc"],
     deps = [
         ":multinomial_op",
         ":ops_util",
@@ -1827,6 +1861,7 @@ tf_kernel_library(
 tf_cuda_cc_test(
     name = "parameterized_truncated_normal_op_test",
     size = "small",
+    srcs = ["parameterized_truncated_normal_op_test.cc"],
     deps = [
         ":ops_util",
         ":parameterized_truncated_normal_op",

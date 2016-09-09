@@ -44,6 +44,7 @@ cc_library(
 tf_cc_test(
     name = "benchmark_model_test",
     size = "medium",
+    srcs = ["benchmark_model_test.cc"],
     deps = [
         ":benchmark_model_lib",
         "//tensorflow/cc:cc_ops",

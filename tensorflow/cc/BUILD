@@ -31,7 +31,8 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "framework/gradients_test.cc",
+    name = "framework_gradients_test",
+    srcs = ["framework/gradients_test.cc"],
     deps = [
         ":cc_ops",
         ":grad_op_registry",
@@ -94,7 +95,8 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "framework/scope_test.cc",
+    name = "framework_scope_test",
+    srcs = ["framework/scope_test.cc"],
     deps = [
         ":ops",
         ":scope",
@@ -119,7 +121,8 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "client/client_session_test.cc",
+    name = "client_client_session_test",
+    srcs = ["client/client_session_test.cc"],
     deps = [
         ":cc_ops",
         ":client_session",
@@ -147,7 +150,8 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "ops/const_op_test.cc",
+    name = "ops_const_op_test",
+    srcs = ["ops/const_op_test.cc"],
     deps = [
         ":const_op",
         "//tensorflow/core:framework",
@@ -181,7 +185,8 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "gradients/array_grad_test",
+    name = "gradients_array_grad_test",
+    srcs = ["gradients/array_grad_test.cc"],
     deps = [
         ":array_grad",
         ":cc_ops",
@@ -208,7 +213,8 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "gradients/math_grad_test",
+    name = "gradients_math_grad_test",
+    srcs = ["gradients/math_grad_test.cc"],
     deps = [
         ":cc_ops",
         ":grad_op_registry",
@@ -252,7 +258,8 @@ tf_gen_op_wrappers_cc(
 )
 
 tf_cc_test(
-    name = "framework/cc_ops_test.cc",
+    name = "framework_cc_ops_test",
+    srcs = ["framework/cc_ops_test.cc"],
     deps = [
         ":cc_ops",
         ":client_session",

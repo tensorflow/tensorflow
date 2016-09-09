@@ -140,6 +140,7 @@ cc_library(
 tf_cc_test(
     name = "gcs_file_system_test",
     size = "small",
+    srcs = ["gcs_file_system_test.cc"],
     deps = [
         ":gcs_file_system",
         ":http_request_fake",
@@ -151,6 +152,7 @@ tf_cc_test(
 tf_cc_test(
     name = "http_request_test",
     size = "small",
+    srcs = ["http_request_test.cc"],
     deps = [
         ":http_request",
         "//tensorflow/core:lib",
@@ -162,6 +164,7 @@ tf_cc_test(
 tf_cc_test(
     name = "oauth_client_test",
     size = "small",
+    srcs = ["oauth_client_test.cc"],
     data = [
         "testdata/service_account_credentials.json",
         "testdata/service_account_public_key.txt",
@@ -180,6 +183,7 @@ tf_cc_test(
 tf_cc_test(
     name = "google_auth_provider_test",
     size = "small",
+    srcs = ["google_auth_provider_test.cc"],
     data = [
         "testdata/application_default_credentials.json",
         "testdata/service_account_credentials.json",
@@ -198,6 +202,7 @@ tf_cc_test(
 tf_cc_test(
     name = "retrying_file_system_test",
     size = "small",
+    srcs = ["retrying_file_system_test.cc"],
     deps = [
         ":retrying_file_system",
         "//tensorflow/core:lib",
@@ -210,6 +215,7 @@ tf_cc_test(
 tf_cc_test(
     name = "time_util_test",
     size = "small",
+    srcs = ["time_util_test.cc"],
     deps = [
         ":time_util",
         "//tensorflow/core:test",
