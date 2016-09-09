@@ -489,7 +489,7 @@ def bidirectional_rnn(cell_fw, cell_bw, inputs,
       [batch_size, input_size], or a nested tuple of such elements.
     initial_state_fw: (optional) An initial state for the forward RNN.
       This must be a tensor of appropriate type and shape
-      `[batch_size x cell_fw.state_size]`.
+      `[batch_size, cell_fw.state_size]`.
       If `cell_fw.state_size` is a tuple, this should be a tuple of
       tensors having shapes `[batch_size, s] for s in cell_fw.state_size`.
     initial_state_bw: (optional) Same as for `initial_state_fw`, but using
@@ -574,7 +574,7 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
       containing the actual lengths for each of the sequences.
     initial_state_fw: (optional) An initial state for the forward RNN.
       This must be a tensor of appropriate type and shape
-      `[batch_size x cell_fw.state_size]`.
+      `[batch_size, cell_fw.state_size]`.
       If `cell_fw.state_size` is a tuple, this should be a tuple of
       tensors having shapes `[batch_size, s] for s in cell_fw.state_size`.
     initial_state_bw: (optional) Same as for `initial_state_fw`, but using
@@ -717,7 +717,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     sequence_length: (optional) An int32/int64 vector sized `[batch_size]`.
     initial_state: (optional) An initial state for the RNN.
       If `cell.state_size` is an integer, this must be
-      a `Tensor` of appropriate type and shape `[batch_size x cell.state_size]`.
+      a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
       If `cell.state_size` is a tuple, this should be a tuple of
       tensors having shapes `[batch_size, s] for s in cell.state_size`.
     dtype: (optional) The data type for the initial state and expected output.
