@@ -403,31 +403,40 @@ def flip_up_down(image):
   return array_ops.reverse(image, [True, False, False])
 
 
-def rot90(image, k=1):
+def rot90(image, k=1, name=None):
   """Rotate an image counter-clockwise by 90 degrees.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels].`
-    k: Number of times the image is rotated by 90 degrees.
+    image: A 3-D tensor of shape `[height, width, channels]`.
+    k: A scalar integer. The number of times the image is rotated by 90 degrees.
+    name: A name for this operation (optional).
 
   Returns:
     A rotated 3-D tensor of the same type and shape as `image`.
   """
-  image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=False)
-  k %= 4
-  if k == 0:
-    return image
-  elif k == 1:
-    return array_ops.transpose(
-        array_ops.reverse(image, [False, True, False]),
-        [1, 0, 2], name='rot90')
-  elif k == 2:
-    return array_ops.reverse(image, [True, True, False], name='rot90')
-  elif k == 3:
-    return array_ops.reverse(
-        array_ops.transpose(image, [1, 0, 2], name='rot90'),
-        [False, True, False])
+  with ops.name_scope(name, 'rot90', [image, k]) as scope:
+    image = ops.convert_to_tensor(image, name='image')
+    _Check3DImage(image, require_static=False)
+    k = ops.convert_to_tensor(k, dtype=dtypes.int32, name='k')
+    k.get_shape().assert_has_rank(0)
+    k = math_ops.mod(k, 4)
+
+    def _rot90():
+      return array_ops.transpose(array_ops.reverse(image, [False, True, False]),
+                                 [1, 0, 2])
+    def _rot180():
+      return array_ops.reverse(image, [True, True, False])
+    def _rot270():
+      return array_ops.reverse(array_ops.transpose(image, [1, 0, 2]),
+                               [False, True, False])
+    cases = [(math_ops.equal(k, 1), _rot90),
+             (math_ops.equal(k, 2), _rot180),
+             (math_ops.equal(k, 3), _rot270)]
+
+    ret = control_flow_ops.case(cases, default=lambda: image, exclusive=True,
+                                name=scope)
+    ret.set_shape([None, None, image.get_shape()[2]])
+    return ret
 
 
 def transpose_image(image):

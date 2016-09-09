@@ -324,11 +324,12 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
   def testRot90NumpyEquivalence(self):
     image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
-    for k in range(4):
-      with self.test_session():
+    with self.test_session():
+      k_placeholder = array_ops.placeholder(dtypes.int32, shape=[])
+      y_tf = image_ops.rot90(image, k_placeholder)
+      for k in xrange(4):
         y_np = np.rot90(image, k=k)
-        y_tf = image_ops.rot90(image, k=k)
-        self.assertAllEqual(y_np, y_tf.eval())
+        self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
 
 
 class RandomFlipTest(test_util.TensorFlowTestCase):
