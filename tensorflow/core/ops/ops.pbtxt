@@ -17043,6 +17043,47 @@ op {
   description: "Takes `T` elements of shapes\n\n  ```\n  (n0 x d0 x d1 x ...), (n1 x d0 x d1 x ...), ..., (n(T-1) x d0 x d1 x ...)\n  ```\n\nand concatenates them into a Tensor of shape:\n\n  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```\n\nAll elements must have the same shape (excepting the first dimension)."
 }
 op {
+  name: "TensorArrayGather"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    description: "The locations in the TensorArray from which to read tensor elements."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    description: "All of the elements in the TensorArray, concatenated along a new\naxis (the new dimension 0)."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the elem that is returned."
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+    description: "The expected shape of an element, if known. Used to\nvalidate the shapes of TensorArray elements. If this shape is not\nfully specified, gathering zero-size TensorArrays is an error."
+  }
+  summary: "Gather specific elements from the TensorArray into output `value`."
+  description: "All elements selected by `indices` must have the same shape."
+}
+op {
   name: "TensorArrayGrad"
   input_arg {
     name: "handle"
@@ -17102,7 +17143,7 @@ op {
     description: "The expected shape of an element, if known. Used to\nvalidate the shapes of TensorArray elements. If this shape is not\nfully specified, packing zero-size TensorArrays is an error."
   }
   summary: "Pack the elements from the TensorArray into output `value`."
-  description: "All elements must have the same shape."
+  description: "**WARNING: This op is deprecated.**\n\nInstead of this op, use `TensorArrayGather` with\n`indices = RangeOp(0, TensorArraySizeOp)`.\n\nAll elements must have the same shape."
 }
 op {
   name: "TensorArrayRead"
@@ -17132,6 +17173,41 @@ op {
     description: "The type of the elem that is returned."
   }
   summary: "Read an element from the TensorArray into output `value`."
+}
+op {
+  name: "TensorArrayScatter"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    description: "The locations at which to write the tensor elements."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    description: "The concatenated tensor to write to the TensorArray."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Scatter the data from the input value into specific TensorArray elements."
+  description: "`indices` must be a vector, its length must match the first dim of `value`."
 }
 op {
   name: "TensorArraySize"
@@ -17216,6 +17292,7 @@ op {
     type: "type"
   }
   summary: "Unpack the data from the input value into TensorArray elements."
+  description: "**WARNING: This op is deprecated.**\n\nInstead of this op, use `TensorArrayScatter` with\n`indices = RangeOp(0, SizeOp(value)[0])`."
 }
 op {
   name: "TensorArrayWrite"

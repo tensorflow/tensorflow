@@ -28454,6 +28454,39 @@ op {
   }
 }
 op {
+  name: "TensorArrayGather"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+}
+op {
   name: "TensorArrayGrad"
   input_arg {
     name: "handle"
@@ -28566,6 +28599,34 @@ op {
   }
   attr {
     name: "dtype"
+    type: "type"
+  }
+}
+op {
+  name: "TensorArrayScatter"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
     type: "type"
   }
 }
