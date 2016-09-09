@@ -15,6 +15,12 @@ def _parse_bazel_version(bazel_version):
     version_tuple += (str(number),)
   return version_tuple
 
+# Given a source file, generate a test name.
+# i.e. "common_runtime/direct_session_test.cc" becomes
+#      "common_runtime_direct_session_test"
+def src_to_test_name(src):
+  return src.replace("/", "_").split(".")[0]
+
 # Check that a specific bazel version is being used.
 def check_version(bazel_version):
   if "bazel_version" in dir(native) and native.bazel_version:
@@ -112,6 +118,20 @@ def if_ios(a):
   return select({
       "//tensorflow:ios": a,
       "//conditions:default": [],
+  })
+
+def if_mobile(a):
+  return select({
+      "//tensorflow:android": a,
+      "//tensorflow:ios": a,
+      "//conditions:default": [],
+  })
+
+def if_not_mobile(a):
+  return select({
+      "//tensorflow:android": [],
+      "//tensorflow:ios": [],
+      "//conditions:default": a,
   })
 
 def tf_copts():
@@ -284,30 +304,30 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],
 # Define a bazel macro that creates cc_test for tensorflow.
 # TODO(opensource): we need to enable this to work around the hidden symbol
 # __cudaRegisterFatBinary error. Need more investigations.
-def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium",
+def tf_cc_test(name, srcs, deps, linkstatic=0, tags=[], data=[], size="medium",
                suffix="", args=None, linkopts=[]):
-  name = name.replace(".cc", "")
-  native.cc_test(name="%s%s" % (name.replace("/", "_"), suffix),
+  native.cc_test(name="%s%s" % (name, suffix),
+                 srcs=srcs,
                  size=size,
-                 srcs=["%s.cc" % (name)],
                  args=args,
                  copts=tf_copts(),
                  data=data,
                  deps=deps,
                  linkopts=["-lpthread", "-lm"] + linkopts,
                  linkstatic=linkstatic,
-                 tags=tags,)
+                 tags=tags)
 
 # Part of the testing workflow requires a distinguishable name for the build
 # rules that involve a GPU, even if otherwise identical to the base rule.
-def tf_cc_test_gpu(name, deps, linkstatic=0, tags=[], data=[], size="medium",
-                   suffix="", args=None):
-  tf_cc_test(name, deps, linkstatic=linkstatic, tags=tags, data=data,
+def tf_cc_test_gpu(name, srcs, deps, linkstatic=0, tags=[], data=[],
+                   size="medium", suffix="", args=None):
+  tf_cc_test(name, srcs, deps, linkstatic=linkstatic, tags=tags, data=data,
              size=size, suffix=suffix, args=args)
 
-def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium", linkstatic=0,
-                    args=[], linkopts=[]):
+def tf_cuda_cc_test(name, srcs, deps, tags=[], data=[], size="medium",
+                    linkstatic=0, args=[], linkopts=[]):
   tf_cc_test(name=name,
+             srcs=srcs,
              deps=deps,
              tags=tags + ["manual"],
              data=data,
@@ -316,6 +336,7 @@ def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium", linkstatic=0,
              linkopts=linkopts,
              args=args)
   tf_cc_test(name=name,
+             srcs=srcs,
              suffix="_gpu",
              deps=deps + if_cuda(["//tensorflow/core:gpu_runtime"]),
              linkstatic=if_cuda(1, 0),
@@ -326,22 +347,36 @@ def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium", linkstatic=0,
              args=args)
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
-def tf_cc_tests(tests, deps, linkstatic=0, tags=[], size="medium", args=None,
-                linkopts=[]):
-  for t in tests:
-    tf_cc_test(t, deps, linkstatic, tags=tags, size=size, args=args,
-               linkopts=linkopts)
+def tf_cc_tests(srcs, deps, linkstatic=0, tags=[], size="medium",
+                args=None, linkopts=[]):
+  for src in srcs:
+    tf_cc_test(
+        name=src_to_test_name(src),
+        srcs=[src],
+        deps=deps,
+        linkstatic=linkstatic,
+        tags=tags,
+        size=size,
+        args=args,
+        linkopts=linkopts)
 
-def tf_cc_tests_gpu(tests, deps, linkstatic=0, tags=[], size="medium",
+def tf_cc_tests_gpu(srcs, deps, linkstatic=0, tags=[], size="medium",
                     args=None):
-  tf_cc_tests(tests, deps, linkstatic, tags=tags, size=size, args=args)
+  tf_cc_tests(srcs, deps, linkstatic, tags=tags, size=size, args=args)
 
 
-def tf_cuda_cc_tests(tests, deps, tags=[], size="medium", linkstatic=0,
+def tf_cuda_cc_tests(srcs, deps, tags=[], size="medium", linkstatic=0,
                      args=None, linkopts=[]):
-  for t in tests:
-    tf_cuda_cc_test(t, deps, tags=tags, size=size, linkstatic=linkstatic,
-                    args=args, linkopts=linkopts)
+  for src in srcs:
+    tf_cuda_cc_test(
+        name=src_to_test_name(src),
+        srcs=[src],
+        deps=deps,
+        tags=tags,
+        size=size,
+        linkstatic=linkstatic,
+        args=args,
+        linkopts=linkopts)
 
 def _cuda_copts():
     """Gets the appropriate set of copts for (maybe) CUDA compilation.
@@ -531,7 +566,7 @@ _py_wrap_cc = rule(
             allow_files = True,
         ),
         "swig_includes": attr.label_list(
-            cfg = DATA_CFG,
+            cfg = "data",
             allow_files = True,
         ),
         "deps": attr.label_list(
@@ -545,7 +580,7 @@ _py_wrap_cc = rule(
         "py_module_name": attr.string(mandatory = True),
         "swig_binary": attr.label(
             default = Label("//tensorflow:swig"),
-            cfg = HOST_CFG,
+            cfg = "host",
             executable = True,
             allow_files = True,
         ),

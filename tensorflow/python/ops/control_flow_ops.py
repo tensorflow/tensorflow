@@ -84,7 +84,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 # go/tf-wildcard-import
@@ -101,6 +101,45 @@ _basetuple = tuple
 
 
 # pylint: disable=protected-access
+
+
+# Assert and Print are special symbols in python, so we must
+# use an upper-case version of them.
+def Assert(condition, data, summarize=None, name=None):
+  """Asserts that the given condition is true.
+
+  If `condition` evaluates to false, print the list of tensors in `data`.
+  `summarize` determines how many entries of the tensors to print.
+
+  NOTE: To ensure that Assert executes, one usually attaches a dependency:
+
+  ```python
+   # Ensure maximum element of x is smaller or equal to 1
+  assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
+  x = tf.with_dependencies([assert_op], x)
+  ```
+
+  Args:
+    condition: The condition to evaluate.
+    data: The tensors to print out when condition is false.
+    summarize: Print this many entries of each tensor.
+    name: A name for this operation (optional).
+
+  Returns:
+    assert_op: An `Operation` that, when executed, raises a
+    `tf.errors.InvalidArgumentError` if `condition` is not true.
+  """
+  with ops.name_scope(name, "Assert", [condition, data]) as name:
+    condition = ops.convert_to_tensor(condition, name="Condition")
+    def true_assert():
+      return gen_logging_ops._assert(
+          condition, data, summarize, name="Assert")
+    # TODO(ebrevdo): Remove the cond once when can tell all inputs are on host.
+    guarded_assert = cond(
+        condition, no_op, true_assert, name="AssertGuard")
+    return guarded_assert.op
+
+
 def _Identity(data, name=None):
   """Return a tensor with the same shape and contents as the input tensor.
 
@@ -1197,16 +1236,26 @@ class ControlFlowState(object):
           # gradients for all iterations > 0.
           dtype = b_merge.op.inputs[0].dtype
           shape = b_merge.op.inputs[0].get_shape()
-          if not shape.is_fully_defined():
-            shape = None
-          grad_state.grad_context.Enter()
-          grad_val = constant_op.constant(0, dtype=dtype, shape=shape)
-          next_grad_val = _NextIteration(grad_val)
-          grad_state.grad_context.Exit()
           # pylint: disable=protected-access
-          if not shape:
-            grad_val._shape = b_merge.op.inputs[0].get_shape()
-            next_grad_val.set_shape(grad_val.get_shape())
+          if shape.is_fully_defined():
+            grad_state.grad_context.Enter()
+            # Create a zeros and use it for iterations > 0.
+            grad_val = constant_op.constant(0, dtype=dtype, shape=shape)
+            next_grad_val = _NextIteration(grad_val)
+            grad_state.grad_context.Exit()
+          else:
+            # Create a zeros in the outer grad context.
+            outer_grad_ctxt = grad_state.grad_context.outer_context
+            if outer_grad_ctxt: outer_grad_ctxt.Enter()
+            enter_grad_op = b_merge.op.inputs[0].op
+            enter_grad = enter_grad_op.inputs[0]
+            grad_shape = array_ops.shape_internal(enter_grad, optimize=False)
+            grad_val = array_ops.zeros(grad_shape)
+            if outer_grad_ctxt: outer_grad_ctxt.Exit()
+            # Use the zeros for iterations > 0.
+            grad_state.grad_context.Enter()
+            next_grad_val = _NextIteration(grad_val)
+            grad_state.grad_context.Exit()
           b_merge.op._update_input(1, next_grad_val)
           # pylint: enable=protected-access
 
@@ -1917,11 +1966,13 @@ class WhileContext(ControlFlowContext):
     else:
       value = op.inputs[0]
       if self.outer_context:
-        forward_ctxt = self.grad_state.forward_ctxt
+        forward_ctxt = self.grad_state.forward_context
         forward_ctxt.outer_context.Enter()
         zeros_shape = array_ops.shape_internal(value, optimize=False)
         forward_ctxt.outer_context.Exit()
-        history_zeros_shape = grad_state.AddForwardAccumulator(zeros_shape)
+        outer_grad_state = self.grad_state.outer_grad_state
+        history_zeros_shape = outer_grad_state.AddForwardAccumulator(
+            zeros_shape)
         self.outer_context.Enter()
         real_shape = outer_grad_state.AddBackPropAccumulatedValue(
             history_zeros_shape, zeros_shape)
@@ -2672,8 +2723,8 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
            % ", ".join([p.name for p in preds])),
           preds_c]
       with ops.control_dependencies([
-          logging_ops.Assert(condition=at_most_one_true_condition,
-                             data=error_msg, summarize=len(preds))]):
+          Assert(condition=at_most_one_true_condition,
+                 data=error_msg, summarize=len(preds))]):
         case_seq = _build_case()
     else:
       case_seq = _build_case()
@@ -2681,15 +2732,15 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
     return case_seq
 
 
-ops.RegisterShape("Enter")(common_shapes.unknown_shape)
-ops.RegisterShape("Exit")(common_shapes.unchanged_shape)
-ops.RegisterShape("NextIteration")(common_shapes.unchanged_shape)
-ops.RegisterShape("RefEnter")(common_shapes.unchanged_shape)
-ops.RegisterShape("RefExit")(common_shapes.unchanged_shape)
-ops.RegisterShape("RefNextIteration")(common_shapes.unchanged_shape)
-ops.RegisterShape("ControlTrigger")(common_shapes.no_outputs)
-ops.RegisterShape("NoOp")(common_shapes.no_outputs)
-ops.RegisterShape("Abort")(common_shapes.no_outputs)
+ops.RegisterShape("Enter")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Exit")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("NextIteration")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RefEnter")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RefExit")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RefNextIteration")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ControlTrigger")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("NoOp")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Abort")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("LoopCond")
@@ -2698,7 +2749,9 @@ def _LoopCondShape(op):
   return [op.inputs[0].get_shape().merge_with(tensor_shape.scalar())]
 
 
-@ops.RegisterShape("Merge")
+ops.RegisterShape("Merge")(common_shapes.call_cpp_shape_fn)
+
+
 def _MergeShape(op):
   """Shape function for the Merge op.
 
@@ -2736,40 +2789,6 @@ def _MergeShape(op):
 ops.RegisterShape("RefMerge")(_MergeShape)
 
 
-@ops.RegisterShape("RefSelect")
-def _RefSelectShape(op):
-  """Shape function for the RefSelect op.
-
-  The RefSelect takes one scalar input and N inputs of arbitrary
-  shapes, and produces one output, which is one of those N inputs.
-
-  This function conservatively assumes that if any of the N inputs is
-  not fully defined, the output shape is unknown. If all of the N
-  inputs have the exact same known shape, the output must have that
-  shape.
-
-  Args:
-    op: A RefSelect Operation.
-
-  Returns:
-    A single-element list containing the Shape of the RefSelect op.
-  """
-  unused_shape = op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  first_input_shape = op.inputs[1].get_shape()
-  if first_input_shape.is_fully_defined():
-    for input_ in op.inputs[2:]:
-      input_shape = input_.get_shape()
-      if (not input_shape.is_fully_defined()
-          or not input_shape.is_compatible_with(first_input_shape)):
-        return [tensor_shape.unknown_shape()]
-    return [first_input_shape]
-  else:
-    return [tensor_shape.unknown_shape()]
-
-
-@ops.RegisterShape("RefSwitch")
-@ops.RegisterShape("Switch")
-def _SwitchShape(op):
-  input_shape = op.inputs[0].get_shape()
-  unused_pred_shape = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
-  return [input_shape] * 2
+ops.RegisterShape("RefSelect")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RefSwitch")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Switch")(common_shapes.call_cpp_shape_fn)

@@ -137,6 +137,31 @@ Status Env::DeleteFile(const string& fname) {
   return fs->DeleteFile(fname);
 }
 
+Status Env::RecursivelyCreateDir(const string& dirname) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  std::vector<StringPiece> sub_dirs;
+  StringPiece remaining_dir(dirname);
+  while (!fs->FileExists(remaining_dir.ToString())) {
+    // Basename returns "" for / ending dirs.
+    if (!remaining_dir.ends_with("/")) {
+      sub_dirs.push_back(io::Basename(remaining_dir));
+    }
+    remaining_dir = io::Dirname(remaining_dir);
+  }
+
+  // sub_dirs contains all the dirs to be created but in reverse order.
+  std::reverse(sub_dirs.begin(), sub_dirs.end());
+
+  // Now create the directories.
+  string built_path = remaining_dir.ToString();
+  for (const StringPiece sub_dir : sub_dirs) {
+    built_path = io::JoinPath(built_path, sub_dir);
+    TF_RETURN_IF_ERROR(fs->CreateDir(built_path));
+  }
+  return Status::OK();
+}
+
 Status Env::CreateDir(const string& dirname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));

@@ -504,7 +504,7 @@ TEST(GcsFileSystemTest, Stat) {
   TF_EXPECT_OK(fs.Stat("gs://bucket/file.txt", &stat));
   EXPECT_EQ(1010, stat.length);
   EXPECT_EQ(1461971724896, stat.mtime_nsec / 1000 / 1000);
-  EXPECT_EQ(0600, stat.mode);
+  EXPECT_FALSE(stat.is_directory);
 }
 
 }  // namespace

@@ -96,7 +96,7 @@ TEST(ShapeRefinerTest, SetShape) {
   ShapeRefiner m;
 
   Scope root = Scope::NewRootScope();
-  auto a = ops::Const(root, {{1.0f}, {2.0f}});
+  auto a = ops::Placeholder(root, DT_FLOAT);
 
   TF_ASSERT_OK(m.AddNode(a.node()));
 
@@ -105,6 +105,11 @@ TEST(ShapeRefinerTest, SetShape) {
   shape_inference::ShapeHandle h = ic->MakeShape({2, ic->UnknownDim()});
   TF_ASSERT_OK(m.SetShape(a.node(), 0, h));
   EXPECT_SHAPE("[2,?]", m, a, 0);
+
+  // Check that shapes are merged with the existing shape.
+  shape_inference::ShapeHandle h2 = ic->MakeShape({ic->UnknownDim(), 2});
+  TF_ASSERT_OK(m.SetShape(a.node(), 0, h2));
+  EXPECT_SHAPE("[2,2]", m, a, 0);
 
   // Out of range.
   ASSERT_FALSE(m.SetShape(a.node(), 1, h).ok());

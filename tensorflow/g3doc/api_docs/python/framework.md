@@ -1680,7 +1680,7 @@ for more details.
 
 - - -
 
-### `tf.convert_to_tensor(value, dtype=None, name=None, as_ref=False)` {#convert_to_tensor}
+### `tf.convert_to_tensor(value, dtype=None, name=None, as_ref=False, preferred_dtype=None)` {#convert_to_tensor}
 
 Converts the given `value` to a `Tensor`.
 
@@ -1716,6 +1716,11 @@ and scalars in addition to `Tensor` objects.
 *  <b>`name`</b>: Optional name to use if a new `Tensor` is created.
 *  <b>`as_ref`</b>: True if we want the result as a ref tensor. Only used if a new
     `Tensor` is created.
+*  <b>`preferred_dtype`</b>: Optional element type for the returned tensor,
+    used when dtype is None. In some cases, a caller may not have a
+    dtype in mind when converting to a tensor, so preferred_dtype
+    can be used as a soft preference.  If the conversion to
+    `preferred_dtype` is not possible, this argument has no effect.
 
 ##### Returns:
 
@@ -2060,15 +2065,24 @@ Creates a new decorator with `op_type` as the Operation type.
 
 ### `tf.NoGradient(op_type)` {#NoGradient}
 
-Specifies that ops of type `op_type` do not have a defined gradient.
+Specifies that ops of type `op_type` is not differentiable.
+
+This function should *not* be used for operations that have a
+well-defined gradient that is not yet implemented.
 
 This function is only used when defining a new op type. It may be
 used for ops such as `tf.size()` that are not differentiable.  For
 example:
 
 ```python
-tf.NoGradient("Size")
+tf.NotDifferentiable("Size")
 ```
+
+The gradient computed for 'op_type' will then propagate zeros.
+
+For ops that have a well-defined gradient but are not yet implemented,
+no declaration should be made, and an error *must* be thrown if
+an attempt to request its gradient is made.
 
 ##### Args:
 

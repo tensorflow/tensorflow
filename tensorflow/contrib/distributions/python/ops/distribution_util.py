@@ -28,7 +28,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -65,7 +64,7 @@ def assert_close(
           y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.less_equal(math_ops.abs(x-y), tol))
-    return logging_ops.Assert(
+    return control_flow_ops.Assert(
         condition, data, summarize=summarize)
 
 
@@ -100,7 +99,8 @@ def assert_symmetric(matrix):
 
 
 def get_logits_and_prob(
-    logits=None, p=None, multidimensional=False, validate_args=True, name=None):
+    logits=None, p=None,
+    multidimensional=False, validate_args=False, name="GetLogitsAndProb"):
   """Converts logits to probabilities and vice-versa, and returns both.
 
   Args:
@@ -111,8 +111,9 @@ def get_logits_and_prob(
       This will additionally assert that the values in the last dimension
       sum to one. If `False`, will instead assert that each value is in
       `[0, 1]`.
-    validate_args: Whether to assert `0 <= p <= 1` if multidimensional is
-      `False`, otherwise that the last dimension of `p` sums to one.
+    validate_args: `Boolean`, default `False`.  Whether to assert `0 <= p <= 1`
+      if multidimensional is `False`, otherwise that the last dimension of `p`
+      sums to one.
     name: A name for this operation (optional).
 
   Returns:
@@ -123,18 +124,16 @@ def get_logits_and_prob(
   Raises:
     ValueError: if neither `p` nor `logits` were passed in, or both were.
   """
-  if p is None and logits is None:
-    raise ValueError("Must pass p or logits.")
-  elif p is not None and logits is not None:
-    raise ValueError("Must pass either p or logits, not both.")
-  elif p is None:
-    with ops.name_scope(name, values=[logits]):
+  with ops.name_scope(name, values=[p, logits]):
+    if p is None and logits is None:
+      raise ValueError("Must pass p or logits.")
+    elif p is not None and logits is not None:
+      raise ValueError("Must pass either p or logits, not both.")
+    elif p is None:
       logits = array_ops.identity(logits, name="logits")
-    with ops.name_scope(name):
       with ops.name_scope("p"):
         p = math_ops.sigmoid(logits)
-  elif logits is None:
-    with ops.name_scope(name):
+    elif logits is None:
       with ops.name_scope("p"):
         p = array_ops.identity(p)
         if validate_args:
@@ -150,7 +149,7 @@ def get_logits_and_prob(
           p = control_flow_ops.with_dependencies(dependencies, p)
       with ops.name_scope("logits"):
         logits = math_ops.log(p) - math_ops.log(1. - p)
-  return (logits, p)
+    return (logits, p)
 
 
 def log_combinations(n, counts, name="log_combinations"):
@@ -256,7 +255,7 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
   numpy.transpose(x, numpy.roll(numpy.arange(len(x.shape)), shift))
   ```
 
-  When `validate_args=True` additional graph-runtime checks are
+  When `validate_args=False` additional graph-runtime checks are
   performed. These checks entail moving data from to GPU to CPU.
 
   Example:

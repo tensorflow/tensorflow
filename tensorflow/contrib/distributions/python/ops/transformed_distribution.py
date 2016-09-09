@@ -95,6 +95,12 @@ class TransformedDistribution(distribution.Distribution):
       self._inverse_cache = {}
       super(TransformedDistribution, self).__init__(
           dtype=self._base_dist.dtype,
+          parameters={"base_dist_cls": base_dist_cls,
+                      "transform": transform,
+                      "inverse": inverse,
+                      "log_det_jacobian": log_det_jacobian,
+                      "base_dist_args": base_dist_args},
+          is_continuous=self._base_dist.is_continuous,
           is_reparameterized=self._base_dist.is_reparameterized,
           validate_args=self._base_dist.validate_args,
           allow_nan_stats=self._base_dist.allow_nan_stats,
@@ -140,6 +146,34 @@ class TransformedDistribution(distribution.Distribution):
       return transformed
 
   def _log_prob(self, y):
+    x = self._inverse_possibly_from_cache(y)
+    with ops.name_scope("log_det_jacobian"):
+      log_det_jacobian = self.log_det_jacobian(x)
+    return self.base_distribution.log_prob(x) - log_det_jacobian
+
+  def _prob(self, y):
+    return math_ops.exp(self._log_prob(y))
+
+  def _log_cdf(self, y):
+    # If Y = f(X),
+    # P[Y <= y] = P[f(X) <= y] = P[X <= f^{-1}(y)]
+    x = self._inverse_possibly_from_cache(y)
+    return self.base_distribution.log_cdf(x)
+
+  def _cdf(self, y):
+    x = self._inverse_possibly_from_cache(y)
+    return self.base_distribution.cdf(x)
+
+  def _log_survival_function(self, y):
+    x = self._inverse_possibly_from_cache(y)
+    return self.base_distribution.log_survival_function(x)
+
+  def _survival_function(self, y):
+    x = self._inverse_possibly_from_cache(y)
+    return self.base_distribution.survival_function(x)
+
+  def _inverse_possibly_from_cache(self, y):
+    """Return `self._inverse(y)`, possibly using cached value."""
     y = ops.convert_to_tensor(y, name="y")
     with ops.name_scope("inverse"):
       if y in self._inverse_cache:
@@ -149,12 +183,7 @@ class TransformedDistribution(distribution.Distribution):
       else:
         raise ValueError("No inverse function exists and input `y` was not "
                          "returned from `sample`.")
-    with ops.name_scope("log_det_jacobian"):
-      log_det_jacobian = self.log_det_jacobian(x)
-    return self.base_distribution.log_prob(x) - log_det_jacobian
-
-  def _prob(self, y):
-    return math_ops.exp(self._log_prob(y))
+    return x
 
 
 distribution_util.append_class_fun_doc(TransformedDistribution.batch_shape,

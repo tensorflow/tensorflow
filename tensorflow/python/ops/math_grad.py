@@ -289,8 +289,23 @@ def _SqrtGradGrad(op, grad):
 
 @ops.RegisterGradient("Rsqrt")
 def _RsqrtGrad(op, grad):
+  """Returns -0.5 * grad * conj(y)^3."""
   y = op.outputs[0]  # y = x^(-1/2)
   return gen_math_ops._rsqrt_grad(y, grad)
+
+
+@ops.RegisterGradient("RsqrtGrad")
+def _RsqrtGradGrad(op, grad):
+  """Returns backprop gradient for f(a,b) = -0.5 * b * conj(a)^3."""
+  a = op.inputs[0]  # a = x^{-1/2}
+  b = op.inputs[1]  # backprop gradient for a
+  with ops.control_dependencies([grad.op]):
+    ca = math_ops.conj(a)
+    cg = math_ops.conj(grad)
+    grad_a = -1.5 * cg * b * math_ops.square(ca)
+    # pylint: disable=protected-access
+    grad_b = gen_math_ops._rsqrt_grad(ca, grad)
+    return grad_a, grad_b
 
 
 @ops.RegisterGradient("Exp")
@@ -659,15 +674,15 @@ def _SquaredDifferenceGrad(op, grad):
 
 
 # Logical operations have no gradients.
-ops.NoGradient("Less")
-ops.NoGradient("LessEqual")
-ops.NoGradient("Greater")
-ops.NoGradient("GreaterEqual")
-ops.NoGradient("Equal")
-ops.NoGradient("NotEqual")
-ops.NoGradient("LogicalAnd")
-ops.NoGradient("LogicalOr")
-ops.NoGradient("LogicalNot")
+ops.NotDifferentiable("Less")
+ops.NotDifferentiable("LessEqual")
+ops.NotDifferentiable("Greater")
+ops.NotDifferentiable("GreaterEqual")
+ops.NotDifferentiable("Equal")
+ops.NotDifferentiable("NotEqual")
+ops.NotDifferentiable("LogicalAnd")
+ops.NotDifferentiable("LogicalOr")
+ops.NotDifferentiable("LogicalNot")
 
 
 @ops.RegisterGradient("Select")
@@ -779,8 +794,8 @@ def _BatchMatMul(op, grad):
   return grad_x, grad_y
 
 
-ops.NoGradient("Range")
-ops.NoGradient("LinSpace")
+ops.NotDifferentiable("Range")
+ops.NotDifferentiable("LinSpace")
 
 
 @ops.RegisterGradient("Complex")

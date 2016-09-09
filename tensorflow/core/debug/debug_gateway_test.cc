@@ -763,7 +763,7 @@ TEST_F(SessionDebugGPUSwitchTest, RunSwitchWithHostMemoryDebugOp) {
   run_opts.set_output_partition_graphs(true);
   // This is the name of the boolean tensor fed as pred to the Switch node.
   // On GPU, this edge is HOST_MEMORY.
-  const string watched_tensor = strings::StrCat(pred_node_name_, "/_2");
+  const string watched_tensor = strings::StrCat(pred_node_name_, "/_1");
 
   const string debug_identity = "DebugIdentity";
   DebugTensorWatch* tensor_watch_opts = run_opts.add_debug_tensor_watch_opts();

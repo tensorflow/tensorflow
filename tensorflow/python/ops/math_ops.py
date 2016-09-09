@@ -89,32 +89,15 @@ functions on matrices to your graph.
 @@batch_matmul
 
 @@matrix_determinant
-@@batch_matrix_determinant
-
 @@matrix_inverse
-@@batch_matrix_inverse
-
 @@cholesky
-@@batch_cholesky
 @@cholesky_solve
-@@batch_cholesky_solve
-
 @@matrix_solve
-@@batch_matrix_solve
-
 @@matrix_triangular_solve
-@@batch_matrix_triangular_solve
-
 @@matrix_solve_ls
-@@batch_matrix_solve_ls
-
 @@self_adjoint_eig
-@@batch_self_adjoint_eig
 @@self_adjoint_eigvals
-@@batch_self_adjoint_eigvals
-
 @@svd
-@@batch_svd
 
 ## Complex Number Functions
 
@@ -227,7 +210,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -998,14 +980,7 @@ def range(start, limit=None, delta=1, name="range"):
 
 @ops.RegisterShape("Range")
 def _RangeShape(op):
-  start_value = tensor_util.constant_value(op.inputs[0])
-  limit_value = tensor_util.constant_value(op.inputs[1])
-  delta_value = tensor_util.constant_value(op.inputs[2])
-  if start_value is None or limit_value is None or delta_value is None:
-    return [tensor_shape.vector(None)]
-  else:
-    return [tensor_shape.vector((limit_value - start_value + delta_value - 1) //
-                                delta_value)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0, 1, 2])
 
 
 # Reduction operations
@@ -1767,60 +1742,58 @@ def conj(x, name=None):
       raise TypeError("Expected numeric tensor, got dtype %r" % x.dtype)
 
 
-ops.RegisterShape("Abs")(common_shapes.unchanged_shape)
-ops.RegisterShape("Acos")(common_shapes.unchanged_shape)
-ops.RegisterShape("Asin")(common_shapes.unchanged_shape)
-ops.RegisterShape("Atan")(common_shapes.unchanged_shape)
-ops.RegisterShape("Ceil")(common_shapes.unchanged_shape)
-ops.RegisterShape("Conj")(common_shapes.unchanged_shape)
-ops.RegisterShape("Cos")(common_shapes.unchanged_shape)
-ops.RegisterShape("Cross")(common_shapes.unchanged_shape)
-ops.RegisterShape("Exp")(common_shapes.unchanged_shape)
-ops.RegisterShape("Floor")(common_shapes.unchanged_shape)
-ops.RegisterShape("Imag")(common_shapes.unchanged_shape)
-ops.RegisterShape("Inv")(common_shapes.unchanged_shape)
-ops.RegisterShape("IsFinite")(common_shapes.unchanged_shape)
-ops.RegisterShape("IsInf")(common_shapes.unchanged_shape)
-ops.RegisterShape("IsNan")(common_shapes.unchanged_shape)
-ops.RegisterShape("Log")(common_shapes.unchanged_shape)
-ops.RegisterShape("LogicalNot")(common_shapes.unchanged_shape)
-ops.RegisterShape("Neg")(common_shapes.unchanged_shape)
-ops.RegisterShape("Real")(common_shapes.unchanged_shape)
-ops.RegisterShape("Rsqrt")(common_shapes.unchanged_shape)
-ops.RegisterShape("Sign")(common_shapes.unchanged_shape)
-ops.RegisterShape("Sin")(common_shapes.unchanged_shape)
-ops.RegisterShape("Sqrt")(common_shapes.unchanged_shape)
-ops.RegisterShape("Square")(common_shapes.unchanged_shape)
-ops.RegisterShape("Sigmoid")(common_shapes.unchanged_shape)
-ops.RegisterShape("Tanh")(common_shapes.unchanged_shape)
-ops.RegisterShape("Tan")(common_shapes.unchanged_shape)
-ops.RegisterShape("Lgamma")(common_shapes.unchanged_shape)
-ops.RegisterShape("Digamma")(common_shapes.unchanged_shape)
-ops.RegisterShape("Erf")(common_shapes.unchanged_shape)
-ops.RegisterShape("Erfc")(common_shapes.unchanged_shape)
-ops.RegisterShape("Cast")(common_shapes.unchanged_shape)
-ops.RegisterShape("ComplexAbs")(common_shapes.unchanged_shape)
-ops.RegisterShape("FFT")(common_shapes.unchanged_shape)
-ops.RegisterShape("IFFT")(common_shapes.unchanged_shape)
-ops.RegisterShape("FFT2D")(common_shapes.unchanged_shape)
-ops.RegisterShape("IFFT2D")(common_shapes.unchanged_shape)
-ops.RegisterShape("FFT3D")(common_shapes.unchanged_shape)
-ops.RegisterShape("IFFT3D")(common_shapes.unchanged_shape)
-ops.RegisterShape("BatchFFT")(common_shapes.unchanged_shape)
-ops.RegisterShape("BatchIFFT")(common_shapes.unchanged_shape)
-ops.RegisterShape("BatchFFT2D")(common_shapes.unchanged_shape)
-ops.RegisterShape("BatchIFFT2D")(common_shapes.unchanged_shape)
-ops.RegisterShape("BatchFFT3D")(common_shapes.unchanged_shape)
-ops.RegisterShape("BatchIFFT3D")(common_shapes.unchanged_shape)
-ops.RegisterShape("TanhGrad")(common_shapes.unchanged_shape)
-ops.RegisterShape("SigmoidGrad")(common_shapes.unchanged_shape)
-ops.RegisterShape("InvGrad")(common_shapes.unchanged_shape)
-ops.RegisterShape("SqrtGrad")(common_shapes.unchanged_shape)
-ops.RegisterShape("RsqrtGrad")(common_shapes.unchanged_shape)
-ops.RegisterShape("Cumsum")(common_shapes.unchanged_shape)
-ops.RegisterShape("Cumprod")(common_shapes.unchanged_shape)
-
-
+ops.RegisterShape("Abs")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Acos")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Asin")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Atan")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Ceil")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Conj")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Cos")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Cross")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Exp")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Floor")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Imag")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Inv")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("IsFinite")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("IsInf")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("IsNan")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Log")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LogicalNot")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Neg")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Real")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Rsqrt")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Sign")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Sin")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Sqrt")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Square")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Sigmoid")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Tanh")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Tan")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Lgamma")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Digamma")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Erf")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Erfc")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Cast")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ComplexAbs")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FFT")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("IFFT")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FFT2D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("IFFT2D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FFT3D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("IFFT3D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BatchFFT")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BatchIFFT")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BatchFFT2D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BatchIFFT2D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BatchFFT3D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BatchIFFT3D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("TanhGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SigmoidGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("InvGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SqrtGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RsqrtGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Cumsum")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Cumprod")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Add")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Complex")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Div")(common_shapes.call_cpp_shape_fn)
@@ -1852,21 +1825,7 @@ def _BroadcastShape(op):
       op.inputs[1].get_shape())]
 
 
-@ops.RegisterShape("Betainc")
-def _BetaincOpShape(op):  # pylint: disable=invalid-name
-  """Shape function for BetaincOp."""
-  a_shape = op.inputs[0].get_shape()
-  b_shape = op.inputs[1].get_shape()
-  x_shape = op.inputs[2].get_shape()
-  merged_shape = tensor_shape.TensorShape(None)
-  for shape in (a_shape, b_shape, x_shape):
-    if shape.ndims != 0:
-      merged_shape = merged_shape.merge_with(shape)
-  # Scalars get broadcasted; non-scalar shapes must all match.
-  # Output will be the merged non-scalar shape, if any.
-  return [merged_shape if merged_shape.ndims is not None else a_shape]
-
-
+ops.RegisterShape("Betainc")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("SparseDenseCwiseMul")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("SparseDenseCwiseDiv")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("SparseDenseCwiseAdd")(common_shapes.call_cpp_shape_fn)
@@ -1901,29 +1860,7 @@ def _SelectShape(op):
 @ops.RegisterShape("ArgMax")
 @ops.RegisterShape("ArgMin")
 def _ArgOpShape(op):
-  """Common shape function for arg-reduction ops."""
-  dimension_shape = op.inputs[1].get_shape()
-  dimension_shape.assert_is_compatible_with(tensor_shape.scalar())
-  input_shape = op.inputs[0].get_shape()
-  if input_shape.ndims is None:
-    return [tensor_shape.unknown_shape()]
-  elif input_shape.ndims <= 1:
-    return [tensor_shape.scalar()]
-
-  dimension = tensor_util.constant_value(op.inputs[1])
-  if dimension is None:
-    return [tensor_shape.unknown_shape(ndims=input_shape.ndims - 1)]
-  elif 0 <= dimension and dimension < input_shape.ndims:
-    returned_shape = []
-    for i, dim in enumerate(input_shape.dims):
-      if i != dimension:
-        returned_shape.append(dim)
-    return [tensor_shape.TensorShape(returned_shape)]
-  else:
-    raise ValueError(
-        "dimension (%d) must be in the range [0, %d), where %d is the number "
-        "of dimensions in the input"
-        % (dimension, input_shape.ndims, input_shape.ndims))
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 @ops.RegisterShape("All")
@@ -1934,41 +1871,7 @@ def _ArgOpShape(op):
 @ops.RegisterShape("Prod")
 @ops.RegisterShape("Sum")
 def _ReductionShape(op):
-  """Common shape function for reduction ops."""
-  input_shape = op.inputs[0].get_shape()
-  op.inputs[1].get_shape().with_rank_at_most(1)
-  reduction_indices = tensor_util.constant_value(op.inputs[1])
-  keep_dims = op.get_attr("keep_dims")
-  if reduction_indices is None or input_shape.ndims is None:
-    if keep_dims:
-      return [tensor_shape.unknown_shape(ndims=input_shape.ndims)]
-    else:
-      return [tensor_shape.unknown_shape()]
-
-  # Turn reduction_indices from scalar to vector if necessary
-  reduction_indices = np.ravel(reduction_indices)
-
-  for reduction_index in reduction_indices:
-    if (reduction_index < -input_shape.ndims or
-        reduction_index >= input_shape.ndims):
-      raise ValueError("Invalid reduction dimension %d for input with %d "
-                       "dimensions" % (reduction_index, input_shape.ndims))
-
-  reduction_indices = set([(x + input_shape.ndims) % input_shape.ndims
-                           for x in reduction_indices])
-
-  returned_dims = []
-  if keep_dims:
-    for i, dim in enumerate(input_shape.dims):
-      if i in reduction_indices:
-        returned_dims.append(1)
-      else:
-        returned_dims.append(dim)
-  else:
-    for i, dim in enumerate(input_shape.dims):
-      if i not in reduction_indices:
-        returned_dims.append(dim)
-  return [tensor_shape.TensorShape(returned_dims)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 ops.RegisterShape("SegmentMax")(common_shapes.call_cpp_shape_fn)
@@ -1985,35 +1888,18 @@ ops.RegisterShape("SparseSegmentSum")(common_shapes.call_cpp_shape_fn)
 @ops.RegisterShape("SparseSegmentSqrtNGrad")
 # pylint: disable=invalid-name
 def _SparseSegmentReductionGradShape(op):
-  """Shape function for the SparseSegment[Mean|SqrtN]Grad ops."""
-  input_shape = op.inputs[0].get_shape()
-  indices_shape = op.inputs[1].get_shape().with_rank(1)
-  unused_segment_ids_shape = op.inputs[2].get_shape().merge_with(indices_shape)
-  unused_output_dim0_shape = op.inputs[3].get_shape().merge_with(
-      tensor_shape.scalar())
-  dim0 = tensor_util.constant_value(op.inputs[3])
-  return [tensor_shape.TensorShape([dim0]).concatenate(input_shape[1:])]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[3])
 # pylint: enable=invalid-name
 
 
 @ops.RegisterShape("UnsortedSegmentSum")
 def _UnsortedSegmentSumShape(op):
-  """Shape function for UnsortedSegmentSum."""
-  data_shape = op.inputs[0].get_shape()
-  segment_ids_shape = op.inputs[1].get_shape()
-  mid = segment_ids_shape.ndims
-  if mid is None:
-    return [tensor_shape.unknown_shape()]
-  else:
-    num_segments = tensor_util.constant_value(op.inputs[2])
-    return [tensor_shape.TensorShape([num_segments]).concatenate(
-        data_shape[mid:])]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2])
 
 
 @ops.RegisterShape("LinSpace")
 def _LinspaceShape(op):
-  num = tensor_util.constant_value(op.inputs[2])
-  return [tensor_shape.vector(num)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2])
 
 
 def reduced_shape(input_shape, axes):

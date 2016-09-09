@@ -37,7 +37,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Device, class T, typename Reducer>
 class ScanOp : public OpKernel {
-public:
+ public:
   explicit ScanOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("reverse", &reverse_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("exclusive", &exclusive_));
@@ -51,12 +51,12 @@ public:
                 errors::InvalidArgument("ScanOp: axis must be a scalar, not ",
                                         tensor_axis.shape().DebugString()));
 
-    const int axis = internal::SubtleMustCopy(tensor_axis.scalar<int>()());
-
-    OP_REQUIRES(
-        ctx, FastBoundsCheck(axis, input.dims()),
-        errors::InvalidArgument("ScanOp: Expected scan axis in the range [", 0,
-                                ", ", input.dims(), "), but got ", axis));
+    const int axis_arg = internal::SubtleMustCopy(tensor_axis.scalar<int>()());
+    const int axis = (axis_arg < 0) ? input.dims() + axis_arg : axis_arg;
+    OP_REQUIRES(ctx, FastBoundsCheck(axis, input.dims()),
+                errors::InvalidArgument(
+                    "ScanOp: Expected scan axis in the range [", -input.dims(),
+                    ", ", input.dims(), "), but got ", axis));
 
     const TensorShape& output_shape = input.shape();
     Tensor* output = nullptr;
@@ -95,7 +95,7 @@ public:
 #undef HANDLE_SCAN
   }
 
-private:
+ private:
   bool reverse_;
   bool exclusive_;
 };
@@ -154,8 +154,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
       ScanOp<GPUDevice, type, Eigen::internal::SumReducer<type>>)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
-#endif // GOOGLE_CUDA
-
+#endif  // GOOGLE_CUDA
 
 // Register Cumprod kernels
 #define REGISTER_CPU_KERNELS(type)                                  \
@@ -175,6 +174,6 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
       ScanOp<GPUDevice, type, Eigen::internal::ProdReducer<type>>)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

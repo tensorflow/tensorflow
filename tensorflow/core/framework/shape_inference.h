@@ -270,14 +270,12 @@ class InferenceContext {
   // Returns in <*out> a sub-shape of <s> with dimensions [start:].
   // <start> can be negative to index from the end of the shape. If <start> >
   // rank of <s>, then an empty subshape is returned.
-  // Returns an error if the rank of <s> is < <start>.
   Status Subshape(ShapeHandle s, int64 start,
                   ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Returns in <*out> a sub-shape of <s>, with dimensions [start:end].
   // <start> and <end> can be negative, to index from the end of the shape.
   // <start> and <end> are set to the rank of <s> if > rank of <s>.
-  // Returns an error if the rank of <s> is insufficient.
   Status Subshape(ShapeHandle s, int64 start, int64 end,
                   ShapeHandle* out) TF_MUST_USE_RESULT;
 
@@ -344,9 +342,10 @@ class InferenceContext {
   Status GetAttr(StringPiece attr_name, T* value) const;
 
   // Returns in <out> the result of dividing <dividend> by <divisor>.
-  // Returns an error if <divisor>  is not positive or does not evenly
-  // divide <dividend>.
-  Status Divide(DimensionHandle dividend, int64 divisor, DimensionHandle* out);
+  // Returns an error if <divisor>  is not positive or if <evenly_divisible>
+  // and <divisor> does not evenly divide <dividend>.
+  Status Divide(DimensionHandle dividend, int64 divisor, bool evenly_divisible,
+                DimensionHandle* out);
 
   // Returns in <out> the sum of <first> and <second>.
   Status Add(DimensionHandle first, DimensionOrConstant second,
@@ -372,16 +371,6 @@ class InferenceContext {
              DimensionHandle* out);
 
   Status construction_status() const { return construction_status_; }
-
-  // Validates that 'dim' has a known value, and prints an error
-  // message containing 'name' if validation fails.
-  Status ValidateKnownDim(DimensionHandle dim, const char* name) {
-    if (!ValueKnown(dim)) {
-      return errors::InvalidArgument("Cannot infer shape because dimension ",
-                                     name, " is not known.");
-    }
-    return Status::OK();
-  }
 
   // Validates the 3 component tensors of a sparse tensor have the proper
   // shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.

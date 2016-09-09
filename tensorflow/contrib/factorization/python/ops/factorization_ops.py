@@ -739,8 +739,7 @@ class WALSModel(object):
           name="wals_compute_partial_lhs_rhs")
       total_lhs = tf.expand_dims(total_lhs, 0) + partial_lhs
       total_rhs = tf.expand_dims(total_rhs, -1)
-      new_left_values = tf.squeeze(tf.batch_matrix_solve(total_lhs, total_rhs),
-                                   [2])
+      new_left_values = tf.squeeze(tf.matrix_solve(total_lhs, total_rhs), [2])
 
     return (new_left_values,
             self.scatter_update(left,

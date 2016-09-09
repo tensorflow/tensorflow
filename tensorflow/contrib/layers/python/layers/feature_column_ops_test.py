@@ -82,6 +82,21 @@ class TransformerTest(tf.test.TestCase):
       self.assertAllEqual(output.indices.eval(), wire_tensor.indices.eval())
       self.assertAllEqual(output.shape.eval(), wire_tensor.shape.eval())
 
+  def testSparseIntColumnWithHashBucket(self):
+    """Tests a sparse column with int values."""
+    hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket(
+        "wire", 10, dtype=tf.int64)
+    wire_tensor = tf.SparseTensor(values=[101, 201, 301],
+                                  indices=[[0, 0], [1, 0], [1, 1]],
+                                  shape=[2, 2])
+    features = {"wire": wire_tensor}
+    output = feature_column_ops._Transformer(features).transform(hashed_sparse)
+    with self.test_session():
+      self.assertEqual(output.values.dtype, tf.int64)
+      self.assertTrue(all(x < 10 and x >= 0 for x in output.values.eval()))
+      self.assertAllEqual(output.indices.eval(), wire_tensor.indices.eval())
+      self.assertAllEqual(output.shape.eval(), wire_tensor.shape.eval())
+
   def testEmbeddingColumn(self):
     hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
@@ -721,6 +736,20 @@ class WeightedSumTest(tf.test.TestCase):
       tf.initialize_all_variables().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
 
+  def testSparseIntColumn(self):
+    """Tests a sparse column with int values."""
+    hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket(
+        "wire", 10, dtype=tf.int64)
+    wire_tensor = tf.SparseTensor(values=[101, 201, 301],
+                                  indices=[[0, 0], [1, 0], [1, 1]],
+                                  shape=[2, 2])
+    features = {"wire": wire_tensor}
+    logits, _, _ = tf.contrib.layers.weighted_sum_from_feature_columns(
+        features, [hashed_sparse], num_outputs=5)
+    with self.test_session():
+      tf.initialize_all_variables().run()
+      self.assertAllEqual(logits.eval().shape, [2, 5])
+
   def testWeightedSparseColumn(self):
     ids = tf.contrib.layers.sparse_column_with_keys(
         "ids", ["marlo", "omar", "stringer"])
@@ -845,6 +874,70 @@ class WeightedSumTest(tf.test.TestCase):
         # score: 0.1 + age*0.1 + language_weight[language_index]
         sess.run(column_to_variable[language][0].assign([[0.1], [0.3], [0.2]]))
         self.assertAllClose(output.eval(), [[0.5], [0.6]])
+
+  def testJointPredictions(self):
+    country = tf.contrib.layers.sparse_column_with_keys(
+        column_name="country",
+        keys=["us", "finland"])
+    language = tf.contrib.layers.sparse_column_with_keys(
+        column_name="language",
+        keys=["english", "finnish", "hindi"])
+    with tf.Graph().as_default():
+      features = {
+          "country": tf.SparseTensor(values=["finland", "us"],
+                                     indices=[[0, 0], [1, 0]],
+                                     shape=[2, 1]),
+          "language": tf.SparseTensor(values=["hindi", "english"],
+                                      indices=[[0, 0], [1, 0]],
+                                      shape=[2, 1]),
+      }
+      output, variables, bias = (
+          tf.contrib.layers.joint_weighted_sum_from_feature_columns(
+              features, [country, language], num_outputs=1))
+      # Assert that only a single weight is created.
+      self.assertEqual(len(variables), 1)
+      with self.test_session() as sess:
+        tf.initialize_all_variables().run()
+        tf.initialize_all_tables().run()
+
+        self.assertAllClose(output.eval(), [[0.], [0.]])
+
+        sess.run(bias.assign([0.1]))
+        self.assertAllClose(output.eval(), [[0.1], [0.1]])
+
+        # shape is [5,1] because 1 class and 2 + 3 features.
+        self.assertEquals(variables[0].get_shape().as_list(), [5, 1])
+
+        # score: bias + country_weight + language_weight
+        sess.run(variables[0].assign([[0.1], [0.2], [0.3], [0.4], [0.5]]))
+        self.assertAllClose(output.eval(), [[0.8], [0.5]])
+
+  def testJointPredictionsWeightedFails(self):
+    language = tf.contrib.layers.weighted_sparse_column(
+        tf.contrib.layers.sparse_column_with_keys(
+            column_name="language",
+            keys=["english", "finnish", "hindi"]),
+        "weight")
+    with tf.Graph().as_default():
+      features = {
+          "weight": tf.constant([[1], [2]]),
+          "language": tf.SparseTensor(values=["hindi", "english"],
+                                      indices=[[0, 0], [1, 0]],
+                                      shape=[2, 1]),
+      }
+      with self.assertRaises(AssertionError):
+        tf.contrib.layers.joint_weighted_sum_from_feature_columns(
+            features, [language], num_outputs=1)
+
+  def testJointPredictionsRealFails(self):
+    age = tf.contrib.layers.real_valued_column("age")
+    with tf.Graph().as_default():
+      features = {
+          "age": tf.constant([[1], [2]]),
+      }
+      with self.assertRaises(NotImplementedError):
+        tf.contrib.layers.joint_weighted_sum_from_feature_columns(
+            features, [age], num_outputs=1)
 
   def testPredictionsWithWeightedSparseColumn(self):
     language = tf.contrib.layers.sparse_column_with_keys(

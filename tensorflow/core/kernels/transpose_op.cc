@@ -169,11 +169,12 @@ Status TransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                                    out);
 }
 
-#define REGISTER(T)                                   \
-  REGISTER_KERNEL_BUILDER(Name("Transpose")           \
-                              .Device(DEVICE_CPU)     \
-                              .TypeConstraint<T>("T") \
-                              .HostMemory("perm"),    \
+#define REGISTER(T)                                           \
+  REGISTER_KERNEL_BUILDER(Name("Transpose")                   \
+                              .Device(DEVICE_CPU)             \
+                              .TypeConstraint<T>("T")         \
+                              .TypeConstraint<int32>("Tperm") \
+                              .HostMemory("perm"),            \
                           TransposeCpuOp);
 TF_CALL_ALL_TYPES(REGISTER)
 REGISTER(bfloat16);
@@ -187,11 +188,12 @@ Status TransposeGpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                                    out);
 }
 
-#define REGISTER(T)                                   \
-  REGISTER_KERNEL_BUILDER(Name("Transpose")           \
-                              .Device(DEVICE_GPU)     \
-                              .TypeConstraint<T>("T") \
-                              .HostMemory("perm"),    \
+#define REGISTER(T)                                           \
+  REGISTER_KERNEL_BUILDER(Name("Transpose")                   \
+                              .Device(DEVICE_GPU)             \
+                              .TypeConstraint<T>("T")         \
+                              .TypeConstraint<int32>("Tperm") \
+                              .HostMemory("perm"),            \
                           TransposeGpuOp);
 TF_CALL_POD_TYPES(REGISTER);
 #undef REGISTER

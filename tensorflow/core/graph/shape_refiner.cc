@@ -126,11 +126,9 @@ Status ShapeRefiner::SetShape(const Node* node, int output_port,
         node->name(), "' has ", node->num_outputs(), " outputs");
   }
 
-  // Check compatibility
+  // Check compatibility, and merge the shapes.
   shape_inference::ShapeHandle existing_shape = c->output(output_port);
-  shape_inference::ShapeHandle unused;
-  TF_RETURN_IF_ERROR(c->Merge(existing_shape, shape, &unused));
-
+  TF_RETURN_IF_ERROR(c->Merge(existing_shape, shape, &shape));
   c->set_output(output_port, shape);
 
   // TODO(vrv): Do we need to propagate the new shape through all

@@ -217,7 +217,7 @@ op {
   input_arg {
     name: "reduction_indices"
     description: "The dimensions to reduce."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -231,6 +231,19 @@ op {
       b: false
     }
     description: "If true, retain reduced dimensions with length 1."
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Computes the \"logical and\" of elements across dimensions of a tensor."
   description: "Reduces `input` along the dimensions given in `reduction_indices`. Unless\n`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in\n`reduction_indices`. If `keep_dims` is true, the reduced dimensions are\nretained with length 1."
@@ -305,7 +318,7 @@ op {
   input_arg {
     name: "reduction_indices"
     description: "The dimensions to reduce."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -319,6 +332,19 @@ op {
       b: false
     }
     description: "If true, retain reduced dimensions with length 1."
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Computes the \"logical or\" of elements across dimensions of a tensor."
   description: "Reduces `input` along the dimensions given in `reduction_indices`. Unless\n`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in\n`reduction_indices`. If `keep_dims` is true, the reduced dimensions are\nretained with length 1."
@@ -1090,7 +1116,7 @@ op {
   input_arg {
     name: "dimension"
     description: "int32, 0 <= dimension < rank(input).  Describes which dimension\nof the input Tensor to reduce across. For vectors, use dimension = 0."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -1118,6 +1144,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
   summary: "Returns the index with the largest value across dimensions of a tensor."
 }
 op {
@@ -1129,7 +1168,7 @@ op {
   input_arg {
     name: "dimension"
     description: "int32, 0 <= dimension < rank(input).  Describes which dimension\nof the input Tensor to reduce across. For vectors, use dimension = 0."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -1154,6 +1193,19 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -1951,12 +2003,10 @@ op {
   name: "BatchCholesky"
   input_arg {
     name: "input"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   attr {
@@ -1969,24 +2019,23 @@ op {
       }
     }
   }
-  summary: "Computes the Cholesky decomposition of a batch of square matrices."
-  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix Cholesky\ndecomposition above. The output is a tensor of the same shape as the input\ncontaining the Cholesky decompositions for all input submatrices `[..., :, :]`."
+  deprecation {
+    version: 13
+    explanation: "Use Cholesky instead."
+  }
 }
 op {
   name: "BatchCholeskyGrad"
   input_arg {
     name: "l"
-    description: "Output of batch Cholesky algorithm l = batch_cholesky(A). Shape is `[..., M, M]`.\nAlgorithm depends only on lower triangular part of the innermost matrices of\nthis tensor."
     type_attr: "T"
   }
   input_arg {
     name: "grad"
-    description: "df/dl where f is some scalar function. Shape is `[..., M, M]`.\nAlgorithm depends only on lower triangular part of the innermost matrices of\nthis tensor."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Symmetrized version of df/dA . Shape is `[..., M, M]`"
     type_attr: "T"
   }
   attr {
@@ -1999,8 +2048,10 @@ op {
       }
     }
   }
-  summary: "Computes the reverse mode backpropagated gradient of the Cholesky algorithm."
-  description: "For an explanation see \"Differentiation of the Cholesky algorithm\" by\nIain Murray http://arxiv.org/abs/1602.07527."
+  deprecation {
+    version: 13
+    explanation: "Use CholeskyGrad instead."
+  }
 }
 op {
   name: "BatchFFT"
@@ -2175,12 +2226,10 @@ op {
   name: "BatchMatrixDeterminant"
   input_arg {
     name: "input"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[...]`."
     type_attr: "T"
   }
   attr {
@@ -2193,8 +2242,10 @@ op {
       }
     }
   }
-  summary: "Computes the determinants for a batch of square matrices."
-  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
+  deprecation {
+    version: 13
+    explanation: "Use MatrixDeterminant instead."
+  }
 }
 op {
   name: "BatchMatrixDiag"
@@ -2238,12 +2289,10 @@ op {
   name: "BatchMatrixInverse"
   input_arg {
     name: "input"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   attr {
@@ -2263,8 +2312,10 @@ op {
       }
     }
   }
-  summary: "Computes the inverse of square invertible matrices or their adjoints"
-  description: "(conjugate transposes).\n\nThe input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor of the same shape as the input\ncontaining the inverse for all input submatrices `[..., :, :]`.\n\nThe op uses LU decomposition with partial pivoting to compute the inverses.\n\nIf a matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
+  deprecation {
+    version: 13
+    explanation: "Use MatrixInverse instead."
+  }
 }
 op {
   name: "BatchMatrixSetDiag"
@@ -2294,17 +2345,14 @@ op {
   name: "BatchMatrixSolve"
   input_arg {
     name: "matrix"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   input_arg {
     name: "rhs"
-    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   attr {
@@ -2313,7 +2361,6 @@ op {
     default_value {
       b: false
     }
-    description: "Boolean indicating whether to solve with `matrix` or its (block-wise)\nadjoint."
   }
   attr {
     name: "T"
@@ -2325,19 +2372,19 @@ op {
       }
     }
   }
-  summary: "Solves systems of linear equations. Checks for invertibility."
-  description: "Matrix is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. Rhs is a tensor of shape\n`[..., M, K]`. The output is a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output\nmatrix satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.\nIf `adjoint` is `True` then each output\nmatrix satisfies `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`."
+  deprecation {
+    version: 13
+    explanation: "Use MatrixSolve instead."
+  }
 }
 op {
   name: "BatchMatrixSolveLs"
   input_arg {
     name: "matrix"
-    description: "Shape is `[..., M, N]`."
     type_attr: "T"
   }
   input_arg {
     name: "rhs"
-    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   input_arg {
@@ -2346,7 +2393,6 @@ op {
   }
   output_arg {
     name: "output"
-    description: "Shape is `[..., N, K]`."
     type_attr: "T"
   }
   attr {
@@ -2366,24 +2412,23 @@ op {
       b: true
     }
   }
-  summary: "Solves multiple linear least-squares problems."
-  description: "`matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Rhs is a tensor of shape `[..., M, K]`.\nThe output is a tensor shape `[..., N, K]` where each output matrix solves\neach of the equations matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]\nin the least squares sense.\n\nBelow we will use the following notation for each pair of\nmatrix and right-hand sides in the batch:\n\n`matrix`=\\\\(A \\in \\Re^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\Re^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\Re^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^T A + \\lambda I)^{-1} A^T B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^T (A A^T + \\lambda I)^{-1} B\\\\), which (for \\\\(\\lambda = 0\\\\)) is the\nminimum-norm solution to the under-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||Z||_F^2 \\\\), subject to\n\\\\(A Z = B\\\\). Notice that the fast path is only numerically stable when\n\\\\(A\\\\) is numerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach}}}\\\\) or\\\\(\\lambda\\\\) is\nsufficiently large.\n\nIf `fast` is `False` an algorithm based on the numerically robust complete\northogonal decomposition is used. This computes the minimum-norm\nleast-squares solution, even when \\\\(A\\\\) is rank deficient. This path is\ntypically 6-7 times slower than the fast path. If `fast` is `False` then\n`l2_regularizer` is ignored."
+  deprecation {
+    version: 13
+    explanation: "Use MatrixSolveLs instead."
+  }
 }
 op {
   name: "BatchMatrixTriangularSolve"
   input_arg {
     name: "matrix"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   input_arg {
     name: "rhs"
-    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   attr {
@@ -2392,7 +2437,6 @@ op {
     default_value {
       b: true
     }
-    description: "Boolean indicating whether the innermost matrices in `matrix` are\nlower or upper triangular."
   }
   attr {
     name: "adjoint"
@@ -2400,7 +2444,6 @@ op {
     default_value {
       b: false
     }
-    description: "Boolean indicating whether to solve with `matrix` or its (block-wise)\nadjoint."
   }
   attr {
     name: "T"
@@ -2412,8 +2455,10 @@ op {
       }
     }
   }
-  summary: "Solves systems of linear equations with upper or lower triangular matrices by"
-  description: "backsubstitution.\n\n`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form\nsquare matrices. If `lower` is `True` then the strictly upper triangular part\nof each inner-most matrix is assumed to be zero and not accessed.\nIf `lower` is False then the strictly lower triangular part of each inner-most\nmatrix is assumed to be zero and not accessed.\n`rhs` is a tensor of shape [..., M, K]`.\n\nThe output is a tensor of shape `[..., M, K]`. If `adjoint` is `True` then the\ninnermost matrices in output` satisfy matrix equations\n`matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.\nIf `adjoint` is `False` then the strictly then the  innermost matrices in\n`output` satisfy matrix equations\n`adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`."
+  deprecation {
+    version: 13
+    explanation: "Use MatrixTriangularSolve instead."
+  }
 }
 op {
   name: "BatchNormWithGlobalNormalization"
@@ -2580,12 +2625,10 @@ op {
   name: "BatchSelfAdjointEig"
   input_arg {
     name: "input"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[..., M+1, M]`."
     type_attr: "T"
   }
   attr {
@@ -2598,28 +2641,23 @@ op {
       }
     }
   }
-  summary: "Computes the Eigen Decomposition of a batch of square self-adjoint matrices."
-  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix\nSelfAdjointEig.\n\nThe result is a [..., M+1, M] matrix with [..., 0,:] containing the\neigenvalues, and subsequent [...,1:, :] containing the eigenvectors."
   deprecation {
     version: 11
-    explanation: "Use BatchSelfAdjointEigV2 instead."
+    explanation: "Use SelfAdjointEigV2 instead."
   }
 }
 op {
   name: "BatchSelfAdjointEigV2"
   input_arg {
     name: "input"
-    description: "`Tensor` input of shape `[N, N]`."
     type_attr: "T"
   }
   output_arg {
     name: "e"
-    description: "Eigenvalues. Shape is `[N]`."
     type_attr: "T"
   }
   output_arg {
     name: "v"
-    description: "Eigenvectors. Shape is `[N, N]`."
     type_attr: "T"
   }
   attr {
@@ -2628,7 +2666,6 @@ op {
     default_value {
       b: true
     }
-    description: "If `True` then eigenvectors will be computed and returned in `v`.\nOtherwise, only the eigenvalues will be computed."
   }
   attr {
     name: "T"
@@ -2640,29 +2677,27 @@ op {
       }
     }
   }
-  summary: "Computes the eigen decomposition of a batch of square self-adjoint matrices."
-  description: "Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in\n`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.\n\n```prettyprint\n# a is a tensor.\n# e is a tensor of eigenvalues.\n# v is a tensor of eigenvectors.\ne, v = batch_self_adjoint_eig(a)\ne = batch_self_adjoint_eig(a, compute_v=False)\n```"
+  deprecation {
+    version: 13
+    explanation: "Use SelfAdjointEigV2 instead."
+  }
 }
 op {
   name: "BatchSvd"
   input_arg {
     name: "input"
-    description: "A tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`."
     type_attr: "T"
   }
   output_arg {
     name: "s"
-    description: "Singular values. Shape is `[..., P]`."
     type_attr: "T"
   }
   output_arg {
     name: "u"
-    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., M, M]`; if `full_matrices` is `True` then shape is\n`[..., M, P]`. Undefined if `compute_uv` is `False`."
     type_attr: "T"
   }
   output_arg {
     name: "v"
-    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., N, N]`. If `full_matrices` is `True` then shape is `[..., N, P]`.\nUndefined if `compute_uv` is false."
     type_attr: "T"
   }
   attr {
@@ -2671,7 +2706,6 @@ op {
     default_value {
       b: true
     }
-    description: "If true, left and right singular vectors will be\ncomputed and returned in `u` and `v`, respectively.\nIf false, `u` and `v` are not set and should never referenced."
   }
   attr {
     name: "full_matrices"
@@ -2679,7 +2713,6 @@ op {
     default_value {
       b: false
     }
-    description: "If true, compute full-sized `u` and `v`. If false\n(the default), compute only the leading `P` singular vectors.\nIgnored if `compute_uv` is `False`."
   }
   attr {
     name: "T"
@@ -2693,8 +2726,10 @@ op {
       }
     }
   }
-  summary: "Computes the singular value decompositions of a batch of matrices."
-  description: "Computes the SVD of each inner matrix in `input` such that\n`input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`\n\n```prettyprint\n# a is a tensor containing a batch of matrices.\n# s is a tensor of singular values for each matrix.\n# u is the tensor containing of left singular vectors for each matrix.\n# v is the tensor containing of right singular vectors for each matrix.\ns, u, v = batch_svd(a)\ns, _, _ = batch_svd(a, compute_uv=False)\n```"
+  deprecation {
+    version: 13
+    explanation: "Use Svd instead."
+  }
 }
 op {
   name: "BatchToSpace"
@@ -2706,7 +2741,7 @@ op {
   input_arg {
     name: "crops"
     description: "2-D tensor of non-negative integers with shape `[2, 2]`. It specifies\nhow many elements to crop from the intermediate result across the spatial\ndimensions as follows:\n\n    crops = [[crop_top, crop_bottom], [crop_left, crop_right]]"
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -2722,6 +2757,19 @@ op {
     type: "int"
     has_minimum: true
     minimum: 2
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "BatchToSpace for 4-D tensors of type T."
   description: "Rearranges (permutes) data from batch into blocks of spatial data, followed by\ncropping. This is the reverse transformation of SpaceToBatch. More specifically,\nthis op outputs a copy of the input tensor where values from the `batch`\ndimension are moved in spatial blocks to the `height` and `width` dimensions,\nfollowed by cropping along the `height` and `width` dimensions."
@@ -2967,19 +3015,32 @@ op {
   name: "BroadcastGradientArgs"
   input_arg {
     name: "s0"
-    type: DT_INT32
+    type_attr: "T"
   }
   input_arg {
     name: "s1"
-    type: DT_INT32
+    type_attr: "T"
   }
   output_arg {
     name: "r0"
-    type: DT_INT32
+    type_attr: "T"
   }
   output_arg {
     name: "r1"
-    type: DT_INT32
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Return the reduction indices for computing gradients of s0 op s1 with broadcast."
   description: "This is typically used by gradient computations for a broadcasting operation."
@@ -3214,12 +3275,12 @@ op {
   name: "Cholesky"
   input_arg {
     name: "input"
-    description: "Shape is `[M, M]`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[M, M]`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   attr {
@@ -3232,24 +3293,24 @@ op {
       }
     }
   }
-  summary: "Computes the Cholesky decomposition of a square matrix."
-  description: "The input has to be symmetric and positive definite. Only the lower-triangular\npart of the input will be used for this operation. The upper-triangular part\nwill not be read.\n\nThe result is the lower-triangular matrix of the Cholesky decomposition of the\ninput, `L`, so that `input = L L^*`."
+  summary: "Computes the Cholesky decomposition of one or more square matrices."
+  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix Cholesky\ndecomposition above. The output is a tensor of the same shape as the input\ncontaining the Cholesky decompositions for all input submatrices `[..., :, :]`."
 }
 op {
   name: "CholeskyGrad"
   input_arg {
     name: "l"
-    description: "Output of Cholesky algorithm l = chol(A). Shape is `[M, M]`.\nAlgorithm depends only on lower triangular part of this matrix."
+    description: "Output of batch Cholesky algorithm l = cholesky(A). Shape is `[..., M, M]`.\nAlgorithm depends only on lower triangular part of the innermost matrices of\nthis tensor."
     type_attr: "T"
   }
   input_arg {
     name: "grad"
-    description: "df/dl where f is some scalar function. Shape is `[M, M]`.\nAlgorithm depends only on lower triangular part of this matrix."
+    description: "df/dl where f is some scalar function. Shape is `[..., M, M]`.\nAlgorithm depends only on lower triangular part of the innermost matrices of\nthis tensor."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Symmetrized version of df/dA . Shape is `[M, M]`."
+    description: "Symmetrized version of df/dA . Shape is `[..., M, M]`"
     type_attr: "T"
   }
   attr {
@@ -4367,7 +4428,7 @@ op {
   }
   input_arg {
     name: "axis"
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "out"
@@ -4409,6 +4470,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
   summary: "Compute the cumulative product of the tensor `x` along `axis`."
   description: "By default, this op performs an inclusive cumprod, which means that the first\nelement of the input is identical to the first element of the output:\n```prettyprint\ntf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumprod is\nperformed instead:\n```prettyprint\ntf.cumprod([a, b, c], exclusive=True) ==> [0, a, a * b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumprod is performed in the\nopposite direction:\n```prettyprint\ntf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]\n```\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n```prettyprint\ntf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 0]\n```"
 }
@@ -4420,7 +4494,7 @@ op {
   }
   input_arg {
     name: "axis"
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "out"
@@ -4459,6 +4533,19 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -5824,7 +5911,7 @@ op {
   input_arg {
     name: "dim"
     description: "0-D (scalar). Specifies the dimension index at which to\nexpand the shape of `input`."
-    type: DT_INT32
+    type_attr: "Tdim"
   }
   output_arg {
     name: "output"
@@ -5834,6 +5921,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tdim"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Inserts a dimension of 1 into a tensor\'s shape."
   description: "Given a tensor `input`, this operation inserts a dimension of 1 at the\ndimension index `dim` of `input`\'s shape. The dimension index `dim` starts at\nzero; if you specify a negative number for `dim` it is counted backward from\nthe end.\n\nThis operation is useful if you want to add a batch dimension to a single\nelement. For example, if you have a single image of shape `[height, width,\nchannels]`, you can make it a batch of 1 image with `expand_dims(image, 0)`,\nwhich will make the shape `[1, height, width, channels]`.\n\nOther examples:\n\n```prettyprint\n# \'t\' is a tensor of shape [2]\nshape(expand_dims(t, 0)) ==> [1, 2]\nshape(expand_dims(t, 1)) ==> [2, 1]\nshape(expand_dims(t, -1)) ==> [2, 1]\n\n# \'t2\' is a tensor of shape [2, 3, 5]\nshape(expand_dims(t2, 0)) ==> [1, 2, 3, 5]\nshape(expand_dims(t2, 2)) ==> [2, 3, 1, 5]\nshape(expand_dims(t2, 3)) ==> [2, 3, 5, 1]\n```\n\nThis operation requires that:\n\n`-1-input.dims() <= dim <= input.dims()`\n\nThis operation is related to `squeeze()`, which removes dimensions of\nsize 1."
@@ -7343,12 +7443,25 @@ op {
   input_arg {
     name: "x"
     description: "1-D."
-    type: DT_INT32
+    type_attr: "T"
   }
   output_arg {
     name: "y"
     description: "1-D."
-    type: DT_INT32
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Computes the inverse permutation of a tensor."
   description: "This operation computes the inverse of an index permutation. It takes a 1-D\ninteger tensor `x`, which represents the indices of a zero-based array, and\nswaps each value with its index position. In other words, for an output tensor\n`y` and an input tensor `x`, this operation computes the following:\n\n`y[x[i]] = i for i in [0, 1, ..., len(x) - 1]`\n\nThe values must include 0. There can be no duplicate values or negative values.\n\nFor example:\n\n```prettyprint\n# tensor `x` is [3, 4, 0, 2, 1]\ninvert_permutation(x) ==> [2, 4, 3, 0, 1]\n```"
@@ -7781,7 +7894,7 @@ op {
   input_arg {
     name: "num"
     description: "Number of values to generate."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -7795,6 +7908,19 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -7821,11 +7947,24 @@ op {
   output_arg {
     name: "idx"
     description: "1-D. Positions of `x` values preserved in `out`."
-    type: DT_INT32
+    type_attr: "out_idx"
   }
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "out_idx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Computes the difference between two lists of numbers or strings."
   description: "Given a list `x` and a list `y`, this operation returns a list `out` that\nrepresents all values that are in `x` but not in `y`. The returned list `out`\nis sorted in the same order that the numbers appear in `x` (duplicates are\npreserved). This operation also returns a list `idx` that represents the\nposition of each `out` element in `x`. In other words:\n\n`out[i] = x[idx[i]] for i in [0, 1, ..., len(out) - 1]`\n\nFor example, given this input:\n\n```prettyprint\nx = [1, 2, 3, 4, 5, 6]\ny = [1, 3, 5]\n```\n\nThis operation would return:\n\n```prettyprint\nout ==> [2, 4, 6]\nidx ==> [1, 3, 5]\n```"
@@ -8212,12 +8351,12 @@ op {
   name: "MatrixDeterminant"
   input_arg {
     name: "input"
-    description: "A tensor of shape `[M, M]`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "A scalar, equal to the determinant of the input."
+    description: "Shape is `[...]`."
     type_attr: "T"
   }
   attr {
@@ -8230,18 +8369,19 @@ op {
       }
     }
   }
-  summary: "Computes the determinant of a square matrix."
+  summary: "Computes the determinant of one ore more square matrices."
+  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
 }
 op {
   name: "MatrixInverse"
   input_arg {
     name: "input"
-    description: "Shape is `[M, M]`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[M, M]`. If `adjoint` is `False` then `output` contains the\nmatrix inverse of `input`. If `adjoint` is `True` then `output` contains the\nmatrix inverse of the adjoint of `input`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   attr {
@@ -8261,24 +8401,24 @@ op {
       }
     }
   }
-  summary: "Computes the inverse of a square invertible matrix or its adjoint (conjugate"
-  description: "transpose).\n\nThe op uses LU decomposition with partial pivoting to compute the inverse.\n\nIf the matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
+  summary: "Computes the inverse of one or more square invertible matrices or their"
+  description: "adjoints (conjugate transposes).\n\nThe input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor of the same shape as the input\ncontaining the inverse for all input submatrices `[..., :, :]`.\n\nThe op uses LU decomposition with partial pivoting to compute the inverses.\n\nIf a matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
 }
 op {
   name: "MatrixSolve"
   input_arg {
     name: "matrix"
-    description: "Shape is `[M, M]`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   input_arg {
     name: "rhs"
-    description: "Shape is `[M, K]`."
+    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[M, K]`. If `adjoint` is `False` then `output` that solves\n`matrix` * `output` = `rhs`. If `adjoint` is `True` then `output` that solves\n`adjoint(matrix)` * `output` = `rhs`."
+    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   attr {
@@ -8287,7 +8427,7 @@ op {
     default_value {
       b: false
     }
-    description: "Boolean indicating whether to solve with `matrix` or its adjoint."
+    description: "Boolean indicating whether to solve with `matrix` or its (block-wise)\nadjoint."
   }
   attr {
     name: "T"
@@ -8299,27 +8439,29 @@ op {
       }
     }
   }
-  summary: "Solves a system of linear equations. Checks for invertibility."
+  summary: "Solves systems of linear equations."
+  description: "`Matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. `Rhs` is a tensor of shape `[..., M, K]`. The `output` is\na tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output matrix\nsatisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.\nIf `adjoint` is `True` then each output matrix satisfies\n`adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`."
 }
 op {
   name: "MatrixSolveLs"
   input_arg {
     name: "matrix"
-    description: "Shape is `[M, N]`."
+    description: "Shape is `[..., M, N]`."
     type_attr: "T"
   }
   input_arg {
     name: "rhs"
-    description: "Shape is `[M, K]`."
+    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   input_arg {
     name: "l2_regularizer"
+    description: "Scalar tensor."
     type: DT_DOUBLE
   }
   output_arg {
     name: "output"
-    description: "Shape is `[N, K]` containing the tensor that solves\n`matrix * output = rhs` in the least-squares sense."
+    description: "Shape is `[..., N, K]`."
     type_attr: "T"
   }
   attr {
@@ -8339,24 +8481,24 @@ op {
       b: true
     }
   }
-  summary: "Solves a linear least-squares problem."
-  description: "Below we will use the following notation\n`matrix`=\\\\(A \\in \\Re^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\Re^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\Re^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^T A + \\lambda I)^{-1} A^T B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^T (A A^T + \\lambda I)^{-1} B\\\\),\nwhich (for \\\\(\\lambda = 0\\\\)) is the minimum-norm solution to the\nunder-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||Z||_F^2 \\\\),\nsubject to \\\\(A Z = B\\\\).\nNotice that the fast path is only numerically stable when \\\\(A\\\\) is\nnumerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach}}}\\\\)\nor \\\\(\\lambda\\\\) is sufficiently large.\n\nIf `fast` is `False` an algorithm based on the numerically robust complete\northogonal decomposition is used. This computes the minimum-norm\nleast-squares solution, even when \\\\(A\\\\) is rank deficient. This path is\ntypically 6-7 times slower than the fast path. If `fast` is `False` then\n`l2_regularizer` is ignored."
+  summary: "Solves one or more linear least-squares problems."
+  description: "`matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Rhs is a tensor of shape `[..., M, K]`.\nThe output is a tensor shape `[..., N, K]` where each output matrix solves\neach of the equations matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]\nin the least squares sense.\n\nmatrix and right-hand sides in the batch:\n\n`matrix`=\\\\(A \\in \\Re^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\Re^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\Re^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^T A + \\lambda I)^{-1} A^T B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^T (A A^T + \\lambda I)^{-1} B\\\\), which (for \\\\(\\lambda = 0\\\\)) is the\nminimum-norm solution to the under-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||Z||_F^2 \\\\), subject to\n\\\\(A Z = B\\\\). Notice that the fast path is only numerically stable when\n\\\\(A\\\\) is numerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach}}}\\\\) or\\\\(\\lambda\\\\) is\nsufficiently large.\n\nIf `fast` is `False` an algorithm based on the numerically robust complete\northogonal decomposition is used. This computes the minimum-norm\nleast-squares solution, even when \\\\(A\\\\) is rank deficient. This path is\ntypically 6-7 times slower than the fast path. If `fast` is `False` then\n`l2_regularizer` is ignored."
 }
 op {
   name: "MatrixTriangularSolve"
   input_arg {
     name: "matrix"
-    description: "Shape is `[M, M]`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   input_arg {
     name: "rhs"
-    description: "Shape is `[M, K]`."
+    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[M, K]`."
+    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   attr {
@@ -8365,7 +8507,7 @@ op {
     default_value {
       b: true
     }
-    description: "Boolean indicating whether `matrix` is lower or upper triangular"
+    description: "Boolean indicating whether the innermost matrices in `matrix` are\nlower or upper triangular."
   }
   attr {
     name: "adjoint"
@@ -8373,7 +8515,7 @@ op {
     default_value {
       b: false
     }
-    description: "Boolean indicating whether to solve with `matrix` or its adjoint."
+    description: "Boolean indicating whether to solve with `matrix` or its (block-wise)\nadjoint."
   }
   attr {
     name: "T"
@@ -8385,8 +8527,8 @@ op {
       }
     }
   }
-  summary: "Solves a system of linear equations with an upper or lower triangular matrix by"
-  description: "backsubstitution.\n\n`matrix` is a matrix of shape `[M, M]`. If `lower` is `True` then the strictly\nupper triangular part of `matrix` is assumed to be zero and not accessed.\nIf `lower` is False then the strictly lower triangular part of `matrix` is\nassumed to be zero and not accessed.\n`rhs` is a matrix of shape [M, K]`.\n\nThe output is a matrix of shape `[M, K]`. If `adjoint` is `False` the output\nsatisfies the matrix equation `matrix` * `output` = `rhs`.\nIf `adjoint` is `False` then `output` satisfies the matrix equation\n`matrix` * `output` = `rhs`.\nIf `adjoint` is `True` then `output` satisfies the matrix equation\n`adjoint(matrix)` * `output` = `rhs`."
+  summary: "Solves systems of linear equations with upper or lower triangular matrices by"
+  description: "backsubstitution.\n\n`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form\nsquare matrices. If `lower` is `True` then the strictly upper triangular part\nof each inner-most matrix is assumed to be zero and not accessed.\nIf `lower` is False then the strictly lower triangular part of each inner-most\nmatrix is assumed to be zero and not accessed.\n`rhs` is a tensor of shape `[..., M, K]`.\n\nThe output is a tensor of shape `[..., M, K]`. If `adjoint` is\n`True` then the innermost matrices in output` satisfy matrix equations\n`matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.\nIf `adjoint` is `False` then the strictly then the  innermost matrices in\n`output` satisfy matrix equations\n`adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`."
 }
 op {
   name: "Max"
@@ -8398,7 +8540,7 @@ op {
   input_arg {
     name: "reduction_indices"
     description: "The dimensions to reduce."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -8432,6 +8574,19 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -8895,7 +9050,7 @@ op {
   input_arg {
     name: "reduction_indices"
     description: "The dimensions to reduce."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -8929,6 +9084,19 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -8998,7 +9166,7 @@ op {
   input_arg {
     name: "reduction_indices"
     description: "The dimensions to reduce."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -9032,6 +9200,19 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -9079,7 +9260,7 @@ op {
   input_arg {
     name: "paddings"
     description: "A two-column matrix specifying the padding sizes. The number of\nrows must be the same as the rank of `input`."
-    type: DT_INT32
+    type_attr: "Tpaddings"
   }
   output_arg {
     name: "output"
@@ -9089,6 +9270,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tpaddings"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   attr {
     name: "mode"
@@ -9114,7 +9308,7 @@ op {
   input_arg {
     name: "paddings"
     description: "A two-column matrix specifying the padding sizes. The number of\nrows must be the same as the rank of `input`."
-    type: DT_INT32
+    type_attr: "Tpaddings"
   }
   output_arg {
     name: "output"
@@ -9124,6 +9318,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tpaddings"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   attr {
     name: "mode"
@@ -9619,7 +9826,7 @@ op {
   }
   input_arg {
     name: "paddings"
-    type: DT_INT32
+    type_attr: "Tpaddings"
   }
   output_arg {
     name: "output"
@@ -9628,6 +9835,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tpaddings"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Pads a tensor with zeros."
   description: "This operation pads a `input` with zeros according to the `paddings` you\nspecify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is the\nrank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates\nhow many zeros to add before the contents of `input` in that dimension, and\n`paddings[D, 1]` indicates how many zeros to add after the contents of `input`\nin that dimension.\n\nThe padded size of each dimension D of the output is:\n\n`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`\n\nFor example:\n\n```prettyprint\n# \'t\' is [[1, 1], [2, 2]]\n# \'paddings\' is [[1, 1], [2, 2]]\n# rank of \'t\' is 2\npad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]\n                      [0, 0, 1, 1, 0, 0]\n                      [0, 0, 2, 2, 0, 0]\n                      [0, 0, 0, 0, 0, 0]]\n```"
@@ -10294,7 +10514,7 @@ op {
   input_arg {
     name: "reduction_indices"
     description: "The dimensions to reduce."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -10328,6 +10548,19 @@ op {
         type: DT_QUINT8
         type: DT_QINT32
         type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -11085,22 +11318,35 @@ op {
   input_arg {
     name: "start"
     description: "0-D (scalar). First entry in the sequence."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   input_arg {
     name: "limit"
     description: "0-D (scalar). Upper limit of sequence, exclusive."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   input_arg {
     name: "delta"
     description: "0-D (scalar). Optional. Default is 1. Number that increments `start`."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
     description: "1-D."
-    type: DT_INT32
+    type_attr: "Tidx"
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Creates a sequence of integers."
   description: "This operation creates a sequence of integers that begins at `start` and\nextends by increments of `delta` up to but not including `limit`.\n\nFor example:\n\n```\n# \'start\' is 3\n# \'limit\' is 18\n# \'delta\' is 3\ntf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]\n```"
@@ -11677,7 +11923,7 @@ op {
   input_arg {
     name: "shape"
     description: "Defines the shape of the output tensor."
-    type: DT_INT32
+    type_attr: "Tshape"
   }
   output_arg {
     name: "output"
@@ -11686,6 +11932,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tshape"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Reshapes a tensor."
   description: "Given `tensor`, this operation returns a tensor that has the same values\nas `tensor` with shape `shape`.\n\nIf one component of `shape` is the special value -1, the size of that dimension\nis computed so that the total size remains constant.  In particular, a `shape`\nof `[-1]` flattens into 1-D.  At most one component of `shape` can be -1.\n\nIf `shape` is 1-D or higher, then the operation returns a tensor with shape\n`shape` filled with the values of `tensor`. In this case, the number of elements\nimplied by `shape` must be the same as the number of elements in `tensor`.\n\nFor example:\n\n```prettyprint\n# tensor \'t\' is [1, 2, 3, 4, 5, 6, 7, 8, 9]\n# tensor \'t\' has shape [9]\nreshape(t, [3, 3]) ==> [[1, 2, 3],\n                        [4, 5, 6],\n                        [7, 8, 9]]\n\n# tensor \'t\' is [[[1, 1], [2, 2]],\n#                [[3, 3], [4, 4]]]\n# tensor \'t\' has shape [2, 2, 2]\nreshape(t, [2, 4]) ==> [[1, 1, 2, 2],\n                        [3, 3, 4, 4]]\n\n# tensor \'t\' is [[[1, 1, 1],\n#                 [2, 2, 2]],\n#                [[3, 3, 3],\n#                 [4, 4, 4]],\n#                [[5, 5, 5],\n#                 [6, 6, 6]]]\n# tensor \'t\' has shape [3, 2, 3]\n# pass \'[-1]\' to flatten \'t\'\nreshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]\n\n# -1 can also be used to infer the shape\n\n# -1 is inferred to be 9:\nreshape(t, [2, -1]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],\n                         [4, 4, 4, 5, 5, 5, 6, 6, 6]]\n# -1 is inferred to be 2:\nreshape(t, [-1, 9]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],\n                         [4, 4, 4, 5, 5, 5, 6, 6, 6]]\n# -1 is inferred to be 3:\nreshape(t, [ 2, -1, 3]) ==> [[[1, 1, 1],\n                              [2, 2, 2],\n                              [3, 3, 3]],\n                             [[4, 4, 4],\n                              [5, 5, 5],\n                              [6, 6, 6]]]\n\n# tensor \'t\' is [7]\n# shape `[]` reshapes to a scalar\nreshape(t, []) ==> 7\n```"
@@ -12427,6 +12686,140 @@ op {
   description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] += updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] += updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions add.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterAdd.png\" alt>\n</div>"
 }
 op {
+  name: "ScatterDiv"
+  input_arg {
+    name: "ref"
+    description: "Should be from a `Variable` node."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    description: "A tensor of indices into the first dimension of `ref`."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    description: "A tensor of values that `ref` is divided by."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_ref"
+    description: "= Same as `ref`.  Returned as a convenience for operations that want\nto use the updated values after the update is done."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, the operation will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Divides a variable reference by sparse updates."
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] /= updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] /= updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] /= updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions divide.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`."
+}
+op {
+  name: "ScatterMul"
+  input_arg {
+    name: "ref"
+    description: "Should be from a `Variable` node."
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    description: "A tensor of indices into the first dimension of `ref`."
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    description: "A tensor of updated values to multiply to `ref`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_ref"
+    description: "= Same as `ref`.  Returned as a convenience for operations that want\nto use the updated values after the update is done."
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If True, the operation will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "Multiplies sparse updates into a variable reference."
+  description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] *= updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] *= updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] *= updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nDuplicate entries are handled correctly: if multiple `indices` reference\nthe same location, their contributions multiply.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`."
+}
+op {
   name: "ScatterSub"
   input_arg {
     name: "ref"
@@ -12814,12 +13207,12 @@ op {
   name: "SelfAdjointEig"
   input_arg {
     name: "input"
-    description: "Shape is `[M, M]`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[M+1, M]`."
+    description: "Shape is `[..., M+1, M]`."
     type_attr: "T"
   }
   attr {
@@ -12832,8 +13225,8 @@ op {
       }
     }
   }
-  summary: "Computes the Eigen Decomposition of a square Self-Adjoint matrix."
-  description: "Only the lower-triangular part of the input will be used in this case. The\nupper-triangular part will not be read.\n\nThe result is a M+1 x M matrix whose first row is the eigenvalues, and\nsubsequent rows are eigenvectors."
+  summary: "Computes the Eigen Decomposition of a batch of square self-adjoint matrices."
+  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix\nSelfAdjointEig.\n\nThe result is a [..., M+1, M] matrix with [..., 0,:] containing the\neigenvalues, and subsequent [...,1:, :] containing the eigenvectors."
   deprecation {
     version: 11
     explanation: "Use SelfAdjointEigV2 instead."
@@ -12874,8 +13267,8 @@ op {
       }
     }
   }
-  summary: "Computes the eigen decomposition of a self-adjoint (\\\"symmetric\\\") matrix."
-  description: "Computes the eigenvalues and (optionally) eigenvectors such that\n`input = v * diag(e)`.\n\n```prettyprint\n# a is a self-adjoint matrix.\n# e is a vector of eigenvalues.\n# v is a matrix of eigenvectors.\ne, v = self_adjoint_eig(a)\ne = self_adjoint_eig(a, compute_v=False)\n```"
+  summary: "Computes the eigen decomposition of one or more square self-adjoint matrices."
+  description: "Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in\n`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.\n\n```prettyprint\n# a is a tensor.\n# e is a tensor of eigenvalues.\n# v is a tensor of eigenvectors.\ne, v = self_adjoint_eig(a)\ne = self_adjoint_eig(a, compute_v=False)\n```"
 }
 op {
   name: "SerializeManySparse"
@@ -12940,11 +13333,24 @@ op {
   }
   output_arg {
     name: "output"
-    type: DT_INT32
+    type_attr: "out_type"
   }
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Returns the shape of a tensor."
   description: "This operation returns a 1-D integer tensor representing the shape of `input`.\n\nFor example:\n\n```prettyprint\n# \'t\' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]\nshape(t) ==> [2, 2, 3]\n```"
@@ -12958,7 +13364,7 @@ op {
   }
   output_arg {
     name: "output"
-    type: DT_INT32
+    type_attr: "out_type"
     number_attr: "N"
   }
   attr {
@@ -12970,6 +13376,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Returns shape of tensors."
   description: "This operation returns N 1-D integer tensors representing shape of `input[i]s`."
@@ -13128,11 +13547,24 @@ op {
   }
   output_arg {
     name: "output"
-    type: DT_INT32
+    type_attr: "out_type"
   }
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Returns the size of a tensor."
   description: "This operation returns an integer representing the number of elements in\n`input`.\n\nFor example:\n\n```prettyprint\n# \'t\' is [[[1, 1,, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]\nsize(t) ==> 12\n```"
@@ -13450,7 +13882,7 @@ op {
   input_arg {
     name: "paddings"
     description: "2-D tensor of non-negative integers with shape `[2, 2]`. It specifies\n  the padding of the input with zeros across the spatial dimensions as follows:\n\n      paddings = [[pad_top, pad_bottom], [pad_left, pad_right]]\n\n  The effective spatial dimensions of the zero-padded input tensor will be:\n\n      height_pad = pad_top + height + pad_bottom\n      width_pad = pad_left + width + pad_right\n\nThe attr `block_size` must be greater than one. It indicates the block size.\n\n  * Non-overlapping blocks of size `block_size x block size` in the height and\n    width dimensions are rearranged into the batch dimension at each location.\n  * The batch of the output tensor is `batch * block_size * block_size`.\n  * Both height_pad and width_pad must be divisible by block_size.\n\nThe shape of the output will be:\n\n    [batch*block_size*block_size, height_pad/block_size, width_pad/block_size,\n     depth]\n\nSome examples:\n\n(1) For the following input of shape `[1, 2, 2, 1]` and block_size of 2:\n\n```prettyprint\nx = [[[[1], [2]], [[3], [4]]]]\n```\n\nThe output tensor has shape `[4, 1, 1, 1]` and value:\n\n```prettyprint\n[[[[1]]], [[[2]]], [[[3]]], [[[4]]]]\n```\n\n(2) For the following input of shape `[1, 2, 2, 3]` and block_size of 2:\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThe output tensor has shape `[4, 1, 1, 3]` and value:\n\n```prettyprint\n[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]\n```\n\n(3) For the following input of shape `[1, 4, 4, 1]` and block_size of 2:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]],\n      [[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```\n\nThe output tensor has shape `[4, 2, 2, 1]` and value:\n\n```prettyprint\nx = [[[[1], [3]], [[5], [7]]],\n     [[[2], [4]], [[10], [12]]],\n     [[[5], [7]], [[13], [15]]],\n     [[[6], [8]], [[14], [16]]]]\n```\n\n(4) For the following input of shape `[2, 2, 4, 1]` and block_size of 2:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]]],\n     [[[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```\n\nThe output tensor has shape `[8, 1, 2, 1]` and value:\n\n```prettyprint\nx = [[[[1], [3]]], [[[9], [11]]], [[[2], [4]]], [[[10], [12]]],\n     [[[5], [7]]], [[[13], [15]]], [[[6], [8]]], [[[14], [16]]]]\n```\n\nAmong others, this operation is useful for reducing atrous convolution into\nregular convolution."
-    type: DT_INT32
+    type_attr: "Tpaddings"
   }
   output_arg {
     name: "output"
@@ -13459,6 +13891,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tpaddings"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   attr {
     name: "block_size"
@@ -14781,7 +15226,7 @@ op {
   input_arg {
     name: "indices"
     description: "A 1-D tensor. Has same rank as `segment_ids`."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   input_arg {
     name: "segment_ids"
@@ -14803,6 +15248,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
   summary: "Computes the mean along sparse segments of a tensor."
   description: "Read [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments.\n\nLike `SegmentMean`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension 0, specified by `indices`."
 }
@@ -14816,7 +15274,7 @@ op {
   input_arg {
     name: "indices"
     description: "indices passed to the corresponding SparseSegmentMean op."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   input_arg {
     name: "segment_ids"
@@ -14842,6 +15300,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
   summary: "Computes gradients for SparseSegmentMean."
   description: "Returns tensor \"output\" with same shape as grad, except for dimension 0 whose\nvalue is output_dim0."
 }
@@ -14854,7 +15325,7 @@ op {
   input_arg {
     name: "indices"
     description: "A 1-D tensor. Has same rank as `segment_ids`."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   input_arg {
     name: "segment_ids"
@@ -14876,6 +15347,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
   summary: "Computes the sum along sparse segments of a tensor divided by the sqrt of N."
   description: "N is the size of the segment being reduced.\n\nRead [the section on\nSegmentation](../../api_docs/python/math_ops.md#segmentation) for an explanation\nof segments."
 }
@@ -14889,7 +15373,7 @@ op {
   input_arg {
     name: "indices"
     description: "indices passed to the corresponding SparseSegmentSqrtN op."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   input_arg {
     name: "segment_ids"
@@ -14915,6 +15399,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
   summary: "Computes gradients for SparseSegmentSqrtN."
   description: "Returns tensor \"output\" with same shape as grad, except for dimension 0 whose\nvalue is output_dim0."
 }
@@ -14927,7 +15424,7 @@ op {
   input_arg {
     name: "indices"
     description: "A 1-D tensor. Has same rank as `segment_ids`."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   input_arg {
     name: "segment_ids"
@@ -14953,6 +15450,19 @@ op {
         type: DT_INT8
         type: DT_UINT16
         type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -16106,7 +16616,7 @@ op {
   input_arg {
     name: "reduction_indices"
     description: "The dimensions to reduce."
-    type: DT_INT32
+    type_attr: "Tidx"
   }
   output_arg {
     name: "output"
@@ -16143,6 +16653,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
   summary: "Computes the sum of elements across dimensions of a tensor."
   description: "Reduces `input` along the dimensions given in `reduction_indices`. Unless\n`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in\n`reduction_indices`. If `keep_dims` is true, the reduced dimensions are\nretained with length 1."
 }
@@ -16150,22 +16673,22 @@ op {
   name: "Svd"
   input_arg {
     name: "input"
-    description: "Shape is `[M, N]`. Let `P` be the minimum of `M` and `N`."
+    description: "A tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`."
     type_attr: "T"
   }
   output_arg {
     name: "s"
-    description: "Singular values. Shape is `[P]`."
+    description: "Singular values. Shape is `[..., P]`."
     type_attr: "T"
   }
   output_arg {
     name: "u"
-    description: "Left singular vectors; if `full_matrices` is `False` then shape is `[M, M]`.\nIf `full_matrices` is `True` then shape is `[M, P]`.\nUndefined if `compute_uv` is `False`."
+    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., M, M]`; if `full_matrices` is `True` then shape is\n`[..., M, P]`. Undefined if `compute_uv` is `False`."
     type_attr: "T"
   }
   output_arg {
     name: "v"
-    description: "Left singular vectors. If `full_matrices` is `False` then shape is `[N, N]`.\nIf `full_matrices` is `True` then shape is `[N, P]`.\nUndefined if `compute_uv` is false."
+    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., N, N]`. If `full_matrices` is `True` then shape is `[..., N, P]`.\nUndefined if `compute_uv` is false."
     type_attr: "T"
   }
   attr {
@@ -16196,8 +16719,8 @@ op {
       }
     }
   }
-  summary: "Computes the singular value decomposition of a matrix."
-  description: "Computes the SVD of if `input` such that `input = u * diag(s) * transpose(v)`\n\n```prettyprint\n# a is a matrix.\n# s is a vector of singular values.\n# u is the matrix of left singular vectors.\n# v is a matrix of right singular vectors.\ns, u, v = svd(a)\ns, _, _ = svd(a, compute_uv=False)\n```"
+  summary: "Computes the singular value decompositions of one or more matrices."
+  description: "Computes the SVD of each inner matrix in `input` such that\n`input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`\n\n```prettyprint\n# a is a tensor containing a batch of matrices.\n# s is a tensor of singular values for each matrix.\n# u is the tensor containing of left singular vectors for each matrix.\n# v is the tensor containing of right singular vectors for each matrix.\ns, u, v = svd(a)\ns, _, _ = svd(a, compute_uv=False)\n```"
 }
 op {
   name: "Switch"
@@ -16506,6 +17029,47 @@ op {
   description: "Takes `T` elements of shapes\n\n  ```\n  (n0 x d0 x d1 x ...), (n1 x d0 x d1 x ...), ..., (n(T-1) x d0 x d1 x ...)\n  ```\n\nand concatenates them into a Tensor of shape:\n\n  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```\n\nAll elements must have the same shape (excepting the first dimension)."
 }
 op {
+  name: "TensorArrayGather"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    description: "The locations in the TensorArray from which to read tensor elements."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    description: "All of the elements in the TensorArray, concatenated along a new\naxis (the new dimension 0)."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the elem that is returned."
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+    description: "The expected shape of an element, if known. Used to\nvalidate the shapes of TensorArray elements. If this shape is not\nfully specified, gathering zero-size TensorArrays is an error."
+  }
+  summary: "Gather specific elements from the TensorArray into output `value`."
+  description: "All elements selected by `indices` must have the same shape."
+}
+op {
   name: "TensorArrayGrad"
   input_arg {
     name: "handle"
@@ -16565,7 +17129,7 @@ op {
     description: "The expected shape of an element, if known. Used to\nvalidate the shapes of TensorArray elements. If this shape is not\nfully specified, packing zero-size TensorArrays is an error."
   }
   summary: "Pack the elements from the TensorArray into output `value`."
-  description: "All elements must have the same shape."
+  description: "**WARNING: This op is deprecated.**\n\nInstead of this op, use `TensorArrayGather` with\n`indices = RangeOp(0, TensorArraySizeOp)`.\n\nAll elements must have the same shape."
 }
 op {
   name: "TensorArrayRead"
@@ -16595,6 +17159,41 @@ op {
     description: "The type of the elem that is returned."
   }
   summary: "Read an element from the TensorArray into output `value`."
+}
+op {
+  name: "TensorArrayScatter"
+  input_arg {
+    name: "handle"
+    description: "The handle to a TensorArray."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "indices"
+    description: "The locations at which to write the tensor elements."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    description: "The concatenated tensor to write to the TensorArray."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    description: "A float scalar that enforces proper chaining of operations."
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Scatter the data from the input value into specific TensorArray elements."
+  description: "`indices` must be a vector, its length must match the first dim of `value`."
 }
 op {
   name: "TensorArraySize"
@@ -16679,6 +17278,7 @@ op {
     type: "type"
   }
   summary: "Unpack the data from the input value into TensorArray elements."
+  description: "**WARNING: This op is deprecated.**\n\nInstead of this op, use `TensorArrayScatter` with\n`indices = RangeOp(0, SizeOp(value)[0])`."
 }
 op {
   name: "TensorArrayWrite"
@@ -16865,7 +17465,7 @@ op {
   input_arg {
     name: "multiples"
     description: "1-D. Length must be the same as the number of dimensions in `input`"
-    type: DT_INT32
+    type_attr: "Tmultiples"
   }
   output_arg {
     name: "output"
@@ -16874,6 +17474,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tmultiples"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Constructs a tensor by tiling a given tensor."
   description: "This operation creates a new tensor by replicating `input` `multiples` times.\nThe output tensor\'s i\'th dimension has `input.dims(i) * multiples[i]` elements,\nand the values of `input` are replicated `multiples[i]` times along the \'i\'th\ndimension. For example, tiling `[a b c d]` by `[2]` produces\n`[a b c d a b c d]`."
@@ -17016,7 +17629,7 @@ op {
   }
   input_arg {
     name: "perm"
-    type: DT_INT32
+    type_attr: "Tperm"
   }
   output_arg {
     name: "y"
@@ -17025,6 +17638,19 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "Tperm"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Shuffle dimensions of x according to a permutation."
   description: "The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:\n  `y.shape[i] == x.shape[perm[i]] for i in [0, 1, ..., rank(x) - 1]`"
@@ -17165,11 +17791,24 @@ op {
   output_arg {
     name: "idx"
     description: "1-D."
-    type: DT_INT32
+    type_attr: "out_idx"
   }
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "out_idx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Finds unique elements in a 1-D tensor."
   description: "This operation returns a tensor `y` containing all of the unique elements of `x`\nsorted in the same order that they occur in `x`. This operation also returns a\ntensor `idx` the same size as `x` that contains the index of each value of `x`\nin the unique output `y`. In other words:\n\n`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`\n\nFor example:\n\n```prettyprint\n# tensor \'x\' is [1, 1, 2, 4, 4, 4, 7, 8, 8]\ny, idx = unique(x)\ny ==> [1, 2, 4, 7, 8]\nidx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]\n```"
@@ -17189,16 +17828,29 @@ op {
   output_arg {
     name: "idx"
     description: "1-D."
-    type: DT_INT32
+    type_attr: "out_idx"
   }
   output_arg {
     name: "count"
     description: "1-D."
-    type: DT_INT32
+    type_attr: "out_idx"
   }
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "out_idx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
   summary: "Finds unique elements in a 1-D tensor."
   description: "This operation returns a tensor `y` containing all of the unique elements of `x`\nsorted in the same order that they occur in `x`. This operation also returns a\ntensor `idx` the same size as `x` that contains the index of each value of `x`\nin the unique output `y`. Finally, it returns a third tensor `count` that\ncontains the count of each element of `y` in `x`. In other words:\n\n`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`\n\nFor example:\n\n```prettyprint\n# tensor \'x\' is [1, 1, 2, 4, 4, 4, 7, 8, 8]\ny, idx, count = unique_with_counts(x)\ny ==> [1, 2, 4, 7, 8]\nidx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]\ncount ==> [2, 1, 3, 1, 2]\n```"

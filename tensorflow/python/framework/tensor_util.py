@@ -574,7 +574,7 @@ def _ConstantValue(tensor):
   elif tensor.op.type == "Rank":
     input_shape = tensor.op.inputs[0].get_shape()
     if input_shape.ndims is not None:
-      return input_shape.ndims
+      return np.array([input_shape.ndims], dtype=np.int32)
     else:
       return None
   elif tensor.op.type == "Range":

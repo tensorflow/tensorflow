@@ -44,6 +44,7 @@ py_library(
     srcs = glob(["platform/*.py"]),
     srcs_version = "PY2AND3",
     deps = [
+        ":lib",
         ":pywrap_tensorflow",
         "//tensorflow/core:protos_all_py",
     ],
@@ -202,9 +203,13 @@ cc_library(
     hdrs = ["framework/cpp_shape_inference.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":numpy_lib",
+        ":py_func_lib",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_cc",
+        "//third_party/py/numpy:headers",
+        "//util/python:python_headers",
     ],
 )
 
@@ -259,6 +264,15 @@ py_library(
     deps = [
         ":framework_for_generated_wrappers",
         ":pywrap_tensorflow",
+    ],
+)
+
+py_library(
+    name = "errors",
+    srcs = ["framework/errors.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
     ],
 )
 
@@ -1005,6 +1019,7 @@ py_library(
     srcs = glob(["lib/**/*.py"]),
     srcs_version = "PY2AND3",
     deps = [
+        ":errors",
         ":pywrap_tensorflow",
     ],
 )

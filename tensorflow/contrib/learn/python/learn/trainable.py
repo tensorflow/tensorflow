@@ -40,8 +40,10 @@ class Trainable(object):
          iterator that returns array of targets. The training target values
          (class labels in classification, real numbers in regression). If set,
          `input_fn` must be `None`.
-      input_fn: Input function. If set, `x`, `y`, and `batch_size` must be
-        `None`.
+      input_fn: Input function returning a tuple of:
+          features - Dictionary of string feature name to `Tensor` or `Tensor`.
+          target - `Tensor` or dictionary of `Tensor` with target labels.
+        If input_fn is set, `x`, `y`, and `batch_size` must be `None`.
       steps: Number of steps for which to train model. If `None`, train forever.
         If set, `max_steps` must be `None`.
       batch_size: minibatch size to use on the input, defaults to first

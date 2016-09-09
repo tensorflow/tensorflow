@@ -63,8 +63,7 @@ REGISTER_OP("DenseToDenseSetOperation")
         return errors::InvalidArgument("len(inputs) != 2.");
       }
       // The following should stay in sync with `ComputeDenseToDense` shape
-      // assertions in kernels/set_kernels.cc, and `_dense_to_dense_shape` in
-      // python/ops/set_ops.py.
+      // assertions in kernels/set_kernels.cc.
       // Dimension n contains the set values to be compared, so ranks and the
       // first n-1 dimensions of inputs and output must match.
       DimensionHandle output_rank;
@@ -159,8 +158,7 @@ REGISTER_OP("DenseToSparseSetOperation")
         return errors::InvalidArgument("len(inputs) != 4.");
       }
       // The following should stay in sync with `ComputeDenseToSparse` shape
-      // assertions in kernels/set_kernels.cc, and `_dense_to_sparse_shape` in
-      // python/ops/set_ops.py.
+      // assertions in kernels/set_kernels.cc.
       // Dimension n contains the set values to be compared, so ranks and the
       // first n-1 dimensions of inputs and output must match.
       DimensionHandle output_rank;
@@ -240,8 +238,7 @@ REGISTER_OP("SparseToSparseSetOperation")
         return errors::InvalidArgument("len(inputs) != 6.");
       }
       // The following should stay in sync with `ComputeSparseToSparse` shape
-      // assertions in kernels/set_kernels.cc, and `_sparse_to_sparse_shape` in
-      // python/ops/set_ops.py.
+      // assertions in kernels/set_kernels.cc.
       TF_RETURN_IF_ERROR(
           c->ValidateSparseTensor(c->input(0), c->input(1), c->input(2)));
       TF_RETURN_IF_ERROR(

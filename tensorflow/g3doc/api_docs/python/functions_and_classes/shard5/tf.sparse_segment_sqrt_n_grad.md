@@ -10,7 +10,7 @@ value is output_dim0.
 
 *  <b>`grad`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     gradient propagated to the SparseSegmentSqrtN op.
-*  <b>`indices`</b>: A `Tensor` of type `int32`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     indices passed to the corresponding SparseSegmentSqrtN op.
 *  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
     segment_ids passed to the corresponding SparseSegmentSqrtN op.

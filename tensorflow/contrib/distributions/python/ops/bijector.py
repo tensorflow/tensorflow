@@ -155,7 +155,7 @@ class _Bijector(object):
                event_ndims=None,
                parameters=None,
                is_constant_jacobian=False,
-               validate_args=True,
+               validate_args=False,
                dtype=None,
                name=None):
     """Constructs Bijector.
@@ -180,8 +180,9 @@ class _Bijector(object):
       parameters: Dictionary of parameters used by this `Bijector`
       is_constant_jacobian: `Boolean` indicating that the Jacobian is not a
         function of the input.
-      validate_args: `Boolean`. If true, Tensor arguments are
-        checked for correctness. (Non-tensor arguments are always checked.)
+      validate_args: `Boolean`, default `False`.  Whether to validate input with
+        asserts. If `validate_args` is `False`, and the inputs are invalid,
+        correct behavior is not guaranteed.
       dtype: `tf.dtype` supported by this `Bijector`. `None` means dtype is not
         enforced.
       name: The name to give Ops created by the initializer.
@@ -376,7 +377,7 @@ class _Identity(_Bijector):
 
   """
 
-  def __init__(self, validate_args=True, name="Identity"):
+  def __init__(self, validate_args=False, name="Identity"):
     super(_Identity, self).__init__(
         batch_ndims=0,
         event_ndims=0,
@@ -419,7 +420,7 @@ class _Exp(_Bijector):
   # TODO(b/30476956): Try to remove constructor dependence on ndims.
   def __init__(self,
                event_ndims=0,
-               validate_args=True,
+               validate_args=False,
                name="Exp"):
     super(_Exp, self).__init__(
         batch_ndims=0,
@@ -495,7 +496,7 @@ class _ShiftAndScale(_Bijector):
                loc,
                scale,
                event_ndims=0,
-               validate_args=True,
+               validate_args=False,
                name="ShiftAndScale"):
     self._parameters = {}
     self._name = name
@@ -581,7 +582,7 @@ class _ShiftAndScale(_Bijector):
   def _inverse(self, x):
     x -= self.loc
     x, sample_shape = self.shaper.make_batch_of_event_sample_matrices(x)
-    x = linalg_ops.batch_matrix_triangular_solve(self.scale, x)
+    x = linalg_ops.matrix_triangular_solve(self.scale, x)
     x = self.shaper.undo_make_batch_of_event_sample_matrices(x, sample_shape)
     return x
 

@@ -21,6 +21,7 @@ import {assert} from './util';
 
 export type Vector = number[];
 export type Point2D = [number, number];
+export type Point3D = [number, number, number];
 
 /** Returns the dot product of two vectors. */
 export function dot(a: Vector, b: Vector): number {
@@ -93,12 +94,22 @@ export function dist2_2D(a: Vector, b: Vector): number {
   return dX * dX + dY * dY;
 }
 
+/** Returns the euclidean distance between 2 2D points. */
+export function dist_2D(a: Vector, b: Vector): number {
+  return Math.sqrt(dist2_2D(a, b));
+}
+
 /** Returns the square euclidean distance between two 3D points. */
 export function dist2_3D(a: Vector, b: Vector): number {
   let dX = a[0] - b[0];
   let dY = a[1] - b[1];
   let dZ = a[2] - b[2];
   return dX * dX + dY * dY + dZ * dZ;
+}
+
+/** Returns the euclidean distance between 2 3D points. */
+export function dist_3D(a: Vector, b: Vector): number {
+  return Math.sqrt(dist2_3D(a, b));
 }
 
 /**

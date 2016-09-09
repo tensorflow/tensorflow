@@ -46,8 +46,8 @@ class Mixture(distribution.Distribution):
   def __init__(self,
                cat,
                components,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Mixture"):
     """Initialize a Mixture distribution.
 
@@ -93,11 +93,11 @@ class Mixture(distribution.Distribution):
         Each `Distribution` instance created by calling
         `constructor(**batch_tensor_params)` must have the same type, be defined
         on the same domain, and have matching `event_shape` and `batch_shape`.
-      validate_args: Boolean, default `True`.  If `True`, raise a runtime error
-        if batch or event ranks are inconsistent between cat and any of the
-        distributions.  This is only checked if the ranks cannot be determined
-        statically at graph construction time.
-      allow_nan_stats: Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  If `True`, raise a runtime
+        error if batch or event ranks are inconsistent between cat and any of
+        the distributions.  This is only checked if the ranks cannot be
+        determined statically at graph construction time.
+      allow_nan_stats: Boolean, default `True`.  If `False`, raise an
        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.

@@ -61,6 +61,24 @@ class FinishedNodesTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([4], finished.eval())
       self.assertAllEqual([], stale.eval())
 
+  def testLeavesCanBeNegativeOne(self):
+    with self.test_session():
+      finished, stale = self.ops.finished_nodes(
+          [-1, -1, 1, -1, 3, -1, -1, 4, -1, -1, -1],
+          self.node_map,
+          self.split_sums,
+          self.split_squares,
+          self.accumulator_sums,
+          self.accumulator_squares,
+          self.birth_epochs,
+          self.current_epoch,
+          regression=False,
+          num_split_after_samples=10,
+          min_split_samples=10)
+
+      self.assertAllEqual([4], finished.eval())
+      self.assertAllEqual([], stale.eval())
+
   def testNoAccumulators(self):
     with self.test_session():
       finished, stale = self.ops.finished_nodes(

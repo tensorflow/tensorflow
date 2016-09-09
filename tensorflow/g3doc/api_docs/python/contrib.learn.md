@@ -609,7 +609,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=None, config=None)` {#DNNClassifier.__init__}
 
 Initializes a DNNClassifier instance.
 
@@ -991,7 +991,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#DNNRegressor.__init__}
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=None, config=None)` {#DNNRegressor.__init__}
 
 Initializes a `DNNRegressor` instance.
 
@@ -1718,7 +1718,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#LinearClassifier.__init__}
+#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=None, config=None)` {#LinearClassifier.__init__}
 
 Construct a `LinearClassifier` estimator object.
 
@@ -1875,7 +1875,7 @@ Input of `fit` and `evaluate` should have following features,
       key=column.name, value=a `Tensor`
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, target_dimension=1, config=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=None, target_dimension=1, config=None)` {#LinearRegressor.__init__}
 
 Construct a `LinearRegressor` estimator object.
 
@@ -3367,7 +3367,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
 
 - - -
 
-### `tf.contrib.learn.read_batch_features(file_pattern, batch_size, features, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, feature_queue_capacity=100, reader_num_threads=1, parser_num_threads=1, name=None)` {#read_batch_features}
+### `tf.contrib.learn.read_batch_features(file_pattern, batch_size, features, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, feature_queue_capacity=100, reader_num_threads=1, parser_num_threads=1, parse_fn=None, name=None)` {#read_batch_features}
 
 Adds operations to read, queue, batch and parse `Example` protos.
 
@@ -3402,6 +3402,8 @@ All ops are added to the default graph.
 *  <b>`reader_num_threads`</b>: The number of threads to read examples.
 *  <b>`parser_num_threads`</b>: The number of threads to parse examples.
     records to read at once
+*  <b>`parse_fn`</b>: Parsing function, takes `Example` Tensor returns parsed
+    representation. If `None`, no parsing is done.
 *  <b>`name`</b>: Name of resulting op.
 
 ##### Returns:

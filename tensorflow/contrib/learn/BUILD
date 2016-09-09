@@ -496,9 +496,22 @@ py_test(
 )
 
 py_test(
+    name = "dynamic_rnn_estimator_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/dynamic_rnn_estimator_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "linear_test",
     size = "medium",
     srcs = ["python/learn/estimators/linear_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["noasan"],  # http://b/30035845
     deps = [

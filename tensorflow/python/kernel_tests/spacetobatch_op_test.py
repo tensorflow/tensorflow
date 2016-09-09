@@ -166,7 +166,7 @@ class SpaceToBatchErrorHandlingTest(tf.test.TestCase):
     x_np = [[[[1], [2]], [[3], [4]]]]
     paddings = np.zeros((2, 2), dtype=np.int32)
     block_size = 10
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       out_tf = tf.space_to_batch(x_np, paddings, block_size)
       out_tf.eval()
 
@@ -175,7 +175,7 @@ class SpaceToBatchErrorHandlingTest(tf.test.TestCase):
     x_np = [[[[1], [2], [3]], [[3], [4], [7]]]]
     paddings = np.zeros((2, 2), dtype=np.int32)
     block_size = 3
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       _ = tf.space_to_batch(x_np, paddings, block_size)
 
   def testBlockSizeNotDivisibleHeight(self):
@@ -183,7 +183,7 @@ class SpaceToBatchErrorHandlingTest(tf.test.TestCase):
     x_np = [[[[1], [2]], [[3], [4]], [[5], [6]]]]
     paddings = np.zeros((2, 2), dtype=np.int32)
     block_size = 3
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       _ = tf.space_to_batch(x_np, paddings, block_size)
 
   def testBlockSizeNotDivisibleBoth(self):
@@ -191,7 +191,7 @@ class SpaceToBatchErrorHandlingTest(tf.test.TestCase):
     x_np = [[[[1], [2]], [[3], [4]]]]
     paddings = np.zeros((2, 2), dtype=np.int32)
     block_size = 3
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       _ = tf.space_to_batch(x_np, paddings, block_size)
 
   def testUnknownShape(self):

@@ -85,10 +85,12 @@ def _get_input_ts(ops):
   """
   ops = util.make_list_of_op(ops)
   ts = []
+  ts_set = set()
   for op in ops:
     for t in op.inputs:
-      if t not in ts:
+      if t not in ts_set:
         ts.append(t)
+        ts_set.add(t)
   return ts
 
 
@@ -105,9 +107,7 @@ def _get_output_ts(ops):
   ops = util.make_list_of_op(ops)
   ts = []
   for op in ops:
-    for t in op.outputs:
-      if t not in ts:
-        ts.append(t)
+    ts += op.outputs
   return ts
 
 
@@ -297,12 +297,13 @@ def compute_boundary_ts(ops, ambiguous_are_outputs=True):
   ops = util.make_list_of_op(ops)
   input_ts = _get_input_ts(ops)
   output_ts = _get_output_ts(ops)
+  output_ts_set = frozenset(output_ts)
 
   # fill in inside
   inside_ts = []
   for t in input_ts:
     # is also output?
-    if t not in output_ts:
+    if t not in output_ts_set:
       continue
     # is ambiguous?
     if ambiguous_are_outputs:

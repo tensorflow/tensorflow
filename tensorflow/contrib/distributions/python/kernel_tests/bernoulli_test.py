@@ -61,14 +61,14 @@ class BernoulliTest(tf.test.TestCase):
     for p in invalid_ps:
       with self.test_session():
         with self.assertRaisesOpError("p has components greater than 1"):
-          dist = tf.contrib.distributions.Bernoulli(p=p)
+          dist = tf.contrib.distributions.Bernoulli(p=p, validate_args=True)
           dist.p.eval()
 
     invalid_ps = [-0.01, -3.]
     for p in invalid_ps:
       with self.test_session():
         with self.assertRaisesOpError("Condition x >= 0"):
-          dist = tf.contrib.distributions.Bernoulli(p=p)
+          dist = tf.contrib.distributions.Bernoulli(p=p, validate_args=True)
           dist.p.eval()
 
     valid_ps = [0.0, 0.5, 1.0]
@@ -235,6 +235,12 @@ class BernoulliTest(tf.test.TestCase):
                           np.array([[np.sqrt(var(0.2)), np.sqrt(var(0.7))],
                                     [np.sqrt(var(0.5)), np.sqrt(var(0.4))]],
                                    dtype=np.float32))
+
+  def testBernoulliWithSigmoidP(self):
+    p = np.array([8.3, 4.2])
+    dist = tf.contrib.distributions.BernoulliWithSigmoidP(p=p)
+    with self.test_session():
+      self.assertAllClose(tf.nn.sigmoid(p).eval(), dist.p.eval())
 
   def testBernoulliBernoulliKL(self):
     with self.test_session() as sess:

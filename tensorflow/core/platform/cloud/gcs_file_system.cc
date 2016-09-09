@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include <stdio.h>
 #include <unistd.h>
 #include <algorithm>
@@ -27,12 +28,13 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
 #include "tensorflow/core/platform/cloud/time_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
 
@@ -95,9 +97,10 @@ class GcsRandomAccessFile : public RandomAccessFile {
         http_request_factory_(http_request_factory),
         read_ahead_bytes_(read_ahead_bytes) {}
 
-  /// The implementation of reads with a read-ahead buffer.
+  /// The implementation of reads with a read-ahead buffer. Thread-safe.
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
+    mutex_lock lock(mu_);
     const bool range_start_included = offset >= buffer_start_offset_;
     const bool range_end_included =
         offset + n <= buffer_start_offset_ + buffer_content_size_;
@@ -169,12 +172,13 @@ class GcsRandomAccessFile : public RandomAccessFile {
 
   // The buffer-related members need to be mutable, because they are modified
   // by the const Read() method.
-  mutable std::unique_ptr<char[]> buffer_;
-  mutable size_t buffer_size_ = 0;
+  mutable mutex mu_;
+  mutable std::unique_ptr<char[]> buffer_ GUARDED_BY(mu_);
+  mutable size_t buffer_size_ GUARDED_BY(mu_) = 0;
   // The original file offset of the first byte in the buffer.
-  mutable size_t buffer_start_offset_ = 0;
-  mutable size_t buffer_content_size_ = 0;
-  mutable bool buffer_reached_eof_ = false;
+  mutable size_t buffer_start_offset_ GUARDED_BY(mu_) = 0;
+  mutable size_t buffer_content_size_ GUARDED_BY(mu_) = 0;
+  mutable bool buffer_reached_eof_ GUARDED_BY(mu_) = false;
 };
 
 /// \brief GCS-based implementation of a writeable file.
@@ -537,8 +541,9 @@ Status GcsFileSystem::Stat(const string& fname, FileStatistics* stat) {
   }
   TF_RETURN_IF_ERROR(ParseRfc3339Time(updated.asString(), &(stat->mtime_nsec)));
 
-  // Converting GCS ACL into mode_t is hard, return -rw------- instead.
-  stat->mode = 0600;
+  // TODO(b/31382815): Devise convention for treating some GCS names
+  // as directories.
+  stat->is_directory = false;
 
   return Status::OK();
 }

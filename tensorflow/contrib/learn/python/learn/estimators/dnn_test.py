@@ -58,18 +58,6 @@ def _iris_input_multiclass_fn():
   }, tf.constant(iris.target, shape=[150, 1], dtype=tf.int32)
 
 
-def _input_fn(num_epochs=None):
-  features = {
-      'age': tf.train.limit_epochs(tf.constant([[50], [20], [10]]),
-                                   num_epochs=num_epochs),
-      'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                  indices=[[0, 0], [0, 1], [2, 0]],
-                                  shape=[3, 2])
-  }
-  target = tf.constant([[1], [0], [0]], dtype=tf.int32)
-  return features, target
-
-
 class DNNClassifierTest(tf.test.TestCase):
 
   def testLogisticRegression_MatrixData(self):
@@ -89,6 +77,16 @@ class DNNClassifierTest(tf.test.TestCase):
 
   def testLogisticRegression_TensorData(self):
     """Tests binary classification using tensor data as input."""
+    def _input_fn(num_epochs=None):
+      features = {
+          'age': tf.train.limit_epochs(tf.constant([[.8], [.2], [.1]]),
+                                       num_epochs=num_epochs),
+          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
+                                      indices=[[0, 0], [0, 1], [2, 0]],
+                                      shape=[3, 2])
+      }
+      return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
+
     language_column = tf.contrib.layers.sparse_column_with_hash_bucket(
         'language', hash_bucket_size=20)
     feature_columns = [
@@ -199,18 +197,29 @@ class DNNClassifierTest(tf.test.TestCase):
 
     classifier.fit(input_fn=_input_fn_train, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn_eval, steps=1)
-    # If there is no weight column, model should learn y=Not(x). All examples in
-    # eval data set are y=x. So if weight column is ignored, then accuracy
-    # should be zero.
+    # If there were no weight column, model would learn y=Not(x). All examples
+    # in eval data set are y=x. So if weight column were ignored, then accuracy
+    # would be zero.
     self.assertGreater(scores['accuracy'], 0.9)
 
     scores_train_set = classifier.evaluate(input_fn=_input_fn_train, steps=1)
-    # If weight column is ignored, then accuracy for the train set should be
-    # 0.25. If it's not ignored, then it should be greater than 0.6.
+    # The classifier has learned y=x.  If weight column were ignored in
+    # evaluation, then accuracy for the train set would be 0.25.
+    # Because weight is not ignored, accuracy is greater than 0.6.
     self.assertGreater(scores_train_set['accuracy'], 0.6)
 
   def testPredict_AsIterableFalse(self):
     """Tests predict and predict_prob methods with as_iterable=False."""
+    def _input_fn(num_epochs=None):
+      features = {
+          'age': tf.train.limit_epochs(tf.constant([[.8], [.2], [.1]]),
+                                       num_epochs=num_epochs),
+          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
+                                      indices=[[0, 0], [0, 1], [2, 0]],
+                                      shape=[3, 2])
+      }
+      return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
+
     sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
         'language', hash_bucket_size=20)
     feature_columns = [
@@ -237,6 +246,16 @@ class DNNClassifierTest(tf.test.TestCase):
 
   def testPredict_AsIterable(self):
     """Tests predict and predict_prob methods with as_iterable=True."""
+    def _input_fn(num_epochs=None):
+      features = {
+          'age': tf.train.limit_epochs(tf.constant([[.8], [.2], [.1]]),
+                                       num_epochs=num_epochs),
+          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
+                                      indices=[[0, 0], [0, 1], [2, 0]],
+                                      shape=[3, 2])
+      }
+      return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
+
     language_column = tf.contrib.layers.sparse_column_with_hash_bucket(
         'language', hash_bucket_size=20)
     feature_columns = [
@@ -319,6 +338,16 @@ class DNNClassifierTest(tf.test.TestCase):
 
   def testTrainSaveLoad(self):
     """Tests that insures you can save and reload a trained model."""
+    def _input_fn(num_epochs=None):
+      features = {
+          'age': tf.train.limit_epochs(tf.constant([[.8], [.2], [.1]]),
+                                       num_epochs=num_epochs),
+          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
+                                      indices=[[0, 0], [0, 1], [2, 0]],
+                                      shape=[3, 2])
+      }
+      return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
+
     sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
         'language', hash_bucket_size=20)
     feature_columns = [
@@ -348,6 +377,16 @@ class DNNClassifierTest(tf.test.TestCase):
 
   def testTrainWithPartitionedVariables(self):
     """Tests training with partitioned variables."""
+    def _input_fn(num_epochs=None):
+      features = {
+          'age': tf.train.limit_epochs(tf.constant([[.8], [.2], [.1]]),
+                                       num_epochs=num_epochs),
+          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
+                                      indices=[[0, 0], [0, 1], [2, 0]],
+                                      shape=[3, 2])
+      }
+      return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
+
     # The given hash_bucket_size results in variables larger than the
     # default min_slice_size attribute, so the variables are partitioned.
     sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
@@ -419,16 +458,349 @@ class DNNClassifierTest(tf.test.TestCase):
 
 class DNNRegressorTest(tf.test.TestCase):
 
-  def testRegression(self):
-    """Tests multi-class classification using matrix data as input."""
+  def testRegression_MatrixData(self):
+    """Tests regression using matrix data as input."""
     cont_features = [
         tf.contrib.layers.real_valued_column('feature', dimension=4)]
 
-    regressor = tf.contrib.learn.DNNRegressor(feature_columns=cont_features,
-                                              hidden_units=[3, 3])
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=cont_features,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    regressor.fit(input_fn=_iris_input_multiclass_fn, steps=1000)
-    regressor.evaluate(input_fn=_iris_input_multiclass_fn, steps=100)
+    regressor.fit(input_fn=_iris_input_logistic_fn, steps=200)
+    scores = regressor.evaluate(input_fn=_iris_input_logistic_fn, steps=1)
+    self.assertLess(scores['loss'], 0.3)
+
+  def testRegression_TensorData(self):
+    """Tests regression using tensor data as input."""
+    def _input_fn(num_epochs=None):
+      features = {
+          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
+                                       num_epochs=num_epochs),
+          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
+                                      indices=[[0, 0], [0, 1], [2, 0]],
+                                      shape=[3, 2])
+      }
+      return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
+
+    language_column = tf.contrib.layers.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [
+        tf.contrib.layers.embedding_column(language_column, dimension=1),
+        tf.contrib.layers.real_valued_column('age')
+    ]
+
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    regressor.fit(input_fn=_input_fn, steps=200)
+
+    scores = regressor.evaluate(input_fn=_input_fn, steps=1)
+    self.assertLess(scores['loss'], 0.3)
+
+  def testLoss(self):
+    """Tests loss calculation."""
+
+    def _input_fn_train():
+      # Create 4 rows, one of them (y = x), three of them (y=Not(x))
+      # The algorithm should learn (y = 0.25).
+      target = tf.constant([[1.], [0.], [0.], [0.]])
+      features = {
+          'x': tf.ones(shape=[4, 1], dtype=tf.float32),
+      }
+      return features, target
+
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+
+    regressor.fit(input_fn=_input_fn_train, steps=100)
+    scores = regressor.evaluate(input_fn=_input_fn_train, steps=1)
+    # Average square loss = (0.75^2 + 3*0.25^2) / 4 = 0.1875
+    self.assertAlmostEqual(scores['loss'], 0.1875, delta=0.1)
+
+  def testLossWithWeights(self):
+    """Tests loss calculation with weights."""
+
+    def _input_fn_train():
+      # 4 rows with equal weight, one of them (y = x), three of them (y=Not(x))
+      # The algorithm should learn (y = 0.25).
+      target = tf.constant([[1.], [0.], [0.], [0.]])
+      features = {
+          'x': tf.ones(shape=[4, 1], dtype=tf.float32),
+          'w': tf.constant([[1.], [1.], [1.], [1.]])
+      }
+      return features, target
+
+    def _input_fn_eval():
+      # 4 rows, with different weights.
+      target = tf.constant([[1.], [0.], [0.], [0.]])
+      features = {
+          'x': tf.ones(shape=[4, 1], dtype=tf.float32),
+          'w': tf.constant([[7.], [1.], [1.], [1.]])
+      }
+      return features, target
+
+    regressor = tf.contrib.learn.DNNRegressor(
+        weight_column_name='w',
+        feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    regressor.fit(input_fn=_input_fn_train, steps=100)
+    scores = regressor.evaluate(input_fn=_input_fn_eval, steps=1)
+    # Weighted average square loss = (7*0.75^2 + 3*0.25^2) / 10 = 0.4125
+    self.assertAlmostEqual(scores['loss'], 0.4125, delta=0.1)
+
+  def testTrainWithWeights(self):
+    """Tests training with given weight column."""
+
+    def _input_fn_train():
+      # Create 4 rows, one of them (y = x), three of them (y=Not(x))
+      # First row has more weight than others. Model should fit (y=x) better
+      # than (y=Not(x)) due to the relative higher weight of the first row.
+      target = tf.constant([[1.], [0.], [0.], [0.]])
+      features = {
+          'x': tf.ones(shape=[4, 1], dtype=tf.float32),
+          'w': tf.constant([[100.], [3.], [2.], [2.]])
+      }
+      return features, target
+
+    def _input_fn_eval():
+      # Create 4 rows (y = x)
+      target = tf.constant([[1.], [1.], [1.], [1.]])
+      features = {
+          'x': tf.ones(shape=[4, 1], dtype=tf.float32),
+          'w': tf.constant([[1.], [1.], [1.], [1.]])
+      }
+      return features, target
+
+    regressor = tf.contrib.learn.DNNRegressor(
+        weight_column_name='w',
+        feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+
+    regressor.fit(input_fn=_input_fn_train, steps=100)
+    scores = regressor.evaluate(input_fn=_input_fn_eval, steps=1)
+    # The model should learn (y = x) because of the weights, so the loss should
+    # be close to zero.
+    self.assertLess(scores['loss'], 0.2)
+
+  def testPredict_AsIterableFalse(self):
+    """Tests predict method with as_iterable=False."""
+    target = [1., 0., 0.2]
+    def _input_fn(num_epochs=None):
+      features = {
+          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
+                                       num_epochs=num_epochs),
+          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
+                                      indices=[[0, 0], [0, 1], [2, 0]],
+                                      shape=[3, 2])
+      }
+      return features, tf.constant(target, dtype=tf.float32)
+
+    sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [
+        tf.contrib.layers.embedding_column(sparse_column, dimension=1),
+        tf.contrib.layers.real_valued_column('age')
+    ]
+
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+
+    regressor.fit(input_fn=_input_fn, steps=200)
+
+    scores = regressor.evaluate(input_fn=_input_fn, steps=1)
+    self.assertLess(scores['loss'], 0.2)
+    predictions = regressor.predict(input_fn=_input_fn, as_iterable=False)
+    self.assertAllClose(predictions, target, atol=0.2)
+
+  def testPredict_AsIterable(self):
+    """Tests predict method with as_iterable=True."""
+    target = [1., 0., 0.2]
+    def _input_fn(num_epochs=None):
+      features = {
+          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
+                                       num_epochs=num_epochs),
+          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
+                                      indices=[[0, 0], [0, 1], [2, 0]],
+                                      shape=[3, 2])
+      }
+      return features, tf.constant(target, dtype=tf.float32)
+
+    sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [
+        tf.contrib.layers.embedding_column(sparse_column, dimension=1),
+        tf.contrib.layers.real_valued_column('age')
+    ]
+
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+
+    regressor.fit(input_fn=_input_fn, steps=200)
+
+    scores = regressor.evaluate(input_fn=_input_fn, steps=1)
+    self.assertLess(scores['loss'], 0.2)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predictions = list(
+        regressor.predict(input_fn=predict_input_fn, as_iterable=True))
+    self.assertAllClose(predictions, target, atol=0.2)
+
+  def testCustomMetrics(self):
+    """Tests custom evaluation metrics."""
+    def _input_fn_train():
+      # Create 4 rows, one of them (y = x), three of them (y=Not(x))
+      target = tf.constant([[1.], [0.], [0.], [0.]])
+      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
+      return features, target
+
+    def _my_metric_op(predictions, targets):
+      return tf.reduce_sum(tf.mul(predictions, targets))
+
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    regressor.fit(input_fn=_input_fn_train, steps=100)
+    scores = regressor.evaluate(
+        input_fn=_input_fn_train,
+        steps=1,
+        metrics={
+            'my_error': tf.contrib.metrics.streaming_mean_squared_error,
+            'my_metric': _my_metric_op
+        })
+    self.assertIn('loss', set(scores.keys()))
+    self.assertIn('my_error', set(scores.keys()))
+    self.assertIn('my_metric', set(scores.keys()))
+    predictions = regressor.predict(input_fn=_input_fn_train)
+    self.assertAlmostEqual(
+        _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
+        scores['my_error'])
+
+    # Tests that when the key is a tuple, an error is raised.
+    with self.assertRaises(TypeError):
+      regressor.evaluate(
+          input_fn=_input_fn_train,
+          steps=1,
+          metrics={('my_error', 'predictions'
+                   ): tf.contrib.metrics.streaming_mean_squared_error})
+
+  def testTrainSaveLoad(self):
+    """Tests that insures you can save and reload a trained model."""
+    def _input_fn(num_epochs=None):
+      features = {
+          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
+                                       num_epochs=num_epochs),
+          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
+                                      indices=[[0, 0], [0, 1], [2, 0]],
+                                      shape=[3, 2])
+      }
+      return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
+
+    sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [
+        tf.contrib.layers.embedding_column(sparse_column, dimension=1),
+        tf.contrib.layers.real_valued_column('age')
+    ]
+
+    model_dir = tempfile.mkdtemp()
+    regressor = tf.contrib.learn.DNNRegressor(
+        model_dir=model_dir,
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+
+    regressor.fit(input_fn=_input_fn, steps=100)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predictions = list(regressor.predict(input_fn=predict_input_fn))
+    del regressor
+
+    regressor2 = tf.contrib.learn.DNNRegressor(
+        model_dir=model_dir,
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+    predictions2 = list(regressor2.predict(input_fn=predict_input_fn))
+    self.assertAllClose(predictions, predictions2)
+
+  def testTrainWithPartitionedVariables(self):
+    """Tests training with partitioned variables."""
+    def _input_fn(num_epochs=None):
+      features = {
+          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
+                                       num_epochs=num_epochs),
+          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
+                                      indices=[[0, 0], [0, 1], [2, 0]],
+                                      shape=[3, 2])
+      }
+      return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
+
+    # The given hash_bucket_size results in variables larger than the
+    # default min_slice_size attribute, so the variables are partitioned.
+    sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=2e7)
+    feature_columns = [
+        tf.contrib.layers.embedding_column(sparse_column, dimension=1),
+        tf.contrib.layers.real_valued_column('age')
+    ]
+
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        # Because we did not start a distributed cluster, we need to pass an
+        # empty ClusterSpec, otherwise the device_setter will look for
+        # distributed jobs, such as "/job:ps" which are not present.
+        config=tf.contrib.learn.RunConfig(
+            num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({}),
+            tf_random_seed=1))
+
+    regressor.fit(input_fn=_input_fn, steps=100)
+
+    scores = regressor.evaluate(input_fn=_input_fn, steps=1)
+    self.assertLess(scores['loss'], 0.3)
+
+  def testDisableCenteredBias(self):
+    """Tests that we can disable centered bias."""
+    def _input_fn(num_epochs=None):
+      features = {
+          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
+                                       num_epochs=num_epochs),
+          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
+                                      indices=[[0, 0], [0, 1], [2, 0]],
+                                      shape=[3, 2])
+      }
+      return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
+
+    sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [
+        tf.contrib.layers.embedding_column(sparse_column, dimension=1),
+        tf.contrib.layers.real_valued_column('age')
+    ]
+
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        enable_centered_bias=False,
+        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+
+    regressor.fit(input_fn=_input_fn, steps=200)
+
+    scores = regressor.evaluate(input_fn=_input_fn, steps=1)
+    self.assertLess(scores['loss'], 0.3)
 
 
 def boston_input_fn():

@@ -1196,7 +1196,6 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
       resized = y.eval()
       self.assertAllClose(resized, expected, atol=1)
 
-
   def testCompareNearestNeighbor(self):
     if test.is_gpu_available():
       input_shape = [1, 5, 6, 3]
@@ -1221,6 +1220,26 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
                 align_corners=align_corners)
             cpu_val = out_op.eval()
           self.assertAllClose(cpu_val, gpu_val, rtol=1e-5, atol=1e-5)
+
+  def testCompareBilinear(self):
+    if test.is_gpu_available():
+      input_shape = [1, 5, 6, 3]
+      target_height = 8
+      target_width = 12
+      for nptype in [np.float32, np.float64]:
+        for align_corners in [True, False]:
+          img_np = np.arange(
+              0, np.prod(input_shape), dtype=nptype).reshape(input_shape)
+          value = {}
+          for use_gpu in [True, False]:
+            with self.test_session(use_gpu=use_gpu):
+              image = constant_op.constant(img_np, shape=input_shape)
+              out_op = image_ops.resize_images(
+                  image, target_height, target_width,
+                  image_ops.ResizeMethod.BILINEAR,
+                  align_corners=align_corners)
+              value[use_gpu] = out_op.eval()
+          self.assertAllClose(value[True], value[False], rtol=1e-5, atol=1e-5)
 
 
 class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):

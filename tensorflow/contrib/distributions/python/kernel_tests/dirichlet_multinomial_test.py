@@ -60,7 +60,8 @@ class DirichletMultinomialTest(tf.test.TestCase):
     alpha = [[1., 2, 3]]
     n = [[5.]]
     with self.test_session():
-      dist = tf.contrib.distributions.DirichletMultinomial(n, alpha)
+      dist = tf.contrib.distributions.DirichletMultinomial(
+          n, alpha, validate_args=True)
       dist.pmf([2., 3, 0]).eval()
       dist.pmf([3., 0, 2]).eval()
       with self.assertRaisesOpError("Condition x >= 0.*"):
@@ -72,7 +73,8 @@ class DirichletMultinomialTest(tf.test.TestCase):
     alpha = [[1., 2, 3]]
     n = [[5.]]
     with self.test_session():
-      dist = tf.contrib.distributions.DirichletMultinomial(n, alpha)
+      dist = tf.contrib.distributions.DirichletMultinomial(
+          n, alpha, validate_args=True)
       dist.pmf([2., 3, 0]).eval()
       dist.pmf([3., 0, 2]).eval()
       dist.pmf([3.0, 0, 2.0]).eval()

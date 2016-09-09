@@ -553,6 +553,96 @@ in a `stop_gradients` call to disable any possible backpropagation.
 
 - - -
 
+### `class tf.contrib.bayesflow.stochastic_tensor.BernoulliWithSigmoidPTensor` {#BernoulliWithSigmoidPTensor}
+
+`BernoulliWithSigmoidPTensor` is a `StochasticTensor` backed by the distribution `BernoulliWithSigmoidP`.
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BernoulliWithSigmoidPTensor.__init__(name=None, dist_value_type=None, loss_fn=score_function, **dist_args)` {#BernoulliWithSigmoidPTensor.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BernoulliWithSigmoidPTensor.clone(name=None, **dist_args)` {#BernoulliWithSigmoidPTensor.clone}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BernoulliWithSigmoidPTensor.distribution` {#BernoulliWithSigmoidPTensor.distribution}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BernoulliWithSigmoidPTensor.dtype` {#BernoulliWithSigmoidPTensor.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BernoulliWithSigmoidPTensor.entropy(name='entropy')` {#BernoulliWithSigmoidPTensor.entropy}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BernoulliWithSigmoidPTensor.graph` {#BernoulliWithSigmoidPTensor.graph}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BernoulliWithSigmoidPTensor.input_dict` {#BernoulliWithSigmoidPTensor.input_dict}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BernoulliWithSigmoidPTensor.loss(final_loss, name='Loss')` {#BernoulliWithSigmoidPTensor.loss}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BernoulliWithSigmoidPTensor.mean(name='mean')` {#BernoulliWithSigmoidPTensor.mean}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BernoulliWithSigmoidPTensor.name` {#BernoulliWithSigmoidPTensor.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BernoulliWithSigmoidPTensor.value(name='value')` {#BernoulliWithSigmoidPTensor.value}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BernoulliWithSigmoidPTensor.value_type` {#BernoulliWithSigmoidPTensor.value_type}
+
+
+
+
+
+- - -
+
 ### `class tf.contrib.bayesflow.stochastic_tensor.BetaTensor` {#BetaTensor}
 
 `BetaTensor` is a `StochasticTensor` backed by the distribution `Beta`.
@@ -636,6 +726,96 @@ in a `stop_gradients` call to disable any possible backpropagation.
 - - -
 
 #### `tf.contrib.bayesflow.stochastic_tensor.BetaTensor.value_type` {#BetaTensor.value_type}
+
+
+
+
+
+- - -
+
+### `class tf.contrib.bayesflow.stochastic_tensor.BetaWithSoftplusABTensor` {#BetaWithSoftplusABTensor}
+
+`BetaWithSoftplusABTensor` is a `StochasticTensor` backed by the distribution `BetaWithSoftplusAB`.
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BetaWithSoftplusABTensor.__init__(name=None, dist_value_type=None, loss_fn=score_function, **dist_args)` {#BetaWithSoftplusABTensor.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BetaWithSoftplusABTensor.clone(name=None, **dist_args)` {#BetaWithSoftplusABTensor.clone}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BetaWithSoftplusABTensor.distribution` {#BetaWithSoftplusABTensor.distribution}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BetaWithSoftplusABTensor.dtype` {#BetaWithSoftplusABTensor.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BetaWithSoftplusABTensor.entropy(name='entropy')` {#BetaWithSoftplusABTensor.entropy}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BetaWithSoftplusABTensor.graph` {#BetaWithSoftplusABTensor.graph}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BetaWithSoftplusABTensor.input_dict` {#BetaWithSoftplusABTensor.input_dict}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BetaWithSoftplusABTensor.loss(final_loss, name='Loss')` {#BetaWithSoftplusABTensor.loss}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BetaWithSoftplusABTensor.mean(name='mean')` {#BetaWithSoftplusABTensor.mean}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BetaWithSoftplusABTensor.name` {#BetaWithSoftplusABTensor.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BetaWithSoftplusABTensor.value(name='value')` {#BetaWithSoftplusABTensor.value}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.BetaWithSoftplusABTensor.value_type` {#BetaWithSoftplusABTensor.value_type}
 
 
 
@@ -913,6 +1093,96 @@ in a `stop_gradients` call to disable any possible backpropagation.
 
 - - -
 
+### `class tf.contrib.bayesflow.stochastic_tensor.Chi2WithAbsDfTensor` {#Chi2WithAbsDfTensor}
+
+`Chi2WithAbsDfTensor` is a `StochasticTensor` backed by the distribution `Chi2WithAbsDf`.
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.Chi2WithAbsDfTensor.__init__(name=None, dist_value_type=None, loss_fn=score_function, **dist_args)` {#Chi2WithAbsDfTensor.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.Chi2WithAbsDfTensor.clone(name=None, **dist_args)` {#Chi2WithAbsDfTensor.clone}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.Chi2WithAbsDfTensor.distribution` {#Chi2WithAbsDfTensor.distribution}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.Chi2WithAbsDfTensor.dtype` {#Chi2WithAbsDfTensor.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.Chi2WithAbsDfTensor.entropy(name='entropy')` {#Chi2WithAbsDfTensor.entropy}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.Chi2WithAbsDfTensor.graph` {#Chi2WithAbsDfTensor.graph}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.Chi2WithAbsDfTensor.input_dict` {#Chi2WithAbsDfTensor.input_dict}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.Chi2WithAbsDfTensor.loss(final_loss, name='Loss')` {#Chi2WithAbsDfTensor.loss}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.Chi2WithAbsDfTensor.mean(name='mean')` {#Chi2WithAbsDfTensor.mean}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.Chi2WithAbsDfTensor.name` {#Chi2WithAbsDfTensor.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.Chi2WithAbsDfTensor.value(name='value')` {#Chi2WithAbsDfTensor.value}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.Chi2WithAbsDfTensor.value_type` {#Chi2WithAbsDfTensor.value_type}
+
+
+
+
+
+- - -
+
 ### `class tf.contrib.bayesflow.stochastic_tensor.DirichletTensor` {#DirichletTensor}
 
 `DirichletTensor` is a `StochasticTensor` backed by the distribution `Dirichlet`.
@@ -1183,6 +1453,96 @@ in a `stop_gradients` call to disable any possible backpropagation.
 
 - - -
 
+### `class tf.contrib.bayesflow.stochastic_tensor.ExponentialWithSoftplusLamTensor` {#ExponentialWithSoftplusLamTensor}
+
+`ExponentialWithSoftplusLamTensor` is a `StochasticTensor` backed by the distribution `ExponentialWithSoftplusLam`.
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.ExponentialWithSoftplusLamTensor.__init__(name=None, dist_value_type=None, loss_fn=score_function, **dist_args)` {#ExponentialWithSoftplusLamTensor.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.ExponentialWithSoftplusLamTensor.clone(name=None, **dist_args)` {#ExponentialWithSoftplusLamTensor.clone}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.ExponentialWithSoftplusLamTensor.distribution` {#ExponentialWithSoftplusLamTensor.distribution}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.ExponentialWithSoftplusLamTensor.dtype` {#ExponentialWithSoftplusLamTensor.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.ExponentialWithSoftplusLamTensor.entropy(name='entropy')` {#ExponentialWithSoftplusLamTensor.entropy}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.ExponentialWithSoftplusLamTensor.graph` {#ExponentialWithSoftplusLamTensor.graph}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.ExponentialWithSoftplusLamTensor.input_dict` {#ExponentialWithSoftplusLamTensor.input_dict}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.ExponentialWithSoftplusLamTensor.loss(final_loss, name='Loss')` {#ExponentialWithSoftplusLamTensor.loss}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.ExponentialWithSoftplusLamTensor.mean(name='mean')` {#ExponentialWithSoftplusLamTensor.mean}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.ExponentialWithSoftplusLamTensor.name` {#ExponentialWithSoftplusLamTensor.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.ExponentialWithSoftplusLamTensor.value(name='value')` {#ExponentialWithSoftplusLamTensor.value}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.ExponentialWithSoftplusLamTensor.value_type` {#ExponentialWithSoftplusLamTensor.value_type}
+
+
+
+
+
+- - -
+
 ### `class tf.contrib.bayesflow.stochastic_tensor.GammaTensor` {#GammaTensor}
 
 `GammaTensor` is a `StochasticTensor` backed by the distribution `Gamma`.
@@ -1266,6 +1626,96 @@ in a `stop_gradients` call to disable any possible backpropagation.
 - - -
 
 #### `tf.contrib.bayesflow.stochastic_tensor.GammaTensor.value_type` {#GammaTensor.value_type}
+
+
+
+
+
+- - -
+
+### `class tf.contrib.bayesflow.stochastic_tensor.GammaWithSoftplusAlphaBetaTensor` {#GammaWithSoftplusAlphaBetaTensor}
+
+`GammaWithSoftplusAlphaBetaTensor` is a `StochasticTensor` backed by the distribution `GammaWithSoftplusAlphaBeta`.
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.GammaWithSoftplusAlphaBetaTensor.__init__(name=None, dist_value_type=None, loss_fn=score_function, **dist_args)` {#GammaWithSoftplusAlphaBetaTensor.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.GammaWithSoftplusAlphaBetaTensor.clone(name=None, **dist_args)` {#GammaWithSoftplusAlphaBetaTensor.clone}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.GammaWithSoftplusAlphaBetaTensor.distribution` {#GammaWithSoftplusAlphaBetaTensor.distribution}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.GammaWithSoftplusAlphaBetaTensor.dtype` {#GammaWithSoftplusAlphaBetaTensor.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.GammaWithSoftplusAlphaBetaTensor.entropy(name='entropy')` {#GammaWithSoftplusAlphaBetaTensor.entropy}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.GammaWithSoftplusAlphaBetaTensor.graph` {#GammaWithSoftplusAlphaBetaTensor.graph}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.GammaWithSoftplusAlphaBetaTensor.input_dict` {#GammaWithSoftplusAlphaBetaTensor.input_dict}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.GammaWithSoftplusAlphaBetaTensor.loss(final_loss, name='Loss')` {#GammaWithSoftplusAlphaBetaTensor.loss}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.GammaWithSoftplusAlphaBetaTensor.mean(name='mean')` {#GammaWithSoftplusAlphaBetaTensor.mean}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.GammaWithSoftplusAlphaBetaTensor.name` {#GammaWithSoftplusAlphaBetaTensor.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.GammaWithSoftplusAlphaBetaTensor.value(name='value')` {#GammaWithSoftplusAlphaBetaTensor.value}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.GammaWithSoftplusAlphaBetaTensor.value_type` {#GammaWithSoftplusAlphaBetaTensor.value_type}
 
 
 
@@ -1363,6 +1813,96 @@ in a `stop_gradients` call to disable any possible backpropagation.
 
 - - -
 
+### `class tf.contrib.bayesflow.stochastic_tensor.InverseGammaWithSoftplusAlphaBetaTensor` {#InverseGammaWithSoftplusAlphaBetaTensor}
+
+`InverseGammaWithSoftplusAlphaBetaTensor` is a `StochasticTensor` backed by the distribution `InverseGammaWithSoftplusAlphaBeta`.
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.InverseGammaWithSoftplusAlphaBetaTensor.__init__(name=None, dist_value_type=None, loss_fn=score_function, **dist_args)` {#InverseGammaWithSoftplusAlphaBetaTensor.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.InverseGammaWithSoftplusAlphaBetaTensor.clone(name=None, **dist_args)` {#InverseGammaWithSoftplusAlphaBetaTensor.clone}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.InverseGammaWithSoftplusAlphaBetaTensor.distribution` {#InverseGammaWithSoftplusAlphaBetaTensor.distribution}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.InverseGammaWithSoftplusAlphaBetaTensor.dtype` {#InverseGammaWithSoftplusAlphaBetaTensor.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.InverseGammaWithSoftplusAlphaBetaTensor.entropy(name='entropy')` {#InverseGammaWithSoftplusAlphaBetaTensor.entropy}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.InverseGammaWithSoftplusAlphaBetaTensor.graph` {#InverseGammaWithSoftplusAlphaBetaTensor.graph}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.InverseGammaWithSoftplusAlphaBetaTensor.input_dict` {#InverseGammaWithSoftplusAlphaBetaTensor.input_dict}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.InverseGammaWithSoftplusAlphaBetaTensor.loss(final_loss, name='Loss')` {#InverseGammaWithSoftplusAlphaBetaTensor.loss}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.InverseGammaWithSoftplusAlphaBetaTensor.mean(name='mean')` {#InverseGammaWithSoftplusAlphaBetaTensor.mean}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.InverseGammaWithSoftplusAlphaBetaTensor.name` {#InverseGammaWithSoftplusAlphaBetaTensor.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.InverseGammaWithSoftplusAlphaBetaTensor.value(name='value')` {#InverseGammaWithSoftplusAlphaBetaTensor.value}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.InverseGammaWithSoftplusAlphaBetaTensor.value_type` {#InverseGammaWithSoftplusAlphaBetaTensor.value_type}
+
+
+
+
+
+- - -
+
 ### `class tf.contrib.bayesflow.stochastic_tensor.LaplaceTensor` {#LaplaceTensor}
 
 `LaplaceTensor` is a `StochasticTensor` backed by the distribution `Laplace`.
@@ -1446,6 +1986,96 @@ in a `stop_gradients` call to disable any possible backpropagation.
 - - -
 
 #### `tf.contrib.bayesflow.stochastic_tensor.LaplaceTensor.value_type` {#LaplaceTensor.value_type}
+
+
+
+
+
+- - -
+
+### `class tf.contrib.bayesflow.stochastic_tensor.LaplaceWithSoftplusScaleTensor` {#LaplaceWithSoftplusScaleTensor}
+
+`LaplaceWithSoftplusScaleTensor` is a `StochasticTensor` backed by the distribution `LaplaceWithSoftplusScale`.
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.LaplaceWithSoftplusScaleTensor.__init__(name=None, dist_value_type=None, loss_fn=score_function, **dist_args)` {#LaplaceWithSoftplusScaleTensor.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.LaplaceWithSoftplusScaleTensor.clone(name=None, **dist_args)` {#LaplaceWithSoftplusScaleTensor.clone}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.LaplaceWithSoftplusScaleTensor.distribution` {#LaplaceWithSoftplusScaleTensor.distribution}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.LaplaceWithSoftplusScaleTensor.dtype` {#LaplaceWithSoftplusScaleTensor.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.LaplaceWithSoftplusScaleTensor.entropy(name='entropy')` {#LaplaceWithSoftplusScaleTensor.entropy}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.LaplaceWithSoftplusScaleTensor.graph` {#LaplaceWithSoftplusScaleTensor.graph}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.LaplaceWithSoftplusScaleTensor.input_dict` {#LaplaceWithSoftplusScaleTensor.input_dict}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.LaplaceWithSoftplusScaleTensor.loss(final_loss, name='Loss')` {#LaplaceWithSoftplusScaleTensor.loss}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.LaplaceWithSoftplusScaleTensor.mean(name='mean')` {#LaplaceWithSoftplusScaleTensor.mean}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.LaplaceWithSoftplusScaleTensor.name` {#LaplaceWithSoftplusScaleTensor.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.LaplaceWithSoftplusScaleTensor.value(name='value')` {#LaplaceWithSoftplusScaleTensor.value}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.LaplaceWithSoftplusScaleTensor.value_type` {#LaplaceWithSoftplusScaleTensor.value_type}
 
 
 
@@ -1903,6 +2533,96 @@ in a `stop_gradients` call to disable any possible backpropagation.
 
 - - -
 
+### `class tf.contrib.bayesflow.stochastic_tensor.MultivariateNormalDiagWithSoftplusStDevTensor` {#MultivariateNormalDiagWithSoftplusStDevTensor}
+
+`MultivariateNormalDiagWithSoftplusStDevTensor` is a `StochasticTensor` backed by the distribution `MultivariateNormalDiagWithSoftplusStDev`.
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.MultivariateNormalDiagWithSoftplusStDevTensor.__init__(name=None, dist_value_type=None, loss_fn=score_function, **dist_args)` {#MultivariateNormalDiagWithSoftplusStDevTensor.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.MultivariateNormalDiagWithSoftplusStDevTensor.clone(name=None, **dist_args)` {#MultivariateNormalDiagWithSoftplusStDevTensor.clone}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.MultivariateNormalDiagWithSoftplusStDevTensor.distribution` {#MultivariateNormalDiagWithSoftplusStDevTensor.distribution}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.MultivariateNormalDiagWithSoftplusStDevTensor.dtype` {#MultivariateNormalDiagWithSoftplusStDevTensor.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.MultivariateNormalDiagWithSoftplusStDevTensor.entropy(name='entropy')` {#MultivariateNormalDiagWithSoftplusStDevTensor.entropy}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.MultivariateNormalDiagWithSoftplusStDevTensor.graph` {#MultivariateNormalDiagWithSoftplusStDevTensor.graph}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.MultivariateNormalDiagWithSoftplusStDevTensor.input_dict` {#MultivariateNormalDiagWithSoftplusStDevTensor.input_dict}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.MultivariateNormalDiagWithSoftplusStDevTensor.loss(final_loss, name='Loss')` {#MultivariateNormalDiagWithSoftplusStDevTensor.loss}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.MultivariateNormalDiagWithSoftplusStDevTensor.mean(name='mean')` {#MultivariateNormalDiagWithSoftplusStDevTensor.mean}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.MultivariateNormalDiagWithSoftplusStDevTensor.name` {#MultivariateNormalDiagWithSoftplusStDevTensor.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.MultivariateNormalDiagWithSoftplusStDevTensor.value(name='value')` {#MultivariateNormalDiagWithSoftplusStDevTensor.value}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.MultivariateNormalDiagWithSoftplusStDevTensor.value_type` {#MultivariateNormalDiagWithSoftplusStDevTensor.value_type}
+
+
+
+
+
+- - -
+
 ### `class tf.contrib.bayesflow.stochastic_tensor.MultivariateNormalFullTensor` {#MultivariateNormalFullTensor}
 
 `MultivariateNormalFullTensor` is a `StochasticTensor` backed by the distribution `MultivariateNormalFull`.
@@ -2083,6 +2803,96 @@ in a `stop_gradients` call to disable any possible backpropagation.
 
 - - -
 
+### `class tf.contrib.bayesflow.stochastic_tensor.NormalWithSoftplusSigmaTensor` {#NormalWithSoftplusSigmaTensor}
+
+`NormalWithSoftplusSigmaTensor` is a `StochasticTensor` backed by the distribution `NormalWithSoftplusSigma`.
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.NormalWithSoftplusSigmaTensor.__init__(name=None, dist_value_type=None, loss_fn=score_function, **dist_args)` {#NormalWithSoftplusSigmaTensor.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.NormalWithSoftplusSigmaTensor.clone(name=None, **dist_args)` {#NormalWithSoftplusSigmaTensor.clone}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.NormalWithSoftplusSigmaTensor.distribution` {#NormalWithSoftplusSigmaTensor.distribution}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.NormalWithSoftplusSigmaTensor.dtype` {#NormalWithSoftplusSigmaTensor.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.NormalWithSoftplusSigmaTensor.entropy(name='entropy')` {#NormalWithSoftplusSigmaTensor.entropy}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.NormalWithSoftplusSigmaTensor.graph` {#NormalWithSoftplusSigmaTensor.graph}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.NormalWithSoftplusSigmaTensor.input_dict` {#NormalWithSoftplusSigmaTensor.input_dict}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.NormalWithSoftplusSigmaTensor.loss(final_loss, name='Loss')` {#NormalWithSoftplusSigmaTensor.loss}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.NormalWithSoftplusSigmaTensor.mean(name='mean')` {#NormalWithSoftplusSigmaTensor.mean}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.NormalWithSoftplusSigmaTensor.name` {#NormalWithSoftplusSigmaTensor.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.NormalWithSoftplusSigmaTensor.value(name='value')` {#NormalWithSoftplusSigmaTensor.value}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.NormalWithSoftplusSigmaTensor.value_type` {#NormalWithSoftplusSigmaTensor.value_type}
+
+
+
+
+
+- - -
+
 ### `class tf.contrib.bayesflow.stochastic_tensor.PoissonTensor` {#PoissonTensor}
 
 `PoissonTensor` is a `StochasticTensor` backed by the distribution `Poisson`.
@@ -2256,6 +3066,96 @@ in a `stop_gradients` call to disable any possible backpropagation.
 - - -
 
 #### `tf.contrib.bayesflow.stochastic_tensor.StudentTTensor.value_type` {#StudentTTensor.value_type}
+
+
+
+
+
+- - -
+
+### `class tf.contrib.bayesflow.stochastic_tensor.StudentTWithAbsDfSoftplusSigmaTensor` {#StudentTWithAbsDfSoftplusSigmaTensor}
+
+`StudentTWithAbsDfSoftplusSigmaTensor` is a `StochasticTensor` backed by the distribution `StudentTWithAbsDfSoftplusSigma`.
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.StudentTWithAbsDfSoftplusSigmaTensor.__init__(name=None, dist_value_type=None, loss_fn=score_function, **dist_args)` {#StudentTWithAbsDfSoftplusSigmaTensor.__init__}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.StudentTWithAbsDfSoftplusSigmaTensor.clone(name=None, **dist_args)` {#StudentTWithAbsDfSoftplusSigmaTensor.clone}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.StudentTWithAbsDfSoftplusSigmaTensor.distribution` {#StudentTWithAbsDfSoftplusSigmaTensor.distribution}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.StudentTWithAbsDfSoftplusSigmaTensor.dtype` {#StudentTWithAbsDfSoftplusSigmaTensor.dtype}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.StudentTWithAbsDfSoftplusSigmaTensor.entropy(name='entropy')` {#StudentTWithAbsDfSoftplusSigmaTensor.entropy}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.StudentTWithAbsDfSoftplusSigmaTensor.graph` {#StudentTWithAbsDfSoftplusSigmaTensor.graph}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.StudentTWithAbsDfSoftplusSigmaTensor.input_dict` {#StudentTWithAbsDfSoftplusSigmaTensor.input_dict}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.StudentTWithAbsDfSoftplusSigmaTensor.loss(final_loss, name='Loss')` {#StudentTWithAbsDfSoftplusSigmaTensor.loss}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.StudentTWithAbsDfSoftplusSigmaTensor.mean(name='mean')` {#StudentTWithAbsDfSoftplusSigmaTensor.mean}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.StudentTWithAbsDfSoftplusSigmaTensor.name` {#StudentTWithAbsDfSoftplusSigmaTensor.name}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.StudentTWithAbsDfSoftplusSigmaTensor.value(name='value')` {#StudentTWithAbsDfSoftplusSigmaTensor.value}
+
+
+
+
+- - -
+
+#### `tf.contrib.bayesflow.stochastic_tensor.StudentTWithAbsDfSoftplusSigmaTensor.value_type` {#StudentTWithAbsDfSoftplusSigmaTensor.value_type}
 
 
 

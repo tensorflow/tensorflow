@@ -29,11 +29,12 @@ function getTask(task) {
 }
 
 
-gulp.task('compile', getTask('compile'));
+gulp.task('compile', getTask('compile')(true));
 gulp.task('tslint', getTask('tslint')(true));
 // tslint.permissive warns without failing.
 gulp.task('tslint.permissive', getTask('tslint')(false));
-gulp.task('first-compile', getTask('compile'));
+gulp.task('first-compile', getTask('compile')(true));
+gulp.task('compile-without-deps', getTask('compile')(false));
 gulp.task('test.onlytest', getTask('test')); // if you don't want to lint, etc
 gulp.task('test', ['tslint', 'compile'], getTask('test'));
 
@@ -65,9 +66,13 @@ gulp.task('server', ['first-compile'], function() {
 
 // TODO(danmane): When testing is nicer, integrate into vulcanize task
 // gulp vulcanize: Regenerate the tf-tensorboard.html.OPENSOURCE file for pre-release
-gulp.task('vulcanize', ['first-compile', 'tslint.permissive'], getTask('vulcanize')(false));
+gulp.task(
+    'vulcanize', ['compile-without-deps', 'tslint.permissive'],
+    getTask('vulcanize')(false));
 // gulp regenerate: Regenerate the tf-tensorboard.html for interactive bazel development
-gulp.task('regenerate', ['first-compile', 'tslint.permissive'], getTask('vulcanize')(true));
+gulp.task(
+    'regenerate', ['compile-without-deps', 'tslint.permissive'],
+    getTask('vulcanize')(true));
 
 // TODO(danmane): consider making bower install part of default task
 gulp.task('default', ['watch', 'server']);

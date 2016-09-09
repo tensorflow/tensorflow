@@ -45,7 +45,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import compat
 
@@ -309,7 +308,7 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
           y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.equal(x, y))
-    return logging_ops.Assert(condition, data, summarize=summarize)
+    return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
 def assert_less(x, y, data=None, summarize=None, message=None, name=None):
@@ -355,7 +354,7 @@ def assert_less(x, y, data=None, summarize=None, message=None, name=None):
           y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.less(x, y))
-    return logging_ops.Assert(condition, data, summarize=summarize)
+    return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
 def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
@@ -401,7 +400,7 @@ def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
           y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.less_equal(x, y))
-    return logging_ops.Assert(condition, data, summarize=summarize)
+    return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
 def assert_greater(x, y, data=None, summarize=None, message=None, name=None):
@@ -447,7 +446,7 @@ def assert_greater(x, y, data=None, summarize=None, message=None, name=None):
           y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.greater(x, y))
-    return logging_ops.Assert(condition, data, summarize=summarize)
+    return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
 def assert_greater_equal(x, y, data=None, summarize=None, message=None,
@@ -495,7 +494,7 @@ def assert_greater_equal(x, y, data=None, summarize=None, message=None,
           y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.greater_equal(x, y))
-    return logging_ops.Assert(condition, data, summarize=summarize)
+    return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
 def _assert_rank_condition(x, rank, static_condition, dynamic_condition, data,
@@ -550,7 +549,7 @@ def _assert_rank_condition(x, rank, static_condition, dynamic_condition, data,
       rank_check = assert_rank(rank, 0, data=this_data)
       condition = control_flow_ops.with_dependencies([rank_check], condition)
 
-  return logging_ops.Assert(condition, data, summarize=summarize)
+  return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
 def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):

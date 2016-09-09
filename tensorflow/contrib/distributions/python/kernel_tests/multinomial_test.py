@@ -69,7 +69,8 @@ class MultinomialTest(tf.test.TestCase):
     p = [[0.1, 0.2, 0.7]]
     n = [[5.]]
     with self.test_session():
-      dist = tf.contrib.distributions.Multinomial(n=n, p=p)
+      dist = tf.contrib.distributions.Multinomial(
+          n=n, p=p, validate_args=True)
       dist.pmf([2., 3, 0]).eval()
       dist.pmf([3., 0, 2]).eval()
       with self.assertRaisesOpError("Condition x >= 0.*"):
@@ -82,7 +83,8 @@ class MultinomialTest(tf.test.TestCase):
     n = [[5.]]
     with self.test_session():
       # No errors with integer n.
-      multinom = tf.contrib.distributions.Multinomial(n=n, p=p)
+      multinom = tf.contrib.distributions.Multinomial(
+          n=n, p=p, validate_args=True)
       multinom.pmf([2., 1, 2]).eval()
       multinom.pmf([3., 0, 2]).eval()
       # Counts don't sum to n.

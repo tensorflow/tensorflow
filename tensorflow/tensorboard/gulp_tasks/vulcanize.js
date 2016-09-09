@@ -63,7 +63,7 @@ module.exports = function(overwrite) {
           inlineScripts: true,
           inlineCss: true,
           stripComments: true,
-          excludes: getNonTensorBoardComponents(),
+          excludes: getNonTensorBoardComponents()
         }))
         .pipe(header(HEADER_STR))
         .pipe(rename('tf-tensorboard.html' + suffix))

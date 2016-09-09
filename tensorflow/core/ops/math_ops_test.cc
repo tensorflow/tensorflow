@@ -431,4 +431,27 @@ TEST(MathOpsTest, ArgOps_ShapeFn) {
   INFER_ERROR("must be in the range [0, 3)", op, "[2,3,4];[]");
 }
 
+TEST(MathOpsTest, Betainc_ShapeFn) {
+  ShapeInferenceTestOp op("Betainc");
+
+  INFER_OK(op, "?;?;?", "?");
+  INFER_OK(op, "[?,?];?;?", "in0");
+  INFER_OK(op, "[?,2];?;[1,?]", "[d2_0,d0_1]");
+  INFER_OK(op, "[?,2,?];[1,?,?];[?,?,3]", "[d1_0,d0_1,d2_2]");
+
+  INFER_OK(op, "[?,2,?];[];[?,?,3]", "[d0_0|d2_0,d0_1,d2_2]");
+  INFER_OK(op, "[];[];[?,?,3]", "in2");
+
+  // All but one is a scalar, so use it.
+  INFER_OK(op, "[];[];?", "in2");
+  INFER_OK(op, "[];[];[1,2,3,4]", "in2");
+
+  // All scalar input; implementation picks in0.
+  INFER_OK(op, "[];[];[]", "in0");
+
+  // Non-scalars must match shape.
+  INFER_ERROR("must be equal", op, "[1,2];[];[1,4]");
+  INFER_ERROR("must be equal", op, "[1,2];[];[1,2,3]");
+}
+
 }  // end namespace tensorflow

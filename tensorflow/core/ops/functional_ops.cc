@@ -29,13 +29,13 @@ REGISTER_OP("SymbolicGradient")
     .Attr("Tout: list(type)")
     .Attr("f: func")
     .SetShapeFn([](InferenceContext* c) {
-      if (c->num_inputs() != c->num_outputs()) {
-        return errors::InvalidArgument("len(inputs) != len(outputs)");
+      if (c->num_inputs() < c->num_outputs()) {
+        return errors::InvalidArgument("len(inputs) < len(outputs)");
       }
       // Say, (u, v) = f(x, y, z), _symbolic_gradient(f) is a function of
       // (x, y, z, du, dv) -> (dx, dy, dz). Therefore, shapes of its
       // outputs (dx, dy, dz) are the same as (x, y, z).
-      for (int i = 0; i < c->num_inputs(); ++i) {
+      for (int i = 0; i < c->num_outputs(); ++i) {
         c->set_output(i, c->input(i));
       }
       return Status::OK();

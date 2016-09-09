@@ -327,10 +327,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     # D^{-1} + V^T M^{-1} V
     capacitance = self._diag_inv_operator.add_to_tensor(vt_minv_v)
     # Cholesky[D^{-1} + V^T M^{-1} V]
-    if batch_mode:
-      return linalg_ops.batch_cholesky(capacitance)
-    else:
-      return linalg_ops.cholesky(capacitance)
+    return linalg_ops.cholesky(capacitance)
 
   def _sqrt_log_det_core(self, diag_chol_c):
     """Finish computation of Sqrt[Log[Det]]."""
@@ -449,7 +446,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     # V^T M^{-1} rhs
     vt_minv_rhs = math_ops.batch_matmul(v, minv_rhs, adj_x=True)
     # C^{-1} V^T M^{-1} rhs
-    cinv_vt_minv_rhs = linalg_ops.batch_cholesky_solve(cchol, vt_minv_rhs)
+    cinv_vt_minv_rhs = linalg_ops.cholesky_solve(cchol, vt_minv_rhs)
     # V C^{-1} V^T M^{-1} rhs
     v_cinv_vt_minv_rhs = math_ops.batch_matmul(v, cinv_vt_minv_rhs)
     # M^{-1} V C^{-1} V^T M^{-1} rhs

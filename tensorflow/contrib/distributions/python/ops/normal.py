@@ -85,8 +85,8 @@ class Normal(distribution.Distribution):
   def __init__(self,
                mu,
                sigma,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Normal"):
     """Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
@@ -97,9 +97,10 @@ class Normal(distribution.Distribution):
       mu: Floating point tensor, the means of the distribution(s).
       sigma: Floating point tensor, the stddevs of the distribution(s).
         sigma must contain only positive values.
-      validate_args: Whether to assert that `sigma > 0`. If `validate_args` is
-        `False`, correct output is not guaranteed when input is invalid.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert that
+        `sigma > 0`. If `validate_args` is `False`, correct output is not
+        guaranteed when input is invalid.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -117,6 +118,7 @@ class Normal(distribution.Distribution):
         super(Normal, self).__init__(
             dtype=self._sigma.dtype,
             parameters={"mu": self._mu, "sigma": self._sigma},
+            is_continuous=True,
             is_reparameterized=True,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
@@ -125,19 +127,8 @@ class Normal(distribution.Distribution):
   @staticmethod
   def _param_shapes(sample_shape):
     return dict(
-        zip(("mu", "sigma"), ([ops.convert_to_tensor(sample_shape)] * 2)))
-
-  @staticmethod
-  def _safe_transforms():
-    """Default parameter transforms.
-
-    Transforms applied:
-      sigma: softplus
-
-    Returns:
-      `dict` of parameter name to callable parameter transform.
-    """
-    return {"sigma": nn.softplus}
+        zip(("mu", "sigma"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 2)))
 
   @property
   def mu(self):
@@ -208,6 +199,24 @@ class Normal(distribution.Distribution):
     """Standardize input `x` to a unit normal."""
     with ops.name_scope("standardize", values=[x]):
       return (x - self.mu) / self.sigma
+
+
+class NormalWithSoftplusSigma(Normal):
+  """Normal with softplus applied to `sigma`."""
+
+  def __init__(self,
+               mu,
+               sigma,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="NormalWithSoftplusSigma"):
+    with ops.name_scope(name, values=[mu, sigma]) as ns:
+      super(NormalWithSoftplusSigma, self).__init__(
+          mu=mu,
+          sigma=nn.softplus(sigma),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)
 
 
 @kullback_leibler.RegisterKL(Normal, Normal)

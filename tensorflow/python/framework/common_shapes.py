@@ -17,12 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import six.moves
 
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 
 
 def scalar_shape(unused_op):
@@ -98,45 +100,6 @@ def matmul_shape(op):
   inner_b = b_shape[1] if transpose_b else b_shape[0]
   inner_a.assert_is_compatible_with(inner_b)
   return [tensor_shape.TensorShape([output_rows, output_cols])]
-
-
-def bias_add_shape(op):
-  """Shape function for a BiasAdd op."""
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
-  bias_shape = op.inputs[1].get_shape().with_rank(1)
-  if input_shape.ndims is not None:
-    # Output has the same shape as input, and matches the length of
-    # bias in its bias dimension.
-    try:
-      data_format = op.get_attr("data_format")
-    except ValueError:
-      data_format = None
-    if data_format == b"NCHW":
-      # Merge the length of bias_shape into the third-to-last dimension.
-      output_shape = input_shape[0:-3].concatenate(input_shape[-3].merge_with(
-          bias_shape[0])).concatenate(input_shape[-2:])
-    else:
-      output_shape = input_shape[0:-1].concatenate(input_shape[-1].merge_with(
-          bias_shape[0]))
-  else:
-    output_shape = tensor_shape.unknown_shape()
-  return [output_shape]
-
-
-def bias_add_grad_shape(op):
-  """Shape function for a BiasAddGrad op."""
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
-  try:
-    data_format = op.get_attr("data_format")
-  except ValueError:
-    data_format = None
-
-  if data_format == b"NCHW":
-    output_shape = input_shape[-3]
-  else:
-    output_shape = input_shape[-1]
-
-  return [output_shape]
 
 
 def get_conv_output_size(input_size, filter_size, strides, padding_type):
@@ -589,11 +552,14 @@ def broadcast_shape(shape_x, shape_y):
   return tensor_shape.TensorShape(return_dims)
 
 
-def call_cpp_shape_fn(op, debug_python_shape_fn=None):
+def call_cpp_shape_fn(op, input_tensors_needed=None,
+                      debug_python_shape_fn=None):
   """A shape function that delegates to the registered C++ shape function.
 
   Args:
     op: the node in the graph for which to compute output shapes.
+    input_tensors_needed: a list of input tensor indices for which to compute
+      the input tensor's value and pass to the C++ shape function.
     debug_python_shape_fn: For testing only during migration to using
       call_cpp_shape_fn. Do not submit calls that set this,
       as the comparison is slow. If non-None, the python shape function;
@@ -613,10 +579,19 @@ def call_cpp_shape_fn(op, debug_python_shape_fn=None):
   input_shapes = [i.get_shape().as_proto().SerializeToString() for i in
                   op.inputs]
 
+  input_tensors = [None for i in input_shapes]
+  if input_tensors_needed:
+    for idx in input_tensors_needed:
+      input_tensors[idx] = tensor_util.constant_value(op.inputs[idx])
+      if input_tensors[idx] is not None:
+        input_tensors[idx] = np.asarray(input_tensors[idx])
+
   try:
     with errors.raise_exception_on_not_ok_status() as status:
-      output_shapes = pywrap_tensorflow.RunCppShapeInference(
-          node_def_str, input_shapes, status)
+      output_shapes = pywrap_tensorflow.RunCppShapeInference(node_def_str,
+                                                             input_shapes,
+                                                             input_tensors,
+                                                             status)
   except errors.InvalidArgumentError as err:
     raise ValueError(err.message)
 
@@ -632,7 +607,7 @@ def call_cpp_shape_fn(op, debug_python_shape_fn=None):
     if str(result) != str(python_result):
       raise ValueError(
           ("Python vs CPP shape mismatch.  "
-           "actual: %s vs expected: %s on node %s "
+           "CPP: %s vs python: %s on node %s "
            "with input shapes %s") % (
                str(result), str(python_result), str(op.node_def),
                ",".join([str(i.get_shape()) for i in op.inputs])))

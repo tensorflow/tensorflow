@@ -65,7 +65,7 @@ class OperatorSqrtSolve(OperatorShape):
     return tf.matrix_triangular_solve(self._chol, rhs, lower=True)
 
   def _batch_sqrt_solve(self, rhs):
-    return tf.batch_matrix_triangular_solve(self._chol, rhs, lower=True)
+    return tf.matrix_triangular_solve(self._chol, rhs, lower=True)
 
   def _inv_quadratic_form_on_vectors(self, x):
     return self._iqfov_via_sqrt_solve(x)
@@ -82,7 +82,7 @@ class OperatorSolve(OperatorShape):
     return tf.matrix_solve(self._pos_def_matrix, rhs)
 
   def _batch_solve(self, rhs):
-    return tf.batch_matrix_solve(self._pos_def_matrix, rhs)
+    return tf.matrix_solve(self._pos_def_matrix, rhs)
 
   def _inv_quadratic_form_on_vectors(self, x):
     return self._iqfov_via_solve(x)

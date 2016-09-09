@@ -147,13 +147,13 @@ class OperatorPDCholesky(operator_pd.OperatorPDBase):
     return linalg_ops.cholesky_solve(self._chol, rhs)
 
   def _batch_solve(self, rhs):
-    return linalg_ops.batch_cholesky_solve(self._chol, rhs)
+    return linalg_ops.cholesky_solve(self._chol, rhs)
 
   def _sqrt_solve(self, rhs):
     return linalg_ops.matrix_triangular_solve(self._chol, rhs, lower=True)
 
   def _batch_sqrt_solve(self, rhs):
-    return linalg_ops.batch_matrix_triangular_solve(self._chol, rhs, lower=True)
+    return linalg_ops.matrix_triangular_solve(self._chol, rhs, lower=True)
 
   def get_shape(self):
     """`TensorShape` giving static shape."""

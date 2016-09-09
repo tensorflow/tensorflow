@@ -134,6 +134,10 @@ class TensorSlice {
     return Intersect(other, nullptr);
   }
 
+  // Equals iff "*this" and "other" are logically equivalent.
+  bool operator==(const TensorSlice& other) const;
+  bool operator!=(const TensorSlice& other) const { return !(*this == other); }
+
   // Interaction with TensorShape.
 
   // Slices a shape and stores the result into *result_shape.

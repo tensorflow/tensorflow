@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import time
 
 import numpy as np
@@ -53,7 +54,6 @@ class FunctionTest(tf.test.TestCase):
     #     u = matmul(a, b) + c
     #     v = u^2
     #     w = u + v
-    # TODO(zhifengc): replaces w/ a nicer @decorator sugar.
     foo = tf.Graph()
     with foo.as_default():
       a = tf.placeholder(tf.float32, name="a")
@@ -63,7 +63,17 @@ class FunctionTest(tf.test.TestCase):
       v = tf.square(u, name="v")
       w = tf.add_n([u, v], name="w")
     fdef = function.graph_to_function_def(foo, "foo", [a, b, c], [u, v, w])
-    g._add_function(fdef)
+
+    class Mock(function._DefinedFunction):
+
+      def __init__(self, fdef):
+        self._func_name = "foo"
+        self._definition = fdef
+        self._sub_functions = collections.OrderedDict()
+        self._grad_func = None
+        self._python_grad_func = None
+        self._hash = hash(fdef.SerializeToString())
+    g._add_function(Mock(fdef))
 
     # Compute 2 * 3 + 4 and its square.
     with g.as_default(), tf.Session() as sess:
@@ -105,11 +115,11 @@ class FunctionTest(tf.test.TestCase):
       return a + b * 2
 
     with tf.Graph().as_default():
-      f_def = function.define_function(APlus2B, {"a": tf.float32,
-                                                 "b": tf.float32})
+      f = function.define_function(APlus2B, {"a": tf.float32,
+                                             "b": tf.float32})
       one = tf.constant([1.0])
       two = tf.constant([2.0])
-      call = function.call_function(f_def, one, two)
+      call = function.call_function(f, one, two)
       self.assertEquals("APlus2B", call.op.name)
       with tf.Session() as sess:
         self.assertAllEqual([5.0], sess.run(call))
@@ -146,11 +156,12 @@ class FunctionTest(tf.test.TestCase):
         self.assertAllClose([0.4], sess.run(call_g))
 
   def testTanhSymGrad(self):
+    @function.Defun(tf.float32)
+    def Forward(x):
+      return tf.reduce_sum(tf.tanh(x))
+
     g = tf.Graph()
     with g.as_default():
-      @function.Defun(tf.float32)
-      def Forward(x):
-        return tf.reduce_sum(tf.tanh(x))
       x = tf.placeholder(tf.float32)
       y = Forward(x)
       dx = tf.gradients([y], [x])
@@ -167,21 +178,21 @@ class FunctionTest(tf.test.TestCase):
     self.assertAllClose(1 - np.square(np.tanh(inp)), out)
 
   def testCustomGradient(self):
-    g = tf.Graph()
     dtype = tf.float32
+
+    @function.Defun(dtype, dtype, dtype)
+    def XentLossGrad(logits, labels, dloss):
+      dlogits = tf.reshape(dloss, [-1, 1]) * (tf.nn.softmax(logits) - labels)
+      dlabels = tf.zeros_like(labels)
+      # Takes exp(dlogits) to differentiate it from the "correct" gradient.
+      return tf.exp(dlogits), dlabels
+
+    @function.Defun(dtype, dtype, grad_func=XentLossGrad)
+    def XentLoss(logits, labels):
+      return tf.reduce_sum(labels * tf.log(tf.nn.softmax(logits)), 1)
+
+    g = tf.Graph()
     with g.as_default():
-
-      @function.Defun(dtype, dtype, dtype)
-      def XentLossGrad(logits, labels, dloss):
-        dlogits = tf.reshape(dloss, [-1, 1]) * (tf.nn.softmax(logits) - labels)
-        dlabels = tf.zeros_like(labels)
-        # Takes exp(dlogits) to differentiate it from the "correct" gradient.
-        return tf.exp(dlogits), dlabels
-
-      @function.Defun(dtype, dtype, grad_func=XentLossGrad)
-      def XentLoss(logits, labels):
-        return tf.reduce_sum(labels * tf.log(tf.nn.softmax(logits)), 1)
-
       logits = tf.placeholder(dtype)
       labels = tf.placeholder(dtype)
       loss = XentLoss(logits, labels)
@@ -197,19 +208,19 @@ class FunctionTest(tf.test.TestCase):
       self.assertAllClose(out, np.exp(prob - y))
 
   def testCustomGradientError(self):
-    g = tf.Graph()
     dtype = tf.float32
+
+    @function.Defun(dtype, dtype, dtype)
+    def Grad(x, dy, dz):
+      # Should have returned 1 result.
+      return x, dy + dz
+
+    @function.Defun(dtype, grad_func=Grad)
+    def Forward(x):
+      return x, x
+
+    g = tf.Graph()
     with g.as_default():
-
-      @function.Defun(dtype, dtype, dtype)
-      def Grad(x, dy, dz):
-        # Should have returned 1 result.
-        return x, dy + dz
-
-      @function.Defun(dtype, grad_func=Grad)
-      def Forward(x):
-        return x, x
-
       inp = tf.placeholder(dtype)
       out = tf.add_n(Forward(inp))
       dinp = tf.gradients(out, [inp])
@@ -238,11 +249,12 @@ class FunctionTest(tf.test.TestCase):
       self.assertEquals(y.get_shape(), dy.get_shape())
 
   def testZNoDepOnY(self):
+    @function.Defun(tf.float32, tf.float32)
+    def Foo(x, y):
+      return x * 2
+
     with tf.Graph().as_default():
       # z = Foo(x, y). z doe
-      @function.Defun(tf.float32, tf.float32)
-      def Foo(x, y):
-        return x * 2
       x = tf.constant(1.0)
       y = tf.constant(2.0)
       z = Foo(x, y)
@@ -297,23 +309,25 @@ class FunctionTest(tf.test.TestCase):
       return a + b, b - a
 
     with tf.Graph().as_default():
+      # pylint: disable=expression-not-assigned
       with self.assertRaisesRegexp(ValueError, "return at least one tensor"):
-        function.define_function(NoResult, {})
+        function.define_function(NoResult, {}).definition
       with self.assertRaisesRegexp(ValueError, "are not supported"):
-        function.define_function(DefaultArg, {})
+        function.define_function(DefaultArg, {}).definition
       with self.assertRaisesRegexp(ValueError, "are not supported"):
-        function.define_function(KwArgs, {})
+        function.define_function(KwArgs, {}).definition
       with self.assertRaisesRegexp(ValueError, "specified input types"):
-        function.define_function(PlusMinus, {})
+        function.define_function(PlusMinus, {}).definition
       with self.assertRaisesRegexp(ValueError, "specified input types"):
-        function.define_function(PlusMinus, {"c": tf.float32})
+        function.define_function(PlusMinus, {"c": tf.float32}).definition
       with self.assertRaisesRegexp(ValueError, "type for argument: b"):
         function.define_function(PlusMinus, {"a": tf.float32,
-                                             "c": tf.float32})
+                                             "c": tf.float32}).definition
       with self.assertRaisesRegexp(ValueError, "specified input types"):
         function.define_function(PlusMinus, {"a": tf.float32,
                                              "b": tf.float32,
-                                             "c": tf.float32})
+                                             "c": tf.float32}).definition
+      # pylint: enable=expression-not-assigned
 
   def testCallErrors(self):
 
@@ -356,40 +370,88 @@ class FunctionTest(tf.test.TestCase):
       with self.assertRaisesRegexp(ValueError, "Unknown keyword arguments"):
         function.call_function(plus_one, one, device="/gpu:0")
 
+  def testDupDefinition(self):
+    @function.Defun(tf.float32)
+    def Foo(x):
+      return x + 1
+    @function.Defun(tf.float32, func_name="Foo")
+    def Bar(x):
+      return x + 1
+    @function.Defun(tf.float32, func_name="Foo")
+    def Baz(x):
+      return x + 2
+    with tf.Graph().as_default():
+      x = tf.constant(100.0)
+      y = Foo(x)
+      z = Bar(x)  # OK.
+      with self.test_session():
+        self.assertAllEqual(y.eval(), z.eval())
+      with self.assertRaisesRegexp(ValueError, "already defined"):
+        z = Baz(x)
+
   def testFunctionDecorator(self):
+    @function.Defun(tf.float32)
+    def Minus1(b):
+      return b - 1.0
 
     with tf.Graph().as_default():
-
-      @function.Defun(tf.float32)
-      def Minus1(b):
-        return b - 1.0
-
       two = tf.constant([2.])
       call1 = Minus1(two)
       self.assertTrue(isinstance(Minus1, function._DefinedFunction))
       self.assertEqual(Minus1.name, "Minus1")
       # pylint: disable=unexpected-keyword-arg
       call2 = Minus1(call1, name="next")
-      # pylint:enable=unexpected-keyword-arg
+      # pylint: enable=unexpected-keyword-arg
       self.assertEquals("next", call2.op.name)
       with tf.Session() as sess:
         self.assertAllEqual([1], sess.run(call1))
         self.assertAllEqual([0], sess.run(call2))
 
   def testNestedFunction(self):
+    @function.Defun(tf.float32)
+    def Cube(x):
+      return x * x * x
+
+    @function.Defun(tf.float32, tf.float32)
+    def CubeXPlusY(x, y):
+      return Cube(x) + y
+
     with tf.Graph().as_default():
-
-      @function.Defun(tf.float32)
-      def Cube(x):
-        return x * x * x
-
-      @function.Defun(tf.float32, tf.float32)
-      def CubeXPlusY(x, y):
-        return Cube(x) + y
-
       z = CubeXPlusY(tf.constant(3.0), tf.constant(-2.0))
       with self.test_session():
         self.assertAllEqual(z.eval(), 25.0)
+
+  def testNestedDefinedFunction(self):
+    @function.Defun(tf.float32, tf.float32)
+    def CubeXPlusY(x, y):
+      @function.Defun(tf.float32)
+      def Cube(x):
+        return x * x * x
+      return Cube(x) + y
+    with tf.Graph().as_default():
+      z = CubeXPlusY(tf.constant(3.0), tf.constant(-2.0))
+      with self.test_session():
+        self.assertAllEqual(z.eval(), 25.0)
+
+  def testUnusedFunction(self):
+    invoked = False
+    # pylint: disable=unused-variable
+    @function.Defun()
+    def Unused():
+      invoked = True
+      return tf.constant(42.)
+    self.assertFalse(invoked)
+    g = tf.Graph()
+    with g.as_default():
+      @function.Defun()
+      def Unused2():
+        invoked = True
+        return tf.constant(7.)
+      tf.constant(3.)
+    # pylint: enable=unused-variable
+    self.assertFalse(invoked)
+    gdef = g.as_graph_def()
+    self.assertEquals(0, len(gdef.library.function))
 
   def testReduction(self):
     g = tf.Graph()
@@ -400,17 +462,19 @@ class FunctionTest(tf.test.TestCase):
       var = tf.reduce_mean(tf.square(x - mean))  # biased var
       rstd = tf.rsqrt(var + 1e-8)
       return (x - mean) * rstd
-    with g.as_default():
-      # Wraps BatchNorm in a tf function.
-      @function.Defun(tf.float32)
-      def BN1(x):
-        return BN0(x)
 
+    # Wraps BatchNorm in a tf function.
+    @function.Defun(tf.float32)
+    def BN1(x):
+      return BN0(x)
+
+    with g.as_default():
       x = tf.placeholder(tf.float32)
       y0 = BN0(x)  # A plain graph
       y1 = BN1(x)  # A tf function
       dx0, = tf.gradients([y0], [x])
       dx1, = tf.gradients([y1], [x])
+
     # Both should produce the same result and gradient.
     with self.test_session(graph=g) as sess:
       vals = sess.run([y0, y1, dx0, dx1], {x: np.random.uniform(size=(3, 7))})
@@ -565,21 +629,20 @@ class FunctionInlineControlTest(tf.test.TestCase):
             do_function_inlining=True,
             do_constant_folding=True)))
     for noinline in [False, True]:
+      @function.Defun(dtype)
+      def Cell(v):
+        # If v is a vector [n, 1], x is a big square matrix.
+        x = tf.tanh(v + tf.transpose(v, [1, 0]))
+        return tf.reduce_sum(x, 1, keep_dims=True)
+
+      @function.Defun(dtype)
+      def Forward(x):
+        for _ in range(10):
+          x = Cell(x, noinline=noinline)
+        return tf.reduce_sum(x, [0, 1])
+
       g = tf.Graph()
       with g.as_default():
-
-        @function.Defun(dtype)
-        def Cell(v):
-          # If v is a vector [n, 1], x is a big square matrix.
-          x = tf.tanh(v + tf.transpose(v, [1, 0]))
-          return tf.reduce_sum(x, 1, keep_dims=True)
-
-        @function.Defun(dtype)
-        def Forward(x):
-          for _ in range(10):
-            x = Cell(x, noinline=noinline)
-          return tf.reduce_sum(x, [0, 1])
-
         x = tf.placeholder(dtype)
         y = Forward(x)
         dx, = tf.gradients([y], [x])
@@ -592,6 +655,27 @@ class FunctionInlineControlTest(tf.test.TestCase):
         self.assertAllClose(ans[0], 255.971, rtol=1e-3)
         self.assertAllClose(np.sum(ans[1]), 13.0408, rtol=1e-3)
 
+
+@function.Defun(*[tf.float32]*3)
+def Linear(w, b, x):
+  return tf.nn.relu(tf.matmul(x, w) + b)
+
+
+@function.Defun(*[tf.float32]*5)
+def Linear2(w1, b1, w2, b2, x):
+  return Linear(w2, b2, Linear(w1, b1, x))
+
+
+class ModuleFunctionTest(tf.test.TestCase):
+
+  def testBasic(self):
+    with tf.Graph().as_default():
+      a, b, c, d, e = [tf.constant([[_]], dtype=tf.float32) for _ in range(5)]
+      y = Linear(a, b, c)
+      z = Linear2(a, b, c, d, e)
+      with tf.Session() as sess:
+        self.assertAllEqual([[1]], sess.run(y))
+        self.assertAllEqual([[5]], sess.run(z))
 
 if __name__ == "__main__":
   tf.test.main()
