@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Gradients for operators defined in linalg_ops.py.
 
 Useful reference for derivative formulas is
@@ -35,22 +34,9 @@ from tensorflow.python.ops import math_ops
 def _MatrixInverseGrad(op, grad):
   """Gradient for MatrixInverse."""
   ainv = op.outputs[0]
-  return -math_ops.matmul(ainv,
-                          math_ops.matmul(grad,
-                                          ainv,
-                                          transpose_b=True),
-                          transpose_a=True)
-
-
-@ops.RegisterGradient("BatchMatrixInverse")
-def _BatchMatrixInverseGrad(op, grad):
-  """Gradient for BatchMatrixInverse."""
-  ainv = op.outputs[0]
-  return -math_ops.batch_matmul(ainv,
-                                math_ops.batch_matmul(grad,
-                                                      ainv,
-                                                      adj_y=True),
-                                adj_x=True)
+  return -math_ops.batch_matmul(
+      ainv, math_ops.batch_matmul(
+          grad, ainv, adj_y=True), adj_x=True)
 
 
 @ops.RegisterGradient("MatrixDeterminant")
@@ -59,15 +45,6 @@ def _MatrixDeterminantGrad(op, grad):
   a = op.inputs[0]
   c = op.outputs[0]
   a_adj_inv = linalg_ops.matrix_inverse(a, adjoint=True)
-  return grad * c * a_adj_inv
-
-
-@ops.RegisterGradient("BatchMatrixDeterminant")
-def _BatchMatrixDeterminantGrad(op, grad):
-  """Gradient for BatchMatrixDeterminant."""
-  a = op.inputs[0]
-  c = op.outputs[0]
-  a_adj_inv = linalg_ops.batch_matrix_inverse(a, adjoint=True)
   multipliers = array_ops.reshape(
       grad * c, array_ops.concat(0, [array_ops.shape(c), [1, 1]]))
   return multipliers * a_adj_inv
@@ -79,33 +56,13 @@ def _CholeskyGrad(op, grad):
   return linalg_ops.cholesky_grad(op.outputs[0], grad)
 
 
-@ops.RegisterGradient("BatchCholesky")
-def _BatchCholeskyGrad(op, grad):
-  """Gradient for BatchCholesky."""
-  return linalg_ops.batch_cholesky_grad(op.outputs[0], grad)
-
-
 @ops.RegisterGradient("MatrixSolve")
 def _MatrixSolveGrad(op, grad):
-  """Gradients for MatrixSolve."""
+  """Gradient for MatrixSolve."""
   a = op.inputs[0]
   adjoint_a = op.get_attr("adjoint")
   c = op.outputs[0]
   grad_b = linalg_ops.matrix_solve(a, grad, adjoint=not adjoint_a)
-  if adjoint_a:
-    grad_a = -math_ops.matmul(c, grad_b, transpose_b=True)
-  else:
-    grad_a = -math_ops.matmul(grad_b, c, transpose_b=True)
-  return (grad_a, grad_b)
-
-
-@ops.RegisterGradient("BatchMatrixSolve")
-def _BatchMatrixSolveGrad(op, grad):
-  """Gradient for BatchMatrixSolve."""
-  a = op.inputs[0]
-  adjoint_a = op.get_attr("adjoint")
-  c = op.outputs[0]
-  grad_b = linalg_ops.batch_matrix_solve(a, grad, adjoint=not adjoint_a)
   if adjoint_a:
     grad_a = -math_ops.batch_matmul(c, grad_b, adj_y=True)
   else:
@@ -115,37 +72,13 @@ def _BatchMatrixSolveGrad(op, grad):
 
 @ops.RegisterGradient("MatrixTriangularSolve")
 def _MatrixTriangularSolveGrad(op, grad):
-  """Gradients for MatrixTriangularSolve."""
+  """Gradient for MatrixTriangularSolve."""
   a = op.inputs[0]
   adjoint_a = op.get_attr("adjoint")
   lower_a = op.get_attr("lower")
   c = op.outputs[0]
-  grad_b = linalg_ops.matrix_triangular_solve(a,
-                                              grad,
-                                              lower=lower_a,
-                                              adjoint=not adjoint_a)
-  if adjoint_a:
-    grad_a = -math_ops.matmul(c, grad_b, transpose_b=True)
-  else:
-    grad_a = -math_ops.matmul(grad_b, c, transpose_b=True)
-  if lower_a:
-    grad_a = array_ops.batch_matrix_band_part(grad_a, -1, 0)
-  else:
-    grad_a = array_ops.batch_matrix_band_part(grad_a, 0, -1)
-  return (grad_a, grad_b)
-
-
-@ops.RegisterGradient("BatchMatrixTriangularSolve")
-def _BatchMatrixTriangularSolveGrad(op, grad):
-  """Gradient for BatchMatrixTriangularSolve."""
-  a = op.inputs[0]
-  adjoint_a = op.get_attr("adjoint")
-  lower_a = op.get_attr("lower")
-  c = op.outputs[0]
-  grad_b = linalg_ops.batch_matrix_triangular_solve(a,
-                                                    grad,
-                                                    lower=lower_a,
-                                                    adjoint=not adjoint_a)
+  grad_b = linalg_ops.matrix_triangular_solve(
+      a, grad, lower=lower_a, adjoint=not adjoint_a)
   if adjoint_a:
     grad_a = -math_ops.batch_matmul(c, grad_b, adj_y=True)
   else:

@@ -250,7 +250,7 @@ class _WishartOperatorPD(distribution.Distribution):
       x_sqrt = x
     else:
       # Complexity: O(nbk^3)
-      x_sqrt = linalg_ops.batch_cholesky(x)
+      x_sqrt = linalg_ops.cholesky(x)
 
     batch_shape = self.batch_shape()
     event_shape = self.event_shape()
@@ -351,7 +351,7 @@ class _WishartOperatorPD(distribution.Distribution):
     d = array_ops.expand_dims(array_ops.batch_matrix_diag_part(x), -1)
     v = math_ops.square(x) + math_ops.batch_matmul(d, d, adj_y=True)
     if self.cholesky_input_output_matrices:
-      return linalg_ops.batch_cholesky(v)
+      return linalg_ops.cholesky(v)
     return v
 
   def _std(self):
@@ -359,7 +359,7 @@ class _WishartOperatorPD(distribution.Distribution):
       raise ValueError(
           "Computing std. dev. when is cholesky_input_output_matrices=True "
           "does not make sense.")
-    return linalg_ops.batch_cholesky(self.variance())
+    return linalg_ops.cholesky(self.variance())
 
   def _mode(self):
     s = self.df - self.dimension - 1.
@@ -461,7 +461,7 @@ class WishartCholesky(_WishartOperatorPD):
 
   # Initialize two 3x3 Wisharts with Cholesky factored scale matrices.
   df = [5, 4]
-  chol_scale = tf.batch_cholesky(...)  # Shape is [2, 3, 3].
+  chol_scale = tf.cholesky(...)  # Shape is [2, 3, 3].
   dist = tf.contrib.distributions.WishartCholesky(df=df, scale=chol_scale)
 
   # Evaluate this on four observations.

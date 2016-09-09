@@ -24,29 +24,15 @@ import tensorflow as tf
 class SvdOpTest(tf.test.TestCase):
 
   def testWrongDimensions(self):
-    # The input to svd should be 2-dimensional tensor.
-    scalar = tf.constant(1.)
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be rank 2 but is rank 0"):
-      tf.svd(scalar)
-    vector = tf.constant([1., 2.])
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be rank 2 but is rank 1"):
-      tf.svd(vector)
-    tensor = tf.constant([[[1., 2.], [3., 4.]], [[1., 2.], [3., 4.]]])
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be rank 2 but is rank 3"):
-      tf.svd(tensor)
-
     # The input to batch_svd should be a tensor of at least rank 2.
     scalar = tf.constant(1.)
     with self.assertRaisesRegexp(ValueError,
                                  "Shape must be at least rank 2 but is rank 0"):
-      tf.batch_svd(scalar)
+      tf.svd(scalar)
     vector = tf.constant([1., 2.])
     with self.assertRaisesRegexp(ValueError,
                                  "Shape must be at least rank 2 but is rank 1"):
-      tf.batch_svd(vector)
+      tf.svd(vector)
 
 
 def _GetSvdOpTest(dtype_, shape_):
@@ -125,26 +111,14 @@ def _GetSvdOpTest(dtype_, shape_):
     for compute_uv in False, True:
       for full_matrices in False, True:
         with self.test_session():
-          if x.ndim == 2:
-            if compute_uv:
-              tf_s, tf_u, tf_v = tf.svd(tf.constant(x),
-                                        compute_uv=compute_uv,
-                                        full_matrices=full_matrices)
-            else:
-              tf_s = tf.svd(tf.constant(x),
-                            compute_uv=compute_uv,
-                            full_matrices=full_matrices)
+          if compute_uv:
+            tf_s, tf_u, tf_v = tf.svd(tf.constant(x),
+                                      compute_uv=compute_uv,
+                                      full_matrices=full_matrices)
           else:
-            if compute_uv:
-              tf_s, tf_u, tf_v = tf.batch_svd(
-                  tf.constant(x),
-                  compute_uv=compute_uv,
-                  full_matrices=full_matrices)
-            else:
-              tf_s = tf.batch_svd(
-                  tf.constant(x),
-                  compute_uv=compute_uv,
-                  full_matrices=full_matrices)
+            tf_s = tf.svd(tf.constant(x),
+                          compute_uv=compute_uv,
+                          full_matrices=full_matrices)
           if compute_uv:
             np_u, np_s, np_v = np.linalg.svd(x,
                                              compute_uv=compute_uv,

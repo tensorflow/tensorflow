@@ -123,7 +123,13 @@ TFRecordReader
 WholeFileReader
 
 # linalg_ops
+BatchCholesky
+BatchCholeskyGrad
+BatchMatrixDeterminant
+BatchMatrixInverse
+BatchMatrixSolve
 BatchMatrixSolveLs
+BatchMatrixTriangularSolve
 BatchSelfAdjointEig
 BatchSelfAdjointEigV2
 BatchSvd

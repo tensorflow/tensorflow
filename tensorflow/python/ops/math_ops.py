@@ -89,32 +89,15 @@ functions on matrices to your graph.
 @@batch_matmul
 
 @@matrix_determinant
-@@batch_matrix_determinant
-
 @@matrix_inverse
-@@batch_matrix_inverse
-
 @@cholesky
-@@batch_cholesky
 @@cholesky_solve
-@@batch_cholesky_solve
-
 @@matrix_solve
-@@batch_matrix_solve
-
 @@matrix_triangular_solve
-@@batch_matrix_triangular_solve
-
 @@matrix_solve_ls
-@@batch_matrix_solve_ls
-
 @@self_adjoint_eig
-@@batch_self_adjoint_eig
 @@self_adjoint_eigvals
-@@batch_self_adjoint_eigvals
-
 @@svd
-@@batch_svd
 
 ## Complex Number Functions
 

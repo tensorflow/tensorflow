@@ -24,25 +24,14 @@ import tensorflow as tf
 class SelfAdjointEigTest(tf.test.TestCase):
 
   def testWrongDimensions(self):
-    # The input to self_adjoint_eig should be 2-dimensional tensor.
+    # The input to self_adjoint_eig should be a tensor of
+    # at least rank 2.
     scalar = tf.constant(1.)
     with self.assertRaises(ValueError):
       tf.self_adjoint_eig(scalar)
     vector = tf.constant([1., 2.])
     with self.assertRaises(ValueError):
       tf.self_adjoint_eig(vector)
-    tensor = tf.constant([[[1., 2.], [3., 4.]], [[1., 2.], [3., 4.]]])
-    with self.assertRaises(ValueError):
-      tf.self_adjoint_eig(tensor)
-
-    # The input to batch_batch_self_adjoint_eig should be a tensor of
-    # at least rank 2.
-    scalar = tf.constant(1.)
-    with self.assertRaises(ValueError):
-      tf.batch_self_adjoint_eig(scalar)
-    vector = tf.constant([1., 2.])
-    with self.assertRaises(ValueError):
-      tf.batch_self_adjoint_eig(vector)
 
 
 def SortEigenDecomposition(e, v):
@@ -90,11 +79,7 @@ def _GetSelfAdjointEigTest(dtype_, shape_):
       np_e, np_v = np.linalg.eig(a)
       with self.test_session():
         if compute_v:
-          if a.ndim == 2:
-            op = tf.self_adjoint_eig
-          else:
-            op = tf.batch_self_adjoint_eig
-          tf_e, tf_v = op(tf.constant(a))
+          tf_e, tf_v = tf.self_adjoint_eig(tf.constant(a))
 
           # Check that V*diag(E)*V^T is close to A.
           a_ev = tf.batch_matmul(
@@ -107,11 +92,7 @@ def _GetSelfAdjointEigTest(dtype_, shape_):
           CompareEigenDecompositions(self, np_e, np_v, tf_e.eval(), tf_v.eval(),
                                      atol)
         else:
-          if a.ndim == 2:
-            op = tf.self_adjoint_eigvals
-          else:
-            op = tf.batch_self_adjoint_eigvals
-          tf_e = op(tf.constant(a))
+          tf_e = tf.self_adjoint_eigvals(tf.constant(a))
           self.assertAllClose(
               np.sort(np_e, -1), np.sort(tf_e.eval(), -1), atol=atol)
 

@@ -582,7 +582,7 @@ class _ShiftAndScale(_Bijector):
   def _inverse(self, x):
     x -= self.loc
     x, sample_shape = self.shaper.make_batch_of_event_sample_matrices(x)
-    x = linalg_ops.batch_matrix_triangular_solve(self.scale, x)
+    x = linalg_ops.matrix_triangular_solve(self.scale, x)
     x = self.shaper.undo_make_batch_of_event_sample_matrices(x, sample_shape)
     return x
 
