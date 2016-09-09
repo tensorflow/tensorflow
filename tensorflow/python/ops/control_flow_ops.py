@@ -1956,11 +1956,13 @@ class WhileContext(ControlFlowContext):
     else:
       value = op.inputs[0]
       if self.outer_context:
-        forward_ctxt = self.grad_state.forward_ctxt
+        forward_ctxt = self.grad_state.forward_context
         forward_ctxt.outer_context.Enter()
         zeros_shape = array_ops.shape_internal(value, optimize=False)
         forward_ctxt.outer_context.Exit()
-        history_zeros_shape = grad_state.AddForwardAccumulator(zeros_shape)
+        outer_grad_state = self.grad_state.outer_grad_state
+        history_zeros_shape = outer_grad_state.AddForwardAccumulator(
+            zeros_shape)
         self.outer_context.Enter()
         real_shape = outer_grad_state.AddBackPropAccumulatedValue(
             history_zeros_shape, zeros_shape)
