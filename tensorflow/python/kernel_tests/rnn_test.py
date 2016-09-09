@@ -190,7 +190,7 @@ class RNNTest(tf.test.TestCase):
       for d_v in full_dropout_values[:-1]:  # Add 1.0 to dropped_out (all zeros)
         self.assertAllClose(d_v, np.ones_like(input_value))
 
-  def testDynamicCalculation(self):
+  def _testDynamicCalculation(self, use_gpu):
     cell = Plus1RNNCell()
     sequence_length = tf.placeholder(tf.int64)
     batch_size = 2
@@ -203,7 +203,7 @@ class RNNTest(tf.test.TestCase):
           cell, inputs, sequence_length=sequence_length, dtype=tf.float32)
     self.assertEqual(len(dynamic_outputs), len(inputs))
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.test_session(use_gpu=use_gpu) as sess:
       input_value = np.random.randn(batch_size, input_size)
       dynamic_values = sess.run(dynamic_outputs,
                                 feed_dict={inputs[0]: input_value,
@@ -235,6 +235,10 @@ class RNNTest(tf.test.TestCase):
           np.vstack((
               1.0 * (1 + 1) * np.ones((input_size)),
               1.0 * (2 + 1) * np.ones((input_size)))))
+
+  def testDynamicCalculation(self):
+    self._testDynamicCalculation(True)
+    self._testDynamicCalculation(False)
 
   def _testScope(self, factory, prefix="prefix", use_outer_scope=True):
     with self.test_session(use_gpu=True, graph=tf.Graph()):
