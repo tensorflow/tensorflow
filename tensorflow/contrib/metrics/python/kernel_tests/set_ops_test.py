@@ -386,7 +386,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
                      input_tensor.get_shape().ndims)
     self.assertAllEqual((expected_rows, expected_rank),
                         result_sparse_tensor.indices.get_shape().as_list())
-    self.assertAllEqual((None,),
+    self.assertAllEqual((expected_rows,),
                         result_sparse_tensor.values.get_shape().as_list())
     self.assertAllEqual((expected_rank,),
                         result_sparse_tensor.shape.get_shape().as_list())
