@@ -76,9 +76,11 @@ StackClose
 TensorArray
 TensorArrayClose
 TensorArrayConcat
+TensorArrayGather
 TensorArrayGrad
 TensorArrayRead
 TensorArrayPack
+TensorArrayScatter
 TensorArraySize
 TensorArraySplit
 TensorArrayUnpack
