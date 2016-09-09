@@ -333,6 +333,7 @@
 
 * **[TensorArray Operations](../../api_docs/python/tensor_array_ops.md)**:
   * [`concat`](../../api_docs/python/tensor_array_ops.md#concat)
+  * [`gather`](../../api_docs/python/tensor_array_ops.md#gather)
   * [`pack`](../../api_docs/python/tensor_array_ops.md#pack)
   * [`split`](../../api_docs/python/tensor_array_ops.md#split)
   * [`TensorArray`](../../api_docs/python/tensor_array_ops.md#TensorArray)
