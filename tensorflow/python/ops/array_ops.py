@@ -1691,6 +1691,7 @@ ops.RegisterShape("BatchMatrixDiagPart")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Diag")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("DiagPart")(common_shapes.call_cpp_shape_fn)
 
+
 @ops.RegisterShape("ExpandDims")
 def _ExpandDimsShape(op):
   """Determine shape for expand op's output tensor.
@@ -1710,9 +1711,10 @@ def _ExpandDimsShape(op):
     return [tensor_shape.unknown_shape()]
   dim = tensor_util.constant_value(op.inputs[1])
   input_ndims = input_shape.ndims
-  if dim < -input_ndims - 1 or dim > input_ndims:
+  min_dim = -input_ndims - 1
+  if dim < min_dim or dim > input_ndims:
     raise ValueError(
-        "dim %d not in [%d, %d]." % (dim, -input_ndims, input_ndims))
+        "dim %d not in interval [%d, %d]." % (dim, min_dim, input_ndims))
   if dim < 0:
     dim += (input_ndims + 1)
   result_shape = list(input_shape.dims)
