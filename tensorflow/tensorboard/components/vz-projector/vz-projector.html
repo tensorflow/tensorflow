@@ -157,6 +157,18 @@ limitations under the License.
   border: 1px solid #FBC02D;
 }
 
+#warning-msg {
+  display: none;
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  padding: 5px;
+  font-weight: 500;
+  color: black;
+  background-color: #ffb3b6;
+  border: 1px solid black;
+}
+
 .brush .extent {
   stroke: #fff;
   fill-opacity: .125;
@@ -454,6 +466,7 @@ paper-listbox .pca-item {
 <div id="wrapper-notify-msg">
   <div id="notify-msg">Loading...</div>
 </div>
+<div id="warning-msg"></div>
 <div id="container">
   <div id="left-pane" class="ink-panel">
     <div class="ink-panel-header">
@@ -481,8 +494,8 @@ paper-listbox .pca-item {
       <p>The most appropriate perplexity value depends on the density of your data. Loosely speaking, one could say that a larger / denser dataset requires a larger perplexity. Typical values for the perplexity range between 5 and 50.</p>
       <p>The most appropriate learning rate depends on the size of your data, with smaller datasets requiring smaller learning rates.</p>
       <p>
-        <button class="run-tsne ink-button">Run</button>
-        <button class="stop-tsne ink-button">Stop</button>
+        <button class="run-tsne ink-button" title="Re-run t-SNE">Re-run</button>
+        <button class="stop-tsne ink-button" title="Stop t-SNE">Stop</button>
       </p>
       <p>Iteration: <span class="run-tsne-iter">0</span></p>
     </div>

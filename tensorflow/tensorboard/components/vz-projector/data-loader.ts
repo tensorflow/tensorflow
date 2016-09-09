@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {runAsyncTask, updateMessage} from './async';
+import {runAsyncTask, updateMessage, updateWarningMessage} from './async';
 import {DataPoint, DataSet, DatasetMetadata, DataSource} from './data';
 
 /** Maximum number of colors supported in the color map. */
@@ -211,7 +211,9 @@ function parseAndMergeMetadata(
 
     // Dimension mismatch.
     if (lines.length !== data.length && !hasHeader) {
-      throw Error('Dimensions do not match');
+      updateWarningMessage(`Number of tensors (${data
+                               .length}) do not match the
+                            number of lines in metadata (${lines.length}).`);
     }
 
     // If the first row doesn't contain metadata keys, we assume that the values

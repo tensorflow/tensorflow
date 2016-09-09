@@ -71,13 +71,20 @@ export class DataPanel extends DataPanelPolymer {
     this.setupUploadButtons();
     let names = Object.keys(this.checkpointInfo.tensors)
                     .filter(name => {
-                      let tensorInfo = this.checkpointInfo.tensors[name];
-                      let shape = tensorInfo.shape;
+                      let shape = this.checkpointInfo.tensors[name].shape;
                       return shape.length === 2 && shape[0] > 1 && shape[1] > 1;
                     })
-                    .sort(
-                        (a, b) => this.checkpointInfo.tensors[b].shape[0] -
-                            this.checkpointInfo.tensors[a].shape[0]);
+                    .sort((a, b) => {
+                      let sizeA = this.checkpointInfo.tensors[a].shape[0];
+                      let sizeB = this.checkpointInfo.tensors[b].shape[0];
+                      if (sizeA === sizeB) {
+                        // If the same dimension, sort alphabetically by tensor
+                        // name.
+                        return a <= b ? -1 : 1;
+                      }
+                      // Sort by first tensor dimension.
+                      return sizeB - sizeA;
+                    });
     this.tensorNames = names.map(name => {
       return {name, shape: this.checkpointInfo.tensors[name].shape};
     });

@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 /** Delay for running async tasks, in milliseconds. */
-const ASYNC_DELAY = 15;
+const ASYNC_DELAY_MS = 15;
+
+/** Duration in ms for showing warning messages to the user */
+const WARNING_DURATION_MS = 5000;
 
 /**
  * Runs an expensive task asynchronously with some delay
@@ -34,7 +37,7 @@ export function runAsyncTask<T>(message: string, task: () => T): Promise<T> {
         reject(ex);
       }
       return true;
-    }, ASYNC_DELAY);
+    }, ASYNC_DELAY_MS);
   });
 }
 
@@ -48,4 +51,17 @@ export function updateMessage(msg?: string): void {
   } else {
     d3.select('#notify-msg').style('display', 'block').text(msg);
   }
+}
+
+/**
+ * Shows a warning message to the user for a certain amount of time.
+ */
+export function updateWarningMessage(msg: string): void {
+  let warningDiv = d3.select('#warning-msg');
+  warningDiv.style('display', 'block').text('Warning: ' + msg);
+
+  // Hide the warning message after a certain timeout.
+  setTimeout(() => {
+    warningDiv.style('display', 'none');
+  }, WARNING_DURATION_MS);
 }
