@@ -47,15 +47,15 @@ class MockTargetColumn(object):
   def __init__(self):
     self._num_label_columns = None
 
-  def get_eval_ops(self, features, logits, targets, metrics):
+  def get_eval_ops(self, features, activations, targets, metrics):
     raise NotImplementedError(
         'MockTargetColumn.get_eval_ops called unexpectedly.')
 
-  def logits_to_predictions(self, flattened_logits, proba=False):
+  def activations_to_predictions(self, flattened_activations, proba=False):
     raise NotImplementedError(
-        'MockTargetColumn.logits_to_predictions called unexpectedly.')
+        'MockTargetColumn.activations_to_predictions called unexpectedly.')
 
-  def loss(self, logits, targets, features):
+  def loss(self, activations, targets, features):
     raise NotImplementedError('MockTargetColumn.loss called unexpectedly.')
 
   @property
@@ -120,26 +120,26 @@ class DynamicRnnEstimatorTest(tf.test.TestCase):
                 'sequence_length': tf.constant(
                     sequence_length, dtype=tf.int32)}
 
-    # Map feature to logits with mocked linear layer.
+    # Map feature to activations with mocked linear layer.
     with tf.test.mock.patch.object(dynamic_rnn_estimator,
                                    'layers') as mock_layers:
       mock_layers.fully_connected.return_value = tf.constant(
           mock_linear_layer_output, dtype=tf.float32)
-      logits_t, final_state_t = self._rnn_estimator._construct_rnn(
+      activations_t, final_state_t = self._rnn_estimator._construct_rnn(
           features)
       _, fully_connected_kwargs = mock_layers.fully_connected.call_args
       linear_layer_inputs_t = fully_connected_kwargs['inputs']
       linear_layer_output_dim = fully_connected_kwargs['num_outputs']
 
-    # Obtain values of linear layer input, logits and final state.
+    # Obtain values of linear layer input, activations and final state.
     with tf.Session() as sess:
       sess.run(tf.initialize_all_variables())
-      linear_layer_inputs, logits, final_state = sess.run(
-          [linear_layer_inputs_t, logits_t, final_state_t])
+      linear_layer_inputs, activations, final_state = sess.run(
+          [linear_layer_inputs_t, activations_t, final_state_t])
 
     np.testing.assert_equal(num_classes, linear_layer_output_dim)
     np.testing.assert_almost_equal(inputs, linear_layer_inputs)
-    np.testing.assert_almost_equal(mock_linear_layer_output, logits)
+    np.testing.assert_almost_equal(mock_linear_layer_output, activations)
     np.testing.assert_almost_equal(
         np.zeros([batch_size, self._rnn_cell.state_size], dtype=float),
         final_state)
@@ -183,32 +183,33 @@ class MultiValueRNNEstimatorTest(tf.test.TestCase):
                               'Mismatch on row {}. Got {}; expected {}.'.format(
                                   i, actual_mask, expected_mask))
 
-  def testMaskLogitsAndTargets(self):
-    """Test `_mask_logits_and_targets`."""
+  def testMaskActivationsAndTargets(self):
+    """Test `_mask_activations_and_targets`."""
     batch_size = 4
     padded_length = 6
     num_classes = 4
     np.random.seed(1234)
     sequence_length = np.random.randint(0, padded_length + 1, batch_size)
-    logits = np.random.rand(batch_size, padded_length, num_classes)
+    activations = np.random.rand(batch_size, padded_length, num_classes)
     targets = np.random.randint(0, num_classes, [batch_size, padded_length])
-    (logits_masked_t,
-     targets_masked_t) = dynamic_rnn_estimator._mask_logits_and_targets(
+    (activations_masked_t,
+     targets_masked_t) = dynamic_rnn_estimator._mask_activations_and_targets(
          tf.constant(
-             logits, dtype=tf.float32),
+             activations, dtype=tf.float32),
          tf.constant(
              targets, dtype=tf.int32),
          tf.constant(
              sequence_length, dtype=tf.int32))
 
     with tf.Session() as sess:
-      logits_masked, targets_masked = sess.run(
-          [logits_masked_t, targets_masked_t])
+      activations_masked, targets_masked = sess.run(
+          [activations_masked_t, targets_masked_t])
 
-    expected_logits_shape = [sum(sequence_length), num_classes]
-    np.testing.assert_equal(expected_logits_shape, logits_masked.shape,
-                            'Wrong logits shape. Expected {}; got {}.'.format(
-                                expected_logits_shape, logits_masked.shape))
+    expected_activations_shape = [sum(sequence_length), num_classes]
+    np.testing.assert_equal(
+        expected_activations_shape, activations_masked.shape,
+        'Wrong activations shape. Expected {}; got {}.'.format(
+            expected_activations_shape, activations_masked.shape))
 
     expected_targets_shape = [sum(sequence_length)]
     np.testing.assert_equal(expected_targets_shape, targets_masked.shape,
@@ -217,14 +218,14 @@ class MultiValueRNNEstimatorTest(tf.test.TestCase):
     masked_index = 0
     for i in range(batch_size):
       for j in range(sequence_length[i]):
-        actual_logits = logits_masked[masked_index]
-        expected_logits = logits[i, j, :]
+        actual_activations = activations_masked[masked_index]
+        expected_activations = activations[i, j, :]
         np.testing.assert_almost_equal(
-            expected_logits,
-            actual_logits,
+            expected_activations,
+            actual_activations,
             err_msg='Unexpected logit value at index [{}, {}, :].'
-            '  Expected {}; got {}.'.format(i, j, expected_logits,
-                                            actual_logits))
+            '  Expected {}; got {}.'.format(i, j, expected_activations,
+                                            actual_activations))
 
         actual_targets = targets_masked[masked_index]
         expected_targets = targets[i, j]
@@ -236,31 +237,34 @@ class MultiValueRNNEstimatorTest(tf.test.TestCase):
                                            actual_targets))
         masked_index += 1
 
-  def testLogitsToPredictions(self):
-    """Test `DynamicRNNEstimator._logits_to_predictions`."""
+  def testActivationsToPredictions(self):
+    """Test `DynamicRNNEstimator._activations_to_predictions`."""
     batch_size = 8
     sequence_length = 16
     num_classes = 3
 
     np.random.seed(10101)
-    logits = np.random.rand(batch_size, sequence_length, num_classes)
-    flattened_logits = np.reshape(logits, [-1, num_classes])
-    flattened_argmax = np.argmax(flattened_logits, axis=1)
-    expected_predictions = np.argmax(logits, axis=2)
+    activations = np.random.rand(batch_size, sequence_length, num_classes)
+    flattened_activations = np.reshape(activations, [-1, num_classes])
+    flattened_argmax = np.argmax(flattened_activations, axis=1)
+    expected_predictions = np.argmax(activations, axis=2)
 
-    with tf.test.mock.patch.object(self._mock_target_column,
-                                   'logits_to_predictions',
-                                   return_value=flattened_argmax,
-                                   autospec=True) as mock_logits_to_predictions:
-      predictions_t = self._seq_estimator._logits_to_predictions(
-          None, tf.constant(logits, dtype=tf.float32))
-      (target_column_input_logits_t,), _ = mock_logits_to_predictions.call_args
+    with tf.test.mock.patch.object(
+        self._mock_target_column,
+        'activations_to_predictions',
+        return_value=flattened_argmax,
+        autospec=True) as mock_activations_to_predictions:
+      predictions_t = self._seq_estimator._activations_to_predictions(
+          None, tf.constant(activations, dtype=tf.float32))
+      (target_column_input_activations_t,
+      ), _ = mock_activations_to_predictions.call_args
 
     with tf.Session() as sess:
-      target_column_input_logits, predictions = sess.run(
-          [target_column_input_logits_t, predictions_t])
+      target_column_input_activations, predictions = sess.run(
+          [target_column_input_activations_t, predictions_t])
 
-    np.testing.assert_almost_equal(flattened_logits, target_column_input_logits)
+    np.testing.assert_almost_equal(flattened_activations,
+                                   target_column_input_activations)
     np.testing.assert_equal(expected_predictions, predictions)
 
   def testLearnSineFunction(self):
@@ -353,35 +357,36 @@ class MultiValueRNNEstimatorTest(tf.test.TestCase):
 
 class SingleValueRNNEstimatorTest(tf.test.TestCase):
 
-  def testSelectLastLogits(self):
-    """Test `_select_last_logits`."""
+  def testSelectLastactivations(self):
+    """Test `_select_last_activations`."""
     batch_size = 4
     padded_length = 6
     num_classes = 4
     np.random.seed(4444)
     sequence_length = np.random.randint(0, padded_length + 1, batch_size)
-    logits = np.random.rand(batch_size, padded_length, num_classes)
-    last_logits_t = dynamic_rnn_estimator._select_last_logits(
-        tf.constant(logits, dtype=tf.float32),
+    activations = np.random.rand(batch_size, padded_length, num_classes)
+    last_activations_t = dynamic_rnn_estimator._select_last_activations(
+        tf.constant(activations, dtype=tf.float32),
         tf.constant(sequence_length, dtype=tf.int32))
 
     with tf.Session() as sess:
-      last_logits = sess.run(last_logits_t)
+      last_activations = sess.run(last_activations_t)
 
-    expected_logits_shape = [batch_size, num_classes]
-    np.testing.assert_equal(expected_logits_shape, last_logits.shape,
-                            'Wrong logits shape. Expected {}; got {}.'.format(
-                                expected_logits_shape, last_logits.shape))
+    expected_activations_shape = [batch_size, num_classes]
+    np.testing.assert_equal(
+        expected_activations_shape, last_activations.shape,
+        'Wrong activations shape. Expected {}; got {}.'.format(
+            expected_activations_shape, last_activations.shape))
 
     for i in range(batch_size):
-      actual_logits = last_logits[i, :]
-      expected_logits = logits[i, sequence_length[i] - 1, :]
+      actual_activations = last_activations[i, :]
+      expected_activations = activations[i, sequence_length[i] - 1, :]
       np.testing.assert_almost_equal(
-          expected_logits,
-          actual_logits,
+          expected_activations,
+          actual_activations,
           err_msg='Unexpected logit value at index [{}, :].'
-          '  Expected {}; got {}.'.format(i, expected_logits,
-                                          actual_logits))
+          '  Expected {}; got {}.'.format(i, expected_activations,
+                                          actual_activations))
 
   def testLearnMean(self):
     """Test that `_SequenceRegressor` can learn to calculate a mean."""
