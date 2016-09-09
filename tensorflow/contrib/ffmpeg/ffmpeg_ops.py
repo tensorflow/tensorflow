@@ -59,7 +59,7 @@ def decode_audio(contents, file_format=None, samples_per_second=None,
       channel_count=channel_count)
 
 
-ops.NoGradient('DecodeAudio')
+ops.NotDifferentiable('DecodeAudio')
 
 
 ops.RegisterShape('EncodeAudio')(common_shapes.call_cpp_shape_fn)
@@ -84,7 +84,7 @@ def encode_audio(audio, file_format=None, samples_per_second=None):
       audio, file_format=file_format, samples_per_second=samples_per_second)
 
 
-ops.NoGradient('EncodeAudio')
+ops.NotDifferentiable('EncodeAudio')
 
 
 def _load_library(name, op_list=None):

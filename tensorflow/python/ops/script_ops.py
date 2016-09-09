@@ -175,5 +175,5 @@ def py_func(func, inp, Tout, stateful=True, name=None):
 ops.RegisterShape("PyFunc")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("PyFuncStateless")(common_shapes.call_cpp_shape_fn)
 
-ops.NoGradient("PyFunc")
-ops.NoGradient("PyFuncStateless")
+ops.NotDifferentiable("PyFunc")
+ops.NotDifferentiable("PyFuncStateless")

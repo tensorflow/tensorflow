@@ -1045,14 +1045,14 @@ def initialize_all_tables(name="init_all_tables"):
   return control_flow_ops.no_op(name=name)
 
 
-ops.NoGradient("LookupTableFind")
-ops.NoGradient("LookupTableInsert")
-ops.NoGradient("LookupTableSize")
-ops.NoGradient("HashTable")
-ops.NoGradient("InitializeTable")
-ops.NoGradient("InitializeTableFromTextFile")
-ops.NoGradient("MutableHashTable")
-ops.NoGradient("MutableHashTableOfTensors")
+ops.NotDifferentiable("LookupTableFind")
+ops.NotDifferentiable("LookupTableInsert")
+ops.NotDifferentiable("LookupTableSize")
+ops.NotDifferentiable("HashTable")
+ops.NotDifferentiable("InitializeTable")
+ops.NotDifferentiable("InitializeTableFromTextFile")
+ops.NotDifferentiable("MutableHashTable")
+ops.NotDifferentiable("MutableHashTableOfTensors")
 
 
 ops.RegisterShape("QueueSize")(common_shapes.scalar_shape)

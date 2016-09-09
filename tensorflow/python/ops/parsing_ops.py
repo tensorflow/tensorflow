@@ -35,9 +35,9 @@ from tensorflow.python.ops.gen_parsing_ops import *
 # pylint: enable=wildcard-import,undefined-variable
 
 
-ops.NoGradient("DecodeRaw")
-ops.NoGradient("ParseTensor")
-ops.NoGradient("StringToNumber")
+ops.NotDifferentiable("DecodeRaw")
+ops.NotDifferentiable("ParseTensor")
+ops.NotDifferentiable("StringToNumber")
 
 
 class VarLenFeature(collections.namedtuple("VarLenFeature", ["dtype"])):

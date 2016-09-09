@@ -64,7 +64,7 @@ def set_size(a, validate_indices=True):
   # pylint: disable=protected-access
   return _set_ops.set_size(a.indices, a.values, a.shape, validate_indices)
 
-ops.NoGradient("SetSize")
+ops.NotDifferentiable("SetSize")
 
 
 @ops.RegisterShape("DenseToDenseSetOperation")
@@ -170,9 +170,9 @@ def _sparse_to_sparse_shape(op):
   return (indices_shape, values_shape, shape_shape)
 
 
-ops.NoGradient("DenseToDenseSetOperation")
-ops.NoGradient("DenseToSparseSetOperation")
-ops.NoGradient("SparseToSparseSetOperation")
+ops.NotDifferentiable("DenseToDenseSetOperation")
+ops.NotDifferentiable("DenseToSparseSetOperation")
+ops.NotDifferentiable("SparseToSparseSetOperation")
 
 
 def _set_operation(a, b, set_operation, validate_indices=True):

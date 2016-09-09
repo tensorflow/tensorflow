@@ -32,12 +32,14 @@ TRAINING_OPS_FILE = '_training_ops.so'
 _training_ops = None
 _ops_lock = threading.Lock()
 
-ops.NoGradient('HardRoutingFunction')
-ops.NoGradient('RoutingGradient')
-ops.NoGradient('KFeatureDataGradient')
-ops.NoGradient('KFeatureRoutingGradient')
-ops.NoGradient('KFeatureWeightGradient')
-ops.NoGradient('UnpackPath')
+# TODO(b/31222613): Some of these ops are probably differentiable, and
+# there may be latent bugs here.
+ops.NotDifferentiable('HardRoutingFunction')
+ops.NotDifferentiable('RoutingGradient')
+ops.NotDifferentiable('KFeatureDataGradient')
+ops.NotDifferentiable('KFeatureRoutingGradient')
+ops.NotDifferentiable('KFeatureWeightGradient')
+ops.NotDifferentiable('UnpackPath')
 
 
 @ops.RegisterShape('RoutingFunction')

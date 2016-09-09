@@ -22,10 +22,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import tensor_array_ops
 
 
-ops.NoGradient("TensorArray")
-ops.NoGradient("TensorArrayGrad")
-ops.NoGradient("TensorArraySize")
-ops.NoGradient("TensorArrayClose")
+# TODO(b/31222613): These ops may be differentiable, and there may be
+# latent bugs here.
+ops.NotDifferentiable("TensorArray")
+ops.NotDifferentiable("TensorArrayGrad")
+ops.NotDifferentiable("TensorArraySize")
+ops.NotDifferentiable("TensorArrayClose")
 
 
 def _GetGradSource(op_or_tensor):

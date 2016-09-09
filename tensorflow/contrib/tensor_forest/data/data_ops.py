@@ -36,8 +36,8 @@ DATA_OPS_FILE = '_data_ops.so'
 _data_ops = None
 _ops_lock = threading.Lock()
 
-ops.NoGradient('SparseValuesToIndices')
-ops.NoGradient('StringToFloat')
+ops.NotDifferentiable('SparseValuesToIndices')
+ops.NotDifferentiable('StringToFloat')
 
 
 @ops.RegisterShape('SparseValuesToIndices')

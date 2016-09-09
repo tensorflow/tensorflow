@@ -31,13 +31,15 @@ TRAINING_OPS_FILE = '_training_ops.so'
 _training_ops = None
 _ops_lock = threading.Lock()
 
-ops.NoGradient('CountExtremelyRandomStats')
-ops.NoGradient('SampleInputs')
-ops.NoGradient('BestSplits')
-ops.NoGradient('GrowTree')
-ops.NoGradient('FinishedNodes')
-ops.NoGradient('ScatterAddNdim')
-ops.NoGradient('UpdateFertileSlots')
+ops.NotDifferentiable('CountExtremelyRandomStats')
+ops.NotDifferentiable('SampleInputs')
+ops.NotDifferentiable('BestSplits')
+ops.NotDifferentiable('GrowTree')
+ops.NotDifferentiable('FinishedNodes')
+# TODO(b/31222613): This op may be differentiable, and there may be
+# latent bugs here.
+ops.NotDifferentiable('ScatterAddNdim')
+ops.NotDifferentiable('UpdateFertileSlots')
 
 
 ops.RegisterShape('CountExtremelyRandomStats')(common_shapes.call_cpp_shape_fn)

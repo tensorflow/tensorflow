@@ -905,7 +905,7 @@ def an_op(g):
   return _apply_op(g, "an_op", [], [dtypes.float32])
 
 
-ops.NoGradient("an_op")
+ops.NotDifferentiable("an_op")
 
 
 def copy_op(x):

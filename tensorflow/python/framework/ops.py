@@ -1666,16 +1666,25 @@ class RegisterGradient(object):
     return f
 
 
-def NoGradient(op_type):
-  """Specifies that ops of type `op_type` do not have a defined gradient.
+def NotDifferentiable(op_type):
+  """Specifies that ops of type `op_type` is not differentiable.
+
+  This function should *not* be used for operations that have a
+  well-defined gradient that is not yet implemented.
 
   This function is only used when defining a new op type. It may be
   used for ops such as `tf.size()` that are not differentiable.  For
   example:
 
   ```python
-  tf.NoGradient("Size")
+  tf.NotDifferentiable("Size")
   ```
+
+  The gradient computed for 'op_type' will then propagate zeros.
+
+  For ops that have a well-defined gradient but are not yet implemented,
+  no declaration should be made, and an error *must* be thrown if
+  an attempt to request its gradient is made.
 
   Args:
     op_type: The string type of an operation. This corresponds to the
@@ -1688,6 +1697,10 @@ def NoGradient(op_type):
   if not isinstance(op_type, six.string_types):
     raise TypeError("op_type must be a string")
   _gradient_registry.register(None, op_type)
+
+
+# Alias for the old name, will be eventually removed.
+NoGradient = NotDifferentiable
 
 
 def get_gradient_function(op):

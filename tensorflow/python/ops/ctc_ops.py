@@ -250,7 +250,7 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
 ops.RegisterShape("CTCBeamSearchDecoder")(common_shapes.call_cpp_shape_fn)
 
 
-ops.NoGradient("CTCGreedyDecoder")
+ops.NotDifferentiable("CTCGreedyDecoder")
 
 
-ops.NoGradient("CTCBeamSearchDecoder")
+ops.NotDifferentiable("CTCBeamSearchDecoder")

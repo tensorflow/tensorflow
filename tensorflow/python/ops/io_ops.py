@@ -369,13 +369,13 @@ class ReaderBase(object):
     return gen_io_ops._reader_reset(self._reader_ref, name=name)
 
 
-ops.NoGradient("ReaderRead")
-ops.NoGradient("ReaderReadUpTo")
-ops.NoGradient("ReaderNumRecordsProduced")
-ops.NoGradient("ReaderNumWorkUnitsCompleted")
-ops.NoGradient("ReaderSerializeState")
-ops.NoGradient("ReaderRestoreState")
-ops.NoGradient("ReaderReset")
+ops.NotDifferentiable("ReaderRead")
+ops.NotDifferentiable("ReaderReadUpTo")
+ops.NotDifferentiable("ReaderNumRecordsProduced")
+ops.NotDifferentiable("ReaderNumWorkUnitsCompleted")
+ops.NotDifferentiable("ReaderSerializeState")
+ops.NotDifferentiable("ReaderRestoreState")
+ops.NotDifferentiable("ReaderReset")
 
 
 class WholeFileReader(ReaderBase):
@@ -397,7 +397,7 @@ class WholeFileReader(ReaderBase):
     super(WholeFileReader, self).__init__(rr, supports_serialize=True)
 
 
-ops.NoGradient("WholeFileReader")
+ops.NotDifferentiable("WholeFileReader")
 
 
 class TextLineReader(ReaderBase):
@@ -421,7 +421,7 @@ class TextLineReader(ReaderBase):
     super(TextLineReader, self).__init__(rr)
 
 
-ops.NoGradient("TextLineReader")
+ops.NotDifferentiable("TextLineReader")
 
 
 class FixedLengthRecordReader(ReaderBase):
@@ -447,7 +447,7 @@ class FixedLengthRecordReader(ReaderBase):
     super(FixedLengthRecordReader, self).__init__(rr)
 
 
-ops.NoGradient("FixedLengthRecordReader")
+ops.NotDifferentiable("FixedLengthRecordReader")
 
 
 class TFRecordReader(ReaderBase):
@@ -474,7 +474,7 @@ class TFRecordReader(ReaderBase):
     super(TFRecordReader, self).__init__(rr)
 
 
-ops.NoGradient("TFRecordReader")
+ops.NotDifferentiable("TFRecordReader")
 
 
 class IdentityReader(ReaderBase):
@@ -496,7 +496,7 @@ class IdentityReader(ReaderBase):
     super(IdentityReader, self).__init__(rr, supports_serialize=True)
 
 
-ops.NoGradient("IdentityReader")
+ops.NotDifferentiable("IdentityReader")
 
 
 ops.RegisterShape("FixedLengthRecordReader")(common_shapes.call_cpp_shape_fn)

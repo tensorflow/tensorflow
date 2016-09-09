@@ -142,7 +142,7 @@ def _ConcatGrad(op, grad):
   return [None] + out_grads
 
 
-ops.NoGradient("ConcatOffset")
+ops.NotDifferentiable("ConcatOffset")
 
 
 @ops.RegisterGradient("Slice")
@@ -215,7 +215,7 @@ def _SplitGrad(op, *grads):
   return None, array_ops.concat(op.inputs[0], list(grads))
 
 
-ops.NoGradient("Const")
+ops.NotDifferentiable("Const")
 
 
 @ops.RegisterGradient("Diag")
@@ -262,7 +262,7 @@ def _BatchMatrixBandPartGrad(op, grad):
 
 
 # Edit Distance has no gradient (but can be used to eval seq2seq or CTC).
-ops.NoGradient("EditDistance")
+ops.NotDifferentiable("EditDistance")
 
 
 @ops.RegisterGradient("Fill")
@@ -270,7 +270,7 @@ def _FillGrad(_, grad):
   return None, math_ops.reduce_sum(grad)
 
 
-ops.NoGradient("ZerosLike")
+ops.NotDifferentiable("ZerosLike")
 
 
 @ops.RegisterGradient("Gather")
@@ -312,7 +312,7 @@ def _RefIdGrad(_, grad):
   return grad
 
 
-ops.NoGradient("StopGradient")
+ops.NotDifferentiable("StopGradient")
 
 
 @ops.RegisterGradient("Reshape")
@@ -320,7 +320,7 @@ def _ReshapeGrad(op, grad):
   return [array_ops.reshape(grad, array_ops.shape(op.inputs[0])), None]
 
 
-ops.NoGradient("InvertPermutation")
+ops.NotDifferentiable("InvertPermutation")
 
 
 def _ReshapeToInput(op, grad):
@@ -345,16 +345,16 @@ def _TransposeGrad(op, grad):
   return [array_ops.transpose(grad, array_ops.invert_permutation(p)), None]
 
 
-ops.NoGradient("Shape")
+ops.NotDifferentiable("Shape")
 
 
-ops.NoGradient("ShapeN")
+ops.NotDifferentiable("ShapeN")
 
 
-ops.NoGradient("Rank")
+ops.NotDifferentiable("Rank")
 
 
-ops.NoGradient("Size")
+ops.NotDifferentiable("Size")
 
 
 @ops.RegisterGradient("Tile")
@@ -379,7 +379,7 @@ def _TileGrad(op, grad):
   return [input_grad, None]
 
 
-ops.NoGradient("BroadcastGradientArgs")
+ops.NotDifferentiable("BroadcastGradientArgs")
 
 
 @ops.RegisterGradient("Pad")
@@ -445,7 +445,7 @@ def _DepthToSpaceGrad(op, grad):
   return array_ops.space_to_depth(grad, block_size)
 
 
-ops.NoGradient("OneHot")
+ops.NotDifferentiable("OneHot")
 
 
 @ops.RegisterGradient("MirrorPad")

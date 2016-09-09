@@ -81,7 +81,7 @@ def random_normal(shape,
     return value
 
 
-ops.NoGradient("RandomStandardNormal")
+ops.NotDifferentiable("RandomStandardNormal")
 
 
 def parameterized_truncated_normal(shape,
@@ -178,8 +178,8 @@ def truncated_normal(shape,
     return value
 
 
-ops.NoGradient("ParameterizedTruncatedNormal")
-ops.NoGradient("TruncatedNormal")
+ops.NotDifferentiable("ParameterizedTruncatedNormal")
+ops.NotDifferentiable("TruncatedNormal")
 
 
 def random_uniform(shape,
@@ -247,7 +247,7 @@ def random_uniform(shape,
       return math_ops.add(rnd * (maxval - minval), minval, name=name)
 
 
-ops.NoGradient("RandomUniform")
+ops.NotDifferentiable("RandomUniform")
 
 
 def random_shuffle(value, seed=None, name=None):
@@ -361,7 +361,7 @@ def _MultinomialShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
-ops.NoGradient("Multinomial")
+ops.NotDifferentiable("Multinomial")
 
 
 def random_gamma(shape,
@@ -448,7 +448,7 @@ def _RandomGammaShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
-ops.NoGradient("RandomGamma")
+ops.NotDifferentiable("RandomGamma")
 
 
 @ops.RegisterShape("ParameterizedTruncatedNormal")

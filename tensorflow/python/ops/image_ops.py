@@ -185,14 +185,20 @@ from tensorflow.python.ops.gen_image_ops import *
 from tensorflow.python.util.all_util import make_all
 
 
-ops.NoGradient('RandomCrop')
-ops.NoGradient('RGBToHSV')
-ops.NoGradient('HSVToRGB')
-ops.NoGradient('DrawBoundingBoxes')
-ops.NoGradient('SampleDistortedBoundingBox')
+ops.NotDifferentiable('RandomCrop')
+# TODO(b/31222613): This op may be differentiable, and there may be
+# latent bugs here.
+ops.NotDifferentiable('RGBToHSV')
+# TODO(b/31222613): This op may be differentiable, and there may be
+# latent bugs here.
+ops.NotDifferentiable('HSVToRGB')
+ops.NotDifferentiable('DrawBoundingBoxes')
+ops.NotDifferentiable('SampleDistortedBoundingBox')
 # TODO(bsteiner): Implement the gradient function for extract_glimpse
-ops.NoGradient('ExtractGlimpse')
-ops.NoGradient('NonMaxSuppression')
+# TODO(b/31222613): This op may be differentiable, and there may be
+# latent bugs here.
+ops.NotDifferentiable('ExtractGlimpse')
+ops.NotDifferentiable('NonMaxSuppression')
 
 
 def _assert(cond, ex_type, msg):

@@ -80,7 +80,7 @@ def tensor_summary(display_name,  # pylint: disable=invalid-name
   return val
 
 
-ops.NoGradient("TensorSummary")
+ops.NotDifferentiable("TensorSummary")
 
 
 ops.RegisterShape("TensorSummary")(common_shapes.call_cpp_shape_fn)

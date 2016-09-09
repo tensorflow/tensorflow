@@ -88,4 +88,4 @@ def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
 
 
 ops.RegisterShape("SparseFeatureCross")(common_shapes.call_cpp_shape_fn)
-ops.NoGradient("SparseFeatureCross")
+ops.NotDifferentiable("SparseFeatureCross")

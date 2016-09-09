@@ -294,12 +294,12 @@ def scalar_summary(tags, values, collections=None, name=None):
   return val
 
 
-ops.NoGradient("HistogramAccumulatorSummary")
-ops.NoGradient("HistogramSummary")
-ops.NoGradient("ImageSummary")
-ops.NoGradient("AudioSummary")
-ops.NoGradient("MergeSummary")
-ops.NoGradient("ScalarSummary")
+ops.NotDifferentiable("HistogramAccumulatorSummary")
+ops.NotDifferentiable("HistogramSummary")
+ops.NotDifferentiable("ImageSummary")
+ops.NotDifferentiable("AudioSummary")
+ops.NotDifferentiable("MergeSummary")
+ops.NotDifferentiable("ScalarSummary")
 
 
 ops.RegisterShape("HistogramAccumulatorSummary")(
