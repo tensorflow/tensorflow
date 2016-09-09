@@ -12995,7 +12995,7 @@ dist.pdf(x)  # Shape is [2].
 
 # Initialize two 3x3 Wisharts with Cholesky factored scale matrices.
 df = [5, 4]
-chol_scale = tf.batch_cholesky(...)  # Shape is [2, 3, 3].
+chol_scale = tf.cholesky(...)  # Shape is [2, 3, 3].
 dist = tf.contrib.distributions.WishartCholesky(df=df, scale=chol_scale)
 
 # Evaluate this on four observations.
