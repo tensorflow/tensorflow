@@ -30,6 +30,10 @@ FileSystem::~FileSystem() {}
 string FileSystem::TranslateName(const string& name) const { return name; }
 
 Status FileSystem::IsDirectory(const string& name) {
+  // Check if path exists.
+  if (!FileExists(name)) {
+    return Status(tensorflow::error::NOT_FOUND, "Path not found");
+  }
   FileStatistics stat;
   TF_RETURN_IF_ERROR(Stat(name, &stat));
   if (S_ISDIR(stat.mode)) {

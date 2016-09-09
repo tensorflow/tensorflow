@@ -30,6 +30,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary.impl import directory_watcher
 from tensorflow.python.summary.impl import io_wrapper
 from tensorflow.python.summary.impl import reservoir
+from tensorflow.python.util import compat
 
 namedtuple = collections.namedtuple
 ScalarEvent = namedtuple('ScalarEvent', ['wall_time', 'step', 'value'])
@@ -96,7 +97,7 @@ STORE_EVERYTHING_SIZE_GUIDANCE = {
 
 def IsTensorFlowEventsFile(path):
   """Check the path name to see if it is probably a TF Events file."""
-  return 'tfevents' in os.path.basename(path)
+  return 'tfevents' in compat.as_str_any(os.path.basename(path))
 
 
 class EventAccumulator(object):

@@ -24,10 +24,11 @@ limitations under the License.
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputstream_interface.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/match.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_statistics.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 %}
 
@@ -172,11 +173,35 @@ tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
                                               buffer_size));
   return buffered_input_stream.release();
 }
+
+tensorflow::WritableFile* CreateWritableFile(const string& filename) {
+  std::unique_ptr<tensorflow::WritableFile> file;
+  if (!tensorflow::Env::Default()->NewWritableFile(filename, &file).ok()) {
+    return nullptr;
+  }
+  return file.release();
+}
+
+void AppendToFile(const string& file_content, tensorflow::WritableFile* file,
+                  TF_Status* out_status) {
+  tensorflow::Status status = file->Append(file_content);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+  }
+}
+
+void FlushWritableFile(tensorflow::WritableFile* file, TF_Status* out_status) {
+  tensorflow::Status status = file->Flush();
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+  }
+}
 %}
 
 // Ensure that the returned object is destroyed when its wrapper is
 // garbage collected.
 %newobject CreateBufferedInputStream;
+%newobject CreateWritableFile;
 
 // Wrap the above functions.
 inline bool FileExists(const string& filename);
@@ -197,11 +222,18 @@ void Stat(const string& filename, tensorflow::FileStatistics* stats,
           TF_Status* out_status);
 tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
     const string& filename, size_t buffer_size);
+tensorflow::WritableFile* CreateWritableFile(const string& filename);
+void AppendToFile(const string& file_content, tensorflow::WritableFile* file,
+                  TF_Status* out_status);
+void FlushWritableFile(tensorflow::WritableFile* file, TF_Status* out_status);                  
 
 %ignoreall
 %unignore tensorflow::io::BufferedInputStream;
 %unignore tensorflow::io::BufferedInputStream::~BufferedInputStream;
 %unignore tensorflow::io::BufferedInputStream::ReadLineAsString;
+%unignore tensorflow::WritableFile;
+%unignore tensorflow::WritableFile::~WritableFile;
+%include "tensorflow/core/platform/file_system.h"
 %include "tensorflow/core/lib/io/inputstream_interface.h"
 %include "tensorflow/core/lib/io/buffered_inputstream.h"
 %unignoreall
