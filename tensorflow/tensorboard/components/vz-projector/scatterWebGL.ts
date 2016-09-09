@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet, Mode, OnHoverListener, OnSelectionListener, Point3D, Scatter} from './scatter';
+import {DataSet, Mode, OnHoverListener, OnSelectionListener, Scatter} from './scatter';
+
+import {dist_2D} from './vector';
 
 // Colors (in various necessary formats).
 const BACKGROUND_COLOR_DAY = 0xffffff;
@@ -467,7 +469,7 @@ export abstract class ScatterWebGL implements Scatter {
   private getDist2ToMouse(i: number, e: MouseEvent) {
     let point = this.getProjectedPointFromIndex(i);
     let screenCoords = this.vector3DToScreenCoords(point);
-    return this.dist2D(
+    return dist_2D(
         [e.offsetX * this.dpr, e.offsetY * this.dpr],
         [screenCoords.x, screenCoords.y]);
   }
@@ -478,7 +480,7 @@ export abstract class ScatterWebGL implements Scatter {
     let selectedPoints: Array<number> = new Array();
     this.dataSet.points.forEach(point => {
       let pt = point.projectedPoint;
-      let pointVect = new THREE.Vector3(pt.x, pt.y, pt.z);
+      let pointVect = new THREE.Vector3(pt[0], pt[1], pt[2]);
       let distPointToSphereOrigin = new THREE.Vector3()
                                         .copy(this.selectionSphere.position)
                                         .sub(pointVect)
@@ -494,9 +496,9 @@ export abstract class ScatterWebGL implements Scatter {
 
   protected getProjectedPointFromIndex(i: number): THREE.Vector3 {
     return new THREE.Vector3(
-        this.dataSet.points[i].projectedPoint.x,
-        this.dataSet.points[i].projectedPoint.y,
-        this.dataSet.points[i].projectedPoint.z);
+        this.dataSet.points[i].projectedPoint[0],
+        this.dataSet.points[i].projectedPoint[1],
+        this.dataSet.points[i].projectedPoint[2]);
   }
 
   protected vector3DToScreenCoords(v: THREE.Vector3) {
@@ -509,20 +511,6 @@ export abstract class ScatterWebGL implements Scatter {
       y: -((vector.y - 1) / 2 * this.height) * this.dpr
     };
     return coords;
-  }
-
-  /** Returns the distance between two points in 3d space */
-  protected dist3D(a: Point3D, b: Point3D): number {
-    let dx = a.x - b.x;
-    let dy = a.y - b.y;
-    let dz = a.z - b.z;
-    return Math.sqrt(dx * dx + dy * dy + dz * dz);
-  }
-
-  protected dist2D(a: [number, number], b: [number, number]): number {
-    let dX = a[0] - b[0];
-    let dY = a[1] - b[1];
-    return Math.sqrt(dX * dX + dY * dY);
   }
 
   /** Cancels current animation */
@@ -560,7 +548,7 @@ export abstract class ScatterWebGL implements Scatter {
       return {x: x, y: y, z: z};
     };
     // If we're still relatively far away from the target, go closer
-    if (this.dist3D(currPos, pos) > .03) {
+    if (currPos.distanceTo(pos) > 0.03) {
       let newTar = interp(target, currTarget);
       this.cameraControls.target.set(newTar.x, newTar.y, newTar.z);
 
@@ -604,7 +592,7 @@ export abstract class ScatterWebGL implements Scatter {
     this.selectionSphere.scale.set(0, 0, 0);
     let pos = this.dataSet.points[this.nearestPoint].projectedPoint;
     this.scene.add(this.selectionSphere);
-    this.selectionSphere.position.set(pos.x, pos.y, pos.z);
+    this.selectionSphere.position.set(pos[0], pos[1], pos[2]);
   }
 
   private getLayoutValues() {
@@ -721,13 +709,12 @@ export abstract class ScatterWebGL implements Scatter {
                        .copy(this.cameraControls.target)
                        .sub(this.perspCamera.position)
                        .multiplyScalar(additiveZoom);
-    let position =
-        new THREE.Vector3().copy(this.perspCamera.position).add(zoomVect);
+    let p = new THREE.Vector3().copy(this.perspCamera.position).add(zoomVect);
+    let d = p.distanceTo(this.cameraControls.target);
 
     // Make sure that we're not too far zoomed in. If not, zoom!
-    if ((this.dist3D(position, this.cameraControls.target) > MIN_ZOOM) &&
-        (this.dist3D(position, this.cameraControls.target) < MAX_ZOOM)) {
-      this.animate(position, this.cameraControls.target);
+    if ((d > MIN_ZOOM) && (d < MAX_ZOOM)) {
+      this.animate(p, this.cameraControls.target);
     }
   }
 

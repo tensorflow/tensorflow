@@ -123,11 +123,7 @@ export class DataSet implements scatter.DataSet {
         metadata: dp.metadata,
         dataSourceIndex: dp.dataSourceIndex,
         vector: dp.vector.slice(),
-        projectedPoint: {
-          x: 0,
-          y: 0,
-          z: 0,
-        },
+        projectedPoint: [0, 0, 0],
         projections: {}
       });
       indicesSeen.push(false);

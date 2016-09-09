@@ -321,34 +321,25 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
   private getNearFarPoints() {
     let shortestDist: number = Infinity;
     let furthestDist: number = 0;
-    for (let i = 0; i < this.dataSet.points.length; i++) {
-      let point = this.getProjectedPointFromIndex(i);
-      if (!this.isPointWithinCameraView(point)) {
-        continue;
-      };
-      let distToCam = this.dist3D(point, this.perspCamera.position);
-      furthestDist = Math.max(furthestDist, distToCam);
-      shortestDist = Math.min(shortestDist, distToCam);
-    }
-    return {shortestDist, furthestDist};
-  }
-
-  /**
-   * Make sure that the point is in view of the camera (as opposed to behind
-   * this is a problem because we are projecting to the camera)
-   */
-  private isPointWithinCameraView(point: THREE.Vector3): boolean {
     let camToTarget = new THREE.Vector3()
                           .copy(this.perspCamera.position)
                           .sub(this.cameraControls.target);
-    let camToPoint =
-        new THREE.Vector3().copy(this.perspCamera.position).sub(point);
-    // If the angle between the camera-target and camera-point vectors is more
-    // than 90, the point is behind the camera
-    if (camToPoint.angleTo(camToTarget) > Math.PI / 2) {
-      return false;
-    };
-    return true;
+    for (let i = 0; i < this.dataSet.points.length; i++) {
+      let point = this.getProjectedPointFromIndex(i);
+      // discard points that are behind the camera
+      let camToPoint =
+          new THREE.Vector3().copy(this.perspCamera.position).sub(point);
+      if (camToTarget.dot(camToPoint) < 0) {
+        continue;
+      }
+
+      let distToCam = this.perspCamera.position.distanceToSquared(point);
+      furthestDist = Math.max(furthestDist, distToCam);
+      shortestDist = Math.min(shortestDist, distToCam);
+    }
+    furthestDist = Math.sqrt(furthestDist);
+    shortestDist = Math.sqrt(shortestDist);
+    return {shortestDist, furthestDist};
   }
 
   /** Removes all the labels. */
@@ -397,6 +388,9 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
 
     let dists = this.getNearFarPoints();
     let opacityRange = dists.furthestDist - dists.shortestDist;
+    let camToTarget = new THREE.Vector3()
+                          .copy(this.perspCamera.position)
+                          .sub(this.cameraControls.target);
 
     // Setting styles for the labeled font.
     this.gc.lineWidth = 6;
@@ -408,9 +402,12 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
          i++) {
       let index = this.labeledPoints[i];
       let point = this.getProjectedPointFromIndex(index);
-      if (!this.isPointWithinCameraView(point)) {
+      // discard points that are behind the camera
+      let camToPoint =
+          new THREE.Vector3().copy(this.perspCamera.position).sub(point);
+      if (camToTarget.dot(camToPoint) < 0) {
         continue;
-      };
+      }
       let screenCoords = this.vector3DToScreenCoords(point);
       // Have extra space between neighboring labels. Don't pack too tightly.
       let labelMargin = 2;
@@ -434,7 +431,8 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
         textBoundingBox.hiX += labelWidth - 1;
         if (grid.insert(textBoundingBox) &&
             this.isLabelInBounds(labelWidth, screenCoords)) {
-          let lenToCamera = this.dist3D(point, this.perspCamera.position);
+          let p = new THREE.Vector3(point[0], point[1], point[2]);
+          let lenToCamera = this.perspCamera.position.distanceTo(p);
           // Opacity is scaled between 0.2 and 1, based on how far a label is
           // from the camera (Unless we are in 2d mode, in which case opacity is
           // just 1!)
@@ -453,8 +451,8 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
       let point = this.dataSet.points[index];
       this.gc.font = (FONT_SIZE * this.dpr * 1.7).toString() + 'px roboto';
       let coords = new THREE.Vector3(
-          point.projectedPoint.x, point.projectedPoint.y,
-          point.projectedPoint.z);
+          point.projectedPoint[0], point.projectedPoint[1],
+          point.projectedPoint[2]);
       let screenCoords = this.vector3DToScreenCoords(coords);
       let text = this.labelAccessor(index);
       this.formatLabel(text, screenCoords, 255);
@@ -585,7 +583,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     for (let i = 0; i < this.dataSet.points.length; i++) {
       // Set position based on projected point.
       let pp = this.dataSet.points[i].projectedPoint;
-      this.positionBuffer.setXYZ(i, pp.x, pp.y, pp.z);
+      this.positionBuffer.setXYZ(i, pp[0], pp[1], pp[2]);
     }
 
     // Update the traces.
@@ -598,11 +596,11 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
         let point2 = this.dataSet.points[dataTrace.pointIndices[j + 1]];
 
         this.tracePositionBuffer[i].setXYZ(
-            vertexCount, point1.projectedPoint.x, point1.projectedPoint.y,
-            point1.projectedPoint.z);
+            vertexCount, point1.projectedPoint[0], point1.projectedPoint[1],
+            point1.projectedPoint[2]);
         this.tracePositionBuffer[i].setXYZ(
-            vertexCount + 1, point2.projectedPoint.x, point2.projectedPoint.y,
-            point2.projectedPoint.z);
+            vertexCount + 1, point2.projectedPoint[0], point2.projectedPoint[1],
+            point2.projectedPoint[2]);
         vertexCount += 2;
       }
     }
@@ -633,9 +631,9 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
 
     // Determine 3d coordinates of each data point.
     this.dataSet.points.forEach((d, i) => {
-      d.projectedPoint.x = this.xScale(this.xAccessor(i));
-      d.projectedPoint.y = this.yScale(this.yAccessor(i));
-      d.projectedPoint.z =
+      d.projectedPoint[0] = this.xScale(this.xAccessor(i));
+      d.projectedPoint[1] = this.yScale(this.yAccessor(i));
+      d.projectedPoint[2] =
           (this.zAccessor ? this.zScale(this.zAccessor(i)) : 0);
     });
   }
@@ -692,7 +690,6 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
   }
 
   protected onAnimationStart() {
-    this.removeAllLabels();
   }
 
   protected onAnimationStop() {
@@ -737,7 +734,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
   protected onStartOrbit() {}
 
   protected onChangeOrbit() {
-    this.removeAllLabels();
+    this.makeLabels();
   }
 
   protected onEndOrbit() {
