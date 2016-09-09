@@ -15,12 +15,19 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 
+#include <algorithm>
+#include <iterator>
+#include <memory>
 #include <vector>
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/node_def.pb_text.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
 using tensorflow::int32;
@@ -40,10 +47,10 @@ namespace {
 TEST(CApi, Status) {
   TF_Status* s = TF_NewStatus();
   EXPECT_EQ(TF_OK, TF_GetCode(s));
-  EXPECT_EQ(tensorflow::string(), TF_Message(s));
+  EXPECT_EQ(string(), TF_Message(s));
   TF_SetStatus(s, TF_CANCELLED, "cancel");
   EXPECT_EQ(TF_CANCELLED, TF_GetCode(s));
-  EXPECT_EQ(tensorflow::string("cancel"), TF_Message(s));
+  EXPECT_EQ(string("cancel"), TF_Message(s));
   TF_DeleteStatus(s);
 }
 
@@ -84,16 +91,15 @@ TEST(CApi, AllocateTensor) {
   TF_DeleteTensor(t);
 }
 
-static void TestEncodeDecode(int line,
-                             const std::vector<tensorflow::string>& data) {
+static void TestEncodeDecode(int line, const std::vector<string>& data) {
   const tensorflow::int64 n = data.size();
   for (const std::vector<tensorflow::int64>& dims :
        std::vector<std::vector<tensorflow::int64>>{
            {n}, {1, n}, {n, 1}, {n / 2, 2}}) {
     // Create C++ Tensor
     Tensor src(tensorflow::DT_STRING, TensorShape(dims));
-    for (tensorflow::int64 i = 0; i < src.NumElements(); i++) {
-      src.flat<tensorflow::string>()(i) = data[i];
+    for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
+      src.flat<string>()(i) = data[i];
     }
     TF_Tensor* dst = TF_Tensor_EncodeStrings(src);
 
@@ -103,8 +109,8 @@ static void TestEncodeDecode(int line,
     ASSERT_TRUE(TF_Tensor_DecodeStrings(dst, &output, status)) << line;
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << line;
     ASSERT_EQ(src.NumElements(), output.NumElements()) << line;
-    for (tensorflow::int64 i = 0; i < src.NumElements(); i++) {
-      ASSERT_EQ(data[i], output.flat<tensorflow::string>()(i)) << line;
+    for (tensorflow::int64 i = 0; i < src.NumElements(); ++i) {
+      ASSERT_EQ(data[i], output.flat<string>()(i)) << line;
     }
 
     TF_DeleteStatus(status);
@@ -118,7 +124,7 @@ TEST(CApi, TensorEncodeDecodeStrings) {
   TestEncodeDecode(__LINE__,
                    {"the", "quick", "brown", "fox", "jumped", "over"});
 
-  tensorflow::string big(1000, 'a');
+  string big(1000, 'a');
   TestEncodeDecode(__LINE__, {"small", big, "small2"});
 }
 
@@ -203,13 +209,21 @@ TEST(CAPI, StatusEnum) {
   EXPECT_EQ(TF_DATA_LOSS, static_cast<TF_Code>(tensorflow::error::DATA_LOSS));
 }
 
+TEST(CApi, GetAllOpList) {
+  TF_Buffer* buf = TF_GetAllOpList();
+  tensorflow::OpList op_list;
+  EXPECT_TRUE(op_list.ParseFromArray(buf->data, buf->length));
+  EXPECT_GT(op_list.op_size(), 0);
+  TF_DeleteBuffer(buf);
+}
+
 static void Int32Deallocator(void* data, size_t, void* arg) {
-  delete[] static_cast<tensorflow::int32*>(data);
+  delete[] static_cast<int32*>(data);
 }
 
 static TF_Tensor* Int32Tensor(int32 v) {
-  const int num_bytes = sizeof(tensorflow::int32);
-  tensorflow::int32* values = new tensorflow::int32[1];
+  const int num_bytes = sizeof(int32);
+  int32* values = new int32[1];
   values[0] = v;
   return TF_NewTensor(TF_INT32, nullptr, 0, values, num_bytes,
                       &Int32Deallocator, nullptr);
@@ -354,11 +368,91 @@ bool GetAttrValue(TF_Operation* oper, const char* attr_name,
   return ret;
 }
 
+TEST(CAPI, SetShape) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  TF_Operation* feed = Placeholder(graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_Port feed_out_0 = TF_Port{feed, 0};
+  int num_dims;
+
+  // Fetch the shape, it should be completely unknown.
+  num_dims = TF_GraphGetTensorNumDims(graph, feed_out_0, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(-1, num_dims);
+
+  // Set the shape to be 2 x Unknown
+  int64_t dims[] = {2, -1};
+  TF_GraphSetTensorShape(graph, feed_out_0, dims, 2, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Fetch the shape and validate it is 2 by -1.
+  num_dims = TF_GraphGetTensorNumDims(graph, feed_out_0, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(2, num_dims);
+
+  // Resize the dimension vector appropriately.
+  int64_t returned_dims[2];
+  TF_GraphGetTensorShape(graph, feed_out_0, returned_dims, num_dims, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(dims[0], returned_dims[0]);
+  EXPECT_EQ(dims[1], returned_dims[1]);
+
+  // Set to a new valid shape: [2, 3]
+  dims[1] = 3;
+  TF_GraphSetTensorShape(graph, feed_out_0, dims, 2, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Fetch and see that the new value is returned.
+  TF_GraphGetTensorShape(graph, feed_out_0, returned_dims, num_dims, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(dims[0], returned_dims[0]);
+  EXPECT_EQ(dims[1], returned_dims[1]);
+
+  // Try to set 'unknown' on the shape and see that
+  // it doesn't change.
+  dims[0] = -1;
+  dims[1] = -1;
+  TF_GraphSetTensorShape(graph, feed_out_0, dims, 2, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  // Fetch and see that the new value is returned.
+  TF_GraphGetTensorShape(graph, feed_out_0, returned_dims, num_dims, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(2, num_dims);
+  EXPECT_EQ(2, returned_dims[0]);
+  EXPECT_EQ(3, returned_dims[1]);
+
+  // Try to fetch a shape with the wrong num_dims
+  TF_GraphGetTensorShape(graph, feed_out_0, returned_dims, 5, s);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s)) << TF_Message(s);
+
+  // Try to set an invalid shape (cannot change 2x3 to a 2x5).
+  dims[1] = 5;
+  TF_GraphSetTensorShape(graph, feed_out_0, dims, 2, s);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s)) << TF_Message(s);
+
+  // Test for a scalar.
+  TF_Operation* three = ScalarConst(3, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_Port three_out_0 = TF_Port{three, 0};
+
+  num_dims = TF_GraphGetTensorNumDims(graph, three_out_0, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(0, num_dims);
+  TF_GraphGetTensorShape(graph, three_out_0, returned_dims, num_dims, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Clean up
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
 TEST(CAPI, Graph) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
 
-  // Make a placeholder oper.
+  // Make a placeholder operation.
   TF_Operation* feed = Placeholder(graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
@@ -663,9 +757,8 @@ TEST(CAPI, SessionWithGraph) {
   ASSERT_TRUE(out != nullptr);
   EXPECT_EQ(TF_INT32, TF_TensorType(out));
   EXPECT_EQ(0, TF_NumDims(out));  // scalar
-  ASSERT_EQ(sizeof(tensorflow::int32), TF_TensorByteSize(out));
-  tensorflow::int32* output_contents =
-      static_cast<tensorflow::int32*>(TF_TensorData(out));
+  ASSERT_EQ(sizeof(int32), TF_TensorByteSize(out));
+  int32* output_contents = static_cast<int32*>(TF_TensorData(out));
   EXPECT_EQ(3 + 2, *output_contents);
 
   // Add another operation to the graph.
@@ -681,8 +774,8 @@ TEST(CAPI, SessionWithGraph) {
   ASSERT_TRUE(out != nullptr);
   EXPECT_EQ(TF_INT32, TF_TensorType(out));
   EXPECT_EQ(0, TF_NumDims(out));  // scalar
-  ASSERT_EQ(sizeof(tensorflow::int32), TF_TensorByteSize(out));
-  output_contents = static_cast<tensorflow::int32*>(TF_TensorData(out));
+  ASSERT_EQ(sizeof(int32), TF_TensorByteSize(out));
+  output_contents = static_cast<int32*>(TF_TensorData(out));
   EXPECT_EQ(-(7 + 2), *output_contents);
 
   // Clean up
@@ -691,6 +784,466 @@ TEST(CAPI, SessionWithGraph) {
   TF_DeleteGraph(graph);
   TF_DeleteStatus(s);
 }
+
+// Create a tensor with values of type TF_INT8 provided by `values`.
+TF_Tensor* Int8Tensor(const int64_t* dims, int num_dims, const char* values) {
+  int64_t num_values = 1;
+  for (int i = 0; i < num_dims; ++i) {
+    num_values *= dims[i];
+  }
+  TF_Tensor* t =
+      TF_AllocateTensor(TF_INT8, dims, num_dims, sizeof(char) * num_values);
+  memcpy(TF_TensorData(t), values, sizeof(char) * num_values);
+  return t;
+}
+
+void StringVectorToArrays(const std::vector<string>& v,
+                          std::unique_ptr<const void* []>* ptrs,
+                          std::unique_ptr<int[]>* lens) {
+  ptrs->reset(new const void*[v.size()]);
+  lens->reset(new int[v.size()]);
+  for (size_t i = 0; i < v.size(); ++i) {
+    (*ptrs)[i] = v[i].data();
+    (*lens)[i] = v[i].size();
+  }
+}
+
+// REGISTER_OP for CApiTestAttributesTest test cases.
+// Registers two ops, each with a single attribute called 'v'.
+// The attribute in one op will have a type 'type', the other
+// will have list(type).
+#define ATTR_TEST_REGISTER_OP(type)                            \
+  REGISTER_OP("CApiAttributesTestOp" #type).Attr("v: " #type); \
+  REGISTER_OP("CApiAttributesTestOpList" #type).Attr("v: list(" #type ")")
+ATTR_TEST_REGISTER_OP(string);
+ATTR_TEST_REGISTER_OP(int);
+ATTR_TEST_REGISTER_OP(float);
+ATTR_TEST_REGISTER_OP(bool);
+ATTR_TEST_REGISTER_OP(type);
+ATTR_TEST_REGISTER_OP(shape);
+ATTR_TEST_REGISTER_OP(tensor);
+#undef ATTR_TEST_REGISTER_OP
+
+class CApiAttributesTest : public ::testing::Test {
+ protected:
+  CApiAttributesTest()
+      : s_(TF_NewStatus()), graph_(TF_NewGraph()), counter_(0) {}
+
+  ~CApiAttributesTest() override {
+    TF_DeleteGraph(graph_);
+    TF_DeleteStatus(s_);
+  }
+
+  TF_OperationDescription* init(string type) {
+    // Construct op_name to match the name used by REGISTER_OP in the
+    // ATTR_TEST_REGISTER calls above.
+    string op_name = "CApiAttributesTestOp";
+    if (type.find("list(") == 0) {
+      op_name += "List";
+      type = type.replace(0, 5, "");
+      type = type.replace(type.size() - 1, 1, "");
+    }
+    op_name += type;
+    return TF_NewOperation(
+        graph_, op_name.c_str(),
+        ::tensorflow::strings::StrCat("name", counter_++).c_str());
+  }
+
+  TF_Status* s_;
+
+ private:
+  TF_Graph* graph_;
+  int counter_;
+};
+
+// Helper macros for the TF_OperationGetAttr* tests.
+// TODO(ashankar): Use gmock matchers instead?
+// (https://github.com/google/googletest/blob/master/googlemock/docs/CookBook.md#writing-new-parameterized-matchers-quickly)
+// That will require setting up the tensorflow build with gmock.
+#define EXPECT_TF_META(attr_name, expected_list_size, expected_type, \
+                       expected_total_size)                          \
+  do {                                                               \
+    auto m = TF_OperationGetAttrMetadata(oper, attr_name, s_);       \
+    EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);              \
+    const unsigned char e = expected_list_size >= 0 ? 1 : 0;         \
+    EXPECT_EQ(e, m.is_list);                                         \
+    EXPECT_EQ(expected_list_size, m.list_size);                      \
+    EXPECT_EQ(expected_type, m.type);                                \
+    EXPECT_EQ(expected_total_size, m.total_size);                    \
+  } while (0)
+
+TEST_F(CApiAttributesTest, String) {
+  auto desc = init("string");
+  TF_SetAttrString(desc, "v", "bunny", 5);
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TF_META("v", -1, TF_ATTR_STRING, 5);
+  std::unique_ptr<char[]> value(new char[5]);
+
+  TF_OperationGetAttrString(oper, "v", value.get(), 5, s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ("bunny", string(static_cast<const char*>(value.get()), 5));
+}
+
+TEST_F(CApiAttributesTest, StringList) {
+  std::vector<string> list = {"bugs", "bunny", "duck"};
+  std::unique_ptr<const void* []> list_ptrs;
+  std::unique_ptr<int[]> list_lens;
+  StringVectorToArrays(list, &list_ptrs, &list_lens);
+  int list_total_size = 0;
+  for (const auto& s : list) {
+    list_total_size += s.size();
+  }
+
+  auto desc = init("list(string)");
+  TF_SetAttrStringList(desc, "v", list_ptrs.get(), list_lens.get(),
+                       list.size());
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  EXPECT_TF_META("v", list.size(), TF_ATTR_STRING, list_total_size);
+  std::unique_ptr<void* []> values(new void*[list.size()]);
+  std::unique_ptr<int[]> lens(new int[list.size()]);
+  std::unique_ptr<char[]> storage(new char[list_total_size]);
+  TF_OperationGetAttrStringList(oper, "v", values.get(), lens.get(),
+                                list.size(), storage.get(), list_total_size,
+                                s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  for (size_t i = 0; i < list.size(); ++i) {
+    EXPECT_EQ(list[i].size(), lens[i]) << i;
+    EXPECT_EQ(list[i], string(static_cast<const char*>(values[i]), lens[i]))
+        << i;
+  }
+}
+
+TEST_F(CApiAttributesTest, Int) {
+  auto desc = init("int");
+  TF_SetAttrInt(desc, "v", 31415);
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TF_META("v", -1, TF_ATTR_INT, -1);
+
+  int64_t value;
+  TF_OperationGetAttrInt(oper, "v", &value, s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ(31415, value);
+}
+
+TEST_F(CApiAttributesTest, IntList) {
+  const int64_t list[] = {1, 2, 3, 4};
+  const size_t list_size = TF_ARRAYSIZE(list);
+
+  auto desc = init("list(int)");
+  TF_SetAttrIntList(desc, "v", list, list_size);
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  int64_t values[list_size];
+  EXPECT_TF_META("v", list_size, TF_ATTR_INT, -1);
+  TF_OperationGetAttrIntList(oper, "v", values, list_size, s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TRUE(std::equal(std::begin(list), std::end(list), std::begin(values)));
+}
+
+TEST_F(CApiAttributesTest, Float) {
+  auto desc = init("float");
+  TF_SetAttrFloat(desc, "v", 2.718);
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TF_META("v", -1, TF_ATTR_FLOAT, -1);
+
+  float value;
+  TF_OperationGetAttrFloat(oper, "v", &value, s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_FLOAT_EQ(2.718, value);
+}
+
+TEST_F(CApiAttributesTest, FloatList) {
+  const float list[] = {1.414, 2.718, 3.1415};
+  const size_t list_size = TF_ARRAYSIZE(list);
+
+  auto desc = init("list(float)");
+  TF_SetAttrFloatList(desc, "v", list, list_size);
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  float values[list_size];
+  EXPECT_TF_META("v", list_size, TF_ATTR_FLOAT, -1);
+  TF_OperationGetAttrFloatList(oper, "v", values, list_size, s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TRUE(std::equal(std::begin(list), std::end(list), std::begin(values)));
+}
+
+TEST_F(CApiAttributesTest, Bool) {
+  auto desc = init("bool");
+  TF_SetAttrBool(desc, "v", 1);
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TF_META("v", -1, TF_ATTR_BOOL, -1);
+
+  unsigned char value;
+  TF_OperationGetAttrBool(oper, "v", &value, s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ(1, value);
+}
+
+TEST_F(CApiAttributesTest, BoolList) {
+  const unsigned char list[] = {0, 1, 1, 0, 0, 1, 1};
+  const size_t list_size = TF_ARRAYSIZE(list);
+
+  auto desc = init("list(bool)");
+  TF_SetAttrBoolList(desc, "v", list, list_size);
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  unsigned char values[list_size];
+  EXPECT_TF_META("v", list_size, TF_ATTR_BOOL, -1);
+  TF_OperationGetAttrBoolList(oper, "v", values, list_size, s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TRUE(std::equal(std::begin(list), std::end(list), std::begin(values)));
+}
+
+TEST_F(CApiAttributesTest, Type) {
+  auto desc = init("type");
+  TF_SetAttrType(desc, "v", TF_COMPLEX128);
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TF_META("v", -1, TF_ATTR_TYPE, -1);
+
+  TF_DataType value;
+  TF_OperationGetAttrType(oper, "v", &value, s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ(TF_COMPLEX128, value);
+}
+
+TEST_F(CApiAttributesTest, TypeList) {
+  const TF_DataType list[] = {TF_FLOAT, TF_DOUBLE, TF_HALF, TF_COMPLEX128};
+  const size_t list_size = TF_ARRAYSIZE(list);
+
+  auto desc = init("list(type)");
+  TF_SetAttrTypeList(desc, "v", list, list_size);
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  TF_DataType values[list_size];
+  EXPECT_TF_META("v", list_size, TF_ATTR_TYPE, -1);
+  TF_OperationGetAttrTypeList(oper, "v", values, list_size, s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TRUE(std::equal(std::begin(list), std::end(list), std::begin(values)));
+}
+
+TEST_F(CApiAttributesTest, Shape) {
+  // Unknown shape
+  auto desc = init("shape");
+  TF_SetAttrShape(desc, "v", nullptr, -1);
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TF_META("v", -1, TF_ATTR_SHAPE, -1);
+  TF_OperationGetAttrShape(oper, "v", nullptr, 10, s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Partially specified shape
+  const int64_t partial_shape[] = {17, -1};
+  const size_t sz = TF_ARRAYSIZE(partial_shape);
+  desc = init("shape");
+  TF_SetAttrShape(desc, "v", partial_shape, sz);
+  oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TF_META("v", -1, TF_ATTR_SHAPE, sz);
+  int64_t values[sz];
+  TF_OperationGetAttrShape(oper, "v", values, sz, s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TRUE(
+      std::equal(std::begin(partial_shape), std::end(partial_shape), values));
+}
+
+TEST_F(CApiAttributesTest, ShapeList) {
+  const int64_t shape_1[] = {1, 3};
+  const int64_t shape_2[] = {2, 4, 6};
+  const int64_t* list[] = {&shape_1[0], &shape_2[0]};
+  const size_t list_size = TF_ARRAYSIZE(list);
+  const int ndims[] = {TF_ARRAYSIZE(shape_1), TF_ARRAYSIZE(shape_2)};
+  const int total_ndims = 5;  // ndims[0] + ndims[1]
+
+  auto desc = init("list(shape)");
+  TF_SetAttrShapeList(desc, "v", list, ndims, list_size);
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  EXPECT_TF_META("v", list_size, TF_ATTR_SHAPE, total_ndims);
+  int64_t* values[list_size];
+  int values_ndims[list_size];
+  int64_t storage[total_ndims];
+  TF_OperationGetAttrShapeList(oper, "v", values, values_ndims, list_size,
+                               storage, total_ndims, s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  for (size_t i = 0; i < list_size; ++i) {
+    EXPECT_EQ(ndims[i], values_ndims[i]) << i;
+    for (int j = 0; j < values_ndims[i]; ++j) {
+      EXPECT_EQ(list[i][j], values[i][j]) << "(" << i << ", " << j << ")";
+    }
+  }
+}
+
+TEST_F(CApiAttributesTest, TensorShapeProto) {
+  const tensorflow::int64 pts[] = {2, 4, -1, 8};
+  tensorflow::TensorShapeProto proto;
+  tensorflow::PartialTensorShape(pts).AsProto(&proto);
+  string bytes;
+  proto.SerializeToString(&bytes);
+
+  auto desc = init("shape");
+  TF_SetAttrTensorShapeProto(desc, "v", bytes.data(), bytes.length(), s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  EXPECT_TF_META("v", -1, TF_ATTR_SHAPE, 4);
+  TF_Buffer* value = TF_NewBuffer();
+  TF_OperationGetAttrTensorShapeProto(oper, "v", value, s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ(bytes.length(), value->length);
+  EXPECT_EQ(0, memcmp(bytes.data(), value->data, value->length));
+  TF_DeleteBuffer(value);
+}
+
+TEST_F(CApiAttributesTest, TensorShapeProtoList) {
+  string bytes1, bytes2;
+  tensorflow::TensorShapeProto proto;
+
+  const tensorflow::int64 pts1[] = {2, 4, -1, 8};
+  tensorflow::PartialTensorShape(pts1).AsProto(&proto);
+  proto.SerializeToString(&bytes1);
+
+  const tensorflow::int64 pts2[] = {1, 3, 5, 7};
+  tensorflow::PartialTensorShape(pts2).AsProto(&proto);
+  proto.SerializeToString(&bytes2);
+
+  std::unique_ptr<const void* []> list_ptrs;
+  std::unique_ptr<int[]> list_lens;
+  const std::vector<string> list = {bytes1, bytes2};
+  StringVectorToArrays(list, &list_ptrs, &list_lens);
+
+  auto desc = init("list(shape)");
+  TF_SetAttrTensorShapeProtoList(desc, "v", list_ptrs.get(), list_lens.get(),
+                                 list.size(), s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  EXPECT_TF_META("v", 2, TF_ATTR_SHAPE, 8);
+  TF_Buffer* values[2];
+  TF_OperationGetAttrTensorShapeProtoList(oper, "v", values, 2, s_);
+  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  for (int i = 0; i < 2; ++i) {
+    int le = list_lens[i];
+    int la = values[i]->length;
+    const void* e = list_ptrs[i];
+    const void* a = values[i]->data;
+    EXPECT_EQ(le, la) << i;
+    EXPECT_EQ(0, memcmp(e, a, std::min(le, la))) << i;
+    TF_DeleteBuffer(values[i]);
+  }
+}
+
+TEST_F(CApiAttributesTest, Tensor) {
+  const char tensor[] = {5, 7};
+  const int64_t dims[] = {1, 2};
+  const size_t ndims = TF_ARRAYSIZE(dims);
+
+  auto desc = init("tensor");
+  TF_SetAttrTensor(desc, "v", Int8Tensor(dims, ndims, tensor), s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  EXPECT_TF_META("v", -1, TF_ATTR_TENSOR, -1);
+  TF_Tensor* value;
+  TF_OperationGetAttrTensor(oper, "v", &value, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  ASSERT_NE(nullptr, value);
+  EXPECT_EQ(TF_INT8, TF_TensorType(value));
+  EXPECT_EQ(ndims, TF_NumDims(value));
+  for (int i = 0; i < TF_NumDims(value); ++i) {
+    EXPECT_EQ(dims[i], TF_Dim(value, i)) << i;
+  }
+  EXPECT_EQ(sizeof(char) * TF_ARRAYSIZE(tensor), TF_TensorByteSize(value));
+  EXPECT_EQ(0, memcmp(tensor, TF_TensorData(value), TF_TensorByteSize(value)));
+  TF_DeleteTensor(value);
+}
+
+TEST_F(CApiAttributesTest, TensorList) {
+  const char tensor1[] = {5, 7};
+  const int64_t dims1[] = {1, 2};
+  const size_t ndims1 = TF_ARRAYSIZE(dims1);
+
+  const char tensor2[] = {2, 4, 6, 8};
+  const int64_t dims2[] = {2, 2};
+  const size_t ndims2 = TF_ARRAYSIZE(dims2);
+
+  auto desc = init("list(tensor)");
+  TF_Tensor* tmp[] = {
+      Int8Tensor(dims1, ndims1, tensor1), Int8Tensor(dims2, ndims2, tensor2),
+  };
+  TF_SetAttrTensorList(desc, "v", tmp, TF_ARRAYSIZE(tmp), s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  EXPECT_TF_META("v", 2, TF_ATTR_TENSOR, -1);
+  TF_Tensor* values[2];
+  TF_OperationGetAttrTensorList(oper, "v", &values[0], TF_ARRAYSIZE(values),
+                                s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  const char* tensor_data[] = {&tensor1[0], &tensor2[0]};
+  const size_t tensor_size[] = {TF_ARRAYSIZE(tensor1), TF_ARRAYSIZE(tensor2)};
+  const int64_t* tensor_dims[] = {&dims1[0], &dims2[0]};
+  const size_t tensor_ndims[] = {ndims1, ndims2};
+  for (int i = 0; i < 2; ++i) {
+    TF_Tensor* v = values[i];
+    ASSERT_NE(nullptr, v) << i;
+    EXPECT_EQ(TF_INT8, TF_TensorType(v)) << i;
+    EXPECT_EQ(tensor_ndims[i], TF_NumDims(v)) << i;
+    for (int j = 0; j < TF_NumDims(v); ++j) {
+      EXPECT_EQ(tensor_dims[i][j], TF_Dim(v, j)) << "Tensor #" << i
+                                                 << ", dimension #" << j;
+    }
+    EXPECT_EQ(sizeof(char) * tensor_size[i], TF_TensorByteSize(v)) << i;
+    EXPECT_EQ(0,
+              memcmp(tensor_data[i], TF_TensorData(v), TF_TensorByteSize(v)));
+    TF_DeleteTensor(v);
+  }
+}
+
+TEST_F(CApiAttributesTest, EmptyList) {
+  auto desc = init("list(int)");
+  TF_SetAttrIntList(desc, "v", nullptr, 0);
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_TF_META("v", 0, TF_ATTR_INT, -1);
+}
+
+TEST_F(CApiAttributesTest, Errors) {
+  auto desc = init("int");
+  TF_SetAttrInt(desc, "v", 3);
+  auto oper = TF_FinishOperation(desc, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  TF_OperationGetAttrString(oper, "v", nullptr, 0, s_);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
+}
+#undef EXPECT_TF_META
 
 // TODO(josh11b): Test:
 // * TF_SetDevice(desc, "/job:worker");

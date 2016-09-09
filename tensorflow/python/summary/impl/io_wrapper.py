@@ -98,4 +98,4 @@ def Size(path):
   if gcs.IsGCSPath(path):
     raise NotImplementedError("io_wrapper.Size doesn't support GCS paths")
   else:
-    return gfile.Open(path).Size()
+    return gfile.Open(path).size()

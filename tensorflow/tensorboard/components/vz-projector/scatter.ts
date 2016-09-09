@@ -13,14 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-export interface Point3D {
-  /** Original x coordinate. */
-  x: number;
-  /** Original y coordinate. */
-  y: number;
-  /** Original z coordinate. */
-  z: number;
-}
+import {Point3D} from './vector';
 
 /** The spacial data of points and lines that will be shown in the projector. */
 export interface DataSet {

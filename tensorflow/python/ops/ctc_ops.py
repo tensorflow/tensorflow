@@ -19,8 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 
 from tensorflow.python.ops import gen_ctc_ops
 from tensorflow.python.ops.nn_grad import _BroadcastMul
@@ -149,21 +149,7 @@ def _CTCLossGrad(op, grad_loss, _):
   return [_BroadcastMul(grad_loss, grad), None, None, None]
 
 
-@ops.RegisterShape("CTCLoss")
-def _CTCLossShape(op):
-  """Shape function for the CTCLoss op."""
-  # inputs, label_indices, label_values, sequence_length
-  inputs_shape = op.inputs[0].get_shape().with_rank(3)
-  sequence_length_shape = op.inputs[3].get_shape().with_rank(1)
-  # merge batch_size
-  sequence_length_shape[0].merge_with(inputs_shape[1])
-  inputs_shape[1].merge_with(sequence_length_shape[0])
-  batch_size = inputs_shape[1]
-  labels_index_shape = op.inputs[1].get_shape().with_rank(2)
-  labels_value_shape = op.inputs[2].get_shape().with_rank(1)
-  labels_value_shape[0].merge_with(labels_index_shape[0])
-  # loss, gradient
-  return [tensor_shape.vector(batch_size), inputs_shape]
+ops.RegisterShape("CTCLoss")(common_shapes.call_cpp_shape_fn)
 
 
 def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
@@ -208,20 +194,7 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
           log_probabilities)
 
 
-@ops.RegisterShape("CTCGreedyDecoder")
-def _CTCGreedyDecoderShape(op):
-  """Shape function for the CTCGreedyDecoder op."""
-  inputs_shape = op.inputs[0].get_shape().with_rank(3)
-  sequence_length_shape = op.inputs[1].get_shape().with_rank(1)
-  # merge batch_size
-  sequence_length_shape[0].merge_with(inputs_shape[1])
-  inputs_shape[1].merge_with(sequence_length_shape[0])
-  batch_size = inputs_shape[1]
-  # decoded_indices, decoded_values, decoded_shape, log_probability
-  return [tensor_shape.matrix(None, 2),
-          tensor_shape.vector(None),
-          tensor_shape.vector(2),
-          tensor_shape.matrix(batch_size, 1)]
+ops.RegisterShape("CTCGreedyDecoder")(common_shapes.call_cpp_shape_fn)
 
 
 def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
@@ -274,29 +247,10 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
       log_probabilities)
 
 
-@ops.RegisterShape("CTCBeamSearchDecoder")
-def _CTCBeamSearchDecoderShape(op):
-  """Shape function for the CTCBeamSearchDecoder op."""
-  inputs_shape = op.inputs[0].get_shape().with_rank(3)
-  sequence_length_shape = op.inputs[1].get_shape().with_rank(1)
-  # merge batch size
-  sequence_length_shape[0].merge_with(inputs_shape[1])
-  inputs_shape[1].merge_with(sequence_length_shape[0])
-  batch_size = inputs_shape[1]
-  top_paths = op.get_attr("top_paths")
-
-  # first the decoded indices
-  output_shapes = [tensor_shape.matrix(None, 2) for _ in range(top_paths)]
-  # next the decoded values
-  output_shapes.extend([tensor_shape.vector(None) for _ in range(top_paths)])
-  # the shapes of the decoded values
-  output_shapes.extend([tensor_shape.vector(2)] * top_paths)
-  # the log_probability matrix
-  output_shapes.append(tensor_shape.matrix(batch_size, top_paths))
-  return output_shapes
+ops.RegisterShape("CTCBeamSearchDecoder")(common_shapes.call_cpp_shape_fn)
 
 
-ops.NoGradient("CTCGreedyDecoder")
+ops.NotDifferentiable("CTCGreedyDecoder")
 
 
-ops.NoGradient("CTCBeamSearchDecoder")
+ops.NotDifferentiable("CTCBeamSearchDecoder")

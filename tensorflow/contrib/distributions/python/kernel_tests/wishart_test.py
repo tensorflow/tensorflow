@@ -296,7 +296,8 @@ class WishartCholeskyTest(tf.test.TestCase):
       with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
                                    "cannot be less than"):
         chol_w = distributions.WishartCholesky(df=df_deferred,
-                                               scale=chol_scale_deferred)
+                                               scale=chol_scale_deferred,
+                                               validate_args=True)
         sess.run(chol_w.log_prob(np.asarray(x, dtype=np.float32)),
                  feed_dict={df_deferred: 2., chol_scale_deferred: chol_scale})
 

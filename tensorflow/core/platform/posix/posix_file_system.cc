@@ -387,8 +387,8 @@ Status PosixFileSystem::Stat(const string& fname, FileStatistics* stats) {
     s = IOError(fname, errno);
   } else {
     stats->length = sbuf.st_size;
-    stats->mode = sbuf.st_mode;
     stats->mtime_nsec = sbuf.st_mtime * 1e9;
+    stats->is_directory = S_ISDIR(sbuf.st_mode);
   }
   return s;
 }

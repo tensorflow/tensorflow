@@ -101,7 +101,8 @@ class MultivariateNormalDiagTest(tf.test.TestCase):
     with self.test_session():
       mu_ph = tf.placeholder(tf.float32, name="mu_ph")
       diag_ph = tf.placeholder(tf.float32, name="diag_ph")
-      dist = distributions.MultivariateNormalDiag(mu_ph, diag_ph)
+      dist = distributions.MultivariateNormalDiag(
+          mu_ph, diag_ph, validate_args=True)
       with self.assertRaisesOpError("mu should have rank"):
         dist.mean().eval(feed_dict={mu_ph: mu_v, diag_ph: diag_v})
 
@@ -112,6 +113,17 @@ class MultivariateNormalDiagTest(tf.test.TestCase):
       dist = distributions.MultivariateNormalDiag(mu, diag)
       samps = dist.sample_n(1000, seed=0).eval()
       cov_mat = tf.batch_matrix_diag(diag).eval() ** 2
+
+      self.assertAllClose(mu, samps.mean(axis=0), atol=0.1)
+      self.assertAllClose(cov_mat, np.cov(samps.T), atol=0.1)
+
+  def testMultivariateNormalDiagWithSoftplusStDev(self):
+    mu = [-1.0, 1.0]
+    diag = [-1.0, -2.0]
+    with self.test_session():
+      dist = distributions.MultivariateNormalDiagWithSoftplusStDev(mu, diag)
+      samps = dist.sample_n(1000, seed=0).eval()
+      cov_mat = tf.batch_matrix_diag(tf.nn.softplus(diag)).eval() ** 2
 
       self.assertAllClose(mu, samps.mean(axis=0), atol=0.1)
       self.assertAllClose(cov_mat, np.cov(samps.T), atol=0.1)
@@ -154,7 +166,7 @@ class MultivariateNormalDiagPlusVDVTTest(tf.test.TestCase):
       v_ph = tf.placeholder(tf.float32, name="v_ph")
       diag_ph = tf.placeholder(tf.float32, name="diag_ph")
       dist = distributions.MultivariateNormalDiagPlusVDVT(
-          mu_ph, diag_ph, v_ph)
+          mu_ph, diag_ph, v_ph, validate_args=True)
       with self.assertRaisesOpError("mu.*cov.*shape"):
         dist.mean().eval(feed_dict={mu_ph: mu, diag_ph: diag_large, v_ph: v})
 
@@ -204,13 +216,15 @@ class MultivariateNormalCholeskyTest(tf.test.TestCase):
 
       mu_v = self._rng.rand(2)
       chol_v, _ = self._random_chol(2, 2, 2)
-      mvn = distributions.MultivariateNormalCholesky(mu_ph, chol_ph)
+      mvn = distributions.MultivariateNormalCholesky(
+          mu_ph, chol_ph, validate_args=True)
       with self.assertRaisesOpError("mu should have rank 1 less than cov"):
         mvn.mean().eval(feed_dict={mu_ph: mu_v, chol_ph: chol_v})
 
       mu_v = self._rng.rand(2, 1)
       chol_v, _ = self._random_chol(2, 2, 2)
-      mvn = distributions.MultivariateNormalCholesky(mu_ph, chol_ph)
+      mvn = distributions.MultivariateNormalCholesky(
+          mu_ph, chol_ph, validate_args=True)
       with self.assertRaisesOpError("mu.shape and cov.shape.*should match"):
         mvn.mean().eval(feed_dict={mu_ph: mu_v, chol_ph: chol_v})
 

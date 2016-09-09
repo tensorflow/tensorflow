@@ -696,6 +696,11 @@ REGISTER_OP("TensorArrayPack")
     .Doc(R"doc(
 Pack the elements from the TensorArray into output `value`.
 
+**WARNING: This op is deprecated.**
+
+Instead of this op, use `TensorArrayGather` with
+`indices = RangeOp(0, TensorArraySizeOp)`.
+
 All elements must have the same shape.
 
 handle: The handle to a TensorArray.
@@ -725,7 +730,72 @@ REGISTER_OP("TensorArrayUnpack")
     .Doc(R"doc(
 Unpack the data from the input value into TensorArray elements.
 
+**WARNING: This op is deprecated.**
+
+Instead of this op, use `TensorArrayScatter` with
+`indices = RangeOp(0, SizeOp(value)[0])`.
+
 handle: The handle to a TensorArray.
+value: The concatenated tensor to write to the TensorArray.
+flow_in: A float scalar that enforces proper chaining of operations.
+flow_out: A float scalar that enforces proper chaining of operations.
+)doc");
+
+REGISTER_OP("TensorArrayGather")
+    .Input("handle: Ref(string)")
+    .Input("indices: int32")
+    .Input("flow_in: float")
+    .Output("value: dtype")
+    .Attr("dtype: type")
+    .Attr("element_shape: shape = { unknown_rank: true }")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      DimensionHandle unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), 0), 2, &unused_dim));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return shape_inference::UnknownShape(c);
+    })
+    .Doc(R"doc(
+Gather specific elements from the TensorArray into output `value`.
+
+All elements selected by `indices` must have the same shape.
+
+handle: The handle to a TensorArray.
+indices: The locations in the TensorArray from which to read tensor elements.
+dtype: The type of the elem that is returned.
+element_shape: The expected shape of an element, if known. Used to
+  validate the shapes of TensorArray elements. If this shape is not
+  fully specified, gathering zero-size TensorArrays is an error.
+flow_in: A float scalar that enforces proper chaining of operations.
+value: All of the elements in the TensorArray, concatenated along a new
+  axis (the new dimension 0).
+)doc");
+
+REGISTER_OP("TensorArrayScatter")
+    .Input("handle: Ref(string)")
+    .Input("indices: int32")
+    .Input("value: T")
+    .Input("flow_in: float")
+    .Output("flow_out: float")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      DimensionHandle unused_dim;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(c->input(0), 0), 2, &unused_dim));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    })
+    .Doc(R"doc(
+Scatter the data from the input value into specific TensorArray elements.
+
+`indices` must be a vector, its length must match the first dim of `value`.
+
+handle: The handle to a TensorArray.
+indices: The locations at which to write the tensor elements.
 value: The concatenated tensor to write to the TensorArray.
 flow_in: A float scalar that enforces proper chaining of operations.
 flow_out: A float scalar that enforces proper chaining of operations.

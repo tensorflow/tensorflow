@@ -45,6 +45,39 @@ Status InputTensorShapeOrUnknown(InferenceContext* c, int input_idx,
   return Status::OK();
 }
 
+Status FractionalPoolShapeFn(InferenceContext* c) {
+  ShapeHandle input;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+
+  std::vector<float> pooling_ratio;
+  TF_RETURN_IF_ERROR(c->GetAttr("pooling_ratio", &pooling_ratio));
+  if (pooling_ratio.size() != 4) {
+    return errors::InvalidArgument(
+        "pooling_ratio field must specify 4 dimensions");
+  }
+  std::vector<DimensionHandle> output_dims;
+  for (int i = 0; i < 4; ++i) {
+    DimensionHandle d = c->Dim(input, i);
+    if (c->ValueKnown(d)) {
+      // This must match the same logic in the kernel function in
+      // core/kernels/fractional_max_pool_op.cc.
+      auto val = static_cast<int64>(floor(c->Value(d) / pooling_ratio[i]));
+      if (val < 0) {
+        return errors::InvalidArgument("Size computed for dim ", i,
+                                       " is negative: ", val);
+      }
+      output_dims.push_back(c->MakeDim(val));
+    } else {
+      output_dims.push_back(c->UnknownDim());
+    }
+  }
+
+  c->set_output(0, c->MakeShape(output_dims));
+  c->set_output(1, c->Vector(output_dims[1]));
+  c->set_output(2, c->Vector(output_dims[2]));
+  return Status::OK();
+}
+
 }  // namespace
 
 // --------------------------------------------------------------------------
@@ -1052,15 +1085,17 @@ REGISTER_OP("Dilation2D")
       DimensionHandle filter_cols_dim = c->Dim(filter_shape, 1);
       DimensionHandle output_depth_dim = c->Dim(filter_shape, 2);
 
+      if (!c->ValueKnown(in_rows_dim) || !c->ValueKnown(in_cols_dim) ||
+          !c->ValueKnown(filter_rows_dim) || !c->ValueKnown(filter_cols_dim)) {
+        ShapeHandle output_shape =
+            c->MakeShape({batch_size_dim, InferenceContext::kUnknownDim,
+                          InferenceContext::kUnknownDim, output_depth_dim});
+        c->set_output(0, output_shape);
+        return Status::OK();
+      }
       DimensionHandle unused;
       TF_RETURN_IF_ERROR(
           c->Merge(c->Dim(input_shape, 3), output_depth_dim, &unused));
-
-      // At the moment we need to know the values of several fields.
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_rows_dim, "filter_rows"));
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_cols_dim, "filter_cols"));
 
       auto in_rows = c->Value(in_rows_dim);
       auto in_cols = c->Value(in_cols_dim);
@@ -1570,6 +1605,7 @@ REGISTER_OP("FractionalMaxPool")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .Attr("T: {float, double, int32, int64}")
+    .SetShapeFn(FractionalPoolShapeFn)
     .Doc(R"doc(
 Performs fractional max pooling on the input.
 
@@ -1644,6 +1680,9 @@ REGISTER_OP("FractionalMaxPoolGrad")
     .Output("output: T")
     .Attr("overlapping: bool = false")
     .Attr("T: {float, double, int32, int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRank(c, 4);
+    })
     .Doc(R"doc(
 Computes gradient of the FractionalMaxPool function.
 
@@ -1681,6 +1720,7 @@ REGISTER_OP("FractionalAvgPool")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .Attr("T: {float, double, int32, int64}")
+    .SetShapeFn(FractionalPoolShapeFn)
     .Doc(R"doc(
 Performs fractional average pooling on the input.
 
@@ -1729,6 +1769,16 @@ REGISTER_OP("FractionalAvgPoolGrad")
     .Output("output: T")
     .Attr("overlapping: bool = false")
     .Attr("T: {float, double, int32, int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      if (c->input_tensor(0) != nullptr) {
+        ShapeHandle out;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+        c->set_output(0, out);
+      } else {
+        c->set_output(0, c->UnknownShapeOfRank(4));
+      }
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes gradient of the FractionalAvgPool function.
 

@@ -130,7 +130,7 @@ def _add_bias_column(feature_columns, columns_to_tensors, bias_variable,
 
 
 def _log_loss_with_two_classes(logits, target):
-  check_shape_op = logging_ops.Assert(
+  check_shape_op = control_flow_ops.Assert(
       math_ops.less_equal(array_ops.rank(target), 2),
       ["target's shape should be either [batch_size, 1] or [batch_size]"])
   with ops.control_dependencies([check_shape_op]):
@@ -140,7 +140,7 @@ def _log_loss_with_two_classes(logits, target):
 
 
 def _softmax_cross_entropy_loss(logits, target):
-  check_shape_op = logging_ops.Assert(
+  check_shape_op = control_flow_ops.Assert(
       math_ops.less_equal(array_ops.rank(target), 2),
       ["target's shape should be either [batch_size, 1] or [batch_size]"])
   with ops.control_dependencies([check_shape_op]):
@@ -149,7 +149,7 @@ def _softmax_cross_entropy_loss(logits, target):
 
 
 def _hinge_loss(logits, target):
-  check_shape_op = logging_ops.Assert(
+  check_shape_op = control_flow_ops.Assert(
       math_ops.less_equal(array_ops.rank(target), 2),
       ["target's shape should be either [batch_size, 1] or [batch_size]"])
   with ops.control_dependencies([check_shape_op]):
@@ -358,7 +358,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
                weight_column_name=None,
                optimizer=None,
                gradient_clip_norm=None,
-               enable_centered_bias=True,
+               enable_centered_bias=None,
                config=None):
     """Construct a `LinearClassifier` estimator object.
 
@@ -390,12 +390,16 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     Raises:
       ValueError: if n_classes < 2.
     """
+    if enable_centered_bias is None:
+      enable_centered_bias = True
+      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
     self._model_dir = model_dir or tempfile.mkdtemp()
     if n_classes < 2:
       raise ValueError("Classification requires n_classes >= 2")
     self._n_classes = n_classes
     self._feature_columns = feature_columns
     assert self._feature_columns
+    self._weight_column_name = weight_column_name
     self._optimizer = _get_default_optimizer(feature_columns)
     if optimizer:
       self._optimizer = _get_optimizer(optimizer)
@@ -445,14 +449,16 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     if not metrics:
       metrics = {}
       metrics["accuracy"] = metric_spec.MetricSpec(
-          metric_fn=metrics_lib.streaming_accuracy,
-          prediction_key=_CLASSES)
+          metric_fn=_wrap_metric(metrics_lib.streaming_accuracy),
+          prediction_key=_CLASSES,
+          weight_key=self._weight_column_name)
     if self._n_classes == 2:
       additional_metrics = (
           target_column.get_default_binary_metrics_for_eval([0.5]))
       additional_metrics = {
           name: metric_spec.MetricSpec(metric_fn=metric,
-                                       prediction_key=_LOGISTIC)
+                                       prediction_key=_LOGISTIC,
+                                       weight_key=self._weight_column_name)
           for name, metric in additional_metrics.items()
       }
       metrics.update(additional_metrics)
@@ -594,7 +600,7 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                weight_column_name=None,
                optimizer=None,
                gradient_clip_norm=None,
-               enable_centered_bias=True,
+               enable_centered_bias=None,
                target_dimension=1,
                config=None):
     """Construct a `LinearRegressor` estimator object.
@@ -623,6 +629,9 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     Returns:
       A `LinearRegressor` estimator.
     """
+    if enable_centered_bias is None:
+      enable_centered_bias = True
+      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
     super(LinearRegressor, self).__init__(
         model_dir=model_dir,
         weight_column_name=weight_column_name,

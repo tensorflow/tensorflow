@@ -32,6 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import logging_ops
@@ -179,8 +180,9 @@ def string_input_producer(string_tensor, num_epochs=None, shuffle=True,
   with ops.name_scope(name, "input_producer", [string_tensor]) as name:
     string_tensor = ops.convert_to_tensor(string_tensor, dtype=dtypes.string)
     with ops.control_dependencies([
-        logging_ops.Assert(math_ops.greater(array_ops.size(string_tensor), 0),
-                           [not_null_err])]):
+        control_flow_ops.Assert(
+            math_ops.greater(array_ops.size(string_tensor), 0),
+            [not_null_err])]):
       string_tensor = array_ops.identity(string_tensor)
     return input_producer(
         input_tensor=string_tensor,

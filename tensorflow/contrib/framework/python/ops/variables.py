@@ -194,7 +194,7 @@ def local_variable(initial_value, validate_shape=True, name=None):
 
 
 @contrib_add_arg_scope
-def variable(name, shape=None, dtype=dtypes.float32, initializer=None,
+def variable(name, shape=None, dtype=None, initializer=None,
              regularizer=None, trainable=True, collections=None,
              caching_device=None, device=None):
   """Gets an existing variable with these parameters or creates a new one.

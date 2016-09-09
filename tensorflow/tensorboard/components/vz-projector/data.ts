@@ -73,12 +73,10 @@ function hasWebGLSupport(): boolean {
 }
 
 const WEBGL_SUPPORT = hasWebGLSupport();
-/**
- * Sampling is used when computing expensive operations such as PCA, or T-SNE.
- */
-const SAMPLE_SIZE = 10000;
+/** Sampling is used when computing expensive operations such as T-SNE. */
+export const SAMPLE_SIZE = 10000;
 /** Number of dimensions to sample when doing approximate PCA. */
-const PCA_SAMPLE_DIM = 100;
+export const PCA_SAMPLE_DIM = 200;
 /** Number of pca components to compute. */
 const NUM_PCA_COMPONENTS = 10;
 /** Reserved metadata attribute used for trace information. */
@@ -106,8 +104,9 @@ export class DataSet implements scatter.DataSet {
   nearestK: number;
   tSNEShouldStop = true;
   dim = [0, 0];
+  hasTSNERun: boolean = false;
+
   private tsne: TSNE;
-  private hasTSNERun: boolean = false;
 
   /**
    * Creates a new Dataset by copying out data from an array of datapoints.
@@ -124,11 +123,7 @@ export class DataSet implements scatter.DataSet {
         metadata: dp.metadata,
         dataSourceIndex: dp.dataSourceIndex,
         vector: dp.vector.slice(),
-        projectedPoint: {
-          x: 0,
-          y: 0,
-          z: 0,
-        },
+        projectedPoint: [0, 0, 0],
         projections: {}
       });
       indicesSeen.push(false);
@@ -217,15 +212,16 @@ export class DataSet implements scatter.DataSet {
     }
     return runAsyncTask('Computing PCA...', () => {
       // Approximate pca vectors by sampling the dimensions.
-      let numDim = Math.min(this.points[0].vector.length, PCA_SAMPLE_DIM);
-      let reducedDimData =
-          vector.projectRandom(this.points.map(d => d.vector), numDim);
+      let dim = this.points[0].vector.length;
+      let vectors = this.points.map(d => d.vector);
+      if (dim > PCA_SAMPLE_DIM) {
+        vectors = vector.projectRandom(vectors, PCA_SAMPLE_DIM);
+      }
       let sigma = numeric.div(
-          numeric.dot(numeric.transpose(reducedDimData), reducedDimData),
-          reducedDimData.length);
+          numeric.dot(numeric.transpose(vectors), vectors), vectors.length);
       let U: any;
       U = numeric.svd(sigma).U;
-      let pcaVectors = reducedDimData.map(vector => {
+      let pcaVectors = vectors.map(vector => {
         let newV: number[] = [];
         for (let d = 0; d < NUM_PCA_COMPONENTS; d++) {
           let dot = 0;
@@ -237,21 +233,10 @@ export class DataSet implements scatter.DataSet {
         return newV;
       });
       for (let j = 0; j < NUM_PCA_COMPONENTS; j++) {
-        let labels = ['pca-' + j];
-        // If t-SNE hasn't run, initialize those projections with PCA
-        // projections so we see something when going to the t-SNE view.
-        if (!this.hasTSNERun && j < 3) {
-          labels.push('tsne-' + j);
-        }
-
-        for (let i = 0; i < labels.length; i++) {
-          this.projections.add(labels[i]);
-        }
-
+        let label = 'pca-' + j;
+        this.projections.add(label);
         this.points.forEach((d, i) => {
-          for (let k = 0; k < labels.length; k++) {
-            d.projections[labels[k]] = pcaVectors[i][j];
-          }
+          d.projections[label] = pcaVectors[i][j];
         });
       }
     });

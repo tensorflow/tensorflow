@@ -25,7 +25,7 @@ given.
     containing the actual lengths for each of the sequences.
 *  <b>`initial_state_fw`</b>: (optional) An initial state for the forward RNN.
     This must be a tensor of appropriate type and shape
-    `[batch_size x cell_fw.state_size]`.
+    `[batch_size, cell_fw.state_size]`.
     If `cell_fw.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell_fw.state_size`.
 *  <b>`initial_state_bw`</b>: (optional) Same as for `initial_state_fw`, but using

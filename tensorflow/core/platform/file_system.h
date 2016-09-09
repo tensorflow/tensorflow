@@ -87,6 +87,7 @@ class FileSystem {
   virtual Status IsDirectory(const string& fname);
 };
 
+#ifndef SWIG
 // Degenerate file system that provides no implementations.
 class NullFileSystem : public FileSystem {
  public:
@@ -146,6 +147,7 @@ class NullFileSystem : public FileSystem {
     return errors::Unimplemented("Stat unimplemented");
   }
 };
+#endif
 
 /// A file abstraction for randomly reading the contents of a file.
 class RandomAccessFile {

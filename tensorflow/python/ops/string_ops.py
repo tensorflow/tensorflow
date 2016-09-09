@@ -51,8 +51,6 @@ import six
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 
 # pylint: disable=unused-import
 from tensorflow.python.ops import gen_string_ops
@@ -113,67 +111,27 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
   return ops.SparseTensor(indices, values, shape)
 
 
-ops.NoGradient("StringToHashBucket")
-ops.NoGradient("StringToHashBucketFast")
-ops.NoGradient("StringToHashBucketStrong")
-ops.NoGradient("ReduceJoin")
-ops.NoGradient("StringJoin")
-ops.NoGradient("StringSplit")
-ops.NoGradient("AsString")
-ops.NoGradient("EncodeBase64")
-ops.NoGradient("DecodeBase64")
+ops.NotDifferentiable("StringToHashBucket")
+ops.NotDifferentiable("StringToHashBucketFast")
+ops.NotDifferentiable("StringToHashBucketStrong")
+ops.NotDifferentiable("ReduceJoin")
+ops.NotDifferentiable("StringJoin")
+ops.NotDifferentiable("StringSplit")
+ops.NotDifferentiable("AsString")
+ops.NotDifferentiable("EncodeBase64")
+ops.NotDifferentiable("DecodeBase64")
 
-ops.RegisterShape("StringToHashBucket")(common_shapes.unchanged_shape)
-ops.RegisterShape("StringToHashBucketFast")(common_shapes.unchanged_shape)
-ops.RegisterShape("StringToHashBucketStrong")(common_shapes.unchanged_shape)
-ops.RegisterShape("AsString")(common_shapes.unchanged_shape)
-ops.RegisterShape("EncodeBase64")(common_shapes.unchanged_shape)
-ops.RegisterShape("DecodeBase64")(common_shapes.unchanged_shape)
+ops.RegisterShape("StringToHashBucket")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("StringToHashBucketFast")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("StringToHashBucketStrong")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AsString")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("EncodeBase64")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("DecodeBase64")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("ReduceJoin")
 def _ReduceJoinShape(op):
-  """Shape function for the ReduceJoin op."""
-  reduction_indices = tensor_util.constant_value(op.inputs[1])
-  if reduction_indices is None:
-    return [tensor_shape.unknown_shape()]
-
-  input_shape = op.inputs[0].get_shape()
-  keep_dims = op.get_attr("keep_dims")
-
-  if input_shape.ndims is None:
-    return [tensor_shape.unknown_shape()]
-
-  if input_shape.ndims == 0:
-    raise ValueError("Input string tensor cannot be a scalar.")
-
-  true_indices = set()
-  for reduction_index in np.ravel(reduction_indices):
-    if (reduction_index < -input_shape.ndims or
-        reduction_index >= input_shape.ndims):
-      raise ValueError("Invalid reduction dimension %d for input with %d "
-                       "dimensions" % (reduction_index, input_shape.ndims))
-
-    true_index = reduction_index % input_shape.ndims
-    if true_index in true_indices:
-      raise ValueError("Duplicate reduction index %d." % reduction_index)
-
-    if input_shape.dims[true_index] == 0:
-      raise ValueError("Cannot reduce dimension %d with size 0." %
-                       reduction_index)
-
-    true_indices.add(true_index)
-
-  returned_dims = []
-  reduce_all = reduction_indices.size == 0
-  for i, dim in enumerate(input_shape.dims):
-    if reduce_all or i in true_indices:
-      if keep_dims:
-        returned_dims.append(1)
-    else:
-      returned_dims.append(dim)
-
-  return [tensor_shape.TensorShape(returned_dims)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 ops.RegisterShape("StringJoin")(common_shapes.call_cpp_shape_fn)

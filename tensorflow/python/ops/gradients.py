@@ -432,8 +432,8 @@ def gradients(ys,
         has_out_grads = any(isinstance(g, ops.Tensor) or g for g in out_grads)
         if has_out_grads and (op._id not in stop_ops):
           if is_func_call:
-            grad_fn = ops.get_default_graph()._function_python_gradient.get(
-                op.type, None)
+            grad_fn = ops.get_default_graph()._get_function(
+                op.type).python_grad_func
             # pylint: enable=protected-access
           else:
             # A grad_fn must be defined, either as a function or as None

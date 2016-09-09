@@ -115,7 +115,9 @@ def infer_real_valued_columns_from_input_fn(input_fn):
   it.
 
   Args:
-    input_fn: Function returning a tuple of input and target `Tensor` objects.
+    input_fn: Input function returning a tuple of:
+        features - Dictionary of string feature name to `Tensor` or `Tensor`.
+        target - `Tensor` of target objects.
 
   Returns:
     List of `FeatureColumn` objects.

@@ -26,12 +26,13 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from tensorflow.python.client import device_lib
 from tensorflow.python.framework import function
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.util import nest
 
@@ -65,6 +66,39 @@ def isum(s):
   b = lambda i, s: [tf.add(i, 1), tf.add(i, s)]
   _, r_s = tf.while_loop(c, b, [i, s])
   return r_s
+
+
+class AssertTest(tf.test.TestCase):
+
+  def testGuardedAssertDoesNotCopyWhenTrue(self):
+    with self.test_session(use_gpu=True) as sess:
+      with tf.device("/gpu:0"):
+        value = tf.constant(1.0)
+      with tf.device("/cpu:0"):
+        true = tf.constant(True)
+        guarded_assert = tf.Assert(true, [value], name="guarded")
+        unguarded_assert = gen_logging_ops._assert(
+            true, [value], name="unguarded")
+      opts = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+      guarded_metadata = tf.RunMetadata()
+      sess.run(guarded_assert, options=opts, run_metadata=guarded_metadata)
+      unguarded_metadata = tf.RunMetadata()
+      sess.run(unguarded_assert, options=opts, run_metadata=unguarded_metadata)
+      guarded_nodestat_names = [
+          n.node_name for d in guarded_metadata.step_stats.dev_stats
+          for n in d.node_stats]
+      unguarded_nodestat_names = [
+          n.node_name for d in unguarded_metadata.step_stats.dev_stats
+          for n in d.node_stats]
+      guarded_memcpy_nodestat_names = [
+          n for n in guarded_nodestat_names if "MEMCPYDtoH" in n]
+      unguarded_memcpy_nodestat_names = [
+          n for n in unguarded_nodestat_names if "MEMCPYDtoH" in n]
+      if "GPU" in [d.device_type for d in device_lib.list_local_devices()]:
+        # A copy was performed for the unguarded assert
+        self.assertLess(0, len(unguarded_memcpy_nodestat_names))
+      # No copy was performed for the guarded assert
+      self.assertEqual([], guarded_memcpy_nodestat_names)
 
 
 class ControlFlowTest(tf.test.TestCase):
@@ -1693,6 +1727,27 @@ class ControlFlowTest(tf.test.TestCase):
       self.assertAllClose(0.0, r.eval())
       r = tf.gradients(rx, x)[0]
       self.assertAllClose(156.0, r.eval())
+
+  def testWhileGrad_StopGradInsideNoShape(self):
+    with self.test_session() as sess:
+      x = tf.placeholder(tf.float32)
+      y = tf.placeholder(tf.float32)
+
+      c = lambda x, y: tf.less(tf.reduce_sum(x), 100.0)
+      def b(x, y):
+        y1 = tf.stop_gradient(tf.square(y, name="stopped"))
+        x1 = tf.add(tf.square(x), y1)
+        return x1, y1
+      rx, _ = tf.while_loop(c, b, [x, y])
+
+      r = tf.gradients(rx, y)[0]
+      feed_dict = {x: [3.0, 4.0], y: [2.0, 3.0]}
+      self.assertAllClose([0.0, 0.0], sess.run(r, feed_dict=feed_dict))
+      r = tf.gradients(rx, x)[0]
+      self.assertAllClose([156.0, 400.0], sess.run(r, feed_dict=feed_dict))
+      name = "gradients/while/stopped_grad"
+      all_ops = x.graph.get_operations()
+      self.assertFalse(any([name in op.name for op in all_ops]))
 
   def testWhileGradGradFail(self):
     theta = tf.Variable(initial_value=1.)

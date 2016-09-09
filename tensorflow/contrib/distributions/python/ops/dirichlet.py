@@ -97,8 +97,8 @@ class Dirichlet(distribution.Distribution):
 
   def __init__(self,
                alpha,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Dirichlet"):
     """Initialize a batch of Dirichlet distributions.
 
@@ -106,10 +106,10 @@ class Dirichlet(distribution.Distribution):
       alpha:  Positive floating point tensor with shape broadcastable to
         `[N1,..., Nm, k]` `m >= 0`.  Defines this as a batch of `N1 x ... x Nm`
          different `k` class Dirichlet distributions.
-      validate_args: Whether to assert valid values for parameters `alpha` and
-        `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
-        guaranteed.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert valid values
+        for parameters `alpha` and `x` in `prob` and `log_prob`.  If `False`,
+        correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -142,6 +142,8 @@ class Dirichlet(distribution.Distribution):
             parameters={"alpha": self._alpha, "alpha_sum": self._alpha_sum},
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
+            is_continuous=True,
+            is_reparameterized=False,
             name=ns)
 
   @property

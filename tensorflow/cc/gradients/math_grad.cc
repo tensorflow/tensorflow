@@ -21,22 +21,29 @@ namespace tensorflow {
 namespace ops {
 namespace {
 
-// TODO(andydavis) Move this to a more appropriate file.
-REGISTER_NO_GRADIENT_OP("Const");
-
 // MatMulGrad helper function used to compute two MatMul operations
 // based on input matrix transposition combinations.
-Status MatMulGradHelper(const Scope& scope, const Output& x0, const bool adj_x0,
-                        const Output& x1, const bool adj_x1, const Output& y0,
-                        const bool adj_y0, const Output& y1, const bool adj_y1,
+Status MatMulGradHelper(const Scope& scope, const bool is_batch,
+                        const Output& x0, const bool adj_x0, const Output& x1,
+                        const bool adj_x1, const Output& y0, const bool adj_y0,
+                        const Output& y1, const bool adj_y1,
                         std::vector<Output>* grad_outputs) {
-  auto dx =
-      MatMul(scope, x0, x1, MatMul::TransposeA(adj_x0).TransposeB(adj_x1));
-  grad_outputs->push_back(dx);
-  auto dy =
-      MatMul(scope, y0, y1, MatMul::TransposeA(adj_y0).TransposeB(adj_y1));
-  grad_outputs->push_back(dy);
-  return Status::OK();
+  if (is_batch == false) {
+    auto dx =
+        MatMul(scope, x0, x1, MatMul::TransposeA(adj_x0).TransposeB(adj_x1));
+    grad_outputs->push_back(dx);
+    auto dy =
+        MatMul(scope, y0, y1, MatMul::TransposeA(adj_y0).TransposeB(adj_y1));
+    grad_outputs->push_back(dy);
+  } else {
+    auto dx =
+        BatchMatMul(scope, x0, x1, BatchMatMul::AdjX(adj_x0).AdjY(adj_x1));
+    grad_outputs->push_back(dx);
+    auto dy =
+        BatchMatMul(scope, y0, y1, BatchMatMul::AdjX(adj_y0).AdjY(adj_y1));
+    grad_outputs->push_back(dy);
+  }
+  return scope.status();
 }
 
 // MatMulGrad common used to read and check node attr state, and determine
@@ -44,6 +51,7 @@ Status MatMulGradHelper(const Scope& scope, const Output& x0, const bool adj_x0,
 // combinations.
 // TODO(andydavis) Re-use this function for BatchMatMulGrad.
 Status MatMulGradCommon(const Scope& scope, const Operation& op,
+                        const bool is_batch,
                         const std::vector<Output>& grad_inputs,
                         const string& attr_adj_x, const string& attr_adj_y,
                         std::vector<Output>* grad_outputs) {
@@ -60,31 +68,39 @@ Status MatMulGradCommon(const Scope& scope, const Operation& op,
   TF_RETURN_IF_ERROR(GetNodeAttr(op.output(0).node()->def(), attr_adj_y, &tb));
 
   if (!ta && !tb) {
-    return MatMulGradHelper(scope, grad_inputs[0], false, op.input(1), true,
-                            op.input(0), true, grad_inputs[0], false,
+    return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, op.input(1),
+                            true, op.input(0), true, grad_inputs[0], false,
                             grad_outputs);
   } else if (!ta && tb) {
-    return MatMulGradHelper(scope, grad_inputs[0], false, op.input(1), false,
-                            grad_inputs[0], true, op.input(0), false,
+    return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, op.input(1),
+                            false, grad_inputs[0], true, op.input(0), false,
                             grad_outputs);
   } else if (ta && !tb) {
-    return MatMulGradHelper(scope, op.input(1), false, grad_inputs[0], true,
-                            op.input(0), false, grad_inputs[0], false,
+    return MatMulGradHelper(scope, is_batch, op.input(1), false, grad_inputs[0],
+                            true, op.input(0), false, grad_inputs[0], false,
                             grad_outputs);
   }
-  return MatMulGradHelper(scope, op.input(1), true, grad_inputs[0], true,
-                          grad_inputs[0], true, op.input(0), true,
+  return MatMulGradHelper(scope, is_batch, op.input(1), true, grad_inputs[0],
+                          true, grad_inputs[0], true, op.input(0), true,
                           grad_outputs);
 }
 
 Status MatMulGrad(const Scope& scope, const Operation& op,
                   const std::vector<Output>& grad_inputs,
                   std::vector<Output>* grad_outputs) {
-  return MatMulGradCommon(scope, op, grad_inputs, "transpose_a", "transpose_b",
-                          grad_outputs);
+  return MatMulGradCommon(scope, op, false, grad_inputs, "transpose_a",
+                          "transpose_b", grad_outputs);
 }
 
 REGISTER_GRADIENT_OP("MatMul", MatMulGrad);
+
+Status BatchMatMulGrad(const Scope& scope, const Operation& op,
+                       const std::vector<Output>& grad_inputs,
+                       std::vector<Output>* grad_outputs) {
+  return MatMulGradCommon(scope, op, true, grad_inputs, "adj_x", "adj_y",
+                          grad_outputs);
+}
+REGISTER_GRADIENT_OP("BatchMatMul", BatchMatMulGrad);
 
 }  // anonymous namespace
 }  // namespace ops

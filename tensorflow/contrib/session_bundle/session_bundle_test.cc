@@ -295,8 +295,7 @@ TEST_F(SessionBundleTest, AssetFileAny_IncorrectType) {
   EXPECT_FALSE(status_.ok());
   EXPECT_TRUE(
       StringPiece(status_.error_message())
-          .contains(
-              "Expected asset Any type_url for: tensorflow.serving.AssetFile"))
+          .contains("Expected Any type_url for: tensorflow.serving.AssetFile"))
       << status_.error_message();
 }
 

@@ -51,6 +51,12 @@ class ThreadPool {
   // having roughly "cost_per_unit" cost, in cycles. Each unit of work is
   // indexed 0, 1, ..., total - 1. Each shard contains 1 or more units of work
   // and the total cost of each shard is roughly the same.
+  //
+  // "cost_per_unit" is an estimate of the number of CPU cycles (or nanoseconds
+  // if not CPU-bound) to complete a unit of work. Overestimating creates too
+  // many shards and CPU time will be dominated by per-shard overhead, such as
+  // Context creation. Underestimating may not fully make use of the specified
+  // parallelism.
   void ParallelFor(int64 total, int64 cost_per_unit,
                    std::function<void(int64, int64)> fn);
 

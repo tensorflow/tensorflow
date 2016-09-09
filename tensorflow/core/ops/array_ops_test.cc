@@ -293,8 +293,8 @@ TEST(ArrayOpsTest, PadD_ShapeFn) {
     // Make the paddings tensor known and verify padding values get added.
     // E.g., if padding is ((1,10),(2,20),(3,30)) then values 11,22,23 are added
     // to input dims to get output.
-    Tensor paddings_t(DT_INT32, TensorShape{3, 2});
-    test::FillValues<int32>(&paddings_t, {1, 10, 2, 20, 3, 30});
+    Tensor paddings_t(DT_INT64, TensorShape{3, 2});
+    test::FillValues<int64>(&paddings_t, {1, 10, 2, 20, 3, 30});
     op.input_tensors[1] = &paddings_t;
     INFER_OK(op, "[100,200,300];[3,2]", "[111,222,333]");
     INFER_OK(op, "[100,?,300];[3,2]", "[111,?,333]");
@@ -326,8 +326,8 @@ TEST(ArrayOpsTest, MirrorPadGrad_ShapeFn) {
   // Make the paddings tensor known and verify padding values get
   // subtracted.  E.g., if padding is ((1,10),(2,20),(3,30)) then
   // values 11,22,23 are subtracted to input dims to get output.
-  Tensor paddings_t(DT_INT32, TensorShape{3, 2});
-  test::FillValues<int32>(&paddings_t, {1, 10, 2, 20, 3, 30});
+  Tensor paddings_t(DT_INT64, TensorShape{3, 2});
+  test::FillValues<int64>(&paddings_t, {1, 10, 2, 20, 3, 30});
   op.input_tensors[1] = &paddings_t;
 
   INFER_OK(op, "[111,222,333];[3,2]", "[100,200,300]");
@@ -385,7 +385,6 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
 
   // With unknown dim tensor value, output is unknown.
   INFER_OK(op, "?;?", "?");
-  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;[1]");
   Tensor dim_t;
   op.input_tensors[1] = &dim_t;
 
@@ -399,9 +398,19 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
     dim_t = test::AsScalar<int32>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,1,d0_1,d0_2]");
+
+    // Repeat with int64.
+    dim_t = test::AsScalar<int64>(idx);
+    INFER_OK(op, "?;?", "?");
+    INFER_OK(op, "[5,?,7];?", "[d0_0,1,d0_1,d0_2]");
   }
   for (int32 idx : {2, -2}) {
     dim_t = test::AsScalar<int32>(idx);
+    INFER_OK(op, "?;?", "?");
+    INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,1,d0_2]");
+
+    // Repeat with int64.
+    dim_t = test::AsScalar<int64>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,1,d0_2]");
   }
@@ -411,7 +420,26 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
     dim_t = test::AsScalar<int32>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,d0_2,1]");
+
+    // Repeat with int64.
+    dim_t = test::AsScalar<int64>(idx);
+    INFER_OK(op, "?;?", "?");
+    INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,d0_2,1]");
   }
+
+  // Expand using an input vector tensor.
+  std::vector<int32> dims;
+  dims.push_back(0);
+  dim_t = test::AsTensor<int32>(dims);
+  INFER_OK(op, "?;?", "?");
+  INFER_OK(op, "[5,?,7];?", "[1,d0_0,d0_1,d0_2]");
+
+  // Expand using too many input elements.
+  dims.push_back(1);
+  dim_t = test::AsTensor<int32>(dims);
+  INFER_ERROR("'dim' input must be a tensor with a single", op, "?;?");
+  INFER_ERROR("'dim' input must be a tensor with a single", op, "[5,6,7];?");
+
   // Examples from ExpandDims doc.
   dim_t = test::AsScalar<int32>(0);
   INFER_OK(op, "[2];[]", "[1,d0_0]");
@@ -551,8 +579,10 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // The first dimension is inferred:
   new_shape = test::AsTensor<int32>({2, -1});
   INFER_OK(op, "[3,4];[2]", "[2,6]");
-  // The total number of elements must be divisible by the known dimensions.
-  INFER_ERROR("Dimension size must be divisible by 2 but is 7", op, "[7];[2]");
+  // The total number of elements must be evenly divisible by the known
+  // dimensions.
+  INFER_ERROR("Dimension size must be evenly divisible by 2 but is 7", op,
+              "[7];[2]");
   // Multiple missing dimensions cannot be inferred.
   new_shape = test::AsTensor<int32>({-1, -1, 2});
   INFER_ERROR("Cannot infer multiple unknown dimensions in shape [?,?,2]", op,
@@ -797,7 +827,8 @@ TEST(ArrayOpsTest, Split_ShapeFn) {
   INFER_OK(op, "?;[?,?]", "[d1_0,?];[d1_0,?]");
   INFER_OK(op, "?;[1,4]", "[d1_0,2];[d1_0,2]");
   INFER_OK(op, "?;[1,?]", "[d1_0,?];[d1_0,?]");
-  INFER_ERROR("Dimension size must be divisible by 2 but is 5", op, "?;[1,5]");
+  INFER_ERROR("Dimension size must be evenly divisible by 2 but is 5", op,
+              "?;[1,5]");
 }
 
 TEST(ArrayOpsTest, Tile_ShapeFn) {
@@ -822,6 +853,9 @@ TEST(ArrayOpsTest, Tile_ShapeFn) {
   // Test a tile of a 4D input.
   Tensor multiples = test::AsTensor<int32>({2, 3, 4, 5});
   op.input_tensors[1] = &multiples;
+  INFER_OK(op, "[2,3,1,4];[4]", "[4,9,4,20]");
+  // Test 64-bit tensor type
+  multiples = test::AsTensor<int64>({2, 3, 4, 5});
   INFER_OK(op, "[2,3,1,4];[4]", "[4,9,4,20]");
 }
 
@@ -922,8 +956,8 @@ TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
   // Paddings not known, but batch size can be computed.
   INFER_OK(op, "[1,10,10,3];[2,2]", "[4,?,?,d0_3]");
 
-  // Unknown paddings means unknown shape
-  INFER_OK(op, "[1,10,10,3];?", "?");
+  // Unknown paddings means unknown shape of rank 4.
+  INFER_OK(op, "[1,10,10,3];?", "[?,?,?,?]");
 
   // Paddings not correct shape
   INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[1,10,10,3];[4]");
@@ -933,11 +967,13 @@ TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
   Tensor paddings = test::AsTensor<int32>({4, 2, 2, 4}, {{2, 2}});
   op.input_tensors[1] = &paddings;
   INFER_OK(op, "[1,10,10,3];[2,2]", "[4,8,8,d0_3]");
+  paddings = test::AsTensor<int64>({4, 2, 2, 4}, {{2, 2}});
+  INFER_OK(op, "[1,10,10,3];[2,2]", "[4,8,8,d0_3]");
 
   // Bad paddings values
   paddings = test::AsTensor<int32>({1, 2, 3, 4}, {{2, 2}});
   op.input_tensors[1] = &paddings;
-  INFER_ERROR("Dimension size must be divisible by 2 but is 13", op,
+  INFER_ERROR("Dimension size must be evenly divisible by 2 but is 13", op,
               "[1,10,10,3];[2,2]");
 
   // Negative paddsings
@@ -959,18 +995,18 @@ TEST(ArrayOpsTest, BatchToSpace_ShapeFn) {
   INFER_OK(op, "[4,8,8,3];[2,2]", "[1,?,?,d0_3]");
 
   // block_size not compatible with batch size
-  INFER_ERROR("Dimension size must be divisible by 4 but is 5", op,
+  INFER_ERROR("Dimension size must be evenly divisible by 4 but is 5", op,
               "[5,8,8,3];[2,2]");
 
   // Unknown croppings means unknown shape
-  INFER_OK(op, "[4,8,8,3];?", "?");
+  INFER_OK(op, "[4,8,8,3];?", "[?,?,?,?]");
 
   // croppings not correct shape
   INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[4,8,8,3];[4]");
   INFER_ERROR("BatchToSpace requires crops with shape [2,2]", op,
               "[4,8,8,3];[2,3]");
 
-  Tensor croppings = test::AsTensor<int32>({4, 2, 2, 4}, {{2, 2}});
+  Tensor croppings = test::AsTensor<int64>({4, 2, 2, 4}, {{2, 2}});
   op.input_tensors[1] = &croppings;
   INFER_OK(op, "[4,8,8,3];[2,2]", "[1,10,10,d0_3]");
 
@@ -1000,9 +1036,9 @@ TEST(ArrayOpsTest, SpaceToDepth_ShapeFn) {
   INFER_OK(op, "[1,2,4,4]", "[d0_0,1,2,16]");
 
   // block_size not compatible with space
-  INFER_ERROR("Dimension size must be divisible by 2 but is 3", op,
+  INFER_ERROR("Dimension size must be evenly divisible by 2 but is 3", op,
               "[1,3,8,4]");
-  INFER_ERROR("Dimension size must be divisible by 2 but is 5", op,
+  INFER_ERROR("Dimension size must be evenly divisible by 2 but is 5", op,
               "[1,2,5,4]");
 
   // Unknown depth --> Unknown depth.
@@ -1019,7 +1055,7 @@ TEST(ArrayOpsTest, DepthToSpace_ShapeFn) {
   INFER_OK(op, "[1,1,2,16]", "[d0_0,2,4,4]");
 
   // Bad depth
-  INFER_ERROR("Dimension size must be divisible by 4 but is 15", op,
+  INFER_ERROR("Dimension size must be evenly divisible by 4 but is 15", op,
               "[1,1,2,15]");
 
   // Unknown depth --> Unknown depth.

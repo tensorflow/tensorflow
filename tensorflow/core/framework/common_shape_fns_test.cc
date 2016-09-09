@@ -243,6 +243,19 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
   }
 
   {
+    // NCHW format with input rank 3
+    TF_CHECK_OK(NodeDefBuilder("test", "BiasAdd")
+                    .Input("a", 0, DT_FLOAT)
+                    .Input("b", 0, DT_FLOAT)
+                    .Attr("data_format", "NCHW")
+                    .Finalize(&def));
+    InferenceContext c(&def, op_def, {"[10,11,12]", "[10]"}, {});
+    TF_EXPECT_OK(BiasAddShape(&c));
+    ShapeHandle output = c.output(0);
+    EXPECT_EQ("[10,11,12]", c.DebugString(output));
+  }
+
+  {
     // Input rank not high enough
     InferenceContext c(&def, op_def, {"[3]", "[3]"}, {});
     EXPECT_FALSE(BiasAddShape(&c).ok());
@@ -256,7 +269,7 @@ TEST(CommonShapeFnsTest, BiasAddShapeTest) {
                     .Attr("data_format", "NCHW")
                     .Finalize(&def));
     // NCHW format
-    InferenceContext c(&def, op_def, {"[2,3,4]", "[3]"}, {});
+    InferenceContext c(&def, op_def, {"[2,3]", "[3]"}, {});
     EXPECT_FALSE(BiasAddShape(&c).ok());
   }
 }
@@ -314,6 +327,18 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
   }
 
   {
+    // NCHW format with input rank 3
+    TF_CHECK_OK(NodeDefBuilder("test", "BiasAddGrad")
+                    .Input("a", 0, DT_FLOAT)
+                    .Attr("data_format", "NCHW")
+                    .Finalize(&def));
+    InferenceContext c(&def, op_def, {"[10,11,12]"}, {});
+    TF_EXPECT_OK(BiasAddGradShape(&c));
+    ShapeHandle output = c.output(0);
+    EXPECT_EQ(10, c.Value(c.Dim(output, 0)));
+  }
+
+  {
     // Input rank not high enough
     InferenceContext c(&def, op_def, {"[3]"}, {});
     EXPECT_FALSE(BiasAddGradShape(&c).ok());
@@ -326,7 +351,7 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
                     .Attr("data_format", "NCHW")
                     .Finalize(&def));
     // NCHW format
-    InferenceContext c(&def, op_def, {"[2,3,4]"}, {});
+    InferenceContext c(&def, op_def, {"[2,3]"}, {});
     EXPECT_FALSE(BiasAddGradShape(&c).ok());
   }
 }
@@ -369,11 +394,13 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   // Invalid rank for filter
   INFER_ERROR("must be rank 4", op, "[1,4,4,1];[2,1,1]");
 
-  // No unknown dims in the critical fields.
-  INFER_ERROR("is not known", op, "[1,?,2,1];[1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,?,1];[1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[?,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[1,?,1,1]");
+  // Unknown dims in the critical fields lead to partial inference.
+  INFER_OK(op, "[1,4,4,1];[2,1,1,1]", "[d0_0,3,2,d1_3]");
+  INFER_OK(op, "[1,?,4,1];[2,1,1,1]", "[d0_0,?,2,d1_3]");
+  INFER_OK(op, "[1,4,?,1];[2,1,1,1]", "[d0_0,3,?,d1_3]");
+  INFER_OK(op, "[1,4,4,?];[2,1,1,1]", "[d0_0,3,2,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[?,1,1,1]", "[d0_0,?,2,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[2,?,1,1]", "[d0_0,3,?,d1_3]");
 
   // input depths must match.
   INFER_ERROR("Dimensions must be equal, but are 10 and 10000", op,
@@ -404,11 +431,11 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
 
   // 4x4 input, 1x1 filter, 1x1 stride
   set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
-  INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,4,4,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // 3x3 input, 2x2 filter, 1x1 stride
   set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
-  INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,3,3,d1_3]");
+  INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // 4x4 input, 2x2 filter, 2x2 stride
   set_op({{1, 2, 2, 1}}, "SAME", "NHWC");
@@ -416,7 +443,25 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
 
   // 4x4 input, 2x2 filter, 1x1 stride
   set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
-  INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,4,4,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
+
+  // With stride 1x1 and SAME, unknown dims don't matter - filter dims except
+  // for output channels are ignored for output, so all inputs are carried
+  // through to output.
+  set_op({{1, 1, 1, 1}}, "SAME", "NHWC");
+  INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,?,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,4,?,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,4,4,?];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+  INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
+
+  // With stride != 1, the input HW dims are divided to produce output dims.
+  set_op({{1, 2, 2, 1}}, "SAME", "NHWC");
+  INFER_OK(op, "[?,4,4,1];[?,?,?,?]", "[d0_0,2,2,d1_3]");
+  INFER_OK(op, "[1,?,4,1];[?,?,?,?]", "[d0_0,?,2,d1_3]");
+  INFER_OK(op, "[1,4,?,1];[?,?,?,?]", "[d0_0,2,?,d1_3]");
+  INFER_OK(op, "[1,4,4,?];[?,?,?,?]", "[d0_0,2,2,d1_3]");
 }
 
 TEST(CommonShapeFnsTest, Conv3DShapeTest) {
@@ -440,12 +485,16 @@ TEST(CommonShapeFnsTest, Conv3DShapeTest) {
   // Invalid rank for filter
   INFER_ERROR("must be rank 5", op, "[1,4,4,1];[2,1,1]");
 
-  // No unknown dims in the critical fields.
-  INFER_ERROR("is not known", op, "[1,?,2,2,1];[1,1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,?,2,1];[1,1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,?,1];[1,1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,2,1];[?,1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,2,1];[1,?,1,1,1]");
+  // unknown dims in the critical fields give partial inference.
+  INFER_OK(op, "[1,2,2,2,1];[1,1,1,1,1]", "[d0_0,2,2,2,d1_4]");
+  INFER_OK(op, "[1,?,2,2,1];[1,1,1,1,1]", "[d0_0,?,2,2,d1_4]");
+  INFER_OK(op, "[1,2,?,2,1];[1,1,1,1,1]", "[d0_0,2,?,2,d1_4]");
+  INFER_OK(op, "[1,2,2,?,1];[1,1,1,1,1]", "[d0_0,2,2,?,d1_4]");
+  INFER_OK(op, "[1,2,2,2,1];[?,1,1,1,1]", "[d0_0,?,2,2,d1_4]");
+  INFER_OK(op, "[1,2,2,2,1];[1,?,1,1,1]", "[d0_0,2,?,2,d1_4]");
+  INFER_OK(op, "[1,2,2,2,1];[1,1,?,1,1]", "[d0_0,2,2,?,d1_4]");
+  INFER_OK(op, "[1,2,2,2,1];[1,1,1,?,1]", "[d0_0,2,2,2,d1_4]");
+  INFER_OK(op, "[1,2,2,2,1];[1,1,1,1,?]", "[d0_0,2,2,2,d1_4]");
 
   // input depths must match.
   INFER_ERROR("Dimensions must be equal, but are 10 and 10000", op,
@@ -465,7 +514,34 @@ TEST(CommonShapeFnsTest, Conv3DShapeTest) {
 
   // 4x4 input, 2x2 filter, 1x1 stride
   set_op({{1, 1, 1, 1, 1}}, "SAME");
-  INFER_OK(op, "[1,4,4,4,1];[2,2,2,1,1]", "[d0_0,4,4,4,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+
+  // with SAME, filter doesn't matter except for last dim.
+  set_op({{1, 1, 1, 1, 1}}, "SAME");
+  INFER_OK(op, "[?,4,4,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,?,4,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,?,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,?,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,?];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[?,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[2,?,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[2,2,?,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[2,2,2,?,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+  INFER_OK(op, "[1,4,4,4,1];[2,2,2,1,?]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+
+  // with SAME, and stride != 1, division happens to produce output.
+  set_op({{1, 2, 3, 4, 1}}, "SAME");
+  INFER_OK(op, "[1,4,9,4,1];[2,2,2,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[?,4,9,4,1];[2,2,2,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,?,9,4,1];[2,2,2,1,1]", "[d0_0,?,3,1,d1_4]");
+  INFER_OK(op, "[1,4,?,4,1];[2,2,2,1,1]", "[d0_0,2,?,1,d1_4]");
+  INFER_OK(op, "[1,4,9,?,1];[2,2,2,1,1]", "[d0_0,2,3,?,d1_4]");
+  INFER_OK(op, "[1,4,9,4,?];[2,2,2,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,4,9,4,1];[?,2,2,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,4,9,4,1];[2,?,2,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,4,9,4,1];[2,2,?,1,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,4,9,4,1];[2,2,2,?,1]", "[d0_0,2,3,1,d1_4]");
+  INFER_OK(op, "[1,4,9,4,1];[2,2,2,1,?]", "[d0_0,2,3,1,d1_4]");
 }
 
 TEST(CommonShapeFnsTest, DepthwiseConv2DShapeTest) {
@@ -489,12 +565,14 @@ TEST(CommonShapeFnsTest, DepthwiseConv2DShapeTest) {
               "[1,2,2,3];[1,1,12,4]");
 
   // No unknown dims in the critical fields.
-  INFER_ERROR("is not known", op, "[1,?,2,1];[1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,?,1];[1,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[?,1,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[1,?,1,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[1,1,?,1]");
-  INFER_ERROR("is not known", op, "[1,2,2,1];[1,1,1,?]");
+  INFER_OK(op, "[1,2,2,3];[1,1,3,4]", "[d0_0,2,2,12]");
+  INFER_OK(op, "[1,?,2,3];[1,1,3,4]", "[d0_0,?,2,12]");
+  INFER_OK(op, "[1,2,?,3];[1,1,3,4]", "[d0_0,2,?,12]");
+  INFER_OK(op, "[1,2,2,3];[?,1,3,4]", "[d0_0,?,2,12]");
+  INFER_OK(op, "[1,2,2,3];[1,?,3,4]", "[d0_0,2,?,12]");
+  INFER_OK(op, "[1,2,2,3];[1,1,?,4]", "[d0_0,2,2,12]");
+  INFER_OK(op, "[1,2,2,?];[1,1,?,4]", "[d0_0,2,2,?]");
+  INFER_OK(op, "[1,2,2,3];[1,1,3,?]", "[d0_0,2,2,?]");
 }
 
 TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
@@ -522,9 +600,11 @@ TEST(CommonShapeFnsTest, AvgPool2DShapeTest) {
   set_op({1, 1, 2, 1}, {1, 2, 1, 1}, "VALID", "NHWC");
   INFER_OK(op, "[1,4,4,1]", "[d0_0,3,2,d0_3]");
 
-  // No unknown dims in the critical fields.  Assumes NHWC format.
-  INFER_ERROR("is not known", op, "[1,?,2,1]");
-  INFER_ERROR("is not known", op, "[1,2,?,1]");
+  // 4x4 input, 2x1 ksize, 1x2 stride
+  // unknown dims in the critical fields lead to partial inference.
+  // Assumes NHWC format.
+  INFER_OK(op, "[1,?,4,1]", "[d0_0,?,2,d0_3]");
+  INFER_OK(op, "[1,4,?,1]", "[d0_0,3,?,d0_3]");
 
   // 4x4 input, 2x1 ksize, 1x2 stride, NCHW format
   set_op({{1, 1, 1, 2}}, {1, 1, 2, 1}, "VALID", "NCHW");
@@ -615,15 +695,13 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
 
   // Reduction indices not available, so output is unknown.
   INFER_OK(op, "[2,4,5];[2]", "?");
+  INFER_OK(op, "?;[2]", "?");
 
   Tensor indices = test::AsTensor<int32>({1, 2});
   op.input_tensors[1] = &indices;
 
   // Reduction indices available
   INFER_OK(op, "[2,4,5];[2]", "[d0_0]");
-
-  // Unknown input rank
-  INFER_OK(op, "?;[2]", "?");
 
   // Wrapped indices
   indices = test::AsTensor<int32>({-1, -2});
@@ -635,11 +713,6 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
   op.input_tensors[1] = &indices;
   INFER_OK(op, "[2,4,5];[]", "[d0_1,d0_2]");
 
-  // Cannot reduce 0 dimension
-  indices = test::AsTensor<int32>({-1, -2});
-  op.input_tensors[1] = &indices;
-  INFER_ERROR("Cannot reduce dimension -2 with size 0", op, "[2,0,5];[2]");
-
   indices = test::AsScalar<int32>(-4);
   op.input_tensors[1] = &indices;
   INFER_ERROR("Invalid reduction dimension", op, "[2,4,5];[]");
@@ -647,7 +720,7 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
   // Empty reduction indices
   indices = test::AsTensor<int32>({});
   op.input_tensors[1] = &indices;
-  INFER_OK(op, "[2,4,5];[0]", "[]");
+  INFER_OK(op, "[2,4,5];[0]", "[d0_0,d0_1,d0_2]");
 
   // Keep dims = true
   TF_ASSERT_OK(NodeDefBuilder("test", "Sum")
@@ -658,6 +731,71 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
   indices = test::AsTensor<int32>({-1, -2});
   op.input_tensors[1] = &indices;
   INFER_OK(op, "[2,4,5];[2]", "[d0_0, 1, 1]");
+
+  // input rank is known, but reduction indices are not (with keep_dim=true).
+  // The output rank matches input rank (because of keep_dims=true).
+  op.input_tensors[1] = nullptr;
+  INFER_OK(op, "[?,?,?];?", "[?,?,?]");
+  INFER_OK(op, "[?,?,?];[2]", "[?,?,?]");
+}
+
+TEST(CommonShapeFnsTest, ReduceWithEmptyReductionIndices_ShapeFn) {
+  ShapeInferenceTestOp op("ReduceJoin");
+  op.input_tensors.resize(2);
+
+  TF_ASSERT_OK(NodeDefBuilder("test", "ReduceJoin")
+                   .Input("input", 0, DT_STRING)
+                   .Input("reduction_indices", 1, DT_INT32)
+                   .Attr("keep_dims", false)
+                   .Finalize(&op.node_def));
+
+  // Reduction indices not available, so output is unknown.
+  INFER_OK(op, "[2,4,5];[2]", "?");
+  INFER_OK(op, "?;[2]", "?");
+
+  Tensor indices = test::AsTensor<int32>({1, 2});
+  op.input_tensors[1] = &indices;
+
+  // Reduction indices available
+  INFER_OK(op, "[2,4,5];[2]", "[d0_0]");
+
+  // Wrapped indices
+  indices = test::AsTensor<int32>({-1, -2});
+  op.input_tensors[1] = &indices;
+  INFER_OK(op, "[2,4,5];[2]", "[d0_0]");
+
+  // Scalar
+  indices = test::AsScalar<int32>(0);
+  op.input_tensors[1] = &indices;
+  INFER_OK(op, "[2,4,5];[]", "[d0_1,d0_2]");
+
+  indices = test::AsScalar<int32>(-4);
+  op.input_tensors[1] = &indices;
+  INFER_ERROR("Invalid reduction dimension", op, "[2,4,5];[]");
+
+  // Empty reduction indices. Unlike Reduce_ShapeFn, this reduces all dims away.
+  indices = test::AsTensor<int32>({});
+  op.input_tensors[1] = &indices;
+  INFER_OK(op, "[2,4,5];[0]", "[]");
+
+  // Keep dims = true
+  TF_ASSERT_OK(NodeDefBuilder("test", op.name)
+                   .Input("input", 0, DT_STRING)
+                   .Input("reduction_indices", 1, DT_INT32)
+                   .Attr("keep_dims", true)
+                   .Finalize(&op.node_def));
+  indices = test::AsTensor<int32>({-1, -2});
+  op.input_tensors[1] = &indices;
+  INFER_OK(op, "[2,4,5];[2]", "[d0_0, 1, 1]");
+
+  // input rank is known, but reduction indices are not (with keep_dim=true).
+  // The output rank is unknown because reduction indices could end up being
+  // empty and cause it all to be reduced.
+  op.input_tensors[1] = nullptr;
+  INFER_OK(op, "[?,?,?];?", "?");
+  // TODO(cwhipkey): in this case, it could output [?,?,?], because the shape of
+  // reduction indices is known to be non-empty.
+  INFER_OK(op, "[?,?,?];[2]", "?");
 }
 
 }  // namespace shape_inference

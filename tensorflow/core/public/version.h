@@ -66,9 +66,11 @@ limitations under the License.
 // 10. Deprecate conv3d_backprop_{filter,input} (10jun2016).
 // 11. Deprecate {batch}_self_adjoint_eig (3aug2016).
 // 12. Graph consumers understand the node_def field of FunctionDef (22aug2016).
+// 13. Deprecate multiple batch linear algebra ops (see cl/132498310)
+// (9sep2016).
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 12
+#define TF_GRAPH_DEF_VERSION 13
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //

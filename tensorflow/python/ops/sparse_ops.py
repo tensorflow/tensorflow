@@ -57,13 +57,10 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -73,6 +70,46 @@ from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_sparse_ops import *
 # pylint: enable=wildcard-import
+
+
+def _convert_to_sparse_tensor(sp_input):
+  """Convert `sp_input` to `SparseTensor` and return it.
+
+  Args:
+    sp_input: `SparseTensor` or `SparseTensorValue`.
+
+  Returns:
+    `sp_input` converted to `SparseTensor`.
+
+  Raises:
+    ValueError: if `sp_input` is neither `SparseTensor` nor `SparseTensorValue`.
+  """
+  if isinstance(sp_input, ops.SparseTensorValue):
+    return ops.SparseTensor.from_value(sp_input)
+  if not isinstance(sp_input, ops.SparseTensor):
+    raise TypeError("Input must be a SparseTensor.")
+  return sp_input
+
+
+def _convert_to_sparse_tensors(sp_inputs):
+  """Convert `sp_inputs` to `SparseTensor` objects and return them.
+
+  Args:
+    sp_inputs: `list` or `tuple` of `SparseTensor` or `SparseTensorValue`
+      objects.
+
+  Returns:
+    `sp_inputs` converted to `SparseTensor` objects.
+
+  Raises:
+    ValueError: if any item in `sp_inputs` is neither `SparseTensor` nor
+      `SparseTensorValue`.
+  """
+  if isinstance(sp_inputs, list):
+    return [_convert_to_sparse_tensor(sp_input) for sp_input in sp_inputs]
+  if isinstance(sp_inputs, tuple):
+    return (_convert_to_sparse_tensor(sp_input) for sp_input in sp_inputs)
+  raise TypeError("Inputs must be a list or tuple.")
 
 
 # pylint: disable=protected-access
@@ -170,10 +207,7 @@ def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
   Raises:
     TypeError: If `sp_inputs` is not a list of `SparseTensor`.
   """
-  if not isinstance(sp_inputs, list):
-    raise TypeError("Inputs must be a list")
-  if not all(isinstance(sp_input, ops.SparseTensor) for sp_input in sp_inputs):
-    raise TypeError("All inputs must be SparseTensors")
+  sp_inputs = _convert_to_sparse_tensors(sp_inputs)
 
   if len(sp_inputs) == 1:  # Degenerate case of one tensor.
     return sp_inputs[0]
@@ -249,11 +283,13 @@ def sparse_add(a, b, thresh=0):
   Raises:
     TypeError: If both `a` and `b` are `Tensor`s.  Use `tf.add()` instead.
   """
-  if not any(isinstance(inp, ops.SparseTensor) for inp in [a, b]):
+  sparse_classes = (ops.SparseTensor, ops.SparseTensorValue)
+  if not any(isinstance(inp, sparse_classes) for inp in [a, b]):
     raise TypeError("At least one input should be SparseTensor; do you mean to"
                     " use tf.add()?")
 
-  if all(isinstance(inp, ops.SparseTensor) for inp in [a, b]):
+  if all(isinstance(inp, sparse_classes) for inp in [a, b]):
+    a = _convert_to_sparse_tensor(a)
     thresh = ops.convert_to_tensor(thresh, dtype=a.values.dtype.real_dtype,
                                    name="thresh")
     output_ind, output_val, output_shape = (
@@ -266,8 +302,8 @@ def sparse_add(a, b, thresh=0):
                                    thresh))
     return ops.SparseTensor(output_ind, output_val, output_shape)
   else:
-    # swap to make `a` the SparseTensor
-    if isinstance(b, ops.SparseTensor):
+    # swap to make `a` the SparseTensor.
+    if isinstance(b, sparse_classes):
       a, b = b, a
     return gen_sparse_ops._sparse_tensor_dense_add(
         a.indices, a.values, a.shape, b)
@@ -341,8 +377,7 @@ def sparse_reorder(sp_input, name=None):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
   reordered_ind, reordered_val = (
       gen_sparse_ops._sparse_reorder(sp_input.indices,
@@ -402,8 +437,7 @@ def sparse_reshape(sp_input, shape, name=None):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
   with ops.name_scope(name, "SparseReshape", [sp_input]) as name:
     reshaped_ind, reshaped_shape = gen_sparse_ops._sparse_reshape(
@@ -450,8 +484,7 @@ def sparse_split(split_dim, num_split, sp_input, name=None):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
   output_inds, output_vals, output_shapes = (
       gen_sparse_ops._sparse_split(split_dim,
@@ -472,14 +505,7 @@ ops.RegisterShape("SparseSplit")(common_shapes.call_cpp_shape_fn)
 
 @ops.RegisterShape("SparseToDense")
 def _SparseToDenseShape(op):
-  input_shape = tensor_util.constant_value(op.inputs[1])
-  if input_shape is not None:
-    if np.ndim(input_shape) > 1:
-      raise ValueError("Input shape should be a vector")
-    return [tensor_shape.TensorShape(input_shape)]
-  else:
-    input_shape_shape = op.inputs[1].get_shape().with_rank(1)
-    return [tensor_shape.unknown_shape(ndims=input_shape_shape[0].value)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 def sparse_to_dense(sparse_indices,
@@ -625,8 +651,7 @@ def sparse_tensor_to_dense(sp_input,
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
   return sparse_to_dense(sp_input.indices,
                          sp_input.shape,
@@ -682,8 +707,7 @@ def sparse_to_indicator(sp_input, vocab_size, name=None):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
   with ops.name_scope(name, "SparseToIndicator", [sp_input]) as name:
     num_entries = array_ops.shape(sp_input.indices)[0]
@@ -777,11 +801,8 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
   Raises:
     TypeError: If `sp_ids` or `sp_values` are not a `SparseTensor`.
   """
-  if not isinstance(sp_ids, ops.SparseTensor):
-    raise TypeError("sp_ids must be a SparseTensor")
-
-  if not isinstance(sp_values, ops.SparseTensor):
-    raise TypeError("sp_values must be a SparseTensor")
+  sp_ids = _convert_to_sparse_tensor(sp_ids)
+  sp_values = _convert_to_sparse_tensor(sp_values)
 
   with ops.name_scope(name, "SparseMerge", [sp_ids, sp_values]):
     indices_shape = array_ops.shape(sp_ids.indices)
@@ -834,8 +855,7 @@ def sparse_retain(sp_input, to_retain):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
   to_retain = ops.convert_to_tensor(to_retain)
 
@@ -905,8 +925,7 @@ def sparse_reset_shape(sp_input, new_shape=None):
       - If shapes are not known during graph construction time, and during run
         time it is found out that the ranks do not match.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
   in_indices = array_ops.identity(sp_input.indices)
   in_values = array_ops.identity(sp_input.values)
@@ -983,8 +1002,7 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
   with ops.name_scope(name, "SparseFillEmptyRows", [sp_input]):
     default_value = ops.convert_to_tensor(default_value,
@@ -1030,8 +1048,7 @@ def serialize_sparse(sp_input, name=None):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor.")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
   return gen_sparse_ops._serialize_sparse(
       sp_input.indices,
@@ -1066,8 +1083,7 @@ def serialize_many_sparse(sp_input, name=None):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  if not isinstance(sp_input, ops.SparseTensor):
-    raise TypeError("Input must be a SparseTensor.")
+  sp_input = _convert_to_sparse_tensor(sp_input)
 
   return gen_sparse_ops._serialize_many_sparse(
       sp_input.indices,
@@ -1313,8 +1329,7 @@ def sparse_tensor_dense_matmul(sp_a, b, adjoint_a=False, adjoint_b=False,
       return A*B
   """
   # pylint: enable=line-too-long
-  if not isinstance(sp_a, ops.SparseTensor):
-    raise TypeError("sp_a must be a SparseTensor")
+  sp_a = _convert_to_sparse_tensor(sp_a)
   with ops.name_scope(name, "SparseTensorDenseMatMul",
                       [sp_a.indices, sp_a.values, b]) as name:
     b = ops.convert_to_tensor(b, name="b")

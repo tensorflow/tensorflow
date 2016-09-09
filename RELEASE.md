@@ -15,6 +15,8 @@
   called.
 * The NodeDef protocol message is now defined in its own file node_def.proto
   instead of graph.proto.
+* ops.NoGradient was renamed ops.NotDifferentiable. ops.NoGradient will
+  be removed soon.
 
 # Release 0.10.0
 

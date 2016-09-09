@@ -59,6 +59,7 @@ tf_cuda_library(
 tf_cc_test(
     name = "c_api_test",
     size = "small",
+    srcs = ["c_api_test.cc"],
     linkopts = select({
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -68,6 +69,7 @@ tf_cc_test(
         ":c_api",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

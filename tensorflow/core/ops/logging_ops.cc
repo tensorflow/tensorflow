@@ -72,6 +72,7 @@ REGISTER_OP("TensorSummary")
     .Attr("display_name: string")
     .Attr("description: string = ''")
     .Attr("labels: list(string) = []")
+    .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Outputs a `Summary` protocol buffer with a tensor.
 

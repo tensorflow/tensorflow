@@ -21,7 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -69,7 +69,7 @@ def kl(dist_a, dist_b, allow_nan=False, name=None):
     kl_t = array_ops.identity(kl_t, name="kl")
 
     with ops.control_dependencies([
-        logging_ops.Assert(
+        control_flow_ops.Assert(
             math_ops.logical_not(
                 math_ops.reduce_any(math_ops.is_nan(kl_t))),
             ["KL calculation between %s and %s returned NaN values "

@@ -171,6 +171,28 @@ class ResizeBilinearOpTest(tf.test.TestCase):
       grad = tf.gradients(input_tensor, [resize_out])
       self.assertEqual([None], grad)
 
+  def testCompareGpuVsCpu(self):
+    in_shape = [2, 4, 6, 3]
+    out_shape = [2, 8, 16, 3]
+
+    size = np.prod(in_shape)
+    x = 1.0 / size * np.arange(0, size).reshape(in_shape).astype(np.float32)
+    for align_corners in [True, False]:
+      grad = {}
+      for use_gpu in [False, True]:
+        with self.test_session(use_gpu=use_gpu):
+          input_tensor = tf.constant(x, shape=in_shape)
+          resized_tensor = tf.image.resize_bilinear(input_tensor,
+                                                    out_shape[1:3],
+                                                    align_corners=align_corners)
+          grad[use_gpu] = tf.test.compute_gradient(input_tensor,
+                                                   in_shape,
+                                                   resized_tensor,
+                                                   out_shape,
+                                                   x_init_value=x)
+
+      self.assertAllClose(grad[False], grad[True], rtol=1e-4, atol=1e-4)
+
 
 class CropAndResizeOpTest(tf.test.TestCase):
 

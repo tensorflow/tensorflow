@@ -287,6 +287,7 @@ output: A Tensor of type `out_type`.
 REGISTER_OP("DecodeJSONExample")
     .Input("json_examples: string")
     .Output("binary_examples: string")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Convert JSON-encoded Example records to binary protocol buffer strings.
 
@@ -343,6 +344,7 @@ REGISTER_OP("StringToNumber")
     .Input("string_tensor: string")
     .Output("output: out_type")
     .Attr("out_type: {float, int32} = DT_FLOAT")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Converts each string in the input Tensor to the specified numeric type.
 

@@ -139,7 +139,8 @@ class MixtureTest(tf.test.TestCase):
       d = distributions_py.Mixture(
           distributions_py.Categorical([0.1, 0.2]),
           [(distributions_py.Normal, {"mu": d0_param, "sigma": d0_param}),
-           (distributions_py.Normal, {"mu": d1_param, "sigma": d1_param})])
+           (distributions_py.Normal, {"mu": d1_param, "sigma": d1_param})],
+          validate_args=True)
       with self.assertRaisesOpError(r"batch shape must match"):
         d.sample().eval(feed_dict={d0_param: [2.0, 3.0], d1_param: [1.0]})
       with self.assertRaisesOpError(r"batch shape must match"):

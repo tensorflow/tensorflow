@@ -140,7 +140,7 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
                                                 const StringPiece export_dir,
                                                 SessionBundle* const bundle) {
   LOG(INFO) << "Attempting to load a SessionBundle from: " << export_dir;
-  LOG(INFO) << "Using RunOptions: " << run_options.DebugString();
+  LOG(INFO) << "Using RunOptions: " << DebugStringIfAvailable(run_options);
   const int64 start_seconds = Env::Default()->NowSeconds();
   TF_RETURN_IF_ERROR(
       GetMetaGraphDefFromExport(export_dir, &(bundle->meta_graph_def)));
@@ -153,20 +153,11 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
     if (graph_collection_def.any_list().value_size() != 1) {
       return errors::FailedPrecondition(
           "Expected exactly one serving GraphDef in : ",
-          bundle->meta_graph_def.DebugString());
+          DebugStringIfAvailable(bundle->meta_graph_def));
     }
     const auto& any = graph_collection_def.any_list().value(0);
-    if (!any.Is<GraphDef>()) {
-      return errors::FailedPrecondition(
-          "Expected Any type_url for: ",
-          GraphDef::default_instance().descriptor()->full_name(), ". Got: ",
-          string(any.type_url().data(), any.type_url().size()), ".");
-    }
     GraphDef graph_def;
-    if (!any.UnpackTo(&graph_def)) {
-      return errors::FailedPrecondition("Failed to unpack: ",
-                                        any.DebugString());
-    }
+    TF_RETURN_IF_ERROR(ParseAny(any, &graph_def, "tensorflow.GraphDef"));
     TF_RETURN_IF_ERROR(
         CreateSessionFromGraphDef(options, graph_def, &bundle->session));
   } else {
@@ -182,17 +173,8 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
     const auto& any_assets = assets_it->second.any_list().value();
     for (const auto& any_asset : any_assets) {
       AssetFile asset_file;
-      if (!any_asset.Is<AssetFile>()) {
-        return errors::FailedPrecondition(
-            "Expected asset Any type_url for: ",
-            asset_file.descriptor()->full_name(), ". Got: ",
-            string(any_asset.type_url().data(), any_asset.type_url().size()),
-            ".");
-      }
-      if (!any_asset.UnpackTo(&asset_file)) {
-        return errors::FailedPrecondition("Failed to unpack: ",
-                                          any_asset.DebugString());
-      }
+      TF_RETURN_IF_ERROR(
+          ParseAny(any_asset, &asset_file, "tensorflow.serving.AssetFile"));
       asset_files.push_back(asset_file);
     }
   }
@@ -208,7 +190,7 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
     if (init_op_it->second.node_list().value_size() != 1) {
       return errors::FailedPrecondition(
           strings::StrCat("Expected exactly one serving init op in : ",
-                          bundle->meta_graph_def.DebugString()));
+                          DebugStringIfAvailable(bundle->meta_graph_def)));
     }
     TF_RETURN_IF_ERROR(RunInitOp(run_options, export_dir, asset_files,
                                  init_op_it->second.node_list().value(0),

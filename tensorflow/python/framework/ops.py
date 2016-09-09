@@ -577,7 +577,11 @@ _tensor_conversion_func_registry = {
 register_dense_tensor_like_type(Tensor)
 
 
-def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
+def convert_to_tensor(value,
+                      dtype=None,
+                      name=None,
+                      as_ref=False,
+                      preferred_dtype=None):
   """Converts the given `value` to a `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -610,6 +614,11 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
     name: Optional name to use if a new `Tensor` is created.
     as_ref: True if we want the result as a ref tensor. Only used if a new
       `Tensor` is created.
+    preferred_dtype: Optional element type for the returned tensor,
+      used when dtype is None. In some cases, a caller may not have a
+      dtype in mind when converting to a tensor, so preferred_dtype
+      can be used as a soft preference.  If the conversion to
+      `preferred_dtype` is not possible, this argument has no effect.
 
   Returns:
     A `Tensor` based on `value`.
@@ -625,9 +634,31 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
   for _, funcs_at_priority in sorted(_tensor_conversion_func_registry.items()):
     for base_type, conversion_func in funcs_at_priority:
       if isinstance(value, base_type):
-        ret = conversion_func(value, dtype=dtype, name=name, as_ref=as_ref)
+        # If dtype is None but preferred_dtype is not None, we try to
+        # cast to preferred_dtype first.
+        ret = None
+        if dtype is None and preferred_dtype is not None:
+          try:
+            ret = conversion_func(
+                value, dtype=preferred_dtype, name=name, as_ref=as_ref)
+          except (TypeError, ValueError):
+            # Could not coerce the conversion to use the preferred dtype.
+            ret = None
+
+          if ret is not None and ret is not NotImplemented:
+            if (ret.dtype.base_dtype !=
+                dtypes.as_dtype(preferred_dtype).base_dtype):
+              raise TypeError("convert_to_tensor did not convert to "
+                              "the preferred dtype: %s vs %s " %
+                              (ret.dtype.base_dtype,
+                               dtypes.as_dtype(preferred_dtype).base_dtype))
+
+        if ret is None:
+          ret = conversion_func(value, dtype=dtype, name=name, as_ref=as_ref)
+
         if ret is NotImplemented:
           continue
+
         if not isinstance(ret, Tensor):
           raise RuntimeError(
               "%sConversion function %r for type %s returned non-Tensor: %r"
@@ -644,7 +675,11 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
                   % (error_prefix, value, type(value)))
 
 
-def convert_n_to_tensor(values, dtype=None, name=None, as_ref=False):
+def convert_n_to_tensor(values,
+                        dtype=None,
+                        name=None,
+                        as_ref=False,
+                        preferred_dtype=None):
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -654,6 +689,11 @@ def convert_n_to_tensor(values, dtype=None, name=None, as_ref=False):
       created, in which case element `i` will be given the name `name
       + '_' + i`.
     as_ref: True if the caller wants the results as ref tensors.
+    preferred_dtype: Optional element type for the returned tensors,
+      used when dtype is None. In some cases, a caller may not have a
+      dtype in mind when converting to a tensor, so preferred_dtype
+      can be used as a soft preference.  If the conversion to
+      `preferred_dtype` is not possible, this argument has no effect.
 
   Returns:
     A list of `Tensor` and/or `IndexedSlices` objects.
@@ -669,7 +709,13 @@ def convert_n_to_tensor(values, dtype=None, name=None, as_ref=False):
   ret = []
   for i, value in enumerate(values):
     n = None if name is None else "%s_%d" % (name, i)
-    ret.append(convert_to_tensor(value, dtype=dtype, name=n, as_ref=as_ref))
+    ret.append(
+        convert_to_tensor(
+            value,
+            dtype=dtype,
+            name=n,
+            as_ref=as_ref,
+            preferred_dtype=preferred_dtype))
   return ret
 
 
@@ -1620,16 +1666,25 @@ class RegisterGradient(object):
     return f
 
 
-def NoGradient(op_type):
-  """Specifies that ops of type `op_type` do not have a defined gradient.
+def NotDifferentiable(op_type):
+  """Specifies that ops of type `op_type` is not differentiable.
+
+  This function should *not* be used for operations that have a
+  well-defined gradient that is not yet implemented.
 
   This function is only used when defining a new op type. It may be
   used for ops such as `tf.size()` that are not differentiable.  For
   example:
 
   ```python
-  tf.NoGradient("Size")
+  tf.NotDifferentiable("Size")
   ```
+
+  The gradient computed for 'op_type' will then propagate zeros.
+
+  For ops that have a well-defined gradient but are not yet implemented,
+  no declaration should be made, and an error *must* be thrown if
+  an attempt to request its gradient is made.
 
   Args:
     op_type: The string type of an operation. This corresponds to the
@@ -1642,6 +1697,10 @@ def NoGradient(op_type):
   if not isinstance(op_type, six.string_types):
     raise TypeError("op_type must be a string")
   _gradient_registry.register(None, op_type)
+
+
+# Alias for the old name, will be eventually removed.
+NoGradient = NotDifferentiable
 
 
 def get_gradient_function(op):
@@ -1987,8 +2046,6 @@ class Graph(object):
     self._finalized = False
     # Functions defined in the graph
     self._functions = collections.OrderedDict()
-    self._function_gradient = collections.OrderedDict()
-    self._function_python_gradient = collections.OrderedDict()
     # Default GraphDef versions
     self._graph_def_versions = versions_pb2.VersionDef(
         producer=versions.GRAPH_DEF_VERSION,
@@ -2154,15 +2211,15 @@ class Graph(object):
             raise ValueError("GraphDef cannot be larger than 2GB.")
       if self._functions:
         for f in self._functions.values():
-          bytesize += f.ByteSize()
+          bytesize += f.definition.ByteSize()
           if bytesize >= (1 << 31) or bytesize < 0:
             raise ValueError("GraphDef cannot be larger than 2GB.")
-        graph.library.function.extend(self._functions.values())
-        for func in self._function_gradient:
-          grad_def = function_pb2.GradientDef()
-          grad_def.function_name = func
-          grad_def.gradient_func = self._function_gradient[func]
-          graph.library.gradient.extend([grad_def])
+          graph.library.function.extend([f.definition])
+          if f.grad_func_name:
+            grad_def = function_pb2.GradientDef()
+            grad_def.function_name = f.name
+            grad_def.gradient_func = f.grad_func_name
+            graph.library.gradient.extend([grad_def])
       return graph, self._version
 
   def as_graph_def(self, from_version=None, add_shapes=False):
@@ -2209,49 +2266,31 @@ class Graph(object):
     Returns:
       The function def proto.
     """
-    return self._functions[name]
+    return self._functions.get(name, None)
 
-  def _add_function(self, function_def, grad_function_name=None,
-                    python_grad_func=None):
+  def _add_function(self, function):
     """Adds a function to the graph.
-
-    The function is specified as a [`FunctionDef`]
-    (https://www.tensorflow.org/code/tensorflow/core/framework/function.proto)
-    protocol buffer.
 
     After the function has been added, you can call to the function by
     passing the function name in place of an op name to
     `Graph.create_op()`.
 
     Args:
-      function_def: A `FunctionDef` protocol buffer.
-      grad_function_name: If not None, this specifies the name of a function
-                          that shall be used as the gradient function of
-                          the function being added.
-      python_grad_func: If not None, specifies the gradient function with the
-                        same interface as expected by `tf.RegisterGradient`.
-                        No more than one of {grad_function_name,
-                        python_grad_func} may be specified.
+      function: A `_DefinedFunction` object.
 
 
     Raises:
       ValueError: if another function is defined with the same name.
     """
-    name = function_def.signature.name
-    previous_def = self._functions.get(name, None)
-    if previous_def:
-      if previous_def != function_def:
-        raise ValueError("Another function is already defined with that name")
-      else:
-        # No need to add again.
-        return
-    self._functions[name] = function_def
-    if grad_function_name is not None and python_grad_func is not None:
+    name = function.name
+    previous = self._functions.get(name, None)
+    if previous:
+      raise ValueError("Another function is already defined with that name")
+    # Sanity checks on gradient definition.
+    if (function.grad_func_name is not None) and (
+        function.python_grad_func is not None):
       raise ValueError("Gradient defined twice for function %s" % name)
-    if grad_function_name is not None:
-      self._function_gradient[name] = grad_function_name
-    if python_grad_func is not None:
-      self._function_python_gradient[name] = python_grad_func
+    self._functions[name] = function
 
   # Helper functions to create operations.
   def create_op(self, op_type, inputs, dtypes,

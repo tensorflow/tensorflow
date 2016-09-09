@@ -55,7 +55,7 @@ TEST(EnvTest, ReadFileToString) {
     FileStatistics stat;
     TF_EXPECT_OK(env->Stat(filename, &stat));
     EXPECT_EQ(length, stat.length);
-    EXPECT_TRUE(S_ISREG(stat.mode));
+    EXPECT_FALSE(stat.is_directory);
   }
 }
 
@@ -79,7 +79,7 @@ TEST(EnvTest, FileToReadonlyMemoryRegion) {
     FileStatistics stat;
     TF_EXPECT_OK(env->Stat(filename, &stat));
     EXPECT_EQ(length, stat.length);
-    EXPECT_TRUE(S_ISREG(stat.mode));
+    EXPECT_FALSE(stat.is_directory);
   }
 }
 
@@ -95,8 +95,10 @@ TEST(EnvTest, DeleteRecursively) {
   TF_EXPECT_OK(env->CreateDir(parent_dir));
   const string root_file1 = io::JoinPath(parent_dir, "root_file1");
   const string root_file2 = io::JoinPath(parent_dir, "root_file2");
+  const string root_file3 = io::JoinPath(parent_dir, ".root_file3");
   CreateTestFile(env, root_file1, 100);
   CreateTestFile(env, root_file2, 100);
+  CreateTestFile(env, root_file3, 100);
   TF_EXPECT_OK(env->CreateDir(child_dir1));
   const string child1_file1 = io::JoinPath(child_dir1, "child1_file1");
   CreateTestFile(env, child1_file1, 100);
@@ -107,8 +109,10 @@ TEST(EnvTest, DeleteRecursively) {
       env->DeleteRecursively(parent_dir, &undeleted_files, &undeleted_dirs));
   EXPECT_EQ(0, undeleted_files);
   EXPECT_EQ(0, undeleted_dirs);
-  EXPECT_FALSE(env->FileExists(io::JoinPath(parent_dir, "root_file1")));
-  EXPECT_FALSE(env->FileExists(io::JoinPath(child_dir1, "child1_file1")));
+  EXPECT_FALSE(env->FileExists(root_file1));
+  EXPECT_FALSE(env->FileExists(root_file2));
+  EXPECT_FALSE(env->FileExists(root_file3));
+  EXPECT_FALSE(env->FileExists(child1_file1));
 }
 
 TEST(EnvTest, DeleteRecursivelyFail) {
@@ -122,6 +126,41 @@ TEST(EnvTest, DeleteRecursivelyFail) {
   EXPECT_EQ("Not found: Directory doesn't exist", s.ToString());
   EXPECT_EQ(0, undeleted_files);
   EXPECT_EQ(1, undeleted_dirs);
+}
+
+TEST(EnvTest, RecursivelyCreateDir) {
+  Env* env = Env::Default();
+  const string create_path = io::JoinPath(testing::TmpDir(), "a/b/c/d");
+  TF_CHECK_OK(env->RecursivelyCreateDir(create_path));
+  TF_CHECK_OK(env->RecursivelyCreateDir(create_path));  // repeat creation.
+  EXPECT_TRUE(env->FileExists(create_path));
+
+  // Clean up.
+  // TODO(rohanj): Do this more elegantly using SetUp() and TearDown() methods.
+  int64 undeleted_files, undeleted_dirs;
+  TF_CHECK_OK(env->DeleteRecursively(io::JoinPath(testing::TmpDir(), "a"),
+                                     &undeleted_files, &undeleted_dirs));
+}
+
+TEST(EnvTest, RecursivelyCreateDirSubdirsExist) {
+  Env* env = Env::Default();
+  // First create a/b.
+  const string subdir_path = io::JoinPath(testing::TmpDir(), "a/b");
+  TF_CHECK_OK(env->CreateDir(io::JoinPath(testing::TmpDir(), "a")));
+  TF_CHECK_OK(env->CreateDir(subdir_path));
+  EXPECT_TRUE(env->FileExists(subdir_path));
+
+  // Now try to recursively create a/b/c/d/
+  const string create_path = io::JoinPath(testing::TmpDir(), "a/b/c/d/");
+  TF_CHECK_OK(env->RecursivelyCreateDir(create_path));
+  TF_CHECK_OK(env->RecursivelyCreateDir(create_path));  // repeat creation.
+  EXPECT_TRUE(env->FileExists(create_path));
+  EXPECT_TRUE(env->FileExists(io::JoinPath(testing::TmpDir(), "a/b/c")));
+
+  // Clean up.
+  int64 undeleted_files, undeleted_dirs;
+  TF_CHECK_OK(env->DeleteRecursively(io::JoinPath(testing::TmpDir(), "a"),
+                                     &undeleted_files, &undeleted_dirs));
 }
 
 TEST(EnvTest, LocalFileSystem) {
@@ -146,15 +185,16 @@ TEST(EnvTest, LocalFileSystem) {
     FileStatistics stat;
     TF_EXPECT_OK(env->Stat(filename, &stat));
     EXPECT_EQ(length, stat.length);
-    EXPECT_TRUE(S_ISREG(stat.mode));
+    EXPECT_FALSE(stat.is_directory);
   }
 }
 
 class InterPlanetaryFileSystem : public NullFileSystem {
  public:
   Status GetChildren(const string& dir, std::vector<string>* result) override {
-    std::vector<string> Planets = {"Mercury", "Venus",  "Earth",  "Mars",
-                                   "Jupiter", "Saturn", "Uranus", "Neptune"};
+    std::vector<string> Planets = {"Mercury", "Venus",   "Earth",
+                                   "Mars",    "Jupiter", "Saturn",
+                                   "Uranus",  "Neptune", ".PlanetX"};
     result->insert(result->end(), Planets.begin(), Planets.end());
     return Status::OK();
   }
@@ -167,8 +207,9 @@ TEST(EnvTest, IPFS) {
   std::vector<string> planets;
   TF_EXPECT_OK(env->GetChildren("ipfs://solarsystem", &planets));
   int c = 0;
-  std::vector<string> Planets = {"Mercury", "Venus",  "Earth",  "Mars",
-                                 "Jupiter", "Saturn", "Uranus", "Neptune"};
+  std::vector<string> Planets = {"Mercury", "Venus",   "Earth",
+                                 "Mars",    "Jupiter", "Saturn",
+                                 "Uranus",  "Neptune", ".PlanetX"};
   for (auto p : Planets) {
     EXPECT_EQ(p, planets[c++]);
   }

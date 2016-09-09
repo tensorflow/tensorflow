@@ -22,14 +22,17 @@ limitations under the License.
 
 namespace tensorflow {
 
-Scope::Scope(Graph* graph, Status* status, Scope::NameMap* name_map)
+Scope::Scope(Graph* graph, Status* status, Scope::NameMap* name_map,
+             ShapeRefiner* refiner)
     : graph_(graph),
       status_(status),
       name_map_(name_map),
+      refiner_(refiner),
       scope_used_(nullptr) {}
 
 Scope Scope::NewRootScope() {
-  return Scope(new Graph(OpRegistry::Global()), new Status, new Scope::NameMap);
+  return Scope(new Graph(OpRegistry::Global()), new Status, new Scope::NameMap,
+               new ShapeRefiner);
 }
 
 Scope::Scope(const Scope& other, Scope::Tags::ScopeName, const string& name,
@@ -38,6 +41,7 @@ Scope::Scope(const Scope& other, Scope::Tags::ScopeName, const string& name,
       status_(other.status_),
       name_map_(copy_names ? other.name_map_
                            : std::shared_ptr<NameMap>(new NameMap)),
+      refiner_(other.refiner_),
       scope_used_(nullptr),
       control_deps_(other.control_deps_),
       name_(name),
@@ -52,6 +56,7 @@ Scope::Scope(const Scope& other, Scope::Tags::OpName, const string& name,
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(other.control_deps_),
       name_(name),
@@ -66,6 +71,7 @@ Scope::Scope(const Scope& other, Scope::Tags::ControlDeps,
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(clear_control_deps
                         ? std::vector<ops::Operation>()
@@ -84,6 +90,7 @@ Scope::Scope(const Scope& other, Scope::Tags::Device, const string& device)
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(other.control_deps_),
       name_(other.name_),
@@ -98,6 +105,7 @@ Scope::Scope(const Scope& other, Scope::Tags::SingleUseScope,
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(new bool(false)),
       control_deps_(other.control_deps_),
       name_(other.name_),
@@ -111,6 +119,7 @@ Scope::Scope(const Scope& other, Scope::Tags::ExitOnError)
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(other.control_deps_),
       name_(other.name_),
@@ -125,6 +134,7 @@ Scope::Scope(const Scope& other, Scope::Tags::KernelLabel,
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(other.control_deps_),
       name_(other.name_),
@@ -139,6 +149,7 @@ Scope::Scope(const Scope& other, Scope::Tags::Colocate,
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(other.control_deps_),
       name_(other.name_),

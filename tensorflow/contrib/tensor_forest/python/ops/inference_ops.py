@@ -32,7 +32,9 @@ _inference_ops = None
 _ops_lock = threading.Lock()
 
 
-ops.NoGradient('TreePredictions')
+# TODO(b/31222613): This op may be differentiable, and there may be
+# latent bugs here.
+ops.NotDifferentiable('TreePredictions')
 
 
 ops.RegisterShape('TreePredictions')(common_shapes.call_cpp_shape_fn)

@@ -21,7 +21,6 @@ cc_library(
     deps = [
         ":cc_ops",
         ":grad_op_registry",
-        ":math_grad",
         ":ops",
         ":scope",
         "//tensorflow/core:core_cpu",
@@ -32,17 +31,40 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "framework/gradients_test.cc",
+    name = "framework_gradients_test",
+    srcs = ["framework/gradients_test.cc"],
     deps = [
         ":cc_ops",
         ":grad_op_registry",
+        ":grad_ops",
         ":gradients",
+        ":testutil",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "grad_ops",
+    deps = [
+        ":array_grad",
+        ":math_grad",
+    ],
+)
+
+cc_library(
+    name = "grad_testutil",
+    testonly = 1,
+    srcs = ["gradients/grad_testutil.cc"],
+    hdrs = ["gradients/grad_testutil.h"],
+    deps = [
+        ":grad_op_registry",
+        ":ops",
+        ":scope",
     ],
 )
 
@@ -73,7 +95,8 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "framework/scope_test.cc",
+    name = "framework_scope_test",
+    srcs = ["framework/scope_test.cc"],
     deps = [
         ":ops",
         ":scope",
@@ -98,7 +121,8 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "client/client_session_test.cc",
+    name = "client_client_session_test",
+    srcs = ["client/client_session_test.cc"],
     deps = [
         ":cc_ops",
         ":client_session",
@@ -126,7 +150,8 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "ops/const_op_test.cc",
+    name = "ops_const_op_test",
+    srcs = ["ops/const_op_test.cc"],
     deps = [
         ":const_op",
         "//tensorflow/core:framework",
@@ -147,6 +172,34 @@ cc_library(
 )
 
 cc_library(
+    name = "array_grad",
+    srcs = ["gradients/array_grad.cc"],
+    deps = [
+        ":cc_ops",
+        ":grad_op_registry",
+        ":ops",
+        ":scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+    ],
+)
+
+tf_cc_test(
+    name = "gradients_array_grad_test",
+    srcs = ["gradients/array_grad_test.cc"],
+    deps = [
+        ":array_grad",
+        ":cc_ops",
+        ":grad_op_registry",
+        ":grad_testutil",
+        ":testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
     name = "math_grad",
     srcs = ["gradients/math_grad.cc"],
     deps = [
@@ -160,16 +213,15 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "gradients/math_grad_test",
+    name = "gradients_math_grad_test",
+    srcs = ["gradients/math_grad_test.cc"],
     deps = [
         ":cc_ops",
         ":grad_op_registry",
+        ":grad_testutil",
         ":math_grad",
-        "//tensorflow/core:all_kernels",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
+        ":testutil",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -206,15 +258,14 @@ tf_gen_op_wrappers_cc(
 )
 
 tf_cc_test(
-    name = "framework/cc_ops_test.cc",
+    name = "framework_cc_ops_test",
+    srcs = ["framework/cc_ops_test.cc"],
     deps = [
         ":cc_ops",
         ":client_session",
         ":test_op",
         ":test_op_op_lib",
-        "//tensorflow/core:all_kernels",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:tensorflow",
+        ":testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -252,6 +303,23 @@ cc_library(
     linkstatic = 1,
     deps = ["//tensorflow/core:framework"],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "testutil",
+    testonly = 1,
+    srcs = ["framework/testutil.cc"],
+    hdrs = ["framework/testutil.h"],
+    deps = [
+        ":client_session",
+        ":ops",
+        ":scope",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_gen_op_wrappers_cc(

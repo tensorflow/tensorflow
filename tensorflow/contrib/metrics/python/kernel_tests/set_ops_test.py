@@ -153,6 +153,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
     ]
     for op in ops:
       self.assertEqual(None, op.get_shape().dims)
+      self.assertEqual(tf.int32, op.dtype)
     with self.test_session() as sess:
       results = sess.run(ops)
     self.assertAllEqual(results[0], results[1])
@@ -385,7 +386,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
                      input_tensor.get_shape().ndims)
     self.assertAllEqual((expected_rows, expected_rank),
                         result_sparse_tensor.indices.get_shape().as_list())
-    self.assertAllEqual((None,),
+    self.assertAllEqual((expected_rows,),
                         result_sparse_tensor.values.get_shape().as_list())
     self.assertAllEqual((expected_rank,),
                         result_sparse_tensor.shape.get_shape().as_list())

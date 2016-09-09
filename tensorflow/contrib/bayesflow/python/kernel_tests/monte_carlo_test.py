@@ -117,7 +117,8 @@ class ExpectationImportanceSampleLogspaceTest(tf.test.TestCase):
 class ExpectationTest(tf.test.TestCase):
 
   def test_mc_estimate_of_normal_mean_and_variance_is_correct_vs_analytic(self):
-    n = 10000
+    tf.set_random_seed(0)
+    n = 20000
     with self.test_session():
       p = distributions.Normal(mu=[1.0, -1.0], sigma=[0.3, 0.5])
       # Compute E_p[X] and E_p[X^2].
