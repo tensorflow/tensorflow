@@ -61,6 +61,7 @@ from __future__ import print_function
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from six.moves import zip     # pylint: disable=redefined-builtin
 
+from tensorflow.python import shape
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -563,8 +564,8 @@ def attention_decoder(decoder_inputs,
     raise ValueError("Must provide at least 1 input to attention decoder.")
   if num_heads < 1:
     raise ValueError("With less than 1 heads, use a non-attention decoder.")
-  if not attention_states.get_shape()[1:2].is_fully_defined():
-    raise ValueError("Shape[1] and [2] of attention_states must be known: %s"
+  if attention_states.get_shape()[2].value is None:
+    raise ValueError("Shape[2] of attention_states must be known: %s"
                      % attention_states.get_shape())
   if output_size is None:
     output_size = cell.output_size
@@ -575,6 +576,8 @@ def attention_decoder(decoder_inputs,
 
     batch_size = array_ops.shape(decoder_inputs[0])[0]  # Needed for reshaping.
     attn_length = attention_states.get_shape()[1].value
+    if attn_length is None:
+      attn_length = shape(attention_states)[1]
     attn_size = attention_states.get_shape()[2].value
 
     # To calculate W1 * h_t we use a 1-by-1 convolution, need to reshape before.
