@@ -36,7 +36,7 @@ def _maybe_complex(x):
 
 class SparseTensorDenseMatMulTest(tf.test.TestCase):
 
-  def _testMatmul(self, x, y, adjoint_a=False, adjoint_b=False, use_gpu=False):
+  def _testMatmul(self, x, y, adjoint_a=False, adjoint_b=False):
     x_mat = np.matrix(x)
     if adjoint_a:
       x_mat = x_mat.H
@@ -50,7 +50,7 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
     x_values = x[np.where(x)]
     x_shape = x.shape
 
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session(use_gpu=True):
       sp_x_value = tf.SparseTensorValue(
           indices=x_indices, values=x_values, shape=x_shape)
       tf_value_ans = sparse_ops.sparse_tensor_dense_matmul(
@@ -77,8 +77,7 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
 
     y = _maybe_complex(np.random.randn(10, 20).astype(np_dtype))
 
-    self._testMatmul(x, y, use_gpu=True)
-    self._testMatmul(x, y, use_gpu=False)
+    self._testMatmul(x, y)
 
   def testBasic(self):
     np.random.seed(127)  # Repeatable results
@@ -102,8 +101,7 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
 
       y = _maybe_complex(np.random.randn(k, n).astype(np_dtype))
 
-      self._testMatmul(x, y, use_gpu=False)
-      self._testMatmul(x, y, use_gpu=True)
+      self._testMatmul(x, y)
 
   def testLarge(self):
     np.random.seed(127)  # Repeatable results
@@ -125,8 +123,7 @@ class SparseTensorDenseMatMulTest(tf.test.TestCase):
             y = np.random.randn(k, m).astype(np.float32)
             x = x.transpose() if adjoint_a else x
             y = y.transpose() if adjoint_b else y
-            self._testMatmul(x, y, adjoint_a, adjoint_b, use_gpu=False)
-            self._testMatmul(x, y, adjoint_a, adjoint_b, use_gpu=True)
+            self._testMatmul(x, y, adjoint_a, adjoint_b)
 
 
 def _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(
