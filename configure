@@ -273,3 +273,4 @@ bazel clean --expunge
 bazel fetch //...
 
 echo "Configuration finished"
+
