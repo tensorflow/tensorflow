@@ -32,6 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
@@ -109,6 +110,12 @@ class Gamma(distribution.Distribution):
             is_continuous=True,
             is_reparameterized=False,
             name=ns)
+
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return dict(
+        zip(("alpha", "beta"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 2)))
 
   @property
   def alpha(self):
@@ -219,3 +226,21 @@ distribution_util.append_class_fun_doc(Gamma.mode, doc_str="""
     and `NaN` otherwise.  If `self.allow_nan_stats` is `False`, an exception
     will be raised rather than returning `NaN`.
 """)
+
+
+class GammaWithSoftplusAlphaBeta(Gamma):
+  """Gamma with softplus transform on `alpha` and `beta`."""
+
+  def __init__(self,
+               alpha,
+               beta,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="GammaWithSoftplusAlphaBeta"):
+    with ops.name_scope(name, values=[alpha, beta]) as ns:
+      super(GammaWithSoftplusAlphaBeta, self).__init__(
+          alpha=nn.softplus(alpha),
+          beta=nn.softplus(beta),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)

@@ -101,6 +101,12 @@ class Uniform(distribution.Distribution):
             allow_nan_stats=allow_nan_stats,
             name=ns)
 
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return dict(
+        zip(("a", "b"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 2)))
+
   @property
   def a(self):
     return self._a

@@ -21,9 +21,11 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import gamma
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
@@ -74,6 +76,10 @@ class Exponential(gamma.Gamma):
       # exponential distribution is.
       self._is_reparameterized = True
 
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return {"lam": ops.convert_to_tensor(sample_shape, dtype=dtypes.int32)}
+
   @property
   def lam(self):
     return self._lam
@@ -89,3 +95,19 @@ class Exponential(gamma.Gamma):
         seed=seed,
         dtype=self.dtype)
     return -math_ops.log(sampled) / self._lam
+
+
+class ExponentialWithSoftplusLam(Exponential):
+  """Exponential with softplus transform on `lam`."""
+
+  def __init__(self,
+               lam,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="ExponentialWithSoftplusLam"):
+    with ops.name_scope(name, values=[lam]) as ns:
+      super(ExponentialWithSoftplusLam, self).__init__(
+          lam=nn.softplus(lam),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)

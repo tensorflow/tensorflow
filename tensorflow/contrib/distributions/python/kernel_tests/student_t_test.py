@@ -28,7 +28,7 @@ import tensorflow as tf
 class StudentTTest(tf.test.TestCase):
 
   def testStudentPDFAndLogPDF(self):
-    with tf.Session():
+    with self.test_session():
       batch_size = 6
       df = tf.constant([3.0] * batch_size)
       mu = tf.constant([7.0] * batch_size)
@@ -54,7 +54,7 @@ class StudentTTest(tf.test.TestCase):
       self.assertAllClose(np.exp(expected_log_pdf), pdf_values)
 
   def testStudentLogPDFMultidimensional(self):
-    with tf.Session():
+    with self.test_session():
       batch_size = 6
       df = tf.constant([[1.5, 7.2]] * batch_size)
       mu = tf.constant([[3.0, -3.0]] * batch_size)
@@ -81,7 +81,7 @@ class StudentTTest(tf.test.TestCase):
     df_v = np.array([[2., 3., 7.]])  # 1x3
     mu_v = np.array([[1., -1, 0]])  # 1x3
     sigma_v = np.array([[1., 2., 3.]]).T  # transposed => 3x1
-    with tf.Session():
+    with self.test_session():
       student = tf.contrib.distributions.StudentT(df=df_v,
                                                   mu=mu_v,
                                                   sigma=sigma_v)
@@ -101,7 +101,7 @@ class StudentTTest(tf.test.TestCase):
     self.assertAllClose(expected_entropy, ent_values)
 
   def testStudentSample(self):
-    with tf.Session():
+    with self.test_session():
       df = tf.constant(4.0)
       mu = tf.constant(3.0)
       sigma = tf.constant(math.sqrt(10.0))
@@ -122,7 +122,7 @@ class StudentTTest(tf.test.TestCase):
 
   def _testStudentSampleMultiDimensional(self):
     # DISABLED: Please enable this test once b/issues/30149644 is resolved.
-    with tf.Session():
+    with self.test_session():
       batch_size = 7
       df = tf.constant([[3.0, 7.0]] * batch_size)
       mu = tf.constant([[3.0, -3.0]] * batch_size)
@@ -230,7 +230,7 @@ class StudentTTest(tf.test.TestCase):
         df=7., mu=3., sigma=[[2.], [3.], [4.]]))
 
   def testMeanAllowNanStatsIsFalseWorksWhenAllBatchMembersAreDefined(self):
-    with tf.Session():
+    with self.test_session():
       mu = [1., 3.3, 4.4]
       student = tf.contrib.distributions.StudentT(
           df=[3., 5., 7.],
@@ -240,7 +240,7 @@ class StudentTTest(tf.test.TestCase):
       self.assertAllClose([1., 3.3, 4.4], mean)
 
   def testMeanAllowNanStatsIsFalseRaisesWhenBatchMemberIsUndefined(self):
-    with tf.Session():
+    with self.test_session():
       mu = [1., 3.3, 4.4]
       student = tf.contrib.distributions.StudentT(
           df=[0.5, 5., 7.],
@@ -251,7 +251,7 @@ class StudentTTest(tf.test.TestCase):
         student.mean().eval()
 
   def testMeanAllowNanStatsIsTrueReturnsNaNForUndefinedBatchMembers(self):
-    with tf.Session():
+    with self.test_session():
       mu = [-2, 0., 1., 3.3, 4.4]
       student = tf.contrib.distributions.StudentT(
           df=[0.5, 1., 3., 5., 7.],
@@ -262,7 +262,7 @@ class StudentTTest(tf.test.TestCase):
       self.assertAllClose([np.nan, np.nan, 1., 3.3, 4.4], mean)
 
   def testVarianceAllowNanStatsTrueReturnsNaNforUndefinedBatchMembers(self):
-    with tf.Session():
+    with self.test_session():
       # df = 0.5 ==> undefined mean ==> undefined variance.
       # df = 1.5 ==> infinite variance.
       df = [0.5, 1.5, 3., 5., 7.]
@@ -284,7 +284,7 @@ class StudentTTest(tf.test.TestCase):
 
   def testVarianceAllowNanStatsFalseGivesCorrectValueForDefinedBatchMembers(
       self):
-    with tf.Session():
+    with self.test_session():
       # df = 1.5 ==> infinite variance.
       df = [1.5, 3., 5., 7.]
       mu = [0., 1., 3.3, 4.4]
@@ -298,14 +298,14 @@ class StudentTTest(tf.test.TestCase):
       self.assertAllClose(expected_var, var)
 
   def testVarianceAllowNanStatsFalseRaisesForUndefinedBatchMembers(self):
-    with tf.Session():
+    with self.test_session():
       # df <= 1 ==> variance not defined
       student = tf.contrib.distributions.StudentT(
           df=1.0, mu=0.0, sigma=1.0, allow_nan_stats=False)
       with self.assertRaisesOpError("x < y"):
         student.variance().eval()
 
-    with tf.Session():
+    with self.test_session():
       # df <= 1 ==> variance not defined
       student = tf.contrib.distributions.StudentT(
           df=0.5, mu=0.0, sigma=1.0, allow_nan_stats=False)
@@ -313,7 +313,7 @@ class StudentTTest(tf.test.TestCase):
         student.variance().eval()
 
   def testStd(self):
-    with tf.Session():
+    with self.test_session():
       # Defined for all batch members.
       df = [3.5, 5., 3., 5., 7.]
       mu = [-2.2]
@@ -328,7 +328,7 @@ class StudentTTest(tf.test.TestCase):
       self.assertAllClose(expected_std, std)
 
   def testMode(self):
-    with tf.Session():
+    with self.test_session():
       student = tf.contrib.distributions.StudentT(
           df=[0.5, 1., 3],
           mu=[-1, 0., 1],
@@ -339,7 +339,7 @@ class StudentTTest(tf.test.TestCase):
 
   def _testPdfOfSample(self):
     # DISABLED: Please enable this test once b/issues/30149644 is resolved.
-    with tf.Session() as sess:
+    with self.test_session() as sess:
       student = tf.contrib.distributions.StudentT(df=3., mu=np.pi, sigma=1.)
       num = 20000
       samples = student.sample_n(num)
@@ -359,7 +359,7 @@ class StudentTTest(tf.test.TestCase):
 
   def _testPdfOfSampleMultiDims(self):
     # DISABLED: Please enable this test once b/issues/30149644 is resolved.
-    with tf.Session() as sess:
+    with self.test_session() as sess:
       student = tf.contrib.distributions.StudentT(df=[7., 11.],
                                                   mu=[[5.], [6.]],
                                                   sigma=3.)
@@ -393,7 +393,7 @@ class StudentTTest(tf.test.TestCase):
     self.assertNear(1., total, err=err)
 
   def testNegativeDofFails(self):
-    with tf.Session():
+    with self.test_session():
       student = tf.contrib.distributions.StudentT(df=[2, -5.],
                                                   mu=0.,
                                                   sigma=1.,
@@ -403,7 +403,7 @@ class StudentTTest(tf.test.TestCase):
         student.mean().eval()
 
   def testNegativeScaleFails(self):
-    with tf.Session():
+    with self.test_session():
       student = tf.contrib.distributions.StudentT(df=[5.],
                                                   mu=0.,
                                                   sigma=[[3.], [-2.]],
@@ -412,6 +412,19 @@ class StudentTTest(tf.test.TestCase):
       with self.assertRaisesOpError(r"Condition x > 0 did not hold"):
         student.mean().eval()
 
+  def testStudentTWithAbsDfSoftplusSigma(self):
+    with self.test_session():
+      df = tf.constant([-3.2, -4.6])
+      mu = tf.constant([-4.2, 3.4])
+      sigma = tf.constant([-6.4, -8.8])
+      student = tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma(
+          df=df,
+          mu=mu,
+          sigma=sigma)
+
+      self.assertAllClose(tf.floor(tf.abs(df)).eval(), student.df.eval())
+      self.assertAllClose(mu.eval(), student.mu.eval())
+      self.assertAllClose(tf.nn.softplus(sigma).eval(), student.sigma.eval())
 
 if __name__ == "__main__":
   tf.test.main()

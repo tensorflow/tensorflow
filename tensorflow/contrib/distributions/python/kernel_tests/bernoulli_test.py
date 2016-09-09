@@ -236,6 +236,12 @@ class BernoulliTest(tf.test.TestCase):
                                     [np.sqrt(var(0.5)), np.sqrt(var(0.4))]],
                                    dtype=np.float32))
 
+  def testBernoulliWithSigmoidP(self):
+    p = np.array([8.3, 4.2])
+    dist = tf.contrib.distributions.BernoulliWithSigmoidP(p=p)
+    with self.test_session():
+      self.assertAllClose(tf.nn.sigmoid(p).eval(), dist.p.eval())
+
   def testBernoulliBernoulliKL(self):
     with self.test_session() as sess:
       batch_size = 6

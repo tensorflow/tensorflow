@@ -64,40 +64,14 @@ class NormalTest(tf.test.TestCase):
     self._testParamStaticShapes(sample_shape, sample_shape)
     self._testParamStaticShapes(tf.TensorShape(sample_shape), sample_shape)
 
-  def testFromParams(self):
-    with self.test_session():
-      mu = tf.zeros((10, 3))
-      sigma = tf.ones((10, 3))
-      normal = tf.contrib.distributions.Normal.from_params(
-          mu=mu, sigma=sigma, make_safe=False)
-      self.assertAllEqual(mu.eval(), normal.mu.eval())
-      self.assertAllEqual(sigma.eval(), normal.sigma.eval())
-
-  def testFromParamsMakeSafe(self):
+  def testNormalWithSoftplusSigma(self):
     with self.test_session():
       mu = tf.zeros((10, 3))
       rho = tf.ones((10, 3)) * -2.
-      normal = tf.contrib.distributions.Normal.from_params(mu=mu, sigma=rho)
+      normal = tf.contrib.distributions.NormalWithSoftplusSigma(
+          mu=mu, sigma=rho)
       self.assertAllEqual(mu.eval(), normal.mu.eval())
       self.assertAllEqual(tf.nn.softplus(rho).eval(), normal.sigma.eval())
-      normal.sample().eval()  # smoke test to ensure params are valid
-
-  def testFromParamsFlagPassthroughs(self):
-    with self.test_session():
-      mu = tf.zeros((10, 3))
-      rho = tf.ones((10, 3)) * -2.
-      normal = tf.contrib.distributions.Normal.from_params(
-          mu=mu, sigma=rho, validate_args=False)
-      self.assertFalse(normal.validate_args)
-
-  def testFromParamsMakeSafeInheritance(self):
-    class NormalNoMakeSafe(tf.contrib.distributions.Normal):
-      pass
-
-    mu = tf.zeros((10, 3))
-    rho = tf.ones((10, 3)) * -2.
-    with self.assertRaisesRegexp(TypeError, "_safe_transforms not implemented"):
-      NormalNoMakeSafe.from_params(mu=mu, sigma=rho)
 
   def testNormalLogPDF(self):
     with self.test_session():

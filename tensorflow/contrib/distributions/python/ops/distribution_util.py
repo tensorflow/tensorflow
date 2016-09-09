@@ -100,7 +100,7 @@ def assert_symmetric(matrix):
 
 def get_logits_and_prob(
     logits=None, p=None,
-    multidimensional=False, validate_args=False, name=None):
+    multidimensional=False, validate_args=False, name="GetLogitsAndProb"):
   """Converts logits to probabilities and vice-versa, and returns both.
 
   Args:
@@ -124,18 +124,16 @@ def get_logits_and_prob(
   Raises:
     ValueError: if neither `p` nor `logits` were passed in, or both were.
   """
-  if p is None and logits is None:
-    raise ValueError("Must pass p or logits.")
-  elif p is not None and logits is not None:
-    raise ValueError("Must pass either p or logits, not both.")
-  elif p is None:
-    with ops.name_scope(name, values=[logits]):
+  with ops.name_scope(name, values=[p, logits]):
+    if p is None and logits is None:
+      raise ValueError("Must pass p or logits.")
+    elif p is not None and logits is not None:
+      raise ValueError("Must pass either p or logits, not both.")
+    elif p is None:
       logits = array_ops.identity(logits, name="logits")
-    with ops.name_scope(name):
       with ops.name_scope("p"):
         p = math_ops.sigmoid(logits)
-  elif logits is None:
-    with ops.name_scope(name):
+    elif logits is None:
       with ops.name_scope("p"):
         p = array_ops.identity(p)
         if validate_args:
@@ -151,7 +149,7 @@ def get_logits_and_prob(
           p = control_flow_ops.with_dependencies(dependencies, p)
       with ops.name_scope("logits"):
         logits = math_ops.log(p) - math_ops.log(1. - p)
-  return (logits, p)
+    return (logits, p)
 
 
 def log_combinations(n, counts, name="log_combinations"):

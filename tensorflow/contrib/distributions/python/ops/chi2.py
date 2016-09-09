@@ -20,7 +20,9 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import gamma
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import math_ops
 
 
 class Chi2(gamma.Gamma):
@@ -68,6 +70,23 @@ class Chi2(gamma.Gamma):
           allow_nan_stats=allow_nan_stats,
           name=ns)
 
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return {"df": ops.convert_to_tensor(sample_shape, dtype=dtypes.int32)}
+
   @property
   def df(self):
     return self._df
+
+
+class Chi2WithAbsDf(Chi2):
+  """Chi2 with parameter transform `df = floor(abs(df))`."""
+
+  def __init__(self, df, validate_args=False, allow_nan_stats=True,
+               name="Chi2WithAbsDf"):
+    with ops.name_scope(name, values=[df]) as ns:
+      super(Chi2WithAbsDf, self).__init__(
+          df=math_ops.floor(math_ops.abs(df)),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)

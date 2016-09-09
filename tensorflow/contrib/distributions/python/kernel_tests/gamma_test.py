@@ -309,6 +309,15 @@ class GammaTest(tf.test.TestCase):
       with self.assertRaisesOpError("beta"):
         gamma.mean().eval()
 
+  def testGammaWithSoftplusAlphaBeta(self):
+    with self.test_session():
+      alpha_v = tf.constant([0.0, -2.1], name="alpha")
+      beta_v = tf.constant([1.0, -3.6], name="beta")
+      gamma = tf.contrib.distributions.GammaWithSoftplusAlphaBeta(
+          alpha=alpha_v, beta=beta_v)
+      self.assertAllEqual(tf.nn.softplus(alpha_v).eval(), gamma.alpha.eval())
+      self.assertAllEqual(tf.nn.softplus(beta_v).eval(), gamma.beta.eval())
+
 
 if __name__ == "__main__":
   tf.test.main()

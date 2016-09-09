@@ -67,9 +67,9 @@ class Bernoulli(distribution.Distribution):
     Raises:
       ValueError: If p and logits are passed, or if neither are passed.
     """
-    self._logits, self._p = distribution_util.get_logits_and_prob(
-        name=name, logits=logits, p=p, validate_args=validate_args)
     with ops.name_scope(name) as ns:
+      self._logits, self._p = distribution_util.get_logits_and_prob(
+          logits=logits, p=p, validate_args=validate_args)
       with ops.name_scope("q"):
         self._q = 1. - self._p
       super(Bernoulli, self).__init__(
@@ -80,6 +80,10 @@ class Bernoulli(distribution.Distribution):
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return {"logits": ops.convert_to_tensor(sample_shape, dtype=dtypes.int32)}
 
   @property
   def logits(self):
@@ -157,6 +161,24 @@ distribution_util.append_class_fun_doc(Bernoulli.mode, doc_str="""
   Specific notes:
     1 if p > 1-p. 0 otherwise.
 """)
+
+
+class BernoulliWithSigmoidP(Bernoulli):
+  """Bernoulli with `p = sigmoid(p)`."""
+
+  def __init__(self,
+               p=None,
+               dtype=dtypes.int32,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="BernoulliWithSigmoidP"):
+    with ops.name_scope(name) as ns:
+      super(BernoulliWithSigmoidP, self).__init__(
+          p=nn.sigmoid(p),
+          dtype=dtype,
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)
 
 
 @kullback_leibler.RegisterKL(Bernoulli, Bernoulli)

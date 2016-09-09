@@ -127,19 +127,8 @@ class Normal(distribution.Distribution):
   @staticmethod
   def _param_shapes(sample_shape):
     return dict(
-        zip(("mu", "sigma"), ([ops.convert_to_tensor(sample_shape)] * 2)))
-
-  @staticmethod
-  def _safe_transforms():
-    """Default parameter transforms.
-
-    Transforms applied:
-      sigma: softplus
-
-    Returns:
-      `dict` of parameter name to callable parameter transform.
-    """
-    return {"sigma": nn.softplus}
+        zip(("mu", "sigma"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 2)))
 
   @property
   def mu(self):
@@ -210,6 +199,24 @@ class Normal(distribution.Distribution):
     """Standardize input `x` to a unit normal."""
     with ops.name_scope("standardize", values=[x]):
       return (x - self.mu) / self.sigma
+
+
+class NormalWithSoftplusSigma(Normal):
+  """Normal with softplus applied to `sigma`."""
+
+  def __init__(self,
+               mu,
+               sigma,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="NormalWithSoftplusSigma"):
+    with ops.name_scope(name, values=[mu, sigma]) as ns:
+      super(NormalWithSoftplusSigma, self).__init__(
+          mu=mu,
+          sigma=nn.softplus(sigma),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)
 
 
 @kullback_leibler.RegisterKL(Normal, Normal)

@@ -11,6 +11,18 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 
 cuda_py_tests(
+    name = "distribution_test",
+    size = "small",
+    srcs = ["python/kernel_tests/distribution_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
     name = "operator_pd_test",
     size = "small",
     srcs = ["python/kernel_tests/operator_pd_test.py"],

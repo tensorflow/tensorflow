@@ -26,12 +26,14 @@ from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 
@@ -136,6 +138,12 @@ class StudentT(distribution.Distribution):
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             name=ns)
+
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return dict(
+        zip(("df", "mu", "sigma"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 3)))
 
   @property
   def df(self):
@@ -281,3 +289,23 @@ distribution_util.append_class_fun_doc(StudentT.variance, doc_str="""
     ```
 
 """)
+
+
+class StudentTWithAbsDfSoftplusSigma(StudentT):
+  """StudentT with `df = floor(abs(df))` and `sigma = softplus(sigma)`."""
+
+  def __init__(self,
+               df,
+               mu,
+               sigma,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="StudentTWithAbsDfSoftplusSigma"):
+    with ops.name_scope(name, values=[df, mu, sigma]) as ns:
+      super(StudentTWithAbsDfSoftplusSigma, self).__init__(
+          df=math_ops.floor(math_ops.abs(df)),
+          mu=mu,
+          sigma=nn.softplus(sigma),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)

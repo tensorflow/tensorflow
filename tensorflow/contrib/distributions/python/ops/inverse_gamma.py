@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
@@ -103,6 +104,12 @@ class InverseGamma(distribution.Distribution):
             is_continuous=True,
             is_reparameterized=False,
             name=ns)
+
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return dict(
+        zip(("alpha", "beta"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 2)))
 
   @property
   def alpha(self):
@@ -225,3 +232,21 @@ distribution_util.append_class_fun_doc(InverseGamma.mode, doc_str="""
 
     The mode of an inverse gamma distribution is `beta / (alpha + 1)`.
 """)
+
+
+class InverseGammaWithSoftplusAlphaBeta(InverseGamma):
+  """Inverse Gamma with softplus applied to `alpha` and `beta`."""
+
+  def __init__(self,
+               alpha,
+               beta,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="InverseGammaWithSoftplusAlphaBeta"):
+    with ops.name_scope(name, values=[alpha, beta]) as ns:
+      super(InverseGammaWithSoftplusAlphaBeta, self).__init__(
+          alpha=nn.softplus(alpha),
+          beta=nn.softplus(beta),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)

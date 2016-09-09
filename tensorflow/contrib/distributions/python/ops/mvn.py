@@ -34,11 +34,13 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
 __all__ = [
     "MultivariateNormalDiag",
+    "MultivariateNormalDiagWithSoftplusStDev",
     "MultivariateNormalCholesky",
     "MultivariateNormalFull",
     "MultivariateNormalDiagPlusVDVT",
@@ -386,6 +388,24 @@ class MultivariateNormalDiag(_MultivariateNormalOperatorPD):
     super(MultivariateNormalDiag, self).__init__(
         mu, cov, allow_nan_stats=allow_nan_stats, validate_args=validate_args,
         name=name)
+
+
+class MultivariateNormalDiagWithSoftplusStDev(MultivariateNormalDiag):
+  """MultivariateNormalDiag with `diag_stddev = softplus(diag_stddev)`."""
+
+  def __init__(self,
+               mu,
+               diag_stdev,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="MultivariateNormalDiagWithSoftplusStdDev"):
+    with ops.name_scope(name, values=[mu, diag_stdev]) as ns:
+      super(MultivariateNormalDiagWithSoftplusStDev, self).__init__(
+          mu=mu,
+          diag_stdev=nn.softplus(diag_stdev),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)
 
 
 class MultivariateNormalDiagPlusVDVT(_MultivariateNormalOperatorPD):

@@ -302,6 +302,14 @@ class InverseGammaTest(tf.test.TestCase):
       with self.assertRaisesOpError("beta"):
         inv_gamma.mean().eval()
 
+  def testInverseGammaWithSoftplusAlphaBeta(self):
+    with self.test_session():
+      alpha = tf.constant([-0.1, -2.9], name="alpha")
+      beta = tf.constant([1.0, -4.8], name="beta")
+      inv_gamma = tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta(
+          alpha=alpha, beta=beta, validate_args=True)
+      self.assertAllClose(tf.nn.softplus(alpha).eval(), inv_gamma.alpha.eval())
+      self.assertAllClose(tf.nn.softplus(beta).eval(), inv_gamma.beta.eval())
 
 if __name__ == "__main__":
   tf.test.main()

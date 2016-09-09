@@ -117,6 +117,17 @@ class MultivariateNormalDiagTest(tf.test.TestCase):
       self.assertAllClose(mu, samps.mean(axis=0), atol=0.1)
       self.assertAllClose(cov_mat, np.cov(samps.T), atol=0.1)
 
+  def testMultivariateNormalDiagWithSoftplusStDev(self):
+    mu = [-1.0, 1.0]
+    diag = [-1.0, -2.0]
+    with self.test_session():
+      dist = distributions.MultivariateNormalDiagWithSoftplusStDev(mu, diag)
+      samps = dist.sample_n(1000, seed=0).eval()
+      cov_mat = tf.batch_matrix_diag(tf.nn.softplus(diag)).eval() ** 2
+
+      self.assertAllClose(mu, samps.mean(axis=0), atol=0.1)
+      self.assertAllClose(cov_mat, np.cov(samps.T), atol=0.1)
+
 
 class MultivariateNormalDiagPlusVDVTTest(tf.test.TestCase):
   """Well tested because this is a simple override of the base class."""

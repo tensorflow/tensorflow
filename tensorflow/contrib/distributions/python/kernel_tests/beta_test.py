@@ -286,6 +286,13 @@ class BetaTest(tf.test.TestCase):
         self.assertAllEqual(np.ones(shape, dtype=np.bool), 1. >= x)
         self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=1e-4, atol=0)
 
+  def testBetaWithSoftplusAB(self):
+    with self.test_session():
+      a, b = -4.2, -9.1
+      dist = tf.contrib.distributions.BetaWithSoftplusAB(a, b)
+      self.assertAllClose(tf.nn.softplus(a).eval(), dist.a.eval())
+      self.assertAllClose(tf.nn.softplus(b).eval(), dist.b.eval())
+
 
 if __name__ == "__main__":
   tf.test.main()
