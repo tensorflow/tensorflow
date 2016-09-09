@@ -2003,12 +2003,10 @@ op {
   name: "BatchCholesky"
   input_arg {
     name: "input"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   attr {
@@ -2021,24 +2019,23 @@ op {
       }
     }
   }
-  summary: "Computes the Cholesky decomposition of a batch of square matrices."
-  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix Cholesky\ndecomposition above. The output is a tensor of the same shape as the input\ncontaining the Cholesky decompositions for all input submatrices `[..., :, :]`."
+  deprecation {
+    version: 13
+    explanation: "Use Cholesky instead."
+  }
 }
 op {
   name: "BatchCholeskyGrad"
   input_arg {
     name: "l"
-    description: "Output of batch Cholesky algorithm l = batch_cholesky(A). Shape is `[..., M, M]`.\nAlgorithm depends only on lower triangular part of the innermost matrices of\nthis tensor."
     type_attr: "T"
   }
   input_arg {
     name: "grad"
-    description: "df/dl where f is some scalar function. Shape is `[..., M, M]`.\nAlgorithm depends only on lower triangular part of the innermost matrices of\nthis tensor."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Symmetrized version of df/dA . Shape is `[..., M, M]`"
     type_attr: "T"
   }
   attr {
@@ -2051,8 +2048,10 @@ op {
       }
     }
   }
-  summary: "Computes the reverse mode backpropagated gradient of the Cholesky algorithm."
-  description: "For an explanation see \"Differentiation of the Cholesky algorithm\" by\nIain Murray http://arxiv.org/abs/1602.07527."
+  deprecation {
+    version: 13
+    explanation: "Use CholeskyGrad instead."
+  }
 }
 op {
   name: "BatchFFT"
@@ -2227,12 +2226,10 @@ op {
   name: "BatchMatrixDeterminant"
   input_arg {
     name: "input"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[...]`."
     type_attr: "T"
   }
   attr {
@@ -2245,8 +2242,10 @@ op {
       }
     }
   }
-  summary: "Computes the determinants for a batch of square matrices."
-  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
+  deprecation {
+    version: 13
+    explanation: "Use MatrixDeterminant instead."
+  }
 }
 op {
   name: "BatchMatrixDiag"
@@ -2290,12 +2289,10 @@ op {
   name: "BatchMatrixInverse"
   input_arg {
     name: "input"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   attr {
@@ -2315,8 +2312,10 @@ op {
       }
     }
   }
-  summary: "Computes the inverse of square invertible matrices or their adjoints"
-  description: "(conjugate transposes).\n\nThe input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor of the same shape as the input\ncontaining the inverse for all input submatrices `[..., :, :]`.\n\nThe op uses LU decomposition with partial pivoting to compute the inverses.\n\nIf a matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
+  deprecation {
+    version: 13
+    explanation: "Use MatrixInverse instead."
+  }
 }
 op {
   name: "BatchMatrixSetDiag"
@@ -2346,17 +2345,14 @@ op {
   name: "BatchMatrixSolve"
   input_arg {
     name: "matrix"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   input_arg {
     name: "rhs"
-    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   attr {
@@ -2365,7 +2361,6 @@ op {
     default_value {
       b: false
     }
-    description: "Boolean indicating whether to solve with `matrix` or its (block-wise)\nadjoint."
   }
   attr {
     name: "T"
@@ -2377,19 +2372,19 @@ op {
       }
     }
   }
-  summary: "Solves systems of linear equations. Checks for invertibility."
-  description: "Matrix is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. Rhs is a tensor of shape\n`[..., M, K]`. The output is a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output\nmatrix satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.\nIf `adjoint` is `True` then each output\nmatrix satisfies `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`."
+  deprecation {
+    version: 13
+    explanation: "Use MatrixSolve instead."
+  }
 }
 op {
   name: "BatchMatrixSolveLs"
   input_arg {
     name: "matrix"
-    description: "Shape is `[..., M, N]`."
     type_attr: "T"
   }
   input_arg {
     name: "rhs"
-    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   input_arg {
@@ -2398,7 +2393,6 @@ op {
   }
   output_arg {
     name: "output"
-    description: "Shape is `[..., N, K]`."
     type_attr: "T"
   }
   attr {
@@ -2418,24 +2412,23 @@ op {
       b: true
     }
   }
-  summary: "Solves multiple linear least-squares problems."
-  description: "`matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Rhs is a tensor of shape `[..., M, K]`.\nThe output is a tensor shape `[..., N, K]` where each output matrix solves\neach of the equations matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]\nin the least squares sense.\n\nBelow we will use the following notation for each pair of\nmatrix and right-hand sides in the batch:\n\n`matrix`=\\\\(A \\in \\Re^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\Re^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\Re^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^T A + \\lambda I)^{-1} A^T B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^T (A A^T + \\lambda I)^{-1} B\\\\), which (for \\\\(\\lambda = 0\\\\)) is the\nminimum-norm solution to the under-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||Z||_F^2 \\\\), subject to\n\\\\(A Z = B\\\\). Notice that the fast path is only numerically stable when\n\\\\(A\\\\) is numerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach}}}\\\\) or\\\\(\\lambda\\\\) is\nsufficiently large.\n\nIf `fast` is `False` an algorithm based on the numerically robust complete\northogonal decomposition is used. This computes the minimum-norm\nleast-squares solution, even when \\\\(A\\\\) is rank deficient. This path is\ntypically 6-7 times slower than the fast path. If `fast` is `False` then\n`l2_regularizer` is ignored."
+  deprecation {
+    version: 13
+    explanation: "Use MatrixSolveLs instead."
+  }
 }
 op {
   name: "BatchMatrixTriangularSolve"
   input_arg {
     name: "matrix"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   input_arg {
     name: "rhs"
-    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   attr {
@@ -2444,7 +2437,6 @@ op {
     default_value {
       b: true
     }
-    description: "Boolean indicating whether the innermost matrices in `matrix` are\nlower or upper triangular."
   }
   attr {
     name: "adjoint"
@@ -2452,7 +2444,6 @@ op {
     default_value {
       b: false
     }
-    description: "Boolean indicating whether to solve with `matrix` or its (block-wise)\nadjoint."
   }
   attr {
     name: "T"
@@ -2464,8 +2455,10 @@ op {
       }
     }
   }
-  summary: "Solves systems of linear equations with upper or lower triangular matrices by"
-  description: "backsubstitution.\n\n`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form\nsquare matrices. If `lower` is `True` then the strictly upper triangular part\nof each inner-most matrix is assumed to be zero and not accessed.\nIf `lower` is False then the strictly lower triangular part of each inner-most\nmatrix is assumed to be zero and not accessed.\n`rhs` is a tensor of shape [..., M, K]`.\n\nThe output is a tensor of shape `[..., M, K]`. If `adjoint` is `True` then the\ninnermost matrices in output` satisfy matrix equations\n`matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.\nIf `adjoint` is `False` then the strictly then the  innermost matrices in\n`output` satisfy matrix equations\n`adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`."
+  deprecation {
+    version: 13
+    explanation: "Use MatrixTriangularSolve instead."
+  }
 }
 op {
   name: "BatchNormWithGlobalNormalization"
@@ -2632,12 +2625,10 @@ op {
   name: "BatchSelfAdjointEig"
   input_arg {
     name: "input"
-    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[..., M+1, M]`."
     type_attr: "T"
   }
   attr {
@@ -2650,28 +2641,23 @@ op {
       }
     }
   }
-  summary: "Computes the Eigen Decomposition of a batch of square self-adjoint matrices."
-  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix\nSelfAdjointEig.\n\nThe result is a [..., M+1, M] matrix with [..., 0,:] containing the\neigenvalues, and subsequent [...,1:, :] containing the eigenvectors."
   deprecation {
     version: 11
-    explanation: "Use BatchSelfAdjointEigV2 instead."
+    explanation: "Use SelfAdjointEigV2 instead."
   }
 }
 op {
   name: "BatchSelfAdjointEigV2"
   input_arg {
     name: "input"
-    description: "`Tensor` input of shape `[N, N]`."
     type_attr: "T"
   }
   output_arg {
     name: "e"
-    description: "Eigenvalues. Shape is `[N]`."
     type_attr: "T"
   }
   output_arg {
     name: "v"
-    description: "Eigenvectors. Shape is `[N, N]`."
     type_attr: "T"
   }
   attr {
@@ -2680,7 +2666,6 @@ op {
     default_value {
       b: true
     }
-    description: "If `True` then eigenvectors will be computed and returned in `v`.\nOtherwise, only the eigenvalues will be computed."
   }
   attr {
     name: "T"
@@ -2692,29 +2677,27 @@ op {
       }
     }
   }
-  summary: "Computes the eigen decomposition of a batch of square self-adjoint matrices."
-  description: "Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in\n`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.\n\n```prettyprint\n# a is a tensor.\n# e is a tensor of eigenvalues.\n# v is a tensor of eigenvectors.\ne, v = batch_self_adjoint_eig(a)\ne = batch_self_adjoint_eig(a, compute_v=False)\n```"
+  deprecation {
+    version: 13
+    explanation: "Use SelfAdjointEigV2 instead."
+  }
 }
 op {
   name: "BatchSvd"
   input_arg {
     name: "input"
-    description: "A tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`."
     type_attr: "T"
   }
   output_arg {
     name: "s"
-    description: "Singular values. Shape is `[..., P]`."
     type_attr: "T"
   }
   output_arg {
     name: "u"
-    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., M, M]`; if `full_matrices` is `True` then shape is\n`[..., M, P]`. Undefined if `compute_uv` is `False`."
     type_attr: "T"
   }
   output_arg {
     name: "v"
-    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., N, N]`. If `full_matrices` is `True` then shape is `[..., N, P]`.\nUndefined if `compute_uv` is false."
     type_attr: "T"
   }
   attr {
@@ -2723,7 +2706,6 @@ op {
     default_value {
       b: true
     }
-    description: "If true, left and right singular vectors will be\ncomputed and returned in `u` and `v`, respectively.\nIf false, `u` and `v` are not set and should never referenced."
   }
   attr {
     name: "full_matrices"
@@ -2731,7 +2713,6 @@ op {
     default_value {
       b: false
     }
-    description: "If true, compute full-sized `u` and `v`. If false\n(the default), compute only the leading `P` singular vectors.\nIgnored if `compute_uv` is `False`."
   }
   attr {
     name: "T"
@@ -2745,8 +2726,10 @@ op {
       }
     }
   }
-  summary: "Computes the singular value decompositions of a batch of matrices."
-  description: "Computes the SVD of each inner matrix in `input` such that\n`input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`\n\n```prettyprint\n# a is a tensor containing a batch of matrices.\n# s is a tensor of singular values for each matrix.\n# u is the tensor containing of left singular vectors for each matrix.\n# v is the tensor containing of right singular vectors for each matrix.\ns, u, v = batch_svd(a)\ns, _, _ = batch_svd(a, compute_uv=False)\n```"
+  deprecation {
+    version: 13
+    explanation: "Use Svd instead."
+  }
 }
 op {
   name: "BatchToSpace"
@@ -3292,12 +3275,12 @@ op {
   name: "Cholesky"
   input_arg {
     name: "input"
-    description: "Shape is `[M, M]`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[M, M]`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   attr {
@@ -3310,24 +3293,24 @@ op {
       }
     }
   }
-  summary: "Computes the Cholesky decomposition of a square matrix."
-  description: "The input has to be symmetric and positive definite. Only the lower-triangular\npart of the input will be used for this operation. The upper-triangular part\nwill not be read.\n\nThe result is the lower-triangular matrix of the Cholesky decomposition of the\ninput, `L`, so that `input = L L^*`."
+  summary: "Computes the Cholesky decomposition of one or more square matrices."
+  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix Cholesky\ndecomposition above. The output is a tensor of the same shape as the input\ncontaining the Cholesky decompositions for all input submatrices `[..., :, :]`."
 }
 op {
   name: "CholeskyGrad"
   input_arg {
     name: "l"
-    description: "Output of Cholesky algorithm l = chol(A). Shape is `[M, M]`.\nAlgorithm depends only on lower triangular part of this matrix."
+    description: "Output of batch Cholesky algorithm l = cholesky(A). Shape is `[..., M, M]`.\nAlgorithm depends only on lower triangular part of the innermost matrices of\nthis tensor."
     type_attr: "T"
   }
   input_arg {
     name: "grad"
-    description: "df/dl where f is some scalar function. Shape is `[M, M]`.\nAlgorithm depends only on lower triangular part of this matrix."
+    description: "df/dl where f is some scalar function. Shape is `[..., M, M]`.\nAlgorithm depends only on lower triangular part of the innermost matrices of\nthis tensor."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Symmetrized version of df/dA . Shape is `[M, M]`."
+    description: "Symmetrized version of df/dA . Shape is `[..., M, M]`"
     type_attr: "T"
   }
   attr {
@@ -8368,12 +8351,12 @@ op {
   name: "MatrixDeterminant"
   input_arg {
     name: "input"
-    description: "A tensor of shape `[M, M]`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "A scalar, equal to the determinant of the input."
+    description: "Shape is `[...]`."
     type_attr: "T"
   }
   attr {
@@ -8386,18 +8369,19 @@ op {
       }
     }
   }
-  summary: "Computes the determinant of a square matrix."
+  summary: "Computes the determinant of one ore more square matrices."
+  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
 }
 op {
   name: "MatrixInverse"
   input_arg {
     name: "input"
-    description: "Shape is `[M, M]`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[M, M]`. If `adjoint` is `False` then `output` contains the\nmatrix inverse of `input`. If `adjoint` is `True` then `output` contains the\nmatrix inverse of the adjoint of `input`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   attr {
@@ -8417,24 +8401,24 @@ op {
       }
     }
   }
-  summary: "Computes the inverse of a square invertible matrix or its adjoint (conjugate"
-  description: "transpose).\n\nThe op uses LU decomposition with partial pivoting to compute the inverse.\n\nIf the matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
+  summary: "Computes the inverse of one or more square invertible matrices or their"
+  description: "adjoints (conjugate transposes).\n\nThe input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor of the same shape as the input\ncontaining the inverse for all input submatrices `[..., :, :]`.\n\nThe op uses LU decomposition with partial pivoting to compute the inverses.\n\nIf a matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
 }
 op {
   name: "MatrixSolve"
   input_arg {
     name: "matrix"
-    description: "Shape is `[M, M]`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   input_arg {
     name: "rhs"
-    description: "Shape is `[M, K]`."
+    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[M, K]`. If `adjoint` is `False` then `output` that solves\n`matrix` * `output` = `rhs`. If `adjoint` is `True` then `output` that solves\n`adjoint(matrix)` * `output` = `rhs`."
+    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   attr {
@@ -8443,7 +8427,7 @@ op {
     default_value {
       b: false
     }
-    description: "Boolean indicating whether to solve with `matrix` or its adjoint."
+    description: "Boolean indicating whether to solve with `matrix` or its (block-wise)\nadjoint."
   }
   attr {
     name: "T"
@@ -8455,27 +8439,29 @@ op {
       }
     }
   }
-  summary: "Solves a system of linear equations. Checks for invertibility."
+  summary: "Solves systems of linear equations."
+  description: "`Matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. `Rhs` is a tensor of shape `[..., M, K]`. The `output` is\na tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output matrix\nsatisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.\nIf `adjoint` is `True` then each output matrix satisfies\n`adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`."
 }
 op {
   name: "MatrixSolveLs"
   input_arg {
     name: "matrix"
-    description: "Shape is `[M, N]`."
+    description: "Shape is `[..., M, N]`."
     type_attr: "T"
   }
   input_arg {
     name: "rhs"
-    description: "Shape is `[M, K]`."
+    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   input_arg {
     name: "l2_regularizer"
+    description: "Scalar tensor."
     type: DT_DOUBLE
   }
   output_arg {
     name: "output"
-    description: "Shape is `[N, K]` containing the tensor that solves\n`matrix * output = rhs` in the least-squares sense."
+    description: "Shape is `[..., N, K]`."
     type_attr: "T"
   }
   attr {
@@ -8495,24 +8481,24 @@ op {
       b: true
     }
   }
-  summary: "Solves a linear least-squares problem."
-  description: "Below we will use the following notation\n`matrix`=\\\\(A \\in \\Re^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\Re^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\Re^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^T A + \\lambda I)^{-1} A^T B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^T (A A^T + \\lambda I)^{-1} B\\\\),\nwhich (for \\\\(\\lambda = 0\\\\)) is the minimum-norm solution to the\nunder-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||Z||_F^2 \\\\),\nsubject to \\\\(A Z = B\\\\).\nNotice that the fast path is only numerically stable when \\\\(A\\\\) is\nnumerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach}}}\\\\)\nor \\\\(\\lambda\\\\) is sufficiently large.\n\nIf `fast` is `False` an algorithm based on the numerically robust complete\northogonal decomposition is used. This computes the minimum-norm\nleast-squares solution, even when \\\\(A\\\\) is rank deficient. This path is\ntypically 6-7 times slower than the fast path. If `fast` is `False` then\n`l2_regularizer` is ignored."
+  summary: "Solves one or more linear least-squares problems."
+  description: "`matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Rhs is a tensor of shape `[..., M, K]`.\nThe output is a tensor shape `[..., N, K]` where each output matrix solves\neach of the equations matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]\nin the least squares sense.\n\nmatrix and right-hand sides in the batch:\n\n`matrix`=\\\\(A \\in \\Re^{m \\times n}\\\\),\n`rhs`=\\\\(B  \\in \\Re^{m \\times k}\\\\),\n`output`=\\\\(X  \\in \\Re^{n \\times k}\\\\),\n`l2_regularizer`=\\\\(\\lambda\\\\).\n\nIf `fast` is `True`, then the solution is computed by solving the normal\nequations using Cholesky decomposition. Specifically, if \\\\(m \\ge n\\\\) then\n\\\\(X = (A^T A + \\lambda I)^{-1} A^T B\\\\), which solves the least-squares\nproblem \\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||A Z - B||_F^2 +\n\\lambda ||Z||_F^2\\\\). If \\\\(m \\lt n\\\\) then `output` is computed as\n\\\\(X = A^T (A A^T + \\lambda I)^{-1} B\\\\), which (for \\\\(\\lambda = 0\\\\)) is the\nminimum-norm solution to the under-determined linear system, i.e.\n\\\\(X = \\mathrm{argmin}_{Z \\in \\Re^{n \\times k}} ||Z||_F^2 \\\\), subject to\n\\\\(A Z = B\\\\). Notice that the fast path is only numerically stable when\n\\\\(A\\\\) is numerically full rank and has a condition number\n\\\\(\\mathrm{cond}(A) \\lt \\frac{1}{\\sqrt{\\epsilon_{mach}}}\\\\) or\\\\(\\lambda\\\\) is\nsufficiently large.\n\nIf `fast` is `False` an algorithm based on the numerically robust complete\northogonal decomposition is used. This computes the minimum-norm\nleast-squares solution, even when \\\\(A\\\\) is rank deficient. This path is\ntypically 6-7 times slower than the fast path. If `fast` is `False` then\n`l2_regularizer` is ignored."
 }
 op {
   name: "MatrixTriangularSolve"
   input_arg {
     name: "matrix"
-    description: "Shape is `[M, M]`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   input_arg {
     name: "rhs"
-    description: "Shape is `[M, K]`."
+    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[M, K]`."
+    description: "Shape is `[..., M, K]`."
     type_attr: "T"
   }
   attr {
@@ -8521,7 +8507,7 @@ op {
     default_value {
       b: true
     }
-    description: "Boolean indicating whether `matrix` is lower or upper triangular"
+    description: "Boolean indicating whether the innermost matrices in `matrix` are\nlower or upper triangular."
   }
   attr {
     name: "adjoint"
@@ -8529,7 +8515,7 @@ op {
     default_value {
       b: false
     }
-    description: "Boolean indicating whether to solve with `matrix` or its adjoint."
+    description: "Boolean indicating whether to solve with `matrix` or its (block-wise)\nadjoint."
   }
   attr {
     name: "T"
@@ -8541,8 +8527,8 @@ op {
       }
     }
   }
-  summary: "Solves a system of linear equations with an upper or lower triangular matrix by"
-  description: "backsubstitution.\n\n`matrix` is a matrix of shape `[M, M]`. If `lower` is `True` then the strictly\nupper triangular part of `matrix` is assumed to be zero and not accessed.\nIf `lower` is False then the strictly lower triangular part of `matrix` is\nassumed to be zero and not accessed.\n`rhs` is a matrix of shape [M, K]`.\n\nThe output is a matrix of shape `[M, K]`. If `adjoint` is `False` the output\nsatisfies the matrix equation `matrix` * `output` = `rhs`.\nIf `adjoint` is `False` then `output` satisfies the matrix equation\n`matrix` * `output` = `rhs`.\nIf `adjoint` is `True` then `output` satisfies the matrix equation\n`adjoint(matrix)` * `output` = `rhs`."
+  summary: "Solves systems of linear equations with upper or lower triangular matrices by"
+  description: "backsubstitution.\n\n`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form\nsquare matrices. If `lower` is `True` then the strictly upper triangular part\nof each inner-most matrix is assumed to be zero and not accessed.\nIf `lower` is False then the strictly lower triangular part of each inner-most\nmatrix is assumed to be zero and not accessed.\n`rhs` is a tensor of shape `[..., M, K]`.\n\nThe output is a tensor of shape `[..., M, K]`. If `adjoint` is\n`True` then the innermost matrices in output` satisfy matrix equations\n`matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.\nIf `adjoint` is `False` then the strictly then the  innermost matrices in\n`output` satisfy matrix equations\n`adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`."
 }
 op {
   name: "Max"
@@ -13221,12 +13207,12 @@ op {
   name: "SelfAdjointEig"
   input_arg {
     name: "input"
-    description: "Shape is `[M, M]`."
+    description: "Shape is `[..., M, M]`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Shape is `[M+1, M]`."
+    description: "Shape is `[..., M+1, M]`."
     type_attr: "T"
   }
   attr {
@@ -13239,8 +13225,8 @@ op {
       }
     }
   }
-  summary: "Computes the Eigen Decomposition of a square Self-Adjoint matrix."
-  description: "Only the lower-triangular part of the input will be used in this case. The\nupper-triangular part will not be read.\n\nThe result is a M+1 x M matrix whose first row is the eigenvalues, and\nsubsequent rows are eigenvectors."
+  summary: "Computes the Eigen Decomposition of a batch of square self-adjoint matrices."
+  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix\nSelfAdjointEig.\n\nThe result is a [..., M+1, M] matrix with [..., 0,:] containing the\neigenvalues, and subsequent [...,1:, :] containing the eigenvectors."
   deprecation {
     version: 11
     explanation: "Use SelfAdjointEigV2 instead."
@@ -13281,8 +13267,8 @@ op {
       }
     }
   }
-  summary: "Computes the eigen decomposition of a self-adjoint (\\\"symmetric\\\") matrix."
-  description: "Computes the eigenvalues and (optionally) eigenvectors such that\n`input = v * diag(e)`.\n\n```prettyprint\n# a is a self-adjoint matrix.\n# e is a vector of eigenvalues.\n# v is a matrix of eigenvectors.\ne, v = self_adjoint_eig(a)\ne = self_adjoint_eig(a, compute_v=False)\n```"
+  summary: "Computes the eigen decomposition of one or more square self-adjoint matrices."
+  description: "Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in\n`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.\n\n```prettyprint\n# a is a tensor.\n# e is a tensor of eigenvalues.\n# v is a tensor of eigenvectors.\ne, v = self_adjoint_eig(a)\ne = self_adjoint_eig(a, compute_v=False)\n```"
 }
 op {
   name: "SerializeManySparse"
@@ -16687,22 +16673,22 @@ op {
   name: "Svd"
   input_arg {
     name: "input"
-    description: "Shape is `[M, N]`. Let `P` be the minimum of `M` and `N`."
+    description: "A tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`."
     type_attr: "T"
   }
   output_arg {
     name: "s"
-    description: "Singular values. Shape is `[P]`."
+    description: "Singular values. Shape is `[..., P]`."
     type_attr: "T"
   }
   output_arg {
     name: "u"
-    description: "Left singular vectors; if `full_matrices` is `False` then shape is `[M, M]`.\nIf `full_matrices` is `True` then shape is `[M, P]`.\nUndefined if `compute_uv` is `False`."
+    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., M, M]`; if `full_matrices` is `True` then shape is\n`[..., M, P]`. Undefined if `compute_uv` is `False`."
     type_attr: "T"
   }
   output_arg {
     name: "v"
-    description: "Left singular vectors. If `full_matrices` is `False` then shape is `[N, N]`.\nIf `full_matrices` is `True` then shape is `[N, P]`.\nUndefined if `compute_uv` is false."
+    description: "Left singular vectors. If `full_matrices` is `False` then shape is\n`[..., N, N]`. If `full_matrices` is `True` then shape is `[..., N, P]`.\nUndefined if `compute_uv` is false."
     type_attr: "T"
   }
   attr {
@@ -16733,8 +16719,8 @@ op {
       }
     }
   }
-  summary: "Computes the singular value decomposition of a matrix."
-  description: "Computes the SVD of if `input` such that `input = u * diag(s) * transpose(v)`\n\n```prettyprint\n# a is a matrix.\n# s is a vector of singular values.\n# u is the matrix of left singular vectors.\n# v is a matrix of right singular vectors.\ns, u, v = svd(a)\ns, _, _ = svd(a, compute_uv=False)\n```"
+  summary: "Computes the singular value decompositions of one or more matrices."
+  description: "Computes the SVD of each inner matrix in `input` such that\n`input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`\n\n```prettyprint\n# a is a tensor containing a batch of matrices.\n# s is a tensor of singular values for each matrix.\n# u is the tensor containing of left singular vectors for each matrix.\n# v is the tensor containing of right singular vectors for each matrix.\ns, u, v = svd(a)\ns, _, _ = svd(a, compute_uv=False)\n```"
 }
 op {
   name: "Switch"
