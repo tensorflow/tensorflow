@@ -32,10 +32,23 @@ class FeatureColumnTest(tf.test.TestCase):
     with self.assertRaises(AttributeError):
       a.column_name = "bbb"
 
-  def testSparseColumn(self):
+  def testSparseColumnWithHashBucket(self):
     a = tf.contrib.layers.sparse_column_with_hash_bucket("aaa",
                                                          hash_bucket_size=100)
     self.assertEqual(a.name, "aaa")
+    self.assertEqual(a.dtype, tf.string)
+
+    a = tf.contrib.layers.sparse_column_with_hash_bucket("aaa",
+                                                         hash_bucket_size=100,
+                                                         dtype=tf.int64)
+    self.assertEqual(a.name, "aaa")
+    self.assertEqual(a.dtype, tf.int64)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "dtype must be string or integer"):
+      a = tf.contrib.layers.sparse_column_with_hash_bucket("aaa",
+                                                           hash_bucket_size=100,
+                                                           dtype=tf.float32)
 
   def testWeightedSparseColumn(self):
     ids = tf.contrib.layers.sparse_column_with_keys(

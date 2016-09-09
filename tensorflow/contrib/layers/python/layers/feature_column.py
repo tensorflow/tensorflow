@@ -443,31 +443,45 @@ def sparse_column_with_integerized_feature(column_name,
 class _SparseColumnHashed(_SparseColumn):
   """See `sparse_column_with_hash_bucket`."""
 
-  def __new__(cls, column_name, hash_bucket_size, combiner="sum"):
+  def __new__(cls,
+              column_name,
+              hash_bucket_size,
+              combiner="sum",
+              dtype=dtypes.string):
+
+    if dtype != dtypes.string and not dtype.is_integer:
+      raise ValueError("dtype must be string or integer. "
+                       "dtype: {}, column_name: {}".format(dtype, column_name))
 
     return super(_SparseColumnHashed, cls).__new__(
         cls,
         column_name,
         bucket_size=hash_bucket_size,
         combiner=combiner,
-        dtype=dtypes.string)
+        dtype=dtype)
 
   def insert_transformed_feature(self, columns_to_tensors):
     """Handles sparse column to id conversion."""
+    sparse_tensor = columns_to_tensors[self.name]
+    if self.dtype.is_integer:
+      sparse_values = string_ops.as_string(sparse_tensor.values)
+    else:
+      sparse_values = sparse_tensor.values
+
     sparse_id_values = string_ops.string_to_hash_bucket_fast(
-        columns_to_tensors[self.name].values, self.bucket_size, name="lookup")
+        sparse_values, self.bucket_size, name="lookup")
     columns_to_tensors[self] = ops.SparseTensor(
-        columns_to_tensors[self.name].indices, sparse_id_values,
-        columns_to_tensors[self.name].shape)
+        sparse_tensor.indices, sparse_id_values, sparse_tensor.shape)
 
 
 def sparse_column_with_hash_bucket(column_name,
                                    hash_bucket_size,
-                                   combiner="sum"):
+                                   combiner="sum",
+                                   dtype=dtypes.string):
   """Creates a _SparseColumn with hashed bucket configuration.
 
-  Use this when your sparse features are in string format, but you don't have a
-  vocab file that maps each string to an integer ID.
+  Use this when your sparse features are in string or integer format, but you
+  don't have a vocab file that maps each value to an integer ID.
   output_id = Hash(input_feature_string) % bucket_size
 
   Args:
@@ -480,14 +494,16 @@ def sparse_column_with_hash_bucket(column_name,
         * "mean": do l1 normalization on features in the column
         * "sqrtn": do l2 normalization on features in the column
       For more information: `tf.embedding_lookup_sparse`.
+    dtype: The type of features. Only string and integer types are supported.
 
   Returns:
     A _SparseColumn with hashed bucket configuration
 
   Raises:
     ValueError: hash_bucket_size is not greater than 2.
+    ValueError: dtype is neither string nor integer.
   """
-  return _SparseColumnHashed(column_name, hash_bucket_size, combiner)
+  return _SparseColumnHashed(column_name, hash_bucket_size, combiner, dtype)
 
 
 class _SparseColumnKeys(_SparseColumn):
