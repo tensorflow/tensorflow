@@ -69,7 +69,7 @@ class CumsumTest(tf.test.TestCase):
 
   def _compare(self, x, axis, exclusive, reverse):
     np_out = handle_options(np.cumsum, x, axis, exclusive, reverse)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       tf_out = tf.cumsum(x, axis, exclusive, reverse).eval()
 
     self.assertAllClose(np_out, tf_out)
@@ -106,7 +106,7 @@ class CumsumTest(tf.test.TestCase):
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
     input_tensor = tf.convert_to_tensor(x)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       with self.assertRaisesWithPredicateMatch(
           tf.errors.InvalidArgumentError,
           lambda e: "Expected scan axis in the range [-2, 2)" in str(e)):
@@ -122,7 +122,7 @@ class CumsumTest(tf.test.TestCase):
 
   def _compareGradient(self, shape, axis, exclusive, reverse):
     x = np.arange(0, 50).reshape(shape).astype(np.float64)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       t = tf.convert_to_tensor(x)
       result = tf.cumsum(t, axis, exclusive, reverse)
       jacob_t, jacob_n = tf.test.compute_gradient(t,
@@ -163,7 +163,7 @@ class CumprodTest(tf.test.TestCase):
 
   def _compare(self, x, axis, exclusive, reverse):
     np_out = handle_options(np.cumprod, x, axis, exclusive, reverse)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       tf_out = tf.cumprod(x, axis, exclusive, reverse).eval()
 
     self.assertAllClose(np_out, tf_out)
@@ -200,7 +200,7 @@ class CumprodTest(tf.test.TestCase):
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
     input_tensor = tf.convert_to_tensor(x)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       with self.assertRaisesWithPredicateMatch(
           tf.errors.InvalidArgumentError,
           lambda e: "Expected scan axis in the range [-2, 2)" in str(e)):
@@ -216,7 +216,7 @@ class CumprodTest(tf.test.TestCase):
 
   def _compareGradient(self, shape, axis, exclusive, reverse):
     x = np.arange(1, 9).reshape(shape).astype(np.float64)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       t = tf.convert_to_tensor(x)
       result = tf.cumprod(t, axis, exclusive, reverse)
       jacob_t, jacob_n = tf.test.compute_gradient(t,

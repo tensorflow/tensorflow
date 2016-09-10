@@ -29,7 +29,7 @@ class VerifyTensorAllFiniteTest(tf.test.TestCase):
   def testVerifyTensorAllFiniteSucceeds(self):
     x_shape = [5, 4]
     x = np.random.random_sample(x_shape).astype(np.float32)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       t = tf.constant(x, shape=x_shape, dtype=tf.float32)
       t_verified = tf.verify_tensor_all_finite(t, "Input is not a number.")
       self.assertAllClose(x, t_verified.eval())
@@ -41,7 +41,7 @@ class VerifyTensorAllFiniteTest(tf.test.TestCase):
 
     # Test NaN.
     x[0] = np.nan
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       with self.assertRaisesOpError(my_msg):
         t = tf.constant(x, shape=x_shape, dtype=tf.float32)
         t_verified = tf.verify_tensor_all_finite(t, my_msg)
@@ -49,7 +49,7 @@ class VerifyTensorAllFiniteTest(tf.test.TestCase):
 
     # Test Inf.
     x[0] = np.inf
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       with self.assertRaisesOpError(my_msg):
         t = tf.constant(x, shape=x_shape, dtype=tf.float32)
         t_verified = tf.verify_tensor_all_finite(t, my_msg)
