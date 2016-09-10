@@ -268,7 +268,8 @@ def get_image_path(image_lists, label_name, index, image_dir, category):
     tf.logging.fatal('Category does not exist %s.', category)
   category_list = label_lists[category]
   if not category_list:
-    tf.logging.fatal('Category has no images - %s.', category)
+    tf.logging.fatal('Label %s has no images in the category %s.',
+                     label_name, category)
   mod_index = index % len(category_list)
   base_name = category_list[mod_index]
   sub_dir = label_lists['dir']
@@ -704,7 +705,7 @@ def variable_summaries(var, name):
     tf.scalar_summary('mean/' + name, mean)
     with tf.name_scope('stddev'):
       stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
-    tf.scalar_summary('sttdev/' + name, stddev)
+    tf.scalar_summary('stddev/' + name, stddev)
     tf.scalar_summary('max/' + name, tf.reduce_max(var))
     tf.scalar_summary('min/' + name, tf.reduce_min(var))
     tf.histogram_summary(name, var)

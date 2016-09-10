@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tempfile
-import urllib
+from six.moves import urllib
 
 import pandas as pd
 import tensorflow as tf
@@ -56,7 +56,7 @@ def maybe_download():
     train_file_name = FLAGS.train_data
   else:
     train_file = tempfile.NamedTemporaryFile(delete=False)
-    urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)  # pylint: disable=line-too-long
+    urllib.request.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)  # pylint: disable=line-too-long
     train_file_name = train_file.name
     train_file.close()
     print("Training data is downloaded to %s" % train_file_name)
@@ -65,7 +65,7 @@ def maybe_download():
     test_file_name = FLAGS.test_data
   else:
     test_file = tempfile.NamedTemporaryFile(delete=False)
-    urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)  # pylint: disable=line-too-long
+    urllib.request.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)  # pylint: disable=line-too-long
     test_file_name = test_file.name
     test_file.close()
     print("Test data is downloaded to %s" % test_file_name)

@@ -24,9 +24,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   )
 
   native.git_repository(
-    name = "re2",
+    name = "com_googlesource_code_re2",
     remote = "https://github.com/google/re2.git",
-    commit = "791beff",
+    commit = "fc6337a382bfd4f7c861abea08f872d3c85b31da",
   )
 
   native.git_repository(
@@ -50,7 +50,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.git_repository(
     name = "highwayhash",
     remote = "https://github.com/google/highwayhash.git",
-    commit = "be5edafc2e1a455768e260ccd68ae7317b6690ee",
+    commit = "4bce8fc6a9ca454d9d377dbc4c4d33488bbab78f",
     init_submodules = True,
   )
 

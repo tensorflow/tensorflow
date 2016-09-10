@@ -125,7 +125,7 @@ answered questions, and were part of inspiring discussions.
 * Allow building against cuDNN 5 (not incl. RNN/LSTM support) 
 * Added instructions and binaries for ProtoBuf library with fast serialization and without 64MB limit
 * Added special functions
-* `bool`-strictness: Tensors have to be explictly compared to `None`
+* `bool`-strictness: Tensors have to be explicitly compared to `None`
 * Shape strictness: all fed values must have a shape that is compatible with the tensor they are replacing
 * Exposed `tf.while_loop` (deprecated `control_flow_ops.While`)
 * run() now takes RunOptions and RunMetadata, which enable timing stats

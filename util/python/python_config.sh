@@ -60,10 +60,10 @@ python_paths = []
 if os.getenv('PYTHONPATH') is not None:
   python_paths = os.getenv('PYTHONPATH').split(':')
 try:
-  library_paths =  site.getsitepackages()
+  library_paths = site.getsitepackages()
 except AttributeError:
  from distutils.sysconfig import get_python_lib
- library_paths = get_python_lib()
+ library_paths = [get_python_lib()]
 all_paths = set(python_paths + library_paths)
 
 paths = []

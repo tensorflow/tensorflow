@@ -9,7 +9,7 @@ graph, and show additional data like images that pass through it. When
 TensorBoard is fully configured, it looks like this:
 
 [![MNIST TensorBoard](../../images/mnist_tensorboard.png "MNIST TensorBoard")](http://tensorflow.org/tensorboard)  
-[*Click try a TensorBoard with data from this tutorial!*](http://tensorflow.org/tensorboard)
+[*Click to try TensorBoard with data from this tutorial!*](http://tensorflow.org/tensorboard)
 
 This tutorial is intended to get you started with simple TensorBoard usage.
 There are other resources available as well! The [TensorBoard README](https://www.tensorflow.org/code/tensorflow/tensorboard/README.md)
@@ -87,7 +87,7 @@ def variable_summaries(var, name):
     tf.scalar_summary('mean/' + name, mean)
     with tf.name_scope('stddev'):
       stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
-    tf.scalar_summary('sttdev/' + name, stddev)
+    tf.scalar_summary('stddev/' + name, stddev)
     tf.scalar_summary('max/' + name, tf.reduce_max(var))
     tf.scalar_summary('min/' + name, tf.reduce_min(var))
     tf.histogram_summary(name, var)
@@ -182,7 +182,8 @@ You're now all set to visualize this data using TensorBoard.
 
 ## Launching TensorBoard
 
-To run TensorBoard, use the command
+To run TensorBoard, use the following command (alternatively `python -m
+tensorflow.tensorboard`)
 
 ```bash
 tensorboard --logdir=path/to/log-directory

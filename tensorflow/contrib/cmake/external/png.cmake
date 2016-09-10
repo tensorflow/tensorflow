@@ -22,6 +22,7 @@ ExternalProject_Add(png
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DCMAKE_INSTALL_PREFIX:STRING=${png_INSTALL}
+	-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
 )
 
 ## put png includes in the directory where they are expected
