@@ -26,10 +26,9 @@ import tensorflow as tf
 class SpaceToDepthTest(tf.test.TestCase):
 
   def _testOne(self, inputs, block_size, outputs):
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
-        x_tf = tf.space_to_depth(tf.to_float(inputs), block_size)
-        self.assertAllEqual(x_tf.eval(), outputs)
+    with self.test_session(use_gpu=True):
+      x_tf = tf.space_to_depth(tf.to_float(inputs), block_size)
+      self.assertAllEqual(x_tf.eval(), outputs)
 
   def testBasic(self):
     x_np = [[[[1], [2]],
@@ -208,7 +207,7 @@ class SpaceToDepthGradientTest(tf.test.TestCase):
   # Check the gradients.
   def _checkGrad(self, x, block_size):
     assert 4 == x.ndim
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       tf_x = tf.convert_to_tensor(x)
       tf_y = tf.space_to_depth(tf_x, block_size)
       epsilon = 1e-2
