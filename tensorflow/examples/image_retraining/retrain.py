@@ -323,7 +323,7 @@ def run_bottleneck_on_image(sess, image_data, image_data_tensor,
 
   Args:
     sess: Current active TensorFlow Session.
-    image_data: Numpy array of image data.
+    image_data: String of raw JPEG data.
     image_data_tensor: Input data layer in the graph.
     bottleneck_tensor: Layer before the final softmax.
 
