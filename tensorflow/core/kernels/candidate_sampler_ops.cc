@@ -134,6 +134,7 @@ class AllCandidateSamplerOp : public BaseCandidateSamplerOp {
       : BaseCandidateSamplerOp(context) {
     int64 range_max;
     OP_REQUIRES_OK(context, context->GetAttr("num_sampled", &range_max));
+    CHECK_LE(num_sampled_, range_max);
     set_sampler(new AllSampler(range_max));
   }
 };
