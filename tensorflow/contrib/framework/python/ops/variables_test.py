@@ -1053,5 +1053,27 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
       self.assertEqual(init_value0, var0.eval())
       self.assertEqual(init_value1, var1.eval())
 
+class ZeroInitializerOpTest(tf.test.TestCase):
+
+  def _testZeroInitializer(self, shape, dtype):
+    var0 = tf.Variable(tf.zeros(shape, dtype=dtype))
+    var1 = tf.Variable(tf.ones(shape, dtype=dtype))
+    var0_zero = tf.contrib.framework.zero_initializer(var0)
+    var1_zero = tf.contrib.framework.zero_initializer(var1)
+    with self.test_session() as sess:
+      with self.assertRaisesOpError("Attempting to use uninitialized value"):
+        var0.eval()
+      with self.assertRaisesOpError("Attempting to use uninitialized value"):
+        var1.eval()
+      var0_zero.eval()
+      var1_zero.eval()
+      self.assertAllClose(np.zeros(shape), var0.eval())
+      self.assertAllClose(np.zeros(shape), var1.eval())
+
+  def testZeroInitializer(self):
+    for shape in ([10, 20], [10], [5,], [10, 20, 30]):
+      for dtype in (tf.int32, tf.int64, tf.float32, tf.float64):
+        self._testZeroInitializer(shape, dtype)
+
 if __name__ == '__main__':
   tf.test.main()

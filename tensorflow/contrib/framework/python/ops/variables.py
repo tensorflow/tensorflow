@@ -29,6 +29,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as tf_saver
 
@@ -53,8 +54,28 @@ __all__ = ['add_model_variable',
            'local_variable',
            'model_variable',
            'variable',
-           'VariableDeviceChooser']
+           'VariableDeviceChooser',
+           'zero_initializer']
 
+
+def zero_initializer(ref, use_locking=True, name="zero_initializer"):
+  """Initialize 'ref' with all zeros, ref tensor can be uninitialized.
+  If already initialized, this op has no effect. This op is intended to
+  save memory during initialization.
+  Args:
+    ref: ref of the tensor need to be zero initialized.
+    use_locking: If True, the initialization will be protected by a lock;
+      otherwise the behavior is undefined, but may exhibit less contention.
+    name: optional name for this operation.
+  """
+  return gen_state_ops.zero_initializer(
+      ref, use_locking=use_locking, name=name)
+
+# shape function for _ZeroInitializerOp
+@ops.RegisterShape("ZeroInitializer")
+def _ZeroInitializerShape(op):
+  var_shape = op.inputs[0].get_shape()
+  return [var_shape]
 
 def assert_global_step(global_step_tensor):
   """Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.

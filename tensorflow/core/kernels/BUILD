@@ -49,6 +49,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "zero_initializer_op",
+    hdrs = ["zero_initializer_op.h"],
+    srcs = ["zero_initializer_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_kernel_library(
     name = "strided_slice_op",
     srcs = [
@@ -1781,6 +1791,7 @@ tf_kernel_libraries(
         "dense_update_ops",
         "scatter_op",
         "variable_ops",
+        "zero_initializer",
     ],
     deps = [
         ":assign_op",
