@@ -1,19 +1,19 @@
-### `tf.nn.conv2d_transpose(value, filter, output_shape, strides, padding='SAME', name=None)` {#conv2d_transpose}
+### `tf.nn.conv3d_transpose(value, filter, output_shape, strides, padding='SAME', name=None)` {#conv3d_transpose}
 
-The transpose of `conv2d`.
+The transpose of `conv3d`.
 
 This operation is sometimes called "deconvolution" after [Deconvolutional
 Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
-actually the transpose (gradient) of `conv2d` rather than an actual
+actually the transpose (gradient) of `conv3d` rather than an actual
 deconvolution.
 
 ##### Args:
 
 
-*  <b>`value`</b>: A 4-D `Tensor` of type `float` and shape
-    `[batch, height, width, in_channels]`.
-*  <b>`filter`</b>: A 4-D `Tensor` with the same type as `value` and shape
-    `[height, width, output_channels, in_channels]`.  `filter`'s
+*  <b>`value`</b>: A 5-D `Tensor` of type `float` and shape
+    `[batch, depth, height, width, in_channels]`.
+*  <b>`filter`</b>: A 5-D `Tensor` with the same type as `value` and shape
+    `[depth, height, width, output_channels, in_channels]`.  `filter`'s
     `in_channels` dimension must match that of `value`.
 *  <b>`output_shape`</b>: A 1-D `Tensor` representing the output shape of the
     deconvolution op.
