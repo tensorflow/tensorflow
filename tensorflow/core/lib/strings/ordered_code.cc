@@ -130,7 +130,7 @@ static const char kFFCharacter = '\000';  // Combined with kEscape2
 static const char kEscape1_Separator[2] = {kEscape1, kSeparator};
 
 // Append to "*dest" the "len" bytes starting from "*src".
-inline static void AppendBytes(string* dest, const char* src, int len) {
+inline static void AppendBytes(string* dest, const char* src, size_t len) {
   dest->append(src, len);
 }
 

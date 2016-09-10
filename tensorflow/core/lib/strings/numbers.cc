@@ -279,7 +279,7 @@ bool safe_strto32(StringPiece str, int32* value) {
 
   if (!str.empty()) return false;
 
-  *value = result * sign;
+  *value = static_cast<int32>(result * sign);
   return true;
 }
 
@@ -299,7 +299,7 @@ bool safe_strtou32(StringPiece str, uint32* value) {
   SkipSpaces(&str);
   if (!str.empty()) return false;
 
-  *value = result;
+  *value = static_cast<uint32>(result);
   return true;
 }
 
