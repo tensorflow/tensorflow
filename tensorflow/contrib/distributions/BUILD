@@ -341,6 +341,17 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
+    name = "quantized_distribution_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/quantized_distribution_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
     name = "transformed_distribution_test",
     size = "medium",
     srcs = ["python/kernel_tests/transformed_distribution_test.py"],
