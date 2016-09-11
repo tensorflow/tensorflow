@@ -25,6 +25,7 @@
   * [`load_op_library`](../../api_docs/python/framework.md#load_op_library)
   * [`name_scope`](../../api_docs/python/framework.md#name_scope)
   * [`NoGradient`](../../api_docs/python/framework.md#NoGradient)
+  * [`NotDifferentiable`](../../api_docs/python/framework.md#NotDifferentiable)
   * [`op_scope`](../../api_docs/python/framework.md#op_scope)
   * [`Operation`](../../api_docs/python/framework.md#Operation)
   * [`register_tensor_conversion_function`](../../api_docs/python/framework.md#register_tensor_conversion_function)
