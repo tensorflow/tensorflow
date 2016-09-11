@@ -25,6 +25,9 @@
 @@TimeFreqLSTMCell
 @@GridLSTMCell
 
+### Echo State Networks
+@@ESNCell
+
 ### RNNCell wrappers
 @@AttentionCellWrapper
 """
