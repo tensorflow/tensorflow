@@ -105,7 +105,7 @@ def bottleneck(inputs, depth, depth_bottleneck, stride, rate=1,
     output = shortcut + residual
 
     return slim.utils.collect_named_outputs(outputs_collections,
-                                            sc.original_name_scope,
+                                            sc.name,
                                             output)
 
 
