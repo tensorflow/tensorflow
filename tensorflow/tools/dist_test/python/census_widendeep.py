@@ -13,8 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Distributed training and evaluation of a wide&deep model.
-"""
+"""Distributed training and evaluation of a wide and deep model."""
 
 
 from __future__ import absolute_import
@@ -33,7 +32,7 @@ from tensorflow.contrib.learn.python.learn.estimators import run_config
 # Define command-line flags
 flags = tf.app.flags
 flags.DEFINE_string("data_dir", "/tmp/census-data",
-                    "Directory for storing the cesnsus data data")
+                    "Directory for storing the cesnsus data")
 flags.DEFINE_string("model_dir", "/tmp/census_wide_and_deep_model",
                     "Directory for storing the model")
 flags.DEFINE_string("output_dir", "", "Base output directory.")
@@ -156,7 +155,7 @@ class CensusDataSource(object):
       continuous_columns: Names of the continuous columsn (A list of strings)
     """
 
-    # Retrieve data, from disk (if available) or through web download.
+    # Retrieve data from disk (if available) or download from the web.
     train_file_path = os.path.join(data_dir, "adult.data")
     if os.path.isfile(train_file_path):
       print("Loading training data from file: %s" % train_file_path)
@@ -172,7 +171,7 @@ class CensusDataSource(object):
       test_file = open(test_file_path)
       urllib.urlretrieve(test_data_url, test_file_path)
 
-    # Read the training and test data sets into Pandas dataframe.
+    # Read the training and testing data sets into Pandas DataFrame.
     import pandas  # pylint: disable=g-import-not-at-top
     self._df_train = pandas.read_csv(train_file, names=columns,
                                      skipinitialspace=True)
