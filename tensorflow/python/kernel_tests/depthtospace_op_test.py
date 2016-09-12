@@ -136,7 +136,7 @@ class DepthToSpaceTest(tf.test.TestCase):
     block_size = 4
     # Raise an exception, since th depth is only 4 and needs to be
     # divisible by 16.
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       out_tf = tf.depth_to_space(x_np, block_size)
       out_tf.eval()
 
@@ -165,7 +165,7 @@ class DepthToSpaceTest(tf.test.TestCase):
     x_np = [[[[1], [2]],
              [[3], [4]]]]
     block_size = 10
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       out_tf = tf.space_to_depth(x_np, block_size)
       out_tf.eval()
 
@@ -176,7 +176,7 @@ class DepthToSpaceTest(tf.test.TestCase):
              [[3, 3, 3, 3],
               [4, 4, 4, 4]]]]
     block_size = 3
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       _ = tf.space_to_depth(x_np, block_size)
 
   def testUnknownShape(self):

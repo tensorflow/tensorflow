@@ -1469,15 +1469,7 @@ def meshgrid(*args, **kwargs):
     return results
 
 
-@ops.RegisterShape("Placeholder")
-def _PlaceholderShape(op):
-  given_shape = tensor_util.TensorShapeProtoToList(op.get_attr("shape"))
-  if given_shape:
-    return [tensor_shape.TensorShape(given_shape)]
-  else:
-    return [tensor_shape.unknown_shape()]
-
-
+ops.RegisterShape("Placeholder")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("CheckNumerics")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Identity")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("RefIdentity")(common_shapes.call_cpp_shape_fn)
@@ -1571,11 +1563,10 @@ def _compute_size_of_strided_dim(shrink, spec, size):
 
 @ops.RegisterShape("StridedSliceGrad")
 def _StridedSliceGradShape(op):
-  """Shape function for gradient of array_ops.slice."""
-  return [tensor_util.constant_value(op.inputs[0])]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
-ops.RegisterShape("StridedSliceAssign")(common_shapes.unchanged_shape)
+ops.RegisterShape("StridedSliceAssign")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("StridedSlice")
@@ -1674,14 +1665,7 @@ def _StridedSliceShape(op):
   return [tensor_shape.TensorShape(final_shape)]
 
 
-@ops.RegisterShape("Gather")
-def _GatherShape(op):
-  """Shape function for array_ops.gather."""
-  params_shape = op.inputs[0].get_shape()
-  indices_shape = op.inputs[1].get_shape()
-  return [indices_shape.concatenate(params_shape[1:])]
-
-
+ops.RegisterShape("Gather")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("GatherNd")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Unique")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("UniqueWithCounts")(common_shapes.call_cpp_shape_fn)
@@ -1693,33 +1677,9 @@ ops.RegisterShape("DiagPart")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("ExpandDims")
-def _ExpandDimsShape(op):
-  """Determine shape for expand op's output tensor.
-
-  Args:
-    op: Operation for which to determine shape.
-        op.inputs[0] is the input tensor.
-        op.inputs[1] is the dimension in which to expand.
-  Returns:
-    Shape of op's output tensor.
-  Raises:
-    ValueError: If dim is outside of [-rank - 1, rank], where rank is the number
-        of dimensions in the input tensor.
-  """
-  input_shape = op.inputs[0].get_shape()
-  if input_shape.dims is None:
-    return [tensor_shape.unknown_shape()]
-  dim = tensor_util.constant_value(op.inputs[1])
-  input_ndims = input_shape.ndims
-  min_dim = -input_ndims - 1
-  if dim < min_dim or dim > input_ndims:
-    raise ValueError(
-        "dim %d not in interval [%d, %d]." % (dim, min_dim, input_ndims))
-  if dim < 0:
-    dim += (input_ndims + 1)
-  result_shape = list(input_shape.dims)
-  result_shape.insert(dim, 1)
-  return [tensor_shape.TensorShape(result_shape)]
+def _ExpandDims(op):
+  return common_shapes.call_cpp_shape_fn(
+      op, input_tensors_needed=[1])
 
 
 ops.RegisterShape("Squeeze")(common_shapes.call_cpp_shape_fn)
@@ -1973,55 +1933,7 @@ def _QuantizeDequantizeShape(op):
   return common_shapes.unchanged_shape(op)
 
 
-@ops.RegisterShape("ExtractImagePatches")
-def _ExtractImagePatchesShape(op):
-  """Shape function for the ExtractImagePatches op.
-
-  Args:
-    op: An ExtractImagePatches op.
-
-  Raises:
-    ValueError: If the strides or padding are invalid.
-
-  Returns:
-    The shape of the op output.
-  """
-  images_shape = op.inputs[0].get_shape().with_rank(4)
-  batch = images_shape[0]
-  in_rows = images_shape[1]
-  in_cols = images_shape[2]
-  in_depth = images_shape[3]
-
-  ksize_b, ksize_r, ksize_c, ksize_d = op.get_attr("ksizes")
-  if ksize_b != 1 or ksize_d != 1:
-    raise ValueError("Current implementation does not yet support "
-                     "ksizes in the batch and depth dimensions.")
-
-  stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
-  if stride_b != 1 or stride_d != 1:
-    raise ValueError("Current implementation does not yet support "
-                     "strides in the batch and depth dimensions.")
-
-  rate_b, rate_r, rate_c, rate_d = op.get_attr("rates")
-  if rate_b != 1 or rate_d != 1:
-    raise ValueError("Current implementation does not yet support "
-                     "rates in the batch and depth dimensions.")
-
-  # Effective patch size, taking into account filter upsampling by rates.
-  ksize_r_eff = ksize_r + (ksize_r - 1) * (rate_r - 1)
-  ksize_c_eff = ksize_c + (ksize_c - 1) * (rate_c - 1)
-
-  padding = op.get_attr("padding")
-  out_rows, out_cols = common_shapes.get2d_conv_output_size(in_rows, in_cols,
-                                                            ksize_r_eff,
-                                                            ksize_c_eff,
-                                                            stride_r, stride_c,
-                                                            padding)
-
-  out_depth = None if in_depth is None else ksize_r * ksize_c * int(in_depth)
-  output_shape = [batch, out_rows, out_cols, out_depth]
-
-  return [tensor_shape.TensorShape(output_shape)]
+ops.RegisterShape("ExtractImagePatches")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("SpaceToBatch")
@@ -2031,178 +1943,11 @@ def _SpaceToBatchShape(op):
 
 @ops.RegisterShape("BatchToSpace")
 def _BatchToSpaceShape(op):
-  """Shape function for the BatchToSpace op.
-
-  The output shape is determined by the following inputs/ attributes:
-
-  * input: A rank-4 tensor with shape
-
-        [B*block_size*block_size, Hp/block_size, Wp/block_size, D]
-
-    Note that the batch size of the input tensor must be divisible by
-    `block_size * block_size`.
-  * crops: A 2-by-2 matrix, specified as follows:
-
-        crops = [[crop_top, crop_bottom], [crop_left, crop_right]].
-
-  * block_size: an int.
-
-  Its output is also a rank-4 tensor with shape [B, H, W, D], where:
-
-      H = Hp - crop_top - crop_bottom
-      W = Wp - crop_left - crop_right
-
-  Args:
-    op: A BatchToSpace op.
-
-  Returns:
-    A single-element list containing the shape of the output.
-
-  Raises:
-    ValueError: If the shapes of the inputs are not as expected.
-    IndexError: If block_size*block_size does not divide the input batch size.
-  """
-  # Check that the input tensor is 4-D.
-  try:
-    input_shape = op.inputs[0].get_shape().with_rank(4)
-  except ValueError:
-    raise ValueError("tf.batch_to_space() requires 4-D input tensor.")
-
-  # Check that the crops tensor is a matrix with shape [2, 2].
-  try:
-    crops_shape = op.inputs[1].get_shape().with_rank(2)
-  except ValueError:
-    raise ValueError(
-        "tf.space_to_batch() requires 2-D crops tensor.")
-
-  if crops_shape[0] != 2 or crops_shape[1] != 2:
-    raise ValueError(
-        "tf.space_to_batch() requires input crops with shape [2, 2].")
-
-  crops = tensor_util.constant_value(op.inputs[1])
-  if (crops is not None and
-      (crops[0, 0] < 0 or crops[0, 1] < 0 or
-       crops[1, 0] < 0 or crops[1, 1] < 0)):
-    raise ValueError("crops cannot be negative.")
-
-  block_size = op.get_attr("block_size")
-  if block_size <= 1:
-    raise ValueError("Attribute block_size has to be > 1.")
-
-  input_batch = input_shape[0]
-  if input_batch % (block_size * block_size) > 0:
-    raise IndexError("input batch must be divisible by block_size*block_size.")
-  batch = input_batch // (block_size * block_size)
-
-  if crops is not None:
-    height = input_shape[1] * block_size - crops[0, 0] - crops[0, 1]
-    width = input_shape[2] * block_size - crops[1, 0] - crops[1, 1]
-    if height <= 0 or width <= 0:
-      raise ValueError("Output height or width is not positive.")
-  else:
-    height = tensor_shape.Dimension(None)
-    width = tensor_shape.Dimension(None)
-  depth = input_shape[3]
-
-  return [tensor_shape.TensorShape([batch, height, width, depth])]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
-@ops.RegisterShape("SpaceToDepth")
-def _SpaceToDepthShape(op):
-  """Shape function for the SpaceToDepth op.
-
-  This op takes two inputs:
-
-  * input: a tensor of shape like that [B, H, W, D]
-  * block_size: an int.
-
-  Its output is the same-rank tensor but with changed
-  dimensions like that: [B, H/block_size, W/block_size, D*block_size*block_size]
-
-  Args:
-    op: A SpaceToDepth op.
-
-  Returns:
-    A single-element list containing the shape of the output.
-
-  Raises:
-    ValueError: If the shapes of input are not as expected.
-    IndexError: If block_size does not divide W or H.
-  """
-  # Check that the input tensor is of 4 dimensions.
-  try:
-    input_shape = op.inputs[0].get_shape().with_rank(4)
-  except ValueError:
-    raise ValueError(
-        "tf.space_to_depth() requires tensors with exactly 4 dimensions.")
-
-  block_size = op.get_attr("block_size")
-  if block_size <= 1:
-    raise ValueError("Attribute block_size has to be > 1.")
-
-  input_height = input_shape[1]
-  input_width = input_shape[2]
-
-  if (input_width % block_size > 0) or (input_height % block_size > 0):
-    raise IndexError(
-        "block_size needs to divide both width and height.")
-
-  width = input_width // block_size
-  height = input_height // block_size
-  new_depth = input_shape[3] * block_size * block_size
-
-  return [tensor_shape.TensorShape(
-      [input_shape[0], height, width, new_depth])]
-
-
-@ops.RegisterShape("DepthToSpace")
-def _DepthToSpaceShape(op):
-  """Shape function for the DepthToSpace op.
-
-  This op takes two inputs:
-
-  * input: a tensor of shape like that [B, H, W, D]
-  * block_size: an int.
-
-  Its output is the same-rank tensor but with changed
-  dimensions like that:
-      [B, H*block_size, W*block_size, D/(block_size*block_size)]
-
-  Args:
-    op: A DepthToSpace op.
-
-  Returns:
-    A single-element list containing the shape of the output.
-
-  Raises:
-    ValueError: If the shapes of input are not as expected.
-    IndexError: If block_size*block_size does not divide D.
-  """
-  # Check that the input tensor is of 4 dimensions.
-  try:
-    input_shape = op.inputs[0].get_shape().with_rank(4)
-  except ValueError:
-    raise ValueError(
-        "tf.depth_to_space() requires tensors with exactly 4 dimensions.")
-
-  block_size = op.get_attr("block_size")
-  if block_size <= 1:
-    raise ValueError("Attribute block_size has to be > 1.")
-
-  input_height = input_shape[1]
-  input_width = input_shape[2]
-  input_depth = input_shape[3]
-
-  width = input_width * block_size
-  height = input_height * block_size
-
-  if input_depth % (block_size * block_size) > 0:
-    raise IndexError(
-        "block_size*block_size needs to divide the input depth.")
-
-  new_depth = input_depth // (block_size * block_size)
-  return [tensor_shape.TensorShape(
-      [input_shape[0], height, width, new_depth])]
+ops.RegisterShape("SpaceToDepth")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("DepthToSpace")(common_shapes.call_cpp_shape_fn)
 
 
 def one_hot(indices, depth, on_value=None, off_value=None,

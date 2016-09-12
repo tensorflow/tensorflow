@@ -1848,6 +1848,12 @@ REGISTER_OP("StridedSliceGrad")
     .Attr("ellipsis_mask: int = 0")
     .Attr("new_axis_mask: int = 0")
     .Attr("shrink_axis_mask: int = 0")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Returns the gradient of `StridedSlice`.
 
@@ -2292,23 +2298,30 @@ REGISTER_OP("ExpandDims")
         return Status::OK();
       }
 
-      int64 which_dim;
+      int64 dim;
       if (dim_t->dtype() == DT_INT32) {
-        which_dim = static_cast<int64>(dim_t->flat<int32>()(0));
+        dim = static_cast<int64>(dim_t->flat<int32>()(0));
       } else {
-        which_dim = dim_t->flat<int64>()(0);
+        dim = dim_t->flat<int64>()(0);
       }
 
-      if (which_dim < 0) {
-        which_dim += c->Rank(input) + 1;
+      const int32 rank = c->Rank(input);
+      const int32 min_dim = -1 * rank - 1;
+      if (dim < min_dim || dim > rank) {
+        return errors::InvalidArgument("dim ", dim, " not in the interval [",
+                                       min_dim, ", ", rank, "].");
+      }
+
+      if (dim < 0) {
+        dim += rank + 1;
       }
 
       ShapeHandle end;
-      TF_RETURN_IF_ERROR(c->Subshape(input, which_dim, &end));
+      TF_RETURN_IF_ERROR(c->Subshape(input, dim, &end));
 
       // Build output as start + 1 + end.
       ShapeHandle output;
-      TF_RETURN_IF_ERROR(c->Subshape(input, 0, which_dim, &output));
+      TF_RETURN_IF_ERROR(c->Subshape(input, 0, dim, &output));
       TF_RETURN_IF_ERROR(c->Concatenate(output, c->Vector(1), &output));
       TF_RETURN_IF_ERROR(c->Concatenate(output, end, &output));
       c->set_output(0, output);
@@ -3124,7 +3137,9 @@ REGISTER_OP("ExtractImagePatches")
       DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
       DimensionHandle in_rows_dim = c->Dim(input_shape, 1);
       DimensionHandle in_cols_dim = c->Dim(input_shape, 2);
-      DimensionHandle output_depth_dim = c->Dim(input_shape, 3);
+      DimensionHandle output_depth_dim;
+      TF_RETURN_IF_ERROR(c->Multiply(
+          c->Dim(input_shape, 3), ksize_rows * ksize_cols, &output_depth_dim));
 
       if (!c->ValueKnown(in_rows_dim) || !c->ValueKnown(in_cols_dim)) {
         ShapeHandle output_shape =

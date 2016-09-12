@@ -168,7 +168,7 @@ class SpaceToDepthTest(tf.test.TestCase):
     x_np = [[[[1], [2]],
              [[3], [4]]]]
     block_size = 10
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       out_tf = tf.space_to_depth(x_np, block_size)
       out_tf.eval()
 
@@ -177,7 +177,7 @@ class SpaceToDepthTest(tf.test.TestCase):
     x_np = [[[[1], [2], [3]],
              [[3], [4], [7]]]]
     block_size = 3
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       _ = tf.space_to_depth(x_np, block_size)
 
   def testBlockSizeNotDivisibleHeight(self):
@@ -186,7 +186,7 @@ class SpaceToDepthTest(tf.test.TestCase):
              [[3], [4]],
              [[5], [6]]]]
     block_size = 3
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       _ = tf.space_to_depth(x_np, block_size)
 
   def testBlockSizeNotDivisibleBoth(self):
@@ -194,7 +194,7 @@ class SpaceToDepthTest(tf.test.TestCase):
     x_np = [[[[1], [2]],
              [[3], [4]]]]
     block_size = 3
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       _ = tf.space_to_depth(x_np, block_size)
 
   def testUnknownShape(self):
