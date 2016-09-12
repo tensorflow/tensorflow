@@ -15154,6 +15154,73 @@ op {
   description: "This Op takes a SparseTensor and is the sparse counterpart to\n`tf.reduce_sum()`.  In particular, this Op also returns a dense `Tensor`\ninstead of a sparse one.\n\nReduces `sp_input` along the dimensions given in `reduction_axes`.  Unless\n`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in\n`reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained\nwith length 1.\n\nIf `reduction_axes` has no entries, all dimensions are reduced, and a tensor\nwith a single element is returned.  Additionally, the axes can be negative,\nwhich are interpreted according to the indexing rules in Python."
 }
 op {
+  name: "SparseReduceSumSparse"
+  input_arg {
+    name: "input_indices"
+    description: "2-D.  `N x R` matrix with the indices of non-empty values in a\nSparseTensor, possibly not in canonical ordering."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "input_values"
+    description: "1-D.  `N` non-empty values corresponding to `input_indices`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_shape"
+    description: "1-D.  Shape of the input SparseTensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "reduction_axes"
+    description: "1-D.  Length-`K` vector containing the reduction axes."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_shape"
+    type: DT_INT64
+  }
+  attr {
+    name: "keep_dims"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, retain reduced dimensions with length 1."
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Computes the sum of elements across dimensions of a SparseTensor."
+  description: "This Op takes a SparseTensor and is the sparse counterpart to\n`tf.reduce_sum()`.  In contrast to SparseReduceSum, this Op returns a\nSparseTensor.\n\nReduces `sp_input` along the dimensions given in `reduction_axes`.  Unless\n`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in\n`reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained\nwith length 1.\n\nIf `reduction_axes` has no entries, all dimensions are reduced, and a tensor\nwith a single element is returned.  Additionally, the axes can be negative,\nwhich are interpreted according to the indexing rules in Python."
+}
+op {
   name: "SparseReorder"
   input_arg {
     name: "input_indices"
