@@ -30,6 +30,7 @@ from __future__ import print_function
 import argparse
 import json
 import os
+import subprocess
 import shutil
 
 
@@ -160,9 +161,8 @@ def generate(arglist):
       raise RuntimeError(
           "Run ./configure again, branch was '%s' but is now '%s'" %
           (old_branch, new_branch))
-    strs["tf_git_version"] = os.popen(
-        "git -C \"%s\" describe --long --dirty --tags" %
-        (data["path"],)).read().strip()
+    strs["tf_git_version"] = subprocess.check_output(
+        ["git", "-C", data["path"], "describe", "--long", "--dirty", "--tags"]).strip()
   # TODO(aselle): Check for escaping
   cpp_file = "\n".join("const char* %s() {return \"%s\";}" % (x, y)
                        for x, y in strs.items())
@@ -180,7 +180,7 @@ def raw_generate(output_file):
   """
 
   strs = {"tf_compiler_version": "__VERSION__"}
-  version = os.popen("git describe --long --dirty --tags").read().strip()
+  version = subprocess.check_output(["git", "describe", "--long", "--dirty", "--tags"]).strip()
   version = version if version else "unknown"
   strs["tf_git_version"] = version
   cpp_file = "\n".join("const char* %s() {return \"%s\";}" % (x, y)
