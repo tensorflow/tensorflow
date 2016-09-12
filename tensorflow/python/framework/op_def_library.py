@@ -695,9 +695,11 @@ class OpDefLibrary(object):
           attr_value.list.tensor.extend(
               [_MakeTensor(x, key) for x in value])
         elif attr_def.type == "func":
-          if not isinstance(value, compat.bytes_or_text_types):
-            raise TypeError("Expects a string for the func name")
-          attr_value.func.name = value
+          if isinstance(value, compat.bytes_or_text_types):
+            attr_value.func.name = value
+          else:
+            value.add_to_graph(ops.get_default_graph())
+            attr_value.func.name = value.name
         else:
           raise TypeError("Unrecognized Attr type " + attr_def.type)
 
