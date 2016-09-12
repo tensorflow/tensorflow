@@ -43,6 +43,10 @@ apt-get install -y --no-install-recommends \
     unzip \
     wget \
     zip \
-    zlib1g-dev
+    zlib1g-dev \
+    python-numpy \
+    python3-numpy \
+    python-scipy \
+    python3-scipy
 apt-get clean
 rm -rf /var/lib/apt/lists/*
