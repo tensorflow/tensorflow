@@ -429,16 +429,11 @@ export class Projector extends ProjectorPolymer {
       } else {
         let point = this.points[hoveredIndex];
         this.dom.select('#hoverInfo').text(point.metadata['label']);
-        let neighbors = this.findNeighbors(hoveredIndex);
-        let minDist = neighbors[0].dist;
-        let pointIndices = [hoveredIndex].concat(neighbors.map(d => d.index));
-        let pointHighlightColor = modeIsNight ? POINT_HIGHLIGHT_COLOR_NIGHT :
-                                                POINT_HIGHLIGHT_COLOR_DAY;
-        this.highlightedPoints = pointIndices.map((index, i) => {
-          let color = i === 0 ? pointHighlightColor :
-                                this.dist2color(neighbors[i - 1].dist, minDist);
-          return {index: index, color: color};
-        });
+        this.highlightedPoints = [{
+          index: hoveredIndex,
+          color: modeIsNight ? POINT_HIGHLIGHT_COLOR_NIGHT :
+                               POINT_HIGHLIGHT_COLOR_DAY,
+        }];
       }
       this.selectionWasUpdated();
     });
