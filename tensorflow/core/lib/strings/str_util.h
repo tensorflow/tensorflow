@@ -93,6 +93,12 @@ string HumanReadableElapsedTime(double seconds);
 template <typename T>
 string Join(const T& s, const char* sep);
 
+// A variant of Join where for each element of "s", f(&dest_string, elem)
+// is invoked (f is often constructed with a lambda of the form:
+//   [](string* result, ElemType elem)
+template <typename T, typename Formatter>
+string Join(const T& s, const char* sep, Formatter f);
+
 struct AllowEmpty {
   bool operator()(StringPiece sp) const { return true; }
 };
@@ -124,6 +130,30 @@ string Join(const T& s, const char* sep) {
   bool first = true;
   for (const auto& x : s) {
     tensorflow::strings::StrAppend(&result, (first ? "" : sep), x);
+    first = false;
+  }
+  return result;
+}
+
+template <typename T>
+class Formatter {
+ public:
+  Formatter(std::function<void(string*, T)> f) : f_(f) {}
+  void operator()(string* out, const T& t) { f_(out, t); }
+
+ private:
+  std::function<void(string*, T)> f_;
+};
+
+template <typename T, typename Formatter>
+string Join(const T& s, const char* sep, Formatter f) {
+  string result;
+  bool first = true;
+  for (const auto& x : s) {
+    if (!first) {
+      result.append(sep);
+    }
+    f(&result, x);
     first = false;
   }
   return result;
