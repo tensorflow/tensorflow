@@ -2136,6 +2136,7 @@ tf_kernel_libraries(
         "reduce_join_op",
         "string_join_op",
         "string_split_op",
+        "substr_op",
         "as_string_op",
         "base64_ops",
     ],

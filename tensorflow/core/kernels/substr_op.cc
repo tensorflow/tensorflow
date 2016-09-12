@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <errno.h>
 #include <string>
 
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -39,16 +40,16 @@ class SubstrOp : public OpKernel {
       const Tensor& len_tensor = context->input(2);
 
       // Validate size of tensors
-      OP_REQUIRES(ctx, TensorShpaeUtils::IsScalar(pos_tensor.shape()),
+      OP_REQUIRES(context, TensorShapeUtils::IsScalar(pos_tensor.shape()),
                   errors::InvalidArgument("pos must be a scalar, but got: ",
                                           pos_tensor.shape().DebugString()));
-      OP_REQUIRES(ctx, TensorShpaeUtils::IsScalar(len_tensor.shape()),
+      OP_REQUIRES(context, TensorShapeUtils::IsScalar(len_tensor.shape()),
                   errors::InvalidArgument("len must be a scalar, but got: ",
                                           len_tensor.shape().DebugString()));
 
       auto input = input_tensor.flat<string>();
-      size_t pos = pos_tensor.scalar<T>();
-      size_t len = len_tensor.scalar<T>();
+      size_t pos = pos_tensor.scalar<T>()(0);
+      size_t len = len_tensor.scalar<T>()(0);
 
       // Allocate output
       Tensor* output_tensor = nullptr;

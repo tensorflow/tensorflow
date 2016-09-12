@@ -28,6 +28,8 @@ class SubstrOpTest(tf.test.TestCase):
     position = 1
     length = 3
 
+    print(dir(tf))
+
     expected_value = b"ell"
 
     substr_op = tf.substr(test_string, 1, 3)
