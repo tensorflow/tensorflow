@@ -44,6 +44,7 @@ dimension, and dense along all other dimensions.
 
 ## Reduction
 @@sparse_reduce_sum
+@@sparse_reduce_sum_sparse
 
 ## Math Operations
 @@sparse_add
@@ -609,6 +610,42 @@ def sparse_reduce_sum(sp_input, reduction_axes=None, keep_dims=False):
 
 
 ops.RegisterShape("SparseReduceSum")(common_shapes.call_cpp_shape_fn)
+
+
+def sparse_reduce_sum_sparse(sp_input, reduction_axes=None, keep_dims=False):
+  """Computes the sum of elements across dimensions of a SparseTensor.
+
+  This Op takes a SparseTensor and is the sparse counterpart to
+  `tf.reduce_sum()`.  In contrast to SparseReduceSum, this Op returns a
+  SparseTensor.
+
+  Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
+  `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+  `reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+  with length 1.
+
+  If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
+  with a single element is returned.  Additionally, the axes can be negative,
+  which are interpreted according to the indexing rules in Python.
+
+  Args:
+    sp_input: The SparseTensor to reduce. Should have numeric type.
+    reduction_axes: The dimensions to reduce; list or scalar. If `None` (the
+      default), reduces all dimensions.
+    keep_dims: If true, retain reduced dimensions with length 1.
+
+  Returns:
+    The reduced SparseTensor.
+  """
+  output_ind, output_val, output_shape = (
+      gen_sparse_ops.sparse_reduce_sum_sparse(
+          sp_input.indices, sp_input.values, sp_input.shape,
+          math_ops._ReductionDims(sp_input, reduction_axes), keep_dims))
+
+  return ops.SparseTensor(output_ind, output_val, output_shape)
+
+
+ops.RegisterShape("SparseReduceSumSparse")(common_shapes.call_cpp_shape_fn)
 
 
 def sparse_tensor_to_dense(sp_input,

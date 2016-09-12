@@ -501,10 +501,17 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
         np_ans = np.sum(np_ans, axis=ra, keepdims=keep_dims)
 
     with self.test_session():
-      tf_ans = sparse_ops.sparse_reduce_sum(sp_t, reduction_axes, keep_dims)
-      out = tf_ans.eval()
+      tf_dense_ans = sparse_ops.sparse_reduce_sum(sp_t, reduction_axes,
+                                                  keep_dims)
+      out_dense = tf_dense_ans.eval()
 
-    self.assertAllClose(np_ans, out)
+      tf_sparse_ans = sparse_ops.sparse_reduce_sum_sparse(sp_t, reduction_axes,
+                                                          keep_dims)
+      # Convert to dense for comparison purposes.
+      out_sparse = sparse_ops.sparse_tensor_to_dense(tf_sparse_ans).eval()
+
+    self.assertAllClose(np_ans, out_dense)
+    self.assertAllClose(np_ans, out_sparse)
 
   def _compare_all(self, sp_t, reduction_axes, ndims):
     self._compare(sp_t, reduction_axes, ndims, False)
