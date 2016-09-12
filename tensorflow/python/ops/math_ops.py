@@ -1832,7 +1832,7 @@ ops.RegisterShape("SparseDenseCwiseAdd")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("AddN")(common_shapes.call_cpp_shape_fn)
 
 
-@ops.RegisterShape("Select")
+ops.RegisterShape("Select")(common_shapes.call_cpp_shape_fn)
 def _SelectShape(op):
   """Shape function for SelectOp."""
   # The inputs 'then' and 'else' must have the same shape.
