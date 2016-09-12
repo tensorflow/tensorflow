@@ -15,10 +15,10 @@
 # ==============================================================================
 # Builds protobuf 3 for Linux inside the local build tree.
 
-GENDIR="$(pwd)/gen/protobuf"
-HOST_GENDIR="$(pwd)/gen/protobuf-host"
+GENDIR="$(pwd)/tensorflow/contrib/makefile/gen/protobuf"
+HOST_GENDIR="$(pwd)/tensorflow/contrib/makefile/gen/protobuf-host"
 mkdir -p "${GENDIR}"
-mkdir -p "${HOST_GENDIR}"
+ln -s "${GENDIR}" "${HOST_GENDIR}"
 
 if [[ ! -f "tensorflow/contrib/makefile/downloads/protobuf/autogen.sh" ]]; then
     echo "You need to download dependencies before running this script." 1>&2
