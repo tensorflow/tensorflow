@@ -1672,11 +1672,11 @@ class GifTest(test_util.TensorFlowTestCase):
         gif0, image0 = sess.run([gif0, image0])
 
   def testShape(self):
-      with self.test_session(use_gpu=True) as sess:
-        gif = constant_op.constant('nonsense')
-        image = image_ops.decode_gif(gif)
-        self.assertEqual(image.get_shape().as_list(),
-                [None, None, None, 3])
+    with self.test_session(use_gpu=True) as sess:
+      gif = constant_op.constant('nonsense')
+      image = image_ops.decode_gif(gif)
+      self.assertEqual(image.get_shape().as_list(),
+                       [None, None, None, 3])
 
 class ConvertImageTest(test_util.TensorFlowTestCase):
 

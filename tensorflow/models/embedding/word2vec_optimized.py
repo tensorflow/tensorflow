@@ -353,9 +353,9 @@ class Word2Vec(object):
     correct = 0
 
     try:
-        total = self._analogy_questions.shape[0]
+      total = self._analogy_questions.shape[0]
     except AttributeError as e:
-        raise AttributeError("Need to read analogy questions.")
+      raise AttributeError("Need to read analogy questions.")
 
     start = 0
     while start < total:
