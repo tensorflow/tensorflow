@@ -1830,31 +1830,7 @@ ops.RegisterShape("SparseDenseCwiseMul")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("SparseDenseCwiseDiv")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("SparseDenseCwiseAdd")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("AddN")(common_shapes.call_cpp_shape_fn)
-
-
 ops.RegisterShape("Select")(common_shapes.call_cpp_shape_fn)
-def _SelectShape(op):
-  """Shape function for SelectOp."""
-  # The inputs 'then' and 'else' must have the same shape.
-  # The input 'cond' must either have the same shape as 'then' and
-  # 'else', or be a vector if 'then' and 'else' are at least vectors.
-  c_shape = op.inputs[0].get_shape()
-  t_shape = op.inputs[1].get_shape()
-  e_shape = op.inputs[2].get_shape()
-  t_e_shape = t_shape.merge_with(e_shape)
-  c_shape_list = c_shape.as_list() if c_shape.ndims is not None else None
-  t_e_shape_list = t_e_shape.as_list() if t_e_shape.ndims is not None else None
-  if c_shape_list is not None and t_e_shape_list is not None:
-    if len(c_shape_list) != 1:
-      # If the rank of 'cond' is != 1, the shape must match 'then' and 'else'
-      t_e_shape = t_e_shape.merge_with(c_shape)
-    if t_e_shape_list:
-      # If then and else are not scalars, then cond must be at least
-      # a vector, and its first value must match that of 'else'
-      c_shape = c_shape.with_rank_at_least(1)
-      if len(c_shape.as_list()) == 1:
-        c_shape.merge_with(tensor_shape.vector(t_e_shape_list[0]))
-  return [t_e_shape]
 
 
 @ops.RegisterShape("ArgMax")
