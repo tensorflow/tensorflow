@@ -149,6 +149,7 @@ cc_library(
         "lib/core/stringpiece.h",
         "lib/core/threadpool.h",
         "lib/gtl/array_slice.h",
+        "lib/gtl/cleanup.h",
         "lib/gtl/inlined_vector.h",
         "lib/gtl/priority_queue_util.h",
         "lib/hash/crc32c.h",  # TODO(josh11b): make internal
@@ -1362,6 +1363,7 @@ tf_cc_tests(
         "lib/core/stringpiece_test.cc",
         "lib/core/threadpool_test.cc",
         "lib/gtl/array_slice_test.cc",
+        "lib/gtl/cleanup_test.cc",
         "lib/gtl/edit_distance_test.cc",
         "lib/gtl/inlined_vector_test.cc",
         "lib/gtl/int_type_test.cc",
