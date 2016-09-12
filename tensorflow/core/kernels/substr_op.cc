@@ -60,6 +60,10 @@ class SubstrOp : public OpKernel {
 
       // Set output to be substrings of input strings
       for (int i = 0; i < input.size(); i++) {
+        OP_REQUIRES(context, pos >= 0 && pos < input(i).size(),
+                    errors::InvalidArgument("pos ", pos, 
+                                            " out of range for string b'", input(i), "'",
+                                            " at index ", i));
         output(i) = input(i).substr(pos, len);
       }
     }

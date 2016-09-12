@@ -288,14 +288,24 @@ REGISTER_OP("Substr")
   .Attr("T: {int32, int64}")
   .SetShapeFn(shape_inference::UnchangedShape)
   .Doc(R"doc(
-Return substrings of input string.
+Return substrings from input strings.
 
-**MORE TO DO**
+For each string in the input `Tensor`, creates a substring starting at index 
+`pos` with a total length of `len`. 
 
-input: Strings to get substring from
-pos: Position of first character in substring
-len: Number of characters to include in substring
-output: Substrings
+If `len` defines a substring that would extend beyond the length of the input 
+string, then as many characters as possible are used.
+
+If `pos` is negative or specifies a character index larger than any of the input
+strings, then an `InvalidArgumentError` is thrown.
+
+The output `Tensor` shape matches that of the input, with each substring's index
+matching up with its parent string.
+
+input: Tensor of strings 
+pos: Scalar defining the position of first character in each substring
+len: Scalar defining the number of characters to include in each substring
+output: Tensor of substrings; matches the dimension of the input tensor
 )doc");
 
 }  // namespace tensorflow

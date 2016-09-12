@@ -21,21 +21,71 @@ from __future__ import division
 import tensorflow as tf
 import numpy as np
 
+
 class SubstrOpTest(tf.test.TestCase):
 
-  def testScalarStrings(self):
+  def testScalarString(self):
     test_string = b"Hello"
     position = 1
     length = 3
-
-    print(dir(tf))
-
     expected_value = b"ell"
 
-    substr_op = tf.substr(test_string, 1, 3)
+    substr_op = tf.substr(test_string, position, length)
     with self.test_session():
       substr = substr_op.eval()
       self.assertAllEqual(substr, expected_value)
+
+  def testVectorStrings(self):
+    test_string = [b"Hello", b"World"]
+    position = 1
+    length = 3
+    expected_value = [b"ell", b"orl"]
+
+    substr_op = tf.substr(test_string, position, length)
+    with self.test_session():
+      substr = substr_op.eval()
+      self.assertAllEqual(substr, expected_value)
+
+  def testMatrixStrings(self):
+    test_string = [[b"ten", b"eleven", b"twelve"],
+                   [b"thirteen", b"fourteen", b"fifteen"],
+                   [b"sixteen", b"seventeen", b"eighteen"]]
+    position = 1
+    length = 4
+    expected_value = [[b"en", b"leve", b"welv"],
+                      [b"hirt", b"ourt", b"ifte"],
+                      [b"ixte", b"even", b"ight"]]
+
+    substr_op = tf.substr(test_string, position, length)
+    with self.test_session():
+      substr = substr_op.eval()
+      self.assertAllEqual(substr, expected_value)
+
+  def testOutOfRangeError(self):
+    test_string = b"Hello"
+    position = 7
+    length = 3
+    substr_op = tf.substr(test_string, position, length)
+    with self.test_session():
+      with self.assertRaises(tf.errors.InvalidArgumentError):
+        substr = substr_op.eval()
+
+    test_string = [b"good", b"good", b"bad", b"good"]
+    position = 3
+    length = 1
+    substr_op = tf.substr(test_string, position, length)
+    with self.test_session():
+      with self.assertRaises(tf.errors.InvalidArgumentError):
+        substr = substr_op.eval()
+
+    test_string = b"Hello"
+    position = -1
+    length = 3
+    substr_op = tf.substr(test_string, position, length)
+    with self.test_session():
+      with self.assertRaises(tf.errors.InvalidArgumentError):
+        substr = substr_op.eval()
+      
 
 if __name__ == "__main__":
   tf.test.main()
