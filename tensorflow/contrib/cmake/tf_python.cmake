@@ -25,7 +25,6 @@ if(NOT PYTHON_INCLUDE_DIR)
     ARGS "-c 'import distutils.sysconfig; print distutils.sysconfig.get_python_inc()'"
     OUTPUT_VARIABLE PYTHON_INCLUDE_DIR
     RETURN_VALUE PYTHON_NOT_FOUND)
-  message(${PYTHON_INCLUDE_DIR})
   if(${PYTHON_NOT_FOUND})
     message(FATAL_ERROR
             "Cannot get Python include directory. Is distutils installed?")
@@ -78,24 +77,29 @@ endforeach()
 # Generates the Python protobuf wrappers.
 # ROOT_DIR must be absolute; subsequent arguments are interpreted as
 # paths of .proto files, and must be relative to ROOT_DIR.
-function(RELATIVE_PROTOBUF_GENERATE_PYTHON ROOT_DIR)
+function(RELATIVE_PROTOBUF_GENERATE_PYTHON ROOT_DIR SRCS)
   if(NOT ARGN)
     message(SEND_ERROR "Error: RELATIVE_PROTOBUF_GENERATE_PYTHON() called without any proto files")
     return()
   endif()
+
+  set(${SRCS})
   foreach(FIL ${ARGN})
     set(ABS_FIL ${ROOT_DIR}/${FIL})
     get_filename_component(FIL_WE ${FIL} NAME_WE)
     get_filename_component(FIL_DIR ${ABS_FIL} PATH)
     file(RELATIVE_PATH REL_DIR ${ROOT_DIR} ${FIL_DIR})
+
+    list(APPEND ${SRCS} "${CMAKE_CURRENT_BINARY_DIR}/tf_python/${REL_DIR}/${FIL_WE}_pb2.py")
     add_custom_command(
-      TARGET tf_python_copy_scripts_to_destination PRE_LINK
-      COMMAND  ${PROTOBUF_PROTOC_EXECUTABLE}
+      OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/tf_python/${REL_DIR}/${FIL_WE}_pb2.py"
+      COMMAND ${PROTOBUF_PROTOC_EXECUTABLE}
       ARGS --python_out  ${CMAKE_CURRENT_BINARY_DIR}/tf_python/ -I ${ROOT_DIR} -I ${PROTOBUF_INCLUDE_DIRS} ${ABS_FIL} 
-      DEPENDS ${ABS_FIL} ${PROTOBUF_PROTOC_EXECUTABLE} protobuf
-      COMMENT "Running Pyton protocol buffer compiler on ${FIL}"
+      DEPENDS ${PROTOBUF_PROTOC_EXECUTABLE} protobuf
+      COMMENT "Running Python protocol buffer compiler on ${FIL}"
       VERBATIM )
   endforeach()
+  set(${SRCS} ${${SRCS}} PARENT_SCOPE)
 endfunction()
 
 file(GLOB_RECURSE tf_protos_python_srcs RELATIVE ${tensorflow_source_dir}
@@ -103,14 +107,15 @@ file(GLOB_RECURSE tf_protos_python_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/python/*.proto"
 )
 RELATIVE_PROTOBUF_GENERATE_PYTHON(
-    ${tensorflow_source_dir} ${tf_protos_python_srcs}
+    ${tensorflow_source_dir} PYTHON_PROTO_GENFILES ${tf_protos_python_srcs}
 )
 
 # tf_python_touchup_modules adds empty __init__.py files to all
 # directories containing Python code, so that Python will recognize
 # them as modules.
 add_custom_target(tf_python_touchup_modules
-  DEPENDS tf_python_copy_scripts_to_destination)
+  DEPENDS tf_python_copy_scripts_to_destination
+)
 
 function(add_python_module MODULE_NAME)
     add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
@@ -279,7 +284,7 @@ GENERATE_PYTHON_OP_LIB("user_ops")
 GENERATE_PYTHON_OP_LIB("training_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/training/gen_training_ops.py)
 
-add_custom_target(tf_python_ops SOURCES ${tf_python_ops_generated_files})
+add_custom_target(tf_python_ops SOURCES ${tf_python_ops_generated_files} ${PYTHON_PROTO_GENFILES})
 add_dependencies(tf_python_ops tf_python_op_gen_main)
 
 
@@ -391,3 +396,15 @@ target_compile_features(_pywrap_tensorflow PRIVATE
 )
 set_target_properties(_pywrap_tensorflow PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tf_python/tensorflow/python)
+
+add_custom_target(tf_python_copy_pip_files)
+add_dependencies(tf_python_copy_pip_files _pywrap_tensorflow tf_python_copy_scripts_to_destination tf_python_touchup_modules)
+add_custom_command(TARGET tf_python_copy_pip_files POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/contrib/cmake/setup.py ${CMAKE_CURRENT_BINARY_DIR}/tf_python/)
+add_custom_command(TARGET tf_python_copy_pip_files POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tools/pip_package/README ${CMAKE_CURRENT_BINARY_DIR}/tf_python/)
+add_custom_command(TARGET tf_python_copy_pip_files POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tools/pip_package/MANIFEST.in ${CMAKE_CURRENT_BINARY_DIR}/tf_python/)
+add_custom_command(TARGET tf_python_copy_pip_files POST_BUILD
+  COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)
