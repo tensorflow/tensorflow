@@ -280,4 +280,22 @@ input: Base64 strings to decode.
 output: Decoded strings.
 )doc");
 
+REGISTER_OP("Substr")
+  .Input("input: string")
+  .Input("pos: T")
+  .Input("len: T")
+  .Output("output: string")
+  .Attr("T: {int32, int64}")
+  .SetShapeFn(shape_inference::UnchangedShape)
+  .Doc(R"doc(
+Return substrings of input string.
+
+**MORE TO DO**
+
+input: Strings to get substring from
+pos: Position of first character in substring
+len: Number of characters to include in substring
+output: Substrings
+)doc");
+
 }  // namespace tensorflow
