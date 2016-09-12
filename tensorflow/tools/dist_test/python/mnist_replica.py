@@ -84,9 +84,6 @@ FLAGS = flags.FLAGS
 
 IMAGE_PIXELS = 28
 
-PARAM_SERVER_PREFIX = "tf-ps"  # Prefix of the parameter servers' domain names
-WORKER_PREFIX = "tf-worker"  # Prefix of the workers' domain names
-
 
 def main(unused_argv):
   mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=True)
