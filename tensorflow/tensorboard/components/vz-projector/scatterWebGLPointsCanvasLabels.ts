@@ -691,8 +691,8 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
   }
 
   protected onMouseClickInternal(e?: MouseEvent) {
-    if (e && this.selecting || !this.points) {
-      this.resetTraces();
+    this.resetTraces();
+    if (!this.points) {
       return false;
     }
     let selection = this.nearestPoint || null;
@@ -701,7 +701,6 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     this.labeledPoints =
         this.highlightedPoints.filter((id, i) => this.favorLabels(i));
 
-    this.resetTraces();
     if (selection && this.dataSet.points[selection].traceIndex) {
       for (let i = 0; i < this.traces.length; i++) {
         this.traces[i].material.opacity = TRACE_DESELECTED_OPACITY;
