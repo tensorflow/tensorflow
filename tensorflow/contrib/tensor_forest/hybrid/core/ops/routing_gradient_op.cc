@@ -26,12 +26,17 @@
 #include "tensorflow/contrib/tensor_forest/hybrid/core/ops/utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
+
+using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 using tensorforest::LeftProbability;
 
@@ -44,6 +49,14 @@ REGISTER_OP("RoutingGradient")
     .Input("tree_biases: float")
     .Input("routes: float")
     .Output("routing_gradient: float")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input, params;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &params));
+
+      c->set_output(0, c->Matrix(c->Dim(input, 0), c->Dim(params, 0)));
+      return Status::OK();
+    })
     .Doc(R"doc(
   Computes the derivative of the routing loss with respect to each decision
   node.

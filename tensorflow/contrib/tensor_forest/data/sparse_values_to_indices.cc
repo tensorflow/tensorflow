@@ -20,12 +20,15 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
+
+using shape_inference::InferenceContext;
 
 using tensorforest::CheckTensorBounds;
 using tensorforest::Initialize;
@@ -67,7 +70,11 @@ REGISTER_OP("SparseValuesToIndices")
     .Input("offset: int64")
     .Output("output_indices: int64")
     .Output("output_values: float")
-
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      c->set_output(1, c->input(1));
+      return Status::OK();
+    })
     .Doc(R"doc(
    Converts string values to sparse indices in a bit vector.
 
