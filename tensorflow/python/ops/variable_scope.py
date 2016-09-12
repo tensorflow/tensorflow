@@ -563,11 +563,11 @@ class _VariableStore(object):
       # pylint: enable=protected-access
 
       # pylint: disable=protected-access
-    partitioned_var = variables._PartitionedVariable(name=name,
-                                                     shape=shape,
-                                                     dtype=dtype,
-                                                     variable_list=vs,
-                                                     partitions=partitions)
+    partitioned_var = variables.PartitionedVariable(name=name,
+                                                    shape=shape,
+                                                    dtype=dtype,
+                                                    variable_list=vs,
+                                                    partitions=partitions)
     # pylint: enable=protected-access
 
     self._partitioned_vars[name] = partitioned_var
