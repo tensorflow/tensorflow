@@ -309,16 +309,15 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     this.pointSize2D = this.pointSize3D / 1.5;
   }
 
-  private setFogDistances() {
-    let dists = this.getNearFarPoints();
-    this.fog.near = dists.shortestDist;
+  private setFogDistances(nearestPointZ: number, farthestPointZ: number) {
+    this.fog.near = nearestPointZ;
     // If there are fewer points we want less fog. We do this
     // by making the "far" value (that is, the distance from the camera to the
     // far edge of the fog) proportional to the number of points.
     let multiplier = 2 -
         Math.min(this.dataSet.points.length, NUM_POINTS_FOG_THRESHOLD) /
             NUM_POINTS_FOG_THRESHOLD;
-    this.fog.far = dists.furthestDist * multiplier;
+    this.fog.far = farthestPointZ * multiplier;
   }
 
   private getNearFarPoints() {
@@ -342,7 +341,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     }
     furthestDist = Math.sqrt(furthestDist);
     shortestDist = Math.sqrt(shortestDist);
-    return {shortestDist, furthestDist};
+    return [shortestDist, furthestDist];
   }
 
   /** Removes all the labels. */
@@ -359,7 +358,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
    * Reset the positions of all labels, and check for overlapps using the
    * collision grid.
    */
-  private makeLabels() {
+  private makeLabels(nearestPointZ: number, farthestPointZ: number) {
     if (this.points == null) {
       return;
     }
@@ -389,8 +388,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     let grid =
         new CollisionGrid(boundingBox, this.width / 25, this.height / 50);
 
-    let dists = this.getNearFarPoints();
-    let opacityRange = dists.furthestDist - dists.shortestDist;
+    let opacityRange = farthestPointZ - nearestPointZ;
     let camToTarget = new THREE.Vector3()
                           .copy(this.perspCamera.position)
                           .sub(this.cameraControls.target);
@@ -440,7 +438,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
           // from the camera (Unless we are in 2d mode, in which case opacity is
           // just 1!)
           let opacity = this.zAccessor ?
-              1.2 - (lenToCamera - dists.shortestDist) / opacityRange :
+              1.2 - (lenToCamera - nearestPointZ) / opacityRange :
               1;
           this.formatLabel(text, screenCoords, opacity);
           numRenderedLabels++;
@@ -781,14 +779,15 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     if (!this.geometry) {
       return;
     }
-    this.makeLabels();
+    let nearFarPoints = this.getNearFarPoints();
+    this.makeLabels(nearFarPoints[0], nearFarPoints[1]);
     let shaderMaterial = this.points.material as THREE.ShaderMaterial;
     let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     colors.array = this.renderColors;
     colors.needsUpdate = true;
 
     if (this.zAccessor && this.geometry) {
-      this.setFogDistances();
+      this.setFogDistances(nearFarPoints[0], nearFarPoints[1]);
     }
 
     shaderMaterial.setValues(this.materialParams);
