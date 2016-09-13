@@ -214,6 +214,7 @@ py_test(
     name = "tensorflow_dataframe_test",
     size = "small",
     srcs = ["python/learn/tests/dataframe/tensorflow_dataframe_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
