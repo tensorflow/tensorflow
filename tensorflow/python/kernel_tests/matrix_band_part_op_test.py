@@ -21,11 +21,11 @@ import numpy as np
 import tensorflow as tf
 
 
-class BatchMatrixBandPartTest(tf.test.TestCase):
+class MatrixBandPartTest(tf.test.TestCase):
   pass  # Filled in below
 
 
-def _GetBatchMatrixBandPartTest(dtype_, batch_shape_, shape_):
+def _GetMatrixBandPartTest(dtype_, batch_shape_, shape_):
 
   def Test(self):
     mat = np.ones(shape_).astype(dtype_)
@@ -40,17 +40,17 @@ def _GetBatchMatrixBandPartTest(dtype_, batch_shape_, shape_):
             band_np = np.tril(band_np, upper)
           if batch_shape is not ():
             band_np = np.tile(band_np, batch_shape + (1, 1))
-          band = tf.batch_matrix_band_part(batch_mat, lower, upper)
+          band = tf.matrix_band_part(batch_mat, lower, upper)
           self.assertAllEqual(band_np, band.eval())
 
   return Test
 
 
-class BatchMatrixBandPartGradTest(tf.test.TestCase):
+class MatrixBandPartGradTest(tf.test.TestCase):
   pass  # Filled in below
 
 
-def _GetBatchMatrixBandPartGradTest(dtype_, batch_shape_, shape_):
+def _GetMatrixBandPartGradTest(dtype_, batch_shape_, shape_):
 
   def Test(self):
     shape = batch_shape_ + shape_
@@ -58,7 +58,7 @@ def _GetBatchMatrixBandPartGradTest(dtype_, batch_shape_, shape_):
     with self.test_session(use_gpu=True):
       for lower in -1, 0, 1, shape_[-2] - 1:
         for upper in -1, 0, 1, shape_[-1] - 1:
-          y = tf.batch_matrix_band_part(x, lower, upper)
+          y = tf.matrix_band_part(x, lower, upper)
           error = tf.test.compute_gradient_error(x, x.get_shape().as_list(), y,
                                                  y.get_shape().as_list())
           self.assertLess(error, 1e-4)
@@ -73,12 +73,10 @@ if __name__ == '__main__':
         for cols in 1, 2, 7:
           shape = (rows, cols)
           name = '%s_%s' % (dtype.__name__, '_'.join(map(str, shape)))
-          setattr(
-              BatchMatrixBandPartTest, 'testBatchMatrixBandPart_' + name,
-              _GetBatchMatrixBandPartTest(dtype, batch_shape, shape))
+          setattr(MatrixBandPartTest, 'testMatrixBandPart_' + name,
+                  _GetMatrixBandPartTest(dtype, batch_shape, shape))
           if dtype == np.float32 or dtype == np.float64:
-            setattr(BatchMatrixBandPartGradTest,
-                    'testBatchMatrixBandPartGrad_' + name,
-                    _GetBatchMatrixBandPartGradTest(dtype, batch_shape, shape))
+            setattr(MatrixBandPartGradTest, 'testMatrixBandPartGrad_' + name,
+                    _GetMatrixBandPartGradTest(dtype, batch_shape, shape))
 
   tf.test.main()

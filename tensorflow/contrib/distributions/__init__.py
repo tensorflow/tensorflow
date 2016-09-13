@@ -46,7 +46,7 @@ initialized with parameters that define the distributions.
 @@MultivariateNormalDiag
 @@MultivariateNormalFull
 @@MultivariateNormalCholesky
-@@batch_matrix_diag_transform
+@@matrix_diag_transform
 
 #### Other multivariate distributions
 
@@ -94,7 +94,7 @@ from tensorflow.contrib.distributions.python.ops.chi2 import *
 from tensorflow.contrib.distributions.python.ops.dirichlet import *
 from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
 from tensorflow.contrib.distributions.python.ops.distribution import *
-from tensorflow.contrib.distributions.python.ops.distribution_util import batch_matrix_diag_transform
+from tensorflow.contrib.distributions.python.ops.distribution_util import matrix_diag_transform
 from tensorflow.contrib.distributions.python.ops.exponential import *
 from tensorflow.contrib.distributions.python.ops.gamma import *
 from tensorflow.contrib.distributions.python.ops.inverse_gamma import *

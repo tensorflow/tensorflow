@@ -1102,8 +1102,8 @@ def transpose(a, perm=None, name="transpose"):
 
 
 # pylint: disable=invalid-name
-def batch_matrix_transpose(a, name="batch_matrix_transpose"):
-  """Transposes last two dimensions of batch matrix `a`.
+def matrix_transpose(a, name="matrix_transpose"):
+  """Transposes last two dimensions of tensor `a`.
 
   For example:
 
@@ -1111,13 +1111,13 @@ def batch_matrix_transpose(a, name="batch_matrix_transpose"):
   # Matrix with no batch dimension.
   # 'x' is [[1 2 3]
   #         [4 5 6]]
-  tf.batch_matrixtranspose(x) ==> [[1 4]
+  tf.matrix_transpose(x) ==> [[1 4]
                                    [2 5]
                                    [3 6]]
 
   # Matrix with two batch dimensions.
   # x.shape is [1, 2, 3, 4]
-  # tf.batch_matrix_transpose(x) is shape [1, 2, 4, 3]
+  # tf.matrix_transpose(x) is shape [1, 2, 4, 3]
   ```
 
   Args:
@@ -1545,7 +1545,7 @@ ops.RegisterShape("CheckNumerics")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Identity")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("RefIdentity")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("StopGradient")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchMatrixBandPart")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MatrixBandPart")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("QuantizeAndDequantize")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Rank")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Size")(common_shapes.call_cpp_shape_fn)
@@ -1740,9 +1740,9 @@ ops.RegisterShape("Gather")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("GatherNd")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Unique")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("UniqueWithCounts")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchMatrixDiag")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchMatrixSetDiag")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchMatrixDiagPart")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MatrixDiag")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MatrixSetDiag")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MatrixDiagPart")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Diag")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("DiagPart")(common_shapes.call_cpp_shape_fn)
 

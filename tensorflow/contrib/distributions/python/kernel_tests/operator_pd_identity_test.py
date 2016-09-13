@@ -36,7 +36,7 @@ class OperatorPDIdentityTest(operator_test_util.OperatorPDDerivedClassTest):
     diag_shape = batch_shape + [k]
     matrix_shape = batch_shape + [k, k]
     diag = tf.ones(diag_shape, dtype=dtype)
-    identity_matrix = tf.batch_matrix_diag(diag)
+    identity_matrix = tf.matrix_diag(diag)
     operator = operator_pd_identity.OperatorPDIdentity(matrix_shape, dtype)
     return operator, identity_matrix.eval()
 

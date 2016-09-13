@@ -145,7 +145,7 @@ TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
   }
 
   // inputs 1 and 2 are ignored; input 0 is transferred to output 0.
-  ShapeInferenceTestOp op("BatchMatrixBandPart");
+  ShapeInferenceTestOp op("MatrixBandPart");
   INFER_OK(op, "?;?;?", "in0");
   INFER_OK(op, "[];?;?", "in0");
   INFER_OK(op, "[1,2,?,4,5];?;?", "in0");
@@ -172,16 +172,16 @@ TEST(ArrayOpsTest, DiagPart_ShapeFn) {
   INFER_ERROR("Dimensions must be equal, but are 2 and 10", op, "[1,2,?,10]");
 }
 
-TEST(ArrayOpsTest, BatchMatrixDiag_ShapeFn) {
-  ShapeInferenceTestOp op("BatchMatrixDiag");
+TEST(ArrayOpsTest, MatrixDiag_ShapeFn) {
+  ShapeInferenceTestOp op("MatrixDiag");
   INFER_OK(op, "?", "?");
   INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[]");
   INFER_OK(op, "[?]", "[d0_0,d0_0]");
   INFER_OK(op, "[1,?,?,4]", "[d0_0,d0_1,d0_2,d0_3,d0_3]");
 }
 
-TEST(ArrayOpsTest, BatchMatrixDiagPart_ShapeFn) {
-  ShapeInferenceTestOp op("BatchMatrixDiagPart");
+TEST(ArrayOpsTest, MatrixDiagPart_ShapeFn) {
+  ShapeInferenceTestOp op("MatrixDiagPart");
   INFER_OK(op, "?", "?");
   INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[?]");
   INFER_OK(op, "[?,1,2,2]", "[d0_0,d0_1,d0_2|d0_3]");
@@ -356,8 +356,8 @@ TEST(ArrayOpsTest, ListDiff_ShapeFn) {
   INFER_ERROR("Shape must be rank 1 but is rank 0", op, "?;[]");
 }
 
-TEST(ArrayOpsTest, BatchMatrixSetDiag_ShapeFn) {
-  ShapeInferenceTestOp op("BatchMatrixSetDiag");
+TEST(ArrayOpsTest, MatrixSetDiag_ShapeFn) {
+  ShapeInferenceTestOp op("MatrixSetDiag");
 
   // Inputs are input and diagonal.
 

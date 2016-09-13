@@ -74,16 +74,16 @@ mathematical functions to your graph.
 TensorFlow provides several operations that you can use to add linear algebra
 functions on matrices to your graph.
 
-@@batch_matrix_diag
-@@batch_matrix_diag_part
-@@batch_matrix_band_part
-@@batch_matrix_set_diag
-
 @@diag
 @@diag_part
 @@trace
 @@transpose
-@@batch_matrix_transpose
+
+@@matrix_diag
+@@matrix_diag_part
+@@matrix_band_part
+@@matrix_set_diag
+@@matrix_transpose
 
 @@matmul
 @@batch_matmul
@@ -109,6 +109,12 @@ functions to your graph.
 @@conj
 @@imag
 @@real
+
+## Fourier Transform Functions
+
+TensorFlow provides several operations that you can use to add discrete
+Fourier transform functions to your graph.
+
 @@fft
 @@ifft
 @@fft2d

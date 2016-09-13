@@ -18,15 +18,17 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/batch_matrix_set_diag_op.h"
+#include "tensorflow/core/kernels/matrix_diag_op.h"
 
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-#define DEFINE_GPU_SPEC(T)                             \
-  template class generator::OverwriteDiagGenerator<T>; \
-  template struct functor::BatchMatrixSetDiag<GPUDevice, T>;
+#define DEFINE_GPU_SPEC(T)                              \
+  template class generator::MatrixDiagGenerator<T>;     \
+  template struct functor::MatrixDiag<GPUDevice, T>;    \
+  template class generator::MatrixDiagPartGenerator<T>; \
+  template struct functor::MatrixDiagPart<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
 

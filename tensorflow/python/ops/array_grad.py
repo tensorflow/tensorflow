@@ -227,18 +227,18 @@ def _DiagPartGrad(_, grad):
   return array_ops.diag(grad)
 
 
-@ops.RegisterGradient("BatchMatrixDiag")
-def _BatchMatrixDiagGrad(_, grad):
-  return array_ops.batch_matrix_diag_part(grad)
+@ops.RegisterGradient("MatrixDiag")
+def _MatrixDiagGrad(_, grad):
+  return array_ops.matrix_diag_part(grad)
 
 
-@ops.RegisterGradient("BatchMatrixDiagPart")
-def _BatchMatrixDiagPartGrad(_, grad):
-  return array_ops.batch_matrix_diag(grad)
+@ops.RegisterGradient("MatrixDiagPart")
+def _MatrixDiagPartGrad(_, grad):
+  return array_ops.matrix_diag(grad)
 
 
-@ops.RegisterGradient("BatchMatrixSetDiag")
-def _BatchMatrixSetDiagGrad(op, grad):
+@ops.RegisterGradient("MatrixSetDiag")
+def _MatrixSetDiagGrad(op, grad):
   diag_shape = op.inputs[1].get_shape()
   diag_shape = diag_shape.merge_with(op.inputs[0].get_shape()[:-1])
   diag_shape = diag_shape.merge_with(grad.get_shape()[:-1])
@@ -247,18 +247,18 @@ def _BatchMatrixSetDiagGrad(op, grad):
   else:
     diag_shape = array_ops.shape(grad)
     diag_shape = array_ops.slice(diag_shape, [0], [array_ops.rank(grad) - 1])
-  grad_input = array_ops.batch_matrix_set_diag(
-      grad, array_ops.zeros(diag_shape, dtype=grad.dtype))
-  grad_diag = array_ops.batch_matrix_diag_part(grad)
+  grad_input = array_ops.matrix_set_diag(
+      grad, array_ops.zeros(
+          diag_shape, dtype=grad.dtype))
+  grad_diag = array_ops.matrix_diag_part(grad)
   return (grad_input, grad_diag)
 
 
-@ops.RegisterGradient("BatchMatrixBandPart")
-def _BatchMatrixBandPartGrad(op, grad):
+@ops.RegisterGradient("MatrixBandPart")
+def _MatrixBandPartGrad(op, grad):
   num_lower = op.inputs[1]
   num_upper = op.inputs[2]
-  return (array_ops.batch_matrix_band_part(grad, num_lower, num_upper), None,
-          None)
+  return (array_ops.matrix_band_part(grad, num_lower, num_upper), None, None)
 
 
 # Edit Distance has no gradient (but can be used to eval seq2seq or CTC).

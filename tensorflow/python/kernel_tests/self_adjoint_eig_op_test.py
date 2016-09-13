@@ -83,9 +83,7 @@ def _GetSelfAdjointEigTest(dtype_, shape_):
 
           # Check that V*diag(E)*V^T is close to A.
           a_ev = tf.batch_matmul(
-              tf.batch_matmul(tf_v, tf.batch_matrix_diag(tf_e)),
-              tf_v,
-              adj_y=True)
+              tf.batch_matmul(tf_v, tf.matrix_diag(tf_e)), tf_v, adj_y=True)
           self.assertAllClose(a_ev.eval(), a, atol=atol)
 
           # Compare to numpy.linalg.eig.

@@ -207,8 +207,8 @@ class Multinomial(distribution.Distribution):
     outer_prod = math_ops.batch_matmul(
         array_ops.expand_dims(self._mean_val, -1),
         array_ops.expand_dims(p, -2))
-    return array_ops.batch_matrix_set_diag(
-        -outer_prod, self._mean_val - self._mean_val * p)
+    return array_ops.matrix_set_diag(-outer_prod,
+                                     self._mean_val - self._mean_val * p)
 
   def _assert_valid_sample(self, counts):
     """Check counts for proper shape, values, then return tensor version."""

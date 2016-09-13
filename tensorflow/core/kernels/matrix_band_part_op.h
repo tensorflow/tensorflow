@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_BATCH_MATRIX_DIAG_OP_H_
-#define TENSORFLOW_KERNELS_BATCH_MATRIX_DIAG_OP_H_
+#ifndef TENSORFLOW_KERNELS_MATRIX_DIAG_OP_H_
+#define TENSORFLOW_KERNELS_MATRIX_DIAG_OP_H_
 
-// Generator definition for BatchMatrixBandPartOp, must be compilable by nvcc.
+// Generator definition for MatrixBandPartOp, must be compilable by nvcc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -27,9 +27,9 @@ namespace tensorflow {
 namespace generator {
 
 template <typename T>
-class BatchMatrixBandPartGenerator {
+class MatrixBandPartGenerator {
  public:
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE BatchMatrixBandPartGenerator(
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE MatrixBandPartGenerator(
       Eigen::DenseIndex num_lower, Eigen::DenseIndex num_upper,
       typename TTypes<T, 3>::ConstTensor input)
       : num_lower_(num_lower), num_upper_(num_upper), input_(input) {}
@@ -53,7 +53,7 @@ class BatchMatrixBandPartGenerator {
 namespace functor {
 
 template <typename Device, typename T>
-struct BatchMatrixBandPart {
+struct MatrixBandPart {
   EIGEN_ALWAYS_INLINE static void Compute(
       const Device& d, Eigen::DenseIndex num_lower, Eigen::DenseIndex num_upper,
       typename TTypes<T, 3>::ConstTensor input,
@@ -62,8 +62,8 @@ struct BatchMatrixBandPart {
         (num_upper < 0 || num_upper >= input.dimension(2))) {
       output.device(d) = input;
     } else {
-      generator::BatchMatrixBandPartGenerator<T> generator(num_lower, num_upper,
-                                                           input);
+      generator::MatrixBandPartGenerator<T> generator(num_lower, num_upper,
+                                                      input);
       output.device(d) = output.generate(generator);
     }
   }
@@ -73,4 +73,4 @@ struct BatchMatrixBandPart {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_BATCH_MATRIX_DIAG_OP_H_
+#endif  // TENSORFLOW_KERNELS_MATRIX_DIAG_OP_H_

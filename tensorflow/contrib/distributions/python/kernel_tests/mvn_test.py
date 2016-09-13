@@ -112,7 +112,7 @@ class MultivariateNormalDiagTest(tf.test.TestCase):
     with self.test_session():
       dist = distributions.MultivariateNormalDiag(mu, diag)
       samps = dist.sample_n(1000, seed=0).eval()
-      cov_mat = tf.batch_matrix_diag(diag).eval() ** 2
+      cov_mat = tf.matrix_diag(diag).eval()**2
 
       self.assertAllClose(mu, samps.mean(axis=0), atol=0.1)
       self.assertAllClose(cov_mat, np.cov(samps.T), atol=0.1)
@@ -123,7 +123,7 @@ class MultivariateNormalDiagTest(tf.test.TestCase):
     with self.test_session():
       dist = distributions.MultivariateNormalDiagWithSoftplusStDev(mu, diag)
       samps = dist.sample_n(1000, seed=0).eval()
-      cov_mat = tf.batch_matrix_diag(tf.nn.softplus(diag)).eval() ** 2
+      cov_mat = tf.matrix_diag(tf.nn.softplus(diag)).eval()**2
 
       self.assertAllClose(mu, samps.mean(axis=0), atol=0.1)
       self.assertAllClose(cov_mat, np.cov(samps.T), atol=0.1)
@@ -191,9 +191,8 @@ class MultivariateNormalCholeskyTest(tf.test.TestCase):
 
   def _random_chol(self, *shape):
     mat = self._rng.rand(*shape)
-    chol = distributions.batch_matrix_diag_transform(
-        mat, transform=tf.nn.softplus)
-    chol = tf.batch_matrix_band_part(chol, -1, 0)
+    chol = distributions.matrix_diag_transform(mat, transform=tf.nn.softplus)
+    chol = tf.matrix_band_part(chol, -1, 0)
     sigma = tf.batch_matmul(chol, chol, adj_y=True)
     return chol.eval(), sigma.eval()
 
