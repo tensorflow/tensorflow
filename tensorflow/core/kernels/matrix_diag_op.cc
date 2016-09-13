@@ -21,7 +21,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
-#include "tensorflow/core/kernels/batch_matrix_diag_op.h"
+#include "tensorflow/core/kernels/matrix_diag_op.h"
 
 #include <memory>
 #include <vector>
@@ -41,9 +41,9 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Device, typename T>
-class BatchMatrixDiagPartOp : public OpKernel {
+class MatrixDiagPartOp : public OpKernel {
  public:
-  explicit BatchMatrixDiagPartOp(OpKernelConstruction* context)
+  explicit MatrixDiagPartOp(OpKernelConstruction* context)
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
@@ -76,19 +76,18 @@ class BatchMatrixDiagPartOp : public OpKernel {
 
     auto output_reshaped = output->flat_inner_dims<T, 2>();
 
-    functor::BatchMatrixDiagPart<Device, T>::Compute(
+    functor::MatrixDiagPart<Device, T>::Compute(
         context->eigen_device<Device>(), input_reshaped, output_reshaped);
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(BatchMatrixDiagPartOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(MatrixDiagPartOp);
 };
 
 template <typename Device, typename T>
-class BatchMatrixDiagOp : public OpKernel {
+class MatrixDiagOp : public OpKernel {
  public:
-  explicit BatchMatrixDiagOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+  explicit MatrixDiagOp(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
@@ -114,29 +113,41 @@ class BatchMatrixDiagOp : public OpKernel {
 
     auto output_reshaped = output->flat_inner_dims<T, 3>();
 
-    functor::BatchMatrixDiag<Device, T>::Compute(
-        context->eigen_device<Device>(), input_reshaped, output_reshaped);
+    functor::MatrixDiag<Device, T>::Compute(context->eigen_device<Device>(),
+                                            input_reshaped, output_reshaped);
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(BatchMatrixDiagOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(MatrixDiagOp);
 };
 
+#define REGISTER_MATRIX_DIAG(type)                                         \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("MatrixDiag").Device(DEVICE_CPU).TypeConstraint<type>("T"),     \
+      MatrixDiagOp<CPUDevice, type>);                                      \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("MatrixDiagPart").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      MatrixDiagPartOp<CPUDevice, type>);
+TF_CALL_NUMBER_TYPES(REGISTER_MATRIX_DIAG);
+#undef REGISTER_MATRIX_DIAG
+
+// Registration of the deprecated kernel.
+// Delete after 10mar2017.
 #define REGISTER_BATCH_MATRIX_DIAG(type)                                    \
   REGISTER_KERNEL_BUILDER(                                                  \
       Name("BatchMatrixDiag").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      BatchMatrixDiagOp<CPUDevice, type>);                                  \
+      MatrixDiagOp<CPUDevice, type>);                                       \
   REGISTER_KERNEL_BUILDER(Name("BatchMatrixDiagPart")                       \
                               .Device(DEVICE_CPU)                           \
                               .TypeConstraint<type>("T"),                   \
-                          BatchMatrixDiagPartOp<CPUDevice, type>);
-
+                          MatrixDiagPartOp<CPUDevice, type>);
 TF_CALL_NUMBER_TYPES(REGISTER_BATCH_MATRIX_DIAG);
+#undef REGISTER_BATCH_MATRIX_DIAG
 
 // Implementation of the functor specialization for CPU.
 namespace functor {
 template <typename T>
-struct BatchMatrixDiag<CPUDevice, T> {
+struct MatrixDiag<CPUDevice, T> {
   static void Compute(const CPUDevice& d,
                       typename TTypes<T, 2>::ConstTensor input,
                       typename TTypes<T, 3>::Tensor output) {
@@ -150,7 +161,7 @@ struct BatchMatrixDiag<CPUDevice, T> {
 };
 
 template <typename T>
-struct BatchMatrixDiagPart<CPUDevice, T> {
+struct MatrixDiagPart<CPUDevice, T> {
   static void Compute(const CPUDevice& d,
                       typename TTypes<T, 3>::ConstTensor input,
                       typename TTypes<T, 2>::Tensor output) {
@@ -170,32 +181,42 @@ struct BatchMatrixDiagPart<CPUDevice, T> {
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                         \
   template <>                                                       \
-  void BatchMatrixDiag<GPUDevice, T>::Compute(                      \
+  void MatrixDiag<GPUDevice, T>::Compute(                           \
       const GPUDevice& d, typename TTypes<T, 2>::ConstTensor input, \
       typename TTypes<T, 3>::Tensor output);                        \
-  extern template struct BatchMatrixDiag<GPUDevice, T>;             \
+  extern template struct MatrixDiag<GPUDevice, T>;                  \
   template <>                                                       \
-  void BatchMatrixDiagPart<GPUDevice, T>::Compute(                  \
+  void MatrixDiagPart<GPUDevice, T>::Compute(                       \
       const GPUDevice& d, typename TTypes<T, 3>::ConstTensor input, \
       typename TTypes<T, 2>::Tensor output);                        \
-  extern template struct BatchMatrixDiagPart<GPUDevice, T>;
+  extern template struct MatrixDiagPart<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 
 }  // namespace functor
 
 // Registration of the GPU implementations.
+#define REGISTER_MATRIX_DIAG_GPU(type)                                     \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("MatrixDiag").Device(DEVICE_GPU).TypeConstraint<type>("T"),     \
+      MatrixDiagOp<GPUDevice, type>);                                      \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("MatrixDiagPart").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      MatrixDiagPartOp<GPUDevice, type>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_MATRIX_DIAG_GPU);
+#undef REGISTER_MATRIX_DIAG_GPU
+
+// Registration of the deprecated kernel.
+// Delete after 10mar2017.
 #define REGISTER_BATCH_MATRIX_DIAG_GPU(type)                                \
   REGISTER_KERNEL_BUILDER(                                                  \
       Name("BatchMatrixDiag").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
-      BatchMatrixDiagOp<GPUDevice, type>);                                  \
+      MatrixDiagOp<GPUDevice, type>);                                       \
   REGISTER_KERNEL_BUILDER(Name("BatchMatrixDiagPart")                       \
                               .Device(DEVICE_GPU)                           \
                               .TypeConstraint<type>("T"),                   \
-                          BatchMatrixDiagPartOp<GPUDevice, type>);
-
+                          MatrixDiagPartOp<GPUDevice, type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_BATCH_MATRIX_DIAG_GPU);
-
 #undef REGISTER_BATCH_MATRIX_DIAG_GPU
 
 #endif  // GOOGLE_CUDA

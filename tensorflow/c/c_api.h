@@ -958,6 +958,10 @@ extern TF_Library* TF_LoadLibrary(const char* library_filename,
 // ops defined in the library.
 extern TF_Buffer TF_GetOpList(TF_Library* lib_handle);
 
+// Frees the memory associated with the library handle.
+// Does NOT unload the library.
+extern void TF_DeleteLibraryHandle(TF_Library* lib_handle);
+
 // Get the OpList of all OpDefs defined in this address space.
 // Returns a TF_Buffer, ownership of which is transferred to the caller
 // (and can be freed using TF_DeleteBuffer).

@@ -24,6 +24,13 @@ weight and bias matrixes should be compatible as long as the variabel scope
 matches.
 - - -
 
+#### `tf.contrib.rnn.LSTMBlockCell.__call__(x, states_prev, scope=None)` {#LSTMBlockCell.__call__}
+
+Long short-term memory cell (LSTM).
+
+
+- - -
+
 #### `tf.contrib.rnn.LSTMBlockCell.__init__(num_units, forget_bias=1.0, use_peephole=False)` {#LSTMBlockCell.__init__}
 
 Initialize the basic LSTM cell.
@@ -106,6 +113,13 @@ h = (1-u) \circ c + u \circ h_prev
 ```
 - - -
 
+#### `tf.contrib.rnn.GRUBlockCell.__call__(x, h_prev, scope=None)` {#GRUBlockCell.__call__}
+
+GRU cell.
+
+
+- - -
+
 #### `tf.contrib.rnn.GRUBlockCell.__init__(cell_size)` {#GRUBlockCell.__init__}
 
 Initialize the Block GRU cell.
@@ -184,6 +198,40 @@ Greff et al. "LSTM: A Search Space Odyssey"
 
 The class uses optional peep-hole connections, and an optional projection
 layer.
+- - -
+
+#### `tf.contrib.rnn.CoupledInputForgetGateLSTMCell.__call__(inputs, state, scope=None)` {#CoupledInputForgetGateLSTMCell.__call__}
+
+Run one step of LSTM.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: input Tensor, 2D, batch x num_units.
+*  <b>`state`</b>: if `state_is_tuple` is False, this must be a state Tensor,
+    `2-D, batch x state_size`.  If `state_is_tuple` is True, this must be a
+    tuple of state Tensors, both `2-D`, with column sizes `c_state` and
+    `m_state`.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "LSTMCell".
+
+##### Returns:
+
+  A tuple containing:
+  - A `2-D, [batch x output_dim]`, Tensor representing the output of the
+    LSTM after reading `inputs` when previous state was `state`.
+    Here output_dim is:
+       num_proj if num_proj was set,
+       num_units otherwise.
+  - Tensor(s) representing the new state of LSTM after reading `inputs` when
+    the previous state was `state`.  Same type and shape(s) as `state`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If input size cannot be inferred from inputs via
+    static shape inference.
+
+
 - - -
 
 #### `tf.contrib.rnn.CoupledInputForgetGateLSTMCell.__init__(num_units, use_peepholes=False, initializer=None, num_proj=None, proj_clip=None, num_unit_shards=1, num_proj_shards=1, forget_bias=1.0, state_is_tuple=False, activation=tanh)` {#CoupledInputForgetGateLSTMCell.__init__}
@@ -268,6 +316,36 @@ This implementation is based on:
 It uses peep-hole connections and optional cell clipping.
 - - -
 
+#### `tf.contrib.rnn.TimeFreqLSTMCell.__call__(inputs, state, scope=None)` {#TimeFreqLSTMCell.__call__}
+
+Run one step of LSTM.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: input Tensor, 2D, batch x num_units.
+*  <b>`state`</b>: state Tensor, 2D, batch x state_size.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to
+    "TimeFreqLSTMCell".
+
+##### Returns:
+
+  A tuple containing:
+  - A 2D, batch x output_dim, Tensor representing the output of the LSTM
+    after reading "inputs" when previous state was "state".
+    Here output_dim is num_units.
+  - A 2D, batch x state_size, Tensor representing the new state of LSTM
+    after reading "inputs" when previous state was "state".
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if an input_size was specified and the provided inputs have
+    a different dimension.
+
+
+- - -
+
 #### `tf.contrib.rnn.TimeFreqLSTMCell.__init__(num_units, use_peepholes=False, cell_clip=None, initializer=None, num_unit_shards=1, forget_bias=1.0, feature_size=None, frequency_skip=None)` {#TimeFreqLSTMCell.__init__}
 
 Initialize the parameters for an LSTM cell.
@@ -345,6 +423,35 @@ When peephole connections are used, the implementation is based on:
   for LVCSR Tasks." submitted to INTERSPEECH, 2016.
 
 The code uses optional peephole connections, shared_weights and cell clipping.
+- - -
+
+#### `tf.contrib.rnn.GridLSTMCell.__call__(inputs, state, scope=None)` {#GridLSTMCell.__call__}
+
+Run one step of LSTM.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: input Tensor, 2D, batch x num_units.
+*  <b>`state`</b>: state Tensor, 2D, batch x state_size.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "LSTMCell".
+
+##### Returns:
+
+  A tuple containing:
+  - A 2D, batch x output_dim, Tensor representing the output of the LSTM
+    after reading "inputs" when previous state was "state".
+    Here output_dim is num_units.
+  - A 2D, batch x state_size, Tensor representing the new state of LSTM
+    after reading "inputs" when previous state was "state".
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if an input_size was specified and the provided inputs have
+    a different dimension.
+
+
 - - -
 
 #### `tf.contrib.rnn.GridLSTMCell.__init__(num_units, use_peepholes=False, share_time_frequency_weights=False, cell_clip=None, initializer=None, num_unit_shards=1, forget_bias=1.0, feature_size=None, frequency_skip=None, num_frequency_blocks=1, couple_input_forget_gates=False, state_is_tuple=False)` {#GridLSTMCell.__init__}
@@ -434,6 +541,13 @@ the shapes `[batch_size x s]` for each s in `state_size`.
 Basic attention cell wrapper.
 
 Implementation based on https://arxiv.org/pdf/1601.06733.pdf.
+- - -
+
+#### `tf.contrib.rnn.AttentionCellWrapper.__call__(inputs, state, scope=None)` {#AttentionCellWrapper.__call__}
+
+Long short-term memory cell with attention (LSTMA).
+
+
 - - -
 
 #### `tf.contrib.rnn.AttentionCellWrapper.__init__(cell, attn_length, attn_size=None, attn_vec_size=None, input_size=None, state_is_tuple=False)` {#AttentionCellWrapper.__init__}

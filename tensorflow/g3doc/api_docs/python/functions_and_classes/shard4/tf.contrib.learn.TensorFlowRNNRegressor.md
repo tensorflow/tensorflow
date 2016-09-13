@@ -54,6 +54,13 @@ Initializes a TensorFlowRNNRegressor instance.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNRegressor.__repr__()` {#TensorFlowRNNRegressor.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNRegressor.bias_` {#TensorFlowRNNRegressor.bias_}
 
 Returns bias of the rnn layer.

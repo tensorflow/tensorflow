@@ -1,4 +1,4 @@
-### `tf.batch_matrix_diag(diagonal, name=None)` {#batch_matrix_diag}
+### `tf.matrix_diag(diagonal, name=None)` {#matrix_diag}
 
 Returns a batched diagonal tensor with a given batched diagonal values.
 
@@ -17,7 +17,7 @@ For example:
 
 and diagonal.shape = (2, 4)
 
-tf.batch_matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
+tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
                                      [0, 2, 0, 0]
                                      [0, 0, 3, 0]
                                      [0, 0, 0, 4]],

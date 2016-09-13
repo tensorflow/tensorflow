@@ -204,17 +204,17 @@ Example:
 ```python
 # Decode a JPG image and resize it to 299 by 299 using default method.
 image = tf.image.decode_jpeg(...)
-resized_image = tf.image.resize_images(image, 299, 299)
+resized_image = tf.image.resize_images(image, [299, 299])
 ```
 
 - - -
 
-### `tf.image.resize_images(images, new_height, new_width, method=0, align_corners=False)` {#resize_images}
+### `tf.image.resize_images(images, size, method=0, align_corners=False)` {#resize_images}
 
-Resize `images` to `new_width`, `new_height` using the specified `method`.
+Resize `images` to `size` using the specified `method`.
 
 Resized images will be distorted if their original aspect ratio is not
-the same as `new_width`, `new_height`.  To avoid distortions see
+the same as `size`.  To avoid distortions see
 [`resize_image_with_crop_or_pad`](#resize_image_with_crop_or_pad).
 
 `method` can be one of:
@@ -232,8 +232,8 @@ the same as `new_width`, `new_height`.  To avoid distortions see
 
 *  <b>`images`</b>: 4-D Tensor of shape `[batch, height, width, channels]` or
           3-D Tensor of shape `[height, width, channels]`.
-*  <b>`new_height`</b>: integer.
-*  <b>`new_width`</b>: integer.
+*  <b>`size`</b>: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
+        new size for the images.
 *  <b>`method`</b>: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
 *  <b>`align_corners`</b>: bool. If true, exactly align all 4 corners of the input and
                  output. Defaults to `false`.
@@ -243,6 +243,7 @@ the same as `new_width`, `new_height`.  To avoid distortions see
 
 *  <b>`ValueError`</b>: if the shape of `images` is incompatible with the
     shape arguments to this function
+*  <b>`ValueError`</b>: if `size` has invalid shape or type.
 *  <b>`ValueError`</b>: if an unsupported resize method is specified.
 
 ##### Returns:
@@ -749,15 +750,16 @@ See also `transpose()`.
 
 - - -
 
-### `tf.image.rot90(image, k=1)` {#rot90}
+### `tf.image.rot90(image, k=1, name=None)` {#rot90}
 
 Rotate an image counter-clockwise by 90 degrees.
 
 ##### Args:
 
 
-*  <b>`image`</b>: A 3-D tensor of shape `[height, width, channels].`
-*  <b>`k`</b>: Number of times the image is rotated by 90 degrees.
+*  <b>`image`</b>: A 3-D tensor of shape `[height, width, channels]`.
+*  <b>`k`</b>: A scalar integer. The number of times the image is rotated by 90 degrees.
+*  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
 

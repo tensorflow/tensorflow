@@ -18,15 +18,15 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/batch_matrix_band_part_op.h"
+#include "tensorflow/core/kernels/matrix_band_part_op.h"
 
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-#define DEFINE_GPU_SPEC(T)                                   \
-  template class generator::BatchMatrixBandPartGenerator<T>; \
-  template struct functor::BatchMatrixBandPart<GPUDevice, T>;
+#define DEFINE_GPU_SPEC(T)                              \
+  template class generator::MatrixBandPartGenerator<T>; \
+  template struct functor::MatrixBandPart<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
 

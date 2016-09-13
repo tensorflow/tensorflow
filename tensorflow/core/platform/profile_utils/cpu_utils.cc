@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 
 namespace tensorflow {
 namespace profile_utils {
@@ -58,12 +59,16 @@ const class StaticVariableInitializer {
   GetCpuUtilsHelper().ResetClockCycle();
 }
 
-/* static */ void CpuUtils::EnableClockCycleProfile(const bool enable) {
-  GetCpuUtilsHelper().EnableClockCycleProfile(enable);
+/* static */ void CpuUtils::EnableClockCycleProfiling(const bool enable) {
+  GetCpuUtilsHelper().EnableClockCycleProfiling(enable);
 }
 
 /* static */ int64 CpuUtils::GetCpuFrequencyImpl() {
-#if defined(__linux__)
+// TODO(satok): do not switch by macro here
+#if defined(__ANDROID__)
+  // TODO:(satok): Support Android
+  return INVALID_FREQUENCY;
+#elif defined(__linux__)
   double bogomips;
   FILE* fp = popen("grep '^bogomips' /proc/cpuinfo | head -1", "r");
   const int retval_of_bogomips = fscanf(fp, "bogomips : %lf", &bogomips);
@@ -93,8 +98,12 @@ const class StaticVariableInitializer {
 }
 
 /* static */ ICpuUtilsHelper& CpuUtils::GetCpuUtilsHelper() {
+#if defined(__ANDROID__) && defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
+  static AndroidArmV7ACpuUtilsHelper cpu_utils_helper;
+#else
   // TODO(satok): Change CpuUtilsHelper by cpu architecture
   static DefaultCpuUtilsHelper cpu_utils_helper;
+#endif
   return cpu_utils_helper;
 }
 

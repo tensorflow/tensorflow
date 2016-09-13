@@ -21,14 +21,14 @@ import numpy as np
 import tensorflow as tf
 
 
-class BatchMatrixDiagTest(tf.test.TestCase):
+class MatrixDiagTest(tf.test.TestCase):
   _use_gpu = False
 
   def testVector(self):
     with self.test_session(use_gpu=self._use_gpu):
       v = np.array([1.0, 2.0, 3.0])
       mat = np.diag(v)
-      v_diag = tf.batch_matrix_diag(v)
+      v_diag = tf.matrix_diag(v)
       self.assertEqual((3, 3), v_diag.get_shape())
       self.assertAllEqual(v_diag.eval(), mat)
 
@@ -43,36 +43,36 @@ class BatchMatrixDiagTest(tf.test.TestCase):
            [[4.0, 0.0, 0.0],
             [0.0, 5.0, 0.0],
             [0.0, 0.0, 6.0]]])
-      v_batch_diag = tf.batch_matrix_diag(v_batch)
+      v_batch_diag = tf.matrix_diag(v_batch)
       self.assertEqual((2, 3, 3), v_batch_diag.get_shape())
       self.assertAllEqual(v_batch_diag.eval(), mat_batch)
 
   def testInvalidShape(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 1"):
-      tf.batch_matrix_diag(0)
+      tf.matrix_diag(0)
 
   def testInvalidShapeAtEval(self):
     with self.test_session(use_gpu=self._use_gpu):
       v = tf.placeholder(dtype=tf.float32)
       with self.assertRaisesOpError("input must be at least 1-dim"):
-        tf.batch_matrix_diag(v).eval(feed_dict={v: 0.0})
+        tf.matrix_diag(v).eval(feed_dict={v: 0.0})
 
   def testGrad(self):
     shapes = ((3,), (7, 4))
     with self.test_session(use_gpu=self._use_gpu):
       for shape in shapes:
         x = tf.constant(np.random.rand(*shape), np.float32)
-        y = tf.batch_matrix_diag(x)
+        y = tf.matrix_diag(x)
         error = tf.test.compute_gradient_error(x, x.get_shape().as_list(),
                                                y, y.get_shape().as_list())
         self.assertLess(error, 1e-4)
 
 
-class BatchMatrixDiagGpuTest(BatchMatrixDiagTest):
+class MatrixDiagGpuTest(MatrixDiagTest):
   _use_gpu = True
 
 
-class BatchMatrixSetDiagTest(tf.test.TestCase):
+class MatrixSetDiagTest(tf.test.TestCase):
   _use_gpu = False
 
   def testVector(self):
@@ -84,7 +84,7 @@ class BatchMatrixSetDiagTest(tf.test.TestCase):
       mat_set_diag = np.array([[1.0, 1.0, 0.0],
                                [1.0, 2.0, 1.0],
                                [1.0, 1.0, 3.0]])
-      output = tf.batch_matrix_set_diag(mat, v)
+      output = tf.matrix_set_diag(mat, v)
       self.assertEqual((3, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag, output.eval())
 
@@ -107,24 +107,24 @@ class BatchMatrixSetDiagTest(tf.test.TestCase):
            [[-4.0, 0.0, 4.0],
             [0.0, -5.0, 0.0],
             [2.0, 0.0, -6.0]]])
-      output = tf.batch_matrix_set_diag(mat_batch, v_batch)
+      output = tf.matrix_set_diag(mat_batch, v_batch)
       self.assertEqual((2, 3, 3), output.get_shape())
       self.assertAllEqual(mat_set_diag_batch, output.eval())
 
   def testInvalidShape(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 2"):
-      tf.batch_matrix_set_diag(0, [0])
+      tf.matrix_set_diag(0, [0])
     with self.assertRaisesRegexp(ValueError, "must be at least rank 1"):
-      tf.batch_matrix_set_diag([[0]], 0)
+      tf.matrix_set_diag([[0]], 0)
 
   def testInvalidShapeAtEval(self):
     with self.test_session(use_gpu=self._use_gpu):
       v = tf.placeholder(dtype=tf.float32)
       with self.assertRaisesOpError("input must be at least 2-dim"):
-        tf.batch_matrix_set_diag(v, [v]).eval(feed_dict={v: 0.0})
+        tf.matrix_set_diag(v, [v]).eval(feed_dict={v: 0.0})
       with self.assertRaisesOpError(
           r"but received input shape: \[1,1\] and diagonal shape: \[\]"):
-        tf.batch_matrix_set_diag([[v]], v).eval(feed_dict={v: 0.0})
+        tf.matrix_set_diag([[v]], v).eval(feed_dict={v: 0.0})
 
   def testGrad(self):
     shapes = ((3, 4, 4), (7, 4, 8, 8))
@@ -132,7 +132,7 @@ class BatchMatrixSetDiagTest(tf.test.TestCase):
       for shape in shapes:
         x = tf.constant(np.random.rand(*shape), dtype=tf.float32)
         x_diag = tf.constant(np.random.rand(*shape[:-1]), dtype=tf.float32)
-        y = tf.batch_matrix_set_diag(x, x_diag)
+        y = tf.matrix_set_diag(x, x_diag)
         error_x = tf.test.compute_gradient_error(x, x.get_shape().as_list(),
                                                  y, y.get_shape().as_list())
         self.assertLess(error_x, 1e-4)
@@ -146,7 +146,7 @@ class BatchMatrixSetDiagTest(tf.test.TestCase):
       v = tf.placeholder(dtype=tf.float32)
       mat = tf.placeholder(dtype=tf.float32)
       grad_input = tf.placeholder(dtype=tf.float32)
-      output = tf.batch_matrix_set_diag(mat, v)
+      output = tf.matrix_set_diag(mat, v)
       grads = tf.gradients(output, [mat, v], grad_ys=grad_input)
       grad_input_val = np.random.rand(3, 3).astype(np.float32)
       grad_vals = sess.run(
@@ -157,18 +157,18 @@ class BatchMatrixSetDiagTest(tf.test.TestCase):
                           grad_vals[0])
 
 
-class BatchMatrixSetDiagGpuTest(BatchMatrixSetDiagTest):
+class MatrixSetDiagGpuTest(MatrixSetDiagTest):
   _use_gpu = True
 
 
-class BatchMatrixDiagPartTest(tf.test.TestCase):
+class MatrixDiagPartTest(tf.test.TestCase):
   _use_gpu = False
 
   def testMatrix(self):
     with self.test_session(use_gpu=self._use_gpu):
       v = np.array([1.0, 2.0, 3.0])
       mat = np.diag(v)
-      mat_diag = tf.batch_matrix_diag_part(mat)
+      mat_diag = tf.matrix_diag_part(mat)
       self.assertEqual((3,), mat_diag.get_shape())
       self.assertAllEqual(mat_diag.eval(), v)
 
@@ -184,37 +184,36 @@ class BatchMatrixDiagPartTest(tf.test.TestCase):
             [0.0, 5.0, 0.0],
             [0.0, 0.0, 6.0]]])
       self.assertEqual(mat_batch.shape, (2, 3, 3))
-      mat_batch_diag = tf.batch_matrix_diag_part(mat_batch)
+      mat_batch_diag = tf.matrix_diag_part(mat_batch)
       self.assertEqual((2, 3), mat_batch_diag.get_shape())
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
 
   def testInvalidShape(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 2"):
-      tf.batch_matrix_diag_part(0)
+      tf.matrix_diag_part(0)
     with self.assertRaisesRegexp(ValueError, r"Dimensions must be equal"):
-      tf.batch_matrix_diag_part([[0, 1], [1, 0], [0, 0]])
+      tf.matrix_diag_part([[0, 1], [1, 0], [0, 0]])
 
   def testInvalidShapeAtEval(self):
     with self.test_session(use_gpu=self._use_gpu):
       v = tf.placeholder(dtype=tf.float32)
       with self.assertRaisesOpError("input must be at least 2-dim"):
-        tf.batch_matrix_diag_part(v).eval(feed_dict={v: 0.0})
+        tf.matrix_diag_part(v).eval(feed_dict={v: 0.0})
       with self.assertRaisesOpError("last two dimensions must be equal"):
-        tf.batch_matrix_diag_part(v).eval(
-            feed_dict={v: [[0, 1], [1, 0], [0, 0]]})
+        tf.matrix_diag_part(v).eval(feed_dict={v: [[0, 1], [1, 0], [0, 0]]})
 
   def testGrad(self):
     shapes = ((3, 3), (5, 3, 3))
     with self.test_session(use_gpu=self._use_gpu):
       for shape in shapes:
         x = tf.constant(np.random.rand(*shape), dtype=np.float32)
-        y = tf.batch_matrix_diag_part(x)
+        y = tf.matrix_diag_part(x)
         error = tf.test.compute_gradient_error(x, x.get_shape().as_list(),
                                                y, y.get_shape().as_list())
         self.assertLess(error, 1e-4)
 
 
-class BatchMatrixDiagPartGpuTest(BatchMatrixDiagPartTest):
+class MatrixDiagPartGpuTest(MatrixDiagPartTest):
   _use_gpu = True
 
 

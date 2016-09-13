@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_BATCH_MATRIX_SET_DIAG_OP_H_
-#define TENSORFLOW_KERNELS_BATCH_MATRIX_SET_DIAG_OP_H_
+#ifndef TENSORFLOW_KERNELS_MATRIX_DIAG_OP_H_
+#define TENSORFLOW_KERNELS_MATRIX_DIAG_OP_H_
 
-// Generator definition for BatchMatrixSetDiagOp, must be compilable by nvcc.
+// Generator definition for MatrixDiagOp, must be compilable by nvcc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -27,27 +27,40 @@ namespace tensorflow {
 namespace generator {
 
 template <typename T>
-class OverwriteDiagGenerator {
+class MatrixDiagPartGenerator {
  public:
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
-  OverwriteDiagGenerator(typename TTypes<T, 2>::ConstTensor diag,
-                         typename TTypes<T, 3>::Tensor output)
-      : diag_(diag), output_(output) {}
+  MatrixDiagPartGenerator(typename TTypes<T, 3>::ConstTensor input)
+      : input_(input) {}
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
   operator()(const Eigen::array<Eigen::DenseIndex, 2>& coords) const {
     Eigen::array<Eigen::DenseIndex, 3> diag_from_coords(
         {coords[0], coords[1], coords[1]});
-
-    // This is the side effect we care about.
-    output_(diag_from_coords) = diag_(coords);
-
-    return T(0);
+    return input_(diag_from_coords);
   }
 
  private:
-  typename TTypes<T, 2>::ConstTensor diag_;
-  mutable typename TTypes<T, 3>::Tensor output_;
+  typename TTypes<T, 3>::ConstTensor input_;
+};
+
+template <typename T>
+class MatrixDiagGenerator {
+ public:
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
+  MatrixDiagGenerator(typename TTypes<T, 2>::ConstTensor input)
+      : input_(input) {}
+
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
+  operator()(const Eigen::array<Eigen::DenseIndex, 3>& coords) const {
+    if (coords[2] != coords[1]) return T();
+
+    Eigen::array<Eigen::DenseIndex, 2> diag_coords({coords[0], coords[1]});
+    return input_(diag_coords);
+  }
+
+ private:
+  typename TTypes<T, 2>::ConstTensor input_;
 };
 
 }  // namespace generator
@@ -55,19 +68,22 @@ class OverwriteDiagGenerator {
 namespace functor {
 
 template <typename Device, typename T>
-struct BatchMatrixSetDiag {
+struct MatrixDiagPart {
   EIGEN_ALWAYS_INLINE static void Compute(
       const Device& d, typename TTypes<T, 3>::ConstTensor input,
-      typename TTypes<T, 2>::ConstTensor diag,
-      typename TTypes<T>::Scalar scratch,
+      typename TTypes<T, 2>::Tensor output) {
+    generator::MatrixDiagPartGenerator<T> generator(input);
+    output.device(d) = output.generate(generator);
+  }
+};
+
+template <typename Device, typename T>
+struct MatrixDiag {
+  EIGEN_ALWAYS_INLINE static void Compute(
+      const Device& d, typename TTypes<T, 2>::ConstTensor input,
       typename TTypes<T, 3>::Tensor output) {
-    output.device(d) = input;
-    generator::OverwriteDiagGenerator<T> generator(diag, output);
-    // Use sum() to force the generation to aggregate to the scalar
-    // output scratch.  This in turn forces each element of the
-    // generator to execute.  The side effect of the execution is to
-    // update the diagonal components of output with diag.
-    scratch.device(d) = diag.generate(generator).sum();
+    generator::MatrixDiagGenerator<T> generator(input);
+    output.device(d) = output.generate(generator);
   }
 };
 
@@ -75,4 +91,4 @@ struct BatchMatrixSetDiag {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_BATCH_MATRIX_SET_DIAG_OP_H_
+#endif  // TENSORFLOW_KERNELS_MATRIX_DIAG_OP_H_

@@ -22,7 +22,7 @@ cc_binary(
         "-llog",
         "-lm",
         "-z defs",
-        #"-s",
+        "-s",
         "-Wl,--icf=all",  # Identical Code Folding
         "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export
     ],

@@ -79,14 +79,8 @@ export abstract class ScatterWebGL implements Scatter {
   protected renderer: THREE.WebGLRenderer;
   protected cameraControls: any;
 
-  // Data structures (and THREE.js objects) associated with points.
-  protected geometry: THREE.BufferGeometry;
-  /** Texture for rendering offscreen in order to enable interactive hover. */
-  protected pickingTexture: THREE.WebGLRenderTarget;
-  /** Array of unique colors for each point used in detecting hover. */
-  protected uniqueColArr: Float32Array;
-  protected materialOptions: THREE.ShaderMaterialParameters;
   protected dataSet: DataSet;
+
   /** Holds the indexes of the points to be labeled. */
   protected labeledPoints: number[] = [];
   protected highlightedPoints: number[] = [];
@@ -111,10 +105,6 @@ export abstract class ScatterWebGL implements Scatter {
   protected width: number;
   protected dpr: number;  // The device pixelratio
 
-  // state
-  protected animating = false;
-  protected selecting = false;  // whether or not we are selecting points.
-
   protected abstract onRecreateScene();
   protected abstract removeAllGeometry();
   protected abstract onDataSet(spriteImage: HTMLImageElement);
@@ -122,6 +112,7 @@ export abstract class ScatterWebGL implements Scatter {
   protected abstract onHighlightPoints(
       pointIndexes: number[], highlightStroke: (i: number) => string,
       favorLabels: (i: number) => boolean);
+  protected abstract onPickingRender();
   protected abstract onRender();
   protected abstract onUpdate();
   protected abstract onResize();
@@ -138,14 +129,16 @@ export abstract class ScatterWebGL implements Scatter {
   private mode: Mode;
   private isNight: boolean;
 
+  private pickingTexture: THREE.WebGLRenderTarget;
   private light: THREE.PointLight;
   private axis3D: THREE.AxisHelper;
   private axis2D: THREE.LineSegments;
-  private mouseIsDown = false;
-  // Whether the current click sequence contains a drag, so we can determine
-  // whether to update the selection.
-  private isDragSequence = false;
   private selectionSphere: THREE.Mesh;
+
+  private animating = false;
+  private selecting = false;
+  private mouseIsDown = false;
+  private isDragSequence = false;
   private animationID: number;
 
 
@@ -319,9 +312,10 @@ export abstract class ScatterWebGL implements Scatter {
 
   /** When we stop dragging/zooming, return to normal behavior. */
   private onClick(e?: MouseEvent) {
-    if (!this.onMouseClickInternal(e)) {
+    if (e && this.selecting) {
       return;
     }
+    this.onMouseClickInternal(e);
     let selection = this.nearestPoint || null;
     // Only call event handlers if the click originated from the scatter plot.
     if (e && !this.isDragSequence) {
@@ -382,8 +376,7 @@ export abstract class ScatterWebGL implements Scatter {
       cancelAnimationFrame(this.lazySusanAnimation);
     }
 
-    // A quick check to make sure data has come in.
-    if (!this.geometry) {
+    if (!this.dataSet) {
       return;
     }
     this.isDragSequence = this.mouseIsDown;
@@ -609,10 +602,6 @@ export abstract class ScatterWebGL implements Scatter {
     this.removeAll();
     this.dataSet = dataSet;
     this.onDataSet(spriteImage);
-    if (this.geometry) {
-      this.geometry.dispose();
-    }
-    this.geometry = null;
     this.labeledPoints = [];
     this.highlightedPoints = [];
   }
@@ -623,6 +612,18 @@ export abstract class ScatterWebGL implements Scatter {
   }
 
   render() {
+    if (!this.dataSet) {
+      return;
+    }
+
+    // Render first pass to picking target. This render fills pickingTexture
+    // with colors that are actually point ids, so that sampling the texture at
+    // the mouse's current x,y coordinates will reveal the data point that the
+    // mouse is over.
+    this.onPickingRender();
+    this.renderer.render(this.scene, this.perspCamera, this.pickingTexture);
+
+    // Render second pass to color buffer, to be displayed on the canvas.
     let lightPos = new THREE.Vector3().copy(this.perspCamera.position);
     lightPos.x += 1;
     lightPos.y += 1;
@@ -634,9 +635,7 @@ export abstract class ScatterWebGL implements Scatter {
   setColorAccessor(colorAccessor: (index: number) => string) {
     this.colorAccessor = colorAccessor;
     this.onSetColorAccessor();
-    if (this.geometry) {
-      this.render();
-    }
+    this.render();
   }
 
   setXAccessor(xAccessor: (index: number) => number) {

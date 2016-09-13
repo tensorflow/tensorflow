@@ -21,7 +21,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
-#include "tensorflow/core/kernels/batch_matrix_band_part_op.h"
+#include "tensorflow/core/kernels/matrix_band_part_op.h"
 
 #include <memory>
 #include <vector>
@@ -41,9 +41,9 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Device, typename T>
-class BatchMatrixBandPartOp : public OpKernel {
+class MatrixBandPartOp : public OpKernel {
  public:
-  explicit BatchMatrixBandPartOp(OpKernelConstruction* context)
+  explicit MatrixBandPartOp(OpKernelConstruction* context)
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
@@ -70,29 +70,36 @@ class BatchMatrixBandPartOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, input_shape, &output));
     auto output_reshaped = output->flat_inner_dims<T, 3>();
-    functor::BatchMatrixBandPart<Device, T>::Compute(
+    functor::MatrixBandPart<Device, T>::Compute(
         context->eigen_device<Device>(), num_lower, num_upper, input_reshaped,
         output_reshaped);
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(BatchMatrixBandPartOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(MatrixBandPartOp);
 };
 
+#define REGISTER_MATRIX_BAND_PART(type)                                    \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("MatrixBandPart").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      MatrixBandPartOp<CPUDevice, type>);
+TF_CALL_NUMBER_TYPES(REGISTER_MATRIX_BAND_PART);
+#undef REGISTER_MATRIX_BAND_PART
+
+// Registration of the deprecated kernel.
+// Delete after 10mar2017.
 #define REGISTER_BATCH_MATRIX_BAND_PART(type)             \
   REGISTER_KERNEL_BUILDER(Name("BatchMatrixBandPart")     \
                               .Device(DEVICE_CPU)         \
                               .TypeConstraint<type>("T"), \
-                          BatchMatrixBandPartOp<CPUDevice, type>);
-
+                          MatrixBandPartOp<CPUDevice, type>);
 TF_CALL_NUMBER_TYPES(REGISTER_BATCH_MATRIX_BAND_PART);
-
 #undef REGISTER_BATCH_MATRIX_BAND_PART
 
 // Implementation of the functor specialization for CPU.
 namespace functor {
 template <typename T>
-struct BatchMatrixBandPart<CPUDevice, T> {
+struct MatrixBandPart<CPUDevice, T> {
   static void Compute(const CPUDevice& d, int64 num_lower, int64 num_upper,
                       typename TTypes<T, 3>::ConstTensor input,
                       typename TTypes<T, 3>::Tensor output) {
@@ -129,27 +136,37 @@ struct BatchMatrixBandPart<CPUDevice, T> {
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                  \
   template <>                                                                \
-  void BatchMatrixBandPart<GPUDevice, T>::Compute(                           \
+  void MatrixBandPart<GPUDevice, T>::Compute(                                \
       const GPUDevice& d, Eigen::DenseIndex num_lower,                       \
       Eigen::DenseIndex num_upper, typename TTypes<T, 3>::ConstTensor input, \
       typename TTypes<T, 3>::Tensor output);                                 \
-  extern template struct BatchMatrixBandPart<GPUDevice, T>;
+  extern template struct MatrixBandPart<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 
 }  // namespace functor
 
 // Registration of the GPU implementations.
+#define REGISTER_MATRIX_BAND_PART_GPU(type)              \
+  REGISTER_KERNEL_BUILDER(Name("MatrixBandPart")         \
+                              .Device(DEVICE_GPU)        \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("num_lower")   \
+                              .HostMemory("num_upper"),  \
+                          MatrixBandPartOp<GPUDevice, type>);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_MATRIX_BAND_PART_GPU);
+#undef REGISTER_MATRIX_BAND_PART_GPU
+
+// Registration of the deprecated kernel.
+// Delete after 10mar2017.
 #define REGISTER_BATCH_MATRIX_BAND_PART_GPU(type)        \
   REGISTER_KERNEL_BUILDER(Name("BatchMatrixBandPart")    \
                               .Device(DEVICE_GPU)        \
                               .TypeConstraint<type>("T") \
                               .HostMemory("num_lower")   \
                               .HostMemory("num_upper"),  \
-                          BatchMatrixBandPartOp<GPUDevice, type>);
-
+                          MatrixBandPartOp<GPUDevice, type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_BATCH_MATRIX_BAND_PART_GPU);
-
 #undef REGISTER_BATCH_MATRIX_BAND_PART_GPU
 
 #endif  // GOOGLE_CUDA

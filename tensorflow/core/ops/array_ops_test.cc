@@ -145,7 +145,7 @@ TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
   }
 
   // inputs 1 and 2 are ignored; input 0 is transferred to output 0.
-  ShapeInferenceTestOp op("BatchMatrixBandPart");
+  ShapeInferenceTestOp op("MatrixBandPart");
   INFER_OK(op, "?;?;?", "in0");
   INFER_OK(op, "[];?;?", "in0");
   INFER_OK(op, "[1,2,?,4,5];?;?", "in0");
@@ -172,16 +172,16 @@ TEST(ArrayOpsTest, DiagPart_ShapeFn) {
   INFER_ERROR("Dimensions must be equal, but are 2 and 10", op, "[1,2,?,10]");
 }
 
-TEST(ArrayOpsTest, BatchMatrixDiag_ShapeFn) {
-  ShapeInferenceTestOp op("BatchMatrixDiag");
+TEST(ArrayOpsTest, MatrixDiag_ShapeFn) {
+  ShapeInferenceTestOp op("MatrixDiag");
   INFER_OK(op, "?", "?");
   INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[]");
   INFER_OK(op, "[?]", "[d0_0,d0_0]");
   INFER_OK(op, "[1,?,?,4]", "[d0_0,d0_1,d0_2,d0_3,d0_3]");
 }
 
-TEST(ArrayOpsTest, BatchMatrixDiagPart_ShapeFn) {
-  ShapeInferenceTestOp op("BatchMatrixDiagPart");
+TEST(ArrayOpsTest, MatrixDiagPart_ShapeFn) {
+  ShapeInferenceTestOp op("MatrixDiagPart");
   INFER_OK(op, "?", "?");
   INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[?]");
   INFER_OK(op, "[?,1,2,2]", "[d0_0,d0_1,d0_2|d0_3]");
@@ -356,8 +356,8 @@ TEST(ArrayOpsTest, ListDiff_ShapeFn) {
   INFER_ERROR("Shape must be rank 1 but is rank 0", op, "?;[]");
 }
 
-TEST(ArrayOpsTest, BatchMatrixSetDiag_ShapeFn) {
-  ShapeInferenceTestOp op("BatchMatrixSetDiag");
+TEST(ArrayOpsTest, MatrixSetDiag_ShapeFn) {
+  ShapeInferenceTestOp op("MatrixSetDiag");
 
   // Inputs are input and diagonal.
 
@@ -389,9 +389,11 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
   op.input_tensors[1] = &dim_t;
 
   // Expand at front of tensor.
-  dim_t = test::AsScalar<int32>(0);
-  INFER_OK(op, "?;?", "?");
-  INFER_OK(op, "[5,?,7];?", "[1,d0_0,d0_1,d0_2]");
+  for (int32 idx : {0, -4}) {
+    dim_t = test::AsScalar<int32>(idx);
+    INFER_OK(op, "?;?", "?");
+    INFER_OK(op, "[5,?,7];?", "[1,d0_0,d0_1,d0_2]");
+  }
 
   // Expand at middle of tensor.
   for (int32 idx : {1, -3}) {
@@ -425,6 +427,13 @@ TEST(ArrayOpsTest, ExpandDims_ShapeFn) {
     dim_t = test::AsScalar<int64>(idx);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[5,?,7];?", "[d0_0,d0_1,d0_2,1]");
+  }
+  for (int32 idx : {4, -5}) {
+    // Invalid idx.
+    dim_t = test::AsScalar<int32>(idx);
+    INFER_ERROR("not in the interval [-4, 3]", op, "[5,?,7];?");
+    dim_t = test::AsScalar<int64>(idx);
+    INFER_ERROR("not in the interval [-4, 3]", op, "[5,?,7];?");
   }
 
   // Expand using an input vector tensor.
@@ -934,7 +943,11 @@ TEST(ArrayOpsTest, ExtractImagePatchesShapeTest) {
   // cols are changed to be 2 + (2 - 1) = 3.  7x7 input with 3x3
   // filter and 1x1 stride gives a 5x5 output.
   set_op({1, 2, 2, 1}, {1, 1, 1, 1}, {1, 2, 2, 1}, "VALID");
-  INFER_OK(op, "[1,7,7,2]", "[d0_0,5,5,d0_3]");
+  INFER_OK(op, "[1,7,7,2]", "[d0_0,5,5,8]");
+  // With ksizes as 1x1, the output depth is now exactly the last value of the
+  // input and output spatial is reduced as well.
+  set_op({1, 1, 1, 1}, {1, 1, 1, 1}, {1, 2, 2, 1}, "VALID");
+  INFER_OK(op, "[1,7,7,2]", "[d0_0,7,7,d0_3]");
 
   // Bad ksize rank
   set_op({1, 2, 2, 1, 1}, {1, 1, 1, 1}, {1, 2, 2, 1}, "VALID");
@@ -1121,6 +1134,18 @@ TEST(ArrayOpsTest, Slice_ShapeFn) {
   begin = test::AsTensor<int32>({0, 1, 2, 5});
   sizes = test::AsTensor<int32>({-1, -1, -1, -2});
   INFER_ERROR("cannot be < -1", op, "[2,3,4,5];[4];[4]");
+}
+
+TEST(ArrayOpsTest, StridedSliceGrad_ShapeFn) {
+  ShapeInferenceTestOp op("StridedSliceGrad");
+  op.input_tensors.resize(5);
+  INFER_OK(op, "?;?;?;?;?", "?");
+  INFER_OK(op, "[?];?;?;?;?", "?");
+  INFER_OK(op, "[4];?;?;?;?", "[?,?,?,?]");
+
+  Tensor in_t = test::AsTensor<int32>({1, 2, 3, 4});
+  op.input_tensors[0] = &in_t;
+  INFER_OK(op, "[4];?;?;?;?", "[1,2,3,4]");
 }
 
 }  // end namespace tensorflow

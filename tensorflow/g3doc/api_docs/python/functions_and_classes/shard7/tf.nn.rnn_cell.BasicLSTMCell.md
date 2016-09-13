@@ -11,6 +11,13 @@ use peep-hole connections: it is the basic baseline.
 For advanced models, please use the full LSTMCell that follows.
 - - -
 
+#### `tf.nn.rnn_cell.BasicLSTMCell.__call__(inputs, state, scope=None)` {#BasicLSTMCell.__call__}
+
+Long short-term memory cell (LSTM).
+
+
+- - -
+
 #### `tf.nn.rnn_cell.BasicLSTMCell.__init__(num_units, forget_bias=1.0, input_size=None, state_is_tuple=True, activation=tanh)` {#BasicLSTMCell.__init__}
 
 Initialize the basic LSTM cell.

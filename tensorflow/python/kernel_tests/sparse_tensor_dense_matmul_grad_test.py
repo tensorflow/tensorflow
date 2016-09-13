@@ -47,7 +47,7 @@ class SparseTensorDenseMatMulGradientTest(tf.test.TestCase):
     else:
       return tf.constant(x, dtype=np_dtype)
 
-  def _testGradients(self, adjoint_a, adjoint_b, name, np_dtype, use_gpu=False):
+  def _testGradients(self, adjoint_a, adjoint_b, name, np_dtype):
     n, k, m = np.random.randint(1, 10, size=3)
     sp_t, nnz = self._randomTensor(
         [n, k], np_dtype, adjoint=adjoint_a, sparse=True)
@@ -56,7 +56,7 @@ class SparseTensorDenseMatMulGradientTest(tf.test.TestCase):
     matmul = tf.sparse_tensor_dense_matmul(
         sp_t, dense_t, adjoint_a=adjoint_a, adjoint_b=adjoint_b, name=name)
 
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session(use_gpu=True):
       dense_t_shape = [m, k] if adjoint_b else [k, m]
       sp_t_val_shape = [nnz]
       err = tf.test.compute_gradient_error([dense_t, sp_t.values],
@@ -65,18 +65,17 @@ class SparseTensorDenseMatMulGradientTest(tf.test.TestCase):
       print("%s gradient err = %s" % (name, err))
       self.assertLess(err, 1e-3)
 
-  def _testGradientsType(self, np_dtype, use_gpu=False):
+  def _testGradientsType(self, np_dtype):
     for adjoint_a in [True, False]:
       for adjoint_b in [True, False]:
         name = "sparse_tensor_dense_matmul_%s_%s_%s" % (adjoint_a, adjoint_b,
                                                         np_dtype.__name__)
-        self._testGradients(adjoint_a, adjoint_b, name, np_dtype, use_gpu)
+        self._testGradients(adjoint_a, adjoint_b, name, np_dtype)
 
   def testGradients(self):
     np.random.seed(5)  # Fix seed to avoid flakiness
-    for use_gpu in [True, False]:
-      self._testGradientsType(np.float32, use_gpu)
-      self._testGradientsType(np.float64, use_gpu)
+    self._testGradientsType(np.float32)
+    self._testGradientsType(np.float64)
 
 
 if __name__ == "__main__":

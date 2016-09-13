@@ -213,8 +213,8 @@ class DirichletMultinomial(distribution.Distribution):
     variance = -math_ops.batch_matmul(
         array_ops.expand_dims(normalized_alpha, -1),
         array_ops.expand_dims(normalized_alpha, -2))
-    variance = array_ops.batch_matrix_set_diag(
-        variance, normalized_alpha * (1. - normalized_alpha))
+    variance = array_ops.matrix_set_diag(variance, normalized_alpha *
+                                         (1. - normalized_alpha))
     shared_factor = (self.n * (alpha_sum + self.n) /
                      (alpha_sum + 1) * array_ops.ones_like(self.alpha))
     variance *= array_ops.expand_dims(shared_factor, -1)

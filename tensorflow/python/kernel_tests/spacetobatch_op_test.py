@@ -27,7 +27,7 @@ class SpaceToBatchTest(tf.test.TestCase):
   """Tests input-output pairs for the SpaceToBatch and BatchToSpace ops."""
 
   def _testPad(self, inputs, paddings, block_size, outputs):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       # outputs = space_to_batch(inputs)
       x_tf = tf.space_to_batch(
           tf.to_float(inputs), paddings, block_size=block_size)
@@ -129,7 +129,7 @@ class SpaceToBatchSpaceToDepth(tf.test.TestCase):
         tf.space_to_depth(
             tf.transpose(x, [3, 1, 2, 0]), block_size=block_size),
         [3, 1, 2, 0])
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       self.assertAllEqual(y1.eval(), y2.eval())
 
 
@@ -205,7 +205,7 @@ class SpaceToBatchGradientTest(tf.test.TestCase):
   # Check the gradients.
   def _checkGrad(self, x, paddings, block_size):
     assert 4 == x.ndim
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       tf_x = tf.convert_to_tensor(x)
       tf_y = tf.space_to_batch(tf_x, paddings, block_size)
       epsilon = 1e-5

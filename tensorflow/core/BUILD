@@ -149,6 +149,7 @@ cc_library(
         "lib/core/stringpiece.h",
         "lib/core/threadpool.h",
         "lib/gtl/array_slice.h",
+        "lib/gtl/cleanup.h",
         "lib/gtl/inlined_vector.h",
         "lib/gtl/priority_queue_util.h",
         "lib/hash/crc32c.h",  # TODO(josh11b): make internal
@@ -189,6 +190,7 @@ cc_library(
         "platform/profile_utils/cpu_utils.h",
         "platform/protobuf.h",  # TODO(josh11b): make internal
         "platform/regexp.h",
+        "platform/stacktrace.h",
         "platform/strong_hash.h",
         "platform/thread_annotations.h",
         "platform/types.h",
@@ -287,6 +289,7 @@ tf_cuda_library(
         "util/sparse/sparse_tensor.h",
         "util/stat_summarizer.h",
         "util/stream_executor_util.h",
+        "util/strided_slice_op.h",
         "util/tensor_format.h",
         "util/tensor_slice_reader.h",
         "util/tensor_slice_reader_cache.h",
@@ -1361,6 +1364,7 @@ tf_cc_tests(
         "lib/core/stringpiece_test.cc",
         "lib/core/threadpool_test.cc",
         "lib/gtl/array_slice_test.cc",
+        "lib/gtl/cleanup_test.cc",
         "lib/gtl/edit_distance_test.cc",
         "lib/gtl/inlined_vector_test.cc",
         "lib/gtl/int_type_test.cc",

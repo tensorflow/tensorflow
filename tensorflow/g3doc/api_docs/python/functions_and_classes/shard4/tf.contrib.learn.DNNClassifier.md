@@ -95,6 +95,13 @@ Initializes a DNNClassifier instance.
 
 - - -
 
+#### `tf.contrib.learn.DNNClassifier.__repr__()` {#DNNClassifier.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.DNNClassifier.bias_` {#DNNClassifier.bias_}
 
 

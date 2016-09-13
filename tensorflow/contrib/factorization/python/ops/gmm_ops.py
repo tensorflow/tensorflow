@@ -228,8 +228,7 @@ class GmmAlgorithm(object):
     """
     diff = shard - self._means
     cholesky = tf.cholesky(self._covs + self._min_var)
-    log_det_covs = 2.0 * tf.reduce_sum(tf.log(
-        tf.batch_matrix_diag_part(cholesky)), 1)
+    log_det_covs = 2.0 * tf.reduce_sum(tf.log(tf.matrix_diag_part(cholesky)), 1)
     x_mu_cov = tf.square(
         tf.matrix_triangular_solve(
             cholesky, tf.transpose(

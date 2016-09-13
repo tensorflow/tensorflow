@@ -490,7 +490,7 @@ diagonal: The extracted diagonal.
 )doc");
 
 // --------------------------------------------------------------------------
-REGISTER_OP("BatchMatrixDiag")
+REGISTER_OP("MatrixDiag")
     .Input("diagonal: T")
     .Output("output: T")
     .Attr("T: type")
@@ -526,7 +526,7 @@ For example:
 
 and diagonal.shape = (2, 4)
 
-tf.batch_matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
+tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
                                      [0, 2, 0, 0]
                                      [0, 0, 3, 0]
                                      [0, 0, 0, 4]],
@@ -543,7 +543,7 @@ output: Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
 )doc");
 
 // --------------------------------------------------------------------------
-REGISTER_OP("BatchMatrixSetDiag")
+REGISTER_OP("MatrixSetDiag")
     .Input("input: T")
     .Input("diagonal: T")
     .Output("output: T")
@@ -589,7 +589,7 @@ output: Rank `k+1`, with `output.shape = input.shape`.
 )doc");
 
 // --------------------------------------------------------------------------
-REGISTER_OP("BatchMatrixDiagPart")
+REGISTER_OP("MatrixDiagPart")
     .Input("input: T")
     .Output("diagonal: T")
     .Attr("T: type")
@@ -639,7 +639,7 @@ For example:
 
 and input.shape = (2, 4, 4)
 
-tf.batch_matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
+tf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
 
 which has shape (2, 4)
 ```
@@ -650,7 +650,7 @@ diagonal: The extracted diagonal(s) having shape
 )doc");
 
 // --------------------------------------------------------------------------
-REGISTER_OP("BatchMatrixBandPart")
+REGISTER_OP("MatrixBandPart")
     .Input("input: T")
     .Input("num_lower: int64")
     .Input("num_upper: int64")
@@ -679,12 +679,12 @@ For example:
                  [-2, -1,  0, 1]
                  [-3, -2, -1, 0]],
 
-tf.batch_matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
+tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
                                              [-1,  0,  1, 2]
                                              [ 0, -1,  0, 1]
                                              [ 0,  0, -1, 0]],
 
-tf.batch_matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
+tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
                                             [-1,  0,  1, 0]
                                             [-2, -1,  0, 1]
                                             [ 0, -2, -1, 0]]
@@ -693,9 +693,9 @@ tf.batch_matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
 Useful special cases:
 
 ```prettyprint
- tf.batch_matrix_band_part(input, 0, -1) ==> Upper triangular part.
- tf.batch_matrix_band_part(input, -1, 0) ==> Lower triangular part.
- tf.batch_matrix_band_part(input, 0, 0) ==> Diagonal.
+ tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
+ tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
+ tf.matrix_band_part(input, 0, 0) ==> Diagonal.
 ```
 
 input: Rank `k` tensor.
@@ -1848,6 +1848,12 @@ REGISTER_OP("StridedSliceGrad")
     .Attr("ellipsis_mask: int = 0")
     .Attr("new_axis_mask: int = 0")
     .Attr("shrink_axis_mask: int = 0")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Returns the gradient of `StridedSlice`.
 
@@ -2292,23 +2298,30 @@ REGISTER_OP("ExpandDims")
         return Status::OK();
       }
 
-      int64 which_dim;
+      int64 dim;
       if (dim_t->dtype() == DT_INT32) {
-        which_dim = static_cast<int64>(dim_t->flat<int32>()(0));
+        dim = static_cast<int64>(dim_t->flat<int32>()(0));
       } else {
-        which_dim = dim_t->flat<int64>()(0);
+        dim = dim_t->flat<int64>()(0);
       }
 
-      if (which_dim < 0) {
-        which_dim += c->Rank(input) + 1;
+      const int32 rank = c->Rank(input);
+      const int32 min_dim = -1 * rank - 1;
+      if (dim < min_dim || dim > rank) {
+        return errors::InvalidArgument("dim ", dim, " not in the interval [",
+                                       min_dim, ", ", rank, "].");
+      }
+
+      if (dim < 0) {
+        dim += rank + 1;
       }
 
       ShapeHandle end;
-      TF_RETURN_IF_ERROR(c->Subshape(input, which_dim, &end));
+      TF_RETURN_IF_ERROR(c->Subshape(input, dim, &end));
 
       // Build output as start + 1 + end.
       ShapeHandle output;
-      TF_RETURN_IF_ERROR(c->Subshape(input, 0, which_dim, &output));
+      TF_RETURN_IF_ERROR(c->Subshape(input, 0, dim, &output));
       TF_RETURN_IF_ERROR(c->Concatenate(output, c->Vector(1), &output));
       TF_RETURN_IF_ERROR(c->Concatenate(output, end, &output));
       c->set_output(0, output);
@@ -3124,7 +3137,9 @@ REGISTER_OP("ExtractImagePatches")
       DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
       DimensionHandle in_rows_dim = c->Dim(input_shape, 1);
       DimensionHandle in_cols_dim = c->Dim(input_shape, 2);
-      DimensionHandle output_depth_dim = c->Dim(input_shape, 3);
+      DimensionHandle output_depth_dim;
+      TF_RETURN_IF_ERROR(c->Multiply(
+          c->Dim(input_shape, 3), ksize_rows * ksize_cols, &output_depth_dim));
 
       if (!c->ValueKnown(in_rows_dim) || !c->ValueKnown(in_cols_dim)) {
         ShapeHandle output_shape =
@@ -3532,5 +3547,32 @@ tensor_name: Name of the input tensor.
 debug_urls: List of URLs to debug targets, e.g.,
             file:///foo/tfdbg_dump, grpc:://localhost:11011
 )doc");
+
+// Deprecated op registrations:
+
+// The following can be deleted after 10mar2017.
+REGISTER_OP("BatchMatrixDiag")
+    .Input("diagonal: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Deprecated(14, "Use MatrixDiag");
+REGISTER_OP("BatchMatrixSetDiag")
+    .Input("input: T")
+    .Input("diagonal: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Deprecated(14, "Use MatrixSetDiag");
+REGISTER_OP("BatchMatrixDiagPart")
+    .Input("input: T")
+    .Output("diagonal: T")
+    .Attr("T: type")
+    .Deprecated(14, "Use MatrixDiagPart");
+REGISTER_OP("BatchMatrixBandPart")
+    .Input("input: T")
+    .Input("num_lower: int64")
+    .Input("num_upper: int64")
+    .Output("band: T")
+    .Attr("T: type")
+    .Deprecated(14, "Use MatrixBandPart");
 
 }  // namespace tensorflow

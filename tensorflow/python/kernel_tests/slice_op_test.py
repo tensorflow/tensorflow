@@ -28,7 +28,7 @@ class SliceTest(tf.test.TestCase):
   def testEmpty(self):
     inp = np.random.rand(4, 4).astype("f")
     for k in xrange(4):
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         a = tf.constant(inp, shape=[4, 4], dtype=tf.float32)
         slice_t = a[2, k:k]
         slice_val = slice_t.eval()
@@ -37,7 +37,7 @@ class SliceTest(tf.test.TestCase):
   def testInt32(self):
     inp = np.random.rand(4, 4).astype("i")
     for k in xrange(4):
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         a = tf.constant(inp, shape=[4, 4], dtype=tf.int32)
         slice_t = a[2, k:k]
         slice_val = slice_t.eval()
@@ -45,7 +45,7 @@ class SliceTest(tf.test.TestCase):
 
   def testSelectAll(self):
     for _ in range(10):
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         inp = np.random.rand(4, 4, 4, 4).astype("f")
         a = tf.constant(inp, shape=[4, 4, 4, 4],
                         dtype=tf.float32)
@@ -60,7 +60,7 @@ class SliceTest(tf.test.TestCase):
 
   def testSingleDimension(self):
     for _ in range(10):
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         inp = np.random.rand(10).astype("f")
         a = tf.constant(inp, shape=[10], dtype=tf.float32)
 
@@ -78,7 +78,7 @@ class SliceTest(tf.test.TestCase):
         self.assertAllEqual(slice_val, inp[lo:hi])
 
   def _testSliceMatrixDim0(self, x, begin, size):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       tf_ans = tf.slice(x, [begin, 0], [size, x.shape[1]]).eval()
     np_ans = x[begin:begin+size, :]
     self.assertAllEqual(tf_ans, np_ans)
@@ -93,7 +93,7 @@ class SliceTest(tf.test.TestCase):
 
   def testSingleElementAll(self):
     for _ in range(10):
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         inp = np.random.rand(4, 4).astype("f")
         a = tf.constant(inp, shape=[4, 4], dtype=tf.float32)
 
@@ -103,7 +103,7 @@ class SliceTest(tf.test.TestCase):
       self.assertAllEqual(slice_val, inp[x, 0:y])
 
   def testSimple(self):
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       inp = np.random.rand(4, 4).astype("f")
       a = tf.constant([float(x) for x in inp.ravel(order="C")],
                                shape=[4, 4], dtype=tf.float32)
@@ -116,7 +116,7 @@ class SliceTest(tf.test.TestCase):
     self.assertEqual(slice2_val.shape, slice2_t.get_shape())
 
   def testComplex(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       inp = np.random.rand(4, 10, 10, 4).astype("f")
       a = tf.constant(inp, dtype=tf.float32)
 
@@ -133,7 +133,7 @@ class SliceTest(tf.test.TestCase):
     # Random dims of rank 6
     input_shape = np.random.randint(0, 20, size=6)
     inp = np.random.rand(*input_shape).astype("f")
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       a = tf.constant([float(x) for x in inp.ravel(order="C")],
                                shape=input_shape, dtype=tf.float32)
       indices = [0 if x == 0 else np.random.randint(x) for x in input_shape]
@@ -161,7 +161,7 @@ class SliceTest(tf.test.TestCase):
     self.assertEqual(expected_val.shape, slice2_t.get_shape())
 
   def _testGradientSlice(self, input_shape, slice_begin, slice_size):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       num_inputs = np.prod(input_shape)
       num_grads = np.prod(slice_size)
       inp = np.random.rand(num_inputs).astype("f").reshape(input_shape)
@@ -184,7 +184,7 @@ class SliceTest(tf.test.TestCase):
     self.assertAllClose(np_ans, result)
 
   def _testGradientVariableSize(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       inp = tf.constant([1.0, 2.0, 3.0], name="in")
       out = tf.slice(inp, [1], [-1])
       grad_actual = tf.gradients(out, inp)[0].eval()

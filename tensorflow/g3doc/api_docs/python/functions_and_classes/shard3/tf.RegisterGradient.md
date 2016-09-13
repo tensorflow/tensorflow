@@ -34,3 +34,12 @@ Creates a new decorator with `op_type` as the Operation type.
     `OpDef.name` field for the proto that defines the operation.
 
 
+
+#### Other Methods
+- - -
+
+#### `tf.RegisterGradient.__call__(f)` {#RegisterGradient.__call__}
+
+Registers the function `f` as gradient function for `op_type`.
+
+

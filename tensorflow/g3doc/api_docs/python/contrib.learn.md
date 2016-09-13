@@ -39,6 +39,13 @@ Initializes a BaseEstimator instance.
 
 - - -
 
+#### `tf.contrib.learn.BaseEstimator.__repr__()` {#BaseEstimator.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.BaseEstimator.config` {#BaseEstimator.config}
 
 
@@ -269,7 +276,7 @@ component of a nested object.
 Estimator class is the basic TensorFlow model trainer/evaluator.
 - - -
 
-#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None, params=None)` {#Estimator.__init__}
+#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None, params=None, feature_engineering_fn=None)` {#Estimator.__init__}
 
 Constructs an Estimator instance.
 
@@ -306,11 +313,23 @@ Constructs an Estimator instance.
 *  <b>`config`</b>: Configuration object.
 *  <b>`params`</b>: `dict` of hyper parameters that will be passed into `model_fn`.
           Keys are names of parameters, values are basic python types.
+*  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
+                          targets which are the output of `input_fn` and
+                          returns features and targets which will be fed
+                          into `model_fn`. Please check `model_fn` for
+                          a definition of features and targets.
 
 ##### Raises:
 
 
 *  <b>`ValueError`</b>: parameters of `model_fn` don't match `params`.
+
+
+- - -
+
+#### `tf.contrib.learn.Estimator.__repr__()` {#Estimator.__repr__}
+
+
 
 
 - - -
@@ -647,6 +666,13 @@ Initializes a DNNClassifier instance.
 ##### Returns:
 
   A `DNNClassifier` estimator.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.__repr__()` {#DNNClassifier.__repr__}
+
+
 
 
 - - -
@@ -1031,6 +1057,13 @@ Initializes a `DNNRegressor` instance.
 
 - - -
 
+#### `tf.contrib.learn.DNNRegressor.__repr__()` {#DNNRegressor.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.DNNRegressor.bias_` {#DNNRegressor.bias_}
 
 
@@ -1344,6 +1377,13 @@ Initializes a TensorFlowEstimator instance.
     * 0: the algorithm and debug information is muted.
     * 1: trainer prints the progress.
     * 2: log device placement is printed.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowEstimator.__repr__()` {#TensorFlowEstimator.__repr__}
+
+
 
 
 - - -
@@ -1909,6 +1949,13 @@ Construct a `LinearRegressor` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearRegressor.__repr__()` {#LinearRegressor.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearRegressor.bias_` {#LinearRegressor.bias_}
 
 
@@ -2229,6 +2276,13 @@ Initializes a TensorFlowRNNClassifier instance.
     model will be continuely trained on every call of fit.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the session,
     e.g. num_cores, gpu_memory_fraction, etc.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowRNNClassifier.__repr__()` {#TensorFlowRNNClassifier.__repr__}
+
+
 
 
 - - -
@@ -2612,6 +2666,13 @@ Initializes a TensorFlowRNNRegressor instance.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNRegressor.__repr__()` {#TensorFlowRNNRegressor.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNRegressor.bias_` {#TensorFlowRNNRegressor.bias_}
 
 Returns bias of the rnn layer.
@@ -2939,6 +3000,13 @@ Perform various training, evaluation, and inference actions on a graph.
 - - -
 
 ### `class tf.contrib.learn.NanLossDuringTrainingError` {#NanLossDuringTrainingError}
+
+
+- - -
+
+#### `tf.contrib.learn.NanLossDuringTrainingError.__str__()` {#NanLossDuringTrainingError.__str__}
+
+
 
 
 

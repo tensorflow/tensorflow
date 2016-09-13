@@ -183,13 +183,13 @@ class OperatorPDDiag(OperatorPDDiagBase):
 
   def _batch_matmul(self, x, transpose_x=False):
     if transpose_x:
-      x = array_ops.batch_matrix_transpose(x)
+      x = array_ops.matrix_transpose(x)
     diag_mat = array_ops.expand_dims(self._diag, -1)
     return diag_mat * x
 
   def _batch_sqrt_matmul(self, x, transpose_x=False):
     if transpose_x:
-      x = array_ops.batch_matrix_transpose(x)
+      x = array_ops.matrix_transpose(x)
     diag_mat = array_ops.expand_dims(self._diag, -1)
     return math_ops.sqrt(diag_mat) * x
 
@@ -202,15 +202,15 @@ class OperatorPDDiag(OperatorPDDiagBase):
     return rhs / math_ops.sqrt(diag_mat)
 
   def _to_dense(self):
-    return array_ops.batch_matrix_diag(self._diag)
+    return array_ops.matrix_diag(self._diag)
 
   def _sqrt_to_dense(self):
-    return array_ops.batch_matrix_diag(math_ops.sqrt(self._diag))
+    return array_ops.matrix_diag(math_ops.sqrt(self._diag))
 
   def _add_to_tensor(self, mat):
-    mat_diag = array_ops.batch_matrix_diag_part(mat)
+    mat_diag = array_ops.matrix_diag_part(mat)
     new_diag = self._diag + mat_diag
-    return array_ops.batch_matrix_set_diag(mat, new_diag)
+    return array_ops.matrix_set_diag(mat, new_diag)
 
 
 class OperatorPDSqrtDiag(OperatorPDDiagBase):
@@ -275,13 +275,13 @@ class OperatorPDSqrtDiag(OperatorPDDiagBase):
 
   def _batch_matmul(self, x, transpose_x=False):
     if transpose_x:
-      x = array_ops.batch_matrix_transpose(x)
+      x = array_ops.matrix_transpose(x)
     diag_mat = array_ops.expand_dims(self._diag, -1)
     return math_ops.square(diag_mat) * x
 
   def _batch_sqrt_matmul(self, x, transpose_x=False):
     if transpose_x:
-      x = array_ops.batch_matrix_transpose(x)
+      x = array_ops.matrix_transpose(x)
     diag_mat = array_ops.expand_dims(self._diag, -1)
     return diag_mat * x
 
@@ -294,12 +294,12 @@ class OperatorPDSqrtDiag(OperatorPDDiagBase):
     return rhs / diag_mat
 
   def _to_dense(self):
-    return array_ops.batch_matrix_diag(math_ops.square(self._diag))
+    return array_ops.matrix_diag(math_ops.square(self._diag))
 
   def _sqrt_to_dense(self):
-    return array_ops.batch_matrix_diag(self._diag)
+    return array_ops.matrix_diag(self._diag)
 
   def _add_to_tensor(self, mat):
-    mat_diag = array_ops.batch_matrix_diag_part(mat)
+    mat_diag = array_ops.matrix_diag_part(mat)
     new_diag = math_ops.square(self._diag) + mat_diag
-    return array_ops.batch_matrix_set_diag(mat, new_diag)
+    return array_ops.matrix_set_diag(mat, new_diag)

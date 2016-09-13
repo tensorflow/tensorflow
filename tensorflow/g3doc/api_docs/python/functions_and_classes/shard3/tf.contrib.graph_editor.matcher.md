@@ -1,6 +1,13 @@
 Graph match class.
 - - -
 
+#### `tf.contrib.graph_editor.matcher.__call__(op)` {#matcher.__call__}
+
+Evaluate if the op matches or not.
+
+
+- - -
+
 #### `tf.contrib.graph_editor.matcher.__init__(positive_filter)` {#matcher.__init__}
 
 Graph match constructor.

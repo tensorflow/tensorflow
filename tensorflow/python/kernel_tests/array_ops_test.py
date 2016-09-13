@@ -36,7 +36,7 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
     matrix = [[1, 2, 3], [4, 5, 6]]  # Shape (2, 3)
     expected_transposed = [[1, 4], [2, 5], [3, 6]]  # Shape (3, 2)
     with self.test_session():
-      transposed = tf.batch_matrix_transpose(matrix)
+      transposed = tf.matrix_transpose(matrix)
       self.assertEqual((3, 2), transposed.get_shape())
       self.assertAllEqual(expected_transposed, transposed.eval())
 
@@ -48,7 +48,7 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
     batch_matrix = [matrix_0, matrix_1]  # Shape (2, 2, 3)
     expected_transposed = [matrix_0_t, matrix_1_t]  # Shape (2, 3, 2)
     with self.test_session():
-      transposed = tf.batch_matrix_transpose(batch_matrix)
+      transposed = tf.matrix_transpose(batch_matrix)
       self.assertEqual((2, 3, 2), transposed.get_shape())
       self.assertAllEqual(expected_transposed, transposed.eval())
 
@@ -57,7 +57,7 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
     expected_transposed = [[1, 4], [2, 5], [3, 6]]  # Shape (3, 2)
     with self.test_session():
       matrix_ph = tf.placeholder(tf.int32)
-      transposed = tf.batch_matrix_transpose(matrix_ph)
+      transposed = tf.matrix_transpose(matrix_ph)
       self.assertAllEqual(
           expected_transposed,
           transposed.eval(feed_dict={matrix_ph: matrix}))
@@ -71,7 +71,7 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
     expected_transposed = [matrix_0_t, matrix_1_t]  # Shape (2, 3, 2)
     with self.test_session():
       batch_matrix_ph = tf.placeholder(tf.int32)
-      transposed = tf.batch_matrix_transpose(batch_matrix_ph)
+      transposed = tf.matrix_transpose(batch_matrix_ph)
       self.assertAllEqual(
           expected_transposed,
           transposed.eval(feed_dict={batch_matrix_ph: batch_matrix}))
@@ -80,7 +80,7 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
     vector = [1, 2, 3]
     with self.test_session():
       with self.assertRaisesRegexp(ValueError, "should be a "):
-        tf.batch_matrix_transpose(vector)
+        tf.matrix_transpose(vector)
 
 
 class BooleanMaskTest(test_util.TensorFlowTestCase):

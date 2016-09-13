@@ -43,7 +43,7 @@ dist.pdf(x)
 ```
 
 Trainable (batch) Choesky matrices can be created with
-`tf.contrib.distributions.batch_matrix_diag_transform()`
+`tf.contrib.distributions.matrix_diag_transform()`
 - - -
 
 #### `tf.contrib.distributions.MultivariateNormalCholesky.__init__(mu, chol, validate_args=False, allow_nan_stats=True, name='MultivariateNormalCholesky')` {#MultivariateNormalCholesky.__init__}

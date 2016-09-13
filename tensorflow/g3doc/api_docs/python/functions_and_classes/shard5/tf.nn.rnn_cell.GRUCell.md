@@ -1,6 +1,13 @@
 Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
 - - -
 
+#### `tf.nn.rnn_cell.GRUCell.__call__(inputs, state, scope=None)` {#GRUCell.__call__}
+
+Gated recurrent unit (GRU) with nunits cells.
+
+
+- - -
+
 #### `tf.nn.rnn_cell.GRUCell.__init__(num_units, input_size=None, activation=tanh)` {#GRUCell.__init__}
 
 

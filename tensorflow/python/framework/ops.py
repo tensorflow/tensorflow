@@ -3948,6 +3948,10 @@ class GraphKeys(object):
   SUMMARY_OP = "summary_op"
   GLOBAL_STEP = "global_step"
 
+  # Key for control flow context.
+  COND_CONTEXT = "cond_context"
+  WHILE_CONTEXT = "while_context"
+
 
 def add_to_collection(name, value):
   """Wrapper for `Graph.add_to_collection()` using the default graph.
