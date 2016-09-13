@@ -97,6 +97,49 @@ def _GetSelfAdjointEigTest(dtype_, shape_):
   return Test
 
 
+class SelfAdjointEigGradTest(tf.test.TestCase):
+  pass  # Filled in below
+
+
+def _GetSelfAdjointEigGradTest(dtype_, shape_):
+
+  def Test(self):
+    np.random.seed(1)
+    n = shape_[-1]
+    batch_shape = shape_[:-2]
+    a = np.random.uniform(
+        low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(dtype_)
+    a += a.T
+    a = np.tile(a, batch_shape + (1, 1))
+    # Optimal stepsize for central difference is O(epsilon^{1/3}).
+    epsilon = np.finfo(dtype_).eps
+    delta = 0.1 * epsilon**(1.0 / 3.0)
+    # tolerance obtained by looking at actual differences using
+    # np.linalg.norm(theoretical-numerical, np.inf) on -mavx build
+    if dtype_ == np.float32:
+      tol = 1e-2
+    else:
+      tol = 1e-7
+    with self.test_session():
+      tf_a = tf.constant(a)
+      tf_e, tf_v = tf.self_adjoint_eig(tf_a)
+      for b in tf_e, tf_v:
+        x_init = np.random.uniform(
+            low=-1.0, high=1.0, size=n * n).reshape([n, n]).astype(dtype_)
+        x_init += x_init.T
+        x_init = np.tile(x_init, batch_shape + (1, 1))
+        theoretical, numerical = tf.test.compute_gradient(
+            tf_a,
+            tf_a.get_shape().as_list(),
+            b,
+            b.get_shape().as_list(),
+            x_init_value=x_init,
+            delta=delta)
+        self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+
+  return Test
+
+
 if __name__ == '__main__':
   for dtype in np.float32, np.float64:
     for size in 1, 2, 5, 10:
@@ -105,4 +148,6 @@ if __name__ == '__main__':
         name = '%s_%s' % (dtype.__name__, '_'.join(map(str, shape)))
         setattr(SelfAdjointEigTest, 'testSelfAdjointEig_' + name,
                 _GetSelfAdjointEigTest(dtype, shape))
+        setattr(SelfAdjointEigGradTest, 'testSelfAdjointEigGrad_' + name,
+                _GetSelfAdjointEigGradTest(dtype, shape))
   tf.test.main()
