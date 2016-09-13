@@ -851,10 +851,6 @@ class BaseEstimator(
       logging.info('Reached end of inputs for predict_iter.')
 
 
-def _identity_feature_engineering_fn(features, targets):
-  return features, targets
-
-
 class Estimator(BaseEstimator):
   """Estimator class is the basic TensorFlow model trainer/evaluator.
   """
@@ -863,8 +859,7 @@ class Estimator(BaseEstimator):
                model_fn=None,
                model_dir=None,
                config=None,
-               params=None,
-               feature_engineering_fn=None):
+               params=None):
     """Constructs an Estimator instance.
 
     Args:
@@ -897,11 +892,6 @@ class Estimator(BaseEstimator):
       config: Configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
-      feature_engineering_fn: Feature engineering function. Takes features and
-                              targets which are the output of `input_fn` and
-                              returns features and targets which will be fed
-                              into `model_fn`. Please check `model_fn` for
-                              a definition of features and targets.
 
     Raises:
       ValueError: parameters of `model_fn` don't match `params`.
@@ -920,12 +910,9 @@ class Estimator(BaseEstimator):
                         model_fn)
     self._model_fn = model_fn
     self.params = params
-    self._feature_engineering_fn = (
-        feature_engineering_fn or _identity_feature_engineering_fn)
 
   def _call_model_fn(self, features, targets, mode):
     """Calls model function with support of 2, 3 or 4 arguments."""
-    features, targets = self._feature_engineering_fn(features, targets)
     model_fn_args = _get_arguments(self._model_fn)
     if 'mode' in model_fn_args:
       if 'params' in model_fn_args:
