@@ -518,7 +518,7 @@ class ObservedStochasticTensor(StochasticTensor):
     self._dist_cls = dist_cls
     self._dist_args = dist_args
     with ops.name_scope(name, "ObservedStochasticTensor",
-                        dist_args.values() + [value]) as scope:
+                        list(dist_args.values()) + [value]) as scope:
       self._name = scope
       self._dist = dist_cls(**dist_args)
       dist_shape = self._dist.get_batch_shape().concatenate(
