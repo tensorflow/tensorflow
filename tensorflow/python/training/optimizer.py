@@ -385,7 +385,7 @@ class Optimizer(object):
   def _valid_dtypes(self):
     """Valid types for loss, variables and gradients.
 
-    Subclasses should override to allow other types.
+    Subclasses should override to allow other float types.
 
     Returns:
       Valid types for loss, variables and gradients.
