@@ -12,8 +12,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     print("tf_repo_name was specified to tf_workspace but is no longer used and will be removed in the future.")
   # These lines need to be changed when updating Eigen. They are parsed from
   # this file by the cmake and make builds to determine the eigen version and hash.
-  eigen_version = "a237164a1f91"
-  eigen_sha256 = "db645b02ce5777a539797b52a18453ca557bbe456f5f28a6416897c4aadcf578"
+  eigen_version = "6d4cd6e5cdd9"
+  eigen_sha256 = "c8df78734ba9b402b94586be5eda78ee75e0244a99e8ae4183785710c44eb93f"
 
   native.new_http_archive(
     name = "eigen_archive",
