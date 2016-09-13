@@ -56,7 +56,9 @@ py_test(
         ":debug_utils",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:variables",
     ],
 )
 
