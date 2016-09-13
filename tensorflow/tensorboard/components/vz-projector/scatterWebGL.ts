@@ -79,10 +79,8 @@ export abstract class ScatterWebGL implements Scatter {
   protected renderer: THREE.WebGLRenderer;
   protected cameraControls: any;
 
-  // Data structures (and THREE.js objects) associated with points.
-  protected geometry: THREE.BufferGeometry;
-  protected materialOptions: THREE.ShaderMaterialParameters;
   protected dataSet: DataSet;
+
   /** Holds the indexes of the points to be labeled. */
   protected labeledPoints: number[] = [];
   protected highlightedPoints: number[] = [];
@@ -378,8 +376,7 @@ export abstract class ScatterWebGL implements Scatter {
       cancelAnimationFrame(this.lazySusanAnimation);
     }
 
-    // A quick check to make sure data has come in.
-    if (!this.geometry) {
+    if (!this.dataSet) {
       return;
     }
     this.isDragSequence = this.mouseIsDown;
@@ -605,10 +602,6 @@ export abstract class ScatterWebGL implements Scatter {
     this.removeAll();
     this.dataSet = dataSet;
     this.onDataSet(spriteImage);
-    if (this.geometry) {
-      this.geometry.dispose();
-    }
-    this.geometry = null;
     this.labeledPoints = [];
     this.highlightedPoints = [];
   }
@@ -642,9 +635,7 @@ export abstract class ScatterWebGL implements Scatter {
   setColorAccessor(colorAccessor: (index: number) => string) {
     this.colorAccessor = colorAccessor;
     this.onSetColorAccessor();
-    if (this.geometry) {
-      this.render();
-    }
+    this.render();
   }
 
   setXAccessor(xAccessor: (index: number) => number) {

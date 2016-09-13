@@ -147,7 +147,8 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
   private labelCanvasIsCleared = true;
   private image: HTMLImageElement;
 
-  /** The buffer attribute that holds the positions of the points. */
+  private geometry: THREE.BufferGeometry;
+  private materialParams: THREE.ShaderMaterialParameters;
   private positionBuffer: THREE.BufferAttribute;
 
   private defaultPointColor = POINT_COLOR;
@@ -206,7 +207,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
       isImage: {type: 'bool', value: !!this.image},
       pointSize: {type: 'f', value: pointSize}
     };
-    this.materialOptions = {
+    this.materialParams = {
       uniforms: uniforms,
       vertexShader: VERTEX_SHADER,
       fragmentShader: FRAGMENT_SHADER,
@@ -219,7 +220,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
       blending: (this.image ? THREE.NormalBlending : this.blending),
     };
     // Give it some material.
-    let material = new THREE.ShaderMaterial(this.materialOptions);
+    let material = new THREE.ShaderMaterial(this.materialParams);
 
     // And finally initialize it and add it to the scene.
     this.points = new THREE.Points(this.geometry, material);
@@ -549,6 +550,9 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
   }
 
   private colorSprites(highlightStroke: ((index: number) => string)) {
+    if (!this.geometry) {
+      return;
+    }
     // Update attributes to change colors
     let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     let highlights =
@@ -662,6 +666,10 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
 
   protected onDataSet(spriteImage: HTMLImageElement) {
     this.points = null;
+    if (this.geometry) {
+      this.geometry.dispose();
+    }
+    this.geometry = null;
     this.calibratePointSize();
 
     let positions =
@@ -748,10 +756,13 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
   }
 
   protected onPickingRender() {
+    if (!this.geometry) {
+      return;
+    }
     let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     // Make shallow copy of the shader options and modify the necessary values.
     let offscreenOptions =
-        Object.create(this.materialOptions) as THREE.ShaderMaterialParameters;
+        Object.create(this.materialParams) as THREE.ShaderMaterialParameters;
     // Since THREE.js errors if we remove the fog, the workaround is to set the
     // near value to very far, so no points have fog.
     this.fog.near = 1000;
@@ -767,6 +778,9 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
   }
 
   protected onRender() {
+    if (!this.geometry) {
+      return;
+    }
     this.makeLabels();
     let shaderMaterial = this.points.material as THREE.ShaderMaterial;
     let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
@@ -777,6 +791,6 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
       this.setFogDistances();
     }
 
-    shaderMaterial.setValues(this.materialOptions);
+    shaderMaterial.setValues(this.materialParams);
   }
 }
