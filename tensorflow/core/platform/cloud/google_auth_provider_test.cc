@@ -185,7 +185,7 @@ TEST(GoogleAuthProvider, NothingAvailable) {
       "Uri: http://metadata/computeMetadata/v1/instance/service-accounts"
       "/default/token\n"
       "Header Metadata-Flavor: Google\n",
-      "", errors::NotFound("404"))});
+      "", errors::NotFound("404"), 404)});
 
   FakeEnv env;
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
