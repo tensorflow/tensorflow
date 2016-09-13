@@ -314,6 +314,22 @@ If no resource containers are provided, all containers are reset.
 
 
 
+#### Other Methods
+- - -
+
+#### `tf.Session.__enter__()` {#Session.__enter__}
+
+
+
+
+- - -
+
+#### `tf.Session.__exit__(exec_type, exec_value, exec_tb)` {#Session.__exit__}
+
+
+
+
+
 - - -
 
 ### `class tf.InteractiveSession` {#InteractiveSession}
@@ -459,6 +475,13 @@ Creates a new `OpError` indicating that a particular op failed.
 *  <b>`op`</b>: The `ops.Operation` that failed, if known; otherwise None.
 *  <b>`message`</b>: The message string describing the failure.
 *  <b>`error_code`</b>: The `error_codes_pb2.Code` describing the error.
+
+
+- - -
+
+#### `tf.OpError.__str__()` {#OpError.__str__}
+
+
 
 
 - - -

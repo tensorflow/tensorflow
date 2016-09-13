@@ -10,6 +10,13 @@ weight and bias matrixes should be compatible as long as the variabel scope
 matches.
 - - -
 
+#### `tf.contrib.rnn.LSTMBlockCell.__call__(x, states_prev, scope=None)` {#LSTMBlockCell.__call__}
+
+Long short-term memory cell (LSTM).
+
+
+- - -
+
 #### `tf.contrib.rnn.LSTMBlockCell.__init__(num_units, forget_bias=1.0, use_peephole=False)` {#LSTMBlockCell.__init__}
 
 Initialize the basic LSTM cell.
