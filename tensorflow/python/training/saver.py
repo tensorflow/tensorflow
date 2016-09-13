@@ -619,7 +619,17 @@ class BaseSaverBuilder(object):
         restore_op = self._AddRestoreOps(filename_tensor, saveables,
                                          restore_sequentially, reshape)
 
-    assert restore_op.name.endswith("restore_all"), restore_op.name
+    # In the following use case, it's possible to have restore_ops be called
+    # something else:
+    # - Build inference graph and export a meta_graph.
+    # - Import the inference meta_graph
+    # - Extend the inference graph to a train graph.
+    # - Export a new meta_graph.
+    # Now the second restore_op will be called "restore_all_1".
+    # As such, comment out the assert for now until we know whether supporting
+    # such usage model makes sense.
+    #
+    # assert restore_op.name.endswith("restore_all"), restore_op.name
 
     return saver_pb2.SaverDef(
         filename_tensor_name=filename_tensor.name,

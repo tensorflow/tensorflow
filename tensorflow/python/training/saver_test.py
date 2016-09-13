@@ -22,6 +22,7 @@ import math
 import os.path
 import time
 import contextlib
+import random
 import shutil
 import tempfile
 
@@ -37,6 +38,7 @@ from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.ops import gen_data_flow_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.util import compat
@@ -1211,7 +1213,13 @@ class MetaGraphTest(tf.test.TestCase):
     filename = os.path.join(test_dir, "metafile")
     with self.test_session():
       # Creates a graph.
-      v0 = tf.Variable(10.0, name="v0")
+      v0 = tf.Variable(1.0, name="v0")
+      control_flow_ops.cond(tf.less(v0, 10),
+                            lambda: tf.add(v0, 1),
+                            lambda: tf.sub(v0, 1))
+      control_flow_ops.while_loop(lambda i: tf.less(i, 10),
+                                  lambda i: tf.add(i, 1),
+                                  [v0])
       var = tf.Variable(tf.constant(0, dtype=tf.int64))
       count_up_to = var.count_up_to(3)
       input_queue = tf.FIFOQueue(30, tf.float32, shared_name="collection_queue")
@@ -1240,7 +1248,7 @@ class MetaGraphTest(tf.test.TestCase):
       self.assertTrue(meta_graph_def.HasField("saver_def"))
       self.assertTrue(meta_graph_def.HasField("graph_def"))
       collection_def = meta_graph_def.collection_def
-      self.assertEqual(len(collection_def), 10)
+      self.assertEqual(len(collection_def), 12)
 
     with tf.Graph().as_default():
       # Restores from MetaGraphDef.
@@ -1418,7 +1426,13 @@ class MetaGraphTest(tf.test.TestCase):
           tf.truncated_normal([28, 128],
                               stddev=1.0 / math.sqrt(float(28))),
           name="weights")
-      biases = tf.Variable(tf.zeros([128]),
+      # The use of control_flow_ops.cond here is purely for adding test coverage
+      # the save and restore of control flow context (which doesn't make any
+      # sense here from a machine learning perspective).  The typical biases is
+      # a simple Variable without the conditions.
+      biases = tf.Variable(control_flow_ops.cond(tf.less(random.random(), 0.5),
+                                                 lambda: tf.ones([128]),
+                                                 lambda: tf.zeros([128])),
                            name="biases")
       hidden1 = tf.nn.relu(tf.matmul(images, weights) + biases)
     # Hidden 2
@@ -1427,8 +1441,19 @@ class MetaGraphTest(tf.test.TestCase):
           tf.truncated_normal([128, 32],
                               stddev=1.0 / math.sqrt(float(128))),
           name="weights")
-      biases = tf.Variable(tf.zeros([32]),
-                           name="biases")
+
+      # The use of control_flow_ops.while_loop here is purely for adding test
+      # coverage the save and restore of control flow context (which doesn't
+      # make any sense here from a machine learning perspective).  The typical
+      # biases is a simple Variable without the conditions.
+      def loop_cond(it, _):
+        return it < 2
+      def loop_body(it, biases):
+        biases += tf.constant(0.1, shape=[32])
+        return it + 1, biases
+      _, biases = control_flow_ops.while_loop(
+          loop_cond, loop_body,
+          [tf.constant(0), tf.Variable(tf.zeros([32]))])
       hidden2 = tf.nn.relu(tf.matmul(hidden1, weights) + biases)
     # Linear
     with tf.name_scope("softmax_linear"):
@@ -1456,6 +1481,7 @@ class MetaGraphTest(tf.test.TestCase):
   def _testGraphExtensionRestore(self):
     test_dir = os.path.join(self.get_temp_dir(), "graph_extension")
     filename = os.path.join(test_dir, "metafile")
+    train_filename = os.path.join(test_dir, "train_metafile")
     saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
     with self.test_session(graph=tf.Graph()) as sess:
       # Restores from MetaGraphDef.
@@ -1484,11 +1510,30 @@ class MetaGraphTest(tf.test.TestCase):
 
       # Runs train_op.
       train_op = optimizer.minimize(loss)
+      tf.add_to_collection("train_op", train_op)
+
+      # Runs train_op.
+      sess.run(train_op)
+
+      # Generates MetaGraphDef.
+      tf.train.export_meta_graph(train_filename)
+
+  def _testRestoreFromTrainGraphWithControlContext(self):
+    test_dir = os.path.join(self.get_temp_dir(), "graph_extension")
+    train_filename = os.path.join(test_dir, "train_metafile")
+    saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
+    with self.test_session(graph=tf.Graph()) as sess:
+      # Restores from MetaGraphDef.
+      new_saver = tf.train.import_meta_graph(train_filename)
+      # Restores from checkpoint.
+      new_saver.restore(sess, saver0_ckpt)
+      train_op = tf.get_collection("train_op")[0]
       sess.run(train_op)
 
   def testGraphExtension(self):
     self._testGraphExtensionSave()
     self._testGraphExtensionRestore()
+    self._testRestoreFromTrainGraphWithControlContext()
 
   def testStrippedOpListDef(self):
     with self.test_session():
