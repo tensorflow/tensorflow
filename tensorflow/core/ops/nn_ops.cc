@@ -1262,7 +1262,7 @@ backprops: The gradients:
 REGISTER_OP("Elu")
     .Input("features: T")
     .Output("activations: T")
-    .Attr("T: {float, double}")
+    .Attr("T: realnumbertype")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Computes exponential linear: `exp(features) - 1` if < 0, `features` otherwise.
@@ -1275,7 +1275,7 @@ REGISTER_OP("EluGrad")
     .Input("gradients: T")
     .Input("outputs: T")
     .Output("backprops: T")
-    .Attr("T: {float, double}")
+    .Attr("T: realnumbertype")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 Computes gradients for the exponential linear (Elu) operation.

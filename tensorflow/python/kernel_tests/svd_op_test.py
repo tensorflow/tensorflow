@@ -77,7 +77,7 @@ def _GetSvdOpTest(dtype_, shape_):
     batch_shape = a.shape[:-2]
     m = a.shape[-2]
     n = a.shape[-1]
-    diag_s = tf.cast(tf.batch_matrix_diag(s), dtype=dtype_)
+    diag_s = tf.cast(tf.matrix_diag(s), dtype=dtype_)
     if full_matrices:
       if m > n:
         zeros = tf.zeros(batch_shape + (m - n, n), dtype=dtype_)
@@ -92,7 +92,7 @@ def _GetSvdOpTest(dtype_, shape_):
   def CheckUnitary(self, x):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
     xx = tf.batch_matmul(x, x, adj_x=True)
-    identity = tf.batch_matrix_band_part(tf.ones_like(xx), 0, 0)
+    identity = tf.matrix_band_part(tf.ones_like(xx), 0, 0)
     if is_single:
       tol = 1e-5
     else:

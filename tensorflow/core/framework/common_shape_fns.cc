@@ -699,10 +699,13 @@ Status ReductionShapeForReduceJoin(InferenceContext* c) {
   bool reduce_all = (reduction_indices_t->NumElements() == 0);
   for (int i = 0; i < input_rank; ++i) {
     if (reduce_all || true_indices.count(i) > 0) {
-      if (c->Value(c->Dim(input, i)) == 0) {
-        return errors::InvalidArgument("Cannot reduce dimension ", i,
-                                       " with size 0");
+      if (true_indices.count(i) > 0) {
+        if (c->Value(c->Dim(input, i)) == 0) {
+          return errors::InvalidArgument("Cannot reduce dimension ", i,
+                                         " with size 0");
+        }
       }
+
       if (keep_dims) {
         dims.emplace_back(c->MakeDim(1));
       }

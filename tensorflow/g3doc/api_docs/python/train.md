@@ -2921,6 +2921,20 @@ addresses.
 #### Other Methods
 - - -
 
+#### `tf.train.ClusterSpec.__bool__()` {#ClusterSpec.__bool__}
+
+
+
+
+- - -
+
+#### `tf.train.ClusterSpec.__eq__(other)` {#ClusterSpec.__eq__}
+
+
+
+
+- - -
+
 #### `tf.train.ClusterSpec.__init__(cluster)` {#ClusterSpec.__init__}
 
 Creates a `ClusterSpec`.
@@ -2938,6 +2952,20 @@ Creates a `ClusterSpec`.
 
 *  <b>`TypeError`</b>: If `cluster` is not a dictionary mapping strings to lists
     of strings, and not a `tf.train.ClusterDef` protobuf.
+
+
+- - -
+
+#### `tf.train.ClusterSpec.__ne__(other)` {#ClusterSpec.__ne__}
+
+
+
+
+- - -
+
+#### `tf.train.ClusterSpec.__nonzero__()` {#ClusterSpec.__nonzero__}
+
+
 
 
 - - -
@@ -3669,6 +3697,13 @@ Create a LooperThread.
 
 
 *  <b>`ValueError`</b>: If one of the arguments is invalid.
+
+
+- - -
+
+#### `tf.train.LooperThread.__repr__()` {#LooperThread.__repr__}
+
+
 
 
 - - -

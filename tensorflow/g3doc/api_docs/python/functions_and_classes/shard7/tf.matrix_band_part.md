@@ -1,4 +1,4 @@
-### `tf.batch_matrix_band_part(input, num_lower, num_upper, name=None)` {#batch_matrix_band_part}
+### `tf.matrix_band_part(input, num_lower, num_upper, name=None)` {#matrix_band_part}
 
 Copy a tensor setting everything outside a central band in each innermost matrix
 
@@ -22,12 +22,12 @@ For example:
                  [-2, -1,  0, 1]
                  [-3, -2, -1, 0]],
 
-tf.batch_matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
+tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
                                              [-1,  0,  1, 2]
                                              [ 0, -1,  0, 1]
                                              [ 0,  0, -1, 0]],
 
-tf.batch_matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
+tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
                                             [-1,  0,  1, 0]
                                             [-2, -1,  0, 1]
                                             [ 0, -2, -1, 0]]
@@ -36,9 +36,9 @@ tf.batch_matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
 Useful special cases:
 
 ```prettyprint
- tf.batch_matrix_band_part(input, 0, -1) ==> Upper triangular part.
- tf.batch_matrix_band_part(input, -1, 0) ==> Lower triangular part.
- tf.batch_matrix_band_part(input, 0, 0) ==> Diagonal.
+ tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
+ tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
+ tf.matrix_band_part(input, 0, 0) ==> Diagonal.
 ```
 
 ##### Args:

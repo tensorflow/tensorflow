@@ -75,6 +75,7 @@ import collections
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.core.protobuf import control_flow_pb2
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1333,13 +1334,35 @@ class ControlFlowContext(object):
       Pushed and popped by ctxt.Enter() and ctxt.Exit()
   """
 
-  def __init__(self):
+  def __init__(self, values_def=None):
     self._outer_context = ops.get_default_graph()._get_control_flow_context()
     self._context_stack = []
-    # Values that have been already seen in this context.
-    self._values = set()
-    # Values referenced by but external to this context.
+    if values_def:
+      self._init_values_from_proto(values_def)
+    else:
+      # Values that have been already seen in this context.
+      self._values = set()
+      # Values referenced by but external to this context.
+      self._external_values = {}
+
+  def _init_values_from_proto(self, values_def):
+    """Initializes values and external_values from `ValuesDef` protocol buffer.
+
+    Args:
+      values_def: `ValuesDef` protocol buffer.
+    """
+    assert isinstance(values_def, control_flow_pb2.ValuesDef)
+    self._values = set(values_def.values)
+    g = ops.get_default_graph()
     self._external_values = {}
+    for k, v in values_def.external_values.items():
+      self._external_values[k] = g.as_graph_element(v)
+    op_names = set([op.split(":")[0]
+                    for op in self._values - set(self._external_values)])
+    for op in op_names:
+      # pylint: disable=protected-access
+      g.as_graph_element(op)._set_control_flow_context(self)
+      # pylint: enable=protected-access
 
   @property
   def outer_context(self):
@@ -1353,6 +1376,23 @@ class ControlFlowContext(object):
   @property
   def back_prop(self):
     raise NotImplementedError("Abstract method")
+
+  def _to_proto(self):
+    """Converts the values to a `ValuesDef` protocol buffer.
+
+    Returns:
+      A `ValuesDef` protocol buffer.
+    """
+    values_def = control_flow_pb2.ValuesDef()
+    values_def.values.extend([v for v in sorted(self._values)])
+    for k, v in self._external_values.items():
+      values_def.external_values[k] = v.name
+    return values_def
+
+  @staticmethod
+  def _from_proto(values_def):
+    """Returns a `ControlFlowContext` created from `values_def`."""
+    return ControlFlowContext(values_def=values_def)
 
   def AddName(self, name):
     self._values.add(name)
@@ -1428,15 +1468,41 @@ class ControlFlowContext(object):
 class CondContext(ControlFlowContext):
   """The context for the conditional construct."""
 
-  def __init__(self, pred, pivot, branch):
-    ControlFlowContext.__init__(self)
-    self._pred = pred         # The boolean tensor for the cond predicate
-    self._pivot = pivot       # The predicate tensor in this branch
-    self._branch = branch     # 0 or 1 representing this branch
+  def __init__(self, pred=None, pivot=None, branch=None,
+               name="cond_text", context_def=None):
+    self._name = ops.get_default_graph().unique_name(name)
 
-    # Values considered to have been already seen in this context.
-    self._values.add(pred.name)
-    self._values.add(pivot.name)
+    if context_def:
+      self._init_from_proto(context_def)
+    else:
+      # Initializes the default fields.
+      ControlFlowContext.__init__(self)
+      self._pred = pred         # The boolean tensor for the cond predicate
+      self._pivot = pivot       # The predicate tensor in this branch
+      self._branch = branch     # 0 or 1 representing this branch
+
+      # Values considered to have been already seen in this context.
+      self._values.add(pred.name)
+      self._values.add(pivot.name)
+
+  def _init_from_proto(self, context_def):
+    """Creates a new `CondContext` from protocol buffer.
+
+    Args:
+      context_def: `CondContextDef` protocol buffer.
+    """
+    assert isinstance(context_def, control_flow_pb2.CondContextDef)
+    # Create from context_def.
+    g = ops.get_default_graph()
+    self._name = context_def.context_name
+    self._pred = g.as_graph_element(context_def.pred_name)
+    self._pivot = g.as_graph_element(context_def.pivot_name)
+    self._branch = context_def.branch
+    super(CondContext, self).__init__(values_def=context_def.values_def)
+
+  @property
+  def name(self):
+    return self._name
 
   @property
   def pred(self):
@@ -1464,6 +1530,26 @@ class CondContext(ControlFlowContext):
 
   def GetControlPivot(self):
     return self._pivot
+
+  def to_proto(self):
+    """Converts a `CondContext` to a `CondContextDef` protocol buffer.
+
+    Returns:
+      A `CondContextDef` protocol buffer.
+    """
+    context_def = control_flow_pb2.CondContextDef()
+    context_def.context_name = self.name
+    context_def.pred_name = self._pred.name
+    context_def.pivot_name = self._pivot.name
+    context_def.branch = self._branch
+    context_def.values_def.MergeFrom(super(CondContext, self)._to_proto())
+
+    return context_def
+
+  @staticmethod
+  def from_proto(context_def):
+    """Returns a `CondContext` object created from `context_def`."""
+    return CondContext(context_def=context_def)
 
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
@@ -1650,6 +1736,11 @@ def cond(pred, fn1, fn2, name=None):
                          "%s, %s" % (val_x.dtype.name, val_y.dtype.name))
     merges = [merge([x[0], x[1]])[0] for x in zip(res_f, res_t)]
     merges = _convert_flows_to_tensorarrays(orig_res, merges)
+
+    # Add to collections
+    ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_t)
+    ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_f)
+
     return merges[0] if len(merges) == 1 else merges
 
 
@@ -1659,9 +1750,30 @@ def cond(pred, fn1, fn2, name=None):
 class WhileContext(ControlFlowContext):
   """The context for the loop construct."""
 
-  def __init__(self, parallel_iterations, back_prop, swap_memory, name,
-               grad_state=None):
-    ControlFlowContext.__init__(self)
+  def __init__(self, parallel_iterations=10, back_prop=True, swap_memory=False,
+               name="while_context", grad_state=None, context_def=None):
+    if context_def:
+      self._init_from_proto(context_def)
+    else:
+      ControlFlowContext.__init__(self)
+      self._init_from_args(parallel_iterations, back_prop, swap_memory,
+                           name)
+    # The gradient loop state.
+    self._grad_state = grad_state
+
+  def _init_from_args(self, parallel_iterations, back_prop, swap_memory,
+                      name):
+    """Creates a new `WhileContext` from arguments.
+
+    Args:
+      parallel_iterations: The number of iterations allowed to run in parallel.
+      back_prop: Whether backprop is enabled for this while loop.
+      swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
+      name: Optional name prefix for the returned tensors.
+
+    Raises:
+      ValueError: If `parallel_iterations` has invalid value.
+    """
     if not isinstance(parallel_iterations, int) or (parallel_iterations <= 0):
       raise ValueError("`parallel_iterations` must be a positive integer: "
                        "%s" % parallel_iterations)
@@ -1678,8 +1790,30 @@ class WhileContext(ControlFlowContext):
     self._pivot = None
     # The list of exit tensors for loop variables.
     self._loop_exits = None
-    # The gradient loop state.
-    self._grad_state = grad_state
+
+  def _init_from_proto(self, context_def):
+    """Creates a new `WhileContext` from protocol buffer.
+
+    Args:
+      context_def: `WhileContextDef` protocol buffer.
+    """
+    assert isinstance(context_def, control_flow_pb2.WhileContextDef)
+    # Create from context_def.
+    g = ops.get_default_graph()
+    self._name = context_def.context_name
+    self._parallel_iterations = context_def.parallel_iterations
+    self._back_prop = context_def.back_prop
+    self._swap_memory = context_def.swap_memory
+    self._pivot_for_pred = g.as_graph_element(context_def.pivot_for_pred_name)
+    # We use this node to control constants created by the body lambda.
+    self._pivot_for_body = g.as_graph_element(context_def.pivot_for_body_name)
+    # The boolean tensor for loop termination condition. Used in code
+    # generation for gradient computation.
+    self._pivot = g.as_graph_element(context_def.pivot_name)
+    # The list of exit tensors for loop variables.
+    self._loop_exits = [g.as_graph_element(exit_name)
+                        for exit_name in context_def.loop_exit_names]
+    super(WhileContext, self).__init__(values_def=context_def.values_def)
 
   @property
   def name(self):
@@ -1714,6 +1848,31 @@ class WhileContext(ControlFlowContext):
   def grad_state(self):
     """The gradient loop state."""
     return self._grad_state
+
+  def to_proto(self):
+    """Converts a `WhileContext` to a `WhileContextDef` protocol buffer.
+
+    Returns:
+      A `WhileContextDef` protocol buffer.
+    """
+    context_def = control_flow_pb2.WhileContextDef()
+    context_def.context_name = self.name
+    context_def.parallel_iterations = self._parallel_iterations
+    context_def.back_prop = self._back_prop
+    context_def.swap_memory = self._swap_memory
+    context_def.pivot_for_pred_name = self._pivot_for_pred.name
+    context_def.pivot_for_body_name = self._pivot_for_body.name
+    context_def.pivot_name = self._pivot.name
+    if self._loop_exits:
+      context_def.loop_exit_names.extend([l.name for l in self._loop_exits])
+    context_def.values_def.MergeFrom(super(WhileContext, self)._to_proto())
+
+    return context_def
+
+  @staticmethod
+  def from_proto(context_def):
+    """Returns a `WhileContext` object created from `context_def`."""
+    return WhileContext(context_def=context_def)
 
   def GetWhileContext(self):
     return self
@@ -2357,6 +2516,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
       nest.assert_same_structure(loop_vars, shape_invariants)
 
     context = WhileContext(parallel_iterations, back_prop, swap_memory, name)
+    ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, context)
     result = context.BuildLoop(cond, body, loop_vars, shape_invariants)
     return result
 
@@ -2792,3 +2952,14 @@ ops.RegisterShape("RefMerge")(_MergeShape)
 ops.RegisterShape("RefSelect")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("RefSwitch")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Switch")(common_shapes.call_cpp_shape_fn)
+
+
+ops.register_proto_function(ops.GraphKeys.COND_CONTEXT,
+                            proto_type=control_flow_pb2.CondContextDef,
+                            to_proto=CondContext.to_proto,
+                            from_proto=CondContext.from_proto)
+
+ops.register_proto_function(ops.GraphKeys.WHILE_CONTEXT,
+                            proto_type=control_flow_pb2.WhileContextDef,
+                            to_proto=WhileContext.to_proto,
+                            from_proto=WhileContext.from_proto)

@@ -70,8 +70,8 @@ void AddAssetsTensorsToInputs(const StringPiece export_dir,
     return;
   }
   for (auto& asset : asset_files) {
-    Tensor assets_file_tensor = CreateStringTensor(io::JoinPath(
-        io::JoinPath(export_dir, kAssetsDirectory), asset.filename()));
+    Tensor assets_file_tensor = CreateStringTensor(
+        io::JoinPath(export_dir, kAssetsDirectory, asset.filename()));
     inputs->push_back(
         {asset.tensor_binding().tensor_name(), assets_file_tensor});
     }

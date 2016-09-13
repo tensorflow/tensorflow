@@ -1,6 +1,13 @@
 RNN cell composed sequentially of multiple simple cells.
 - - -
 
+#### `tf.nn.rnn_cell.MultiRNNCell.__call__(inputs, state, scope=None)` {#MultiRNNCell.__call__}
+
+Run this multi-layer cell on inputs, starting from state.
+
+
+- - -
+
 #### `tf.nn.rnn_cell.MultiRNNCell.__init__(cells, state_is_tuple=True)` {#MultiRNNCell.__init__}
 
 Create a RNN cell composed sequentially of a number of RNNCells.

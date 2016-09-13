@@ -93,6 +93,13 @@ Initializes a `DNNRegressor` instance.
 
 - - -
 
+#### `tf.contrib.learn.DNNRegressor.__repr__()` {#DNNRegressor.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.DNNRegressor.bias_` {#DNNRegressor.bias_}
 
 

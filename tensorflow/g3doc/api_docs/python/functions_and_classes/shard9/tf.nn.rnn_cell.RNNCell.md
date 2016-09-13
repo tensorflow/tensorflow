@@ -21,6 +21,30 @@ or by calling the `rnn` ops several times. Every `RNNCell` must have the
 properties below and and implement `__call__` with the following signature.
 - - -
 
+#### `tf.nn.rnn_cell.RNNCell.__call__(inputs, state, scope=None)` {#RNNCell.__call__}
+
+Run this RNN cell on inputs, starting from the given state.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: `2-D` tensor with shape `[batch_size x input_size]`.
+*  <b>`state`</b>: if `self.state_size` is an integer, this should be a `2-D Tensor`
+    with shape `[batch_size x self.state_size]`.  Otherwise, if
+    `self.state_size` is a tuple of integers, this should be a tuple
+    with shapes `[batch_size x s] for s in self.state_size`.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to class name.
+
+##### Returns:
+
+  A pair containing:
+  - Output: A `2-D` tensor with shape `[batch_size x self.output_size]`.
+  - New state: Either a single `2-D` tensor, or a tuple of tensors matching
+    the arity and shapes of `state`.
+
+
+- - -
+
 #### `tf.nn.rnn_cell.RNNCell.output_size` {#RNNCell.output_size}
 
 Integer or TensorShape: size of outputs produced by this cell.

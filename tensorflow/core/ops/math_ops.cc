@@ -892,56 +892,34 @@ REGISTER_OP("Select")
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle cond = c->input(0);
+      // The inputs 'then' and 'else' must have the same shape.
       ShapeHandle data = c->input(1);
       TF_RETURN_IF_ERROR(c->Merge(data, c->input(2), &data));
 
-      // Validate condition's shape if possible.
-      if (c->RankKnown(data)) {
-        const int32 data_rank = c->Rank(data);
-        if (data_rank == 0 || data_rank == 1) {
-          // Cond must match inputs since they are scalar or vector.
-          TF_RETURN_IF_ERROR(c->Merge(data, cond, &data));
-        } else {
-          // cond must be the shape [data.dim[0]] or data.
-          if (c->RankKnown(cond)) {
-            if (c->Rank(cond) == 1) {
-              // Must be a vector whose first dimension matches first dimension
-              // of the data vectors.
-              DimensionHandle merged_dim;
-              TF_RETURN_IF_ERROR(
-                  c->Merge(c->Dim(data, 0), c->Dim(cond, 0), &merged_dim));
-              if (c->Value(merged_dim) != c->Value(c->Dim(data, 0))) {
-                // Merging used the cond dim.  Update data to refer to it.
-                std::vector<DimensionHandle> dims{merged_dim};
-                for (int i = 1; i < data_rank; ++i) {
-                  dims.push_back(c->Dim(data, i));
-                }
-                data = c->MakeShape(dims);
-              }
-            } else {
-              // Must be the same as the data vectors.
-              TF_RETURN_IF_ERROR(c->Merge(data, cond, &data));
-            }
-          } else {
-            // We want to express  that it's either [data.dim[0]] or data.
-            // - rank(cond) must be 1 or rank(data).
-            // - cond.dim[0] is same as data.dim[0]
-            // But neither of these are expressible with unknown rank cond.
-            // TODO(cwhipkey): improve this case.
-          }
-        }
-      } else if (c->RankKnown(cond)) {
-        if (c->Rank(cond) == 1) {
-          // cond is vector, so data is either the same shape, or a shape with
-          // higher rank or the same first dimension.
-          // TODO(cwhipkey): make the call to WithRankAtLeast do something when
-          // <data> is known.  Then we could assert the first dimensions are the
-          // same.
-          // TF_RETURN_IF_ERROR(c->WithRankAtLeast(data, 1, &data));
-        } else {
-          // If cond is a non-vector, it must be the same shape as data.
-          TF_RETURN_IF_ERROR(c->Merge(data, cond, &data));
+      // The input 'cond' must either have the same shape as 'then' and
+      // 'else', or be a vector if 'then' and 'else' are at least vectors.
+      ShapeHandle cond = c->input(0);
+
+      if (!c->RankKnown(cond) || !c->RankKnown(data)) {
+        c->set_output(0, data);
+        return Status::OK();
+      }
+
+      // rank of shape and data is known.
+
+      const int32 cond_rank = c->Rank(cond);
+      const int32 data_rank = c->Rank(data);
+
+      if (cond_rank != 1) {
+        // If the rank of 'cond' is != 1, the shape must match 'then' and 'else'
+        TF_RETURN_IF_ERROR(c->Merge(data, cond, &data));
+      }
+      if (data_rank != 0) {
+        // If then and else are not scalars, then cond must be at least
+        // a vector, and its first value must match that of 'else'
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(cond, 1, &cond));
+        if (cond_rank == 1) {
+          TF_RETURN_IF_ERROR(c->Merge(cond, c->Vector(c->Dim(data, 0)), &cond));
         }
       }
 

@@ -31,6 +31,7 @@ TEST(PathTest, JoinPath) {
 
   EXPECT_EQ("/foo/bar/baz/blah/blink/biz",
             JoinPath("/foo/bar/baz/", "/blah/blink/biz"));
+  EXPECT_EQ("/foo/bar/baz/blah", JoinPath("/foo", "bar", "baz", "blah"));
 }
 
 TEST(PathTest, IsAbsolutePath) {

@@ -93,7 +93,7 @@ def assert_integer_form(
 
 
 def assert_symmetric(matrix):
-  matrix_t = array_ops.batch_matrix_transpose(matrix)
+  matrix_t = array_ops.matrix_transpose(matrix)
   return control_flow_ops.with_dependencies(
       [check_ops.assert_equal(matrix, matrix_t)], matrix)
 
@@ -185,7 +185,7 @@ def log_combinations(n, counts, name="log_combinations"):
     return total_permutations - redundant_permutations
 
 
-def batch_matrix_diag_transform(matrix, transform=None, name=None):
+def matrix_diag_transform(matrix, transform=None, name=None):
   """Transform diagonal of [batch-]matrix, leave rest of matrix unchanged.
 
   Create a trainable covariance defined by a Cholesky factor:
@@ -197,7 +197,7 @@ def batch_matrix_diag_transform(matrix, transform=None, name=None):
 
   # Make the diagonal positive.  If the upper triangle was zero, this would be a
   # valid Cholesky factor.
-  chol = batch_matrix_diag_transform(matrix, transform=tf.nn.softplus)
+  chol = matrix_diag_transform(matrix, transform=tf.nn.softplus)
 
   # OperatorPDCholesky ignores the upper triangle.
   operator = OperatorPDCholesky(chol)
@@ -209,7 +209,7 @@ def batch_matrix_diag_transform(matrix, transform=None, name=None):
   # Get a trainable Cholesky factor.
   matrix_values = tf.contrib.layers.fully_connected(activations, 4)
   matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
-  chol = batch_matrix_diag_transform(matrix, transform=tf.nn.softplus)
+  chol = matrix_diag_transform(matrix, transform=tf.nn.softplus)
 
   # Get a trainable mean.
   mu = tf.contrib.layers.fully_connected(activations, 2)
@@ -229,19 +229,19 @@ def batch_matrix_diag_transform(matrix, transform=None, name=None):
       be applied to the diagonal of `matrix`.  If `None`, `matrix` is returned
       unchanged.  Defaults to `None`.
     name:  A name to give created ops.
-      Defaults to "batch_matrix_diag_transform".
+      Defaults to "matrix_diag_transform".
 
   Returns:
     A `Tensor` with same shape and `dtype` as `matrix`.
   """
-  with ops.name_scope(name, "batch_matrix_diag_transform", [matrix]):
+  with ops.name_scope(name, "matrix_diag_transform", [matrix]):
     matrix = ops.convert_to_tensor(matrix, name="matrix")
     if transform is None:
       return matrix
     # Replace the diag with transformed diag.
-    diag = array_ops.batch_matrix_diag_part(matrix)
+    diag = array_ops.matrix_diag_part(matrix)
     transformed_diag = transform(diag)
-    transformed_mat = array_ops.batch_matrix_set_diag(matrix, transformed_diag)
+    transformed_mat = array_ops.matrix_set_diag(matrix, transformed_diag)
 
   return transformed_mat
 

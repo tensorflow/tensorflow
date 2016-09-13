@@ -57,7 +57,7 @@ class ClipTest(tf.test.TestCase):
       clip_norm = 4.0
       ans = tf.clip_by_norm(x, clip_norm)
       tf_ans = ans.eval()
-      
+
       clip_tensor = tf.constant(4.0)
       ans = tf.clip_by_norm(x, clip_norm)
       tf_ans_tensor = ans.eval()

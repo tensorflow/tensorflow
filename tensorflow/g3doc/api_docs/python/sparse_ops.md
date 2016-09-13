@@ -148,6 +148,82 @@ The `Graph` that contains the index, value, and shape tensors.
 #### Other Methods
 - - -
 
+#### `tf.SparseTensor.__div__(sp_x, y)` {#SparseTensor.__div__}
+
+Component-wise divides a SparseTensor by a dense Tensor.
+
+*Limitation*: this Op only broadcasts the dense side to the sparse side, but not
+the other direction.
+
+##### Args:
+
+
+*  <b>`sp_indices`</b>: A `Tensor` of type `int64`.
+    2-D.  `N x R` matrix with the indices of non-empty values in a
+    SparseTensor, possibly not in canonical ordering.
+*  <b>`sp_values`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+    1-D.  `N` non-empty values corresponding to `sp_indices`.
+*  <b>`sp_shape`</b>: A `Tensor` of type `int64`.
+    1-D.  Shape of the input SparseTensor.
+*  <b>`dense`</b>: A `Tensor`. Must have the same type as `sp_values`.
+    `R`-D.  The dense Tensor operand.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `sp_values`.
+  1-D.  The `N` values that are operated on.
+
+
+- - -
+
+#### `tf.SparseTensor.__mul__(sp_x, y)` {#SparseTensor.__mul__}
+
+Component-wise multiplies a SparseTensor by a dense Tensor.
+
+The output locations corresponding to the implicitly zero elements in the sparse
+tensor will be zero (i.e., will not take up storage space), regardless of the
+contents of the dense tensor (even if it's +/-INF and that INF*0 == NaN).
+
+*Limitation*: this Op only broadcasts the dense side to the sparse side, but not
+the other direction.
+
+##### Args:
+
+
+*  <b>`sp_indices`</b>: A `Tensor` of type `int64`.
+    2-D.  `N x R` matrix with the indices of non-empty values in a
+    SparseTensor, possibly not in canonical ordering.
+*  <b>`sp_values`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+    1-D.  `N` non-empty values corresponding to `sp_indices`.
+*  <b>`sp_shape`</b>: A `Tensor` of type `int64`.
+    1-D.  Shape of the input SparseTensor.
+*  <b>`dense`</b>: A `Tensor`. Must have the same type as `sp_values`.
+    `R`-D.  The dense Tensor operand.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `sp_values`.
+  1-D.  The `N` values that are operated on.
+
+
+- - -
+
+#### `tf.SparseTensor.__str__()` {#SparseTensor.__str__}
+
+
+
+
+- - -
+
+#### `tf.SparseTensor.__truediv__(sp_x, y)` {#SparseTensor.__truediv__}
+
+Internal helper function for 'sp_t / dense_t'.
+
+
+- - -
+
 #### `tf.SparseTensor.eval(feed_dict=None, session=None)` {#SparseTensor.eval}
 
 Evaluates this sparse tensor in a `Session`.
@@ -187,6 +263,34 @@ available, or `session` must be specified explicitly.
 ### `class tf.SparseTensorValue` {#SparseTensorValue}
 
 SparseTensorValue(indices, values, shape)
+- - -
+
+#### `tf.SparseTensorValue.__getnewargs__()` {#SparseTensorValue.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.SparseTensorValue.__getstate__()` {#SparseTensorValue.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.SparseTensorValue.__new__(_cls, indices, values, shape)` {#SparseTensorValue.__new__}
+
+Create new instance of SparseTensorValue(indices, values, shape)
+
+
+- - -
+
+#### `tf.SparseTensorValue.__repr__()` {#SparseTensorValue.__repr__}
+
+Return a nicely formatted representation string
+
+
 - - -
 
 #### `tf.SparseTensorValue.indices` {#SparseTensorValue.indices}
@@ -937,6 +1041,38 @@ tf.sparse_reduce_sum(x, [0, 1]) ==> 3
 ##### Returns:
 
   The reduced Tensor.
+
+
+- - -
+
+### `tf.sparse_reduce_sum_sparse(sp_input, reduction_axes=None, keep_dims=False)` {#sparse_reduce_sum_sparse}
+
+Computes the sum of elements across dimensions of a SparseTensor.
+
+This Op takes a SparseTensor and is the sparse counterpart to
+`tf.reduce_sum()`.  In contrast to SparseReduceSum, this Op returns a
+SparseTensor.
+
+Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+with length 1.
+
+If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
+with a single element is returned.  Additionally, the axes can be negative,
+which are interpreted according to the indexing rules in Python.
+
+##### Args:
+
+
+*  <b>`sp_input`</b>: The SparseTensor to reduce. Should have numeric type.
+*  <b>`reduction_axes`</b>: The dimensions to reduce; list or scalar. If `None` (the
+    default), reduces all dimensions.
+*  <b>`keep_dims`</b>: If true, retain reduced dimensions with length 1.
+
+##### Returns:
+
+  The reduced SparseTensor.
 
 
 

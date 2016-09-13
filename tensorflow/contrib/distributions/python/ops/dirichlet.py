@@ -206,8 +206,8 @@ class Dirichlet(distribution.Distribution):
     outer_prod = -math_ops.batch_matmul(
         array_ops.expand_dims(alpha, dim=-1),  # column
         array_ops.expand_dims(alpha, dim=-2))  # row
-    return array_ops.batch_matrix_set_diag(
-        outer_prod, alpha * (self.alpha_sum / scale - alpha))
+    return array_ops.matrix_set_diag(outer_prod,
+                                     alpha * (self.alpha_sum / scale - alpha))
 
   def _std(self):
     return math_ops.sqrt(self._variance())

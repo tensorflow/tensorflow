@@ -92,6 +92,7 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+    shard_count = 5,
     tags = ["notap"],  # http://b/30441813
 )
 
@@ -332,6 +333,17 @@ cuda_py_tests(
     name = "normal_conjugate_posteriors_test",
     size = "small",
     srcs = ["python/kernel_tests/normal_conjugate_posteriors_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_tests(
+    name = "quantized_distribution_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/quantized_distribution_test.py"],
     additional_deps = [
         ":distributions_py",
         "//tensorflow:tensorflow_py",

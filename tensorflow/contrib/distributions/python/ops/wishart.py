@@ -214,10 +214,10 @@ class _WishartOperatorPD(distribution.Distribution):
                                 seed=seed)
 
     # Complexity: O(nbk^2)
-    x = array_ops.batch_matrix_band_part(x, -1, 0)  # Tri-lower.
+    x = array_ops.matrix_band_part(x, -1, 0)  # Tri-lower.
 
     # Complexity: O(nbk)
-    x = array_ops.batch_matrix_set_diag(x, math_ops.sqrt(g))
+    x = array_ops.matrix_set_diag(x, math_ops.sqrt(g))
 
     # Make batch-op ready.
     # Complexity: O(nbk^2)
@@ -309,7 +309,7 @@ class _WishartOperatorPD(distribution.Distribution):
 
     # Complexity: O(nbk)
     half_log_det_x = math_ops.reduce_sum(
-        math_ops.log(array_ops.batch_matrix_diag_part(x_sqrt)),
+        math_ops.log(array_ops.matrix_diag_part(x_sqrt)),
         reduction_indices=[-1])
 
     # Complexity: O(nbk^2)
@@ -348,7 +348,7 @@ class _WishartOperatorPD(distribution.Distribution):
 
   def _variance(self):
     x = math_ops.sqrt(self.df) * self.scale_operator_pd.to_dense()
-    d = array_ops.expand_dims(array_ops.batch_matrix_diag_part(x), -1)
+    d = array_ops.expand_dims(array_ops.matrix_diag_part(x), -1)
     v = math_ops.square(x) + math_ops.batch_matmul(d, d, adj_y=True)
     if self.cholesky_input_output_matrices:
       return linalg_ops.cholesky(v)
@@ -469,7 +469,7 @@ class WishartCholesky(_WishartOperatorPD):
   dist.pdf(x)  # Shape is [2, 2].
 
   # (*) - To efficiently create a trainable covariance matrix, see the example
-  #   in tf.contrib.distributions.batch_matrix_diag_transform.
+  #   in tf.contrib.distributions.matrix_diag_transform.
   ```
 
   """
@@ -566,7 +566,7 @@ class WishartFull(_WishartOperatorPD):
   dist.pdf(x)  # Shape is [2, 2].
 
   # (*) - To efficiently create a trainable covariance matrix, see the example
-  #   in tf.contrib.distributions.batch_matrix_diag_transform.
+  #   in tf.contrib.distributions.matrix_diag_transform.
   ```
 
   """

@@ -27,6 +27,13 @@ h = (1-u) \circ c + u \circ h_prev
 ```
 - - -
 
+#### `tf.contrib.rnn.GRUBlockCell.__call__(x, h_prev, scope=None)` {#GRUBlockCell.__call__}
+
+GRU cell.
+
+
+- - -
+
 #### `tf.contrib.rnn.GRUBlockCell.__init__(cell_size)` {#GRUBlockCell.__init__}
 
 Initialize the Block GRU cell.

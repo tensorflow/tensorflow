@@ -937,198 +937,6 @@ functions on matrices to your graph.
 
 - - -
 
-### `tf.batch_matrix_diag(diagonal, name=None)` {#batch_matrix_diag}
-
-Returns a batched diagonal tensor with a given batched diagonal values.
-
-Given a `diagonal`, this operation returns a tensor with the `diagonal` and
-everything else padded with zeros. The diagonal is computed as follows:
-
-Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
-tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
-
-`output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
-
-For example:
-
-```prettyprint
-# 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
-
-and diagonal.shape = (2, 4)
-
-tf.batch_matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
-                                     [0, 2, 0, 0]
-                                     [0, 0, 3, 0]
-                                     [0, 0, 0, 4]],
-                                    [[5, 0, 0, 0]
-                                     [0, 6, 0, 0]
-                                     [0, 0, 7, 0]
-                                     [0, 0, 0, 8]]]
-
-which has shape (2, 4, 4)
-```
-
-##### Args:
-
-
-*  <b>`diagonal`</b>: A `Tensor`. Rank `k`, where `k >= 1`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `diagonal`.
-  Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
-
-
-- - -
-
-### `tf.batch_matrix_diag_part(input, name=None)` {#batch_matrix_diag_part}
-
-Returns the batched diagonal part of a batched tensor.
-
-This operation returns a tensor with the `diagonal` part
-of the batched `input`. The `diagonal` part is computed as follows:
-
-Assume `input` has `k` dimensions `[I, J, K, ..., N, N]`, then the output is a
-tensor of rank `k - 1` with dimensions `[I, J, K, ..., N]` where:
-
-`diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.
-
-The input must be at least a matrix.
-
-For example:
-
-```prettyprint
-# 'input' is [[[1, 0, 0, 0]
-               [0, 2, 0, 0]
-               [0, 0, 3, 0]
-               [0, 0, 0, 4]],
-              [[5, 0, 0, 0]
-               [0, 6, 0, 0]
-               [0, 0, 7, 0]
-               [0, 0, 0, 8]]]
-
-and input.shape = (2, 4, 4)
-
-tf.batch_matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
-
-which has shape (2, 4)
-```
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`.
-    Rank `k` tensor where `k >= 2` and the last two dimensions are equal.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`.
-  The extracted diagonal(s) having shape
-  `diagonal.shape = input.shape[:-1]`.
-
-
-- - -
-
-### `tf.batch_matrix_band_part(input, num_lower, num_upper, name=None)` {#batch_matrix_band_part}
-
-Copy a tensor setting everything outside a central band in each innermost matrix
-
-to zero.
-
-The `band` part is computed as follows:
-Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
-tensor with the same shape where
-
-`band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.
-
-The indicator function 'in_band(m, n)` is one if
-`(num_lower < 0 || (m-n) <= num_lower)) &&
-(num_upper < 0 || (n-m) <= num_upper)`, and zero otherwise.
-
-For example:
-
-```prettyprint
-# if 'input' is [[ 0,  1,  2, 3]
-                 [-1,  0,  1, 2]
-                 [-2, -1,  0, 1]
-                 [-3, -2, -1, 0]],
-
-tf.batch_matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
-                                             [-1,  0,  1, 2]
-                                             [ 0, -1,  0, 1]
-                                             [ 0,  0, -1, 0]],
-
-tf.batch_matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
-                                            [-1,  0,  1, 0]
-                                            [-2, -1,  0, 1]
-                                            [ 0, -2, -1, 0]]
-```
-
-Useful special cases:
-
-```prettyprint
- tf.batch_matrix_band_part(input, 0, -1) ==> Upper triangular part.
- tf.batch_matrix_band_part(input, -1, 0) ==> Lower triangular part.
- tf.batch_matrix_band_part(input, 0, 0) ==> Diagonal.
-```
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`. Rank `k` tensor.
-*  <b>`num_lower`</b>: A `Tensor` of type `int64`.
-    0-D tensor. Number of subdiagonals to keep. If negative, keep entire
-    lower triangle.
-*  <b>`num_upper`</b>: A `Tensor` of type `int64`.
-    0-D tensor. Number of superdiagonals to keep. If negative, keep
-    entire upper triangle.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`.
-  Rank `k` tensor of the same shape as input. The extracted banded tensor.
-
-
-- - -
-
-### `tf.batch_matrix_set_diag(input, diagonal, name=None)` {#batch_matrix_set_diag}
-
-Returns a batched matrix tensor with new batched diagonal values.
-
-Given `input` and `diagonal`, this operation returns a tensor with the
-same shape and values as `input`, except for the diagonals of the innermost
-matrices.  These will be overwritten by the values in `diagonal`.
-The batched matrices must be square.
-
-The output is computed as follows:
-
-Assume `input` has `k+1` dimensions `[I, J, K, ..., N, N]` and `diagonal` has
-`k` dimensions `[I, J, K, ..., N]`.  Then the output is a
-tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
-
-  * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
-  * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`. Rank `k+1`, where `k >= 1`.
-*  <b>`diagonal`</b>: A `Tensor`. Must have the same type as `input`.
-    Rank `k`, where `k >= 1`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`.
-  Rank `k+1`, with `output.shape = input.shape`.
-
-
-
-- - -
-
 ### `tf.diag(diagonal, name=None)` {#diag}
 
 Returns a diagonal tensor with a given diagonal values.
@@ -1284,11 +1092,203 @@ tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
   A transposed `Tensor`.
 
 
+
 - - -
 
-### `tf.batch_matrix_transpose(a, name='batch_matrix_transpose')` {#batch_matrix_transpose}
+### `tf.matrix_diag(diagonal, name=None)` {#matrix_diag}
 
-Transposes last two dimensions of batch matrix `a`.
+Returns a batched diagonal tensor with a given batched diagonal values.
+
+Given a `diagonal`, this operation returns a tensor with the `diagonal` and
+everything else padded with zeros. The diagonal is computed as follows:
+
+Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
+tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+
+`output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
+
+For example:
+
+```prettyprint
+# 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
+
+and diagonal.shape = (2, 4)
+
+tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
+                                     [0, 2, 0, 0]
+                                     [0, 0, 3, 0]
+                                     [0, 0, 0, 4]],
+                                    [[5, 0, 0, 0]
+                                     [0, 6, 0, 0]
+                                     [0, 0, 7, 0]
+                                     [0, 0, 0, 8]]]
+
+which has shape (2, 4, 4)
+```
+
+##### Args:
+
+
+*  <b>`diagonal`</b>: A `Tensor`. Rank `k`, where `k >= 1`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `diagonal`.
+  Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
+
+
+- - -
+
+### `tf.matrix_diag_part(input, name=None)` {#matrix_diag_part}
+
+Returns the batched diagonal part of a batched tensor.
+
+This operation returns a tensor with the `diagonal` part
+of the batched `input`. The `diagonal` part is computed as follows:
+
+Assume `input` has `k` dimensions `[I, J, K, ..., N, N]`, then the output is a
+tensor of rank `k - 1` with dimensions `[I, J, K, ..., N]` where:
+
+`diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.
+
+The input must be at least a matrix.
+
+For example:
+
+```prettyprint
+# 'input' is [[[1, 0, 0, 0]
+               [0, 2, 0, 0]
+               [0, 0, 3, 0]
+               [0, 0, 0, 4]],
+              [[5, 0, 0, 0]
+               [0, 6, 0, 0]
+               [0, 0, 7, 0]
+               [0, 0, 0, 8]]]
+
+and input.shape = (2, 4, 4)
+
+tf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
+
+which has shape (2, 4)
+```
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`.
+    Rank `k` tensor where `k >= 2` and the last two dimensions are equal.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+  The extracted diagonal(s) having shape
+  `diagonal.shape = input.shape[:-1]`.
+
+
+- - -
+
+### `tf.matrix_band_part(input, num_lower, num_upper, name=None)` {#matrix_band_part}
+
+Copy a tensor setting everything outside a central band in each innermost matrix
+
+to zero.
+
+The `band` part is computed as follows:
+Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
+tensor with the same shape where
+
+`band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.
+
+The indicator function 'in_band(m, n)` is one if
+`(num_lower < 0 || (m-n) <= num_lower)) &&
+(num_upper < 0 || (n-m) <= num_upper)`, and zero otherwise.
+
+For example:
+
+```prettyprint
+# if 'input' is [[ 0,  1,  2, 3]
+                 [-1,  0,  1, 2]
+                 [-2, -1,  0, 1]
+                 [-3, -2, -1, 0]],
+
+tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
+                                             [-1,  0,  1, 2]
+                                             [ 0, -1,  0, 1]
+                                             [ 0,  0, -1, 0]],
+
+tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
+                                            [-1,  0,  1, 0]
+                                            [-2, -1,  0, 1]
+                                            [ 0, -2, -1, 0]]
+```
+
+Useful special cases:
+
+```prettyprint
+ tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
+ tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
+ tf.matrix_band_part(input, 0, 0) ==> Diagonal.
+```
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Rank `k` tensor.
+*  <b>`num_lower`</b>: A `Tensor` of type `int64`.
+    0-D tensor. Number of subdiagonals to keep. If negative, keep entire
+    lower triangle.
+*  <b>`num_upper`</b>: A `Tensor` of type `int64`.
+    0-D tensor. Number of superdiagonals to keep. If negative, keep
+    entire upper triangle.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+  Rank `k` tensor of the same shape as input. The extracted banded tensor.
+
+
+- - -
+
+### `tf.matrix_set_diag(input, diagonal, name=None)` {#matrix_set_diag}
+
+Returns a batched matrix tensor with new batched diagonal values.
+
+Given `input` and `diagonal`, this operation returns a tensor with the
+same shape and values as `input`, except for the diagonals of the innermost
+matrices.  These will be overwritten by the values in `diagonal`.
+The batched matrices must be square.
+
+The output is computed as follows:
+
+Assume `input` has `k+1` dimensions `[I, J, K, ..., N, N]` and `diagonal` has
+`k` dimensions `[I, J, K, ..., N]`.  Then the output is a
+tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+
+  * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
+  * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Rank `k+1`, where `k >= 1`.
+*  <b>`diagonal`</b>: A `Tensor`. Must have the same type as `input`.
+    Rank `k`, where `k >= 1`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+  Rank `k+1`, with `output.shape = input.shape`.
+
+
+- - -
+
+### `tf.matrix_transpose(a, name='matrix_transpose')` {#matrix_transpose}
+
+Transposes last two dimensions of tensor `a`.
 
 For example:
 
@@ -1296,13 +1296,13 @@ For example:
 # Matrix with no batch dimension.
 # 'x' is [[1 2 3]
 #         [4 5 6]]
-tf.batch_matrixtranspose(x) ==> [[1 4]
+tf.matrix_transpose(x) ==> [[1 4]
                                  [2 5]
                                  [3 6]]
 
 # Matrix with two batch dimensions.
 # x.shape is [1, 2, 3, 4]
-# tf.batch_matrix_transpose(x) is shape [1, 2, 4, 3]
+# tf.matrix_transpose(x) is shape [1, 2, 4, 3]
 ```
 
 ##### Args:
@@ -1914,6 +1914,12 @@ If `input` is already real, it is returned unchanged.
 
   A `Tensor` of type `float32` or `float64`.
 
+
+
+## Fourier Transform Functions
+
+TensorFlow provides several operations that you can use to add discrete
+Fourier transform functions to your graph.
 
 - - -
 

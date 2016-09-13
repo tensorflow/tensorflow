@@ -196,6 +196,51 @@ class ValueTypeTest(tf.test.TestCase):
       st.get_current_value_type()
 
 
+class ObservedStochasticTensorTest(tf.test.TestCase):
+
+  def testConstructionAndValue(self):
+    with self.test_session() as sess:
+      mu = [0.0, 0.1, 0.2]
+      sigma = tf.constant([1.1, 1.2, 1.3])
+      obs = tf.zeros((2, 3))
+      z = st.ObservedStochasticTensor(
+          distributions.Normal, mu=mu, sigma=sigma, value=obs)
+      [obs_val, z_val] = sess.run([obs, z.value()])
+      self.assertAllEqual(obs_val, z_val)
+
+      coll = tf.get_collection(st.STOCHASTIC_TENSOR_COLLECTION)
+      self.assertEqual(coll, [z])
+
+  def testConstructionWithUnknownShapes(self):
+    mu = tf.placeholder(tf.float32)
+    sigma = tf.placeholder(tf.float32)
+    obs = tf.placeholder(tf.float32)
+    z = st.ObservedStochasticTensor(
+        distributions.Normal, mu=mu, sigma=sigma, value=obs)
+
+    mu2 = tf.placeholder(tf.float32, shape=[None])
+    sigma2 = tf.placeholder(tf.float32, shape=[None])
+    obs2 = tf.placeholder(tf.float32, shape=[None, None])
+    z2 = st.ObservedStochasticTensor(
+        distributions.Normal, mu=mu2, sigma=sigma2, value=obs2)
+
+    coll = tf.get_collection(st.STOCHASTIC_TENSOR_COLLECTION)
+    self.assertEqual(coll, [z, z2])
+
+  def testConstructionErrors(self):
+    mu = [0., 0.]
+    sigma = [1., 1.]
+    self.assertRaises(ValueError, st.ObservedStochasticTensor,
+                      distributions.Normal, mu=mu, sigma=sigma,
+                      value=tf.zeros((3,)))
+    self.assertRaises(ValueError, st.ObservedStochasticTensor,
+                      distributions.Normal, mu=mu, sigma=sigma,
+                      value=tf.zeros((3, 1)))
+    self.assertRaises(ValueError, st.ObservedStochasticTensor,
+                      distributions.Normal, mu=mu, sigma=sigma,
+                      value=tf.zeros((1, 2), dtype=tf.int32))
+
+
 class AutomaticDistributionImportTest(tf.test.TestCase):
 
   def testImportNormal(self):

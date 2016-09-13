@@ -588,5 +588,5 @@ class _ShiftAndScale(_Bijector):
 
   def _inverse_log_det_jacobian(self, x):  # pylint: disable=unused-argument
     return -math_ops.reduce_sum(
-        math_ops.log(array_ops.batch_matrix_diag_part(self.scale)),
+        math_ops.log(array_ops.matrix_diag_part(self.scale)),
         reduction_indices=[-1])

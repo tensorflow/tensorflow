@@ -3,6 +3,13 @@ Basic attention cell wrapper.
 Implementation based on https://arxiv.org/pdf/1601.06733.pdf.
 - - -
 
+#### `tf.contrib.rnn.AttentionCellWrapper.__call__(inputs, state, scope=None)` {#AttentionCellWrapper.__call__}
+
+Long short-term memory cell with attention (LSTMA).
+
+
+- - -
+
 #### `tf.contrib.rnn.AttentionCellWrapper.__init__(cell, attn_length, attn_size=None, attn_vec_size=None, input_size=None, state_is_tuple=False)` {#AttentionCellWrapper.__init__}
 
 Create a cell with attention.

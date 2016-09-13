@@ -306,5 +306,5 @@ def create_partitioned_variables(
         trainable=trainable,
         partitioner=partitioner,
         collections=collections)
-    return partitioned_var._get_variable_list()
+    return list(partitioned_var)
     # pylint: enable=protected-access

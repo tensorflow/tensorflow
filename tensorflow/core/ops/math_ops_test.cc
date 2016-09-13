@@ -211,10 +211,10 @@ TEST(MathOpsTest, Select_ShapeFn) {
   ShapeInferenceTestOp op("Select");
   INFER_OK(op, "?;?;?", "in1|in2");
 
-  INFER_OK(op, "[];?;?", "in0");
+  INFER_OK(op, "[];?;?", "in1|in2");
   INFER_OK(op, "[1];?;?",
            "in1|in2");  // When cond is vector, t/e may not match it.
-  INFER_OK(op, "[1,2];?;?", "in0");
+  INFER_OK(op, "[1,2];?;?", "in1|in2?");
 
   INFER_OK(op, "?;[];?", "in1");
   INFER_OK(op, "?;?;[]", "in2");
@@ -223,15 +223,14 @@ TEST(MathOpsTest, Select_ShapeFn) {
   INFER_OK(op, "?;[1,2];?", "in1");
   INFER_OK(op, "?;?;[1,2]", "in2");
 
-  INFER_ERROR("Shapes must be equal rank, but are 0 and 1", op, "[1];[];?");
+  INFER_OK(op, "[1];[];?", "in1");
   INFER_ERROR("Shapes must be equal rank, but are 1 and 0", op, "[];[1];?");
   INFER_ERROR("Shapes must be equal rank, but are 1 and 2", op, "[1,2];[1];?");
-  INFER_OK(op, "[2];[?];[?]", "in0");
+  INFER_OK(op, "[2];[?];[?]", "in1|in2");
 
   INFER_OK(op, "[?];[?,?,3];[1,2,?]", "[d2_0,d2_1,d1_2]");
-  INFER_OK(op, "[2];[?,?,3];[?,2,?]", "[d0_0,d2_1,d1_2]");
-  INFER_ERROR("Dimensions must be equal, but are 2 and 1", op,
-              "[1];[2,?,3];[?,2,?]");
+  INFER_OK(op, "[2];[?,?,3];[?,2,?]", "[d1_0|d2_0,d2_1,d1_2]");
+  INFER_ERROR("must be equal", op, "[1];[2,?,3];[?,2,?]");
   INFER_ERROR("Shapes must be equal rank, but are 3 and 2", op,
               "[2,?];[?,?,3];[?,2,?]");
   INFER_OK(op, "[2,?,?];[?,?,3];[?,2,?]", "[d0_0,d2_1,d1_2]");

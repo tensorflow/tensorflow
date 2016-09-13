@@ -35,7 +35,7 @@ class UnpackOpTest(tf.test.TestCase):
 
   def testSimple(self):
     np.random.seed(7)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
         data = np.random.randn(*shape)
         # Convert data to a single tensorflow tensor
@@ -52,7 +52,7 @@ class UnpackOpTest(tf.test.TestCase):
       data = np.random.randn(*shape)
       shapes = [shape[1:]] * shape[0]
       for i in xrange(shape[0]):
-        with self.test_session():
+        with self.test_session(use_gpu=True):
           x = tf.constant(data)
           cs = tf.unpack(x, num=shape[0])
           err = tf.test.compute_gradient_error(x, shape, cs[i], shapes[i])
@@ -64,7 +64,7 @@ class UnpackOpTest(tf.test.TestCase):
       out_shape = list(shape)
       del out_shape[1]
       for i in xrange(shape[1]):
-        with self.test_session():
+        with self.test_session(use_gpu=True):
           x = tf.constant(data)
           cs = tf.unpack(x, num=shape[1], axis=1)
           err = tf.test.compute_gradient_error(x, shape, cs[i], out_shape)

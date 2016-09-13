@@ -940,6 +940,54 @@ svg0 and svg1 in place to reflect the fact that their inputs have now being
 swapped.
 - - -
 
+#### `tf.contrib.graph_editor.SubGraphView.__bool__()` {#SubGraphView.__bool__}
+
+Allows for implicit boolean conversion.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__copy__()` {#SubGraphView.__copy__}
+
+Create a copy of this subgraph.
+
+Note that this class is a "view", copying it only create another view and
+does not copy the underlying part of the tf.Graph.
+
+##### Returns:
+
+  A new identical instance of the original subgraph view.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__enter__()` {#SubGraphView.__enter__}
+
+Allow Python context to minize the life time of a subgraph view.
+
+A subgraph view is meant to be a lightweight and transient object. A short
+lifetime will alleviate the "out-of-sync" issue mentioned earlier. For that
+reason, a SubGraphView instance can be used within a Python context. For
+example:
+
+from tensorflow.contrib import graph_editor as ge
+with ge.make_sgv(...) as sgv:
+  print(sgv)
+
+##### Returns:
+
+  Itself.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__exit__(exc_type, exc_value, traceback)` {#SubGraphView.__exit__}
+
+
+
+
+- - -
+
 #### `tf.contrib.graph_editor.SubGraphView.__init__(inside_ops=(), passthrough_ts=())` {#SubGraphView.__init__}
 
 Create a subgraph containing the given ops and the "passthrough" tensors.
@@ -960,6 +1008,20 @@ Create a subgraph containing the given ops and the "passthrough" tensors.
 
 *  <b>`TypeError`</b>: if inside_ops cannot be converted to a list of tf.Operation or
     if passthrough_ts cannot be converted to a list of tf.Tensor.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__nonzero__()` {#SubGraphView.__nonzero__}
+
+Allows for implicit boolean conversion.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__str__()` {#SubGraphView.__str__}
+
+
 
 
 - - -
@@ -1795,6 +1857,40 @@ replaces inputs with placeholders. This behavior can be modified by changing
 the handlers.
 - - -
 
+#### `tf.contrib.graph_editor.Transformer.__call__(sgv, dst_graph, dst_scope, src_scope='', reuse_dst_scope=False)` {#Transformer.__call__}
+
+Execute the transformation.
+
+##### Args:
+
+
+*  <b>`sgv`</b>: the source subgraph-view.
+*  <b>`dst_graph`</b>: the destination graph.
+*  <b>`dst_scope`</b>: the destination scope.
+*  <b>`src_scope`</b>: the source scope, which specify the path from which the
+    relative path of the transformed nodes are computed. For instance, if
+    src_scope is a/ and dst_scoped is b/, then the node a/x/y will have a
+    relative path of x/y and will be transformed into b/x/y.
+*  <b>`reuse_dst_scope`</b>: if True the dst_scope is re-used if it already exists.
+    Otherwise, the scope is given a unique name based on the one given
+    by appending an underscore followed by a digit (default).
+
+##### Returns:
+
+  A tuple `(sgv, info)` where:
+    `sgv` is the transformed subgraph view;
+    `info` is an instance of Transformer.ResultInfo containing
+    information about the transform, including mapping between
+    original and transformed tensors and operations.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if the argumens are invalid.
+
+
+- - -
+
 #### `tf.contrib.graph_editor.Transformer.__init__()` {#Transformer.__init__}
 
 Transformer constructor.
@@ -1973,6 +2069,13 @@ Check if an op is of the given type.
 Graph match class.
 - - -
 
+#### `tf.contrib.graph_editor.OpMatcher.__call__(op)` {#OpMatcher.__call__}
+
+Evaluate if the op matches or not.
+
+
+- - -
+
 #### `tf.contrib.graph_editor.OpMatcher.__init__(positive_filter)` {#OpMatcher.__init__}
 
 Graph match constructor.
@@ -2142,6 +2245,13 @@ Helper to select operations.
 ### `class tf.contrib.graph_editor.matcher` {#matcher}
 
 Graph match class.
+- - -
+
+#### `tf.contrib.graph_editor.matcher.__call__(op)` {#matcher.__call__}
+
+Evaluate if the op matches or not.
+
+
 - - -
 
 #### `tf.contrib.graph_editor.matcher.__init__(positive_filter)` {#matcher.__init__}

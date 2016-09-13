@@ -1,4 +1,4 @@
-### `tf.batch_matrix_diag_part(input, name=None)` {#batch_matrix_diag_part}
+### `tf.matrix_diag_part(input, name=None)` {#matrix_diag_part}
 
 Returns the batched diagonal part of a batched tensor.
 
@@ -26,7 +26,7 @@ For example:
 
 and input.shape = (2, 4, 4)
 
-tf.batch_matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
+tf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
 
 which has shape (2, 4)
 ```

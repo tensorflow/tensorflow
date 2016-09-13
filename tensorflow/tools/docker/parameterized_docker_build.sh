@@ -347,8 +347,6 @@ echo "Successfully tagged docker image: ${FINAL_IMG}"
 # Optional: call command specified by TF_DOCKER_BUILD_PUSH_CMD to push image
 if [[ ! -z "${TF_DOCKER_BUILD_PUSH_CMD}" ]]; then
   ${TF_DOCKER_BUILD_PUSH_CMD} ${FINAL_IMG}
-
-  echo ""
   if [[ $? == "0" ]]; then
     echo "Successfully pushed Docker image ${FINAL_IMG}"
   else

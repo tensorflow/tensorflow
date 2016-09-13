@@ -85,7 +85,7 @@ def alexnet_v2(inputs,
     the last op containing the log predictions and end_points dict.
   """
   with tf.variable_scope(scope, 'alexnet_v2', [inputs]) as sc:
-    end_points_collection = sc.name + '_end_points'
+    end_points_collection = sc.original_name_scope + '_end_points'
     # Collect outputs for conv2d, fully_connected and max_pool2d.
     with slim.arg_scope([slim.conv2d, slim.fully_connected, slim.max_pool2d],
                         outputs_collections=[end_points_collection]):
@@ -117,7 +117,7 @@ def alexnet_v2(inputs,
                           scope='fc8')
 
       # Convert end_points_collection into a end_point dict.
-      end_points = dict(tf.get_collection(end_points_collection))
+      end_points = slim.utils.convert_collection_to_dict(end_points_collection)
       if spatial_squeeze:
         net = tf.squeeze(net, [1, 2], name='fc8/squeezed')
         end_points[sc.name + '/fc8'] = net

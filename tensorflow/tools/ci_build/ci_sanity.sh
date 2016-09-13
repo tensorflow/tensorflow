@@ -167,7 +167,7 @@ do_pylint() {
   echo "pylint took $((${PYLINT_END_TIME} - ${PYLINT_START_TIME})) s"
   echo ""
 
-  grep '\[E' ${OUTPUT_FILE} > ${ERRORS_FILE}
+  grep -E '(\[E|\[W0311|\[W0312)' ${OUTPUT_FILE} > ${ERRORS_FILE}
 
   N_ERRORS=0
   while read LINE; do

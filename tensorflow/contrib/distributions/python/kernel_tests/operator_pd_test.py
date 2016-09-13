@@ -95,11 +95,10 @@ class OperatorPDBaseTest(tf.test.TestCase):
 
   def _random_cholesky_array(self, shape):
     mat = self._rng.rand(*shape)
-    chol = distributions.batch_matrix_diag_transform(mat,
-                                                     transform=tf.nn.softplus)
+    chol = distributions.matrix_diag_transform(mat, transform=tf.nn.softplus)
     # Zero the upper triangle because we're using this as a true Cholesky factor
     # in our tests.
-    return tf.batch_matrix_band_part(chol, -1, 0).eval()
+    return tf.matrix_band_part(chol, -1, 0).eval()
 
   def _numpy_inv_quadratic_form_on_vectors(self, chol, x):
     # Numpy works with batches now (calls them "stacks").

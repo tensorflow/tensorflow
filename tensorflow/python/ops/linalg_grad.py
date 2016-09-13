@@ -84,7 +84,7 @@ def _MatrixTriangularSolveGrad(op, grad):
   else:
     grad_a = -math_ops.batch_matmul(grad_b, c, adj_y=True)
   if lower_a:
-    grad_a = array_ops.batch_matrix_band_part(grad_a, -1, 0)
+    grad_a = array_ops.matrix_band_part(grad_a, -1, 0)
   else:
-    grad_a = array_ops.batch_matrix_band_part(grad_a, 0, -1)
+    grad_a = array_ops.matrix_band_part(grad_a, 0, -1)
   return (grad_a, grad_b)

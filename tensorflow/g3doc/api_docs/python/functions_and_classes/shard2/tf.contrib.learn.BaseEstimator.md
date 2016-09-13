@@ -24,6 +24,13 @@ Initializes a BaseEstimator instance.
 
 - - -
 
+#### `tf.contrib.learn.BaseEstimator.__repr__()` {#BaseEstimator.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.BaseEstimator.config` {#BaseEstimator.config}
 
 

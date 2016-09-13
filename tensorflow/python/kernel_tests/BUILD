@@ -260,10 +260,10 @@ cuda_py_tests(
     name = "kernel_tests_with_sharding",
     size = "medium",
     srcs = [
-        "batch_matrix_band_part_op_test.py",
         "conv_ops_3d_test.py",
         "embedding_ops_test.py",
         "linalg_grad_test.py",
+        "matrix_band_part_op_test.py",
         "svd_op_test.py",
     ],
     additional_deps = [

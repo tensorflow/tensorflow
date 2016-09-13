@@ -22,6 +22,7 @@ import threading
 
 from tensorflow.contrib.tensor_forest.python import constants
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
@@ -40,16 +41,8 @@ ops.NotDifferentiable('SparseValuesToIndices')
 ops.NotDifferentiable('StringToFloat')
 
 
-@ops.RegisterShape('SparseValuesToIndices')
-def SparseValuesToIndicesShape(op):
-  """Shape function for SparseValuesToIndices Op."""
-  return [op.inputs[0].get_shape(), op.inputs[1].get_shape()]
-
-
-@ops.RegisterShape('StringToFloat')
-def StringToFloatShape(op):
-  """Shape function for StringToFloat Op."""
-  return [op.inputs[0].get_shape()]
+ops.RegisterShape('SparseValuesToIndices')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('StringToFloat')(common_shapes.call_cpp_shape_fn)
 
 
 # Workaround for the fact that importing tensorflow imports contrib
