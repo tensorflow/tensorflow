@@ -171,6 +171,7 @@ def add_arg_scope(func):
     return func(*args, **current_args)
   _add_op(func)
   setattr(func_with_args, '_key_op', _key_op(func))
+  setattr(func_with_args, '__doc__', func.__doc__)
   return func_with_args
 
 
