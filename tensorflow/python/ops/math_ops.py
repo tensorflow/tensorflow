@@ -789,6 +789,7 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
 _TRUEDIV_TABLE = {
     dtypes.uint8: dtypes.float32,
     dtypes.int8: dtypes.float32,
+    dtypes.uint16: dtypes.float32,
     dtypes.int16: dtypes.float32,
     dtypes.int32: dtypes.float64,
     dtypes.int64: dtypes.float64,
