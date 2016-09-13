@@ -948,7 +948,19 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
     }
   };
   popts.control_flow_added = false;
-  // TODO(mrry): Enable DT_BFLOAT16 casting.
+  const bool enable_bfloat16_sendrecv =
+      session_opts_.config.graph_options().enable_bfloat16_sendrecv();
+  popts.should_cast = [enable_bfloat16_sendrecv](const Edge* e) {
+    if (e->IsControlEdge()) {
+      return DT_FLOAT;
+    }
+    DataType dtype = BaseType(e->src()->output_type(e->src_output()));
+    if (enable_bfloat16_sendrecv && dtype == DT_FLOAT) {
+      return DT_BFLOAT16;
+    } else {
+      return dtype;
+    }
+  };
   // TODO(mrry): Enable recv scheduling.
   TF_RETURN_IF_ERROR(rcg->RegisterPartitions(env_, popts, func_def_lib_));
 
