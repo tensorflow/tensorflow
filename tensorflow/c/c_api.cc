@@ -636,6 +636,11 @@ TF_Library* TF_LoadLibrary(const char* library_filename, TF_Status* status) {
 
 TF_Buffer TF_GetOpList(TF_Library* lib_handle) { return lib_handle->op_list; }
 
+void TF_DeleteLibraryHandle(TF_Library* lib_handle) {
+  free(const_cast<void*>(lib_handle->op_list.data));
+  delete lib_handle;
+}
+
 TF_Buffer* TF_GetAllOpList() {
   std::vector<tensorflow::OpDef> op_defs;
   tensorflow::OpRegistry::Global()->GetRegisteredOps(&op_defs);

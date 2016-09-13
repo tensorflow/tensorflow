@@ -499,7 +499,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       c = tf.constant(1.0)
       with tf.control_dependencies([c]):
         ops_before_concat = session.graph.get_operations()
-        value = var_x.concat()
+        value = var_x._concat()  # pylint: disable=protected-access
         concat_ops = [op for op in session.graph.get_operations()
                       if op not in ops_before_concat]
 
@@ -507,7 +507,7 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
                                for ci in op.control_inputs]
       self.assertTrue(
           c.op in concat_control_inputs,
-          "var_x.concat() should get control dependencies from its scope.")
+          "var_x._concat() should get control dependencies from its scope.")
       tf.initialize_all_variables().run()
       self.assertAllClose(value.eval(), var_x.as_tensor().eval())
 

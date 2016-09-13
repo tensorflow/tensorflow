@@ -25,12 +25,12 @@ class BatchMatrixBandPartTest(tf.test.TestCase):
   pass  # Filled in below
 
 
-def _GetBatchMatrixBandPartTest(dtype_, batch_shape_, shape_, use_gpu_):
+def _GetBatchMatrixBandPartTest(dtype_, batch_shape_, shape_):
 
   def Test(self):
     mat = np.ones(shape_).astype(dtype_)
     batch_mat = np.tile(mat, batch_shape + (1, 1))
-    with self.test_session(use_gpu=use_gpu_):
+    with self.test_session(use_gpu=True):
       for lower in -1, 0, 1, shape_[-2] - 1:
         for upper in -1, 0, 1, shape_[-1] - 1:
           band_np = mat
@@ -50,12 +50,12 @@ class BatchMatrixBandPartGradTest(tf.test.TestCase):
   pass  # Filled in below
 
 
-def _GetBatchMatrixBandPartGradTest(dtype_, batch_shape_, shape_, use_gpu_):
+def _GetBatchMatrixBandPartGradTest(dtype_, batch_shape_, shape_):
 
   def Test(self):
     shape = batch_shape_ + shape_
     x = tf.constant(np.random.rand(*shape), dtype=dtype_)
-    with self.test_session(use_gpu=use_gpu_):
+    with self.test_session(use_gpu=True):
       for lower in -1, 0, 1, shape_[-2] - 1:
         for upper in -1, 0, 1, shape_[-1] - 1:
           y = tf.batch_matrix_band_part(x, lower, upper)
@@ -67,21 +67,18 @@ def _GetBatchMatrixBandPartGradTest(dtype_, batch_shape_, shape_, use_gpu_):
 
 
 if __name__ == '__main__':
-  for use_gpu in False, True:
-    for dtype in np.int32, np.int64, np.float32, np.float64:
-      for batch_shape in ((), (2,), (1, 3, 2)):
-        for rows in 1, 2, 7:
-          for cols in 1, 2, 7:
-            shape = (rows, cols)
-            name = '%s_%s_%s' % (dtype.__name__, '_'.join(map(str, shape)),
-                                 use_gpu)
-            setattr(
-                BatchMatrixBandPartTest, 'testBatchMatrixBandPart_' + name,
-                _GetBatchMatrixBandPartTest(dtype, batch_shape, shape, use_gpu))
-            if dtype == np.float32 or dtype == np.float64:
-              setattr(BatchMatrixBandPartGradTest,
-                      'testBatchMatrixBandPartGrad_' + name,
-                      _GetBatchMatrixBandPartGradTest(dtype, batch_shape, shape,
-                                                      use_gpu))
+  for dtype in np.int32, np.int64, np.float32, np.float64:
+    for batch_shape in ((), (2,), (1, 3, 2)):
+      for rows in 1, 2, 7:
+        for cols in 1, 2, 7:
+          shape = (rows, cols)
+          name = '%s_%s' % (dtype.__name__, '_'.join(map(str, shape)))
+          setattr(
+              BatchMatrixBandPartTest, 'testBatchMatrixBandPart_' + name,
+              _GetBatchMatrixBandPartTest(dtype, batch_shape, shape))
+          if dtype == np.float32 or dtype == np.float64:
+            setattr(BatchMatrixBandPartGradTest,
+                    'testBatchMatrixBandPartGrad_' + name,
+                    _GetBatchMatrixBandPartGradTest(dtype, batch_shape, shape))
 
   tf.test.main()

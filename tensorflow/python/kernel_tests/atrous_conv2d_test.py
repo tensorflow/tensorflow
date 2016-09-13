@@ -51,7 +51,7 @@ class AtrousConv2DTest(tf.test.TestCase):
     return filters_up
 
   def testAtrousConv2DForward(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       # Input: [batch, height, width, input_depth]
       height = 9
       for width in [9, 10]:  # Test both odd and even width.
@@ -98,7 +98,7 @@ class AtrousConv2DTest(tf.test.TestCase):
     padding = "SAME"  # The padding needs to be "SAME"
     np.random.seed(1)  # Make it reproducible.
 
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       # Input: [batch, height, width, input_depth]
       for height in range(15, 17):
         for width in range(15, 17):
@@ -127,7 +127,7 @@ class AtrousConv2DTest(tf.test.TestCase):
               self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-2, atol=1e-2)
 
   def testGradient(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       # Input: [batch, height, width, input_depth]
       x_shape = [2, 5, 6, 2]
       # Filter: [kernel_height, kernel_width, input_depth, output_depth]

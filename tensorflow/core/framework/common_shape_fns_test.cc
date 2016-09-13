@@ -739,7 +739,7 @@ TEST(CommonShapeFnsTest, Reduce_ShapeFn) {
   INFER_OK(op, "[?,?,?];[2]", "[?,?,?]");
 }
 
-TEST(CommonShapeFnsTest, ReduceWithEmptyReductionIndices_ShapeFn) {
+TEST(CommonShapeFnsTest, ReduceForReduceJoin_ShapeFn) {
   ShapeInferenceTestOp op("ReduceJoin");
   op.input_tensors.resize(2);
 
@@ -777,6 +777,21 @@ TEST(CommonShapeFnsTest, ReduceWithEmptyReductionIndices_ShapeFn) {
   indices = test::AsTensor<int32>({});
   op.input_tensors[1] = &indices;
   INFER_OK(op, "[2,4,5];[0]", "[]");
+
+  // An empty dimension of the input can't be in reduction_indices.
+  indices = test::AsScalar<int32>(0);
+  op.input_tensors[1] = &indices;
+  INFER_ERROR("Cannot reduce dimension 0 with size 0", op, "[0,4,5];[]");
+
+  // An empty dimension of the input can be outside reduction_indices.
+  indices = test::AsScalar<int32>(1);
+  op.input_tensors[1] = &indices;
+  INFER_OK(op, "[0,4,5];[]", "[d0_0,d0_2]");
+
+  // An empty dimension of input is allowed when reducing all dims.
+  indices = test::AsTensor<int32>({});
+  op.input_tensors[1] = &indices;
+  INFER_OK(op, "[0,4,5];[]", "[]");
 
   // Keep dims = true
   TF_ASSERT_OK(NodeDefBuilder("test", op.name)

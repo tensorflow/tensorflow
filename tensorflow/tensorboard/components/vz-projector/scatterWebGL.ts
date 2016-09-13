@@ -111,10 +111,6 @@ export abstract class ScatterWebGL implements Scatter {
   protected width: number;
   protected dpr: number;  // The device pixelratio
 
-  // state
-  protected animating = false;
-  protected selecting = false;  // whether or not we are selecting points.
-
   protected abstract onRecreateScene();
   protected abstract removeAllGeometry();
   protected abstract onDataSet(spriteImage: HTMLImageElement);
@@ -141,11 +137,12 @@ export abstract class ScatterWebGL implements Scatter {
   private light: THREE.PointLight;
   private axis3D: THREE.AxisHelper;
   private axis2D: THREE.LineSegments;
-  private mouseIsDown = false;
-  // Whether the current click sequence contains a drag, so we can determine
-  // whether to update the selection.
-  private isDragSequence = false;
   private selectionSphere: THREE.Mesh;
+
+  private animating = false;
+  private selecting = false;
+  private mouseIsDown = false;
+  private isDragSequence = false;
   private animationID: number;
 
 
@@ -319,9 +316,10 @@ export abstract class ScatterWebGL implements Scatter {
 
   /** When we stop dragging/zooming, return to normal behavior. */
   private onClick(e?: MouseEvent) {
-    if (!this.onMouseClickInternal(e)) {
+    if (e && this.selecting) {
       return;
     }
+    this.onMouseClickInternal(e);
     let selection = this.nearestPoint || null;
     // Only call event handlers if the click originated from the scatter plot.
     if (e && !this.isDragSequence) {

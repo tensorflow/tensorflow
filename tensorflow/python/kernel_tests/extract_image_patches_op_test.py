@@ -40,7 +40,7 @@ class ExtractImagePatches(tf.test.TestCase):
     strides = [1] + strides + [1]
     rates = [1] + rates + [1]
 
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       out_tensor = tf.extract_image_patches(
           tf.constant(image),
           ksizes=ksizes,

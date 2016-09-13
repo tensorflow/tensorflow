@@ -18,11 +18,11 @@ limitations under the License.
 
 namespace tensorflow {
 namespace io {
+namespace internal {
 
-string JoinPath(StringPiece part1, StringPiece part2) {
+string JoinPathImpl(std::initializer_list<StringPiece> paths) {
   string result;
 
-  StringPiece paths[2] = {part1, part2};
   for (StringPiece path : paths) {
     if (path.empty()) continue;
 
@@ -48,8 +48,6 @@ string JoinPath(StringPiece part1, StringPiece part2) {
 
   return result;
 }
-
-namespace internal {
 
 // Return the parts of the path, split on the final "/".  If there is no
 // "/" in the path, the first part of the output is empty and the second

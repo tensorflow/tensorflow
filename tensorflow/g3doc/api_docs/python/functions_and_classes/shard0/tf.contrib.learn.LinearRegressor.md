@@ -76,6 +76,13 @@ Construct a `LinearRegressor` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearRegressor.__repr__()` {#LinearRegressor.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearRegressor.bias_` {#LinearRegressor.bias_}
 
 

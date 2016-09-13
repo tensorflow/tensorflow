@@ -67,10 +67,9 @@ class ScatterTest(tf.test.TestCase):
                         tf_scatter,
                         vtype,
                         itype,
-                        use_gpu,
                         repeat_indices=False):
     np.random.seed(8)
-    with self.test_session(use_gpu=use_gpu):
+    with self.test_session(use_gpu=True):
       for indices_shape in (), (2,), (3, 7), (3, 4, 7):
         for extra_shape in (), (5,), (5, 9):
           # Generate random indices with no duplicates for easy numpy comparison
@@ -109,9 +108,7 @@ class ScatterTest(tf.test.TestCase):
   def _VariableRankTests(self, tf_scatter, repeat_indices=False):
     for vtype in (np.float32, np.float64):
       for itype in (np.int32, np.int64):
-        for use_gpu in (False, True):
-          self._VariableRankTest(tf_scatter, vtype, itype, use_gpu,
-                                 repeat_indices)
+        self._VariableRankTest(tf_scatter, vtype, itype, repeat_indices)
 
   def testVariableRankUpdate(self):
     self._VariableRankTests(tf.scatter_update)
@@ -141,40 +138,43 @@ class ScatterTest(tf.test.TestCase):
     self._VariableRankTests(tf.scatter_div, True)
 
   def testBooleanScatterUpdate(self):
-    with self.test_session(use_gpu=False) as session:
-      var = tf.Variable([True, False])
-      update0 = tf.scatter_update(var, 1, True)
-      update1 = tf.scatter_update(var, tf.constant(0, dtype=tf.int64), False)
-      var.initializer.run()
+    if not tf.test.is_gpu_available():
+      with self.test_session(use_gpu=False) as session:
+        var = tf.Variable([True, False])
+        update0 = tf.scatter_update(var, 1, True)
+        update1 = tf.scatter_update(var, tf.constant(0, dtype=tf.int64), False)
+        var.initializer.run()
 
-      session.run([update0, update1])
+        session.run([update0, update1])
 
-      self.assertAllEqual([False, True], var.eval())
+        self.assertAllEqual([False, True], var.eval())
 
   def testScatterOutOfRangeCpu(self):
     for op, _ in _TF_OPS_TO_NUMPY.items():
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
-      with self.test_session(use_gpu=False):
-        ref = tf.Variable(params)
-        ref.initializer.run()
+      if not tf.test.is_gpu_available():
+        with self.test_session(use_gpu=False):
+          ref = tf.Variable(params)
+          ref.initializer.run()
 
-        # Indices all in range, no problem.
-        indices = np.array([2, 0, 5])
-        op(ref, indices, updates).eval()
-
-        # Test some out of range errors.
-        indices = np.array([-1, 0, 5])
-        with self.assertRaisesOpError(r'indices\[0\] = -1 is not in \[0, 6\)'):
+          # Indices all in range, no problem.
+          indices = np.array([2, 0, 5])
           op(ref, indices, updates).eval()
 
-        indices = np.array([2, 0, 6])
-        with self.assertRaisesOpError(r'indices\[2\] = 6 is not in \[0, 6\)'):
-          op(ref, indices, updates).eval()
+          # Test some out of range errors.
+          indices = np.array([-1, 0, 5])
+          with self.assertRaisesOpError(
+              r'indices\[0\] = -1 is not in \[0, 6\)'):
+            op(ref, indices, updates).eval()
+
+          indices = np.array([2, 0, 6])
+          with self.assertRaisesOpError(r'indices\[2\] = 6 is not in \[0, 6\)'):
+            op(ref, indices, updates).eval()
 
   # TODO(fpmc): Re-enable this test when gpu_pip test actually runs on a GPU.
   def _disabledTestScatterOutOfRangeGpu(self):
-    if not tf.test.IsBuiltWithCuda():
+    if tf.test.is_gpu_available():
       return
     for op, _ in _TF_OPS_TO_NUMPY.items():
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)

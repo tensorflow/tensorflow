@@ -104,7 +104,8 @@ def bottleneck(inputs, depth, depth_bottleneck, stride, rate=1,
 
     output = shortcut + residual
 
-    return slim.utils.collect_named_outputs(outputs_collections, sc.name,
+    return slim.utils.collect_named_outputs(outputs_collections,
+                                            sc.name,
                                             output)
 
 
@@ -173,7 +174,7 @@ def resnet_v2(inputs,
     ValueError: If the target output_stride is not valid.
   """
   with tf.variable_scope(scope, 'resnet_v2', [inputs], reuse=reuse) as sc:
-    end_points_collection = sc.name + '_end_points'
+    end_points_collection = sc.original_name_scope + '_end_points'
     with slim.arg_scope([slim.conv2d, bottleneck,
                          resnet_utils.stack_blocks_dense],
                         outputs_collections=end_points_collection):
@@ -201,7 +202,7 @@ def resnet_v2(inputs,
         net = slim.conv2d(net, num_classes, [1, 1], activation_fn=None,
                           normalizer_fn=None, scope='logits')
       # Convert end_points_collection into a dictionary of end_points.
-      end_points = dict(tf.get_collection(end_points_collection))
+      end_points = slim.utils.convert_collection_to_dict(end_points_collection)
       if num_classes is not None:
         end_points['predictions'] = slim.softmax(net, scope='predictions')
       return net, end_points

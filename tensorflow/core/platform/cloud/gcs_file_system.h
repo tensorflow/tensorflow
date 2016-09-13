@@ -67,7 +67,18 @@ class GcsFileSystem : public FileSystem {
 
   Status RenameFile(const string& src, const string& target) override;
 
+  Status IsDirectory(const string& fname) override;
+
  private:
+  Status BucketExists(const string& bucket);
+  Status ObjectExists(const string& bucket, const string& object);
+  Status FolderExists(const string& dirname);
+  Status GetChildrenBounded(const string& dir, uint64 max_results,
+                            std::vector<string>* result);
+  /// Retrieves file statistics assuming fname points to a GCS object.
+  Status StatForObject(const string& bucket, const string& object,
+                       FileStatistics* stat);
+
   std::unique_ptr<AuthProvider> auth_provider_;
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
 

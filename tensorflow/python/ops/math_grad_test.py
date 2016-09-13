@@ -33,7 +33,7 @@ class SquaredDifferenceOpTest(tf.test.TestCase):
     l = np.random.randn(*left_shape)
     r = np.random.randn(*right_shape)
 
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       left_tensor = tf.constant(l, shape=left_shape)
       right_tensor = tf.constant(r, shape=right_shape)
       output = tf.squared_difference(left_tensor, right_tensor)
@@ -71,7 +71,7 @@ class AbsOpTest(tf.test.TestCase):
       value = tf.convert_to_tensor(self._biasedRandN(shape, bias=bias),
                                    dtype=dtype)
 
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       if dtype in (tf.complex64, tf.complex128):
         output = tf.complex_abs(value)
       else:

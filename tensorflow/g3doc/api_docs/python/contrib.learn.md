@@ -39,6 +39,13 @@ Initializes a BaseEstimator instance.
 
 - - -
 
+#### `tf.contrib.learn.BaseEstimator.__repr__()` {#BaseEstimator.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.BaseEstimator.config` {#BaseEstimator.config}
 
 
@@ -311,6 +318,13 @@ Constructs an Estimator instance.
 
 
 *  <b>`ValueError`</b>: parameters of `model_fn` don't match `params`.
+
+
+- - -
+
+#### `tf.contrib.learn.Estimator.__repr__()` {#Estimator.__repr__}
+
+
 
 
 - - -
@@ -647,6 +661,13 @@ Initializes a DNNClassifier instance.
 ##### Returns:
 
   A `DNNClassifier` estimator.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.__repr__()` {#DNNClassifier.__repr__}
+
+
 
 
 - - -
@@ -1031,6 +1052,13 @@ Initializes a `DNNRegressor` instance.
 
 - - -
 
+#### `tf.contrib.learn.DNNRegressor.__repr__()` {#DNNRegressor.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.DNNRegressor.bias_` {#DNNRegressor.bias_}
 
 
@@ -1344,6 +1372,13 @@ Initializes a TensorFlowEstimator instance.
     * 0: the algorithm and debug information is muted.
     * 1: trainer prints the progress.
     * 2: log device placement is printed.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowEstimator.__repr__()` {#TensorFlowEstimator.__repr__}
+
+
 
 
 - - -
@@ -1909,6 +1944,13 @@ Construct a `LinearRegressor` estimator object.
 
 - - -
 
+#### `tf.contrib.learn.LinearRegressor.__repr__()` {#LinearRegressor.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearRegressor.bias_` {#LinearRegressor.bias_}
 
 
@@ -2229,6 +2271,13 @@ Initializes a TensorFlowRNNClassifier instance.
     model will be continuely trained on every call of fit.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the session,
     e.g. num_cores, gpu_memory_fraction, etc.
+
+
+- - -
+
+#### `tf.contrib.learn.TensorFlowRNNClassifier.__repr__()` {#TensorFlowRNNClassifier.__repr__}
+
+
 
 
 - - -
@@ -2612,6 +2661,13 @@ Initializes a TensorFlowRNNRegressor instance.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNRegressor.__repr__()` {#TensorFlowRNNRegressor.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNRegressor.bias_` {#TensorFlowRNNRegressor.bias_}
 
 Returns bias of the rnn layer.
@@ -2939,6 +2995,13 @@ Perform various training, evaluation, and inference actions on a graph.
 - - -
 
 ### `class tf.contrib.learn.NanLossDuringTrainingError` {#NanLossDuringTrainingError}
+
+
+- - -
+
+#### `tf.contrib.learn.NanLossDuringTrainingError.__str__()` {#NanLossDuringTrainingError.__str__}
+
+
 
 
 

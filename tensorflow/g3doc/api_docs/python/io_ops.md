@@ -1296,6 +1296,34 @@ Fields:
   dtype: Data type of input.
 - - -
 
+#### `tf.VarLenFeature.__getnewargs__()` {#VarLenFeature.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.VarLenFeature.__getstate__()` {#VarLenFeature.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.VarLenFeature.__new__(_cls, dtype)` {#VarLenFeature.__new__}
+
+Create new instance of VarLenFeature(dtype,)
+
+
+- - -
+
+#### `tf.VarLenFeature.__repr__()` {#VarLenFeature.__repr__}
+
+Return a nicely formatted representation string
+
+
+- - -
+
 #### `tf.VarLenFeature.dtype` {#VarLenFeature.dtype}
 
 Alias for field number 0
@@ -1316,6 +1344,34 @@ Fields:
   dtype: Data type of input.
   default_value: Value to be used if an example is missing this feature. It
       must be compatible with `dtype`.
+- - -
+
+#### `tf.FixedLenFeature.__getnewargs__()` {#FixedLenFeature.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.FixedLenFeature.__getstate__()` {#FixedLenFeature.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.FixedLenFeature.__new__(_cls, shape, dtype, default_value=None)` {#FixedLenFeature.__new__}
+
+Create new instance of FixedLenFeature(shape, dtype, default_value)
+
+
+- - -
+
+#### `tf.FixedLenFeature.__repr__()` {#FixedLenFeature.__repr__}
+
+Return a nicely formatted representation string
+
+
 - - -
 
 #### `tf.FixedLenFeature.default_value` {#FixedLenFeature.default_value}
@@ -1352,6 +1408,34 @@ Fields:
   dtype: Data type of input.
   allow_missing: Whether to allow this feature to be missing from a feature
     list item.
+- - -
+
+#### `tf.FixedLenSequenceFeature.__getnewargs__()` {#FixedLenSequenceFeature.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.FixedLenSequenceFeature.__getstate__()` {#FixedLenSequenceFeature.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.FixedLenSequenceFeature.__new__(_cls, shape, dtype, allow_missing=False)` {#FixedLenSequenceFeature.__new__}
+
+Create new instance of FixedLenSequenceFeature(shape, dtype, allow_missing)
+
+
+- - -
+
+#### `tf.FixedLenSequenceFeature.__repr__()` {#FixedLenSequenceFeature.__repr__}
+
+Return a nicely formatted representation string
+
+
 - - -
 
 #### `tf.FixedLenSequenceFeature.allow_missing` {#FixedLenSequenceFeature.allow_missing}

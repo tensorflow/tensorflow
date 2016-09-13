@@ -166,7 +166,64 @@ class DNNClassifierTest(tf.test.TestCase):
     self.assertGreater(scores['accuracy'], 0.8)
     self.assertLess(scores['loss'], 0.3)
 
-  def testWeightColumn(self):
+  def testLoss(self):
+    """Tests loss calculation."""
+
+    def _input_fn_train():
+      # Create 4 rows, one of them (y = x), three of them (y=Not(x))
+      # The logistic prediction should be (y = 0.25).
+      target = tf.constant([[1], [0], [0], [0]])
+      features = {
+          'x': tf.ones(shape=[4, 1], dtype=tf.float32),
+      }
+      return features, target
+
+    classifier = tf.contrib.learn.DNNClassifier(
+        n_classes=2,
+        feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    classifier.fit(input_fn=_input_fn_train, steps=100)
+    scores = classifier.evaluate(input_fn=_input_fn_train, steps=1)
+    # Cross entropy = -0.25*log(0.25)-0.75*log(0.75) = 0.562
+    self.assertAlmostEqual(scores['loss'], 0.562, delta=0.1)
+
+  def testLossWithWeights(self):
+    """Tests loss calculation with weights."""
+
+    def _input_fn_train():
+      # 4 rows with equal weight, one of them (y = x), three of them (y=Not(x))
+      # The logistic prediction should be (y = 0.25).
+      target = tf.constant([[1.], [0.], [0.], [0.]])
+      features = {
+          'x': tf.ones(shape=[4, 1], dtype=tf.float32),
+          'w': tf.constant([[1.], [1.], [1.], [1.]])
+      }
+      return features, target
+
+    def _input_fn_eval():
+      # 4 rows, with different weights.
+      target = tf.constant([[1.], [0.], [0.], [0.]])
+      features = {
+          'x': tf.ones(shape=[4, 1], dtype=tf.float32),
+          'w': tf.constant([[7.], [1.], [1.], [1.]])
+      }
+      return features, target
+
+    classifier = tf.contrib.learn.DNNClassifier(
+        weight_column_name='w',
+        n_classes=2,
+        feature_columns=[tf.contrib.layers.real_valued_column('x')],
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    classifier.fit(input_fn=_input_fn_train, steps=100)
+    scores = classifier.evaluate(input_fn=_input_fn_eval, steps=1)
+    # Weighted cross entropy = (-7*log(0.25)-3*log(0.75))/10 = 1.06
+    self.assertAlmostEqual(scores['loss'], 1.06, delta=0.1)
+
+  def testTrainWithWeights(self):
     """Tests training with given weight column."""
 
     def _input_fn_train():
@@ -197,16 +254,9 @@ class DNNClassifierTest(tf.test.TestCase):
 
     classifier.fit(input_fn=_input_fn_train, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn_eval, steps=1)
-    # If there were no weight column, model would learn y=Not(x). All examples
-    # in eval data set are y=x. So if weight column were ignored, then accuracy
-    # would be zero.
+    # The model should learn (y = x) because of the weights, so the accuracy
+    # should be close to 1.
     self.assertGreater(scores['accuracy'], 0.9)
-
-    scores_train_set = classifier.evaluate(input_fn=_input_fn_train, steps=1)
-    # The classifier has learned y=x.  If weight column were ignored in
-    # evaluation, then accuracy for the train set would be 0.25.
-    # Because weight is not ignored, accuracy is greater than 0.6.
-    self.assertGreater(scores_train_set['accuracy'], 0.6)
 
   def testPredict_AsIterableFalse(self):
     """Tests predict and predict_prob methods with as_iterable=False."""
