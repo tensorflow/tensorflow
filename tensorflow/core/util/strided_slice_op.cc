@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/strided_slice_op.h"
 
+#include <array>
+
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -225,10 +227,10 @@ Status ValidateStridedSliceOp(
       return errors::InvalidArgument("strides[", i, "] must be non-zero");
     }
 
-    int64 masks[] = {dense_spec.begin_mask & (1 << i),
-                     dense_spec.end_mask & (1 << i)};
-    int64 valid_range[] = {stride_i > 0 ? 0 : -1,
-                           stride_i > 0 ? dim_i : dim_i - 1};
+    const std::array<int64, 2> masks = {
+        {dense_spec.begin_mask & (1 << i), dense_spec.end_mask & (1 << i)}};
+    const std::array<int64, 2> valid_range = {
+        {stride_i > 0 ? 0 : -1, stride_i > 0 ? dim_i : dim_i - 1}};
 
     auto canonical = [stride_i, i, dim_i, masks, valid_range](int64 x, int c) {
       if (masks[c]) {
