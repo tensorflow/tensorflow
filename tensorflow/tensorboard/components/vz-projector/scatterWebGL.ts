@@ -81,10 +81,6 @@ export abstract class ScatterWebGL implements Scatter {
 
   // Data structures (and THREE.js objects) associated with points.
   protected geometry: THREE.BufferGeometry;
-  /** Texture for rendering offscreen in order to enable interactive hover. */
-  protected pickingTexture: THREE.WebGLRenderTarget;
-  /** Array of unique colors for each point used in detecting hover. */
-  protected uniqueColArr: Float32Array;
   protected materialOptions: THREE.ShaderMaterialParameters;
   protected dataSet: DataSet;
   /** Holds the indexes of the points to be labeled. */
@@ -118,6 +114,7 @@ export abstract class ScatterWebGL implements Scatter {
   protected abstract onHighlightPoints(
       pointIndexes: number[], highlightStroke: (i: number) => string,
       favorLabels: (i: number) => boolean);
+  protected abstract onPickingRender();
   protected abstract onRender();
   protected abstract onUpdate();
   protected abstract onResize();
@@ -134,6 +131,7 @@ export abstract class ScatterWebGL implements Scatter {
   private mode: Mode;
   private isNight: boolean;
 
+  private pickingTexture: THREE.WebGLRenderTarget;
   private light: THREE.PointLight;
   private axis3D: THREE.AxisHelper;
   private axis2D: THREE.LineSegments;
@@ -621,6 +619,18 @@ export abstract class ScatterWebGL implements Scatter {
   }
 
   render() {
+    if (!this.dataSet) {
+      return;
+    }
+
+    // Render first pass to picking target. This render fills pickingTexture
+    // with colors that are actually point ids, so that sampling the texture at
+    // the mouse's current x,y coordinates will reveal the data point that the
+    // mouse is over.
+    this.onPickingRender();
+    this.renderer.render(this.scene, this.perspCamera, this.pickingTexture);
+
+    // Render second pass to color buffer, to be displayed on the canvas.
     let lightPos = new THREE.Vector3().copy(this.perspCamera.position);
     lightPos.x += 1;
     lightPos.y += 1;

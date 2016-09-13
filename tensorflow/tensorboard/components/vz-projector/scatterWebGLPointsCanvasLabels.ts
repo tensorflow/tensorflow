@@ -156,6 +156,8 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
   private fog: THREE.Fog;
 
   private points: THREE.Points;
+  private pickingColors: Float32Array;
+  private renderColors: Float32Array;
   private traces: THREE.Line[];
   private tracePositionBuffer: {[trace: number]: THREE.BufferAttribute} = {};
 
@@ -494,21 +496,21 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
    * Set up buffer attributes to be used for the points/images.
    */
   private createBufferAttributes() {
-    // Set up buffer attribute arrays.
     let numPoints = this.dataSet.points.length;
-    let colArr = new Float32Array(numPoints * RGB_NUM_BYTES);
-    this.uniqueColArr = new Float32Array(numPoints * RGB_NUM_BYTES);
-    let colors = new THREE.BufferAttribute(this.uniqueColArr, RGB_NUM_BYTES);
-    // Assign each point a unique color in order to identify when the user
-    // hovers over a point.
+    this.pickingColors = new Float32Array(numPoints * RGB_NUM_BYTES);
+    let colors = new THREE.BufferAttribute(this.pickingColors, RGB_NUM_BYTES);
+
+    // Fill pickingColors with each point's unique id as its color.
     for (let i = 0; i < numPoints; i++) {
       let color = new THREE.Color(i);
       colors.setXYZ(i, color.r, color.g, color.b);
     }
-    colors.array = colArr;
-    let hiArr = new Float32Array(numPoints);
+
+    this.renderColors = new Float32Array(numPoints * RGB_NUM_BYTES);
+    colors.array = this.renderColors;
 
     /** Indices cooresponding to highlighted points. */
+    let hiArr = new Float32Array(numPoints);
     let highlights = new THREE.BufferAttribute(hiArr, INDEX_NUM_BYTES);
 
     /**
@@ -745,20 +747,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     }
   }
 
-  protected onRender() {
-    if (!this.dataSet) {
-      return;
-    }
-
-    this.makeLabels();
-
-    // We want to determine which point the user is hovering over. So, rather
-    // than linearly iterating through each point to see if it is under the
-    // mouse, we render another set of the points offscreen, where each point is
-    // at full opacity and has its id encoded in its color. Then, we see the
-    // color of the pixel under the mouse, decode the color, and get the id of
-    // of the point.
-    let shaderMaterial = this.points.material as THREE.ShaderMaterial;
+  protected onPickingRender() {
     let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     // Make shallow copy of the shader options and modify the necessary values.
     let offscreenOptions =
@@ -772,22 +761,22 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     offscreenOptions.transparent = false;
     offscreenOptions.depthTest = true;
     offscreenOptions.depthWrite = true;
-    shaderMaterial.setValues(offscreenOptions);
-    // Give each point a unique color.
-    let origColArr = colors.array;
-    colors.array = this.uniqueColArr;
+    (this.points.material as THREE.ShaderMaterial).setValues(offscreenOptions);
+    colors.array = this.pickingColors;
     colors.needsUpdate = true;
-    this.renderer.render(this.scene, this.perspCamera, this.pickingTexture);
+  }
 
-    // Change to original color array.
-    colors.array = origColArr;
+  protected onRender() {
+    this.makeLabels();
+    let shaderMaterial = this.points.material as THREE.ShaderMaterial;
+    let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
+    colors.array = this.renderColors;
     colors.needsUpdate = true;
-    // Bring back the fog.
+
     if (this.zAccessor && this.geometry) {
       this.setFogDistances();
     }
-    offscreenOptions.uniforms.isImage.value = !!this.image;
-    // Bring back the standard shader material options.
+
     shaderMaterial.setValues(this.materialOptions);
   }
 }
