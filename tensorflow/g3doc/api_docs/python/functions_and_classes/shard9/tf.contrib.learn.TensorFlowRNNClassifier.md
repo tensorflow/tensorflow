@@ -53,6 +53,13 @@ Initializes a TensorFlowRNNClassifier instance.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNClassifier.__repr__()` {#TensorFlowRNNClassifier.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNClassifier.bias_` {#TensorFlowRNNClassifier.bias_}
 
 Returns bias of the rnn layer.

@@ -38,8 +38,8 @@ sinh(x) as an op in the graph.
 
 *  <b>`func`</b>: A python function.
 *  <b>`inp`</b>: A list of `Tensor`.
-*  <b>`Tout`</b>: A list of tensorflow data types indicating what `func`
-        returns.
+*  <b>`Tout`</b>: A list of tensorflow data types or a single tensorflow data type
+        indicating what `func` returns.
 *  <b>`stateful`</b>: A boolean indicating whether the function should be considered
             stateful or stateless. I.e. whether it, given the same input, will
             return the same output and at the same time does not change state
@@ -49,6 +49,6 @@ sinh(x) as an op in the graph.
 
 ##### Returns:
 
-  A list of `Tensor` which `func` computes.
+  A list of `Tensor` or a single `Tensor` which `func` computes.
 
 

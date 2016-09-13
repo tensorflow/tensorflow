@@ -22,9 +22,13 @@ limitations under the License.
 namespace tensorflow {
 class StringPiece;
 namespace io {
+namespace internal {
+string JoinPathImpl(std::initializer_list<StringPiece> paths);
+}
 
 // Utility routines for processing filenames
 
+#ifndef SWIG  // variadic templates
 // Join multiple paths together, without introducing unnecessary path
 // separators.
 // For example:
@@ -38,7 +42,12 @@ namespace io {
 // Usage:
 // string path = io::JoinPath("/mydir", filename);
 // string path = io::JoinPath(FLAGS_test_srcdir, filename);
-string JoinPath(StringPiece part1, StringPiece part2);
+// string path = io::JoinPath("/full", "path", "to", "filename);
+template <typename... T>
+string JoinPath(const T&... args) {
+  return internal::JoinPathImpl({args...});
+}
+#endif /* SWIG */
 
 // Return true if path is absolute.
 bool IsAbsolutePath(StringPiece path);

@@ -759,6 +759,15 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
       x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
       return func(x, y, name=name)
 
+  # Propagate func.__doc__ to the wrappers
+  try:
+    doc = func.__doc__
+  except AttributeError:
+    doc = None
+  binary_op_wrapper.__doc__ = doc
+  r_binary_op_wrapper.__doc__ = doc
+  binary_op_wrapper_sparse.__doc__ = doc
+
   if clazz_object is ops.Tensor:
     clazz_object._override_operator("__%s__" % op_name, binary_op_wrapper)
     del binary_op_wrapper
@@ -1830,31 +1839,7 @@ ops.RegisterShape("SparseDenseCwiseMul")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("SparseDenseCwiseDiv")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("SparseDenseCwiseAdd")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("AddN")(common_shapes.call_cpp_shape_fn)
-
-
-@ops.RegisterShape("Select")
-def _SelectShape(op):
-  """Shape function for SelectOp."""
-  # The inputs 'then' and 'else' must have the same shape.
-  # The input 'cond' must either have the same shape as 'then' and
-  # 'else', or be a vector if 'then' and 'else' are at least vectors.
-  c_shape = op.inputs[0].get_shape()
-  t_shape = op.inputs[1].get_shape()
-  e_shape = op.inputs[2].get_shape()
-  t_e_shape = t_shape.merge_with(e_shape)
-  c_shape_list = c_shape.as_list() if c_shape.ndims is not None else None
-  t_e_shape_list = t_e_shape.as_list() if t_e_shape.ndims is not None else None
-  if c_shape_list is not None and t_e_shape_list is not None:
-    if len(c_shape_list) != 1:
-      # If the rank of 'cond' is != 1, the shape must match 'then' and 'else'
-      t_e_shape = t_e_shape.merge_with(c_shape)
-    if t_e_shape_list:
-      # If then and else are not scalars, then cond must be at least
-      # a vector, and its first value must match that of 'else'
-      c_shape = c_shape.with_rank_at_least(1)
-      if len(c_shape.as_list()) == 1:
-        c_shape.merge_with(tensor_shape.vector(t_e_shape_list[0]))
-  return [t_e_shape]
+ops.RegisterShape("Select")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("ArgMax")

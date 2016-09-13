@@ -47,6 +47,13 @@ Constructs an Estimator instance.
 
 - - -
 
+#### `tf.contrib.learn.Estimator.__repr__()` {#Estimator.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.Estimator.config` {#Estimator.config}
 
 

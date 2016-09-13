@@ -1089,7 +1089,8 @@ class _HashedEmbeddingColumn(collections.namedtuple(
         weight_collections=_add_variable_collection(weight_collections))
 
     return embedding_ops.hashed_embedding_lookup_sparse(
-        embeddings, input_tensor, self.dimension, name="lookup")
+        embeddings, input_tensor, self.dimension,
+        combiner=self.combiner, name="lookup")
 
 
 def hashed_embedding_column(column_name,

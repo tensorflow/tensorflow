@@ -602,8 +602,12 @@ def call_cpp_shape_fn(op, input_tensors_needed=None,
   ]
 
   if debug_python_shape_fn:
-    python_result = [tensor_shape.as_shape(s)
-                     for s in debug_python_shape_fn(op)]
+    try:
+      python_result = [tensor_shape.as_shape(s)
+                       for s in debug_python_shape_fn(op)]
+    except Exception as err:
+      raise AssertionError("Python shape function return error but "
+                           "C++ shape functon did not: %s" % str(err))
     if str(result) != str(python_result):
       raise ValueError(
           ("Python vs CPP shape mismatch.  "

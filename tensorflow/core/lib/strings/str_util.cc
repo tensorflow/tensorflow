@@ -84,8 +84,8 @@ inline int hex_digit_to_int(char c) {
   return x & 0xf;
 }
 
-bool CUnescapeInternal(StringPiece source, char* dest, int* dest_len,
-                       string* error) {
+bool CUnescapeInternal(StringPiece source, char* dest,
+                       string::size_type* dest_len, string* error) {
   char* d = dest;
   const char* p = source.data();
   const char* end = source.end();
@@ -200,7 +200,7 @@ bool CUnescapeInternal(StringPiece source, char* dest, int* dest_len,
 
 bool CUnescape(StringPiece source, string* dest, string* error) {
   dest->resize(source.size());
-  int dest_size;
+  string::size_type dest_size;
   if (!CUnescapeInternal(source, const_cast<char*>(dest->data()), &dest_size,
                          error)) {
     return false;

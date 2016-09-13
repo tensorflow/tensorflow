@@ -40,6 +40,7 @@ class QuantizedMatMulOpForHexagonTest : public OpsTestBase {
  protected:
   void SetUp() final {
 #ifdef USE_HEXAGON_LIBS
+    profile_utils::CpuUtils::EnableClockCycleProfiling(true);
     LOG(INFO) << "Hexagon libs are linked (wrapper version = "
               << hexagon_gemm_wrapper_GetWrapperVersion()
               << ", hexagon binary version = "

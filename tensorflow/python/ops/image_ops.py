@@ -53,7 +53,7 @@ Example:
 ```python
 # Decode a JPG image and resize it to 299 by 299 using default method.
 image = tf.image.decode_jpeg(...)
-resized_image = tf.image.resize_images(image, 299, 299)
+resized_image = tf.image.resize_images(image, [299, 299])
 ```
 
 @@resize_images
@@ -403,31 +403,40 @@ def flip_up_down(image):
   return array_ops.reverse(image, [True, False, False])
 
 
-def rot90(image, k=1):
+def rot90(image, k=1, name=None):
   """Rotate an image counter-clockwise by 90 degrees.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels].`
-    k: Number of times the image is rotated by 90 degrees.
+    image: A 3-D tensor of shape `[height, width, channels]`.
+    k: A scalar integer. The number of times the image is rotated by 90 degrees.
+    name: A name for this operation (optional).
 
   Returns:
     A rotated 3-D tensor of the same type and shape as `image`.
   """
-  image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=False)
-  k %= 4
-  if k == 0:
-    return image
-  elif k == 1:
-    return array_ops.transpose(
-        array_ops.reverse(image, [False, True, False]),
-        [1, 0, 2], name='rot90')
-  elif k == 2:
-    return array_ops.reverse(image, [True, True, False], name='rot90')
-  elif k == 3:
-    return array_ops.reverse(
-        array_ops.transpose(image, [1, 0, 2], name='rot90'),
-        [False, True, False])
+  with ops.name_scope(name, 'rot90', [image, k]) as scope:
+    image = ops.convert_to_tensor(image, name='image')
+    _Check3DImage(image, require_static=False)
+    k = ops.convert_to_tensor(k, dtype=dtypes.int32, name='k')
+    k.get_shape().assert_has_rank(0)
+    k = math_ops.mod(k, 4)
+
+    def _rot90():
+      return array_ops.transpose(array_ops.reverse(image, [False, True, False]),
+                                 [1, 0, 2])
+    def _rot180():
+      return array_ops.reverse(image, [True, True, False])
+    def _rot270():
+      return array_ops.reverse(array_ops.transpose(image, [1, 0, 2]),
+                               [False, True, False])
+    cases = [(math_ops.equal(k, 1), _rot90),
+             (math_ops.equal(k, 2), _rot180),
+             (math_ops.equal(k, 3), _rot270)]
+
+    ret = control_flow_ops.case(cases, default=lambda: image, exclusive=True,
+                                name=scope)
+    ret.set_shape([None, None, image.get_shape()[2]])
+    return ret
 
 
 def transpose_image(image):
@@ -720,14 +729,13 @@ class ResizeMethod(object):
 
 
 def resize_images(images,
-                  new_height,
-                  new_width,
+                  size,
                   method=ResizeMethod.BILINEAR,
                   align_corners=False):
-  """Resize `images` to `new_width`, `new_height` using the specified `method`.
+  """Resize `images` to `size` using the specified `method`.
 
   Resized images will be distorted if their original aspect ratio is not
-  the same as `new_width`, `new_height`.  To avoid distortions see
+  the same as `size`.  To avoid distortions see
   [`resize_image_with_crop_or_pad`](#resize_image_with_crop_or_pad).
 
   `method` can be one of:
@@ -743,8 +751,8 @@ def resize_images(images,
   Args:
     images: 4-D Tensor of shape `[batch, height, width, channels]` or
             3-D Tensor of shape `[height, width, channels]`.
-    new_height: integer.
-    new_width: integer.
+    size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
+          new size for the images.
     method: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
     align_corners: bool. If true, exactly align all 4 corners of the input and
                    output. Defaults to `false`.
@@ -752,6 +760,7 @@ def resize_images(images,
   Raises:
     ValueError: if the shape of `images` is incompatible with the
       shape arguments to this function
+    ValueError: if `size` has invalid shape or type.
     ValueError: if an unsupported resize method is specified.
 
   Returns:
@@ -771,22 +780,16 @@ def resize_images(images,
 
   _, height, width, depth = _ImageDimensions(images)
 
-  # Handle tensor-valued sizes as well as Python integers.
   try:
-    new_width = ops.convert_to_tensor(new_width, dtypes.int32,
-                                      name='new_width')
-    new_width.get_shape().assert_has_rank(0)
+    size = ops.convert_to_tensor(size, dtypes.int32, name='size')
   except (TypeError, ValueError):
-    raise ValueError('new_width must be a scalar integer')
-  try:
-    new_height = ops.convert_to_tensor(new_height, dtypes.int32,
-                                       name='new_height')
-    new_height.get_shape().assert_has_rank(0)
-  except (TypeError, ValueError):
-    raise ValueError('new_height must be a scalar integer')
-
-  new_width_const = tensor_util.constant_value(new_width)
-  new_height_const = tensor_util.constant_value(new_height)
+    raise ValueError('\'size\' must be a 1-D int32 Tensor')
+  if not size.get_shape().is_compatible_with([2]):
+    raise ValueError('\'size\' must be a 1-D Tensor of 2 elements: '
+                     'new_height, new_width')
+  size_const_as_shape = tensor_util.constant_value_as_shape(size)
+  new_height_const = size_const_as_shape[0].value
+  new_width_const = size_const_as_shape[1].value
 
   # If we can determine that the height and width will be unmodified by this
   # transformation, we avoid performing the resize.
@@ -797,23 +800,21 @@ def resize_images(images,
       images = array_ops.squeeze(images, squeeze_dims=[0])
     return images
 
-  new_size = array_ops.pack([new_height, new_width])
-
   if method == ResizeMethod.BILINEAR:
     images = gen_image_ops.resize_bilinear(images,
-                                           new_size,
+                                           size,
                                            align_corners=align_corners)
   elif method == ResizeMethod.NEAREST_NEIGHBOR:
     images = gen_image_ops.resize_nearest_neighbor(images,
-                                                   new_size,
+                                                   size,
                                                    align_corners=align_corners)
   elif method == ResizeMethod.BICUBIC:
     images = gen_image_ops.resize_bicubic(images,
-                                          new_size,
+                                          size,
                                           align_corners=align_corners)
   elif method == ResizeMethod.AREA:
     images = gen_image_ops.resize_area(images,
-                                       new_size,
+                                       size,
                                        align_corners=align_corners)
   else:
     raise ValueError('Resize method is not implemented.')

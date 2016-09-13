@@ -81,7 +81,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
                 (np.ndarray.__mul__, None, tf.segment_prod),
                 (np.minimum, None, tf.segment_min),
                 (np.maximum, None, tf.segment_max)]
-    
+
     # A subset of ops has been enabled for complex numbers
     complex_ops_list = [(np.add, None, tf.segment_sum),
                         (np.ndarray.__mul__, None, tf.segment_prod)]
@@ -91,9 +91,9 @@ class SegmentReductionOpTest(SegmentReductionHelper):
     indices = [i // 3 for i in range(n)]
     for dtype in dtypes:
       if dtype in (tf.complex64, tf.complex128):
-          curr_ops_list = complex_ops_list
+        curr_ops_list = complex_ops_list
       else:
-          curr_ops_list = ops_list
+        curr_ops_list = ops_list
 
       with self.test_session(use_gpu=False):
         tf_x, np_x = self._input(shape, dtype=dtype)

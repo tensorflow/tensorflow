@@ -45,6 +45,7 @@ constexpr char kGcsUploadUriBase[] =
     "https://www.googleapis.com/upload/storage/v1/";
 constexpr char kStorageHost[] = "storage.googleapis.com";
 constexpr size_t kBufferSize = 1024 * 1024;  // In bytes.
+constexpr int kGetChildrenDefaultPageSize = 1000;
 
 Status GetTmpFilename(string* filename) {
   if (!filename) {
@@ -73,7 +74,7 @@ Status ParseGcsPath(StringPiece fname, string* bucket, string* object) {
     return errors::InvalidArgument("GCS path must start with gs://");
   }
   auto first_slash = fname.find('/');
-  if (first_slash == -1) {
+  if (first_slash == string::npos) {
     *bucket = fname.ToString();
     *object = string();
   } else {
@@ -82,6 +83,17 @@ Status ParseGcsPath(StringPiece fname, string* bucket, string* object) {
     *object = fname.ToString();
   }
   return Status::OK();
+}
+
+/// Appends a trailing slash if the name doesn't already have one.
+string MaybeAppendSlash(const string& name) {
+  if (name.empty()) {
+    return "/";
+  }
+  if (name.back() != '/') {
+    return strings::StrCat(name, "/");
+  }
+  return name;
 }
 
 /// A GCS-based implementation of a random access file with a read-ahead buffer.
@@ -373,122 +385,30 @@ Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
 }
 
 bool GcsFileSystem::FileExists(const string& fname) {
-  string bucket, object_prefix;
-  if (!ParseGcsPath(fname, &bucket, &object_prefix).ok()) {
+  string bucket, object;
+  if (!ParseGcsPath(fname, &bucket, &object).ok()) {
     LOG(ERROR) << "Could not parse GCS file name " << fname;
     return false;
   }
-
-  string auth_token;
-  if (!AuthProvider::GetToken(auth_provider_.get(), &auth_token).ok()) {
-    LOG(ERROR) << "Could not get an auth token.";
-    return false;
+  if (object.empty()) {
+    return BucketExists(bucket).ok();
   }
-
-  std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  if (!request->Init().ok()) {
-    LOG(ERROR) << "Could not initialize the HTTP request.";
-    return false;
-  }
-  if (!object_prefix.empty()) {
-    request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket, "/o/",
-                                    request->EscapeString(object_prefix),
-                                    "?fields=size"));
-  } else {
-    request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket));
-  }
-  request->AddAuthBearerHeader(auth_token);
-  return request->Send().ok();
+  return ObjectExists(bucket, object).ok() || FolderExists(fname).ok();
 }
 
-Status GcsFileSystem::GetChildren(const string& dirname,
-                                  std::vector<string>* result) {
-  if (!result) {
-    return errors::InvalidArgument("'result' cannot be null");
-  }
-  string sanitized_dirname = dirname;
-  if (!dirname.empty() && dirname.back() != '/') {
-    sanitized_dirname += "/";
-  }
-  string bucket, object_prefix;
-  TF_RETURN_IF_ERROR(ParseGcsPath(sanitized_dirname, &bucket, &object_prefix));
-
-  string nextPageToken;
-  while (true) {  // A loop over multiple result pages.
-    string auth_token;
-    TF_RETURN_IF_ERROR(
-        AuthProvider::GetToken(auth_provider_.get(), &auth_token));
-
-    std::unique_ptr<char[]> scratch(new char[kBufferSize]);
-    StringPiece response_piece;
-    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-    TF_RETURN_IF_ERROR(request->Init());
-    auto uri = strings::StrCat(kGcsUriBase, "b/", bucket,
-                               "/o?fields=items%2Fname%2CnextPageToken");
-    if (!object_prefix.empty()) {
-      uri = strings::StrCat(uri, "&prefix=",
-                            request->EscapeString(object_prefix));
-    }
-    if (!nextPageToken.empty()) {
-      uri = strings::StrCat(uri, "&pageToken=",
-                            request->EscapeString(nextPageToken));
-    }
-    TF_RETURN_IF_ERROR(request->SetUri(uri));
-    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
-    TF_RETURN_IF_ERROR(
-        request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading ", dirname);
-    std::stringstream response_stream;
-    response_stream << response_piece;
-    Json::Value root;
-    Json::Reader reader;
-    if (!reader.parse(response_stream.str(), root)) {
-      return errors::Internal("Couldn't parse JSON response from GCS.");
-    }
-    const auto items = root.get("items", Json::Value::null);
-    if (items == Json::Value::null) {
-      // Empty results.
-      return Status::OK();
-    }
-    if (!items.isArray()) {
-      return errors::Internal("Expected an array 'items' in the GCS response.");
-    }
-    for (size_t i = 0; i < items.size(); i++) {
-      const auto item = items.get(i, Json::Value::null);
-      if (!item.isObject()) {
-        return errors::Internal(
-            "Unexpected JSON format: 'items' should be a list of objects.");
-      }
-      const auto name = item.get("name", Json::Value::null);
-      if (name == Json::Value::null || !name.isString()) {
-        return errors::Internal(
-            "Unexpected JSON format: 'items.name' is missing or not a string.");
-      }
-      // The names should be relative to the 'dirname'. That means the
-      // 'object_prefix', which is part of 'dirname', should be removed from the
-      // beginning of 'name'.
-      string name_str(name.asString());
-      result->emplace_back(name_str.begin() + object_prefix.size(),
-                           name_str.end());
-    }
-    const auto token = root.get("nextPageToken", Json::Value::null);
-    if (token == Json::Value::null) {
-      return Status::OK();
-    }
-    if (!token.isString()) {
-      return errors::Internal(
-          "Unexpected response: nextPageToken is not a string");
-    }
-    nextPageToken = token.asString();
-  }
+Status GcsFileSystem::ObjectExists(const string& bucket, const string& object) {
+  FileStatistics stat;
+  return StatForObject(bucket, object, &stat);
 }
 
-Status GcsFileSystem::Stat(const string& fname, FileStatistics* stat) {
+Status GcsFileSystem::StatForObject(const string& bucket, const string& object,
+                                    FileStatistics* stat) {
   if (!stat) {
     return errors::Internal("'stat' cannot be nullptr.");
   }
-  string bucket, object_prefix;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object_prefix));
+  if (object.empty()) {
+    return errors::InvalidArgument("'object' must be a non-empty string.");
+  }
 
   string auth_token;
   TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
@@ -499,13 +419,13 @@ Status GcsFileSystem::Stat(const string& fname, FileStatistics* stat) {
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   TF_RETURN_IF_ERROR(request->Init());
   TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
-      kGcsUriBase, "b/", bucket, "/o/", request->EscapeString(object_prefix),
+      kGcsUriBase, "b/", bucket, "/o/", request->EscapeString(object),
       "?fields=size%2Cupdated")));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(
       request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading metadata of ",
-                                  fname);
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      request->Send(), " when reading metadata of gs://", bucket, "/", object);
   std::stringstream response_stream;
   response_stream << response_piece;
 
@@ -541,11 +461,147 @@ Status GcsFileSystem::Stat(const string& fname, FileStatistics* stat) {
   }
   TF_RETURN_IF_ERROR(ParseRfc3339Time(updated.asString(), &(stat->mtime_nsec)));
 
-  // TODO(b/31382815): Devise convention for treating some GCS names
-  // as directories.
   stat->is_directory = false;
 
   return Status::OK();
+}
+
+Status GcsFileSystem::BucketExists(const string& bucket) {
+  string auth_token;
+  TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
+
+  std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
+  TF_RETURN_IF_ERROR(request->Init());
+  request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket));
+  request->AddAuthBearerHeader(auth_token);
+  return request->Send();
+}
+
+Status GcsFileSystem::FolderExists(const string& dirname) {
+  std::vector<string> children;
+  TF_RETURN_IF_ERROR(GetChildrenBounded(dirname, 1, &children));
+  if (children.empty()) {
+    return errors::NotFound("Folder does not exist.");
+  }
+  return Status::OK();
+}
+
+Status GcsFileSystem::GetChildren(const string& dirname,
+                                  std::vector<string>* result) {
+  return GetChildrenBounded(dirname, UINT64_MAX, result);
+}
+
+Status GcsFileSystem::GetChildrenBounded(const string& dirname,
+                                         uint64 max_results,
+                                         std::vector<string>* result) {
+  if (!result) {
+    return errors::InvalidArgument("'result' cannot be null");
+  }
+  string bucket, object_prefix;
+  TF_RETURN_IF_ERROR(
+      ParseGcsPath(MaybeAppendSlash(dirname), &bucket, &object_prefix));
+
+  string nextPageToken;
+  uint64 retrieved_results = 0;
+  while (true) {  // A loop over multiple result pages.
+    string auth_token;
+    TF_RETURN_IF_ERROR(
+        AuthProvider::GetToken(auth_provider_.get(), &auth_token));
+
+    std::unique_ptr<char[]> scratch(new char[kBufferSize]);
+    StringPiece response_piece;
+    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
+    TF_RETURN_IF_ERROR(request->Init());
+    auto uri = strings::StrCat(kGcsUriBase, "b/", bucket,
+                               "/o?fields=items%2Fname%2CnextPageToken");
+    if (!object_prefix.empty()) {
+      uri = strings::StrCat(uri, "&prefix=",
+                            request->EscapeString(object_prefix));
+    }
+    if (!nextPageToken.empty()) {
+      uri = strings::StrCat(uri, "&pageToken=",
+                            request->EscapeString(nextPageToken));
+    }
+    if (max_results - retrieved_results < kGetChildrenDefaultPageSize) {
+      uri =
+          strings::StrCat(uri, "&maxResults=", max_results - retrieved_results);
+    }
+    TF_RETURN_IF_ERROR(request->SetUri(uri));
+    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
+    TF_RETURN_IF_ERROR(
+        request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading ", dirname);
+    std::stringstream response_stream;
+    response_stream << response_piece;
+    Json::Value root;
+    Json::Reader reader;
+    if (!reader.parse(response_stream.str(), root)) {
+      return errors::Internal("Couldn't parse JSON response from GCS.");
+    }
+    const auto items = root.get("items", Json::Value::null);
+    if (items == Json::Value::null) {
+      // Empty results.
+      return Status::OK();
+    }
+    if (!items.isArray()) {
+      return errors::Internal("Expected an array 'items' in the GCS response.");
+    }
+    for (size_t i = 0; i < items.size(); i++) {
+      const auto item = items.get(i, Json::Value::null);
+      if (!item.isObject()) {
+        return errors::Internal(
+            "Unexpected JSON format: 'items' should be a list of objects.");
+      }
+      const auto name = item.get("name", Json::Value::null);
+      if (name == Json::Value::null || !name.isString()) {
+        return errors::Internal(
+            "Unexpected JSON format: 'items.name' is missing or not a string.");
+      }
+      // The names should be relative to the 'dirname'. That means the
+      // 'object_prefix', which is part of 'dirname', should be removed from the
+      // beginning of 'name'.
+      const string& name_str = name.asString();
+      StringPiece relative_path(name_str);
+      if (!relative_path.Consume(object_prefix)) {
+        return errors::Internal(strings::StrCat(
+            "Unexpected response: the returned file name ", name_str,
+            " doesn't match the prefix ", object_prefix));
+      }
+      result->emplace_back(relative_path.ToString());
+      if (++retrieved_results >= max_results) {
+        return Status::OK();
+      }
+    }
+    const auto token = root.get("nextPageToken", Json::Value::null);
+    if (token == Json::Value::null) {
+      return Status::OK();
+    }
+    if (!token.isString()) {
+      return errors::Internal(
+          "Unexpected response: nextPageToken is not a string");
+    }
+    nextPageToken = token.asString();
+  }
+}
+
+Status GcsFileSystem::Stat(const string& fname, FileStatistics* stat) {
+  if (!stat) {
+    return errors::Internal("'stat' cannot be nullptr.");
+  }
+  string bucket, object;
+  TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
+  if (StatForObject(bucket, object, stat).ok()) {
+    return Status::OK();
+  }
+  if ((object.empty() && BucketExists(bucket).ok()) ||
+      (!object.empty() && FolderExists(fname).ok())) {
+    stat->length = 0;
+    stat->mtime_nsec = 0;
+    stat->is_directory = true;
+    return Status::OK();
+  }
+  return errors::NotFound(
+      strings::StrCat("The specified path ", fname, " was not found."));
 }
 
 Status GcsFileSystem::DeleteFile(const string& fname) {
@@ -565,16 +621,39 @@ Status GcsFileSystem::DeleteFile(const string& fname) {
   return Status::OK();
 }
 
-// Does nothing, because directories are not entities in GCS.
-Status GcsFileSystem::CreateDir(const string& dirname) { return Status::OK(); }
+Status GcsFileSystem::CreateDir(const string& dirname) {
+  string bucket, object;
+  TF_RETURN_IF_ERROR(ParseGcsPath(dirname, &bucket, &object));
+  if (object.empty()) {
+    if (BucketExists(bucket).ok()) {
+      return Status::OK();
+    }
+    return errors::NotFound(
+        strings::StrCat("The specified bucket ", dirname, " was not found."));
+  }
+  // Create a zero-length directory marker object.
+  std::unique_ptr<WritableFile> file;
+  TF_RETURN_IF_ERROR(NewWritableFile(MaybeAppendSlash(dirname), &file));
+  TF_RETURN_IF_ERROR(file->Close());
+  return Status::OK();
+}
 
 // Checks that the directory is empty (i.e no objects with this prefix exist).
 // If it is, does nothing, because directories are not entities in GCS.
 Status GcsFileSystem::DeleteDir(const string& dirname) {
   std::vector<string> children;
-  TF_RETURN_IF_ERROR(GetChildren(dirname, &children));
-  if (!children.empty()) {
-    return errors::InvalidArgument("Cannot delete a non-empty directory.");
+  // A directory is considered empty either if there are no matching objects
+  // with the corresponding name prefix or if there is exactly one matching
+  // object and it is the directory marker. Therefore we need to retrieve
+  // at most two children for the prefix to detect if a directory is empty.
+  TF_RETURN_IF_ERROR(GetChildrenBounded(dirname, 2, &children));
+
+  if (children.size() > 1 || (children.size() == 1 && !children[0].empty())) {
+    return errors::FailedPrecondition("Cannot delete a non-empty directory.");
+  }
+  if (children.size() == 1 && children[0].empty()) {
+    // This is the directory marker object. Delete it.
+    return DeleteFile(MaybeAppendSlash(dirname));
   }
   return Status::OK();
 }
@@ -611,6 +690,27 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
 
   TF_RETURN_IF_ERROR(DeleteFile(src));
   return Status::OK();
+}
+
+Status GcsFileSystem::IsDirectory(const string& fname) {
+  string bucket, object;
+  TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
+  if (object.empty()) {
+    if (BucketExists(bucket).ok()) {
+      return Status::OK();
+    }
+    return errors::NotFound(strings::StrCat("The specified bucket gs://",
+                                            bucket, " was not found."));
+  }
+  if (FolderExists(fname).ok()) {
+    return Status::OK();
+  }
+  if (ObjectExists(bucket, object).ok()) {
+    return errors::FailedPrecondition(
+        strings::StrCat("The specified path ", fname, " is not a directory."));
+  }
+  return errors::NotFound(
+      strings::StrCat("The specified path ", fname, " was not found."));
 }
 
 REGISTER_FILE_SYSTEM("gs", RetryingGcsFileSystem);

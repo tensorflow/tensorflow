@@ -493,7 +493,7 @@ class SaverTest(tf.test.TestCase):
       # Assert saving fails when parent dir of save path doesn't exist
       with self.assertRaisesWithPredicateMatch(
         ValueError, lambda e:  "Parent directory of {} doesn't exist, can't save.".format(save_path) in str(e)):
-          save.save(sess, save_path)
+        save.save(sess, save_path)
 
 
 class SaveRestoreShardedTest(tf.test.TestCase):

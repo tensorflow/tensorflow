@@ -39,7 +39,7 @@ class ICpuUtilsHelper {
   virtual uint64 GetCurrentClockCycle() = 0;
   // Enable clock cycle profile
   // You can enable / disable profile if it's supported by the platform
-  virtual void EnableClockCycleProfile(bool enable) = 0;
+  virtual void EnableClockCycleProfiling(bool enable) = 0;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(ICpuUtilsHelper);

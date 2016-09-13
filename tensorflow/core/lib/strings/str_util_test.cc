@@ -222,6 +222,16 @@ TEST(JoinStrings, Basic) {
   EXPECT_EQ(str_util::Join(sp, "--"), "hi--there--strings");
 }
 
+TEST(JoinStrings, Join3) {
+  std::vector<string> s;
+  s = {"hi"};
+  auto l1 = [](string* out, string s) { *out += s; };
+  EXPECT_EQ(str_util::Join(s, " ", l1), "hi");
+  s = {"hi", "there", "strings"};
+  auto l2 = [](string* out, string s) { *out += s[0]; };
+  EXPECT_EQ(str_util::Join(s, " ", l2), "h t s");
+}
+
 TEST(Split, Basic) {
   EXPECT_TRUE(str_util::Split("", ',').empty());
   EXPECT_EQ(str_util::Join(str_util::Split("a", ','), "|"), "a");

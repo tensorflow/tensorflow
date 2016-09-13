@@ -157,6 +157,6 @@ def maybe_download(filename, work_directory, source_url):
       urllib.request.urlretrieve(source_url, temp_file_name)
       gfile.Copy(temp_file_name, filepath)
       with gfile.GFile(filepath) as f:
-        size = f.Size()
+        size = f.size()
       print('Successfully downloaded', filename, size, 'bytes.')
   return filepath

@@ -46,6 +46,13 @@ Initializes a TensorFlowEstimator instance.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowEstimator.__repr__()` {#TensorFlowEstimator.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowEstimator.config` {#TensorFlowEstimator.config}
 
 

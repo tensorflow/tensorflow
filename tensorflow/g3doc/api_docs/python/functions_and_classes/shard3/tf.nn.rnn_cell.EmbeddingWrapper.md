@@ -6,6 +6,13 @@ do the embedding on this batch-concatenated sequence, then split it and
 feed into your RNN.
 - - -
 
+#### `tf.nn.rnn_cell.EmbeddingWrapper.__call__(inputs, state, scope=None)` {#EmbeddingWrapper.__call__}
+
+Run the cell on embedded inputs.
+
+
+- - -
+
 #### `tf.nn.rnn_cell.EmbeddingWrapper.__init__(cell, embedding_classes, embedding_size, initializer=None)` {#EmbeddingWrapper.__init__}
 
 Create a cell with an added input embedding.

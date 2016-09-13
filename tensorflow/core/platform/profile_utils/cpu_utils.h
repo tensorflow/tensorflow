@@ -42,8 +42,14 @@ class CpuUtils {
   // This returns unsigned int because there is no guarantee that rdtsc
   // is less than 2 ^ 61.
   static inline uint64 GetCurrentClockCycle() {
+#if defined(__ANDROID__)
+#if defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
+    return GetCpuUtilsHelper().GetCurrentClockCycle();
+#else   // defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
+    return DUMMY_CYCLE_CLOCK;
+#endif  // defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
 // ----------------------------------------------------------------
-#if defined(__x86_64__) || defined(__amd64__)
+#elif defined(__x86_64__) || defined(__amd64__)
     uint64_t high, low;
     __asm__ volatile("rdtsc" : "=a"(low), "=d"(high));
     return (high << 32) | low;
@@ -108,7 +114,7 @@ class CpuUtils {
 
   // Enable clock cycle profile
   // You can enable / disable profile if it's supported by the platform
-  static void EnableClockCycleProfile(bool enable);
+  static void EnableClockCycleProfiling(bool enable);
 
  private:
   class DefaultCpuUtilsHelper : public ICpuUtilsHelper {
@@ -117,7 +123,7 @@ class CpuUtils {
     void Initialize() final {}
     void ResetClockCycle() final {}
     uint64 GetCurrentClockCycle() final { return DUMMY_CYCLE_CLOCK; }
-    void EnableClockCycleProfile(bool /* enable */) final {}
+    void EnableClockCycleProfiling(bool /* enable */) final {}
 
    private:
     TF_DISALLOW_COPY_AND_ASSIGN(DefaultCpuUtilsHelper);
