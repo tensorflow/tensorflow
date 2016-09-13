@@ -32,6 +32,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 
@@ -995,7 +996,8 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
         if test.is_gpu_available() and self.shouldRunOnGPU(opt, nptype):
           with self.test_session(use_gpu=True) as sess:
             image = constant_op.constant(img_np, shape=img_shape)
-            y = image_ops.resize_images(image, target_height, target_width, opt)
+            y = image_ops.resize_images(
+                image, [target_height, target_width], opt)
             yshape = array_ops.shape(y)
             resized, newshape = sess.run([y, yshape])
             self.assertAllEqual(img_shape, newshape)
@@ -1005,7 +1007,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
       with self.test_session(use_gpu=True):
         img_single = img_np.reshape(single_shape)
         image = constant_op.constant(img_single, shape=single_shape)
-        y = image_ops.resize_images(image, target_height, target_width,
+        y = image_ops.resize_images(image, [target_height, target_width],
                                     self.OPTIONS[0])
         yshape = array_ops.shape(y)
         newshape = yshape.eval()
@@ -1022,18 +1024,16 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
             64, 64, 127, 127,
             50, 50, 100, 100,
             50, 50, 100, 100]
-    target_height = array_ops.placeholder(dtypes.int32)
-    target_width = array_ops.placeholder(dtypes.int32)
+    new_size = array_ops.placeholder(dtypes.int32, shape=(2))
 
     img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
 
     for opt in self.OPTIONS:
       with self.test_session(use_gpu=True) as sess:
         image = constant_op.constant(img_np, shape=img_shape)
-        y = image_ops.resize_images(image, target_height, target_width, opt)
+        y = image_ops.resize_images(image, new_size, opt)
         yshape = array_ops.shape(y)
-        resized, newshape = sess.run([y, yshape], {target_height: 6,
-                                                   target_width: 4})
+        resized, newshape = sess.run([y, yshape], {new_size: [6, 4]})
         self.assertAllEqual(img_shape, newshape)
         self.assertAllClose(resized, img_np, atol=1e-5)
 
@@ -1041,27 +1041,69 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       img_single = img_np.reshape(single_shape)
       image = constant_op.constant(img_single, shape=single_shape)
-      y = image_ops.resize_images(image, target_height, target_width,
+      y = image_ops.resize_images(image, new_size,
                                   self.OPTIONS[0])
       yshape = array_ops.shape(y)
-      newshape = yshape.eval(feed_dict={target_height: 6, target_width: 4})
+      resized, newshape = sess.run([y, yshape], {new_size: [6, 4]})
       self.assertAllEqual(single_shape, newshape)
+      self.assertAllClose(resized, img_single, atol=1e-5)
 
     # Incorrect shape.
     with self.assertRaises(ValueError):
+      new_size = constant_op.constant(4)
       _ = image_ops.resize_images(
-          image, [12, 32], 4, image_ops.ResizeMethod.BILINEAR)
+          image, new_size, image_ops.ResizeMethod.BILINEAR)
     with self.assertRaises(ValueError):
+      new_size = constant_op.constant([4])
       _ = image_ops.resize_images(
-          image, 6, [12, 32], image_ops.ResizeMethod.BILINEAR)
+          image, new_size, image_ops.ResizeMethod.BILINEAR)
+    with self.assertRaises(ValueError):
+      new_size = constant_op.constant([1, 2, 3])
+      _ = image_ops.resize_images(
+          image, new_size, image_ops.ResizeMethod.BILINEAR)
 
     # Incorrect dtypes.
     with self.assertRaises(ValueError):
+      new_size = constant_op.constant([6.0, 4])
       _ = image_ops.resize_images(
-          image, 6.0, 4, image_ops.ResizeMethod.BILINEAR)
+          image, new_size, image_ops.ResizeMethod.BILINEAR)
     with self.assertRaises(ValueError):
       _ = image_ops.resize_images(
-          image, 6, 4.0, image_ops.ResizeMethod.BILINEAR)
+          image, [6, 4.0], image_ops.ResizeMethod.BILINEAR)
+    with self.assertRaises(ValueError):
+      _ = image_ops.resize_images(
+          image, [None, 4], image_ops.ResizeMethod.BILINEAR)
+    with self.assertRaises(ValueError):
+      _ = image_ops.resize_images(
+          image, [6, None], image_ops.ResizeMethod.BILINEAR)
+
+  def testSumTensor(self):
+    img_shape = [1, 6, 4, 1]
+    # This test is also conducted with int8, so 127 is the maximum
+    # value that can be used.
+    data = [127, 127, 64, 64,
+            127, 127, 64, 64,
+            64, 64, 127, 127,
+            64, 64, 127, 127,
+            50, 50, 100, 100,
+            50, 50, 100, 100]
+    # Test size where width is specified as a tensor which is a sum
+    # of two tensors.
+    width_1 = constant_op.constant(1)
+    width_2 = constant_op.constant(3)
+    width = math_ops.add(width_1, width_2)
+    height = constant_op.constant(6)
+
+    img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
+
+    for opt in self.OPTIONS:
+      with self.test_session() as sess:
+        image = constant_op.constant(img_np, shape=img_shape)
+        y = image_ops.resize_images(image, [height, width], opt)
+        yshape = array_ops.shape(y)
+        resized, newshape = sess.run([y, yshape])
+        self.assertAllEqual(img_shape, newshape)
+        self.assertAllClose(resized, img_np, atol=1e-5)
 
   def testResizeDown(self):
     # This test is also conducted with int8, so 127 is the maximum
@@ -1092,7 +1134,8 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
           if test.is_gpu_available() and self.shouldRunOnGPU(opt, nptype):
             with self.test_session(use_gpu=True):
               image = constant_op.constant(img_np, shape=img_shape)
-              y = image_ops.resize_images(image, target_height, target_width, opt)
+              y = image_ops.resize_images(
+                  image, [target_height, target_width], opt)
               expected = np.array(expected_data).reshape(target_shape)
               resized = y.eval()
               self.assertAllClose(resized, expected, atol=1e-5)
@@ -1136,7 +1179,8 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
           with self.test_session(use_gpu=True):
             img_np = np.array(data, dtype=nptype).reshape(img_shape)
             image = constant_op.constant(img_np, shape=img_shape)
-            y = image_ops.resize_images(image, target_height, target_width, opt)
+            y = image_ops.resize_images(
+                image, [target_height, target_width], opt)
             resized = y.eval()
             expected = np.array(expected_data[opt]).reshape(
                 [1, target_height, target_width, 1])
@@ -1164,7 +1208,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
 
     with self.test_session(use_gpu=True):
       image = constant_op.constant(img_np, shape=img_shape)
-      y = image_ops.resize_images(image, target_height, target_width,
+      y = image_ops.resize_images(image, [target_height, target_width],
                                   image_ops.ResizeMethod.BICUBIC)
       resized = y.eval()
       expected = np.array(expected_data).reshape(
@@ -1190,7 +1234,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
 
     with self.test_session(use_gpu=True):
       image = constant_op.constant(img_np, shape=img_shape)
-      y = image_ops.resize_images(image, target_height, target_width,
+      y = image_ops.resize_images(image, [target_height, target_width],
                                   image_ops.ResizeMethod.AREA)
       expected = np.array(expected_data).reshape(
           [1, target_height, target_width, 1])
@@ -1208,15 +1252,17 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
               0, np.prod(input_shape), dtype=nptype).reshape(input_shape)
           with self.test_session(use_gpu=True):
             image = constant_op.constant(img_np, shape=input_shape)
+            new_size = constant_op.constant([target_height, target_width])
             out_op = image_ops.resize_images(
-                image, target_height, target_width,
+                image, new_size,
                 image_ops.ResizeMethod.NEAREST_NEIGHBOR,
                 align_corners=align_corners)
             gpu_val = out_op.eval()
           with self.test_session(use_gpu=False):
             image = constant_op.constant(img_np, shape=input_shape)
+            new_size = constant_op.constant([target_height, target_width])
             out_op = image_ops.resize_images(
-                image, target_height, target_width,
+                image, new_size,
                 image_ops.ResizeMethod.NEAREST_NEIGHBOR,
                 align_corners=align_corners)
             cpu_val = out_op.eval()
@@ -1235,8 +1281,9 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
           for use_gpu in [True, False]:
             with self.test_session(use_gpu=use_gpu):
               image = constant_op.constant(img_np, shape=input_shape)
+              new_size = constant_op.constant([target_height, target_width])
               out_op = image_ops.resize_images(
-                  image, target_height, target_width,
+                  image, new_size,
                   image_ops.ResizeMethod.BILINEAR,
                   align_corners=align_corners)
               value[use_gpu] = out_op.eval()
