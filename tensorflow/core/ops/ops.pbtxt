@@ -5362,6 +5362,7 @@ op {
         type: DT_DOUBLE
         type: DT_UINT8
         type: DT_INT8
+        type: DT_UINT16
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
@@ -9501,6 +9502,7 @@ op {
         type: DT_DOUBLE
         type: DT_UINT8
         type: DT_INT8
+        type: DT_UINT16
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
