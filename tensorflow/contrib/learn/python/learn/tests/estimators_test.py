@@ -58,6 +58,67 @@ class InferredfeatureColumnTest(tf.test.TestCase):
     self.assertGreater(score, 0.65, "Failed with score = {0}".format(score))
 
 
+class FeatureEngineeringFunctionTest(tf.test.TestCase):
+  """Tests feature_engineering_fn."""
+
+  def testFeatureEngineeringFn(self):
+
+    def input_fn():
+      return {"x": tf.constant([1.])}, {"y": tf.constant([11.])}
+
+    def feature_engineering_fn(features, targets):
+      _, _ = features, targets
+      return {"x": tf.constant([9.])}, {"y": tf.constant([99.])}
+
+    def model_fn(features, targets):
+      # dummy variable:
+      _ = tf.Variable([0.])
+      _ = targets
+      predictions = features["transformed_x"]
+      loss = tf.constant([2.])
+      return predictions, loss, tf.no_op()
+
+    estimator = tf.contrib.learn.Estimator(
+        model_fn=model_fn,
+        feature_engineering_fn=feature_engineering_fn)
+    estimator.fit(input_fn=input_fn, steps=1)
+    prediction = next(estimator.predict(input_fn=input_fn, as_iterable=True))
+    # predictions = transformed_x (99)
+    self.assertEqual(99., prediction)
+
+  def testNoneFeatureEngineeringFn(self):
+
+    def input_fn():
+      return {"x": tf.constant([1.])}, {"y": tf.constant([11.])}
+
+    def feature_engineering_fn(features, targets):
+      _, _ = features, targets
+      return {"x": tf.constant([9.])}, {"y": tf.constant([99.])}
+
+    def model_fn(features, targets):
+      # dummy variable:
+      _ = tf.Variable([0.])
+      _ = targets
+      predictions = features["x"]
+      loss = tf.constant([2.])
+      return predictions, loss, tf.no_op()
+
+    estimator_with_fe_fn = tf.contrib.learn.Estimator(
+        model_fn=model_fn,
+        feature_engineering_fn=feature_engineering_fn)
+    estimator_with_fe_fn.fit(input_fn=input_fn, steps=1)
+    estimator_without_fe_fn = tf.contrib.learn.Estimator(model_fn=model_fn)
+    estimator_without_fe_fn.fit(input_fn=input_fn, steps=1)
+
+    # predictions = x
+    prediction_with_fe_fn = next(
+        estimator_with_fe_fn.predict(input_fn=input_fn, as_iterable=True))
+    self.assertEqual(9., prediction_with_fe_fn)
+    prediction_without_fe_fn = next(
+        estimator_without_fe_fn.predict(input_fn=input_fn, as_iterable=True))
+    self.assertEqual(1., prediction_without_fe_fn)
+
+
 class CustomOptimizer(tf.test.TestCase):
   """Custom optimizer tests."""
 
