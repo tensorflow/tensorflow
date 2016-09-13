@@ -30,6 +30,12 @@ Static helper routines for ` TensorShape `. Includes a few common predicates on 
 
 
 
+#### `static bool tensorflow::TensorShapeUtils::IsSquareMatrix(const TensorShape &shape)` {#static_bool_tensorflow_TensorShapeUtils_IsSquareMatrix}
+
+
+
+
+
 #### `static bool tensorflow::TensorShapeUtils::IsMatrixOrHigher(const TensorShape &shape)` {#static_bool_tensorflow_TensorShapeUtils_IsMatrixOrHigher}
 
 
