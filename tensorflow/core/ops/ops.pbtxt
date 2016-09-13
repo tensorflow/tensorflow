@@ -2197,30 +2197,28 @@ op {
   name: "BatchMatrixBandPart"
   input_arg {
     name: "input"
-    description: "Rank `k` tensor."
     type_attr: "T"
   }
   input_arg {
     name: "num_lower"
-    description: "0-D tensor. Number of subdiagonals to keep. If negative, keep entire\nlower triangle."
     type: DT_INT64
   }
   input_arg {
     name: "num_upper"
-    description: "0-D tensor. Number of superdiagonals to keep. If negative, keep\nentire upper triangle."
     type: DT_INT64
   }
   output_arg {
     name: "band"
-    description: "Rank `k` tensor of the same shape as input. The extracted banded tensor."
     type_attr: "T"
   }
   attr {
     name: "T"
     type: "type"
   }
-  summary: "Copy a tensor setting everything outside a central band in each innermost matrix"
-  description: "to zero.\n\nThe `band` part is computed as follows:\nAssume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a\ntensor with the same shape where\n\n`band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.\n\nThe indicator function \'in_band(m, n)` is one if\n`(num_lower < 0 || (m-n) <= num_lower)) &&\n(num_upper < 0 || (n-m) <= num_upper)`, and zero otherwise.\n\nFor example:\n\n```prettyprint\n# if \'input\' is [[ 0,  1,  2, 3]\n                 [-1,  0,  1, 2]\n                 [-2, -1,  0, 1]\n                 [-3, -2, -1, 0]],\n\ntf.batch_matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]\n                                             [-1,  0,  1, 2]\n                                             [ 0, -1,  0, 1]\n                                             [ 0,  0, -1, 0]],\n\ntf.batch_matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]\n                                            [-1,  0,  1, 0]\n                                            [-2, -1,  0, 1]\n                                            [ 0, -2, -1, 0]]\n```\n\nUseful special cases:\n\n```prettyprint\n tf.batch_matrix_band_part(input, 0, -1) ==> Upper triangular part.\n tf.batch_matrix_band_part(input, -1, 0) ==> Lower triangular part.\n tf.batch_matrix_band_part(input, 0, 0) ==> Diagonal.\n```"
+  deprecation {
+    version: 14
+    explanation: "Use MatrixBandPart"
+  }
 }
 op {
   name: "BatchMatrixDeterminant"
@@ -2251,39 +2249,39 @@ op {
   name: "BatchMatrixDiag"
   input_arg {
     name: "diagonal"
-    description: "Rank `k`, where `k >= 1`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`."
     type_attr: "T"
   }
   attr {
     name: "T"
     type: "type"
   }
-  summary: "Returns a batched diagonal tensor with a given batched diagonal values."
-  description: "Given a `diagonal`, this operation returns a tensor with the `diagonal` and\neverything else padded with zeros. The diagonal is computed as follows:\n\nAssume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a\ntensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:\n\n`output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.\n\nFor example:\n\n```prettyprint\n# \'diagonal\' is [[1, 2, 3, 4], [5, 6, 7, 8]]\n\nand diagonal.shape = (2, 4)\n\ntf.batch_matrix_diag(diagonal) ==> [[[1, 0, 0, 0]\n                                     [0, 2, 0, 0]\n                                     [0, 0, 3, 0]\n                                     [0, 0, 0, 4]],\n                                    [[5, 0, 0, 0]\n                                     [0, 6, 0, 0]\n                                     [0, 0, 7, 0]\n                                     [0, 0, 0, 8]]]\n\nwhich has shape (2, 4, 4)\n```"
+  deprecation {
+    version: 14
+    explanation: "Use MatrixDiag"
+  }
 }
 op {
   name: "BatchMatrixDiagPart"
   input_arg {
     name: "input"
-    description: "Rank `k` tensor where `k >= 2` and the last two dimensions are equal."
     type_attr: "T"
   }
   output_arg {
     name: "diagonal"
-    description: "The extracted diagonal(s) having shape\n`diagonal.shape = input.shape[:-1]`."
     type_attr: "T"
   }
   attr {
     name: "T"
     type: "type"
   }
-  summary: "Returns the batched diagonal part of a batched tensor."
-  description: "This operation returns a tensor with the `diagonal` part\nof the batched `input`. The `diagonal` part is computed as follows:\n\nAssume `input` has `k` dimensions `[I, J, K, ..., N, N]`, then the output is a\ntensor of rank `k - 1` with dimensions `[I, J, K, ..., N]` where:\n\n`diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.\n\nThe input must be at least a matrix.\n\nFor example:\n\n```prettyprint\n# \'input\' is [[[1, 0, 0, 0]\n               [0, 2, 0, 0]\n               [0, 0, 3, 0]\n               [0, 0, 0, 4]],\n              [[5, 0, 0, 0]\n               [0, 6, 0, 0]\n               [0, 0, 7, 0]\n               [0, 0, 0, 8]]]\n\nand input.shape = (2, 4, 4)\n\ntf.batch_matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]\n\nwhich has shape (2, 4)\n```"
+  deprecation {
+    version: 14
+    explanation: "Use MatrixDiagPart"
+  }
 }
 op {
   name: "BatchMatrixInverse"
@@ -2321,25 +2319,24 @@ op {
   name: "BatchMatrixSetDiag"
   input_arg {
     name: "input"
-    description: "Rank `k+1`, where `k >= 1`."
     type_attr: "T"
   }
   input_arg {
     name: "diagonal"
-    description: "Rank `k`, where `k >= 1`."
     type_attr: "T"
   }
   output_arg {
     name: "output"
-    description: "Rank `k+1`, with `output.shape = input.shape`."
     type_attr: "T"
   }
   attr {
     name: "T"
     type: "type"
   }
-  summary: "Returns a batched matrix tensor with new batched diagonal values."
-  description: "Given `input` and `diagonal`, this operation returns a tensor with the\nsame shape and values as `input`, except for the diagonals of the innermost\nmatrices.  These will be overwritten by the values in `diagonal`.\nThe batched matrices must be square.\n\nThe output is computed as follows:\n\nAssume `input` has `k+1` dimensions `[I, J, K, ..., N, N]` and `diagonal` has\n`k` dimensions `[I, J, K, ..., N]`.  Then the output is a\ntensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:\n\n  * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.\n  * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`."
+  deprecation {
+    version: 14
+    explanation: "Use MatrixSetDiag"
+  }
 }
 op {
   name: "BatchMatrixSolve"
@@ -8348,6 +8345,35 @@ op {
   description: "Note that this routine only supports wildcard characters in the\nbasename portion of the pattern, not in the directory portion."
 }
 op {
+  name: "MatrixBandPart"
+  input_arg {
+    name: "input"
+    description: "Rank `k` tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "num_lower"
+    description: "0-D tensor. Number of subdiagonals to keep. If negative, keep entire\nlower triangle."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "num_upper"
+    description: "0-D tensor. Number of superdiagonals to keep. If negative, keep\nentire upper triangle."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "band"
+    description: "Rank `k` tensor of the same shape as input. The extracted banded tensor."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Copy a tensor setting everything outside a central band in each innermost matrix"
+  description: "to zero.\n\nThe `band` part is computed as follows:\nAssume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a\ntensor with the same shape where\n\n`band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.\n\nThe indicator function \'in_band(m, n)` is one if\n`(num_lower < 0 || (m-n) <= num_lower)) &&\n(num_upper < 0 || (n-m) <= num_upper)`, and zero otherwise.\n\nFor example:\n\n```prettyprint\n# if \'input\' is [[ 0,  1,  2, 3]\n                 [-1,  0,  1, 2]\n                 [-2, -1,  0, 1]\n                 [-3, -2, -1, 0]],\n\ntf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]\n                                             [-1,  0,  1, 2]\n                                             [ 0, -1,  0, 1]\n                                             [ 0,  0, -1, 0]],\n\ntf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]\n                                            [-1,  0,  1, 0]\n                                            [-2, -1,  0, 1]\n                                            [ 0, -2, -1, 0]]\n```\n\nUseful special cases:\n\n```prettyprint\n tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.\n tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.\n tf.matrix_band_part(input, 0, 0) ==> Diagonal.\n```"
+}
+op {
   name: "MatrixDeterminant"
   input_arg {
     name: "input"
@@ -8371,6 +8397,44 @@ op {
   }
   summary: "Computes the determinant of one ore more square matrices."
   description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor containing the determinants\nfor all input submatrices `[..., :, :]`."
+}
+op {
+  name: "MatrixDiag"
+  input_arg {
+    name: "diagonal"
+    description: "Rank `k`, where `k >= 1`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Returns a batched diagonal tensor with a given batched diagonal values."
+  description: "Given a `diagonal`, this operation returns a tensor with the `diagonal` and\neverything else padded with zeros. The diagonal is computed as follows:\n\nAssume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a\ntensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:\n\n`output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.\n\nFor example:\n\n```prettyprint\n# \'diagonal\' is [[1, 2, 3, 4], [5, 6, 7, 8]]\n\nand diagonal.shape = (2, 4)\n\ntf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0]\n                                     [0, 2, 0, 0]\n                                     [0, 0, 3, 0]\n                                     [0, 0, 0, 4]],\n                                    [[5, 0, 0, 0]\n                                     [0, 6, 0, 0]\n                                     [0, 0, 7, 0]\n                                     [0, 0, 0, 8]]]\n\nwhich has shape (2, 4, 4)\n```"
+}
+op {
+  name: "MatrixDiagPart"
+  input_arg {
+    name: "input"
+    description: "Rank `k` tensor where `k >= 2` and the last two dimensions are equal."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "diagonal"
+    description: "The extracted diagonal(s) having shape\n`diagonal.shape = input.shape[:-1]`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Returns the batched diagonal part of a batched tensor."
+  description: "This operation returns a tensor with the `diagonal` part\nof the batched `input`. The `diagonal` part is computed as follows:\n\nAssume `input` has `k` dimensions `[I, J, K, ..., N, N]`, then the output is a\ntensor of rank `k - 1` with dimensions `[I, J, K, ..., N]` where:\n\n`diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.\n\nThe input must be at least a matrix.\n\nFor example:\n\n```prettyprint\n# \'input\' is [[[1, 0, 0, 0]\n               [0, 2, 0, 0]\n               [0, 0, 3, 0]\n               [0, 0, 0, 4]],\n              [[5, 0, 0, 0]\n               [0, 6, 0, 0]\n               [0, 0, 7, 0]\n               [0, 0, 0, 8]]]\n\nand input.shape = (2, 4, 4)\n\ntf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]\n\nwhich has shape (2, 4)\n```"
 }
 op {
   name: "MatrixInverse"
@@ -8403,6 +8467,30 @@ op {
   }
   summary: "Computes the inverse of one or more square invertible matrices or their"
   description: "adjoints (conjugate transposes).\n\nThe input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices. The output is a tensor of the same shape as the input\ncontaining the inverse for all input submatrices `[..., :, :]`.\n\nThe op uses LU decomposition with partial pivoting to compute the inverses.\n\nIf a matrix is not invertible there is no guarantee what the op does. It\nmay detect the condition and raise an exception or it may simply return a\ngarbage result."
+}
+op {
+  name: "MatrixSetDiag"
+  input_arg {
+    name: "input"
+    description: "Rank `k+1`, where `k >= 1`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "diagonal"
+    description: "Rank `k`, where `k >= 1`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    description: "Rank `k+1`, with `output.shape = input.shape`."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Returns a batched matrix tensor with new batched diagonal values."
+  description: "Given `input` and `diagonal`, this operation returns a tensor with the\nsame shape and values as `input`, except for the diagonals of the innermost\nmatrices.  These will be overwritten by the values in `diagonal`.\nThe batched matrices must be square.\n\nThe output is computed as follows:\n\nAssume `input` has `k+1` dimensions `[I, J, K, ..., N, N]` and `diagonal` has\n`k` dimensions `[I, J, K, ..., N]`.  Then the output is a\ntensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:\n\n  * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.\n  * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`."
 }
 op {
   name: "MatrixSolve"

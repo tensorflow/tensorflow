@@ -4486,6 +4486,32 @@ op {
   }
 }
 op {
+  name: "BatchMatrixBandPart"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "num_lower"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "num_upper"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "band"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 14
+  }
+}
+op {
   name: "BatchMatrixDeterminant"
   input_arg {
     name: "input"
@@ -4546,6 +4572,24 @@ op {
   }
 }
 op {
+  name: "BatchMatrixDiag"
+  input_arg {
+    name: "diagonal"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 14
+  }
+}
+op {
   name: "BatchMatrixDiagPart"
   input_arg {
     name: "input"
@@ -4558,6 +4602,24 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+}
+op {
+  name: "BatchMatrixDiagPart"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "diagonal"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 14
   }
 }
 op {
@@ -4657,6 +4719,28 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+}
+op {
+  name: "BatchMatrixSetDiag"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "diagonal"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 14
   }
 }
 op {
@@ -14281,6 +14365,29 @@ op {
   }
 }
 op {
+  name: "MatrixBandPart"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "num_lower"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "num_upper"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "band"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
   name: "MatrixDeterminant"
   input_arg {
     name: "input"
@@ -14299,6 +14406,36 @@ op {
         type: DT_DOUBLE
       }
     }
+  }
+}
+op {
+  name: "MatrixDiag"
+  input_arg {
+    name: "diagonal"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "MatrixDiagPart"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "diagonal"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
   }
 }
 op {
@@ -14348,6 +14485,25 @@ op {
         type: DT_FLOAT
       }
     }
+  }
+}
+op {
+  name: "MatrixSetDiag"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "diagonal"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
   }
 }
 op {
