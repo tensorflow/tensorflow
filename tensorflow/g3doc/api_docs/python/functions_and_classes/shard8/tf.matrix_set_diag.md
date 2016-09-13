@@ -1,4 +1,4 @@
-### `tf.batch_matrix_set_diag(input, diagonal, name=None)` {#batch_matrix_set_diag}
+### `tf.matrix_set_diag(input, diagonal, name=None)` {#matrix_set_diag}
 
 Returns a batched matrix tensor with new batched diagonal values.
 

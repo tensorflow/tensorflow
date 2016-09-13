@@ -1,4 +1,4 @@
-### `tf.contrib.distributions.batch_matrix_diag_transform(matrix, transform=None, name=None)` {#batch_matrix_diag_transform}
+### `tf.contrib.distributions.matrix_diag_transform(matrix, transform=None, name=None)` {#matrix_diag_transform}
 
 Transform diagonal of [batch-]matrix, leave rest of matrix unchanged.
 
@@ -11,7 +11,7 @@ matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
 
 # Make the diagonal positive.  If the upper triangle was zero, this would be a
 # valid Cholesky factor.
-chol = batch_matrix_diag_transform(matrix, transform=tf.nn.softplus)
+chol = matrix_diag_transform(matrix, transform=tf.nn.softplus)
 
 # OperatorPDCholesky ignores the upper triangle.
 operator = OperatorPDCholesky(chol)
@@ -23,7 +23,7 @@ Example of heteroskedastic 2-D linear regression.
 # Get a trainable Cholesky factor.
 matrix_values = tf.contrib.layers.fully_connected(activations, 4)
 matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
-chol = batch_matrix_diag_transform(matrix, transform=tf.nn.softplus)
+chol = matrix_diag_transform(matrix, transform=tf.nn.softplus)
 
 # Get a trainable mean.
 mu = tf.contrib.layers.fully_connected(activations, 2)
@@ -45,7 +45,7 @@ loss = -1 * tf.reduce_mean(dist.log_pdf(labels))
     be applied to the diagonal of `matrix`.  If `None`, `matrix` is returned
     unchanged.  Defaults to `None`.
 *  <b>`name`</b>: A name to give created ops.
-    Defaults to "batch_matrix_diag_transform".
+    Defaults to "matrix_diag_transform".
 
 ##### Returns:
 

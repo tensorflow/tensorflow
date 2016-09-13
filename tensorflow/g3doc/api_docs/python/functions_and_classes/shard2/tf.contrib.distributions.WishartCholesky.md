@@ -55,7 +55,7 @@ x = [[x0, x1], [x2, x3]]  # Shape is [2, 2, 3, 3].
 dist.pdf(x)  # Shape is [2, 2].
 
 # (*) - To efficiently create a trainable covariance matrix, see the example
-#   in tf.contrib.distributions.batch_matrix_diag_transform.
+#   in tf.contrib.distributions.matrix_diag_transform.
 ```
 - - -
 
