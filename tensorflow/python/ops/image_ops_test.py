@@ -1768,24 +1768,5 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       self._convert([0, 1.1 / 255.0, 1], dtypes.float32, dtypes.uint8,
                     [0, 1, 255])
 
-  def testConvertBetweenInt16AndInt8(self):
-    with self.test_session(use_gpu=True):
-      # uint8, uint16
-      self._convert([0, 255 * 256], dtypes.uint16, dtypes.uint8,
-                    [0, 255])
-      self._convert([0, 255], dtypes.uint8, dtypes.uint16,
-                    [0, 255 * 256])
-      # int8, uint16
-      self._convert([0, 127 * 2 * 256], dtypes.uint16, dtypes.int8,
-                    [0, 127])
-      self._convert([0, 127], dtypes.int8, dtypes.uint16,
-                    [0, 127 * 2 * 256])
-      # int16, uint16
-      self._convert([0, 255 * 256], dtypes.uint16, dtypes.int16,
-                    [0, 255 * 128])
-      self._convert([0, 255 * 128], dtypes.int16, dtypes.uint16,
-                    [0, 255 * 256])
-
-
 if __name__ == '__main__':
   googletest.main()
