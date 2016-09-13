@@ -759,6 +759,15 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
       x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
       return func(x, y, name=name)
 
+  # Propagate func.__doc__ to the wrappers
+  try:
+    doc = func.__doc__
+  except AttributeError:
+    doc = None
+  binary_op_wrapper.__doc__ = doc
+  r_binary_op_wrapper.__doc__ = doc
+  binary_op_wrapper_sparse.__doc__ = doc
+
   if clazz_object is ops.Tensor:
     clazz_object._override_operator("__%s__" % op_name, binary_op_wrapper)
     del binary_op_wrapper

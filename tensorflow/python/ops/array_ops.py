@@ -270,9 +270,37 @@ def _SliceHelper(tensor, slice_spec, var=None):
   """Overload for Tensor.__getitem__.
 
   This operation extracts the specified region from the tensor.
-  The notation is similar to numpy with the restriction that
+  The notation is similar to NumPy with the restriction that
   currently only support basic indexing. That means that
   using a tensor as input is not currently allowed
+
+  Some useful examples:
+
+  ```
+  # strip leading and trailing 2 elements
+  foo = tf.constant([1,2,3,4,5,6])
+  print(foo[2:-2].eval()) # => [3,4]
+
+  # skip every row and reverse every column
+  foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
+  print(foo[::2,::-1].eval()) # => [[3,2,1], [9,8,7]]
+
+  # Insert another dimension
+  foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
+  print(foo[tf.newaxis, :, :].eval()) # => [[[3,2,1], [9,8,7]]]
+  print(foo[:, tf.newaxis, :].eval()) # => [[[3,2,1]], [[9,8,7]]]
+  print(foo[:, :, tf.newaxis].eval()) # => [[[3],[2],[1]], [[9],[8],[7]]]
+
+  # Ellipses (3 equivalent operations)
+  print(foo[tf.newaxis, :, :].eval()) # => [[[3,2,1], [9,8,7]]]
+  print(foo[tf.newaxis, ...].eval()) # => [[[3,2,1], [9,8,7]]]
+  print(foo[tf.newaxis].eval()) # => [[[3,2,1], [9,8,7]]]
+  ```
+
+  Notes:
+    - `tf.newaxis` is `None` as in NumPy.
+    - An implicit ellipsis is placed at the end of the `slice_spec`
+    - NumPy advanced indexing is currently not supported.
 
   Args:
     tensor: An ops.Tensor object.
@@ -532,6 +560,49 @@ def strided_slice(input_,
 
 
 def _SliceHelperVar(var, slice_spec):
+  """Creates a slice helper object given a variable.
+
+  This allows creating a sub-tensor from part of the current contents
+  of a variable.
+  See
+  [`Tensor.__getitem__`](../../api_docs/python/framework.md#Tensor.__getitem__)
+  for detailed examples of slicing.
+
+  This function in addition also allows assignment to a sliced range.
+  This is similar to `__setitem__` functionality in Python. However,
+  the syntax is different so that the user can capture the assignment
+  operation for grouping or passing to `sess.run()`.
+  For example,
+
+  ```prettyprint
+  import tensorflow as tf
+  A = tf.Variable([[1,2,3], [4,5,6], [7,8,9]], dtype=tf.float32)
+  with tf.Session() as sess:
+    sess.run(tf.initialize_all_variables())
+    print sess.run(A[:2, :2]) # => [[1,2], [4,5]]
+
+    op = A[:2,:2].assign(22. * tf.ones((2, 2)))
+    print sess.run(op) # => [[22, 22, 3], [22, 22, 6], [7,8,9]]
+  ```
+
+  Note that assignments currently do not support NumPy broadcasting
+  semantics.
+
+  Args:
+    var: An `ops.Variable` object.
+    slice_spec: The arguments to `Tensor.__getitem__`.
+
+  Returns:
+    The appropriate slice of "tensor", based on "slice_spec".
+    As an operator. The operator also has a `assign()` method
+    that can be used to generate an assignment operator.
+
+  Raises:
+    ValueError: If a slice range is negative size.
+    TypeError: If the slice indices aren't int, slice, or Ellipsis.
+
+  """
+
   return _SliceHelper(var._AsTensor(), slice_spec, var)
 
 ops.Tensor._override_operator("__getitem__", _SliceHelper)

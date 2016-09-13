@@ -618,6 +618,11 @@ class Variable(object):
     def _run_op(a, *args):
       # pylint: disable=protected-access
       return getattr(ops.Tensor, operator)(a._AsTensor(), *args)
+    # Propagate __doc__ to wrapper
+    try:
+      _run_op.__doc__ = getattr(ops.Tensor, operator).__doc__
+    except AttributeError:
+      pass
 
     setattr(Variable, operator, _run_op)
 
