@@ -276,7 +276,7 @@ component of a nested object.
 Estimator class is the basic TensorFlow model trainer/evaluator.
 - - -
 
-#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None, params=None, feature_engineering_fn=None)` {#Estimator.__init__}
+#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None, params=None)` {#Estimator.__init__}
 
 Constructs an Estimator instance.
 
@@ -313,11 +313,6 @@ Constructs an Estimator instance.
 *  <b>`config`</b>: Configuration object.
 *  <b>`params`</b>: `dict` of hyper parameters that will be passed into `model_fn`.
           Keys are names of parameters, values are basic python types.
-*  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
-                          targets which are the output of `input_fn` and
-                          returns features and targets which will be fed
-                          into `model_fn`. Please check `model_fn` for
-                          a definition of features and targets.
 
 ##### Raises:
 
