@@ -118,13 +118,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ]) + if_mobile([
-        ":manifest_portable_proto",
-        "//tensorflow/core:meta_graph_portable_proto",
-    ]) + if_android([
-        "//tensorflow/core:android_lib_lite",
-    ]) + if_ios([
-        "//tensorflow/core:ios_tensorflow_lib",
+        # mobile not supported yet
     ]),
 )
 
@@ -145,13 +139,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ]) + if_mobile([
-        ":manifest_portable_proto",
-        "//tensorflow/core:meta_graph_portable_proto",
-    ]) + if_android([
-        "//tensorflow/core:android_lib_lite",
-    ]) + if_ios([
-        "//tensorflow/core:ios_tensorflow_lib",
+        # mobile not supported yet
     ]),
 )
 
@@ -221,13 +209,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow_opensource",
-    ]) + if_mobile([
-        ":manifest_portable_proto",
-        "//tensorflow/core:meta_graph_portable_proto",
-    ]) + if_android([
-        "//tensorflow/core:android_lib_lite",
-    ]) + if_ios([
-        "//tensorflow/core:ios_tensorflow_lib",
+        # mobile not supported yet
     ]),
 )
 
@@ -244,13 +226,7 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-    ]) + if_mobile([
-        ":manifest_portable_proto",
-        "//tensorflow/core:meta_graph_portable_proto",
-    ]) + if_android([
-        "//tensorflow/core:android_lib_lite",
-    ]) + if_ios([
-        "//tensorflow/core:ios_tensorflow_lib",
+        # mobile not supported yet
     ]),
 )
 
