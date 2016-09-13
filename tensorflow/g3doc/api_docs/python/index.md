@@ -644,6 +644,7 @@
   * [`MultivariateNormalFullTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#MultivariateNormalFullTensor)
   * [`NormalTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#NormalTensor)
   * [`NormalWithSoftplusSigmaTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#NormalWithSoftplusSigmaTensor)
+  * [`ObservedStochasticTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#ObservedStochasticTensor)
   * [`PoissonTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#PoissonTensor)
   * [`QuantizedDistributionTensor`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#QuantizedDistributionTensor)
   * [`SampleAndReshapeValue`](../../api_docs/python/contrib.bayesflow.stochastic_tensor.md#SampleAndReshapeValue)
