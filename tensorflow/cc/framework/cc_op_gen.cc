@@ -171,8 +171,10 @@ string PrintAttrValue(string op, const AttrValue& attr_value) {
       return PrintString(attr_value.s());
     case AttrValue::kI:
       return strings::StrCat(attr_value.i());
-    case AttrValue::kF:
-      return strings::StrCat(attr_value.f());
+    case AttrValue::kF: {
+      const float f = attr_value.f();
+      return strings::StrCat(attr_value.f(), floorf(f) == f ? ".0" : "", "f");
+    }
     case AttrValue::kB:
       return attr_value.b() ? "true" : "false";
     case AttrValue::kType:
@@ -199,7 +201,8 @@ string PrintAttrValue(string op, const AttrValue& attr_value) {
       } else if (attr_value.list().f_size() > 0) {
         for (int i = 0; i < attr_value.list().f_size(); ++i) {
           if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(&ret, attr_value.list().f(i));
+          const float f = attr_value.list().f(i);
+          strings::StrAppend(&ret, f, floorf(f) == f ? ".0" : "", "f");
         }
       } else if (attr_value.list().b_size() > 0) {
         for (int i = 0; i < attr_value.list().b_size(); ++i) {
