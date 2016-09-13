@@ -142,6 +142,11 @@ TEST(EnvTest, RecursivelyCreateDir) {
                                      &undeleted_files, &undeleted_dirs));
 }
 
+TEST(EnvTest, RecursivelyCreateDirEmpty) {
+  Env* env = Env::Default();
+  TF_CHECK_OK(env->RecursivelyCreateDir(""));
+}
+
 TEST(EnvTest, RecursivelyCreateDirSubdirsExist) {
   Env* env = Env::Default();
   // First create a/b.

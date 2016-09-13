@@ -142,7 +142,7 @@ Status Env::RecursivelyCreateDir(const string& dirname) {
   TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
   std::vector<StringPiece> sub_dirs;
   StringPiece remaining_dir(dirname);
-  while (!fs->FileExists(remaining_dir.ToString())) {
+  while (!fs->FileExists(remaining_dir.ToString()) && !remaining_dir.empty()) {
     // Basename returns "" for / ending dirs.
     if (!remaining_dir.ends_with("/")) {
       sub_dirs.push_back(io::Basename(remaining_dir));
