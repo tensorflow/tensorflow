@@ -91,6 +91,26 @@ TEST(CApi, AllocateTensor) {
   TF_DeleteTensor(t);
 }
 
+TEST(CApi, LibraryLoadFunctions) {
+  // Load the library.
+  TF_Status* status = TF_NewStatus();
+  TF_Library* lib =
+      TF_LoadLibrary("tensorflow/c/test_op.so", status);
+  TF_Code code = TF_GetCode(status);
+  string status_msg(TF_Message(status));
+  TF_DeleteStatus(status);
+  ASSERT_EQ(TF_OK, code) << status_msg;
+
+  // Test op list.
+  TF_Buffer op_list_buf = TF_GetOpList(lib);
+  tensorflow::OpList op_list;
+  EXPECT_TRUE(op_list.ParseFromArray(op_list_buf.data, op_list_buf.length));
+  ASSERT_EQ(op_list.op_size(), 1);
+  EXPECT_EQ("TestCApi", op_list.op(0).name());
+
+  TF_DeleteLibraryHandle(lib);
+}
+
 static void TestEncodeDecode(int line, const std::vector<string>& data) {
   const tensorflow::int64 n = data.size();
   for (const std::vector<tensorflow::int64>& dims :
