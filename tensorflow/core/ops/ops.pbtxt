@@ -7330,7 +7330,7 @@ op {
   }
   input_arg {
     name: "values"
-    description: "Values of type Tval. Same shape as `keys`."
+    description: "Values of type Tval."
     type_attr: "Tval"
   }
   attr {
@@ -8223,7 +8223,7 @@ op {
   }
   input_arg {
     name: "values"
-    description: "Same shape as `keys`.  Values to associate with keys."
+    description: "Values to associate with keys."
     type_attr: "Tout"
   }
   attr {
@@ -8252,7 +8252,7 @@ op {
   }
   input_arg {
     name: "values"
-    description: "Same shape as `keys`.  Values to associate with keys."
+    description: "Values to associate with keys."
     type_attr: "Tout"
   }
   attr {
