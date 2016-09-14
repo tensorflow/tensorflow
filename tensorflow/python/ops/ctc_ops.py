@@ -23,12 +23,13 @@ from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 
 from tensorflow.python.ops import gen_ctc_ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.nn_grad import _BroadcastMul
 
 
 # pylint: disable=protected-access, invalid-name
 def ctc_loss(inputs, labels, sequence_length,
-             preprocess_collapse_repeated=False, ctc_merge_repeated=True):
+             preprocess_collapse_repeated=False, ctc_merge_repeated=True, time_major=True):
   """Computes the CTC (Connectionist Temporal Classification) Loss.
 
   This op implements the CTC loss as presented in the article:
@@ -95,8 +96,12 @@ def ctc_loss(inputs, labels, sequence_length,
     Untested.  Very likely will not learn to output repeated classes.
 
   Args:
-    inputs: 3-D `float` `Tensor` sized
-      `[max_time x batch_size x num_classes]`. The logits.
+    inputs: 3-D `float` `Tensor`.
+      If time_major == False, this will be a `Tensor` shaped:
+        `[batch_size x max_time x num_classes]`.
+      If time_major == True (default), this will be a `Tensor` shaped:
+        `[max_time x batch_size x num_classes]`.
+      The logits.
     labels: An `int32` `SparseTensor`.
       `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
       the id for (batch b, time t).
@@ -107,6 +112,13 @@ def ctc_loss(inputs, labels, sequence_length,
     preprocess_collapse_repeated: Boolean.  Default: False.
       If True, repeated labels are collapsed prior to the CTC calculation.
     ctc_merge_repeated: Boolean.  Default: True.
+    time_major: The shape format of the `inputs` Tensors.
+      If True, these `Tensors` must be shaped `[max_time, batch_size, num_classes]`.
+      If False, these `Tensors` must be shaped `[batch_size, max_time, num_classes]`.
+      Using `time_major = True` (default) is a bit more efficient because it avoids
+      transposes at the beginning of the ctc_loss calculation.  However, most
+      TensorFlow data is batch-major, so by this function also accepts inputs
+      in batch-major form.
 
   Returns:
     A 1-D `float` `Tensor`, size `[batch]`, containing the negative log probabilities.
@@ -118,6 +130,10 @@ def ctc_loss(inputs, labels, sequence_length,
   # _CTCLossGrad() below.
   if not isinstance(labels, ops.SparseTensor):
     raise TypeError("Expected labels to be a SparseTensor")
+
+  # For internal calculations, we transpose to [time, batch, num_classes]
+  if not time_major:
+    inputs = array_ops.transpose(inputs, [1, 0, 2])  # (B,T,N) => (T,B,N)
 
   loss, _ = gen_ctc_ops._ctc_loss(
       inputs,

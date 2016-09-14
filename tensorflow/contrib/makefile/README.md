@@ -264,7 +264,7 @@ download the dependencies, install the required packages and build protobuf:
 
 ```bash
 tensorflow/contrib/makefile/download_dependencies.sh
-sudo apt-get install autoconf automake libtool
+sudo apt-get install -y autoconf automake libtool gcc-4.8 g++-4.8
 cd tensorflow/contrib/makefile/downloads/protobuf/
 ./autogen.sh
 ./configure
@@ -277,7 +277,7 @@ cd ../../../../..
 Once that's done, you can use make to build the library and example:
 
 ```bash
-make -f tensorflow/contrib/makefile/Makefile HOST_OS=PI TARGET=PI OPTFLAGS="-Os"
+make -f tensorflow/contrib/makefile/Makefile HOST_OS=PI TARGET=PI OPTFLAGS="-Os" CXX=g++-4.8
 ```
 
 If you're only interested in building for Raspberry Pi's 2 and 3, you can supply
@@ -285,18 +285,17 @@ some extra optimization flags to give you code that will run faster:
 
 ```bash
 make -f tensorflow/contrib/makefile/Makefile HOST_OS=PI TARGET=PI \
- OPTFLAGS="-Os -mfpu=neon-vfpv4 -funsafe-math-optimizations -ftree-vectorize"
+ OPTFLAGS="-Os -mfpu=neon-vfpv4 -funsafe-math-optimizations -ftree-vectorize" CXX=g++-4.8
 ```
 
-If you hit compilation errors mentioning `__atomic_compare_exchange` and you're
-using gcc 4.9, you should try installing gcc 4.8 and using that instead:
-
-```bash
-sudo apt-get install -y gcc-4.8 g++-4.8
-make -f tensorflow/contrib/makefile/Makefile HOST_OS=PI TARGET=PI \
-OPTFLAGS="-Os -mfpu=neon-vfpv4 -funsafe-math-optimizations -ftree-vectorize" \
-CXX=g++-4.8
-```
+One thing to be careful of is that the gcc version 4.9 currently installed on
+Jessie by default will hit an error mentioning `__atomic_compare_exchange`. This
+is why the examples above specify `CXX=g++-4.8` explicitly, and why we install
+it using apt-get. If you have partially built using the default gcc 4.9, hit the
+error and switch to 4.8, you need to do a
+`make -f tensorflow/contrib/makefile/Makefile clean` before you build. If you
+don't, the build will appear to succeed but you'll encounter [malloc(): memory corruption errors](https://github.com/tensorflow/tensorflow/issues/3442)
+when you try to run any programs using the library.
 
 For more examples, look at the tensorflow/contrib/pi_examples folder in the
 source tree, which contains code samples aimed at the Raspberry Pi.

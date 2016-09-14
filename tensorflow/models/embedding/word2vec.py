@@ -479,8 +479,9 @@ class Word2Vec(object):
     idx = self._predict(wid)
     for c in [self._id2word[i] for i in idx[0, :]]:
       if c not in [w0, w1, w2]:
-        return c
-    return "unknown"
+        print(c)
+        break
+    print("unknown")
 
   def nearby(self, words, num=20):
     """Prints out nearby words given a list of words."""
