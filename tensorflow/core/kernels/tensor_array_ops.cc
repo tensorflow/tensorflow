@@ -18,8 +18,9 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <limits>
-#include <numeric>
 #include <vector>
+// TODO(b/31496047): Fix non-standard include order.
+#include <numeric>  // clang-format off
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
