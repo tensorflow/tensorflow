@@ -373,20 +373,23 @@ def fuse_resize_and_conv(input_graph_def):
     if input_op.op == "MirrorPad":
       mirror_pad_op = input_op
       resize_op = node_from_map(input_node_map, mirror_pad_op.input[0])
+      if resize_op.op != "ResizeBilinear":
+        resize_op = None
     else:
       mirror_pad_op = None
       resize_op = input_op
 
-    if resize_op.op != "ResizeBilinear":
-      continue
-
     nodes_to_skip[conv_op.name] = True
     if mirror_pad_op:
       nodes_to_skip[mirror_pad_op.name] = True
-    nodes_to_skip[resize_op.name] = True
+    if resize_op:
+      nodes_to_skip[resize_op.name] = True
 
     fused_conv_op = tf.NodeDef()
-    fused_conv_op.op = "FusedResizeAndPadConv2D"
+    if resize_op:
+      fused_conv_op.op = "FusedResizeAndPadConv2D"
+    else:
+      fused_conv_op.op = "FusedPadConv2D"
     fused_conv_op.name = conv_op.name
     if mirror_pad_op:
       mirror_paddings_name = mirror_pad_op.input[1]
@@ -405,11 +408,15 @@ def fuse_resize_and_conv(input_graph_def):
       new_ops.extend([paddings_op])
       mirror_paddings_name = paddings_op.name
       mirror_paddings_mode = tf.AttrValue(s=b"REFLECT")
-    fused_conv_op.input.extend([resize_op.input[0], resize_op.input[1],
-                                mirror_paddings_name, conv_op.input[1]])
+    if resize_op:
+      fused_conv_op.input.extend([resize_op.input[0], resize_op.input[1],
+                                  mirror_paddings_name, conv_op.input[1]])
+      fused_conv_op.attr["resize_align_corners"].CopyFrom(
+          resize_op.attr["align_corners"])
+    else:
+      fused_conv_op.input.extend([mirror_pad_op.input[0], mirror_paddings_name,
+                                  conv_op.input[1]])
     fused_conv_op.attr["T"].CopyFrom(conv_op.attr["T"])
-    fused_conv_op.attr["resize_align_corners"].CopyFrom(
-        resize_op.attr["align_corners"])
     fused_conv_op.attr["mode"].CopyFrom(mirror_paddings_mode)
     fused_conv_op.attr["strides"].CopyFrom(conv_op.attr["strides"])
     fused_conv_op.attr["padding"].CopyFrom(conv_op.attr["padding"])
