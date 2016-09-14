@@ -29,7 +29,8 @@ Given loss and parameters for optimizer, returns a training op.
                           functions.
                           For example: tf.train.exponential_decay.
 *  <b>`update_ops`</b>: list of update `Operation`s to execute at each step. If `None`,
-              uses elements of UPDATE_OPS collection.
+              uses elements of UPDATE_OPS collection. The order of execution
+              between `update_ops` and `loss` is non-deterministic.
 *  <b>`variables`</b>: list of variables to optimize or
              `None` to use all trainable variables.
 *  <b>`name`</b>: The name for this operation is used to scope operations and summaries.
