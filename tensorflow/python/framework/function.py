@@ -58,8 +58,9 @@ def _add_input_array(op, start, limit, dtype, func):
   node.arg.extend([_make_argname_from_tensor_name(x.name)
                    for x in op.inputs[start:limit]])
   num = limit - start
-  node.attr["Tin"].CopyFrom(attr_value_pb2.AttrValue(
-      list=attr_value_pb2.AttrValue.ListValue(type=[dtype] * num)))
+  node.attr["Tin"].CopyFrom(
+      attr_value_pb2.AttrValue(list=attr_value_pb2.AttrValue.ListValue(
+          type=[dtype] * num)))
   node.attr["T"].CopyFrom(attr_value_pb2.AttrValue(type=dtype))
   node.attr["N"].CopyFrom(attr_value_pb2.AttrValue(i=num))
   func.node.extend([node])
@@ -79,8 +80,9 @@ def _add_output_array(op, start, limit, dtype, func):
   node.attr["T"].CopyFrom(dtype_proto)
   num = limit - start
   node.attr["N"].CopyFrom(attr_value_pb2.AttrValue(i=num))
-  node.attr["out_types"].CopyFrom(attr_value_pb2.AttrValue(
-      list=attr_value_pb2.AttrValue.ListValue(type=[dtype] * num)))
+  node.attr["out_types"].CopyFrom(
+      attr_value_pb2.AttrValue(list=attr_value_pb2.AttrValue.ListValue(
+          type=[dtype] * num)))
   func.node.extend([node])
   num = limit - start
   # Adds an identity node for each element in the array N*T so that
@@ -130,26 +132,26 @@ def _add_op_node(graph, op, func):
     if arg_def.number_attr:
       dtype = arg_def.type or attrs[arg_def.type_attr].type
       num = attrs[arg_def.number_attr].i
-      node.ret.append(_add_output_array(op, out_index, out_index + num, dtype,
-                                        func))
+      node.ret.append(
+          _add_output_array(op, out_index, out_index + num, dtype, func))
       out_index += num
     elif arg_def.type_list_attr:
       dtype_lst = attrs[arg_def.type_list_attr].list.type
       num = len(dtype_lst)
-      node.ret.append(_add_output_list(op, out_index, out_index + num,
-                                       dtype_lst, func))
+      node.ret.append(
+          _add_output_list(op, out_index, out_index + num, dtype_lst, func))
       out_index += num
     else:
-      node.ret.append(_make_argname_from_tensor_name(op.outputs[
-          out_index].name))
+      node.ret.append(
+          _make_argname_from_tensor_name(op.outputs[out_index].name))
       out_index += 1
   inp_index = 0
   for arg_def in op_def.input_arg:
     if arg_def.number_attr:
       dtype = arg_def.type or attrs[arg_def.type_attr].type
       num = attrs[arg_def.number_attr].i
-      node.arg.append(_add_input_array(op, inp_index, inp_index + num, dtype,
-                                       func))
+      node.arg.append(
+          _add_input_array(op, inp_index, inp_index + num, dtype, func))
       inp_index += num
     elif arg_def.type_list_attr:
       num = len(attrs[arg_def.type_list_attr].list.type)
@@ -254,12 +256,13 @@ def call_function(func, *inputs, **kwargs):
     output_types = [dtypes.DType(x.type) for x in func_def.signature.output_arg]
     # TODO(touts): Pass compute_shapes as "try if function exists"
     g = ops.get_default_graph()
-    op = g.create_op(func_name,
-                     list(inputs),
-                     output_types,
-                     name=name,
-                     attrs=attrs,
-                     compute_shapes=False)
+    op = g.create_op(
+        func_name,
+        list(inputs),
+        output_types,
+        name=name,
+        attrs=attrs,
+        compute_shapes=False)
     if op.outputs:
       if len(op.outputs) == 1:
         return op.outputs[0]
@@ -283,7 +286,10 @@ def _get_func_name(func):
     raise ValueError("Argument must be callable")
 
 
-def define_function(func, input_types, func_name=None, grad_func=None,
+def define_function(func,
+                    input_types,
+                    func_name=None,
+                    grad_func=None,
                     python_grad_func=None):
   """Creates a `FunctionDef` for a python function.
 
@@ -373,7 +379,11 @@ class _DefinedFunction(object):
       the function python-side.
   """
 
-  def __init__(self, func, input_types, func_name=None, grad_func=None,
+  def __init__(self,
+               func,
+               input_types,
+               func_name=None,
+               grad_func=None,
                python_grad_func=None):
     """Creates _DefinedFunction.
 
@@ -480,8 +490,8 @@ class _DefinedFunction(object):
         outputs = (outputs,)
 
     # Build the FunctionDef
-    self._definition = graph_to_function_def(
-        temp_graph, self._func_name, inputs, outputs)
+    self._definition = graph_to_function_def(temp_graph, self._func_name,
+                                             inputs, outputs)
     # pylint: disable=protected-access
     self._sub_functions = temp_graph._functions
     # pylint: enable=protected-access
@@ -596,6 +606,5 @@ class Defun(object):
       inp_types = self._input_types
     else:
       inp_types = self._input_type_list
-    return _DefinedFunction(
-        f, inp_types, self._func_name, self._grad_func,
-        self._python_grad_func)
+    return _DefinedFunction(f, inp_types, self._func_name, self._grad_func,
+                            self._python_grad_func)
