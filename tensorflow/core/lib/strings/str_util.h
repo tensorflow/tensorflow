@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
 #define TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
 
+#include <functional>
 #include <string>
 #include <vector>
 #include "tensorflow/core/lib/core/stringpiece.h"
