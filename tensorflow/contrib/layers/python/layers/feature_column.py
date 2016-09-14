@@ -1116,7 +1116,7 @@ class _HashedEmbeddingColumn(collections.namedtuple(
 def hashed_embedding_column(column_name,
                             size,
                             dimension,
-                            combiner="sqrtn",
+                            combiner=None,
                             initializer=None):
   """Creates an embedding column of a sparse feature using parameter hashing.
 
