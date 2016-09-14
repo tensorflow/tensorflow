@@ -120,7 +120,7 @@ message ThreadPoolOptionProto {
 };
 
 // Session configuration parameters.
-// The system picks an appropriate values for fields that are not set.
+// The system picks appropriate values for fields that are not set.
 message ConfigProto {
   // Map from device type name (e.g., "CPU" or "GPU" ) to maximum
   // number of devices of that type to use.  If a particular device
