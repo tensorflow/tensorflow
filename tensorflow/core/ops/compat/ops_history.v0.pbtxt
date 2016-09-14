@@ -4100,55 +4100,11 @@ op {
 op {
   name: "BatchFFT"
   input_arg {
-    name: "in"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchFFT"
-  input_arg {
-    name: "input"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchFFT"
-  input_arg {
     name: "input"
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchFFT2D"
-  input_arg {
-    name: "in"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchFFT2D"
-  input_arg {
-    name: "input"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
     type: DT_COMPLEX64
   }
 }
@@ -4166,55 +4122,11 @@ op {
 op {
   name: "BatchFFT3D"
   input_arg {
-    name: "in"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchFFT3D"
-  input_arg {
-    name: "input"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchFFT3D"
-  input_arg {
     name: "input"
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchIFFT"
-  input_arg {
-    name: "in"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchIFFT"
-  input_arg {
-    name: "input"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
     type: DT_COMPLEX64
   }
 }
@@ -4232,55 +4144,11 @@ op {
 op {
   name: "BatchIFFT2D"
   input_arg {
-    name: "in"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchIFFT2D"
-  input_arg {
-    name: "input"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchIFFT2D"
-  input_arg {
     name: "input"
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchIFFT3D"
-  input_arg {
-    name: "in"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchIFFT3D"
-  input_arg {
-    name: "input"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
     type: DT_COMPLEX64
   }
 }

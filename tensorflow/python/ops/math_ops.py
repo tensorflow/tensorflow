@@ -121,12 +121,6 @@ Fourier transform functions to your graph.
 @@ifft2d
 @@fft3d
 @@ifft3d
-@@batch_fft
-@@batch_ifft
-@@batch_fft2d
-@@batch_ifft2d
-@@batch_fft3d
-@@batch_ifft3d
 
 ## Reduction
 
@@ -1797,12 +1791,6 @@ ops.RegisterShape("FFT2D")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("IFFT2D")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("FFT3D")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("IFFT3D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchFFT")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchIFFT")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchFFT2D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchIFFT2D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchFFT3D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchIFFT3D")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("TanhGrad")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("SigmoidGrad")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("InvGrad")(common_shapes.call_cpp_shape_fn)
