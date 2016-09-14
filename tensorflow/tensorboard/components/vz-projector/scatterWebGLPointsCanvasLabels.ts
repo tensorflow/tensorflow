@@ -328,22 +328,20 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     }
   }
 
-  private getNearFarPoints() {
+  private getNearFarPoints(
+      cameraPos: THREE.Vector3, cameraTarget: THREE.Vector3) {
     let shortestDist: number = Infinity;
     let furthestDist: number = 0;
-    let camToTarget = new THREE.Vector3()
-                          .copy(this.perspCamera.position)
-                          .sub(this.cameraControls.target);
+    let camToTarget = new THREE.Vector3().copy(cameraTarget).sub(cameraPos);
     for (let i = 0; i < this.dataSet.points.length; i++) {
       let point = this.getProjectedPointFromIndex(i);
       // discard points that are behind the camera
-      let camToPoint =
-          new THREE.Vector3().copy(this.perspCamera.position).sub(point);
+      let camToPoint = new THREE.Vector3().copy(point).sub(cameraPos);
       if (camToTarget.dot(camToPoint) < 0) {
         continue;
       }
 
-      let distToCam = this.perspCamera.position.distanceToSquared(point);
+      let distToCam = cameraPos.distanceToSquared(point);
       furthestDist = Math.max(furthestDist, distToCam);
       shortestDist = Math.min(shortestDist, distToCam);
     }
@@ -366,7 +364,9 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
    * Reset the positions of all labels, and check for overlapps using the
    * collision grid.
    */
-  private makeLabels(nearestPointZ: number, farthestPointZ: number) {
+  private makeLabels(
+      cameraPos: THREE.Vector3, cameraTarget: THREE.Vector3,
+      nearestPointZ: number, farthestPointZ: number) {
     if (this.points == null) {
       return;
     }
@@ -397,9 +397,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
         new CollisionGrid(boundingBox, this.width / 25, this.height / 50);
 
     let opacityRange = farthestPointZ - nearestPointZ;
-    let camToTarget = new THREE.Vector3()
-                          .copy(this.perspCamera.position)
-                          .sub(this.cameraControls.target);
+    let camToTarget = new THREE.Vector3().copy(cameraPos).sub(cameraTarget);
 
     // Setting styles for the labeled font.
     this.gc.lineWidth = 6;
@@ -421,8 +419,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
       let index = this.labeledPoints[i];
       let point = this.getProjectedPointFromIndex(index);
       // discard points that are behind the camera
-      let camToPoint =
-          new THREE.Vector3().copy(this.perspCamera.position).sub(point);
+      let camToPoint = new THREE.Vector3().copy(cameraPos).sub(point);
       if (camToTarget.dot(camToPoint) < 0) {
         continue;
       }
@@ -449,7 +446,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
         textBoundingBox.hiX += labelWidth - 1;
         if (grid.insert(textBoundingBox)) {
           let p = new THREE.Vector3(point[0], point[1], point[2]);
-          let lenToCamera = this.perspCamera.position.distanceTo(p);
+          let lenToCamera = cameraPos.distanceTo(p);
           // Opacity is scaled between 0.2 and 1, based on how far a label is
           // from the camera (Unless we are in 2d mode, in which case opacity is
           // just 1!)
@@ -730,7 +727,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     }
   }
 
-  protected onPickingRender() {
+  protected onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {
     if (!this.geometry) {
       return;
     }
@@ -750,12 +747,13 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     colors.needsUpdate = true;
   }
 
-  protected onRender() {
+  protected onRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {
     if (!this.geometry) {
       return;
     }
-    let nearFarPoints = this.getNearFarPoints();
-    this.makeLabels(nearFarPoints[0], nearFarPoints[1]);
+    let nearFarPoints = this.getNearFarPoints(camera.position, cameraTarget);
+    this.makeLabels(
+        camera.position, cameraTarget, nearFarPoints[0], nearFarPoints[1]);
     let shaderMaterial = this.points.material as THREE.ShaderMaterial;
     let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     colors.array = this.renderColors;

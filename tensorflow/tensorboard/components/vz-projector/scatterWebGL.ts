@@ -70,16 +70,12 @@ const TAR_2D = {
  * independent of how a 3D scatter plot is actually rendered.
  */
 export abstract class ScatterWebGL implements Scatter {
+  protected dataSet: DataSet;
+
   // Colors and options that are changed between Day and Night modes.
   protected backgroundColor: number;
 
-  // THREE.js necessities.
   protected scene: THREE.Scene;
-  protected perspCamera: THREE.PerspectiveCamera;
-  protected renderer: THREE.WebGLRenderer;
-  protected cameraControls: any;
-
-  protected dataSet: DataSet;
 
   /** Holds the indexes of the points to be labeled. */
   protected labeledPoints: number[] = [];
@@ -103,8 +99,10 @@ export abstract class ScatterWebGL implements Scatter {
   protected abstract onHighlightPoints(
       pointIndexes: number[], highlightStroke: (i: number) => string,
       favorLabels: (i: number) => boolean);
-  protected abstract onPickingRender();
-  protected abstract onRender();
+  protected abstract onPickingRender(
+      camera: THREE.Camera, cameraTarget: THREE.Vector3);
+  protected abstract onRender(
+      camera: THREE.Camera, cameraTarget: THREE.Vector3);
   protected abstract onUpdate();
   protected abstract onResize();
   protected abstract onMouseClickInternal(e?: MouseEvent): boolean;
@@ -129,6 +127,9 @@ export abstract class ScatterWebGL implements Scatter {
   private mode: Mode;
   private isNight: boolean;
 
+  private renderer: THREE.WebGLRenderer;
+  private perspCamera: THREE.PerspectiveCamera;
+  private cameraControls: any;
   private pickingTexture: THREE.WebGLRenderTarget;
   private light: THREE.PointLight;
   private axis3D: THREE.AxisHelper;
@@ -645,7 +646,7 @@ export abstract class ScatterWebGL implements Scatter {
     // with colors that are actually point ids, so that sampling the texture at
     // the mouse's current x,y coordinates will reveal the data point that the
     // mouse is over.
-    this.onPickingRender();
+    this.onPickingRender(this.perspCamera, this.cameraControls.target);
     this.renderer.render(this.scene, this.perspCamera, this.pickingTexture);
 
     // Render second pass to color buffer, to be displayed on the canvas.
@@ -653,7 +654,7 @@ export abstract class ScatterWebGL implements Scatter {
     lightPos.x += 1;
     lightPos.y += 1;
     this.light.position.set(lightPos.x, lightPos.y, lightPos.z);
-    this.onRender();
+    this.onRender(this.perspCamera, this.cameraControls.target);
     this.renderer.render(this.scene, this.perspCamera);
   }
 
