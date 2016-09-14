@@ -55,9 +55,9 @@ uint8 PeekTag(protobuf::io::CodedInputStream* stream) {
   return *static_cast<const uint8*>(ptr);
 }
 
-constexpr uint8 kVarintTag(uint tag) { return (tag << 3) | 0; }
-constexpr uint8 kDelimitedTag(uint tag) { return (tag << 3) | 2; }
-constexpr uint8 kFixed32Tag(uint tag) { return (tag << 3) | 5; }
+constexpr uint8 kVarintTag(uint32 tag) { return (tag << 3) | 0; }
+constexpr uint8 kDelimitedTag(uint32 tag) { return (tag << 3) | 2; }
+constexpr uint8 kFixed32Tag(uint32 tag) { return (tag << 3) | 5; }
 
 namespace parsed {
 

@@ -130,7 +130,7 @@ Status ZlibOutputBuffer::DeflateBuffered(bool last) {
 }
 
 Status ZlibOutputBuffer::FlushOutputBufferToFile() {
-  uint bytes_to_write = output_buffer_capacity_ - z_stream_->avail_out;
+  uint32 bytes_to_write = output_buffer_capacity_ - z_stream_->avail_out;
   if (bytes_to_write > 0) {
     Status s = file_->Append(StringPiece(
         reinterpret_cast<char*>(z_stream_output_.get()), bytes_to_write));
