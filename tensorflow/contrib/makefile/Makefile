@@ -188,7 +188,8 @@ ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	LIBFLAGS += -L$(MAKEFILE_DIR)/gen/protobuf-host/lib
 	export LD_LIBRARY_PATH=$(MAKEFILE_DIR)/gen/protobuf-host/lib
 endif
-	LIBFLAGS += -Wl,--allow-multiple-definition -Wl,--whole-archive
+	LIBFLAGS += -Wl,--whole-archive
+	LDFLAGS := -Wl,--no-whole-archive
 endif
 # If we're on Linux, also link in the dl library.
 ifeq ($(TARGET),LINUX)
