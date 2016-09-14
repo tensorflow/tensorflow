@@ -78,6 +78,7 @@ class GcsFileSystem : public FileSystem {
   /// Retrieves file statistics assuming fname points to a GCS object.
   Status StatForObject(const string& bucket, const string& object,
                        FileStatistics* stat);
+  Status RenameObject(const string& src, const string& target);
 
   std::unique_ptr<AuthProvider> auth_provider_;
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;

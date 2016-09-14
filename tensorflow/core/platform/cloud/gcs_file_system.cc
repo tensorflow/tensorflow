@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
@@ -851,8 +852,22 @@ Status GcsFileSystem::GetFileSize(const string& fname, uint64* file_size) {
   return Status::OK();
 }
 
-// Uses a GCS API command to copy the object and then deletes the old one.
 Status GcsFileSystem::RenameFile(const string& src, const string& target) {
+  if (!IsDirectory(src).ok()) {
+    return RenameObject(src, target);
+  }
+  // Rename all individual objects in the directory one by one.
+  std::vector<string> children;
+  TF_RETURN_IF_ERROR(GetChildren(src, &children));
+  for (const string& subpath : children) {
+    TF_RETURN_IF_ERROR(RenameObject(io::JoinPath(src, subpath),
+                                    io::JoinPath(target, subpath)));
+  }
+  return Status::OK();
+}
+
+// Uses a GCS API command to copy the object and then deletes the old one.
+Status GcsFileSystem::RenameObject(const string& src, const string& target) {
   string src_bucket, src_object, target_bucket, target_object;
   TF_RETURN_IF_ERROR(ParseGcsPath(src, &src_bucket, &src_object));
   TF_RETURN_IF_ERROR(ParseGcsPath(target, &target_bucket, &target_object));
