@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/record_writer.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -38,6 +39,10 @@ PyRecordWriter* PyRecordWriter::New(const string& filename,
   RecordWriterOptions options;
   if (compression_type_string == "ZLIB") {
     options.compression_type = RecordWriterOptions::ZLIB_COMPRESSION;
+    options.zlib_options = ZlibCompressionOptions::DEFAULT();
+  } else if (compression_type_string == "GZIP") {
+    options.compression_type = RecordWriterOptions::ZLIB_COMPRESSION;
+    options.zlib_options = ZlibCompressionOptions::GZIP();
   }
   writer->writer_ = new RecordWriter(writer->file_, options);
   return writer;
