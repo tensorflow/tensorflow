@@ -784,7 +784,7 @@ def fully_connected(inputs,
   Args:
     inputs: A tensor of with at least rank 2 and value for the last dimension,
       i.e. `[batch_size, depth]`, `[None, None, None, channels]`.
-    n um_outputs: Integer or long, the number of output units in the layer.
+    num_outputs: Integer or long, the number of output units in the layer.
     activation_fn: activation function, set to None to skip it and maintain
       a linear activation.
     normalizer_fn: normalization function to use instead of `biases`. If
