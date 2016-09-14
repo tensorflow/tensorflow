@@ -462,8 +462,6 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     // TODO(yuanbyu): Use the real cost model.
     // execution_state_->MergeFromGlobal(&cost_model);
     SlackAnalysis sa(&client_graph()->graph, &cost_model);
-    // TODO(suharshs): We always do "asap". Handle "alap" through opts.
-    // in open source.
     sa.ComputeAsap(&popts.start_times);
   }
 
