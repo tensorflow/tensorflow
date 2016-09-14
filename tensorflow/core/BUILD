@@ -1342,6 +1342,7 @@ cc_library(
     srcs = ["platform/test_main.cc"],
     copts = tf_copts(),
     linkopts = ["-lm"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":lib",
         ":lib_internal",
