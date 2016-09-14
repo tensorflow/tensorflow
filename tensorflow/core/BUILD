@@ -1091,6 +1091,7 @@ filegroup(
         "lib/core/refcount.h",
         "lib/core/status.h",
         "lib/core/stringpiece.h",
+        "lib/core/threadpool.h",
         "lib/gtl/array_slice.h",
         "lib/gtl/array_slice_internal.h",
         "lib/gtl/inlined_vector.h",
