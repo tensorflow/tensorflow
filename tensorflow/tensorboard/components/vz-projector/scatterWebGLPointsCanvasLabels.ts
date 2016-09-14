@@ -15,6 +15,7 @@ limitations under the License.
 
 import {BoundingBox, CollisionGrid} from './label';
 import {ScatterWebGL} from './scatterWebGL';
+import {Point2D} from './vector';
 
 const FONT_SIZE = 10;
 const NUM_POINTS_FOG_THRESHOLD = 5000;
@@ -405,6 +406,15 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     this.gc.textBaseline = 'middle';
     this.gc.font = (FONT_SIZE * this.dpr).toString() + 'px roboto';
 
+    let strokeStylePrefix: string;
+    let fillStylePrefix: string;
+    {
+      let ls = new THREE.Color(this.labelStroke).multiplyScalar(255);
+      let lc = new THREE.Color(this.labelColor).multiplyScalar(255);
+      strokeStylePrefix = 'rgba(' + ls.r + ',' + ls.g + ',' + ls.b + ',';
+      fillStylePrefix = 'rgba(' + lc.r + ',' + lc.g + ',' + lc.b + ',';
+    }
+
     for (let i = 0;
          (i < this.labeledPoints.length) && !(numRenderedLabels > SAMPLE_SIZE);
          i++) {
@@ -422,13 +432,13 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
       // Shift the label to the right of the point circle.
       let xShift = 3;
       let textBoundingBox = {
-        loX: screenCoords.x + xShift - labelMargin,
+        loX: screenCoords[0] + xShift - labelMargin,
         // Computing the width of the font is expensive,
         // so we assume width of 1 at first. Then, if the label doesn't
         // conflict with other labels, we measure the actual width.
-        hiX: screenCoords.x + xShift + 1 + labelMargin,
-        loY: screenCoords.y - labelHeight / 2 - labelMargin,
-        hiY: screenCoords.y + labelHeight / 2 + labelMargin
+        hiX: screenCoords[0] + xShift + 1 + labelMargin,
+        loY: screenCoords[1] - labelHeight / 2 - labelMargin,
+        hiY: screenCoords[1] + labelHeight / 2 + labelMargin
       };
 
       if (grid.insert(textBoundingBox, true)) {
@@ -437,8 +447,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
 
         // Now, check with properly computed width.
         textBoundingBox.hiX += labelWidth - 1;
-        if (grid.insert(textBoundingBox) &&
-            this.isLabelInBounds(labelWidth, screenCoords)) {
+        if (grid.insert(textBoundingBox)) {
           let p = new THREE.Vector3(point[0], point[1], point[2]);
           let lenToCamera = this.perspCamera.position.distanceTo(p);
           // Opacity is scaled between 0.2 and 1, based on how far a label is
@@ -447,7 +456,8 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
           let opacity = this.sceneIs3D ?
               1.2 - (lenToCamera - nearestPointZ) / opacityRange :
               1;
-          this.formatLabel(text, screenCoords, opacity);
+          this.formatLabel(
+              text, screenCoords, strokeStylePrefix, fillStylePrefix, opacity);
           numRenderedLabels++;
         }
       }
@@ -463,32 +473,19 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
           point.projectedPoint[2]);
       let screenCoords = this.vector3DToScreenCoords(coords);
       let text = this.labelAccessor(index);
-      this.formatLabel(text, screenCoords, 255);
+      this.formatLabel(
+          text, screenCoords, strokeStylePrefix, fillStylePrefix, 255);
     }
-  }
-
-  /** Checks if a given label will be within the screen's bounds. */
-  private isLabelInBounds(labelWidth: number, coords: {x: number, y: number}) {
-    let padding = 7;
-    if ((coords.x < 0) || (coords.y < 0) ||
-        (coords.x > this.width * this.dpr - labelWidth - padding) ||
-        (coords.y > this.height * this.dpr)) {
-      return false;
-    };
-    return true;
   }
 
   /** Add a specific label to the canvas. */
   private formatLabel(
-      text: string, point: {x: number, y: number}, opacity: number) {
-    let ls = new THREE.Color(this.labelStroke);
-    let lc = new THREE.Color(this.labelColor);
-    this.gc.strokeStyle = 'rgba(' + ls.r * 255 + ',' + ls.g * 255 + ',' +
-        ls.b * 255 + ',' + opacity + ')';
-    this.gc.fillStyle = 'rgba(' + lc.r * 255 + ',' + lc.g * 255 + ',' +
-        lc.b * 255 + ',' + opacity + ')';
-    this.gc.strokeText(text, point.x + 4, point.y);
-    this.gc.fillText(text, point.x + 4, point.y);
+      text: string, point: Point2D, strokeStylePrefix: string,
+      fillStylePrefix: string, opacity: number) {
+    this.gc.strokeStyle = strokeStylePrefix + opacity + ')';
+    this.gc.fillStyle = fillStylePrefix + opacity + ')';
+    this.gc.strokeText(text, point[0] + 4, point[1]);
+    this.gc.fillText(text, point[0] + 4, point[1]);
   }
 
   onResize() {
@@ -720,6 +717,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     this.colorSprites(null);
     this.addTraces();
   }
+
   /**
    * Redraws the data. Should be called anytime the accessor method
    * for x and y coordinates changes, which means a new projection
@@ -738,18 +736,16 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     }
     let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     // Make shallow copy of the shader options and modify the necessary values.
-    let offscreenOptions =
+    let pickingState =
         Object.create(this.materialParams) as THREE.ShaderMaterialParameters;
-    // Since THREE.js errors if we remove the fog, the workaround is to set the
-    // near value to very far, so no points have fog.
-    this.fog.near = Infinity;
+    this.fog.near =
+        Infinity;  // Fog changes point colors, which alters the IDs.
     this.fog.far = Infinity;
-    // Render offscreen as non transparent points (even when we have images).
-    offscreenOptions.uniforms.isImage.value = false;
-    offscreenOptions.transparent = false;
-    offscreenOptions.depthTest = true;
-    offscreenOptions.depthWrite = true;
-    (this.points.material as THREE.ShaderMaterial).setValues(offscreenOptions);
+    pickingState.transparent = false;  // Alpha blending distorts the IDs.
+    pickingState.uniforms.isImage.value = false;
+    pickingState.depthTest = true;
+    pickingState.depthWrite = true;
+    (this.points.material as THREE.ShaderMaterial).setValues(pickingState);
     colors.array = this.pickingColors;
     colors.needsUpdate = true;
   }

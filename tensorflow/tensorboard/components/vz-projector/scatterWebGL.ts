@@ -15,7 +15,7 @@ limitations under the License.
 
 import {DataSet, Mode, OnHoverListener, OnSelectionListener, Scatter} from './scatter';
 
-import {dist_2D} from './vector';
+import {dist_2D, Point2D} from './vector';
 
 // Colors (in various necessary formats).
 const BACKGROUND_COLOR_DAY = 0xffffff;
@@ -453,7 +453,7 @@ export abstract class ScatterWebGL implements Scatter {
     let screenCoords = this.vector3DToScreenCoords(point);
     return dist_2D(
         [e.offsetX * this.dpr, e.offsetY * this.dpr],
-        [screenCoords.x, screenCoords.y]);
+        [screenCoords[0], screenCoords[1]]);
   }
 
   private adjustSelectionSphere(e: MouseEvent) {
@@ -483,15 +483,15 @@ export abstract class ScatterWebGL implements Scatter {
         this.dataSet.points[i].projectedPoint[2]);
   }
 
-  protected vector3DToScreenCoords(v: THREE.Vector3) {
+  protected vector3DToScreenCoords(v: THREE.Vector3): Point2D {
     let vector = new THREE.Vector3().copy(v).project(this.perspCamera);
-    let coords = {
+    let coords: Point2D = [
       // project() returns the point in perspCamera's coordinates, with the
       // origin in the center and a positive upward y. To get it into screen
       // coordinates, normalize by adding 1 and dividing by 2.
-      x: ((vector.x + 1) / 2 * this.width) * this.dpr,
-      y: -((vector.y - 1) / 2 * this.height) * this.dpr
-    };
+      ((vector.x + 1) / 2 * this.width) * this.dpr,
+      -((vector.y - 1) / 2 * this.height) * this.dpr
+    ];
     return coords;
   }
 
