@@ -22,6 +22,31 @@ limitations under the License.
 
 namespace tensorflow {
 
+int ShapeReadWriteFromTensorShape::dims() const { return const_shape_->dims(); }
+
+int64 ShapeReadWriteFromTensorShape::dim_size(int idx) const {
+  return const_shape_->dim_size(idx);
+}
+
+void ShapeReadWriteFromTensorShape::add_dim(int64 size) {
+  DCHECK_NE(size, -1);
+  DCHECK(shape_ != nullptr) << "add_dim can only be called on non-const shape";
+  shape_->AddDim(size);
+}
+
+int ShapeReadWriteFromTensorShapeProto::dims() const {
+  return const_shape_->dim_size();
+}
+
+int64 ShapeReadWriteFromTensorShapeProto::dim_size(int idx) const {
+  return const_shape_->dim(idx).size();
+}
+
+void ShapeReadWriteFromTensorShapeProto::add_dim(int64 size) {
+  DCHECK(shape_ != nullptr) << "add_dim can only be called on non-const shape";
+  shape_->add_dim()->set_size(size);
+}
+
 namespace {
 
 /// Constants
@@ -133,12 +158,14 @@ static void BuildDenseSpec(const StridedSliceSparseSpec& sparse,
 
 Status ValidateStridedSliceOp(
     const Tensor& begin_tensor, const Tensor& end_tensor,
-    const Tensor& strides_tensor, const TensorShape& input_shape,
+    const Tensor& strides_tensor, const ShapeReadWriteInterface& input_shape,
     int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipsis_mask,
-    int32 new_axis_mask, int32 shrink_axis_mask, TensorShape* processing_shape,
-    TensorShape* final_shape, bool* is_identity, bool* is_simple_slice,
-    bool* slice_dim0, gtl::InlinedVector<int64, 4>* begin,
-    gtl::InlinedVector<int64, 4>* end, gtl::InlinedVector<int64, 4>* strides) {
+    int32 new_axis_mask, int32 shrink_axis_mask,
+    ShapeReadWriteInterface* processing_shape,
+    ShapeReadWriteInterface* final_shape, bool* is_identity,
+    bool* is_simple_slice, bool* slice_dim0,
+    gtl::InlinedVector<int64, 4>* begin, gtl::InlinedVector<int64, 4>* end,
+    gtl::InlinedVector<int64, 4>* strides) {
   if (!(TensorShapeUtils::IsVector(begin_tensor.shape()) &&
         TensorShapeUtils::IsVector(end_tensor.shape()) &&
         TensorShapeUtils::IsVector(strides_tensor.shape()) &&
@@ -158,7 +185,7 @@ Status ValidateStridedSliceOp(
   // i.e. there exists only no more than one ellipsis
   if (ellipsis_mask && ((ellipsis_mask & (ellipsis_mask - 1)) != 0)) {
     return errors::InvalidArgument(
-        "Multiple ellipsis' in slice spec not allowed");
+        "Multiple ellipses in slice spec not allowed");
   }
 
   // Step 1: Account for ellipsis and new axis
@@ -226,6 +253,11 @@ Status ValidateStridedSliceOp(
     if (stride_i == 0) {
       return errors::InvalidArgument("strides[", i, "] must be non-zero");
     }
+    bool shrink_i = (dense_spec.shrink_axis_mask & (1 << i));
+    if (dim_i == -1) {
+      processing_shape->add_dim(shrink_i ? 1 : -1);
+      continue;
+    }
 
     const std::array<int64, 2> masks = {
         {dense_spec.begin_mask & (1 << i), dense_spec.end_mask & (1 << i)}};
@@ -242,7 +274,7 @@ Status ValidateStridedSliceOp(
                    : x_fwd > valid_range[1] ? valid_range[1] : x_fwd;
       }
     };
-    if (dense_spec.shrink_axis_mask & (1 << i)) {
+    if (shrink_i) {
       // If we are shrinking, the end index is now possibly incorrect. In
       // particular foo[-1] produces sparse_begin = -1, sparse_end = 0.
       // and canonical puts these to n-1 and 0, which implies a degenerate
@@ -265,7 +297,7 @@ Status ValidateStridedSliceOp(
     // Update optimization values
     (*is_simple_slice) &= stride_i == 1;
     bool take_all_in_dimension =
-        stride_i == 1 && begin_i == 0 && end_i == input_shape.dim_size(i);
+        stride_i == 1 && begin_i == 0 && end_i == dim_i;
     (*is_identity) &= take_all_in_dimension;
     (*slice_dim0) &= (i == 0 && stride_i == 1) || take_all_in_dimension;
 
@@ -278,7 +310,7 @@ Status ValidateStridedSliceOp(
     else
       size_i = interval_length / stride_i +
                (interval_length % stride_i != 0 ? 1 : 0);
-    processing_shape->AddDim(size_i);
+    processing_shape->add_dim(size_i);
   }
 
   // Step 4: Compute the final shape
@@ -287,10 +319,11 @@ Status ValidateStridedSliceOp(
   // slices like foo[3,...] will reduce dimension by 1.
   // This cannot be done earlier, because it depends on Step 3.
   for (auto gather_index : dense_spec.final_shape_gather_indices) {
-    if (gather_index >= 0)
-      final_shape->AddDim(processing_shape->dim_size(gather_index));
-    else if (gather_index == kNewAxis)
-      final_shape->AddDim(1);
+    if (gather_index >= 0) {
+      final_shape->add_dim(processing_shape->dim_size(gather_index));
+    } else if (gather_index == kNewAxis) {
+      final_shape->add_dim(1);
+    }
   }
   return Status::OK();
 }
