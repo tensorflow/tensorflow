@@ -356,7 +356,6 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     return [shortestDist, furthestDist];
   }
 
-  /** Removes all the labels. */
   private removeAllLabels() {
     // If labels are already removed, do not spend compute power to clear the
     // canvas.
@@ -373,6 +372,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
    * collision grid.
    */
   private makeLabels(
+      labeledPoints: number[], labelAccessor: (index: number) => string,
       cameraPos: THREE.Vector3, cameraTarget: THREE.Vector3,
       nearestPointZ: number, farthestPointZ: number) {
     if (this.points == null) {
@@ -381,7 +381,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     // First, remove all old labels.
     this.removeAllLabels();
 
-    if (!this.labeledPoints.length) {
+    if (!labeledPoints.length) {
       return;
     }
 
@@ -421,9 +421,9 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     }
 
     for (let i = 0;
-         (i < this.labeledPoints.length) && !(numRenderedLabels > SAMPLE_SIZE);
+         (i < labeledPoints.length) && !(numRenderedLabels > SAMPLE_SIZE);
          i++) {
-      let index = this.labeledPoints[i];
+      let index = labeledPoints[i];
       let point = this.getProjectedPointFromIndex(index);
       // discard points that are behind the camera
       let camToPoint = new THREE.Vector3().copy(cameraPos).sub(point);
@@ -446,7 +446,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
       };
 
       if (grid.insert(textBoundingBox, true)) {
-        let text = this.labelAccessor(index);
+        let text = labelAccessor(index);
         let labelWidth = this.gc.measureText(text).width;
 
         // Now, check with properly computed width.
@@ -476,7 +476,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
           point.projectedPoint[0], point.projectedPoint[1],
           point.projectedPoint[2]);
       let screenCoords = this.vector3DToScreenCoords(coords);
-      let text = this.labelAccessor(index);
+      let text = labelAccessor(index);
       this.formatLabel(
           text, screenCoords, strokeStylePrefix, fillStylePrefix, 255);
     }
@@ -673,8 +673,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
   }
 
   protected onHighlightPoints(
-      pointIndexes: number[], highlightStroke: (i: number) => string,
-      favorLabels: (i: number) => boolean) {
+      pointIndexes: number[], highlightStroke: (i: number) => string) {
     this.colorSprites(highlightStroke);
   }
 
@@ -691,9 +690,6 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     }
     let selection = this.nearestPoint || null;
     this.defaultPointColor = (selection ? POINT_COLOR_GRAYED : POINT_COLOR);
-
-    this.labeledPoints =
-        this.highlightedPoints.filter((id, i) => this.favorLabels(i));
 
     if (selection && this.dataSet_.points[selection].traceIndex) {
       for (let i = 0; i < this.traces.length; i++) {
@@ -757,13 +753,16 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     colors.needsUpdate = true;
   }
 
-  protected onRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {
+  protected onRender(
+      camera: THREE.Camera, cameraTarget: THREE.Vector3,
+      labeledPoints: number[], labelAccessor: (index: number) => string) {
     if (!this.geometry) {
       return;
     }
     let nearFarPoints = this.getNearFarPoints(camera.position, cameraTarget);
     this.makeLabels(
-        camera.position, cameraTarget, nearFarPoints[0], nearFarPoints[1]);
+        labeledPoints, labelAccessor, camera.position, cameraTarget,
+        nearFarPoints[0], nearFarPoints[1]);
     let shaderMaterial = this.points.material as THREE.ShaderMaterial;
     let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     colors.array = this.renderColors;

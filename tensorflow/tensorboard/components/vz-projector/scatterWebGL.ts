@@ -71,14 +71,11 @@ const TAR_2D = {
  */
 export abstract class ScatterWebGL implements Scatter {
   /** Holds the indexes of the points to be labeled. */
-  protected labeledPoints: number[] = [];
   protected highlightedPoints: number[] = [];
   protected nearestPoint: number;
 
-  protected labelAccessor: (index: number) => string;
   protected colorAccessor: (index: number) => string;
   protected highlightStroke: (i: number) => string;
-  protected favorLabels: (i: number) => boolean;
 
   protected abstract onRecreateScene(
       scene: THREE.Scene, sceneIs3D: boolean, backgroundColor: number);
@@ -86,12 +83,12 @@ export abstract class ScatterWebGL implements Scatter {
   protected abstract onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement);
   protected abstract onSetColorAccessor();
   protected abstract onHighlightPoints(
-      pointIndexes: number[], highlightStroke: (i: number) => string,
-      favorLabels: (i: number) => boolean);
+      pointIndexes: number[], highlightStroke: (i: number) => string);
   protected abstract onPickingRender(
       camera: THREE.Camera, cameraTarget: THREE.Vector3);
   protected abstract onRender(
-      camera: THREE.Camera, cameraTarget: THREE.Vector3);
+      camera: THREE.Camera, cameraTarget: THREE.Vector3,
+      labeledPoints: number[], labelAccessor: (index: number) => string);
   protected abstract onUpdate();
   protected abstract onResize(newWidth: number, newHeight: number);
   protected abstract onMouseClickInternal(e?: MouseEvent): boolean;
@@ -99,6 +96,10 @@ export abstract class ScatterWebGL implements Scatter {
 
   private dataSet: DataSet;
   private containerNode: HTMLElement;
+
+  private labeledPoints: number[] = [];
+  private favorLabels: (i: number) => boolean;
+  private labelAccessor: (index: number) => string;
 
   private onHoverListeners: OnHoverListener[] = [];
   private onSelectionListeners: OnSelectionListener[] = [];
@@ -298,6 +299,10 @@ export abstract class ScatterWebGL implements Scatter {
     if (e && this.selecting) {
       return;
     }
+
+    this.labeledPoints =
+        this.highlightedPoints.filter((id, i) => this.favorLabels(i));
+
     this.onMouseClickInternal(e);
     let selection = this.nearestPoint || null;
     // Only call event handlers if the click originated from the scatter plot.
@@ -638,7 +643,9 @@ export abstract class ScatterWebGL implements Scatter {
     lightPos.x += 1;
     lightPos.y += 1;
     this.light.position.set(lightPos.x, lightPos.y, lightPos.z);
-    this.onRender(this.perspCamera, this.cameraControls.target);
+    this.onRender(
+        this.perspCamera, this.cameraControls.target, this.labeledPoints,
+        this.labelAccessor);
     this.renderer.render(this.scene, this.perspCamera);
   }
 
@@ -721,7 +728,7 @@ export abstract class ScatterWebGL implements Scatter {
     this.highlightedPoints = pointIndexes;
     this.labeledPoints = pointIndexes;
     this.highlightStroke = highlightStroke;
-    this.onHighlightPoints(pointIndexes, highlightStroke, favorLabels);
+    this.onHighlightPoints(pointIndexes, highlightStroke);
     this.render();
   }
 
