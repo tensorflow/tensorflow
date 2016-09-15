@@ -33,6 +33,7 @@ from tensorflow.contrib.framework.python.ops import variables as contrib_variabl
 from tensorflow.contrib.layers.python.layers import target_column
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import metric_spec
+from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator
@@ -437,9 +438,25 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
     """See trainable.Trainable."""
-    return self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
-                               batch_size=batch_size, monitors=monitors,
-                               max_steps=max_steps)
+    # TODO(roumposg): Remove when deprecated monitors are removed.
+    if monitors is not None:
+      deprecated_monitors = [
+          m for m in monitors
+          if not isinstance(m, session_run_hook.SessionRunHook)
+      ]
+      for monitor in deprecated_monitors:
+        monitor.set_estimator(self)
+        monitor._lock_estimator()  # pylint: disable=protected-access
+
+    result = self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
+                                 batch_size=batch_size, monitors=monitors,
+                                 max_steps=max_steps)
+
+    if monitors is not None:
+      for monitor in deprecated_monitors:
+        monitor._unlock_estimator()  # pylint: disable=protected-access
+
+    return result
 
   # TODO(ispir): Simplify evaluate by aligning this logic with custom Estimator.
   def evaluate(self, x=None, y=None, input_fn=None, feed_fn=None,
@@ -511,16 +528,23 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
   def get_variable_names(self):
     return [name for name, _ in checkpoints.list_variables(self._model_dir)]
 
-  def export(self, export_dir, signature_fn=None,
-             input_fn=None, default_batch_size=1,
+  def export(self,
+             export_dir,
+             input_fn=None,
+             input_feature_key=None,
+             use_deprecated_input_fn=True,
+             signature_fn=None,
+             default_batch_size=1,
              exports_to_keep=None):
     """See BasEstimator.export."""
     def default_input_fn(unused_estimator, examples):
       return layers.parse_feature_columns_from_examples(
           examples, self._feature_columns)
     self._estimator.export(export_dir=export_dir,
-                           signature_fn=signature_fn,
                            input_fn=input_fn or default_input_fn,
+                           input_feature_key=input_feature_key,
+                           use_deprecated_input_fn=use_deprecated_input_fn,
+                           signature_fn=signature_fn,
                            default_batch_size=default_batch_size,
                            exports_to_keep=exports_to_keep)
 
