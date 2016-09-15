@@ -109,6 +109,9 @@ message GraphOptions {
   // a session after adding a node to a graph whose placement
   // constraints are unsatisfiable.
   bool place_pruned_graph = 6;
+
+  // If true, transfer float values between processes as bfloat16.
+  bool enable_bfloat16_sendrecv = 7;
 };
 
 message ThreadPoolOptionProto {

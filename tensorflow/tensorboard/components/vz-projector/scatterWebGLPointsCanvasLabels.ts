@@ -15,6 +15,7 @@ limitations under the License.
 
 import {BoundingBox, CollisionGrid} from './label';
 import {ScatterWebGL} from './scatterWebGL';
+import {Point2D} from './vector';
 
 const FONT_SIZE = 10;
 const NUM_POINTS_FOG_THRESHOLD = 5000;
@@ -152,6 +153,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
   private positionBuffer: THREE.BufferAttribute;
 
   private defaultPointColor = POINT_COLOR;
+  private sceneIs3D: boolean = true;
   private pointSize2D: number;
   private pointSize3D: number;
   private fog: THREE.Fog;
@@ -179,6 +181,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     this.canvas.style.pointerEvents = 'none';
     this.onResize();
   }
+
   /**
    * Create points, set their locations and actually instantiate the
    * geometry.
@@ -192,7 +195,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     // TODO(b/31390553): Pass sprite dim to the renderer.
     let spriteDim = 28.0;
     let tex = this.createTexture(image);
-    let pointSize = (this.zAccessor ? this.pointSize3D : this.pointSize2D);
+    let pointSize = (this.sceneIs3D ? this.pointSize3D : this.pointSize2D);
     if (this.image) {
       pointSize = IMAGE_SIZE;
     }
@@ -203,7 +206,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
       fogColor: {type: 'c', value: this.fog.color},
       fogNear: {type: 'f', value: this.fog.near},
       fogFar: {type: 'f', value: this.fog.far},
-      sizeAttenuation: {type: 'bool', value: !!this.zAccessor},
+      sizeAttenuation: {type: 'bool', value: this.sceneIs3D},
       isImage: {type: 'bool', value: !!this.image},
       pointSize: {type: 'f', value: pointSize}
     };
@@ -309,40 +312,42 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     this.pointSize2D = this.pointSize3D / 1.5;
   }
 
-  private setFogDistances() {
-    let dists = this.getNearFarPoints();
-    this.fog.near = dists.shortestDist;
-    // If there are fewer points we want less fog. We do this
-    // by making the "far" value (that is, the distance from the camera to the
-    // far edge of the fog) proportional to the number of points.
-    let multiplier = 2 -
-        Math.min(this.dataSet.points.length, NUM_POINTS_FOG_THRESHOLD) /
-            NUM_POINTS_FOG_THRESHOLD;
-    this.fog.far = dists.furthestDist * multiplier;
+  private setFogDistances(nearestPointZ: number, farthestPointZ: number) {
+    if (this.sceneIs3D) {
+      this.fog.near = nearestPointZ;
+      // If there are fewer points we want less fog. We do this
+      // by making the "far" value (that is, the distance from the camera to the
+      // far edge of the fog) proportional to the number of points.
+      let multiplier = 2 -
+          Math.min(this.dataSet.points.length, NUM_POINTS_FOG_THRESHOLD) /
+              NUM_POINTS_FOG_THRESHOLD;
+      this.fog.far = farthestPointZ * multiplier;
+    } else {
+      this.fog.near = Infinity;
+      this.fog.far = Infinity;
+    }
   }
 
-  private getNearFarPoints() {
+  private getNearFarPoints(
+      cameraPos: THREE.Vector3, cameraTarget: THREE.Vector3) {
     let shortestDist: number = Infinity;
     let furthestDist: number = 0;
-    let camToTarget = new THREE.Vector3()
-                          .copy(this.perspCamera.position)
-                          .sub(this.cameraControls.target);
+    let camToTarget = new THREE.Vector3().copy(cameraTarget).sub(cameraPos);
     for (let i = 0; i < this.dataSet.points.length; i++) {
       let point = this.getProjectedPointFromIndex(i);
       // discard points that are behind the camera
-      let camToPoint =
-          new THREE.Vector3().copy(this.perspCamera.position).sub(point);
+      let camToPoint = new THREE.Vector3().copy(point).sub(cameraPos);
       if (camToTarget.dot(camToPoint) < 0) {
         continue;
       }
 
-      let distToCam = this.perspCamera.position.distanceToSquared(point);
+      let distToCam = cameraPos.distanceToSquared(point);
       furthestDist = Math.max(furthestDist, distToCam);
       shortestDist = Math.min(shortestDist, distToCam);
     }
     furthestDist = Math.sqrt(furthestDist);
     shortestDist = Math.sqrt(shortestDist);
-    return {shortestDist, furthestDist};
+    return [shortestDist, furthestDist];
   }
 
   /** Removes all the labels. */
@@ -359,7 +364,9 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
    * Reset the positions of all labels, and check for overlapps using the
    * collision grid.
    */
-  private makeLabels() {
+  private makeLabels(
+      cameraPos: THREE.Vector3, cameraTarget: THREE.Vector3,
+      nearestPointZ: number, farthestPointZ: number) {
     if (this.points == null) {
       return;
     }
@@ -389,16 +396,22 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     let grid =
         new CollisionGrid(boundingBox, this.width / 25, this.height / 50);
 
-    let dists = this.getNearFarPoints();
-    let opacityRange = dists.furthestDist - dists.shortestDist;
-    let camToTarget = new THREE.Vector3()
-                          .copy(this.perspCamera.position)
-                          .sub(this.cameraControls.target);
+    let opacityRange = farthestPointZ - nearestPointZ;
+    let camToTarget = new THREE.Vector3().copy(cameraPos).sub(cameraTarget);
 
     // Setting styles for the labeled font.
     this.gc.lineWidth = 6;
     this.gc.textBaseline = 'middle';
     this.gc.font = (FONT_SIZE * this.dpr).toString() + 'px roboto';
+
+    let strokeStylePrefix: string;
+    let fillStylePrefix: string;
+    {
+      let ls = new THREE.Color(this.labelStroke).multiplyScalar(255);
+      let lc = new THREE.Color(this.labelColor).multiplyScalar(255);
+      strokeStylePrefix = 'rgba(' + ls.r + ',' + ls.g + ',' + ls.b + ',';
+      fillStylePrefix = 'rgba(' + lc.r + ',' + lc.g + ',' + lc.b + ',';
+    }
 
     for (let i = 0;
          (i < this.labeledPoints.length) && !(numRenderedLabels > SAMPLE_SIZE);
@@ -406,8 +419,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
       let index = this.labeledPoints[i];
       let point = this.getProjectedPointFromIndex(index);
       // discard points that are behind the camera
-      let camToPoint =
-          new THREE.Vector3().copy(this.perspCamera.position).sub(point);
+      let camToPoint = new THREE.Vector3().copy(cameraPos).sub(point);
       if (camToTarget.dot(camToPoint) < 0) {
         continue;
       }
@@ -417,13 +429,13 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
       // Shift the label to the right of the point circle.
       let xShift = 3;
       let textBoundingBox = {
-        loX: screenCoords.x + xShift - labelMargin,
+        loX: screenCoords[0] + xShift - labelMargin,
         // Computing the width of the font is expensive,
         // so we assume width of 1 at first. Then, if the label doesn't
         // conflict with other labels, we measure the actual width.
-        hiX: screenCoords.x + xShift + /* labelWidth - 1 */ +1 + labelMargin,
-        loY: screenCoords.y - labelHeight / 2 - labelMargin,
-        hiY: screenCoords.y + labelHeight / 2 + labelMargin
+        hiX: screenCoords[0] + xShift + 1 + labelMargin,
+        loY: screenCoords[1] - labelHeight / 2 - labelMargin,
+        hiY: screenCoords[1] + labelHeight / 2 + labelMargin
       };
 
       if (grid.insert(textBoundingBox, true)) {
@@ -432,17 +444,17 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
 
         // Now, check with properly computed width.
         textBoundingBox.hiX += labelWidth - 1;
-        if (grid.insert(textBoundingBox) &&
-            this.isLabelInBounds(labelWidth, screenCoords)) {
+        if (grid.insert(textBoundingBox)) {
           let p = new THREE.Vector3(point[0], point[1], point[2]);
-          let lenToCamera = this.perspCamera.position.distanceTo(p);
+          let lenToCamera = cameraPos.distanceTo(p);
           // Opacity is scaled between 0.2 and 1, based on how far a label is
           // from the camera (Unless we are in 2d mode, in which case opacity is
           // just 1!)
-          let opacity = this.zAccessor ?
-              1.2 - (lenToCamera - dists.shortestDist) / opacityRange :
+          let opacity = this.sceneIs3D ?
+              1.2 - (lenToCamera - nearestPointZ) / opacityRange :
               1;
-          this.formatLabel(text, screenCoords, opacity);
+          this.formatLabel(
+              text, screenCoords, strokeStylePrefix, fillStylePrefix, opacity);
           numRenderedLabels++;
         }
       }
@@ -458,32 +470,19 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
           point.projectedPoint[2]);
       let screenCoords = this.vector3DToScreenCoords(coords);
       let text = this.labelAccessor(index);
-      this.formatLabel(text, screenCoords, 255);
+      this.formatLabel(
+          text, screenCoords, strokeStylePrefix, fillStylePrefix, 255);
     }
-  }
-
-  /** Checks if a given label will be within the screen's bounds. */
-  private isLabelInBounds(labelWidth: number, coords: {x: number, y: number}) {
-    let padding = 7;
-    if ((coords.x < 0) || (coords.y < 0) ||
-        (coords.x > this.width * this.dpr - labelWidth - padding) ||
-        (coords.y > this.height * this.dpr)) {
-      return false;
-    };
-    return true;
   }
 
   /** Add a specific label to the canvas. */
   private formatLabel(
-      text: string, point: {x: number, y: number}, opacity: number) {
-    let ls = new THREE.Color(this.labelStroke);
-    let lc = new THREE.Color(this.labelColor);
-    this.gc.strokeStyle = 'rgba(' + ls.r * 255 + ',' + ls.g * 255 + ',' +
-        ls.b * 255 + ',' + opacity + ')';
-    this.gc.fillStyle = 'rgba(' + lc.r * 255 + ',' + lc.g * 255 + ',' +
-        lc.b * 255 + ',' + opacity + ')';
-    this.gc.strokeText(text, point.x + 4, point.y);
-    this.gc.fillText(text, point.x + 4, point.y);
+      text: string, point: Point2D, strokeStylePrefix: string,
+      fillStylePrefix: string, opacity: number) {
+    this.gc.strokeStyle = strokeStylePrefix + opacity + ')';
+    this.gc.fillStyle = fillStylePrefix + opacity + ')';
+    this.gc.strokeText(text, point[0] + 4, point[1]);
+    this.gc.fillText(text, point[0] + 4, point[1]);
   }
 
   onResize() {
@@ -620,30 +619,6 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     }
   }
 
-  /**
-   * Returns an x, y, z value for each item of our data based on the accessor
-   * methods.
-   */
-  private getPointsCoordinates() {
-    // Determine max and min of each axis of our data.
-    let xExtent = d3.extent(this.dataSet.points, (p, i) => this.xAccessor(i));
-    let yExtent = d3.extent(this.dataSet.points, (p, i) => this.yAccessor(i));
-    this.xScale.domain(xExtent).range([-1, 1]);
-    this.yScale.domain(yExtent).range([-1, 1]);
-    if (this.zAccessor) {
-      let zExtent = d3.extent(this.dataSet.points, (p, i) => this.zAccessor(i));
-      this.zScale.domain(zExtent).range([-1, 1]);
-    }
-
-    // Determine 3d coordinates of each data point.
-    this.dataSet.points.forEach((d, i) => {
-      d.projectedPoint[0] = this.xScale(this.xAccessor(i));
-      d.projectedPoint[1] = this.yScale(this.yAccessor(i));
-      d.projectedPoint[2] =
-          (this.zAccessor ? this.zScale(this.zAccessor(i)) : 0);
-    });
-  }
-
   protected removeAllGeometry() {
     this.scene.remove(this.points);
     this.removeAllLabels();
@@ -716,13 +691,11 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
         this.traces[i].material.opacity = TRACE_DESELECTED_OPACITY;
         this.traces[i].material.needsUpdate = true;
       }
-      this.traces[this.dataSet.points[selection].traceIndex].material.opacity =
-          TRACE_SELECTED_OPACITY;
-      (this.traces[this.dataSet.points[selection].traceIndex].material as
-           THREE.LineBasicMaterial)
-          .linewidth = TRACE_SELECTED_LINEWIDTH;
-      this.traces[this.dataSet.points[selection].traceIndex]
-          .material.needsUpdate = true;
+      let traceIndex = this.dataSet.points[selection].traceIndex;
+      this.traces[traceIndex].material.opacity = TRACE_SELECTED_OPACITY;
+      (this.traces[traceIndex].material as THREE.LineBasicMaterial).linewidth =
+          TRACE_SELECTED_LINEWIDTH;
+      this.traces[traceIndex].material.needsUpdate = true;
     }
     return true;
   }
@@ -733,63 +706,60 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     this.blending = (isNight ? BLENDING_NIGHT : BLENDING_DAY);
   }
 
-  protected onRecreateScene() {
-    this.fog = this.zAccessor ?
-        new THREE.Fog(this.backgroundColor) :
-        new THREE.Fog(this.backgroundColor, Infinity, Infinity);
+  protected onRecreateScene(sceneIs3D: boolean) {
+    this.sceneIs3D = sceneIs3D;
+    this.fog = new THREE.Fog(this.backgroundColor);
     this.scene.fog = this.fog;
     this.addSprites();
     this.colorSprites(null);
     this.addTraces();
   }
+
   /**
    * Redraws the data. Should be called anytime the accessor method
    * for x and y coordinates changes, which means a new projection
    * exists and the scatter plot should repaint the points.
    */
   protected onUpdate() {
-    this.getPointsCoordinates();
     this.updatePositionsArray();
     if (this.geometry) {
       this.render();
     }
   }
 
-  protected onPickingRender() {
+  protected onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {
     if (!this.geometry) {
       return;
     }
     let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     // Make shallow copy of the shader options and modify the necessary values.
-    let offscreenOptions =
+    let pickingState =
         Object.create(this.materialParams) as THREE.ShaderMaterialParameters;
-    // Since THREE.js errors if we remove the fog, the workaround is to set the
-    // near value to very far, so no points have fog.
-    this.fog.near = 1000;
-    this.fog.far = 10000;
-    // Render offscreen as non transparent points (even when we have images).
-    offscreenOptions.uniforms.isImage.value = false;
-    offscreenOptions.transparent = false;
-    offscreenOptions.depthTest = true;
-    offscreenOptions.depthWrite = true;
-    (this.points.material as THREE.ShaderMaterial).setValues(offscreenOptions);
+    this.fog.near =
+        Infinity;  // Fog changes point colors, which alters the IDs.
+    this.fog.far = Infinity;
+    pickingState.transparent = false;  // Alpha blending distorts the IDs.
+    pickingState.uniforms.isImage.value = false;
+    pickingState.depthTest = true;
+    pickingState.depthWrite = true;
+    (this.points.material as THREE.ShaderMaterial).setValues(pickingState);
     colors.array = this.pickingColors;
     colors.needsUpdate = true;
   }
 
-  protected onRender() {
+  protected onRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {
     if (!this.geometry) {
       return;
     }
-    this.makeLabels();
+    let nearFarPoints = this.getNearFarPoints(camera.position, cameraTarget);
+    this.makeLabels(
+        camera.position, cameraTarget, nearFarPoints[0], nearFarPoints[1]);
     let shaderMaterial = this.points.material as THREE.ShaderMaterial;
     let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     colors.array = this.renderColors;
     colors.needsUpdate = true;
 
-    if (this.zAccessor && this.geometry) {
-      this.setFogDistances();
-    }
+    this.setFogDistances(nearFarPoints[0], nearFarPoints[1]);
 
     shaderMaterial.setValues(this.materialParams);
   }

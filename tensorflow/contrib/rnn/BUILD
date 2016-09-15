@@ -9,7 +9,15 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//visibility:public"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_custom_op_library",
+    "tf_cc_test",
+)
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_kernel_tests_linkstatic",
+)
 
 py_library(
     name = "rnn_py",
@@ -87,6 +95,40 @@ cuda_py_tests(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_cc_test(
+    name = "ops/gru_ops_test",
+    size = "small",
+    srcs = ["ops/gru_ops_test.cc"],
+    data = [":python/ops/_gru_ops.so"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "ops/lstm_ops_test",
+    size = "small",
+    srcs = ["ops/lstm_ops_test.cc"],
+    data = [":python/ops/_lstm_ops.so"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 

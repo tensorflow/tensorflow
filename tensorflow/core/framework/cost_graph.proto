@@ -8,13 +8,14 @@ option java_package = "org.tensorflow.framework";
 
 message CostGraphDef {
   message Node {
-    // The name of the node.
+    // The name of the node. Names are globally unique.
     string name = 1;
 
-    // The device of the node.
+    // The device of the node. Can be empty if the node is mapped to the
+    // default partition or partitioning hasn't been run yet.
     string device = 2;
 
-    // The id of the node.
+    // The id of the node. Node ids are only unique inside a partition.
     int32 id = 3;
 
     // Inputs of this node. They must be executed before this node can be

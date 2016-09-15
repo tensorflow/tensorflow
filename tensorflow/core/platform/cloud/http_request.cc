@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
@@ -205,8 +206,8 @@ HttpRequest::~HttpRequest() {
   if (curl_headers_) {
     libcurl_->curl_slist_free_all(curl_headers_);
   }
-  if (post_body_) {
-    fclose(post_body_);
+  if (put_body_) {
+    fclose(put_body_);
   }
   if (curl_) {
     libcurl_->curl_easy_cleanup(curl_);
@@ -293,32 +294,45 @@ Status HttpRequest::SetDeleteRequest() {
   return Status::OK();
 }
 
-Status HttpRequest::SetPostRequest(const string& body_filepath) {
+Status HttpRequest::SetPutFromFile(const string& body_filepath, size_t offset) {
   TF_RETURN_IF_ERROR(CheckInitialized());
   TF_RETURN_IF_ERROR(CheckNotSent());
   TF_RETURN_IF_ERROR(CheckMethodNotSet());
   is_method_set_ = true;
-  if (post_body_) {
-    fclose(post_body_);
+  if (put_body_) {
+    fclose(put_body_);
   }
-  post_body_ = fopen(body_filepath.c_str(), "r");
-  if (!post_body_) {
+  put_body_ = fopen(body_filepath.c_str(), "r");
+  if (!put_body_) {
     return errors::InvalidArgument("Couldn't open the specified file: " +
                                    body_filepath);
   }
-  fseek(post_body_, 0, SEEK_END);
-  const auto size = ftell(post_body_);
-  fseek(post_body_, 0, SEEK_SET);
+  fseek(put_body_, 0, SEEK_END);
+  const auto size = ftell(put_body_) - offset;
+  fseek(put_body_, offset, SEEK_SET);
 
   curl_headers_ = libcurl_->curl_slist_append(
       curl_headers_, strings::StrCat("Content-Length: ", size).c_str());
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1);
   libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
-                             reinterpret_cast<void*>(post_body_));
+                             reinterpret_cast<void*>(put_body_));
   return Status::OK();
 }
 
-Status HttpRequest::SetPostRequest(const char* buffer, size_t size) {
+Status HttpRequest::SetPutEmptyBody() {
+  TF_RETURN_IF_ERROR(CheckInitialized());
+  TF_RETURN_IF_ERROR(CheckNotSent());
+  TF_RETURN_IF_ERROR(CheckMethodNotSet());
+  is_method_set_ = true;
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1);
+  curl_headers_ =
+      libcurl_->curl_slist_append(curl_headers_, "Content-Length: 0");
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                             &HttpRequest::ReadCallback);
+  return Status::OK();
+}
+
+Status HttpRequest::SetPostFromBuffer(const char* buffer, size_t size) {
   TF_RETURN_IF_ERROR(CheckInitialized());
   TF_RETURN_IF_ERROR(CheckNotSent());
   TF_RETURN_IF_ERROR(CheckMethodNotSet());
@@ -334,7 +348,7 @@ Status HttpRequest::SetPostRequest(const char* buffer, size_t size) {
   return Status::OK();
 }
 
-Status HttpRequest::SetPostRequest() {
+Status HttpRequest::SetPostEmptyBody() {
   TF_RETURN_IF_ERROR(CheckInitialized());
   TF_RETURN_IF_ERROR(CheckNotSent());
   TF_RETURN_IF_ERROR(CheckMethodNotSet());
@@ -342,6 +356,8 @@ Status HttpRequest::SetPostRequest() {
   libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1);
   curl_headers_ =
       libcurl_->curl_slist_append(curl_headers_, "Content-Length: 0");
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                             &HttpRequest::ReadCallback);
   return Status::OK();
 }
 
@@ -399,6 +415,25 @@ size_t HttpRequest::ReadCallback(void* ptr, size_t size, size_t nmemb,
   return bytes_to_copy;
 }
 
+size_t HttpRequest::HeaderCallback(const void* ptr, size_t size, size_t nmemb,
+                                   void* this_object) {
+  CHECK(ptr);
+  auto that = reinterpret_cast<HttpRequest*>(this_object);
+  StringPiece header(reinterpret_cast<const char*>(ptr), size * nmemb);
+  StringPiece name, value;
+  // The supplied header has the form "<name>: <value>", parse it.
+  if (strings::Scanner(header)
+          .ScanEscapedUntil(':')
+          .StopCapture()
+          .OneLiteral(": ")
+          .GetResult(&value, &name)) {
+    string str_value = value.ToString();
+    str_util::StripTrailingWhitespace(&str_value);
+    that->response_headers_[name.ToString()] = str_value;
+  }
+  return size * nmemb;
+}
+
 Status HttpRequest::Send() {
   TF_RETURN_IF_ERROR(CheckInitialized());
   TF_RETURN_IF_ERROR(CheckNotSent());
@@ -409,6 +444,10 @@ Status HttpRequest::Send() {
   if (curl_headers_) {
     libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, curl_headers_);
   }
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERDATA,
+                             reinterpret_cast<void*>(this));
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_HEADERFUNCTION,
+                             &HttpRequest::HeaderCallback);
 
   char error_buffer[CURL_ERROR_SIZE];
   libcurl_->curl_easy_setopt(curl_, CURLOPT_ERRORBUFFER, error_buffer);
@@ -418,11 +457,11 @@ Status HttpRequest::Send() {
   double written_size = 0;
   libcurl_->curl_easy_getinfo(curl_, CURLINFO_SIZE_DOWNLOAD, &written_size);
 
-  uint64 response_code;
-  libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &response_code);
+  libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &response_code_);
 
-  switch (response_code) {
+  switch (response_code_) {
     case 200:  // OK
+    case 201:  // Created
     case 204:  // No Content
     case 206:  // Partial Content
       if (curl_result != CURLE_OK) {
@@ -444,7 +483,7 @@ Status HttpRequest::Send() {
       return Status::OK();
     default:
       return errors::Unavailable(
-          strings::StrCat("Unexpected response code ", response_code));
+          strings::StrCat("Unexpected response code ", response_code_));
   }
 }
 
@@ -468,5 +507,12 @@ Status HttpRequest::CheckNotSent() const {
   }
   return Status::OK();
 }
+
+string HttpRequest::GetResponseHeader(const string& name) const {
+  const auto& header = response_headers_.find(name);
+  return header != response_headers_.end() ? header->second : "";
+}
+
+uint64 HttpRequest::GetResponseCode() const { return response_code_; }
 
 }  // namespace tensorflow

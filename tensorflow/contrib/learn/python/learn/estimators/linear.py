@@ -118,7 +118,7 @@ def _centered_bias(num_outputs):
 
 
 def _add_bias_column(feature_columns, columns_to_tensors, bias_variable,
-                           targets, columns_to_variables):
+                     targets, columns_to_variables):
   # TODO(b/31008490): Move definition to a common constants place.
   bias_column_name = "tf_virtual_bias_column"
   if any(col.name is bias_column_name for col in feature_columns):
@@ -242,7 +242,6 @@ def sdca_classifier_model_fn(features, targets, mode, params):
   optimizer = params["optimizer"]
   weight_column_name = params["weight_column_name"]
   loss_type = params["loss_type"]
-  enable_centered_bias = params.get("enable_centered_bias", True)
 
   if not isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
     raise ValueError("Optimizer must be of type SDCAOptimizer")
@@ -258,9 +257,8 @@ def sdca_classifier_model_fn(features, targets, mode, params):
           feature_columns=feature_columns,
           num_outputs=1))
 
-  if enable_centered_bias:
-    _add_bias_column(feature_columns, features, bias, targets,
-                     columns_to_variables)
+  _add_bias_column(feature_columns, features, bias, targets,
+                   columns_to_variables)
 
   loss = None
   if mode != estimator.ModeKeys.INFER:
@@ -390,6 +388,8 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     Raises:
       ValueError: if n_classes < 2.
     """
+    # TODO(zoy): Give an unsupported error if enable_centered_bias is
+    #    requested for SDCA once its default changes to False.
     if enable_centered_bias is None:
       enable_centered_bias = True
       dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
@@ -412,7 +412,6 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
           "optimizer": self._optimizer,
           "weight_column_name": weight_column_name,
           "loss_type": "logistic_loss",
-          "enable_centered_bias": enable_centered_bias,
       }
     else:
       model_fn = _linear_classifier_model_fn
@@ -659,9 +658,8 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       loss = self._target_column.loss(logits, targets, features)
     logging_ops.scalar_summary("loss", loss)
 
-    if self._enable_centered_bias:
-      _add_bias_column(self._linear_feature_columns, features, bias, targets,
-                       columns_to_variables)
+    _add_bias_column(self._linear_feature_columns, features, bias, targets,
+                     columns_to_variables)
 
     train_op = self._linear_optimizer.get_train_step(
         columns_to_variables, self._target_column.weight_column_name,

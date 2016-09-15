@@ -20,11 +20,48 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import gzip
 import os
-import six
 import threading
-import tensorflow as tf
 import zlib
+
+import six
+import tensorflow as tf
+
+# pylint: disable=invalid-name
+TFRecordCompressionType = tf.python_io.TFRecordCompressionType
+# pylint: enable=invalid-name
+
+
+# Edgar Allan Poe's 'Eldorado'
+_TEXT = b"""Gaily bedight,
+    A gallant knight,
+    In sunshine and in shadow,
+    Had journeyed long,
+    Singing a song,
+    In search of Eldorado.
+
+    But he grew old
+    This knight so bold
+    And o'er his heart a shadow
+    Fell as he found
+    No spot of ground
+    That looked like Eldorado.
+
+   And, as his strength
+   Failed him at length,
+   He met a pilgrim shadow
+   'Shadow,' said he,
+   'Where can it be
+   This land of Eldorado?'
+
+   'Over the Mountains
+    Of the Moon'
+    Down the Valley of the Shadow,
+    Ride, boldly ride,'
+    The shade replied,
+    'If you seek for Eldorado!'
+    """
 
 
 class IdentityReaderTest(tf.test.TestCase):
@@ -176,7 +213,8 @@ class WholeFileReaderTest(tf.test.TestCase):
 
   def setUp(self):
     super(WholeFileReaderTest, self).setUp()
-    self._filenames = [os.path.join(self.get_temp_dir(), "whole_file.%d.txt" % i)
+    self._filenames = [os.path.join(self.get_temp_dir(),
+                                    "whole_file.%d.txt" % i)
                        for i in range(3)]
     self._content = [b"One\na\nb\n", b"Two\nC\nD", b"Three x, y, z"]
     for fn, c in zip(self._filenames, self._content):
@@ -429,7 +467,7 @@ class TFRecordWriterZlibTest(tf.test.TestCase):
       fn = os.path.join(self.get_temp_dir(), "tf_record.%d.txt" % i)
       filenames.append(fn)
       options = tf.python_io.TFRecordOptions(
-          compression_type=tf.python_io.TFRecordCompressionType.ZLIB)
+          compression_type=TFRecordCompressionType.ZLIB)
       writer = tf.python_io.TFRecordWriter(fn, options=options)
       for j in range(self._num_records):
         writer.write(self._Record(i, j))
@@ -438,11 +476,30 @@ class TFRecordWriterZlibTest(tf.test.TestCase):
 
     return filenames
 
+  def _WriteRecordsToFile(self, records, name="tf_record"):
+    fn = os.path.join(self.get_temp_dir(), name)
+    writer = tf.python_io.TFRecordWriter(fn, options=None)
+    for r in records:
+      writer.write(r)
+    writer.close()
+    del writer
+    return fn
+
+  def _ZlibCompressFile(self, infile, name="tfrecord.z"):
+    # zlib compress the file and write compressed contents to file.
+    with open(infile, "rb") as f:
+      cdata = zlib.compress(f.read(), 6)
+
+    zfn = os.path.join(self.get_temp_dir(), name)
+    with open(zfn, "wb") as f:
+      f.write(cdata)
+    return zfn
+
   def testOneEpoch(self):
     files = self._CreateFiles()
     with self.test_session() as sess:
       options = tf.python_io.TFRecordOptions(
-          compression_type=tf.python_io.TFRecordCompressionType.ZLIB)
+          compression_type=TFRecordCompressionType.ZLIB)
       reader = tf.TFRecordReader(name="test_reader", options=options)
       queue = tf.FIFOQueue(99, [tf.string], shapes=())
       key, value = reader.read(queue)
@@ -460,13 +517,7 @@ class TFRecordWriterZlibTest(tf.test.TestCase):
         k, v = sess.run([key, value])
 
   def testZLibFlushRecord(self):
-    fn = os.path.join(self.get_temp_dir(), "tf_record.txt")
-
-    writer = tf.python_io.TFRecordWriter(fn, options=None)
-    writer.write(b"small record")
-    writer.close()
-    del writer
-
+    fn = self._WriteRecordsToFile([b"small record"], "small_record")
     with open(fn, "rb") as h:
       buff = h.read()
 
@@ -475,7 +526,7 @@ class TFRecordWriterZlibTest(tf.test.TestCase):
 
     output = b""
     for c in buff:
-      if type(c) == int:
+      if isinstance(c, int):
         c = six.int2byte(c)
       output += compressor.compress(c)
       output += compressor.flush(zlib.Z_FULL_FLUSH)
@@ -490,7 +541,7 @@ class TFRecordWriterZlibTest(tf.test.TestCase):
 
     with self.test_session() as sess:
       options = tf.python_io.TFRecordOptions(
-          compression_type=tf.python_io.TFRecordCompressionType.ZLIB)
+          compression_type=TFRecordCompressionType.ZLIB)
       reader = tf.TFRecordReader(name="test_reader", options=options)
       queue = tf.FIFOQueue(1, [tf.string], shapes=())
       key, value = reader.read(queue)
@@ -499,6 +550,56 @@ class TFRecordWriterZlibTest(tf.test.TestCase):
       k, v = sess.run([key, value])
       self.assertTrue(tf.compat.as_text(k).startswith("%s:" % fn))
       self.assertAllEqual(b"small record", v)
+
+  def testZlibReadWrite(self):
+    """Verify that files produced are zlib compatible."""
+    original = [b"foo", b"bar"]
+    fn = self._WriteRecordsToFile(original, "zlib_read_write.tfrecord")
+    zfn = self._ZlibCompressFile(fn, "zlib_read_write.tfrecord.z")
+
+    # read the compressed contents and verify.
+    actual = []
+    for r in tf.python_io.tf_record_iterator(
+        zfn, options=tf.python_io.TFRecordOptions(
+            tf.python_io.TFRecordCompressionType.ZLIB)):
+      actual.append(r)
+    self.assertEqual(actual, original)
+
+  def testZlibReadWriteLarge(self):
+    """Verify that writing large contents also works."""
+
+    # Make it large (about 5MB)
+    original = [_TEXT * 10240]
+    fn = self._WriteRecordsToFile(original, "zlib_read_write_large.tfrecord")
+    zfn = self._ZlibCompressFile(fn, "zlib_read_write_large.tfrecord.z")
+
+    # read the compressed contents and verify.
+    actual = []
+    for r in tf.python_io.tf_record_iterator(
+        zfn, options=tf.python_io.TFRecordOptions(
+            tf.python_io.TFRecordCompressionType.ZLIB)):
+      actual.append(r)
+    self.assertEqual(actual, original)
+
+
+  def testGzipReadWrite(self):
+    """Verify that files produced are gzip compatible."""
+    original = [b"foo", b"bar"]
+    fn = self._WriteRecordsToFile(original, "gzip_read_write.tfrecord")
+
+    # gzip compress the file and write compressed contents to file.
+    with open(fn, "rb") as f:
+      cdata = f.read()
+    gzfn = os.path.join(self.get_temp_dir(), "tf_record.gz")
+    with gzip.GzipFile(gzfn, "wb") as f:
+      f.write(cdata)
+
+    actual = []
+    for r in tf.python_io.tf_record_iterator(
+        gzfn,
+        options=tf.python_io.TFRecordOptions(TFRecordCompressionType.GZIP)):
+      actual.append(r)
+    self.assertEqual(actual, original)
 
 
 class TFRecordIteratorTest(tf.test.TestCase):
@@ -510,27 +611,81 @@ class TFRecordIteratorTest(tf.test.TestCase):
   def _Record(self, r):
     return tf.compat.as_bytes("Record %d" % r)
 
-  def _CreateFile(self):
-    fn = os.path.join(self.get_temp_dir(), "tf_record.txt")
-    options = tf.python_io.TFRecordOptions(
-        compression_type=tf.python_io.TFRecordCompressionType.ZLIB)
+  def _WriteCompressedRecordsToFile(
+      self,
+      records,
+      name="tfrecord.z",
+      compression_type=tf.python_io.TFRecordCompressionType.ZLIB):
+    fn = os.path.join(self.get_temp_dir(), name)
+    options = tf.python_io.TFRecordOptions(compression_type=compression_type)
     writer = tf.python_io.TFRecordWriter(fn, options=options)
-    for i in range(self._num_records):
-      writer.write(self._Record(i))
+    for r in records:
+      writer.write(r)
     writer.close()
     del writer
     return fn
 
+  def _ZlibDecompressFile(self, infile, name="tfrecord", wbits=zlib.MAX_WBITS):
+    with open(infile, "rb") as f:
+      cdata = zlib.decompress(f.read(), wbits)
+    zfn = os.path.join(self.get_temp_dir(), name)
+    with open(zfn, "wb") as f:
+      f.write(cdata)
+    return zfn
+
   def testIterator(self):
-    fn = self._CreateFile()
+    fn = self._WriteCompressedRecordsToFile(
+        [self._Record(i) for i in range(self._num_records)],
+        "compressed_records")
     options = tf.python_io.TFRecordOptions(
-        compression_type=tf.python_io.TFRecordCompressionType.ZLIB)
+        compression_type=TFRecordCompressionType.ZLIB)
     reader = tf.python_io.tf_record_iterator(fn, options)
     for i in range(self._num_records):
       record = next(reader)
       self.assertAllEqual(self._Record(i), record)
     with self.assertRaises(StopIteration):
       record = next(reader)
+
+  def testWriteZlibRead(self):
+    """Verify compression with TFRecordWriter is zlib library compatible."""
+    original = [b"foo", b"bar"]
+    fn = self._WriteCompressedRecordsToFile(
+        original, "write_zlib_read.tfrecord.z")
+    zfn = self._ZlibDecompressFile(fn, "write_zlib_read.tfrecord")
+    actual = []
+    for r in tf.python_io.tf_record_iterator(zfn):
+      actual.append(r)
+    self.assertEqual(actual, original)
+
+  def testWriteZlibReadLarge(self):
+    """Verify compression for large records is zlib library compatible."""
+    # Make it large (about 5MB)
+    original = [_TEXT * 10240]
+    fn = self._WriteCompressedRecordsToFile(
+        original, "write_zlib_read_large.tfrecord.z")
+    zfn = self._ZlibDecompressFile(fn, "write_zlib_read_large.tf_record")
+    actual = []
+    for r in tf.python_io.tf_record_iterator(zfn):
+      actual.append(r)
+    self.assertEqual(actual, original)
+
+  def testWriteGzipRead(self):
+    original = [b"foo", b"bar"]
+    fn = self._WriteCompressedRecordsToFile(
+        original,
+        "write_gzip_read.tfrecord.gz",
+        compression_type=TFRecordCompressionType.GZIP)
+
+    with gzip.GzipFile(fn, "rb") as f:
+      cdata = f.read()
+    zfn = os.path.join(self.get_temp_dir(), "tf_record")
+    with open(zfn, "wb") as f:
+      f.write(cdata)
+
+    actual = []
+    for r in tf.python_io.tf_record_iterator(zfn):
+      actual.append(r)
+    self.assertEqual(actual, original)
 
 
 class AsyncReaderTest(tf.test.TestCase):

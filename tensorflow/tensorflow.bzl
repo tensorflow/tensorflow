@@ -245,7 +245,8 @@ def tf_gen_op_wrappers_cc(name,
 
 # Invoke this rule in .../tensorflow/python to build the wrapper library.
 def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],
-                         require_shape_functions=False, hidden_file=None):
+                         require_shape_functions=False, hidden_file=None,
+                         generated_target_name=None):
   # Construct a cc_binary containing the specified ops.
   tool_name = "gen_" + name + "_py_wrappers_cc"
   if not deps:
@@ -293,7 +294,9 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],
              + ("1" if require_shape_functions else "0") + " > $@"))
 
   # Make a py_library out of the generated python file.
-  native.py_library(name=name,
+  if not generated_target_name:
+    generated_target_name = name
+  native.py_library(name=generated_target_name,
                     srcs=[out],
                     srcs_version="PY2AND3",
                     visibility=visibility,

@@ -959,7 +959,7 @@ class ExportMonitor(EveryN):
           default_batch_size=self._default_batch_size,
           input_feature_key=self._input_feature_key,
           use_deprecated_input_fn=self._use_deprecated_input_fn)
-    except (RuntimeError, TypeError):
+    except RuntimeError:
       # Currently we are not syncronized with saving checkpoints, which leads to
       # runtime errors when we are calling export on the same global step.
       # Exports depend on saved checkpoints for constructing the graph and
@@ -986,7 +986,7 @@ class ExportMonitor(EveryN):
           default_batch_size=self._default_batch_size,
           input_feature_key=self._input_feature_key,
           use_deprecated_input_fn=self._use_deprecated_input_fn)
-    except (RuntimeError, TypeError):
+    except RuntimeError:
       logging.info("Skipping exporting for the same step.")
 
 

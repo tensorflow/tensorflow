@@ -40,7 +40,7 @@ TEST(EnvTest, ReadFileToString) {
   const string dir = testing::TmpDir();
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
                            1 << 20, (1 << 20) + 1}) {
-    const string filename = io::JoinPath(dir, strings::StrCat("file", length));
+    const string filename = strings::StrCat(dir, "/bar/..//file", length);
 
     // Write a file with the given length
     const string input = CreateTestFile(env, filename, length);
@@ -130,7 +130,7 @@ TEST(EnvTest, DeleteRecursivelyFail) {
 
 TEST(EnvTest, RecursivelyCreateDir) {
   Env* env = Env::Default();
-  const string create_path = io::JoinPath(testing::TmpDir(), "a/b/c/d");
+  const string create_path = io::JoinPath(testing::TmpDir(), "a//b/c/d");
   TF_CHECK_OK(env->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env->RecursivelyCreateDir(create_path));  // repeat creation.
   EXPECT_TRUE(env->FileExists(create_path));
@@ -140,6 +140,11 @@ TEST(EnvTest, RecursivelyCreateDir) {
   int64 undeleted_files, undeleted_dirs;
   TF_CHECK_OK(env->DeleteRecursively(io::JoinPath(testing::TmpDir(), "a"),
                                      &undeleted_files, &undeleted_dirs));
+}
+
+TEST(EnvTest, RecursivelyCreateDirEmpty) {
+  Env* env = Env::Default();
+  TF_CHECK_OK(env->RecursivelyCreateDir(""));
 }
 
 TEST(EnvTest, RecursivelyCreateDirSubdirsExist) {

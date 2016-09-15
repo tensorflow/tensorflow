@@ -48,7 +48,7 @@ static string GetRecord() {
   return lorem_ipsum;
 }
 
-static string GenTestString(uint copies = 1) {
+static string GenTestString(int copies = 1) {
   string result = "";
   for (int i = 0; i < copies; i++) {
     result += GetRecord();

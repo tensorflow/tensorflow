@@ -22,7 +22,6 @@ from __future__ import print_function
 import numpy as np
 
 import tensorflow as tf
-from tensorflow.contrib.factorization.python.ops.factorization_ops import wals_compute_partial_lhs_and_rhs
 
 
 def SparseBlock3x3():
@@ -51,7 +50,8 @@ class WalsSolverOpsTest(tf.test.TestCase):
   def testWalsSolverLhs(self):
     sparse_block = SparseBlock3x3()
     with self.test_session():
-      [lhs_tensor, rhs_matrix] = wals_compute_partial_lhs_and_rhs(
+      [lhs_tensor, rhs_matrix
+      ] = tf.contrib.factorization.wals_compute_partial_lhs_and_rhs(
           self._column_factors, self._column_weights, self._unobserved_weights,
           self._row_weights, sparse_block.indices, sparse_block.values,
           sparse_block.shape[0], False)

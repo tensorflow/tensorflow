@@ -379,7 +379,35 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
           output_shape = tensor_shape.TensorShape(
               None if dims.unknown_rank else
               [dim.size if dim.size >= 0 else None for dim in dims.dim])
-          output.set_shape(output_shape)
+
+          try:
+            output.set_shape(output_shape)
+          except ValueError as e:
+            # If the output shape is incompatible with what is inferred
+            # by the graph for a very specific whitelist of ops, then we
+            # ignore this output shape.  This can happen if there is a
+            # bug in the shape function for some operation, and the
+            # serialized graph def has the incorrect shape set when
+            # running on a newer binary with the fixed shape function.
+            # This is an escape hatch that allows us to correct shape
+            # functions that are not critical to correct execution but
+            # would cause graphs to fail if imported after correcting.
+            #
+            # This can be removed after 2017/03/08.
+            if op.type not in ['RandomShuffleQueue', 'PaddingFIFOQueue',
+                               'FIFOQueue', 'PriorityQueue', 'QueueSize',
+                               'Stack', 'Barrier', 'BarrierReadySize',
+                               'BarrierIncompleteSize', 'HashTable',
+                               'MutableHashTable',
+                               'MutableHashTableOfTensors', 'Mutex',
+                               'CuckooTable', 'IndexTable',
+                               'WholeFileReader', 'TextLineReader',
+                               'FixedLengthRecordReader',
+                               'TFRecordReader', 'IdentityReader',
+                               'RefSwitch', 'RefEnter', 'RefNextIteration',
+                               'RefMerge', 'RefIdentity']:
+              raise e
+
         del op.node_def.attr['_output_shapes']
 
       # Apply device functions for this op.

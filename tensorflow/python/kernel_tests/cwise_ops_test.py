@@ -669,6 +669,16 @@ class BinaryOpTest(tf.test.TestCase):
     self._compareBoth(x, y, np.multiply, tf.mul)
     self._compareBoth(x, y, np.multiply, _MUL)
 
+  def testUint16Basic(self):
+    x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.uint16)
+    y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.uint16)
+    self._compareBoth(x, y, np.multiply, tf.mul)
+    self._compareBoth(x, y, np.multiply, _MUL)
+    self._compareBoth(x, y, np.true_divide, tf.truediv)
+    self._compareBoth(x, y, np.floor_divide, tf.floordiv)
+    self._compareBoth(x, y, np.true_divide, _TRUEDIV)
+    self._compareBoth(x, y, np.floor_divide, _FLOORDIV)
+
   def testInt32Basic(self):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.int32)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int32)

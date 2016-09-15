@@ -286,6 +286,9 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
                                 "Const")
                      .Attr("dtype", constant.dtype())
                      .Attr("value", constant);
+  if (partition_device) {
+    builder.Device(partition_device->name());
+  }
   NodeDef def;
   if (!builder.Finalize(&def).ok()) {
     return false;
@@ -306,6 +309,9 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
     graph->RemoveEdge(edge);
   }
   graph->AddEdge(graph->source_node(), -1, constant_node, -1);
+  if (partition_device) {
+    constant_node->set_assigned_device_name(partition_device->name());
+  }
   return true;
 }
 

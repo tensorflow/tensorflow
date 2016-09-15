@@ -15,7 +15,7 @@ limitations under the License.
 
 import {DataSet, Mode, OnHoverListener, OnSelectionListener, Scatter} from './scatter';
 
-import {dist_2D} from './vector';
+import {dist_2D, Point2D} from './vector';
 
 // Colors (in various necessary formats).
 const BACKGROUND_COLOR_DAY = 0xffffff;
@@ -70,50 +70,39 @@ const TAR_2D = {
  * independent of how a 3D scatter plot is actually rendered.
  */
 export abstract class ScatterWebGL implements Scatter {
+  protected dataSet: DataSet;
+
   // Colors and options that are changed between Day and Night modes.
   protected backgroundColor: number;
 
-  // THREE.js necessities.
   protected scene: THREE.Scene;
-  protected perspCamera: THREE.PerspectiveCamera;
-  protected renderer: THREE.WebGLRenderer;
-  protected cameraControls: any;
-
-  protected dataSet: DataSet;
 
   /** Holds the indexes of the points to be labeled. */
   protected labeledPoints: number[] = [];
   protected highlightedPoints: number[] = [];
   protected nearestPoint: number;
 
-  // Accessors for rendering and labeling the points.
-  protected xAccessor: (index: number) => number;
-  protected yAccessor: (index: number) => number;
-  protected zAccessor: (index: number) => number;
   protected labelAccessor: (index: number) => string;
   protected colorAccessor: (index: number) => string;
   protected highlightStroke: (i: number) => string;
   protected favorLabels: (i: number) => boolean;
-
-  // Scaling functions for each axis.
-  protected xScale: d3.scale.Linear<number, number>;
-  protected yScale: d3.scale.Linear<number, number>;
-  protected zScale: d3.scale.Linear<number, number>;
 
   // window layout dimensions
   protected height: number;
   protected width: number;
   protected dpr: number;  // The device pixelratio
 
-  protected abstract onRecreateScene();
+  protected abstract onRecreateScene(sceneIs3D: boolean);
   protected abstract removeAllGeometry();
   protected abstract onDataSet(spriteImage: HTMLImageElement);
   protected abstract onSetColorAccessor();
   protected abstract onHighlightPoints(
       pointIndexes: number[], highlightStroke: (i: number) => string,
       favorLabels: (i: number) => boolean);
-  protected abstract onPickingRender();
-  protected abstract onRender();
+  protected abstract onPickingRender(
+      camera: THREE.Camera, cameraTarget: THREE.Vector3);
+  protected abstract onRender(
+      camera: THREE.Camera, cameraTarget: THREE.Vector3);
   protected abstract onUpdate();
   protected abstract onResize();
   protected abstract onMouseClickInternal(e?: MouseEvent): boolean;
@@ -121,14 +110,26 @@ export abstract class ScatterWebGL implements Scatter {
 
   private containerNode: HTMLElement;
 
-  // Listeners
   private onHoverListeners: OnHoverListener[] = [];
   private onSelectionListeners: OnSelectionListener[] = [];
   private lazySusanAnimation: number;
 
+  // Accessors for rendering and labeling the points.
+  private xAccessor: (index: number) => number;
+  private yAccessor: (index: number) => number;
+  private zAccessor: (index: number) => number;
+
+  // Scaling functions for each axis.
+  private xScale: d3.scale.Linear<number, number>;
+  private yScale: d3.scale.Linear<number, number>;
+  private zScale: d3.scale.Linear<number, number>;
+
   private mode: Mode;
   private isNight: boolean;
 
+  private renderer: THREE.WebGLRenderer;
+  private perspCamera: THREE.PerspectiveCamera;
+  private cameraControls: any;
   private pickingTexture: THREE.WebGLRenderTarget;
   private light: THREE.PointLight;
   private axis3D: THREE.AxisHelper;
@@ -453,7 +454,7 @@ export abstract class ScatterWebGL implements Scatter {
     let screenCoords = this.vector3DToScreenCoords(point);
     return dist_2D(
         [e.offsetX * this.dpr, e.offsetY * this.dpr],
-        [screenCoords.x, screenCoords.y]);
+        [screenCoords[0], screenCoords[1]]);
   }
 
   private adjustSelectionSphere(e: MouseEvent) {
@@ -483,15 +484,15 @@ export abstract class ScatterWebGL implements Scatter {
         this.dataSet.points[i].projectedPoint[2]);
   }
 
-  protected vector3DToScreenCoords(v: THREE.Vector3) {
+  protected vector3DToScreenCoords(v: THREE.Vector3): Point2D {
     let vector = new THREE.Vector3().copy(v).project(this.perspCamera);
-    let coords = {
+    let coords: Point2D = [
       // project() returns the point in perspCamera's coordinates, with the
       // origin in the center and a positive upward y. To get it into screen
       // coordinates, normalize by adding 1 and dividing by 2.
-      x: ((vector.x + 1) / 2 * this.width) * this.dpr,
-      y: -((vector.y - 1) / 2 * this.height) * this.dpr
-    };
+      ((vector.x + 1) / 2 * this.width) * this.dpr,
+      -((vector.y - 1) / 2 * this.height) * this.dpr
+    ];
     return coords;
   }
 
@@ -581,12 +582,36 @@ export abstract class ScatterWebGL implements Scatter {
     this.dpr = window.devicePixelRatio;
   }
 
+  /**
+   * Returns an x, y, z value for each item of our data based on the accessor
+   * methods.
+   */
+  private getPointsCoordinates() {
+    // Determine max and min of each axis of our data.
+    let xExtent = d3.extent(this.dataSet.points, (p, i) => this.xAccessor(i));
+    let yExtent = d3.extent(this.dataSet.points, (p, i) => this.yAccessor(i));
+    this.xScale.domain(xExtent).range([-1, 1]);
+    this.yScale.domain(yExtent).range([-1, 1]);
+    if (this.zAccessor) {
+      let zExtent = d3.extent(this.dataSet.points, (p, i) => this.zAccessor(i));
+      this.zScale.domain(zExtent).range([-1, 1]);
+    }
+
+    // Determine 3d coordinates of each data point.
+    this.dataSet.points.forEach((d, i) => {
+      d.projectedPoint[0] = this.xScale(this.xAccessor(i));
+      d.projectedPoint[1] = this.yScale(this.yAccessor(i));
+      d.projectedPoint[2] =
+          (this.zAccessor ? this.zScale(this.zAccessor(i)) : 0);
+    });
+  }
+
   // PUBLIC API
 
   recreateScene() {
     this.removeAll();
     this.cancelAnimation();
-    this.onRecreateScene();
+    this.onRecreateScene(this.zAccessor != null);
     if (this.zAccessor) {
       this.addAxis3D();
       this.makeCamera3D();
@@ -608,6 +633,7 @@ export abstract class ScatterWebGL implements Scatter {
 
   update() {
     this.cancelAnimation();
+    this.getPointsCoordinates();
     this.onUpdate();
   }
 
@@ -620,7 +646,7 @@ export abstract class ScatterWebGL implements Scatter {
     // with colors that are actually point ids, so that sampling the texture at
     // the mouse's current x,y coordinates will reveal the data point that the
     // mouse is over.
-    this.onPickingRender();
+    this.onPickingRender(this.perspCamera, this.cameraControls.target);
     this.renderer.render(this.scene, this.perspCamera, this.pickingTexture);
 
     // Render second pass to color buffer, to be displayed on the canvas.
@@ -628,7 +654,7 @@ export abstract class ScatterWebGL implements Scatter {
     lightPos.x += 1;
     lightPos.y += 1;
     this.light.position.set(lightPos.x, lightPos.y, lightPos.z);
-    this.onRender();
+    this.onRender(this.perspCamera, this.cameraControls.target);
     this.renderer.render(this.scene, this.perspCamera);
   }
 

@@ -158,6 +158,7 @@ cc_library(
     deps = [
         ":master_env",
         ":master_session_interface",
+        ":scheduler",
         ":worker_cache",
         ":worker_interface",
         "//tensorflow/core:core_cpu",
@@ -184,6 +185,17 @@ cc_library(
     srcs = [],
     hdrs = ["master_session_interface.h"],
     deps = ["//tensorflow/core:lib"],
+)
+
+cc_library(
+    name = "scheduler",
+    srcs = ["scheduler.cc"],
+    hdrs = ["scheduler.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:tensorflow_opensource",
+    ],
 )
 
 cc_library(

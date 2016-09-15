@@ -33,8 +33,8 @@ def _OptimizerOptions():
   for cse in [False, True]:
     for inline in [False, True]:
       for cfold in [False, True]:
-        yield tf.ConfigProto(
-            graph_options=tf.GraphOptions(optimizer_options=tf.OptimizerOptions(
+        yield tf.ConfigProto(graph_options=tf.GraphOptions(
+            optimizer_options=tf.OptimizerOptions(
                 opt_level=tf.OptimizerOptions.L0,
                 do_common_subexpression_elimination=cse,
                 do_function_inlining=inline,
@@ -62,7 +62,7 @@ class FunctionTest(tf.test.TestCase):
       u = tf.add(tf.matmul(a, b), c, name="u")
       v = tf.square(u, name="v")
       w = tf.add_n([u, v], name="w")
-    fdef = function.graph_to_function_def(foo, "foo", [a, b, c], [u, v, w])
+    fdef = function._graph_to_function_def(foo, "foo", [a, b, c], [u, v, w])
 
     class Mock(function._DefinedFunction):
 
@@ -73,6 +73,7 @@ class FunctionTest(tf.test.TestCase):
         self._grad_func = None
         self._python_grad_func = None
         self._hash = hash(fdef.SerializeToString())
+
     g._add_function(Mock(fdef))
 
     # Compute 2 * 3 + 4 and its square.
@@ -84,14 +85,12 @@ class FunctionTest(tf.test.TestCase):
       #   y, s, t = foo_func(two, three, four)
 
       # The graph contains two ops each of which calls foo.
-      u0, v0, w0 = g.create_op("foo",
-                               [two, three, four],
-                               [tf.float32, tf.float32, tf.float32],
-                               compute_shapes=False).outputs
-      u1, v1, w1 = g.create_op("foo",
-                               [four, two, three],
-                               [tf.float32, tf.float32, tf.float32],
-                               compute_shapes=False).outputs
+      u0, v0, w0 = g.create_op(
+          "foo", [two, three, four], [tf.float32, tf.float32, tf.float32],
+          compute_shapes=False).outputs
+      u1, v1, w1 = g.create_op(
+          "foo", [four, two, three], [tf.float32, tf.float32, tf.float32],
+          compute_shapes=False).outputs
 
       # Checks some property of the graph def.
       gdef = g.as_graph_def()
@@ -156,6 +155,7 @@ class FunctionTest(tf.test.TestCase):
         self.assertAllClose([0.4], sess.run(call_g))
 
   def testTanhSymGrad(self):
+
     @function.Defun(tf.float32)
     def Forward(x):
       return tf.reduce_sum(tf.tanh(x))
@@ -168,11 +168,9 @@ class FunctionTest(tf.test.TestCase):
 
     inp = np.array([-1, 1, 2, -2], dtype=np.float32)
     feed = {x: inp}
-    cfg = tf.ConfigProto(
-        graph_options=tf.GraphOptions(
-            optimizer_options=tf.OptimizerOptions(
-                opt_level=tf.OptimizerOptions.L1,
-                do_function_inlining=True)))
+    cfg = tf.ConfigProto(graph_options=tf.GraphOptions(
+        optimizer_options=tf.OptimizerOptions(
+            opt_level=tf.OptimizerOptions.L1, do_function_inlining=True)))
     with tf.Session(graph=g, config=cfg) as sess:
       out, = sess.run(dx, feed)
     self.assertAllClose(1 - np.square(np.tanh(inp)), out)
@@ -242,13 +240,13 @@ class FunctionTest(tf.test.TestCase):
       # gradient function is (x, y, dz) -> (dx, dy).  dx's shape
       # should be the same as x's; and dy's shape should be the same
       # as y's.
-      dx, dy = functional_ops._symbolic_gradient(input=[x, y, dz],
-                                                 Tout=[tf.float32] * 2,
-                                                 f="Foo")
+      dx, dy = functional_ops._symbolic_gradient(
+          input=[x, y, dz], Tout=[tf.float32] * 2, f="Foo")
       self.assertEquals(x.get_shape(), dx.get_shape())
       self.assertEquals(y.get_shape(), dy.get_shape())
 
   def testZNoDepOnY(self):
+
     @function.Defun(tf.float32, tf.float32)
     def Foo(x, y):
       return x * 2
@@ -371,15 +369,19 @@ class FunctionTest(tf.test.TestCase):
         function.call_function(plus_one, one, device="/gpu:0")
 
   def testDupDefinition(self):
+
     @function.Defun(tf.float32)
     def Foo(x):
       return x + 1
+
     @function.Defun(tf.float32, func_name="Foo")
     def Bar(x):
       return x + 1
+
     @function.Defun(tf.float32, func_name="Foo")
     def Baz(x):
       return x + 2
+
     with tf.Graph().as_default():
       x = tf.constant(100.0)
       y = Foo(x)
@@ -390,6 +392,7 @@ class FunctionTest(tf.test.TestCase):
         z = Baz(x)
 
   def testFunctionDecorator(self):
+
     @function.Defun(tf.float32)
     def Minus1(b):
       return b - 1.0
@@ -408,6 +411,7 @@ class FunctionTest(tf.test.TestCase):
         self.assertAllEqual([0], sess.run(call2))
 
   def testNestedFunction(self):
+
     @function.Defun(tf.float32)
     def Cube(x):
       return x * x * x
@@ -422,12 +426,16 @@ class FunctionTest(tf.test.TestCase):
         self.assertAllEqual(z.eval(), 25.0)
 
   def testNestedDefinedFunction(self):
+
     @function.Defun(tf.float32, tf.float32)
     def CubeXPlusY(x, y):
+
       @function.Defun(tf.float32)
       def Cube(x):
         return x * x * x
+
       return Cube(x) + y
+
     with tf.Graph().as_default():
       z = CubeXPlusY(tf.constant(3.0), tf.constant(-2.0))
       with self.test_session():
@@ -440,13 +448,16 @@ class FunctionTest(tf.test.TestCase):
     def Unused():
       invoked = True
       return tf.constant(42.)
+
     self.assertFalse(invoked)
     g = tf.Graph()
     with g.as_default():
+
       @function.Defun()
       def Unused2():
         invoked = True
         return tf.constant(7.)
+
       tf.constant(3.)
     # pylint: enable=unused-variable
     self.assertFalse(invoked)
@@ -481,6 +492,43 @@ class FunctionTest(tf.test.TestCase):
       self.assertAllClose(vals[0], vals[1])
       self.assertAllClose(vals[2], vals[3])
 
+  def testDeclareTypeMistake(self):
+    foo = function.Declare("Foo", [tf.float32], [tf.float32])
+
+    @function.Defun(tf.float32)
+    def Foo(x):
+      return x * x + 1
+
+    g = tf.Graph()
+    with g.as_default():
+      y = foo(tf.constant(2, tf.float32))
+      with self.test_session(graph=g):
+        with self.assertRaisesRegexp(tf.errors.NotFoundError, "not registered"):
+          _ = y.eval()
+
+    g = tf.Graph()
+    with g.as_default():
+      Foo.add_to_graph(g)
+      y = foo(tf.constant(2, tf.int32))
+      with self.test_session(graph=g):
+        with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                     "int32.*float"):
+          _ = y.eval()
+
+    g = tf.Graph()
+    with g.as_default():
+      Foo.add_to_graph(g)
+      with self.assertRaisesRegexp(ValueError,
+                                   "Mismatch number of args: 2 vs. 1"):
+        _ = foo(tf.constant(2, tf.float32), tf.constant(2, tf.float32))
+
+    g = tf.Graph()
+    with g.as_default():
+      Foo.add_to_graph(g)
+      y = foo(tf.constant(2, tf.float32))
+      with self.test_session(graph=g):
+        self.assertAllEqual(y.eval(), 5.0)
+
 
 class UnrollLSTMTest(tf.test.TestCase):
   BATCH_SIZE = 16
@@ -493,8 +541,7 @@ class UnrollLSTMTest(tf.test.TestCase):
 
   def _Input(self):
     return tf.random_uniform(
-        [self.NUM_UNROLL, self.BATCH_SIZE, self.LSTM_DIMS],
-        seed=654321)
+        [self.NUM_UNROLL, self.BATCH_SIZE, self.LSTM_DIMS], seed=654321)
 
   # Helper to construct a LSTM cell graph.
   @classmethod
@@ -521,10 +568,9 @@ class UnrollLSTMTest(tf.test.TestCase):
       # Constructs the complete graph in python.
       return Loop(cell, weights, inp)
 
-    cell = function.Defun(x=tf.float32,
-                          mprev=tf.float32,
-                          cprev=tf.float32,
-                          weights=tf.float32)(cell)
+    cell = function.Defun(
+        x=tf.float32, mprev=tf.float32, cprev=tf.float32,
+        weights=tf.float32)(cell)
     if mode == "cell":
       # Just represent the LSTM as a function.
       return Loop(cell, weights, inp)
@@ -542,8 +588,7 @@ class UnrollLSTMTest(tf.test.TestCase):
       # into another calling the formers.
 
       # Groups 10 steps at a time.
-      @function.Defun(tf.float32, tf.float32, tf.float32,
-                      *([tf.float32] * 10))
+      @function.Defun(tf.float32, tf.float32, tf.float32, *([tf.float32] * 10))
       def Loop10(w, m, c, *args):
         for x in args:
           m, c = cell(x, m, c, w)
@@ -622,13 +667,14 @@ class FunctionInlineControlTest(tf.test.TestCase):
 
   def testFoo(self):
     dtype = tf.float32
-    cfg = tf.ConfigProto(
-        graph_options=tf.GraphOptions(optimizer_options=tf.OptimizerOptions(
+    cfg = tf.ConfigProto(graph_options=tf.GraphOptions(
+        optimizer_options=tf.OptimizerOptions(
             opt_level=tf.OptimizerOptions.L0,
             do_common_subexpression_elimination=True,
             do_function_inlining=True,
             do_constant_folding=True)))
     for noinline in [False, True]:
+
       @function.Defun(dtype)
       def Cell(v):
         # If v is a vector [n, 1], x is a big square matrix.
@@ -656,12 +702,12 @@ class FunctionInlineControlTest(tf.test.TestCase):
         self.assertAllClose(np.sum(ans[1]), 13.0408, rtol=1e-3)
 
 
-@function.Defun(*[tf.float32]*3)
+@function.Defun(*[tf.float32] * 3)
 def Linear(w, b, x):
   return tf.nn.relu(tf.matmul(x, w) + b)
 
 
-@function.Defun(*[tf.float32]*5)
+@function.Defun(*[tf.float32] * 5)
 def Linear2(w1, b1, w2, b2, x):
   return Linear(w2, b2, Linear(w1, b1, x))
 
@@ -676,6 +722,7 @@ class ModuleFunctionTest(tf.test.TestCase):
       with tf.Session() as sess:
         self.assertAllEqual([[1]], sess.run(y))
         self.assertAllEqual([[5]], sess.run(z))
+
 
 if __name__ == "__main__":
   tf.test.main()

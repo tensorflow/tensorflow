@@ -46,6 +46,11 @@ constexpr char kGcsUploadUriBase[] =
 constexpr char kStorageHost[] = "storage.googleapis.com";
 constexpr size_t kBufferSize = 1024 * 1024;  // In bytes.
 constexpr int kGetChildrenDefaultPageSize = 1000;
+// Initial delay before retrying a GCS upload.
+// Subsequent delays can be larger due to exponential back-off.
+constexpr uint64 kUploadRetryDelayMicros = 1000000L;
+// The HTTP response code "308 Resume Incomplete".
+constexpr uint64 HTTP_CODE_RESUME_INCOMPLETE = 308;
 
 Status GetTmpFilename(string* filename) {
   if (!filename) {
@@ -201,11 +206,13 @@ class GcsWritableFile : public WritableFile {
  public:
   GcsWritableFile(const string& bucket, const string& object,
                   AuthProvider* auth_provider,
-                  HttpRequest::Factory* http_request_factory)
+                  HttpRequest::Factory* http_request_factory,
+                  int32 max_upload_attempts)
       : bucket_(bucket),
         object_(object),
         auth_provider_(auth_provider),
-        http_request_factory_(http_request_factory) {
+        http_request_factory_(http_request_factory),
+        max_upload_attempts_(max_upload_attempts) {
     if (GetTmpFilename(&tmp_content_filename_).ok()) {
       outfile_.open(tmp_content_filename_,
                     std::ofstream::binary | std::ofstream::app);
@@ -220,11 +227,13 @@ class GcsWritableFile : public WritableFile {
   GcsWritableFile(const string& bucket, const string& object,
                   AuthProvider* auth_provider,
                   const string& tmp_content_filename,
-                  HttpRequest::Factory* http_request_factory)
+                  HttpRequest::Factory* http_request_factory,
+                  int32 max_upload_attempts)
       : bucket_(bucket),
         object_(object),
         auth_provider_(auth_provider),
-        http_request_factory_(http_request_factory) {
+        http_request_factory_(http_request_factory),
+        max_upload_attempts_(max_upload_attempts) {
     tmp_content_filename_ = tmp_content_filename;
     outfile_.open(tmp_content_filename_,
                   std::ofstream::binary | std::ofstream::app);
@@ -235,6 +244,10 @@ class GcsWritableFile : public WritableFile {
   Status Append(const StringPiece& data) override {
     TF_RETURN_IF_ERROR(CheckWritable());
     outfile_ << data;
+    if (!outfile_.good()) {
+      return errors::Internal(
+          "Could not append to the internal temporary file.");
+    }
     return Status::OK();
   }
 
@@ -250,31 +263,198 @@ class GcsWritableFile : public WritableFile {
   Status Flush() override { return Sync(); }
 
   /// Copies the current version of the file to GCS.
+  ///
+  /// This Sync() uploads the object to GCS.
+  /// In case of a failure, it resumes failed uploads as recommended by the GCS
+  /// resumable API documentation. When the whole upload needs to be
+  /// restarted, Sync() returns UNAVAILABLE and relies on RetryingFileSystem.
   Status Sync() override {
     TF_RETURN_IF_ERROR(CheckWritable());
     outfile_.flush();
-    string auth_token;
-    TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
-
-    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-    TF_RETURN_IF_ERROR(request->Init());
-    TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
-        kGcsUploadUriBase, "b/", bucket_, "/o?uploadType=media&name=",
-        request->EscapeString(object_))));
-    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
-    TF_RETURN_IF_ERROR(request->SetPostRequest(tmp_content_filename_));
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when writing to gs://",
-                                    bucket_, "/", object_);
-    return Status::OK();
+    if (!outfile_.good()) {
+      return errors::Internal(
+          "Could not write to the internal temporary file.");
+    }
+    string session_uri;
+    TF_RETURN_IF_ERROR(CreateNewUploadSession(&session_uri));
+    uint64 already_uploaded = 0;
+    for (int attempt = 0; attempt < max_upload_attempts_; attempt++) {
+      if (attempt > 0) {
+        bool completed;
+        TF_RETURN_IF_ERROR(RequestUploadSessionStatus(session_uri, &completed,
+                                                      &already_uploaded));
+        if (completed) {
+          // It's unclear why UploadToSession didn't return OK in the previous
+          // attempt, but GCS reports that the file is fully uploaded,
+          // so succeed.
+          return Status::OK();
+        }
+      }
+      const Status upload_status =
+          UploadToSession(session_uri, already_uploaded);
+      if (upload_status.ok()) {
+        return Status::OK();
+      }
+      switch (upload_status.code()) {
+        case errors::Code::NOT_FOUND:
+          // GCS docs recommend retrying the whole upload. We're relying on the
+          // RetryingFileSystem to retry the Sync() call.
+          return errors::Unavailable(
+              strings::StrCat("Could not upload gs://", bucket_, "/", object_));
+        case errors::Code::UNAVAILABLE:
+          // The upload can be resumed, but GCS docs recommend an exponential
+          // back-off.
+          Env::Default()->SleepForMicroseconds(kUploadRetryDelayMicros
+                                               << attempt);
+          break;
+        default:
+          // Something unexpected happen, fail.
+          return upload_status;
+      }
+    }
+    return errors::Aborted(
+        strings::StrCat("Upload gs://", bucket_, "/", object_, " failed."));
   }
 
  private:
   Status CheckWritable() const {
     if (!outfile_.is_open()) {
       return errors::FailedPrecondition(
-          "The underlying tmp file is not writable.");
+          "The internal temporary file is not writable.");
     }
     return Status::OK();
+  }
+
+  Status GetCurrentFileSize(uint64* size) {
+    if (size == nullptr) {
+      return errors::Internal("'size' cannot be nullptr");
+    }
+    const auto tellp = outfile_.tellp();
+    if (tellp == -1) {
+      return errors::Internal(
+          "Could not get the size of the internal temporary file.");
+    }
+    *size = tellp;
+    return Status::OK();
+  }
+
+  /// Initiates a new resumable upload session.
+  Status CreateNewUploadSession(string* session_uri) {
+    if (session_uri == nullptr) {
+      return errors::Internal("'session_uri' cannot be nullptr.");
+    }
+    uint64 file_size;
+    TF_RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
+
+    string auth_token;
+    TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
+
+    std::unique_ptr<char[]> scratch(new char[kBufferSize]);
+    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
+    TF_RETURN_IF_ERROR(request->Init());
+    TF_RETURN_IF_ERROR(request->SetUri(strings::StrCat(
+        kGcsUploadUriBase, "b/", bucket_, "/o?uploadType=resumable&name=",
+        request->EscapeString(object_))));
+    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
+    TF_RETURN_IF_ERROR(request->AddHeader("X-Upload-Content-Length",
+                                          std::to_string(file_size)));
+    TF_RETURN_IF_ERROR(request->SetPostEmptyBody());
+    StringPiece response_piece;
+    TF_RETURN_IF_ERROR(
+        request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        request->Send(), " when initiating an upload to ", GetGcsPath());
+    *session_uri = request->GetResponseHeader("Location");
+    if (session_uri->empty()) {
+      return errors::Internal(
+          strings::StrCat("Unexpected response from GCS when writing to ",
+                          GetGcsPath(), ": 'Location' header not returned."));
+    }
+    return Status::OK();
+  }
+
+  /// \brief Requests status of a previously initiated upload session.
+  ///
+  /// If the upload has already succeeded, sets 'completed' to true.
+  /// Otherwise sets 'completed' to false and 'uploaded' to the currently
+  /// uploaded size in bytes.
+  Status RequestUploadSessionStatus(const string& session_uri, bool* completed,
+                                    uint64* uploaded) {
+    if (completed == nullptr || uploaded == nullptr) {
+      return errors::Internal("'completed' and 'uploaded' cannot be nullptr.");
+    }
+    uint64 file_size;
+    TF_RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
+
+    string auth_token;
+    TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
+
+    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
+    TF_RETURN_IF_ERROR(request->Init());
+    TF_RETURN_IF_ERROR(request->SetUri(session_uri));
+    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
+    TF_RETURN_IF_ERROR(request->AddHeader(
+        "Content-Range", strings::StrCat("bytes */", file_size)));
+    TF_RETURN_IF_ERROR(request->SetPutEmptyBody());
+    const Status& status = request->Send();
+    if (status.ok()) {
+      *completed = true;
+      return Status::OK();
+    }
+    *completed = false;
+    if (request->GetResponseCode() != HTTP_CODE_RESUME_INCOMPLETE) {
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(status, " when resuming upload ",
+                                      GetGcsPath());
+    }
+    const string& received_range = request->GetResponseHeader("Range");
+    if (received_range.empty()) {
+      // This means GCS doesn't have any bytes of the file yet.
+      *uploaded = 0;
+    } else {
+      std::vector<int32> range_parts;
+      if (!str_util::SplitAndParseAsInts(received_range, '-', &range_parts) ||
+          range_parts.size() != 2) {
+        return errors::Internal(strings::StrCat(
+            "Unexpected response from GCS when writing ", GetGcsPath(),
+            ": Range header '", received_range, "' could not be parsed."));
+      }
+      if (range_parts[0] != 0) {
+        return errors::Internal(
+            strings::StrCat("Unexpected response from GCS when writing to ",
+                            GetGcsPath(), ": the returned range '",
+                            received_range, "' does not start at zero."));
+      }
+      // If GCS returned "Range: 0-10", this means 11 bytes were uploaded.
+      *uploaded = range_parts[1] + 1;
+    }
+    return Status::OK();
+  }
+
+  Status UploadToSession(const string& session_uri, uint64 start_offset) {
+    uint64 file_size;
+    TF_RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
+
+    string auth_token;
+    TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_, &auth_token));
+
+    std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
+    TF_RETURN_IF_ERROR(request->Init());
+    TF_RETURN_IF_ERROR(request->SetUri(session_uri));
+    TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
+    if (file_size > 0) {
+      TF_RETURN_IF_ERROR(request->AddHeader(
+          "Content-Range", strings::StrCat("bytes ", start_offset, "-",
+                                           file_size - 1, "/", file_size)));
+    }
+    TF_RETURN_IF_ERROR(
+        request->SetPutFromFile(tmp_content_filename_, start_offset));
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when uploading ",
+                                    GetGcsPath());
+    return Status::OK();
+  }
+
+  string GetGcsPath() const {
+    return strings::StrCat("gs://", bucket_, "/", object_);
   }
 
   string bucket_;
@@ -283,6 +463,7 @@ class GcsWritableFile : public WritableFile {
   string tmp_content_filename_;
   std::ofstream outfile_;
   HttpRequest::Factory* http_request_factory_;
+  int32 max_upload_attempts_;
 };
 
 class GcsReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
@@ -305,10 +486,11 @@ GcsFileSystem::GcsFileSystem()
 GcsFileSystem::GcsFileSystem(
     std::unique_ptr<AuthProvider> auth_provider,
     std::unique_ptr<HttpRequest::Factory> http_request_factory,
-    size_t read_ahead_bytes)
+    size_t read_ahead_bytes, int32 max_upload_attempts)
     : auth_provider_(std::move(auth_provider)),
       http_request_factory_(std::move(http_request_factory)),
-      read_ahead_bytes_(read_ahead_bytes) {}
+      read_ahead_bytes_(read_ahead_bytes),
+      max_upload_attempts_(max_upload_attempts) {}
 
 Status GcsFileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
@@ -325,7 +507,8 @@ Status GcsFileSystem::NewWritableFile(const string& fname,
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
   result->reset(new GcsWritableFile(bucket, object, auth_provider_.get(),
-                                    http_request_factory_.get()));
+                                    http_request_factory_.get(),
+                                    max_upload_attempts_));
   return Status::OK();
 }
 
@@ -362,9 +545,9 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
   // Create a writable file and pass the old content to it.
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
-  result->reset(new GcsWritableFile(bucket, object, auth_provider_.get(),
-                                    old_content_filename,
-                                    http_request_factory_.get()));
+  result->reset(new GcsWritableFile(
+      bucket, object, auth_provider_.get(), old_content_filename,
+      http_request_factory_.get(), max_upload_attempts_));
   return Status::OK();
 }
 
@@ -668,8 +851,26 @@ Status GcsFileSystem::GetFileSize(const string& fname, uint64* file_size) {
   return Status::OK();
 }
 
-// Uses a GCS API command to copy the object and then deletes the old one.
 Status GcsFileSystem::RenameFile(const string& src, const string& target) {
+  if (!IsDirectory(src).ok()) {
+    return RenameObject(src, target);
+  }
+  // Rename all individual objects in the directory one by one.
+  std::vector<string> children;
+  TF_RETURN_IF_ERROR(GetChildren(src, &children));
+  for (const string& subpath : children) {
+    // io::JoinPath() wouldn't work here, because we want an empty subpath
+    // to result in an appended slash in order for directory markers
+    // to be processed correctly: "gs://a/b" + "" should give "gs:/a/b/".
+    TF_RETURN_IF_ERROR(
+        RenameObject(strings::StrCat(MaybeAppendSlash(src), subpath),
+                     strings::StrCat(MaybeAppendSlash(target), subpath)));
+  }
+  return Status::OK();
+}
+
+// Uses a GCS API command to copy the object and then deletes the old one.
+Status GcsFileSystem::RenameObject(const string& src, const string& target) {
   string src_bucket, src_object, target_bucket, target_object;
   TF_RETURN_IF_ERROR(ParseGcsPath(src, &src_bucket, &src_object));
   TF_RETURN_IF_ERROR(ParseGcsPath(target, &target_bucket, &target_object));
@@ -684,7 +885,7 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
       "/rewriteTo/b/", target_bucket, "/o/",
       request->EscapeString(target_object))));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
-  TF_RETURN_IF_ERROR(request->SetPostRequest());
+  TF_RETURN_IF_ERROR(request->SetPostEmptyBody());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when renaming ", src,
                                   " to ", target);
 

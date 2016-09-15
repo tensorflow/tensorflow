@@ -2057,91 +2057,91 @@ op {
   name: "BatchFFT"
   input_arg {
     name: "input"
-    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most\ndimension of `input` is replaced with its 1D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the 1-dimensional discrete Fourier Transform over the inner-most"
-  description: "dimension of `input`."
+  deprecation {
+    version: 15
+    explanation: "Use FFT"
+  }
 }
 op {
   name: "BatchFFT2D"
   input_arg {
     name: "input"
-    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their 2D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the 2-dimensional discrete Fourier Transform over the inner-most"
-  description: "2 dimensions of `input`."
+  deprecation {
+    version: 15
+    explanation: "Use FFT2D"
+  }
 }
 op {
   name: "BatchFFT3D"
   input_arg {
     name: "input"
-    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their 3D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the 3-dimensional discrete Fourier Transform over the inner-most 3"
-  description: "dimensions of `input`."
+  deprecation {
+    version: 15
+    explanation: "Use FFT3D"
+  }
 }
 op {
   name: "BatchIFFT"
   input_arg {
     name: "input"
-    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most\ndimension of `input` is replaced with its inverse 1D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most"
-  description: "dimension of `input`."
+  deprecation {
+    version: 15
+    explanation: "Use IFFT"
+  }
 }
 op {
   name: "BatchIFFT2D"
   input_arg {
     name: "input"
-    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their inverse 2D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most"
-  description: "2 dimensions of `input`."
+  deprecation {
+    version: 15
+    explanation: "Use IFFT2D"
+  }
 }
 op {
   name: "BatchIFFT3D"
   input_arg {
     name: "input"
-    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their inverse 3D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most"
-  description: "3 dimensions of `input`."
+  deprecation {
+    version: 15
+    explanation: "Use IFFT3D"
+  }
 }
 op {
   name: "BatchMatMul"
@@ -5362,6 +5362,7 @@ op {
         type: DT_DOUBLE
         type: DT_UINT8
         type: DT_INT8
+        type: DT_UINT16
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
@@ -5534,6 +5535,13 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
       }
     }
   }
@@ -5564,6 +5572,13 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
       }
     }
   }
@@ -6051,43 +6066,46 @@ op {
   name: "FFT"
   input_arg {
     name: "input"
-    description: "A complex64 vector."
+    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "The 1D Fourier Transform of `input`."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most\ndimension of `input` is replaced with its 1D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the 1-dimensional discrete Fourier Transform."
+  summary: "Compute the 1-dimensional discrete Fourier Transform over the inner-most"
+  description: "dimension of `input`."
 }
 op {
   name: "FFT2D"
   input_arg {
     name: "input"
-    description: "A complex64 matrix."
+    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "The 2D Fourier Transform of `input`."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their 2D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the 2-dimensional discrete Fourier Transform."
+  summary: "Compute the 2-dimensional discrete Fourier Transform over the inner-most"
+  description: "2 dimensions of `input`."
 }
 op {
   name: "FFT3D"
   input_arg {
     name: "input"
-    description: "A complex64 3-D tensor."
+    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "The 3D Fourier Transform of `input`."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their 3D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the 3-dimensional discrete Fourier Transform."
+  summary: "Compute the 3-dimensional discrete Fourier Transform over the inner-most 3"
+  description: "dimensions of `input`."
 }
 op {
   name: "FIFOQueue"
@@ -7000,44 +7018,46 @@ op {
   name: "IFFT"
   input_arg {
     name: "input"
-    description: "A complex64 vector."
+    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "The inverse 1D Fourier Transform of `input`."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most\ndimension of `input` is replaced with its inverse 1D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "    .Doc(R\"doc("
-  description: "Compute the inverse 1-dimensional discrete Fourier Transform."
+  summary: "Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most"
+  description: "dimension of `input`."
 }
 op {
   name: "IFFT2D"
   input_arg {
     name: "input"
-    description: "A complex64 matrix."
+    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "The inverse 2D Fourier Transform of `input`."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their inverse 2D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the inverse 2-dimensional discrete Fourier Transform."
+  summary: "Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most"
+  description: "2 dimensions of `input`."
 }
 op {
   name: "IFFT3D"
   input_arg {
     name: "input"
-    description: "A complex64 3-D tensor."
+    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "The inverse 3D Fourier Transform of `input`."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their inverse 3D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the inverse 3-dimensional discrete Fourier Transform."
+  summary: "Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most"
+  description: "3 dimensions of `input`."
 }
 op {
   name: "Identity"
@@ -7316,7 +7336,7 @@ op {
   }
   input_arg {
     name: "values"
-    description: "Values of type Tval. Same shape as `keys`."
+    description: "Values of type Tval."
     type_attr: "Tval"
   }
   attr {
@@ -8209,7 +8229,7 @@ op {
   }
   input_arg {
     name: "values"
-    description: "Same shape as `keys`.  Values to associate with keys."
+    description: "Values to associate with keys."
     type_attr: "Tout"
   }
   attr {
@@ -8238,7 +8258,7 @@ op {
   }
   input_arg {
     name: "values"
-    description: "Same shape as `keys`.  Values to associate with keys."
+    description: "Values to associate with keys."
     type_attr: "Tout"
   }
   attr {
@@ -9487,6 +9507,7 @@ op {
         type: DT_DOUBLE
         type: DT_UINT8
         type: DT_INT8
+        type: DT_UINT16
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
