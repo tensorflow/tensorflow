@@ -81,6 +81,16 @@ class LinearEstimator(_BaseEstimatorForTest):
         num_label_columns=target_column.num_label_columns)
 
 
+class JointLinearEstimator(_BaseEstimatorForTest):
+
+  def __init__(self,
+               target_column,
+               feature_columns):
+    super(JointLinearEstimator, self).__init__(target_column, feature_columns)
+    self._model = composable_model.LinearComposableModel(
+        num_label_columns=target_column.num_label_columns, _joint_weights=True)
+
+
 class DNNEstimator(_BaseEstimatorForTest):
 
   def __init__(self,
@@ -112,6 +122,31 @@ class ComposableModelTest(tf.test.TestCase):
     target_column = layers.multi_class_target(n_classes=2)
     classifier = LinearEstimator(target_column,
                                  feature_columns=[age, language])
+
+    classifier.fit(input_fn=input_fn, steps=1000)
+    loss1 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
+    classifier.fit(input_fn=input_fn, steps=2000)
+    loss2 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
+    self.assertLess(loss2, loss1)
+    self.assertLess(loss2, 0.01)
+
+  def testJointLinearModel(self):
+    """Tests that loss goes down with training."""
+
+    def input_fn():
+      return {
+          'age': tf.SparseTensor(values=['1'], indices=[[0, 0]], shape=[1, 1]),
+          'language': tf.SparseTensor(values=['english'],
+                                      indices=[[0, 0]],
+                                      shape=[1, 1])
+      }, tf.constant([[1]])
+
+    language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
+    age = tf.contrib.layers.sparse_column_with_hash_bucket('age', 2)
+
+    target_column = layers.multi_class_target(n_classes=2)
+    classifier = JointLinearEstimator(target_column,
+                                      feature_columns=[age, language])
 
     classifier.fit(input_fn=input_fn, steps=1000)
     loss1 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']

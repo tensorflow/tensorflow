@@ -177,6 +177,7 @@ def _linear_classifier_model_fn(features, targets, mode, params):
   gradient_clip_norm = params.get("gradient_clip_norm", None)
   enable_centered_bias = params.get("enable_centered_bias", True)
   num_ps_replicas = params.get("num_ps_replicas", 0)
+  joint_weights = params.get("joint_weights", False)
 
   if not isinstance(features, dict):
     features = {"": features}
@@ -186,19 +187,29 @@ def _linear_classifier_model_fn(features, targets, mode, params):
   if n_classes == 2:
     loss_fn = _log_loss_with_two_classes
 
-  feat_values = features.values() if isinstance(features, dict) else [features]
+  feat_values = (features.values() if isinstance(features, dict)
+                 else [features])
   partitioner = partitioned_variables.min_max_variable_partitioner(
       max_partitions=num_ps_replicas,
       min_slice_size=64 << 20)
   with variable_scope.variable_op_scope(
       feat_values, "linear", partitioner=partitioner) as scope:
-    logits, _, _ = (
-        layers.weighted_sum_from_feature_columns(
-            columns_to_tensors=features,
-            feature_columns=feature_columns,
-            num_outputs=num_label_columns,
-            weight_collections=["linear"],
-            scope=scope))
+    if joint_weights:
+      logits, _, _ = (
+          layers.joint_weighted_sum_from_feature_columns(
+              columns_to_tensors=features,
+              feature_columns=feature_columns,
+              num_outputs=num_label_columns,
+              weight_collections=["linear"],
+              scope=scope))
+    else:
+      logits, _, _ = (
+          layers.weighted_sum_from_feature_columns(
+              columns_to_tensors=features,
+              feature_columns=feature_columns,
+              num_outputs=num_label_columns,
+              weight_collections=["linear"],
+              scope=scope))
 
   if enable_centered_bias:
     logits = nn.bias_add(logits, _centered_bias(num_label_columns))
@@ -225,7 +236,8 @@ def _linear_classifier_model_fn(features, targets, mode, params):
     train_ops.append(optimizer.apply_gradients(
         zip(grads, my_vars), global_step=global_step))
     if enable_centered_bias:
-      train_ops.append(_centered_bias_step(targets, loss_fn, num_label_columns))
+      train_ops.append(
+          _centered_bias_step(targets, loss_fn, num_label_columns))
 
   predictions = {}
   if n_classes == 2:
@@ -350,7 +362,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       whose `value` is a `Tensor`.
   """
 
-  def __init__(self,
+  def __init__(self,  # _joint_weight pylint: disable=invalid-name
                feature_columns,
                model_dir=None,
                n_classes=2,
@@ -358,6 +370,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
                optimizer=None,
                gradient_clip_norm=None,
                enable_centered_bias=None,
+               _joint_weight=False,
                config=None):
     """Construct a `LinearClassifier` estimator object.
 
@@ -381,6 +394,10 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       enable_centered_bias: A bool. If True, estimator will learn a centered
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
+      _joint_weight: If True, the weights for all columns will be stored in a
+        single (possibly partitioned) variable. It's more efficient, but it's
+        incompatible with SDCAOptimizer, and requires all feature columns are
+        sparse and use the 'sum' combiner.
       config: `RunConfig` object to configure the runtime settings.
 
     Returns:
@@ -407,6 +424,8 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     num_ps_replicas = config.num_ps_replicas if config else 0
 
     if isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
+      assert not _joint_weight, ("_joint_weight is incompatible with the"
+                                 " SDCAOptimizer")
       model_fn = sdca_classifier_model_fn
       params = {
           "feature_columns": feature_columns,
@@ -424,6 +443,7 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
           "gradient_clip_norm": gradient_clip_norm,
           "enable_centered_bias": enable_centered_bias,
           "num_ps_replicas": num_ps_replicas,
+          "joint_weights": _joint_weight,
       }
 
     self._estimator = estimator.Estimator(
@@ -617,7 +637,7 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         key=column.name, value=a `Tensor`
   """
 
-  def __init__(self,
+  def __init__(self,  # _joint_weights: pylint: disable=invalid-name
                feature_columns,
                model_dir=None,
                weight_column_name=None,
@@ -625,6 +645,7 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                gradient_clip_norm=None,
                enable_centered_bias=None,
                target_dimension=1,
+               _joint_weights=False,
                config=None):
     """Construct a `LinearRegressor` estimator object.
 
@@ -647,6 +668,9 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
       target_dimension: dimension of the target for multilabels.
+      _joint_weights: If True use a single (possibly partitioned) variable to
+        store the weights. It's faster, but requires all feature columns are
+        sparse and have the 'sum' combiner. Incompatible with SDCAOptimizer.
       config: `RunConfig` object to configure the runtime settings.
 
     Returns:
@@ -655,11 +679,13 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     if enable_centered_bias is None:
       enable_centered_bias = True
       dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
+    self._joint_weights = _joint_weights
     super(LinearRegressor, self).__init__(
         model_dir=model_dir,
         weight_column_name=weight_column_name,
         linear_feature_columns=feature_columns,
         linear_optimizer=optimizer,
+        _joint_linear_weights=_joint_weights,
         gradient_clip_norm=gradient_clip_norm,
         enable_centered_bias=enable_centered_bias,
         target_dimension=target_dimension,
@@ -669,6 +695,8 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     """See base class."""
     if not isinstance(self._linear_optimizer, sdca_optimizer.SDCAOptimizer):
       return super(LinearRegressor, self)._get_train_ops(features, targets)
+    assert not self._joint_weights, ("_joint_weights is incompatible with"
+                                     " SDCAOptimizer.")
     global_step = contrib_variables.get_or_create_global_step()
 
     logits, columns_to_variables, bias = (
@@ -680,10 +708,10 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
             scope=self._linear_model.get_scope_name()))
     with ops.control_dependencies([self._centered_bias()]):
       loss = self._target_column.loss(logits, targets, features)
-    logging_ops.scalar_summary("loss", loss)
+      logging_ops.scalar_summary("loss", loss)
 
-    _add_bias_column(self._linear_feature_columns, features, bias, targets,
-                     columns_to_variables)
+      _add_bias_column(self._linear_feature_columns, features, bias, targets,
+                       columns_to_variables)
 
     train_op = self._linear_optimizer.get_train_step(
         columns_to_variables, self._target_column.weight_column_name,
