@@ -40,6 +40,11 @@ constexpr char kCertsPath[] = "/etc/ssl/certs";
 // Set to 1 to enable verbose debug output from curl.
 constexpr uint64 kVerboseOutput = 0;
 
+// Timeout for the whole request. Set only to prevent hanging indefinitely.
+constexpr uint32 kRequestTimeoutSeconds = 3600;  // 1 hour
+// Timeout for the connection phase.
+constexpr uint32 kConnectTimeoutSeconds = 120;  // 2 minutes
+
 /// An implementation that dynamically loads libcurl and forwards calls to it.
 class LibCurlProxy : public LibCurl {
  public:
@@ -232,6 +237,11 @@ Status HttpRequest::Init() {
   libcurl_->curl_easy_setopt(
       curl_, CURLOPT_USERAGENT,
       strings::StrCat("TensorFlow/", TF_VERSION_STRING).c_str());
+  // Do not use signals for timeouts - does not work in multi-threaded programs.
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_TIMEOUT, kRequestTimeoutSeconds);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT,
+                             kConnectTimeoutSeconds);
 
   // If response buffer is not set, libcurl will print results to stdout,
   // so we always set it.
