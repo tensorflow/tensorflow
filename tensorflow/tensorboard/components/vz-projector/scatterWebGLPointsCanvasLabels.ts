@@ -179,13 +179,11 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
   constructor(
       container: d3.Selection<any>, labelAccessor: (index: number) => string) {
     super(container, labelAccessor);
-
-    // For now, labels are drawn on this transparent canvas with no touch events
-    // rather than being rendered in webGL.
     this.canvas = container.append('canvas').node() as HTMLCanvasElement;
     this.gc = this.canvas.getContext('2d');
     d3.select(this.canvas).style({position: 'absolute', left: 0, top: 0});
     this.canvas.style.pointerEvents = 'none';
+    this.onSelection((s: number[]) => this.onSelectionChanged(s));
   }
 
   /**
@@ -683,26 +681,24 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     }
   }
 
-  protected onMouseClickInternal(e?: MouseEvent) {
+  private onSelectionChanged(selection: number[]) {
     this.resetTraces();
-    if (!this.points) {
-      return false;
-    }
-    let selection = this.nearestPoint || null;
-    this.defaultPointColor = (selection ? POINT_COLOR_GRAYED : POINT_COLOR);
-
-    if (selection && this.dataSet_.points[selection].traceIndex) {
-      for (let i = 0; i < this.traces.length; i++) {
-        this.traces[i].material.opacity = TRACE_DESELECTED_OPACITY;
-        this.traces[i].material.needsUpdate = true;
+    this.defaultPointColor = POINT_COLOR;
+    if (selection.length > 0) {
+      this.defaultPointColor = POINT_COLOR_GRAYED;
+      let selectedIndex = selection[0];
+      let traceIndex = this.dataSet_.points[selectedIndex].traceIndex;
+      if (traceIndex) {
+        for (let i = 0; i < this.traces.length; i++) {
+          this.traces[i].material.opacity = TRACE_DESELECTED_OPACITY;
+          this.traces[i].material.needsUpdate = true;
+        }
+        this.traces[traceIndex].material.opacity = TRACE_SELECTED_OPACITY;
+        (this.traces[traceIndex].material as THREE.LineBasicMaterial)
+            .linewidth = TRACE_SELECTED_LINEWIDTH;
+        this.traces[traceIndex].material.needsUpdate = true;
       }
-      let traceIndex = this.dataSet_.points[selection].traceIndex;
-      this.traces[traceIndex].material.opacity = TRACE_SELECTED_OPACITY;
-      (this.traces[traceIndex].material as THREE.LineBasicMaterial).linewidth =
-          TRACE_SELECTED_LINEWIDTH;
-      this.traces[traceIndex].material.needsUpdate = true;
     }
-    return true;
   }
 
   protected onSetDayNightMode(isNight: boolean) {
@@ -721,11 +717,6 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     this.addTraces(scene);
   }
 
-  /**
-   * Redraws the data. Should be called anytime the accessor method
-   * for x and y coordinates changes, which means a new projection
-   * exists and the scatter plot should repaint the points.
-   */
   protected onUpdate() {
     this.updatePositionsArray();
     if (this.geometry) {

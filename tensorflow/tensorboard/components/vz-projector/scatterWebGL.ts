@@ -72,7 +72,6 @@ const TAR_2D = {
 export abstract class ScatterWebGL implements Scatter {
   /** Holds the indexes of the points to be labeled. */
   protected highlightedPoints: number[] = [];
-  protected nearestPoint: number;
 
   protected colorAccessor: (index: number) => string;
   protected highlightStroke: (i: number) => string;
@@ -91,7 +90,6 @@ export abstract class ScatterWebGL implements Scatter {
       labeledPoints: number[], labelAccessor: (index: number) => string);
   protected abstract onUpdate();
   protected abstract onResize(newWidth: number, newHeight: number);
-  protected abstract onMouseClickInternal(e?: MouseEvent): boolean;
   protected abstract onSetDayNightMode(isNight: boolean);
 
   private dataSet: DataSet;
@@ -135,6 +133,7 @@ export abstract class ScatterWebGL implements Scatter {
 
   private animating = false;
   private selecting = false;
+  private nearestPoint: number;
   private mouseIsDown = false;
   private isDragSequence = false;
   private animationID: number;
@@ -292,18 +291,12 @@ export abstract class ScatterWebGL implements Scatter {
     this.scene.add(this.axis2D);
   }
 
-  // DYNAMIC (post-load) CHANGES
-
-  /** When we stop dragging/zooming, return to normal behavior. */
   private onClick(e?: MouseEvent) {
     if (e && this.selecting) {
       return;
     }
-
     this.labeledPoints =
         this.highlightedPoints.filter((id, i) => this.favorLabels(i));
-
-    this.onMouseClickInternal(e);
     let selection = this.nearestPoint || null;
     // Only call event handlers if the click originated from the scatter plot.
     if (e && !this.isDragSequence) {
@@ -418,6 +411,10 @@ export abstract class ScatterWebGL implements Scatter {
   }
 
   private setNearestPointToMouse(e: MouseEvent) {
+    if (this.pickingTexture == null) {
+      this.nearestPoint = null;
+    }
+
     // Create buffer for reading a single pixel.
     let pixelBuffer = new Uint8Array(4);
     // No need to account for dpr (device pixel ratio) since the pickingTexture
@@ -720,7 +717,6 @@ export abstract class ScatterWebGL implements Scatter {
     }
   }
 
-
   highlightPoints(
       pointIndexes: number[], highlightStroke: (i: number) => string,
       favorLabels: (i: number) => boolean): void {
@@ -742,11 +738,8 @@ export abstract class ScatterWebGL implements Scatter {
     this.onSetDayNightMode(isNight);
   }
 
-  showAxes(show: boolean) {
-  }
-
+  showAxes(show: boolean) {}
   showTickLabels(show: boolean) {}
-
   setAxisLabels(xLabel: string, yLabel: string) {}
 
   resize(render = true) {
