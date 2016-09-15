@@ -707,9 +707,9 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     this.blending = (isNight ? BLENDING_NIGHT : BLENDING_DAY);
   }
 
-  protected onRecreateScene(sceneIs3D: boolean) {
+  protected onRecreateScene(sceneIs3D: boolean, backgroundColor: number) {
     this.sceneIs3D = sceneIs3D;
-    this.fog = new THREE.Fog(this.backgroundColor);
+    this.fog = new THREE.Fog(backgroundColor);
     this.scene.fog = this.fog;
     this.addSprites();
     this.colorSprites(null);

@@ -71,10 +71,6 @@ const TAR_2D = {
  */
 export abstract class ScatterWebGL implements Scatter {
   protected dataSet: DataSet;
-
-  // Colors and options that are changed between Day and Night modes.
-  protected backgroundColor: number;
-
   protected scene: THREE.Scene;
 
   /** Holds the indexes of the points to be labeled. */
@@ -87,7 +83,8 @@ export abstract class ScatterWebGL implements Scatter {
   protected highlightStroke: (i: number) => string;
   protected favorLabels: (i: number) => boolean;
 
-  protected abstract onRecreateScene(sceneIs3D: boolean);
+  protected abstract onRecreateScene(
+      sceneIs3D: boolean, backgroundColor: number);
   protected abstract removeAllGeometry();
   protected abstract onDataSet(spriteImage: HTMLImageElement);
   protected abstract onSetColorAccessor();
@@ -125,6 +122,7 @@ export abstract class ScatterWebGL implements Scatter {
 
   private mode: Mode;
   private isNight: boolean;
+  private backgroundColor: number;
 
   private renderer: THREE.WebGLRenderer;
   private perspCamera: THREE.PerspectiveCamera;
@@ -596,7 +594,7 @@ export abstract class ScatterWebGL implements Scatter {
   recreateScene() {
     this.removeAll();
     this.cancelAnimation();
-    this.onRecreateScene(this.zAccessor != null);
+    this.onRecreateScene(this.zAccessor != null, this.backgroundColor);
     this.resize(false);
     if (this.zAccessor) {
       this.addAxis3D();
