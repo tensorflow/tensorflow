@@ -74,7 +74,8 @@ class FileSystem {
   virtual Status RenameFile(const string& src, const string& target) = 0;
 
   // Translate an URI to a filename usable by the FileSystem implementation. The
-  // implementation in this class returns the name as-is.
+  // implementation in this class cleans up the path, removing duplicate /'s,
+  // resolving .. and . (more details in tensorflow::lib::io::CleanPath).
   virtual string TranslateName(const string& name) const;
 
   // Returns whether the given path is a directory or not.

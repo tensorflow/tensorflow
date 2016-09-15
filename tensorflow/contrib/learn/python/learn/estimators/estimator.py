@@ -598,7 +598,7 @@ class BaseEstimator(
                          (str(features), str(self._features_info)))
     else:
       self._features_info = tensor_signature.create_signatures(features)
-      logging.warning('Setting feature info to %s', str(self._features_info))
+      logging.info('Setting feature info to %s', str(self._features_info))
     if targets is not None:
       if self._targets_info is not None:
         logging.warning('Given targets: %s, required signatures: %s.',
@@ -609,7 +609,7 @@ class BaseEstimator(
                            (str(targets), str(self._targets_info)))
       else:
         self._targets_info = tensor_signature.create_signatures(targets)
-        logging.warning('Setting targets info to %s', str(self._targets_info))
+        logging.info('Setting targets info to %s', str(self._targets_info))
 
   def _train_model(self,
                    input_fn,

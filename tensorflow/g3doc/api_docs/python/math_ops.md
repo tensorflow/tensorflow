@@ -69,7 +69,7 @@ Returns x * y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -90,7 +90,7 @@ Returns x / y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1669,12 +1669,13 @@ Computes the eigen decomposition of a batch of self-adjoint matrices.
 
 Computes the eigenvalues and eigenvectors of the innermost N-by-N matrices
 in `tensor` such that
-`tensor[...,:,:] * v[..., :,i] = e(..., i) * v[...,:,i]`, for i=0...N-1.
+`tensor[...,:,:] * v[..., :,i] = e[..., i] * v[...,:,i]`, for i=0...N-1.
 
 ##### Args:
 
 
-*  <b>`tensor`</b>: `Tensor` of shape `[..., N, N]`.
+*  <b>`tensor`</b>: `Tensor` of shape `[..., N, N]`. Only the lower triangular part of
+    each inner inner matrix is referenced.
 *  <b>`name`</b>: string, optional name of the operation.
 
 ##### Returns:
@@ -1682,8 +1683,7 @@ in `tensor` such that
 
 *  <b>`e`</b>: Eigenvalues. Shape is `[..., N]`.
 *  <b>`v`</b>: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
-  matrices
-    contain eigenvectors of the corresponding matrices in `tensor`
+    matrices contain eigenvectors of the corresponding matrices in `tensor`
 
 
 - - -
@@ -1925,113 +1925,6 @@ Fourier transform functions to your graph.
 
 ### `tf.fft(input, name=None)` {#fft}
 
-Compute the 1-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 vector.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`. The 1D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.ifft(input, name=None)` {#ifft}
-
-.Doc(R"doc(
-
-Compute the inverse 1-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 vector.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`.
-  The inverse 1D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.fft2d(input, name=None)` {#fft2d}
-
-Compute the 2-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`. The 2D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.ifft2d(input, name=None)` {#ifft2d}
-
-Compute the inverse 2-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`.
-  The inverse 2D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.fft3d(input, name=None)` {#fft3d}
-
-Compute the 3-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 3-D tensor.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`. The 3D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.ifft3d(input, name=None)` {#ifft3d}
-
-Compute the inverse 3-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 3-D tensor.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`.
-  The inverse 3D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.batch_fft(input, name=None)` {#batch_fft}
-
 Compute the 1-dimensional discrete Fourier Transform over the inner-most
 
 dimension of `input`.
@@ -2051,7 +1944,7 @@ dimension of `input`.
 
 - - -
 
-### `tf.batch_ifft(input, name=None)` {#batch_ifft}
+### `tf.ifft(input, name=None)` {#ifft}
 
 Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most
 
@@ -2072,7 +1965,7 @@ dimension of `input`.
 
 - - -
 
-### `tf.batch_fft2d(input, name=None)` {#batch_fft2d}
+### `tf.fft2d(input, name=None)` {#fft2d}
 
 Compute the 2-dimensional discrete Fourier Transform over the inner-most
 
@@ -2093,7 +1986,7 @@ Compute the 2-dimensional discrete Fourier Transform over the inner-most
 
 - - -
 
-### `tf.batch_ifft2d(input, name=None)` {#batch_ifft2d}
+### `tf.ifft2d(input, name=None)` {#ifft2d}
 
 Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
 
@@ -2114,7 +2007,7 @@ Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
 
 - - -
 
-### `tf.batch_fft3d(input, name=None)` {#batch_fft3d}
+### `tf.fft3d(input, name=None)` {#fft3d}
 
 Compute the 3-dimensional discrete Fourier Transform over the inner-most 3
 
@@ -2135,7 +2028,7 @@ dimensions of `input`.
 
 - - -
 
-### `tf.batch_ifft3d(input, name=None)` {#batch_ifft3d}
+### `tf.ifft3d(input, name=None)` {#ifft3d}
 
 Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
 

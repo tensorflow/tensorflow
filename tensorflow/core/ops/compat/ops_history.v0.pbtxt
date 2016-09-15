@@ -4100,22 +4100,11 @@ op {
 op {
   name: "BatchFFT"
   input_arg {
-    name: "in"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchFFT"
-  input_arg {
     name: "input"
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     type: DT_COMPLEX64
   }
 }
@@ -4129,27 +4118,8 @@ op {
     name: "output"
     type: DT_COMPLEX64
   }
-}
-op {
-  name: "BatchFFT2D"
-  input_arg {
-    name: "in"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchFFT2D"
-  input_arg {
-    name: "input"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
-    type: DT_COMPLEX64
+  deprecation {
+    version: 15
   }
 }
 op {
@@ -4164,25 +4134,17 @@ op {
   }
 }
 op {
-  name: "BatchFFT3D"
-  input_arg {
-    name: "in"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchFFT3D"
+  name: "BatchFFT2D"
   input_arg {
     name: "input"
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     type: DT_COMPLEX64
+  }
+  deprecation {
+    version: 15
   }
 }
 op {
@@ -4197,25 +4159,17 @@ op {
   }
 }
 op {
-  name: "BatchIFFT"
-  input_arg {
-    name: "in"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchIFFT"
+  name: "BatchFFT3D"
   input_arg {
     name: "input"
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     type: DT_COMPLEX64
+  }
+  deprecation {
+    version: 15
   }
 }
 op {
@@ -4230,25 +4184,17 @@ op {
   }
 }
 op {
-  name: "BatchIFFT2D"
-  input_arg {
-    name: "in"
-    type: DT_COMPLEX64
-  }
-  output_arg {
-    name: "out"
-    type: DT_COMPLEX64
-  }
-}
-op {
-  name: "BatchIFFT2D"
+  name: "BatchIFFT"
   input_arg {
     name: "input"
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     type: DT_COMPLEX64
+  }
+  deprecation {
+    version: 15
   }
 }
 op {
@@ -4263,14 +4209,17 @@ op {
   }
 }
 op {
-  name: "BatchIFFT3D"
+  name: "BatchIFFT2D"
   input_arg {
-    name: "in"
+    name: "input"
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     type: DT_COMPLEX64
+  }
+  deprecation {
+    version: 15
   }
 }
 op {
@@ -4280,7 +4229,7 @@ op {
     type: DT_COMPLEX64
   }
   output_arg {
-    name: "out"
+    name: "output"
     type: DT_COMPLEX64
   }
 }
@@ -4293,6 +4242,9 @@ op {
   output_arg {
     name: "output"
     type: DT_COMPLEX64
+  }
+  deprecation {
+    version: 15
   }
 }
 op {
@@ -9959,6 +9911,40 @@ op {
   }
 }
 op {
+  name: "Div"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "DrawBoundingBoxes"
   input_arg {
     name: "images"
@@ -10145,6 +10131,34 @@ op {
   }
 }
 op {
+  name: "Elu"
+  input_arg {
+    name: "features"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "activations"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
+      }
+    }
+  }
+}
+op {
   name: "EluGrad"
   input_arg {
     name: "gradients"
@@ -10165,6 +10179,38 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "EluGrad"
+  input_arg {
+    name: "gradients"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "outputs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "backprops"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
       }
     }
   }
@@ -16610,6 +16656,41 @@ op {
         type: DT_DOUBLE
         type: DT_UINT8
         type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  is_commutative: true
+}
+op {
+  name: "Mul"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_UINT8
+        type: DT_INT8
+        type: DT_UINT16
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64

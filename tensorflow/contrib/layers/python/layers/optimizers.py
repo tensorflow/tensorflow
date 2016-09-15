@@ -91,7 +91,8 @@ def optimize_loss(loss,
                             functions.
                             For example: tf.train.exponential_decay.
     update_ops: list of update `Operation`s to execute at each step. If `None`,
-                uses elements of UPDATE_OPS collection.
+                uses elements of UPDATE_OPS collection. The order of execution
+                between `update_ops` and `loss` is non-deterministic.
     variables: list of variables to optimize or
                `None` to use all trainable variables.
     name: The name for this operation is used to scope operations and summaries.
@@ -111,9 +112,7 @@ def optimize_loss(loss,
       update_ops = set(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
     # Make sure update ops are ran before computing loss.
     if update_ops:
-      with ops.control_dependencies(update_ops):
-        barrier = control_flow_ops.no_op(name="update_barrier")
-      loss = control_flow_ops.with_dependencies([barrier], loss)
+      loss = control_flow_ops.with_dependencies(update_ops, loss)
 
     # Moving average of the loss with decay.
     # TODO(b/30439864): moving_average_decay should be removed.

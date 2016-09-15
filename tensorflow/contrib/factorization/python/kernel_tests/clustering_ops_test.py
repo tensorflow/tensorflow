@@ -23,7 +23,6 @@ import numpy as np
 # pylint: disable=unused-import
 import tensorflow as tf
 # pylint: enable=unused-import
-import tensorflow.contrib.factorization.python.ops.clustering_ops as clustering_ops
 
 
 class KmeansPlusPlusInitializationTest(tf.test.TestCase):
@@ -46,7 +45,7 @@ class KmeansPlusPlusInitializationTest(tf.test.TestCase):
 
   def runTestWithSeed(self, seed):
     with self.test_session():
-      sampled_points = clustering_ops.kmeans_plus_plus_initialization(
+      sampled_points = tf.contrib.factorization.kmeans_plus_plus_initialization(
           self._points, 3, seed, (seed % 5) - 1)
       self.assertAllClose(sorted(sampled_points.eval().tolist()), [
           [-1., -1.],
@@ -80,15 +79,15 @@ class NearestCentersTest(tf.test.TestCase):
 
   def testNearest1(self):
     with self.test_session():
-      [indices, distances] = clustering_ops.nearest_neighbors(self._points,
-                                                              self._centers, 1)
+      [indices, distances] = tf.contrib.factorization.nearest_neighbors(
+          self._points, self._centers, 1)
       self.assertAllClose(indices.eval(), [[0], [0], [1], [4]])
       self.assertAllClose(distances.eval(), [[0.], [5.], [1.], [0.]])
 
   def testNearest2(self):
     with self.test_session():
-      [indices, distances] = clustering_ops.nearest_neighbors(self._points,
-                                                              self._centers, 2)
+      [indices, distances] = tf.contrib.factorization.nearest_neighbors(
+          self._points, self._centers, 2)
       self.assertAllClose(indices.eval(),
                           [[0, 1], [0, 1], [1, 0], [4, 3]])
       self.assertAllClose(distances.eval(),
@@ -132,7 +131,7 @@ class NearestCentersLargeTest(tf.test.TestCase):
 
   def testNearest1(self):
     with self.test_session():
-      [indices, distances] = clustering_ops.nearest_neighbors(
+      [indices, distances] = tf.contrib.factorization.nearest_neighbors(
           self._points, self._centers, 1)
       self.assertAllClose(indices.eval(),
                           self._expected_nearest_neighbor_indices[:, [0]])
@@ -142,7 +141,7 @@ class NearestCentersLargeTest(tf.test.TestCase):
 
   def testNearest5(self):
     with self.test_session():
-      [indices, distances] = clustering_ops.nearest_neighbors(
+      [indices, distances] = tf.contrib.factorization.nearest_neighbors(
           self._points, self._centers, 5)
       self.assertAllClose(indices.eval(),
                           self._expected_nearest_neighbor_indices[:, 0:5])

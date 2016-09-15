@@ -118,9 +118,8 @@ class GmmOpsTest(tf.test.TestCase):
       g.seed = 5
       with self.test_session() as sess:
         data = tf.constant(self.data, dtype=tf.float32)
-        _, assignments, _, training_op = gmm_ops.gmm(data, 'random',
-                                                     num_classes,
-                                                     random_seed=self.seed)
+        _, assignments, _, training_op = tf.contrib.factorization.gmm(
+            data, 'random', num_classes, random_seed=self.seed)
 
         tf.initialize_all_variables().run()
         for _ in xrange(self.iterations):
@@ -137,8 +136,9 @@ class GmmOpsTest(tf.test.TestCase):
     with self.test_session() as sess:
       # Experiment 1. Update weights only.
       data = tf.constant(self.data, dtype=tf.float32)
-      gmm_tool = gmm_ops.GmmAlgorithm([data], num_classes,
-                                      [[3.0, 3.0], [0.0, 0.0]], 'w')
+      gmm_tool = tf.contrib.factorization.GmmAlgorithm([data], num_classes,
+                                                       [[3.0, 3.0], [0.0, 0.0]],
+                                                       'w')
       training_ops = gmm_tool.training_ops()
       tf.initialize_all_variables().run()
       for _ in xrange(self.iterations):
@@ -154,8 +154,9 @@ class GmmOpsTest(tf.test.TestCase):
       np.testing.assert_almost_equal(covs[0], covs[1])
 
       # Experiment 2. Update means and covariances.
-      gmm_tool = gmm_ops.GmmAlgorithm([data], num_classes,
-                                      [[3.0, 3.0], [0.0, 0.0]], 'mc')
+      gmm_tool = tf.contrib.factorization.GmmAlgorithm([data], num_classes,
+                                                       [[3.0, 3.0], [0.0, 0.0]],
+                                                       'mc')
       training_ops = gmm_tool.training_ops()
       tf.initialize_all_variables().run()
       for _ in xrange(self.iterations):
@@ -174,8 +175,8 @@ class GmmOpsTest(tf.test.TestCase):
           covs[1], decimal=4)
 
       # Experiment 3. Update covariances only.
-      gmm_tool = gmm_ops.GmmAlgorithm([data], num_classes,
-                                      [[-1.0, -1.0], [1.0, 1.0]], 'c')
+      gmm_tool = tf.contrib.factorization.GmmAlgorithm(
+          [data], num_classes, [[-1.0, -1.0], [1.0, 1.0]], 'c')
       training_ops = gmm_tool.training_ops()
       tf.initialize_all_variables().run()
       for _ in xrange(self.iterations):

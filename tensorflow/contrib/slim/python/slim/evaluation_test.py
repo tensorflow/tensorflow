@@ -250,6 +250,11 @@ class EvaluationTest(tf.test.TestCase):
     # The timeout kicked in.
     self.assertLess(end, start + 1.1)
 
+  def testMonitorCheckpointsLoopTimeout(self):
+    ret = list(slim.evaluation.checkpoints_iterator(
+        '/non-existent-dir', timeout=0))
+    self.assertEqual(ret, [])
+
 
 class SingleEvaluationTest(tf.test.TestCase):
 

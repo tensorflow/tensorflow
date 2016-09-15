@@ -36,6 +36,24 @@ Status ScalarInputsAndOutputs(InferenceContext* c) {
   return Status::OK();
 }
 
+Status TwoElementVectorAndScalarOutputs(InferenceContext* c) {
+  ShapeHandle handle;
+  DimensionHandle unused_handle;
+  for (int i = 0; i < c->num_inputs(); ++i) {
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &handle));
+    TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_handle));
+  }
+  for (int i = 0; i < c->num_outputs(); ++i) {
+    c->set_output(i, c->Scalar());
+  }
+  return Status::OK();
+}
+
+Status TwoElementOutput(InferenceContext* c) {
+  c->set_output(0, c->Vector(2));
+  return Status::OK();
+}
+
 }  // namespace
 
 REGISTER_OP("Save")
@@ -238,7 +256,7 @@ REGISTER_OP("WholeFileReader")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::ScalarShape)
+    .SetShapeFn(TwoElementOutput)
     .Doc(R"doc(
 A Reader that outputs the entire contents of a file as a value.
 
@@ -258,7 +276,7 @@ REGISTER_OP("TextLineReader")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::ScalarShape)
+    .SetShapeFn(TwoElementOutput)
     .Doc(R"doc(
 A Reader that outputs the lines of a file delimited by '\n'.
 
@@ -278,7 +296,7 @@ REGISTER_OP("FixedLengthRecordReader")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::ScalarShape)
+    .SetShapeFn(TwoElementOutput)
     .Doc(R"doc(
 A Reader that outputs fixed-length records from a file.
 
@@ -295,7 +313,7 @@ REGISTER_OP("TFRecordReader")
     .Attr("shared_name: string = ''")
     .Attr("compression_type: string = ''")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::ScalarShape)
+    .SetShapeFn(TwoElementOutput)
     .Doc(R"doc(
 A Reader that outputs the records from a TensorFlow Records file.
 
@@ -311,7 +329,7 @@ REGISTER_OP("IdentityReader")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::ScalarShape)
+    .SetShapeFn(TwoElementOutput)
     .Doc(R"doc(
 A Reader that outputs the queued work as both the key and value.
 
@@ -332,7 +350,7 @@ REGISTER_OP("ReaderRead")
     .Input("queue_handle: Ref(string)")
     .Output("key: string")
     .Output("value: string")
-    .SetShapeFn(ScalarInputsAndOutputs)
+    .SetShapeFn(TwoElementVectorAndScalarOutputs)
     .Doc(R"doc(
 Returns the next record (key, value pair) produced by a Reader.
 
@@ -354,8 +372,8 @@ REGISTER_OP("ReaderReadUpTo")
     .Output("values: string")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       ShapeHandle out = c->Vector(InferenceContext::kUnknownDim);
       c->set_output(0, out);
@@ -380,7 +398,7 @@ values: A 1-D tensor.
 REGISTER_OP("ReaderNumRecordsProduced")
     .Input("reader_handle: Ref(string)")
     .Output("records_produced: int64")
-    .SetShapeFn(ScalarInputsAndOutputs)
+    .SetShapeFn(TwoElementVectorAndScalarOutputs)
     .Doc(R"doc(
 Returns the number of records this Reader has produced.
 
@@ -393,7 +411,7 @@ reader_handle: Handle to a Reader.
 REGISTER_OP("ReaderNumWorkUnitsCompleted")
     .Input("reader_handle: Ref(string)")
     .Output("units_completed: int64")
-    .SetShapeFn(ScalarInputsAndOutputs)
+    .SetShapeFn(TwoElementVectorAndScalarOutputs)
     .Doc(R"doc(
 Returns the number of work units this Reader has finished processing.
 
@@ -403,7 +421,7 @@ reader_handle: Handle to a Reader.
 REGISTER_OP("ReaderSerializeState")
     .Input("reader_handle: Ref(string)")
     .Output("state: string")
-    .SetShapeFn(ScalarInputsAndOutputs)
+    .SetShapeFn(TwoElementVectorAndScalarOutputs)
     .Doc(R"doc(
 Produce a string tensor that encodes the state of a Reader.
 
@@ -416,7 +434,16 @@ reader_handle: Handle to a Reader.
 REGISTER_OP("ReaderRestoreState")
     .Input("reader_handle: Ref(string)")
     .Input("state: string")
-    .SetShapeFn(ScalarInputsAndOutputs)
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      DimensionHandle unused_handle;
+      TF_RETURN_IF_ERROR(
+          c->WithValue(c->Dim(c->input(0), 0), 2, &unused_handle));
+
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Restore a reader to a previously saved state.
 
@@ -430,7 +457,7 @@ state: Result of a ReaderSerializeState of a Reader with type
 
 REGISTER_OP("ReaderReset")
     .Input("reader_handle: Ref(string)")
-    .SetShapeFn(ScalarInputsAndOutputs)
+    .SetShapeFn(TwoElementVectorAndScalarOutputs)
     .Doc(R"doc(
 Restore a Reader to its initial clean state.
 

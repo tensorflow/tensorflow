@@ -54,7 +54,6 @@ py_tests(
         "random_shuffle_queue_test.py",
         "save_restore_ops_test.py",
         "segment_reduction_ops_test.py",
-        "self_adjoint_eig_op_test.py",
         "sparse_add_op_test.py",
         "sparse_concat_op_test.py",
         "sparse_reorder_op_test.py",
@@ -264,6 +263,7 @@ cuda_py_tests(
         "embedding_ops_test.py",
         "linalg_grad_test.py",
         "matrix_band_part_op_test.py",
+        "self_adjoint_eig_op_test.py",
         "svd_op_test.py",
     ],
     additional_deps = [

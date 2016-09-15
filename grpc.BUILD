@@ -1558,6 +1558,9 @@ cc_library(
     ":grpc",
     ":gpr",
   ],
+  copts = [
+    "-std=gnu99",
+  ],
 )
 
 

@@ -214,6 +214,7 @@ py_test(
     name = "tensorflow_dataframe_test",
     size = "small",
     srcs = ["python/learn/tests/dataframe/tensorflow_dataframe_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -459,6 +460,18 @@ py_test(
     name = "dnn_test",
     size = "medium",
     srcs = ["python/learn/estimators/dnn_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "dnn_sampled_softmax_classifier_test",
+    size = "large",
+    srcs = ["python/learn/estimators/dnn_sampled_softmax_classifier_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",

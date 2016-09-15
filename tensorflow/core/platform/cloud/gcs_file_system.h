@@ -35,7 +35,7 @@ class GcsFileSystem : public FileSystem {
   GcsFileSystem();
   GcsFileSystem(std::unique_ptr<AuthProvider> auth_provider,
                 std::unique_ptr<HttpRequest::Factory> http_request_factory,
-                size_t read_ahead_bytes);
+                size_t read_ahead_bytes, int32 max_upload_attempts);
 
   Status NewRandomAccessFile(
       const string& filename,
@@ -78,6 +78,7 @@ class GcsFileSystem : public FileSystem {
   /// Retrieves file statistics assuming fname points to a GCS object.
   Status StatForObject(const string& bucket, const string& object,
                        FileStatistics* stat);
+  Status RenameObject(const string& src, const string& target);
 
   std::unique_ptr<AuthProvider> auth_provider_;
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
@@ -85,6 +86,10 @@ class GcsFileSystem : public FileSystem {
   // The number of bytes to read ahead for buffering purposes in the
   // RandomAccessFile implementation. Defaults to 256Mb.
   const size_t read_ahead_bytes_ = 256 * 1024 * 1024;
+
+  // The max number of attempts to upload a file to GCS using the resumable
+  // upload API.
+  const int32 max_upload_attempts_ = 5;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GcsFileSystem);
 };

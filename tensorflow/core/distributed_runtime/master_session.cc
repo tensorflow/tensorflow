@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/simple_graph_execution_state.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/master_session_interface.h"
+#include "tensorflow/core/distributed_runtime/scheduler.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -54,9 +55,13 @@ namespace tensorflow {
 namespace {
 // A little bit of per-step state.
 struct PerStepState {
+  bool collect_costs;
   bool collect_timeline;
+  bool collect_rpcs;
   Microseconds start_micros = Microseconds(0);
   Microseconds end_micros = Microseconds(0);
+  std::vector<StepStats> step_stats;  // per partition
+  StepStats rpc_stats;                // for RPC layer
 };
 
 // A session encapsulates a graph computation (resource allocation,
@@ -124,14 +129,6 @@ class MasterSession : public MasterSessionInterface {
 
   // The device set used by this session.
   DeviceSet devices_;
-
-  // TODO(zhifengc): Support Extend().
-  //
-  // 'func_def_lib_' is a copy of the initial graph def's library.
-  // 'flib_def_' is an index structure of "func_def_lib_' keyed by
-  // function names.
-  FunctionDefLibrary func_def_lib_;
-  FunctionLibraryDefinition* flib_def_ = nullptr;
 
   std::atomic_ulong last_access_time_usec_;
 
@@ -205,6 +202,79 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
   const SimpleClientGraph* client_graph() { return client_graph_.get(); }
 
+  // Turn RPC logging on or off, both at the WorkerCache used by this
+  // master process, and at each remote worker in use for the current
+  // partitions.
+  void SetRPCLogging(const MasterEnv* env, bool active) {
+    env->worker_cache->SetLogging(active);
+    // Logging is a best-effort activity, so we make async calls to turn
+    // it on/off and don't make use of the responses.
+    for (auto& p : partitions_) {
+      LoggingRequest* req = new LoggingRequest;
+      req->set_rpc_logging(active);
+      LoggingResponse* resp = new LoggingResponse;
+      Ref();
+      p.worker->LoggingAsync(req, resp, [this, req, resp](const Status& s) {
+        delete req;
+        delete resp;
+        // ReffedClientGraph owns p.worker so we need to hold a ref to
+        // ensure that the method doesn't attempt to access p.worker after
+        // ReffedClient graph has deleted it.
+        // TODO(suharshs): Simplify this ownership model.
+        Unref();
+      });
+    }
+  }
+
+  // Retrieve all RPC logs data accumulated for the current step, both
+  // from the local WorkerCache in use by this master process and from
+  // all the remote workers executing the remote partitions.
+  void RetrieveLogs(const MasterEnv* env, int64 step_id, StepStats* ss) {
+    // Get the local data first, because it sets *ss without merging.
+    env->worker_cache->RetrieveLogs(step_id, ss);
+
+    // Then merge in data from all the remote workers.
+    LoggingRequest req;
+    req.add_fetch_step_id(step_id);
+    int waiting_for = partitions_.size();
+    if (waiting_for > 0) {
+      mutex scoped_mu;
+      // TODO(suharshs): Use BlockingCounter instead?
+      Notification all_done;
+      for (auto& p : partitions_) {
+        LoggingResponse* resp = new LoggingResponse;
+        p.worker->LoggingAsync(
+            &req, resp, [step_id, ss, resp, &scoped_mu, &waiting_for,
+                         &all_done](const Status& s) {
+              bool notify_all_done = false;
+              {
+                mutex_lock l(scoped_mu);
+                --waiting_for;
+                if (waiting_for == 0) {
+                  notify_all_done = true;
+                }
+                if (s.ok()) {
+                  for (auto& lss : resp->step()) {
+                    if (step_id != lss.step_id()) {
+                      LOG(ERROR) << "Wrong step_id in LoggingResponse";
+                      continue;
+                    }
+                    ss->MergeFrom(lss.step_stats());
+                  }
+                }
+                delete resp;
+              }
+              // Must not call all_done.Notify() until out of critical
+              // section where *ss is updated.
+              if (notify_all_done) {
+                all_done.Notify();
+              }
+            });
+      }
+      all_done.WaitForNotification();
+    }
+  }
+
   // Local execution methods.
 
   // Partitions the graph into subgraphs and registers them on
@@ -224,7 +294,29 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   // `done` when all cleanup RPCs have completed.
   void CleanupPartitionsAsync(int64 step_id, StatusCallback done);
 
-  // TODO(mrry): Runtime statistics collection.
+  // Post-processing of any runtime statistics gathered during execution.
+  void ProcessStats(const MasterEnv* env, int64 step_id, PerStepState* pss,
+                    SimpleGraphExecutionState* execution_state,
+                    RunStepResponse* resp);
+  void ProcessDeviceStats(SimpleGraphExecutionState* execution_state,
+                          const DeviceStepStats& ds, bool is_rpc);
+
+  string DetailText(const NodeDef& def, const NodeExecStats& ns) {
+    int64 tot = 0;
+    for (auto& no : ns.output()) {
+      tot += no.tensor_description().allocation_description().requested_bytes();
+    }
+    string bytes;
+    if (tot >= 0.1 * 1048576.0) {
+      bytes = strings::Printf("[%.1fMB] ", tot / 1048576.0);
+    }
+    return strings::StrCat(
+        bytes, def.name(), " = ", def.op(), "(",
+        str_util::Join(
+            std::vector<StringPiece>(def.input().begin(), def.input().end()),
+            ", "),
+        ")");
+  }
 
  private:
   const string session_handle_;
@@ -361,8 +453,18 @@ void MasterSession::ReffedClientGraph::TrackFeedsAndFetches(
 }
 
 Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
-    const MasterEnv* env, const PartitionOptions& popts,
+    const MasterEnv* env, const PartitionOptions& popts_in,
     const FunctionDefLibrary& func_def_lib) {
+  PartitionOptions popts = popts_in;
+  if (popts.need_to_record_start_times) {
+    CostModel cost_model(true);
+    cost_model.InitFromGraph(client_graph()->graph);
+    // TODO(yuanbyu): Use the real cost model.
+    // execution_state_->MergeFromGlobal(&cost_model);
+    SlackAnalysis sa(&client_graph()->graph, &cost_model);
+    sa.ComputeAsap(&popts.start_times);
+  }
+
   // Partition the graph.
   Status s;
   std::unordered_map<string, GraphDef> graph_partitions;
@@ -500,6 +602,18 @@ class RunManyGraphs {
   TF_DISALLOW_COPY_AND_ASSIGN(RunManyGraphs);
 };
 
+int64 CostFrequency(int64 x) {
+  if (x < 10) {
+    return 1;  // 100%
+  } else if (x < 100) {
+    return 10;  // 10%
+  } else if (x < 1000) {
+    return 100;  // 1%
+  } else {
+    return 1000;  // 0.1%
+  }
+}
+
 Status MasterSession::ReffedClientGraph::RunPartitions(
     const MasterEnv* env, int64 step_id, int64 execution_count,
     SimpleGraphExecutionState* execution_state, PerStepState* pss,
@@ -518,9 +632,20 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
   }
 
   // Prepares a number of calls to workers. One call per partition.
+
+  // Collect execution cost stats on a smoothly decreasing frequency.
   ExecutorOpts exec_opts;
+  if (pss->collect_costs) {
+    exec_opts.set_record_costs(true);
+  }
   if (pss->collect_timeline) {
     exec_opts.set_record_timeline(true);
+  }
+  if (pss->collect_rpcs) {
+    SetRPCLogging(env, true);
+  }
+  if (pss->collect_costs || pss->collect_timeline) {
+    pss->step_stats.resize(partitions_.size());
   }
 
   const int num = partitions_.size();
@@ -599,8 +724,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
         }
       }
       if (pss->collect_timeline && calls.get(i)->resp.has_step_stats()) {
-        resp->mutable_metadata()->mutable_step_stats()->MergeFrom(
-            calls.get(i)->resp.step_stats());
+        pss->step_stats[i].Swap(calls.get(i)->resp.mutable_step_stats());
       }
     }
   }
@@ -671,6 +795,36 @@ void MasterSession::ReffedClientGraph::CleanupPartitionsAsync(
     part.worker->CleanupGraphAsync(
         helper->request(), helper->response(i),
         [helper, i](const Status& s) { helper->call_done(i, s); });
+  }
+}
+
+void MasterSession::ReffedClientGraph::ProcessStats(
+    const MasterEnv* env, int64 step_id, PerStepState* pss,
+    SimpleGraphExecutionState* execution_state, RunStepResponse* resp) {
+  if (!pss->collect_costs && !pss->collect_timeline) return;
+
+  // Out-of-band logging data is collected now, during post-processing.
+  if (pss->collect_timeline) {
+    // TODO(suharshs): Can these two RPCs be combined?
+    SetRPCLogging(env, false);
+    RetrieveLogs(env, step_id, &pss->rpc_stats);
+  }
+  for (int i = 0; i < partitions_.size(); ++i) {
+    const StepStats& ss = pss->step_stats[i];
+    if (pss->collect_costs) {
+      execution_state->UpdateCostsFromStats(ss);
+    }
+  }
+  // Assemble all stats for this timeline into a merged StepStats.
+  StepStats step_stats_proto;
+  if (pss->collect_timeline) {
+    step_stats_proto = pss->rpc_stats;
+    for (int i = 0; i < partitions_.size(); ++i) {
+      const StepStats& ss = pss->step_stats[i];
+      step_stats_proto.MergeFrom(ss);
+    }
+    // TODO(suharshs): handle timeline_step when adding timeline support.
+    resp->mutable_metadata()->mutable_step_stats()->Swap(&step_stats_proto);
   }
 }
 
@@ -780,7 +934,6 @@ MasterSession::~MasterSession() {
   delete cancellation_manager_;
   for (const auto& iter : runs_) iter.second->Unref();
   for (const auto& iter : obsolete_) iter.second->Unref();
-  delete flib_def_;
   for (Device* dev : remote_devs_) delete dev;
 }
 
@@ -795,17 +948,11 @@ Status MasterSession::Create(GraphDef* graph_def) {
         "MasterSession does not support the place_pruned_graph option.");
   }
 
-  // Keeps a copy of graph_def->library() and flib_def_ serves the
-  // OpRegistryInterface used by the SimpleGraphExecutionState to construct the
-  // pre-partitioned graphs during DoRunWithLocalExecution().
-  func_def_lib_.Swap(graph_def->mutable_library());
-  flib_def_ =
-      new FunctionLibraryDefinition(OpRegistry::Global(), func_def_lib_);
-
   SimpleGraphExecutionStateOptions options;
   options.device_set = &devices_;
   options.session_options = &session_opts_;
-  execution_state_.reset(new SimpleGraphExecutionState(func_def_lib_, options));
+  execution_state_.reset(
+      new SimpleGraphExecutionState(graph_def->library(), options));
   TF_RETURN_IF_ERROR(execution_state_->Create(graph_def));
 
   return Status::OK();
@@ -948,9 +1095,26 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
     }
   };
   popts.control_flow_added = false;
-  // TODO(mrry): Enable DT_BFLOAT16 casting.
-  // TODO(mrry): Enable recv scheduling.
-  TF_RETURN_IF_ERROR(rcg->RegisterPartitions(env_, popts, func_def_lib_));
+  const bool enable_bfloat16_sendrecv =
+      session_opts_.config.graph_options().enable_bfloat16_sendrecv();
+  popts.should_cast = [enable_bfloat16_sendrecv](const Edge* e) {
+    if (e->IsControlEdge()) {
+      return DT_FLOAT;
+    }
+    DataType dtype = BaseType(e->src()->output_type(e->src_output()));
+    if (enable_bfloat16_sendrecv && dtype == DT_FLOAT) {
+      return DT_BFLOAT16;
+    } else {
+      return dtype;
+    }
+  };
+  if (session_opts_.config.graph_options().enable_recv_scheduling()) {
+    popts.scheduling_for_recvs = true;
+    popts.need_to_record_start_times = true;
+  }
+
+  TF_RETURN_IF_ERROR(rcg->RegisterPartitions(
+      env_, popts, rcg->client_graph()->flib_def->ToProto()));
 
   // Keeps the highest 8 bits 0x01: we reserve some bits of the
   // step_id for future use.
@@ -958,6 +1122,7 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
   TRACEPRINTF("stepid %llu", step_id);
 
   pss.collect_timeline = req->options().trace_level() == RunOptions::FULL_TRACE;
+  pss.collect_costs = (0 == (count % CostFrequency(count)));
 
   TF_RETURN_IF_ERROR(rcg->RunPartitions(env_, step_id, count,
                                         execution_state_.get(), &pss, opts,
@@ -966,6 +1131,7 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
   pss.end_micros = Env::Default()->NowMicros();
 
   // Schedule post-processing and cleanup to be done asynchronously.
+  rcg->ProcessStats(env_, step_id, &pss, execution_state_.get(), resp);
   rcg->CleanupPartitionsAsync(step_id, [](const Status& s) {
     if (!s.ok()) {
       LOG(ERROR) << "Cleanup partition error: " << s;

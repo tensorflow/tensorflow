@@ -58,8 +58,9 @@ def _add_input_array(op, start, limit, dtype, func):
   node.arg.extend([_make_argname_from_tensor_name(x.name)
                    for x in op.inputs[start:limit]])
   num = limit - start
-  node.attr["Tin"].CopyFrom(attr_value_pb2.AttrValue(
-      list=attr_value_pb2.AttrValue.ListValue(type=[dtype] * num)))
+  node.attr["Tin"].CopyFrom(
+      attr_value_pb2.AttrValue(list=attr_value_pb2.AttrValue.ListValue(
+          type=[dtype] * num)))
   node.attr["T"].CopyFrom(attr_value_pb2.AttrValue(type=dtype))
   node.attr["N"].CopyFrom(attr_value_pb2.AttrValue(i=num))
   func.node.extend([node])
@@ -79,8 +80,9 @@ def _add_output_array(op, start, limit, dtype, func):
   node.attr["T"].CopyFrom(dtype_proto)
   num = limit - start
   node.attr["N"].CopyFrom(attr_value_pb2.AttrValue(i=num))
-  node.attr["out_types"].CopyFrom(attr_value_pb2.AttrValue(
-      list=attr_value_pb2.AttrValue.ListValue(type=[dtype] * num)))
+  node.attr["out_types"].CopyFrom(
+      attr_value_pb2.AttrValue(list=attr_value_pb2.AttrValue.ListValue(
+          type=[dtype] * num)))
   func.node.extend([node])
   num = limit - start
   # Adds an identity node for each element in the array N*T so that
@@ -114,13 +116,13 @@ def _add_output_list(op, start, limit, dtype_lst, func):
   return ret_name
 
 
-def _add_op_node(graph, op, func):
+def _add_op_node(op, func):
   """Converts an op to a function def node and add it to `func`."""
   node = function_pb2.FunctionDef.Node()
   node.op = op.type
   # pylint: disable=protected-access
-  if graph._is_function(op.type):
-    op_def = graph._get_function(op.type).definition.signature
+  if hasattr(op, "_sig"):
+    op_def = getattr(op, "_sig")
   else:
     op_def = op_def_registry.get_registered_ops()[op.type]
   # pylint: enable=protected-access
@@ -130,26 +132,26 @@ def _add_op_node(graph, op, func):
     if arg_def.number_attr:
       dtype = arg_def.type or attrs[arg_def.type_attr].type
       num = attrs[arg_def.number_attr].i
-      node.ret.append(_add_output_array(op, out_index, out_index + num, dtype,
-                                        func))
+      node.ret.append(
+          _add_output_array(op, out_index, out_index + num, dtype, func))
       out_index += num
     elif arg_def.type_list_attr:
       dtype_lst = attrs[arg_def.type_list_attr].list.type
       num = len(dtype_lst)
-      node.ret.append(_add_output_list(op, out_index, out_index + num,
-                                       dtype_lst, func))
+      node.ret.append(
+          _add_output_list(op, out_index, out_index + num, dtype_lst, func))
       out_index += num
     else:
-      node.ret.append(_make_argname_from_tensor_name(op.outputs[
-          out_index].name))
+      node.ret.append(
+          _make_argname_from_tensor_name(op.outputs[out_index].name))
       out_index += 1
   inp_index = 0
   for arg_def in op_def.input_arg:
     if arg_def.number_attr:
       dtype = arg_def.type or attrs[arg_def.type_attr].type
       num = attrs[arg_def.number_attr].i
-      node.arg.append(_add_input_array(op, inp_index, inp_index + num, dtype,
-                                       func))
+      node.arg.append(
+          _add_input_array(op, inp_index, inp_index + num, dtype, func))
       inp_index += num
     elif arg_def.type_list_attr:
       num = len(attrs[arg_def.type_list_attr].list.type)
@@ -166,7 +168,7 @@ def _add_op_node(graph, op, func):
   func.node.extend([node])
 
 
-def graph_to_function_def(graph, name, inputs, outputs):
+def _graph_to_function_def(graph, name, inputs, outputs):
   """Returns `graph` as a `FunctionDef` protocol buffer.
 
   This method creates a [`FunctionDef`](
@@ -177,10 +179,6 @@ def graph_to_function_def(graph, name, inputs, outputs):
   The arguments `inputs` and `outputs` will be listed as the inputs
   and outputs tensors of the function.  They must be lists of
   tensors present in the graph.  The lists can optionally be empty.
-
-  The returned protocol buffer can be passed to the
-  [`Graph.add_function()`](#Graph.add_function) method of a
-  different graph to make it available there.
 
   Args:
     graph: Graph.
@@ -199,8 +197,56 @@ def graph_to_function_def(graph, name, inputs, outputs):
   for op in graph.get_operations():
     tensor_name = op.values()[0].name
     if tensor_name not in func_arg_placeholders:
-      _add_op_node(graph, op, func)
+      _add_op_node(op, func)
   return func
+
+
+def _call_function(sig, *inputs, **kwargs):
+  """Adds a node calling a function.
+
+  Args:
+    sig: The signature of the function.
+    *inputs: arguments to the function.
+    **kwargs: Optional keyword arguments.  Can only contain 'name' or
+        'noinline'.
+
+  Returns:
+     A Tensor if the function returns a single value; a list of Tensors
+     if the functio returns multiple value; the Operation if the function
+     returns no values.
+
+  Raises:
+    ValueError: if the arguments are invalid.
+
+  """
+  name = kwargs.pop("name", None)
+  noinline = kwargs.pop("noinline", None)
+  if noinline is None:
+    attrs = None
+  else:
+    attrs = {}
+    attrs["_noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
+  if kwargs:
+    raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
+  g = ops.get_default_graph()
+  func_name = sig.name
+  output_types = [dtypes.DType(x.type) for x in sig.output_arg]
+  with ops.name_scope(name, func_name, inputs) as name:
+    op = g.create_op(
+        func_name,
+        list(inputs),
+        output_types,
+        name=name,
+        attrs=attrs,
+        compute_shapes=False)
+  setattr(op, "_sig", sig)
+  if op.outputs:
+    if len(op.outputs) == 1:
+      return op.outputs[0]
+    else:
+      return tuple(op.outputs)
+  else:
+    return op
 
 
 def call_function(func, *inputs, **kwargs):
@@ -236,37 +282,11 @@ def call_function(func, *inputs, **kwargs):
     ValueError: if the arguments are invalid.
 
   """
-  func_def = func.definition
-  name = kwargs.pop("name", None)
-  noinline = kwargs.pop("noinline", None)
-  if noinline is None:
-    attrs = None
-  else:
-    attrs = {}
-    attrs["_noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
-  if kwargs:
-    raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
-  func_name = func_def.signature.name
-  with ops.name_scope(name, func_name, inputs) as name:
-    if len(inputs) != len(func_def.signature.input_arg):
-      raise ValueError("Expected number of arguments: %d, received: %d" %
-                       (len(func_def.signature.input_arg), len(inputs)))
-    output_types = [dtypes.DType(x.type) for x in func_def.signature.output_arg]
-    # TODO(touts): Pass compute_shapes as "try if function exists"
-    g = ops.get_default_graph()
-    op = g.create_op(func_name,
-                     list(inputs),
-                     output_types,
-                     name=name,
-                     attrs=attrs,
-                     compute_shapes=False)
-    if op.outputs:
-      if len(op.outputs) == 1:
-        return op.outputs[0]
-      else:
-        return tuple(op.outputs)
-    else:
-      return op
+  sig = func.definition.signature
+  if len(inputs) != len(sig.input_arg):
+    raise ValueError("Expected number of arguments: %d, received: %d" %
+                     (len(sig.input_arg), len(inputs)))
+  return _call_function(sig, *inputs, **kwargs)
 
 
 def _get_func_name(func):
@@ -283,7 +303,10 @@ def _get_func_name(func):
     raise ValueError("Argument must be callable")
 
 
-def define_function(func, input_types, func_name=None, grad_func=None,
+def define_function(func,
+                    input_types,
+                    func_name=None,
+                    grad_func=None,
                     python_grad_func=None):
   """Creates a `FunctionDef` for a python function.
 
@@ -373,7 +396,11 @@ class _DefinedFunction(object):
       the function python-side.
   """
 
-  def __init__(self, func, input_types, func_name=None, grad_func=None,
+  def __init__(self,
+               func,
+               input_types,
+               func_name=None,
+               grad_func=None,
                python_grad_func=None):
     """Creates _DefinedFunction.
 
@@ -480,8 +507,9 @@ class _DefinedFunction(object):
         outputs = (outputs,)
 
     # Build the FunctionDef
-    self._definition = graph_to_function_def(
-        temp_graph, self._func_name, inputs, outputs)
+    self._definition = _graph_to_function_def(temp_graph, self._func_name,
+                                              inputs, outputs)
+
     # pylint: disable=protected-access
     self._sub_functions = temp_graph._functions
     # pylint: enable=protected-access
@@ -596,6 +624,52 @@ class Defun(object):
       inp_types = self._input_types
     else:
       inp_types = self._input_type_list
-    return _DefinedFunction(
-        f, inp_types, self._func_name, self._grad_func,
-        self._python_grad_func)
+    return _DefinedFunction(f, inp_types, self._func_name, self._grad_func,
+                            self._python_grad_func)
+
+
+class Declare(object):
+  """Declares a TensorFlow function.
+
+  The object represents a TensorFlow function which will be defined
+  later during a graph construction.
+
+  For example,
+    # Declares  a function Foo, which takes a tf.int32 and a
+    # tf.float32 as inputs and returns a tf.float32 as its output.
+    foo = Declare("Foo", [tf.int32, tf.float32], [tf.float32])
+
+    # Defines a function Bar calls Foo.
+    @tf.Defun(tf.float32)
+    def Bar(x):
+      return foo(6, x)
+
+    # Defines Foo.
+    @tf.Defun(tf.int32, tf.float32)
+    def Foo(n, x):
+       ...  # Calculation.
+       return result
+  """
+
+  def __init__(self, func_name, input_types, output_types):
+    """Creates a `Declare` object.
+
+    Args:
+      func_name: The name of the function.
+      input_types: A list of data types of function arguments.
+      output_types: A list of data types of function return values.
+    """
+    self._sig = op_def_pb2.OpDef()
+    self._sig.name = func_name
+
+    def _to_argdef_list(types):
+      return [op_def_pb2.OpDef.ArgDef(type=_.as_datatype_enum) for _ in types]
+
+    self._sig.input_arg.extend(_to_argdef_list(input_types))
+    self._sig.output_arg.extend(_to_argdef_list(output_types))
+
+  def __call__(self, *inputs, **kwargs):
+    if len(inputs) != len(self._sig.input_arg):
+      raise ValueError("Mismatch number of args: %d vs. %d" %
+                       (len(inputs), len(self._sig.input_arg)))
+    return _call_function(self._sig, *inputs, **kwargs)

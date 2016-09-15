@@ -78,7 +78,7 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
                               .TypeConstraint<type>("T"),        \
                           ShapeOp<int64>);
 
-TF_CALL_REAL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32.
@@ -154,7 +154,7 @@ REGISTER_KERNEL_BUILDER(Name("ShapeN")
                               .TypeConstraint<type>("T"),        \
                           ShapeNOp<int64>)
 
-TF_CALL_REAL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32.

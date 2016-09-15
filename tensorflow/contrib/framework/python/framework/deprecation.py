@@ -142,6 +142,86 @@ def deprecated(date, instructions):
   return deprecated_wrapper
 
 
+def deprecated_args(date, instructions, *deprecated_arg_names):
+  """Decorator for marking specific function arguments as deprecated.
+
+  This decorator logs a deprecation warning whenever the decorated function is
+  called with the deprecated argument. It has the following format:
+
+    Calling <function> (from <module>) with <arg> is deprecated and will be
+    removed after <date>. Instructions for updating:
+      <instructions>
+
+  <function> will include the class name if it is a method.
+
+  It also edits the docstring of the function: ' (deprecated arguments)' is
+  appended to the first line of the docstring and a deprecation notice is
+  prepended to the rest of the docstring.
+
+  Args:
+    date: String. The date the function is scheduled to be removed. Must be
+      ISO 8601 (YYYY-MM-DD).
+    instructions: String. Instructions on how to update code using the
+      deprecated function.
+    *deprecated_arg_names: String. The deprecated arguments.
+
+  Returns:
+    Decorated function or method.
+
+  Raises:
+    ValueError: If date is not in ISO 8601 format, instructions are empty, or
+      the deprecated arguments are not present in the function signature.
+  """
+  _validate_deprecation_args(date, instructions)
+  if not deprecated_arg_names:
+    raise ValueError('Specify which argument is deprecated.')
+
+  def deprecated_wrapper(func):
+    """Deprecation decorator."""
+    _validate_callable(func, 'deprecated_args')
+
+    arg_spec = inspect.getargspec(func)
+    deprecated_positions = [
+        (i, arg_name) for (i, arg_name) in enumerate(arg_spec.args)
+        if arg_name in deprecated_arg_names]
+    is_varargs_deprecated = arg_spec.varargs in deprecated_arg_names
+    is_kwargs_deprecated = arg_spec.keywords in deprecated_arg_names
+
+    if (len(deprecated_positions) + is_varargs_deprecated + is_kwargs_deprecated
+        != len(deprecated_arg_names)):
+      known_args = arg_spec.args + [arg_spec.varargs, arg_spec.keywords]
+      missing_args = [arg_name for arg_name in deprecated_arg_names
+                      if arg_name not in known_args]
+      raise ValueError('The following deprecated arguments are not present '
+                       'in the function signature: %s' % missing_args)
+
+    @functools.wraps(func)
+    def new_func(*args, **kwargs):
+      """Deprecation wrapper."""
+      invalid_args = []
+      for (i, arg_name) in deprecated_positions:
+        if i < len(args):
+          invalid_args.append(arg_name)
+      if is_varargs_deprecated and len(args) > len(arg_spec.args):
+        invalid_args.append(arg_spec.varargs)
+      if is_kwargs_deprecated and kwargs:
+        invalid_args.append(arg_spec.keywords)
+      for arg_name in deprecated_arg_names:
+        if arg_name in kwargs:
+          invalid_args.append(arg_name)
+      for arg_name in invalid_args:
+        logging.warning(
+            'Calling %s (from %s) with %s is deprecated and will be removed '
+            'after %s.\nInstructions for updating:\n%s',
+            _get_qualified_name(func), func.__module__,
+            arg_name, date, instructions)
+      return func(*args, **kwargs)
+    new_func.__doc__ = _add_deprecated_arg_notice_to_docstring(
+        func.__doc__, date, instructions)
+    return new_func
+  return deprecated_wrapper
+
+
 def deprecated_arg_values(date, instructions, **deprecated_kwargs):
   """Decorator for marking specific function argument values as deprecated.
 

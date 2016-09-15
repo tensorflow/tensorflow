@@ -141,7 +141,12 @@ class FileIO(object):
     return self.next()
 
   def flush(self):
-    """Flushes the Writable file to disk."""
+    """Flushes the Writable file.
+
+    This only ensures that the data has made its way out of the process without
+    any guarantees on whether it's written to disk. This means that the
+    data would survive an application crash but not necessarily an OS crash.
+    """
     if self._writable_file:
       with errors.raise_exception_on_not_ok_status() as status:
         pywrap_tensorflow.FlushWritableFile(self._writable_file, status)
