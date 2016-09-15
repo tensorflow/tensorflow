@@ -87,13 +87,12 @@ Returns a list of integers or `None` for each dimension.
 
 ##### Returns:
 
-  `None` if shape is unknown; otherwise, a list of integers or `None` for
-  each dimension.
+  A list of integers or `None` for each dimension.
 
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if `self` is completely unknown.
+*  <b>`ValueError`</b>: If `self` is an unknown shape with an unknown rank.
 
 
 - - -
