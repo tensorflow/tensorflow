@@ -98,7 +98,6 @@ tf_proto_library(
     srcs = glob(
         ["**/*.proto"],
         exclude = [
-            "debug/debug_service.proto",
             "protobuf/worker.proto",
             "protobuf/worker_service.proto",
             "protobuf/master.proto",
