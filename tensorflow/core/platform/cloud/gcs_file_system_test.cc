@@ -747,8 +747,23 @@ TEST(GcsFileSystemTest, RenameFile_Folder) {
            "fields=items%2Fname%2CnextPageToken&prefix=path1%2F\n"
            "Auth Token: fake_token\n",
            "{\"items\": [ "
+           "  { \"name\": \"path1/\" },"  // A directory marker.
            "  { \"name\": \"path1/subfolder/file1.txt\" },"
            "  { \"name\": \"path1/file2.txt\" }]}"),
+       // Copying the directory marker.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "path1%2F/rewriteTo/b/bucket/o/path2%2F\n"
+           "Auth Token: fake_token\n"
+           "Post: yes\n",
+           ""),
+       // Deleting the original directory marker.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "path1%2F\n"
+           "Auth Token: fake_token\n"
+           "Delete: yes\n",
+           ""),
        // Copying the first file.
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"

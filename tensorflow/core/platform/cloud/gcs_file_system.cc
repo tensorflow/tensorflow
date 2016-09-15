@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
@@ -860,8 +859,12 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
   std::vector<string> children;
   TF_RETURN_IF_ERROR(GetChildren(src, &children));
   for (const string& subpath : children) {
-    TF_RETURN_IF_ERROR(RenameObject(io::JoinPath(src, subpath),
-                                    io::JoinPath(target, subpath)));
+    // io::JoinPath() wouldn't work here, because we want an empty subpath
+    // to result in an appended slash in order for directory markers
+    // to be processed correctly: "gs://a/b" + "" should give "gs:/a/b/".
+    TF_RETURN_IF_ERROR(
+        RenameObject(strings::StrCat(MaybeAppendSlash(src), subpath),
+                     strings::StrCat(MaybeAppendSlash(target), subpath)));
   }
   return Status::OK();
 }

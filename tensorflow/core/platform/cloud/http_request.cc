@@ -319,6 +319,19 @@ Status HttpRequest::SetPutFromFile(const string& body_filepath, size_t offset) {
   return Status::OK();
 }
 
+Status HttpRequest::SetPutEmptyBody() {
+  TF_RETURN_IF_ERROR(CheckInitialized());
+  TF_RETURN_IF_ERROR(CheckNotSent());
+  TF_RETURN_IF_ERROR(CheckMethodNotSet());
+  is_method_set_ = true;
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1);
+  curl_headers_ =
+      libcurl_->curl_slist_append(curl_headers_, "Content-Length: 0");
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                             &HttpRequest::ReadCallback);
+  return Status::OK();
+}
+
 Status HttpRequest::SetPostFromBuffer(const char* buffer, size_t size) {
   TF_RETURN_IF_ERROR(CheckInitialized());
   TF_RETURN_IF_ERROR(CheckNotSent());
@@ -343,17 +356,8 @@ Status HttpRequest::SetPostEmptyBody() {
   libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1);
   curl_headers_ =
       libcurl_->curl_slist_append(curl_headers_, "Content-Length: 0");
-  return Status::OK();
-}
-
-Status HttpRequest::SetPutEmptyBody() {
-  TF_RETURN_IF_ERROR(CheckInitialized());
-  TF_RETURN_IF_ERROR(CheckNotSent());
-  TF_RETURN_IF_ERROR(CheckMethodNotSet());
-  is_method_set_ = true;
-  libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1);
-  curl_headers_ =
-      libcurl_->curl_slist_append(curl_headers_, "Content-Length: 0");
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
+                             &HttpRequest::ReadCallback);
   return Status::OK();
 }
 
