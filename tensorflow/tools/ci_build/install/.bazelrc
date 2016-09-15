@@ -11,4 +11,4 @@ build  --verbose_failures --spawn_strategy=standalone --genrule_strategy=standal
 common --color=yes
 
 # Configure tests - increase timeout, print errors and timeout warnings
-test --verbose_failures --test_timeout=3600 --test_output=errors --test_verbose_timeout_warnings
+test --verbose_failures --test_output=errors --test_verbose_timeout_warnings
