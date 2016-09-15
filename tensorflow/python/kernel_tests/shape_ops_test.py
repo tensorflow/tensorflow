@@ -354,17 +354,16 @@ class TileTest(tf.test.TestCase):
         bytes: (tf.string, bytes)
     }
     for dtype_np, (dtype_tf, cast) in types_to_test.items():
-      for use_gpu in False, True:
-        with self.test_session():
-          inp = np.random.rand(4, 1).astype(dtype_np)
-          a = tf.constant([cast(x) for x in inp.ravel(order="C")],
-                       shape=[4, 1],
-                       dtype=dtype_tf)
-          tiled = tf.tile(a, [1, 4])
-          result = tiled.eval()
-        self.assertEqual(result.shape, (4, 4))
-        self.assertEqual([4, 4], tiled.get_shape())
-        self.assertAllEqual(result, np.tile(inp, (1, 4)))
+      with self.test_session():
+        inp = np.random.rand(4, 1).astype(dtype_np)
+        a = tf.constant([cast(x) for x in inp.ravel(order="C")],
+                     shape=[4, 1],
+                     dtype=dtype_tf)
+        tiled = tf.tile(a, [1, 4])
+        result = tiled.eval()
+      self.assertEqual(result.shape, (4, 4))
+      self.assertEqual([4, 4], tiled.get_shape())
+      self.assertAllEqual(result, np.tile(inp, (1, 4)))
 
   def testInvalidDim(self):
     with self.test_session():

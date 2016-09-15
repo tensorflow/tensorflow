@@ -18,8 +18,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <stdio.h>
-#include <complex>
-#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/kernels/tile_ops_impl.h"
 
 namespace tensorflow {
@@ -46,8 +44,6 @@ DEFINE_TYPE(Eigen::half)
 DEFINE_TYPE(int64)
 DEFINE_TYPE(int32)
 DEFINE_TYPE(int16)
-DEFINE_TYPE(complex64)
-DEFINE_TYPE(complex128)
 // NOTE(keveman): Eigen's int8 and string versions don't compile yet with nvcc.
 
 #undef DEFINE_DIM
