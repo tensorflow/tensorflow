@@ -62,7 +62,7 @@ class FunctionTest(tf.test.TestCase):
       u = tf.add(tf.matmul(a, b), c, name="u")
       v = tf.square(u, name="v")
       w = tf.add_n([u, v], name="w")
-    fdef = function.graph_to_function_def(foo, "foo", [a, b, c], [u, v, w])
+    fdef = function._graph_to_function_def(foo, "foo", [a, b, c], [u, v, w])
 
     class Mock(function._DefinedFunction):
 
@@ -491,6 +491,43 @@ class FunctionTest(tf.test.TestCase):
       vals = sess.run([y0, y1, dx0, dx1], {x: np.random.uniform(size=(3, 7))})
       self.assertAllClose(vals[0], vals[1])
       self.assertAllClose(vals[2], vals[3])
+
+  def testDeclareTypeMistake(self):
+    foo = function.Declare("Foo", [tf.float32], [tf.float32])
+
+    @function.Defun(tf.float32)
+    def Foo(x):
+      return x * x + 1
+
+    g = tf.Graph()
+    with g.as_default():
+      y = foo(tf.constant(2, tf.float32))
+      with self.test_session(graph=g):
+        with self.assertRaisesRegexp(tf.errors.NotFoundError, "not registered"):
+          _ = y.eval()
+
+    g = tf.Graph()
+    with g.as_default():
+      Foo.add_to_graph(g)
+      y = foo(tf.constant(2, tf.int32))
+      with self.test_session(graph=g):
+        with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                     "int32.*float"):
+          _ = y.eval()
+
+    g = tf.Graph()
+    with g.as_default():
+      Foo.add_to_graph(g)
+      with self.assertRaisesRegexp(ValueError,
+                                   "Mismatch number of args: 2 vs. 1"):
+        _ = foo(tf.constant(2, tf.float32), tf.constant(2, tf.float32))
+
+    g = tf.Graph()
+    with g.as_default():
+      Foo.add_to_graph(g)
+      y = foo(tf.constant(2, tf.float32))
+      with self.test_session(graph=g):
+        self.assertAllEqual(y.eval(), 5.0)
 
 
 class UnrollLSTMTest(tf.test.TestCase):
