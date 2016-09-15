@@ -1757,6 +1757,8 @@ class ControlFlowTest(tf.test.TestCase):
     grad_theta = tf.gradients(result, theta)
     with self.assertRaisesRegexp(TypeError, "Second-order gradient"):
       tf.gradients(grad_theta, theta)
+    grad_theta_stopped = tf.stop_gradient(grad_theta)
+    tf.gradients(grad_theta_stopped, theta)
 
   def testOneValueCond(self):
     with self.test_session():
