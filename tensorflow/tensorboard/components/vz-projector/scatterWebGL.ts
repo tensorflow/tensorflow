@@ -87,11 +87,6 @@ export abstract class ScatterWebGL implements Scatter {
   protected highlightStroke: (i: number) => string;
   protected favorLabels: (i: number) => boolean;
 
-  // window layout dimensions
-  protected height: number;
-  protected width: number;
-  protected dpr: number;  // The device pixelratio
-
   protected abstract onRecreateScene(sceneIs3D: boolean);
   protected abstract removeAllGeometry();
   protected abstract onDataSet(spriteImage: HTMLImageElement);
@@ -104,7 +99,7 @@ export abstract class ScatterWebGL implements Scatter {
   protected abstract onRender(
       camera: THREE.Camera, cameraTarget: THREE.Vector3);
   protected abstract onUpdate();
-  protected abstract onResize();
+  protected abstract onResize(newWidth: number, newHeight: number);
   protected abstract onMouseClickInternal(e?: MouseEvent): boolean;
   protected abstract onSetDayNightMode(isNight: boolean);
 
@@ -123,6 +118,10 @@ export abstract class ScatterWebGL implements Scatter {
   private xScale: d3.scale.Linear<number, number>;
   private yScale: d3.scale.Linear<number, number>;
   private zScale: d3.scale.Linear<number, number>;
+
+  // window layout dimensions
+  private height: number;
+  private width: number;
 
   private mode: Mode;
   private isNight: boolean;
@@ -154,11 +153,14 @@ export abstract class ScatterWebGL implements Scatter {
     this.zScale = d3.scale.linear();
 
     // Set up THREE.js.
-    this.createSceneAndRenderer();
-    this.setDayNightMode(false);
-    this.createLight();
+    this.scene = new THREE.Scene();
+    this.renderer = new THREE.WebGLRenderer();
+    this.containerNode.appendChild(this.renderer.domElement);
+    this.light = new THREE.PointLight(0xFFECBF, 1, 0);
+    this.scene.add(this.light);
     this.makeCamera();
-    this.resize(false);
+    this.setDayNightMode(false);
+
     // Render now so no black background appears during startup.
     this.renderer.render(this.scene, this.perspCamera);
     this.addInteractionListeners();
@@ -173,23 +175,6 @@ export abstract class ScatterWebGL implements Scatter {
     this.containerNode.addEventListener('click', this.onClick.bind(this));
     window.addEventListener('keydown', this.onKeyDown.bind(this), false);
     window.addEventListener('keyup', this.onKeyUp.bind(this), false);
-  }
-
-  private createLight() {
-    this.light = new THREE.PointLight(0xFFECBF, 1, 0);
-    this.scene.add(this.light);
-  }
-
-  /** General setup of scene and renderer. */
-  private createSceneAndRenderer() {
-    this.scene = new THREE.Scene();
-    this.renderer = new THREE.WebGLRenderer();
-    // Accouting for retina displays.
-    this.renderer.setPixelRatio(window.devicePixelRatio || 1);
-    this.renderer.setSize(this.width, this.height);
-    this.containerNode.appendChild(this.renderer.domElement);
-    this.pickingTexture = new THREE.WebGLRenderTarget(this.width, this.height);
-    this.pickingTexture.texture.minFilter = THREE.LinearFilter;
   }
 
   /** Set up camera and camera's controller. */
@@ -452,9 +437,9 @@ export abstract class ScatterWebGL implements Scatter {
   private getDist2ToMouse(i: number, e: MouseEvent) {
     let point = this.getProjectedPointFromIndex(i);
     let screenCoords = this.vector3DToScreenCoords(point);
+    let dpr = window.devicePixelRatio;
     return dist_2D(
-        [e.offsetX * this.dpr, e.offsetY * this.dpr],
-        [screenCoords[0], screenCoords[1]]);
+        [e.offsetX * dpr, e.offsetY * dpr], [screenCoords[0], screenCoords[1]]);
   }
 
   private adjustSelectionSphere(e: MouseEvent) {
@@ -485,13 +470,14 @@ export abstract class ScatterWebGL implements Scatter {
   }
 
   protected vector3DToScreenCoords(v: THREE.Vector3): Point2D {
+    let dpr = window.devicePixelRatio;
     let vector = new THREE.Vector3().copy(v).project(this.perspCamera);
     let coords: Point2D = [
       // project() returns the point in perspCamera's coordinates, with the
       // origin in the center and a positive upward y. To get it into screen
       // coordinates, normalize by adding 1 and dividing by 2.
-      ((vector.x + 1) / 2 * this.width) * this.dpr,
-      -((vector.y - 1) / 2 * this.height) * this.dpr
+      ((vector.x + 1) / 2 * this.width) * dpr,
+      -((vector.y - 1) / 2 * this.height) * dpr
     ];
     return coords;
   }
@@ -579,7 +565,6 @@ export abstract class ScatterWebGL implements Scatter {
   private getLayoutValues() {
     this.width = this.containerNode.offsetWidth;
     this.height = Math.max(1, this.containerNode.offsetHeight);
-    this.dpr = window.devicePixelRatio;
   }
 
   /**
@@ -612,6 +597,7 @@ export abstract class ScatterWebGL implements Scatter {
     this.removeAll();
     this.cancelAnimation();
     this.onRecreateScene(this.zAccessor != null);
+    this.resize(false);
     if (this.zAccessor) {
       this.addAxis3D();
       this.makeCamera3D();
@@ -762,10 +748,12 @@ export abstract class ScatterWebGL implements Scatter {
     this.getLayoutValues();
     this.perspCamera.aspect = this.width / this.height;
     this.perspCamera.updateProjectionMatrix();
+    // Accouting for retina displays.
+    this.renderer.setPixelRatio(window.devicePixelRatio || 1);
     this.renderer.setSize(this.width, this.height);
     this.pickingTexture = new THREE.WebGLRenderTarget(this.width, this.height);
     this.pickingTexture.texture.minFilter = THREE.LinearFilter;
-    this.onResize();
+    this.onResize(this.width, this.height);
     if (render) {
       this.render();
     };

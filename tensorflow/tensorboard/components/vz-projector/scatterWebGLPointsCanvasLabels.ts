@@ -179,7 +179,6 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     this.gc = this.canvas.getContext('2d');
     d3.select(this.canvas).style({position: 'absolute', left: 0, top: 0});
     this.canvas.style.pointerEvents = 'none';
-    this.onResize();
   }
 
   /**
@@ -354,8 +353,10 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
   private removeAllLabels() {
     // If labels are already removed, do not spend compute power to clear the
     // canvas.
+    let pixelWidth = this.canvas.width * window.devicePixelRatio;
+    let pixelHeight = this.canvas.height * window.devicePixelRatio;
     if (!this.labelCanvasIsCleared) {
-      this.gc.clearRect(0, 0, this.width * this.dpr, this.height * this.dpr);
+      this.gc.clearRect(0, 0, pixelWidth, pixelHeight);
       this.labelCanvasIsCleared = true;
     }
   }
@@ -383,18 +384,17 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     // point, just break.
     let numRenderedLabels: number = 0;
     let labelHeight = parseInt(this.gc.font, 10);
+    let dpr = window.devicePixelRatio;
+    let pixelWidth = this.canvas.width * dpr;
+    let pixelHeight = this.canvas.height * dpr;
 
     // Bounding box for collision grid.
-    let boundingBox: BoundingBox = {
-      loX: 0,
-      hiX: this.width * this.dpr,
-      loY: 0,
-      hiY: this.height * this.dpr
-    };
+    let boundingBox:
+        BoundingBox = {loX: 0, hiX: pixelWidth, loY: 0, hiY: pixelHeight};
 
     // Make collision grid with cells proportional to window dimensions.
     let grid =
-        new CollisionGrid(boundingBox, this.width / 25, this.height / 50);
+        new CollisionGrid(boundingBox, pixelWidth / 25, pixelHeight / 50);
 
     let opacityRange = farthestPointZ - nearestPointZ;
     let camToTarget = new THREE.Vector3().copy(cameraPos).sub(cameraTarget);
@@ -402,7 +402,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     // Setting styles for the labeled font.
     this.gc.lineWidth = 6;
     this.gc.textBaseline = 'middle';
-    this.gc.font = (FONT_SIZE * this.dpr).toString() + 'px roboto';
+    this.gc.font = (FONT_SIZE * dpr).toString() + 'px roboto';
 
     let strokeStylePrefix: string;
     let fillStylePrefix: string;
@@ -464,7 +464,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
       // Force-draw the first favored point with increased font size.
       let index = this.highlightedPoints[0];
       let point = this.dataSet.points[index];
-      this.gc.font = (FONT_SIZE * this.dpr * 1.7).toString() + 'px roboto';
+      this.gc.font = (FONT_SIZE * dpr * 1.7).toString() + 'px roboto';
       let coords = new THREE.Vector3(
           point.projectedPoint[0], point.projectedPoint[1],
           point.projectedPoint[2]);
@@ -485,11 +485,12 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     this.gc.fillText(text, point[0] + 4, point[1]);
   }
 
-  onResize() {
+  onResize(newWidth: number, newHeight: number) {
+    let dpr = window.devicePixelRatio;
     d3.select(this.canvas)
-        .attr('width', this.width * this.dpr)
-        .attr('height', this.height * this.dpr)
-        .style({width: this.width + 'px', height: this.height + 'px'});
+        .attr('width', newWidth * dpr)
+        .attr('height', newHeight * dpr)
+        .style({width: newWidth + 'px', height: newHeight + 'px'});
   }
 
   /**
