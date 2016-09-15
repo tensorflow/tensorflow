@@ -59,7 +59,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=None, config=None)` {#LinearClassifier.__init__}
+#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=None, _joint_weight=False, config=None)` {#LinearClassifier.__init__}
 
 Construct a `LinearClassifier` estimator object.
 
@@ -85,6 +85,11 @@ Construct a `LinearClassifier` estimator object.
 *  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
+  _joint_weight: If True, the weights for all columns will be stored in a
+    single (possibly partitioned) variable. It's more efficient, but it's
+    incompatible with SDCAOptimizer, and requires all feature columns are
+    sparse and use the 'sum' combiner.
+
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
 
 ##### Returns:
