@@ -361,7 +361,15 @@ def fuse_resize_and_conv(input_graph_def):
     else:
       raise ValueError("Duplicate node names detected for ", node.name)
 
-  nodes_to_skip = {}
+  node_reference_count = {}
+  for node in input_graph_def.node:
+    for input_name in node.input:
+      stripped_name = node_name_from_input(input_name)
+      if stripped_name not in node_reference_count.keys():
+        node_reference_count[stripped_name] = 1
+      else:
+        node_reference_count[stripped_name] += 1
+
   new_ops = []
   for node in input_graph_def.node:
 
@@ -377,13 +385,19 @@ def fuse_resize_and_conv(input_graph_def):
         resize_op = None
     else:
       mirror_pad_op = None
-      resize_op = input_op
+      if input_op.op == "ResizeBilinear":
+        resize_op = input_op
 
-    nodes_to_skip[conv_op.name] = True
+    # There are no ops to be fused into the conv, so skip replacing this one.
+    if not mirror_pad_op and not resize_op:
+      continue
+
+    # We're replacing this node, so make sure the old one is removed.
+    node_reference_count[conv_op.name] = 0
     if mirror_pad_op:
-      nodes_to_skip[mirror_pad_op.name] = True
+      node_reference_count[mirror_pad_op.name] -= 1
     if resize_op:
-      nodes_to_skip[resize_op.name] = True
+      node_reference_count[resize_op.name] -= 1
 
     fused_conv_op = tf.NodeDef()
     if resize_op:
@@ -424,7 +438,8 @@ def fuse_resize_and_conv(input_graph_def):
 
   result_graph_def = tf.GraphDef()
   for node in input_graph_def.node:
-    if node.name in nodes_to_skip:
+    if (node.name in node_reference_count.keys() and
+        node_reference_count[node.name] < 1):
       continue
     new_node = tf.NodeDef()
     new_node.CopyFrom(node)
