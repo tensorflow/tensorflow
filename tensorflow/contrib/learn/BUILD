@@ -712,7 +712,6 @@ py_test(
     size = "small",
     srcs = ["python/learn/learn_io/graph_io_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],  # http://b/29229547
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
