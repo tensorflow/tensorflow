@@ -70,9 +70,6 @@ const TAR_2D = {
  * independent of how a 3D scatter plot is actually rendered.
  */
 export abstract class ScatterWebGL implements Scatter {
-  protected dataSet: DataSet;
-  protected scene: THREE.Scene;
-
   /** Holds the indexes of the points to be labeled. */
   protected labeledPoints: number[] = [];
   protected highlightedPoints: number[] = [];
@@ -84,9 +81,9 @@ export abstract class ScatterWebGL implements Scatter {
   protected favorLabels: (i: number) => boolean;
 
   protected abstract onRecreateScene(
-      sceneIs3D: boolean, backgroundColor: number);
-  protected abstract removeAllGeometry();
-  protected abstract onDataSet(spriteImage: HTMLImageElement);
+      scene: THREE.Scene, sceneIs3D: boolean, backgroundColor: number);
+  protected abstract removeAllFromScene(scene: THREE.Scene);
+  protected abstract onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement);
   protected abstract onSetColorAccessor();
   protected abstract onHighlightPoints(
       pointIndexes: number[], highlightStroke: (i: number) => string,
@@ -100,6 +97,7 @@ export abstract class ScatterWebGL implements Scatter {
   protected abstract onMouseClickInternal(e?: MouseEvent): boolean;
   protected abstract onSetDayNightMode(isNight: boolean);
 
+  private dataSet: DataSet;
   private containerNode: HTMLElement;
 
   private onHoverListeners: OnHoverListener[] = [];
@@ -124,6 +122,7 @@ export abstract class ScatterWebGL implements Scatter {
   private isNight: boolean;
   private backgroundColor: number;
 
+  private scene: THREE.Scene;
   private renderer: THREE.WebGLRenderer;
   private perspCamera: THREE.PerspectiveCamera;
   private cameraControls: any;
@@ -539,7 +538,7 @@ export abstract class ScatterWebGL implements Scatter {
   /** Removes all geometry from the scene. */
   private removeAll() {
     this.removeOldAxes();
-    this.removeAllGeometry();
+    this.removeAllFromScene(this.scene);
   }
 
   private createSelectionSphere() {
@@ -594,7 +593,8 @@ export abstract class ScatterWebGL implements Scatter {
   recreateScene() {
     this.removeAll();
     this.cancelAnimation();
-    this.onRecreateScene(this.zAccessor != null, this.backgroundColor);
+    let sceneIs3D = this.zAccessor != null;
+    this.onRecreateScene(this.scene, sceneIs3D, this.backgroundColor);
     this.resize(false);
     if (this.zAccessor) {
       this.addAxis3D();
@@ -610,7 +610,7 @@ export abstract class ScatterWebGL implements Scatter {
   setDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
     this.removeAll();
     this.dataSet = dataSet;
-    this.onDataSet(spriteImage);
+    this.onDataSet(dataSet, spriteImage);
     this.labeledPoints = [];
     this.highlightedPoints = [];
   }
