@@ -114,11 +114,11 @@ class FunctionTest(tf.test.TestCase):
       return a + b * 2
 
     with tf.Graph().as_default():
-      f = function.define_function(APlus2B, {"a": tf.float32,
-                                             "b": tf.float32})
+      f = function._define_function(APlus2B, {"a": tf.float32,
+                                              "b": tf.float32})
       one = tf.constant([1.0])
       two = tf.constant([2.0])
-      call = function.call_function(f, one, two)
+      call = function._call_function(f, one, two)
       self.assertEquals("APlus2B", call.op.name)
       with tf.Session() as sess:
         self.assertAllEqual([5.0], sess.run(call))
@@ -141,14 +141,14 @@ class FunctionTest(tf.test.TestCase):
     g = tf.Graph()
     with g.as_default():
       # This line registers the Function "XSquarePlusOneFn"
-      f = function.define_function(
+      f = function._define_function(
           XSquarePlusOne, {"x": tf.float32}, func_name="XSquarePlusOneFn")
-      g = function.define_function(XSquarePlusOneGrad, {"x": tf.float32,
-                                                        "dy": tf.float32})
+      g = function._define_function(XSquarePlusOneGrad, {"x": tf.float32,
+                                                         "dy": tf.float32})
       epsilon = tf.constant([0.1])
       two = tf.constant([2.0])
-      call_f = function.call_function(f, two)
-      call_g = function.call_function(g, two, epsilon)
+      call_f = function._call_function(f, two)
+      call_g = function._call_function(g, two, epsilon)
 
       with tf.Session() as sess:
         self.assertAllClose([5.0], sess.run(call_f))
@@ -268,8 +268,8 @@ class FunctionTest(tf.test.TestCase):
       return tf.constant([42])
 
     with tf.Graph().as_default():
-      f_def = function.define_function(AConstant, {})
-      call = function.call_function(f_def)
+      f_def = function._define_function(AConstant, {})
+      call = function._call_function(f_def)
       self.assertEquals("AConstant", call.op.name)
       with tf.Session() as sess:
         self.assertAllEqual([42], sess.run(call))
@@ -280,16 +280,16 @@ class FunctionTest(tf.test.TestCase):
       return a + 1
 
     with tf.Graph().as_default():
-      f_def = function.define_function(Foo, {"a": tf.float32})
+      f_def = function._define_function(Foo, {"a": tf.float32})
       one = tf.constant([1.0])
-      call1 = function.call_function(f_def, one)
+      call1 = function._call_function(f_def, one)
       self.assertEquals("Foo", call1.op.name)
-      call2 = function.call_function(f_def, one)
+      call2 = function._call_function(f_def, one)
       self.assertEquals("Foo_1", call2.op.name)
-      call3 = function.call_function(f_def, one, name="mine")
+      call3 = function._call_function(f_def, one, name="mine")
       self.assertEquals("mine", call3.op.name)
       with tf.name_scope("my"):
-        call4 = function.call_function(f_def, one, name="precious")
+        call4 = function._call_function(f_def, one, name="precious")
         self.assertEquals("my/precious", call4.op.name)
 
   def testDefineErrors(self):
@@ -309,22 +309,22 @@ class FunctionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       # pylint: disable=expression-not-assigned
       with self.assertRaisesRegexp(ValueError, "return at least one tensor"):
-        function.define_function(NoResult, {}).definition
+        function._define_function(NoResult, {}).definition
       with self.assertRaisesRegexp(ValueError, "are not supported"):
-        function.define_function(DefaultArg, {}).definition
+        function._define_function(DefaultArg, {}).definition
       with self.assertRaisesRegexp(ValueError, "are not supported"):
-        function.define_function(KwArgs, {}).definition
+        function._define_function(KwArgs, {}).definition
       with self.assertRaisesRegexp(ValueError, "specified input types"):
-        function.define_function(PlusMinus, {}).definition
+        function._define_function(PlusMinus, {}).definition
       with self.assertRaisesRegexp(ValueError, "specified input types"):
-        function.define_function(PlusMinus, {"c": tf.float32}).definition
+        function._define_function(PlusMinus, {"c": tf.float32}).definition
       with self.assertRaisesRegexp(ValueError, "type for argument: b"):
-        function.define_function(PlusMinus, {"a": tf.float32,
-                                             "c": tf.float32}).definition
+        function._define_function(PlusMinus, {"a": tf.float32,
+                                              "c": tf.float32}).definition
       with self.assertRaisesRegexp(ValueError, "specified input types"):
-        function.define_function(PlusMinus, {"a": tf.float32,
-                                             "b": tf.float32,
-                                             "c": tf.float32}).definition
+        function._define_function(PlusMinus, {"a": tf.float32,
+                                              "b": tf.float32,
+                                              "c": tf.float32}).definition
       # pylint: enable=expression-not-assigned
 
   def testCallErrors(self):
@@ -341,32 +341,32 @@ class FunctionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       one = tf.constant([1])
       two = tf.constant([2])
-      const = function.define_function(Const, {})
-      plus_one = function.define_function(PlusOne, {"a": tf.int32})
-      plus_minus = function.define_function(PlusMinus, {"a": tf.int32,
-                                                        "b": tf.int32})
+      const = function._define_function(Const, {})
+      plus_one = function._define_function(PlusOne, {"a": tf.int32})
+      plus_minus = function._define_function(PlusMinus, {"a": tf.int32,
+                                                         "b": tf.int32})
 
-      function.call_function(const)
+      function._call_function(const)
       with self.assertRaisesRegexp(ValueError, "arguments: 0"):
-        function.call_function(const, one)
+        function._call_function(const, one)
       with self.assertRaisesRegexp(ValueError, "arguments: 0"):
-        function.call_function(const, one, two)
+        function._call_function(const, one, two)
 
       with self.assertRaisesRegexp(ValueError, "arguments: 1"):
-        function.call_function(plus_one)
-      function.call_function(plus_one, one)
+        function._call_function(plus_one)
+      function._call_function(plus_one, one)
       with self.assertRaisesRegexp(ValueError, "arguments: 1"):
-        function.call_function(plus_one, one, two)
+        function._call_function(plus_one, one, two)
 
       with self.assertRaisesRegexp(ValueError, "arguments: 2"):
-        function.call_function(plus_minus)
+        function._call_function(plus_minus)
       with self.assertRaisesRegexp(ValueError, "arguments: 2"):
-        function.call_function(plus_minus, one)
-      function.call_function(plus_minus, one, two)
+        function._call_function(plus_minus, one)
+      function._call_function(plus_minus, one, two)
 
-      function.call_function(plus_one, one, name="p1")
+      function._call_function(plus_one, one, name="p1")
       with self.assertRaisesRegexp(ValueError, "Unknown keyword arguments"):
-        function.call_function(plus_one, one, device="/gpu:0")
+        function._call_function(plus_one, one, device="/gpu:0")
 
   def testDupDefinition(self):
 

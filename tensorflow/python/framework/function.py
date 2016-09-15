@@ -201,7 +201,18 @@ def _graph_to_function_def(graph, name, inputs, outputs):
   return func
 
 
-def _call_function(sig, *inputs, **kwargs):
+def _parse_kwargs_as_attrs(**kwargs):
+  """Parses **kwargs into a node's attributes."""
+  attrs = {}
+  noinline = kwargs.pop("noinline", None)
+  if noinline is not None:
+    attrs["_noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
+  if kwargs:
+    raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
+  return attrs
+
+
+def _call(sig, *inputs, **kwargs):
   """Adds a node calling a function.
 
   Args:
@@ -220,14 +231,7 @@ def _call_function(sig, *inputs, **kwargs):
 
   """
   name = kwargs.pop("name", None)
-  noinline = kwargs.pop("noinline", None)
-  if noinline is None:
-    attrs = None
-  else:
-    attrs = {}
-    attrs["_noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
-  if kwargs:
-    raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
+  attrs = _parse_kwargs_as_attrs(**kwargs)
   g = ops.get_default_graph()
   func_name = sig.name
   output_types = [dtypes.DType(x.type) for x in sig.output_arg]
@@ -249,7 +253,7 @@ def _call_function(sig, *inputs, **kwargs):
     return op
 
 
-def call_function(func, *inputs, **kwargs):
+def _call_function(func, *inputs, **kwargs):
   """Calls the function described by `func`.
 
   This adds a `call` op to the default graph that calls the function described
@@ -257,7 +261,7 @@ def call_function(func, *inputs, **kwargs):
   the outputs of the call, which are one or more tensors.
 
   `func` is a `_DefinedFunction` object. See
-  [`define_function()`](#define_function) for an easy way to create
+  [`_define_function()`](#_define_function) for an easy way to create
   one from a Python function.
 
   You can pass an optional keyword parameter `name=string` to name the
@@ -286,7 +290,7 @@ def call_function(func, *inputs, **kwargs):
   if len(inputs) != len(sig.input_arg):
     raise ValueError("Expected number of arguments: %d, received: %d" %
                      (len(sig.input_arg), len(inputs)))
-  return _call_function(sig, *inputs, **kwargs)
+  return _call(sig, *inputs, **kwargs)
 
 
 def _get_func_name(func):
@@ -303,11 +307,11 @@ def _get_func_name(func):
     raise ValueError("Argument must be callable")
 
 
-def define_function(func,
-                    input_types,
-                    func_name=None,
-                    grad_func=None,
-                    python_grad_func=None):
+def _define_function(func,
+                     input_types,
+                     func_name=None,
+                     grad_func=None,
+                     python_grad_func=None):
   """Creates a `FunctionDef` for a python function.
 
   `func` is a Python function that receives zero or more tensors and returns at
@@ -343,9 +347,9 @@ def define_function(func,
 
   # Create a FunctionDef for 'my_func'. (This does not change the default
   graph.)
-  my_func_def = tf.define_function(my_func, {'x': tf.float32, 'y': tf.float32})
+  my_func_def = tf._define_function(my_func, {'x': tf.float32, 'y': tf.float32})
   # Alternatively:
-  # my_func_def = tf.define_function(my_func, [tf.float32, tf.float32])
+  # my_func_def = tf._define_function(my_func, [tf.float32, tf.float32])
 
   # Build the graph, calling the function.
   a = tf.constant([1.0])
@@ -509,7 +513,6 @@ class _DefinedFunction(object):
     # Build the FunctionDef
     self._definition = _graph_to_function_def(temp_graph, self._func_name,
                                               inputs, outputs)
-
     # pylint: disable=protected-access
     self._sub_functions = temp_graph._functions
     # pylint: enable=protected-access
@@ -545,7 +548,7 @@ class _DefinedFunction(object):
 
   def __call__(self, *args, **kwargs):
     self.add_to_graph(ops.get_default_graph())
-    return call_function(self, *args, **kwargs)
+    return _call_function(self, *args, **kwargs)
 
 
 class Defun(object):
@@ -672,4 +675,4 @@ class Declare(object):
     if len(inputs) != len(self._sig.input_arg):
       raise ValueError("Mismatch number of args: %d vs. %d" %
                        (len(inputs), len(self._sig.input_arg)))
-    return _call_function(self._sig, *inputs, **kwargs)
+    return _call(self._sig, *inputs, **kwargs)
