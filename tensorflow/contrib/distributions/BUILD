@@ -349,6 +349,7 @@ cuda_py_tests(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["notsan"],  #http://b/31455709
 )
 
 cuda_py_tests(
