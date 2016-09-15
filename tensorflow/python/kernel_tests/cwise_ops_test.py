@@ -725,7 +725,6 @@ class BinaryOpTest(tf.test.TestCase):
     self._compareCpu(x, y, np.subtract, _SUB)
     self._compareCpu(x, y, np.multiply, _MUL)
     self._compareCpu(x, y + 0.1, np.true_divide, _TRUEDIV)
-    self._compareGpu(x, y, np.add, tf.add)
 
   def testComplex128Basic(self):
     x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(1, 3, 2).astype(
@@ -740,7 +739,6 @@ class BinaryOpTest(tf.test.TestCase):
     self._compareCpu(x, y, np.subtract, _SUB)
     self._compareCpu(x, y, np.multiply, _MUL)
     self._compareCpu(x, y + 0.1, np.true_divide, _TRUEDIV)
-    self._compareGpu(x, y, np.add, tf.add)
 
   def testStringComparison(self):
     x = np.array([["abc", "bh"], ["c", ""]])
