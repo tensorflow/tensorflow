@@ -77,15 +77,13 @@ export abstract class ScatterWebGL implements Scatter {
       scene: THREE.Scene, sceneIs3D: boolean, backgroundColor: number);
   protected abstract removeAllFromScene(scene: THREE.Scene);
   protected abstract onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement);
-  protected abstract onSetColorAccessor(
-      colorAccessor: (index: number) => string);
-  protected abstract onHighlightPoints(
-      pointIndexes: number[], highlightStroke: (i: number) => string);
   protected abstract onPickingRender(
       camera: THREE.Camera, cameraTarget: THREE.Vector3);
   protected abstract onRender(
       camera: THREE.Camera, cameraTarget: THREE.Vector3,
-      labeledPoints: number[], labelAccessor: (index: number) => string);
+      colorAccessor: (index: number) => string, labeledPoints: number[],
+      labelAccessor: (index: number) => string,
+      highlightStroke: (index: number) => string);
   protected abstract onUpdate();
   protected abstract onResize(newWidth: number, newHeight: number);
   protected abstract onSetDayNightMode(isNight: boolean);
@@ -96,7 +94,8 @@ export abstract class ScatterWebGL implements Scatter {
   private labeledPoints: number[] = [];
   private favorLabels: (i: number) => boolean;
   private labelAccessor: (index: number) => string;
-
+  private colorAccessor: (index: number) => string;
+  private highlightStroke: (index: number) => string;
   private onHoverListeners: OnHoverListener[] = [];
   private onSelectionListeners: OnSelectionListener[] = [];
   private lazySusanAnimation: number;
@@ -350,11 +349,9 @@ export abstract class ScatterWebGL implements Scatter {
    */
   private onMouseMove(e: MouseEvent) {
     if (this.cameraControls.autoRotate) {
-      // Cancel the lazy susan.
       this.cameraControls.autoRotate = false;
       cancelAnimationFrame(this.lazySusanAnimation);
     }
-
     if (!this.dataSet) {
       return;
     }
@@ -639,13 +636,13 @@ export abstract class ScatterWebGL implements Scatter {
     lightPos.y += 1;
     this.light.position.set(lightPos.x, lightPos.y, lightPos.z);
     this.onRender(
-        this.perspCamera, this.cameraControls.target, this.labeledPoints,
-        this.labelAccessor);
+        this.perspCamera, this.cameraControls.target, this.colorAccessor,
+        this.labeledPoints, this.labelAccessor, this.highlightStroke);
     this.renderer.render(this.scene, this.perspCamera);
   }
 
   setColorAccessor(colorAccessor: (index: number) => string) {
-    this.onSetColorAccessor(colorAccessor);
+    this.colorAccessor = colorAccessor;
     this.render();
   }
 
@@ -716,11 +713,11 @@ export abstract class ScatterWebGL implements Scatter {
 
   highlightPoints(
       pointIndexes: number[], highlightStroke: (i: number) => string,
-      favorLabels: (i: number) => boolean): void {
+      favorLabels: (i: number) => boolean) {
     this.favorLabels = favorLabels;
     this.highlightedPoints = pointIndexes;
     this.labeledPoints = pointIndexes;
-    this.onHighlightPoints(pointIndexes, highlightStroke);
+    this.highlightStroke = highlightStroke;
     this.render();
   }
 

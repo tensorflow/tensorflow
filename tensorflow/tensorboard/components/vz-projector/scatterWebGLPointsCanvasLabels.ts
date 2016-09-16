@@ -571,8 +571,8 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     if (this.geometry == null) {
       return;
     }
-    // Update attributes to change colors
     let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
+    colors.array = this.renderColors;
     let getColor: (index: number) => string = (() => undefined);
     if (this.image == null) {
       getColor =
@@ -692,15 +692,6 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     }
   }
 
-  protected onHighlightPoints(
-      pointIndexes: number[], highlightStroke: (i: number) => string) {
-    this.highlightSprites(highlightStroke);
-  }
-
-  protected onSetColorAccessor(colorAccessor: (index: number) => string) {
-    this.colorSprites(colorAccessor);
-  }
-
   private onSelectionChanged(selection: number[]) {
     this.resetTraces();
     this.defaultPointColor = POINT_COLOR;
@@ -763,10 +754,15 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
 
   protected onRender(
       camera: THREE.Camera, cameraTarget: THREE.Vector3,
-      labeledPoints: number[], labelAccessor: (index: number) => string) {
+      colorAccessor: (index: number) => string, labeledPoints: number[],
+      labelAccessor: (index: number) => string,
+      highlightStroke: (index: number) => string) {
     if (!this.geometry) {
       return;
     }
+    this.colorSprites(colorAccessor);
+    this.highlightSprites(highlightStroke);
+
     let nearFarPoints = this.getNearFarPoints(camera.position, cameraTarget);
     this.setFogDistances(nearFarPoints[0], nearFarPoints[1]);
 
