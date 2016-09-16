@@ -223,7 +223,7 @@ def _BiasAddGradGrad(op, received_grad):
     data_format = None
     
   zeros = gen_array_ops._zeros_like(op.inputs[0])
-  return gen_nn_ops._bias_add(zeros, received_grad, data_format=data_format)#, name=name)
+  return gen_nn_ops._bias_add(zeros, received_grad, data_format=data_format)
   
 
 @ops.RegisterGradient("BiasAddV1")
