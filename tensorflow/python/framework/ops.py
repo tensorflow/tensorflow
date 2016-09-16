@@ -2036,6 +2036,8 @@ class Graph(object):
     self._collections = {}
     # The graph-level random seed
     self._seed = None
+    # A dictionary of attributes that should be applied to all ops.
+    self._attr_scope_map = {}
     # A map from op type to the kernel label that should be used.
     self._op_to_kernel_label_map = {}
     # A map from op type to an alternative op type that should be used when
@@ -2348,6 +2350,12 @@ class Graph(object):
       name = self.unique_name(name)
 
     node_def = _NodeDef(op_type, name, device=None, attrs=attrs)
+
+    # Apply any additional attributes requested. Do not overwrite any existing
+    # attributes.
+    for key, value in self._attr_scope_map.items():
+      if key not in node_def.attr:
+        node_def.attr[key].CopyFrom(value)
 
     # Apply a kernel label if one has been specified for this op_type.
     try:
@@ -3344,6 +3352,69 @@ class Graph(object):
         control_ops.append(c)
         current.add(c)
     return self._ControlDependenciesController(self, control_ops)
+
+  # pylint: disable=g-doc-return-or-yield
+  @contextlib.contextmanager
+  def _attr_scope(self, attr_map):
+    """EXPERIMENTAL: A context manager for setting attributes on operators.
+
+    This context manager can be used to add additional
+    attributes to operators within the scope of the context.
+
+    For example:
+
+       with ops.Graph().as_default() as g:
+         f_1 = Foo()  # No extra attributes
+         with g._attr_scope({"_a": tf.attr_value_pb2.AttrValue(b=False)}):
+           f_2 = Foo()  # Additional attribute _a=False
+           with g._attr_scope({"_a": tf.attr_value_pb2.AttrValue(b=True)}):
+             f_3 = Foo()  # Additional attribute _a=False
+             with g._attr_scope({"_a": None}):
+               f_4 = Foo()  # No additional attributes.
+
+    Args:
+      attr_map: A dictionary mapping attr name strings to
+        AttrValue protocol buffers or None.
+
+    Returns:
+      A context manager that sets the kernel label to be used for one or more
+      ops created in that context.
+
+    Raises:
+      TypeError: If attr_map is not a dictionary mapping
+        strings to AttrValue protobufs.
+    """
+    if not isinstance(attr_map, dict):
+      raise TypeError("attr_map must be a dictionary mapping "
+                      "strings to AttrValue protocol buffers")
+    # The saved_attrs dictionary stores any currently-set labels that
+    # will be overridden by this context manager.
+    saved_attrs = {}
+    # Install the given attribute
+    for name, attr in attr_map.items():
+      if not (isinstance(name, six.string_types)
+              and isinstance(attr, (type(None), attr_value_pb2.AttrValue))):
+        raise TypeError("attr_map must be a dictionary mapping "
+                        "strings to AttrValue protocol buffers")
+      try:
+        saved_attrs[name] = self._attr_scope_map[name]
+      except KeyError:
+        pass
+      if attr is None:
+        del self._attr_scope_map[name]
+      else:
+        self._attr_scope_map[name] = attr
+    try:
+      yield  # The code within the context runs here.
+    finally:
+      # Remove the attributes set for this context, and restore any saved
+      # attributes.
+      for name, attr in attr_map.items():
+        try:
+          self._attr_scope_map[name] = saved_attrs[name]
+        except KeyError:
+          del self._attr_scope_map[name]
+  # pylint: enable=g-doc-return-or-yield
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
