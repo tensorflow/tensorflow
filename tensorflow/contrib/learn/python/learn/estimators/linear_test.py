@@ -62,6 +62,31 @@ class LinearClassifierTest(tf.test.TestCase):
     self.assertLess(loss2, 0.01)
     self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
 
+  def testJointTrain(self):
+    """Tests that loss goes down with training with joint weights."""
+
+    def input_fn():
+      return {
+          'age': tf.SparseTensor(values=['1'], indices=[[0, 0]], shape=[1, 1]),
+          'language': tf.SparseTensor(values=['english'],
+                                      indices=[[0, 0]],
+                                      shape=[1, 1])
+      }, tf.constant([[1]])
+
+    language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
+    age = tf.contrib.layers.sparse_column_with_hash_bucket('age', 2)
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        _joint_weight=True,
+        feature_columns=[age, language])
+    classifier.fit(input_fn=input_fn, steps=100)
+    loss1 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
+    classifier.fit(input_fn=input_fn, steps=200)
+    loss2 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
+    self.assertLess(loss2, loss1)
+    self.assertLess(loss2, 0.01)
+    self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
+
   def testMultiClass(self):
     """Tests multi-class classification using matrix data as input."""
     feature_column = tf.contrib.layers.real_valued_column('feature',

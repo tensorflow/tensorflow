@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/strided_slice_op.h"
 
 namespace tensorflow {
 
@@ -1793,6 +1794,60 @@ REGISTER_OP("StridedSlice")
     .Attr("ellipsis_mask: int = 0")
     .Attr("new_axis_mask: int = 0")
     .Attr("shrink_axis_mask: int = 0")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input = c->input(0);
+      ShapeHandle begin_shape, end_shape, strides_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &begin_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &end_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &strides_shape));
+      TF_RETURN_IF_ERROR(c->Merge(begin_shape, end_shape, &begin_shape));
+      TF_RETURN_IF_ERROR(c->Merge(begin_shape, strides_shape, &begin_shape));
+      DimensionHandle sparse_dims_dim = c->Dim(begin_shape, 0);
+
+      const Tensor* begin_value = c->input_tensor(1);
+      const Tensor* end_value = c->input_tensor(2);
+      const Tensor* strides_value = c->input_tensor(3);
+      if (begin_value == nullptr || end_value == nullptr ||
+          strides_value == nullptr || !c->RankKnown(input) ||
+          !c->ValueKnown(sparse_dims_dim)) {
+        c->set_output(0, c->UnknownShape());
+        return Status::OK();
+      }
+
+      TensorShapeProto input_shape_proto;
+      for (int i = 0; i < c->Rank(input); ++i) {
+        auto dim = c->Dim(input, i);
+        input_shape_proto.add_dim()->set_size(c->ValueKnown(dim) ? c->Value(dim)
+                                                                 : -1);
+      }
+
+      int32 begin_mask, end_mask, ellipsis_mask, new_axis_mask,
+          shrink_axis_mask;
+      TF_RETURN_IF_ERROR(c->GetAttr("begin_mask", &begin_mask));
+      TF_RETURN_IF_ERROR(c->GetAttr("end_mask", &end_mask));
+      TF_RETURN_IF_ERROR(c->GetAttr("ellipsis_mask", &ellipsis_mask));
+      TF_RETURN_IF_ERROR(c->GetAttr("new_axis_mask", &new_axis_mask));
+      TF_RETURN_IF_ERROR(c->GetAttr("shrink_axis_mask", &shrink_axis_mask));
+
+      TensorShapeProto processing_shape, final_shape;
+      ShapeReadWriteFromTensorShapeProto wrapped_processing_shape(
+          &processing_shape);
+      ShapeReadWriteFromTensorShapeProto wrapped_final_shape(&final_shape);
+      bool is_identity, is_simple_slice, slice_dim0;
+      gtl::InlinedVector<int64, 4> begin, end, strides;
+      TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
+          *begin_value, *end_value, *strides_value,
+          ShapeReadWriteFromTensorShapeProto(&input_shape_proto), begin_mask,
+          end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
+          &wrapped_processing_shape, &wrapped_final_shape, &is_identity,
+          &is_simple_slice, &slice_dim0, &begin, &end, &strides));
+
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(final_shape, &out));
+      c->set_output(0, out);
+
+      return Status::OK();
+    })
     .Doc(R"doc(
 Return a strided slice from `input`.
 

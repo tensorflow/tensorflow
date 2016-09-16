@@ -31,6 +31,12 @@ py_library(
     ],
 )
 
+py_library(
+    name = "debugger_cli_common",
+    srcs = ["cli/debugger_cli_common.py"],
+    srcs_version = "PY2AND3",
+)
+
 py_test(
     name = "debug_data_test",
     size = "small",
@@ -75,6 +81,19 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:session",
+    ],
+)
+
+py_test(
+    name = "debugger_cli_common_test",
+    size = "small",
+    srcs = [
+        "cli/debugger_cli_common_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debugger_cli_common",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 

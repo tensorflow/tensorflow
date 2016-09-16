@@ -96,6 +96,7 @@ def logistic_model_no_mode_fn(features, target):
 class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
 
   def __init__(self, expect_calls):
+    super(CheckCallsMonitor, self).__init__()
     self.begin_calls = None
     self.end_calls = None
     self.expect_calls = expect_calls

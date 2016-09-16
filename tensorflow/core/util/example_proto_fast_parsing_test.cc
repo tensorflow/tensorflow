@@ -63,6 +63,23 @@ void TestCorrectness(const string& serialized) {
 //   TestCorrectness(example);
 // }
 
+// Test that concatenating two Example protos in their serialized string
+// representations gets parsed identically by TestFastParse(..) and the regular
+// Example.ParseFromString(..).
+TEST(FastParse, SingleInt64WithContext) {
+  Example example;
+  (*example.mutable_features()->mutable_feature())["age"]
+      .mutable_int64_list()
+      ->add_value(13);
+
+  Example context;
+  (*context.mutable_features()->mutable_feature())["zipcode"]
+      .mutable_int64_list()
+      ->add_value(94043);
+
+  TestCorrectness(strings::StrCat(Serialize(example), Serialize(context)));
+}
+
 TEST(FastParse, NonPacked) {
   TestCorrectness(
       "\x0a\x0e\x0a\x0c\x0a\x03\x61\x67\x65\x12\x05\x1a\x03\x0a\x01\x0d");

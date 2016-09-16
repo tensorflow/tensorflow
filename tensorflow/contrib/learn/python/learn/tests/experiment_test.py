@@ -19,7 +19,9 @@ from __future__ import print_function
 import time
 
 import tensorflow as tf
+
 from tensorflow.contrib.learn.python.learn import run_config
+from tensorflow.python.util.all_util import reveal_undocumented
 
 
 class TestEstimator(tf.contrib.learn.Evaluable, tf.contrib.learn.Trainable):
@@ -51,6 +53,10 @@ class TestEstimator(tf.contrib.learn.Evaluable, tf.contrib.learn.Trainable):
 
 
 class ExperimentTest(tf.test.TestCase):
+
+  def setUp(self):
+    # The official name is tf.train, so tf.training was obliterated.
+    reveal_undocumented('tensorflow.python.training')
 
   def test_train(self):
     est = TestEstimator()

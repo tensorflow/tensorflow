@@ -546,6 +546,11 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
       else:
         raise AssertionError('Exception not raised: %s' % err_msg)
 
+  def _assertShapeInference(self, pre_shape, height, width, post_shape):
+    image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
+    y = image_ops.crop_to_bounding_box(image, 0, 0, height, width)
+    self.assertEqual(y.get_shape().as_list(), post_shape)
+
   def testNoOp(self):
     x_shape = [10, 10, 10]
     x = np.random.uniform(size=x_shape)
@@ -582,6 +587,19 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
          4, 5,
          7, 8]
     self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
+
+  def testShapeInference(self):
+    self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([59, 69, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([None, 69, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([59, None, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
+    self._assertShapeInference([59, 69, None], 55, 66, [55, 66, None])
+    self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
+    self._assertShapeInference(None, 55, 66, [55, 66, None])
 
   def testNon3DInput(self):
     # Input image is not 3D
@@ -637,6 +655,14 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
 
 class CentralCropTest(test_util.TensorFlowTestCase):
 
+  def _assertShapeInference(self, pre_shape, fraction, post_shape):
+    image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
+    y = image_ops.central_crop(image, fraction)
+    if post_shape is None:
+      self.assertEqual(y.get_shape().dims, None)
+    else:
+      self.assertEqual(y.get_shape().as_list(), post_shape)
+
   def testNoOp(self):
     x_shape = [13, 9, 3]
     x_np = np.ones(x_shape, dtype=np.float32)
@@ -658,6 +684,26 @@ class CentralCropTest(test_util.TensorFlowTestCase):
       y = image_ops.central_crop(x, 0.5)
       y_tf = y.eval()
       self.assertAllEqual(y_tf, y_np)
+
+  def testShapeInference(self):
+    # Test no-op fraction=1.0
+    self._assertShapeInference([50, 60, 3], 1.0, [50, 60, 3])
+    self._assertShapeInference([None, 60, 3], 1.0, [None, 60, 3])
+    self._assertShapeInference([50, None, 3], 1.0, [50, None, 3])
+    self._assertShapeInference([None, None, 3], 1.0, [None, None, 3])
+    self._assertShapeInference([50, 60, None], 1.0, [50, 60, None])
+    self._assertShapeInference([None, None, None], 1.0, [None, None, None])
+    self._assertShapeInference(None, 1.0, None)
+    # TODO(toddw): Currently central_crop() doesn't infer the result shape even
+    # when it's possible.  If we change it to do so, we can test as follows:
+    #
+    # self._assertShapeInference([50, 60, 3], 0.5, [25, 30, 3])
+    # self._assertShapeInference([None, 60, 3], 0.5, [None, 30, 3])
+    # self._assertShapeInference([50, None, 3], 0.5, [25, None, 3])
+    # self._assertShapeInference([None, None, 3], 0.5, [None, None, 3])
+    # self._assertShapeInference([50, 60, None], 0.5, [25, 30, None])
+    # self._assertShapeInference([None, None, None], 0.5, [None, None, None])
+    # self._assertShapeInference(None, 0.5, None)
 
   def testError(self):
     x_shape = [13, 9, 3]
@@ -723,11 +769,15 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
       else:
         raise AssertionError('Exception not raised: %s' % err_msg)
 
+  def _assertShapeInference(self, pre_shape, height, width, post_shape):
+    image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
+    y = image_ops.pad_to_bounding_box(image, 0, 0, height, width)
+    self.assertEqual(y.get_shape().as_list(), post_shape)
+
   def testNoOp(self):
     x_shape = [10, 10, 10]
     x = np.random.uniform(size=x_shape)
     offset_height, offset_width = [0, 0]
-
     self._assertReturns(x, x_shape, offset_height, offset_width, x, x_shape)
 
   def testPadding(self):
@@ -765,6 +815,19 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
          7, 8, 9, 0]
     y_shape = [3, 4, 1]
     self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
+
+  def testShapeInference(self):
+    self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([50, 60, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([None, 60, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([50, None, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
+    self._assertShapeInference([50, 60, None], 55, 66, [55, 66, None])
+    self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
+    self._assertShapeInference(None, 55, 66, [55, 66, None])
 
   def testNon3DInput(self):
     # Input image is not 3D
@@ -967,6 +1030,20 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
 
   TYPES = [np.uint8, np.int8, np.int16, np.int32, np.int64,
            np.float32, np.float64]
+
+  def _assertShapeInference(self, pre_shape, size, post_shape):
+    # Try single image resize
+    single_image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
+    y = image_ops.resize_images(single_image, size)
+    self.assertEqual(y.get_shape().as_list(), post_shape)
+    # Try batch images resize with known batch size
+    images = array_ops.placeholder(dtypes.float32, shape=[99] + pre_shape)
+    y = image_ops.resize_images(images, size)
+    self.assertEqual(y.get_shape().as_list(), [99] + post_shape)
+    # Try batch images resize with unknown batch size
+    images = array_ops.placeholder(dtypes.float32, shape=[None] + pre_shape)
+    y = image_ops.resize_images(images, size)
+    self.assertEqual(y.get_shape().as_list(), [None] + post_shape)
 
   def shouldRunOnGPU(self, opt, nptype):
     if opt == image_ops.ResizeMethod.NEAREST_NEIGHBOR \
@@ -1289,6 +1366,26 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
               value[use_gpu] = out_op.eval()
           self.assertAllClose(value[True], value[False], rtol=1e-5, atol=1e-5)
 
+  def testShapeInference(self):
+    self._assertShapeInference([50, 60, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([55, 66, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([59, 69, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([50, 69, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([59, 60, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([None, 60, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([None, 66, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([None, 69, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([50, None, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([55, None, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([59, None, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([None, None, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([50, 60, None], [55, 66], [55, 66, None])
+    self._assertShapeInference([55, 66, None], [55, 66], [55, 66, None])
+    self._assertShapeInference([59, 69, None], [55, 66], [55, 66, None])
+    self._assertShapeInference([50, 69, None], [55, 66], [55, 66, None])
+    self._assertShapeInference([59, 60, None], [55, 66], [55, 66, None])
+    self._assertShapeInference([None, None, None], [55, 66], [55, 66, None])
+
 
 class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
 
@@ -1337,6 +1434,11 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
           raise
       else:
         raise AssertionError('Exception not raised: %s' % err_msg)
+
+  def _assertShapeInference(self, pre_shape, height, width, post_shape):
+    image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
+    y = image_ops.resize_image_with_crop_or_pad(image, height, width)
+    self.assertEqual(y.get_shape().as_list(), post_shape)
 
   def testNoOp(self):
     x_shape = [10, 10, 10]
@@ -1476,6 +1578,27 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
     y_shape = [2, 4, 1]
 
     self._assertReturns(x, x_shape, y, y_shape)
+
+  def testShapeInference(self):
+    self._assertShapeInference([50, 60, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([59, 69, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([50, 69, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([59, 60, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([None, 60, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([None, 69, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([50, None, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([59, None, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
+    self._assertShapeInference([50, 60, None], 55, 66, [55, 66, None])
+    self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
+    self._assertShapeInference([59, 69, None], 55, 66, [55, 66, None])
+    self._assertShapeInference([50, 69, None], 55, 66, [55, 66, None])
+    self._assertShapeInference([59, 60, None], 55, 66, [55, 66, None])
+    self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
+    self._assertShapeInference(None, 55, 66, [55, 66, None])
 
   def testNon3DInput(self):
     # Input image is not 3D

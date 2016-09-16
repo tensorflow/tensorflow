@@ -1875,6 +1875,9 @@ tf_cuda_cc_test(
 
 # Android libraries -----------------------------------------------------------
 
+# Changes to the Android srcs here should be replicated in
+# tensorflow/contrib/makefile/tf_op_files.txt
+# LINT.IfChange
 filegroup(
     name = "android_srcs",
     srcs = [
@@ -2180,6 +2183,7 @@ filegroup(
     ),
     visibility = ["//visibility:public"],
 )
+# LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/contrib/makefile/tf_op_files.txt)
 
 cc_library(
     name = "android_tensorflow_kernels",

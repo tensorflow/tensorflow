@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/node_def.pb_text.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -801,6 +802,41 @@ TEST(CAPI, SessionWithGraph) {
   // Clean up
   csession.CloseAndDelete(s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
+TEST(CAPI, ColocateWith) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  TF_Operation* feed = Placeholder(graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* constant = ScalarConst(10, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_OperationDescription* desc = TF_NewOperation(graph, "AddN", "add");
+  TF_Port inputs[] = {{feed, 0}, {constant, 0}};
+  TF_AddInputList(desc, inputs, TF_ARRAYSIZE(inputs));
+  TF_ColocateWith(desc, feed);
+  TF_Operation* add = TF_FinishOperation(desc, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Attr_Metadata m =
+      TF_OperationGetAttrMetadata(add, tensorflow::kColocationAttrName, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(1, m.is_list);
+  EXPECT_EQ(1, m.list_size);
+  EXPECT_EQ(TF_ATTR_STRING, m.type);
+  void* values[1];
+  int lens[1];
+  std::unique_ptr<char[]> storage(new char[m.total_size]);
+  TF_OperationGetAttrStringList(add, tensorflow::kColocationAttrName, values,
+                                lens, 1, storage.get(), m.total_size, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ("loc:@feed", string(static_cast<const char*>(values[0]), lens[0]));
+
   TF_DeleteGraph(graph);
   TF_DeleteStatus(s);
 }

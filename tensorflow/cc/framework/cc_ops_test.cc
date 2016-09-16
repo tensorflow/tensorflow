@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/cc/ops/test_op.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
@@ -33,17 +34,8 @@ Output Linear(const Scope& scope, Input x, Input w, Input b) {
 
 void GetColocationConstraints(Output tensor, std::vector<string>* constraints) {
   constraints->clear();
-  const auto& attrs = tensor.op().node()->def().attr();
-  ASSERT_TRUE(attrs.find("_class") != attrs.end());
-  auto loc = attrs.find("_class")->second;
-  TF_EXPECT_OK(AttrValueHasType(loc, "list(string)"));
-  if (loc.value_case() == AttrValue::kList && loc.list().s_size() > 0) {
-    for (int i = 0; i < loc.list().s_size(); ++i) {
-      if (loc.list().s(i).find("loc:@") == 0) {
-        constraints->push_back(loc.list().s(i));
-      }
-    }
-  }
+  TF_EXPECT_OK(
+      GetNodeAttr(tensor.op().node()->def(), kColocationAttrName, constraints));
 }
 
 }  // namespace

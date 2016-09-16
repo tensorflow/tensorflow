@@ -66,11 +66,12 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
           whose `value` is a `Tensor`.
   """
 
-  def __init__(self,
+  def __init__(self,  # _joint_linear_weights pylint: disable=invalid-name
                target_column,
                model_dir=None,
                linear_feature_columns=None,
                linear_optimizer=None,
+               _joint_linear_weights=False,
                dnn_feature_columns=None,
                dnn_optimizer=None,
                dnn_hidden_units=None,
@@ -91,6 +92,10 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
         instances of classes derived from `FeatureColumn`.
       linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
         the linear part of the model. If `None`, will use a FTRL optimizer.
+      _joint_linear_weights: If True will use a single (possibly partitioned)
+        variable to store all weights for the linear model. More efficient if
+        there are many columns, however requires all columns are sparse and
+        have the 'sum' combiner.
       dnn_feature_columns: An iterable containing all the feature columns used
         by deep part of the model. All items in the set should be instances of
         classes derived from `FeatureColumn`.
@@ -122,6 +127,7 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     self._linear_model = composable_model.LinearComposableModel(
         num_label_columns=target_column.num_label_columns,
         optimizer=linear_optimizer,
+        _joint_weights=_joint_linear_weights,
         gradient_clip_norm=gradient_clip_norm,
         num_ps_replicas=num_ps_replicas)
 
@@ -346,12 +352,13 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         whose `value` is a `Tensor`.
   """
 
-  def __init__(self,
+  def __init__(self,  # _joint_linear_weights pylint: disable=invalid-name
                model_dir=None,
                n_classes=2,
                weight_column_name=None,
                linear_feature_columns=None,
                linear_optimizer=None,
+               _joint_linear_weights=False,
                dnn_feature_columns=None,
                dnn_optimizer=None,
                dnn_hidden_units=None,
@@ -375,6 +382,9 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         instances of classes derived from `FeatureColumn`.
       linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
         the linear part of the model. If `None`, will use a FTRL optimizer.
+      _joint_linear_weights: If True a single (possibly partitioned) variable
+        will be used to store the linear model weights. It's faster, but
+        requires all columns are sparse and have the 'sum' combiner.
       dnn_feature_columns: An iterable containing all the feature columns used
         by deep part of the model. All items in the set must be instances of
         classes derived from `FeatureColumn`.
@@ -414,6 +424,7 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         model_dir=model_dir,
         linear_feature_columns=linear_feature_columns,
         linear_optimizer=linear_optimizer,
+        _joint_linear_weights=_joint_linear_weights,
         dnn_feature_columns=dnn_feature_columns,
         dnn_optimizer=dnn_optimizer,
         dnn_hidden_units=dnn_hidden_units,
@@ -535,11 +546,12 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         whose `value` is a `Tensor`.
   """
 
-  def __init__(self,
+  def __init__(self,  # _joint_linear_weights pylint: disable=invalid-name
                model_dir=None,
                weight_column_name=None,
                linear_feature_columns=None,
                linear_optimizer=None,
+               _joint_linear_weights=False,
                dnn_feature_columns=None,
                dnn_optimizer=None,
                dnn_hidden_units=None,
@@ -563,6 +575,9 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         instances of classes derived from `FeatureColumn`.
       linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
         the linear part of the model. If `None`, will use a FTRL optimizer.
+      _joint_linear_weights: If True a single (possibly partitioned) variable
+        will be used to store the linear model weights. It's faster, but
+        requires that all columns are sparse and have the 'sum' combiner.
       dnn_feature_columns: An iterable containing all the feature columns used
         by deep part of the model. All items in the set must be instances of
         classes derived from `FeatureColumn`.
@@ -597,6 +612,7 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         model_dir=model_dir,
         linear_feature_columns=linear_feature_columns,
         linear_optimizer=linear_optimizer,
+        _joint_linear_weights=_joint_linear_weights,
         dnn_feature_columns=dnn_feature_columns,
         dnn_optimizer=dnn_optimizer,
         dnn_hidden_units=dnn_hidden_units,

@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 
@@ -166,15 +167,12 @@ std::unordered_set<string> Scope::GetColocationConstraints(
     const ops::Operation& colocate_with_op) const {
   std::unordered_set<string> current_constraints(colocation_constraints_);
   const NodeDef& node_def = colocate_with_op.node()->def();
-  if (node_def.attr().find("_class") != node_def.attr().end()) {
-    const AttrValue& loc = node_def.attr().find("_class")->second;
-    if (loc.value_case() == AttrValue::kList && loc.list().s_size() > 0) {
-      for (int i = 0; i < loc.list().s_size(); ++i) {
-        // Filter out the ones that don't have "loc:@" prefix
-        if (loc.list().s(i).find("loc:@") == 0) {
-          // Skip the "loc:@" prefix
-          current_constraints.insert(loc.list().s(i).substr(5));
-        }
+  std::vector<string> node_constraints;
+  if (GetNodeAttr(node_def, kColocationAttrName, &node_constraints).ok()) {
+    for (const string& entry : node_constraints) {
+      StringPiece s(entry);
+      if (s.Consume(kColocationGroupPrefix)) {
+        current_constraints.insert(s.ToString());
       }
     }
   } else {
@@ -226,8 +224,10 @@ void Scope::UpdateBuilder(NodeBuilder* builder) const {
     std::sort(constraints.begin(), constraints.end());
     // Add loc:@ prefix
     std::transform(constraints.begin(), constraints.end(), constraints.begin(),
-                   [](const string& s) { return strings::StrCat("loc:@", s); });
-    builder->Attr("_class", constraints);
+                   [](const string& s) {
+                     return strings::StrCat(kColocationGroupPrefix, s);
+                   });
+    builder->Attr(kColocationAttrName, constraints);
   }
   if (!device_.empty()) {
     builder->Device(device_);
