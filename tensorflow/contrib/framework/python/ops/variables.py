@@ -288,7 +288,7 @@ def get_variables(scope=None, suffix=None, collection=ops.GraphKeys.VARIABLES):
     collection: in which collection search for. Defaults to GraphKeys.VARIABLES.
 
   Returns:
-    a list of variables in colelction with scope and suffix.
+    a list of variables in collection with scope and suffix.
   """
   if suffix is not None:
     if ':' not in suffix:
@@ -305,7 +305,7 @@ def get_model_variables(scope=None, suffix=None):
     suffix: an optional suffix for filtering the variables to return.
 
   Returns:
-    a list of variables in colelction with scope and suffix.
+    a list of variables in collection with scope and suffix.
   """
   return get_variables(scope, suffix, ops.GraphKeys.MODEL_VARIABLES)
 
@@ -318,7 +318,7 @@ def get_local_variables(scope=None, suffix=None):
     suffix: an optional suffix for filtering the variables to return.
 
   Returns:
-    a list of variables in colelction with scope and suffix.
+    a list of variables in collection with scope and suffix.
   """
   return get_variables(scope, suffix, ops.GraphKeys.LOCAL_VARIABLES)
 

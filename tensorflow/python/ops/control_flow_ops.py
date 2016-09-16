@@ -1084,8 +1084,6 @@ class ControlFlowState(object):
     Note that this method modifies `between_op_list` and `between_ops`.
     """
     forward_ctxt = _GetWhileContext(op)
-    if forward_ctxt.grad_state:
-      raise TypeError("Second-order gradient for while loops not supported.")
     grad_state = self._map.get(forward_ctxt)
     if grad_state is None:
       # This is a new while loop so create a grad state for it.
@@ -1789,7 +1787,7 @@ class WhileContext(ControlFlowContext):
     # generation for gradient computation
     self._pivot = None
     # The list of exit tensors for loop variables.
-    self._loop_exits = None
+    self._loop_exits = []
 
   def _init_from_proto(self, context_def):
     """Creates a new `WhileContext` from protocol buffer.

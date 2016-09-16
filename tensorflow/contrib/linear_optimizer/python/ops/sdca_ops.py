@@ -271,6 +271,7 @@ class SdcaModel(object):
      * Binary logistic loss
      * Squared loss
      * Hinge loss
+     * Smooth hinge loss
 
     This class defines an optimizer API to train a linear model.
 
@@ -333,7 +334,8 @@ class SdcaModel(object):
     if not examples or not variables or not options:
       raise ValueError('examples, variables and options must all be specified.')
 
-    supported_losses = ('logistic_loss', 'squared_loss', 'hinge_loss')
+    supported_losses = ('logistic_loss', 'squared_loss', 'hinge_loss',
+                        'smooth_hinge_loss')
     if options['loss_type'] not in supported_losses:
       raise ValueError('Unsupported loss_type: ', options['loss_type'])
 
@@ -641,7 +643,7 @@ class SdcaModel(object):
             sigmoid_cross_entropy_with_logits(predictions, labels),
             weights)) / math_ops.reduce_sum(weights)
 
-      if self._options['loss_type'] == 'hinge_loss':
+      if self._options['loss_type'] in ['hinge_loss', 'smooth_hinge_loss']:
         # hinge_loss = max{0, 1 - y_i w*x} where y_i \in {-1, 1}. So, we need to
         # first convert 0/1 labels into -1/1 labels.
         all_ones = array_ops.ones_like(predictions)

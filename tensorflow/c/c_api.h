@@ -369,6 +369,13 @@ extern void TF_AddInputList(TF_OperationDescription* desc,
 extern void TF_AddControlInput(TF_OperationDescription* desc,
                                TF_Operation* input);
 
+// Request that `desc` be co-located on the device where `op`
+// is placed.
+//
+// Use of this is discouraged since the implementation of device placement is
+// subject to change. Primarily intended for internal libraries
+extern void TF_ColocateWith(TF_OperationDescription* desc, TF_Operation* op);
+
 // Call some TF_SetAttr*() function for every attr that is not
 // inferred from an input and doesn't have a default value you wish to
 // keep.

@@ -894,6 +894,7 @@
 * **[Losses (contrib)](../../api_docs/python/contrib.losses.md)**:
   * [`absolute_difference`](../../api_docs/python/contrib.losses.md#absolute_difference)
   * [`add_loss`](../../api_docs/python/contrib.losses.md#add_loss)
+  * [`compute_weighted_loss`](../../api_docs/python/contrib.losses.md#compute_weighted_loss)
   * [`cosine_distance`](../../api_docs/python/contrib.losses.md#cosine_distance)
   * [`get_losses`](../../api_docs/python/contrib.losses.md#get_losses)
   * [`get_regularization_losses`](../../api_docs/python/contrib.losses.md#get_regularization_losses)
