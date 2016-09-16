@@ -93,6 +93,18 @@ class HingeLossUpdater : public DualLossUpdater {
     return std::max(0.0, 1 - y_wx) * example_weight;
   }
 
+  double PrimalLossDerivative(const double wx, const double label,
+                              const double example_weight) const final {
+    if (label * wx < 1) {
+      return -label * example_weight;
+    }
+    return 0;
+  }
+
+  // The smoothness constant is 0 since the derivative of the loss is not
+  // Lipschitz
+  double SmoothnessConstant() const final { return 0; }
+
   // Converts binary example labels from 0.0 or 1.0 to -1.0 or 1.0 respectively
   // as expected by hinge loss.
   Status ConvertLabel(float* const example_label) const final {

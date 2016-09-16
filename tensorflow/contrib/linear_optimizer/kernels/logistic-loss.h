@@ -78,6 +78,23 @@ class LogisticLossUpdater : public DualLossUpdater {
     return (log(1 + exp(y_wx)) - y_wx) * example_weight;
   }
 
+  // Derivative of logistic loss
+  double PrimalLossDerivative(const double wx, const double label,
+                              const double example_weight) const final {
+    double inverse_exp_term = 0;
+    if (label * wx > 0) {
+      inverse_exp_term = exp(-label * wx) / (1 + exp(-label * wx));
+    } else {
+      inverse_exp_term = 1 / (1 + exp(label * wx));
+    }
+    return inverse_exp_term * label * example_weight;
+  }
+
+  // The smoothness constant is 4 since the derivative of logistic loss, which
+  // is exp(-x) / (1 + exp(-x)) can be shown to 0.25-Lipschitz (its derivative
+  // is bounded by 0.25)
+  double SmoothnessConstant() const final { return 4; }
+
   // Converts binary example labels from 0.0 or 1.0 to -1.0 or 1.0 respectively
   // as expected by logistic regression.
   Status ConvertLabel(float* const example_label) const final {

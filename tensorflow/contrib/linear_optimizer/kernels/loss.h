@@ -42,6 +42,14 @@ class DualLossUpdater {
   virtual double ComputePrimalLoss(const double wx, const double example_label,
                                    const double example_weight) const = 0;
 
+  // Primal loss derivative used to compute the dual residue in AdaSDCA
+  virtual double PrimalLossDerivative(const double wx,
+                                      const double example_label,
+                                      const double example_weight) const = 0;
+
+  // This is gamma such that the loss derivative is 1/gamma Lipschitz
+  virtual double SmoothnessConstant() const = 0;
+
   // Converts binary example labels from 0.0 or 1.0 to appropriate range for
   // each loss function.
   virtual Status ConvertLabel(float* const example_label) const = 0;

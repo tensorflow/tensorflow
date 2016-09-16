@@ -58,6 +58,13 @@ class SquaredLossUpdater : public DualLossUpdater {
     return error * error * example_weight * 0.5;
   }
 
+  inline double PrimalLossDerivative(const double wx, const double label,
+                                     const double example_weight) const final {
+    return (wx - label) * example_weight;
+  }
+
+  inline double SmoothnessConstant() const final { return 1.0; }
+
   // Labels don't require conversion for linear regression.
   Status ConvertLabel(float* const example_label) const final {
     return Status::OK();

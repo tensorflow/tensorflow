@@ -90,6 +90,19 @@ class SmoothHingeLossUpdater : public DualLossUpdater {
         *example_label);
   }
 
+  double PrimalLossDerivative(const double wx, const double label,
+                              const double example_weight) const final {
+    if (label * wx >= 1) {
+      return 0;
+    }
+    if (label * wx <= 1 - gamma) {
+      return -label;
+    }
+    return (wx - label) / gamma;
+  }
+
+  double SmoothnessConstant() const final { return gamma; }
+
  private:
   // Smoothness constant of smooth hinge loss
   // TODO(sibyl-Aix6ihai): expose this parameter
