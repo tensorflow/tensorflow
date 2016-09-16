@@ -121,7 +121,7 @@ class Example {
   // Compute dot product between weights, and example feature values. This
   // method also computes the normalized example norm used in SDCA update.
   const ExampleStatistics ComputeWxAndWeightedExampleNorm(
-      const int num_partitions, const ModelWeights& model_weights,
+      const int num_loss_partitions, const ModelWeights& model_weights,
       const Regularizations& regularization) const;
 
   float example_label() const { return example_label_; }
@@ -274,7 +274,7 @@ class ModelWeights {
 // Computes the example statistics for given example, and model. Defined here
 // as we need definition of ModelWeights and Regularizations.
 const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
-    const int num_partitions, const ModelWeights& model_weights,
+    const int num_loss_partitions, const ModelWeights& model_weights,
     const Regularizations& regularization) const {
   ExampleStatistics result;
 
@@ -295,7 +295,7 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
                                        : (*sparse_features.values)(k);
       const double feature_weight =
           sparse_weights.nominals(feature_index) +
-          sparse_weights.deltas(feature_index) * num_partitions;
+          sparse_weights.deltas(feature_index) * num_loss_partitions;
       result.prev_wx +=
           feature_value *
           regularization.Shrink(sparse_weights.nominals(feature_index));
@@ -310,7 +310,8 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
 
     const Eigen::Tensor<float, 1, Eigen::RowMajor> feature_weights =
         dense_weights.nominals +
-        dense_weights.deltas * dense_weights.deltas.constant(num_partitions);
+        dense_weights.deltas *
+            dense_weights.deltas.constant(num_loss_partitions);
     const Eigen::Tensor<float, 0, Eigen::RowMajor> prev_prediction =
         (dense_vector.row() *
          regularization.EigenShrink(dense_weights.nominals))
@@ -637,8 +638,8 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
                                     static_cast<int64>(num_sparse_features_) +
                                         static_cast<int64>(num_dense_features_),
                                     std::numeric_limits<int>::max())));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("num_partitions", &num_partitions_));
+    OP_REQUIRES_OK(context, context->GetAttr("num_loss_partitions",
+                                             &num_loss_partitions_));
     OP_REQUIRES_OK(context, context->GetAttr("num_inner_iterations",
                                              &num_inner_iterations_));
     OP_REQUIRES_OK(context, regularizations_.Initialize(context));
@@ -695,10 +696,10 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
         // primal loss.
         const ExampleStatistics example_statistics =
             example.ComputeWxAndWeightedExampleNorm(
-                num_partitions_, model_weights, regularizations_);
+                num_loss_partitions_, model_weights, regularizations_);
 
         const double new_dual = loss_updater_->ComputeUpdatedDual(
-            num_partitions_, example_label, example_weight, dual,
+            num_loss_partitions_, example_label, example_weight, dual,
             example_statistics.wx, example_statistics.normalized_squared_norm);
 
         // Compute new weights.
@@ -736,7 +737,7 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
   int num_sparse_features_with_values_ = 0;
   int num_dense_features_ = 0;
   int num_inner_iterations_ = 0;
-  int num_partitions_ = 0;
+  int num_loss_partitions_ = 0;
   Regularizations regularizations_;
 };
 REGISTER_KERNEL_BUILDER(

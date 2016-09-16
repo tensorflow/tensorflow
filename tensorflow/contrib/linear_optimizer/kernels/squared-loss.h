@@ -32,13 +32,13 @@ class SquaredLossUpdater : public DualLossUpdater {
   // be 1 + ||x_i||^2/(\lambda n) (without the 2 multiplier).
   //
   // The CoCoA+ modification is detailed in readme.md.
-  double ComputeUpdatedDual(const int num_partitions, const double label,
+  double ComputeUpdatedDual(const int num_loss_partitions, const double label,
                             const double example_weight,
                             const double current_dual, const double wx,
                             const double weighted_example_norm) const final {
     const double delta_numerator = label - current_dual - wx;
     const double delta_denominator =
-        1 + num_partitions * weighted_example_norm * example_weight;
+        1 + num_loss_partitions * weighted_example_norm * example_weight;
     return current_dual + delta_numerator / delta_denominator;
   }
 

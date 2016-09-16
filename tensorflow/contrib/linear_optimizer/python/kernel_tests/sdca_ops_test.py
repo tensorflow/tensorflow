@@ -30,7 +30,7 @@ from tensorflow.python.platform import googletest
 
 _MAX_ITERATIONS = 100
 _SHARD_NUMBERS = [None, 1, 3, 10]
-_NUM_PARTITIONS = [2, 4]
+_NUM_LOSS_PARTITIONS = [2, 4]
 
 def make_example_proto(feature_dict, target, value=1.0):
   e = tf.train.Example()
@@ -215,7 +215,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
     ]
     example_weights = [1.0, 1.0]
     for num_shards in _SHARD_NUMBERS:
-      for num_partitions in _NUM_PARTITIONS:
+      for num_loss_partitions in _NUM_LOSS_PARTITIONS:
         with self._single_threaded_test_session():
           examples = make_example_dict(example_protos, example_weights)
           variables = make_variable_dict(1, 1)
@@ -224,7 +224,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
               symmetric_l1_regularization=0,
               loss_type='logistic_loss',
               num_table_shards=num_shards,
-              num_partitions=num_partitions)
+              num_loss_partitions=num_loss_partitions)
 
           lr = SdcaModel(examples, variables, options)
           tf.initialize_all_variables().run()
@@ -242,7 +242,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
                 train_op.run()
 
           threads = []
-          for _ in range(num_partitions):
+          for _ in range(num_loss_partitions):
             threads.append(Thread(target=Minimize))
             threads[-1].start()
 
