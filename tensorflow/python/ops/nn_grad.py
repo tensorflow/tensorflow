@@ -25,7 +25,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import gen_nn_ops
-from tensorflow.python.ops import gen_array_ops
 
 
 @ops.RegisterGradient("Conv2DBackpropInput")
@@ -222,7 +221,8 @@ def _BiasAddGradGrad(op, received_grad):
   except ValueError:
     data_format = None
     
-  zeros = gen_array_ops._zeros_like(op.inputs[0])
+  zeros = array_ops.zeros_like(op.inputs[0])
+  #zeros = array_ops.ones_like(op.inputs[0])
   return gen_nn_ops._bias_add(zeros, received_grad, data_format=data_format)
   
 
