@@ -112,7 +112,7 @@ def variance_scaling_initializer(factor=2.0, mode='FAN_IN', uniform=False,
       raise TypeError('Cannot create initializer for non-floating point type.')
     # Estimating fan_in and fan_out is not possible to do perfectly, but we try.
     # This is the right thing for matrix multiply and convolutions.
-    fan_in = float(shape[-2])
+    fan_in = float(shape[-2]) if len(shape) > 1 else float(shape[-1])
     fan_out = float(shape[-1])
     for dim in shape[:-2]:
       fan_in *= float(dim)
