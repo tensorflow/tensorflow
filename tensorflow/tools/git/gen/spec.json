@@ -1,0 +1,5 @@
+{
+  "path": "/workspace", 
+  "git": true, 
+  "branch": "refs/heads/fix-docker-build-2"
+}
