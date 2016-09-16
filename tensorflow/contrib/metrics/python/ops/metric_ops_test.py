@@ -2472,6 +2472,308 @@ class StreamingRootMeanSquaredErrorTest(tf.test.TestCase):
       self.assertAlmostEqual(math.sqrt(13), rmse.eval(), 5)
 
 
+def _reweight(predictions, labels, weights):
+  return (np.concatenate([[p] * int(w) for p, w in zip(predictions, weights)]),
+          np.concatenate([[l] * int(w) for l, w in zip(labels, weights)]))
+
+
+class StreamingCovarianceTest(tf.test.TestCase):
+
+  def setUp(self):
+    tf.reset_default_graph()
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    cov, _ = metrics.streaming_covariance(
+        predictions=tf.to_float(tf.range(10)) + tf.ones([10, 10]),
+        labels=tf.to_float(tf.range(10)) + tf.ones([10, 10]),
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(tf.get_collection(my_collection_name), [cov])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metrics.streaming_covariance(
+        predictions=tf.to_float(tf.range(10)) + tf.ones([10, 10]),
+        labels=tf.to_float(tf.range(10)) + tf.ones([10, 10]),
+        updates_collections=[my_collection_name])
+    self.assertListEqual(tf.get_collection(my_collection_name), [update_op])
+
+  def testValueTensorIsIdempotent(self):
+    labels = tf.random_normal((10, 3), seed=2)
+    predictions = labels * 0.5 + tf.random_normal((10, 3), seed=1) * 0.5
+    cov, update_op = metrics.streaming_covariance(predictions, labels)
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_local_variables())
+
+      # Run several updates.
+      for _ in range(10):
+        sess.run(update_op)
+
+      # Then verify idempotency.
+      initial_cov = cov.eval()
+      for _ in range(10):
+        self.assertEqual(initial_cov, cov.eval())
+
+  def testSingleUpdateIdentical(self):
+    with self.test_session() as sess:
+      predictions = tf.to_float(tf.range(10))
+      labels = tf.to_float(tf.range(10))
+
+      cov, update_op = metrics.streaming_covariance(predictions, labels)
+
+      expected_cov = np.cov(np.arange(10), np.arange(10))[0, 1]
+      sess.run(tf.initialize_local_variables())
+      self.assertAlmostEqual(expected_cov, sess.run(update_op), 5)
+      self.assertAlmostEqual(expected_cov, cov.eval(), 5)
+
+  def testSingleUpdateNonIdentical(self):
+    with self.test_session() as sess:
+      predictions = tf.constant([2, 4, 6], shape=(1, 3), dtype=tf.float32)
+      labels = tf.constant([1, 3, 2], shape=(1, 3), dtype=tf.float32)
+
+      cov, update_op = metrics.streaming_covariance(predictions, labels)
+
+      expected_cov = np.cov([2, 4, 6], [1, 3, 2])[0, 1]
+      sess.run(tf.initialize_local_variables())
+      self.assertAlmostEqual(expected_cov, update_op.eval())
+      self.assertAlmostEqual(expected_cov, cov.eval())
+
+  def testSingleUpdateWithErrorAndWeights(self):
+    with self.test_session() as sess:
+      predictions = tf.constant([2, 4, 6, 8], shape=(1, 4), dtype=tf.float32)
+      labels = tf.constant([1, 3, 2, 7], shape=(1, 4), dtype=tf.float32)
+      weights = tf.constant([0, 1, 3, 1], shape=(1, 4), dtype=tf.float32)
+
+      cov, update_op = metrics.streaming_covariance(
+          predictions, labels, weights=weights)
+
+      p, l = _reweight([2, 4, 6, 8], [1, 3, 2, 7], [0, 1, 3, 1])
+      expected_cov = np.cov(p, l)[0, 1]
+      sess.run(tf.initialize_local_variables())
+      self.assertAlmostEqual(expected_cov, sess.run(update_op))
+      self.assertAlmostEqual(expected_cov, cov.eval())
+
+  def testMultiUpdateWithErrorNoWeights(self):
+    with self.test_session() as sess:
+      np.random.seed(123)
+      n = 100
+      predictions = np.random.randn(n)
+      labels = 0.5 * predictions + np.random.randn(n)
+
+      stride = 10
+      predictions_t = tf.placeholder(tf.float32, [stride])
+      labels_t = tf.placeholder(tf.float32, [stride])
+
+      cov, update_op = metrics.streaming_covariance(predictions_t, labels_t)
+
+      sess.run(tf.initialize_local_variables())
+      prev_expected_cov = 0.
+      for i in range(n // stride):
+        feed_dict = {
+            predictions_t: predictions[stride * i:stride * (i + 1)],
+            labels_t: labels[stride * i:stride * (i + 1)]
+        }
+        self.assertAlmostEqual(
+            prev_expected_cov, sess.run(cov, feed_dict=feed_dict), 5)
+        expected_cov = np.cov(predictions[:stride * (i + 1)],
+                              labels[:stride * (i + 1)])[0, 1]
+        self.assertAlmostEqual(
+            expected_cov, sess.run(update_op, feed_dict=feed_dict), 5)
+        self.assertAlmostEqual(
+            expected_cov, sess.run(cov, feed_dict=feed_dict), 5)
+        prev_expected_cov = expected_cov
+
+  def testMultiUpdateWithErrorAndWeights(self):
+    with self.test_session() as sess:
+      np.random.seed(123)
+      n = 100
+      predictions = np.random.randn(n)
+      labels = 0.5 * predictions + np.random.randn(n)
+      weights = np.tile(np.arange(n // 10), n // 10)
+      np.random.shuffle(weights)
+
+      stride = 10
+      predictions_t = tf.placeholder(tf.float32, [stride])
+      labels_t = tf.placeholder(tf.float32, [stride])
+      weights_t = tf.placeholder(tf.float32, [stride])
+
+      cov, update_op = metrics.streaming_covariance(
+          predictions_t, labels_t, weights=weights_t)
+
+      sess.run(tf.initialize_local_variables())
+      prev_expected_cov = 0.
+      for i in range(n // stride):
+        feed_dict = {
+            predictions_t: predictions[stride * i:stride * (i + 1)],
+            labels_t: labels[stride * i:stride * (i + 1)],
+            weights_t: weights[stride * i:stride * (i + 1)]
+        }
+        self.assertAlmostEqual(
+            prev_expected_cov, sess.run(cov, feed_dict=feed_dict), 5)
+        p, l = _reweight(predictions[:stride * (i + 1)],
+                         labels[:stride * (i + 1)], weights[:stride * (i + 1)])
+        expected_cov = np.cov(p, l)[0, 1]
+        self.assertAlmostEqual(
+            expected_cov, sess.run(update_op, feed_dict=feed_dict), 5)
+        self.assertAlmostEqual(
+            expected_cov, sess.run(cov, feed_dict=feed_dict), 5)
+        prev_expected_cov = expected_cov
+
+
+class StreamingPearsonRTest(tf.test.TestCase):
+
+  def setUp(self):
+    tf.reset_default_graph()
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    pearson_r, _ = metrics.streaming_pearson_correlation(
+        predictions=tf.to_float(tf.range(10)) + tf.ones([10, 10]),
+        labels=tf.to_float(tf.range(10)) + tf.ones([10, 10]),
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(tf.get_collection(my_collection_name), [pearson_r])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metrics.streaming_pearson_correlation(
+        predictions=tf.to_float(tf.range(10)) + tf.ones([10, 10]),
+        labels=tf.to_float(tf.range(10)) + tf.ones([10, 10]),
+        updates_collections=[my_collection_name])
+    self.assertListEqual(tf.get_collection(my_collection_name), [update_op])
+
+  def testValueTensorIsIdempotent(self):
+    labels = tf.random_normal((10, 3), seed=2)
+    predictions = labels * 0.5 + tf.random_normal((10, 3), seed=1) * 0.5
+    pearson_r, update_op = metrics.streaming_pearson_correlation(predictions,
+                                                                 labels)
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_local_variables())
+
+      # Run several updates.
+      for _ in range(10):
+        sess.run(update_op)
+
+      # Then verify idempotency.
+      initial_r = pearson_r.eval()
+      for _ in range(10):
+        self.assertEqual(initial_r, pearson_r.eval())
+
+  def testSingleUpdateIdentical(self):
+    with self.test_session() as sess:
+      predictions = tf.to_float(tf.range(10))
+      labels = tf.to_float(tf.range(10))
+
+      pearson_r, update_op = metrics.streaming_pearson_correlation(predictions,
+                                                                   labels)
+
+      expected_r = np.corrcoef(np.arange(10), np.arange(10))[0, 1]
+      sess.run(tf.initialize_local_variables())
+      self.assertAlmostEqual(expected_r, sess.run(update_op), 5)
+      self.assertAlmostEqual(expected_r, pearson_r.eval(), 5)
+
+  def testSingleUpdateNonIdentical(self):
+    with self.test_session() as sess:
+      predictions = tf.constant([2, 4, 6], shape=(1, 3), dtype=tf.float32)
+      labels = tf.constant([1, 3, 2], shape=(1, 3), dtype=tf.float32)
+
+      pearson_r, update_op = metrics.streaming_pearson_correlation(predictions,
+                                                                   labels)
+
+      expected_r = np.corrcoef([2, 4, 6], [1, 3, 2])[0, 1]
+      sess.run(tf.initialize_local_variables())
+      self.assertAlmostEqual(expected_r, update_op.eval())
+      self.assertAlmostEqual(expected_r, pearson_r.eval())
+
+  def testSingleUpdateWithErrorAndWeights(self):
+    with self.test_session() as sess:
+      predictions = np.array([2, 4, 6, 8])
+      labels = np.array([1, 3, 2, 7])
+      weights = np.array([0, 1, 3, 1])
+      predictions_t = tf.constant(predictions, shape=(1, 4), dtype=tf.float32)
+      labels_t = tf.constant(labels, shape=(1, 4), dtype=tf.float32)
+      weights_t = tf.constant(weights, shape=(1, 4), dtype=tf.float32)
+
+      pearson_r, update_op = metrics.streaming_pearson_correlation(
+          predictions_t, labels_t, weights=weights_t)
+
+      p, l = _reweight(predictions, labels, weights)
+      cmat = np.cov(p, l)
+      expected_r = cmat[0, 1] / np.sqrt(cmat[0, 0] * cmat[1, 1])
+      sess.run(tf.initialize_local_variables())
+      self.assertAlmostEqual(expected_r, sess.run(update_op))
+      self.assertAlmostEqual(expected_r, pearson_r.eval())
+
+  def testMultiUpdateWithErrorNoWeights(self):
+    with self.test_session() as sess:
+      np.random.seed(123)
+      n = 100
+      predictions = np.random.randn(n)
+      labels = 0.5 * predictions + np.random.randn(n)
+
+      stride = 10
+      predictions_t = tf.placeholder(tf.float32, [stride])
+      labels_t = tf.placeholder(tf.float32, [stride])
+
+      pearson_r, update_op = metrics.streaming_pearson_correlation(
+          predictions_t, labels_t)
+
+      sess.run(tf.initialize_local_variables())
+      prev_expected_r = 0.
+      for i in range(n // stride):
+        feed_dict = {
+            predictions_t: predictions[stride * i:stride * (i + 1)],
+            labels_t: labels[stride * i:stride * (i + 1)]
+        }
+        self.assertAlmostEqual(
+            prev_expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
+        expected_r = np.corrcoef(predictions[:stride * (i + 1)],
+                                 labels[:stride * (i + 1)])[0, 1]
+        self.assertAlmostEqual(
+            expected_r, sess.run(update_op, feed_dict=feed_dict), 5)
+        self.assertAlmostEqual(
+            expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
+        prev_expected_r = expected_r
+
+  def testMultiUpdateWithErrorAndWeights(self):
+    with self.test_session() as sess:
+      np.random.seed(123)
+      n = 100
+      predictions = np.random.randn(n)
+      labels = 0.5 * predictions + np.random.randn(n)
+      weights = np.tile(np.arange(n // 10), n // 10)
+      np.random.shuffle(weights)
+
+      stride = 10
+      predictions_t = tf.placeholder(tf.float32, [stride])
+      labels_t = tf.placeholder(tf.float32, [stride])
+      weights_t = tf.placeholder(tf.float32, [stride])
+
+      pearson_r, update_op = metrics.streaming_pearson_correlation(
+          predictions_t, labels_t, weights=weights_t)
+
+      sess.run(tf.initialize_local_variables())
+      prev_expected_r = 0.
+      for i in range(n // stride):
+        feed_dict = {
+            predictions_t: predictions[stride * i:stride * (i + 1)],
+            labels_t: labels[stride * i:stride * (i + 1)],
+            weights_t: weights[stride * i:stride * (i + 1)]
+        }
+        self.assertAlmostEqual(
+            prev_expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
+        p, l = _reweight(predictions[:stride * (i + 1)],
+                         labels[:stride * (i + 1)], weights[:stride * (i + 1)])
+        cmat = np.cov(p, l)
+        expected_r = cmat[0, 1] / np.sqrt(cmat[0, 0] * cmat[1, 1])
+        self.assertAlmostEqual(
+            expected_r, sess.run(update_op, feed_dict=feed_dict), 5)
+        self.assertAlmostEqual(
+            expected_r, sess.run(pearson_r, feed_dict=feed_dict), 5)
+        prev_expected_r = expected_r
+
+
 class StreamingMeanCosineDistanceTest(tf.test.TestCase):
 
   def setUp(self):

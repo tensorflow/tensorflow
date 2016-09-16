@@ -74,6 +74,24 @@ def _mask_weights(mask=None, weights=None):
   return weights
 
 
+def _safe_div(numerator, denominator, name):
+  """Divides two values, returning 0 if the denominator is <= 0.
+
+  Args:
+    numerator: A real `Tensor`.
+    denominator: A real `Tensor`, with dtype matching `numerator`.
+    name: Name for the returned op.
+
+  Returns:
+    0 if `denominator` <= 0, else `numerator` / `denominator`
+  """
+  return math_ops.select(
+      math_ops.greater(denominator, 0),
+      math_ops.truediv(numerator, denominator),
+      0,
+      name=name)
+
+
 def _create_local(name, shape=None, collections=None, dtype=dtypes.float32):
   """Creates a new local variable.
 
@@ -352,14 +370,9 @@ def streaming_mean(values, weights=None, metrics_collections=None,
     total_compute_op = state_ops.assign_add(total, math_ops.reduce_sum(values))
     count_compute_op = state_ops.assign_add(count, num_values)
 
-    def compute_mean(total, count, name):
-      return math_ops.select(math_ops.greater(count, 0),
-                             math_ops.div(total, count),
-                             0, name)
-
-    mean = compute_mean(total, count, 'value')
+    mean = _safe_div(total, count, 'value')
     with ops.control_dependencies([total_compute_op, count_compute_op]):
-      update_op = compute_mean(total, count, 'update_op')
+      update_op = _safe_div(total, count, 'update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, mean)
@@ -1912,6 +1925,208 @@ def streaming_root_mean_squared_error(predictions, labels, weights=None,
     ops.add_to_collections(updates_collections, update_op)
 
   return root_mean_squared_error, update_op
+
+
+def streaming_covariance(predictions,
+                         labels,
+                         weights=None,
+                         metrics_collections=None,
+                         updates_collections=None,
+                         name=None):
+  """Computes the unbiased sample covariance between `predictions` and `labels`.
+
+  The `streaming_covariance` function creates four local variables,
+  `comoment`, `mean_prediction`, `mean_label`, and `count`, which are used to
+  compute the sample covariance between predictions and labels across multiple
+  batches of data. The covariance is ultimately returned as an idempotent
+  operation that simply divides `comoment` by `count` - 1. We use `count` - 1
+  in order to get an unbiased estimate.
+
+  The algorithm used for this online computation is described in
+  https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance.
+  Specifically, the formula used to combine two sample comoments is
+  `C_AB = C_A + C_B + (E[x_A] - E[x_B]) * (E[y_A] - E[y_B]) * n_A * n_B / n_AB`
+  The comoment for a single batch of data is simply
+  `sum((x - E[x]) * (y - E[y]))`, optionally weighted.
+
+  If `weights` is not None, then it is used to compute weighted comoments,
+  means, and count. NOTE: these weights are treated as "frequency weights", as
+  opposed to "reliability weights". See discussion of the difference on
+  https://wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
+
+  To facilitate the computation of covariance across multiple batches of data,
+  the function creates an `update_op` operation, which updates underlying
+  variables and returns the updated covariance.
+
+  Args:
+    predictions: A `Tensor` of arbitrary size.
+    labels: A `Tensor` of the same size as `predictions`.
+    weights: An optional set of weights which indicates the frequency with which
+      an example is sampled. Must be broadcastable with `labels`.
+    metrics_collections: An optional list of collections that the metric
+      value variable should be added to.
+    updates_collections: An optional list of collections that the metric update
+      ops should be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    covariance: A `Tensor` representing the current unbiased sample covariance,
+      `comoment` / (`count` - 1).
+    update_op: An operation that updates the local variables appropriately.
+
+  Raises:
+    ValueError: If labels and predictions are of different sizes or if either
+      `metrics_collections` or `updates_collections` are not a list or tuple.
+  """
+  with variable_scope.variable_scope(name, 'covariance', [predictions, labels]):
+    predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+        predictions, labels)
+    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+    count = _create_local('count', [])
+    mean_prediction = _create_local('mean_prediction', [])
+    mean_label = _create_local('mean_label', [])
+    comoment = _create_local('comoment', [])  # C_A in update equation
+
+    if weights is None:
+      batch_count = math_ops.to_float(array_ops.size(labels))  # n_B in eqn
+      weighted_predictions = predictions
+      weighted_labels = labels
+    else:
+      batch_count = math_ops.reduce_sum(weights)  # n_B in update equation
+      weighted_predictions = predictions * weights
+      weighted_labels = labels * weights
+
+    update_count = state_ops.assign_add(count, batch_count)  # n_AB in eqn
+    prev_count = update_count - batch_count  # n_A in update equation
+
+    # We update the means by Delta=Error*BatchCount/(BatchCount+PrevCount)
+    # batch_mean_prediction is E[x_B] in the update equation
+    batch_mean_prediction = _safe_div(
+        math_ops.reduce_sum(weighted_predictions), batch_count,
+        'batch_mean_prediction')
+    delta_mean_prediction = _safe_div(
+        (batch_mean_prediction - mean_prediction) * batch_count, update_count,
+        'delta_mean_prediction')
+    update_mean_prediction = state_ops.assign_add(mean_prediction,
+                                                  delta_mean_prediction)
+    # prev_mean_prediction is E[x_A] in the update equation
+    prev_mean_prediction = update_mean_prediction - delta_mean_prediction
+
+    # batch_mean_label is E[y_B] in the update equation
+    batch_mean_label = _safe_div(
+        math_ops.reduce_sum(weighted_labels), batch_count, 'batch_mean_label')
+    delta_mean_label = _safe_div((batch_mean_label - mean_label) * batch_count,
+                                 update_count, 'delta_mean_label')
+    update_mean_label = state_ops.assign_add(mean_label, delta_mean_label)
+    # prev_mean_label is E[y_A] in the update equation
+    prev_mean_label = update_mean_label - delta_mean_label
+
+    unweighted_batch_coresiduals = (
+        (predictions - batch_mean_prediction) * (labels - batch_mean_label))
+    # batch_comoment is C_B in the update equation
+    if weights is None:
+      batch_comoment = math_ops.reduce_sum(unweighted_batch_coresiduals)
+    else:
+      batch_comoment = math_ops.reduce_sum(unweighted_batch_coresiduals *
+                                           weights)
+
+    # View delta_comoment as = C_AB - C_A in the update equation above.
+    # Since C_A is stored in a var, by how much do we need to increment that var
+    # to make the var = C_AB?
+    delta_comoment = (batch_comoment +
+                      (prev_mean_prediction - batch_mean_prediction) *
+                      (prev_mean_label - batch_mean_label) *
+                      (prev_count * batch_count / update_count))
+    update_comoment = state_ops.assign_add(comoment, delta_comoment)
+
+    covariance = _safe_div(comoment, count - 1, 'covariance')
+    with ops.control_dependencies([update_comoment]):
+      update_op = _safe_div(comoment, count - 1, 'update_op')
+
+  if metrics_collections:
+    ops.add_to_collections(metrics_collections, covariance)
+
+  if updates_collections:
+    ops.add_to_collections(updates_collections, update_op)
+
+  return covariance, update_op
+
+
+def streaming_pearson_correlation(predictions,
+                                  labels,
+                                  weights=None,
+                                  metrics_collections=None,
+                                  updates_collections=None,
+                                  name=None):
+  """Computes pearson correlation coefficient between `predictions`, `labels`.
+
+  The `streaming_pearson_correlation` function delegates to
+  `streaming_covariance` the tracking of three [co]variances:
+  - streaming_covariance(predictions, labels), i.e. covariance
+  - streaming_covariance(predictions, predictions), i.e. variance
+  - streaming_covariance(labels, labels), i.e. variance
+
+  The product-moment correlation ultimately returned is an idempotent operation
+  `cov(predictions, labels) / sqrt(var(predictions) * var(labels))`. To
+  facilitate correlation computation across multiple batches, the function
+  groups the `update_op`s of the underlying streaming_covariance and returns an
+  `update_op`.
+
+  If `weights` is not None, then it is used to compute a weighted correlation.
+  NOTE: these weights are treated as "frequency weights", as opposed to
+  "reliability weights". See discussion of the difference on
+  https://wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
+
+  Args:
+    predictions: A `Tensor` of arbitrary size.
+    labels: A `Tensor` of the same size as predictions.
+    weights: An optional set of weights which indicates the frequency with which
+      an example is sampled. Must be broadcastable with `labels`.
+    metrics_collections: An optional list of collections that the metric
+      value variable should be added to.
+    updates_collections: An optional list of collections that the metric update
+      ops should be added to.
+    name: An optional variable_scope name.
+
+  Returns:
+    pearson_r: A tensor representing the current pearson product-moment
+      correlation coefficient, the value of
+      `cov(predictions, labels) / sqrt(var(predictions) * var(labels))`.
+    update_op: An operation that updates the underlying variables appropriately.
+
+  Raises:
+    ValueError: If labels and predictions are of different sizes or if the
+      ignore_mask is of the wrong size or if either `metrics_collections` or
+      `updates_collections` are not a list or tuple.
+  """
+  with variable_scope.variable_scope(name, 'pearson_r', [predictions, labels]):
+    predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+        predictions, labels)
+    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+    cov, update_cov = streaming_covariance(
+        predictions, labels, weights=weights, name='covariance')
+    var_predictions, update_var_predictions = streaming_covariance(
+        predictions, predictions, weights=weights, name='variance_predictions')
+    var_labels, update_var_labels = streaming_covariance(
+        labels, labels, weights=weights, name='variance_labels')
+
+    pearson_r = _safe_div(
+        cov,
+        math_ops.mul(math_ops.sqrt(var_predictions), math_ops.sqrt(var_labels)),
+        'pearson_r')
+    with ops.control_dependencies(
+        [update_cov, update_var_predictions, update_var_labels]):
+      update_op = _safe_div(update_cov, math_ops.mul(
+          math_ops.sqrt(update_var_predictions),
+          math_ops.sqrt(update_var_labels)), 'update_op')
+
+  if metrics_collections:
+    ops.add_to_collections(metrics_collections, pearson_r)
+
+  if updates_collections:
+    ops.add_to_collections(updates_collections, update_op)
+
+  return pearson_r, update_op
 
 
 # TODO(nsilberman): add a 'normalized' flag so that the user can request
