@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/linear_optimizer/kernels/hinge-loss.h"
 #include "tensorflow/contrib/linear_optimizer/kernels/logistic-loss.h"
+#include "tensorflow/contrib/linear_optimizer/kernels/smooth-hinge-loss.h"
 #include "tensorflow/contrib/linear_optimizer/kernels/squared-loss.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -227,6 +228,62 @@ TEST(HingeLoss, ComputeUpdatedDual) {
                         1 /* num partitions */, -1.0 /* label */,
                         2.0 /* example weight */, -1.0 /* current_dual */,
                         0.3 /* wx */, 10.0 /* weighted_example_norm */),
+              1e-3);
+}
+
+TEST(SmoothHingeLoss, ComputePrimalLoss) {
+  SmoothHingeLossUpdater loss_updater;
+  EXPECT_NEAR(0.5, loss_updater.ComputePrimalLoss(0.0 /* wx */, 1.0 /* label */,
+                                                  1.0 /* example weight */),
+              1e-3);
+  EXPECT_NEAR(0.0,
+              loss_updater.ComputePrimalLoss(10.0 /* wx */, 1.0 /* label */,
+                                             1.0 /* example weight */),
+              1e-3);
+  EXPECT_NEAR(0.125,
+              loss_updater.ComputePrimalLoss(-0.5 /* wx */, -1.0 /* label */,
+                                             1.0 /* example weight */),
+              1e-3);
+  EXPECT_NEAR(3.4,
+              loss_updater.ComputePrimalLoss(1.2 /* wx */, -1.0 /* label */,
+                                             2.0 /* example weight */),
+              1e-3);
+}
+
+TEST(SmoothHingeLoss, ComputeDualLoss) {
+  SmoothHingeLossUpdater loss_updater;
+  EXPECT_NEAR(0.0, loss_updater.ComputeDualLoss(0.0 /* current dual */,
+                                                -1.0 /* label */,
+                                                1.0 /* example weight */),
+              1e-3);
+  EXPECT_NEAR(
+      std::numeric_limits<double>::max(),
+      loss_updater.ComputeDualLoss(0.2 /* current dual */, -1.0 /* label */,
+                                   3.0 /* example weight */),
+      1e-3);
+  EXPECT_NEAR(
+      std::numeric_limits<double>::max(),
+      loss_updater.ComputeDualLoss(1.5 /* current dual */, 1.0 /* label */,
+                                   1.0 /* example weight */),
+      1e-3);
+  EXPECT_NEAR(-1.125, loss_updater.ComputeDualLoss(0.5 /* current dual */,
+                                                   1.0 /* label */,
+                                                   3.0 /* example weight */),
+              1e-3);
+}
+
+TEST(SmoothHingeLoss, ComputeUpdatedDual) {
+  SmoothHingeLossUpdater loss_updater;
+  EXPECT_NEAR(0.336, loss_updater.ComputeUpdatedDual(
+                         1 /* num partitions */, 1.0 /* label */,
+                         1.0 /* example weight */, 0.3 /* current_dual */,
+                         0.3 /* wx */, 10.0 /* weighted_example_norm */),
+              1e-3);
+
+  EXPECT_NEAR(-0.427, loss_updater.ComputeUpdatedDual(
+                          5 /* num partitions */, -1.0 /* label */,
+                          1.0 /* example weight */, -0.4 /* current_dual */,
+                          0.8 /* wx */, 10.0 /* weighted_example_norm */),
               1e-3);
 }
 
