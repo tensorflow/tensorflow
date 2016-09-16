@@ -443,6 +443,7 @@ py_test(
     name = "dnn_test",
     size = "medium",
     srcs = ["python/learn/estimators/dnn_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
