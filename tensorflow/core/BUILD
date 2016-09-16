@@ -1723,6 +1723,33 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "common_runtime_graph_runner_test",
+    size = "small",
+    srcs = ["common_runtime/graph_runner_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core/kernels:cwise_op",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
     name = "common_runtime_function_test",
     size = "small",
     srcs = ["common_runtime/function_test.cc"],
