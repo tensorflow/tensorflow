@@ -153,6 +153,13 @@ See trainable.Trainable.
 
 - - -
 
+#### `tf.contrib.learn.LinearClassifier.model_dir` {#LinearClassifier.model_dir}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearClassifier.predict(x=None, input_fn=None, batch_size=None, as_iterable=False)` {#LinearClassifier.predict}
 
 Runs inference to determine the predicted class.
