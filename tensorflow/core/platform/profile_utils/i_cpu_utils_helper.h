@@ -24,13 +24,11 @@ namespace profile_utils {
 
 // ICpuUtilsHelper is an interface class for cpu_utils which proxies
 // the difference of profiling functions of different platforms.
+// Overridden functions must be thread safe.
 class ICpuUtilsHelper {
  public:
   ICpuUtilsHelper() = default;
   virtual ~ICpuUtilsHelper() = default;
-  // Initialize CpuUtilsHelper.
-  // This method is called only once when CpuUtils is loaded.
-  virtual void Initialize() = 0;
   // Reset clock cycle.
   // Resetting clock cycle is recommended to prevent
   // clock cycle counters from overflowing on some platforms.

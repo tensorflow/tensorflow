@@ -27,7 +27,6 @@ namespace profile_utils {
 class AndroidArmV7ACpuUtilsHelper : public ICpuUtilsHelper {
  public:
   AndroidArmV7ACpuUtilsHelper() = default;
-  void Initialize() final;
   void ResetClockCycle() final;
   uint64 GetCurrentClockCycle() final;
   void EnableClockCycleProfiling(bool enable) final;

@@ -31,26 +31,6 @@ namespace profile_utils {
 
 /* static */ constexpr int AndroidArmV7ACpuUtilsHelper::INVALID_FD;
 
-void AndroidArmV7ACpuUtilsHelper::Initialize() {
-  struct perf_event_attr pe;
-
-  memset(&pe, 0, sizeof(struct perf_event_attr));
-  pe.type = PERF_TYPE_HARDWARE;
-  pe.size = sizeof(struct perf_event_attr);
-  pe.config = PERF_COUNT_HW_CPU_CYCLES;
-  pe.disabled = 1;
-  pe.exclude_kernel = 1;
-  pe.exclude_hv = 1;
-
-  fd_ = OpenPerfEvent(&pe, 0, -1, -1, 0);
-  if (fd_ == INVALID_FD) {
-    LOG(WARNING) << "Error opening perf event";
-    is_initialized_ = false;
-  } else {
-    is_initialized_ = true;
-  }
-}
-
 void AndroidArmV7ACpuUtilsHelper::ResetClockCycle() {
   if (!is_initialized_) {
     return;
@@ -98,7 +78,6 @@ int AndroidArmV7ACpuUtilsHelper::OpenPerfEvent(
 namespace tensorflow {
 namespace profile_utils {
 
-void AndroidArmV7ACpuUtilsHelper::Initialize() {}
 void AndroidArmV7ACpuUtilsHelper::ResetClockCycle() {}
 uint64 AndroidArmV7ACpuUtilsHelper::GetCurrentClockCycle() { return 1; }
 void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling(bool) {}
