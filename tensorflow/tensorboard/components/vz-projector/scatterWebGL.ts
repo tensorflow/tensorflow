@@ -408,6 +408,7 @@ export abstract class ScatterWebGL implements Scatter {
   private setNearestPointToMouse(e: MouseEvent) {
     if (this.pickingTexture == null) {
       this.nearestPoint = null;
+      return;
     }
 
     // Create buffer for reading a single pixel.

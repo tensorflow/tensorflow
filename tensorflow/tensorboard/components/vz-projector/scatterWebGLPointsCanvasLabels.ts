@@ -115,10 +115,6 @@ const FRAGMENT_SHADER = `
   uniform bool isImage;
 
   void main() {
-    // A mystery variable that is required to make the THREE shaderchunk for fog
-    // work correctly.
-    vec3 outgoingLight = vec3(0.0);
-
     if (isImage) {
       // Coordinates of the vertex within the entire sprite image.
       vec2 coords = (gl_PointCoord + xyIndex) / vec2(imageWidth, imageHeight);
@@ -298,7 +294,6 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     }
   }
 
-  /** Removes all traces from the scene. */
   private removeAllTraces(scene: THREE.Scene) {
     if (!this.traces) {
       return;
@@ -310,9 +305,6 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     this.traces = [];
   }
 
-  /**
-   * Returns the color of a point along a trace.
-   */
   private getPointInTraceColor(index: number, totalPoints: number) {
     let hue = TRACE_START_HUE +
         (TRACE_END_HUE - TRACE_START_HUE) * index / totalPoints;
@@ -389,7 +381,6 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     if (this.points == null) {
       return;
     }
-    // First, remove all old labels.
     this.removeAllLabels();
 
     if (!labeledPoints.length) {
