@@ -548,6 +548,9 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
   def get_variable_names(self):
     return [name for name, _ in checkpoints.list_variables(self._model_dir)]
 
+  def get_variable_value(self, name):
+    return checkpoints.load_variable(self.model_dir, name)
+
   def export(self,
              export_dir,
              input_fn=None,

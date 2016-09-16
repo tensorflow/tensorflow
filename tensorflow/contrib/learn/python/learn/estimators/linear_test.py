@@ -26,6 +26,7 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
+from tensorflow.contrib.learn.python.learn.estimators import estimator_test_utils
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 
 
@@ -37,6 +38,10 @@ def _iris_input_fn():
 
 
 class LinearClassifierTest(tf.test.TestCase):
+
+  def testEstimatorContract(self):
+    estimator_test_utils.assert_estimator_contract(
+        self, tf.contrib.learn.LinearClassifier)
 
   def testTrain(self):
     """Tests that loss goes down with training."""
@@ -669,6 +674,10 @@ class LinearClassifierTest(tf.test.TestCase):
 
 
 class LinearRegressorTest(tf.test.TestCase):
+
+  def testEstimatorContract(self):
+    estimator_test_utils.assert_estimator_contract(
+        self, tf.contrib.learn.LinearRegressor)
 
   def testRegression(self):
     """Tests that loss goes down with training."""
