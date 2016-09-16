@@ -89,13 +89,23 @@ def tf_proto_library(name, srcs = [], has_services = None,
       visibility = visibility,
   )
 
-def tf_additional_lib_srcs():
+def tf_additional_lib_hdrs():
   return [
       "platform/default/*.h",
-      "platform/default/*.cc",
       "platform/posix/*.h",
+  ]
+
+def tf_additional_lib_srcs():
+  return [
+      "platform/default/*.cc",
       "platform/posix/*.cc",
   ]
+
+def tf_additional_proto_srcs():
+  return ["platform/default/integral_types.h",
+          "platform/default/logging.h",
+          "platform/default/logging.cc",
+          "platform/default/protobuf.h",]
 
 def tf_additional_stream_executor_srcs():
   return ["platform/default/stream_executor.h"]

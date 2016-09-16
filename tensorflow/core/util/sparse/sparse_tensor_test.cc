@@ -602,6 +602,20 @@ TEST(SparseTensorTest, Split) {
   EXPECT_EQ(st_list[1].indices().matrix<int64>()(0, 1), 0);
 }
 
+TEST(SparseTensorTest, Dim0SparseTensorToDenseTensor) {
+  Tensor ix(DT_INT64, TensorShape({1, 0}));
+  Tensor vals(DT_INT32, TensorShape({1}));
+  vals.scalar<int32>()() = 5;
+
+  TensorShape shape({});
+  SparseTensor st(ix, vals, shape);
+
+  Tensor dense(DT_INT32, TensorShape({}));
+  st.ToDense<int32>(&dense);
+
+  EXPECT_EQ(dense.scalar<int32>()(), 5);
+}
+
 }  // namespace
 }  // namespace sparse
 }  // namespace tensorflow

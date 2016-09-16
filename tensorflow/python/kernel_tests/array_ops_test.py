@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
 import time
 
 import numpy as np
@@ -34,10 +33,11 @@ from tensorflow.python.ops import array_ops
 class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
 
   def testNonBatchMatrix(self):
-    matrix = [[1, 2, 3], [4, 5, 6]]
-    expected_transposed = [[1, 4], [2, 5], [3, 6]]
+    matrix = [[1, 2, 3], [4, 5, 6]]  # Shape (2, 3)
+    expected_transposed = [[1, 4], [2, 5], [3, 6]]  # Shape (3, 2)
     with self.test_session():
-      transposed = tf.batch_matrix_transpose(matrix)
+      transposed = tf.matrix_transpose(matrix)
+      self.assertEqual((3, 2), transposed.get_shape())
       self.assertAllEqual(expected_transposed, transposed.eval())
 
   def testBatchMatrix(self):
@@ -45,17 +45,42 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
     matrix_0_t = [[1, 4], [2, 5], [3, 6]]
     matrix_1 = [[11, 22, 33], [44, 55, 66]]
     matrix_1_t = [[11, 44], [22, 55], [33, 66]]
-    batch_matrix = [matrix_0, matrix_1]
-    expected_transposed = [matrix_0_t, matrix_1_t]
+    batch_matrix = [matrix_0, matrix_1]  # Shape (2, 2, 3)
+    expected_transposed = [matrix_0_t, matrix_1_t]  # Shape (2, 3, 2)
     with self.test_session():
-      transposed = tf.batch_matrix_transpose(batch_matrix)
+      transposed = tf.matrix_transpose(batch_matrix)
+      self.assertEqual((2, 3, 2), transposed.get_shape())
       self.assertAllEqual(expected_transposed, transposed.eval())
+
+  def testNonBatchMatrixDynamicallyDefined(self):
+    matrix = [[1, 2, 3], [4, 5, 6]]  # Shape (2, 3)
+    expected_transposed = [[1, 4], [2, 5], [3, 6]]  # Shape (3, 2)
+    with self.test_session():
+      matrix_ph = tf.placeholder(tf.int32)
+      transposed = tf.matrix_transpose(matrix_ph)
+      self.assertAllEqual(
+          expected_transposed,
+          transposed.eval(feed_dict={matrix_ph: matrix}))
+
+  def testBatchMatrixDynamicallyDefined(self):
+    matrix_0 = [[1, 2, 3], [4, 5, 6]]
+    matrix_0_t = [[1, 4], [2, 5], [3, 6]]
+    matrix_1 = [[11, 22, 33], [44, 55, 66]]
+    matrix_1_t = [[11, 44], [22, 55], [33, 66]]
+    batch_matrix = [matrix_0, matrix_1]  # Shape (2, 2, 3)
+    expected_transposed = [matrix_0_t, matrix_1_t]  # Shape (2, 3, 2)
+    with self.test_session():
+      batch_matrix_ph = tf.placeholder(tf.int32)
+      transposed = tf.matrix_transpose(batch_matrix_ph)
+      self.assertAllEqual(
+          expected_transposed,
+          transposed.eval(feed_dict={batch_matrix_ph: batch_matrix}))
 
   def testTensorWithStaticRankLessThanTwoRaisesBecauseNotAMatrix(self):
     vector = [1, 2, 3]
     with self.test_session():
       with self.assertRaisesRegexp(ValueError, "should be a "):
-        tf.batch_matrix_transpose(vector)
+        tf.matrix_transpose(vector)
 
 
 class BooleanMaskTest(test_util.TensorFlowTestCase):
@@ -181,7 +206,7 @@ class ReverseTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
 
   def testReverse1DimAuto(self):
-    for dtype in [np.uint8, np.int8, np.int32, np.bool, np.float16,
+    for dtype in [np.uint8, np.int8, np.int32, np.int64, np.bool, np.float16,
                   np.float32, np.float64, np.complex64, np.complex128]:
       self._reverse1DimAuto(dtype)
 
@@ -201,7 +226,7 @@ class ReverseTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, reverse_2d_t.get_shape().ndims)
 
     dims_3d_t = tf.placeholder(tf.bool, shape=[3])
-    with self.assertRaisesRegexp(ValueError, "must have rank 3"):
+    with self.assertRaisesRegexp(ValueError, "must be rank 3"):
       tf.reverse(data_2d_t, dims_3d_t)
 
 
@@ -246,19 +271,40 @@ class StridedSliceChecker(object):
   REF_TENSOR = np.arange(1, 19, dtype=np.float32).reshape(3, 2, 3)
   REF_TENSOR_ALIGNED = np.arange(1, 97, dtype=np.float32).reshape(3, 4, 8)
 
-  def __init__(self, test, x, tensor_type=tf.int32):
+  def __init__(self, test, x, tensor_type=tf.int32, check_type_infer=True):
     self.test = test
     self.x = tf.cast(tf.constant(x, dtype=tf.float32), dtype=tensor_type)
     self.x_np = np.array(x)
+    self.check_type_infer = check_type_infer
 
   def __getitem__(self, spec):
-    # TODO(aselle): When NewSliceHelper is installed, we can switch this back
-    # op = self.x[spec]
-    op = array_ops._NewSliceHelper(self.x, spec)
+    op = self.x.__getitem__(spec)
+    if not isinstance(spec, (list, tuple)):
+      spec = [spec]
 
     tensor = op.eval()
-    self.test.assertAllEqual(self.x_np[spec], tensor)
-    self.test.assertAllEqual(tensor.shape, op.get_shape())
+
+    # Make a numpy spec that pre-evals the tensors
+    np_specs = []
+
+    def eval_if_tensor(x):
+      try:
+        return x.eval()
+      except AttributeError:
+        return x
+
+    for s in spec:
+      if isinstance(s, slice):
+        start = eval_if_tensor(s.start)
+        stop = eval_if_tensor(s.stop)
+        step = eval_if_tensor(s.step)
+        np_specs.append(slice(start, stop, step))
+      else:
+        np_specs.append(eval_if_tensor(s))
+
+    self.test.assertAllEqual(self.x_np[tuple(np_specs)], tensor)
+    if self.check_type_infer:
+      self.test.assertAllEqual(tensor.shape, op.get_shape())
     return tensor
 
 
@@ -270,9 +316,8 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
                         tf.float64]:
       for use_gpu in [False, True]:
         with self.test_session(use_gpu=use_gpu):
-          checker = StridedSliceChecker(self,
-                                        StridedSliceChecker.REF_TENSOR,
-                                        tensor_type=tensor_type)
+          checker = StridedSliceChecker(
+              self, StridedSliceChecker.REF_TENSOR, tensor_type=tensor_type)
           _ = checker[:, :, :]
           # Various ways of representing identity slice
           _ = checker[:, :, :]
@@ -288,6 +333,12 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
           _ = checker[-2::-1, :, ::1]
           # negative index tests i.e. n-2 in first component, non-unit stride
           _ = checker[-2::-1, :, ::2]
+
+          # Check rank-0 examples
+          checker2 = StridedSliceChecker(self, 5, tensor_type=tf.int32)
+          _ = checker2[None]
+          _ = checker2[...]
+          _ = checker2[tuple()]
 
   def testDegenerateSlices(self):
     for use_gpu in [False, True]:
@@ -333,6 +384,21 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         _ = checker[:, 0]
         _ = checker[:, :, 0]
 
+  def testTensorIndexing(self):
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        raw = [[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],
+                [[[13, 14, 15, 16], [17, 18, 19, 20], [21, 22, 23, 24]]]]]
+        checker = StridedSliceChecker(self, raw, check_type_infer=False)
+        bar = tf.constant(2)
+        bar2 = tf.constant(3)
+        _ = checker[..., bar:bar2]
+        _ = checker[..., bar]
+        with self.assertRaisesRegexp(TypeError,
+                                     "DataType float32 for attr 'Index'"):
+          _ = checker[..., 3.0]
+        _ = checker[..., 3]
+
   def testExpand(self):
     for use_gpu in [False, True]:
       with self.test_session(use_gpu=use_gpu):
@@ -350,6 +416,15 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         _ = checker[:, :, np.newaxis, :, 2::-1]
         # Ellipsis in middle of two newaxis
         _ = checker[np.newaxis, ..., np.newaxis]
+
+  def testExpandVariable(self):
+    for use_gpu in False, True:
+      with self.test_session(use_gpu=use_gpu):
+        x = tf.Variable(7, dtype=tf.int32)
+        x.initializer.run()
+        y = x[None].eval()
+        self.assertEqual(y.shape, (1,))
+        self.assertAllEqual(y, (7,))
 
   def testOptimizedCases(self):
     for use_gpu in [False, True]:
@@ -374,9 +449,7 @@ class StridedSliceShapeChecker(object):
     self.x = x
 
   def __getitem__(self, spec):
-    # TODO(aselle): When NewSliceHelper is installed, we can switch this back
-    # op = self.x[spec]
-    op = array_ops._NewSliceHelper(self.x, spec)
+    op = self.x.__getitem__(spec)
     return op.get_shape()
 
 
@@ -430,22 +503,28 @@ class GradSliceChecker(object):
     self.varnp = varnp
 
   def __getitem__(self, spec):
-    val_grad_op = tf.gradients(self.val, self.var)
-    sliceval_grad_op = tf.gradients(
-        array_ops._NewSliceHelper(self.val, spec), self.var)
-    slice1_op = array_ops._NewSliceHelper(val_grad_op, spec)
-    slice2_op = array_ops._NewSliceHelper(sliceval_grad_op, spec)
-    val_grad, sliceval_grad, slice1, slice2 = self.sess.run(
-        [val_grad_op, sliceval_grad_op, slice1_op, slice2_op])
-    np_val_grad = (2 * self.varnp)
+    slice_var = self.var[spec]
+    slice_val = self.val[spec]
+
+    # compute analytic 2nd derivative
+    analytic_grad2 = 2 * slice_val
+
+    dy = tf.Variable(tf.ones(shape=slice_var.get_shape(), dtype=tf.int32))
+    assign = dy.assign(slice_var)
+    slice_val_grad, = tf.gradients(slice_val, self.var, grad_ys=dy)
+    slice_val_grad2, = tf.gradients(slice_val_grad, dy, grad_ys=self.var)
+    self.sess.run(assign)
+    slice_val_grad_evaled, slice_val_grad2_evaled = (
+        self.sess.run([slice_val_grad, slice_val_grad2]))
+    analytic_grad2_evaled = analytic_grad2.eval()
+    self.test.assertAllEqual(slice_val_grad2_evaled, analytic_grad2_evaled)
+
+    # compute analytic gradient for slice
+    np_val_grad = (2 * self.varnp * self.varnp)
     np_sliceval_grad = np.zeros(self.var.get_shape())
-    np_sliceval_grad[spec] = np.array(val_grad[0])[spec]
-    # make sure np val grad is correct
-    self.test.assertAllEqual(np_val_grad, val_grad[0])
-    # make sure slice gradient is correct
-    self.test.assertAllEqual(np_sliceval_grad, sliceval_grad[0])
-    # make sure val grad and sliceval grad are the same in sliced area
-    self.test.assertAllEqual(slice1, slice2)
+    np_sliceval_grad[spec] = np_val_grad[spec]
+    # verify gradient
+    self.test.assertAllEqual(slice_val_grad_evaled, np_sliceval_grad)
 
 
 class StridedSliceGradTest(test_util.TensorFlowTestCase):
@@ -464,6 +543,60 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
         _ = grad[3:0:-2, 1:3, 1:3]
         _ = grad[3:0:-2, tf.newaxis, 1:3, 2, tf.newaxis]
         _ = grad[3:0:-2, 1:3, 2]
+        _ = grad[:, -1, :]
+        _ = grad[:, -2, :]
+        with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                     "out of bounds"):
+          _ = grad[:, -200, :]
+        with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                     "out of bounds"):
+          _ = grad[:, 200, :]
+
+
+class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
+  """Test varied index types and host located memory."""
+
+  def testHostVsDevice(self):
+    with self.test_session(use_gpu=True) as sess:
+      var2 = tf.Variable(
+          tf.reshape(
+              tf.cast(tf.range(1, 5, 1), tf.float32), shape=(4, 1, 1)))
+      varshape = tf.Variable([6, 4, 4], dtype=tf.int32)
+      sess.run(tf.initialize_all_variables())
+      begin = tf.constant([0, 0, 0])
+      end = tf.constant([4, 1, 1])
+      strides = tf.constant([1, 1, 1])
+      foo = array_ops.strided_slice_grad(varshape, begin, end, strides, var2)
+      sess.run(foo)
+
+  def testInt64Shape(self):
+    with self.test_session(use_gpu=True) as sess:
+      original_dy = tf.reshape(
+          tf.cast(tf.range(1, 5, 1), tf.float32), shape=(4, 1, 1))
+      original_shape = tf.constant([6, 4, 4], dtype=tf.int64)
+      sess.run(tf.initialize_all_variables())
+      begin = tf.constant([0, 0, 0], dtype=tf.int64)
+      end = tf.constant([4, 1, 1], dtype=tf.int64)
+      strides = tf.constant([1, 1, 1], dtype=tf.int64)
+      dx = array_ops.strided_slice_grad(original_shape, begin, end, strides,
+                                        original_dy)
+      sess.run(dx)
+
+  def testMixedIndexTypes(self):
+    with self.test_session(use_gpu=True) as sess:
+      original_dy = tf.reshape(
+          tf.cast(tf.range(1, 5, 1), tf.float32), shape=(4, 1, 1))
+      original_shape = tf.constant([6, 4, 4], dtype=tf.int64)
+      sess.run(tf.initialize_all_variables())
+      begin = tf.constant([0, 0, 0], dtype=tf.int32)
+      end = tf.constant([4, 1, 1], dtype=tf.int64)
+      strides = tf.constant([1, 1, 1], dtype=tf.int64)
+      with self.assertRaisesRegexp(
+          TypeError, "Input 'begin' of 'StridedSliceGrad' Op has type int32"
+          " that does not match type int64 of argument 'shape'"):
+        dx = array_ops.strided_slice_grad(original_shape, begin, end, strides,
+                                          original_dy)
+        sess.run(dx)
 
 
 class BenchmarkSlice(object):
@@ -472,7 +605,7 @@ class BenchmarkSlice(object):
     self.tensor = tensor
 
   def __getitem__(self, x):
-    return array_ops._NewSliceHelper(self.tensor, x)
+    return self.tensor[x]
 
 
 class StridedSliceBenchmark(tf.test.Benchmark):
@@ -518,6 +651,100 @@ class StridedSliceBenchmark(tf.test.Benchmark):
       var = self.make_variable()
       slice_op = var[3::1, 3::1, 3::1]
       self.run_and_time(slice_op)
+
+
+class StridedSliceAssignChecker(object):
+
+  def __init__(self, test, x, tensor_type=tf.int32):
+    self.tensor_type = tensor_type
+    self.test = test
+    self.x = tf.cast(tf.constant(x, dtype=tf.float32), dtype=tensor_type)
+    self.x_np = np.array(x)
+
+  def __setitem__(self, index, value):
+    with self.test.test_session() as sess:
+      var = tf.Variable(self.x)
+      sess.run(tf.initialize_variables([var]))
+      val = sess.run(var[index].assign(
+          tf.constant(
+              value, dtype=self.tensor_type)))
+      valnp = np.copy(self.x_np)
+      valnp[index] = np.array(value)
+      self.test.assertAllEqual(val, valnp)
+
+
+class SliceAssignTest(test_util.TensorFlowTestCase):
+
+  def testInvalidSlice(self):
+    with self.test_session() as sess:
+      foo = tf.constant([1, 2, 3])
+      with self.assertRaisesRegexp(ValueError, "Sliced assignment"
+                                   " is only supported for variables"):
+        bar = foo[:2].assign(tf.constant([1, 2]))
+        sess.run(bar)
+
+  def testSliceAssign(self):
+    checker = StridedSliceAssignChecker(self, [[1, 2, 3], [4, 5, 6]])
+    # Check if equal
+    checker[:] = [[10, 20, 30], [40, 50, 60]]
+    # Check trivial (1,1) shape tensor
+    checker[1:2, 1:2] = [[666]]
+    # shrinks shape changes
+    checker[1:2, 1] = [666]
+    checker[1, 1:2] = [666]
+    checker[1, 1] = 666
+    # newaxis shape changes
+    checker[:, None, :] = [[[10, 20, 30]], [[40, 50, 50]]]
+    # shrink and newaxis
+    checker[None, None, 0, 0:1] = [[[999]]]
+    # Non unit strides
+    checker[::1, ::-2] = [[33, 333], [44, 444]]
+    # degenerate interval
+    checker[8:10, 0] = []
+    checker[8:10, 8:10] = [[]]
+    # Assign vector to scalar (rank-0) using newaxis
+    checker2 = StridedSliceAssignChecker(self, 2225)
+    checker2[()] = 6  # no indices
+    checker2[...] = 6  # ellipsis
+    checker2[None] = [6]  # new axis
+
+  def testUninitialized(self):
+    with self.assertRaisesRegexp(
+        errors.FailedPreconditionError,
+        "Attempting to use uninitialized value Variable"):
+      with self.test_session() as sess:
+        v = tf.Variable([1, 2])
+        sess.run(v[:].assign([1, 2]))
+
+
+class ShapeSizeRankTest(test_util.TensorFlowTestCase):
+
+  def testDenseShape(self):
+    with self.test_session():
+      t_value = [[0, 42], [24, 0]]
+      self.assertAllEqual((2, 2), tf.shape(t_value).eval())
+      self.assertEqual(4, tf.size(t_value).eval())
+      self.assertEqual(2, tf.rank(t_value).eval())
+
+      t = tf.constant(t_value)
+      self.assertAllEqual((2, 2), tf.shape(t).eval())
+      self.assertEqual(4, tf.size(t).eval())
+      self.assertEqual(2, tf.rank(t).eval())
+
+  def testSparseShape(self):
+    with self.test_session():
+      sp_value = tf.SparseTensorValue(
+          indices=((0, 1), (1, 0)),
+          values=(42, 24),
+          shape=(2, 2))
+      self.assertAllEqual((2, 2), tf.shape(sp_value).eval())
+      self.assertEqual(4, tf.size(sp_value).eval())
+      self.assertEqual(2, tf.rank(sp_value).eval())
+
+      sp = tf.SparseTensor.from_value(sp_value)
+      self.assertAllEqual((2, 2), tf.shape(sp).eval())
+      self.assertEqual(4, tf.size(sp).eval())
+      self.assertEqual(2, tf.rank(sp).eval())
 
 
 if __name__ == "__main__":

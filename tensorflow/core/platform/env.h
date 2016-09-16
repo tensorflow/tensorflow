@@ -144,7 +144,31 @@ class Env {
   /// Deletes the named file.
   Status DeleteFile(const string& fname);
 
-  /// Creates the specified directory.
+  /// \brief Deletes the specified directory and all subdirectories and files
+  /// underneath it. undeleted_files and undeleted_dirs stores the number of
+  /// files and directories that weren't deleted (unspecified if the return
+  /// status is not OK).
+  /// REQUIRES: undeleted_files, undeleted_dirs to be not null.
+  /// Typical return codes
+  ///  * OK - dirname exists and we were able to delete everything underneath.
+  ///  * NOT_FOUND - dirname doesn't exist
+  ///  * PERMISSION_DENIED - dirname or some descendant is not writable
+  ///  * UNIMPLEMENTED - Some underlying functions (like Delete) are not
+  ///                    implemented
+  Status DeleteRecursively(const string& dirname, int64* undeleted_files,
+                           int64* undeleted_dirs);
+
+  /// \brief Creates the specified directory and all the necessary
+  /// subdirectories. Typical return codes.
+  ///  * OK - successfully created the directory and sub directories, even if
+  ///         they were already created.
+  ///  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
+  Status RecursivelyCreateDir(const string& dirname);
+
+  /// \brief Creates the specified directory. Typical return codes
+  ///  * OK - successfully created the directory.
+  ///  * ALREADY_EXISTS - directory already exists.
+  ///  * PERMISSION_DENIED - dirname is not writable.
   Status CreateDir(const string& dirname);
 
   /// Deletes the specified directory.

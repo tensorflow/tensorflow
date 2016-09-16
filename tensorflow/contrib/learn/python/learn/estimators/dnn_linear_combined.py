@@ -20,9 +20,10 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import six
 
 from tensorflow.contrib import layers
+from tensorflow.contrib.framework import deprecated
+from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.learn.python.learn.estimators import composable_model
@@ -34,7 +35,17 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training
+
+
+def _changing_default_center_bias():
+  logging.warn(
+      "Change warning: default value of `enable_centered_bias` will change"
+      " after 2016-10-09. It will be disabled by default."
+      "Instructions for keeping existing behaviour:\n"
+      "Explicitly set `enable_centered_bias` to 'True' if you want to keep "
+      "existing behaviour.")
 
 
 # TODO(ispir): Increase test coverage
@@ -72,7 +83,9 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
 
     Args:
       target_column: A _TargetColumn object.
-      model_dir: Directory to save model parameters, graph and etc.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator
+        to continue training a previously saved model.
       linear_feature_columns: An iterable containing all the feature columns
         used by linear part of the model. All items in the set should be
         instances of classes derived from `FeatureColumn`.
@@ -101,8 +114,8 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       ValueError: If both linear_feature_columns and dnn_features_columns are
         empty at the same time.
     """
-    super(_DNNLinearCombinedBaseEstimator, self).__init__(model_dir=model_dir,
-                                                          config=config)
+    super(_DNNLinearCombinedBaseEstimator, self).__init__(
+        model_dir=model_dir, config=config)
 
     num_ps_replicas = config.num_ps_replicas if config else 0
 
@@ -123,8 +136,6 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
 
     self._linear_feature_columns = linear_feature_columns
     self._linear_optimizer = linear_optimizer
-    self._linear_weight_collection = (
-        self._linear_model.get_weight_collection_name())
     self._dnn_feature_columns = dnn_feature_columns
     self._dnn_hidden_units = dnn_hidden_units
     self._centered_bias_weight_collection = "centered_bias"
@@ -134,38 +145,28 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
   @property
   def linear_weights_(self):
     """Returns weights per feature of the linear part."""
-    all_variables = self.get_variable_names()
-    # TODO(ispir): Figure out a better way to retrieve variables for features.
-    # for example using feature info / columns.
-    values = {}
-    for name in all_variables:
-      if (name.startswith("linear/") and name.rfind("/") == 6 and
-          name != "linear/bias_weight"):
-        values[name] = self.get_variable_value(name)
-    if len(values) == 1:
-      return values[list(values.keys())[0]]
-    return values
+    return self._linear_model.get_weights(model_dir=self._model_dir)
 
   @property
   def linear_bias_(self):
     """Returns bias of the linear part."""
-    return (self.get_variable_value("linear/bias_weight") +
+    return (self._linear_model.get_bias(model_dir=self._model_dir) +
             self.get_variable_value("centered_bias_weight"))
 
   @property
   def dnn_weights_(self):
     """Returns weights of deep neural network part."""
-    return [self.get_variable_value("hiddenlayer_%d/weights" % i)
-            for i, _ in enumerate(self._dnn_hidden_units)] + [
-                self.get_variable_value("dnn_logits/weights")]
+    return self._dnn_model.get_weights(model_dir=self._model_dir)
 
   @property
   def dnn_bias_(self):
     """Returns bias of deep neural network part."""
-    return [self.get_variable_value("hiddenlayer_%d/biases" % i)
-            for i, _ in enumerate(self._dnn_hidden_units)] + [
-                self.get_variable_value("dnn_logits/biases"),
-                self.get_variable_value("centered_bias_weight")]
+    return (self._dnn_model.get_bias(model_dir=self._model_dir) +
+            [self.get_variable_value("centered_bias_weight")])
+
+  def _get_target_column(self):
+    """Returns the target column of this Estimator."""
+    return self._target_column
 
   def _get_feature_dict(self, features):
     if isinstance(features, dict):
@@ -184,19 +185,26 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     else:
       centered_bias_step = []
     with ops.control_dependencies(centered_bias_step):
-      loss = self._target_column.loss(logits, targets, features)
-    logging_ops.scalar_summary("loss", loss)
+      training_loss = self._target_column.training_loss(logits, targets,
+                                                        features)
+      weighted_average_loss = self._target_column.loss(logits, targets,
+                                                       features)
 
-    linear_train_step = self._linear_model.get_train_step(loss)
-    dnn_train_step = (self._dnn_model.get_train_step(loss)
-                      if self._dnn_model else [])
+    logging_ops.scalar_summary("loss", weighted_average_loss)
+
+    linear_train_step = self._linear_model.get_train_step(training_loss)
+    dnn_train_step = (self._dnn_model.get_train_step(training_loss) if
+                      self._dnn_model else [])
 
     with ops.control_dependencies(linear_train_step + dnn_train_step):
       with ops.get_default_graph().colocate_with(global_step):
-        return state_ops.assign_add(global_step, 1).op, loss
+        return state_ops.assign_add(global_step, 1).op, weighted_average_loss
 
   def _get_eval_ops(self, features, targets, metrics=None):
-    raise NotImplementedError
+    """See base class."""
+    features = self._get_feature_dict(features)
+    logits = self._logits(features)
+    return self._target_column.get_eval_ops(features, logits, targets, metrics)
 
   def _get_predict_ops(self, features):
     """See base class."""
@@ -204,6 +212,12 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     logits = self._logits(features)
     return self._target_column.logits_to_predictions(logits, proba=True)
 
+  @deprecated(
+      "2016-09-23",
+      "The signature of the input_fn accepted by export is changing to be "
+      "consistent with what's used by tf.Learn Estimator's train/evaluate, "
+      "which makes this function useless. This will be removed after the "
+      "deprecation date.")
   def _get_feature_ops_from_example(self, examples_batch):
     column_types = layers.create_feature_spec_for_parsing((
         self._get_linear_feature_columns() or []) + (
@@ -249,10 +263,13 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
     logits = array_ops.reshape(
         array_ops.tile(centered_bias[0], [batch_size]),
         [batch_size, self._target_column.num_label_columns])
-    loss = self._target_column.loss(logits, targets, features)
-    # Learn central bias by an optimizer. 0.1 is a convervative lr for a single
-    # variable.
-    return training.AdagradOptimizer(0.1).minimize(loss, var_list=centered_bias)
+    with ops.name_scope(None, "centered_bias", (targets, features)):
+      training_loss = self._target_column.training_loss(
+          logits, targets, features)
+    # Learn central bias by an optimizer. 0.1 is a convervative lr for a
+    # single variable.
+    return training.AdagradOptimizer(0.1).minimize(
+        training_loss, var_list=centered_bias)
 
   def _logits(self, features, is_training=False):
     linear_feature_columns = self._get_linear_feature_columns()
@@ -273,14 +290,6 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
       return nn.bias_add(logits, self._centered_bias())
     else:
       return logits
-
-  def _get_optimizer(self, optimizer, default_optimizer, default_learning_rate):
-    if optimizer is None:
-      optimizer = default_optimizer
-    if isinstance(optimizer, six.string_types):
-      optimizer = layers.OPTIMIZER_CLS_NAMES[optimizer](
-          learning_rate=default_learning_rate)
-    return optimizer
 
 
 class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
@@ -349,12 +358,14 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                gradient_clip_norm=None,
-               enable_centered_bias=True,
+               enable_centered_bias=None,
                config=None):
     """Constructs a DNNLinearCombinedClassifier instance.
 
     Args:
-      model_dir: Directory to save model parameters, graph and etc.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator
+        to continue training a previously saved model.
       n_classes: number of target classes. Default is binary classification.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training.
@@ -392,6 +403,10 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
     if n_classes < 2:
       raise ValueError("n_classes should be greater than 1. Given: {}".format(
           n_classes))
+    if enable_centered_bias is None:
+      enable_centered_bias = True
+      _changing_default_center_bias()
+
     target_column = layers.multi_class_target(
         n_classes=n_classes,
         weight_column_name=weight_column_name)
@@ -409,41 +424,54 @@ class DNNLinearCombinedClassifier(_DNNLinearCombinedBaseEstimator):
         target_column=target_column,
         config=config)
 
-  def predict(self, x=None, input_fn=None, batch_size=None):
-    """Returns predictions for given features.
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
+  def predict(self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+    """Returns predicted classes for given features.
 
     Args:
       x: features.
       input_fn: Input function. If set, x must be None.
       batch_size: Override default batch size.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
 
     Returns:
-      Numpy array of predicted classes or regression values.
+      Numpy array of predicted classes (or an iterable of predicted classes if
+      as_iterable is True).
     """
-    predictions = super(DNNLinearCombinedClassifier, self).predict(
-        x=x, input_fn=input_fn, batch_size=batch_size)
-    predictions = np.argmax(predictions, axis=1)
-    return predictions
+    predictions = self.predict_proba(
+        x=x, input_fn=input_fn, batch_size=batch_size, as_iterable=as_iterable)
+    if as_iterable:
+      return (np.argmax(p, axis=0) for p in predictions)
+    else:
+      return np.argmax(predictions, axis=1)
 
-  def predict_proba(self, x=None, input_fn=None, batch_size=None):
+  @deprecated_arg_values(
+      estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
+      as_iterable=False)
+  def predict_proba(
+      self, x=None, input_fn=None, batch_size=None, as_iterable=False):
     """Returns prediction probabilities for given features.
 
     Args:
       x: features.
       input_fn: Input function. If set, x and y must be None.
       batch_size: Override default batch size.
+      as_iterable: If True, return an iterable which keeps yielding predictions
+        for each example until inputs are exhausted. Note: The inputs must
+        terminate if you want the iterable to terminate (e.g. be sure to pass
+        num_epochs=1 if you are using something like read_batch_features).
 
     Returns:
-      Numpy array of predicted probabilities.
+      Numpy array of predicted probabilities (or an iterable of predicted
+      probabilities if as_iterable is True).
     """
     return super(DNNLinearCombinedClassifier, self).predict(
-        x=x, input_fn=input_fn, batch_size=batch_size)
-
-  def _get_eval_ops(self, features, targets, metrics=None):
-    """See base class."""
-    features = self._get_feature_dict(features)
-    logits = self._logits(features)
-    return self._target_column.get_eval_ops(features, logits, targets, metrics)
+        x=x, input_fn=input_fn, batch_size=batch_size, as_iterable=as_iterable)
 
 
 class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
@@ -518,13 +546,15 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                gradient_clip_norm=None,
-               enable_centered_bias=True,
+               enable_centered_bias=None,
                target_dimension=1,
                config=None):
     """Initializes a DNNLinearCombinedRegressor instance.
 
     Args:
-      model_dir: Directory to save model parameters, graph and etc.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator
+        to continue training a previously saved model.
       weight_column_name: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.
@@ -557,6 +587,9 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
       ValueError: If both linear_feature_columns and dnn_features_columns are
         empty at the same time.
     """
+    if enable_centered_bias is None:
+      enable_centered_bias = True
+      _changing_default_center_bias()
     target_column = layers.regression_target(
         weight_column_name=weight_column_name,
         target_dimension=target_dimension)
@@ -573,11 +606,3 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
         enable_centered_bias=enable_centered_bias,
         target_column=target_column,
         config=config)
-
-  def _get_eval_ops(self, features, targets, metrics=None):
-    """See base class."""
-    features = self._get_feature_dict(features)
-    logits = self._logits(features)
-    return self._target_column.get_eval_ops(features, logits, targets, metrics)
-
-

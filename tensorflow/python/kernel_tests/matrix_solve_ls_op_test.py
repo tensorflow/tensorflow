@@ -101,7 +101,7 @@ class MatrixSolveLsOpTest(tf.test.TestCase):
               a[dim1, dim2, :, :], b[dim1, dim2, :, :])
       for fast in [True, False]:
         with self.test_session():
-          tf_ans = tf.batch_matrix_solve_ls(a, b, fast=fast).eval()
+          tf_ans = tf.matrix_solve_ls(a, b, fast=fast).eval()
         self.assertEqual(np_ans.shape, tf_ans.shape)
         # Check residual norm.
         tf_r = b - BatchMatMul(a, tf_ans)
@@ -124,12 +124,7 @@ class MatrixSolveLsOpTest(tf.test.TestCase):
       b = y.astype(np_type)
       np_ans = BatchRegularizedLeastSquares(a, b, l2_regularizer)
       with self.test_session():
-        # Test with the batch version of  matrix_solve_ls on regular matrices
-        tf_ans = tf.batch_matrix_solve_ls(
-            a, b, l2_regularizer=l2_regularizer, fast=True).eval()
-        self.assertAllClose(np_ans, tf_ans, atol=1e-5, rtol=1e-5)
-
-        # Test with the simple matrix_solve_ls on regular matrices
+        # Test matrix_solve_ls on regular matrices
         tf_ans = tf.matrix_solve_ls(
             a, b, l2_regularizer=l2_regularizer, fast=True).eval()
         self.assertAllClose(np_ans, tf_ans, atol=1e-5, rtol=1e-5)
@@ -139,7 +134,7 @@ class MatrixSolveLsOpTest(tf.test.TestCase):
       b = np.tile(y.astype(np_type), [2, 3, 1, 1])
       np_ans = BatchRegularizedLeastSquares(a, b, l2_regularizer)
       with self.test_session():
-        tf_ans = tf.batch_matrix_solve_ls(
+        tf_ans = tf.matrix_solve_ls(
             a, b, l2_regularizer=l2_regularizer, fast=True).eval()
       self.assertAllClose(np_ans, tf_ans, atol=1e-5, rtol=1e-5)
 
@@ -175,8 +170,6 @@ class MatrixSolveLsOpTest(tf.test.TestCase):
       rhs = tf.constant([[1., 0.]])
       with self.assertRaises(ValueError):
         tf.matrix_solve_ls(matrix, rhs)
-      with self.assertRaises(ValueError):
-        tf.batch_matrix_solve_ls(matrix, rhs)
 
   def testEmpty(self):
     full = np.array([[1., 2.], [3., 4.], [5., 6.]])
@@ -197,8 +190,8 @@ class MatrixSolveLsOpTest(tf.test.TestCase):
     # 3x3x3 matrices, 3x3x1 right-hand sides.
     matrix = np.array([1., 2., 3., 4., 5., 6., 7., 8., 9.] * 3).reshape(3, 3, 3)
     rhs = np.array([1., 2., 3.] * 3).reshape(3, 3, 1)
-    answer = tf.batch_matrix_solve(matrix, rhs)
-    ls_answer = tf.batch_matrix_solve_ls(matrix, rhs)
+    answer = tf.matrix_solve(matrix, rhs)
+    ls_answer = tf.matrix_solve_ls(matrix, rhs)
     self.assertEqual(ls_answer.get_shape(), [3, 3, 1])
     self.assertEqual(answer.get_shape(), [3, 3, 1])
 

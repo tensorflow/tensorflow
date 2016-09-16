@@ -23,13 +23,15 @@ tf.range(limit) ==> [0, 1, 2, 3, 4]
 ##### Args:
 
 
-*  <b>`start`</b>: A 0-D (scalar) of type `int32`. First entry in sequence.
-    Defaults to 0.
+*  <b>`start`</b>: A 0-D (scalar) of type `int32`. Acts as first entry in the range if
+    `limit` is not None; otherwise, acts as range limit and first entry
+    defaults to 0.
 *  <b>`limit`</b>: A 0-D (scalar) of type `int32`. Upper limit of sequence,
-    exclusive.
-*  <b>`delta`</b>: A 0-D `Tensor` (scalar) of type `int32`. Optional. Default is 1.
-    Number that increments `start`.
-*  <b>`name`</b>: A name for the operation (optional).
+    exclusive. If None, defaults to the value of `start` while the first
+    entry of the range defaults to 0.
+*  <b>`delta`</b>: A 0-D `Tensor` (scalar) of type `int32`. Number that increments
+    `start`. Defaults to 1.
+*  <b>`name`</b>: A name for the operation. Defaults to "range".
 
 ##### Returns:
 

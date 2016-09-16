@@ -207,7 +207,7 @@ with tf.variable_scope("foo"):
     v = tf.get_variable("v", [1])
 with tf.variable_scope("foo", reuse=True):
     v1 = tf.get_variable("v", [1])
-assert v1 == v
+assert v1 is v
 ```
 
 ### Basics of `tf.variable_scope()`
@@ -234,7 +234,7 @@ with tf.variable_scope("foo"):
     v = tf.get_variable("v", [1])
     tf.get_variable_scope().reuse_variables()
     v1 = tf.get_variable("v", [1])
-assert v1 == v
+assert v1 is v
 ```
 
 Note that you *cannot* set the `reuse` flag to `False`. The reason behind
@@ -285,8 +285,8 @@ with tf.variable_scope(foo_scope)
 with tf.variable_scope(foo_scope, reuse=True)
     v1 = tf.get_variable("v", [1])
     w1 = tf.get_variable("w", [1])
-assert v1 == v
-assert w1 == w
+assert v1 is v
+assert w1 is w
 ```
 
 When opening a variable scope using a previously existing scope

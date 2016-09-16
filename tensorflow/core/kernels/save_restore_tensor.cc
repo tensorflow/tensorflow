@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -33,54 +32,6 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_slice_writer.h"
 
 namespace tensorflow {
-
-namespace {
-bool ParseShapeAndSlice(const string& shape_and_slice, TensorShape* shape,
-                        TensorSlice* slice, TensorShape* shape_slice,
-                        string* error) {
-  CHECK(!shape_and_slice.empty());
-  // Syntax: dim0 dim1 dim2 ... <slice string>
-  // Where slice string is defined in core/framework/tensor_slice.h
-  std::vector<string> splits = str_util::Split(shape_and_slice, ' ');
-
-  // Must have at least 2 strings.
-  if (splits.size() < 2) {
-    *error = strings::StrCat(
-        "Need least two elements in shape_and_slice specification: ",
-        shape_and_slice);
-    return false;
-  }
-
-  // The last split is the slice specification.
-  slice->Clear();
-  auto status = slice->Parse(splits.back(), slice);
-  if (!status.ok()) {
-    *error = status.error_message();
-    return false;
-  }
-
-  // The first n-1 are the shape specification.
-  splits.pop_back();
-  shape->Clear();
-  for (const auto& s : splits) {
-    int dim;
-    if (!strings::safe_strto32(s, &dim)) {
-      *error = strings::StrCat("Non numerical dimension in shape_and_slice: ",
-                               shape_and_slice);
-      return false;
-    }
-    shape->AddDim(dim);
-  }
-
-  // The specified slice must be compatible with the specified shape.
-  status = slice->SliceTensorShape(*shape, shape_slice);
-  if (!status.ok()) {
-    *error = status.error_message();
-    return false;
-  }
-  return true;
-}
-}  // namespace
 
 void SaveTensors(
     OpKernelContext* context,
@@ -132,7 +83,6 @@ void SaveTensors(
   Status s;
   auto tensor_names_flat = tensor_names_t.flat<string>();
 
-  string error;
   for (int i = 0; i < N; ++i) {
     const string& name = tensor_names_flat(i);
     const Tensor& input = context->input(i + kFixedInputs);
@@ -141,9 +91,8 @@ void SaveTensors(
     if (save_slices && !tensor_shapes_and_slices_ptr[i].empty()) {
       const string& shape_spec = tensor_shapes_and_slices_ptr[i];
       TensorShape slice_shape;
-      OP_REQUIRES(context, ParseShapeAndSlice(shape_spec, &shape, &slice,
-                                              &slice_shape, &error),
-                  errors::InvalidArgument(error));
+      OP_REQUIRES_OK(context, checkpoint::ParseShapeAndSlice(
+                                  shape_spec, &shape, &slice, &slice_shape));
       OP_REQUIRES(context, slice_shape.IsSameSize(input.shape()),
                   errors::InvalidArgument("Slice in shape_and_slice "
                                           "specification does not match the "
@@ -248,11 +197,9 @@ void RestoreTensor(OpKernelContext* context,
   if (restore_slice && !tensor_shape_and_slice_ptr[0].empty()) {
     const string& shape_spec = tensor_shape_and_slice_ptr[0];
     TensorShape parsed_shape;
-    string error;
-    OP_REQUIRES(context,
-                ParseShapeAndSlice(shape_spec, &parsed_shape, &slice_to_load,
-                                   &output_shape, &error),
-                errors::InvalidArgument(error));
+    OP_REQUIRES_OK(
+        context, checkpoint::ParseShapeAndSlice(shape_spec, &parsed_shape,
+                                                &slice_to_load, &output_shape));
     OP_REQUIRES(
         context, parsed_shape.IsSameSize(saved_shape),
         errors::InvalidArgument(
@@ -264,6 +211,8 @@ void RestoreTensor(OpKernelContext* context,
 
   Tensor* t = nullptr;
   OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &t));
+
+  if (output_shape.num_elements() == 0) return;
 
 #define READER_COPY(T)                                                      \
   case DataTypeToEnum<T>::value:                                            \

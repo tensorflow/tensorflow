@@ -55,6 +55,7 @@ cc_library(
 tf_cc_test(
     name = "sdca_ops_test",
     size = "small",
+    srcs = ["sdca_ops_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
     deps = [
         "//tensorflow/contrib/linear_optimizer:sdca_op_kernels",

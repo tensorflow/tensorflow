@@ -179,8 +179,10 @@ if [[ "${DO_PIP_BUILD}" == "1" ]]; then
   export TF_BUILD_IS_OPT="OPT"
   export TF_BUILD_IS_PIP="PIP"
 
-  export TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
-"-e TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2"
+  if [[ "${TF_DOCKER_BUILD_TYPE}" == "gpu" ]]; then
+    export TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS=\
+"${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2"
+  fi
 
   pushd "${SCRIPT_DIR}/../../../"
   rm -rf pip_test/whl &&
@@ -321,7 +323,21 @@ fi
 
 # Apply the final image name and tag
 FINAL_IMG="${FINAL_IMAGE_NAME}:${FINAL_TAG}"
-docker tag -f "${IMG}" "${FINAL_IMG}" || \
+
+DOCKER_VER=$(docker version | grep Version | head -1 | awk '{print $NF}')
+if [[ -z "${DOCKER_VER}" ]]; then
+  die "ERROR: Failed to determine docker version"
+fi
+DOCKER_MAJOR_VER=$(echo "${DOCKER_VER}" | cut -d. -f 1)
+DOCKER_MINOR_VER=$(echo "${DOCKER_VER}" | cut -d. -f 2)
+
+FORCE_TAG=""
+if [[ "${DOCKER_MAJOR_VER}" -le 1 ]] && \
+   [[ "${DOCKER_MINOR_VER}" -le 9 ]]; then
+  FORCE_TAG="--force"
+fi
+
+docker tag ${FORCE_TAG} "${IMG}" "${FINAL_IMG}" || \
     die "Failed to tag intermediate docker image ${IMG} as ${FINAL_IMG}"
 
 echo ""
@@ -331,8 +347,6 @@ echo "Successfully tagged docker image: ${FINAL_IMG}"
 # Optional: call command specified by TF_DOCKER_BUILD_PUSH_CMD to push image
 if [[ ! -z "${TF_DOCKER_BUILD_PUSH_CMD}" ]]; then
   ${TF_DOCKER_BUILD_PUSH_CMD} ${FINAL_IMG}
-
-  echo ""
   if [[ $? == "0" ]]; then
     echo "Successfully pushed Docker image ${FINAL_IMG}"
   else

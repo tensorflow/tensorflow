@@ -472,7 +472,8 @@ class ModelVariablesTest(tf.test.TestCase):
 
   def testInitializedVariableValue(self):
     with self.test_session() as sess:
-      a = tf.contrib.framework.model_variable('a', [5], initializer=tf.ones)
+      a = tf.contrib.framework.model_variable(
+          'a', [5], initializer=tf.ones_initializer)
       sess.run(tf.initialize_all_variables())
       self.assertAllEqual(a.eval(), [1]*5)
 
@@ -707,6 +708,63 @@ class AssignFromValuesTest(tf.test.TestCase):
       self.assertAllEqual(init_value1, var1)
 
 
+class AssignFromValuesFnTest(tf.test.TestCase):
+
+  def testNoScopes(self):
+    init_value0 = np.asarray([1.0, 3.0, 9.0]).reshape((1, 3, 1))
+    init_value1 = np.asarray([2.0, 4.0, 6.0, 8.0]).reshape((2, 1, 2))
+
+    with self.test_session() as sess:
+      initializer = tf.truncated_normal_initializer(stddev=.1)
+      var0 = tf.contrib.framework.variable(
+          'my_var0', shape=[1, 3, 1], initializer=initializer)
+      var1 = tf.contrib.framework.variable(
+          'my_var1', shape=[2, 1, 2], initializer=initializer)
+
+      var_names_to_values = {'my_var0': init_value0, 'my_var1': init_value1}
+      init_fn = tf.contrib.framework.assign_from_values_fn(var_names_to_values)
+
+      # Initialize the variables.
+      sess.run(tf.initialize_all_variables())
+
+      # Perform the assignment.
+      init_fn(sess)
+
+      # Request and test the variable values:
+      var0, var1 = sess.run([var0, var1])
+      self.assertAllEqual(init_value0, var0)
+      self.assertAllEqual(init_value1, var1)
+
+  def testWithScopes(self):
+    init_value0 = np.asarray([1.0, 3.0, 9.0]).reshape((1, 3, 1))
+    init_value1 = np.asarray([2.0, 4.0, 6.0, 8.0]).reshape((2, 1, 2))
+
+    with self.test_session() as sess:
+      initializer = tf.truncated_normal_initializer(stddev=.1)
+
+      with tf.variable_scope('my_model/my_layer0'):
+        var0 = tf.contrib.framework.variable(
+            'my_var0', shape=[1, 3, 1], initializer=initializer)
+      with tf.variable_scope('my_model/my_layer1'):
+        var1 = tf.contrib.framework.variable(
+            'my_var1', shape=[2, 1, 2], initializer=initializer)
+
+      var_names_to_values = {'my_model/my_layer0/my_var0': init_value0,
+                             'my_model/my_layer1/my_var1': init_value1}
+      init_fn = tf.contrib.framework.assign_from_values_fn(var_names_to_values)
+
+      # Initialize the variables.
+      sess.run(tf.initialize_all_variables())
+
+      # Perform the assignment.
+      init_fn(sess)
+
+      # Request and test the variable values:
+      var0, var1 = sess.run([var0, var1])
+      self.assertAllEqual(init_value0, var0)
+      self.assertAllEqual(init_value1, var1)
+
+
 class AssignFromCheckpointTest(tf.test.TestCase):
 
   def create_checkpoint_from_values(self, var_names_to_values, checkpoint_dir,
@@ -809,6 +867,191 @@ class AssignFromCheckpointTest(tf.test.TestCase):
       # Request and test the variable values:
       self.assertAllEqual(init_value0, var0.eval())
       self.assertAllEqual(init_value1, var1.eval())
+
+
+class AssignFromCheckpointFnTest(tf.test.TestCase):
+
+  def create_checkpoint_from_values(self, var_names_to_values, checkpoint_dir,
+                                    global_step=None):
+    """Creates a checkpoint from a mapping of name to values in model_dir.
+
+    Args:
+      var_names_to_values: a map from variable names to values.
+      checkpoint_dir: the directory where the checkpoint will be saved.
+      global_step: the global step used to save the checkpoint.
+
+    Returns:
+      the model_path to the checkpoint.
+    """
+    var_list = []
+    with tf.Session('', graph=tf.Graph()) as sess:
+      # Create a set of variables to save in the checkpoint.
+      for var_name in var_names_to_values:
+        var_value = var_names_to_values[var_name]
+        var_list.append(tf.Variable(var_value, name=var_name))
+      saver = tf.train.Saver(var_list)
+      init_op = tf.initialize_variables(var_list)
+      sess.run(init_op)
+      # Save the initialized values in the file at 'checkpoint_dir'
+      return saver.save(sess, checkpoint_dir, global_step=global_step)
+
+  def testLoadExistingVariables(self):
+    init_value0 = 10.0
+    init_value1 = 20.0
+    var_names_to_values = {'v0': init_value0, 'v1': init_value1}
+
+    model_dir = os.path.join(self.get_temp_dir(), 'model')
+    with self.test_session() as sess:
+      model_path = self.create_checkpoint_from_values(var_names_to_values,
+                                                      model_dir)
+      var0 = tf.contrib.framework.variable('my_var0', shape=[])
+      var1 = tf.contrib.framework.variable('my_var1', shape=[])
+
+      vars_to_restore = {'v0': var0, 'v1': var1}
+      init_fn = tf.contrib.framework.assign_from_checkpoint_fn(
+          model_path, vars_to_restore)
+
+      # Initialize the variables.
+      sess.run(tf.initialize_all_variables())
+
+      # Perform the assignment.
+      init_fn(sess)
+
+      # Request and test the variable values:
+      self.assertEqual(init_value0, var0.eval())
+      self.assertEqual(init_value1, var1.eval())
+
+  def testLoadExistingVariablesDifferentShapeDefaultDoesNotAllowReshape(self):
+    init_value0 = [[10.0, 11.0]]
+    init_value1 = 20.0
+    var_names_to_values = {'v0': init_value0, 'v1': init_value1}
+
+    model_dir = os.path.join(self.get_temp_dir(), 'model')
+    with self.test_session() as sess:
+      model_path = self.create_checkpoint_from_values(var_names_to_values,
+                                                      model_dir)
+      var0 = tf.contrib.framework.variable('my_var0', shape=[2, 1])
+      var1 = tf.contrib.framework.variable('my_var1', shape=[])
+
+      vars_to_restore = {'v0': var0, 'v1': var1}
+      init_fn = tf.contrib.framework.assign_from_checkpoint_fn(
+          model_path, vars_to_restore)
+
+      # Initialize the variables.
+      sess.run(tf.initialize_all_variables())
+
+      # Perform the assignment.
+      with self.assertRaises(tf.errors.InvalidArgumentError):
+        init_fn(sess)
+
+  def testLoadExistingVariablesDifferentShapeAllowReshape(self):
+    init_value0 = [[10.0, 11.0]]
+    init_value1 = 20.0
+    var_names_to_values = {'v0': init_value0, 'v1': init_value1}
+
+    model_dir = os.path.join(self.get_temp_dir(), 'model')
+    with self.test_session() as sess:
+      model_path = self.create_checkpoint_from_values(var_names_to_values,
+                                                      model_dir)
+      var0 = tf.contrib.framework.variable('my_var0', shape=[2, 1])
+      var1 = tf.contrib.framework.variable('my_var1', shape=[])
+
+      vars_to_restore = {'v0': var0, 'v1': var1}
+      init_fn = tf.contrib.framework.assign_from_checkpoint_fn(
+          model_path, vars_to_restore, reshape_variables=True)
+
+      # Initialize the variables.
+      sess.run(tf.initialize_all_variables())
+
+      # Perform the assignment.
+      init_fn(sess)
+
+      # Request and test the variable values:
+      self.assertAllEqual(np.transpose(np.array(init_value0)), var0.eval())
+      self.assertEqual(init_value1, var1.eval())
+
+  def testNotFoundError(self):
+    init_value0 = 10.0
+    init_value1 = 20.0
+    var_names_to_values = {'v0': init_value0, 'v1': init_value1}
+
+    model_dir = os.path.join(self.get_temp_dir(), 'model')
+    with self.test_session() as sess:
+      model_path = self.create_checkpoint_from_values(var_names_to_values,
+                                                      model_dir)
+      var0 = tf.contrib.framework.variable('my_var0', shape=[])
+      var1 = tf.contrib.framework.variable('my_var1', shape=[])
+      var2 = tf.contrib.framework.variable('my_var2', shape=[])
+
+      vars_to_restore = {'v0': var0, 'v1': var1, 'v2': var2}
+      init_fn = tf.contrib.framework.assign_from_checkpoint_fn(
+          model_path,
+          vars_to_restore)
+
+      # Initialize the variables.
+      sess.run(tf.initialize_all_variables())
+
+      # Perform the assignment.
+      with self.assertRaises(tf.errors.NotFoundError):
+        init_fn(sess)
+
+  def testMissingVariablesList(self):
+    init_value0 = 10.0
+    init_value1 = 20.0
+    var_names_to_values = {'v0': init_value0, 'v1': init_value1}
+
+    model_dir = os.path.join(self.get_temp_dir(), 'model')
+    with self.test_session() as sess:
+      model_path = self.create_checkpoint_from_values(var_names_to_values,
+                                                      model_dir)
+      var0 = tf.contrib.framework.variable('v0', shape=[])
+      var1 = tf.contrib.framework.variable('v1', shape=[])
+      var2 = tf.contrib.framework.variable('v2', shape=[])
+
+      vars_to_restore = [var0, var1, var2]
+      init_fn = tf.contrib.framework.assign_from_checkpoint_fn(
+          model_path,
+          vars_to_restore,
+          ignore_missing_vars=True)
+
+      # Initialize the variables.
+      sess.run(tf.initialize_all_variables())
+
+      # Perform the assignment.
+      init_fn(sess)
+
+      # Request and test the variable values:
+      self.assertEqual(init_value0, var0.eval())
+      self.assertEqual(init_value1, var1.eval())
+
+  def testMissingVariablesDict(self):
+    init_value0 = 10.0
+    init_value1 = 20.0
+    var_names_to_values = {'v0': init_value0, 'v1': init_value1}
+
+    model_dir = os.path.join(self.get_temp_dir(), 'model')
+    with self.test_session() as sess:
+      model_path = self.create_checkpoint_from_values(var_names_to_values,
+                                                      model_dir)
+      var0 = tf.contrib.framework.variable('my_var0', shape=[])
+      var1 = tf.contrib.framework.variable('my_var1', shape=[])
+      var2 = tf.contrib.framework.variable('my_var2', shape=[])
+
+      vars_to_restore = {'v0': var0, 'v1': var1, 'v2': var2}
+      init_fn = tf.contrib.framework.assign_from_checkpoint_fn(
+          model_path,
+          vars_to_restore,
+          ignore_missing_vars=True)
+
+      # Initialize the variables.
+      sess.run(tf.initialize_all_variables())
+
+      # Perform the assignment.
+      init_fn(sess)
+
+      # Request and test the variable values:
+      self.assertEqual(init_value0, var0.eval())
+      self.assertEqual(init_value1, var1.eval())
 
 if __name__ == '__main__':
   tf.test.main()

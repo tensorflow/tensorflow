@@ -133,10 +133,6 @@ class Tensor {
   // True iff the two tensors use the same underlying refcounted storage
   bool SharesBufferWith(const Tensor& b) const;
 
-  // The BufferHash of two tensors are equal when they share the same
-  // underlying refcounted storage
-  size_t BufferHash() const;
-
   /// \brief If necessary, has this Tensor been initialized?
   ///
   /// Zero-element Tensors are always considered initialized, even if they
@@ -412,7 +408,8 @@ class Tensor {
   /// buffer's datatype.
   ///
   /// This tensor shares other's underlying storage.
-  void UnsafeCopyFromInternal(const Tensor&, const TensorShape&);
+  void UnsafeCopyFromInternal(const Tensor&, DataType dtype,
+                              const TensorShape&);
 
  private:
   void CheckType(DataType expected_dtype) const;
@@ -652,10 +649,13 @@ inline Tensor::Tensor(Tensor&& other)
 }
 
 inline Tensor& Tensor::operator=(Tensor&& other) {
-  shape_ = std::move(other.shape_);
-  if (buf_) buf_->Unref();
-  buf_ = other.buf_;
-  other.buf_ = nullptr;
+  // Avoid self-assignment, since we might destroy our underlying buffer.
+  if (&other != this) {
+    shape_ = std::move(other.shape_);
+    if (buf_) buf_->Unref();
+    buf_ = other.buf_;
+    other.buf_ = nullptr;
+  }
   return *this;
 }
 

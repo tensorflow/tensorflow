@@ -8,7 +8,7 @@ Small values of L2 can help prevent overfitting the training data.
 
 
 *  <b>`scale`</b>: A scalar multiplier `Tensor`. 0.0 disables the regularizer.
-*  <b>`scope`</b>: An optional op_scope name.
+*  <b>`scope`</b>: An optional scope name.
 
 ##### Returns:
 

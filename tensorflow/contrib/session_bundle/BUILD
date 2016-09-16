@@ -11,6 +11,14 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_android",
+    "if_ios",
+    "if_mobile",
+    "if_not_mobile",
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -23,13 +31,18 @@ filegroup(
     ),
 )
 
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+py_library(
+    name = "constants",
+    srcs = ["constants.py"],
+    srcs_version = "PY2AND3",
+)
 
 py_library(
     name = "exporter",
     srcs = ["exporter.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":constants",
         ":gc",
         ":manifest_proto_py",
         "//tensorflow/python:framework",
@@ -45,6 +58,7 @@ py_test(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:private"],
     deps = [
+        ":constants",
         ":exporter",
         ":gc",
         ":manifest_proto_py",
@@ -94,15 +108,18 @@ cc_library(
     name = "session_bundle",
     srcs = ["session_bundle.cc"],
     hdrs = ["session_bundle.h"],
+    copts = if_ios(["-DGOOGLE_LOGGING"]),
+    visibility = ["//visibility:public"],
     deps = [
-        ":manifest_proto_cc",
         ":signature",
+    ] + if_not_mobile([
+        ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow_opensource",
-    ],
+        # mobile not supported yet
+    ]),
 )
 
 # This is a lite version of the session_bundle target that does not link in any
@@ -112,15 +129,18 @@ cc_library(
     name = "session_bundle_lite",
     srcs = ["session_bundle.cc"],
     hdrs = ["session_bundle.h"],
+    copts = if_ios(["-DGOOGLE_LOGGING"]),
     visibility = ["//visibility:public"],
     deps = [
-        ":manifest_proto_cc",
         ":signature_lite",
+    ] + if_not_mobile([
+        ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ],
+        # mobile not supported yet
+    ]),
 )
 
 cc_test(
@@ -145,17 +165,52 @@ cc_test(
     ],
 )
 
+py_library(
+    name = "session_bundle_py",
+    srcs = ["session_bundle.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":constants",
+        ":manifest_proto_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
+    name = "session_bundle_py_test",
+    size = "small",
+    srcs = [
+        "session_bundle_test.py",
+    ],
+    data = [
+        "//tensorflow/contrib/session_bundle/example:half_plus_two",
+    ],
+    main = "session_bundle_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":constants",
+        ":manifest_proto_py",
+        ":session_bundle_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
 cc_library(
     name = "signature",
     srcs = ["signature.cc"],
     hdrs = ["signature.h"],
-    deps = [
+    visibility = ["//visibility:public"],
+    deps = if_not_mobile([
         ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow_opensource",
-    ],
+        # mobile not supported yet
+    ]),
 )
 
 # This is a lite version of the signature target that does not link in any
@@ -166,12 +221,13 @@ cc_library(
     srcs = ["signature.cc"],
     hdrs = ["signature.h"],
     visibility = ["//visibility:public"],
-    deps = [
+    deps = if_not_mobile([
         ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-    ],
+        # mobile not supported yet
+    ]),
 )
 
 cc_test(
@@ -207,9 +263,14 @@ cc_library(
     ],
 )
 
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+
 tf_proto_library(
     name = "manifest_proto",
     srcs = ["manifest.proto"],
     cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
+
+# -----------------------------------------------------------------------------
+# Google-internal targets go here (must be at the end).

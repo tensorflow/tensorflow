@@ -1,0 +1,179 @@
+<!doctype html>
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<html>
+<head>
+<script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
+<script src="../../d3/d3.js"></script>
+<link rel="import" href="../tf-multi-checkbox.html">
+<link rel="import" href="../../tf-color-scale/tf-color-scale.html">
+<link rel="stylesheet" type="text/css" href="../../../lib/css/global.css">
+
+</head>
+<body>
+<script>
+var seed = 1;
+function random() {
+  var x = Math.sin(seed++) * 10000;
+  return x - Math.floor(x);
+}
+</script>
+<style>
+</style>
+
+<dom-module id="mc-demo">
+  <template>
+    <tf-multi-checkbox
+      id="multiCheckbox"
+      names="[[names]]"
+      tooltips="[[_tooltips]]"
+      class-scale="[[classScale]]"
+      highlights="[[highlights]]"
+    ></tf-multi-checkbox>
+    <tf-color-scale
+      id="colorScale"
+      runs="[[names]]"
+      out-class-scale="{{classScale}}"
+    ></tf-color-scale>
+  <style>
+  </style>
+  </template>
+  <script>
+
+  function randomTooltip() {
+    var s = "";
+    while (random() < 0.8) {
+      s += String(10*random())[0];
+    }
+    return s;
+  }
+  Polymer({
+    is: "mc-demo",
+    properties: {
+      names: Array,
+      tooltips: Object,
+      autoGenerateTooltips: {value: true},
+      _tooltips: Object,
+      classScale: Function,
+      highlights: Array,
+    },
+    observers: [
+      'autogenerate(names, autoGenerateTooltips)',
+      'randomHighlights(names)'
+    ],
+    autogenerate: function(names, autoGenerateTooltips) {
+      if (autoGenerateTooltips) {
+        var tooltips = {};
+        names.forEach(function(n) {
+        if (random() > 0.5) {
+          tooltips[n] = randomTooltip();
+        }
+      });
+      this._tooltips = tooltips;
+      }
+    },
+    randomHighlights: function(names) {
+      var h = [];
+      names.forEach(function(n) {
+        if (random() > 0.6) {
+          h.push(n);
+        }
+      });
+      this.highlights = h;
+    }
+  });
+  </script>
+</dom-module>
+
+<dom-module id="x-demo">
+<style>
+.small {
+  width: 200px;
+  height: 500px;
+}
+.large {
+  width: 500px;
+  height: 900px;
+}
+html,body {
+  height: 100%;
+}
+mc-demo {
+  padding: 5px;
+  border: 1px solid var(--paper-red-500);
+  display: inline-block;
+}
+</style>
+<template>
+  <div class="demo-block">
+    <mc-demo id="demo1" class="small" names="[[long_names]]"></mc-demo>
+    <mc-demo class="small" names="[[many_names]]"></mc-demo>
+    <mc-demo class="small" names="[[many_long_names]]"></mc-demo>
+  </div>
+
+  <div class="demo-block">
+    <mc-demo class="large" names="[[long_names]]"></mc-demo>
+    <mc-demo class="large" names="[[many_names]]"></mc-demo>
+    <mc-demo class="large" names="[[many_long_names]]"></mc-demo>
+  </div>
+
+</template>
+<script>
+
+function long_names() {
+  return [
+    "foo_bar very long name with spaces",
+    "the quick brown fox jumped over the lazy dog",
+    "supercalifragilisticexpialodcious/bar/foo/zod/longer/longer",
+  ];
+}
+
+function many_names() {
+  var out = [];
+  for (var i=0; i<20; i++) {
+    out.push("foo_bar-" + i);
+    out.push("bar_zod_bing-" + i);
+    out.push("lol-" + i);
+  }
+  return out;
+}
+
+function many_long_names() {
+  var out = [];
+  for (var i=0; i<20; i++) {
+    out.push("foo_bar very very very long some spaces though-" + i);
+    out.push("bar_zod_bing_bas_womp_wub_wub_dub_wub_wub-" + i);
+    out.push("rightly_to_be_great_is_not_to_stir_without_great_argument_but_greatly_to_find_quarrel_in_a_straw_when_honors_at_the_stake-" + i);
+  }
+  return out;
+}
+
+Polymer({
+  is: "x-demo",
+  properties: {
+  long_names: {type: Array, value: long_names},
+  many_names: {type: Array, value: many_names},
+  many_long_names: {type: Array, value: many_long_names},
+},
+});
+</script>
+</dom-module>
+
+<x-demo id="demo"></x-demo>
+</body>
+</html>

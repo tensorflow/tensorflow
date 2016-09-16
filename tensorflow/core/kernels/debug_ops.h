@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_DEBUG_OP_H_
 #define TENSORFLOW_KERNELS_DEBUG_OP_H_
 
-#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
+#include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace tensorflow {
 
@@ -44,19 +45,30 @@ class CopyOp : public OpKernel {
     bool off_host_input = device->device_type() == DEVICE_GPU &&
                           !context->input_alloc_attr(0).on_host();
 
-    Tensor* copied_tensor;
-    OP_REQUIRES_OK(context, context->allocate_output(0, src_tensor.shape(),
-                                                     &copied_tensor));
-    if (off_host_input) {
-      // Input is not on host: deep-copy it from GPU to the same GPU.
-      Notification done_copy;
-      GPUUtil::CopyGPUTensorToSameGPU(
-          device, device_ctxt, &src_tensor, copied_tensor,
-          [&done_copy](const Status& s) { done_copy.Notify(); });
-      done_copy.WaitForNotification();
-    } else {
-      // The input tensor is on the host (CPU): deep-copy from CPU to CPU.
+    if (src_tensor.IsInitialized()) {
+      // Source tensor is initialized. Make a copy.
+      Tensor* copied_tensor;
+      OP_REQUIRES_OK(context, context->allocate_output(0, src_tensor.shape(),
+                                                       &copied_tensor));
+
+#if GOOGLE_CUDA
+      if (off_host_input) {
+        // Input is not on host: deep-copy it from GPU to the same GPU.
+        Notification done_copy;
+        GPUUtil::CopyGPUTensorToSameGPU(
+            device, device_ctxt, &src_tensor, copied_tensor,
+            [&done_copy](const Status& s) { done_copy.Notify(); });
+        done_copy.WaitForNotification();
+      } else {
+        // The input tensor is on the host (CPU): deep-copy from CPU to CPU.
+        *copied_tensor = tensor::DeepCopy(src_tensor);
+      }
+#else
       *copied_tensor = tensor::DeepCopy(src_tensor);
+#endif
+    } else {
+      // Source tensor is NOT initialized. Forward the Tensor object.
+      context->set_output(0, src_tensor);
     }
   }
 
@@ -74,10 +86,16 @@ class DebugIdentityOp : public OpKernel {
  public:
   explicit DebugIdentityOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name_));
-    // TODO(cais): Add debug_url
+    OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls_));
   }
 
   void Compute(OpKernelContext* context) override {
+    if (!debug_urls_.empty()) {
+      DebugIO::PublishDebugTensor(tensor_name_, "DebugIdentity",
+                                  context->input(0),
+                                  Env::Default()->NowMicros(), debug_urls_);
+    }
+
     context->set_output(0, context->input(0));
   }
 
@@ -85,6 +103,7 @@ class DebugIdentityOp : public OpKernel {
 
  private:
   string tensor_name_;
+  std::vector<string> debug_urls_;
 };
 
 // NaN-counter op for debugging.
@@ -93,20 +112,25 @@ class DebugNanCountOp : public OpKernel {
  public:
   explicit DebugNanCountOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name_));
+    OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls_));
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
 
-    const TensorShape& input_shape = input.shape();
-    const T* input_flat = input.template flat<T>().data();
-
-    // Count NaNs.
     // Use DT_INT64/int64 to be consistent with TensorShape::num_elements().
     int64 nan_count = 0;
-    for (int64 i = 0; i < input_shape.num_elements(); ++i) {
-      if (Eigen::numext::isnan(input_flat[i])) {
-        nan_count++;
+
+    // If the input is an uninitialized tensor, let nan_count be 0.
+    if (input.IsInitialized()) {
+      // Count NaNs.
+      const TensorShape& input_shape = input.shape();
+      const T* input_flat = input.template flat<T>().data();
+
+      for (int64 i = 0; i < input_shape.num_elements(); ++i) {
+        if (Eigen::numext::isnan(input_flat[i])) {
+          nan_count++;
+        }
       }
     }
 
@@ -115,12 +139,18 @@ class DebugNanCountOp : public OpKernel {
     Tensor* output_tensor;
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output_tensor));
     output_tensor->vec<int64>()(0) = nan_count;
+
+    if (!debug_urls_.empty()) {
+      DebugIO::PublishDebugTensor(tensor_name_, "DebugNanCount", *output_tensor,
+                                  Env::Default()->NowMicros(), debug_urls_);
+    }
   }
 
   bool IsExpensive() override { return false; }
 
  private:
   string tensor_name_;
+  std::vector<string> debug_urls_;
 };
 
 // TODO(cais): Add DebugInfinityCount
@@ -128,4 +158,4 @@ class DebugNanCountOp : public OpKernel {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_IDENTITY_OP_H_
+#endif  // TENSORFLOW_KERNELS_DEBUG_OP_H_

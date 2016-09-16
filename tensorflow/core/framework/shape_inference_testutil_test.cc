@@ -21,9 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-
-using shape_inference::InferenceContext;
-static constexpr auto kUnknownDim = InferenceContext::kUnknownDim;
+namespace shape_inference {
 
 namespace {
 
@@ -33,31 +31,29 @@ REGISTER_OP("OpOneOut")
     .Output("o1: T")
     .Attr("N: int >= 1")
     .Attr("T: numbertype")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
-      return (*global_fn_ptr)(c);
-    }));
+    .SetShapeFn([](InferenceContext* c) { return (*global_fn_ptr)(c); });
 REGISTER_OP("OpTwoOut")
     .Input("inputs: N * T")
     .Output("o1: T")
     .Output("o2: T")
     .Attr("N: int >= 1")
     .Attr("T: numbertype")
-    .SetShapeFn(OpShapeInferenceFn([](InferenceContext* c) {
-      return (*global_fn_ptr)(c);
-    }));
+    .SetShapeFn([](InferenceContext* c) { return (*global_fn_ptr)(c); });
 
 string RunInferShapes(const string& op_name, const string& ins,
                       const string& expected_outs, OpShapeInferenceFn fn) {
-  const int num_inputs = std::count(ins.begin(), ins.end(), ';');
+  ShapeInferenceTestOp op(op_name);
+  const int num_inputs = 1 + std::count(ins.begin(), ins.end(), ';');
   std::vector<NodeDefBuilder::NodeOut> src_list;
   for (int i = 0; i < num_inputs; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
   NodeDef node_def;
   TF_CHECK_OK(NodeDefBuilder("dummy", op_name)
                   .Input(src_list)
                   .Attr("N", num_inputs)
-                  .Finalize(&node_def));
+                  .Finalize(&op.node_def));
   global_fn_ptr = &fn;
-  return InferShapes(op_name, ins, expected_outs, &node_def).error_message();
+  return ShapeInferenceTestutil::InferShapes(op, ins, expected_outs)
+      .error_message();
 }
 
 }  // namespace
@@ -82,7 +78,7 @@ TEST(ShapeInferenceTestutilTest, Failures) {
     return Status::OK();
   };
   auto fn_output_u_2 = [](InferenceContext* c) {
-    c->set_output(0, c->Matrix(kUnknownDim, 2));
+    c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 2));
     return Status::OK();
   };
   const string& op = "OpOneOut";
@@ -92,7 +88,9 @@ TEST(ShapeInferenceTestutilTest, Failures) {
   EXPECT_EQ("Wrong number of expected outputs (2 vs 1)",
             RunInferShapes(op, "[1];[2];[1]", "[1];[2]", fn_copy_input_0));
   EXPECT_EQ("Op type not registered 'NoSuchOp'",
-            InferShapes("NoSuchOp", "", "").error_message());
+            ShapeInferenceTestutil::InferShapes(
+                ShapeInferenceTestOp("NoSuchOp"), "", "")
+                .error_message());
 
   // Wrong shape error messages.
   EXPECT_EQ(
@@ -178,4 +176,5 @@ TEST(ShapeInferenceTestutilTest, Failures) {
             RunInferShapes(op, ins, "[d0_1,2,?,d0_0|d2_0]", fn));
 }
 
+}  // namespace shape_inference
 }  // namespace tensorflow

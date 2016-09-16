@@ -22,6 +22,7 @@ target_link_libraries(${proto_text} PUBLIC
     ${PROTOBUF_LIBRARIES}
     # tf_protos_cc
     # re2_lib
+    ${gif_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}
     ${png_STATIC_LIBRARIES}
     ${ZLIB_LIBRARIES}
@@ -32,6 +33,7 @@ target_link_libraries(${proto_text} PUBLIC
 
 add_dependencies(${proto_text}
     tf_core_lib
+    protobuf
     # jpeg_copy_headers_to_destination
     # png_copy_headers_to_destination
     # re2_copy_headers_to_destination

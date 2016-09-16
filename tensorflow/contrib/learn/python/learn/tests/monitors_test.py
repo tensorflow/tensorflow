@@ -19,11 +19,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import Counter
+import shutil
+import tempfile
+import time
+
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.contrib import testing
 from tensorflow.contrib.learn.python import learn
+from tensorflow.contrib.learn.python.learn import monitored_session
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -87,7 +93,7 @@ class MonitorsTest(tf.test.TestCase):
       max_steps = num_epochs * num_steps_per_epoch - 1
     else:
       max_steps = None
-    monitor.begin(max_steps=max_steps, init_step=0)
+    monitor.begin(max_steps=max_steps)
     for epoch in xrange(num_epochs):
       monitor.epoch_begin(epoch)
       should_stop = False
@@ -128,6 +134,68 @@ class MonitorsTest(tf.test.TestCase):
       self.assertEqual(begin_end_steps, monitor.steps_begun)
       self.assertEqual(begin_end_steps, monitor.steps_ended)
       self.assertEqual(post_steps, monitor.post_steps)
+
+  def test_every_n_recovered_after_step_begin(self):
+    monitor = _MyEveryN(every_n_steps=8)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      for step in [8, 16]:
+        monitor.step_begin(step)
+        monitor.step_begin(step)
+        monitor.step_end(step, output=None)
+        monitor.post_step(step, session=None)
+      # It should call begin again since, end was not called
+      self.assertEqual([8, 8, 16, 16], monitor.steps_begun)
+      self.assertEqual([8, 16], monitor.steps_ended)
+      self.assertEqual([8, 16], monitor.post_steps)
+
+  def test_every_n_recovered_after_step_end(self):
+    monitor = _MyEveryN(every_n_steps=8)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      for step in [8, 16]:
+        monitor.step_begin(step)
+        monitor.step_end(step, output=None)
+        monitor.post_step(step, session=None)
+        monitor.step_begin(step)
+        monitor.step_end(step, output=None)
+        monitor.post_step(step, session=None)
+      # It should not call begin twice since end was called
+      self.assertEqual([8, 16], monitor.steps_begun)
+      self.assertEqual([8, 16], monitor.steps_ended)
+      self.assertEqual([8, 16], monitor.post_steps)
+
+  def test_every_n_call_post_step_at_the_end(self):
+    monitor = _MyEveryN(every_n_steps=8)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      monitor.begin()
+      for step in [8, 16]:
+        monitor.step_begin(step)
+        monitor.step_end(step, output=None)
+        monitor.post_step(step, session=None)
+      monitor.step_begin(19)
+      monitor.step_end(19, output=None)
+      monitor.post_step(19, session=None)
+      monitor.end(session=None)
+      # It should not call begin twice since end was called
+      self.assertEqual([8, 16], monitor.steps_begun)
+      self.assertEqual([8, 16], monitor.steps_ended)
+      self.assertEqual([8, 16, 19], monitor.post_steps)
+
+  def test_every_n_call_post_step_should_not_be_called_twice(self):
+    monitor = _MyEveryN(every_n_steps=8)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      monitor.begin()
+      for step in [8, 16]:
+        monitor.step_begin(step)
+        monitor.step_end(step, output=None)
+        monitor.post_step(step, session=None)
+      monitor.step_begin(16)
+      monitor.step_end(16, output=None)
+      monitor.post_step(16, session=None)
+      monitor.end(session=None)
+      # It should not call begin twice since end was called
+      self.assertEqual([8, 16], monitor.steps_begun)
+      self.assertEqual([8, 16], monitor.steps_ended)
+      self.assertEqual([8, 16], monitor.post_steps)
 
   def test_print(self):
     with tf.Graph().as_default() as g, self.test_session(g):
@@ -235,6 +303,257 @@ class MonitorsTest(tf.test.TestCase):
           26: 6.0,
           29: 7.0,
       }, monitor.values)
+
+
+class StopAtStepTest(tf.test.TestCase):
+
+  def test_raise_in_both_last_step_and_num_steps(self):
+    with self.assertRaises(ValueError):
+      learn.monitors.StopAtStep(num_steps=10, last_step=20)
+
+  def test_stop_based_on_last_step(self):
+    m = learn.monitors.StopAtStep(last_step=10)
+    m.step_begin(5)
+    self.assertFalse(m.step_end(5, None))
+    m.step_begin(9)
+    self.assertFalse(m.step_end(9, None))
+    m.step_begin(10)
+    self.assertTrue(m.step_end(10, None))
+    m.step_begin(11)
+    self.assertTrue(m.step_end(11, None))
+
+  def test_stop_based_on_num_step(self):
+    m = learn.monitors.StopAtStep(num_steps=10)
+    m.step_begin(5)
+    self.assertFalse(m.step_end(5, None))
+    m.step_begin(13)
+    self.assertFalse(m.step_end(13, None))
+    m.step_begin(14)
+    self.assertTrue(m.step_end(14, None))
+    m.step_begin(15)
+    self.assertTrue(m.step_end(15, None))
+
+
+class CheckpointSaverTest(tf.test.TestCase):
+
+  def setUp(self):
+    self.model_dir = tempfile.mkdtemp()
+    self.graph = tf.Graph()
+    with self.graph.as_default():
+      self.scaffold = monitored_session.Scaffold()
+      self.global_step = tf.contrib.framework.get_or_create_global_step()
+      self.train_op = tf.assign_add(self.global_step, 1)
+
+  def tearDown(self):
+    shutil.rmtree(self.model_dir, ignore_errors=True)
+
+  def _run(self, monitor, step, train_op, sess):
+    monitor.step_begin(step)
+    sess.run(train_op)
+    monitor.post_step(step, sess)
+
+  def test_raise_in_both_secs_and_steps(self):
+    with self.assertRaises(ValueError):
+      learn.monitors.CheckpointSaver(
+          self.model_dir, save_secs=10, save_steps=20)
+
+  def test_raise_in_none_secs_and_steps(self):
+    with self.assertRaises(ValueError):
+      learn.monitors.CheckpointSaver(self.model_dir)
+
+  def test_save_secs_saves_in_first_step(self):
+    with self.graph.as_default():
+      monitor = learn.monitors.CheckpointSaver(
+          self.model_dir, save_secs=2, scaffold=self.scaffold)
+      monitor.begin()
+      self.scaffold.finalize()
+      with tf.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        self._run(monitor, 1, self.train_op, sess)
+        self.assertEqual(1, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+
+  def test_save_secs_saves_periodically(self):
+    with self.graph.as_default():
+      monitor = learn.monitors.CheckpointSaver(
+          self.model_dir, save_secs=2, scaffold=self.scaffold)
+      monitor.begin()
+      self.scaffold.finalize()
+      with tf.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        self._run(monitor, 1, self.train_op, sess)
+        self._run(monitor, 2, self.train_op, sess)
+        # Not saved
+        self.assertEqual(1, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+        time.sleep(2.5)
+        self._run(monitor, 3, self.train_op, sess)
+        # saved
+        self.assertEqual(3, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+        self._run(monitor, 4, self.train_op, sess)
+        self._run(monitor, 5, self.train_op, sess)
+        # Not saved
+        self.assertEqual(3, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+        time.sleep(2.5)
+        self._run(monitor, 6, self.train_op, sess)
+        # saved
+        self.assertEqual(6, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+
+  def test_save_steps_saves_in_first_step(self):
+    with self.graph.as_default():
+      monitor = learn.monitors.CheckpointSaver(
+          self.model_dir, save_steps=2, scaffold=self.scaffold)
+      monitor.begin()
+      self.scaffold.finalize()
+      with tf.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        self._run(monitor, 1, self.train_op, sess)
+        self.assertEqual(1, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+
+  def test_save_steps_saves_periodically(self):
+    with self.graph.as_default():
+      monitor = learn.monitors.CheckpointSaver(
+          self.model_dir, save_steps=2, scaffold=self.scaffold)
+      monitor.begin()
+      self.scaffold.finalize()
+      with tf.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        self._run(monitor, 1, self.train_op, sess)
+        self._run(monitor, 2, self.train_op, sess)
+        # Not saved
+        self.assertEqual(1, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+        self._run(monitor, 3, self.train_op, sess)
+        # saved
+        self.assertEqual(3, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+        self._run(monitor, 4, self.train_op, sess)
+        # Not saved
+        self.assertEqual(3, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+        self._run(monitor, 5, self.train_op, sess)
+        # saved
+        self.assertEqual(5, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+
+  def test_save_saves_at_end(self):
+    with self.graph.as_default():
+      monitor = learn.monitors.CheckpointSaver(
+          self.model_dir, save_secs=2, scaffold=self.scaffold)
+      monitor.begin()
+      self.scaffold.finalize()
+      with tf.Session() as sess:
+        sess.run(self.scaffold.init_op)
+        self._run(monitor, 1, self.train_op, sess)
+        self._run(monitor, 2, self.train_op, sess)
+        monitor.end(sess)
+        self.assertEqual(2, tf.contrib.framework.load_variable(
+            self.model_dir, self.global_step.name))
+
+
+class FakeMonitor(learn.monitors.BaseMonitor):
+
+  def __init__(self):
+    learn.monitors.BaseMonitor.__init__(self)
+    self.should_stop = False
+    self.requested_tensors = []
+    self.call_counter = Counter()
+    self.last_begin_step = None
+    self.last_end_step = None
+    self.last_post_step = None
+
+  def begin(self, max_steps):
+    self.call_counter['begin'] += 1
+
+  def end(self, session):
+    self.call_counter['end'] += 1
+
+  def step_begin(self, step):
+    self.call_counter['step_begin'] += 1
+    self.last_begin_step = step
+    return self.requested_tensors
+
+  def step_end(self, step, output):
+    self.call_counter['step_end'] += 1
+    self.last_end_step = step
+    self.output = output
+    return self.should_stop
+
+  def post_step(self, step, session):
+    self.call_counter['post_step'] += 1
+    self.last_post_step = step
+    self.session = session
+
+
+class RunHookAdapterForMonitorsTest(tf.test.TestCase):
+
+  def test_calls_and_steps(self):
+    with tf.Graph().as_default(), tf.Session() as sess:
+      global_step_tensor = tf.contrib.framework.create_global_step()
+      inc_5 = tf.assign_add(global_step_tensor, 5)
+      mock_mon = FakeMonitor()
+      mock_mon2 = FakeMonitor()
+
+      hook = learn.monitors.RunHookAdapterForMonitors([mock_mon, mock_mon2])
+      hook.begin()
+      for mon in [mock_mon, mock_mon2]:
+        self.assertEqual(mon.call_counter['begin'], 1)
+
+      sess.run(tf.initialize_all_variables())
+      sess.run(global_step_tensor.assign(10))
+
+      mon_sess = monitored_session._HookedSession(sess=sess, hooks=[hook])
+
+      mon_sess.run(inc_5)
+      for mon in [mock_mon, mock_mon2]:
+        self.assertEqual(mon.output, {})
+        self.assertEqual(mon.last_begin_step, 11)
+        self.assertEqual(mon.last_end_step, 11)
+        self.assertEqual(mon.last_post_step, 11)
+        self.assertEqual(mon.call_counter['step_end'], 1)
+        self.assertEqual(mon.call_counter['step_begin'], 1)
+        self.assertEqual(mon.call_counter['post_step'], 1)
+
+      mon_sess.run(inc_5)
+      for mon in [mock_mon, mock_mon2]:
+        self.assertEqual(mon.output, {})
+        self.assertEqual(mon.last_begin_step, 16)
+        self.assertEqual(mon.last_end_step, 16)
+        self.assertEqual(mon.last_post_step, 16)
+        self.assertEqual(mon.call_counter['step_end'], 2)
+        self.assertEqual(mon.call_counter['step_begin'], 2)
+        self.assertEqual(mon.call_counter['post_step'], 2)
+
+      hook.end(sess)
+      for mon in [mock_mon, mock_mon2]:
+        self.assertEqual(mon.call_counter['end'], 1)
+
+  def test_requests(self):
+    with tf.Graph().as_default(), tf.Session() as sess:
+      tf.contrib.framework.create_global_step()
+      mock_mon = FakeMonitor()
+      mock_mon2 = FakeMonitor()
+
+      hook = learn.monitors.RunHookAdapterForMonitors([mock_mon, mock_mon2])
+      hook.begin()
+
+      mon_sess = monitored_session._HookedSession(sess=sess, hooks=[hook])
+
+      a_tensor = tf.constant([0], name='a_tensor')
+      tf.constant([5], name='another_tensor')
+      tf.constant([10], name='third_tensor')
+      mock_mon.requested_tensors = ['another_tensor']
+      mock_mon2.requested_tensors = ['third_tensor']
+      sess.run(tf.initialize_all_variables())
+
+      output = mon_sess.run(a_tensor)
+      self.assertEqual(output, [0])
+      self.assertEqual(mock_mon.output['another_tensor'], [5])
+      self.assertEqual(mock_mon2.output['third_tensor'], [10])
 
 
 if __name__ == '__main__':

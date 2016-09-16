@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import numpy as np
 import tensorflow as tf
 
@@ -916,31 +918,45 @@ class Conv2DTest(tf.test.TestCase):
                                           shape=[4, 4, 2, 2]),
                     strides=[1, 1, 1, 1], padding="SAME")
 
-    # Illegal strides.
-    with self.assertRaisesRegexp(ValueError, "strides in the batch and depth"):
-      tf.nn.conv2d(tf.placeholder(tf.float32),
-                    tf.placeholder(tf.float32),
-                    strides=[2, 1, 1, 1], padding="SAME")
-    with self.assertRaisesRegexp(ValueError, "strides in the batch and depth"):
-      tf.nn.conv2d(tf.placeholder(tf.float32),
-                    tf.placeholder(tf.float32),
-                    strides=[1, 1, 1, 2], padding="SAME")
+  def testOpEdgeCases(self):
+    with self.test_session() as sess:
+      # Illegal strides.
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   "strides in the batch and depth"):
+        sess.run(
+            tf.nn.conv2d(
+                tf.placeholder(tf.float32),
+                tf.placeholder(tf.float32),
+                strides=[2, 1, 1, 1],
+                padding="SAME"))
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   "strides in the batch and depth"):
+        sess.run(
+            tf.nn.conv2d(
+                tf.placeholder(tf.float32),
+                tf.placeholder(tf.float32),
+                strides=[1, 1, 1, 2],
+                padding="SAME"))
 
-    # Filter larger than input.
-    with self.assertRaisesRegexp(ValueError,
-                                 "Filter must not be larger than the input"):
-      tf.nn.conv2d(tf.placeholder(tf.float32,
-                                          shape=[32, 20, 20, 3]),
-                    tf.placeholder(tf.float32,
-                                          shape=[20, 21, 3, 2]),
-                    strides=[1, 1, 1, 1], padding="SAME")
-    with self.assertRaisesRegexp(ValueError,
-                                 "Filter must not be larger than the input"):
-      tf.nn.conv2d(tf.placeholder(tf.float32,
-                                          shape=[32, 20, 20, 3]),
-                    tf.placeholder(tf.float32,
-                                          shape=[21, 20, 3, 2]),
-                    strides=[1, 1, 1, 1], padding="SAME")
+      # Filter larger than input.
+      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+        sess.run(
+            tf.nn.conv2d(
+                tf.placeholder(
+                    tf.float32, shape=[32, 20, 20, 3]),
+                tf.placeholder(
+                    tf.float32, shape=[20, 21, 3, 2]),
+                strides=[1, 1, 1, 1],
+                padding="VALID"))
+      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+        sess.run(
+            tf.nn.conv2d(
+                tf.placeholder(
+                    tf.float32, shape=[32, 20, 20, 3]),
+                tf.placeholder(
+                    tf.float32, shape=[21, 20, 3, 2]),
+                strides=[1, 1, 1, 1],
+                padding="VALID"))
 
 
 # This is only a very simple test. More comprehensive tests live in
@@ -1146,6 +1162,53 @@ class SeparableConv2DTest(tf.test.TestCase):
                          pointwise_filter_in_sizes=[1, 1, 6, 5],
                          stride=1, padding="SAME",
                          expected=None)
+
+
+class DeepConv2DTest(tf.test.TestCase):
+
+  def _CompareFwdConv2D(self, tensor_in_sizes, filter_in_sizes,
+                        conv_strides, padding):
+    """Verifies that DeepConv2D and Conv2D produce the same values.
+
+    Args:
+      tensor_in_sizes: Input tensor dimensions in
+        [batch, input_rows, input_cols, input_depth].
+      filter_in_sizes: Filter tensor dimensions in
+        [kernel_rows, kernel_cols, input_depth, output_depth].
+      conv_strides: [row_stride, col_stride] for the convolution;
+      padding: Padding type.
+    """
+    x1 = np.random.rand(*tensor_in_sizes).astype(np.float32)
+    x2 = np.random.rand(*filter_in_sizes).astype(np.float32)
+
+    with self.test_session(use_gpu=False) as sess:
+      t1 = tf.constant(x1, shape=tensor_in_sizes)
+      t2 = tf.constant(x2, shape=filter_in_sizes)
+      strides = [1] + conv_strides + [1]
+
+      conv = tf.nn.conv2d(t1, t2, strides=strides, padding=padding)
+
+      os.environ["TF_USE_DEEP_CONV2D"] = "0"
+      values_expect = sess.run([conv])
+
+      os.environ["TF_USE_DEEP_CONV2D"] = "1"
+      values_test = sess.run([conv])
+
+      self.assertAllClose(values_expect, values_test, rtol=1e-5, atol=1e-5)
+
+  def _RunTestCases(self, conv_strides, padding):
+    input_sizes = [[5, 5, 5, 1248], [3, 17, 17, 192], [2, 35, 35, 288],
+                   [2, 6, 8, 517], [2, 7, 4, 81], [3, 11, 3, 77]]
+    filter_sizes = [[3, 3, 1248, 128], [3, 3, 192, 192], [3, 3, 288, 384],
+                    [3, 3, 517, 64], [3, 3, 81, 77], [3, 3, 77, 181]]
+    for input_shape, filter_shape in zip(input_sizes, filter_sizes):
+      self._CompareFwdConv2D(input_shape, filter_shape, conv_strides, padding)
+
+  def testConv2D3x3FilterStride1x1Valid(self):
+    self._RunTestCases([1, 1], "VALID")
+
+  def testConv2D3x3FilterStride1x1Same(self):
+    self._RunTestCases([1, 1], "SAME")
 
 
 def GetInceptionFwdTest(input_size, filter_size, stride, padding):

@@ -32,29 +32,35 @@ class SparseConcatTest(tf.test.TestCase):
         tf.placeholder(tf.float32, shape=val_shape),
         tf.placeholder(tf.int64, shape=shape_shape))
 
-  def _SparseTensor_3x3(self):
+  def _SparseTensorValue_3x3(self):
     # [    1]
     # [2    ]
     # [3   4]
     ind = np.array([[0, 2], [1, 0], [2, 0], [2, 2]])
     val = np.array([1, 2, 3, 4])
     shape = np.array([3, 3])
-    return tf.SparseTensor(
-        tf.constant(ind, tf.int64),
-        tf.constant(val, tf.float32),
-        tf.constant(shape, tf.int64))
+    return tf.SparseTensorValue(
+        np.array(ind, np.int64),
+        np.array(val, np.float32),
+        np.array(shape, np.int64))
 
-  def _SparseTensor_3x5(self):
+  def _SparseTensor_3x3(self):
+    return tf.SparseTensor.from_value(self._SparseTensorValue_3x3())
+
+  def _SparseTensorValue_3x5(self):
     # [         ]
     # [  1      ]
     # [2     1 0]
     ind = np.array([[1, 1], [2, 0], [2, 3], [2, 4]])
     val = np.array([1, 2, 1, 0])
     shape = np.array([3, 5])
-    return tf.SparseTensor(
-        tf.constant(ind, tf.int64),
-        tf.constant(val, tf.float32),
-        tf.constant(shape, tf.int64))
+    return tf.SparseTensorValue(
+        np.array(ind, np.int64),
+        np.array(val, np.float32),
+        np.array(shape, np.int64))
+
+  def _SparseTensor_3x5(self):
+    return tf.SparseTensor.from_value(self._SparseTensorValue_3x5())
 
   def _SparseTensor_3x2(self):
     # [   ]
@@ -123,20 +129,19 @@ class SparseConcatTest(tf.test.TestCase):
       # [    1]
       # [2    ]
       # [3   4]
-      sp_a = self._SparseTensor_3x3()
+      for sp_a in (self._SparseTensorValue_3x3(), self._SparseTensor_3x3()):
+        sp_concat = tf.sparse_concat(1, [sp_a])
 
-      sp_concat = tf.sparse_concat(1, [sp_a])
+        self.assertEqual(sp_concat.indices.get_shape(), [4, 2])
+        self.assertEqual(sp_concat.values.get_shape(), [4])
+        self.assertEqual(sp_concat.shape.get_shape(), [2])
 
-      self.assertEqual(sp_concat.indices.get_shape(), [4, 2])
-      self.assertEqual(sp_concat.values.get_shape(), [4])
-      self.assertEqual(sp_concat.shape.get_shape(), [2])
+        concat_out = sess.run(sp_concat)
 
-      concat_out = sess.run(sp_concat)
-
-      self.assertAllEqual(
-          concat_out.indices, [[0, 2], [1, 0], [2, 0], [2, 2]])
-      self.assertAllEqual(concat_out.values, [1, 2, 3, 4])
-      self.assertAllEqual(concat_out.shape, [3, 3])
+        self.assertAllEqual(
+            concat_out.indices, [[0, 2], [1, 0], [2, 0], [2, 2]])
+        self.assertAllEqual(concat_out.values, [1, 2, 3, 4])
+        self.assertAllEqual(concat_out.shape, [3, 3])
 
   def testConcat2(self):
     with self.test_session(use_gpu=False) as sess:
@@ -144,22 +149,21 @@ class SparseConcatTest(tf.test.TestCase):
       # [    1          ]
       # [2       1      ]
       # [3   4 2     1 0]
-      sp_a = self._SparseTensor_3x3()
-      sp_b = self._SparseTensor_3x5()
+      for sp_a in (self._SparseTensorValue_3x3(), self._SparseTensor_3x3()):
+        for sp_b in (self._SparseTensorValue_3x5(), self._SparseTensor_3x5()):
+          sp_concat = tf.sparse_concat(1, [sp_a, sp_b])
 
-      sp_concat = tf.sparse_concat(1, [sp_a, sp_b])
+          self.assertEqual(sp_concat.indices.get_shape(), [8, 2])
+          self.assertEqual(sp_concat.values.get_shape(), [8])
+          self.assertEqual(sp_concat.shape.get_shape(), [2])
 
-      self.assertEqual(sp_concat.indices.get_shape(), [8, 2])
-      self.assertEqual(sp_concat.values.get_shape(), [8])
-      self.assertEqual(sp_concat.shape.get_shape(), [2])
+          concat_out = sess.run(sp_concat)
 
-      concat_out = sess.run(sp_concat)
-
-      self.assertAllEqual(
-          concat_out.indices,
-          [[0, 2], [1, 0], [1, 4], [2, 0], [2, 2], [2, 3], [2, 6], [2, 7]])
-      self.assertAllEqual(concat_out.values, [1, 2, 1, 3, 4, 2, 1, 0])
-      self.assertAllEqual(concat_out.shape, [3, 8])
+          self.assertAllEqual(
+              concat_out.indices,
+              [[0, 2], [1, 0], [1, 4], [2, 0], [2, 2], [2, 3], [2, 6], [2, 7]])
+          self.assertAllEqual(concat_out.values, [1, 2, 1, 3, 4, 2, 1, 0])
+          self.assertAllEqual(concat_out.shape, [3, 8])
 
   def testConcatDim0(self):
     with self.test_session(use_gpu=False) as sess:

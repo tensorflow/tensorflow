@@ -40,18 +40,17 @@ class RandomNormalTest(tf.test.TestCase):
   # to see the same sequence of values. Will catch buggy
   # implementations which uses the same random number seed.
   def testDistinct(self):
-    for use_gpu in [False, True]:
-      for dt in tf.float16, tf.float32, tf.float64:
-        sampler = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu)
-        x = sampler()
-        y = sampler()
-        # Number of different samples.
-        count = (x == y).sum()
-        if count >= 10:
-          print("x = ", x)
-          print("y = ", y)
-          print("count = ", count)
-        self.assertTrue(count < 10)
+    for dt in tf.float16, tf.float32, tf.float64:
+      sampler = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=True)
+      x = sampler()
+      y = sampler()
+      # Number of different samples.
+      count = (x == y).sum()
+      if count >= 10:
+        print("x = ", x)
+        print("y = ", y)
+        print("count = ", count)
+      self.assertTrue(count < 10)
 
   # Checks that the CPU and GPU implementation returns the same results,
   # given the same random seed
@@ -67,11 +66,10 @@ class RandomNormalTest(tf.test.TestCase):
         self.assertAllClose(results[False], results[True], rtol=1e-6, atol=1e-6)
 
   def testSeed(self):
-    for use_gpu in [False, True]:
-      for dt in tf.float16, tf.float32, tf.float64:
-        sx = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=345)
-        sy = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=345)
-        self.assertAllEqual(sx(), sy())
+    for dt in tf.float16, tf.float32, tf.float64:
+      sx = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=True, seed=345)
+      sy = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=True, seed=345)
+      self.assertAllEqual(sx(), sy())
 
   def testNoCSE(self):
     for use_gpu in [False, True]:
@@ -101,9 +99,9 @@ class TruncatedNormalTest(tf.test.TestCase):
   # implementations which uses the same random number seed.
   def testDistinct(self):
     # NOTE: TruncatedNormal on GPU is not supported.
-    for use_gpu in [False]:
+    if not tf.test.is_gpu_available():
       for dt in tf.float16, tf.float32, tf.float64:
-        sampler = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu)
+        sampler = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=False)
         x = sampler()
         y = sampler()
         # Number of different samples.
@@ -117,12 +115,16 @@ class TruncatedNormalTest(tf.test.TestCase):
   # Checks that the CPU and GPU implementation returns the same results,
   # given the same random seed
   def testCPUGPUMatch(self):
+    # Skip the test if there is no GPU.
+    if not tf.test.is_gpu_available():
+      return
+
     for dt in tf.float16, tf.float32, tf.float64:
       results = {}
       for use_gpu in [False, True]:
         # We need a particular larger number of samples to test multiple rounds
         # on GPU
-        sampler = self._Sampler(1000000, 0.0, 1.0, dt, use_gpu=use_gpu,
+        sampler = self._Sampler(200000, 0.0, 1.0, dt, use_gpu=use_gpu,
                                 seed=12345)
         results[use_gpu] = sampler()
       if dt == tf.float16:
@@ -131,31 +133,28 @@ class TruncatedNormalTest(tf.test.TestCase):
         self.assertAllClose(results[False], results[True], rtol=1e-6, atol=1e-6)
 
   def testSeed(self):
-    for use_gpu in [False, True]:
-      for dt in tf.float16, tf.float32, tf.float64:
-        sx = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=345)
-        sy = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=345)
-        self.assertAllEqual(sx(), sy())
+    for dt in tf.float16, tf.float32, tf.float64:
+      sx = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=True, seed=345)
+      sy = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=True, seed=345)
+      self.assertAllEqual(sx(), sy())
 
   # The effective standard deviation of truncated normal is 85% of the
   # requested one.
   def testStdDev(self):
-    for use_gpu in [False, True]:
-      for dt in tf.float16, tf.float32, tf.float64:
-        stddev = 3.0
-        sampler = self._Sampler(100000, 0.0, stddev, dt, use_gpu=use_gpu)
-        x = sampler()
-        print("std(x)", np.std(x), abs(np.std(x) / stddev - 0.85))
-        self.assertTrue(abs(np.std(x) / stddev - 0.85) < 0.04)
+    for dt in tf.float16, tf.float32, tf.float64:
+      stddev = 3.0
+      sampler = self._Sampler(100000, 0.0, stddev, dt, use_gpu=True)
+      x = sampler()
+      print("std(x)", np.std(x), abs(np.std(x) / stddev - 0.85))
+      self.assertTrue(abs(np.std(x) / stddev - 0.85) < 0.04)
 
   def testNoCSE(self):
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
-        shape = [2, 3, 4]
-        rnd1 = tf.truncated_normal(shape, 0.0, 1.0, tf.float32)
-        rnd2 = tf.truncated_normal(shape, 0.0, 1.0, tf.float32)
-        diff = rnd2 - rnd1
-        self.assertTrue(np.linalg.norm(diff.eval()) > 0.1)
+    with self.test_session(use_gpu=True):
+      shape = [2, 3, 4]
+      rnd1 = tf.truncated_normal(shape, 0.0, 1.0, tf.float32)
+      rnd2 = tf.truncated_normal(shape, 0.0, 1.0, tf.float32)
+      diff = rnd2 - rnd1
+      self.assertTrue(np.linalg.norm(diff.eval()) > 0.1)
 
 
 class RandomUniformTest(tf.test.TestCase):
@@ -172,32 +171,30 @@ class RandomUniformTest(tf.test.TestCase):
     return func
 
   def testRange(self):
-    for use_gpu in False, True:
-      for dt in tf.float16, tf.float32, tf.float64, tf.int32, tf.int64:
-        sampler = self._Sampler(1000, minv=-2, maxv=8, dtype=dt,
-                                use_gpu=use_gpu)
-        x = sampler()
-        self.assertTrue(-2 <= np.min(x))
-        self.assertTrue(np.max(x) < 8)
+    for dt in tf.float16, tf.float32, tf.float64, tf.int32, tf.int64:
+      sampler = self._Sampler(1000, minv=-2, maxv=8, dtype=dt,
+                              use_gpu=True)
+      x = sampler()
+      self.assertTrue(-2 <= np.min(x))
+      self.assertTrue(np.max(x) < 8)
 
   # Asserts that different trials (1000 samples per trial) is unlikely
   # to see the same sequence of values. Will catch buggy
   # implementations which uses the same random number seed.
   def testDistinct(self):
-    for use_gpu in False, True:
-      for dt in tf.float16, tf.float32, tf.float64, tf.int32, tf.int64:
-        maxv = 1.0 if dt.is_floating else 1 << 30
-        sampler = self._Sampler(1000, minv=0, maxv=maxv, dtype=dt,
-                                use_gpu=use_gpu)
-        x = sampler()
-        y = sampler()
-        count = (x == y).sum()
-        count_limit = 50 if dt == tf.float16 else 10
-        if count >= count_limit:
-          print("x = ", x)
-          print("y = ", y)
-          print("count = ", count)
-        self.assertTrue(count < count_limit)
+    for dt in tf.float16, tf.float32, tf.float64, tf.int32, tf.int64:
+      maxv = 1.0 if dt.is_floating else 1 << 30
+      sampler = self._Sampler(1000, minv=0, maxv=maxv, dtype=dt,
+                              use_gpu=True)
+      x = sampler()
+      y = sampler()
+      count = (x == y).sum()
+      count_limit = 50 if dt == tf.float16 else 10
+      if count >= count_limit:
+        print("x = ", x)
+        print("y = ", y)
+        print("count = ", count)
+      self.assertTrue(count < count_limit)
 
   # Check that uniform ints actually follow a uniform distribution.
   def testUniformInts(self):
@@ -208,19 +205,18 @@ class RandomUniformTest(tf.test.TestCase):
     # The counts should follow an (n, p) binomial distribution.
     mean = p * n
     std = np.sqrt(n * p * (1 - p))
-    for use_gpu in False, True:
-      for dt in tf.int32, tf.int64:
-        # Use a fixed seed here to make the test deterministic.
-        # Without the fixed seed, the 5 * std bound will (very rarely) fail.
-        sampler = self._Sampler(n // 10, minv=minv, maxv=maxv, dtype=dt,
-                                use_gpu=use_gpu, seed=17)
-        x = sampler().ravel()
-        self.assertEqual(x.shape, (n,))
-        counts, _ = np.histogram(x, bins=maxv - minv)
-        self.assertEqual(counts.shape, (maxv - minv,))
-        self.assertEqual(counts.sum(), n)
-        error = np.abs(counts - mean)
-        self.assertLess(error.max(), 5 * std)
+    for dt in tf.int32, tf.int64:
+      # Use a fixed seed here to make the test deterministic.
+      # Without the fixed seed, the 5 * std bound will (very rarely) fail.
+      sampler = self._Sampler(n // 10, minv=minv, maxv=maxv, dtype=dt,
+                              use_gpu=True, seed=17)
+      x = sampler().ravel()
+      self.assertEqual(x.shape, (n,))
+      counts, _ = np.histogram(x, bins=maxv - minv)
+      self.assertEqual(counts.shape, (maxv - minv,))
+      self.assertEqual(counts.sum(), n)
+      error = np.abs(counts - mean)
+      self.assertLess(error.max(), 5 * std)
 
   # Checks that the CPU and GPU implementation returns the same results,
   # given the same random seed
@@ -235,22 +231,20 @@ class RandomUniformTest(tf.test.TestCase):
       self.assertAllEqual(results[False], results[True])
 
   def testSeed(self):
-    for use_gpu in False, True:
-      for dt in tf.float16, tf.float32, tf.float64, tf.int32, tf.int64:
-          for seed in [345, 2**100, -2**100]:
-            sx = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=seed)
-            sy = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=use_gpu, seed=seed)
-            self.assertAllEqual(sx(), sy())
+    for dt in tf.float16, tf.float32, tf.float64, tf.int32, tf.int64:
+      for seed in [345, 2**100, -2**100]:
+        sx = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=True, seed=seed)
+        sy = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=True, seed=seed)
+        self.assertAllEqual(sx(), sy())
 
   def testNoCSE(self):
     shape = [2, 3, 4]
-    for use_gpu in False, True:
-      for dtype in tf.float16, tf.float32, tf.int32:
-        with self.test_session(use_gpu=use_gpu):
-          rnd1 = tf.random_uniform(shape, 0, 17, dtype=dtype)
-          rnd2 = tf.random_uniform(shape, 0, 17, dtype=dtype)
-          diff = (rnd2 - rnd1).eval()
-          self.assertTrue(np.linalg.norm(diff) > 0.1)
+    for dtype in tf.float16, tf.float32, tf.int32:
+      with self.test_session(use_gpu=True):
+        rnd1 = tf.random_uniform(shape, 0, 17, dtype=dtype)
+        rnd2 = tf.random_uniform(shape, 0, 17, dtype=dtype)
+        diff = (rnd2 - rnd1).eval()
+        self.assertTrue(np.linalg.norm(diff) > 0.1)
 
 
 class RandomShapeTest(tf.test.TestCase):

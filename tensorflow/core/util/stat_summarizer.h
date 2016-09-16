@@ -115,22 +115,51 @@ class StatSummarizer {
   // can be pasted into a spreadsheet for further analysis.
   void PrintStepStats() const;
 
-  // Summarizes all nodes' stat in the order of node names defined in the graph.
-  std::string GetStatsByOrderOfNodeDefinitions() const;
-
-  // Summarizes all nodes' stat in the order of nodes getting executed.
-  std::string GetStatsByRunOrder() const;
+  // Prints the output tensor sizes and types for each node.
+  void PrintOutputs() const;
 
   // Summarizes all nodes' stat in the order of top durations.
   // Will stop printing if either cdf_cutoff_ratio or num_max_nodes_to_print
   // is hit.
+  std::string GetTimingStatsByTopDurations(
+      double cdf_cutoff_ratio = 1.0,
+      int num_max_nodes_to_print = std::numeric_limits<int>::max()) const;
+
+  // Summarizes all nodes' timing stat in the order of nodes getting executed.
+  std::string GetTimingStatsByRunOrder() const;
+
+  // Summarizes all timing stats in the order of node definitions in the graph.
+  std::string GetTimingStatsByOrderOfNodeDefinitions() const;
+
+  // Summarizes all nodes' stat in the order of memory used (high -> low).
+  // Will stop printing if either cdf_cutoff_ratio or num_max_nodes_to_print
+  // is hit.
+  std::string GetMemoryStatsByUsage(
+      double cdf_cutoff_ratio = 1.0,
+      int num_max_nodes_to_print = std::numeric_limits<int>::max()) const;
+
+  // Summarizes all nodes' memory stat in the order of nodes getting executed.
+  std::string GetMemoryStatsByRunOrder() const;
+
+  // Summarizes all memory stats in the order of node definitions in the graph.
+  std::string GetMemoryStatsByOrderOfNodeDefinitions() const;
+
+  // Deprecated, use GetTimingStatsByOrderOfNodeDefinitions instead
+  std::string GetStatsByOrderOfNodeDefinitions() const;
+
+  // Deprecated, use GetTimingStatsByRunOrder instead
+  std::string GetStatsByRunOrder() const;
+
+  // Deprecated, use GetTimingStatsByTopDurations instead
   std::string GetStatsByTopDurations(
       double cdf_cutoff_ratio = 1.0,
       int num_max_nodes_to_print = std::numeric_limits<int>::max()) const;
 
   void Reset() {
     run_total_micros_.Reset();
+    memory_.Reset();
     timing_details_.clear();
+    memory_details_.clear();
   }
 
   // Returns number of runs.
@@ -141,29 +170,37 @@ class StatSummarizer {
 
  private:
   struct Detail {
-    int64 first_start_micros;
-    int64 first_rel_end_micros;
-    int64 total_micros;
+    int64 first_start;
+    int64 first_rel_end;
+    int64 total;
+    std::vector<TensorDescription> outputs;
   };
 
-  enum struct SortingMetric {
-    BY_TOTAL_DURATION,
+  enum SortingMetric {
+    BY_TOTAL,
     BY_RUN_ORDER,
   };
 
+  // Summarizes all nodes' stat in the order of node names defined in the graph.
+  std::string GetStatsByOrderOfNodeDefinitions(bool use_memory) const;
+
   std::string GetStatsBySorting(SortingMetric sorting_metric,
                                 double cdf_cutoff_ratio,
-                                int num_max_nodes_to_print) const;
+                                int num_max_nodes_to_print,
+                                bool use_memory) const;
 
   std::string HeaderString() const;
   std::string ColumnString(const std::string& name, const Detail& detail,
-                           int64 cumulative_time_us_on_node) const;
+                           int64 cumulative_stat_on_node,
+                           Stat<int64> stat) const;
   std::string ShortSummary() const;
 
   int64 first_node_start_micros_;
   Stat<int64> run_total_micros_;
+  Stat<int64> memory_;
   std::vector<string> nodes_in_def_order_;
   std::map<std::string, Detail> timing_details_;
+  std::map<std::string, Detail> memory_details_;
   std::map<string, string> node_types_;
 };
 

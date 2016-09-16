@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
+
 import tensorflow as tf
 
 from tensorflow.contrib import layers
@@ -42,7 +44,7 @@ class _BaseEstimatorForTest(estimator.BaseEstimator):
   def __init__(self,
                target_column,
                feature_columns):
-    super(_BaseEstimatorForTest, self).__init__()
+    super(_BaseEstimatorForTest, self).__init__(model_dir=tempfile.mkdtemp())
     self._target_column = target_column
     self._feature_columns = feature_columns
 
@@ -111,9 +113,9 @@ class ComposableModelTest(tf.test.TestCase):
     classifier = LinearEstimator(target_column,
                                  feature_columns=[age, language])
 
-    classifier.fit(input_fn=input_fn, steps=100)
+    classifier.fit(input_fn=input_fn, steps=1000)
     loss1 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
-    classifier.fit(input_fn=input_fn, steps=200)
+    classifier.fit(input_fn=input_fn, steps=2000)
     loss2 = classifier.evaluate(input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss2, loss1)
     self.assertLess(loss2, 0.01)

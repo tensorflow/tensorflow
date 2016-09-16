@@ -17,10 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import resource_loader
 
@@ -87,13 +87,5 @@ def sparse_feature_cross(inputs, hashed_output=False, num_buckets=0,
   return ops.SparseTensor(indices_out, values_out, shape_out)
 
 
-@ops.RegisterShape("SparseFeatureCross")
-def _SparseFeatureCrossShape(unused_op):  # pylint: disable=invalid-name
-  return [
-      tensor_shape.matrix(None, 2),
-      tensor_shape.vector(None),
-      tensor_shape.vector(2)
-  ]
-
-
-ops.NoGradient("SparseFeatureCross")
+ops.RegisterShape("SparseFeatureCross")(common_shapes.call_cpp_shape_fn)
+ops.NotDifferentiable("SparseFeatureCross")

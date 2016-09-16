@@ -80,7 +80,7 @@ class KeyValueTensorIterator
 
   Status status() const override { return status_; }
 
-  int64 total_size() const {
+  int64 total_size() const override {
     return keys_ == nullptr ? -1 : keys_->NumElements();
   }
 

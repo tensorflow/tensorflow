@@ -54,18 +54,18 @@ work, but there may be bugs or performance issues.
 
 The first step in using TensorBoard is acquiring data from your TensorFlow run.
 For this, you need [summary
-ops](https://www.tensorflow.org/versions/r0.9/api_docs/python/train.html#summary-operations).
+ops](https://www.tensorflow.org/versions/r0.10/api_docs/python/train.html#summary-operations).
 Summary ops are ops, like
-[`tf.matmul`](https://www.tensorflow.org/versions/r0.9/api_docs/python/math_ops.html#matmul)
+[`tf.matmul`](https://www.tensorflow.org/versions/r0.10/api_docs/python/math_ops.html#matmul)
 or
-[`tf.nn.relu`](https://www.tensorflow.org/versions/r0.9/api_docs/python/nn.html#relu),
+[`tf.nn.relu`](https://www.tensorflow.org/versions/r0.10/api_docs/python/nn.html#relu),
 which means they take in tensors, produce tensors, and are evaluated from within
 a TensorFlow graph. However, summary ops have a twist: the Tensors they produce
 contain serialized protobufs, which are written to disk and sent to TensorBoard.
 To visualize the summary data in TensorBoard, you should evaluate the summary
 op, retrieve the result, and then write that result to disk using a
 SummaryWriter. A full explanation, with examples, is in [the
-tutorial](https://www.tensorflow.org/versions/r0.9/how_tos/summaries_and_tensorboard/index.html).
+tutorial](https://www.tensorflow.org/versions/r0.10/how_tos/summaries_and_tensorboard/index.html).
 
 ### Tags: Giving names to data
 
@@ -105,7 +105,8 @@ For example, here is a well-organized TensorBoard log directory, with two runs,
 "run1" and "run2".
 
 ```
-/some/path/mnist_experiments/ some/path/mnist_experiments/run1/
+/some/path/mnist_experiments/
+/some/path/mnist_experiments/run1/
 /some/path/mnist_experiments/run1/events.out.tfevents.1456525581.name
 /some/path/mnist_experiments/run1/events.out.tfevents.1456525585.name
 /some/path/mnist_experiments/run2/
@@ -113,11 +114,19 @@ For example, here is a well-organized TensorBoard log directory, with two runs,
 /tensorboard --logdir=/some/path/mnist_experiments
 ```
 
+You may also pass a comma separated list of log directories, and TensorBoard
+will watch each directory. You can also assign names to individual log
+directories by putting a colon between the name and the path, as in
+
+```
+tensorboard --logdir=name1:/path/to/logs/1,name2:/path/to/logs/2
+```
+
 # The Visualizations
 
-### Scalar Dashboard
+### Events Dashboard
 
-TensorBoard's Scalar Dashboard visualizes scalar statistics that vary over time;
+TensorBoard's Events Dashboard visualizes scalar statistics that vary over time;
 for example, you might want to track the model's loss or learning rate. As
 described in *Key Concepts*, you can compare multiple runs, and the data is
 organized by tag. The line charts have the following interactions:
@@ -178,18 +187,9 @@ TensorFlow model. To get best use of the graph visualizer, you should use name
 scopes to hierarchically group the ops in your graph - otherwise, the graph may
 be difficult to decipher. For more information, including examples, see [the
 graph visualizer
-tutorial](https://www.tensorflow.org/versions/r0.9/how_tos/graph_viz/index.html#tensorboard-graph-visualization).
+tutorial](https://www.tensorflow.org/versions/r0.10/how_tos/graph_viz/index.html#tensorboard-graph-visualization).
 
 # Frequently Asked Questions
-
-### Does TensorBoard support distributed summary writers?
-
-No. Currently, TensorBoard expects that only a single summary writer will be
-active at a time, and as consequence, only a single events file is ever written
-to at a time. Violating this assumption may cause TensorBoard to lose data or
-stop updating unexpectedly. If you are running a distributed training process,
-we encourage you to designate a single worker as the "chief" that is responsible
-for writing all summaries to disk.
 
 ### My TensorBoard isn't showing any data! What's wrong?
 

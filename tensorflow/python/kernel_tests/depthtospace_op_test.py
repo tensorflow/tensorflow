@@ -26,10 +26,9 @@ import tensorflow as tf
 class DepthToSpaceTest(tf.test.TestCase):
 
   def _testOne(self, inputs, block_size, outputs):
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
-        x_tf = tf.depth_to_space(tf.to_float(inputs), block_size)
-        self.assertAllEqual(x_tf.eval(), outputs)
+    with self.test_session(use_gpu=True):
+      x_tf = tf.depth_to_space(tf.to_float(inputs), block_size)
+      self.assertAllEqual(x_tf.eval(), outputs)
 
   def testBasic(self):
     x_np = [[[[1, 2, 3, 4]]]]
@@ -137,7 +136,7 @@ class DepthToSpaceTest(tf.test.TestCase):
     block_size = 4
     # Raise an exception, since th depth is only 4 and needs to be
     # divisible by 16.
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       out_tf = tf.depth_to_space(x_np, block_size)
       out_tf.eval()
 
@@ -166,7 +165,7 @@ class DepthToSpaceTest(tf.test.TestCase):
     x_np = [[[[1], [2]],
              [[3], [4]]]]
     block_size = 10
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       out_tf = tf.space_to_depth(x_np, block_size)
       out_tf.eval()
 
@@ -177,7 +176,7 @@ class DepthToSpaceTest(tf.test.TestCase):
              [[3, 3, 3, 3],
               [4, 4, 4, 4]]]]
     block_size = 3
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       _ = tf.space_to_depth(x_np, block_size)
 
   def testUnknownShape(self):
@@ -190,7 +189,7 @@ class DepthToSpaceGradientTest(tf.test.TestCase):
   # Check the gradients.
   def _checkGrad(self, x, block_size):
     assert 4 == x.ndim
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       tf_x = tf.convert_to_tensor(x)
       tf_y = tf.depth_to_space(tf_x, block_size)
       epsilon = 1e-2

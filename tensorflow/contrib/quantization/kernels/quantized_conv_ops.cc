@@ -18,7 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "external/gemmlowp/public/gemmlowp.h"
+#include "public/gemmlowp.h"
 #include "tensorflow/contrib/quantization/kernels/quantization_utils.h"
 #include "tensorflow/contrib/quantization/kernels/reference_gemm.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -46,13 +46,13 @@ namespace tensorflow {
 template <class T1, class T2, class T3>
 class ReferenceConvFunctor {
  public:
-  void operator()(const T1* input_data, int input_batches, int input_height,
-                  int input_width, int input_depth, int input_offset,
-                  const T2* filter_data, int filter_height, int filter_width,
-                  int filter_count, int filter_offset, int stride,
-                  Padding padding, T3* output_data, int output_height,
-                  int output_width, int output_shift, int output_offset,
-                  int output_mult) {
+  void operator()(OpKernelContext* op_context, const T1* input_data,
+                  int input_batches, int input_height, int input_width,
+                  int input_depth, int input_offset, const T2* filter_data,
+                  int filter_height, int filter_width, int filter_count,
+                  int filter_offset, int stride, Padding padding,
+                  T3* output_data, int output_height, int output_width,
+                  int output_shift, int output_offset, int output_mult) {
     // Set up some constants we need for the output down-shifting and
     // saturation.
     const int32 highest = static_cast<int32>(Eigen::NumTraits<T3>::highest());
@@ -186,13 +186,13 @@ class ReferenceConvFunctor {
 template <class T1, class T2, class T3>
 class Im2ColConvFunctor {
  public:
-  void operator()(const T1* input_data, int input_batches, int input_height,
-                  int input_width, int input_depth, int input_offset,
-                  const T2* filter_data, int filter_height, int filter_width,
-                  int filter_count, int filter_offset, int stride,
-                  Padding padding, T3* output_data, int output_height,
-                  int output_width, int output_shift, int output_offset,
-                  int output_mult) {
+  void operator()(OpKernelContext* op_context, const T1* input_data,
+                  int input_batches, int input_height, int input_width,
+                  int input_depth, int input_offset, const T2* filter_data,
+                  int filter_height, int filter_width, int filter_count,
+                  int filter_offset, int stride, Padding padding,
+                  T3* output_data, int output_height, int output_width,
+                  int output_shift, int output_offset, int output_mult) {
     if (input_offset < 0) {
       // Only log the first few occurrences of this warning.
       static int warning_count = 0;
@@ -206,11 +206,11 @@ class Im2ColConvFunctor {
             << " avoid this situation.";
       }
       ReferenceConvFunctor<T1, T2, T3> conv_functor;
-      conv_functor(input_data, input_batches, input_height, input_width,
-                   input_depth, input_offset, filter_data, filter_height,
-                   filter_width, filter_count, filter_offset, stride, padding,
-                   output_data, output_height, output_width, output_shift,
-                   output_offset, output_mult);
+      conv_functor(op_context, input_data, input_batches, input_height,
+                   input_width, input_depth, input_offset, filter_data,
+                   filter_height, filter_width, filter_count, filter_offset,
+                   stride, padding, output_data, output_height, output_width,
+                   output_shift, output_offset, output_mult);
       return;
     }
 
@@ -369,7 +369,11 @@ class Im2ColConvFunctor {
       gemmlowp::MatrixMap<std::int32_t, ResultOrder> result(
           output_data_as_int32, m, n, ldc);
       const std::tuple<> empty_pipeline = {};
-      gemmlowp::GemmContext context;
+
+      auto& worker_threads =
+          *(op_context->device()->tensorflow_cpu_worker_threads());
+      TensorflowGemmContext context(worker_threads.num_threads,
+                                    worker_threads.workers);
       gemmlowp::GemmWithOutputPipeline<std::uint8_t, std::int32_t,
                                        gemmlowp::DefaultL8R8BitDepthParams>(
           &context, lhs, rhs, &result, -input_offset, -filter_offset,
@@ -483,11 +487,11 @@ class QuantizedConv2DOp : public OpKernel {
     // This will call different implementations (e.g. reference or optimized)
     // depending on the template parameter.
     ConvFunctor<T1, T2, T3> conv_functor;
-    conv_functor(input.flat<T1>().data(), batch, input_rows, input_cols,
-                 in_depth, offset_input, filter.flat<T2>().data(), filter_rows,
-                 filter_cols, out_depth, offset_filter, stride, padding_,
-                 output->flat<T3>().data(), out_rows, out_cols, shift_output,
-                 offset_output, mult_output);
+    conv_functor(context, input.flat<T1>().data(), batch, input_rows,
+                 input_cols, in_depth, offset_input, filter.flat<T2>().data(),
+                 filter_rows, filter_cols, out_depth, offset_filter, stride,
+                 padding_, output->flat<T3>().data(), out_rows, out_cols,
+                 shift_output, offset_output, mult_output);
 
     float min_output_value;
     float max_output_value;

@@ -14,8 +14,9 @@ The corresponding output is either a single `Tensor` having the same number
 of time steps and batch size, or a (possibly nested) tuple of such tensors,
 matching the nested structure of `cell.output_size`.
 
-The parameter `sequence_length` is required and dynamic calculation is
-automatically performed.
+The parameter `sequence_length` is optional and is used to copy-through state
+and zero-out outputs when past a batch element's sequence length. So it's more
+for correctness than performance, unlike in rnn().
 
 ##### Args:
 
@@ -44,7 +45,7 @@ automatically performed.
 *  <b>`sequence_length`</b>: (optional) An int32/int64 vector sized `[batch_size]`.
 *  <b>`initial_state`</b>: (optional) An initial state for the RNN.
     If `cell.state_size` is an integer, this must be
-    a `Tensor` of appropriate type and shape `[batch_size x cell.state_size]`.
+    a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
     If `cell.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell.state_size`.
 *  <b>`dtype`</b>: (optional) The data type for the initial state and expected output.

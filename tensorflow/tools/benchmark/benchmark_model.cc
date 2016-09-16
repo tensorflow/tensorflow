@@ -118,15 +118,16 @@ Status RunBenchmark(DataType input_data_type, TensorShape input_shape,
   s = session->Run(run_options, input_tensors, output_names, {},
                    &output_tensors, &run_metadata);
 
+  if (!s.ok()) {
+    LOG(ERROR) << "Error during inference: " << s;
+  }
+
   assert(run_metadata.has_step_stats());
 
   const StepStats& step_stats = run_metadata.step_stats();
 
   stats->ProcessStepStats(step_stats);
 
-  if (!s.ok()) {
-    LOG(ERROR) << "Error during inference: " << s;
-  }
   return s;
 }
 
@@ -170,6 +171,7 @@ int Main(int argc, char** argv) {
   int num_threads = -1;
   string benchmark_name = "";
   string output_prefix = "";
+  bool show_sizes = false;
 
   const bool parse_result = ParseFlags(
       &argc, argv, {
@@ -183,6 +185,7 @@ int Main(int argc, char** argv) {
                        Flag("num_threads", &num_threads),              //
                        Flag("benchmark_name", &benchmark_name),        //
                        Flag("output_prefix", &output_prefix),          //
+                       Flag("show_sizes", &show_sizes),                //
                    });
 
   if (!parse_result) {
@@ -206,6 +209,7 @@ int Main(int argc, char** argv) {
   LOG(INFO) << "Num threads: [" << num_threads << "]";
   LOG(INFO) << "Benchmark name: [" << benchmark_name << "]";
   LOG(INFO) << "Output prefix: [" << output_prefix << "]";
+  LOG(INFO) << "Show sizes: [" << show_sizes << "]";
 
   std::unique_ptr<Session> session;
   std::unique_ptr<StatSummarizer> stats;
@@ -240,6 +244,10 @@ int Main(int argc, char** argv) {
   }
 
   stats->PrintStepStats();
+
+  if (show_sizes) {
+    stats->PrintOutputs();
+  }
 
   if (!benchmark_name.empty() && !output_prefix.empty()) {
     // Compute the total number of values per input.

@@ -1,4 +1,4 @@
-### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, moving_average_decay=0.9, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None)` {#optimize_loss}
+### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, moving_average_decay=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None)` {#optimize_loss}
 
 Given loss and parameters for optimizer, returns a training op.
 
@@ -21,18 +21,22 @@ Given loss and parameters for optimizer, returns a training op.
                         If present, gradients for specified
                         variables will be multiplied by given constant.
 *  <b>`clip_gradients`</b>: float or `None`, clips gradients by this value.
-*  <b>`moving_average_decay`</b>: float or None, takes into account previous loss
-                        to make learning smoother due to outliers.
+*  <b>`moving_average_decay`</b>: Deprecated. float or None, takes into account previous
+                        loss to make learning smoother due to outliers.
 *  <b>`learning_rate_decay_fn`</b>: function, takes `learning_rate` and `global_step`
                           `Tensor`s, returns `Tensor`.
                           Can be used to implement any learning rate decay
                           functions.
                           For example: tf.train.exponential_decay.
 *  <b>`update_ops`</b>: list of update `Operation`s to execute at each step. If `None`,
-              uses elements of UPDATE_OPS collection.
+              uses elements of UPDATE_OPS collection. The order of execution
+              between `update_ops` and `loss` is non-deterministic.
 *  <b>`variables`</b>: list of variables to optimize or
              `None` to use all trainable variables.
 *  <b>`name`</b>: The name for this operation is used to scope operations and summaries.
+*  <b>`summaries`</b>: List of internal quantities to visualize on tensorboard. If not
+             set only the loss and the learning rate will be reported. The
+             complete list is in OPTIMIZER_SUMMARIES.
 
 ##### Returns:
 

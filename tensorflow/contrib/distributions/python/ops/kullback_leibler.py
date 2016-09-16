@@ -21,7 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -34,9 +34,9 @@ def kl(dist_a, dist_b, allow_nan=False, name=None):
   Args:
     dist_a: instance of distributions.Distribution.
     dist_b: instance of distributions.Distribution.
-    allow_nan: If False (default), a runtime error is raised
+    allow_nan: If `False` (default), a runtime error is raised
       if the KL returns NaN values for any batch entry of the given
-      distributions.  If True, the KL may return a NaN for the given entry.
+      distributions.  If `True`, the KL may return a NaN for the given entry.
     name: (optional) Name scope to use for created operations.
 
   Returns:
@@ -69,7 +69,7 @@ def kl(dist_a, dist_b, allow_nan=False, name=None):
     kl_t = array_ops.identity(kl_t, name="kl")
 
     with ops.control_dependencies([
-        logging_ops.Assert(
+        control_flow_ops.Assert(
             math_ops.logical_not(
                 math_ops.reduce_any(math_ops.is_nan(kl_t))),
             ["KL calculation between %s and %s returned NaN values "

@@ -25,6 +25,7 @@ import six
 
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
+from tensorflow.python.summary.impl import directory_watcher
 from tensorflow.python.summary.impl import io_wrapper
 
 
@@ -89,7 +90,7 @@ class EventMultiplexer(object):
         None, then the EventMultiplexer initializes without any runs.
       size_guidance: A dictionary mapping from `tagType` to the number of items
         to store for each tag of that type. See
-        `event_ccumulator.EventAccumulator` for details.
+        `event_accumulator.EventAccumulator` for details.
       purge_orphaned_data: Whether to discard any events that were "orphaned" by
         a TensorFlow restart.
     """
@@ -181,11 +182,24 @@ class EventMultiplexer(object):
   def Reload(self):
     """Call `Reload` on every `EventAccumulator`."""
     self._reload_called = True
+    # Build a list so we're safe even if the list of accumulators is modified
+    # even while we're reloading.
     with self._accumulators_mutex:
-      loaders = list(self._accumulators.values())
+      items = list(self._accumulators.items())
 
-    for l in loaders:
-      l.Reload()
+    names_to_delete = set()
+    for name, accumulator in items:
+      try:
+        accumulator.Reload()
+      except (OSError, IOError) as e:
+        logging.error("Unable to reload accumulator '%s': %s", name, e)
+      except directory_watcher.DirectoryDeletedError:
+        names_to_delete.add(name)
+
+    with self._accumulators_mutex:
+      for name in names_to_delete:
+        logging.warning("Deleting accumulator '%s'", name)
+        del self._accumulators[name]
     return self
 
   def FirstEventTimestamp(self, run):

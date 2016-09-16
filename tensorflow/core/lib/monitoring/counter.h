@@ -13,18 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_ACCUMULATOR_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_ACCUMULATOR_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
+#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_
+
+// We replace this implementation with a null implementation for mobile
+// platforms.
+#include "tensorflow/core/platform/platform.h"
+#ifdef IS_MOBILE_PLATFORM
+#include "tensorflow/core/lib/monitoring/mobile_counter.h"
+#else
 
 #include <array>
 #include <atomic>
 #include <map>
 
+#include "tensorflow/core/lib/monitoring/collection_registry.h"
+#include "tensorflow/core/lib/monitoring/metric_def.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-
-// WARNING: Not yet ready for usage.
 
 namespace tensorflow {
 namespace monitoring {
@@ -56,7 +64,7 @@ class CounterCell {
   TF_DISALLOW_COPY_AND_ASSIGN(CounterCell);
 };
 
-// A stateful class for updating a cumulative metric.
+// A stateful class for updating a cumulative integer metric.
 //
 // This class encapsulates a set of values (or a single value for a label-less
 // metric). Each value is identified by a tuple of labels. The class allows the
@@ -71,8 +79,18 @@ class CounterCell {
 template <int NumLabels>
 class Counter {
  public:
-  Counter() {}
-  ~Counter() {}
+  ~Counter() {
+    // Deleted here, before the metric_def is destroyed.
+    registration_handle_.reset();
+  }
+
+  // Creates the metric based on the metric-definition arguments.
+  //
+  // Example;
+  // auto* counter_with_label = Counter<1>::New("/tensorflow/counter",
+  //   "Tensorflow counter", "MyLabelName");
+  template <typename... MetricDefArgs>
+  static Counter* New(MetricDefArgs&&... metric_def_args);
 
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
@@ -80,7 +98,26 @@ class Counter {
   CounterCell* GetCell(const Labels&... labels) LOCKS_EXCLUDED(mu_);
 
  private:
+  explicit Counter(
+      const MetricDef<MetricKind::kCumulative, int64, NumLabels>& metric_def)
+      : metric_def_(metric_def),
+        registration_handle_(CollectionRegistry::Default()->Register(
+            &metric_def_, [&](MetricCollectorGetter getter) {
+              auto metric_collector = getter.Get(&metric_def_);
+
+              mutex_lock l(mu_);
+              for (const auto& cell : cells_) {
+                metric_collector.CollectValue(cell.first, cell.second.value());
+              }
+            })) {}
+
   mutable mutex mu_;
+
+  // The metric definition. This will be used to identify the metric when we
+  // register it for collection.
+  const MetricDef<MetricKind::kCumulative, int64, NumLabels> metric_def_;
+
+  std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
 
   using LabelArray = std::array<string, NumLabels>;
   std::map<LabelArray, CounterCell> cells_ GUARDED_BY(mu_);
@@ -91,6 +128,22 @@ class Counter {
 ////
 //  Implementation details follow. API readers may skip.
 ////
+
+inline void CounterCell::IncrementBy(const int64 step) {
+  DCHECK_LE(0, step) << "Must not decrement cumulative metrics.";
+  value_ += step;
+}
+
+inline int64 CounterCell::value() const { return value_; }
+
+template <int NumLabels>
+template <typename... MetricDefArgs>
+Counter<NumLabels>* Counter<NumLabels>::New(
+    MetricDefArgs&&... metric_def_args) {
+  return new Counter<NumLabels>(
+      MetricDef<MetricKind::kCumulative, int64, NumLabels>(
+          std::forward<MetricDefArgs>(metric_def_args)...));
+}
 
 template <int NumLabels>
 template <typename... Labels>
@@ -118,4 +171,5 @@ CounterCell* Counter<NumLabels>::GetCell(const Labels&... labels)
 }  // namespace monitoring
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_ACCUMULATOR_H_
+#endif  // IS_MOBILE_PLATFORM
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COUNTER_H_

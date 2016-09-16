@@ -20,21 +20,23 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 class OpKernelContext;
 
 namespace functor {
-template <typename Device, typename T, typename Index, int NDIM>
-struct GatherNd {
-  // Performs gather op on (Tparams, Tindices), writing to Tout.
+template <typename Device, typename T, typename Index, int IXDIM>
+struct GatherNdSlice {
+  // Performs a slice gather op on (Tparams, Tindices), writing to Tout.
   // Returns an index to Tindices if the value at that index is out of range.
   // Returns -1 if all values of Tindices are in range.
-  Index operator()(const Device& d,
-                   typename TTypes<T, NDIM>::ConstTensor Tparams,
+  Index operator()(const Device& d, const Index slice_size,
+                   typename TTypes<int32>::Scalar Tscratch,
+                   typename TTypes<T, IXDIM + 1>::ConstTensor Tparams,
                    typename TTypes<Index>::ConstMatrix Tindices,
-                   typename TTypes<T>::Flat Tout);
+                   typename TTypes<T>::Matrix Tout);
 };
 
 }  // namespace functor

@@ -13,11 +13,11 @@ corresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue.
 ##### Args:
 
 
-*  <b>`images`</b>: A `Tensor` of type `float32`.
+*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     1-D or higher rank. RGB data to convert. Last dimension must be size 3.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `float32`. `images` converted to HSV.
+  A `Tensor`. Has the same type as `images`. `images` converted to HSV.
 

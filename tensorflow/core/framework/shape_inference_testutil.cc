@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 
-#include <unordered_map>
-
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -24,44 +22,30 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
+namespace shape_inference {
 
-using shape_inference::Dimension;
-using shape_inference::Shape;
 using errors::Unknown;
 
-Status InferShapes(const string& op_name, const string& ins,
-                   const string& expected_outs, const NodeDef* node_def,
-                   const std::vector<const Tensor*>& input_tensors) {
+Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
+                                           const string& ins,
+                                           const string& expected_outs) {
   const OpRegistrationData* op_reg_data;
-  TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUp(op_name, &op_reg_data));
+  TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
 
   std::vector<string> ins_v = str_util::Split(ins, ';');
   std::unique_ptr<const NodeDef> new_node_def;
-  if (node_def == nullptr) {
-    new_node_def.reset(new NodeDef);
-    node_def = new_node_def.get();
+
+  shape_inference::InferenceContext c(&op.node_def, op_reg_data->op_def, ins_v,
+                                      op.input_tensors);
+  TF_RETURN_IF_ERROR(c.construction_status());
+  if (op_reg_data->shape_inference_fn == nullptr) {
+    return errors::InvalidArgument(
+        "No shape inference function exists for op '", op.name,
+        "', did you forget to define it?");
   }
-
-  NameRangeMap inputs_name_map;
-  NameRangeMap outputs_name_map;
-  TF_RETURN_IF_ERROR(NameRangesForNode(*node_def, op_reg_data->op_def,
-                                       &inputs_name_map, &outputs_name_map));
-  const int num_outputs = op_reg_data->op_def.output_arg_size();
-
-  shape_inference::InferenceContext c(node_def, op_reg_data->op_def, ins_v,
-                                      input_tensors);
   TF_RETURN_IF_ERROR(op_reg_data->shape_inference_fn(&c));
+  const int num_outputs = c.num_outputs();
 
-  std::unordered_map<const Dimension*, std::pair<int, int>>
-      dim_to_input_and_dim_idx;
-  std::unordered_map<const Shape*, int> shape_to_input_idx;
-  for (int i = 0; i < c.num_inputs(); ++i) {
-    auto in = c.input(i);
-    shape_to_input_idx[in] = i;
-    for (int j = 0; j < c.Rank(in); ++j) {
-      dim_to_input_and_dim_idx[c.Dim(in, j)] = std::make_pair(i, j);
-    }
-  }
   if (expected_outs == "e") {
     return Unknown("Shape inference should have returned error");
   }
@@ -74,13 +58,19 @@ Status InferShapes(const string& op_name, const string& ins,
   }
   for (int i = 0; i < num_outputs; ++i) {
     StringPiece expected(expected_outs_v[i]);
-    const shape_inference::Shape* out = c.output(i);
+    shape_inference::ShapeHandle out = c.output(i);
 
     string err_prefix = strings::StrCat("Output ", i);
     string err_suffix =
         strings::StrCat("; output shape was ", c.DebugString(out));
 
-    const int in_index = gtl::FindWithDefault(shape_to_input_idx, out, -1);
+    int in_index = -1;
+    for (int i = 0; i < c.num_inputs(); ++i) {
+      if (c.input(i).SameHandle(out)) {
+        in_index = i;
+      }
+    }
+
     if (expected.starts_with("in")) {
       if (in_index == -1) {
         return Unknown(err_prefix, " did not match any input shape",
@@ -107,7 +97,7 @@ Status InferShapes(const string& op_name, const string& ins,
     }
 
     // Verify the dimensions.
-    CHECK(expected.starts_with("[") && expected.ends_with("]"));
+    CHECK(expected.starts_with("[") && expected.ends_with("]")) << expected;
     expected.remove_prefix(1);
     expected.remove_suffix(1);
 
@@ -124,9 +114,18 @@ Status InferShapes(const string& op_name, const string& ins,
     for (int j = 0; j < expected_dims.size(); ++j) {
       err_prefix = strings::StrCat("Output dim ", i, ",", j);
       StringPiece expected_dim(expected_dims[j]);
-      const Dimension* out_dim = c.Dim(out, j);
-      std::pair<int, int> in_dim_idx = gtl::FindWithDefault(
-          dim_to_input_and_dim_idx, out_dim, std::make_pair(-1, -1));
+      DimensionHandle out_dim = c.Dim(out, j);
+
+      std::pair<int, int> in_dim_idx(-1, -1);
+      for (int i = 0; i < c.num_inputs(); ++i) {
+        auto in = c.input(i);
+        for (int j = 0; j < c.Rank(in); ++j) {
+          if (c.Dim(in, j).SameHandle(out_dim)) {
+            in_dim_idx = std::make_pair(i, j);
+          }
+        }
+      }
+
       if (expected_dim == "?") {
         if (in_dim_idx.first != -1) {
           return Unknown(err_prefix,
@@ -171,4 +170,5 @@ Status InferShapes(const string& op_name, const string& ins,
   return Status::OK();
 }
 
+}  // namespace shape_inference
 }  // namespace tensorflow

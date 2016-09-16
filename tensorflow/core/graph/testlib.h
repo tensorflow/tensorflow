@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// DEPRECATED: Use GraphDefBuilder instead.
+// DEPRECATED: Use the C++ API defined in tensorflow/cc instead.
 
 #ifndef TENSORFLOW_GRAPH_TESTLIB_H_
 #define TENSORFLOW_GRAPH_TESTLIB_H_

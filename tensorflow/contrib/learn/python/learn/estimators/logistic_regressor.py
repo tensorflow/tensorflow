@@ -56,8 +56,10 @@ class LogisticRegressor(estimator.Estimator):
       model_fn: Model function. See superclass Estimator for more details. This
         expects the returned predictions to be probabilities in [0.0, 1.0].
       thresholds: List of floating point thresholds to use for accuracy,
-        precision, and recall metrics. If None, defaults to [0.5].
-      model_dir: Directory to save model parameters, graphs, etc.
+        precision, and recall metrics. If `None`, defaults to `[0.5]`.
+      model_dir: Directory to save model parameters, graphs, etc. This can also
+        be used to load checkpoints from the directory into a estimator to continue
+        training a previously saved model.
       config: A RunConfig configuration object.
     """
     if thresholds is None:

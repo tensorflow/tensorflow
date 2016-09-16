@@ -646,7 +646,7 @@ void GenerateLowerCaseOpName(const string& str, string* result) {
 
 }  // namespace
 
-string GetPythonOps(const OpList& ops, const string& hidden_ops,
+string GetPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
                     bool require_shapes) {
   string result;
   // Header
@@ -668,15 +668,13 @@ from tensorflow.python.framework import op_def_library
 
 )");
 
-  std::vector<string> hidden_vec = str_util::Split(hidden_ops, ',');
-
   // We'll make a copy of ops that filters out descriptions.
   OpList cleaned_ops;
   auto out = cleaned_ops.mutable_op();
   out->Reserve(ops.op_size());
   for (const auto& op_def : ops.op()) {
     bool is_hidden = false;
-    for (const string& hidden : hidden_vec) {
+    for (const string& hidden : hidden_ops) {
       if (op_def.name() == hidden) {
         is_hidden = true;
         break;
@@ -726,22 +724,16 @@ _op_def_lib = _InitOpDefLibrary()
   return result;
 }
 
-void PrintPythonOps(const OpList& ops, const string& hidden_ops,
+void PrintPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
                     bool require_shapes) {
   printf("%s", GetPythonOps(ops, hidden_ops, require_shapes).c_str());
-}
-
-string GetAllPythonOps(const char* hidden, bool require_shapes) {
-  OpList ops;
-  OpRegistry::Global()->Export(false, &ops);
-  return GetPythonOps(ops, hidden, require_shapes);
 }
 
 string GetPythonWrappers(const char* op_wrapper_buf, size_t op_wrapper_len) {
   string op_list_str(op_wrapper_buf, op_wrapper_len);
   OpList ops;
   ops.ParseFromString(op_list_str);
-  return GetPythonOps(ops, "", false);
+  return GetPythonOps(ops, {}, false);
 }
 
 }  // namespace tensorflow

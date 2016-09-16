@@ -37,15 +37,12 @@ struct scalar_const_op {
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE scalar_const_op(const T* v) : val(v) {}
 
-  template <typename Index>
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(Index,
-                                                           Index = 0) const {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()() const {
     return *val;
   }
 
-  template <typename Index, typename PacketType = Packet>
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const PacketType
-      packetOp(Index, Index = 0) const {
+  template <typename PacketType = Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const PacketType packetOp() const {
     return internal::pset1<PacketType>(*val);
   }
 };

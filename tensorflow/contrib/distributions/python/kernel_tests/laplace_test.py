@@ -161,7 +161,7 @@ class LaplaceTest(tf.test.TestCase):
       scale = tf.constant(scale_v)
       n = 100000
       laplace = tf.contrib.distributions.Laplace(loc=loc, scale=scale)
-      samples = laplace.sample(n, seed=137)
+      samples = laplace.sample_n(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (n,))
       self.assertEqual(sample_values.shape, (n,))
@@ -179,7 +179,7 @@ class LaplaceTest(tf.test.TestCase):
       scale_v = np.array([np.arange(1, 11, dtype=np.float32)]).T  # 10 x 1
       laplace = tf.contrib.distributions.Laplace(loc=loc_v, scale=scale_v)
       n = 10000
-      samples = laplace.sample(n, seed=137)
+      samples = laplace.sample_n(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(samples.get_shape(), (n, 10, 100))
       self.assertEqual(sample_values.shape, (n, 10, 100))
@@ -214,7 +214,7 @@ class LaplaceTest(tf.test.TestCase):
       laplace = tf.contrib.distributions.Laplace(
           loc=[7., 11.], scale=[[5.], [6.]])
       num = 50000
-      samples = laplace.sample(num, seed=137)
+      samples = laplace.sample_n(num, seed=137)
       pdfs = laplace.pdf(samples)
       sample_vals, pdf_vals = sess.run([samples, pdfs])
       self.assertEqual(samples.get_shape(), (num, 2, 2))
@@ -246,17 +246,27 @@ class LaplaceTest(tf.test.TestCase):
 
   def testLaplaceNonPositiveInitializationParamsRaises(self):
     with self.test_session():
-      loc_v = tf.constant(0.0, name='loc')
-      scale_v = tf.constant(-1.0, name='scale')
-      laplace = tf.contrib.distributions.Laplace(loc=loc_v, scale=scale_v)
-      with self.assertRaisesOpError('scale'):
+      loc_v = tf.constant(0.0, name="loc")
+      scale_v = tf.constant(-1.0, name="scale")
+      laplace = tf.contrib.distributions.Laplace(
+          loc=loc_v, scale=scale_v, validate_args=True)
+      with self.assertRaisesOpError("scale"):
         laplace.mean().eval()
-      loc_v = tf.constant(1.0, name='loc')
-      scale_v = tf.constant(0.0, name='scale')
-      laplace = tf.contrib.distributions.Laplace(loc=loc_v, scale=scale_v)
-      with self.assertRaisesOpError('scale'):
+      loc_v = tf.constant(1.0, name="loc")
+      scale_v = tf.constant(0.0, name="scale")
+      laplace = tf.contrib.distributions.Laplace(
+          loc=loc_v, scale=scale_v, validate_args=True)
+      with self.assertRaisesOpError("scale"):
         laplace.mean().eval()
 
+  def testLaplaceWithSoftplusScale(self):
+    with self.test_session():
+      loc_v = tf.constant([0.0, 1.0], name="loc")
+      scale_v = tf.constant([-1.0, 2.0], name="scale")
+      laplace = tf.contrib.distributions.LaplaceWithSoftplusScale(
+          loc=loc_v, scale=scale_v)
+      self.assertAllClose(tf.nn.softplus(scale_v).eval(), laplace.scale.eval())
+      self.assertAllClose(loc_v.eval(), laplace.loc.eval())
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

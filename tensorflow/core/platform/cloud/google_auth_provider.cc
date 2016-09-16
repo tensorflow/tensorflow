@@ -21,7 +21,7 @@ limitations under the License.
 #include "include/json/json.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/cloud/base64.h"
+#include "tensorflow/core/lib/strings/base64.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -125,6 +125,7 @@ GoogleAuthProvider::GoogleAuthProvider(
       env_(env) {}
 
 Status GoogleAuthProvider::GetToken(string* t) {
+  mutex_lock lock(mu_);
   const uint64 now_sec = env_->NowSeconds();
 
   if (!current_token_.empty() &&

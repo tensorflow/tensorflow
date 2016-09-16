@@ -44,7 +44,7 @@ class OperatorShape(operator_pd.OperatorPDBase):
 
   @property
   def name(self):
-    return 'OperatorShape'
+    return "OperatorShape"
 
   def dtype(self):
     return tf.int32
@@ -65,7 +65,7 @@ class OperatorSqrtSolve(OperatorShape):
     return tf.matrix_triangular_solve(self._chol, rhs, lower=True)
 
   def _batch_sqrt_solve(self, rhs):
-    return tf.batch_matrix_triangular_solve(self._chol, rhs, lower=True)
+    return tf.matrix_triangular_solve(self._chol, rhs, lower=True)
 
   def _inv_quadratic_form_on_vectors(self, x):
     return self._iqfov_via_sqrt_solve(x)
@@ -82,7 +82,7 @@ class OperatorSolve(OperatorShape):
     return tf.matrix_solve(self._pos_def_matrix, rhs)
 
   def _batch_solve(self, rhs):
-    return tf.batch_matrix_solve(self._pos_def_matrix, rhs)
+    return tf.matrix_solve(self._pos_def_matrix, rhs)
 
   def _inv_quadratic_form_on_vectors(self, x):
     return self._iqfov_via_solve(x)
@@ -95,11 +95,10 @@ class OperatorPDBaseTest(tf.test.TestCase):
 
   def _random_cholesky_array(self, shape):
     mat = self._rng.rand(*shape)
-    chol = distributions.batch_matrix_diag_transform(mat,
-                                                     transform=tf.nn.softplus)
+    chol = distributions.matrix_diag_transform(mat, transform=tf.nn.softplus)
     # Zero the upper triangle because we're using this as a true Cholesky factor
     # in our tests.
-    return tf.batch_matrix_band_part(chol, -1, 0).eval()
+    return tf.matrix_band_part(chol, -1, 0).eval()
 
   def _numpy_inv_quadratic_form_on_vectors(self, chol, x):
     # Numpy works with batches now (calls them "stacks").
@@ -243,7 +242,7 @@ class FlipMatrixToVectorTest(tf.test.TestCase):
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
         mat = self._rng.rand(2, 3, 4, 6)
-        vec = operator_pd._flip_matrix_to_vector(
+        vec = operator_pd.flip_matrix_to_vector(
             mat, batch_shape, static_batch_shape)
         vec_v = vec.eval()
         self.assertAllEqual((6, 2, 3, 4), vec_v.shape)
@@ -255,7 +254,7 @@ class FlipMatrixToVectorTest(tf.test.TestCase):
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
         mat = self._rng.rand(2, 3, 4, 6)
-        vec = operator_pd._flip_matrix_to_vector(
+        vec = operator_pd.flip_matrix_to_vector(
             mat, batch_shape, static_batch_shape)
         vec_v = vec.eval()
         self.assertAllEqual((6, 3, 2, 4), vec_v.shape)
@@ -266,7 +265,7 @@ class FlipMatrixToVectorTest(tf.test.TestCase):
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
         mat = self._rng.rand(2, 3, 4, 6)
-        vec = operator_pd._flip_matrix_to_vector(
+        vec = operator_pd.flip_matrix_to_vector(
             mat, batch_shape, static_batch_shape)
         vec_v = vec.eval()
         self.assertAllEqual((2, 3, 2, 3, 4), vec_v.shape)
@@ -277,7 +276,7 @@ class FlipMatrixToVectorTest(tf.test.TestCase):
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
         mat = self._rng.rand(1, 3, 4, 6)
-        vec = operator_pd._flip_matrix_to_vector(
+        vec = operator_pd.flip_matrix_to_vector(
             mat, batch_shape, static_batch_shape)
         vec_v = vec.eval()
         self.assertAllEqual((6, 3, 4), vec_v.shape)
@@ -295,7 +294,7 @@ class FlipVectorToMatrixTest(tf.test.TestCase):
     for static_batch_shape in [
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
-        mat = operator_pd._flip_vector_to_matrix(
+        mat = operator_pd.flip_vector_to_matrix(
             x, batch_shape, static_batch_shape)
         mat_v = mat.eval()
         expected_mat_v = x.reshape(x.shape + (1,))
@@ -307,7 +306,7 @@ class FlipVectorToMatrixTest(tf.test.TestCase):
     for static_batch_shape in [
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
-        mat = operator_pd._flip_vector_to_matrix(
+        mat = operator_pd.flip_vector_to_matrix(
             x, batch_shape, static_batch_shape)
         mat_v = mat.eval()
         self.assertAllEqual((4, 5, 6, 3), mat_v.shape)
@@ -319,7 +318,7 @@ class FlipVectorToMatrixTest(tf.test.TestCase):
     for static_batch_shape in [
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
-        mat = operator_pd._flip_vector_to_matrix(
+        mat = operator_pd.flip_vector_to_matrix(
             x, batch_shape, static_batch_shape)
         mat_v = mat.eval()
         self.assertAllEqual((5, 4, 6, 3), mat_v.shape)
@@ -330,7 +329,7 @@ class FlipVectorToMatrixTest(tf.test.TestCase):
     for static_batch_shape in [
         tf.TensorShape(batch_shape), tf.TensorShape(None)]:
       with self.test_session():
-        mat = operator_pd._flip_vector_to_matrix(
+        mat = operator_pd.flip_vector_to_matrix(
             x, batch_shape, static_batch_shape)
         mat_v = mat.eval()
         self.assertAllEqual((4, 5, 6, 2*3), mat_v.shape)
@@ -345,16 +344,16 @@ class ExtractBatchShapeTest(tf.test.TestCase):
     with self.test_session():
       x = self._rng.rand(2, 3)
       num_event_dims = 2
-      batch_shape = operator_pd._extract_batch_shape(x, num_event_dims)
+      batch_shape = operator_pd.extract_batch_shape(x, num_event_dims)
       self.assertAllEqual([], batch_shape.eval())
 
   def test_x_has_non_empty_batch_shape(self):
     with self.test_session():
       x = self._rng.rand(2, 3, 4, 5)
       num_event_dims = 2
-      batch_shape = operator_pd._extract_batch_shape(x, num_event_dims)
+      batch_shape = operator_pd.extract_batch_shape(x, num_event_dims)
       self.assertAllEqual([2, 3], batch_shape.eval())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

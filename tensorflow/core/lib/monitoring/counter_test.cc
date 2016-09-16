@@ -19,26 +19,24 @@ limitations under the License.
 
 namespace tensorflow {
 namespace monitoring {
+namespace {
 
-class LabeledCounterTest : public ::testing::Test {
- protected:
-  LabeledCounterTest() {}
+auto* counter_with_labels =
+    Counter<1>::New("/tensorflow/test/counter_with_labels",
+                    "Counter with one label.", "MyLabel");
 
-  Counter<1> counter_;
-};
-
-TEST_F(LabeledCounterTest, InitializedWithZero) {
-  EXPECT_EQ(0, counter_.GetCell("Empty")->value());
+TEST(LabeledCounterTest, InitializedWithZero) {
+  EXPECT_EQ(0, counter_with_labels->GetCell("Empty")->value());
 }
 
-TEST_F(LabeledCounterTest, GetCell) {
-  auto* cell = counter_.GetCell("GetCellOp");
+TEST(LabeledCounterTest, GetCell) {
+  auto* cell = counter_with_labels->GetCell("GetCellOp");
   EXPECT_EQ(0, cell->value());
 
   cell->IncrementBy(42);
   EXPECT_EQ(42, cell->value());
 
-  auto* same_cell = counter_.GetCell("GetCellOp");
+  auto* same_cell = counter_with_labels->GetCell("GetCellOp");
   EXPECT_EQ(42, same_cell->value());
 
   same_cell->IncrementBy(58);
@@ -46,32 +44,31 @@ TEST_F(LabeledCounterTest, GetCell) {
   EXPECT_EQ(100, same_cell->value());
 }
 
-using LabeledCounterDeathTest = LabeledCounterTest;
-
-TEST_F(LabeledCounterDeathTest, DiesOnDecrement) {
-  EXPECT_DEBUG_DEATH({ counter_.GetCell("DyingOp")->IncrementBy(-1); },
-                     "decrement");
+TEST(LabeledCounterDeathTest, DiesOnDecrement) {
+  EXPECT_DEBUG_DEATH(
+      { counter_with_labels->GetCell("DyingOp")->IncrementBy(-1); },
+      "decrement");
 }
 
-class UnlabeledCounterTest : public ::testing::Test {
- protected:
-  UnlabeledCounterTest() {}
+auto* init_counter_without_labels = Counter<0>::New(
+    "/tensorflow/test/init_counter_without_labels",
+    "Counter without any labels to check if it is initialized as 0.");
 
-  Counter<0> counter_;
-};
-
-TEST_F(UnlabeledCounterTest, InitializedWithZero) {
-  EXPECT_EQ(0, counter_.GetCell()->value());
+TEST(UnlabeledCounterTest, InitializedWithZero) {
+  EXPECT_EQ(0, init_counter_without_labels->GetCell()->value());
 }
 
-TEST_F(UnlabeledCounterTest, GetCell) {
-  auto* cell = counter_.GetCell();
+auto* counter_without_labels = Counter<0>::New(
+    "/tensorflow/test/counter_without_labels", "Counter without any labels.");
+
+TEST(UnlabeledCounterTest, GetCell) {
+  auto* cell = counter_without_labels->GetCell();
   EXPECT_EQ(0, cell->value());
 
   cell->IncrementBy(42);
   EXPECT_EQ(42, cell->value());
 
-  auto* same_cell = counter_.GetCell();
+  auto* same_cell = counter_without_labels->GetCell();
   EXPECT_EQ(42, same_cell->value());
 
   same_cell->IncrementBy(58);
@@ -79,11 +76,16 @@ TEST_F(UnlabeledCounterTest, GetCell) {
   EXPECT_EQ(100, same_cell->value());
 }
 
-using UnlabeledCounterDeathTest = UnlabeledCounterTest;
+auto* dead_counter_without_labels = Counter<0>::New(
+    "/tensorflow/test/dead_counter_without_labels",
+    "Counter without any labels which goes on to die on decrement.");
 
-TEST_F(UnlabeledCounterDeathTest, DiesOnDecrement) {
-  EXPECT_DEBUG_DEATH({ counter_.GetCell()->IncrementBy(-1); }, "decrement");
+TEST(UnlabeledCounterDeathTest, DiesOnDecrement) {
+  EXPECT_DEBUG_DEATH(
+      { dead_counter_without_labels->GetCell()->IncrementBy(-1); },
+      "decrement");
 }
 
+}  // namespace
 }  // namespace monitoring
 }  // namespace tensorflow

@@ -64,7 +64,7 @@ class EventFileInspectorTest(test_util.TensorFlowTestCase):
       sw.close()
 
   def testEmptyLogdir(self):
-    # Nothing was wrriten to logdir
+    # Nothing was written to logdir
     units = efi.get_inspection_units(self.logdir)
     self.assertEqual([], units)
 

@@ -58,9 +58,6 @@ Dataset | Purpose
 `data_sets.validation` | 5000 images and labels, for iterative validation of training accuracy.
 `data_sets.test` | 10000 images and labels, for final testing of trained accuracy.
 
-For more information about the data, please read the [Download](../../../tutorials/mnist/download/index.md)
-tutorial.
-
 ### Inputs and Placeholders
 
 The `placeholder_inputs()` function creates two [`tf.placeholder`](../../../api_docs/python/io_ops.md#placeholder)
@@ -217,7 +214,7 @@ optimizer = tf.train.GradientDescentOptimizer(learning_rate)
 We then generate a single variable to contain a counter for the global
 training step and the [`minimize()`](../../../api_docs/python/train.md#Optimizer.minimize)
 op is used to both update the trainable weights in the system and increment the
-global step.  This is, by convention, known as the `train_op` and is what must
+global step.  This op is, by convention, known as the `train_op` and is what must
 be run by a TensorFlow session in order to induce one full step of training
 (see below).
 
@@ -225,8 +222,6 @@ be run by a TensorFlow session in order to induce one full step of training
 global_step = tf.Variable(0, name='global_step', trainable=False)
 train_op = optimizer.minimize(loss, global_step=global_step)
 ```
-
-The tensor containing the outputs of the training op is returned.
 
 ## Train the Model
 
@@ -361,11 +356,11 @@ if step % 100 == 0:
 #### Visualize the Status
 
 In order to emit the events files used by [TensorBoard](../../../how_tos/summaries_and_tensorboard/index.md),
-all of the summaries (in this case, only one) are collected into a single op
+all of the summaries (in this case, only one) are collected into a single Tensor
 during the graph building phase.
 
 ```python
-summary_op = tf.merge_all_summaries()
+summary = tf.merge_all_summaries()
 ```
 
 And then after the session is created, a [`tf.train.SummaryWriter`](../../../api_docs/python/train.md#SummaryWriter)
@@ -377,11 +372,11 @@ summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, sess.graph)
 ```
 
 Lastly, the events file will be updated with new summary values every time the
-`summary_op` is run and the output passed to the writer's `add_summary()`
+`summary` is evaluated and the output passed to the writer's `add_summary()`
 function.
 
 ```python
-summary_str = sess.run(summary_op, feed_dict=feed_dict)
+summary_str = sess.run(summary, feed_dict=feed_dict)
 summary_writer.add_summary(summary_str, step)
 ```
 

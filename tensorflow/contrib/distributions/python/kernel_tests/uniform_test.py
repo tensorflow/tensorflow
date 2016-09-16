@@ -118,7 +118,8 @@ class UniformTest(tf.test.TestCase):
     with self.test_session():
       a_v = np.array([1.0, 1.0, 1.0], dtype=np.float32)
       b_v = np.array([1.0, 2.0, 3.0], dtype=np.float32)
-      uniform = tf.contrib.distributions.Uniform(a=a_v, b=b_v)
+      uniform = tf.contrib.distributions.Uniform(
+          a=a_v, b=b_v, validate_args=True)
 
       with self.assertRaisesWithPredicateMatch(tf.errors.InvalidArgumentError,
                                                "x < y"):
@@ -134,7 +135,7 @@ class UniformTest(tf.test.TestCase):
       n = tf.constant(100000)
       uniform = tf.contrib.distributions.Uniform(a=a, b=b)
 
-      samples = uniform.sample(n, seed=137)
+      samples = uniform.sample_n(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(sample_values.shape, (100000, 2))
       self.assertAllClose(sample_values[::, 0].mean(), (b_v + a1_v) / 2,
@@ -146,7 +147,8 @@ class UniformTest(tf.test.TestCase):
       self.assertFalse(np.any(sample_values[::, 1] < a2_v) or np.any(
           sample_values >= b_v))
 
-  def testUniformSampleMultiDimensional(self):
+  def _testUniformSampleMultiDimensional(self):
+    # DISABLED: Please enable this test once b/issues/30149644 is resolved.
     with self.test_session():
       batch_size = 2
       a_v = [3.0, 22.0]
@@ -158,7 +160,7 @@ class UniformTest(tf.test.TestCase):
 
       n_v = 100000
       n = tf.constant(n_v)
-      samples = uniform.sample(n, seed=138)
+      samples = uniform.sample_n(n)
       self.assertEqual(samples.get_shape(), (n_v, batch_size, 2))
 
       sample_values = samples.eval()
@@ -211,7 +213,6 @@ class UniformTest(tf.test.TestCase):
       pdf = uniform.pdf(with_nans)
 
       is_nan = tf.is_nan(pdf).eval()
-      print(pdf.eval())
       self.assertFalse(is_nan[0])
       self.assertTrue(is_nan[1])
 
@@ -220,7 +221,8 @@ class UniformTest(tf.test.TestCase):
       a = 10.0
       b = [11.0, 100.0]
       uniform = tf.contrib.distributions.Uniform(a, b)
-      self.assertTrue(tf.reduce_all(uniform.pdf(uniform.sample(10)) > 0).eval())
+      self.assertTrue(tf.reduce_all(uniform.pdf(uniform.sample_n(10)) > 0).eval(
+      ))
 
   def testUniformBroadcasting(self):
     with self.test_session():
@@ -232,6 +234,28 @@ class UniformTest(tf.test.TestCase):
       expected_pdf = np.array([[1.0, 0.1], [0.0, 0.1], [1.0, 0.0]])
       self.assertAllClose(expected_pdf, pdf.eval())
 
+  def testUniformSampleWithShape(self):
+    with self.test_session():
+      a = 10.0
+      b = [11.0, 20.0]
+      uniform = tf.contrib.distributions.Uniform(a, b)
+
+      pdf = uniform.pdf(uniform.sample((2, 3)))
+      # pylint: disable=bad-continuation
+      expected_pdf = [
+        [[1.0, 0.1],
+         [1.0, 0.1],
+         [1.0, 0.1]],
+        [[1.0, 0.1],
+         [1.0, 0.1],
+         [1.0, 0.1]],
+      ]
+      # pylint: enable=bad-continuation
+      self.assertAllClose(expected_pdf, pdf.eval())
+
+      pdf = uniform.pdf(uniform.sample())
+      expected_pdf = [1.0, 0.1]
+      self.assertAllClose(expected_pdf, pdf.eval())
 
 if __name__ == "__main__":
   tf.test.main()

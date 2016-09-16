@@ -87,7 +87,7 @@ class ExponentialTest(tf.test.TestCase):
       n = tf.constant(100000)
       exponential = tf.contrib.distributions.Exponential(lam=lam)
 
-      samples = exponential.sample(n, seed=137)
+      samples = exponential.sample_n(n, seed=137)
       sample_values = samples.eval()
       self.assertEqual(sample_values.shape, (100000, 2))
       self.assertFalse(np.any(sample_values < 0.0))
@@ -106,7 +106,7 @@ class ExponentialTest(tf.test.TestCase):
       exponential = tf.contrib.distributions.Exponential(lam=lam)
 
       n = 100000
-      samples = exponential.sample(n, seed=138)
+      samples = exponential.sample_n(n, seed=138)
       self.assertEqual(samples.get_shape(), (n, batch_size, 2))
 
       sample_values = samples.eval()
@@ -122,6 +122,12 @@ class ExponentialTest(tf.test.TestCase):
                 sample_values[:, 1, i], stats.expon(scale=1.0/lam_v[i]).cdf)[0],
             0.01)
 
+  def testExponentialWithSoftplusLam(self):
+    with self.test_session():
+      lam = [-2.2, -3.4]
+      exponential = tf.contrib.distributions.ExponentialWithSoftplusLam(lam=lam)
+      self.assertAllClose(tf.nn.softplus(lam).eval(), exponential.lam.eval())
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   tf.test.main()

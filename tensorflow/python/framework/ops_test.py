@@ -29,6 +29,7 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 # Import gradients to register _IndexedSlicesToTensor.
+from tensorflow.python.ops import control_flow_ops
 import tensorflow.python.ops.gradients  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -65,7 +66,8 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
     sp_value = ops.SparseTensorValue(indices, values, shape)
     for sp in [
         ops.SparseTensor(indices, values, shape),
-        ops.SparseTensor.from_value(sp_value)]:
+        ops.SparseTensor.from_value(sp_value),
+        ops.SparseTensor.from_value(ops.SparseTensor(indices, values, shape))]:
       self.assertEqual(sp.indices.dtype, dtypes.int64)
       self.assertEqual(sp.values.dtype, dtypes.string)
       self.assertEqual(sp.shape.dtype, dtypes.int64)
@@ -278,6 +280,39 @@ class OperationTest(test_util.TensorFlowTestCase):
                        output_types = [dtypes.float32])
     self.assertEqual(tensor_shape.unknown_shape(),
                      _apply_op(g, "an_op", [], [dtypes.float32]).get_shape())
+
+  def testConvertToTensorPreferred(self):
+    with self.test_session():
+      values = [2, 3, 5, 7]
+      tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.float32)
+      self.assertEqual(dtypes.float32, tensor.dtype)
+
+    with self.test_session():
+      # Convert empty tensor to anything
+      values = []
+      tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.int64)
+      self.assertEqual(dtypes.int64, tensor.dtype)
+
+    with self.test_session():
+      # The preferred dtype is a type error and will convert to
+      # float32 instead.
+      values = [1.23]
+      tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.int64)
+      self.assertEqual(dtypes.float32, tensor.dtype)
+
+  def testConvertToInvalidTensorType(self):
+    with self.assertRaises(TypeError):
+      # Forcing an invalid dtype should fail with a type error.
+      values = [1.23]
+      _ = ops.convert_to_tensor(values, dtype=dtypes.int64)
+
+  def testNoConvert(self):
+    # Operation cannot be converted to Tensor
+    op = control_flow_ops.no_op()
+    with self.assertRaisesRegexp(TypeError,
+                                 r"Can't convert Operation '.*' to Tensor"):
+      ops.convert_to_tensor(op)
+
 
 class CreateOpTest(test_util.TensorFlowTestCase):
 
@@ -870,7 +905,7 @@ def an_op(g):
   return _apply_op(g, "an_op", [], [dtypes.float32])
 
 
-ops.NoGradient("an_op")
+ops.NotDifferentiable("an_op")
 
 
 def copy_op(x):
@@ -1096,20 +1131,20 @@ class OpScopeTest(test_util.TensorFlowTestCase):
         g0.create_op("a", [], [dtypes.float32]),
         g0.create_op("b", [], [dtypes.float32])]
     with self.assertRaises(ValueError):
-      with ops.op_scope(values, None):
+      with ops.name_scope(None, values=values):
         pass
     with self.assertRaises(ValueError):
-      with ops.op_scope(values, None, None):
+      with ops.name_scope(None, None, values):
         pass
 
   def testEmptyScopeName(self):
     g0 = ops.Graph()
     a = g0.create_op("a", [], [dtypes.float32])
     b = g0.create_op("b", [], [dtypes.float32])
-    with ops.op_scope([a, b], "") as scope:
+    with ops.name_scope("", values=[a, b]) as scope:
       self.assertEqual("", scope)
       self.assertEqual(g0, ops.get_default_graph())
-    with ops.op_scope([a, b], "", "my_default_scope") as scope:
+    with ops.name_scope("", "my_default_scope", [a, b]) as scope:
       self.assertEqual("", scope)
       self.assertEqual(g0, ops.get_default_graph())
 
@@ -1119,22 +1154,22 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     b = g0.create_op("b", [], [dtypes.float32])
     scope_name = "my_scope"
     default_scope_name = "my_default_scope"
-    with ops.op_scope([a, b], scope_name, default_scope_name) as scope:
+    with ops.name_scope(scope_name, default_scope_name, [a, b]) as scope:
       self.assertEqual("%s/" % scope_name, scope)
       self.assertEqual(g0, ops.get_default_graph())
-    with ops.op_scope([a, b], None, default_scope_name) as scope:
+    with ops.name_scope(None, default_scope_name, [a, b]) as scope:
       self.assertEqual("%s/" % default_scope_name, scope)
       self.assertEqual(g0, ops.get_default_graph())
 
   def _testGraphElements(self, graph_elements):
     scope_name = "my_scope"
-    with ops.op_scope(graph_elements, scope_name) as scope:
+    with ops.name_scope(scope_name, values=graph_elements) as scope:
       self.assertEqual("%s/" % scope_name, scope)
       self.assertEqual(graph_elements[0].graph, ops.get_default_graph())
     g1 = ops.Graph()
     c = g1.create_op("c", [], [dtypes.float32])
     with self.assertRaises(ValueError):
-      with ops.op_scope(graph_elements + [c], scope_name):
+      with ops.name_scope(scope_name, values=graph_elements + [c]):
         pass
 
   def testTensor(self):

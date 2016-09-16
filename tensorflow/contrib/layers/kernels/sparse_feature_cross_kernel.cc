@@ -328,9 +328,8 @@ class SparseFeatureCrossOp : public OpKernel {
     };
 
     auto* worker_threads = context->device()->tensorflow_cpu_worker_threads();
-    // TODO(zakaria): optimize kCostPerUnit cross on column id should be
-    // treated cheaper.
-    const int kCostPerUnit = 50000 * indices_list_in.size();
+    // TODO(zakaria): optimize kCostPerUnit
+    const int kCostPerUnit = 5000 * indices_list_in.size();
     Shard(worker_threads->num_threads, worker_threads->workers, batch_size,
           kCostPerUnit, do_work);
   }

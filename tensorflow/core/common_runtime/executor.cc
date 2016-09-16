@@ -467,10 +467,57 @@ class ExecutorState {
   // Either a tensor pointer (pass-by-reference) or a tensor (pass-by-value).
   // TODO(yuanbyu): A better way to do "has_value"?
   struct Entry {
-    Tensor val = *kEmptyTensor;  // A tensor value.
+    Entry() {}
+    Entry(const Entry& other)
+        : ref(other.ref),
+          ref_mu(other.ref_mu),
+          has_value(other.has_value),
+          val_field_is_set(other.val_field_is_set),
+          alloc_attr(other.alloc_attr),
+          device_context(other.device_context) {
+      if (val_field_is_set) {
+        val.Init(*other.val);
+      }
+    }
+    ~Entry() {
+      if (val_field_is_set) val.Destroy();
+    }
+
+    Entry& operator=(const Entry& other) {
+      if (val_field_is_set) {
+        val.Destroy();
+      }
+      ref = other.ref;
+      ref_mu = other.ref_mu;
+      has_value = other.has_value;
+      val_field_is_set = other.val_field_is_set;
+      alloc_attr = other.alloc_attr;
+      device_context = other.device_context;
+      if (val_field_is_set) {
+        val.Init(*other.val);
+      }
+      return *this;
+    }
+
+    // Clears the <val> field.
+    void ClearVal() {
+      if (val_field_is_set) {
+        val.Destroy();
+        val_field_is_set = false;
+      }
+    }
+
+    // A tensor value, if val_field_is_set.
+    ManualConstructor<Tensor> val;
+
     Tensor* ref = nullptr;       // A tensor reference.
     mutex* ref_mu = nullptr;     // mutex for *ref if ref is not nullptr.
-    bool has_value = false;      // Whether the value exists
+
+    // Whether the value exists, either in <val> or <ref>.
+    bool has_value = false;
+
+    bool val_field_is_set = false;
+
     // The attributes of the allocator that creates the tensor.
     AllocatorAttributes alloc_attr;
 
@@ -479,8 +526,8 @@ class ExecutorState {
     DeviceContext* device_context = nullptr;
   };
 
-  // Contains a map from node id to the DeviceContext object that was
-  // assigned by the device at the beginning of a step.
+  // Contains a value for [node->id()] for the device context assigned by the
+  // device at the beginning of a step.
   DeviceContextMap device_context_map_;
 
   struct IterationState {
@@ -695,6 +742,8 @@ class ExecutorState {
   Rendezvous* rendezvous_;
   SessionState* session_state_;
   TensorStore* tensor_store_;
+  // Step-local resource manager.
+  ResourceMgr* step_resource_manager_;
   StepStatsCollector* stats_collector_;
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
   // instead of a pointer?  (avoids having to delete).
@@ -705,9 +754,6 @@ class ExecutorState {
   Executor::Args::Runner runner_;
 
   // Owned.
-
-  // Step-local resource manager.
-  ResourceMgr step_resource_manager_;
 
   // A flag that is set on error after the frame state has been
   // dumped for diagnostic purposes.
@@ -806,9 +852,6 @@ class ExecutorState {
   bool NodeDone(const Status& s, const Node* node, const TaggedNodeSeq& ready,
                 NodeExecStats* stats, TaggedNodeReadyQueue* inline_ready);
 
-  // Call Process() on all nodes in 'inline_ready'.
-  void ProcessInline(const TaggedNodeReadyQueue& inline_ready);
-
   // Schedule all the expensive nodes in 'ready', and put all the inexpensive
   // nodes in 'ready' into 'inline_ready'.
   void ScheduleReady(const TaggedNodeSeq& ready,
@@ -825,6 +868,7 @@ class ExecutorState {
 
   // Provide debugging output of the state of the executor.
   void DumpState();
+  const Tensor* GetTensorValueForDump(const Entry& input);
 
   // One thread of control finishes.
   void Finish();
@@ -847,6 +891,7 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       rendezvous_(args.rendezvous),
       session_state_(args.session_state),
       tensor_store_(args.tensor_store),
+      step_resource_manager_(args.step_resource_manager),
       stats_collector_(args.stats_collector),
       slice_reader_cache_(new checkpoint::TensorSliceReaderCacheWrapper),
       call_frame_(args.call_frame),
@@ -881,7 +926,7 @@ ExecutorState::~ExecutorState() {
   }
 
   for (auto it : device_context_map_) {
-    it.second->Unref();
+    it->Unref();
   }
 
   delete slice_reader_cache_;
@@ -1004,6 +1049,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   // track allocations if and only if we are collecting statistics
   params.track_allocations = (stats_collector_ != nullptr);
   params.log_memory = log_memory_;
+  params.record_tensor_accesses = impl_->device_record_tensor_accesses_;
   params.rendezvous = rendezvous_;
   params.session_state = session_state_;
   params.tensor_store = tensor_store_;
@@ -1011,7 +1057,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   params.call_frame = call_frame_;
   params.function_library = impl_->params_.function_library;
   params.resource_manager = device->resource_manager();
-  params.step_resource_manager = &step_resource_manager_;
+  params.step_resource_manager = step_resource_manager_;
   params.slice_reader_cache = slice_reader_cache_;
   params.inputs = &inputs;
   params.input_device_contexts = &input_device_contexts;
@@ -1042,9 +1088,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
     }
 
     // Set the device_context for this node id, if it exists.
-    auto dc_it = device_context_map_.find(id);
-    if (dc_it != device_context_map_.end()) {
-      params.op_device_context = dc_it->second;
+    if (node->id() < device_context_map_.size()) {
+      params.op_device_context = device_context_map_[node->id()];
     }
 
     if (stats_collector_) {
@@ -1077,11 +1122,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       s = PrepareInputs(item, first_input, &inputs, &input_device_contexts,
                         &input_alloc_attrs, &is_input_dead);
       if (!s.ok()) {
-        // Clear the inputs to maintain the invariant that completed
-        // nodes have no valid input tensors.
+        // Clear inputs.
         int num_inputs = item.num_inputs;
         for (int i = 0; i < num_inputs; ++i) {
-          (first_input + i)->val = *kEmptyTensor;
+          (first_input + i)->ClearVal();
         }
         // TODO(misard) Replace with a finer-grain enabling flag once we
         // add better optional debugging support.
@@ -1128,7 +1172,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
           // Clears inputs.
           const int num_inputs = state->item.num_inputs;
           for (int i = 0; i < num_inputs; ++i) {
-            (first_input + i)->val = *kEmptyTensor;
+            (first_input + i)->ClearVal();
           }
           // TODO(misard) Replace with a finer-grain enabling flag once we
           // add better optional debugging support.
@@ -1143,8 +1187,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
             PropagateOutputs(state->tagged_node, outputs, &ready);
           }
           outputs.clear();
-          if (s.ok() &&
-              state->params.device->RequiresRecordingAccessedTensors()) {
+          if (s.ok() && impl_->device_record_tensor_accesses_) {
             // Get the list of all tensors accessed during the execution
             TensorReferenceVector accessed;
             state->ctx.retrieve_accessed_tensors(&accessed);
@@ -1190,7 +1233,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       // Clears inputs.
       const int num_inputs = item.num_inputs;
       for (int i = 0; i < num_inputs; ++i) {
-        (first_input + i)->val = *kEmptyTensor;
+        (first_input + i)->ClearVal();
       }
       // TODO(misard) Replace with a finer-grain enabling flag once we
       // add better optional debugging support.
@@ -1252,7 +1295,11 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
     if (!entry->has_value) {
       if (!is_merge) {
         DCHECK(IsTransferNode(node));
-        inp->tensor = &entry->val;
+        DCHECK(!entry->val_field_is_set);
+        entry->has_value = true;
+        entry->val_field_is_set = true;
+        entry->val.Init(*kEmptyTensor);
+        inp->tensor = entry->val.get();
         *is_input_dead = true;
       }
       continue;
@@ -1263,7 +1310,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
             errors::InvalidArgument(i, "-th input expects a ref type"),
             item.kernel->def());
       }
-      inp->tensor = &entry->val;
+      inp->tensor = entry->val.get();
     } else {
       if (!entry->ref->IsInitialized() && !IsInitializationOp(item.node)) {
         return AttachDef(
@@ -1280,9 +1327,14 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
         // under the mutex.
         {
           mutex_lock l(*(entry->ref_mu));
-          entry->val = *entry->ref;
+          DCHECK(!entry->val_field_is_set);
+          entry->val.Init(*entry->ref);
+          entry->val_field_is_set = true;
         }
-        inp->tensor = &entry->val;
+        entry->ref = nullptr;
+        entry->ref_mu = nullptr;
+
+        inp->tensor = entry->val.get();
       }
     }
   }
@@ -1310,9 +1362,8 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 
   // Get the device_context for this node id, if it exists.
   DeviceContext* device_context = nullptr;
-  auto dc_it = device_context_map_.find(node->id());
-  if (dc_it != device_context_map_.end()) {
-    device_context = dc_it->second;
+  if (node->id() < device_context_map_.size()) {
+    device_context = device_context_map_[node->id()];
   }
 
   // Experimental: debugger (tfdb) access to intermediate node completion.
@@ -1333,7 +1384,6 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       }
     } else {
       Entry* out = &((*outputs)[i]);
-      out->has_value = true;
 
       // Set the device context of the output entry.
       out->device_context = device_context;
@@ -1349,6 +1399,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
           nodestats::SetOutput(stats, i, val.tensor);
         }
         if (val.is_ref()) {
+          out->has_value = true;
           out->ref = val.tensor;
           out->ref_mu = val.mutex_if_ref;
           if (log_memory_) {
@@ -1370,15 +1421,18 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
         } else {
           // NOTE that std::move is used here, so val.tensor goes to
           // uninitialized state (val.tensor->IsInitialized return false).
-          out->val = std::move(*val.tensor);
+          DCHECK(!out->val_field_is_set);
+          out->has_value = true;
+          out->val_field_is_set = true;
+          out->val.Init(std::move(*val.tensor));
           if (log_memory_) {
             LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
-                                          ctx->step_id(), i, out->val);
+                                          ctx->step_id(), i, *out->val);
           }
 
           // Experimental: debugger access to intermediate node outputs.
           if (impl_->params_.node_outputs_cb != nullptr) {
-            impl_->params_.node_outputs_cb(item.node->name(), i, &out->val,
+            impl_->params_.node_outputs_cb(item.node->name(), i, out->val.get(),
                                            false, ctx);
           }
         }
@@ -1455,8 +1509,7 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
     bool dst_need_input = !e->IsControlEdge();
     if (IsMerge(dst_node)) {
       // A merge node is ready if all control inputs have arrived and either
-      // a) a live data input becomes available or b) all data inputs are
-      // dead.
+      // a) a live data input becomes available or b) all data inputs are dead.
       // For Merge, pending's LSB is set iff a live data input has arrived.
       if (e->IsControlEdge()) {
         output_iter_state->decrement_pending(dst_id, 2);
@@ -1478,10 +1531,13 @@ void ExecutorState::ActivateNode(const Node* node, const bool is_dead,
           dst_ready = (count == 1);
           dst_need_input = ((count & 0x1) == 1);
         } else {
-          // This is a dead data input.
+          // This is a dead data input. Note that dst_node is dead if node is
+          // a dead enter. We need this to handle properly a while loop on
+          // the untaken branch of a conditional.
+          // TODO(yuanbyu): This is a bit hacky, but a good solution for now.
           output_iter_state->increment_dead_count(dst_id);
-          dst_dead =
-              (output_iter_state->dead_count(dst_id) == dst_node->num_inputs());
+          const int dead_cnt = output_iter_state->dead_count(dst_id);
+          dst_dead = (dead_cnt == dst_node->num_inputs()) || IsEnter(node);
           dst_ready = (output_iter_state->pending(dst_id) == 1) && dst_dead;
           dst_need_input = false;
         }
@@ -1597,17 +1653,6 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
   return completed;
 }
 
-void ExecutorState::ProcessInline(const TaggedNodeReadyQueue& inline_ready) {
-  if (inline_ready.empty()) return;
-  int64 scheduled_usec = 0;
-  if (stats_collector_) {
-    scheduled_usec = nodestats::NowInUsec();
-  }
-  for (auto& tagged_node : inline_ready) {
-    Process(tagged_node, scheduled_usec);
-  }
-}
-
 void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
                                   TaggedNodeReadyQueue* inline_ready) {
   if (ready.empty()) return;
@@ -1653,6 +1698,16 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
   }
 }
 
+const Tensor* ExecutorState::GetTensorValueForDump(const Entry& input) {
+  if (!input.has_value) {
+    return kEmptyTensor;
+  } else if (input.ref == nullptr) {
+    return input.val.get();
+  } else {
+    return input.ref;
+  }
+}
+
 void ExecutorState::DumpCompletedNodeState(const int node_id,
                                            const Entry* input_vector) {
   const NodeItem& node_item = impl_->nodes_[node_id];
@@ -1661,7 +1716,7 @@ void ExecutorState::DumpCompletedNodeState(const int node_id,
   const int input_base = node_item.input_start;
   for (int i = 0; i < node.num_inputs(); ++i) {
     const Entry& input = input_vector[input_base + i];
-    CHECK(!input.val.IsInitialized());
+    CHECK(!GetTensorValueForDump(input)->IsInitialized());
   }
 }
 
@@ -1675,12 +1730,7 @@ void ExecutorState::DumpPendingNodeState(
     bool has_ready_input = false;
     for (int i = 0; i < node.num_inputs(); ++i) {
       const Entry& input = input_vector[input_base + i];
-      const Tensor* tensor;
-      if (input.ref == nullptr) {
-        tensor = &input.val;
-      } else {
-        tensor = input.ref;
-      }
+      const Tensor* tensor = GetTensorValueForDump(input);
       if (tensor->IsInitialized()) {
         has_ready_input = true;
         break;
@@ -1693,12 +1743,7 @@ void ExecutorState::DumpPendingNodeState(
   LOG(WARNING) << "    Pending Node: " << node.DebugString();
   for (int i = 0; i < node.num_inputs(); ++i) {
     const Entry& input = input_vector[input_base + i];
-    const Tensor* tensor;
-    if (input.ref == nullptr) {
-      tensor = &input.val;
-    } else {
-      tensor = input.ref;
-    }
+    const Tensor* tensor = GetTensorValueForDump(input);
     if (tensor->IsInitialized()) {
       LOG(WARNING) << "      Input " << i << ": "
                    << strings::StrCat(
@@ -1718,12 +1763,7 @@ void ExecutorState::DumpActiveNodeState(const int node_id,
   const int input_base = node_item.input_start;
   for (int i = 0; i < node.num_inputs(); ++i) {
     const Entry& input = input_vector[input_base + i];
-    const Tensor* tensor;
-    if (input.ref == nullptr) {
-      tensor = &input.val;
-    } else {
-      tensor = input.ref;
-    }
+    const Tensor* tensor = GetTensorValueForDump(input);
     if (tensor->IsInitialized()) {
       LOG(WARNING) << "      Input " << i << ": "
                    << strings::StrCat(
@@ -1753,19 +1793,13 @@ void ExecutorState::DumpIterationState(IterationState* iteration) {
   size_t total_bytes = 0;
   for (int i = 0; i < impl_->total_input_tensors_; ++i) {
     const Entry& input = iteration->input_tensors[i];
-    const Tensor* tensor;
-    if (input.ref == nullptr) {
-      tensor = &input.val;
-    } else {
-      tensor = input.ref;
-    }
+    const Tensor* tensor = GetTensorValueForDump(input);
     if (tensor->IsInitialized()) {
       LOG(WARNING) << "    Input " << i << ": "
                    << strings::StrCat("Tensor<type: ",
                                       DataTypeString(tensor->dtype()),
                                       " shape: ", tensor->shape().DebugString(),
-                                      ", bytes: ", tensor->TotalBytes(),
-                                      ", hash: ", tensor->BufferHash(), ">");
+                                      ", bytes: ", tensor->TotalBytes(), ">");
       total_bytes += tensor->TotalBytes();
     }
   }
@@ -1791,8 +1825,8 @@ void ExecutorState::DumpState() {
 void ExecutorState::Finish() {
   mu_.lock();
   auto status = status_;
-  auto done_cb = done_cb_;
-  auto runner = runner_;
+  auto done_cb = std::move(done_cb_);
+  auto runner = std::move(runner_);
   mu_.unlock();
   delete this;
   CHECK(done_cb != nullptr);
@@ -2045,21 +2079,5 @@ Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
 }
 
 void DeleteNonCachedKernel(OpKernel* kernel) { delete kernel; }
-
-Status CreateCachedKernel(Device* device, const string& session,
-                          FunctionLibraryRuntime* flib, const NodeDef& ndef,
-                          int graph_def_version, OpKernel** kernel) {
-  auto op_seg = device->op_segment();
-  auto create_fn = [device, flib, &ndef, graph_def_version](OpKernel** kernel) {
-    return CreateNonCachedKernel(device, flib, ndef, graph_def_version, kernel);
-  };
-  return op_seg->FindOrCreate(session, ndef.name(), kernel, create_fn);
-}
-
-// Deletes "kernel".
-void DeleteCachedKernel(Device* device, const string& session,
-                        OpKernel* kernel) {
-  // Do nothing.
-}
 
 }  // end namespace tensorflow

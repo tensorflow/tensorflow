@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests the graph freezing tool."""
+"""Tests the node stripping tool."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -22,12 +22,12 @@ import os
 import tensorflow as tf
 
 from tensorflow.python.framework import test_util
-from tensorflow.python.tools import strip_unused
+from tensorflow.python.tools import strip_unused_lib
 
 
-class FreezeGraphTest(test_util.TensorFlowTestCase):
+class StripUnusedTest(test_util.TensorFlowTestCase):
 
-  def testFreezeGraph(self):
+  def testStripUnused(self):
     input_graph_name = "input_graph.pb"
     output_graph_name = "output_graph.pb"
 
@@ -49,12 +49,15 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
     input_graph_path = os.path.join(self.get_temp_dir(), input_graph_name)
     input_binary = False
     input_node_names = "wanted_input_node"
+    output_binary = True
     output_node_names = "output_node"
     output_graph_path = os.path.join(self.get_temp_dir(), output_graph_name)
 
-    strip_unused.strip_unused(input_graph_path, input_binary, output_graph_path,
-                              input_node_names, output_node_names,
-                              tf.float32.as_datatype_enum)
+    strip_unused_lib.strip_unused_from_files(input_graph_path, input_binary,
+                                             output_graph_path, output_binary,
+                                             input_node_names,
+                                             output_node_names,
+                                             tf.float32.as_datatype_enum)
 
     # Now we make sure the variable is now a constant, and that the graph still
     # produces the expected result.
@@ -68,6 +71,8 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
       for node in output_graph_def.node:
         self.assertNotEqual("Add", node.op)
         self.assertNotEqual("Sub", node.op)
+        if node.name == input_node_names:
+          self.assertTrue("shape" in node.attr)
 
       with tf.Session() as sess:
         input_node = sess.graph.get_tensor_by_name("wanted_input_node:0")

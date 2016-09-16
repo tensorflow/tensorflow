@@ -71,7 +71,7 @@ target_include_directories(tf_models_word2vec_kernels PRIVATE
     ${re2_INCLUDES}
 )
 
-add_dependencies(tf_models_word2vec_ops
+add_dependencies(tf_models_word2vec_kernels
     tf_core_cpu
 )
 

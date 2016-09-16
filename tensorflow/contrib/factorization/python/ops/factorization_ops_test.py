@@ -25,7 +25,6 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.contrib.factorization.python.ops import factorization_ops
 
 INPUT_MATRIX = np.array(
     [[0.1, 0.0, 0.2, 0.0, 0.4, 0.5, 0.0],
@@ -113,17 +112,19 @@ class WalsModelTest(tf.test.TestCase):
     self._col_factors_2 = [[3.3459, -1.3341, -3.3008],
                            [0.57366, 1.83729, 1.26798]]
 
-  def test_process_input(self):
+  def _run_test_process_input(self, use_factors_weights_cache):
     with self.test_session():
       sp_feeder = tf.sparse_placeholder(tf.float32)
-      wals_model = factorization_ops.WALSModel(5, 7, 3,
-                                               num_row_shards=2,
-                                               num_col_shards=3,
-                                               regularization=0.01,
-                                               unobserved_weight=0.1,
-                                               col_init=self.col_init,
-                                               row_weights=self.row_wts,
-                                               col_weights=self.col_wts)
+      wals_model = tf.contrib.factorization.WALSModel(
+          5, 7, 3,
+          num_row_shards=2,
+          num_col_shards=3,
+          regularization=0.01,
+          unobserved_weight=0.1,
+          col_init=self.col_init,
+          row_weights=self.row_wts,
+          col_weights=self.col_wts,
+          use_factors_weights_cache=use_factors_weights_cache)
 
       wals_model.initialize_op.run()
       wals_model.worker_init.run()
@@ -139,6 +140,7 @@ class WalsModelTest(tf.test.TestCase):
 
       # Test updating row factors.
       # Here we feed in scattered rows of the input.
+      wals_model.row_update_prep_gramian_op.run()
       wals_model.initialize_row_update_op.run()
       process_input_op = wals_model.update_row_factors(sp_input=sp_feeder,
                                                        transpose_input=False)[1]
@@ -165,6 +167,7 @@ class WalsModelTest(tf.test.TestCase):
 
       # Test updating column factors.
       # Here we feed in scattered columns of the input.
+      wals_model.col_update_prep_gramian_op.run()
       wals_model.initialize_col_update_op.run()
       process_input_op = wals_model.update_col_factors(sp_input=sp_feeder,
                                                        transpose_input=False)[1]
@@ -177,17 +180,19 @@ class WalsModelTest(tf.test.TestCase):
       self.assertAllClose(col_factors[1], self._col_factors_1, atol=1e-3)
       self.assertAllClose(col_factors[2], self._col_factors_2, atol=1e-3)
 
-  def test_process_input_transposed(self):
+  def _run_test_process_input_transposed(self, use_factors_weights_cache):
     with self.test_session():
       sp_feeder = tf.sparse_placeholder(tf.float32)
-      wals_model = factorization_ops.WALSModel(5, 7, 3,
-                                               num_row_shards=2,
-                                               num_col_shards=3,
-                                               regularization=0.01,
-                                               unobserved_weight=0.1,
-                                               col_init=self.col_init,
-                                               row_weights=self.row_wts,
-                                               col_weights=self.col_wts)
+      wals_model = tf.contrib.factorization.WALSModel(
+          5, 7, 3,
+          num_row_shards=2,
+          num_col_shards=3,
+          regularization=0.01,
+          unobserved_weight=0.1,
+          col_init=self.col_init,
+          row_weights=self.row_wts,
+          col_weights=self.col_wts,
+          use_factors_weights_cache=use_factors_weights_cache)
 
       wals_model.initialize_op.run()
       wals_model.worker_init.run()
@@ -209,6 +214,7 @@ class WalsModelTest(tf.test.TestCase):
       # Note that the needed suffix of placeholder are in the order of test
       # case name lexicographical order and then in the line order of where
       # they appear.
+      wals_model.row_update_prep_gramian_op.run()
       wals_model.initialize_row_update_op.run()
       process_input_op = wals_model.update_row_factors(sp_input=sp_feeder,
                                                        transpose_input=True)[1]
@@ -239,6 +245,7 @@ class WalsModelTest(tf.test.TestCase):
 
       # Test updating column factors.
       # Here we feed in scattered columns of the input.
+      wals_model.col_update_prep_gramian_op.run()
       wals_model.initialize_col_update_op.run()
       process_input_op = wals_model.update_col_factors(sp_input=sp_feeder,
                                                        transpose_input=True)[1]
@@ -257,27 +264,33 @@ class WalsModelTest(tf.test.TestCase):
   # and col_weights are set to None, we interpret that as the ALS case, and
   # trigger the more efficient ALS updates.
   # Here we test that those two give identical results.
-  def test_als(self):
+  def _run_test_als(self, use_factors_weights_cache):
     with self.test_session():
       col_init = np.random.rand(7, 3)
-      als_model = factorization_ops.WALSModel(5, 7, 3,
-                                              col_init=col_init,
-                                              row_weights=None,
-                                              col_weights=None)
+      als_model = tf.contrib.factorization.WALSModel(
+          5, 7, 3,
+          col_init=col_init,
+          row_weights=None,
+          col_weights=None,
+          use_factors_weights_cache=use_factors_weights_cache)
 
       als_model.initialize_op.run()
       als_model.worker_init.run()
+      als_model.row_update_prep_gramian_op.run()
       als_model.initialize_row_update_op.run()
       process_input_op = als_model.update_row_factors(self._wals_inputs)[1]
       process_input_op.run()
       row_factors1 = [x.eval() for x in als_model.row_factors]
 
-      wals_model = factorization_ops.WALSModel(5, 7, 3,
-                                               col_init=col_init,
-                                               row_weights=[0] * 5,
-                                               col_weights=[0] * 7)
+      wals_model = tf.contrib.factorization.WALSModel(
+          5, 7, 3,
+          col_init=col_init,
+          row_weights=0,
+          col_weights=0,
+          use_factors_weights_cache=use_factors_weights_cache)
       wals_model.initialize_op.run()
       wals_model.worker_init.run()
+      wals_model.row_update_prep_gramian_op.run()
       wals_model.initialize_row_update_op.run()
       process_input_op = wals_model.update_row_factors(self._wals_inputs)[1]
       process_input_op.run()
@@ -292,35 +305,41 @@ class WalsModelTest(tf.test.TestCase):
 
       sp_feeder = tf.sparse_placeholder(tf.float32)
       feed_dict = {sp_feeder: sp_c}
+      als_model.col_update_prep_gramian_op.run()
       als_model.initialize_col_update_op.run()
       process_input_op = als_model.update_col_factors(sp_input=sp_feeder)[1]
       process_input_op.run(feed_dict=feed_dict)
       col_factors1 = [x.eval() for x in als_model.col_factors]
 
       feed_dict = {sp_feeder: sp_c}
+      wals_model.col_update_prep_gramian_op.run()
       wals_model.initialize_col_update_op.run()
       process_input_op = wals_model.update_col_factors(sp_input=sp_feeder)[1]
       process_input_op.run(feed_dict=feed_dict)
       col_factors2 = [x.eval() for x in wals_model.col_factors]
 
       for c1, c2 in zip(col_factors1, col_factors2):
-        self.assertAllClose(c1, c2, atol=1e-3)
+        self.assertAllClose(c1, c2, rtol=5e-3, atol=1e-2)
 
-  def test_als_transposed(self):
+  def _run_test_als_transposed(self, use_factors_weights_cache):
     with self.test_session():
       col_init = np.random.rand(7, 3)
-      als_model = factorization_ops.WALSModel(5, 7, 3,
-                                              col_init=col_init,
-                                              row_weights=None,
-                                              col_weights=None)
+      als_model = tf.contrib.factorization.WALSModel(
+          5, 7, 3,
+          col_init=col_init,
+          row_weights=None,
+          col_weights=None,
+          use_factors_weights_cache=use_factors_weights_cache)
 
       als_model.initialize_op.run()
       als_model.worker_init.run()
 
-      wals_model = factorization_ops.WALSModel(5, 7, 3,
-                                               col_init=col_init,
-                                               row_weights=[0] * 5,
-                                               col_weights=[0] * 7)
+      wals_model = tf.contrib.factorization.WALSModel(
+          5, 7, 3,
+          col_init=col_init,
+          row_weights=[0] * 5,
+          col_weights=[0] * 7,
+          use_factors_weights_cache=use_factors_weights_cache)
       wals_model.initialize_op.run()
       wals_model.worker_init.run()
       sp_feeder = tf.sparse_placeholder(tf.float32)
@@ -331,6 +350,7 @@ class WalsModelTest(tf.test.TestCase):
       sp_r = np_matrix_to_tf_sparse(INPUT_MATRIX, [3, 1]).eval()
 
       feed_dict = {sp_feeder: sp_r_t}
+      als_model.row_update_prep_gramian_op.run()
       als_model.initialize_row_update_op.run()
       process_input_op = als_model.update_row_factors(sp_input=sp_feeder,
                                                       transpose_input=True)[1]
@@ -341,6 +361,7 @@ class WalsModelTest(tf.test.TestCase):
                       als_model.row_factors[0].eval()[3]]
 
       feed_dict = {sp_feeder: sp_r}
+      wals_model.row_update_prep_gramian_op.run()
       wals_model.initialize_row_update_op.run()
       process_input_op = wals_model.update_row_factors(sp_input=sp_feeder)[1]
       process_input_op.run(feed_dict=feed_dict)
@@ -362,14 +383,16 @@ class WalsModelTest(tf.test.TestCase):
     model.initialize_op.run()
     model.worker_init.run()
     for _ in xrange(num_iterations):
+      model.row_update_prep_gramian_op.run()
       model.initialize_row_update_op.run()
       row_update_op.run()
+      model.col_update_prep_gramian_op.run()
       model.initialize_col_update_op.run()
       col_update_op.run()
 
   # Trains an ALS model for a low-rank matrix and make sure the product of
   # factors is close to the original input.
-  def test_train_full_low_rank_als(self):
+  def _run_test_train_full_low_rank_als(self, use_factors_weights_cache):
     rows = 15
     cols = 11
     dims = 3
@@ -379,11 +402,13 @@ class WalsModelTest(tf.test.TestCase):
       indices = [[i, j] for i in xrange(rows) for j in xrange(cols)]
       values = data.reshape(-1)
       inp = tf.SparseTensor(indices, values, [rows, cols])
-      model = factorization_ops.WALSModel(rows, cols, dims,
-                                          regularization=1e-5,
-                                          row_weights=None,
-                                          col_weights=None)
-      self.simple_train(model, inp, 15)
+      model = tf.contrib.factorization.WALSModel(
+          rows, cols, dims,
+          regularization=1e-5,
+          row_weights=None,
+          col_weights=None,
+          use_factors_weights_cache=use_factors_weights_cache)
+      self.simple_train(model, inp, 25)
       row_factor = model.row_factors[0].eval()
       col_factor = model.col_factors[0].eval()
       self.assertAllClose(data,
@@ -392,7 +417,7 @@ class WalsModelTest(tf.test.TestCase):
 
   # Trains a WALS model for a low-rank matrix and make sure the product of
   # factors is close to the original input.
-  def test_train_full_low_rank_wals(self):
+  def _run_test_train_full_low_rank_wals(self, use_factors_weights_cache):
     rows = 15
     cols = 11
     dims = 3
@@ -403,11 +428,13 @@ class WalsModelTest(tf.test.TestCase):
       indices = [[i, j] for i in xrange(rows) for j in xrange(cols)]
       values = data.reshape(-1)
       inp = tf.SparseTensor(indices, values, [rows, cols])
-      model = factorization_ops.WALSModel(rows, cols, dims,
-                                          regularization=1e-5,
-                                          row_weights=[0] * rows,
-                                          col_weights=[0] * cols)
-      self.simple_train(model, inp, 15)
+      model = tf.contrib.factorization.WALSModel(
+          rows, cols, dims,
+          regularization=1e-5,
+          row_weights=0,
+          col_weights=[0] * cols,
+          use_factors_weights_cache=use_factors_weights_cache)
+      self.simple_train(model, inp, 25)
       row_factor = model.row_factors[0].eval()
       col_factor = model.col_factors[0].eval()
       self.assertAllClose(data,
@@ -416,7 +443,7 @@ class WalsModelTest(tf.test.TestCase):
 
   # Trains a WALS model for a partially observed low-rank matrix and makes
   # sure the product of factors is reasonably close to the original input.
-  def test_train_matrix_completion_wals(self):
+  def _run_test_train_matrix_completion_wals(self, use_factors_weights_cache):
     rows = 11
     cols = 9
     dims = 4
@@ -433,12 +460,14 @@ class WalsModelTest(tf.test.TestCase):
                       [[i, j] for i in xrange(rows) for j in xrange(cols)])))
       values = data[indices[:, 0], indices[:, 1]]
       inp = tf.SparseTensor(indices, values, [rows, cols])
-      model = factorization_ops.WALSModel(rows, cols, dims,
-                                          unobserved_weight=0.01,
-                                          regularization=0.001,
-                                          row_weights=row_wts,
-                                          col_weights=col_wts)
-      self.simple_train(model, inp, 10)
+      model = tf.contrib.factorization.WALSModel(
+          rows, cols, dims,
+          unobserved_weight=0.01,
+          regularization=0.001,
+          row_weights=row_wts,
+          col_weights=col_wts,
+          use_factors_weights_cache=use_factors_weights_cache)
+      self.simple_train(model, inp, 25)
       row_factor = model.row_factors[0].eval()
       col_factor = model.col_factors[0].eval()
       out = np.dot(row_factor, np.transpose(col_factor))
@@ -446,9 +475,45 @@ class WalsModelTest(tf.test.TestCase):
         for j in xrange(cols):
           if keep_index([i, j]):
             self.assertNear(data[i][j], out[i][j],
-                            err=0.2, msg="%d, %d" % (i, j))
+                            err=0.4, msg="%d, %d" % (i, j))
           else:
             self.assertNear(0, out[i][j], err=0.5, msg="%d, %d" % (i, j))
+
+  def test_process_input_with_cache(self):
+    self._run_test_process_input(True)
+
+  def test_process_input_without_cache(self):
+    self._run_test_process_input(False)
+
+  def test_process_input_transposed_with_cache(self):
+    self._run_test_process_input_transposed(True)
+
+  def test_process_input_transposed_without_cache(self):
+    self._run_test_process_input_transposed(False)
+
+  def test_als_with_cache(self):
+    self._run_test_als(True)
+
+  def test_als_without_cache(self):
+    self._run_test_als(False)
+
+  def test_als_transposed_with_cache(self):
+    self._run_test_als_transposed(True)
+
+  def test_als_without_cache(self):
+    self._run_test_als_transposed(False)
+
+  def test_train_full_low_rank_wals_with_cache(self):
+    self._run_test_train_full_low_rank_wals(True)
+
+  def test_train_full_low_rank_wals_without_cache(self):
+    self._run_test_train_full_low_rank_wals(False)
+
+  def test_train_matrix_completion_wals_with_cache(self):
+    self._run_test_train_matrix_completion_wals(True)
+
+  def test_train_matrix_completion_wals_without_cache(self):
+    self._run_test_train_matrix_completion_wals(False)
 
 
 if __name__ == "__main__":

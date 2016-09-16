@@ -26,11 +26,13 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
+from tensorflow.python.client import device_lib
 from tensorflow.python.framework import function
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_data_flow_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.util import nest
 
@@ -64,6 +66,39 @@ def isum(s):
   b = lambda i, s: [tf.add(i, 1), tf.add(i, s)]
   _, r_s = tf.while_loop(c, b, [i, s])
   return r_s
+
+
+class AssertTest(tf.test.TestCase):
+
+  def testGuardedAssertDoesNotCopyWhenTrue(self):
+    with self.test_session(use_gpu=True) as sess:
+      with tf.device("/gpu:0"):
+        value = tf.constant(1.0)
+      with tf.device("/cpu:0"):
+        true = tf.constant(True)
+        guarded_assert = tf.Assert(true, [value], name="guarded")
+        unguarded_assert = gen_logging_ops._assert(
+            true, [value], name="unguarded")
+      opts = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+      guarded_metadata = tf.RunMetadata()
+      sess.run(guarded_assert, options=opts, run_metadata=guarded_metadata)
+      unguarded_metadata = tf.RunMetadata()
+      sess.run(unguarded_assert, options=opts, run_metadata=unguarded_metadata)
+      guarded_nodestat_names = [
+          n.node_name for d in guarded_metadata.step_stats.dev_stats
+          for n in d.node_stats]
+      unguarded_nodestat_names = [
+          n.node_name for d in unguarded_metadata.step_stats.dev_stats
+          for n in d.node_stats]
+      guarded_memcpy_nodestat_names = [
+          n for n in guarded_nodestat_names if "MEMCPYDtoH" in n]
+      unguarded_memcpy_nodestat_names = [
+          n for n in unguarded_nodestat_names if "MEMCPYDtoH" in n]
+      if "GPU" in [d.device_type for d in device_lib.list_local_devices()]:
+        # A copy was performed for the unguarded assert
+        self.assertLess(0, len(unguarded_memcpy_nodestat_names))
+      # No copy was performed for the guarded assert
+      self.assertEqual([], guarded_memcpy_nodestat_names)
 
 
 class ControlFlowTest(tf.test.TestCase):
@@ -585,12 +620,13 @@ class ControlFlowTest(tf.test.TestCase):
         return [i, c, o]
 
       i = tf.convert_to_tensor(0)
-      c = tf.convert_to_tensor(0)
+      c = tf.convert_to_tensor([0])
       o = tf.convert_to_tensor([0])
       x = tf.convert_to_tensor([1, 2, 3, 4, 5, 6])
       s = tf.size(x)
       r = tf.while_loop(
-          lambda i, c, o: tf.less(i, s), compute, [i, c, o])
+          lambda i, c, o: tf.less(i, s), compute, [i, c, o],
+          [i.get_shape(), c.get_shape(), tensor_shape.unknown_shape()])
       result = r[2].eval()
     self.assertTrue(check_op_order(i.graph))
     self.assertAllEqual(np.array([0, 1, 2, 3, 4, 5, 6]), result)
@@ -630,7 +666,8 @@ class ControlFlowTest(tf.test.TestCase):
         new_i = tf.add(i, 1)
         new_j = tf.tile(j, [2, 2])
         return [new_i, new_j]
-      r = tf.while_loop(c, _b, [i, m])
+      r = tf.while_loop(c, _b, [i, m],
+                        [i.get_shape(), tensor_shape.unknown_shape()])
       r = r[1] * tf.ones([8, 8])
       self.assertAllEqual(np.ones((8, 8)), r.eval())
 
@@ -655,13 +692,68 @@ class ControlFlowTest(tf.test.TestCase):
       i = tf.constant(0)
       m = tf.ones([2, 2])
       c = lambda i, j: tf.less(i, 2)
-      def _b(i, j):
+      def b(i, j):
         new_i = tf.add(i, 1)
         new_j = tf.concat(0, [j, j])
         return [new_i, new_j]
-      r = tf.while_loop(c, _b, [i, m])
+      r = tf.while_loop(c, b, [i, m],
+                        [i.get_shape(), tensor_shape.TensorShape([None, 2])])
       self.assertTrue(r[1].get_shape()[0].value is None)
       self.assertEqual(r[1].get_shape()[1], tf.Dimension(2))
+
+      with self.assertRaisesRegexp(ValueError, "not an invariant for"):
+        r = tf.while_loop(c, b, [i, m])
+
+  def testWhileShapeInferenceSparseTensor(self):
+    with self.test_session():
+      values = tf.constant([2.0, 4.0], name="values")
+      indices = tf.constant([[0], [3]], dtype=tf.int64, name="indices")
+      shape = tf.constant([10], dtype=tf.int64, name="dense_shape")
+      i = tf.constant(0)
+      x = tf.SparseTensor(indices, values, shape=shape)
+      def c(i, _):
+        return i < 10
+      def b(i, x):
+        return [i + 1, tf.SparseTensor(x.indices, x.values * 2.0,
+                                       x.shape)]
+      _, r = tf.while_loop(c, b, [i, x])
+      self.assertEqual(r.shape.get_shape()[0].value, 1)
+
+      _, r = tf.while_loop(c, b, [i, x],
+                           [i.get_shape(), tensor_shape.TensorShape([None])])
+      self.assertTrue(r.shape.get_shape()[0].value is None)
+
+      with self.assertRaisesRegexp(ValueError, "is not compatible with"):
+        _, r = tf.while_loop(c, b, [i, x],
+                             [i.get_shape(), tensor_shape.TensorShape([5])])
+
+  def testWhileShapeInferenceIndexedSlices(self):
+    with self.test_session():
+      values = tf.constant([[2.0, 4.0], [3.0, 5.0]], name="values")
+      indices = tf.constant([0, 3], name="indices")
+      shape = tf.constant([10, 2], name="dense_shape")
+      i = tf.constant(0)
+      x = tf.IndexedSlices(values, indices, dense_shape=shape)
+      def c(i, _):
+        return i < 10
+      def b(i, x):
+        return [i + 1, tf.IndexedSlices(x.values * 2.0, x.indices,
+                                        x.dense_shape)]
+      _, r = tf.while_loop(c, b, [i, x])
+      self.assertEqual(r.dense_shape.get_shape()[0].value, 2)
+      self.assertEqual(r.values.get_shape(), tensor_shape.TensorShape([2, 2]))
+
+      _, r = tf.while_loop(c, b, [i, x],
+                           [i.get_shape(), tensor_shape.TensorShape([None, 2])])
+      self.assertEqual(r.dense_shape.get_shape()[0].value, 2)
+      self.assertTrue(r.values.get_shape()[0].value is None)
+      self.assertEqual(r.values.get_shape()[1].value, 2)
+
+      with self.assertRaisesRegexp(ValueError, "is not compatible with"):
+        _, r = tf.while_loop(c, b, [i, x],
+                             [i.get_shape(),
+                              tensor_shape.TensorShape([None, 5])])
+
 
   def _testNestedWhile_1(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
@@ -684,6 +776,32 @@ class ControlFlowTest(tf.test.TestCase):
     self._testNestedWhile_1(use_gpu=False)
     self._testNestedWhile_1(use_gpu=True)
 
+  def _testNestedWhile_2(self, use_gpu):
+    # Test the cases that A -> Enter and Exit -> A are partitioned.
+    with self.test_session(use_gpu=use_gpu):
+      s0 = tf.constant(2.0)
+      def inner_loop(s):
+        c = lambda s: tf.less(s, 20.0)
+        def b(s):
+          s1 = tf.add(s, s)
+          return s1
+        r_s = tf.while_loop(c, b, [s], parallel_iterations=1)
+        return r_s
+
+      outer_c = lambda x: tf.less(x, 3000.0)
+      def outer_b(x):
+        x = tf.Print(x, [x])  # Edge "Print -> Enter" is partitioned
+        x = inner_loop(x)
+        with tf.device("/cpu:0"):
+          x = tf.square(x)    # Edge "Exit -> Square" is partitioned
+        return x
+      r = tf.while_loop(outer_c, outer_b, [s0], parallel_iterations=1)
+      self.assertEqual(1048576.0, r.eval())
+
+  def testNestedWhile_2(self):
+    self._testNestedWhile_2(use_gpu=False)
+    self._testNestedWhile_2(use_gpu=True)
+
   def testWhileWithControl_1(self):
     with self.test_session():
       n = tf.constant(0)
@@ -696,8 +814,7 @@ class ControlFlowTest(tf.test.TestCase):
           r_ = tf.constant(12)
         return [n_, r_]
 
-      res = tf.while_loop(condition, body, [n, r],
-                          parallel_iterations=1)
+      res = tf.while_loop(condition, body, [n, r], parallel_iterations=1)
       self.assertAllEqual(12, res[1].eval())
 
   def testWhileWithControl_2(self):
@@ -716,10 +833,52 @@ class ControlFlowTest(tf.test.TestCase):
   def testWhileWithControl_3(self):
     with self.test_session() as sess:
       b = tf.placeholder(tf.bool)
-      c = tf.constant(0)
+      c = tf.constant(1)
+      x0 = tf.constant(0)
       with tf.control_dependencies([b]):
-        c = tf.while_loop(lambda x: x < 10, lambda x: x + 1, [c])
-      self.assertEqual(10, sess.run(c, {b: True}))
+        r = tf.while_loop(lambda x: x < 10, lambda x: x + c, [x0])
+      self.assertEqual(10, sess.run(r, {b: True}))
+
+  def testWhileWithControl_4(self):
+    with self.test_session() as sess:
+      b = tf.placeholder(tf.bool)
+      c = tf.constant(1)
+      x0 = tf.constant(0)
+      with tf.control_dependencies([b]):
+        r = tf.while_loop(lambda x: x < 10, lambda x: x + tf.identity(c), [x0])
+      self.assertEqual(10, sess.run(r, {b: True}))
+
+  def testWhileCondWithControl(self):
+    # Ensure that no control edges by an outer control dependency context are
+    # added to nodes inside cond/while contexts.
+    with self.test_session() as sess:
+      const_true = lambda: tf.constant(True)
+      const_false = lambda: tf.constant(False)
+      cond = lambda i: tf.cond(i > 0, const_true, const_false)
+      body = lambda i: tf.cond(i > 0, lambda: i - 1, lambda: i)
+
+      with tf.control_dependencies([tf.no_op()]):
+        loop = tf.while_loop(cond, body, (tf.constant(5),))
+      self.assertEqual(0, sess.run(loop))
+
+  def testWhileCondExitControl(self):
+    with self.test_session():
+      v = tf.Variable(1)
+      def false_branch():
+        cond = lambda i: i < 100
+        def body(i):
+          x = tf.assign(v, i)
+          return x + 1
+        loop = tf.while_loop(cond, body, [0])
+        # Make sure to handle correctly control edge from Exit to a node.
+        with tf.control_dependencies([loop]):
+          return tf.constant(6.0)
+      r = tf.cond(tf.constant(False),
+                  lambda: tf.constant(1.0),
+                  false_branch)
+      tf.initialize_all_variables().run()
+      self.assertEqual(6.0, r.eval())
+      self.assertEqual(99, v.eval())
 
   def testCondWhile_1(self):
     with self.test_session():
@@ -739,6 +898,29 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.cond(tf.less(1, 0), lambda: tf.add(n, 1),
                   lambda: tf.while_loop(c, b, [n]))
       self.assertAllEqual(10, r.eval())
+
+  def _testCondWhile_3(self, use_gpu):
+    with self.test_session(use_gpu=use_gpu) as sess:
+      p = tf.placeholder(tf.bool)
+      n = tf.constant(0.0)
+      def c(x):
+        return tf.less(x, 10.0)
+      def b(x):
+        with tf.device("/cpu:0"):
+          x1 = tf.add(x, 1.0)
+        return x1
+      r = tf.cond(p,
+                  lambda: tf.while_loop(c, b, [n]),
+                  lambda: tf.mul(n, 2.0))
+      r1 = tf.gradients(r, [n])
+      self.assertEqual(10, sess.run(r, {p: True}))
+      self.assertEqual([1.0], sess.run(r1, {p: True}))
+      self.assertEqual(0.0, sess.run(r, {p: False}))
+      self.assertEqual([2.0], sess.run(r1, {p: False}))
+
+  def testCondWhile_3(self):
+    self._testCondWhile_3(use_gpu=False)
+    self._testCondWhile_3(use_gpu=True)
 
   def testWhileCond_1(self):
     with self.test_session():
@@ -892,7 +1074,8 @@ class ControlFlowTest(tf.test.TestCase):
           inc_b = tf.identity(var_b)
         return inc_b
 
-      lpa = tf.while_loop(pred, loop_body, [var_b], 1, name="loop")
+      lpa = tf.while_loop(pred, loop_body, [var_b], parallel_iterations=1,
+                          name="loop")
 
       self.assertEqual(0, var_b.eval())
       lpa.eval()  # Run the loop
@@ -921,7 +1104,8 @@ class ControlFlowTest(tf.test.TestCase):
           ni = tf.add(i, 1, name="i_add")
           return ni
 
-      lpa = tf.while_loop(pred, loop_body, [c], 1, name="loop")
+      lpa = tf.while_loop(pred, loop_body, [c], parallel_iterations=1,
+                          name="loop")
 
       self.assertEqual(0, var_b.eval())
       lpa.eval()  # Run the loop
@@ -967,7 +1151,9 @@ class ControlFlowTest(tf.test.TestCase):
         ni = tf.sub(i, 1)
         nx = x + gen_data_flow_ops._stack_pop(s, tf.int32)
         return [ni, nx]
-      _, rx = tf.while_loop(c1, b1, [r, x], parallel_iterations=1)
+      _, rx = tf.while_loop(c1, b1, [r, x],
+                            [r.get_shape(), tensor_shape.unknown_shape()],
+                            parallel_iterations=1)
       self.assertEqual(45, rx.eval())
 
   def _testWhileGrad_ColocateGradients(self, colocate):
@@ -1005,7 +1191,7 @@ class ControlFlowTest(tf.test.TestCase):
       c = lambda v: tf.less(v, 100.0)
       b = tf.square
       r = tf.while_loop(c, b, [v], parallel_iterations=1)
-      r = control_flow_ops.cond(tf.less(1, 2), lambda: r, lambda: v)
+      r = tf.cond(tf.less(1, 2), lambda: r, lambda: v)
 
       r = tf.gradients(r, v)[0]
       self.assertAllClose(1024.0, r.eval())
@@ -1017,7 +1203,9 @@ class ControlFlowTest(tf.test.TestCase):
       n = tf.constant(0, name="n")
       c = lambda i, v: tf.less(i, 5)
       b = lambda i, v: [i + 1, tf.mul(x, v)]
-      r = tf.while_loop(c, b, [n, v], parallel_iterations=1)
+      r = tf.while_loop(c, b, [n, v],
+                        [n.get_shape(), tensor_shape.unknown_shape()],
+                        parallel_iterations=1)
 
       r = tf.gradients(r[1], x)[0]
       self.assertEqual([None], r.get_shape().as_list())
@@ -1236,6 +1424,27 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.gradients([rx], x)
       self.assertAllClose(64.0, r[0].eval())
 
+  def testWhileGrad_OneOutputWithControlDependencyOnSecond(self):
+    with self.test_session():
+      i = tf.constant(0, name="i")
+      x = tf.constant(1.0, name="x")
+      y = tf.constant(1.0, name="y")
+      c = lambda i, *_: tf.less(i, 1, name="cond_less")
+      def b(i, xi, yi):
+        # return (i + 1, xi, xi + yi)
+        return (tf.add(i, 1, name="inc"),
+                tf.identity(xi, name="xi"),
+                tf.add(xi, yi, name="xi_plus_yi"))
+
+      _, x_f, y_f = tf.while_loop(c, b, [i, x, y])
+      with tf.control_dependencies([x_f]):
+        y_f_d = tf.identity(y_f, name="y_f_d")
+
+      self.assertAllClose(2.0, y_f_d.eval())  # y_f_d = 1.0 + 1.0
+      g = tf.gradients([y_f_d], [x])[0]
+      self.assertTrue(g is not None)
+      self.assertAllClose(1.0, g.eval())  # y_f_d = x + 1.0, dy_f_d/dx = 1.0
+
   def _testNestedWhileGrad_Simple(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       v = tf.constant(1.0)
@@ -1294,6 +1503,26 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.gradients(r, v)[0]
       self.assertAllClose(512.0, r.eval())
 
+  def testNestedWhileGrad_ParallelIterations(self):
+    # Make sure the stack pushes and pops of an inner loop are executed in
+    # the sequential order of the iterations of its outer loop.
+    with self.test_session() as sess:
+      def inner_loop(t):
+        fn = lambda n: n + tf.square(var)
+        return tf.map_fn(fn=fn, elems=t, parallel_iterations=10)
+
+      def outer_loop(inp):
+        return tf.map_fn(fn=inner_loop, elems=inp, parallel_iterations=10)
+
+      var = tf.Variable(tf.constant(3.0))
+      inp = tf.constant([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+      res = outer_loop(inp)
+      optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
+      train_op = optimizer.minimize(tf.reduce_mean(tf.square(res)))
+      sess.run(tf.initialize_all_variables())
+      sess.run(train_op)
+      self.assertAllClose(2.999, var.eval())
+
   def _testWhileCondGrad_Simple(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       v = tf.convert_to_tensor(2.0, name="v")
@@ -1302,9 +1531,9 @@ class ControlFlowTest(tf.test.TestCase):
       c = lambda x: tf.less(x, n)
       # pylint: disable=undefined-variable
       # for OSS build
-      b = lambda x: control_flow_ops.cond(tf.constant(True),
-                                          lambda: tf.square(x),
-                                          lambda: tf.sub(x, one))
+      b = lambda x: tf.cond(tf.constant(True),
+                            lambda: tf.square(x),
+                            lambda: tf.sub(x, one))
       # pylint: enable=undefined-variable
       r = tf.while_loop(c, b, [v])
       r = tf.gradients(r, v)[0]
@@ -1322,14 +1551,37 @@ class ControlFlowTest(tf.test.TestCase):
       c = lambda x: tf.less(x, n)
       # pylint: disable=undefined-variable
       # for OSS build
-      b = lambda x: control_flow_ops.cond(tf.constant(True),
-                                          lambda: tf.square(x),
-                                          lambda: tf.sub(x, one))
+      b = lambda x: tf.cond(tf.constant(True),
+                            lambda: tf.square(x),
+                            lambda: tf.sub(x, one))
       # pylint: enable=undefined-variable
       r = tf.while_loop(c, b, [v])
       r = tf.gradients(r, v)[0]
       r = sess.run(r, feed_dict={v: 2.0})
       self.assertAllClose(1024.0, r)
+
+  def testWhileGrad_Concat(self):
+    with self.test_session() as sess:
+      x = tf.get_variable("x", initializer=[[1., 2.]])
+      i0 = tf.constant(0)
+      h0 = tf.zeros([0, 2])
+
+      def condition(i, _):
+        return i < 2
+
+      def body(i, h):
+        return i+1, tf.concat(0, [h, x])
+
+      _, h = tf.while_loop(
+          condition, body, [i0, h0],
+          [i0.get_shape(), tensor_shape.TensorShape([None, 2])])
+      s = tf.reduce_sum(h)
+
+      sess.run(tf.initialize_all_variables())
+      optimizer = tf.train.GradientDescentOptimizer(0.01)
+      op = optimizer.minimize(s)
+      sess.run(op)
+      self.assertAllClose([[0.98000002, 1.98000002]], sess.run(x))
 
   def testWhileWithRefsWithGradients_1(self):
     with self.test_session() as sess:
@@ -1408,7 +1660,58 @@ class ControlFlowTest(tf.test.TestCase):
       output_grad = tf.while_loop(c, b, [i0, tf.constant(0.0)])
       self.assertAllClose(600.0, sess.run(output_grad)[1])
 
+  def testWhileAndTensorArray(self):
+    with self.test_session() as sess:
+      param = tf.constant(2.0)
+      n0 = tf.constant(0)
+      y0 = tf.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
+
+      def c(i, _):
+        return i < 10
+      def b(i, y):
+        return [i + 1, tf.map_fn(lambda x: tf.mul(x, param), y)]
+
+      r = tf.while_loop(c, b, [n0, y0], parallel_iterations=1)
+      r = tf.gradients(r, param)[0]
+      self.assertAllClose(107520.0, sess.run(r))
+
   def testWhileGrad_StopGrad(self):
+    with self.test_session():
+      x = tf.constant(3.0, name="x")
+      y = tf.constant(2.0, name="y")
+
+      c = lambda x, y: tf.less(x, 100.0)
+      def b(x, y):
+        y1 = tf.square(y)
+        x1 = tf.add(tf.square(x), y1)
+        return x1, y1
+      rx, ry = tf.while_loop(c, b, [x, y])
+
+      r = tf.gradients(rx, y)[0]
+      self.assertEqual(136.0, r.eval())
+      r = tf.gradients(ry, y)[0]
+      self.assertEqual(32.0, r.eval())
+
+      r = tf.gradients(tf.stop_gradient(rx), y)[0]
+      self.assertEqual(r, None)
+      r = tf.gradients(tf.stop_gradient(ry), y)[0]
+      self.assertEqual(r, None)
+
+      r = tf.gradients(tf.stop_gradient(tf.square(rx)), y)[0]
+      self.assertEqual(r, None)
+      r = tf.gradients(tf.stop_gradient(tf.add(rx, ry)), x)[0]
+      self.assertEqual(r, None)
+      r = tf.gradients(tf.stop_gradient(tf.add(rx, ry)), y)[0]
+      self.assertEqual(r, None)
+
+      r = tf.gradients(tf.add(rx, ry), y)[0]
+      self.assertEqual(168.0, r.eval())
+      r = tf.gradients(tf.add(rx, tf.stop_gradient(ry)), y)[0]
+      self.assertEqual(136.0, r.eval())
+      r = tf.gradients(tf.add(tf.stop_gradient(rx), ry), y)[0]
+      self.assertEqual(32.0, r.eval())
+
+  def testWhileGrad_StopGradInside(self):
     with self.test_session():
       x = tf.constant(3.0, name="x")
       y = tf.constant(2.0, name="y")
@@ -1425,7 +1728,28 @@ class ControlFlowTest(tf.test.TestCase):
       r = tf.gradients(rx, x)[0]
       self.assertAllClose(156.0, r.eval())
 
-  def testWhileGradGrad(self):
+  def testWhileGrad_StopGradInsideNoShape(self):
+    with self.test_session() as sess:
+      x = tf.placeholder(tf.float32)
+      y = tf.placeholder(tf.float32)
+
+      c = lambda x, y: tf.less(tf.reduce_sum(x), 100.0)
+      def b(x, y):
+        y1 = tf.stop_gradient(tf.square(y, name="stopped"))
+        x1 = tf.add(tf.square(x), y1)
+        return x1, y1
+      rx, _ = tf.while_loop(c, b, [x, y])
+
+      r = tf.gradients(rx, y)[0]
+      feed_dict = {x: [3.0, 4.0], y: [2.0, 3.0]}
+      self.assertAllClose([0.0, 0.0], sess.run(r, feed_dict=feed_dict))
+      r = tf.gradients(rx, x)[0]
+      self.assertAllClose([156.0, 400.0], sess.run(r, feed_dict=feed_dict))
+      name = "gradients/while/stopped_grad"
+      all_ops = x.graph.get_operations()
+      self.assertFalse(any([name in op.name for op in all_ops]))
+
+  def testWhileGradGradFail(self):
     theta = tf.Variable(initial_value=1.)
     def fn(prev, x):
       return prev + x * theta
@@ -1883,7 +2207,8 @@ class TupleTest(tf.test.TestCase):
       r = tf.while_loop(
           lambda i, v: i < 4,
           lambda i, v: [i + 1, tf.py_func(func, [v], [tf.float32])[0]],
-          [tf.constant(0), tf.constant(2.0, tf.float32)])
+          [tf.constant(0), tf.constant(2.0, tf.float32)],
+          [tensor_shape.unknown_shape(), tensor_shape.unknown_shape()])
       self.assertEqual(r[1].eval(), 65536.0)
 
   def testWhileFuncBasic(self):
@@ -1896,7 +2221,8 @@ class TupleTest(tf.test.TestCase):
       r = tf.while_loop(
           lambda i, v: i < 2,
           lambda i, v: [i + 1, func(v)],
-          [tf.constant(0), x])
+          [tf.constant(0), x],
+          [tensor_shape.unknown_shape(), tensor_shape.unknown_shape()])
       self.assertEqual(r[1].eval(), 65536.0)
 
       r = tf.gradients(r, x)[0]

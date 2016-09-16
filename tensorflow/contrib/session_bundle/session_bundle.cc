@@ -41,17 +41,17 @@ namespace serving {
 namespace {
 
 // Create a session using the given options and load the graph.
-Status CreateSessionFromGraphDef(
-    const tensorflow::SessionOptions& options, const GraphDef& graph,
-    std::unique_ptr<tensorflow::Session>* session) {
+Status CreateSessionFromGraphDef(const SessionOptions& options,
+                                 const GraphDef& graph,
+                                 std::unique_ptr<Session>* session) {
   session->reset(NewSession(options));
   return (*session)->Create(graph);
 }
 
 Status GetMetaGraphDefFromExport(const StringPiece export_dir,
-                                 tensorflow::MetaGraphDef* meta_graph_def) {
+                                 MetaGraphDef* meta_graph_def) {
   const string meta_graph_def_path =
-      tensorflow::io::JoinPath(export_dir, kMetaGraphDefFilename);
+      io::JoinPath(export_dir, kMetaGraphDefFilename);
   return ReadBinaryProto(Env::Default(), meta_graph_def_path, meta_graph_def);
 }
 
@@ -66,15 +66,15 @@ Tensor CreateStringTensor(const string& value) {
 void AddAssetsTensorsToInputs(const StringPiece export_dir,
                               const std::vector<AssetFile>& asset_files,
                               std::vector<std::pair<string, Tensor>>* inputs) {
-  if (!asset_files.empty()) {
-    for (auto& asset : asset_files) {
-      Tensor assets_file_tensor = CreateStringTensor(tensorflow::io::JoinPath(
-          tensorflow::io::JoinPath(export_dir, kAssetsDirectory),
-          asset.filename()));
-      inputs->push_back(
-          {asset.tensor_binding().tensor_name(), assets_file_tensor});
-    }
+  if (asset_files.empty()) {
+    return;
   }
+  for (auto& asset : asset_files) {
+    Tensor assets_file_tensor = CreateStringTensor(
+        io::JoinPath(export_dir, kAssetsDirectory, asset.filename()));
+    inputs->push_back(
+        {asset.tensor_binding().tensor_name(), assets_file_tensor});
+    }
 }
 
 // Historically, model exporter(exporter.py) takes only saver with
@@ -91,42 +91,57 @@ string GetVariablesFilename(const StringPiece export_dir) {
   const char kVariablesFilename[] = "export";
   const char kVariablesFilenamePattern[] = "export-\?\?\?\?\?-of-\?\?\?\?\?";
   if (Env::Default()->FileExists(
-          tensorflow::io::JoinPath(export_dir, kVariablesFilename))) {
-    return tensorflow::io::JoinPath(export_dir, kVariablesFilename);
+          io::JoinPath(export_dir, kVariablesFilename))) {
+    return io::JoinPath(export_dir, kVariablesFilename);
   } else {
-    return tensorflow::io::JoinPath(export_dir, kVariablesFilenamePattern);
+    return io::JoinPath(export_dir, kVariablesFilenamePattern);
   }
 }
 
-Status RunRestoreOp(const StringPiece export_dir,
+Status RunRestoreOp(const RunOptions& run_options, const StringPiece export_dir,
                     const std::vector<AssetFile>& asset_files,
                     const StringPiece restore_op_name,
                     const StringPiece variables_filename_const_op_name,
-                    tensorflow::Session* session) {
+                    Session* session) {
   LOG(INFO) << "Running restore op for SessionBundle";
   Tensor variables_tensor =
       CreateStringTensor(GetVariablesFilename(export_dir));
   std::vector<std::pair<string, Tensor>> inputs = {
       {variables_filename_const_op_name.ToString(), variables_tensor}};
   AddAssetsTensorsToInputs(export_dir, asset_files, &inputs);
-  return session->Run(inputs, {}, {restore_op_name.ToString()}, nullptr);
+  RunMetadata run_metadata;
+  return session->Run(run_options, inputs, {}, {restore_op_name.ToString()},
+                      nullptr /* outputs */, &run_metadata);
 }
 
-Status RunInitOp(const StringPiece export_dir,
+Status RunInitOp(const RunOptions& run_options, const StringPiece export_dir,
                  const std::vector<AssetFile>& asset_files,
-                 const StringPiece init_op_name, tensorflow::Session* session) {
+                 const StringPiece init_op_name, Session* session) {
   LOG(INFO) << "Running init op for SessionBundle";
   std::vector<std::pair<string, Tensor>> inputs;
   AddAssetsTensorsToInputs(export_dir, asset_files, &inputs);
-  return session->Run(inputs, {}, {init_op_name.ToString()}, nullptr);
+  RunMetadata run_metadata;
+  return session->Run(run_options, inputs, {}, {init_op_name.ToString()},
+                      nullptr /* outputs */, &run_metadata);
 }
 
 }  // namespace
 
-tensorflow::Status LoadSessionBundleFromPath(
-    const tensorflow::SessionOptions& options, const StringPiece export_dir,
-    SessionBundle* const bundle) {
+Status LoadSessionBundleFromPath(const SessionOptions& options,
+                                 const StringPiece export_dir,
+                                 SessionBundle* const bundle) {
+  TF_RETURN_IF_ERROR(LoadSessionBundleFromPathUsingRunOptions(
+      options, RunOptions(), export_dir, bundle));
+  return Status::OK();
+}
+
+Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
+                                                const RunOptions& run_options,
+                                                const StringPiece export_dir,
+                                                SessionBundle* const bundle) {
   LOG(INFO) << "Attempting to load a SessionBundle from: " << export_dir;
+  LOG(INFO) << "Using RunOptions: " << DebugStringIfAvailable(run_options);
+  const int64 start_seconds = Env::Default()->NowSeconds();
   TF_RETURN_IF_ERROR(
       GetMetaGraphDefFromExport(export_dir, &(bundle->meta_graph_def)));
 
@@ -138,25 +153,16 @@ tensorflow::Status LoadSessionBundleFromPath(
     if (graph_collection_def.any_list().value_size() != 1) {
       return errors::FailedPrecondition(
           "Expected exactly one serving GraphDef in : ",
-          bundle->meta_graph_def.DebugString());
+          DebugStringIfAvailable(bundle->meta_graph_def));
     }
     const auto& any = graph_collection_def.any_list().value(0);
-    if (!any.Is<GraphDef>()) {
-      return errors::FailedPrecondition(
-          "Expected Any type_url for: ",
-          tensorflow::GraphDef::default_instance().descriptor()->full_name(),
-          ". Got: ", string(any.type_url().data(), any.type_url().size()), ".");
-    }
-    tensorflow::GraphDef graph_def;
-    if (!any.UnpackTo(&graph_def)) {
-      return errors::FailedPrecondition("Failed to unpack: ",
-                                        any.DebugString());
-    }
+    GraphDef graph_def;
+    TF_RETURN_IF_ERROR(ParseAny(any, &graph_def, "tensorflow.GraphDef"));
     TF_RETURN_IF_ERROR(
         CreateSessionFromGraphDef(options, graph_def, &bundle->session));
   } else {
     // Fallback to use the graph_def in the MetaGraphDef.
-    const tensorflow::GraphDef& graph_def = bundle->meta_graph_def.graph_def();
+    const GraphDef& graph_def = bundle->meta_graph_def.graph_def();
     TF_RETURN_IF_ERROR(
         CreateSessionFromGraphDef(options, graph_def, &bundle->session));
   }
@@ -167,23 +173,14 @@ tensorflow::Status LoadSessionBundleFromPath(
     const auto& any_assets = assets_it->second.any_list().value();
     for (const auto& any_asset : any_assets) {
       AssetFile asset_file;
-      if (!any_asset.Is<AssetFile>()) {
-        return errors::FailedPrecondition(
-            "Expected asset Any type_url for: ",
-            asset_file.descriptor()->full_name(), ". Got: ",
-            string(any_asset.type_url().data(), any_asset.type_url().size()),
-            ".");
-      }
-      if (!any_asset.UnpackTo(&asset_file)) {
-        return errors::FailedPrecondition("Failed to unpack: ",
-                                          any_asset.DebugString());
-      }
+      TF_RETURN_IF_ERROR(
+          ParseAny(any_asset, &asset_file, "tensorflow.serving.AssetFile"));
       asset_files.push_back(asset_file);
     }
   }
 
   TF_RETURN_IF_ERROR(
-      RunRestoreOp(export_dir, asset_files,
+      RunRestoreOp(run_options, export_dir, asset_files,
                    bundle->meta_graph_def.saver_def().restore_op_name(),
                    bundle->meta_graph_def.saver_def().filename_tensor_name(),
                    bundle->session.get()));
@@ -193,14 +190,15 @@ tensorflow::Status LoadSessionBundleFromPath(
     if (init_op_it->second.node_list().value_size() != 1) {
       return errors::FailedPrecondition(
           strings::StrCat("Expected exactly one serving init op in : ",
-                          bundle->meta_graph_def.DebugString()));
+                          DebugStringIfAvailable(bundle->meta_graph_def)));
     }
-    return RunInitOp(export_dir, asset_files,
-                     init_op_it->second.node_list().value(0),
-                     bundle->session.get());
+    TF_RETURN_IF_ERROR(RunInitOp(run_options, export_dir, asset_files,
+                                 init_op_it->second.node_list().value(0),
+                                 bundle->session.get()));
   }
 
-  LOG(INFO) << "Done loading SessionBundle";
+  LOG(INFO) << "Done loading SessionBundle. Took "
+            << Env::Default()->NowSeconds() - start_seconds << " seconds.";
   return Status::OK();
 }
 

@@ -22,12 +22,9 @@ from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_random_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -70,7 +67,7 @@ def random_normal(shape,
   Returns:
     A tensor of the specified shape filled with random normal values.
   """
-  with ops.op_scope([shape, mean, stddev], name, "random_normal") as name:
+  with ops.name_scope(name, "random_normal", [shape, mean, stddev]) as name:
     shape_tensor = _ShapeTensor(shape)
     mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
@@ -84,7 +81,7 @@ def random_normal(shape,
     return value
 
 
-ops.NoGradient("RandomStandardNormal")
+ops.NotDifferentiable("RandomStandardNormal")
 
 
 def parameterized_truncated_normal(shape,
@@ -121,8 +118,8 @@ def parameterized_truncated_normal(shape,
   Returns:
     A tensor of the specified shape filled with random truncated normal values.
   """
-  with ops.op_scope([shape, means, stddevs, minvals, maxvals], name,
-                    "parameterized_truncated_normal") as name:
+  with ops.name_scope(name, "parameterized_truncated_normal",
+                      [shape, means, stddevs, minvals, maxvals]) as name:
     shape_tensor = _ShapeTensor(shape)
     means_tensor = ops.convert_to_tensor(means, dtype=dtype, name="means")
     stddevs_tensor = ops.convert_to_tensor(stddevs, dtype=dtype, name="stddevs")
@@ -167,7 +164,7 @@ def truncated_normal(shape,
   Returns:
     A tensor of the specified shape filled with random truncated normal values.
   """
-  with ops.op_scope([shape, mean, stddev], name, "truncated_normal") as name:
+  with ops.name_scope(name, "truncated_normal", [shape, mean, stddev]) as name:
     shape_tensor = _ShapeTensor(shape)
     mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
@@ -181,8 +178,8 @@ def truncated_normal(shape,
     return value
 
 
-ops.NoGradient("ParameterizedTruncatedNormal")
-ops.NoGradient("TruncatedNormal")
+ops.NotDifferentiable("ParameterizedTruncatedNormal")
+ops.NotDifferentiable("TruncatedNormal")
 
 
 def random_uniform(shape,
@@ -230,7 +227,7 @@ def random_uniform(shape,
     if dtype.is_integer:
       raise ValueError("Must specify maxval for integer dtype %r" % dtype)
     maxval = 1
-  with ops.op_scope([shape, minval, maxval], name, "random_uniform") as name:
+  with ops.name_scope(name, "random_uniform", [shape, minval, maxval]) as name:
     shape = _ShapeTensor(shape)
     minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
     maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
@@ -250,7 +247,7 @@ def random_uniform(shape,
       return math_ops.add(rnd * (maxval - minval), minval, name=name)
 
 
-ops.NoGradient("RandomUniform")
+ops.NotDifferentiable("RandomUniform")
 
 
 def random_shuffle(value, seed=None, name=None):
@@ -309,11 +306,11 @@ def random_crop(value, size, seed=None, name=None):
   # TODO(shlens): Implement edge case to guarantee output size dimensions.
   # If size > value.shape, zero pad the result so that it always has shape
   # exactly size.
-  with ops.op_scope([value, size], name, "random_crop") as name:
+  with ops.name_scope(name, "random_crop", [value, size]) as name:
     value = ops.convert_to_tensor(value, name="value")
     size = ops.convert_to_tensor(size, dtype=dtypes.int32, name="size")
     shape = array_ops.shape(value)
-    check = logging_ops.Assert(
+    check = control_flow_ops.Assert(
         math_ops.reduce_all(shape >= size),
         ["Need value.shape >= size, got ", shape, size])
     shape = control_flow_ops.with_dependencies([check], shape)
@@ -350,7 +347,7 @@ def multinomial(logits, num_samples, seed=None, name=None):
   Returns:
     The drawn samples of shape `[batch_size, num_samples]`.
   """
-  with ops.op_scope([logits], name, "multinomial"):
+  with ops.name_scope(name, "multinomial", [logits]):
     logits = ops.convert_to_tensor(logits, name="logits")
     seed1, seed2 = random_seed.get_seed(seed)
     return gen_random_ops.multinomial(logits,
@@ -360,14 +357,11 @@ def multinomial(logits, num_samples, seed=None, name=None):
 
 
 @ops.RegisterShape("Multinomial")
-def _MultinomialShape(op):  # pylint: disable=invalid-name
-  logits_shape = op.inputs[0].get_shape().with_rank(2)
-  batch_size = logits_shape[0]
-  num_samples_or_none = tensor_util.constant_value(op.inputs[1])
-  return [tensor_shape.matrix(batch_size, num_samples_or_none)]
+def _MultinomialShape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
-ops.NoGradient("Multinomial")
+ops.NotDifferentiable("Multinomial")
 
 
 def random_gamma(shape,
@@ -394,6 +388,26 @@ def random_gamma(shape,
     samples = tf.random_gamma([30], [[1.],[3.],[5.]], beta=[[3., 4.]])
     # samples has shape [30, 3, 2], with 30 samples each of 3x2 distributions.
 
+    Note that for small alpha values, there is a chance you will draw a value of
+    exactly 0, which gets worse for lower-precision dtypes, even though zero is
+    not in the support of the gamma distribution.
+
+    Relevant cdfs (~chance you will draw a exactly-0 value):
+    ```
+      stats.gamma(.01).cdf(np.finfo(np.float16).tiny)
+          0.91269738769897879
+      stats.gamma(.01).cdf(np.finfo(np.float32).tiny)
+          0.41992668622045726
+      stats.gamma(.01).cdf(np.finfo(np.float64).tiny)
+          0.00084322740680686662
+      stats.gamma(.35).cdf(np.finfo(np.float16).tiny)
+          0.037583276135263931
+      stats.gamma(.35).cdf(np.finfo(np.float32).tiny)
+          5.9514895726818067e-14
+      stats.gamma(.35).cdf(np.finfo(np.float64).tiny)
+          2.3529843400647272e-108
+    ```
+
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output samples
       to be drawn per alpha/beta-parameterized distribution.
@@ -415,7 +429,7 @@ def random_gamma(shape,
     samples: a `Tensor` of shape `tf.concat(shape, tf.shape(alpha + beta))` with
       values of type `dtype`.
   """
-  with ops.op_scope([shape, alpha, beta], name, "random_gamma"):
+  with ops.name_scope(name, "random_gamma", [shape, alpha, beta]):
     shape = ops.convert_to_tensor(shape, name="shape", dtype=dtypes.int32)
     alpha = ops.convert_to_tensor(alpha, name="alpha", dtype=dtype)
     beta = ops.convert_to_tensor(beta if beta is not None else 1,
@@ -430,18 +444,11 @@ def random_gamma(shape,
 
 
 @ops.RegisterShape("RandomGamma")
-def _RandomGammaShape(op):  # pylint: disable=invalid-name
-  alphas_shape = op.inputs[1].get_shape()
-  shape_val = tensor_util.constant_value(op.inputs[0])
-  if shape_val is not None:
-    return [tensor_shape.TensorShape(shape_val).concatenate(alphas_shape)]
-  else:
-    shape_shape = op.inputs[0].get_shape().with_rank(1)
-    return [tensor_shape.unknown_shape(
-        ndims=shape_shape[0].value).concatenate(alphas_shape)]
+def _RandomGammaShape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
-ops.NoGradient("RandomGamma")
+ops.NotDifferentiable("RandomGamma")
 
 
 @ops.RegisterShape("ParameterizedTruncatedNormal")
@@ -450,12 +457,7 @@ ops.NoGradient("RandomGamma")
 @ops.RegisterShape("RandomUniform")
 @ops.RegisterShape("RandomUniformInt")
 def _RandomShape(op):
-  shape_val = tensor_util.constant_value(op.inputs[0])
-  if shape_val is not None:
-    return [tensor_shape.TensorShape(shape_val)]
-  else:
-    shape_shape = op.inputs[0].get_shape().with_rank(1)
-    return [tensor_shape.unknown_shape(ndims=shape_shape[0].value)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
 ops.RegisterShape("RandomShuffle")(common_shapes.unchanged_shape)

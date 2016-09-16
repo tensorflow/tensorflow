@@ -22,6 +22,8 @@ from __future__ import print_function
 import collections
 import re
 
+import six
+
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
@@ -86,6 +88,18 @@ def _as_name_list(names, dtypes):
     raise ValueError("List of names must have the same length as the list "
                      "of dtypes")
   return list(names)
+
+
+def _shape_common(s1, s2):
+  """The greatest lower bound (ordered by specificity) TensorShape."""
+  s1 = tensor_shape.TensorShape(s1)
+  s2 = tensor_shape.TensorShape(s2)
+  if s1.ndims is None or s2.ndims is None or s1.ndims != s2.ndims:
+    return tensor_shape.unknown_shape()
+  d = [
+      d1 if d1 is not None and d1 == d2 else None
+      for (d1, d2) in zip(s1.as_list(), s2.as_list())]
+  return tensor_shape.TensorShape(d)
 
 
 # pylint: disable=protected-access
@@ -186,10 +200,13 @@ class QueueBase(object):
     if not all([names == q.names for q in queues[1:]]):
       raise TypeError("Queues do not have matching component names.")
 
+    queue_shapes = [q.shapes for q in queues]
+    reduced_shapes = [
+        six.moves.reduce(_shape_common, s) for s in zip(*queue_shapes)]
+
     queue_refs = [x.queue_ref for x in queues]
     selected_queue = control_flow_ops.ref_select(index, queue_refs)
-    # TODO(josh11b): Unify the shapes of the queues too?
-    return QueueBase(dtypes=dtypes, shapes=None, names=names,
+    return QueueBase(dtypes=dtypes, shapes=reduced_shapes, names=names,
                      queue_ref=selected_queue)
 
   @property
@@ -206,6 +223,11 @@ class QueueBase(object):
   def dtypes(self):
     """The list of dtypes for each component of a queue element."""
     return self._dtypes
+
+  @property
+  def shapes(self):
+    """The list of shapes for each component of a queue element."""
+    return self._shapes
 
   @property
   def names(self):
@@ -256,7 +278,7 @@ class QueueBase(object):
     return tensors
 
   def _scope_vals(self, vals):
-    """Return a list of values to pass to `op_scope()`.
+    """Return a list of values to pass to `name_scope()`.
 
     Args:
       vals: A tensor, a list or tuple of tensors, or a dictionary.
@@ -280,7 +302,7 @@ class QueueBase(object):
     At runtime, this operation may raise an error if the queue is
     [closed](#QueueBase.close) before or during its execution. If the
     queue is closed before this operation runs,
-    `tf.errors.AbortedError` will be raised. If this operation is
+    `tf.errors.CancelledError` will be raised. If this operation is
     blocked, and either (i) the queue is closed by a close operation
     with `cancel_pending_enqueues=True`, or (ii) the session is
     [closed](../../api_docs/python/client.md#Session.close),
@@ -294,8 +316,8 @@ class QueueBase(object):
     Returns:
       The operation that enqueues a new tuple of tensors to the queue.
     """
-    with ops.op_scope(self._scope_vals(vals), name,
-                      "%s_enqueue" % self._name) as scope:
+    with ops.name_scope(name, "%s_enqueue" % self._name,
+                        self._scope_vals(vals)) as scope:
       vals = self._check_enqueue_dtypes(vals)
 
       # NOTE(mrry): Not using a shape function because we need access to
@@ -318,7 +340,7 @@ class QueueBase(object):
     At runtime, this operation may raise an error if the queue is
     [closed](#QueueBase.close) before or during its execution. If the
     queue is closed before this operation runs,
-    `tf.errors.AbortedError` will be raised. If this operation is
+    `tf.errors.CancelledError` will be raised. If this operation is
     blocked, and either (i) the queue is closed by a close operation
     with `cancel_pending_enqueues=True`, or (ii) the session is
     [closed](../../api_docs/python/client.md#Session.close),
@@ -332,8 +354,8 @@ class QueueBase(object):
     Returns:
       The operation that enqueues a batch of tuples of tensors to the queue.
     """
-    with ops.op_scope(self._scope_vals(vals), name,
-                      "%s_EnqueueMany" % self._name) as scope:
+    with ops.name_scope(name, "%s_EnqueueMany" % self._name,
+                        self._scope_vals(vals)) as scope:
       vals = self._check_enqueue_dtypes(vals)
 
       # NOTE(mrry): Not using a shape function because we need access to
@@ -581,6 +603,10 @@ class RandomShuffleQueue(QueueBase):
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
     names = _as_name_list(names, dtypes)
+    # If shared_name is provided and an op seed was not provided, we must ensure
+    # that we use the same seed for all queues with the same shared_name.
+    if shared_name is not None and seed is None:
+      seed = hash(shared_name)
     seed1, seed2 = random_seed.get_seed(seed)
     queue_ref = gen_data_flow_ops._random_shuffle_queue(
         component_types=dtypes, shapes=shapes, capacity=capacity,
@@ -591,7 +617,7 @@ class RandomShuffleQueue(QueueBase):
 
 
 class FIFOQueue(QueueBase):
-  """A queue implementation that dequeues elements in first-in-first out order.
+  """A queue implementation that dequeues elements in first-in first-out order.
 
   See [`tf.QueueBase`](#QueueBase) for a description of the methods on
   this class.
@@ -1019,66 +1045,50 @@ def initialize_all_tables(name="init_all_tables"):
   return control_flow_ops.no_op(name=name)
 
 
-ops.NoGradient("LookupTableFind")
-ops.NoGradient("LookupTableInsert")
-ops.NoGradient("LookupTableSize")
-ops.NoGradient("HashTable")
-ops.NoGradient("InitializeTable")
-ops.NoGradient("InitializeTableFromTextFile")
-ops.NoGradient("MutableHashTable")
-ops.NoGradient("MutableHashTableOfTensors")
+ops.NotDifferentiable("LookupTableFind")
+ops.NotDifferentiable("LookupTableInsert")
+ops.NotDifferentiable("LookupTableSize")
+ops.NotDifferentiable("HashTable")
+ops.NotDifferentiable("InitializeTable")
+ops.NotDifferentiable("InitializeTableFromTextFile")
+ops.NotDifferentiable("MutableHashTable")
+ops.NotDifferentiable("MutableHashTableOfTensors")
 
 
-ops.RegisterShape("QueueSize")(common_shapes.scalar_shape)
-ops.RegisterShape("Queue")(common_shapes.scalar_shape)
-ops.RegisterShape("FIFOQueue")(common_shapes.scalar_shape)
-ops.RegisterShape("PaddingFIFOQueue")(common_shapes.scalar_shape)
-ops.RegisterShape("RandomShuffleQueue")(common_shapes.scalar_shape)
-ops.RegisterShape("PriorityQueue")(common_shapes.scalar_shape)
+ops.RegisterShape("QueueSize")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Queue")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FIFOQueue")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("PaddingFIFOQueue")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RandomShuffleQueue")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("PriorityQueue")(common_shapes.call_cpp_shape_fn)
 
-
-def _ScalarToVoidShape(op):
-  """Shape function for ops that take a scalar and produce no outputs."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return []
 
 # NOTE(mrry): The following ops use higher-level information in the
 # Queue class to provide shape information.
-ops.RegisterShape("QueueDequeue")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueDequeueMany")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueDequeueUpTo")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueEnqueue")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueEnqueueMany")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueClose")(_ScalarToVoidShape)
+ops.RegisterShape("QueueDequeue")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QueueDequeueMany")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QueueDequeueUpTo")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QueueEnqueue")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QueueEnqueueMany")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QueueClose")(common_shapes.call_cpp_shape_fn)
 
-ops.RegisterShape("Stack")(common_shapes.scalar_shape)
-ops.RegisterShape("StackPush")(common_shapes.unknown_shape)
-ops.RegisterShape("StackPop")(common_shapes.unknown_shape)
-ops.RegisterShape("StackClose")(_ScalarToVoidShape)
+ops.RegisterShape("Stack")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("StackPush")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("StackPop")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("StackClose")(common_shapes.call_cpp_shape_fn)
 
 # NOTE(mrry): Uses higher-level information in the Barrier class to
 # provide shape information.
-ops.RegisterShape("BarrierReadySize")(common_shapes.scalar_shape)
-ops.RegisterShape("BarrierIncompleteSize")(common_shapes.scalar_shape)
-ops.RegisterShape("Barrier")(common_shapes.scalar_shape)
-ops.RegisterShape("BarrierTakeMany")(common_shapes.unknown_shape)
-ops.RegisterShape("BarrierClose")(_ScalarToVoidShape)
+ops.RegisterShape("BarrierReadySize")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BarrierIncompleteSize")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Barrier")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BarrierTakeMany")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BarrierClose")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BarrierInsertMany")(common_shapes.call_cpp_shape_fn)
 
-
-@ops.RegisterShape("BarrierInsertMany")
-def _BarrierInsertManyShape(op):
-  unused_handle_shape = op.inputs[0].get_shape().merge_with(
-      tensor_shape.scalar())
-  keys_shape = op.inputs[1].get_shape().with_rank(1)
-  values_shape = op.inputs[2].get_shape().with_rank_at_least(1)
-  keys_shape.assert_is_compatible_with(values_shape[0])
-  return []
-
-
-# NOTE(yuanbyu): We probably can do better here.
-ops.RegisterShape("GetSessionHandle")(common_shapes.scalar_shape)
-ops.RegisterShape("GetSessionTensor")(common_shapes.unknown_shape)
-ops.RegisterShape("DeleteSessionTensor")(_ScalarToVoidShape)
+ops.RegisterShape("GetSessionHandle")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("GetSessionTensor")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("DeleteSessionTensor")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("DynamicPartition")
@@ -1118,57 +1128,14 @@ def _DynamicStitchShape(op):
   return [tensor_shape.TensorShape([None]).concatenate(extra_shape)]
 
 
-@ops.RegisterShape("LookupTableFind")
-def _LookupTableFindShape(op):
-  """Shape function for data_flow_ops._lookup_table_find."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return [tensor_shape.unknown_shape()]
-
-
-@ops.RegisterShape("LookupTableInsert")
-def _LookupTableInsertShape(op):
-  """Shape function for data_flow_ops._lookup_table_insert."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return []
-
-
-@ops.RegisterShape("LookupTableSize")
-def _LookupTableSizeShape(op):
-  """Shape function for data_flow_ops._lookup_table_find."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return [tensor_shape.scalar()]
-
-
-@ops.RegisterShape("LookupTableExport")
-def _LookupTableExportShape(op):
-  """Shape function for data_flow_ops._lookup_table_export_values."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  keys_shape = tensor_shape.vector(None)
-  values_shape = tensor_shape.unknown_shape()
-  return [keys_shape, values_shape]
-
-
-@ops.RegisterShape("HashTable")
-@ops.RegisterShape("MutableHashTable")
-@ops.RegisterShape("MutableHashTableOfTensors")
-def _HashTableShape(_):
-  """Shape function for data_flow_ops._hash_table."""
-  return [tensor_shape.scalar()]
-
-
-@ops.RegisterShape("InitializeTable")
-def _InitializeLookupTableShape(op):
-  """Shape function for data_flow_ops._initialize_table."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  keys_shape = op.inputs[1].get_shape().with_rank(1)
-  op.inputs[2].get_shape().merge_with(keys_shape)
-  return []
-
-
-@ops.RegisterShape("InitializeTableFromTextFile")
-def _InitializeTableFromTextFileShape(op):
-  """Shape function for lookup_ops._initialize_table_from_text_file."""
-  unused_table_shape = op.inputs[0].get_shape().merge_with(tensor_shape.scalar(
-  ))
-  unused_filename = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
-  return []
+ops.RegisterShape("LookupTableFind")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LookupTableInsert")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LookupTableImport")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LookupTableSize")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LookupTableExport")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("HashTable")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MutableHashTable")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MutableHashTableOfTensors")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("InitializeTable")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("InitializeTableFromTextFile")(
+    common_shapes.call_cpp_shape_fn)

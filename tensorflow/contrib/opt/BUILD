@@ -12,6 +12,7 @@ py_library(
     srcs = [
         "__init__.py",
         "python/training/external_optimizer.py",
+        "python/training/moving_average_optimizer.py",
         "python/training/variable_clipping_optimizer.py",
     ],
     srcs_version = "PY2AND3",
@@ -21,6 +22,20 @@ py_test(
     name = "external_optimizer_test",
     srcs = ["python/training/external_optimizer_test.py"],
     srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:extra_py_tests_deps",
+    ],
+)
+
+py_test(
+    name = "moving_average_optimizer_test",
+    srcs = ["python/training/moving_average_optimizer_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "notsan",  # b/31055119
+    ],
     deps = [
         ":opt_py",
         "//tensorflow:tensorflow_py",

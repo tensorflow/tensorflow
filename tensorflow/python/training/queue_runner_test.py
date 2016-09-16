@@ -25,6 +25,19 @@ import tensorflow as tf
 
 class QueueRunnerTest(tf.test.TestCase):
 
+  def _wait_for_thread_registration(self, coord, N):
+    """Wait for N threads to register with the coordinator.
+
+    This is necessary in some tests that launch threads and
+    then want to join() them in the coordinator.
+
+    Args:
+      coord: A Coordinator object.
+      N: Number of threads to wait for.
+    """
+    while len(coord._registered_threads) < N:
+      time.sleep(0.001)
+
   def testBasic(self):
     with self.test_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
@@ -122,7 +135,8 @@ class QueueRunnerTest(tf.test.TestCase):
       threads = qr.create_threads(sess, coord)
       for t in threads:
         t.start()
-      coord.join(threads)
+      self._wait_for_thread_registration(coord, len(threads))
+      coord.join()
       self.assertEqual(0, len(qr.exceptions_raised))
       # The variable should be 0.
       self.assertEqual(0, var.eval())
@@ -135,9 +149,10 @@ class QueueRunnerTest(tf.test.TestCase):
       threads = qr.create_threads(sess, coord)
       for t in threads:
         t.start()
+      self._wait_for_thread_registration(coord, len(threads))
       # The exception should be re-raised when joining.
       with self.assertRaisesRegexp(ValueError, "Operation not in the graph"):
-        coord.join(threads)
+        coord.join()
 
   def testGracePeriod(self):
     with self.test_session() as sess:
@@ -148,13 +163,15 @@ class QueueRunnerTest(tf.test.TestCase):
       qr = tf.train.QueueRunner(queue, [enqueue])
       coord = tf.train.Coordinator()
       threads = qr.create_threads(sess, coord, start=True)
+      # Wait for the threads to have registered with the coordinator.
+      self._wait_for_thread_registration(coord, len(threads))
       # Dequeue one element and then request stop.
       dequeue.op.run()
       time.sleep(0.02)
       coord.request_stop()
       # We should be able to join because the RequestStop() will cause
       # the queue to be closed and the enqueue to terminate.
-      coord.join(threads, stop_grace_period_secs=0.05)
+      coord.join(stop_grace_period_secs=0.05)
 
   def testIgnoreMultiStarts(self):
     with self.test_session() as sess:
@@ -167,11 +184,10 @@ class QueueRunnerTest(tf.test.TestCase):
       coord = tf.train.Coordinator()
       qr = tf.train.QueueRunner(queue, [count_up_to])
       threads = []
+      # NOTE that this test does not actually start the threads.
       threads.extend(qr.create_threads(sess, coord=coord))
       new_threads = qr.create_threads(sess, coord=coord)
       self.assertEqual([], new_threads)
-      coord.request_stop()
-      coord.join(threads, stop_grace_period_secs=0.5)
 
   def testThreads(self):
     with self.test_session() as sess:
@@ -242,6 +258,42 @@ class QueueRunnerTest(tf.test.TestCase):
       self.assertEqual(0, len(qr.exceptions_raised))
       # The variable should be 3.
       self.assertEqual(3, var.eval())
+
+  def testQueueRunnerSerializationRoundTrip(self):
+    graph = tf.Graph()
+    with graph.as_default():
+      queue = tf.FIFOQueue(10, tf.float32, name="queue")
+      enqueue_op = tf.no_op(name="enqueue")
+      close_op = tf.no_op(name="close")
+      cancel_op = tf.no_op(name="cancel")
+      qr0 = tf.train.QueueRunner(
+          queue, [enqueue_op], close_op, cancel_op,
+          queue_closed_exception_types=(
+              tf.errors.OutOfRangeError, tf.errors.CancelledError))
+      qr0_proto = tf.train.QueueRunner.to_proto(qr0)
+      qr0_recon = tf.train.QueueRunner.from_proto(qr0_proto)
+      self.assertEqual("queue", qr0_recon.queue.name)
+      self.assertEqual(1, len(qr0_recon.enqueue_ops))
+      self.assertEqual(enqueue_op, qr0_recon.enqueue_ops[0])
+      self.assertEqual(close_op, qr0_recon.close_op)
+      self.assertEqual(cancel_op, qr0_recon.cancel_op)
+      self.assertEqual(
+          (tf.errors.OutOfRangeError, tf.errors.CancelledError),
+          qr0_recon.queue_closed_exception_types)
+
+      # Assert we reconstruct an OutOfRangeError for QueueRunners
+      # created before QueueRunnerDef had a queue_closed_exception_types field.
+      del qr0_proto.queue_closed_exception_types[:]
+      qr0_legacy_recon = tf.train.QueueRunner.from_proto(qr0_proto)
+      self.assertEqual("queue", qr0_legacy_recon.queue.name)
+      self.assertEqual(1, len(qr0_legacy_recon.enqueue_ops))
+      self.assertEqual(enqueue_op, qr0_legacy_recon.enqueue_ops[0])
+      self.assertEqual(close_op, qr0_legacy_recon.close_op)
+      self.assertEqual(cancel_op, qr0_legacy_recon.cancel_op)
+      self.assertEqual(
+          (tf.errors.OutOfRangeError,),
+          qr0_legacy_recon.queue_closed_exception_types)
+
 
 if __name__ == "__main__":
   tf.test.main()

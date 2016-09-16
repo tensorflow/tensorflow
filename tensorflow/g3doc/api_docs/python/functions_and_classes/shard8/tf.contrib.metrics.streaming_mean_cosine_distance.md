@@ -29,7 +29,7 @@ and `weights` and increments `count` with the reduced sum of weights.
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update
     ops should be added to.
-*  <b>`name`</b>: An optional variable_op_scope name.
+*  <b>`name`</b>: An optional variable_scope name.
 
 ##### Returns:
 

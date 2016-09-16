@@ -11,7 +11,14 @@ use peep-hole connections: it is the basic baseline.
 For advanced models, please use the full LSTMCell that follows.
 - - -
 
-#### `tf.nn.rnn_cell.BasicLSTMCell.__init__(num_units, forget_bias=1.0, input_size=None, state_is_tuple=False, activation=tanh)` {#BasicLSTMCell.__init__}
+#### `tf.nn.rnn_cell.BasicLSTMCell.__call__(inputs, state, scope=None)` {#BasicLSTMCell.__call__}
+
+Long short-term memory cell (LSTM).
+
+
+- - -
+
+#### `tf.nn.rnn_cell.BasicLSTMCell.__init__(num_units, forget_bias=1.0, input_size=None, state_is_tuple=True, activation=tanh)` {#BasicLSTMCell.__init__}
 
 Initialize the basic LSTM cell.
 
@@ -22,8 +29,8 @@ Initialize the basic LSTM cell.
 *  <b>`forget_bias`</b>: float, The bias added to forget gates (see above).
 *  <b>`input_size`</b>: Deprecated and unused.
 *  <b>`state_is_tuple`</b>: If True, accepted and returned states are 2-tuples of
-    the `c_state` and `m_state`.  By default (False), they are concatenated
-    along the column axis.  This default behavior will soon be deprecated.
+    the `c_state` and `m_state`.  If False, they are concatenated
+    along the column axis.  The latter behavior will soon be deprecated.
 *  <b>`activation`</b>: Activation function of the inner states.
 
 

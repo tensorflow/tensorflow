@@ -197,11 +197,10 @@ class TensorShape {
   // an extra word of storage.
   friend class Tensor;
   friend class TensorShapeTestHelper;
-  friend class BitcastOp;
   DataType data_type() const { return static_cast<DataType>(buf()[13]); }
   void set_data_type(DataType dt) {
     // We only have 8 bits available to store DataType, so make sure it fits
-    DCHECK_LT(static_cast<uint32>(dt), 256);
+    DCHECK_LT(static_cast<uint32>(dt), 256u);
     buf()[13] = static_cast<uint8>(dt);
   }
 
@@ -258,6 +257,10 @@ class TensorShapeUtils {
   }
 
   static bool IsMatrix(const TensorShape& shape) { return shape.dims() == 2; }
+
+  static bool IsSquareMatrix(const TensorShape& shape) {
+    return shape.dims() == 2 && shape.dim_size(0) == shape.dim_size(1);
+  }
 
   static bool IsMatrixOrHigher(const TensorShape& shape) {
     return shape.dims() >= 2;

@@ -41,7 +41,8 @@ def as_bytes(bytes_or_text):
   elif isinstance(bytes_or_text, bytes):
     return bytes_or_text
   else:
-    raise TypeError('Expected binary or unicode string, got %r' % bytes_or_text)
+    raise TypeError('Expected binary or unicode string, got %r' %
+                    (bytes_or_text,))
 
 
 def as_text(bytes_or_text):

@@ -1,63 +1,94 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 <link rel="import" href="../polymer/polymer.html">
-<link rel="import" href="../paper-icon-button/paper-icon-button.html">
-<link rel="import" href="tf-image-grid.html">
-<link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
 <link rel="import" href="../tf-backend/tf-backend.html">
+<link rel="import" href="../tf-color-scale/tf-color-scale.html">
+<link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
+<link rel="import" href="../tf-dashboard-common/tf-panes-helper.html">
+<link rel="import" href="../tf-dashboard-common/tf-sidebar-helper.html">
+<link rel="import" href="tf-image-loader.html">
 
 <!--
 tf-image-dashboard displays a dashboard that loads images from a TensorFlow run.
 -->
 <dom-module id="tf-image-dashboard">
   <template>
-    <div class="center">
-      <tf-no-data-warning
-        data-type="image"
-        show-warning="[[dataNotFound]]"
-      ></tf-no-data-warning>
-      <tf-image-grid
-        id="imagegrid"
-        run-to-images="[[run2tag]]"
-        images-generator="[[dataProvider]]"
-        tags="[[tags]]"
+    <div id="plumbing">
+      <tf-color-scale
+        id="colorScale"
         runs="[[runs]]"
-      ></tf-image-grid>
+        out-color-scale="{{_colorScale}}"
+        ></tf-color-scale>
     </div>
 
+    <tf-dashboard-layout>
+      <div class="sidebar">
+        <tf-sidebar-helper
+          categories="{{_categories}}"
+          color-scale="[[_colorScale]]"
+          run2tag="[[run2tag]]"
+          runs="[[runs]]"
+          selected-runs="{{_selectedRuns}}"
+          >
+        </tf-sidebar-helper>
+      </div>
+      <div class="center">
+        <tf-panes-helper
+          categories="[[_categories]]"
+          color-scale="[[_colorScale]]"
+          data-type="[[dataType]]"
+          data-provider="[[dataProvider]]"
+          run2tag="[[run2tag]]"
+          selected-runs="[[_selectedRuns]]"
+          repeat-for-runs
+          >
+          <template>
+            <tf-image-loader color-scale="[[_colorScale]]"></tf-image-loader>
+          </template>
+        </tf-panes-helper>
+      </div>
+    </tf-dashboard-layout>
+    <style include="dashboard-style"></style>
     <style>
-      .center {
-        padding-left: 10px;
-        padding-right: 10px;
-        height: 100%;
-        width: 100%;
-        -webkit-box-sizing: border-box;
-        -moz-box-sizing: border-box;
-        box-sizing: border-box;
+      tf-panes-helper {
+        --card-width: 340px;
+        --card-height: auto;
+        --card-expanded-width: 700px;
+        --card-expanded-height: auto;
       }
-      :host {
-        height: 100%;
-        display: block;
-      }
-
     </style>
   </template>
   <script>
     Polymer({
       is: "tf-image-dashboard",
       properties: {
-        dataType: {value: "image"},
+        dataType: {
+          type: String,
+          value: "image"
+        },
       },
       behaviors: [
-        TF.Dashboard.ReloadBehavior("tf-image-loader"),
-        TF.Backend.Behavior
+          TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
+          TF.Backend.Behavior,
       ],
       attached: function() {
         this.async(function() {
           this.fire("rendered");
-        });
-      },
-      _hasImages: function(runToImagesChange) {
-        return _.values(runToImagesChange.base).some(function(arr) {
-          return arr.length > 0;
         });
       },
     });

@@ -83,7 +83,7 @@ def fill_feed_dict(data_set, images_pl, labels_pl):
     feed_dict: The feed dictionary mapping from placeholders to values.
   """
   # Create the feed_dict for the placeholders filled with the next
-  # `batch size ` examples.
+  # `batch size` examples.
   images_feed, labels_feed = data_set.next_batch(FLAGS.batch_size,
                                                  FLAGS.fake_data)
   feed_dict = {
@@ -148,8 +148,8 @@ def run_training():
     # Add the Op to compare the logits to the labels during evaluation.
     eval_correct = mnist.evaluation(logits, labels_placeholder)
 
-    # Build the summary operation based on the TF collection of Summaries.
-    summary_op = tf.merge_all_summaries()
+    # Build the summary Tensor based on the TF collection of Summaries.
+    summary = tf.merge_all_summaries()
 
     # Add the variable initializer Op.
     init = tf.initialize_all_variables()
@@ -193,7 +193,7 @@ def run_training():
         # Print status to stdout.
         print('Step %d: loss = %.2f (%.3f sec)' % (step, loss_value, duration))
         # Update the events file.
-        summary_str = sess.run(summary_op, feed_dict=feed_dict)
+        summary_str = sess.run(summary, feed_dict=feed_dict)
         summary_writer.add_summary(summary_str, step)
         summary_writer.flush()
 

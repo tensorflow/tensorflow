@@ -286,67 +286,6 @@ class QuantizeGraphTest(tf.test.TestCase):
 
     test_graph(float_graph_def, {}, [concat_name])
 
-  def test_remove_unneeded_nodes(self):
-    a_constant_name = "a_constant"
-    b_constant_name = "b_constant"
-    a_check_name = "a_check"
-    b_check_name = "b_check"
-    a_identity_name = "a_identity"
-    b_identity_name = "b_identity"
-    add_name = "add"
-    graph_def = tf.GraphDef()
-    a_constant = quantize_graph.create_constant_node(a_constant_name,
-                                                     value=1,
-                                                     dtype=tf.float32,
-                                                     shape=[])
-    graph_def.node.extend([a_constant])
-    a_check_node = quantize_graph.create_node("CheckNumerics", a_check_name,
-                                              [a_constant_name])
-    graph_def.node.extend([a_check_node])
-    a_identity_node = quantize_graph.create_node("Identity", a_identity_name,
-                                                 [a_constant_name,
-                                                  "^" + a_check_name])
-    graph_def.node.extend([a_identity_node])
-    b_constant = quantize_graph.create_constant_node(b_constant_name,
-                                                     value=1,
-                                                     dtype=tf.float32,
-                                                     shape=[])
-    graph_def.node.extend([b_constant])
-    b_check_node = quantize_graph.create_node("CheckNumerics", b_check_name,
-                                              [b_constant_name])
-    graph_def.node.extend([b_check_node])
-    b_identity_node = quantize_graph.create_node("Identity", b_identity_name,
-                                                 [b_constant_name,
-                                                  "^" + b_check_name])
-    graph_def.node.extend([b_identity_node])
-    add_node = quantize_graph.create_node("Add", add_name,
-                                          [a_identity_name,
-                                           b_identity_name])
-    quantize_graph.set_attr_dtype(add_node, "T", tf.float32)
-    graph_def.node.extend([add_node])
-
-    expected_output = tf.GraphDef()
-    a_constant = quantize_graph.create_constant_node(a_constant_name,
-                                                     value=1,
-                                                     dtype=tf.float32,
-                                                     shape=[])
-    expected_output.node.extend([a_constant])
-    b_constant = quantize_graph.create_constant_node(b_constant_name,
-                                                     value=1,
-                                                     dtype=tf.float32,
-                                                     shape=[])
-    expected_output.node.extend([b_constant])
-    add_node = quantize_graph.create_node("Add", add_name,
-                                          [a_constant_name,
-                                           b_constant_name])
-    quantize_graph.set_attr_dtype(add_node, "T", tf.float32)
-    expected_output.node.extend([add_node])
-
-    rewriter = quantize_graph.GraphRewriter(graph_def, [add_name])
-    output = rewriter.remove_unneeded_nodes(graph_def)
-    stripped_output = graph_util.extract_sub_graph(output, [add_name])
-    self.assertProtoEquals(expected_output, stripped_output)
-
   def test_multiple_outputs(self):
     input_constant_name = "input_constant"
     split_constant_name = "split_constant"
@@ -479,8 +418,7 @@ class QuantizeGraphTest(tf.test.TestCase):
     quantize_graph.set_attr_dtype(add_node, "T", tf.float32)
     expected_output.node.extend([add_node])
 
-    rewriter = quantize_graph.GraphRewriter(graph_def, [add_name])
-    output = rewriter.remove_unneeded_nodes(graph_def)
+    output = graph_util.remove_training_nodes(graph_def)
     stripped_output = graph_util.extract_sub_graph(output, [add_name])
     self.assertProtoEquals(expected_output, stripped_output)
 

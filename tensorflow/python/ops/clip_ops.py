@@ -48,8 +48,8 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   Returns:
     A clipped `Tensor`.
   """
-  with ops.op_scope([t, clip_value_min, clip_value_max], name,
-                   "clip_by_value") as name:
+  with ops.name_scope(name, "clip_by_value",
+                      [t, clip_value_min, clip_value_max]) as name:
     t = ops.convert_to_tensor(t, name="t")
 
     # Go through list of tensors, for each value in each tensor clip
@@ -92,7 +92,7 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
   Returns:
     A clipped `Tensor`.
   """
-  with ops.op_scope([t, clip_norm], name, "clip_by_norm") as name:
+  with ops.name_scope(name, "clip_by_norm", [t, clip_norm]) as name:
     t = ops.convert_to_tensor(t, name="t")
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
@@ -129,7 +129,7 @@ def global_norm(t_list, name=None):
       or isinstance(t_list, six.string_types)):
     raise TypeError("t_list should be a sequence")
   t_list = list(t_list)
-  with ops.op_scope(t_list, name, "global_norm") as name:
+  with ops.name_scope(name, "global_norm", t_list) as name:
     values = [
         ops.convert_to_tensor(
             t.values if isinstance(t, ops.IndexedSlices) else t,
@@ -201,11 +201,12 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   if use_norm is None:
     use_norm = global_norm(t_list, name)
 
-  with ops.op_scope(t_list + [clip_norm], name, "clip_by_global_norm") as name:
+  with ops.name_scope(name, "clip_by_global_norm",
+                      t_list + [clip_norm]) as name:
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
     scale = clip_norm * math_ops.minimum(
         1.0 / use_norm,
-        constant_op.constant(1.0 / clip_norm, dtype=use_norm.dtype))
+        constant_op.constant(1.0, dtype=use_norm.dtype) / clip_norm)
 
     values = [
         ops.convert_to_tensor(
@@ -257,7 +258,7 @@ def clip_by_average_norm(t, clip_norm, name=None):
   Returns:
     A clipped `Tensor`.
   """
-  with ops.op_scope([t, clip_norm], name, "clip_by_average_norm") as name:
+  with ops.name_scope(name, "clip_by_average_norm", [t, clip_norm]) as name:
     t = ops.convert_to_tensor(t, name="t")
 
     # Calculate L2-norm per element, clip elements by ratio of clip_norm to
@@ -267,7 +268,7 @@ def clip_by_average_norm(t, clip_norm, name=None):
         math_ops.reduce_sum(t * t, math_ops.range(array_ops.rank(t))))
     tclip = array_ops.identity(
         t * clip_norm * math_ops.minimum(
-            l2norm_inv * n_element, constant_op.constant(1.0 / clip_norm)),
+            l2norm_inv * n_element, constant_op.constant(1.0) / clip_norm),
         name=name)
 
   return tclip

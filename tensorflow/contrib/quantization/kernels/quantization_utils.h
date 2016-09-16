@@ -25,7 +25,9 @@ limitations under the License.
 // to avoid a dependency on floating-point hardware.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "public/gemmlowp.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
 
@@ -486,6 +488,67 @@ void QuantizedAdd(const Eigen::ThreadPoolDevice& device, const Tensor& input,
     }
   }
 }
+
+// See gemmlowp/internal/multi_thread_gemm.h for definitions of
+// Prepare, Wait, StartWorker, and CreateWorkers.
+class TensorflowGemmlowpWorkersPool {
+ public:
+  TensorflowGemmlowpWorkersPool(thread::ThreadPool* workers)
+      : workers_(workers) {}
+
+  ~TensorflowGemmlowpWorkersPool() {
+    // This workaround ensures that all worker tasks have exited methods in the
+    // BlockingCounter. Without this, there is a race where the context is torn
+    // down while the counter is in use.
+    counter_to_decrement_when_ready_.Reset(0);
+  }
+
+  void Prepare(int workers_count) {
+    counter_to_decrement_when_ready_.Reset(workers_count);
+  }
+
+  void Wait() { counter_to_decrement_when_ready_.Wait(); }
+
+  void StartWorker(int index, gemmlowp::Task* task) {
+    CHECK(workers_ != nullptr);
+    // <index> is ignored - the tensorflow threadpool does not support assigning
+    // to a specific thread.
+    workers_->Schedule([this, task]() {
+      // TODO(cwhipkey): get a local_allocator from a thread local.
+      gemmlowp::Allocator local_allocator;
+      CHECK(task != nullptr);
+      task->local_allocator = &local_allocator;
+      task->Run();
+      delete task;
+      counter_to_decrement_when_ready_.DecrementCount();
+    });
+  }
+
+  void CreateWorkers(std::size_t workers_count) {}
+
+ private:
+  thread::ThreadPool* const workers_;
+
+  // The BlockingCounter used to wait for the workers.
+  gemmlowp::BlockingCounter counter_to_decrement_when_ready_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(TensorflowGemmlowpWorkersPool);
+};
+
+class TensorflowGemmContext : public gemmlowp::MultiThreadGemmContextBase {
+ public:
+  TensorflowGemmContext(int num_threads, thread::ThreadPool* workers)
+      : workers_pool_(workers) {
+    set_max_num_threads(num_threads);
+  }
+
+  TensorflowGemmlowpWorkersPool* workers_pool() { return &workers_pool_; }
+
+ private:
+  TensorflowGemmlowpWorkersPool workers_pool_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(TensorflowGemmContext);
+};
 
 }  // namespace tensorflow
 

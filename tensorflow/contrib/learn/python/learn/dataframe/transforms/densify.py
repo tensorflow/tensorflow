@@ -23,7 +23,7 @@ from tensorflow.contrib.learn.python.learn.dataframe import transform
 from tensorflow.python.ops import sparse_ops
 
 
-class Densify(transform.Transform):
+class Densify(transform.TensorFlowTransform):
   """Transforms Sparse to Dense Tensor."""
 
   def __init__(self,
@@ -47,12 +47,13 @@ class Densify(transform.Transform):
   def _output_names(self):
     return "output",
 
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     """Applies the transformation to the `transform_input`.
 
     Args:
-        input_tensors: a list of Tensors representing the input to
+      input_tensors: a list of Tensors representing the input to
         the Transform.
+      **kwargs: Additional keyword arguments, unused here.
 
     Returns:
         A namedtuple of Tensors representing the transformed output.

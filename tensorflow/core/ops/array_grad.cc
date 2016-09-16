@@ -337,18 +337,18 @@ Status SliceGrad(const AttrSlice& attrs, FunctionDef* g) {
   }
   *g = FDH::Define(
       // Arg defs
-      {"x: T", "b: int32", "s: int32", "dy: T"},
+      {"x: T", "begin: int32", "size: int32", "dy: T"},
       // Ret val defs
-      {"dx: T", "db: int32", "ds: int32"},
+      {"dx: T", "begin_grad: int32", "size_grad: int32"},
       // Attr defs
       {"T: type"},
       // Nodes
-      {// paddings = concat(1, [b, shape(x) - b - s])
+      {// paddings = concat(1, [begin, shape(x) - begin - size])
        FDH::Const("one", 1),
-       {{"b1"}, "ExpandDims", {"b", "one"}, {{"T", DT_INT32}}},
+       {{"b1"}, "ExpandDims", {"begin", "one"}, {{"T", DT_INT32}}},
        {{"xs"}, "Shape", {"x"}, {{"T", "$T"}}},
-       {{"xs_b"}, "Sub", {"xs", "b"}, {{"T", DT_INT32}}},
-       {{"xs_b_s"}, "Sub", {"xs_b", "s"}, {{"T", DT_INT32}}},
+       {{"xs_b"}, "Sub", {"xs", "begin"}, {{"T", DT_INT32}}},
+       {{"xs_b_s"}, "Sub", {"xs_b", "size"}, {{"T", DT_INT32}}},
        {{"a1"}, "ExpandDims", {"xs_b_s", "one"}, {{"T", DT_INT32}}},
        {{"b_and_a"},
         "_ListToArray",
@@ -362,11 +362,90 @@ Status SliceGrad(const AttrSlice& attrs, FunctionDef* g) {
         {{"N", 2}, {"T", DT_INT32}}},
        // dx = Pad(dy, paddings)
        {{"dx"}, "Pad", {"dy", "paddings"}, {{"T", "$T"}}},
-       {{"db"}, "ZerosLike", {"b"}, {{"T", DT_INT32}}},
-       {{"ds"}, "ZerosLike", {"s"}, {{"T", DT_INT32}}}});
+       {{"begin_grad"}, "ZerosLike", {"begin"}, {{"T", DT_INT32}}},
+       {{"size_grad"}, "ZerosLike", {"size"}, {{"T", DT_INT32}}}});
   VLOG(1) << "SliceGrad " << DebugString(*g);
   return Status::OK();
 }
 REGISTER_OP_GRADIENT("Slice", SliceGrad);
+
+Status StridedSliceGrad(const AttrSlice& attrs, FunctionDef* g) {
+  DataType itype;
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Index", &itype));
+  if (itype != DT_INT32) {
+    return errors::Unimplemented(
+        "SliceGrad for int64 index are not supported.");
+  }
+
+  *g = FDH::Define(
+      // Arg defs
+      {"x: T", "begin: int32", "end: int32", "stride: int32", "dy: T"},
+      // Ret val defs
+      {"dx: T", "begin_grad: int32", "end_grad: int32", "stride_grad: int32"},
+      // Attr defs
+      {"T: type", "Index: {int32, int64}", "begin_mask: int", "end_mask: int",
+       "ellipsis_mask: int", "new_axis_mask: int", "shrink_axis_mask: int"},
+      {// Nodes
+       {{{"xs"}, "Shape", {"x"}, {{"T", "$T"}}},
+        {{"dx"},
+         "StridedSliceGrad",
+         {"xs", "begin", "end", "stride", "dy"},
+         {{"T", "$T"},
+          {"Index", "$Index"},
+          {"begin_mask", "$begin_mask"},
+          {"end_mask", "$end_mask"},
+          {"ellipsis_mask", "$ellipsis_mask"},
+          {"new_axis_mask", "$new_axis_mask"},
+          {"shrink_axis_mask", "$shrink_axis_mask"}}},
+        {{"begin_grad"}, "ZerosLike", {"begin"}, {{"T", DT_INT32}}},
+        {{"end_grad"}, "ZerosLike", {"end"}, {{"T", DT_INT32}}},
+        {{"stride_grad"}, "ZerosLike", {"stride"}, {{"T", DT_INT32}}}}});
+
+  VLOG(1) << "StridedSliceGrad " << DebugString(*g);
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("StridedSlice", StridedSliceGrad);
+
+Status StridedSliceGradGrad(const AttrSlice& attrs, FunctionDef* g) {
+  DataType itype;
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Index", &itype));
+  if (itype != DT_INT32) {
+    return errors::Unimplemented(
+        "SliceGrad for int64 index are not supported.");
+  }
+
+  // TODO(aselle): Shouldn't the int32 tensors return zeros of shape like
+  // dy_grad?
+  // I'm following slice's behavior for now.
+  *g = FDH::Define(
+      // Arg defs
+      {"shape: int32", "begin: int32", "end: int32", "stride: int32", "dy: T",
+       "grad: T"},
+      // Ret val defs
+      {"shape_grad: int32", "begin_grad: int32", "end_grad: int32",
+       "stride_grad: int32", "dy_grad: T"},
+      // Attr defs
+      {"T: type", "Index: {int32, int64}", "begin_mask: int", "end_mask: int",
+       "ellipsis_mask: int", "new_axis_mask: int", "shrink_axis_mask: int"},
+      {// Nodes
+       {{{"shape_grad"}, "ZerosLike", {"shape"}, {{"T", DT_INT32}}},
+        {{"begin_grad"}, "ZerosLike", {"begin"}, {{"T", DT_INT32}}},
+        {{"end_grad"}, "ZerosLike", {"end"}, {{"T", DT_INT32}}},
+        {{"stride_grad"}, "ZerosLike", {"stride"}, {{"T", DT_INT32}}},
+        {{"dy_grad"},
+         "StridedSlice",
+         {"grad", "begin", "end", "stride"},
+         {{"T", "$T"},
+          {"Index", "$Index"},
+          {"begin_mask", "$begin_mask"},
+          {"end_mask", "$end_mask"},
+          {"ellipsis_mask", "$ellipsis_mask"},
+          {"new_axis_mask", "$new_axis_mask"},
+          {"shrink_axis_mask", "$shrink_axis_mask"}}}}});
+
+  VLOG(1) << "StridedSliceGrad " << DebugString(*g);
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("StridedSliceGrad", StridedSliceGradGrad);
 
 }  // end namespace tensorflow

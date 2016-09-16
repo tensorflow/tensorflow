@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/file_statistics.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -33,16 +34,6 @@ namespace tensorflow {
 class RandomAccessFile;
 class ReadOnlyMemoryRegion;
 class WritableFile;
-
-struct FileStatistics {
-  // The length of the file or -1 if finding file length is not supported.
-  int64 length;
-  // The last modified time in nanoseconds.
-  int64 mtime_nsec;
-  // This field contains more than just the permissions bits.  More information
-  // can be found on the man page for stat(2).
-  mode_t mode;
-};
 
 /// A generic interface for accessing a file system.
 class FileSystem {
@@ -83,7 +74,8 @@ class FileSystem {
   virtual Status RenameFile(const string& src, const string& target) = 0;
 
   // Translate an URI to a filename usable by the FileSystem implementation. The
-  // implementation in this class returns the name as-is.
+  // implementation in this class cleans up the path, removing duplicate /'s,
+  // resolving .. and . (more details in tensorflow::lib::io::CleanPath).
   virtual string TranslateName(const string& name) const;
 
   // Returns whether the given path is a directory or not.
@@ -96,6 +88,7 @@ class FileSystem {
   virtual Status IsDirectory(const string& fname);
 };
 
+#ifndef SWIG
 // Degenerate file system that provides no implementations.
 class NullFileSystem : public FileSystem {
  public:
@@ -155,6 +148,7 @@ class NullFileSystem : public FileSystem {
     return errors::Unimplemented("Stat unimplemented");
   }
 };
+#endif
 
 /// A file abstraction for randomly reading the contents of a file.
 class RandomAccessFile {

@@ -151,6 +151,9 @@ class SetOpsTest(test_util.TensorFlowTestCase):
         tf.contrib.metrics.set_size(sparse_data, validate_indices=True),
         tf.contrib.metrics.set_size(sparse_data, validate_indices=False)
     ]
+    for op in ops:
+      self.assertEqual(None, op.get_shape().dims)
+      self.assertEqual(tf.int32, op.dtype)
     with self.test_session() as sess:
       results = sess.run(ops)
     self.assertAllEqual(results[0], results[1])
@@ -376,12 +379,26 @@ class SetOpsTest(test_util.TensorFlowTestCase):
                                    expected_shape, intersection, dtype=dtype)
         self.assertAllEqual(expected_counts, self._set_intersection_count(a, b))
 
+  def _assert_shapes(self, input_tensor, result_sparse_tensor):
+    expected_rows = (None if isinstance(input_tensor, tf.SparseTensor) else
+                     input_tensor.get_shape().as_list()[0])
+    expected_rank = (None if isinstance(input_tensor, tf.SparseTensor) else
+                     input_tensor.get_shape().ndims)
+    self.assertAllEqual((expected_rows, expected_rank),
+                        result_sparse_tensor.indices.get_shape().as_list())
+    self.assertAllEqual((expected_rows,),
+                        result_sparse_tensor.values.get_shape().as_list())
+    self.assertAllEqual((expected_rank,),
+                        result_sparse_tensor.shape.get_shape().as_list())
+
   def _set_intersection(self, a, b):
     # Validate that we get the same results with or without `validate_indices`.
     ops = [
         tf.contrib.metrics.set_intersection(a, b, validate_indices=True),
         tf.contrib.metrics.set_intersection(a, b, validate_indices=False)
     ]
+    for op in ops:
+      self._assert_shapes(a, op)
     with self.test_session() as sess:
       results = sess.run(ops)
     self.assertAllEqual(results[0].indices, results[1].indices)
@@ -728,6 +745,8 @@ class SetOpsTest(test_util.TensorFlowTestCase):
         tf.contrib.metrics.set_difference(
             a, b, aminusb=aminusb, validate_indices=False)
     ]
+    for op in ops:
+      self._assert_shapes(a, op)
     with self.test_session() as sess:
       results = sess.run(ops)
     self.assertAllEqual(results[0].indices, results[1].indices)
@@ -928,6 +947,8 @@ class SetOpsTest(test_util.TensorFlowTestCase):
         tf.contrib.metrics.set_union(a, b, validate_indices=True),
         tf.contrib.metrics.set_union(a, b, validate_indices=False)
     ]
+    for op in ops:
+      self._assert_shapes(a, op)
     with self.test_session() as sess:
       results = sess.run(ops)
     self.assertAllEqual(results[0].indices, results[1].indices)

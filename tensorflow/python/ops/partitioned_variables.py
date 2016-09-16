@@ -30,7 +30,7 @@ A key design goal is to allow a different graph to repartition a variable
 with the same name but different slicings, including possibly no partitions.
 
 TODO(touts): If an initializer provides a seed, the seed must be changed
-deterministicaly for each slice, maybe by adding one to it, otherwise each
+deterministically for each slice, maybe by adding one to it, otherwise each
 slice will use the same values.  Maybe this can be done by passing the
 slice offsets to the initializer functions.
 
@@ -65,6 +65,7 @@ __all__ = [
     "create_partitioned_variables",
     "variable_axis_size_partitioner",
     "min_max_variable_partitioner",
+    "fixed_size_partitioner",
 ]
 
 
@@ -215,6 +216,24 @@ def min_max_variable_partitioner(max_partitions=1, axis=0,
   return _partitioner
 
 
+def fixed_size_partitioner(num_shards, axis=0):
+  """Partitioner to specify a fixed number of shards along given axis.
+
+  Args:
+    num_shards: `int`, number of shards to partition variable.
+    axis: `int`, axis to partition on.
+
+  Returns:
+    A partition function usable as the `partitioner` argument to
+    `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
+  """
+  def _partitioner(shape, **unused_args):
+    partitions_list = [1] * len(shape)
+    partitions_list[axis] = min(num_shards, shape[axis].value)
+    return partitions_list
+  return _partitioner
+
+
 def create_partitioned_variables(
     shape, slicing, initializer, dtype=dtypes.float32,
     trainable=True, collections=None, name=None, reuse=None):
@@ -276,8 +295,8 @@ def create_partitioned_variables(
   # the partitioner.
   partitioner = lambda **unused_kwargs: slicing
 
-  with variable_scope.variable_op_scope(
-      [], name, "PartitionedVariable", reuse=reuse):
+  with variable_scope.variable_scope(
+      name, "PartitionedVariable", reuse=reuse):
     # pylint: disable=protected-access
     partitioned_var = variable_scope._get_partitioned_variable(
         name=None,
@@ -287,5 +306,5 @@ def create_partitioned_variables(
         trainable=trainable,
         partitioner=partitioner,
         collections=collections)
-    return partitioned_var._get_variable_list()
+    return list(partitioned_var)
     # pylint: enable=protected-access

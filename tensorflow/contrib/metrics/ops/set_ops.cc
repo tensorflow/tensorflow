@@ -13,9 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("SetSize")
     .Input("set_indices: int64")
@@ -24,6 +30,7 @@ REGISTER_OP("SetSize")
     .Attr("validate_indices: bool = true")
     .Attr("T: {int8, int16, int32, int64, uint8, uint16, string}")
     .Output("size: int32")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Number of unique elements along last dimension of input `set`.
 
@@ -51,6 +58,68 @@ REGISTER_OP("DenseToDenseSetOperation")
     .Output("result_indices: int64")
     .Output("result_values: T")
     .Output("result_shape: int64")
+    .SetShapeFn([](InferenceContext* c) {
+      if (c->num_inputs() != 2) {
+        return errors::InvalidArgument("len(inputs) != 2.");
+      }
+      // The following should stay in sync with `ComputeDenseToDense` shape
+      // assertions in kernels/set_kernels.cc.
+      // Dimension n contains the set values to be compared, so ranks and the
+      // first n-1 dimensions of inputs and output must match.
+      DimensionHandle output_rank;
+      ShapeHandle input0_shape = c->input(0);
+      if (c->RankKnown(input0_shape)) {
+        const int32 input0_rank = c->Rank(input0_shape);
+        if (input0_rank < 2) {
+          return errors::InvalidArgument("Input 0, expected rank >= 2, got ",
+                                         input0_rank, ".");
+        }
+        ShapeHandle input1_shape = c->input(1);
+        if (c->RankKnown(input1_shape)) {
+          const int32 rank = c->Rank(input1_shape);
+          if (input0_rank != rank) {
+            return errors::InvalidArgument("Ranks do not match: input 0 ",
+                                           input0_rank, ", input 1 ", rank,
+                                           ".");
+          }
+          ShapeHandle group0_shape;
+          TF_RETURN_IF_ERROR(
+              c->Subshape(input0_shape, 0, rank - 1, &group0_shape));
+          ShapeHandle group1_shape;
+          TF_RETURN_IF_ERROR(
+              c->Subshape(input1_shape, 0, rank - 1, &group1_shape));
+          ShapeHandle unused_shape;
+          TF_RETURN_IF_ERROR(
+              c->Merge(group0_shape, group1_shape, &unused_shape));
+        }
+        output_rank = c->MakeDim(input0_rank);
+      } else {
+        ShapeHandle input1_shape = c->input(1);
+        if (c->RankKnown(input1_shape)) {
+          const int32 input1_rank = c->Rank(input1_shape);
+          if (input1_rank < 2) {
+            return errors::InvalidArgument("Input 0, expected rank >= 2, got ",
+                                           input1_rank, ".");
+          }
+          output_rank = c->MakeDim(input1_rank);
+        } else {
+          output_rank = c->UnknownDim();
+        }
+      }
+      DimensionHandle output_num_elements = c->Dim(input0_shape, 0);
+      if (!c->ValueKnown(output_num_elements)) {
+        ShapeHandle input1_shape = c->input(1);
+        output_num_elements = c->Dim(input1_shape, 0);
+        if (!c->ValueKnown(output_num_elements)) {
+          output_num_elements = c->UnknownDim();
+        }
+      }
+
+      c->set_output(0, c->Matrix(output_num_elements, output_rank));
+      c->set_output(1, c->Vector(output_num_elements));
+      c->set_output(2, c->Vector(output_rank));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Applies set operation along last dimension of 2 `Tensor` inputs.
 
@@ -84,6 +153,38 @@ REGISTER_OP("DenseToSparseSetOperation")
     .Output("result_indices: int64")
     .Output("result_values: T")
     .Output("result_shape: int64")
+    .SetShapeFn([](InferenceContext* c) {
+      if (c->num_inputs() != 4) {
+        return errors::InvalidArgument("len(inputs) != 4.");
+      }
+      // The following should stay in sync with `ComputeDenseToSparse` shape
+      // assertions in kernels/set_kernels.cc.
+      // Dimension n contains the set values to be compared, so ranks and the
+      // first n-1 dimensions of inputs and output must match.
+      DimensionHandle output_rank;
+      ShapeHandle input0_shape = c->input(0);
+      if (c->RankKnown(input0_shape)) {
+        const int32 input0_rank = c->Rank(input0_shape);
+        if (input0_rank < 2) {
+          return errors::InvalidArgument("Input 0, expected rank >= 2, got ",
+                                         input0_rank, ".");
+        }
+        output_rank = c->MakeDim(input0_rank);
+      } else {
+        output_rank = c->UnknownDim();
+      }
+      TF_RETURN_IF_ERROR(
+          c->ValidateSparseTensor(c->input(1), c->input(2), c->input(3)));
+      DimensionHandle output_num_elements = c->Dim(input0_shape, 0);
+      if (!c->ValueKnown(output_num_elements)) {
+        output_num_elements = c->UnknownDim();
+      }
+
+      c->set_output(0, c->Matrix(output_num_elements, output_rank));
+      c->set_output(1, c->Vector(output_num_elements));
+      c->set_output(2, c->Vector(output_rank));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Applies set operation along last dimension of `Tensor` and `SparseTensor`.
 
@@ -132,6 +233,21 @@ REGISTER_OP("SparseToSparseSetOperation")
     .Output("result_indices: int64")
     .Output("result_values: T")
     .Output("result_shape: int64")
+    .SetShapeFn([](InferenceContext* c) {
+      if (c->num_inputs() != 6) {
+        return errors::InvalidArgument("len(inputs) != 6.");
+      }
+      // The following should stay in sync with `ComputeSparseToSparse` shape
+      // assertions in kernels/set_kernels.cc.
+      TF_RETURN_IF_ERROR(
+          c->ValidateSparseTensor(c->input(0), c->input(1), c->input(2)));
+      TF_RETURN_IF_ERROR(
+          c->ValidateSparseTensor(c->input(3), c->input(4), c->input(5)));
+      c->set_output(0, c->Matrix(c->UnknownDim(), c->UnknownDim()));
+      c->set_output(1, c->Vector(c->UnknownDim()));
+      c->set_output(2, c->Vector(c->UnknownDim()));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Applies set operation along last dimension of 2 `SparseTensor` inputs.
 

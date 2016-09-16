@@ -25,6 +25,7 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -46,6 +47,11 @@ using tensorforest::CheckTensorBounds;
 using tensorforest::DataColumnTypes;
 using tensorforest::Initialize;
 using tensorforest::IsAllInitialized;
+using tensorforest::FeatureSpec;
+
+using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 // A data structure to store the results of parallel tree traversal.
 struct InputDataResult {
@@ -83,7 +89,6 @@ void Evaluate(const EvaluateParams& params, int32 start, int32 end) {
       params.candidate_split_features.tensor<int32, 2>();
   const auto split_thresholds =
       params.candidate_split_thresholds.tensor<float, 2>();
-  const auto spec = params.input_spec.unaligned_flat<int32>();
 
   const int32 num_splits = static_cast<int32>(
       params.candidate_split_features.shape().dim_size(1));
@@ -114,9 +119,10 @@ void Evaluate(const EvaluateParams& params, int32 start, int32 end) {
           params.results[i].splits_initialized = true;
           for (int split = 0; split < num_splits; split++) {
             const int32 feature = split_features(accumulator, split);
+
             if (!params.decide_function(
-                i, feature, split_thresholds(accumulator, split),
-                static_cast<tensorforest::DataColumnTypes>(spec(feature)))) {
+                    i, feature, split_thresholds(accumulator, split),
+                    FeatureSpec(feature, params.input_spec))) {
               params.results[i].split_adds.push_back(split);
             }
           }
@@ -129,9 +135,9 @@ void Evaluate(const EvaluateParams& params, int32 start, int32 end) {
       }
       const int32 feature = tree(node_index, FEATURE_INDEX);
       node_index =
-          left_child + params.decide_function(
-              i, feature, thresholds(node_index),
-              static_cast<tensorforest::DataColumnTypes>(spec(feature)));
+          left_child +
+          params.decide_function(i, feature, thresholds(node_index),
+                                 FeatureSpec(feature, params.input_spec));
     }
   }
 }
@@ -145,6 +151,7 @@ REGISTER_OP("CountExtremelyRandomStats")
     .Input("sparse_input_shape: int64")
     .Input("input_spec: int32")
     .Input("input_labels: float")
+    .Input("input_weights: float")
     .Input("tree: int32")
     .Input("tree_thresholds: float")
     .Input("node_to_accumulator: int32")
@@ -161,6 +168,37 @@ REGISTER_OP("CountExtremelyRandomStats")
     .Output("pcw_totals_sums_delta: float")
     .Output("pcw_totals_squares_delta: float")
     .Output("leaves: int32")
+    .SetShapeFn([](InferenceContext* c) {
+      int64 num_classes;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_classes", &num_classes));
+      bool regression;
+      TF_RETURN_IF_ERROR(c->GetAttr("regression", &regression));
+
+      DimensionHandle num_points = c->Dim(c->input(0), 0);
+      if (c->RankKnown(c->input(3)) && c->Rank(c->input(3)) > 0) {
+        num_points = c->UnknownDim();
+      }
+      DimensionHandle num_nodes = c->Dim(c->input(7), 0);
+
+      // Node sums
+      c->set_output(0, c->Matrix(num_nodes, num_classes));
+      // Node squares
+      c->set_output(1, c->Matrix(num_nodes, num_classes));
+
+      c->set_output(2, c->Matrix(c->UnknownDim(), regression ? 2 : 3));
+
+      c->set_output(3, regression ? c->Matrix(c->UnknownDim(), num_classes)
+                                  : c->Vector(c->UnknownDim()));
+      c->set_output(4, regression ? c->Matrix(c->UnknownDim(), num_classes)
+                                  : c->Vector(0LL));
+      c->set_output(5, c->Matrix(c->UnknownDim(), regression ? 1 : 2));
+      c->set_output(6, regression ? c->Matrix(c->UnknownDim(), num_classes)
+                                  : c->Vector(c->UnknownDim()));
+      c->set_output(7, regression ? c->Matrix(c->UnknownDim(), num_classes)
+                                  : c->Vector(0LL));
+      c->set_output(8, c->Vector(num_points));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Calculates incremental statistics for a batch of training data.
 
@@ -192,9 +230,12 @@ sparse_input_indices: The indices tensor from the SparseTensor input.
 sparse_input_values: The values tensor from the SparseTensor input.
 sparse_input_shape: The shape tensor from the SparseTensor input.
 input_spec: A 1-D tensor containing the type of each column in input_data,
-  (e.g. continuous float, categorical).
+  (e.g. continuous float, categorical).  Index 0 should contain the default
+  type, individual feature types start at index 1.
 input_labels: The training batch's labels; `input_labels[i]` is the class
   of the i-th input.
+input_weights:= A 1-D float tensor.  If non-empty, `input_weights[i]` gives
+  the weight of the i-th input.
 tree:= A 2-d int32 tensor.  `tree[i][0]` gives the index of the left child
   of the i-th node, `tree[i][0] + 1` gives the index of the right child of
   the i-th node, and `tree[i][1]` gives the index of the feature used to
@@ -267,15 +308,17 @@ class CountExtremelyRandomStats : public OpKernel {
     const Tensor& sparse_input_shape = context->input(3);
     const Tensor& input_spec = context->input(4);
     const Tensor& input_labels = context->input(5);
-    const Tensor& tree_tensor = context->input(6);
-    const Tensor& tree_thresholds = context->input(7);
-    const Tensor& node_to_accumulator = context->input(8);
-    const Tensor& candidate_split_features = context->input(9);
-    const Tensor& candidate_split_thresholds = context->input(10);
-    const Tensor& birth_epochs = context->input(11);
-    const Tensor& current_epoch = context->input(12);
+    const Tensor& input_weights = context->input(6);
+    const Tensor& tree_tensor = context->input(7);
+    const Tensor& tree_thresholds = context->input(8);
+    const Tensor& node_to_accumulator = context->input(9);
+    const Tensor& candidate_split_features = context->input(10);
+    const Tensor& candidate_split_thresholds = context->input(11);
+    const Tensor& birth_epochs = context->input(12);
+    const Tensor& current_epoch = context->input(13);
 
     bool sparse_input = (sparse_input_indices.shape().dims() == 2);
+    bool have_weights = (input_weights.shape().dim_size(0) > 0);
 
     // Check inputs.
     if (sparse_input) {
@@ -308,6 +351,15 @@ class CountExtremelyRandomStats : public OpKernel {
           errors::InvalidArgument(
               "Number of inputs should be the same in "
               "input_data and input_labels."));
+    }
+
+    if (have_weights) {
+      OP_REQUIRES(
+          context,
+          input_weights.shape().dim_size(0) == input_labels.shape().dim_size(0),
+          errors::InvalidArgument(
+              "Number of inputs should be the same in input_weights and "
+              "input_labels."));
     }
 
     OP_REQUIRES(context, input_labels.shape().dims() >= 1,
@@ -364,6 +416,7 @@ class CountExtremelyRandomStats : public OpKernel {
     if (!CheckTensorBounds(context, sparse_input_values)) return;
     if (!CheckTensorBounds(context, sparse_input_shape)) return;
     if (!CheckTensorBounds(context, input_labels)) return;
+    if (!CheckTensorBounds(context, input_weights)) return;
     if (!CheckTensorBounds(context, tree_tensor)) return;
     if (!CheckTensorBounds(context, tree_thresholds)) return;
     if (!CheckTensorBounds(context, node_to_accumulator)) return;
@@ -408,41 +461,39 @@ class CountExtremelyRandomStats : public OpKernel {
     params.candidate_split_features = candidate_split_features;
     params.candidate_split_thresholds = candidate_split_thresholds;
     params.results = results.get();
-    if (num_threads <= 1) {
-      Evaluate(params, 0, num_data);
-    } else {
-      auto work = [&params, num_data](int64 start, int64 end) {
-        CHECK(start <= end);
-        CHECK(end <= num_data);
-        Evaluate(params,
-                 static_cast<int32>(start), static_cast<int32>(end));
-      };
-      Shard(num_threads, worker_threads->workers, num_data, 100, work);
-    }
+    // Require at least 100 inputs per thread.  I guess that's about 800 cost
+    // per unit.  This isn't well defined.
+    const int64 costPerUnit = 800;
+    auto work = [&params, num_data](int64 start, int64 end) {
+      CHECK(start <= end);
+      CHECK(end <= num_data);
+      Evaluate(params, static_cast<int32>(start), static_cast<int32>(end));
+    };
+    Shard(num_threads, worker_threads->workers, num_data, costPerUnit, work);
 
     const int32 num_nodes = static_cast<int32>(tree_tensor.shape().dim_size(0));
     if (regression_) {
-      ProcessResultsRegression(
-          context, input_labels, birth_epochs, epoch, std::move(results),
-          num_nodes);
+      ProcessResultsRegression(context, input_labels, input_weights,
+                               birth_epochs, epoch, std::move(results),
+                               num_nodes);
     } else {
-      ProcessResultsClassification(
-          context, input_labels, birth_epochs, epoch, std::move(results),
-          num_nodes);
+      ProcessResultsClassification(context, input_labels, input_weights,
+                                   birth_epochs, epoch, std::move(results),
+                                   num_nodes);
     }
   }
 
  protected:
-  void ProcessResultsClassification(
-      OpKernelContext* context,
-      const Tensor &input_labels,
-      const Tensor &birth_epochs,
-      int32 epoch,
-      std::unique_ptr<InputDataResult[]> results,
-      int32 num_nodes) {
+  void ProcessResultsClassification(OpKernelContext* context,
+                                    const Tensor& input_labels,
+                                    const Tensor& input_weights,
+                                    const Tensor& birth_epochs, int32 epoch,
+                                    std::unique_ptr<InputDataResult[]> results,
+                                    int32 num_nodes) {
     const int32 num_data = static_cast<int32>(input_labels.shape().dim_size(0));
     const auto labels = input_labels.unaligned_flat<float>();
     const auto start_epochs = birth_epochs.unaligned_flat<int32>();
+    const auto weights = input_weights.unaligned_flat<float>();
 
     // Unused outputs for classification.  Still have to specify them or
     // tensorflow complains.
@@ -476,13 +527,23 @@ class CountExtremelyRandomStats : public OpKernel {
     auto out_leaves = output_leaves->unaligned_flat<int32>();
 
     // <accumulator, class> -> count delta
-    PairMapType<int32> total_delta;
+    PairMapType<float> total_delta;
     // <accumulator, split, class> -> count delta
-    TupleMapType<int32> split_delta;
+    TupleMapType<float> split_delta;
 
     for (int32 i = 0; i < num_data; ++i) {
+      out_leaves(i) = results[i].node_indices.back();
+      float w = 1.0;
+      if (weights.size() > 0) {
+        w = weights(i);
+      }
+
       const int32 label = internal::SubtleMustCopy(
           static_cast<int32>(labels(i)));
+      // Labels that come from sparse tensors can have missing values.
+      if (label < 0) {
+        continue;
+      }
       const int32 column = label + 1;
       CHECK_LT(column, num_classes_);
       const int32 accumulator = results[i].leaf_accumulator;
@@ -490,19 +551,19 @@ class CountExtremelyRandomStats : public OpKernel {
         if (epoch > start_epochs(node) + 1) {
           continue;
         }
-        ++out_node_sums(node, column);
-        ++out_node_sums(node, 0);
+        out_node_sums(node, column) += w;
+        out_node_sums(node, 0) += w;
       }
-      out_leaves(i) = results[i].node_indices.back();
+
       if (epoch > start_epochs(out_leaves(i)) + 1) {
         continue;
       }
       if (accumulator >= 0 && results[i].splits_initialized) {
-        ++total_delta[make_pair(accumulator, column)];
-        ++total_delta[make_pair(accumulator, 0)];
+        total_delta[make_pair(accumulator, column)] += w;
+        total_delta[make_pair(accumulator, 0)] += w;
         for (const int32 split : results[i].split_adds) {
-          ++split_delta[make_tuple(accumulator, split, column)];
-          ++split_delta[make_tuple(accumulator, split, 0)];
+          split_delta[make_tuple(accumulator, split, column)] += w;
+          split_delta[make_tuple(accumulator, split, 0)] += w;
         }
       }
     }
@@ -566,13 +627,12 @@ class CountExtremelyRandomStats : public OpKernel {
     }
   }
 
-  void ProcessResultsRegression(
-      OpKernelContext* context,
-      const Tensor &input_labels,
-      const Tensor &birth_epochs,
-      const int32 epoch,
-      std::unique_ptr<InputDataResult[]> results,
-      int32 num_nodes) {
+  void ProcessResultsRegression(OpKernelContext* context,
+                                const Tensor& input_labels,
+                                const Tensor& input_weights,
+                                const Tensor& birth_epochs, const int32 epoch,
+                                std::unique_ptr<InputDataResult[]> results,
+                                int32 num_nodes) {
     const int32 num_data = static_cast<int32>(input_labels.shape().dim_size(0));
     int32 num_outputs = 1;
     if (input_labels.shape().dims() > 1) {
@@ -580,6 +640,7 @@ class CountExtremelyRandomStats : public OpKernel {
     }
     const auto labels = input_labels.unaligned_flat<float>();
     const auto start_epochs = birth_epochs.unaligned_flat<int32>();
+    const auto weights = input_weights.unaligned_flat<float>();
 
     // node pcw delta
     Tensor* output_node_pcw_sums_delta = nullptr;
@@ -617,16 +678,21 @@ class CountExtremelyRandomStats : public OpKernel {
 
     for (int32 i = 0; i < num_data; ++i) {
       const int32 accumulator = results[i].leaf_accumulator;
+      float w = 1.0;
+      if (weights.size() > 0) {
+        w = weights(i);
+      }
+
       for (const int32 node : results[i].node_indices) {
         if (epoch > start_epochs(node) + 1) {
           continue;
         }
         for (int32 j = 0; j < num_outputs; ++j) {
           const float output = labels(i * num_outputs + j);
-          out_node_sums(node, j + 1) += output;
-          out_node_squares(node, j + 1) += output * output;
-          ++out_node_sums(node, 0);
-          ++out_node_squares(node, 0);
+          out_node_sums(node, j + 1) += w * output;
+          out_node_squares(node, j + 1) += w * output * output;
+          out_node_sums(node, 0) += w;
+          out_node_squares(node, 0) += w;
         }
       }
       out_leaves(i) = results[i].node_indices.back();

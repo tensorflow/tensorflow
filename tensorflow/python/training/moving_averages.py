@@ -50,7 +50,8 @@ def assign_moving_average(variable, value, decay, name=None):
     An Operation that updates 'variable' with the newly computed
     moving average.
   """
-  with ops.op_scope([variable, value, decay], name, "AssignMovingAvg") as scope:
+  with ops.name_scope(name, "AssignMovingAvg",
+                      [variable, value, decay]) as scope:
     with ops.colocate_with(variable):
       decay = ops.convert_to_tensor(1.0 - decay, name="decay")
       if decay.dtype != variable.dtype.base_dtype:
@@ -96,8 +97,8 @@ def weighted_moving_average(value,
   # quite different than assign_moving_average.
   if collections is None:
     collections = [ops.GraphKeys.VARIABLES]
-  with variable_scope.variable_op_scope(
-      [value, weight, decay], name, "WeightedMovingAvg") as scope:
+  with variable_scope.variable_scope(name, "WeightedMovingAvg",
+                                     [value, weight, decay]) as scope:
     value_x_weight_var = variable_scope.get_variable(
         "value_x_weight",
         initializer=init_ops.zeros_initializer(value.get_shape(),
@@ -252,13 +253,13 @@ class ExponentialMovingAverage(object):
 
     Args:
       var_list: A list of Variable or Tensor objects. The variables
-        and Tensors must be of types float32 or float64.
+        and Tensors must be of types float16, float32, or float64.
 
     Returns:
       An Operation that updates the moving averages.
 
     Raises:
-      TypeError: If the arguments are not all float32 or float64.
+      TypeError: If the arguments are not all float16, float32, or float64.
       ValueError: If the moving average of one of the variables is already
         being computed.
     """

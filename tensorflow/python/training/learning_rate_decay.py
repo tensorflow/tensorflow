@@ -54,7 +54,7 @@ def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
                                              100000, 0.96, staircase=True)
   # Passing global_step to minimize() will increment it at each step.
   learning_step = (
-      tf.GradientDescentOptimizer(learning_rate)
+      tf.train.GradientDescentOptimizer(learning_rate)
       .minimize(...my loss..., global_step=global_step)
   )
   ```
@@ -76,8 +76,9 @@ def exponential_decay(learning_rate, global_step, decay_steps, decay_rate,
     A scalar `Tensor` of the same type as `learning_rate`.  The decayed
     learning rate.
   """
-  with ops.op_scope([learning_rate, global_step, decay_steps, decay_rate],
-                    name, "ExponentialDecay") as name:
+  with ops.name_scope(name, "ExponentialDecay",
+                      [learning_rate, global_step,
+                       decay_steps, decay_rate]) as name:
     learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
     dtype = learning_rate.dtype
     global_step = math_ops.cast(global_step, dtype)
@@ -121,8 +122,8 @@ def piecewise_constant(x, boundaries, values, name=None):
     and values[-1] when `x > boundaries[-1]`.
   """
 
-  with ops.op_scope([x, boundaries, values, name],
-                    name, 'PiecewiseConstant') as name:
+  with ops.name_scope(name, 'PiecewiseConstant',
+                      [x, boundaries, values, name]) as name:
     x = ops.convert_to_tensor(x)
     # Avoid explicit conversion to x's dtype. This could result in faulty
     # comparisons, for example if floats are converted to integers.
@@ -195,7 +196,7 @@ def polynomial_decay(learning_rate, global_step, decay_steps,
                                             power=0.5)
   # Passing global_step to minimize() will increment it at each step.
   learning_step = (
-      tf.GradientDescentOptimizer(learning_rate)
+      tf.train.GradientDescentOptimizer(learning_rate)
       .minimize(...my loss..., global_step=global_step)
   )
   ```
@@ -218,9 +219,9 @@ def polynomial_decay(learning_rate, global_step, decay_steps,
     A scalar `Tensor` of the same type as `learning_rate`.  The decayed
     learning rate.
   """
-  with ops.op_scope(
-      [learning_rate, global_step, decay_steps, end_learning_rate, power],
-      name, "PolynomialDecay") as name:
+  with ops.name_scope(name, "PolynomialDecay",
+                      [learning_rate, global_step,
+                       decay_steps, end_learning_rate, power]) as name:
     learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
     dtype = learning_rate.dtype
     global_step = math_ops.cast(global_step, dtype)
@@ -257,7 +258,7 @@ def natural_exp_decay(learning_rate, global_step, decay_steps, decay_rate,
   decayed_learning_rate = learning_rate * exp(-decay_rate * global_step)
   ```
 
-  Example: decay exponetially with a base of 0.96:
+  Example: decay exponentially with a base of 0.96:
 
   ```python
   ...
@@ -268,7 +269,7 @@ def natural_exp_decay(learning_rate, global_step, decay_steps, decay_rate,
 
   # Passing global_step to minimize() will increment it at each step.
   learning_step = (
-      tf.GradientDescentOptimizer(learning_rate)
+      tf.train.GradientDescentOptimizer(learning_rate)
       .minimize(...my loss..., global_step=global_step)
   )
   ```
@@ -286,8 +287,8 @@ def natural_exp_decay(learning_rate, global_step, decay_steps, decay_rate,
     A scalar `Tensor` of the same type as `learning_rate`.  The decayed
     learning rate.
   """
-  with ops.op_scope([learning_rate, global_step, decay_rate],
-                    name, "NaturalExpDecay") as name:
+  with ops.name_scope(name, "NaturalExpDecay",
+                      [learning_rate, global_step, decay_rate]) as name:
     learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
     dtype = learning_rate.dtype
     global_step = math_ops.cast(global_step, dtype)
@@ -327,7 +328,7 @@ def inverse_time_decay(learning_rate, global_step, decay_steps, decay_rate,
 
   # Passing global_step to minimize() will increment it at each step.
   learning_step = (
-      tf.GradientDescentOptimizer(learning_rate)
+      tf.train.GradientDescentOptimizer(learning_rate)
       .minimize(...my loss..., global_step=global_step)
   )
   ```
@@ -341,15 +342,13 @@ def inverse_time_decay(learning_rate, global_step, decay_steps, decay_rate,
     name: String.  Optional name of the operation.  Defaults to
       'InverseTimeDecay'
 
-  with ops.op_scope([learning_rate, global_step, decay_rate],
-                    name, "InverseTimeDecay") as name:
   Returns:
     A scalar `Tensor` of the same type as `learning_rate`.  The decayed
     learning rate.
   """
 
-  with ops.op_scope([learning_rate, global_step, decay_rate],
-                    name, "InverseTimeDecay") as name:
+  with ops.name_scope(name, "InverseTimeDecay",
+                      [learning_rate, global_step, decay_rate]) as name:
     learning_rate = ops.convert_to_tensor(learning_rate, name="learning_rate")
     dtype = learning_rate.dtype
     global_step = math_ops.cast(global_step, dtype)

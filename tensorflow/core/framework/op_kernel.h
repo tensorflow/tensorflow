@@ -104,7 +104,7 @@ class OpKernel {
   // Returns true iff this op kernel is considered "expensive". The
   // runtime may use this flag to optimize graph execution for example
   // to "inline" inexpensive kernels.
-  virtual bool IsExpensive() { return true; }
+  virtual bool IsExpensive() { return expensive_; }
 
   // Accessors.
   const NodeDef& def() const { return def_; }
@@ -160,6 +160,7 @@ class OpKernel {
   const bool is_internal_;  // True if this is an internal operation
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
+  bool expensive_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernel);
 };
@@ -179,6 +180,8 @@ class AsyncOpKernel : public OpKernel {
   AsyncOpKernel* AsAsync() final { return this; }
 
   void Compute(OpKernelContext* context) final;
+
+  bool IsExpensive() override { return true; }
 };
 
 // Wraps a tensor that is held by an Op across calls to Compute(). For
@@ -493,6 +496,7 @@ class OpKernelContext {
 
     bool track_allocations = false;
     bool log_memory = false;
+    bool record_tensor_accesses = false;
 
     // Array indexed by output number for this node
     const AllocatorAttributes* output_attr_array = nullptr;
@@ -978,11 +982,10 @@ class OpKernelContext {
   gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators_ GUARDED_BY(mu_);
   gtl::InlinedVector<TensorValue, 4> outputs_;
 
-  // Constructed only if <record_tensor_accesses_>.
+  // Constructed only if <params->record_tensor_accesses>.
   ManualConstructor<UniqueTensorReferences> referenced_tensors_ GUARDED_BY(mu_);
 
   bool is_output_dead_ = false;
-  bool record_tensor_accesses_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };
@@ -1039,6 +1042,10 @@ Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
     DeviceTypeVector* device_types);
 
+// Returns a message with a description of the kernels registered for op
+// `op_name`.
+string KernelsRegisteredForOp(StringPiece op_name);
+
 // Call once after Op registration has completed.
 Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry);
 
@@ -1047,7 +1054,23 @@ Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry);
 
 // Allow the REGISTER_KERNEL_BUILDER(Name("op_name").Device(...)...) syntax.
 namespace register_kernel {
-typedef ::tensorflow::KernelDefBuilder Name;
+
+class Name : public KernelDefBuilder {
+ public:
+  // With selective registration, kernels whose implementation class is not used
+  // by any kernel are disabled with the SHOULD_REGISTER_OP_KERNEL call in
+  // REGISTER_KERNEL_BUILDER_UNIQ. However, an unused kernel that shares an
+  // implementation class with a used kernel would get through that mechanism.
+  //
+  // This mechanism stops that registration by changing the name of the kernel
+  // for the unused op to one that is ignored by
+  // OpKernelRegistrar::InitInternal.  Note that this method alone is
+  // not sufficient - the compiler can't evaluate the entire KernelDefBuilder at
+  // compilation time, so this method doesn't actually reduce code size.
+  explicit Name(const char* op)
+      : KernelDefBuilder(SHOULD_REGISTER_OP(op) ? op : "_no_register") {}
+};
+
 }  // namespace register_kernel
 
 #define REGISTER_KERNEL_BUILDER(kernel_builder, ...) \
@@ -1132,16 +1155,16 @@ inline DataType OpKernelContext::expected_output_dtype(int index) const {
 }
 
 inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
-  DCHECK(params_->device->RequiresRecordingAccessedTensors() ==
-         record_tensor_accesses_);
-  if (record_tensor_accesses_) {
+  DCHECK_EQ(params_->device->RequiresRecordingAccessedTensors(),
+            params_->record_tensor_accesses);
+  if (params_->record_tensor_accesses) {
     really_record_tensor_reference(tensor);
   }
 }
 
 inline void OpKernelContext::retrieve_accessed_tensors(
     TensorReferenceVector* out_vector) {
-  if (record_tensor_accesses_) {
+  if (params_->record_tensor_accesses) {
     mutex_lock l(mu_);
     referenced_tensors_->FreezeAndReturnReferences(out_vector);
   }

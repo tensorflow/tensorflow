@@ -106,5 +106,5 @@ class NormalTest(tf.test.TestCase):
       self.assertEqual(predictive_log_pdf.shape, (6,))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

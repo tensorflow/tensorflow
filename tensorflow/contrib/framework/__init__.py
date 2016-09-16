@@ -24,12 +24,13 @@
 @@is_strictly_increasing
 @@is_tensor
 @@reduce_sum_n
-@@safe_embedding_lookup_sparse
 @@with_shape
 @@with_same_shape
 
 ## Deprecation
 @@deprecated
+@@deprecated_args
+@@deprecated_arg_values
 
 ## Arg_Scope
 @@arg_scope
@@ -41,6 +42,10 @@
 @@add_model_variable
 @@assert_global_step
 @@assert_or_get_global_step
+@@assign_from_checkpoint
+@@assign_from_checkpoint_fn
+@@assign_from_values
+@@assign_from_values_fn
 @@create_global_step
 @@get_global_step
 @@get_or_create_global_step

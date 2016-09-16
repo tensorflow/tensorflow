@@ -18,20 +18,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.learn.python.learn import runner_flags  # pylint: disable=unused-import
 from tensorflow.contrib.learn.python.learn.experiment import Experiment
-from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 
 
-FLAGS = flags.FLAGS
-
-
-def run(experiment_fn):
+def run(experiment_fn, output_dir, schedule=None):
   """Make and run an experiment.
 
-  It creates an Experiment by calling experiment_fn. It reads a flag `schedule`.
-    Then it calls the function named as `schedule` of the Experiment.
+  It creates an Experiment by calling `experiment_fn`. Then it calls the
+  function named as `schedule` of the Experiment.
+
+  If schedule is not provided, then the default schedule for the current task
+  type is used. The defaults are as follows:
+
+   * 'ps' maps to 'serve'
+   * 'worker' maps to 'train'
+   * 'master' maps to 'local_run'
+
+  If the experiment's config does not include a task type, then an exception
+  is raised.
 
   Example:
   ```
@@ -41,54 +46,80 @@ def run(experiment_fn):
           train_input_fn=my_train_input,
           eval_input_fn=my_eval_input)
 
-    learn_runner.run(experiment_fn=_create_my_experiment)
+    learn_runner.run(
+      experiment_fn=_create_my_experiment,
+      output_dir="some/output/dir",
+      schedule="train")
   ```
   Args:
     experiment_fn: A function that creates an `Experiment`. It should accept an
-      argument `output_dir` which should be used to create the Estimator (passed
-      as `model_dir` to its constructor). It must return an Experiment.
+      argument `output_dir` which should be used to create the `Estimator`
+      (passed as `model_dir` to its constructor). It must return an
+      `Experiment`.
+    output_dir: Base output directory.
+    schedule: The name of the  method in the `Experiment` to run.
 
   Returns:
     The return value of function `schedule`.
 
   Raises:
-    RuntimeError: If flags `output_dir` or `schedule` is not specified.
-    ValueError: `schedule` doesn't references a member of `Experiment`.
+    ValueError: If `output_dir` is empty, `schedule` is None but no task
+      type is set in the built experiment's config, the task type has no
+      default, or `schedule` doesn't reference a member of `Experiment`.
     TypeError: `schedule` references non-callable member.
   """
-
-  if not FLAGS.output_dir:
-    raise RuntimeError('Must specify an output directory (use --output_dir).')
-  if not FLAGS.schedule:
-    raise RuntimeError('Must specify a schedule (use --schedule).')
-
+  if not output_dir:
+    raise ValueError('Must specify an output directory')
   if not callable(experiment_fn):
     raise TypeError('Experiment builder "%s" is not callable.' %
                     experiment_fn)
 
   # Call the builder
-  experiment = experiment_fn(output_dir=FLAGS.output_dir)
+  experiment = experiment_fn(output_dir=output_dir)
   if not isinstance(experiment, Experiment):
     raise TypeError('Experiment builder did not return an Experiment '
                     'instance, got %s instead.' % type(experiment))
 
+  # Get the schedule
+  config = experiment.estimator.config
+  schedule = schedule or _get_default_schedule(config)
+  if not schedule:
+    raise ValueError('Must specify a schedule')
+
   # Execute the schedule
-  taskname = FLAGS.schedule
-  if not hasattr(experiment, taskname):
-    logging.error('Schedule references non-existent task %s', taskname)
+  if not hasattr(experiment, schedule):
+    logging.error('Schedule references non-existent task %s', schedule)
     valid_tasks = [x for x in experiment.__dict__
                    if callable(getattr(experiment, x))]
     logging.error('Allowed values for this experiment are: %s', valid_tasks)
-    raise ValueError('Schedule references non-existent task %s', taskname)
+    raise ValueError('Schedule references non-existent task %s', schedule)
 
-  task = getattr(experiment, taskname)
+  task = getattr(experiment, schedule)
   if not callable(task):
-    logging.error('Schedule references non-callable member %s', taskname)
+    logging.error('Schedule references non-callable member %s', schedule)
     valid_tasks = [
         x for x in experiment.__dict__
         if callable(getattr(experiment, x)) and not x.startswith('_')
     ]
     logging.error('Allowed values for this experiment are: %s', valid_tasks)
-    raise TypeError('Schedule references non-callable member %s', taskname)
+    raise TypeError('Schedule references non-callable member %s', schedule)
 
   return task()
+
+
+def _get_default_schedule(config):
+  """Returns the default schedule for the provided RunConfig."""
+  if not config or not config.job_name:
+    return None
+
+  if not config.job_name or config.job_name == 'master':
+    # TODO(rhaertel): handle the case there are more
+    # than one masters or explicitly disallow.
+    return 'local_run'
+  elif config.job_name == 'ps':
+    return 'run_std_server'
+  elif config.job_name == 'worker':
+    return 'train'
+
+  return ValueError('No default schedule for task type: %s' %
+                    (config.job_name,))

@@ -28,7 +28,10 @@ filegroup(
             "core/ops/*.cc",
             "data/*.cc",
         ],
-        exclude = ["core/ops/*_test.cc"],
+        exclude = [
+            "core/ops/*_test.cc",
+            "data/*_test.cc",
+        ],
     ),
 )
 
@@ -39,6 +42,18 @@ filegroup(
             "core/ops/*.h",
         ],
     ),
+)
+
+cc_library(
+    name = "all_ops",
+    srcs = [":custom_op_sources"],
+    hdrs = [":custom_op_headers"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf//:protobuf",
+    ],
+    alwayslink = 1,
 )
 
 py_library(
@@ -52,6 +67,7 @@ py_library(
 tf_custom_op_library(
     name = "data/_data_ops.so",
     srcs = [
+        "data/sparse_values_to_indices.cc",
         "data/string_to_float_op.cc",
     ],
     deps = [
@@ -124,15 +140,24 @@ tf_custom_op_library(
     deps = [":tree_utils"],
 )
 
+tf_custom_op_library(
+    name = "python/ops/_topn_ops.so",
+    srcs = [
+        "core/ops/topn_ops.cc",
+    ],
+)
+
 py_library(
     name = "ops_lib",
     srcs = [
         "__init__.py",
         "python/ops/inference_ops.py",
+        "python/ops/topn_ops.py",
         "python/ops/training_ops.py",
     ],
     data = [
         "python/ops/_inference_ops.so",
+        "python/ops/_topn_ops.so",
         "python/ops/_training_ops.so",
     ],
     srcs_version = "PY2AND3",
@@ -261,6 +286,63 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":tensor_forest_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cc_test(
+    name = "training_ops_test",
+    size = "small",
+    srcs = [
+        "core/ops/training_ops_test.cc",
+        ":custom_op_sources",
+    ],
+    deps = [
+        ":tree_utils",
+        "//tensorflow/core",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_test(
+    name = "sparse_values_to_indices_test",
+    size = "small",
+    srcs = ["data/sparse_values_to_indices_test.cc"],
+    deps = [
+        ":all_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+    ],
+)
+
+py_library(
+    name = "topn_py",
+    srcs = ["python/topn.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":constants",
+        ":ops_lib",
+    ],
+)
+
+py_test(
+    name = "topn_test",
+    size = "small",
+    srcs = ["python/topn_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["manual"],
+    deps = [
+        ":topn_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",

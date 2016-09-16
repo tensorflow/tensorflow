@@ -56,7 +56,7 @@ Here we get a file handle for the path we've passed in to the script
 
 ```python
   if FLAGS.input_binary:
-    graph_def.ParseFromString(f.read)
+    graph_def.ParseFromString(f.read())
   else:
     text_format.Merge(f.read(), graph_def)
 ```
@@ -90,9 +90,10 @@ of nodes stored in the node member. Here's the code that loops through those:
 for node in graph_def.node
 ```
 
-Each node is a `NodeDef` object, also defined in graph.proto. These are the
-fundamental building blocks of TensorFlow graphs, with each one defining a
-single operation along with its input connections. Here are the members of a
+Each node is a `NodeDef` object, defined in
+[tensorflow/core/framework/node_def.proto](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/node_def.proto). These
+are the fundamental building blocks of TensorFlow graphs, with each one defining
+a single operation along with its input connections. Here are the members of a
 `NodeDef`, and what they mean.
 
 ### `name`

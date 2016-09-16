@@ -15,7 +15,7 @@ limitations under the License.
 
 // Implements a quantized eight-bit version of the matmul operation.
 
-#include "external/gemmlowp/public/gemmlowp.h"
+#include "public/gemmlowp.h"
 #include "tensorflow/contrib/quantization/kernels/quantization_utils.h"
 #include "tensorflow/contrib/quantization/kernels/reference_gemm.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -28,9 +28,9 @@ namespace tensorflow {
 // combinations of transpose attributes we need to support, and they have to be
 // compile-time constants to work with the templates used internally.
 template <bool TransposeA, bool TransposeB, bool TransposeC>
-void GemmlowpMultiply(const quint8* a_data, const quint8* b_data,
-                      qint32* c_data, int m, int n, int k, int offset_a,
-                      int offset_b, int lda, int ldb, int ldc) {
+void GemmlowpMultiply(OpKernelContext* op_context, const quint8* a_data,
+                      const quint8* b_data, qint32* c_data, int m, int n, int k,
+                      int offset_a, int offset_b, int lda, int ldb, int ldc) {
   const uint8* a_data_as_uint8 = &(a_data->value);
   const uint8* b_data_as_uint8 = &(b_data->value);
   int32* c_data_as_int32 = &(c_data->value);
@@ -47,7 +47,10 @@ void GemmlowpMultiply(const quint8* a_data, const quint8* b_data,
   gemmlowp::MatrixMap<std::int32_t, ResultOrder> result(c_data_as_int32, m, n,
                                                         ldc);
   const std::tuple<> empty_pipeline = {};
-  gemmlowp::GemmContext context;
+  auto& worker_threads =
+      *(op_context->device()->tensorflow_cpu_worker_threads());
+  TensorflowGemmContext context(worker_threads.num_threads,
+                                worker_threads.workers);
   gemmlowp::GemmWithOutputPipeline<std::uint8_t, std::int32_t,
                                    gemmlowp::DefaultL8R8BitDepthParams>(
       &context, lhs, rhs, &result, -offset_a, -offset_b, empty_pipeline);
@@ -130,23 +133,23 @@ class QuantizedMatMulOp : public OpKernel {
         (shift_c == 0) && (transpose_c == false)) {
       if (transpose_a_) {
         if (transpose_b_) {
-          GemmlowpMultiply<true, true, false>(a_data, b_data, c_data, m, n, k,
-                                              offset_a, offset_b, lda, ldb,
-                                              ldc);
+          GemmlowpMultiply<true, true, false>(context, a_data, b_data, c_data,
+                                              m, n, k, offset_a, offset_b, lda,
+                                              ldb, ldc);
         } else {
-          GemmlowpMultiply<true, false, false>(a_data, b_data, c_data, m, n, k,
-                                               offset_a, offset_b, lda, ldb,
-                                               ldc);
+          GemmlowpMultiply<true, false, false>(context, a_data, b_data, c_data,
+                                               m, n, k, offset_a, offset_b, lda,
+                                               ldb, ldc);
         }
       } else {
         if (transpose_b_) {
-          GemmlowpMultiply<false, true, false>(a_data, b_data, c_data, m, n, k,
-                                               offset_a, offset_b, lda, ldb,
-                                               ldc);
+          GemmlowpMultiply<false, true, false>(context, a_data, b_data, c_data,
+                                               m, n, k, offset_a, offset_b, lda,
+                                               ldb, ldc);
         } else {
-          GemmlowpMultiply<false, false, false>(a_data, b_data, c_data, m, n, k,
-                                                offset_a, offset_b, lda, ldb,
-                                                ldc);
+          GemmlowpMultiply<false, false, false>(context, a_data, b_data, c_data,
+                                                m, n, k, offset_a, offset_b,
+                                                lda, ldb, ldc);
         }
       }
     } else {

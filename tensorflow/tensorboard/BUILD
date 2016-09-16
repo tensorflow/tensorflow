@@ -10,17 +10,21 @@ exports_files(["LICENSE"])
 filegroup(
     name = "frontend",
     srcs = [
+        "TAG",
+        "dist/bazel-html-imports.html",
         "dist/index.html",
         "dist/tf-tensorboard.html",
-        "TAG",
-        "//tensorflow/tensorboard/bower:bower",
+        "//tensorflow/tensorboard/bower",
         "//tensorflow/tensorboard/lib:all_files",
     ],
 )
 
 py_binary(
     name = "tensorboard",
-    srcs = ["tensorboard.py"],
+    srcs = [
+        "__main__.py",
+        "tensorboard.py",
+    ],
     data = [":frontend"],
     srcs_version = "PY2AND3",
     deps = [

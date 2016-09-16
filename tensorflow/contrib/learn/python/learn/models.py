@@ -19,10 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
+from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.contrib.learn.python.learn.ops import autoencoder_ops
 from tensorflow.contrib.learn.python.learn.ops import dnn_ops
 from tensorflow.contrib.learn.python.learn.ops import losses_ops
-from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
@@ -79,8 +81,10 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
     uniform_unit_scaling_initialzer will be used.
   """
   with vs.variable_scope('linear_regression'):
-    logging_ops.histogram_summary('linear_regression.x', x)
-    logging_ops.histogram_summary('linear_regression.y', y)
+    scope_name = vs.get_variable_scope().name
+    logging_ops.histogram_summary('%s.x' % scope_name, x)
+    logging_ops.histogram_summary('%s.y' % scope_name, y)
+    dtype = x.dtype.base_dtype
     y_shape = y.get_shape()
     if len(y_shape) == 1:
       output_shape = 1
@@ -88,17 +92,20 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
       output_shape = y_shape[1]
     # Set up the requested initialization.
     if init_mean is None:
-      weights = vs.get_variable('weights', [x.get_shape()[1], output_shape])
-      bias = vs.get_variable('bias', [output_shape])
+      weights = vs.get_variable(
+          'weights', [x.get_shape()[1], output_shape], dtype=dtype)
+      bias = vs.get_variable('bias', [output_shape], dtype=dtype)
     else:
       weights = vs.get_variable('weights', [x.get_shape()[1], output_shape],
                                 initializer=init_ops.random_normal_initializer(
-                                    init_mean, init_stddev))
+                                    init_mean, init_stddev, dtype=dtype),
+                                dtype=dtype)
       bias = vs.get_variable('bias', [output_shape],
                              initializer=init_ops.random_normal_initializer(
-                                 init_mean, init_stddev))
-    logging_ops.histogram_summary('linear_regression.weights', weights)
-    logging_ops.histogram_summary('linear_regression.bias', bias)
+                                 init_mean, init_stddev, dtype=dtype),
+                             dtype=dtype)
+    logging_ops.histogram_summary('%s.weights' % scope_name, weights)
+    logging_ops.histogram_summary('%s.bias' % scope_name, bias)
     return losses_ops.mean_squared_error_regressor(x, y, weights, bias)
 
 
@@ -133,25 +140,27 @@ def logistic_regression(x,
     uniform_unit_scaling_initialzer will be used.
   """
   with vs.variable_scope('logistic_regression'):
-    logging_ops.histogram_summary('%s.x' % vs.get_variable_scope().name, x)
-    logging_ops.histogram_summary('%s.y' % vs.get_variable_scope().name, y)
+    scope_name = vs.get_variable_scope().name
+    logging_ops.histogram_summary('%s.x' % scope_name, x)
+    logging_ops.histogram_summary('%s.y' % scope_name, y)
+    dtype = x.dtype.base_dtype
     # Set up the requested initialization.
     if init_mean is None:
-      weights = vs.get_variable('weights',
-                                [x.get_shape()[1], y.get_shape()[-1]])
-      bias = vs.get_variable('bias', [y.get_shape()[-1]])
+      weights = vs.get_variable(
+          'weights', [x.get_shape()[1], y.get_shape()[-1]], dtype=dtype)
+      bias = vs.get_variable('bias', [y.get_shape()[-1]], dtype=dtype)
     else:
       weights = vs.get_variable('weights',
                                 [x.get_shape()[1], y.get_shape()[-1]],
                                 initializer=init_ops.random_normal_initializer(
-                                    init_mean, init_stddev))
+                                    init_mean, init_stddev, dtype=dtype),
+                                dtype=dtype)
       bias = vs.get_variable('bias', [y.get_shape()[-1]],
                              initializer=init_ops.random_normal_initializer(
-                                 init_mean, init_stddev))
-    logging_ops.histogram_summary('%s.weights' % vs.get_variable_scope().name,
-                                  weights)
-    logging_ops.histogram_summary('%s.bias' % vs.get_variable_scope().name,
-                                  bias)
+                                 init_mean, init_stddev, dtype=dtype),
+                             dtype=dtype)
+    logging_ops.histogram_summary('%s.weights' % scope_name, weights)
+    logging_ops.histogram_summary('%s.bias' % scope_name, bias)
     # If no class weight provided, try to retrieve one from pre-defined
     # tensor name in the graph.
     if not class_weight:
@@ -193,41 +202,8 @@ def get_dnn_model(hidden_units, target_predictor_fn, dropout=None):
   return dnn_estimator
 
 
-def get_autoencoder_model(hidden_units, target_predictor_fn,
-                          activation, add_noise=None, dropout=None):
-  """Returns a function that creates a Autoencoder TensorFlow subgraph.
-
-  Args:
-    hidden_units: List of values of hidden units for layers.
-    target_predictor_fn: Function that will predict target from input
-                         features. This can be logistic regression,
-                         linear regression or any other model,
-                         that takes x, y and returns predictions and loss
-                         tensors.
-    activation: activation function used to map inner latent layer onto
-                reconstruction layer.
-    add_noise: a function that adds noise to tensor_in,
-           e.g. def add_noise(x):
-                    return(x + np.random.normal(0, 0.1, (len(x), len(x[0]))))
-    dropout: When not none, causes dropout regularization to be used,
-             with the specified probability of removing a given coordinate.
-
-  Returns:
-      A function that creates the subgraph.
-  """
-  def dnn_autoencoder_estimator(x):
-    """Autoencoder estimator with target predictor function on top."""
-    encoder, decoder = autoencoder_ops.dnn_autoencoder(
-        x, hidden_units, activation,
-        add_noise=add_noise, dropout=dropout)
-    return encoder, decoder, target_predictor_fn(x, decoder)
-  return dnn_autoencoder_estimator
-
-
 ## This will be in TensorFlow 0.7.
 ## TODO(ilblackdragon): Clean this up when it's released
-
-
 def _reverse_seq(input_seq, lengths):
   """Reverse a list of Tensors up to specified lengths.
 
@@ -371,7 +347,8 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
     elif cell_type == 'gru':
       cell_fn = nn.rnn_cell.GRUCell
     elif cell_type == 'lstm':
-      cell_fn = nn.rnn_cell.BasicLSTMCell
+      cell_fn = functools.partial(
+          nn.rnn_cell.BasicLSTMCell, state_is_tuple=False)
     else:
       raise ValueError('cell_type {} is not supported. '.format(cell_type))
     # TODO: state_is_tuple=False is deprecated
@@ -387,9 +364,11 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
         bw_cell = contrib_rnn.AttentionCellWrapper(
           fw_cell, attn_length=attn_length, attn_size=attn_size,
           attn_vec_size=attn_vec_size, state_is_tuple=False)
-      rnn_fw_cell = nn.rnn_cell.MultiRNNCell([fw_cell] * num_layers)
+      rnn_fw_cell = nn.rnn_cell.MultiRNNCell([fw_cell] * num_layers,
+                                             state_is_tuple=False)
       # backward direction cell
-      rnn_bw_cell = nn.rnn_cell.MultiRNNCell([bw_cell] * num_layers)
+      rnn_bw_cell = nn.rnn_cell.MultiRNNCell([bw_cell] * num_layers,
+                                             state_is_tuple=False)
       # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
       _, encoding = bidirectional_rnn(rnn_fw_cell,
                                       rnn_bw_cell,
@@ -404,7 +383,8 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
         rnn_cell = contrib_rnn.AttentionCellWrapper(
             rnn_cell, attn_length=attn_length, attn_size=attn_size,
             attn_vec_size=attn_vec_size, state_is_tuple=False)
-      cell = nn.rnn_cell.MultiRNNCell([rnn_cell] * num_layers)
+      cell = nn.rnn_cell.MultiRNNCell([rnn_cell] * num_layers,
+                                      state_is_tuple=False)
       _, encoding = nn.rnn(cell,
                            x,
                            dtype=dtypes.float32,

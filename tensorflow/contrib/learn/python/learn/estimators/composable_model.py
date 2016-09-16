@@ -20,11 +20,13 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import re
 
 import six
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.layers.python.layers import feature_column_ops
+from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients
@@ -47,31 +49,31 @@ class _ComposableModel(object):
   def __init__(self,
                num_label_columns,
                optimizer,
-               weight_collection_name,
                gradient_clip_norm,
-               num_ps_replicas):
+               num_ps_replicas,
+               scope):
     """Common initialization for all _ComposableModel objects.
 
     Args:
       num_label_columns: The number of label/target columns.
       optimizer: An instance of `tf.Optimizer` used to apply gradients to
         the model. If `None`, will use a FTRL optimizer.
-      weight_collection_name: A string defining the name to use for the
-        collection of weights (e.g. 'dnn').
       gradient_clip_norm: A float > 0. If provided, gradients are clipped
         to their global norm with this clipping ratio. See
         tf.clip_by_global_norm for more details.
       num_ps_replicas: The number of parameter server replicas.
+      scope: Scope for variables created in this model.
     """
     self._num_label_columns = num_label_columns
     self._optimizer = optimizer
-    self._weight_collection_name = weight_collection_name
     self._gradient_clip_norm = gradient_clip_norm
     self._num_ps_replicas = num_ps_replicas
+    self._scope = scope
     self._feature_columns = None
 
-  def get_weight_collection_name(self):
-    return self._weight_collection_name
+  def get_scope_name(self):
+    """Returns the scope name used by this model for variables."""
+    return self._scope
 
   def build_model(self, features, feature_columns, is_training):
     """Builds the model that can calculate the logits.
@@ -114,7 +116,7 @@ class _ComposableModel(object):
 
   def _get_vars(self):
     if self._get_feature_columns():
-      return ops.get_collection(self._weight_collection_name)
+      return ops.get_collection(self._scope)
     return []
 
   def _get_optimizer(self):
@@ -142,7 +144,8 @@ class LinearComposableModel(_ComposableModel):
                num_label_columns,
                optimizer=None,
                gradient_clip_norm=None,
-               num_ps_replicas=0):
+               num_ps_replicas=0,
+               scope=None):
     """Initializes LinearComposableModel objects.
 
     Args:
@@ -153,13 +156,49 @@ class LinearComposableModel(_ComposableModel):
         to their global norm with this clipping ratio. See
         tf.clip_by_global_norm for more details.
       num_ps_replicas: The number of parameter server replicas.
+      scope: Optional scope for variables created in this model. If scope
+        is not supplied, it will default to 'linear'.
     """
+    scope = "linear" if not scope else scope
     super(LinearComposableModel, self).__init__(
         num_label_columns=num_label_columns,
         optimizer=optimizer,
-        weight_collection_name="linear",
         gradient_clip_norm=gradient_clip_norm,
-        num_ps_replicas=num_ps_replicas)
+        num_ps_replicas=num_ps_replicas,
+        scope=scope)
+
+  def get_weights(self, model_dir):
+    """Returns weights per feature of the linear part.
+
+    Args:
+      model_dir: Directory where model parameters, graph and etc. are saved.
+
+    Returns:
+      The weights created by this model (without the optimizer weights).
+    """
+    all_variables = [name for name, _ in checkpoints.list_variables(model_dir)]
+    values = {}
+    optimizer_regex = r".*/" + self._get_optimizer().get_name() + r"(_\d)?$"
+    for name in all_variables:
+      if (name.startswith(self._scope + "/") and
+          name != self._scope + "/bias_weight" and
+          not re.match(optimizer_regex, name)):
+        values[name] = checkpoints.load_variable(model_dir, name)
+    if len(values) == 1:
+      return values[list(values.keys())[0]]
+    return values
+
+  def get_bias(self, model_dir):
+    """Returns bias of the model.
+
+    Args:
+      model_dir: Directory where model parameters, graph and etc. are saved.
+
+    Returns:
+      The bias weights created by this model.
+    """
+    return checkpoints.load_variable(model_dir,
+                                     name=(self._scope+"/bias_weight"))
 
   def build_model(self, features, feature_columns, is_training):
     """See base class."""
@@ -167,13 +206,15 @@ class LinearComposableModel(_ComposableModel):
     partitioner = partitioned_variables.min_max_variable_partitioner(
         max_partitions=self._num_ps_replicas,
         min_slice_size=64 << 20)
-    with variable_scope.variable_op_scope(
-        features.values(), "linear", partitioner=partitioner) as scope:
+    with variable_scope.variable_scope(
+        self._scope,
+        values=features.values(),
+        partitioner=partitioner) as scope:
       logits, _, _ = layers.weighted_sum_from_feature_columns(
           columns_to_tensors=features,
           feature_columns=self._get_feature_columns(),
           num_outputs=self._num_label_columns,
-          weight_collections=[self._weight_collection_name],
+          weight_collections=[self._scope],
           scope=scope)
     return logits
 
@@ -200,7 +241,8 @@ class DNNComposableModel(_ComposableModel):
                activation_fn=nn.relu,
                dropout=None,
                gradient_clip_norm=None,
-               num_ps_replicas=0):
+               num_ps_replicas=0,
+               scope=None):
     """Initializes DNNComposableModel objects.
 
     Args:
@@ -217,16 +259,49 @@ class DNNComposableModel(_ComposableModel):
         to their global norm with this clipping ratio. See
         tf.clip_by_global_norm for more details.
       num_ps_replicas: The number of parameter server replicas.
+      scope: Optional scope for variables created in this model. If not scope
+        is supplied, one is generated.
     """
+    scope = "dnn" if not scope else scope
     super(DNNComposableModel, self).__init__(
         num_label_columns=num_label_columns,
         optimizer=optimizer,
-        weight_collection_name="DNN",
         gradient_clip_norm=gradient_clip_norm,
-        num_ps_replicas=num_ps_replicas)
+        num_ps_replicas=num_ps_replicas,
+        scope=scope)
     self._hidden_units = hidden_units
     self._activation_fn = activation_fn
     self._dropout = dropout
+
+  def get_weights(self, model_dir):
+    """Returns the weights of the model.
+
+    Args:
+      model_dir: Directory where model parameters, graph and etc. are saved.
+
+    Returns:
+      The weights created by this model.
+    """
+    return [checkpoints.load_variable(
+        model_dir, name=(self._scope+"/hiddenlayer_%d/weights" % i))
+            for i, _ in enumerate(self._hidden_units)] + [
+                checkpoints.load_variable(
+                    model_dir, name=(self._scope+"/logits/weights"))]
+
+  def get_bias(self, model_dir):
+    """Returns the bias of the model.
+
+    Args:
+      model_dir: Directory where model parameters, graph and etc. are saved.
+
+    Returns:
+      The bias weights created by this model.
+    """
+    return [checkpoints.load_variable(
+        model_dir, name=(self._scope+"/hiddenlayer_%d/biases" % i))
+            for i, _ in enumerate(self._hidden_units)] + [
+                checkpoints.load_variable(
+                    model_dir, name=(self._scope+"/logits/biases"))]
 
   def _add_hidden_layer_summary(self, value, tag):
     # TODO(zakaria): Move this code to tf.learn and add test.
@@ -242,28 +317,29 @@ class DNNComposableModel(_ComposableModel):
         partitioned_variables.min_max_variable_partitioner(
             max_partitions=self._num_ps_replicas,
             min_slice_size=64 << 20))
-    with variable_scope.variable_op_scope(
-        features.values(),
-        "input_from_feature_columns",
+    with variable_scope.variable_scope(
+        self._scope + "/input_from_feature_columns",
+        values=features.values(),
         partitioner=input_layer_partitioner) as scope:
       net = layers.input_from_feature_columns(
           features,
           self._get_feature_columns(),
-          weight_collections=[self._weight_collection_name],
+          weight_collections=[self._scope],
           scope=scope)
 
     hidden_layer_partitioner = (
         partitioned_variables.min_max_variable_partitioner(
             max_partitions=self._num_ps_replicas))
     for layer_id, num_hidden_units in enumerate(self._hidden_units):
-      with variable_scope.variable_op_scope(
-          [net], "hiddenlayer_%d" % layer_id,
+      with variable_scope.variable_scope(
+          self._scope + "/hiddenlayer_%d" % layer_id,
+          values=[net],
           partitioner=hidden_layer_partitioner) as scope:
         net = layers.fully_connected(
             net,
             num_hidden_units,
             activation_fn=self._activation_fn,
-            variables_collections=[self._weight_collection_name],
+            variables_collections=[self._scope],
             scope=scope)
         if self._dropout is not None and is_training:
           net = layers.dropout(
@@ -271,16 +347,17 @@ class DNNComposableModel(_ComposableModel):
               keep_prob=(1.0 - self._dropout))
       self._add_hidden_layer_summary(net, scope.name)
 
-    with variable_scope.variable_op_scope(
-        [net], "dnn_logits",
+    with variable_scope.variable_scope(
+        self._scope + "/logits",
+        values=[net],
         partitioner=hidden_layer_partitioner) as scope:
       logits = layers.fully_connected(
           net,
           self._num_label_columns,
           activation_fn=None,
-          variables_collections=[self._weight_collection_name],
+          variables_collections=[self._scope],
           scope=scope)
-    self._add_hidden_layer_summary(logits, "dnn_logits")
+    self._add_hidden_layer_summary(logits, "logits")
     return logits
 
   def _get_default_optimizer(self, optimizer_name=None):

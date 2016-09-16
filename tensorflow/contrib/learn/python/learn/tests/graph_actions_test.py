@@ -166,6 +166,32 @@ class GraphActionsTest(tf.test.TestCase):
           learn.graph_actions.infer(None, {'a': in0, 'b': in1, 'c': out}))
       self._assert_ckpt(self._output_dir, False)
 
+  @tf.test.mock.patch.object(
+      learn.graph_actions.coordinator.Coordinator, 'request_stop',
+      side_effect=learn.graph_actions.coordinator.Coordinator.request_stop,
+      autospec=True)
+  def test_coordinator_request_stop_called(self, request_stop):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      in0, in1, out = self._build_inference_graph()
+      learn.graph_actions.infer(None, {'a': in0, 'b': in1, 'c': out})
+      self.assertTrue(request_stop.called)
+
+  @tf.test.mock.patch.object(
+      learn.graph_actions.coordinator.Coordinator, 'request_stop',
+      side_effect=learn.graph_actions.coordinator.Coordinator.request_stop,
+      autospec=True)
+  def test_run_feeds_iter_cleanup_with_exceptions(self, request_stop):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      in0, in1, out = self._build_inference_graph()
+      try:
+        for _ in learn.graph_actions.run_feeds_iter(
+            {'a': in0, 'b': in1, 'c': out}, [None]*3):
+          self.assertFalse(request_stop.called)
+          raise ValueError('Fake exception')
+      except ValueError:
+        pass
+      self.assertTrue(request_stop.called)
+
   def test_infer_different_default_graph(self):
     with self.test_session():
       self._assert_ckpt(self._output_dir, False)
@@ -181,9 +207,8 @@ class GraphActionsTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       self._assert_ckpt(self._output_dir, False)
       in0, _, _ = self._build_inference_graph()
-      with self.assertRaisesRegexp(
-          tf.errors.InvalidArgumentError, 'both fed and fetched'):
-        learn.graph_actions.infer(None, {'a': in0}, feed_dict={in0: 4.0})
+      with self.assertRaisesRegexp(TypeError, 'Can not convert a NoneType'):
+        learn.graph_actions.infer(None, {'a': in0}, feed_dict={None: 4.0})
       self._assert_ckpt(self._output_dir, False)
 
   def test_infer_feed(self):
@@ -267,6 +292,245 @@ class GraphActionsTest(tf.test.TestCase):
       self._assert_summaries(
           self._output_dir, expected_summaries={0: {'a': 6.0}},
           expected_session_logs=[])
+
+  def test_train_invalid_args(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      train_op = tf.constant(1.0)
+      loss_op = tf.constant(2.0)
+      with self.assertRaisesRegexp(ValueError, 'utput directory'):
+        learn.graph_actions._monitored_train(g,  # pylint: disable=protected-access
+                                             output_dir=None,
+                                             train_op=train_op,
+                                             loss_op=loss_op)
+      with self.assertRaisesRegexp(ValueError, 'utput directory'):
+        learn.graph_actions._monitored_train(  # pylint: disable=protected-access
+            g,
+            output_dir='',
+            train_op=tf.constant(1.0),
+            loss_op=tf.constant(2.0))
+      with self.assertRaisesRegexp(ValueError, 'train_op'):
+        learn.graph_actions._monitored_train(  # pylint: disable=protected-access
+            g,
+            output_dir=self._output_dir,
+            train_op=None,
+            loss_op=loss_op)
+      with self.assertRaisesRegexp(ValueError, 'loss_op'):
+        learn.graph_actions._monitored_train(  # pylint: disable=protected-access
+            g,
+            output_dir=self._output_dir,
+            train_op=tf.constant(1.0),
+            loss_op=None)
+      with self.assertRaisesRegexp(ValueError, 'global_step'):
+        learn.graph_actions._monitored_train(  # pylint: disable=protected-access
+            g,
+            output_dir=self._output_dir,
+            train_op=tf.constant(1.0),
+            loss_op=loss_op)
+
+  # TODO(ptucker): Resume training from previous ckpt.
+  # TODO(ptucker): !supervisor_is_chief
+  # TODO(ptucker): Custom init op for training.
+  # TODO(ptucker): Mock supervisor, and assert all interactions.
+
+  def test_train(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      self._assert_summaries(self._output_dir)
+      self._assert_ckpt(self._output_dir, False)
+      loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
+          g,
+          output_dir=self._output_dir,
+          train_op=train_op,
+          loss_op=tf.constant(2.0),
+          steps=1)
+      self.assertEqual(2.0, loss)
+      self._assert_summaries(self._output_dir, expected_graphs=[g])
+      self._assert_ckpt(self._output_dir, True)
+
+  def test_train_steps_is_incremental(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
+          g,
+          output_dir=self._output_dir,
+          train_op=train_op,
+          loss_op=tf.constant(2.0),
+          steps=10)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(10, step)
+
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
+          g,
+          output_dir=self._output_dir,
+          train_op=train_op,
+          loss_op=tf.constant(2.0),
+          steps=15)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(25, step)
+
+  def test_train_max_steps_is_not_incremental(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
+          g,
+          output_dir=self._output_dir,
+          train_op=train_op,
+          loss_op=tf.constant(2.0),
+          max_steps=10)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(10, step)
+
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
+          g,
+          output_dir=self._output_dir,
+          train_op=train_op,
+          loss_op=tf.constant(2.0),
+          max_steps=15)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(15, step)
+
+  def test_train_skip_train_if_max_step_already_saved(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
+          g,
+          output_dir=self._output_dir,
+          train_op=train_op,
+          loss_op=tf.constant(2.0),
+          max_steps=10)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(10, step)
+
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
+          g,
+          output_dir=self._output_dir,
+          train_op=train_op,
+          loss_op=tf.constant(2.0),
+          max_steps=10)
+      step = checkpoints.load_variable(
+          self._output_dir, tf.contrib.framework.get_global_step().name)
+      self.assertEqual(10, step)
+
+  def test_train_loss(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      tf.contrib.framework.create_global_step()
+      loss_var = tf.contrib.framework.local_variable(10.0)
+      train_op = tf.group(
+          tf.assign_add(tf.contrib.framework.get_global_step(), 1),
+          tf.assign_add(loss_var, -1.0))
+      self._assert_summaries(self._output_dir)
+      self._assert_ckpt(self._output_dir, False)
+      loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
+          g,
+          output_dir=self._output_dir,
+          train_op=train_op,
+          loss_op=loss_var.value(),
+          steps=6)
+      self.assertEqual(4.0, loss)
+      self._assert_summaries(self._output_dir, expected_graphs=[g])
+      self._assert_ckpt(self._output_dir, True)
+
+  def test_train_summaries(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with tf.control_dependencies(self._build_inference_graph()):
+        train_op = tf.assign_add(tf.contrib.framework.get_global_step(), 1)
+      loss_op = tf.constant(2.0)
+      tf.scalar_summary('loss', loss_op)
+      self._assert_summaries(self._output_dir)
+      self._assert_ckpt(self._output_dir, False)
+      loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
+          g,
+          output_dir=self._output_dir,
+          train_op=train_op,
+          loss_op=loss_op,
+          steps=1)
+      self.assertEqual(2.0, loss)
+      self._assert_summaries(self._output_dir,
+                             expected_graphs=[g],
+                             expected_summaries={1: {'loss': 2.0}})
+      self._assert_ckpt(self._output_dir, True)
+
+
+# TODO(ispir): remove following tests after deprecated train.
+class GraphActionsTrainTest(tf.test.TestCase):
+  """Tests for train."""
+
+  def setUp(self):
+    learn.graph_actions.clear_summary_writers()
+    self._output_dir = tempfile.mkdtemp()
+    testing.FakeSummaryWriter.install()
+
+  def tearDown(self):
+    testing.FakeSummaryWriter.uninstall()
+    if self._output_dir:
+      shutil.rmtree(self._output_dir)
+    learn.graph_actions.clear_summary_writers()
+
+  def _assert_summaries(self,
+                        output_dir,
+                        expected_summaries=None,
+                        expected_graphs=None,
+                        expected_session_logs=None):
+    writer = learn.graph_actions.get_summary_writer(output_dir)
+    self.assertTrue(isinstance(writer, testing.FakeSummaryWriter))
+    writer.assert_summaries(self,
+                            expected_logdir=output_dir,
+                            expected_graph=tf.get_default_graph(),
+                            expected_summaries=expected_summaries,
+                            expected_added_graphs=expected_graphs,
+                            expected_session_logs=expected_session_logs)
+
+  # TODO(ptucker): Test number and contents of checkpoint files.
+  def _assert_ckpt(self, output_dir, expected=True):
+    ckpt_state = tf.train.get_checkpoint_state(output_dir)
+    if expected:
+      pattern = '%s/model.ckpt-.*' % output_dir
+      primary_ckpt_path = ckpt_state.model_checkpoint_path
+      self.assertRegexpMatches(primary_ckpt_path, pattern)
+      all_ckpt_paths = ckpt_state.all_model_checkpoint_paths
+      self.assertTrue(primary_ckpt_path in all_ckpt_paths)
+      for ckpt_path in all_ckpt_paths:
+        self.assertRegexpMatches(ckpt_path, pattern)
+    else:
+      self.assertTrue(ckpt_state is None)
+
+  def _build_inference_graph(self):
+    """Build simple inference graph.
+
+    This includes a regular variable, local variable, and fake table.
+
+    Returns:
+      Tuple of 3 `Tensor` objects, 2 input and 1 output.
+    """
+    tf.contrib.framework.create_global_step()
+    in0 = tf.Variable(1.0)
+    in1 = tf.contrib.framework.local_variable(2.0)
+    fake_table = tf.Variable(3.0,
+                             trainable=False,
+                             collections=['fake_tables'],
+                             name='fake_table_var')
+    in0.graph.add_to_collections([tf.GraphKeys.TABLE_INITIALIZERS],
+                                 fake_table.initializer)
+    out = in0 + in1 + fake_table
+    return in0, in1, out
 
   def test_train_invalid_args(self):
     with tf.Graph().as_default() as g, self.test_session(g):
@@ -435,6 +699,7 @@ class GraphActionsTest(tf.test.TestCase):
       self.assertTrue(not chief_exclusive_monitor.has_step and
                       all_workers_monitor.has_step,
                       'Only non-chief runnable monitor must have a step.')
+
 
 if __name__ == '__main__':
   tf.test.main()

@@ -139,7 +139,7 @@ to compile your Op into a dynamic library.
 ```bash
 TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
 
-g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I $TF_INC
+g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I $TF_INC -O2
 ```
 
 On Mac OS X, the additional flag "-undefined dynamic_lookup" is required when
@@ -1011,13 +1011,13 @@ function which computes gradients with respect to the ops' inputs given
 gradients with respect to the ops' outputs.
 
 Mathematically, if an op computes \\(y = f(x)\\) the registered gradient op
-converts gradients \\(\partial / \partial y\\) with respect to \\(y\\) into
-gradients \\(\partial / \partial x\\) with respect to \\(x\\) via the chain
-rule:
+converts gradients \\(\partial L/ \partial y\\) of loss \\(L\\) with respect to
+\\(y\\) into gradients \\(\partial L/ \partial x\\) with respect to \\(x\\) via
+the chain rule:
 
-$$\frac{\partial}{\partial x}
-    = \frac{\partial}{\partial y} \frac{\partial y}{\partial x}
-    = \frac{\partial}{\partial y} \frac{\partial f}{\partial x}.$$
+$$\frac{\partial L}{\partial x}
+    = \frac{\partial L}{\partial y} \frac{\partial y}{\partial x}
+    = \frac{\partial L}{\partial y} \frac{\partial f}{\partial x}.$$
 
 In the case of `ZeroOut`, only one entry in the input affects the output, so the
 gradient with respect to the input is a sparse "one hot" tensor.  This is
@@ -1071,7 +1071,7 @@ Details about registering gradient functions with
   integer index `i`, the gradient function would `return [x_grad, None]`.
 
 * If there is no meaningful gradient for the op at all, use
-  `ops.NoGradient("OpName")` to disable automatic differentiation.
+  `ops.NotDifferentiable("OpName")` to disable automatic differentiation.
 
 Note that at the time the gradient function is called, only the data flow graph
 of ops is available, not the tensor data itself.  Thus, all computation must be

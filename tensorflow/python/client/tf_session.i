@@ -35,6 +35,12 @@ tensorflow::ImportNumpy();
 %constant int GRAPH_DEF_VERSION_MIN_CONSUMER = TF_GRAPH_DEF_VERSION_MIN_CONSUMER;
 %constant int GRAPH_DEF_VERSION_MIN_PRODUCER = TF_GRAPH_DEF_VERSION_MIN_PRODUCER;
 
+// Git version information
+%constant const char* __git_version__ = tf_git_version();
+
+// Compiler
+%constant const char* __compiler_version__ = tf_compiler_version();
+
 // Release the Python GIL for the duration of most methods.
 %exception {
   Py_BEGIN_ALLOW_THREADS;
@@ -213,7 +219,7 @@ tensorflow::ImportNumpy();
       reinterpret_cast<const char*>($1.data), $1.length);
 }
 
-// Include the functions from tensor_c_api.h, except TF_Run.
+// Include the functions from c_api.h, except TF_Run.
 %ignoreall
 %unignore TF_Code;
 %unignore TF_Status;
@@ -238,7 +244,7 @@ tensorflow::ImportNumpy();
 %unignore TF_NewLibrary;
 %unignore TF_LoadLibrary;
 %unignore TF_GetOpList;
-%include "tensorflow/core/public/tensor_c_api.h"
+%include "tensorflow/c/c_api.h"
 %ignoreall
 
 %insert("python") %{

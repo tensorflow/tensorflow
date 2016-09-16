@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/data_flow_ops.cc.
 
 #include <limits.h>
+#include <atomic>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
@@ -43,8 +44,10 @@ typedef Eigen::GpuDevice GPUDevice;
 
 class Stack : public ResourceBase {
  public:
+  static std::atomic<int64> stack_counter;
+
   struct TensorAndAllocation {
-    PersistentTensor tensor;
+    Tensor tensor;
     AllocatorAttributes alloc_attrs;
     bool swapped_to_cpu;
   };
@@ -72,6 +75,17 @@ class Stack : public ResourceBase {
     return Status::OK();
   }
 
+  // We don't swap the first tensor on the stack and any subsequent tensors
+  // that share the buffer with the first tensor.
+  bool IsUsefulToSwap(const Tensor& tensor) const {
+    mutex_lock l(mu_);
+    if (stack_.empty()) {
+      return false;
+    }
+    const Tensor& first = stack_.front().tensor;
+    return !tensor.SharesBufferWith(first);
+  }
+
   void Close() {
     mutex_lock l(mu_);
     stack_.clear();
@@ -91,7 +105,7 @@ class Stack : public ResourceBase {
   mutex* mu() { return &mu_; }
   Tensor* handle() { return &handle_; }
 
-  mutex mu_;
+  mutable mutex mu_;
   DataType elem_type_;
   Tensor handle_;
   bool closed_ GUARDED_BY(mu_);
@@ -124,6 +138,8 @@ Status GetStack(OpKernelContext* ctx, Stack** stack) {
   return Status::OK();
 }
 
+std::atomic<int64> Stack::stack_counter{0};
+
 // A per-run local stack. The stack uses a "per-step" resource manager which
 // ensures that correct garbage collection on error or successful completion.
 class StackOp : public OpKernel {
@@ -142,15 +158,16 @@ class StackOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(tensorflow::DT_STRING,
                                            tensorflow::TensorShape({2}),
                                            &stack_handle, alloc_attr));
+    auto stack_id = Stack::stack_counter.fetch_add(1);
     auto handle = stack_handle.flat<string>();
     handle(0) = "_stacks";
-    handle(1) = stack_name_;
+    handle(1) = strings::StrCat(stack_name_, "_", stack_id);
     // Store the handle in a container of the per-step RM.
     ResourceMgr* rm = ctx->step_resource_manager();
     OP_REQUIRES(ctx, rm != nullptr,
                 errors::Internal("No per-step resource manager."));
     Stack* stack = new Stack(elem_type_, stack_handle);
-    OP_REQUIRES_OK(ctx, rm->Create(handle(0), stack_name_, stack));
+    OP_REQUIRES_OK(ctx, rm->Create(handle(0), handle(1), stack));
     ctx->set_output_ref(0, stack->mu(), stack->handle());
   }
 
@@ -175,11 +192,21 @@ class StackPushOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     // Get the stack from the handle.
     Stack* stack = nullptr;
-    OP_REQUIRES_OK(ctx, GetStack(ctx, &stack));
+    Status s = GetStack(ctx, &stack);
+    if (!s.ok()) {
+      ctx->CtxFailureWithWarning(s);
+      done();
+      return;
+    }
     core::ScopedUnref unref(stack);
-    OP_REQUIRES(ctx, ctx->input_dtype(1) == stack->ElemType(),
-                errors::InvalidArgument("Must have type ", stack->ElemType(),
-                                        " but got ", ctx->input_dtype(1)));
+
+    if (ctx->input_dtype(1) != stack->ElemType()) {
+      ctx->CtxFailureWithWarning(
+          errors::InvalidArgument("Must have type ", stack->ElemType(),
+                                  " but got ", ctx->input_dtype(1)));
+      done();
+      return;
+    }
 
     // Push the tensor onto the stack. Swap the tensor to CPU if instructed.
     const Tensor& tensor = ctx->input(1);
@@ -191,7 +218,7 @@ class StackPushOp : public AsyncOpKernel {
     static constexpr double kOccupancy = 0.7;
     if (swap_memory_ && !alloc_attrs.on_host() &&
         std::is_same<Device, GPUDevice>::value &&
-        tensor.TotalBytes() > kCopyThreshold) {
+        tensor.TotalBytes() > kCopyThreshold && stack->IsUsefulToSwap(tensor)) {
       DeviceContext* device_ctxt = ctx->op_device_context();
       auto device = static_cast<tensorflow::Device*>(ctx->device());
       Allocator* allocator = device->GetAllocator(alloc_attrs);
@@ -212,8 +239,7 @@ class StackPushOp : public AsyncOpKernel {
               ctx->SetStatus(s);
               if (s.ok()) {
                 AllocatorAttributes alloc_attrs = ctx->input_alloc_attr(1);
-                ctx->SetStatus(stack->Push(
-                    {PersistentTensor(*cpu_tensor), alloc_attrs, true}));
+                ctx->SetStatus(stack->Push({*cpu_tensor, alloc_attrs, true}));
               }
               if (ctx->status().ok()) {
                 ctx->set_output(0, *cpu_tensor);
@@ -226,8 +252,7 @@ class StackPushOp : public AsyncOpKernel {
     }
 
     // Execute synchronously if not swapped.
-    OP_REQUIRES_OK(ctx,
-                   stack->Push({PersistentTensor(tensor), alloc_attrs, false}));
+    OP_REQUIRES_OK(ctx, stack->Push({tensor, alloc_attrs, false}));
     ctx->set_output(0, tensor);
     done();
   }
@@ -275,18 +300,28 @@ class StackPopOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     // Get the stack from the handle.
     Stack* stack = nullptr;
-    OP_REQUIRES_OK(ctx, GetStack(ctx, &stack));
+    Status s = GetStack(ctx, &stack);
+    if (!s.ok()) {
+      ctx->CtxFailureWithWarning(s);
+      done();
+      return;
+    }
     core::ScopedUnref unref(stack);
 
     // Pop the tensor. Transfer the tensor back to device if it was
     // swapped out to CPU.
     Stack::TensorAndAllocation value;
-    OP_REQUIRES_OK(ctx, stack->Pop(&value));
+    s = stack->Pop(&value);
+    if (!s.ok()) {
+      ctx->CtxFailureWithWarning(s);
+      done();
+      return;
+    }
     if (value.swapped_to_cpu) {
       // Asynchronously copy the tensor back from CPU to GPU memory.
       DeviceContext* device_ctxt = ctx->op_device_context();
       Device* device = static_cast<Device*>(ctx->device());
-      Tensor* cpu_tensor = value.tensor.AccessTensor(ctx);
+      Tensor* cpu_tensor = &value.tensor;
       Allocator* gpu_allocator = device->GetAllocator(value.alloc_attrs);
       Tensor* device_tensor =
           new Tensor(gpu_allocator, cpu_tensor->dtype(), cpu_tensor->shape());
@@ -302,7 +337,7 @@ class StackPopOp : public AsyncOpKernel {
           });
     } else {
       // Execute synchronously if not swapped.
-      ctx->set_output(0, *value.tensor.AccessTensor(ctx));
+      ctx->set_output(0, value.tensor);
       done();
     }
   }

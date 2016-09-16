@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_writer.h"
 
+#include <utility>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -81,7 +83,7 @@ Status CreateTableTensorSliceBuilder(const string& name,
 TensorSliceWriter::TensorSliceWriter(const string& filename,
                                      CreateBuilderFunction create_builder)
     : filename_(filename),
-      create_builder_(create_builder),
+      create_builder_(std::move(create_builder)),
       tmpname_(strings::StrCat(filename, ".tempstate", random::New64())),
       slices_(0) {
   VersionDef* versions = sts_.mutable_meta()->mutable_versions();
@@ -173,11 +175,11 @@ size_t TensorSliceWriter::MaxBytesPerElement(DataType dt) {
 }
 
 template <>
-Status TensorSliceWriter::SaveData(const string* data, int num_elements,
+Status TensorSliceWriter::SaveData(const string* data, int64 num_elements,
                                    SavedSlice* ss) {
   size_t size_bound = ss->ByteSize() + kTensorProtoHeaderBytes +
                       (num_elements * MaxBytesPerElement(DT_INT32));
-  for (int i = 0; i < num_elements; ++i) {
+  for (int64 i = 0; i < num_elements; ++i) {
     size_bound += data[i].size();
   }
   if (size_bound > kMaxMessageBytes) {

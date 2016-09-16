@@ -69,9 +69,11 @@ class Rendezvous : public core::RefCounted {
 
    private:
     friend class Rendezvous;
+    friend class SendOp;
+    friend class RecvOp;
     string buf_;
   };
-  static Status ParseKey(const string& key, ParsedKey* out);
+  static Status ParseKey(StringPiece key, ParsedKey* out);
 
   // The caller is a tensor producer and it sends a message (a tensor
   // "val" and a bool "is_dead") under the given "key".

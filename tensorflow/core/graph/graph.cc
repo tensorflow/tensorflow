@@ -29,9 +29,6 @@ namespace tensorflow {
 // Node
 
 string Node::DebugString() const {
-  if (this == nullptr) {
-    return "{nullptr}";
-  }
   string ret = strings::StrCat("{name:'", name(), "' id:", id_);
   if (IsSource()) {
     strings::StrAppend(&ret, " source}");
@@ -49,8 +46,6 @@ Node::Node()
     : id_(-1),
       cost_id_(-1),
       class_(NC_UNINITIALIZED),
-      is_host_send_(false),
-      is_host_recv_(false),
       props_(nullptr),
       assigned_device_name_() {}
 
@@ -92,8 +87,10 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
   SET_CLASS(NC_NEXT_ITERATION, ts, "NextIteration", "RefNextIteration");
   SET_CLASS(NC_LOOP_COND, ts, "LoopCond", "");
   SET_CLASS(NC_CONTROL_TRIGGER, ts, "ControlTrigger", "");
-  SET_CLASS(NC_SEND, ts, "_Send", "_HostSend");
-  SET_CLASS(NC_RECV, ts, "_Recv", "_HostRecv");
+  SET_CLASS(NC_SEND, ts, "_Send", "");
+  SET_CLASS(NC_HOST_SEND, ts, "_HostSend", "");
+  SET_CLASS(NC_RECV, ts, "_Recv", "");
+  SET_CLASS(NC_HOST_RECV, ts, "_HostRecv", "");
   SET_CLASS(NC_CONSTANT, ts, "Const", "HostConst");
   SET_CLASS(NC_VARIABLE, ts, "Variable", "");
   SET_CLASS(NC_IDENTITY, ts, "Identity", "RefIdentity");
@@ -104,12 +101,6 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
     class_ = NC_OTHER;  // Catch all
   }
 #undef SET_CLASS
-
-  if (ts == "_HostSend") {
-    is_host_send_ = true;
-  } else if (ts == "_HostRecv") {
-    is_host_recv_ = true;
-  }
 }
 
 void Node::Clear() {
@@ -151,6 +142,43 @@ void Node::MaybeCopyOnWrite() {
 void Node::ClearAttr(const string& name) {
   MaybeCopyOnWrite();
   (*props_->node_def_.mutable_attr()).erase(name);
+}
+
+Status Node::input_edge(int idx, const Edge** e) const {
+  if (idx < 0 || idx >= num_inputs()) {
+    return errors::InvalidArgument("Invalid input_edge index: ", idx, ", Node ",
+                                   name(), " only has ", num_inputs(),
+                                   " inputs.");
+  }
+
+  // This does a linear search over the edges.  In the common case,
+  // the number of elements is small enough that this search isn't
+  // expensive.  Should it become a bottleneck, one can make an
+  // optimization where, if the number of edges is small, we use
+  // linear iteration, and if the number of edges is large, we perform
+  // an indexing step during construction that keeps an array of Edges
+  // indexed by pointer.  This would keep the size of each Node small
+  // in the common case but make this function faster when the number
+  // of edges is large.
+  for (const Edge* edge : in_edges()) {
+    if (edge->dst_input() == idx) {
+      *e = edge;
+      return Status::OK();
+    }
+  }
+
+  return errors::NotFound("Could not find input edge ", idx, " for ", name());
+}
+
+Status Node::input_node(int idx, const Node** n) const {
+  const Edge* e;
+  TF_RETURN_IF_ERROR(input_edge(idx, &e));
+  if (e == nullptr) {
+    *n = nullptr;
+  } else {
+    *n = e->src();
+  }
+  return Status::OK();
 }
 
 // Node::Properties
@@ -312,12 +340,17 @@ void AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
 }  // namespace
 
 void Graph::ToGraphDef(GraphDef* graph_def) const {
+  ToGraphDefSubRange(graph_def, 0);
+}
+
+void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
   graph_def->Clear();
   graph_def->mutable_versions()->CopyFrom(versions());
   std::vector<const Edge*>
       inputs;  // Construct this outside the loop for speed.
-  for (const Node* node : nodes()) {
-    if (!node->IsOp()) continue;
+  for (auto id = from_node_id; id < num_node_ids(); ++id) {
+    const Node* node = FindNodeId(id);
+    if (node == nullptr || !node->IsOp()) continue;
     NodeDef* node_def = graph_def->add_node();
     *node_def = node->def();
 

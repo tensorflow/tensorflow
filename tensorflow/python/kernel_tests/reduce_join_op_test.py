@@ -91,13 +91,14 @@ class ReduceJoinTestHelperTest(UnicodeTestCase):
 
 class ReduceJoinTest(UnicodeTestCase):
 
-  def _testReduceJoin(self, input_array, truth, reduction_indices,
-                      keep_dims=False, separator=""):
+  def _testReduceJoin(self, input_array, truth, truth_shape,
+                      reduction_indices, keep_dims=False, separator=""):
     """Compares the output of reduce_join to an expected result.
 
     Args:
       input_array: The string input to be joined.
       truth: An array or np.array of the expected result.
+      truth_shape: An array or np.array of the expected shape.
       reduction_indices: The indices to reduce over.
       keep_dims: Whether or not to retain reduced dimensions.
       separator: The separator to use for joining.
@@ -110,6 +111,7 @@ class ReduceJoinTest(UnicodeTestCase):
       output_array = output.eval()
 
     self.assertAllEqualUnicode(truth, output_array)
+    self.assertAllEqual(truth_shape, output.get_shape())
 
   def _testMultipleReduceJoin(self, input_array, reduction_indices,
                               separator=" "):
@@ -146,64 +148,83 @@ class ReduceJoinTest(UnicodeTestCase):
       truth_squeezed_array = truth_squeezed.eval()
     self.assertAllEqualUnicode(truth_array, output_keep_dims_array)
     self.assertAllEqualUnicode(truth_squeezed_array, output_array)
+    self.assertAllEqual(truth.get_shape(), output_keep_dims.get_shape())
+    self.assertAllEqual(truth_squeezed.get_shape(), output.get_shape())
 
   def testRankOne(self):
     input_array = ["this", "is", "a", "test"]
     truth = "thisisatest"
-    self._testReduceJoin(input_array, truth, reduction_indices=0)
+    truth_shape = []
+    self._testReduceJoin(input_array, truth, truth_shape, reduction_indices=0)
 
   def testRankTwo(self):
     input_array = [["this", "is", "a", "test"],
                    ["please", "do", "not", "panic"]]
     truth_dim_zero = ["thisplease", "isdo", "anot", "testpanic"]
+    truth_shape_dim_zero = [4]
     truth_dim_one = ["thisisatest", "pleasedonotpanic"]
-    self._testReduceJoin(input_array, truth_dim_zero, reduction_indices=0)
-    self._testReduceJoin(input_array, truth_dim_one, reduction_indices=1)
+    truth_shape_dim_one = [2]
+    self._testReduceJoin(input_array, truth_dim_zero, truth_shape_dim_zero,
+                         reduction_indices=0)
+    self._testReduceJoin(input_array, truth_dim_one, truth_shape_dim_one,
+                         reduction_indices=1)
 
   def testRankFive(self):
     input_array = _input_array(num_dims=5)
     truths = [_joined_array(num_dims=5, reduce_dim=i) for i in xrange(5)]
+    truth_shape = [2] * 4
     for i in xrange(5):
-      self._testReduceJoin(input_array, truths[i], reduction_indices=i)
+      self._testReduceJoin(input_array, truths[i], truth_shape,
+                           reduction_indices=i)
 
   def testNegative(self):
     input_array = _input_array(num_dims=5)
     truths = [_joined_array(num_dims=5, reduce_dim=i) for i in xrange(5)]
+    truth_shape = [2] * 4
     for i in xrange(5):
-      self._testReduceJoin(input_array, truths[i], reduction_indices=i - 5)
+      self._testReduceJoin(input_array, truths[i], truth_shape,
+                           reduction_indices=i - 5)
 
   def testSingletonDimension(self):
     input_arrays = [_input_array(num_dims=5)
                     .reshape([2] * i + [1] + [2] * (5 - i))
                     for i in xrange(6)]
     truth = _input_array(num_dims=5)
+    truth_shape = [2] * 5
     for i in xrange(6):
-      self._testReduceJoin(input_arrays[i], truth, reduction_indices=i)
+      self._testReduceJoin(input_arrays[i], truth, truth_shape,
+                           reduction_indices=i)
 
   def testSeparator(self):
     input_array = [["this", "is", "a", "test"],
                    ["please", "do", "not", "panic"]]
     truth_dim_zero = ["this  please", "is  do", "a  not", "test  panic"]
+    truth_shape_dim_zero = [4]
     truth_dim_one = ["this  is  a  test", "please  do  not  panic"]
-    self._testReduceJoin(input_array, truth_dim_zero, reduction_indices=0,
-                         separator="  ")
-    self._testReduceJoin(input_array, truth_dim_one, reduction_indices=1,
-                         separator="  ")
+    truth_shape_dim_one = [2]
+
+    self._testReduceJoin(input_array, truth_dim_zero, truth_shape_dim_zero,
+                         reduction_indices=0, separator="  ")
+    self._testReduceJoin(input_array, truth_dim_one, truth_shape_dim_one,
+                         reduction_indices=1, separator="  ")
 
   def testUnknownShape(self):
     input_array = [["a"], ["b"]]
     truth = ["ab"]
+    truth_shape = None
     with self.test_session():
       placeholder = tf.placeholder(tf.string, name="placeholder")
       reduced = tf.reduce_join(placeholder, reduction_indices=0)
       output_array = reduced.eval(feed_dict={placeholder.name: input_array})
       self.assertAllEqualUnicode(truth, output_array)
+      self.assertAllEqual(truth_shape, reduced.get_shape())
 
   def testUnknownIndices(self):
     input_array = [["this", "is", "a", "test"],
                    ["please", "do", "not", "panic"]]
     truth_dim_zero = ["thisplease", "isdo", "anot", "testpanic"]
     truth_dim_one = ["thisisatest", "pleasedonotpanic"]
+    truth_shape = None
     with self.test_session():
       placeholder = tf.placeholder(tf.int32, name="placeholder")
       reduced = tf.reduce_join(input_array, reduction_indices=placeholder)
@@ -211,16 +232,20 @@ class ReduceJoinTest(UnicodeTestCase):
       output_array_dim_one = reduced.eval(feed_dict={placeholder.name: [1]})
       self.assertAllEqualUnicode(truth_dim_zero, output_array_dim_zero)
       self.assertAllEqualUnicode(truth_dim_one, output_array_dim_one)
+      self.assertAllEqual(truth_shape, reduced.get_shape())
 
   def testKeepDims(self):
     input_array = [["this", "is", "a", "test"],
                    ["please", "do", "not", "panic"]]
     truth_dim_zero = [["thisplease", "isdo", "anot", "testpanic"]]
+    truth_shape_dim_zero = [1, 4]
     truth_dim_one = [["thisisatest"], ["pleasedonotpanic"]]
-    self._testReduceJoin(input_array, truth_dim_zero, reduction_indices=0,
-                         keep_dims=True)
-    self._testReduceJoin(input_array, truth_dim_one, reduction_indices=1,
-                         keep_dims=True)
+    truth_shape_dim_one = [2, 1]
+
+    self._testReduceJoin(input_array, truth_dim_zero, truth_shape_dim_zero,
+                         reduction_indices=0, keep_dims=True)
+    self._testReduceJoin(input_array, truth_dim_one, truth_shape_dim_one,
+                         reduction_indices=1, keep_dims=True)
 
   def testMultiIndex(self):
     num_dims = 3
@@ -233,7 +258,7 @@ class ReduceJoinTest(UnicodeTestCase):
 
   def testInvalidReductionIndices(self):
     with self.test_session():
-      with self.assertRaisesRegexp(ValueError, "scalar"):
+      with self.assertRaisesRegexp(ValueError, "Invalid reduction dim"):
         tf.reduce_join(inputs="", reduction_indices=0)
       with self.assertRaisesRegexp(ValueError,
                                    "Invalid reduction dimension -3"):

@@ -251,7 +251,7 @@ class TemplateTest(tf.test.TestCase):
   def test_scope_access(self):
     # Ensure that we can access the scope inside the template, because the name
     # of that scope may be different from the name we pass to make_template, due
-    # to having been made unique by variable_op_scope.
+    # to having been made unique by variable_scope.
     with tf.variable_scope("foo"):
       # Create two templates with the same name, ensure scopes are made unique.
       ta = template.make_template("bar", var_scoped_function, True)

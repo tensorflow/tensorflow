@@ -56,6 +56,12 @@ class InitializableLookupTable : public LookupInterface {
         "implementations");
   }
 
+  Status ImportValues(const Tensor& keys, const Tensor& values) final {
+    return errors::Unimplemented(
+        "ImportValues not supported by InitializableLookupTable "
+        "implementations");
+  }
+
   TensorShape value_shape() const final { return TensorShape(); }
 
   // Returns whether the table was initialized and is ready to serve lookups.

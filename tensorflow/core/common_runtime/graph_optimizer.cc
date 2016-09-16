@@ -31,8 +31,8 @@ GraphOptimizer::GraphOptimizer(const OptimizerOptions& opts) : opts_(opts) {
 
 GraphOptimizer::~GraphOptimizer() {}
 
-void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Device* device,
-                              Graph** graph) {
+void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
+                              Device* device, Graph** graph) {
   Graph* g = *graph;
   for (const Node* n : g->nodes()) {
     if (n->IsControlFlow()) {
@@ -60,7 +60,7 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Device* device,
 
     if (opts_.do_constant_folding()) {
       ConstantFoldingOptions cf_opts;
-      if (DoConstantFolding(cf_opts, device, g)) {
+      if (DoConstantFolding(cf_opts, runtime, env, device, g)) {
         RemoveDeadNodes(g);
         DumpGraph("ConstFolding", g);
         changed = true;

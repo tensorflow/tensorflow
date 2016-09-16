@@ -13,15 +13,69 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
+
+namespace {
+
+Status ScalarInputsAndOutputs(InferenceContext* c) {
+  ShapeHandle unused;
+  for (int i = 0; i < c->num_inputs(); ++i) {
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &unused));
+  }
+  for (int i = 0; i < c->num_outputs(); ++i) {
+    c->set_output(i, c->Scalar());
+  }
+  return Status::OK();
+}
+
+Status TwoElementVectorAndScalarOutputs(InferenceContext* c) {
+  ShapeHandle handle;
+  DimensionHandle unused_handle;
+  for (int i = 0; i < c->num_inputs(); ++i) {
+    TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &handle));
+    TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_handle));
+  }
+  for (int i = 0; i < c->num_outputs(); ++i) {
+    c->set_output(i, c->Scalar());
+  }
+  return Status::OK();
+}
+
+Status TwoElementOutput(InferenceContext* c) {
+  c->set_output(0, c->Vector(2));
+  return Status::OK();
+}
+
+}  // namespace
 
 REGISTER_OP("Save")
     .Input("filename: string")
     .Input("tensor_names: string")
     .Input("data: T")
     .Attr("T: list(type)")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      ShapeHandle s;
+      DimensionHandle unused_dim;
+
+      // Validate filename.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+
+      // Validate tensor_names.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &s));
+      TF_RETURN_IF_ERROR(
+          c->WithValue(c->Dim(s, 0), c->num_inputs() - 2, &unused_dim));
+
+      return Status::OK();
+    })
     .Doc(R"doc(
 Saves the input tensors to disk.
 
@@ -42,6 +96,24 @@ REGISTER_OP("SaveSlices")
     .Input("shapes_and_slices: string")
     .Input("data: T")
     .Attr("T: list(type)")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      ShapeHandle s;
+      DimensionHandle unused_dim;
+
+      // Validate filename.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+
+      // Validate tensor_names and unused_shapes_and_slices.
+      for (int i = 1; i <= 2; ++i) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &s));
+        TF_RETURN_IF_ERROR(
+            c->WithValue(c->Dim(s, 0), c->num_inputs() - 3, &unused_dim));
+      }
+      // TODO(mrry): Attempt to parse the shapes_and_slices values and use
+      // them to constrain the shape of the remaining inputs.
+      return Status::OK();
+    })
     .Doc(R"doc(
 Saves input tensors slices to disk.
 
@@ -81,6 +153,13 @@ REGISTER_OP("Restore")
     .Output("tensor: dt")
     .Attr("dt: type")
     .Attr("preferred_shard: int = -1")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      c->set_output(0, c->UnknownShape());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Restores a tensor from checkpoint files.
 
@@ -118,6 +197,16 @@ REGISTER_OP("RestoreSlice")
     .Output("tensor: dt")
     .Attr("dt: type")
     .Attr("preferred_shard: int = -1")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      // TODO(mrry): Attempt to parse the shapes_and_slices values and use
+      // them to constrain the shape of the remaining inputs.
+      c->set_output(0, c->UnknownShape());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Restores a tensor from checkpoint files.
 
@@ -145,6 +234,7 @@ REGISTER_OP("ShardedFilename")
     .Input("shard: int32")
     .Input("num_shards: int32")
     .Output("filename: string")
+    .SetShapeFn(ScalarInputsAndOutputs)
     .Doc(R"doc(
 Generate a sharded filename. The filename is printf formatted as
    %s-%05d-of-%05d, basename, shard, num_shards.
@@ -154,6 +244,7 @@ REGISTER_OP("ShardedFilespec")
     .Input("basename: string")
     .Input("num_shards: int32")
     .Output("filename: string")
+    .SetShapeFn(ScalarInputsAndOutputs)
     .Doc(R"doc(
 Generate a glob pattern matching all sharded file names.
 )doc");
@@ -165,6 +256,7 @@ REGISTER_OP("WholeFileReader")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
     .Doc(R"doc(
 A Reader that outputs the entire contents of a file as a value.
 
@@ -184,6 +276,7 @@ REGISTER_OP("TextLineReader")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
     .Doc(R"doc(
 A Reader that outputs the lines of a file delimited by '\n'.
 
@@ -203,6 +296,7 @@ REGISTER_OP("FixedLengthRecordReader")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
     .Doc(R"doc(
 A Reader that outputs fixed-length records from a file.
 
@@ -219,6 +313,7 @@ REGISTER_OP("TFRecordReader")
     .Attr("shared_name: string = ''")
     .Attr("compression_type: string = ''")
     .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
     .Doc(R"doc(
 A Reader that outputs the records from a TensorFlow Records file.
 
@@ -234,6 +329,7 @@ REGISTER_OP("IdentityReader")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
     .Doc(R"doc(
 A Reader that outputs the queued work as both the key and value.
 
@@ -254,6 +350,7 @@ REGISTER_OP("ReaderRead")
     .Input("queue_handle: Ref(string)")
     .Output("key: string")
     .Output("value: string")
+    .SetShapeFn(TwoElementVectorAndScalarOutputs)
     .Doc(R"doc(
 Returns the next record (key, value pair) produced by a Reader.
 
@@ -273,6 +370,16 @@ REGISTER_OP("ReaderReadUpTo")
     .Input("num_records: int64")
     .Output("keys: string")
     .Output("values: string")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      ShapeHandle out = c->Vector(InferenceContext::kUnknownDim);
+      c->set_output(0, out);
+      c->set_output(1, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Returns up to `num_records` (key, value) pairs produced by a Reader.
 
@@ -291,6 +398,7 @@ values: A 1-D tensor.
 REGISTER_OP("ReaderNumRecordsProduced")
     .Input("reader_handle: Ref(string)")
     .Output("records_produced: int64")
+    .SetShapeFn(TwoElementVectorAndScalarOutputs)
     .Doc(R"doc(
 Returns the number of records this Reader has produced.
 
@@ -303,6 +411,7 @@ reader_handle: Handle to a Reader.
 REGISTER_OP("ReaderNumWorkUnitsCompleted")
     .Input("reader_handle: Ref(string)")
     .Output("units_completed: int64")
+    .SetShapeFn(TwoElementVectorAndScalarOutputs)
     .Doc(R"doc(
 Returns the number of work units this Reader has finished processing.
 
@@ -312,6 +421,7 @@ reader_handle: Handle to a Reader.
 REGISTER_OP("ReaderSerializeState")
     .Input("reader_handle: Ref(string)")
     .Output("state: string")
+    .SetShapeFn(TwoElementVectorAndScalarOutputs)
     .Doc(R"doc(
 Produce a string tensor that encodes the state of a Reader.
 
@@ -324,6 +434,16 @@ reader_handle: Handle to a Reader.
 REGISTER_OP("ReaderRestoreState")
     .Input("reader_handle: Ref(string)")
     .Input("state: string")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      DimensionHandle unused_handle;
+      TF_RETURN_IF_ERROR(
+          c->WithValue(c->Dim(c->input(0), 0), 2, &unused_handle));
+
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Restore a reader to a previously saved state.
 
@@ -337,6 +457,7 @@ state: Result of a ReaderSerializeState of a Reader with type
 
 REGISTER_OP("ReaderReset")
     .Input("reader_handle: Ref(string)")
+    .SetShapeFn(TwoElementVectorAndScalarOutputs)
     .Doc(R"doc(
 Restore a Reader to its initial clean state.
 
@@ -348,6 +469,7 @@ reader_handle: Handle to a Reader.
 REGISTER_OP("ReadFile")
     .Input("filename: string")
     .Output("contents: string")
+    .SetShapeFn(ScalarInputsAndOutputs)
     .Doc(R"doc(
 Reads and outputs the entire contents of the input filename.
 )doc");
@@ -355,6 +477,12 @@ Reads and outputs the entire contents of the input filename.
 REGISTER_OP("MatchingFiles")
     .Input("pattern: string")
     .Output("filenames: string")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Returns the set of files matching a pattern.
 

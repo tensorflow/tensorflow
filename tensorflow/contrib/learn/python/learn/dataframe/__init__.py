@@ -20,18 +20,26 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.learn.python.learn.dataframe.dataframe import DataFrame
+from tensorflow.contrib.learn.python.learn.dataframe.series import PredefinedSeries
 from tensorflow.contrib.learn.python.learn.dataframe.series import Series
 from tensorflow.contrib.learn.python.learn.dataframe.series import TransformedSeries
 from tensorflow.contrib.learn.python.learn.dataframe.tensorflow_dataframe import TensorFlowDataFrame
 from tensorflow.contrib.learn.python.learn.dataframe.transform import parameter
+from tensorflow.contrib.learn.python.learn.dataframe.transform import TensorFlowTransform
 from tensorflow.contrib.learn.python.learn.dataframe.transform import Transform
 
 # Transforms
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.boolean_mask import BooleanMask
+from tensorflow.contrib.learn.python.learn.dataframe.transforms.difference import Difference
+from tensorflow.contrib.learn.python.learn.dataframe.transforms.hashes import HashFast
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.in_memory_source import NumpySource
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.in_memory_source import PandasSource
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.reader_source import ReaderSource
+# Coming soon; multichange client hassle due to no DIFFBASE in Cider
+# from tensorflow.contrib.learn.python.learn.dataframe \
+#     .transforms.split_mask import SplitMask
 from tensorflow.contrib.learn.python.learn.dataframe.transforms.sum import Sum
+
 
 # pylint: disable=g-import-not-at-top,g-bad-import-order
 
@@ -41,9 +49,10 @@ for ut_def in _ut.UNARY_TRANSFORMS:
   _ut.register_unary_op(*ut_def)
 
 # Comparison Transform registration
-from tensorflow.contrib.learn.python.learn.dataframe.transforms import  compare as _cmp
-for ct_def in _cmp.COMPARISON_TRANSFORMS:
-  _cmp.register_comparison_ops(*ct_def)
+from tensorflow.contrib.learn.python.learn.dataframe.transforms import binary_transforms as _bt
+for bt_def in _bt.BINARY_TRANSFORMS:
+  _bt.register_binary_op(*bt_def)
 
-__all__ = ['DataFrame', 'Series', 'TransformedSeries', 'TensorFlowDataFrame',
-           'parameter', 'Transform']
+__all__ = ['DataFrame', 'Series', 'PredefinedSeries', 'TransformedSeries',
+           'TensorFlowDataFrame', 'TensorFlowTransform', 'parameter',
+           'Transform']

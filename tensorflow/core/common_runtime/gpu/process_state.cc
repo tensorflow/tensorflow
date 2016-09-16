@@ -181,12 +181,25 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
   // different numa_nodes.  For now, just one.
   numa_node = 0;
   mutex_lock lock(mu_);
+
+  // Find the first valid StreamExecutor to request CUDA host memory
+  // through, since any will work.
+  //
+  // This search isn't super clean, and it would be nice to use a
+  // better source of information about which executor to use.  For
+  // example, process_state could maybe save the first stream executor
+  // it knows is valid.
+  gpu::StreamExecutor* se = nullptr;
+  for (size_t i = 0; i < gpu_allocators_.size(); ++i) {
+    if (gpu_allocators_[i] != nullptr) {
+      se = GPUMachineManager()->ExecutorForDevice(i).ValueOrDie();
+      break;
+    }
+  }
+
+  CHECK_NE(nullptr, se);
+
   while (static_cast<int>(cuda_host_allocators_.size()) <= numa_node) {
-    // CUDAHost alloc the same across all gpus, so just get the
-    // executor for the first device.
-    gpu::Platform* gpu_platform = GPUMachineManager();
-    gpu::StreamExecutor* se = gpu_platform->ExecutorForDevice(0).ValueOrDie();
-    CHECK(se);
     Allocator* allocator = nullptr;
     static constexpr bool kCudaHostMemoryUseBFC = true;
     if (kCudaHostMemoryUseBFC) {

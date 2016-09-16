@@ -118,6 +118,7 @@ a scalar string.
 
 
 For example:
+
 ```
 # tensor `a` is [["a", "b"], ["c", "d"]]
 tf.reduce_join(a, 0) ==> ["ac", "bd"]
@@ -139,8 +140,7 @@ tf.reduce_join(a, []) ==> ["abcd"]
     The input to be joined.  All reduced indices must have non-zero size.
 *  <b>`reduction_indices`</b>: A `Tensor` of type `int32`.
     The dimensions to reduce over.  Dimensions are reduced in the
-    order specified.  If `reduction_indices` has higher rank than `1`, it is
-    flattened.  Omitting `reduction_indices` is equivalent to passing
+    order specified.  Omitting `reduction_indices` is equivalent to passing
     `[n-1, n-2, ..., 0]`.  Negative indices from `-n` to `-1` are supported.
 *  <b>`keep_dims`</b>: An optional `bool`. Defaults to `False`.
     If `True`, retain reduced dimensions with length `1`.
@@ -180,6 +180,53 @@ with the given separator (default is an empty separator).
 
 
 
+## Splitting
+
+- - -
+
+### `tf.string_split(source, delimiter=' ')` {#string_split}
+
+Split elements of `source` based on `delimiter` into a `SparseTensor`.
+
+Let N be the size of source (typically N will be the batch size). Split each
+element of `source` based on `delimiter` and return a `SparseTensor`
+containing the splitted tokens. Empty tokens are ignored.
+
+If `delimiter` is an empty string, each element of the `source` is split
+into individual 1 character strings.
+
+For example:
+N = 2, source[0] is 'hello world' and source[1] is 'a b c', then the output
+will be
+
+st.indices = [0, 0;
+              0, 1;
+              1, 0;
+              1, 1;
+              1, 2]
+st.shape = [2, 3]
+st.values = ['hello', 'world', 'a', 'b', 'c']
+
+##### Args:
+
+
+*  <b>`source`</b>: `1-D` string `Tensor`, the strings to split.
+*  <b>`delimiter`</b>: `0-D` string `Tensor`, the delimiter character, the string should
+    be length 0 or 1.
+
+##### Returns:
+
+  A `SparseTensor` of rank `2`, the strings split according to the delimiter.
+  The first column of the indices corresponds to the row in `source` and the
+  second column corresponds to the index of the split component in this row.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If delimiter is not a character.
+
+
+
 ## Conversion
 
 - - -
@@ -214,5 +261,51 @@ types and boolean.
 ##### Returns:
 
   A `Tensor` of type `string`.
+
+
+- - -
+
+### `tf.encode_base64(input, pad=None, name=None)` {#encode_base64}
+
+Encode strings into web-safe base64 format.
+
+Refer to the following article for more information on base64 format:
+en.wikipedia.org/wiki/Base64. Base64 strings may have padding with '=' at the
+end so that the encoded has length multiple of 4. See Padding section of the
+link above.
+
+Web-safe means that the encoder uses - and _ instead of + and /.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor` of type `string`. Strings to be encoded.
+*  <b>`pad`</b>: An optional `bool`. Defaults to `False`.
+    Bool whether padding is applied at the ends.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `string`. Input strings encoded in base64.
+
+
+- - -
+
+### `tf.decode_base64(input, name=None)` {#decode_base64}
+
+Decode web-safe base64-encoded strings.
+
+Input may or may not have padding at the end. See EncodeBase64 for padding.
+Web-safe means that input must use - and _ instead of + and /.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor` of type `string`. Base64 strings to decode.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `string`. Decoded strings.
 
 

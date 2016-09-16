@@ -31,6 +31,7 @@ namespace tensorflow {
 // assumed to execute.
 // Returns true if and only if "graph" has been mutated.
 bool DoConstantFolding(const ConstantFoldingOptions& opts,
+                       FunctionLibraryRuntime* function_library, Env* env,
                        Device* partition_device, Graph* graph);
 
 typedef std::pair<Node*, int> NodeAndOutput;

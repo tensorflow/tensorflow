@@ -651,45 +651,56 @@ TEST_F(MathGradTest, Div) {
 }
 
 TEST_F(MathGradTest, Pow) {
-  auto x = test::AsTensor<float>({1.f, 2.f, 3.f, 4.f, 5.f, 6.f},
+  auto x = test::AsTensor<float>({0.f, 1.f, 2.f, 3.f, 4.f, 5.f},
                                  TensorShape({2, 3}));
   auto y = test::AsTensor<float>({.5f, 2.f}, TensorShape({2, 1}));
   Tensor dx;
   Tensor dy;
+  auto g = [](float x, float y) { return y * std::pow(x, y - 1); };
+  auto h = [](float x, float y) {
+    return std::pow(x, y) * (x ? std::log(x) : 0);
+  };
   {
     SymGrad("Pow", x, y, &dx, &dy);
-    {
-      auto g = [](float x, float y) { return y * std::pow(x, y - 1); };
-      test::ExpectClose(
-          dx, test::AsTensor<float>({g(1.f, .5f), g(2.f, .5f), g(3.f, .5f),
-                                     g(4.f, 2.f), g(5.f, 2.f), g(6.f, 2.f)},
-                                    TensorShape({2, 3})));
-    }
-    {
-      auto g = [](float x, float y) { return std::pow(x, y) * std::log(x); };
-      test::ExpectClose(
-          dy, test::AsTensor<float>({g(1.f, .5f) + g(2.f, .5f) + g(3.f, .5f),
-                                     g(4.f, 2.f) + g(5.f, 2.f) + g(6.f, 2.f)},
-                                    TensorShape({2, 1})));
-    }
+    test::ExpectClose(
+        dx, test::AsTensor<float>({g(0.f, .5f), g(1.f, .5f), g(2.f, .5f),
+                                   g(3.f, 2.f), g(4.f, 2.f), g(5.f, 2.f)},
+                                  TensorShape({2, 3})));
+    test::ExpectClose(
+        dy, test::AsTensor<float>({h(0.f, .5f) + h(1.f, .5f) + h(2.f, .5f),
+                                   h(3.f, 2.f) + h(4.f, 2.f) + h(5.f, 2.f)},
+                                  TensorShape({2, 1})));
   }
   {  // Swap x and y
     SymGrad("Pow", y, x, &dy, &dx);
-    {
-      auto g = [](float x, float y) { return y * std::pow(x, y - 1); };
-      test::ExpectClose(
-          dy, test::AsTensor<float>({g(.5f, 1.f) + g(.5f, 2.f) + g(.5f, 3.f),
-                                     g(2.f, 4.f) + g(2.f, 5.f) + g(2.f, 6.f)},
-                                    TensorShape({2, 1})));
-    }
-    {
-      auto g = [](float x, float y) { return std::pow(x, y) * std::log(x); };
-      test::ExpectClose(
-          dx, test::AsTensor<float>({g(.5f, 1.f), g(.5f, 2.f), g(.5f, 3.f),
-                                     g(2.f, 4.f), g(2.f, 5.f), g(2.f, 6.f)},
-                                    TensorShape({2, 3})));
-    }
+    test::ExpectClose(
+        dy, test::AsTensor<float>({g(.5f, 0.f) + g(.5f, 1.f) + g(.5f, 2.f),
+                                   g(2.f, 3.f) + g(2.f, 4.f) + g(2.f, 5.f)},
+                                  TensorShape({2, 1})));
+    test::ExpectClose(
+        dx, test::AsTensor<float>({h(.5f, 0.f), h(.5f, 1.f), h(.5f, 2.f),
+                                   h(2.f, 3.f), h(2.f, 4.f), h(2.f, 5.f)},
+                                  TensorShape({2, 3})));
   }
+}
+
+TEST_F(MathGradTest, ComplexPow) {
+  auto x = test::AsTensor<complex64>({0.f, 2.f, -2.f}, TensorShape({3}));
+  auto y = test::AsTensor<complex64>({2.f, 2.f, 2.f}, TensorShape({3}));
+  Tensor dx;
+  Tensor dy;
+  auto g = [](complex64 x, complex64 y) { return y * std::pow(x, y - 1.f); };
+  auto h = [](complex64 x, complex64 y) {
+    return std::pow(x, y) * (x != complex64(0) ? std::log(x) : 0);
+  };
+  SymGrad("Pow", x, y, &dx, &dy);
+
+  test::ExpectClose(
+      dx, test::AsTensor<complex64>({g(0.f, 2.f), g(2.f, 2.f), g(-2.f, 2.f)},
+                                    TensorShape({3})));
+  test::ExpectClose(
+      dy, test::AsTensor<complex64>({h(0.f, 2.f), h(2.f, 2.f), h(-2.f, 2.f)},
+                                    TensorShape({3})));
 }
 
 TEST_F(MathGradTest, Maximum) {

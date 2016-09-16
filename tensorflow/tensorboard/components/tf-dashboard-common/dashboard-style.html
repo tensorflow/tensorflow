@@ -1,82 +1,31 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 <link rel="import" href="../paper-styles/paper-styles.html">
 <link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 
 <dom-module id="dashboard-style">
   <template>
     <style>
-      .card {
-        height: 200px;
-        width: 300px;
-        display: flex;
-        flex-direction: column;
-        margin: 5px;
-        padding: 0 30px 30px 0;
-        -webkit-user-select: none;
-        -moz-user-select: none;
-        position: relative;
-      }
-
-      .card .card-title {
-        flex-grow: 0;
-        flex-shrink: 0;
-        margin-bottom: 10px;
-        font-size: 14px;
-        text-overflow: ellipsis;
-        overflow: hidden;
-      }
-
-      .card .card-content {
-        flex-grow: 1;
-        flex-shrink: 1;
-        display: flex;
-      }
-      .card .card-bottom-row {
-        flex-grow: 0;
-        flex-shrink: 0;
-        padding-left: 10px;
-        padding-right: 10px;
-      }
-
-      .card.selected {
-        height: 400px;
-        width: 100%;
-      }
-
-      [shift] {
-        bottom: 20px !important;
-      }
-
-      .expand-button {
-        position: absolute;
-        left: 0px;
-        bottom: 20px;
-        color: #2196F3;
-        display: block;
-      }
-
-      #content-container{
-        display: block;
-      }
-
       .sidebar {
         display: flex;
         flex-direction: column;
         height: 100%;
         margin-right: 20px;
-      }
-
-      #categorizer {
-        flex-shrink: 0;
-      }
-
-      #xTypeSelector {
-        flex-shrink: 0;
-        margin: 20px 0;
-      }
-
-      #runSelector {
-        flex-shrink: 1;
-        flex-grow: 1;
       }
 
       .sidebar-section {
@@ -97,8 +46,8 @@
         --paper-checkbox-checked-color: var(--tb-ui-dark-accent);
         --paper-checkbox-unchecked-color: var(--tb-ui-dark-accent);
         font-size: 14px;
+        margin-top: 5px;
       }
-
     </style>
   </template>
 </dom-module>

@@ -27,6 +27,11 @@ class FakeLibCurl : public LibCurl {
  public:
   FakeLibCurl(const string& response_content, uint64 response_code)
       : response_content(response_content), response_code(response_code) {}
+  FakeLibCurl(const string& response_content, uint64 response_code,
+              const std::vector<string>& response_headers)
+      : response_content(response_content),
+        response_code(response_code),
+        response_headers(response_headers) {}
   Status MaybeLoadDll() override { return Status::OK(); }
   CURL* curl_easy_init() override {
     is_initialized = true;
@@ -38,6 +43,9 @@ class FakeLibCurl : public LibCurl {
     switch (option) {
       case CURLOPT_POST:
         is_post = param;
+        break;
+      case CURLOPT_PUT:
+        is_put = param;
         break;
       default:
         break;
@@ -70,6 +78,9 @@ class FakeLibCurl : public LibCurl {
       case CURLOPT_WRITEDATA:
         write_data = reinterpret_cast<FILE*>(param);
         break;
+      case CURLOPT_HEADERDATA:
+        header_data = reinterpret_cast<FILE*>(param);
+        break;
       case CURLOPT_READDATA:
         read_data = reinterpret_cast<FILE*>(param);
         break;
@@ -91,6 +102,9 @@ class FakeLibCurl : public LibCurl {
       case CURLOPT_WRITEFUNCTION:
         write_callback = param;
         break;
+      case CURLOPT_HEADERFUNCTION:
+        header_callback = param;
+        break;
       default:
         break;
     }
@@ -110,6 +124,9 @@ class FakeLibCurl : public LibCurl {
     if (write_data) {
       write_callback(response_content.c_str(), 1, response_content.size(),
                      write_data);
+    }
+    for (const auto& header : response_headers) {
+      header_callback(header.c_str(), 1, header.size(), header_data);
     }
     return curl_easy_perform_result;
   }
@@ -167,6 +184,7 @@ class FakeLibCurl : public LibCurl {
   // Variables defining the behavior of this fake.
   string response_content;
   uint64 response_code;
+  std::vector<string> response_headers;
 
   // Internal variables to store the libcurl state.
   string url;
@@ -177,9 +195,13 @@ class FakeLibCurl : public LibCurl {
   bool is_cleaned_up = false;
   std::vector<string>* headers = nullptr;
   bool is_post = false;
+  bool is_put = false;
   void* write_data = nullptr;
   size_t (*write_callback)(const void* ptr, size_t size, size_t nmemb,
                            void* userdata) = nullptr;
+  void* header_data = nullptr;
+  size_t (*header_callback)(const void* ptr, size_t size, size_t nmemb,
+                            void* userdata) = nullptr;
   FILE* read_data = nullptr;
   size_t (*read_callback)(void* ptr, size_t size, size_t nmemb,
                           FILE* userdata) = &fread;
@@ -212,6 +234,7 @@ TEST(HttpRequestTest, GetRequest) {
   EXPECT_EQ(1, libcurl->headers->size());
   EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl->headers)[0]);
   EXPECT_FALSE(libcurl->is_post);
+  EXPECT_EQ(200, http_request.GetResponseCode());
 }
 
 TEST(HttpRequestTest, GetRequest_RangeOutOfBound) {
@@ -230,6 +253,7 @@ TEST(HttpRequestTest, GetRequest_RangeOutOfBound) {
   TF_EXPECT_OK(http_request.Send());
 
   EXPECT_TRUE(result.empty());
+  EXPECT_EQ(416, http_request.GetResponseCode());
 }
 
 TEST(HttpRequestTest, GetRequest_503) {
@@ -246,9 +270,25 @@ TEST(HttpRequestTest, GetRequest_503) {
   TF_EXPECT_OK(http_request.SetRange(100, 199));
   TF_EXPECT_OK(http_request.SetResultBuffer(scratch, 100, &result));
   EXPECT_EQ(error::UNAVAILABLE, http_request.Send().code());
+  EXPECT_EQ(503, http_request.GetResponseCode());
 }
 
-TEST(HttpRequestTest, PostRequest_WithBody_FromFile) {
+TEST(HttpRequestTest, ResponseHeaders) {
+  FakeLibCurl* libcurl = new FakeLibCurl(
+      "get response", 200,
+      {"Location: abcd", "Content-Type: text", "unparsable header"});
+  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  TF_EXPECT_OK(http_request.Init());
+
+  TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
+  TF_EXPECT_OK(http_request.Send());
+
+  EXPECT_EQ("abcd", http_request.GetResponseHeader("Location"));
+  EXPECT_EQ("text", http_request.GetResponseHeader("Content-Type"));
+  EXPECT_EQ("", http_request.GetResponseHeader("Not-Seen-Header"));
+}
+
+TEST(HttpRequestTest, PutRequest_WithBody_FromFile) {
   FakeLibCurl* libcurl = new FakeLibCurl("", 200);
   HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
   TF_EXPECT_OK(http_request.Init());
@@ -260,7 +300,7 @@ TEST(HttpRequestTest, PostRequest_WithBody_FromFile) {
 
   TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
   TF_EXPECT_OK(http_request.AddAuthBearerHeader("fake-bearer"));
-  TF_EXPECT_OK(http_request.SetPostRequest(content_filename));
+  TF_EXPECT_OK(http_request.SetPutFromFile(content_filename, 0));
   TF_EXPECT_OK(http_request.Send());
 
   // Check interactions with libcurl.
@@ -270,8 +310,29 @@ TEST(HttpRequestTest, PostRequest_WithBody_FromFile) {
   EXPECT_EQ(2, libcurl->headers->size());
   EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl->headers)[0]);
   EXPECT_EQ("Content-Length: 17", (*libcurl->headers)[1]);
-  EXPECT_TRUE(libcurl->is_post);
+  EXPECT_TRUE(libcurl->is_put);
   EXPECT_EQ("post body content", libcurl->posted_content);
+
+  std::remove(content_filename.c_str());
+}
+
+TEST(HttpRequestTest, PutRequest_WithBody_FromFile_NonZeroOffset) {
+  FakeLibCurl* libcurl = new FakeLibCurl("", 200);
+  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  TF_EXPECT_OK(http_request.Init());
+
+  auto content_filename = io::JoinPath(testing::TmpDir(), "content");
+  std::ofstream content(content_filename, std::ofstream::binary);
+  content << "post body content";
+  content.close();
+
+  TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
+  TF_EXPECT_OK(http_request.AddAuthBearerHeader("fake-bearer"));
+  TF_EXPECT_OK(http_request.SetPutFromFile(content_filename, 7));
+  TF_EXPECT_OK(http_request.Send());
+
+  // Check interactions with libcurl.
+  EXPECT_EQ("dy content", libcurl->posted_content);
 
   std::remove(content_filename.c_str());
 }
@@ -285,7 +346,7 @@ TEST(HttpRequestTest, PostRequest_WithBody_FromMemory) {
 
   TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
   TF_EXPECT_OK(http_request.AddAuthBearerHeader("fake-bearer"));
-  TF_EXPECT_OK(http_request.SetPostRequest(content.c_str(), content.size()));
+  TF_EXPECT_OK(http_request.SetPostFromBuffer(content.c_str(), content.size()));
   TF_EXPECT_OK(http_request.Send());
 
   // Check interactions with libcurl.
@@ -306,7 +367,7 @@ TEST(HttpRequestTest, PostRequest_WithoutBody) {
 
   TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
   TF_EXPECT_OK(http_request.AddAuthBearerHeader("fake-bearer"));
-  TF_EXPECT_OK(http_request.SetPostRequest());
+  TF_EXPECT_OK(http_request.SetPostEmptyBody());
   TF_EXPECT_OK(http_request.Send());
 
   // Check interactions with libcurl.
@@ -381,7 +442,7 @@ TEST(HttpRequestTest, WrongSequenceOfCalls_SettingMethodTwice) {
   TF_EXPECT_OK(http_request.Init());
 
   http_request.SetDeleteRequest();
-  auto s = http_request.SetPostRequest();
+  auto s = http_request.SetPostEmptyBody();
   ASSERT_TRUE(errors::IsFailedPrecondition(s));
   EXPECT_TRUE(StringPiece(s.error_message())
                   .contains("HTTP method has been already set"));
@@ -391,7 +452,7 @@ TEST(HttpRequestTest, WrongSequenceOfCalls_NotInitialized) {
   FakeLibCurl* libcurl = new FakeLibCurl("", 200);
   HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
 
-  auto s = http_request.SetPostRequest();
+  auto s = http_request.SetPostEmptyBody();
   ASSERT_TRUE(errors::IsFailedPrecondition(s));
   EXPECT_TRUE(StringPiece(s.error_message())
                   .contains("The object has not been initialized"));

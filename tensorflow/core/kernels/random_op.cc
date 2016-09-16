@@ -34,6 +34,16 @@ limitations under the License.
 #include "tensorflow/core/util/guarded_philox_random.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#if EIGEN_COMP_GNUC && __cplusplus > 199711L
+#define DISABLE_FLOAT_EQUALITY_WARNING \
+  _Pragma("GCC diagnostic push")       \
+      _Pragma("GCC diagnostic ignored \"-Wfloat-equal\"")
+#define ENABLE_FLOAT_EQUALITY_WARNING _Pragma("GCC diagnostic pop")
+#else
+#define DISABLE_FLOAT_EQUALITY_WARNING
+#define ENABLE_FLOAT_EQUALITY_WARNING
+#endif
+
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -138,32 +148,29 @@ struct FillPhiloxRandomTask<Distribution, true> {
 // Partial specialization for CPU to fill the entire region with randoms
 // It splits the work into several tasks and run them in parallel
 template <class Distribution>
-struct FillPhiloxRandom<CPUDevice, Distribution> {
-  typedef typename Distribution::ResultElementType T;
-  void operator()(OpKernelContext* context, const CPUDevice&,
-                  random::PhiloxRandom gen, T* data, int64 size,
-                  Distribution dist) {
-    const int kGroupSize = Distribution::kResultElementCount;
+void FillPhiloxRandom<CPUDevice, Distribution>::operator()(
+    OpKernelContext* context, const CPUDevice&, random::PhiloxRandom gen,
+    typename Distribution::ResultElementType* data, int64 size,
+    Distribution dist) {
+  const int kGroupSize = Distribution::kResultElementCount;
 
-    auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+  auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
 
-    int64 total_group_count = (size + kGroupSize - 1) / kGroupSize;
+  int64 total_group_count = (size + kGroupSize - 1) / kGroupSize;
 
-    const int kGroupCost =
-        random::PhiloxRandom::kResultElementCount *
-        (random::PhiloxRandom::kElementCost + Distribution::kElementCost);
-    Shard(worker_threads.num_threads, worker_threads.workers, total_group_count,
-          kGroupCost,
-          [&gen, data, size, dist](int64 start_group, int64 limit_group) {
-            FillPhiloxRandomTask<
-                Distribution,
-                Distribution::kVariableSamplesPerOutput>::Run(gen, data, size,
-                                                              start_group,
-                                                              limit_group,
-                                                              dist);
-          });
-  }
-};
+  const int kGroupCost =
+      random::PhiloxRandom::kResultElementCount *
+      (random::PhiloxRandom::kElementCost + Distribution::kElementCost);
+  Shard(worker_threads.num_threads, worker_threads.workers, total_group_count,
+        kGroupCost,
+        [&gen, data, size, dist](int64 start_group, int64 limit_group) {
+          FillPhiloxRandomTask<
+              Distribution,
+              Distribution::kVariableSamplesPerOutput>::Run(gen, data, size,
+                                                            start_group,
+                                                            limit_group, dist);
+        });
+}
 
 }  // namespace functor
 
@@ -266,22 +273,8 @@ class RandomUniformIntOp : public OpKernel {
   GuardedPhiloxRandom generator_;
 };
 
-namespace {
-
-// We will compute half-precision Gamma samples with float precision
-// intermediate calculations.
-template <typename T>
-struct GammaComputeType {
-  typedef T ComputeType;
-};
-template <>
-struct GammaComputeType<Eigen::half> {
-  typedef float ComputeType;
-};
-
-}  // namespace
-
-// Samples from one or more gamma distributions.
+// Samples from one or more gamma distributions. All internal computations are
+// done with double precision for numerical stability.
 template <typename T>
 class RandomGammaOp : public OpKernel {
  public:
@@ -322,8 +315,15 @@ class RandomGammaOp : public OpKernel {
 
     using random::PhiloxRandom;
 
-    typedef random::NormalDistribution<PhiloxRandom, CT> Normal;
-    typedef random::UniformDistribution<PhiloxRandom, CT> Uniform;
+    typedef random::NormalDistribution<PhiloxRandom, double> Normal;
+    typedef random::UniformDistribution<PhiloxRandom, double> Uniform;
+#define UNIFORM(X)                                    \
+  if (uniform_remaining == 0) {                       \
+    uniform_remaining = Uniform::kResultElementCount; \
+    uniform_result = uniform(&gen);                   \
+  }                                                   \
+  uniform_remaining--;                                \
+  double X = uniform_result[uniform_remaining]
 
     // Each attempt is 95+% successful, and requires 1-2 normal + 1 uniform
     static constexpr int kReservedSamplesPerOutput = 256;
@@ -338,18 +338,15 @@ class RandomGammaOp : public OpKernel {
     PhiloxRandom rng = generator_.ReserveRandomOutputs(
         num_samples * num_alphas, kReservedSamplesPerOutput);
 
-    // Transformation-rejection from pairs of uniform and normal random
-    // variables. http://dl.acm.org/citation.cfm?id=358414
-    //
-    // The algorithm has an acceptance rate of ~95% for the smallest alpha (~1),
-    // and higher accept rates for higher alpha, so runtime is
-    // O(NumAlphas * NumSamples * k) with k ~ 1 / 0.95.
-    //
     // We partition work first across alphas then across samples-per-alpha to
     // avoid a couple flops which can be done on a per-alpha basis.
 
     auto DoWork = [num_samples, num_alphas, &rng, samples_flat, alpha_flat](
         int start_output, int limit_output) {
+      using Eigen::numext::exp;
+      using Eigen::numext::log;
+      using Eigen::numext::pow;
+
       // Capturing "rng" by-value would only make a copy for the _shared_
       // lambda.  Since we want to let each worker have its own copy, we pass
       // "rng" by reference and explicitly do a copy assignment.
@@ -362,78 +359,91 @@ class RandomGammaOp : public OpKernel {
            /* output_idx incremented within inner loop below */) {
         int64 alpha_idx = output_idx / num_samples;
 
-        // Several calculations can be done on a per-alpha basis.
-        const CT alpha = CT(alpha_flat[alpha_idx]);
-        // For alpha<1, we add one to d=alpha-1/3, and multiply the final result
-        // by uniform()^(1/alpha)
-        bool alpha_less_than_one = alpha < CT(1);
-        static const CT kMinusOneThird = CT(-1) / 3;
-        static const CT kTwoThirds = CT(2) / 3;
-        const CT d =
-            alpha + (alpha_less_than_one ? kTwoThirds : kMinusOneThird);
-        static const CT kOneThird = CT(1) / 3;
-        const CT c = kOneThird / sqrt(d);
-
         // Instead of +alpha_idx for each sample, we offset the pointer once.
-        auto samples_alpha_offset = samples_flat + alpha_idx;
+        T* const samples_alpha_offset = samples_flat + alpha_idx;
 
-        // Compute the rest of the samples for the current alpha value.
-        for (int64 sample_idx = output_idx % num_samples;
-             sample_idx < num_samples && output_idx < limit_output;
-             sample_idx++, output_idx++) {
-          // Since each sample may use a variable number of normal/uniform
-          // samples, and we want data stable regardless of sharding (including
-          // eventually on GPU), we skip on a per-sample basis.
-          PhiloxRandom gen = rng;
-          gen.Skip(kReservedSamplesPerOutput * output_idx);
-          short norm_remaining = 0;
-          short uniform_remaining = 0;
+        // Several calculations can be done on a per-alpha basis.
+        const double alpha = static_cast<double>(alpha_flat[alpha_idx]);
 
-          // Keep trying until we don't reject a sample. In practice, we will
-          // only reject ~5% at worst, for low alpha near 1.
-          while (true) {
-            if (norm_remaining == 0) {
-              norm_remaining = Normal::kResultElementCount;
-              norm_result = normal(&gen);
-            }
-            norm_remaining--;
-            const CT x = norm_result[norm_remaining];
-            CT v = CT(1) + c * x;
-            if (v <= CT(0)) {
-              continue;
-            }
-            v = v * v * v;
-            if (uniform_remaining == 0) {
-              uniform_remaining = Uniform::kResultElementCount;
-              uniform_result = uniform(&gen);
-            }
-            uniform_remaining--;
-            CT u = uniform_result[uniform_remaining];
-            using Eigen::numext::log;
-            // The first option in the if is a "squeeze" short-circuit to dodge
-            // the two logs. Magic constant sourced from the paper linked above.
-            // Upward of .91 of the area covered by the log inequality is
-            // covered by the squeeze as well (larger coverage for smaller
-            // values of alpha).
-            if ((u < CT(1) - CT(0.0331) * (x * x) * (x * x)) ||
-                (log(u) < CT(0.5) * x * x + d * (CT(1) - v + log(v)))) {
-              CT res = d * v;
-              if (alpha_less_than_one) {
-                if (uniform_remaining == 0) {
-                  uniform_remaining = Uniform::kResultElementCount;
-                  uniform_result = uniform(&gen);
-                }
-                uniform_remaining--;
-                using Eigen::numext::pow;
-                res *= pow(uniform_result[uniform_remaining], CT(1) / alpha);
+        DISABLE_FLOAT_EQUALITY_WARNING
+        if (alpha == double(1.0)) {
+          ENABLE_FLOAT_EQUALITY_WARNING
+          // Sample from an exponential distribution.
+          for (int64 sample_idx = output_idx % num_samples;
+               sample_idx < num_samples && output_idx < limit_output;
+               sample_idx++, output_idx++) {
+            // As we want data stable regardless of sharding
+            // (including eventually on GPU), we skip on a per-sample basis.
+            PhiloxRandom gen = rng;
+            gen.Skip(kReservedSamplesPerOutput * output_idx);
+            short uniform_remaining = 0;
+            UNIFORM(u);
+            const double res = -log(1.0 - u);
+            samples_alpha_offset[sample_idx * num_alphas] = static_cast<T>(res);
+          }       // for (sample_idx)
+        } else {  // if alpha != 1.0
+          // Transformation-rejection from pairs of uniform and normal random
+          // variables. http://dl.acm.org/citation.cfm?id=358414
+          //
+          // The algorithm has an acceptance rate of ~95% for small alpha (~1),
+          // and higher accept rates for higher alpha, so runtime is
+          // O(NumAlphas * NumSamples * k) with k ~ 1 / 0.95.
+          //
+          // For alpha<1, we add one to d=alpha-1/3, and multiply the final
+          // result by uniform()^(1/alpha)
+          const bool alpha_less_than_one = alpha < 1;
+          const double d = alpha + (alpha_less_than_one ? 2.0 / 3 : -1.0 / 3);
+          const double c = 1.0 / 3 / sqrt(d);
+
+          // Compute the rest of the samples for the current alpha value.
+          for (int64 sample_idx = output_idx % num_samples;
+               sample_idx < num_samples && output_idx < limit_output;
+               sample_idx++, output_idx++) {
+            // Since each sample may use a variable number of normal/uniform
+            // samples, and we want data stable regardless of sharding
+            // (including eventually on GPU), we skip on a per-sample basis.
+            PhiloxRandom gen = rng;
+            gen.Skip(kReservedSamplesPerOutput * output_idx);
+            short norm_remaining = 0;
+            short uniform_remaining = 0;
+
+            // Keep trying until we don't reject a sample. In practice, we will
+            // only reject ~5% at worst, for low alpha near 1.
+            while (true) {
+              if (norm_remaining == 0) {
+                norm_remaining = Normal::kResultElementCount;
+                norm_result = normal(&gen);
               }
-              samples_alpha_offset[sample_idx * num_alphas] = T(res);
-              break;
-            }
-          }
-        }
-      }
-    };
+              norm_remaining--;
+              const double x = norm_result[norm_remaining];
+              double v = 1 + c * x;
+              if (v <= 0) {
+                continue;
+              }
+              v = v * v * v;
+              UNIFORM(u);
+              // The first option in the if is a "squeeze" short-circuit to
+              // dodge the two logs. Magic constant sourced from the paper
+              // linked above. Upward of .91 of the area covered by the log
+              // inequality is covered by the squeeze as well (larger coverage
+              // for smaller values of alpha).
+              if ((u < 1 - 0.0331 * (x * x) * (x * x)) ||
+                  (log(u) < 0.5 * x * x + d * (1 - v + log(v)))) {
+                double res = d * v;
+                if (alpha_less_than_one) {
+                  UNIFORM(b);
+                  res *= pow(b, 1 / alpha);
+                }
+                samples_alpha_offset[sample_idx * num_alphas] =
+                    static_cast<T>(res);
+                break;
+              }
+            }  // while: true
+          }    // for: sample_idx
+        }      // if (alpha == 1.0)
+      }        // for: output_idx
+    };         // DoWork
+#undef UNIFORM
     // Two calls to log only occur for ~10% of samples reaching the log line.
     //   2 x 100 (64-bit cycles per log) x 0.10 = ~20.
     // Other ops: sqrt, +, *, /, %... something like 15 of these, at 3-6 cycles
@@ -448,7 +458,6 @@ class RandomGammaOp : public OpKernel {
   }
 
  private:
-  typedef typename GammaComputeType<T>::ComputeType CT;
   GuardedPhiloxRandom generator_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RandomGammaOp);
@@ -456,32 +465,34 @@ class RandomGammaOp : public OpKernel {
 
 }  // namespace
 
-#define REGISTER(TYPE)                                                     \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("RandomUniform")                                                \
-          .Device(DEVICE_CPU)                                              \
-          .HostMemory("shape")                                             \
-          .TypeConstraint<TYPE>("dtype"),                                  \
-      PhiloxRandomOp<CPUDevice, random::UniformDistribution<               \
-                                    random::PhiloxRandom, TYPE> >);        \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("RandomStandardNormal")                                         \
-          .Device(DEVICE_CPU)                                              \
-          .HostMemory("shape")                                             \
-          .TypeConstraint<TYPE>("dtype"),                                  \
-      PhiloxRandomOp<CPUDevice, random::NormalDistribution<                \
-                                    random::PhiloxRandom, TYPE> >);        \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("TruncatedNormal")                                              \
-          .Device(DEVICE_CPU)                                              \
-          .HostMemory("shape")                                             \
-          .TypeConstraint<TYPE>("dtype"),                                  \
-      PhiloxRandomOp<                                                      \
-          CPUDevice,                                                       \
-          random::TruncatedNormalDistribution<                             \
-              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >); \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("RandomGamma").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"),    \
+#define REGISTER(TYPE)                                                      \
+  template struct functor::FillPhiloxRandom<                                \
+      CPUDevice, random::UniformDistribution<random::PhiloxRandom, TYPE> >; \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("RandomUniform")                                                 \
+          .Device(DEVICE_CPU)                                               \
+          .HostMemory("shape")                                              \
+          .TypeConstraint<TYPE>("dtype"),                                   \
+      PhiloxRandomOp<CPUDevice, random::UniformDistribution<                \
+                                    random::PhiloxRandom, TYPE> >);         \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("RandomStandardNormal")                                          \
+          .Device(DEVICE_CPU)                                               \
+          .HostMemory("shape")                                              \
+          .TypeConstraint<TYPE>("dtype"),                                   \
+      PhiloxRandomOp<CPUDevice, random::NormalDistribution<                 \
+                                    random::PhiloxRandom, TYPE> >);         \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("TruncatedNormal")                                               \
+          .Device(DEVICE_CPU)                                               \
+          .HostMemory("shape")                                              \
+          .TypeConstraint<TYPE>("dtype"),                                   \
+      PhiloxRandomOp<                                                       \
+          CPUDevice,                                                        \
+          random::TruncatedNormalDistribution<                              \
+              random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >);  \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("RandomGamma").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"),     \
       RandomGammaOp<TYPE>)
 
 #define REGISTER_INT(IntType)                                   \

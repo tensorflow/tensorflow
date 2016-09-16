@@ -106,30 +106,30 @@ class Node {
   bool IsOp() const { return id() > 1; }
 
   // Node class helpers
-  bool IsSwitch() const { return (class_ == NC_SWITCH); }
-  bool IsMerge() const { return (class_ == NC_MERGE); }
-  bool IsEnter() const { return (class_ == NC_ENTER); }
-  bool IsExit() const { return (class_ == NC_EXIT); }
-  bool IsNextIteration() const { return (class_ == NC_NEXT_ITERATION); }
-  bool IsLoopCond() const { return (class_ == NC_LOOP_COND); }
-  bool IsControlTrigger() const { return (class_ == NC_CONTROL_TRIGGER); }
-  bool IsSend() const { return (class_ == NC_SEND); }
-  bool IsRecv() const { return (class_ == NC_RECV); }
-  bool IsConstant() const { return (class_ == NC_CONSTANT); }
-  bool IsVariable() const { return (class_ == NC_VARIABLE); }
-  bool IsIdentity() const { return (class_ == NC_IDENTITY); }
-  bool IsGetSessionHandle() const { return (class_ == NC_GET_SESSION_HANDLE); }
-  bool IsGetSessionTensor() const { return (class_ == NC_GET_SESSION_TENSOR); }
+  bool IsSwitch() const { return class_ == NC_SWITCH; }
+  bool IsMerge() const { return class_ == NC_MERGE; }
+  bool IsEnter() const { return class_ == NC_ENTER; }
+  bool IsExit() const { return class_ == NC_EXIT; }
+  bool IsNextIteration() const { return class_ == NC_NEXT_ITERATION; }
+  bool IsLoopCond() const { return class_ == NC_LOOP_COND; }
+  bool IsControlTrigger() const { return class_ == NC_CONTROL_TRIGGER; }
+  bool IsSend() const { return class_ == NC_SEND || class_ == NC_HOST_SEND; }
+  bool IsRecv() const { return class_ == NC_RECV || class_ == NC_HOST_RECV; }
+  bool IsConstant() const { return class_ == NC_CONSTANT; }
+  bool IsVariable() const { return class_ == NC_VARIABLE; }
+  bool IsIdentity() const { return class_ == NC_IDENTITY; }
+  bool IsGetSessionHandle() const { return class_ == NC_GET_SESSION_HANDLE; }
+  bool IsGetSessionTensor() const { return class_ == NC_GET_SESSION_TENSOR; }
   bool IsDeleteSessionTensor() const {
-    return (class_ == NC_DELETE_SESSION_TENSOR);
+    return class_ == NC_DELETE_SESSION_TENSOR;
   }
   bool IsControlFlow() const {
     return (class_ != NC_OTHER) &&  // Fast path
            (IsSwitch() || IsMerge() || IsEnter() || IsExit() ||
             IsNextIteration());
   }
-  bool IsHostSend() const { return is_host_send_; }
-  bool IsHostRecv() const { return is_host_recv_; }
+  bool IsHostSend() const { return class_ == NC_HOST_SEND; }
+  bool IsHostRecv() const { return class_ == NC_HOST_RECV; }
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
@@ -138,6 +138,13 @@ class Node {
   }
 
   void ClearAttr(const string& name);
+
+  // Returns into '*e' the edge connecting to the 'idx' input of this Node.
+  Status input_edge(int idx, const Edge** e) const;
+
+  // Returns into '*n' the node that has an output connected to the
+  // 'idx' input of this Node.
+  Status input_node(int idx, const Node** n) const;
 
  private:
   friend class Graph;
@@ -187,7 +194,9 @@ class Node {
     NC_LOOP_COND,
     NC_CONTROL_TRIGGER,
     NC_SEND,
+    NC_HOST_SEND,
     NC_RECV,
+    NC_HOST_RECV,
     NC_CONSTANT,
     NC_VARIABLE,
     NC_IDENTITY,
@@ -200,8 +209,6 @@ class Node {
   int id_;       // -1 until Initialize() is called
   int cost_id_;  // -1 if there is no corresponding cost accounting node
   NodeClass class_;
-  bool is_host_send_;
-  bool is_host_recv_;
 
   EdgeSet in_edges_;
   EdgeSet out_edges_;
@@ -306,6 +313,9 @@ class Graph {
   // edges indexed by edge ids, num_edge_ids() should be used as the
   // array's size.
   int num_edges() const { return edges().size(); }
+
+  // Serialize the nodes starting at `from_node_id` to a GraphDef.
+  void ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const;
 
   // Serialize to a GraphDef.
   void ToGraphDef(GraphDef* graph_def) const;

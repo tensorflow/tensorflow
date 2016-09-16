@@ -25,6 +25,16 @@ import tensorflow as tf
 
 class PartitionerCreatorsTest(tf.test.TestCase):
 
+  def testFixedSizePartitioner(self):
+    with self.test_session():
+      partitioner = tf.fixed_size_partitioner(5, axis=0)
+      with tf.variable_scope("root", partitioner=partitioner):
+        v0 = tf.get_variable("v0", dtype=tf.float32, shape=(10, 10))
+        v0_list = v0._get_variable_list()
+        v0_part = v0._get_partitions()
+        self.assertEqual(len(v0_list), 5)
+        self.assertAllEqual(v0_part, (5, 1))
+
   def _testVariableAxisSizePartitioner(self, name, axis, max_shard_bytes,
                                        expected_axis_shards,
                                        expected_partitions,
@@ -219,7 +229,7 @@ class PartitionerCreatorsTest(tf.test.TestCase):
                                           expected_partitions=[4, 1, 1])
 
 
-def _IotaInitializer(shape, dtype=tf.float32):
+def _IotaInitializer(shape, dtype=tf.float32, partition_info=None):
   assert dtype == tf.float32
   if len(shape) == 1:
     return range(shape[0])
@@ -455,6 +465,51 @@ class PartitionedVariablesTestCase(tf.test.TestCase):
       with self.assertRaises(ValueError):
         tf.create_partitioned_variables(
             [10, 43], [1, 50], rnd.initialized_value())
+
+  def testControlDepsNone(self):
+    with self.test_session() as session:
+      c = tf.constant(1.0)
+      with tf.control_dependencies([c]):
+        # d get the control dependency.
+        d = tf.constant(2.0)
+        # Partitioned variables do not.
+        var_x = tf.get_variable(
+            "x",
+            initializer=tf.ones_initializer([2]),
+            partitioner=tf.variable_axis_size_partitioner(4))
+
+        ops_before_read = session.graph.get_operations()
+        var_x.as_tensor()  # Caches the ops for subsequent reads.
+        reading_ops = [op for op in session.graph.get_operations()
+                       if op not in ops_before_read]
+
+      self.assertEqual([c.op], d.op.control_inputs)
+      # Tests that no control dependencies are added to reading a partitioned
+      # variable which is similar to reading a variable.
+      for op in reading_ops:
+        self.assertEqual([], op.control_inputs)
+
+  def testConcat(self):
+    with self.test_session() as session:
+      var_x = tf.get_variable(
+          "x",
+          initializer=tf.constant([1., 2.]),
+          partitioner=tf.variable_axis_size_partitioner(4))
+
+      c = tf.constant(1.0)
+      with tf.control_dependencies([c]):
+        ops_before_concat = session.graph.get_operations()
+        value = var_x._concat()  # pylint: disable=protected-access
+        concat_ops = [op for op in session.graph.get_operations()
+                      if op not in ops_before_concat]
+
+      concat_control_inputs = [ci for op in concat_ops
+                               for ci in op.control_inputs]
+      self.assertTrue(
+          c.op in concat_control_inputs,
+          "var_x._concat() should get control dependencies from its scope.")
+      tf.initialize_all_variables().run()
+      self.assertAllClose(value.eval(), var_x.as_tensor().eval())
 
 
 if __name__ == "__main__":

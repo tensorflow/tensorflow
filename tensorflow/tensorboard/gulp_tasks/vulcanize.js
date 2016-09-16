@@ -42,20 +42,17 @@ Instead, use `gulp regenerate` to create a new version with your changes.\n\
 
 /**
  * Returns a list of non-tensorboard components inside the components
- * directory, i.e. components that don't begin with 'tf-'.
+ * directory, i.e. components that don't begin with 'tf-' or 'vz-''.
  */
 function getNonTensorBoardComponents() {
   return fs.readdirSync('components')
       .filter(function(file) {
         var prefix = file.slice(0,3);
         return fs.statSync(path.join('components', file)).isDirectory() &&
-            prefix !== 'tf-';
+            prefix !== 'tf-'  && prefix !== 'vz-';
       })
       .map(function(dir) { return '/' + dir + '/'; });
 }
-
-var linkRegex = /<link rel="[^"]*" (type="[^"]*" )?href="[^"]*">\n/g;
-var scriptRegex = /<script src="[^"]*"><\/script>\n/g;
 
 module.exports = function(overwrite) {
   return function() {
@@ -66,12 +63,8 @@ module.exports = function(overwrite) {
           inlineScripts: true,
           inlineCss: true,
           stripComments: true,
-          excludes: getNonTensorBoardComponents(),
+          excludes: getNonTensorBoardComponents()
         }))
-        // TODO(danmane): Remove this worrisome brittleness when vulcanize
-        // fixes https://github.com/Polymer/vulcanize/issues/273
-        .pipe(replace(linkRegex, ''))
-        .pipe(replace(scriptRegex, ''))
         .pipe(header(HEADER_STR))
         .pipe(rename('tf-tensorboard.html' + suffix))
         .pipe(gulp.dest('./dist'));

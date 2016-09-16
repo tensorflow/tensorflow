@@ -34,6 +34,8 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
 
+// See core/kernels/function_ops.cc for related kernels.
+
 namespace tensorflow {
 
 // A few string constant used throughout this module.
@@ -42,7 +44,11 @@ static const char* const kRetOp = "_Retval";
 static const char* const kGradientOp = "SymbolicGradient";
 static const char* const kNodeLabel = "Func";
 static const char* const kFuncAttr = "f";
-static const char* const kNoinlineAttr = "noinline";
+// kNoinlineAttr must start with an "_" to avoid collisions with
+// user-specified attrs.
+static const char* const kNoinlineAttr = "_noinline";
+// Old graphs use no "_".
+static const char* const kOldNoinlineAttr = "noinline";
 
 // Represents the index-th output of a node.
 struct Endpoint {
@@ -131,104 +137,11 @@ static Node* AddRet(Graph* g, Endpoint input, int index) {
   return ret;
 }
 
-class ArgOp : public OpKernel {
- public:
-  explicit ArgOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("index", &index_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    auto frame = ctx->call_frame();
-    OP_REQUIRES(ctx, frame != nullptr, errors::Internal("no call frame"));
-    Tensor val;
-    OP_REQUIRES_OK(ctx, frame->GetArg(index_, &val));
-    OP_REQUIRES(ctx, val.dtype() == dtype_,
-                errors::InvalidArgument(
-                    "Type mismatch: actual ", DataTypeString(val.dtype()),
-                    " vs. expect ", DataTypeString(dtype_)));
-    ctx->set_output(0, val);
-  }
-
- private:
-  int index_;
-  DataType dtype_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(ArgOp);
-};
-
-class RetvalOp : public OpKernel {
- public:
-  explicit RetvalOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("index", &index_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    const Tensor& val = ctx->input(0);
-    OP_REQUIRES(ctx, val.dtype() == dtype_,
-                errors::InvalidArgument(
-                    "Type mismatch: actual ", DataTypeString(val.dtype()),
-                    " vs. expect ", DataTypeString(dtype_)));
-    auto frame = ctx->call_frame();
-    OP_REQUIRES(ctx, frame != nullptr, errors::Internal("no call frame"));
-    OP_REQUIRES_OK(ctx, frame->SetRetval(index_, val));
-  }
-
- private:
-  int index_;
-  DataType dtype_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
-};
-
-REGISTER_KERNEL_BUILDER(Name("_Arg").Device(DEVICE_CPU), ArgOp);
-REGISTER_KERNEL_BUILDER(Name("_Retval").Device(DEVICE_CPU), RetvalOp);
-
-#define REGISTER_GPU_KERNELS(type)                                       \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_Arg").Device(DEVICE_GPU).TypeConstraint<type>("T"), ArgOp); \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("_Retval").Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
-REGISTER_GPU_KERNELS(Eigen::half);
-REGISTER_GPU_KERNELS(float);
-REGISTER_GPU_KERNELS(double);
-#undef REGISTER_GPU_KERNELS
-
-REGISTER_KERNEL_BUILDER(Name("_Arg")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        ArgOp);
-REGISTER_KERNEL_BUILDER(Name("_Retval")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("input")
-                            .TypeConstraint<int32>("T"),
-                        RetvalOp);
-
-class PassOn : public OpKernel {
- public:
-  explicit PassOn(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-
-  void Compute(OpKernelContext* ctx) override {
-    OP_REQUIRES(ctx, ctx->num_inputs() == ctx->num_outputs(),
-                errors::Internal("#inputs != #outputs : ", ctx->num_inputs(),
-                                 " vs. ", ctx->num_outputs()));
-    for (int i = 0; i < ctx->num_inputs(); ++i) {
-      ctx->set_output(i, ctx->input(i));
-    }
-  }
-};
-REGISTER_KERNEL_BUILDER(Name("_ListToArray").Device(DEVICE_CPU), PassOn);
-REGISTER_KERNEL_BUILDER(Name("_ListToArray").Device(DEVICE_GPU), PassOn);
-REGISTER_KERNEL_BUILDER(Name("_ArrayToList").Device(DEVICE_CPU), PassOn);
-REGISTER_KERNEL_BUILDER(Name("_ArrayToList").Device(DEVICE_GPU), PassOn);
-
 static const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 
 class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
  public:
-  FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Device* device,
+  FunctionLibraryRuntimeImpl(const DeviceMgr* dmgr, Env* env, Device* device,
                              int graph_def_version,
                              const FunctionLibraryDefinition* lib_def,
                              const OptimizerOptions& optimizer_options);
@@ -248,13 +161,20 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   bool IsStateful(const string& function) override;
 
+  const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
+      const override {
+    return lib_def_;
+  }
+
   Device* device() override { return device_; }
+  Env* env() override { return env_; }
 
  private:
   typedef FunctionLibraryRuntimeImpl ME;
 
   const DeviceMgr* const device_mgr_;
   Device* const device_;
+  Env* const env_;
   const int graph_def_version_;
   const FunctionLibraryDefinition* const lib_def_;
   GraphOptimizer optimizer_;
@@ -292,11 +212,12 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 };
 
 FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
-    const DeviceMgr* dmgr, Device* device, int graph_def_version,
+    const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options)
     : device_mgr_(dmgr),
       device_(device),
+      env_(env),
       graph_def_version_(graph_def_version),
       lib_def_(lib_def),
       optimizer_(optimizer_options) {
@@ -330,6 +251,7 @@ class CallOp : public AsyncOpKernel {
                       done);
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
+    opts.step_resource_manager = ctx->step_resource_manager();
     opts.runner = ctx->runner();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
@@ -357,61 +279,6 @@ class CallOp : public AsyncOpKernel {
 
   TF_DISALLOW_COPY_AND_ASSIGN(CallOp);
 };
-
-class SymbolicGradientOp : public AsyncOpKernel {
- public:
-  SymbolicGradientOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx), handle_(kInvalidHandle) {}
-
-  ~SymbolicGradientOp() override {}
-
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    FunctionLibraryRuntime* lib = ctx->function_library();
-    OP_REQUIRES_ASYNC(ctx, lib != nullptr,
-                      errors::Internal("No function library is provided."),
-                      done);
-
-    OP_REQUIRES_OK_ASYNC(
-        ctx, lib->Instantiate(kGradientOp, def().attr(), &handle_), done);
-
-    FunctionLibraryRuntime::Options opts;
-    opts.step_id = ctx->step_id();
-    opts.runner = ctx->runner();
-    std::vector<Tensor> args;
-    args.reserve(ctx->num_inputs());
-    for (int i = 0; i < ctx->num_inputs(); ++i) {
-      args.push_back(ctx->input(i));
-    }
-    std::vector<Tensor>* rets = new std::vector<Tensor>;
-    lib->Run(opts, handle_, args, rets,
-             [ctx, done, rets](const Status& status) {
-               if (!status.ok()) {
-                 ctx->SetStatus(status);
-               } else if (rets->size() != ctx->num_outputs()) {
-                 ctx->SetStatus(errors::InvalidArgument(
-                     "SymGrad expects to return ", ctx->num_outputs(),
-                     " tensor(s), but get ", rets->size(),
-                     " tensor(s) instead."));
-               } else {
-                 for (size_t i = 0; i < rets->size(); ++i) {
-                   ctx->set_output(i, (*rets)[i]);
-                 }
-               }
-               delete rets;
-               done();
-             });
-  }
-
- private:
-  FunctionLibraryRuntime::Handle handle_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientOp);
-};
-
-REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_CPU),
-                        SymbolicGradientOp);
-REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_GPU),
-                        SymbolicGradientOp);
 
 const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
   mutex_lock l(mu_);
@@ -494,6 +361,8 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
                                      func.name());
     }
     FunctionDef grad_fdef;
+    // TODO(josh11b): Should filter out the attrs from func that aren't used
+    // by the gradient function.
     TF_RETURN_IF_ERROR(creator(AttrSlice(&func.attr()), &grad_fdef));
     TF_RETURN_IF_ERROR(FunctionDefToBody(grad_fdef, func.attr(), g_body));
   } else {
@@ -575,7 +444,7 @@ void OptimizeGraph(FunctionLibraryRuntime* lib, Graph** g) {
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
-  optimizer.Optimize(lib, lib->device(), g);
+  optimizer.Optimize(lib, lib->env(), lib->device(), g);
 }
 
 Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
@@ -584,7 +453,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   Graph* g = new Graph(lib_def_);
   CopyGraph(*fbody->graph, g);
 
-  optimizer_.Optimize(this, device(), &g);
+  optimizer_.Optimize(this, env(), device(), &g);
   auto s = EnsureMemoryTypes(DeviceType(device()->device_type()),
                              device()->name(), g);
   if (!s.ok()) {
@@ -663,6 +532,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   Executor::Args exec_args;
   // Inherit the step_id from the caller.
   exec_args.step_id = opts.step_id;
+  exec_args.step_resource_manager = opts.step_resource_manager;
   exec_args.call_frame = frame;
   exec_args.cancellation_manager = opts.cancellation_manager;
   exec_args.runner = *opts.runner;
@@ -693,10 +563,10 @@ bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {
 }
 
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
-    const DeviceMgr* dmgr, Device* device, int graph_def_version,
+    const DeviceMgr* dmgr, Env* env, Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def,
     const OptimizerOptions& optimizer_options) {
-  return new FunctionLibraryRuntimeImpl(dmgr, device, graph_def_version,
+  return new FunctionLibraryRuntimeImpl(dmgr, env, device, graph_def_version,
                                         lib_def, optimizer_options);
 }
 
@@ -1003,12 +873,16 @@ static void InlineFunctionBody(Graph* g, Node* caller,
 }
 
 // Given a node's NodeDef, returns false iff the node explicitly
-// specified noinline. This gives ExpandInlineFunctions a heuristic to
+// specified _noinline. This gives ExpandInlineFunctions a heuristic to
 // decide whether to inline the function.
-bool ShouldInline(const NodeDef& ndef) {
+// `old` is true for GraphDef versions older than 12, when the
+// `noinline` attr was renamed to `_noinline` to avoid conflicts with
+// user-specified attrs.
+bool ShouldInline(const NodeDef& ndef, bool old) {
   bool noinline = false;
-  if (GetNodeAttr(ndef, kNoinlineAttr, &noinline).ok()) {
-    // If the node specifies attribute 'noinlne', returns accordingly.
+  const char* const attr = old ? kOldNoinlineAttr : kNoinlineAttr;
+  if (GetNodeAttr(ndef, attr, &noinline).ok()) {
+    // If the node specifies attribute '_noinline', returns accordingly.
     return !noinline;
   }
   if (ndef.op() != kGradientOp) {
@@ -1017,7 +891,7 @@ bool ShouldInline(const NodeDef& ndef) {
     return true;
   }
   // If the node is a SymbolicGradient, we use the forward
-  // function's attribute 'noinline' instead.
+  // function's attribute '_noinline' instead.
   const NameAttrList* forward_func_attrs;
   Status s =
       GetNodeAttr(AttrSlice(&ndef.attr()), kFuncAttr, &forward_func_attrs);
@@ -1026,10 +900,9 @@ bool ShouldInline(const NodeDef& ndef) {
     // continue and the runtime will error out.
     return false;
   }
-  s = GetNodeAttr(AttrSlice(&forward_func_attrs->attr()), kNoinlineAttr,
-                  &noinline);
+  s = GetNodeAttr(AttrSlice(&forward_func_attrs->attr()), attr, &noinline);
   if (!s.ok()) {
-    // The forward function doesn't specify 'noinline' attr, we should
+    // The forward function doesn't specify '_noinline' attr, we should
     // be free to decide.
     return true;
   }
@@ -1039,9 +912,11 @@ bool ShouldInline(const NodeDef& ndef) {
 
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   std::vector<std::pair<Node*, const FunctionBody*>> candidates;
+  // Identify old graphs before the 'noinline' attr was renamed '_noinline'.
+  const bool old_inline_attr = graph->versions().producer() < 12;
   for (Node* node : graph->nodes()) {
     VLOG(3) << "Expanding " << node->DebugString();
-    if (!ShouldInline(node->def())) {
+    if (!ShouldInline(node->def(), old_inline_attr)) {
       VLOG(3) << "noinline: " << node->DebugString();
       continue;
     }

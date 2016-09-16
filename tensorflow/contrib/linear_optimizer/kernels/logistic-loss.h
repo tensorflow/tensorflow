@@ -26,34 +26,22 @@ namespace tensorflow {
 
 class LogisticLossUpdater : public DualLossUpdater {
  public:
-  // Use an approximate step that is guaranteed to decrease the dual loss.
-  // Derivation of this is available in  Page 14 Eq 16 of
-  // http://arxiv.org/pdf/1211.2717v1.pdf
-  double ComputeUpdatedDual(const double label, const double example_weight,
+  // Adding vs. Averaging in Distributed Primal-Dual Optimization.
+  // Chenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan, Peter
+  // Richtarik, Martin Takac http://arxiv.org/abs/1502.03508
+  double ComputeUpdatedDual(const int num_partitions, const double label,
+                            const double example_weight,
                             const double current_dual, const double wx,
-                            const double weighted_example_norm,
-                            const double primal_loss,
-                            const double dual_loss) const final {
-    const double partial_derivative_loss =
-        PartialDerivativeLogisticLoss(label, wx);
-    // f(a) = sup (a*x  - f(x)) then a = f'(x), where a is the aproximate dual.
-    const double approximate_dual = partial_derivative_loss * label;
-    // Dual loss is gamma-strongly convex.
-    const double gamma =
-        1 / SmoothnessConstantLogisticLoss(partial_derivative_loss, label, wx);
-    const double delta_dual = approximate_dual - current_dual;
-    const double wx_dual = wx * current_dual * example_weight;
-    const double delta_dual_squared = delta_dual * delta_dual;
-    const double smooth_delta_dual_squared = delta_dual_squared * gamma * 0.5;
-    double multiplier =
-        (primal_loss + dual_loss + wx_dual + smooth_delta_dual_squared) /
-        std::max(1.0,
-                 delta_dual_squared *
-                     (gamma +
-                      weighted_example_norm * example_weight * example_weight));
-    // Multiplier must be in the range [0, 1].
-    multiplier = std::max(std::min(1.0, multiplier), 0.0);
-    return current_dual + delta_dual * multiplier;
+                            const double weighted_example_norm) const final {
+    // Newton algorithm converges quadratically so 10 steps will be largely
+    // enough to achieve a very good precision
+    static const int newton_total_steps = 10;
+    double x = 0;
+    for (int i = 0; i < newton_total_steps; ++i) {
+      x = NewtonStep(x, num_partitions, label, wx, example_weight,
+                     weighted_example_norm, current_dual);
+    }
+    return 0.5 * (1 + tanh(x)) / label;
   }
 
   // Dual of logisitic loss function.
@@ -107,27 +95,22 @@ class LogisticLossUpdater : public DualLossUpdater {
   }
 
  private:
-  // Partial derivative of the logistic loss w.r.t (1 + exp(-ywx)).
-  static inline double PartialDerivativeLogisticLoss(const double wx,
-                                                     const double label) {
-    // To avoid overflow, we compute partial derivative of logistic loss as
-    // follows.
-    const double ywx = label * wx;
-    if (ywx > 0) {
-      const double exp_minus_ywx = exp(-ywx);
-      return exp_minus_ywx / (1 + exp_minus_ywx);
-    }
-    return 1 / (1 + exp(ywx));
-  }
-
-  // Smoothness constant for the logistic loss.
-  static inline double SmoothnessConstantLogisticLoss(
-      const double partial_derivative_loss, const double wx,
-      const double label) {
-    // Upper bound on the smoothness constant of log loss. This is 0.25 i.e.
-    // when log-odds is zero.
-    return (wx == 0) ? 0.25
-                     : (1 - 2 * partial_derivative_loss) / (2 * label * wx);
+  // We use Newton algorithm on a modified function (see readme.md).
+  double NewtonStep(const double x, const int num_partitions,
+                    const double label, const double wx,
+                    const double example_weight,
+                    const double weighted_example_norm,
+                    const double current_dual) const {
+    const double tanhx = tanh(x);
+    const double numerator = -2 * label * x - wx -
+                             num_partitions * weighted_example_norm *
+                                 example_weight *
+                                 (0.5 * (1 + tanhx) / label - current_dual);
+    const double denominator = -2 * label -
+                               num_partitions * weighted_example_norm *
+                                   example_weight * (1 - tanhx * tanhx) * 0.5 /
+                                   label;
+    return x - numerator / denominator;
   }
 };
 

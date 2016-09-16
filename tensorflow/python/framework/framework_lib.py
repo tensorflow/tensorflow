@@ -51,6 +51,7 @@
 ## Defining new operations
 
 @@RegisterGradient
+@@NotDifferentiable
 @@NoGradient
 @@RegisterShape
 @@TensorShape
@@ -72,6 +73,7 @@ from tensorflow.python.framework.device import DeviceSpec
 from tensorflow.python.framework.ops import Graph
 from tensorflow.python.framework.ops import Operation
 from tensorflow.python.framework.ops import Tensor
+from tensorflow.python.framework.ops import Output
 from tensorflow.python.framework.ops import SparseTensor
 from tensorflow.python.framework.ops import SparseTensorValue
 from tensorflow.python.framework.ops import IndexedSlices
@@ -96,6 +98,7 @@ from tensorflow.python.framework.importer import import_graph_def
 
 # Needed when you defined a new Op in C++.
 from tensorflow.python.framework.ops import RegisterGradient
+from tensorflow.python.framework.ops import NotDifferentiable
 from tensorflow.python.framework.ops import NoGradient
 from tensorflow.python.framework.ops import RegisterShape
 from tensorflow.python.framework.tensor_shape import Dimension

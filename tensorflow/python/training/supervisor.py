@@ -106,8 +106,8 @@ class Supervisor(object):
 
   In the *chief* task, the `Supervisor` works exactly as in the first example
   above.  In the other tasks `sv.managed_session()` waits for the Model to have
-  been intialized before returning a session to the training code.  The
-  non-chief tasks depend on the chief taks for initializing the model.
+  been initialized before returning a session to the training code.  The
+  non-chief tasks depend on the chief task for initializing the model.
 
   If one of the tasks crashes and restarts, `managed_session()`
   checks if the Model is initialized.  If yes, it just creates a session and
@@ -210,14 +210,26 @@ class Supervisor(object):
   # the default behavior should be used.
   USE_DEFAULT = 0
 
-  def __init__(self, graph=None, ready_op=USE_DEFAULT, is_chief=True,
-               init_op=USE_DEFAULT, init_feed_dict=None,
-               local_init_op=USE_DEFAULT, logdir=None,
-               summary_op=USE_DEFAULT, saver=USE_DEFAULT,
-               global_step=USE_DEFAULT, save_summaries_secs=120,
-               save_model_secs=600, recovery_wait_secs=30, stop_grace_secs=120,
-               checkpoint_basename="model.ckpt", session_manager=None,
-               summary_writer=USE_DEFAULT, init_fn=None):
+  def __init__(self,
+               graph=None,
+               ready_op=USE_DEFAULT,
+               ready_for_local_init_op=USE_DEFAULT,
+               is_chief=True,
+               init_op=USE_DEFAULT,
+               init_feed_dict=None,
+               local_init_op=USE_DEFAULT,
+               logdir=None,
+               summary_op=USE_DEFAULT,
+               saver=USE_DEFAULT,
+               global_step=USE_DEFAULT,
+               save_summaries_secs=120,
+               save_model_secs=600,
+               recovery_wait_secs=30,
+               stop_grace_secs=120,
+               checkpoint_basename="model.ckpt",
+               session_manager=None,
+               summary_writer=USE_DEFAULT,
+               init_fn=None):
     """Create a `Supervisor`.
 
     Args:
@@ -230,6 +242,13 @@ class Supervisor(object):
         The model is considered ready if it returns an empty array.  Defaults to
         the tensor returned from `tf.report_uninitialized_variables()`  If
         `None`, the model is not checked for readiness.
+      ready_for_local_init_op: 1-D string `Tensor`.  This tensor is evaluated by
+        supervisors in `prepare_or_wait_for_session()` to check if the model is
+        ready to run the local_init_op.
+        The model is considered ready if it returns an empty array.  Defaults to
+        the tensor returned from
+        `tf.report_uninitialized_variables(tf.all_variables())`. If `None`, the
+        model is not checked for readiness before running local_init_op.
       is_chief: If True, create a chief supervisor in charge of initializing
         and restoring the model.  If False, create a supervisor that relies
         on a chief supervisor for inits and restore.
@@ -287,7 +306,8 @@ class Supervisor(object):
     if graph is None:
       graph = ops.get_default_graph()
     with graph.as_default():
-      self._init_ready_op(ready_op=ready_op)
+      self._init_ready_op(
+          ready_op=ready_op, ready_for_local_init_op=ready_for_local_init_op)
       self._init_init_op(init_op=init_op, init_feed_dict=init_feed_dict)
       self._init_local_init_op(local_init_op=local_init_op)
       self._init_saver(saver=saver)
@@ -296,7 +316,6 @@ class Supervisor(object):
     self._graph = graph
     self._is_chief = is_chief
     self._coord = coordinator.Coordinator()
-    self._started_threads = []
     self._recovery_wait_secs = recovery_wait_secs
     self._stop_grace_secs = stop_grace_secs
     self._init_fn = init_fn
@@ -332,7 +351,9 @@ class Supervisor(object):
     if session_manager is None:
       self._session_manager = session_manager_mod.SessionManager(
           local_init_op=self._local_init_op,
-          ready_op=self._ready_op, graph=self._graph,
+          ready_op=self._ready_op,
+          ready_for_local_init_op=self._ready_for_local_init_op,
+          graph=self._graph,
           recovery_wait_secs=self._recovery_wait_secs)
     else:
       self._session_manager = session_manager
@@ -358,13 +379,19 @@ class Supervisor(object):
 
     return None
 
-  def _init_ready_op(self, ready_op=USE_DEFAULT):
+  def _init_ready_op(self,
+                     ready_op=USE_DEFAULT,
+                     ready_for_local_init_op=USE_DEFAULT):
     """Initializes ready_op.
 
     Args:
       ready_op: `Tensor` to check if the model is initialized.
         If it's set to USE_DEFAULT, creates an op that checks all
         the variables are initialized.
+      ready_for_local_init_op: `Tensor` to check if the model is ready to run
+        local_init_op.
+        If it's set to USE_DEFAULT, creates an op that checks all
+        the global variables are initialized.
     """
     if ready_op is Supervisor.USE_DEFAULT:
       ready_op = self._get_first_op_from_collection(ops.GraphKeys.READY_OP)
@@ -372,6 +399,12 @@ class Supervisor(object):
         ready_op = variables.report_uninitialized_variables()
         ops.add_to_collection(ops.GraphKeys.READY_OP, ready_op)
     self._ready_op = ready_op
+
+    # ready_for_local_init_op defaults to None for backward compatibility
+    if ready_for_local_init_op is Supervisor.USE_DEFAULT:
+      ready_for_local_init_op = self._get_first_op_from_collection(
+          ops.GraphKeys.READY_FOR_LOCAL_INIT_OP)
+    self._ready_for_local_init_op = ready_for_local_init_op
 
   def _init_init_op(self, init_op=USE_DEFAULT, init_feed_dict=None):
     """Initializes init_op.
@@ -425,7 +458,7 @@ class Supervisor(object):
     self._saver = saver
 
   def _init_summary_op(self, summary_op=USE_DEFAULT):
-    """Initilizes summary_op.
+    """Initializes summary_op.
 
     Args:
       summary_op: An Operation that returns a Summary for the event logs.
@@ -511,6 +544,10 @@ class Supervisor(object):
       An Op or `None`.
     """
     return self._ready_op
+
+  @property
+  def ready_for_local_init_op(self):
+    return self._ready_for_local_init_op
 
   @property
   def summary_writer(self):
@@ -636,8 +673,6 @@ class Supervisor(object):
       threads.append(SVTimerCheckpointThread(self, sess))
     for t in threads:
       t.start()
-    self._started_threads.extend(threads)
-
     return threads
 
   def prepare_or_wait_for_session(self, master="", config=None,
@@ -695,7 +730,7 @@ class Supervisor(object):
     Note that the queue runners collected in the graph key `QUEUE_RUNNERS`
     are already started automatically when you create a session with the
     supervisor, so unless you have non-collected queue runners to start
-    you do not need to call this explicitely.
+    you do not need to call this explicitly.
 
     Args:
       sess: A `Session`.
@@ -712,7 +747,6 @@ class Supervisor(object):
     for qr in queue_runners:
       threads.extend(qr.create_threads(sess, coord=self._coord, daemon=True,
                                        start=True))
-    self._started_threads.extend(threads)
     return threads
 
   def loop(self, timer_interval_secs, target, args=None, kwargs=None):
@@ -737,7 +771,6 @@ class Supervisor(object):
     looper = coordinator.LooperThread(self._coord, timer_interval_secs,
                                       target=target, args=args, kwargs=kwargs)
     looper.start()
-    self._started_threads.append(looper)
     return looper
 
   def stop(self, threads=None, close_summary_writer=True):
@@ -755,16 +788,12 @@ class Supervisor(object):
         `True` if the summary writer was created by the supervisor, `False`
         otherwise.
     """
-    join_threads = []
-    join_threads.extend(self._started_threads)
-    if threads is not None:
-      join_threads.extend(threads)
     self._coord.request_stop()
     try:
       # coord.join() re-raises the first reported exception; the "finally"
       # block ensures that we clean up whether or not an exception was
       # reported.
-      self._coord.join(join_threads,
+      self._coord.join(threads,
                        stop_grace_period_secs=self._stop_grace_secs)
     finally:
       # Close the writer last, in case one of the running threads was using it.
@@ -774,8 +803,6 @@ class Supervisor(object):
         self._summary_writer.add_session_log(SessionLog(status=SessionLog.STOP))
         self._summary_writer.close()
         self._graph_added_to_summary = False
-
-      self._started_threads = []
 
   def request_stop(self, ex=None):
     """Request that the coordinator stop the threads.

@@ -70,8 +70,14 @@ flags.DEFINE_string(
     "model", "small",
     "A type of model. Possible options are: small, medium, large.")
 flags.DEFINE_string("data_path", None, "data_path")
+flags.DEFINE_bool("use_fp16", False,
+                  "Train using 16-bit floats instead of 32bit floats")
 
 FLAGS = flags.FLAGS
+
+
+def data_type():
+  return tf.float16 if FLAGS.use_fp16 else tf.float32
 
 
 class PTBModel(object):
@@ -89,16 +95,17 @@ class PTBModel(object):
     # Slightly better results can be obtained with forget gate biases
     # initialized to 1 but the hyperparameters of the model would need to be
     # different than reported in the paper.
-    lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(size, forget_bias=0.0)
+    lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(size, forget_bias=0.0, state_is_tuple=True)
     if is_training and config.keep_prob < 1:
       lstm_cell = tf.nn.rnn_cell.DropoutWrapper(
           lstm_cell, output_keep_prob=config.keep_prob)
-    cell = tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * config.num_layers)
+    cell = tf.nn.rnn_cell.MultiRNNCell([lstm_cell] * config.num_layers, state_is_tuple=True)
 
-    self._initial_state = cell.zero_state(batch_size, tf.float32)
+    self._initial_state = cell.zero_state(batch_size, data_type())
 
     with tf.device("/cpu:0"):
-      embedding = tf.get_variable("embedding", [vocab_size, size])
+      embedding = tf.get_variable(
+          "embedding", [vocab_size, size], dtype=data_type())
       inputs = tf.nn.embedding_lookup(embedding, self._input_data)
 
     if is_training and config.keep_prob < 1:
@@ -110,10 +117,9 @@ class PTBModel(object):
     #
     # The alternative version of the code below is:
     #
-    # from tensorflow.models.rnn import rnn
     # inputs = [tf.squeeze(input_, [1])
     #           for input_ in tf.split(1, num_steps, inputs)]
-    # outputs, state = rnn.rnn(cell, inputs, initial_state=self._initial_state)
+    # outputs, state = tf.nn.rnn(cell, inputs, initial_state=self._initial_state)
     outputs = []
     state = self._initial_state
     with tf.variable_scope("RNN"):
@@ -123,13 +129,14 @@ class PTBModel(object):
         outputs.append(cell_output)
 
     output = tf.reshape(tf.concat(1, outputs), [-1, size])
-    softmax_w = tf.get_variable("softmax_w", [size, vocab_size])
-    softmax_b = tf.get_variable("softmax_b", [vocab_size])
+    softmax_w = tf.get_variable(
+        "softmax_w", [size, vocab_size], dtype=data_type())
+    softmax_b = tf.get_variable("softmax_b", [vocab_size], dtype=data_type())
     logits = tf.matmul(output, softmax_w) + softmax_b
     loss = tf.nn.seq2seq.sequence_loss_by_example(
         [logits],
         [tf.reshape(self._targets, [-1])],
-        [tf.ones([batch_size * num_steps])])
+        [tf.ones([batch_size * num_steps], dtype=data_type())])
     self._cost = cost = tf.reduce_sum(loss) / batch_size
     self._final_state = state
 
@@ -140,11 +147,15 @@ class PTBModel(object):
     tvars = tf.trainable_variables()
     grads, _ = tf.clip_by_global_norm(tf.gradients(cost, tvars),
                                       config.max_grad_norm)
-    optimizer = tf.train.GradientDescentOptimizer(self.lr)
+    optimizer = tf.train.GradientDescentOptimizer(self._lr)
     self._train_op = optimizer.apply_gradients(zip(grads, tvars))
 
+    self._new_lr = tf.placeholder(
+        tf.float32, shape=[], name="new_learning_rate")
+    self._lr_update = tf.assign(self._lr, self._new_lr)
+
   def assign_lr(self, session, lr_value):
-    session.run(tf.assign(self.lr, lr_value))
+    session.run(self._lr_update, feed_dict={self._new_lr: lr_value})
 
   @property
   def input_data(self):
@@ -239,26 +250,30 @@ class TestConfig(object):
   vocab_size = 10000
 
 
-def run_epoch(session, m, data, eval_op, verbose=False):
+def run_epoch(session, model, data, eval_op, verbose=False):
   """Runs the model on the given data."""
-  epoch_size = ((len(data) // m.batch_size) - 1) // m.num_steps
+  epoch_size = ((len(data) // model.batch_size) - 1) // model.num_steps
   start_time = time.time()
   costs = 0.0
   iters = 0
-  state = m.initial_state.eval()
-  for step, (x, y) in enumerate(reader.ptb_iterator(data, m.batch_size,
-                                                    m.num_steps)):
-    cost, state, _ = session.run([m.cost, m.final_state, eval_op],
-                                 {m.input_data: x,
-                                  m.targets: y,
-                                  m.initial_state: state})
+  state = session.run(model.initial_state)
+  for step, (x, y) in enumerate(reader.ptb_iterator(data, model.batch_size,
+                                                    model.num_steps)):
+    fetches = [model.cost, model.final_state, eval_op]
+    feed_dict = {}
+    feed_dict[model.input_data] = x
+    feed_dict[model.targets] = y
+    for i, (c, h) in enumerate(model.initial_state):
+      feed_dict[c] = state[i].c
+      feed_dict[h] = state[i].h
+    cost, state, _ = session.run(fetches, feed_dict)
     costs += cost
-    iters += m.num_steps
+    iters += model.num_steps
 
     if verbose and step % (epoch_size // 10) == 10:
       print("%.3f perplexity: %.3f speed: %.0f wps" %
             (step * 1.0 / epoch_size, np.exp(costs / iters),
-             iters * m.batch_size / (time.time() - start_time)))
+             iters * model.batch_size / (time.time() - start_time)))
 
   return np.exp(costs / iters)
 

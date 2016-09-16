@@ -13,11 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
+
+using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("QuantizedAvgPool")
     .Input("input: T")
@@ -30,6 +36,15 @@ REGISTER_OP("QuantizedAvgPool")
     .Attr("ksize: list(int)")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::AvgPoolShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Produces the average pool of the input tensor for quantized types.
 
@@ -59,6 +74,17 @@ REGISTER_OP("QuantizedBiasAdd")
     .Attr("T1: quantizedtype")
     .Attr("T2: quantizedtype")
     .Attr("out_type: quantizedtype")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::BiasAddShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Adds Tensor 'bias' to Tensor 'input' for Quantized types.
 
@@ -89,6 +115,17 @@ REGISTER_OP("QuantizedConv2D")
     .Attr("out_type: quantizedtype = DT_QINT32")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes a 2D convolution given quantized 4D input and filter tensors.
 The inputs are quantized tensors where the lowest value represents the real
@@ -120,6 +157,15 @@ REGISTER_OP("QuantizedMaxPool")
     .Attr("ksize: list(int)")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Produces the max pool of the input tensor for quantized types.
 
@@ -145,6 +191,15 @@ REGISTER_OP("QuantizedRelu")
     .Output("max_activations: float")
     .Attr("Tinput: quantizedtype")
     .Attr("out_type: quantizedtype = DT_QUINT8")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes Quantized Rectified Linear: `max(features, 0)`
 
@@ -165,6 +220,15 @@ REGISTER_OP("QuantizedRelu6")
     .Output("max_activations: float")
     .Attr("Tinput: quantizedtype")
     .Attr("out_type: quantizedtype = DT_QUINT8")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes Quantized Rectified Linear 6: `min(max(features, 0), 6)`
 
@@ -186,6 +250,15 @@ REGISTER_OP("QuantizedReluX")
     .Output("max_activations: float")
     .Attr("Tinput: quantizedtype")
     .Attr("out_type: quantizedtype = DT_QUINT8")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes Quantized Rectified Linear X: `min(max(features, 0), max_value)`
 
@@ -220,6 +293,25 @@ REGISTER_OP("QuantizedBatchNormWithGlobalNormalization")
     .Attr("out_type: quantizedtype")
     .Attr("variance_epsilon: float")
     .Attr("scale_after_normalization: bool")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+
+      DimensionHandle last_dim = c->Dim(input, 3);
+      for (int i = 1; i < 5; ++i) {  // covers m, v, beta, gamma
+        ShapeHandle vec;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i * 3), 1, &vec));
+        TF_RETURN_IF_ERROR(c->Merge(last_dim, c->Dim(vec, 0), &last_dim));
+      }
+
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->ReplaceDim(input, 3, last_dim, &out));
+      c->set_output(0, out);
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+
+      return Status::OK();
+    })
     .Doc(R"doc(
 Quantized Batch normalization.
 

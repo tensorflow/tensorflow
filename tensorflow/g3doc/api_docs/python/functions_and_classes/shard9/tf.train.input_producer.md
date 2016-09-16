@@ -5,7 +5,7 @@ Output the rows of `input_tensor` to a queue for an input pipeline.
 ##### Args:
 
 
-*  <b>`input_tensor`</b>: A tensor with the rows to produce. Must be at
+*  <b>`input_tensor`</b>: A tensor with the rows to produce. Must be at least
     one-dimensional. Must either have a fully-defined shape, or
     `element_shape` must be defined.
 *  <b>`element_shape`</b>: (Optional.) A `TensorShape` representing the shape of a
@@ -15,7 +15,7 @@ Output the rows of `input_tensor` to a queue for an input pipeline.
     `OutOfRange` error. If not specified, `input_producer` can cycle through
     the rows of `input_tensor` an unlimited number of times.
 *  <b>`shuffle`</b>: (Optional.) A boolean. If true, the rows are randomly shuffled
-    within each eopch.
+    within each epoch.
 *  <b>`seed`</b>: (Optional.) An integer. The seed to use if `shuffle` is true.
 *  <b>`capacity`</b>: (Optional.) The capacity of the queue to be used for buffering
     the input.

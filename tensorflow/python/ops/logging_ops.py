@@ -21,7 +21,6 @@ from __future__ import print_function
 
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_logging_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -29,38 +28,14 @@ from tensorflow.python.ops.gen_logging_ops import *
 # pylint: enable=wildcard-import
 
 
+# The python wrapper for Assert is in control_flow_ops, as the Assert
+# call relies on certain conditionals for its dependencies.  Use
+# control_flow_ops.Assert.
+ops.RegisterShape("Assert")(common_shapes.call_cpp_shape_fn)
+
+
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
-def Assert(condition, data, summarize=None, name=None):
-  """Asserts that the given condition is true.
-
-  If `condition` evaluates to false, print the list of tensors in `data`.
-  `summarize` determines how many entries of the tensors to print.
-
-  NOTE: To ensure that Assert executes, one usually attaches a dependency:
-
-  ```python
-   # Ensure maximum element of x is smaller or equal to 1
-  assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
-  x = tf.with_dependencies([assert_op], x)
-  ```
-
-  Args:
-    condition: The condition to evaluate.
-    data: The tensors to print out when condition is false.
-    summarize: Print this many entries of each tensor.
-    name: A name for this operation (optional).
-
-  Returns:
-    assert_op: An `Operation` that, when executed, raises a
-    `tf.errors.InvalidArgumentError` if `condition` is not true.
-  """
-  return gen_logging_ops._assert(condition, data, summarize, name)
-
-
-ops.RegisterShape("Assert")(common_shapes.no_outputs)
-
-
 def Print(input_, data, message=None, first_n=None, summarize=None,
           name=None):
   """Prints a list of tensors.
@@ -89,7 +64,7 @@ def _PrintGrad(op, *grad):
   return list(grad) + [None] * (len(op.inputs) - 1)
 
 
-ops.RegisterShape("Print")(common_shapes.unchanged_shape)
+ops.RegisterShape("Print")(common_shapes.call_cpp_shape_fn)
 
 
 def _Collect(val, collections, default_collections):
@@ -120,7 +95,7 @@ def histogram_summary(tag, values, collections=None, name=None):
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
-  with ops.op_scope([tag, values], name, "HistogramSummary") as scope:
+  with ops.name_scope(name, "HistogramSummary", [tag, values]) as scope:
     val = gen_logging_ops._histogram_summary(
         tag=tag, values=values, name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
@@ -171,7 +146,7 @@ def image_summary(tag, tensor, max_images=3, collections=None, name=None):
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
-  with ops.op_scope([tag, tensor], name, "ImageSummary") as scope:
+  with ops.name_scope(name, "ImageSummary", [tag, tensor]) as scope:
     val = gen_logging_ops._image_summary(
         tag=tag, tensor=tensor, max_images=max_images, name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
@@ -214,7 +189,7 @@ def audio_summary(tag,
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
-  with ops.op_scope([tag, tensor], name, "AudioSummary") as scope:
+  with ops.name_scope(name, "AudioSummary", [tag, tensor]) as scope:
     val = gen_logging_ops._audio_summary(tag=tag,
                                          tensor=tensor,
                                          max_outputs=max_outputs,
@@ -225,6 +200,7 @@ def audio_summary(tag,
 
 
 def merge_summary(inputs, collections=None, name=None):
+  # pylint: disable=line-too-long
   """Merges summaries.
 
   This op creates a
@@ -246,7 +222,7 @@ def merge_summary(inputs, collections=None, name=None):
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer resulting from the merging.
   """
-  with ops.op_scope(inputs, name, "MergeSummary") as scope:
+  with ops.name_scope(name, "MergeSummary", inputs):
     val = gen_logging_ops._merge_summary(inputs=inputs, name=name)
     _Collect(val, collections, [])
   return val
@@ -312,25 +288,24 @@ def scalar_summary(tags, values, collections=None, name=None):
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
-  with ops.op_scope([tags, values], name, "ScalarSummary") as scope:
+  with ops.name_scope(name, "ScalarSummary", [tags, values]) as scope:
     val = gen_logging_ops._scalar_summary(tags=tags, values=values, name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
 
 
-ops.NoGradient("HistogramAccumulatorSummary")
-ops.NoGradient("HistogramSummary")
-ops.NoGradient("ImageSummary")
-ops.NoGradient("AudioSummary")
-ops.NoGradient("MergeSummary")
-ops.NoGradient("ScalarSummary")
+ops.NotDifferentiable("HistogramAccumulatorSummary")
+ops.NotDifferentiable("HistogramSummary")
+ops.NotDifferentiable("ImageSummary")
+ops.NotDifferentiable("AudioSummary")
+ops.NotDifferentiable("MergeSummary")
+ops.NotDifferentiable("ScalarSummary")
 
 
-@ops.RegisterShape("HistogramAccumulatorSummary")
-@ops.RegisterShape("HistogramSummary")
-@ops.RegisterShape("ImageSummary")
-@ops.RegisterShape("AudioSummary")
-@ops.RegisterShape("MergeSummary")
-@ops.RegisterShape("ScalarSummary")
-def _ScalarShape(unused_op):
-  return [tensor_shape.scalar()]
+ops.RegisterShape("HistogramAccumulatorSummary")(
+    common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("HistogramSummary")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ImageSummary")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AudioSummary")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MergeSummary")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ScalarSummary")(common_shapes.call_cpp_shape_fn)

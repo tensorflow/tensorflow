@@ -32,10 +32,10 @@ mnist = learn.datasets.load_dataset('mnist')
 ### Linear classifier.
 
 feature_columns = learn.infer_real_valued_columns_from_input(mnist.train.images)
-classifier = learn.TensorFlowLinearClassifier(
-    feature_columns=feature_columns, n_classes=10, batch_size=100, steps=1000,
-    learning_rate=0.01)
-classifier.fit(mnist.train.images, mnist.train.labels)
+classifier = learn.LinearClassifier(
+    feature_columns=feature_columns, n_classes=10)
+classifier.fit(mnist.train.images, mnist.train.labels, batch_size=100,
+               steps=1000)
 score = metrics.accuracy_score(
     mnist.test.labels, classifier.predict(mnist.test.images))
 print('Accuracy: {0:f}'.format(score))

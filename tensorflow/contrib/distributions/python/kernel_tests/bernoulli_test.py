@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -57,11 +57,18 @@ class BernoulliTest(tf.test.TestCase):
       self.assertAllClose(scipy.special.logit(p), dist.logits.eval())
 
   def testInvalidP(self):
-    invalid_ps = [1.01, -0.01, 2., -3.]
+    invalid_ps = [1.01, 2.]
     for p in invalid_ps:
       with self.test_session():
-        with self.assertRaisesOpError("x <= y"):
-          dist = tf.contrib.distributions.Bernoulli(p=p)
+        with self.assertRaisesOpError("p has components greater than 1"):
+          dist = tf.contrib.distributions.Bernoulli(p=p, validate_args=True)
+          dist.p.eval()
+
+    invalid_ps = [-0.01, -3.]
+    for p in invalid_ps:
+      with self.test_session():
+        with self.assertRaisesOpError("Condition x >= 0"):
+          dist = tf.contrib.distributions.Bernoulli(p=p, validate_args=True)
           dist.p.eval()
 
     valid_ps = [0.0, 0.5, 1.0]
@@ -82,7 +89,7 @@ class BernoulliTest(tf.test.TestCase):
   def testDtype(self):
     dist = make_bernoulli([])
     self.assertEqual(dist.dtype, tf.int32)
-    self.assertEqual(dist.dtype, dist.sample(5).dtype)
+    self.assertEqual(dist.dtype, dist.sample_n(5).dtype)
     self.assertEqual(dist.dtype, dist.mode().dtype)
     self.assertEqual(dist.p.dtype, dist.mean().dtype)
     self.assertEqual(dist.p.dtype, dist.variance().dtype)
@@ -93,7 +100,7 @@ class BernoulliTest(tf.test.TestCase):
 
     dist64 = make_bernoulli([], tf.int64)
     self.assertEqual(dist64.dtype, tf.int64)
-    self.assertEqual(dist64.dtype, dist64.sample(5).dtype)
+    self.assertEqual(dist64.dtype, dist64.sample_n(5).dtype)
     self.assertEqual(dist64.dtype, dist64.mode().dtype)
 
   def _testPmf(self, **kwargs):
@@ -169,24 +176,46 @@ class BernoulliTest(tf.test.TestCase):
 
   def testEntropyWithBatch(self):
     p = [[0.1, 0.7], [0.2, 0.6]]
-    dist = tf.contrib.distributions.Bernoulli(p=p, strict=False)
+    dist = tf.contrib.distributions.Bernoulli(p=p, validate_args=False)
     with self.test_session():
       self.assertAllClose(dist.entropy().eval(), [[entropy(0.1), entropy(0.7)],
                                                   [entropy(0.2), entropy(0.6)]])
 
-  def testSample(self):
+  def testSampleN(self):
     with self.test_session():
       p = [0.2, 0.6]
       dist = tf.contrib.distributions.Bernoulli(p=p)
-      n = 1000
-      samples = dist.sample(n, seed=123)
+      n = 100000
+      samples = dist.sample_n(n)
       samples.set_shape([n, 2])
       self.assertEqual(samples.dtype, tf.int32)
       sample_values = samples.eval()
-      self.assertFalse(np.any(sample_values < 0))
-      self.assertFalse(np.any(sample_values > 1))
-      self.assertAllClose(p, np.mean(sample_values == 1, axis=0), atol=1e-2)
+      self.assertTrue(np.all(sample_values >= 0))
+      self.assertTrue(np.all(sample_values <= 1))
+      # Note that the standard error for the sample mean is ~ sqrt(p * (1 - p) /
+      # n). This means that the tolerance is very sensitive to the value of p
+      # as well as n.
+      self.assertAllClose(p, np.mean(sample_values, axis=0), atol=1e-2)
       self.assertEqual(set([0, 1]), set(sample_values.flatten()))
+      # In this test we're just interested in verifying there isn't a crash
+      # owing to mismatched types. b/30940152
+      dist = tf.contrib.distributions.Bernoulli(np.log([.2, .4]))
+      self.assertAllEqual(
+          (1, 2), dist.sample_n(1, seed=42).get_shape().as_list())
+
+  def testSampleActsLikeSampleN(self):
+    with self.test_session() as sess:
+      p = [0.2, 0.6]
+      dist = tf.contrib.distributions.Bernoulli(p=p)
+      n = 1000
+      seed = 42
+      self.assertAllEqual(dist.sample(n, seed).eval(),
+                          dist.sample_n(n, seed).eval())
+      n = tf.placeholder(tf.int32)
+      sample, sample_n = sess.run([dist.sample(n, seed),
+                                   dist.sample_n(n, seed)],
+                                  feed_dict={n: 1000})
+      self.assertAllEqual(sample, sample_n)
 
   def testMean(self):
     with self.test_session():
@@ -207,6 +236,12 @@ class BernoulliTest(tf.test.TestCase):
                                     [np.sqrt(var(0.5)), np.sqrt(var(0.4))]],
                                    dtype=np.float32))
 
+  def testBernoulliWithSigmoidP(self):
+    p = np.array([8.3, 4.2])
+    dist = tf.contrib.distributions.BernoulliWithSigmoidP(p=p)
+    with self.test_session():
+      self.assertAllClose(tf.nn.sigmoid(p).eval(), dist.p.eval())
+
   def testBernoulliBernoulliKL(self):
     with self.test_session() as sess:
       batch_size = 6
@@ -225,6 +260,7 @@ class BernoulliTest(tf.test.TestCase):
 
       self.assertEqual(kl.get_shape(), (batch_size,))
       self.assertAllClose(kl_val, kl_expected)
+
 
 if __name__ == "__main__":
   tf.test.main()

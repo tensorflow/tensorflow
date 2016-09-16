@@ -23,7 +23,7 @@ from tensorflow.python.ops import io_ops
 from tensorflow.python.training import input as input_ops
 
 
-class ReaderSource(transform.Transform):
+class ReaderSource(transform.TensorFlowTransform):
   """Produces `Tensor`s of keys and values using a `tf.Reader`."""
 
   def __init__(self,
@@ -32,7 +32,6 @@ class ReaderSource(transform.Transform):
                reader_kwargs=None,
                enqueue_size=None,
                batch_size=1,
-               num_epochs=None,
                queue_capacity=None,
                shuffle=False,
                min_after_dequeue=None,
@@ -41,17 +40,14 @@ class ReaderSource(transform.Transform):
     """Initializes a ReaderSource.
 
     Args:
-      reader_cls: A subclass of `tesorflow.ReaderBase` that will be used to read
-        from `work_units`.
+      reader_cls: A subclass of `tensorflow.ReaderBase` that will be used to
+        read from `work_units`.
       work_units: A list that describes the source(s) of data to read.
         Typically, this is a list of filenames.
       reader_kwargs: A dictionary of kwargs to be passed to `reader_cls` when it
         is constructed.
       enqueue_size: block size for each read operation.
       batch_size: The desired batch size of output. Defaults to 1.
-      num_epochs: the number of times that the reader should loop through all
-        the file names. If set to `None`, then the reader will continue
-        indefinitely.
       queue_capacity: Capacity of the queue. Defaults to 10 * `batch_size`.
       shuffle: Whether records will be shuffled before returning. Defaults to
         false.
@@ -73,7 +69,6 @@ class ReaderSource(transform.Transform):
     self._batch_size = batch_size
     self._queue_capacity = (batch_size * 10 if queue_capacity is None else
                             queue_capacity)
-    self._num_epochs = num_epochs
     self._shuffle = shuffle
     self._min_after_dequeue = int(self.queue_capacity / 4 if min_after_dequeue
                                   is None else min_after_dequeue)
@@ -99,10 +94,6 @@ class ReaderSource(transform.Transform):
   @transform.parameter
   def batch_size(self):
     return self._batch_size
-
-  @transform.parameter
-  def num_epochs(self):
-    return self._num_epochs
 
   @transform.parameter
   def queue_capacity(self):
@@ -136,11 +127,12 @@ class ReaderSource(transform.Transform):
   def _output_names(self):
     return ("index", "value")
 
-  def _apply_transform(self, transform_input):
-    filename_queue = input_ops.string_input_producer(self.work_units,
-                                                     num_epochs=self.num_epochs,
-                                                     shuffle=self.shuffle,
-                                                     seed=self.seed)
+  def _apply_transform(self, transform_input, **kwargs):
+    filename_queue = input_ops.string_input_producer(
+        self.work_units,
+        num_epochs=kwargs.get("num_epochs"),
+        shuffle=self.shuffle,
+        seed=self.seed)
     reader_ops = []
     for _ in range(self.num_threads):
       reader = self._reader_cls(**self._reader_kwargs)
@@ -174,7 +166,6 @@ def TextFileSource(file_names,
                    reader_kwargs=None,
                    enqueue_size=1,
                    batch_size=1,
-                   num_epochs=None,
                    queue_capacity=None,
                    shuffle=False,
                    min_after_dequeue=None,
@@ -185,7 +176,6 @@ def TextFileSource(file_names,
                       reader_kwargs=reader_kwargs,
                       enqueue_size=enqueue_size,
                       batch_size=batch_size,
-                      num_epochs=num_epochs,
                       queue_capacity=queue_capacity,
                       shuffle=shuffle,
                       min_after_dequeue=min_after_dequeue,
@@ -197,7 +187,6 @@ def TFRecordSource(file_names,
                    reader_kwargs=None,
                    enqueue_size=1,
                    batch_size=1,
-                   num_epochs=None,
                    queue_capacity=None,
                    shuffle=False,
                    min_after_dequeue=None,
@@ -208,7 +197,6 @@ def TFRecordSource(file_names,
                       reader_kwargs=reader_kwargs,
                       enqueue_size=enqueue_size,
                       batch_size=batch_size,
-                      num_epochs=num_epochs,
                       queue_capacity=queue_capacity,
                       shuffle=shuffle,
                       min_after_dequeue=min_after_dequeue,

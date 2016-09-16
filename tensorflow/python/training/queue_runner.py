@@ -44,7 +44,8 @@ class QueueRunner(object):
   """
 
   def __init__(self, queue=None, enqueue_ops=None, close_op=None,
-               cancel_op=None, queue_runner_def=None):
+               cancel_op=None, queue_closed_exception_types=None,
+               queue_runner_def=None):
     """Create a QueueRunner.
 
     On construction the `QueueRunner` adds an op to close the queue.  That op
@@ -61,6 +62,11 @@ class QueueRunner(object):
       enqueue_ops: List of enqueue ops to run in threads later.
       close_op: Op to close the queue. Pending enqueue ops are preserved.
       cancel_op: Op to close the queue and cancel pending enqueue ops.
+      queue_closed_exception_types: Optional tuple of Exception types that
+        indicate that the queue has been closed when raised during an enqueue
+        operation.  Defaults to `(tf.errors.OutOfRangeError,)`.  Another common
+        case includes `(tf.errors.OutOfRangeError, tf.errors.CancelledError)`,
+        when some of the enqueue ops may dequeue from other Queues.
       queue_runner_def: Optional `QueueRunnerDef` protocol buffer. If specified,
         recreates the QueueRunner from its contents. `queue_runner_def` and the
         other arguments are mutually exclusive.
@@ -75,8 +81,10 @@ class QueueRunner(object):
         raise ValueError("queue_runner_def and queue are mutually exclusive.")
       self._init_from_proto(queue_runner_def)
     else:
-      self._init_from_args(queue=queue, enqueue_ops=enqueue_ops,
-                           close_op=close_op, cancel_op=cancel_op)
+      self._init_from_args(
+          queue=queue, enqueue_ops=enqueue_ops,
+          close_op=close_op, cancel_op=cancel_op,
+          queue_closed_exception_types=queue_closed_exception_types)
     # Protect the count of runs to wait for.
     self._lock = threading.Lock()
     self._runs = 0
@@ -84,7 +92,7 @@ class QueueRunner(object):
     self._exceptions_raised = []
 
   def _init_from_args(self, queue=None, enqueue_ops=None, close_op=None,
-                      cancel_op=None):
+                      cancel_op=None, queue_closed_exception_types=None):
     """Create a QueueRunner from arguments.
 
     Args:
@@ -92,10 +100,14 @@ class QueueRunner(object):
       enqueue_ops: List of enqueue ops to run in threads later.
       close_op: Op to close the queue. Pending enqueue ops are preserved.
       cancel_op: Op to close the queue and cancel pending enqueue ops.
+      queue_closed_exception_types: Tuple of exception types, which indicate
+        the queue has been safely closed.
 
     Raises:
       ValueError: If `queue` or `enqueue_ops` are not provided when not
         restoring from `queue_runner_def`.
+      TypeError: If `queue_closed_exception_types` is provided, but is not
+        a non-empty tuple of error types (subclasses of `tf.errors.OpError`).
     """
     if not queue or not enqueue_ops:
       raise ValueError("Must provide queue and enqueue_ops.")
@@ -103,14 +115,29 @@ class QueueRunner(object):
     self._enqueue_ops = enqueue_ops
     self._close_op = close_op
     self._cancel_op = cancel_op
+    if queue_closed_exception_types is not None:
+      if (not isinstance(queue_closed_exception_types, tuple)
+          or not queue_closed_exception_types
+          or not all(issubclass(t, errors.OpError)
+                     for t in queue_closed_exception_types)):
+        raise TypeError(
+            "queue_closed_exception_types, when provided, "
+            "must be a non-empty list of tf.error types, but saw: %s"
+            % queue_closed_exception_types)
+    self._queue_closed_exception_types = queue_closed_exception_types
     # Close when no more will be produced, but pending enqueues should be
     # preserved.
-    if not self._close_op:
+    if self._close_op is None:
       self._close_op = self._queue.close()
     # Close and cancel pending enqueues since there was an error and we want
     # to unblock everything so we can cleanly exit.
-    if not self._cancel_op:
+    if self._cancel_op is None:
       self._cancel_op = self._queue.close(cancel_pending_enqueues=True)
+    if not self._queue_closed_exception_types:
+      self._queue_closed_exception_types = (errors.OutOfRangeError,)
+    else:
+      self._queue_closed_exception_types = tuple(
+          self._queue_closed_exception_types)
 
   def _init_from_proto(self, queue_runner_def):
     """Create a QueueRunner from `QueueRunnerDef`.
@@ -125,6 +152,13 @@ class QueueRunner(object):
                          in queue_runner_def.enqueue_op_name]
     self._close_op = g.as_graph_element(queue_runner_def.close_op_name)
     self._cancel_op = g.as_graph_element(queue_runner_def.cancel_op_name)
+    self._queue_closed_exception_types = tuple(
+        errors.exception_type_from_error_code(code)
+        for code in queue_runner_def.queue_closed_exception_types)
+    # Legacy support for old QueueRunnerDefs created before this field
+    # was added.
+    if not self._queue_closed_exception_types:
+      self._queue_closed_exception_types = (errors.OutOfRangeError,)
 
   @property
   def queue(self):
@@ -141,6 +175,10 @@ class QueueRunner(object):
   @property
   def cancel_op(self):
     return self._cancel_op
+
+  @property
+  def queue_closed_exception_types(self):
+    return self._queue_closed_exception_types
 
   @property
   def exceptions_raised(self):
@@ -176,6 +214,8 @@ class QueueRunner(object):
       coord: Optional Coordinator object for reporting errors and checking
         for stop conditions.
     """
+    if coord:
+      coord.register_thread(threading.current_thread())
     decremented = False
     try:
       while True:
@@ -183,7 +223,7 @@ class QueueRunner(object):
           break
         try:
           sess.run(enqueue_op)
-        except errors.OutOfRangeError:
+        except self._queue_closed_exception_types:  # pylint: disable=catching-non-exception
           # This exception indicates that a queue was closed.
           with self._lock:
             self._runs -= 1
@@ -218,6 +258,7 @@ class QueueRunner(object):
       cancel_op: The Operation to run.
       coord: Coordinator.
     """
+    coord.register_thread(threading.current_thread())
     coord.wait_for_stop()
     try:
       sess.run(cancel_op)
@@ -287,6 +328,9 @@ class QueueRunner(object):
       queue_runner_def.enqueue_op_name.append(enqueue_op.name)
     queue_runner_def.close_op_name = self.close_op.name
     queue_runner_def.cancel_op_name = self.cancel_op.name
+    queue_runner_def.queue_closed_exception_types.extend([
+        errors.error_code_from_exception_type(cls)
+        for cls in self._queue_closed_exception_types])
     return queue_runner_def
 
   @staticmethod

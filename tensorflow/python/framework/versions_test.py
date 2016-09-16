@@ -38,6 +38,9 @@ class VersionTest(tf.test.TestCase):
     self.assertLessEqual(0, min_producer)
     self.assertLessEqual(min_producer, version)
 
+  def testGitVersion(self):
+    self.assertEqual(type(tf.__git_version__), str)
+    self.assertEqual(type(tf.__compiler_version__), str)
 
 if __name__ == "__main__":
   tf.test.main()

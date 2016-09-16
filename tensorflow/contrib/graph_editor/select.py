@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import re
-import types
 
 from six import iteritems
 from six import string_types
@@ -28,6 +27,24 @@ from six import string_types
 from tensorflow.contrib.graph_editor import util
 from tensorflow.python.framework import ops as tf_ops
 
+__all__ = [
+    "filter_ts",
+    "filter_ts_from_regex",
+    "filter_ops",
+    "filter_ops_from_regex",
+    "get_name_scope_ops",
+    "check_cios",
+    "get_ops_ios",
+    "compute_boundary_ts",
+    "get_within_boundary_ops",
+    "get_forward_walk_ops",
+    "get_backward_walk_ops",
+    "get_walks_intersection_ops",
+    "get_walks_union_ops",
+    "select_ops",
+    "select_ts",
+    "select_ops_and_ts",
+]
 
 _RE_TYPE = type(re.compile(""))
 
@@ -68,10 +85,12 @@ def _get_input_ts(ops):
   """
   ops = util.make_list_of_op(ops)
   ts = []
+  ts_set = set()
   for op in ops:
     for t in op.inputs:
-      if t not in ts:
+      if t not in ts_set:
         ts.append(t)
+        ts_set.add(t)
   return ts
 
 
@@ -88,9 +107,7 @@ def _get_output_ts(ops):
   ops = util.make_list_of_op(ops)
   ts = []
   for op in ops:
-    for t in op.outputs:
-      if t not in ts:
-        ts.append(t)
+    ts += op.outputs
   return ts
 
 
@@ -129,8 +146,7 @@ def filter_ts_from_regex(ops, regex):
   """
   ops = util.make_list_of_op(ops)
   regex_obj = make_regex(regex)
-  return filter_ts(ops,
-                   positive_filter=lambda op: regex_obj.search(op.name))
+  return filter_ts(ops, positive_filter=lambda op: regex_obj.search(op.name))
 
 
 def filter_ops(ops, positive_filter):
@@ -197,7 +213,9 @@ def check_cios(control_inputs=False, control_outputs=None, control_ios=None):
       control_inputs to True and control_outputs to the util.ControlOutputs
       instance.
   Returns:
-    control_inputs and control_outputs.
+    A tuple `(control_inputs, control_outputs)` where:
+      `control_inputs` is a boolean indicating whether to use control inputs.
+      `control_outputs` is an instance of util.ControlOutputs or None
   Raises:
     ValueError: if control_inputs is an instance of util.ControlOutputs but
       control_outputs is not None
@@ -269,21 +287,23 @@ def compute_boundary_ts(ops, ambiguous_are_outputs=True):
       ops. Such tensors are treated as outside tensor if inside_output_as_output
       is True, otherwise they are treated as inside tensor.
   Returns:
-    A Python list of input tensors.
-    A Python list of output tensors.
-    A Python list of inside tensors.
+    A tuple `(outside_input_ts, outside_output_ts, inside_ts)` where:
+      `outside_input_ts` is a Python list of input tensors;
+      `outside_output_ts` is a python list of output tensors;
+      `inside_ts` is a python list of inside tensors.
   Raises:
     TypeError: if ops cannot be converted to a list of tf.Operation.
   """
   ops = util.make_list_of_op(ops)
   input_ts = _get_input_ts(ops)
   output_ts = _get_output_ts(ops)
+  output_ts_set = frozenset(output_ts)
 
   # fill in inside
   inside_ts = []
   for t in input_ts:
     # is also output?
-    if t not in output_ts:
+    if t not in output_ts_set:
       continue
     # is ambiguous?
     if ambiguous_are_outputs:
@@ -299,7 +319,7 @@ def compute_boundary_ts(ops, ambiguous_are_outputs=True):
 
 def get_within_boundary_ops(ops,
                             seed_ops,
-                            boundary_ops,
+                            boundary_ops=(),
                             inclusive=True,
                             control_inputs=False,
                             control_outputs=None,
@@ -351,8 +371,11 @@ def get_within_boundary_ops(ops,
   return [op for op in ops if op in res]
 
 
-def get_forward_walk_ops(seed_ops, inclusive=True, within_ops=None,
-                         stop_at_ts=(), control_outputs=None):
+def get_forward_walk_ops(seed_ops,
+                         inclusive=True,
+                         within_ops=None,
+                         stop_at_ts=(),
+                         control_outputs=None):
   """Do a forward graph walk and return all the visited ops.
 
   Args:
@@ -373,8 +396,10 @@ def get_forward_walk_ops(seed_ops, inclusive=True, within_ops=None,
       tf.Operation.
   """
   _, control_outputs = check_cios(False, control_outputs)
-  if not util.is_iterable(seed_ops): seed_ops = [seed_ops]
-  if not seed_ops: return []
+  if not util.is_iterable(seed_ops):
+    seed_ops = [seed_ops]
+  if not seed_ops:
+    return []
   if isinstance(seed_ops[0], tf_ops.Tensor):
     ts = util.make_list_of_t(seed_ops, allow_graph=False)
     seed_ops = util.get_consuming_ops(ts)
@@ -387,8 +412,10 @@ def get_forward_walk_ops(seed_ops, inclusive=True, within_ops=None,
     within_ops = util.make_list_of_op(within_ops, allow_graph=False)
     within_ops = frozenset(within_ops)
     seed_ops &= within_ops
+
   def is_within(op):
     return within_ops is None or op in within_ops
+
   result = list(seed_ops)
   wave = set(seed_ops)
   while wave:
@@ -411,8 +438,11 @@ def get_forward_walk_ops(seed_ops, inclusive=True, within_ops=None,
   return result
 
 
-def get_backward_walk_ops(seed_ops, inclusive=True, within_ops=None,
-                          stop_at_ts=(), control_inputs=False):
+def get_backward_walk_ops(seed_ops,
+                          inclusive=True,
+                          within_ops=None,
+                          stop_at_ts=(),
+                          control_inputs=False):
   """Do a backward graph walk and return all the visited ops.
 
   Args:
@@ -431,8 +461,10 @@ def get_backward_walk_ops(seed_ops, inclusive=True, within_ops=None,
     TypeError: if seed_ops or within_ops cannot be converted to a list of
       tf.Operation.
   """
-  if not util.is_iterable(seed_ops): seed_ops = [seed_ops]
-  if not seed_ops: return []
+  if not util.is_iterable(seed_ops):
+    seed_ops = [seed_ops]
+  if not seed_ops:
+    return []
   if isinstance(seed_ops[0], tf_ops.Tensor):
     ts = util.make_list_of_t(seed_ops, allow_graph=False)
     seed_ops = util.get_generating_ops(ts)
@@ -445,8 +477,10 @@ def get_backward_walk_ops(seed_ops, inclusive=True, within_ops=None,
     within_ops = util.make_list_of_op(within_ops, allow_graph=False)
     within_ops = frozenset(within_ops)
     seed_ops &= within_ops
+
   def is_within(op):
     return within_ops is None or op in within_ops
+
   result = list(seed_ops)
   wave = set(seed_ops)
   while wave:
@@ -508,14 +542,16 @@ def get_walks_intersection_ops(forward_seed_ops,
   """
   control_inputs, control_outputs = check_cios(control_inputs, control_outputs,
                                                control_ios)
-  forward_ops = get_forward_walk_ops(forward_seed_ops,
-                                     inclusive=forward_inclusive,
-                                     within_ops=within_ops,
-                                     control_outputs=control_outputs)
-  backward_ops = get_backward_walk_ops(backward_seed_ops,
-                                       inclusive=backward_inclusive,
-                                       within_ops=within_ops,
-                                       control_inputs=control_inputs)
+  forward_ops = get_forward_walk_ops(
+      forward_seed_ops,
+      inclusive=forward_inclusive,
+      within_ops=within_ops,
+      control_outputs=control_outputs)
+  backward_ops = get_backward_walk_ops(
+      backward_seed_ops,
+      inclusive=backward_inclusive,
+      within_ops=within_ops,
+      control_inputs=control_inputs)
   return [op for op in forward_ops if op in backward_ops]
 
 
@@ -558,14 +594,16 @@ def get_walks_union_ops(forward_seed_ops,
   """
   control_inputs, control_outputs = check_cios(control_inputs, control_outputs,
                                                control_ios)
-  forward_ops = get_forward_walk_ops(forward_seed_ops,
-                                     inclusive=forward_inclusive,
-                                     within_ops=within_ops,
-                                     control_outputs=control_outputs)
-  backward_ops = get_backward_walk_ops(backward_seed_ops,
-                                       inclusive=backward_inclusive,
-                                       within_ops=within_ops,
-                                       control_inputs=control_inputs)
+  forward_ops = get_forward_walk_ops(
+      forward_seed_ops,
+      inclusive=forward_inclusive,
+      within_ops=within_ops,
+      control_outputs=control_outputs)
+  backward_ops = get_backward_walk_ops(
+      backward_seed_ops,
+      inclusive=backward_inclusive,
+      within_ops=within_ops,
+      control_inputs=control_inputs)
   return util.concatenate_unique(forward_ops, backward_ops)
 
 
@@ -582,7 +620,7 @@ def select_ops(*args, **kwargs):
       'restrict_ops_regex': a regular expression is ignored if it doesn't start
         with the substring "(?#ops)".
   Returns:
-    list of tf.Operation
+    A list of tf.Operation.
   Raises:
     TypeError: if the optional keyword argument graph is not a tf.Graph
       or if an argument in args is not an (array of) tf.Operation
@@ -648,7 +686,7 @@ def select_ts(*args, **kwargs):
       'restrict_ts_regex': a regular expression is ignored if it doesn't start
         with the substring "(?#ts)".
   Returns:
-    list of tf.Tensor
+    A list of tf.Tensor.
   Raises:
     TypeError: if the optional keyword argument graph is not a tf.Graph
       or if an argument in args is not an (array of) tf.Tensor
@@ -713,8 +751,9 @@ def select_ops_and_ts(*args, **kwargs):
       'positive_filter': an elem if selected only if positive_filter(elem) is
         True. This is optional.
   Returns:
-    list of tf.Operation
-    list of tf.Tensor
+    A tuple `(ops, ts)` where:
+      `ops` is a list of tf.Operation
+      `ts` is a list of tf.Tensor
   Raises:
     TypeError: if the optional keyword argument graph is not a tf.Graph
       or if an argument in args is not an (array of) tf.Tensor

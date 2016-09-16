@@ -40,22 +40,21 @@ You can also look at strip_unused_test.py for an example of how to use it.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-import copy
 
 import tensorflow as tf
 
-from google.protobuf import text_format
-from tensorflow.python.framework import graph_util
+from tensorflow.python.tools import strip_unused_lib
 
 
 FLAGS = tf.app.flags.FLAGS
-
 tf.app.flags.DEFINE_string("input_graph", "",
                            """TensorFlow 'GraphDef' file to load.""")
 tf.app.flags.DEFINE_boolean("input_binary", False,
                             """Whether the input files are in binary format.""")
 tf.app.flags.DEFINE_string("output_graph", "",
                            """Output 'GraphDef' file name.""")
+tf.app.flags.DEFINE_boolean("output_binary", True,
+                            """Whether to write a binary format graph.""")
 tf.app.flags.DEFINE_string("input_node_names", "",
                            """The name of the input nodes, comma separated.""")
 tf.app.flags.DEFINE_string("output_node_names", "",
@@ -65,54 +64,14 @@ tf.app.flags.DEFINE_integer("placeholder_type_enum",
                             """The AttrValue enum to use for placeholders.""")
 
 
-def strip_unused(input_graph, input_binary, output_graph, input_node_names,
-                 output_node_names, placeholder_type_enum):
-  """Removes unused nodes from a graph."""
-
-  if not tf.gfile.Exists(input_graph):
-    print("Input graph file '" + input_graph + "' does not exist!")
-    return -1
-
-  if not output_node_names:
-    print("You need to supply the name of a node to --output_node_names.")
-    return -1
-
-  input_graph_def = tf.GraphDef()
-  mode = "rb" if input_binary else "r"
-  with tf.gfile.FastGFile(input_graph, mode) as f:
-    if input_binary:
-      input_graph_def.ParseFromString(f.read())
-    else:
-      text_format.Merge(f.read(), input_graph_def)
-
-  # Here we replace the nodes we're going to override as inputs with
-  # placeholders so that any unused nodes that are inputs to them are
-  # automatically stripped out by extract_sub_graph().
-  input_node_names_list = input_node_names.split(",")
-  inputs_replaced_graph_def = tf.GraphDef()
-  for node in input_graph_def.node:
-    if node.name in input_node_names_list:
-      placeholder_node = tf.NodeDef()
-      placeholder_node.op = "Placeholder"
-      placeholder_node.name = node.name
-      placeholder_node.attr["dtype"].CopyFrom(tf.AttrValue(
-          type=placeholder_type_enum))
-      inputs_replaced_graph_def.node.extend([placeholder_node])
-    else:
-      inputs_replaced_graph_def.node.extend([copy.deepcopy(node)])
-
-  output_graph_def = graph_util.extract_sub_graph(inputs_replaced_graph_def,
-                                                  output_node_names.split(","))
-
-  with tf.gfile.GFile(output_graph, "wb") as f:
-    f.write(output_graph_def.SerializeToString())
-  print("%d ops in the final graph." % len(output_graph_def.node))
-
-
 def main(unused_args):
-  strip_unused(FLAGS.input_graph, FLAGS.input_binary, FLAGS.output_graph,
-               FLAGS.input_node_names, FLAGS.output_node_names,
-               FLAGS.placeholder_type_enum)
+  strip_unused_lib.strip_unused_from_files(FLAGS.input_graph,
+                                           FLAGS.input_binary,
+                                           FLAGS.output_graph,
+                                           FLAGS.output_binary,
+                                           FLAGS.input_node_names,
+                                           FLAGS.output_node_names,
+                                           FLAGS.placeholder_type_enum)
 
 if __name__ == "__main__":
   tf.app.run()

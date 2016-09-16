@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import numpy
 import tensorflow as tf
 from tensorflow.contrib.learn.python.learn.datasets import mnist
 
@@ -80,7 +79,8 @@ def main(argv):
   # Get the data.
   data_sets = mnist.read_data_sets(FLAGS.directory,
                                    dtype=tf.uint8,
-                                   reshape=False)
+                                   reshape=False,
+                                   validation_size=FLAGS.validation_size)
 
   # Convert to Examples and write the result to TFRecords.
   convert_to(data_sets.train, 'train')

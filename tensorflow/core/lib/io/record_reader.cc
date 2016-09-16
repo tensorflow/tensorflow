@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
+#include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
@@ -33,8 +34,9 @@ RecordReader::RecordReader(RandomAccessFile* file,
 #if defined(IS_SLIM_BUILD)
     LOG(FATAL) << "Zlib compression is unsupported on mobile platforms.";
 #else   // IS_SLIM_BUILD
-    zlib_input_buffer_.reset(new ZlibInputBuffer(
-        src_, options.zlib_options.input_buffer_size,
+    random_input_stream_.reset(new RandomAccessInputStream(file));
+    zlib_input_stream_.reset(new ZlibInputStream(
+        random_input_stream_.get(), options.zlib_options.input_buffer_size,
         options.zlib_options.output_buffer_size, options.zlib_options));
 #endif  // IS_SLIM_BUILD
   } else if (options.compression_type == RecordReaderOptions::NONE) {
@@ -44,7 +46,10 @@ RecordReader::RecordReader(RandomAccessFile* file,
   }
 }
 
-RecordReader::~RecordReader() {}
+RecordReader::~RecordReader() {
+  zlib_input_stream_.reset(nullptr);
+  random_input_stream_.reset(nullptr);
+}
 
 // Read n+4 bytes from file, verify that checksum of first n bytes is
 // stored in the last 4 bytes and store the first n bytes in *result.
@@ -59,7 +64,7 @@ Status RecordReader::ReadChecksummed(uint64 offset, size_t n,
   storage->resize(expected);
 
 #if !defined(IS_SLIM_BUILD)
-  if (zlib_input_buffer_) {
+  if (zlib_input_stream_) {
     // If we have a zlib compressed buffer, we assume that the
     // file is being read sequentially, and we use the underlying
     // implementation to read the data.
@@ -67,7 +72,7 @@ Status RecordReader::ReadChecksummed(uint64 offset, size_t n,
     // No checks are done to validate that the file is being read
     // sequentially.  At some point the zlib input buffer may support
     // seeking, possibly inefficiently.
-    TF_RETURN_IF_ERROR(zlib_input_buffer_->ReadNBytes(expected, storage));
+    TF_RETURN_IF_ERROR(zlib_input_stream_->ReadNBytes(expected, storage));
 
     if (storage->size() != expected) {
       if (storage->size() == 0) {

@@ -19,10 +19,10 @@ from __future__ import print_function
 
 from tensorflow.contrib.framework.python.framework import tensor_util
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import resource_loader
 
 
@@ -36,9 +36,7 @@ _VALID_DTYPES = set([
     dtypes.uint8, dtypes.uint16, dtypes.string])
 
 
-def _size_shape(unused_op):
-  """Shape function for SetSize op."""
-  return [tensor_shape.unknown_shape()]
+ops.RegisterShape("SetSize")(common_shapes.call_cpp_shape_fn)
 
 
 def set_size(a, validate_indices=True):
@@ -50,9 +48,9 @@ def set_size(a, validate_indices=True):
        in `a`.
 
   Returns:
-    For `a` ranked `n`, this is a `Tensor` with rank `n-1`, and the same 1st
-    `n-1` dimensions as `a`. Each value is the number of unique elements in
-    the corresponding `[0...n-1]` dimension of `a`.
+    `int32` `Tensor` of set sizes. For `a` ranked `n`, this is a `Tensor` with
+    rank `n-1`, and the same 1st `n-1` dimensions as `a`. Each value is the
+    number of unique elements in the corresponding `[0...n-1]` dimension of `a`.
 
   Raises:
     TypeError: If `a` is an invalid types.
@@ -65,21 +63,17 @@ def set_size(a, validate_indices=True):
   # pylint: disable=protected-access
   return _set_ops.set_size(a.indices, a.values, a.shape, validate_indices)
 
-# TODO(ptucker): ops vs @ops?
-ops.NoGradient("SetSize")
-ops.RegisterShape("SetSize")(_size_shape)
+ops.NotDifferentiable("SetSize")
 
 
-def _sparse_shape(op):
-  """Shape function for `SparseTensor` result."""
-  num_rows = (op.inputs[0].get_shape()[0] if
-              op.type in ("DenseToSparseOperation", "DenseToDenseOperation")
-              else None)
-  return [
-      tensor_shape.TensorShape([num_rows, 2]),
-      tensor_shape.unknown_shape(1),
-      tensor_shape.unknown_shape(1),
-  ]
+ops.RegisterShape("DenseToDenseSetOperation")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("DenseToSparseSetOperation")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseToSparseSetOperation")(common_shapes.call_cpp_shape_fn)
+
+
+ops.NotDifferentiable("DenseToDenseSetOperation")
+ops.NotDifferentiable("DenseToSparseSetOperation")
+ops.NotDifferentiable("SparseToSparseSetOperation")
 
 
 def _set_operation(a, b, set_operation, validate_indices=True):
@@ -154,10 +148,6 @@ def set_intersection(a, b, validate_indices=True):
   return _set_operation(a, b, "intersection", validate_indices)
 
 
-ops.NoGradient("SetIntersection")
-ops.RegisterShape("SetIntersection")(_sparse_shape)
-
-
 def set_difference(a, b, aminusb=True, validate_indices=True):
   """Compute set difference of elements in last dimension of `a` and `b`.
 
@@ -181,10 +171,6 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
   return _set_operation(a, b, "a-b" if aminusb else "b-a", validate_indices)
 
 
-ops.NoGradient("SetDifference")
-ops.RegisterShape("SetDifference")(_sparse_shape)
-
-
 def set_union(a, b, validate_indices=True):
   """Compute set union of elements in last dimension of `a` and `b`.
 
@@ -205,7 +191,3 @@ def set_union(a, b, validate_indices=True):
     unions.
   """
   return _set_operation(a, b, "union", validate_indices)
-
-
-ops.NoGradient("SetUnion")
-ops.RegisterShape("SetUnion")(_sparse_shape)

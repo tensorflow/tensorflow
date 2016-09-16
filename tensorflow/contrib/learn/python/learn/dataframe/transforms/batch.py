@@ -23,7 +23,7 @@ from tensorflow.contrib.learn.python.learn.dataframe import transform
 from tensorflow.python.training import input as input_ops
 
 
-class AbstractBatchTransform(transform.Transform):
+class AbstractBatchTransform(transform.TensorFlowTransform):
   """Abstract parent class for batching Transforms."""
 
   def __init__(self,
@@ -72,7 +72,7 @@ class Batch(AbstractBatchTransform):
   def name(self):
     return "Batch"
 
-  def _apply_transform(self, transform_input):
+  def _apply_transform(self, transform_input, **kwargs):
     batched = input_ops.batch(transform_input,
                               batch_size=self.batch_size,
                               num_threads=self.num_threads,
@@ -121,7 +121,7 @@ class ShuffleBatch(AbstractBatchTransform):
   def seed(self):
     return self._seed
 
-  def _apply_transform(self, transform_input):
+  def _apply_transform(self, transform_input, **kwargs):
     batched = input_ops.shuffle_batch(transform_input,
                                       batch_size=self.batch_size,
                                       capacity=self.queue_capacity,

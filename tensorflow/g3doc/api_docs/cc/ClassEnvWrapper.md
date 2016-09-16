@@ -48,7 +48,7 @@ Returns the number of micro-seconds since some fixed point in time. Only useful 
 
 
 
-#### `void tensorflow::EnvWrapper::SleepForMicroseconds(int micros) override` {#void_tensorflow_EnvWrapper_SleepForMicroseconds}
+#### `void tensorflow::EnvWrapper::SleepForMicroseconds(int64 micros) override` {#void_tensorflow_EnvWrapper_SleepForMicroseconds}
 
 Sleeps/delays the thread for the prescribed number of micro-seconds.
 
@@ -66,7 +66,7 @@ Caller takes ownership of the result and must delete it eventually (the deletion
 
 
 
-#### `void tensorflow::EnvWrapper::SchedClosureAfter(int micros, std::function< void()> closure) override` {#void_tensorflow_EnvWrapper_SchedClosureAfter}
+#### `void tensorflow::EnvWrapper::SchedClosureAfter(int64 micros, std::function< void()> closure) override` {#void_tensorflow_EnvWrapper_SchedClosureAfter}
 
 
 

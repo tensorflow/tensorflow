@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numbers
+
 import numpy as np
 
 from tensorflow.python.framework import common_shapes
@@ -141,7 +143,7 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
     ValueError: If input/output depth does not match `filters`' shape, or if
       padding is other than `'VALID'` or `'SAME'`.
   """
-  with ops.op_scope([value, filters], name, "atrous_conv2d") as name:
+  with ops.name_scope(name, "atrous_conv2d", [value, filters]) as name:
     value = ops.convert_to_tensor(value, name="value")
     filters = ops.convert_to_tensor(filters, name="filters")
     if not value.get_shape()[3].is_compatible_with(filters.get_shape()[2]):
@@ -264,8 +266,8 @@ def conv2d_transpose(value,
     ValueError: If input/output depth does not match `filter`'s shape, or if
       padding is other than `'VALID'` or `'SAME'`.
   """
-  with ops.op_scope([value, filter, output_shape], name,
-                    "conv2d_transpose") as name:
+  with ops.name_scope(name, "conv2d_transpose",
+                      [value, filter, output_shape]) as name:
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")
     if not value.get_shape()[3].is_compatible_with(filter.get_shape()[3]):
@@ -331,8 +333,8 @@ def conv3d_transpose(value,
     ValueError: If input/output depth does not match `filter`'s shape, or if
       padding is other than `'VALID'` or `'SAME'`.
   """
-  with ops.op_scope([value, filter, output_shape], name,
-                    "conv3d_transpose") as name:
+  with ops.name_scope(name, "conv3d_transpose",
+                      [value, filter, output_shape]) as name:
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")
     if not value.get_shape()[4].is_compatible_with(filter.get_shape()[4]):
@@ -385,15 +387,16 @@ def bias_add(value, bias, data_format=None, name=None):
   Returns:
     A `Tensor` with the same type as `value`.
   """
-  with ops.op_scope([value, bias], name, "BiasAdd") as name:
+  with ops.name_scope(name, "BiasAdd", [value, bias]) as name:
     value = ops.convert_to_tensor(value, name="input")
     bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
     return gen_nn_ops._bias_add(value, bias, data_format=data_format, name=name)
 
 
-ops.RegisterShape("BiasAdd")(common_shapes.bias_add_shape)
-
-ops.RegisterShape("BiasAddGrad")(common_shapes.bias_add_grad_shape)
+ops.RegisterShape("BiasAddV1")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BiasAdd")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BiasAddGradV1")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BiasAddGrad")(common_shapes.call_cpp_shape_fn)
 
 
 # pylint: disable=protected-access
@@ -418,15 +421,32 @@ def bias_add_v1(value, bias, name=None):
   Returns:
     A `Tensor` with the same type as `value`.
   """
-  with ops.op_scope([value, bias], name, "BiasAddV1") as name:
+  with ops.name_scope(name, "BiasAddV1", [value, bias]) as name:
     value = ops.convert_to_tensor(value, name="input")
     bias = ops.convert_to_tensor(bias, dtype=value.dtype, name="bias")
     return gen_nn_ops._bias_add_v1(value, bias, name=name)
 
 
-ops.RegisterShape("BiasAddV1")(common_shapes.bias_add_shape)
+def crelu(features, name=None):
+  """Computes Concatenated ReLU.
 
-ops.RegisterShape("BiasAddGradV1")(common_shapes.bias_add_grad_shape)
+  Concatenates a ReLU which selects only the positive part of the activation
+  with a ReLU which selects only the *negative* part of the activation.
+  Note that as a result this non-linearity doubles the depth of the activations.
+  Source: https://arxiv.org/abs/1603.05201
+
+  Args:
+    features: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
+      `int16`, or `int8`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as `features`.
+  """
+  with ops.name_scope(name, "CRelu", [features]) as name:
+    features = ops.convert_to_tensor(features, name="features")
+    return gen_nn_ops.relu(array_ops.concat(array_ops.rank(features) - 1,
+                                            [features, -features], name=name))
 
 
 def relu6(features, name=None):
@@ -440,12 +460,153 @@ def relu6(features, name=None):
   Returns:
     A `Tensor` with the same type as `features`.
   """
-  with ops.op_scope([features], name, "Relu6") as name:
+  with ops.name_scope(name, "Relu6", [features]) as name:
     features = ops.convert_to_tensor(features, name="features")
     return gen_nn_ops._relu6(features, name=name)
 
 
-def softmax_cross_entropy_with_logits(logits, labels, name=None):
+def _flatten_outer_dims(logits):
+  """Flattens logits' outer dimensions and keep its last dimension."""
+  rank = array_ops.rank(logits)
+  last_dim_size = array_ops.slice(
+      array_ops.shape(logits), [math_ops.sub(rank, 1)], [1])
+  output = array_ops.reshape(logits, array_ops.concat(0, [[-1], last_dim_size]))
+
+  # Set output shape if known.
+  shape = logits.get_shape()
+  if shape is not None and shape.dims is not None:
+    shape = shape.as_list()
+    product = 1
+    product_valid = True
+    for d in shape[:-1]:
+      if d is None:
+        product_valid = False
+        break
+      else:
+        product *= d
+    if product_valid:
+      output_shape = [product, shape[-1]]
+      output.set_shape(output_shape)
+
+  return output
+
+
+def _softmax(logits, compute_op, dim=-1, name=None):
+  """Helper function for softmax and log_softmax.
+
+  It reshapes and transposes the input logits into a 2-D Tensor and then invokes
+  the tf.nn._softmax or tf.nn._log_softmax function. The output would be
+  transposed and reshaped back.
+
+  Args:
+    logits: A non-empty `Tensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    compute_op: Either gen_nn_ops._softmax or gen_nn_ops._log_softmax
+    dim: The dimension softmax would be performed on. The default is -1 which
+      indicates the last dimension.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+  Raises:
+    InvalidArgumentError: if `logits` is empty or `dim` is beyond the last
+      dimension of `logits`.
+  """
+  def _swap_axis(logits, dim_index, last_index):
+    """Swaps logits's dim_index and last_index."""
+    return array_ops.transpose(logits, array_ops.concat(
+        0, [math_ops.range(dim_index), [last_index],
+            math_ops.range(dim_index + 1, last_index), [dim_index]]))
+
+  logits = ops.convert_to_tensor(logits)
+  if logits.get_shape().ndims is 2 and dim is -1:
+    return compute_op(logits, name=name)
+
+  # We need its original shape for shape inference.
+  shape = logits.get_shape()
+
+  # If dim is the last dimension, simply reshape the logits to a matrix and
+  # apply the internal softmax.
+  if dim is -1:
+    input_shape = array_ops.shape(logits)
+    logits = _flatten_outer_dims(logits)
+    output = compute_op(logits, name=name)
+    output = array_ops.reshape(output, input_shape)
+    return output
+
+  # If dim is not the last dimension, we have to do a reshape and transpose so
+  # that we can still perform softmax on its last dimension.
+
+  # Swap logits' dimension of dim and its last dimension.
+  input_rank = array_ops.rank(logits)
+  logits = _swap_axis(logits, dim, math_ops.sub(input_rank, 1))
+  shape_after_swap = array_ops.shape(logits)
+
+  # Reshape logits into a matrix.
+  logits = _flatten_outer_dims(logits)
+
+  # Do the actual softmax on its last dimension.
+  output = compute_op(logits, name=name)
+
+  # Transform back the output tensor.
+  output = array_ops.reshape(output, shape_after_swap)
+  output = _swap_axis(output, dim, math_ops.sub(input_rank, 1))
+
+  # Make shape inference work since reshape and transpose may erase its static
+  # shape.
+  output.set_shape(shape)
+
+  return output
+
+
+def softmax(logits, dim=-1, name=None):
+  """Computes log softmax activations.
+
+  For each batch `i` and class `j` we have
+
+      softmax = exp(logits) / reduce_sum(exp(logits), dim)
+
+  Args:
+    logits: A non-empty `Tensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    dim: The dimension softmax would be performed on. The default is -1 which
+      indicates the last dimension.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+  Raises:
+    InvalidArgumentError: if `logits` is empty or `dim` is beyond the last
+      dimension of `logits`.
+  """
+  return _softmax(logits, gen_nn_ops._softmax, dim, name)
+
+
+def log_softmax(logits, dim=-1, name=None):
+  """Computes log softmax activations.
+
+  For each batch `i` and class `j` we have
+
+      logsoftmax = logits - reduce_sum(exp(logits), dim)
+
+  Args:
+    logits: A non-empty `Tensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    dim: The dimension softmax would be performed on. The default is -1 which
+      indicates the last dimension.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+
+  Raises:
+    InvalidArgumentError: if `logits` is empty or `dim` is beyond the last
+      dimension of `logits`.
+  """
+  return _softmax(logits, gen_nn_ops._log_softmax, dim, name)
+
+
+def softmax_cross_entropy_with_logits(logits, labels, dim=-1, name=None):
   """Computes softmax cross entropy between `logits` and `labels`.
 
   Measures the probability error in discrete classification tasks in which the
@@ -466,11 +627,12 @@ def softmax_cross_entropy_with_logits(logits, labels, name=None):
   output of `softmax`, as it will produce incorrect results.
 
   `logits` and `labels` must have the same shape `[batch_size, num_classes]`
-  and the same dtype (either `float32` or `float64`).
+  and the same dtype (either `float16`, `float32`, or `float64`).
 
   Args:
     logits: Unscaled log probabilities.
     labels: Each row `labels[i]` must be a valid probability distribution.
+    dim: The class dimension. Defaulted to -1 which is the last dimension.
     name: A name for the operation (optional).
 
   Returns:
@@ -481,11 +643,52 @@ def softmax_cross_entropy_with_logits(logits, labels, name=None):
   # could break users who call this with bad labels, but disregard the bad
   # results.
 
+  logits = ops.convert_to_tensor(logits)
+  labels = ops.convert_to_tensor(labels)
+  precise_logits = math_ops.cast(logits, dtypes.float32) if (
+      logits.dtype == dtypes.float16) else logits
+  input_rank = array_ops.rank(precise_logits)
+  # For shape inference.
+  shape = logits.get_shape()
+
+  # Move the dim to the end if dim is not the last dimension.
+  if dim is not -1:
+    def _move_dim_to_end(tensor, dim_index, rank):
+      return array_ops.transpose(tensor, array_ops.concat(
+          0, [math_ops.range(dim_index), math_ops.range(dim_index + 1, rank),
+              [dim_index]]))
+
+    precise_logits = _move_dim_to_end(precise_logits, dim, input_rank)
+    labels = _move_dim_to_end(labels, dim, input_rank)
+
+  input_shape = array_ops.shape(precise_logits)
+
+  # Make precise_logits and labels into matrices.
+  precise_logits = _flatten_outer_dims(precise_logits)
+  labels = _flatten_outer_dims(labels)
+
+  # Do the actual op computation.
   # The second output tensor contains the gradients.  We use it in
   # _CrossEntropyGrad() in nn_grad but not here.
   cost, unused_backprop = gen_nn_ops._softmax_cross_entropy_with_logits(
-      logits, labels, name=name)
-  return cost
+      precise_logits, labels, name=name)
+
+  # The output cost shape should be the input minus dim.
+  output_shape = array_ops.slice(input_shape, [0],
+                                 [math_ops.sub(input_rank, 1)])
+  cost = array_ops.reshape(cost, output_shape)
+
+  # Make shape inference work since reshape and transpose may erase its static
+  # shape.
+  if shape is not None and shape.dims is not None:
+    shape = shape.as_list()
+    del shape[dim]
+    cost.set_shape(shape)
+
+  if logits.dtype == dtypes.float16:
+    return math_ops.cast(cost, dtypes.float16)
+  else:
+    return cost
 
 
 def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
@@ -532,61 +735,55 @@ def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
   # labels, but disregard the bad results.
 
   # Reshape logits and labels to rank 2.
-  with ops.op_scope([labels, logits], name,
-                    "SparseSoftmaxCrossEntropyWithLogits"):
+  with ops.name_scope(name, "SparseSoftmaxCrossEntropyWithLogits",
+                      [labels, logits]):
     labels = ops.convert_to_tensor(labels)
     logits = ops.convert_to_tensor(logits)
+    precise_logits = math_ops.cast(logits, dtypes.float32) if (
+        dtypes.as_dtype(logits.dtype) == dtypes.float16) else logits
 
     # Store label shape for result later.
     labels_static_shape = labels.get_shape()
     labels_shape = array_ops.shape(labels)
     if logits.get_shape().ndims is not None and logits.get_shape().ndims == 0:
-      raise ValueError("Logits cannot be scalars - received shape %s.",
+      raise ValueError("Logits cannot be scalars - received shape %s." %
                        logits.get_shape())
     if logits.get_shape().ndims is not None and (
         labels_static_shape.ndims is not None and
         labels_static_shape.ndims != logits.get_shape().ndims - 1):
-      raise ValueError("Rank mismatch: Labels rank (received %s) should equal "
-                       "logits rank (received %s) - 1.",
-                       labels_static_shape.ndims, logits.get_shape().ndims)
+      raise ValueError("Rank mismatch: Rank of labels (received %s) should equal "
+                       "rank of logits minus 1 (received %s)." %
+                       (labels_static_shape.ndims, logits.get_shape().ndims))
     # Check if no reshapes are required.
     if logits.get_shape().ndims == 2:
       cost, _ = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
-          logits, labels, name=name)
-      return cost
+          precise_logits, labels, name=name)
+      if logits.dtype == dtypes.float16:
+        return math_ops.cast(cost, dtypes.float16)
+      else:
+        return cost
+
     # Reshape logits to 2 dim, labels to 1 dim.
     num_classes = array_ops.gather(array_ops.shape(logits),
                                    array_ops.rank(logits) - 1)
-    logits = array_ops.reshape(logits, [-1, num_classes])
+    precise_logits = array_ops.reshape(precise_logits, [-1, num_classes])
     labels = array_ops.reshape(labels, [-1])
     # The second output tensor contains the gradients.  We use it in
     # _CrossEntropyGrad() in nn_grad but not here.
     cost, _ = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
-        logits, labels, name=name)
+        precise_logits, labels, name=name)
     cost = array_ops.reshape(cost, labels_shape)
     cost.set_shape(labels_static_shape)
-    return cost
+    if logits.dtype == dtypes.float16:
+      return math_ops.cast(cost, dtypes.float16)
+    else:
+      return cost
 
 
-@ops.RegisterShape("SparseSoftmaxCrossEntropyWithLogits")
-def _SparseSoftmaxCrossEntropyWithLogitsShape(op):
-  """Shape function for SparseSoftmaxCrossEntropyWithLogits op."""
-  logits_shape = op.inputs[0].get_shape()
-  input_shape = logits_shape.with_rank(2)
-  batch_size = input_shape[0]
-  # labels_shape
-  op.inputs[1].get_shape().merge_with(tensor_shape.vector(batch_size))
-  return [tensor_shape.vector(batch_size.value), input_shape]
-
-
-@ops.RegisterShape("SoftmaxCrossEntropyWithLogits")
-def _SoftmaxCrossEntropyWithLogitsShape(op):
-  """Shape function for SoftmaxCrossEntropyWithLogits op."""
-  logits_shape = op.inputs[0].get_shape()
-  labels_shape = op.inputs[1].get_shape()
-  input_shape = logits_shape.merge_with(labels_shape).with_rank(2)
-  batch_size = input_shape[0]
-  return [tensor_shape.vector(batch_size.value), input_shape]
+ops.RegisterShape("SparseSoftmaxCrossEntropyWithLogits")(
+    common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SoftmaxCrossEntropyWithLogits")(
+    common_shapes.call_cpp_shape_fn)
 
 
 def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
@@ -611,7 +808,7 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   Returns:
     A `Tensor` with the same type as `value`.  The average pooled output tensor.
   """
-  with ops.op_scope([value], name, "AvgPool") as name:
+  with ops.name_scope(name, "AvgPool", [value]) as name:
     value = ops.convert_to_tensor(value, name="input")
     return gen_nn_ops._avg_pool(value,
                                 ksize=ksize,
@@ -639,7 +836,7 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   Returns:
     A `Tensor` with type `tf.float32`.  The max pooled output tensor.
   """
-  with ops.op_scope([value], name, "MaxPool") as name:
+  with ops.name_scope(name, "MaxPool", [value]) as name:
     value = ops.convert_to_tensor(value, name="input")
     return gen_nn_ops._max_pool(value,
                                 ksize=ksize,
@@ -649,187 +846,145 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
                                 name=name)
 
 
-ops.RegisterShape("Relu")(common_shapes.unchanged_shape)
-ops.RegisterShape("Relu6")(common_shapes.unchanged_shape)
-ops.RegisterShape("Elu")(common_shapes.unchanged_shape)
-ops.RegisterShape("Softplus")(common_shapes.unchanged_shape)
-ops.RegisterShape("Softsign")(common_shapes.unchanged_shape)
+ops.RegisterShape("Relu")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Relu6")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Elu")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Softplus")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Softsign")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ReluGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Relu6Grad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("EluGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SoftplusGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SoftsignGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("L2Loss")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LRN")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LRNGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Softmax")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LogSoftmax")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("InTopK")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("TopK")(common_shapes.call_cpp_shape_fn)
 
 
-@ops.RegisterShape("ReluGrad")
-@ops.RegisterShape("Relu6Grad")
-@ops.RegisterShape("EluGrad")
-@ops.RegisterShape("SoftplusGrad")
-@ops.RegisterShape("SoftsignGrad")
-def _BinaryElementwiseShape(op):
-  """Returns same shape as both inputs to op.
-
-  Args:
-    op: Input operation.
-
-  Returns:
-    Shape of both inputs to `op`.
-  """
-  return [op.inputs[0].get_shape().merge_with(op.inputs[1].get_shape())]
-
-
-ops.RegisterShape("L2Loss")(common_shapes.scalar_shape)
-
-ops.RegisterShape("LRN")(common_shapes.unchanged_shape_with_rank(4))
-
-
-@ops.RegisterShape("LRNGrad")
-def _LRNGradShape(op):
-  """Shape function for LRNGrad op."""
-  in_grads_shape = op.inputs[0].get_shape().with_rank(4)
-  in_image_shape = op.inputs[1].get_shape().with_rank(4)
-  out_image_shape = op.inputs[2].get_shape().with_rank(4)
-  return [in_grads_shape.merge_with(in_image_shape).merge_with(out_image_shape)]
-
-
-ops.RegisterShape("Softmax")(common_shapes.unchanged_shape_with_rank(2))
-
-ops.RegisterShape("LogSoftmax")(common_shapes.unchanged_shape_with_rank(2))
-
-
-@ops.RegisterShape("InTopK")
-def _InTopKShape(op):
-  """Shape function for InTopK op."""
-  predictions_shape = op.inputs[0].get_shape().with_rank(2)
-  targets_shape = op.inputs[1].get_shape().with_rank(1)
-  batch_size = predictions_shape[0].merge_with(targets_shape[0])
-  return [tensor_shape.vector(batch_size.value)]
-
-
-@ops.RegisterShape("TopK")
 @ops.RegisterShape("TopKV2")
-def _TopKShape(op):
-  """Shape function for TopK and TopKV2 ops."""
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(1)
-  if len(op.inputs) >= 2:
-    k = tensor_util.constant_value(op.inputs[1])
+def _TopKV2Shape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
+
+
+ops.RegisterShape("BatchNormWithGlobalNormalization")(
+    common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BatchNormWithGlobalNormalizationGrad")(
+    common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Conv2D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("DepthwiseConv2dNative")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AvgPool")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MaxPool")(common_shapes.call_cpp_shape_fn)
+
+
+@ops.RegisterShape("FusedResizeAndPadConv2D")
+def _FusedResizeAndPadConv2DShape(op):
+  """Shape function for FusedResizeAndPadConv2D op."""
+  # The bilinear resize shape calculation.
+  input_shape = op.inputs[0].get_shape().with_rank(4)
+  unused_size_shape = op.inputs[1].get_shape().merge_with([2])
+  size = tensor_util.constant_value(op.inputs[1])
+  if size is not None:
+    height = size[0]
+    width = size[1]
   else:
-    k = op.get_attr("k")
-  last = input_shape[-1].value
-  if last is not None and k is not None and last < k:
-    raise ValueError("input.shape %s must have last dimension >= k = %d" %
-                     (input_shape, k))
-  output_shape = input_shape[:-1].concatenate([k])
-  return [output_shape, output_shape]
+    height = None
+    width = None
+  resized_shape = tensor_shape.TensorShape(
+      [input_shape[0], height, width, input_shape[3]])
+
+  # Calculates the effect of the padding.
+  paddings_shape = op.inputs[2].get_shape().with_rank(2)
+  resized_shape = resized_shape.with_rank(paddings_shape[0].value)
+  paddings_shape = paddings_shape.merge_with(
+      tensor_shape.matrix(resized_shape.ndims, 2))
+  paddings = tensor_util.constant_value(op.inputs[2])
+  if paddings is None:
+    padded_shape = tensor_shape.unknown_shape(ndims=resized_shape.ndims)
+  else:
+    output_dims = []
+    for i, dim in enumerate(resized_shape.dims):
+      if paddings[i, 0] < 0 or paddings[i, 1] < 0:
+        raise ValueError("paddings must be non-negative")
+      output_dims.append(dim + paddings[i, 0] + paddings[i, 1])
+    padded_shape = tensor_shape.TensorShape(output_dims)
+
+  # Finally work out the convolution's effect.
+  filter_shape = op.inputs[3].get_shape().with_rank(4)
+
+  batch_size = padded_shape[0]
+  in_rows = padded_shape[1]
+  in_cols = padded_shape[2]
+
+  filter_rows = filter_shape[0]
+  filter_cols = filter_shape[1]
+  depth_out = filter_shape[3]
+  # Check that the input depths are compatible.
+  padded_shape[3].assert_is_compatible_with(filter_shape[2])
+
+  stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
+
+  if stride_b != 1 or stride_d != 1:
+    raise ValueError("Current implementation does not yet support "
+                     "strides in the batch and depth dimensions.")
+  # TODO(mrry,shlens): Raise an error if the stride would cause
+  # information in the input to be ignored. This will require a change
+  # in the kernel implementation.
+  padding = op.get_attr("padding")
+  out_rows, out_cols = common_shapes.get2d_conv_output_size(in_rows, in_cols,
+                                                            filter_rows,
+                                                            filter_cols,
+                                                            stride_r,
+                                                            stride_c,
+                                                            padding)
+
+  output_shape = [batch_size, out_rows, out_cols, depth_out]
+  return [tensor_shape.TensorShape(output_shape)]
 
 
-@ops.RegisterShape("BatchNormWithGlobalNormalization")
-def _BatchNormShape(op):
-  """Shape function for BatchNormWithGlobalNormalization op."""
-  input_shape = op.inputs[0].get_shape().with_rank(4)
-  mean_shape = op.inputs[1].get_shape().with_rank(1)
-  var_shape = op.inputs[2].get_shape().with_rank(1)
-  beta_shape = op.inputs[3].get_shape().with_rank(1)
-  gamma_shape = op.inputs[4].get_shape().with_rank(1)
-  mean_shape[0].merge_with(input_shape[3])
-  var_shape[0].merge_with(input_shape[3])
-  beta_shape[0].merge_with(input_shape[3])
-  gamma_shape[0].merge_with(input_shape[3])
-  return [input_shape]
-
-
-@ops.RegisterShape("BatchNormWithGlobalNormalizationGrad")
-def _BatchNormGradShape(op):
-  """Shape function for BatchNormWithGlobalNormalizationGrad op."""
-  input_shape = op.inputs[0].get_shape().with_rank(4)
-  mean_shape = op.inputs[1].get_shape().with_rank(1)
-  var_shape = op.inputs[2].get_shape().with_rank(1)
-  beta_shape = op.inputs[3].get_shape().with_rank(1)
-  out_backprop_shape = op.inputs[4].get_shape().with_rank(4)
-  input_shape = input_shape.merge_with(out_backprop_shape)
-  vector_dim = input_shape[3]
-  vector_dim = vector_dim.merge_with(mean_shape[0])
-  vector_dim = vector_dim.merge_with(var_shape[0])
-  vector_dim = vector_dim.merge_with(beta_shape[0])
-  return [input_shape] + ([tensor_shape.vector(vector_dim)] * 4)
-
-
-ops.RegisterShape("Conv2D")(common_shapes.conv2d_shape)
-ops.RegisterShape("DepthwiseConv2dNative")(
-    common_shapes.depthwise_conv2d_native_shape)
-ops.RegisterShape("AvgPool")(common_shapes.avg_pool_shape)
-ops.RegisterShape("MaxPool")(common_shapes.max_pool_shape)
-
-
-@ops.RegisterShape("MaxPoolWithArgmax")
-def _MaxPoolWithArgMaxShape(op):
-  """Shape function for MaxPoolWithArgmax op."""
-  return common_shapes.max_pool_shape(op) * 2
+ops.RegisterShape("MaxPoolWithArgmax")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("AvgPoolGrad")
 def _AvgPoolGradShape(op):
-  """Shape function for the AvgPoolGrad op."""
-  orig_input_shape = tensor_util.constant_value(op.inputs[0])
-  if orig_input_shape is not None:
-    return [tensor_shape.TensorShape(orig_input_shape.tolist())]
-  else:
-    # NOTE(mrry): We could in principle work out the shape from the
-    # gradients and the attrs, but if we do not know orig_input_shape
-    # statically, then we are unlikely to know the shape of the
-    # gradients either.
-    return [tensor_shape.unknown_shape(ndims=4)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
+
+
+ops.RegisterShape("FractionalMaxPool")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FractionalAvgPool")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FractionalMaxPoolGrad")(common_shapes.call_cpp_shape_fn)
+
+
+@ops.RegisterShape("FractionalAvgPoolGrad")
+def _fractional_avg_pool_grad_shape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
 @ops.RegisterShape("Conv2DBackpropFilter")
 def _Conv2DBackpropFilterShape(op):
-  """Shape function for the Conv2DBackpropFilter op."""
-  filter_shape = tensor_util.constant_value(op.inputs[1])
-  if filter_shape is not None:
-    return [tensor_shape.TensorShape(filter_shape.tolist())]
-  else:
-    # NOTE(mrry): We could in principle work out the shape from the
-    # gradients and the attrs, but if we do not know filter_shape
-    # statically, then we are unlikely to know the shape of the
-    # gradients either.
-    return [tensor_shape.unknown_shape(ndims=4)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 @ops.RegisterShape("Conv2DBackpropInput")
 def _Conv2DBackpropInputShape(op):
-  """Shape function for the Conv2DBackpropInput op."""
-  input_shape = tensor_util.constant_value(op.inputs[0])
-  if input_shape is not None:
-    return [tensor_shape.TensorShape(input_shape.tolist())]
-  else:
-    # NOTE(mrry): We could in principle work out the shape from the
-    # gradients and the attrs, but if we do not know input_shape
-    # statically, then we are unlikely to know the shape of the
-    # gradients either.
-    return [tensor_shape.unknown_shape(ndims=4)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
 @ops.RegisterShape("DepthwiseConv2dNativeBackpropFilter")
 def _DepthwiseConv2dNativeBackpropFilterShape(op):
-  """Shape function for the DepthwiseConv2dNativeBackpropFilter op."""
-  filter_shape = tensor_util.constant_value(op.inputs[1])
-  if filter_shape is not None:
-    return [tensor_shape.TensorShape(filter_shape.tolist())]
-  else:
-    return [tensor_shape.unknown_shape(ndims=4)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 @ops.RegisterShape("DepthwiseConv2dNativeBackpropInput")
 def _DepthwiseConv2dNativeBackpropInputShape(op):
-  """Shape function for the DepthwiseConv2dNativeBackpropInput op."""
-  input_shape = tensor_util.constant_value(op.inputs[0])
-  if input_shape is not None:
-    return [tensor_shape.TensorShape(input_shape.tolist())]
-  else:
-    return [tensor_shape.unknown_shape(ndims=4)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0])
 
 
-@ops.RegisterShape("MaxPoolGrad")
-@ops.RegisterShape("MaxPoolGradWithArgmax")
-def _MaxPoolGradShape(op):
-  """Shape function for the MaxPoolGrad op."""
-  orig_input_shape = op.inputs[0].get_shape().with_rank(4)
-  return [orig_input_shape]
+ops.RegisterShape("MaxPoolGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MaxPoolGradWithArgmax")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterStatistics("Conv2D", "flops")
@@ -903,95 +1058,15 @@ def _calc_depthwise_conv_weight_params(graph, node):
                                            filter_channel_multiplier))
 
 
-@ops.RegisterShape("Conv3D")
-def _Conv3DShape(op):
-  """Shape function for Conv3D."""
-  input_shape = op.inputs[0].get_shape().with_rank(5)
-  filter_shape = op.inputs[1].get_shape().with_rank(5)
-
-  batch_size = input_shape[0]
-  out_channels = filter_shape[4]
-  # Check that the input number of channels is compatible between
-  # input data and filter size.
-  input_shape[4].assert_is_compatible_with(filter_shape[3])
-
-  stride_b, stride_p, stride_r, stride_c, stride_d = op.get_attr("strides")
-  assert stride_b == 1
-  assert stride_d == 1
-
-  padding_type = op.get_attr("padding")
-  out_planes, out_rows, out_cols = common_shapes.get_conv_output_size(
-      input_shape[1:4], filter_shape[0:3], (stride_p, stride_r, stride_c),
-      padding_type)
-
-  return [tensor_shape.TensorShape([batch_size, out_planes, out_rows, out_cols,
-                                    out_channels])]
-
-
-@ops.RegisterShape("MaxPool3D")
-@ops.RegisterShape("AvgPool3D")
-def _Pool3DShape(op):
-  """Shape function for Max/AvgPool3D."""
-  input_shape = op.inputs[0].get_shape().with_rank(5)
-  ksize_b, ksize_p, ksize_r, ksize_c, ksize_d = op.get_attr("ksize")
-  assert ksize_b == 1
-  assert ksize_d == 1
-
-  stride_b, stride_p, stride_r, stride_c, stride_d = op.get_attr("strides")
-  assert stride_b == 1
-  assert stride_d == 1
-
-  batch_size = input_shape[0]
-  channels = input_shape[4]
-
-  padding = op.get_attr("padding")
-  out_planes, out_rows, out_cols = common_shapes.get_conv_output_size(
-      input_shape[1:4], (ksize_p, ksize_r, ksize_c),
-      (stride_p, stride_r, stride_c), padding)
-  return [tensor_shape.TensorShape([batch_size, out_planes, out_rows, out_cols,
-                                    channels])]
-
-
-@ops.RegisterShape("Conv3DBackpropFilter")
-def _Conv3DBackpropFilterShape(op):
-  """Shape function for the Conv3DBackpropFilter op."""
-  filter_shape = op.inputs[1].get_shape()
-  return [filter_shape.with_rank(5)]
-
-
-@ops.RegisterShape("Conv3DBackpropInput")
-def _Conv3DBackpropInputShape(op):
-  """Shape function for the Conv3DBackpropInput op."""
-  input_shape = op.inputs[0].get_shape()
-  return [input_shape.with_rank(5)]
-
-
-@ops.RegisterShape("Conv3DBackpropFilterV2")
-def _Conv3DBackpropFilterShapeV2(op):
-  """Shape function for the Conv3DBackpropFilterV2 op."""
-  filter_shape = tensor_util.constant_value(op.inputs[1])
-  return [tensor_shape.TensorShape(filter_shape).with_rank(5)]
-
-
-@ops.RegisterShape("Conv3DBackpropInputV2")
-def _Conv3DBackpropInputShapeV2(op):
-  """Shape function for the Conv3DBackpropInputV2 op."""
-  input_shape = tensor_util.constant_value(op.inputs[0])
-  return [tensor_shape.TensorShape(input_shape).with_rank(5)]
-
-
-@ops.RegisterShape("AvgPool3DGrad")
-def _AvgPool3DGradShape(op):
-  """Shape function for the AvgPool3DGrad op."""
-  orig_input_shape = tensor_util.constant_value(op.inputs[0])
-  return [tensor_shape.TensorShape(orig_input_shape).with_rank(5)]
-
-
-@ops.RegisterShape("MaxPool3DGrad")
-def _MaxPool3DGradShape(op):
-  """Shape function for the MaxPoolGrad op."""
-  orig_input_shape = op.inputs[0].get_shape().with_rank(5)
-  return [orig_input_shape]
+ops.RegisterShape("Conv3D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MaxPool3D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AvgPool3D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Conv3DBackpropFilter")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Conv3DBackpropInput")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Conv3DBackpropFilterV2")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Conv3DBackpropInputV2")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AvgPool3DGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MaxPool3DGrad")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterStatistics("BiasAdd", "flops")
@@ -1026,7 +1101,7 @@ def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name
     A 2-D Tensor computing matmul(x, weights) + biases.
     Dimensions typically: batch, out_units.
   """
-  with ops.op_scope([x, weights, biases], name, "xw_plus_b") as name:
+  with ops.name_scope(name, "xw_plus_b", [x, weights, biases]) as name:
     x = ops.convert_to_tensor(x, name="x")
     weights = ops.convert_to_tensor(weights, name="weights")
     biases = ops.convert_to_tensor(biases, name="biases")
@@ -1050,7 +1125,7 @@ def xw_plus_b_v1(x, weights, biases, name=None):  # pylint: disable=invalid-name
     A 2-D Tensor computing matmul(x, weights) + biases.
     Dimensions typically: batch, out_units.
   """
-  with ops.op_scope([x, weights, biases], name, "xw_plus_b_v1") as name:
+  with ops.name_scope(name, "xw_plus_b_v1", [x, weights, biases]) as name:
     x = ops.convert_to_tensor(x, name="x")
     weights = ops.convert_to_tensor(weights, name="weights")
     biases = ops.convert_to_tensor(biases, name="biases")
@@ -1091,15 +1166,19 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
   Raises:
     ValueError: If `keep_prob` is not in `(0, 1]`.
   """
-  with ops.op_scope([x], name, "dropout") as name:
+  with ops.name_scope(name, "dropout", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    if isinstance(keep_prob, float) and not 0 < keep_prob <= 1:
+    if isinstance(keep_prob, numbers.Real) and not 0 < keep_prob <= 1:
       raise ValueError("keep_prob must be a scalar tensor or a float in the "
                        "range (0, 1], got %g" % keep_prob)
     keep_prob = ops.convert_to_tensor(keep_prob,
                                       dtype=x.dtype,
                                       name="keep_prob")
     keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+
+    # Do nothing if we know keep_prob == 1
+    if tensor_util.constant_value(keep_prob) == 1:
+      return x
 
     noise_shape = noise_shape if noise_shape is not None else array_ops.shape(x)
     # uniform [keep_prob, 1.0 + keep_prob)
@@ -1109,7 +1188,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):
                                                dtype=x.dtype)
     # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
     binary_tensor = math_ops.floor(random_tensor)
-    ret = x * math_ops.inv(keep_prob) * binary_tensor
+    ret = math_ops.div(x, keep_prob) * binary_tensor
     ret.set_shape(x.get_shape())
     return ret
 
@@ -1178,7 +1257,7 @@ def conv1d(value, filters, stride, padding,
   Returns:
     A `Tensor`.  Has the same type as input.
   """
-  with ops.op_scope([value, filters], name, "conv1d") as name:
+  with ops.name_scope(name, "conv1d", [value, filters]) as name:
     # Reshape the input tensor to [batch, 1, in_width, in_channels]
     value = array_ops.expand_dims(value, 1)
     # And reshape the filter to [1, filter_width, in_channels, out_channels]
@@ -1189,56 +1268,9 @@ def conv1d(value, filters, stride, padding,
     return array_ops.squeeze(result, [1])
 
 
-@ops.RegisterShape("Dilation2D")
-def _Dilation2DShape(op):
-  """Shape function for Dilation2D op."""
-  input_shape = op.inputs[0].get_shape().with_rank(4)
-  filter_shape = op.inputs[1].get_shape().with_rank(3)
-
-  batch_size = input_shape[0]
-  in_rows = input_shape[1]
-  in_cols = input_shape[2]
-  depth = input_shape[3]
-
-  filter_rows = filter_shape[0]
-  filter_cols = filter_shape[1]
-  # Check that the input depths are compatible.
-  input_shape[3].assert_is_compatible_with(filter_shape[2])
-
-  stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
-  if stride_b != 1 or stride_d != 1:
-    raise ValueError("Current implementation does not yet support "
-                     "strides in the batch and depth dimensions.")
-
-  rate_b, rate_r, rate_c, rate_d = op.get_attr("rates")
-  if rate_b != 1 or rate_d != 1:
-    raise ValueError("Current implementation does not yet support "
-                     "rates in the batch and depth dimensions.")
-
-  filter_rows_eff = filter_rows + (filter_rows - 1) * (rate_r - 1)
-  filter_cols_eff = filter_cols + (filter_cols - 1) * (rate_c - 1)
-
-  padding = op.get_attr("padding")
-  out_rows, out_cols = common_shapes.get2d_conv_output_size(in_rows, in_cols,
-                                                            filter_rows_eff,
-                                                            filter_cols_eff,
-                                                            stride_r, stride_c,
-                                                            padding)
-
-  output_shape = [batch_size, out_rows, out_cols, depth]
-  return [tensor_shape.TensorShape(output_shape)]
-
-
-@ops.RegisterShape("Dilation2DBackpropInput")
-def _Dilation2DBackpropInputShape(op):
-  """Shape function for Dilation2DBackpropInput op."""
-  return [op.inputs[0].get_shape()]
-
-
-@ops.RegisterShape("Dilation2DBackpropFilter")
-def _Dilation2DBackpropFilterShape(op):
-  """Shape function for Dilation2DBackpropFilter op."""
-  return [op.inputs[1].get_shape()]
+ops.RegisterShape("Dilation2D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Dilation2DBackpropInput")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Dilation2DBackpropFilter")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterStatistics("Dilation2D", "flops")
@@ -1316,7 +1348,7 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
     ValueError: If the `value` depth does not match `kernel`' shape, or if
       padding is other than `'VALID'` or `'SAME'`.
   """
-  with ops.op_scope([value, kernel], name, "erosion2d") as name:
+  with ops.name_scope(name, "erosion2d", [value, kernel]) as name:
     # Reduce erosion to dilation by duality.
     return math_ops.neg(gen_nn_ops.dilation2d(input=math_ops.neg(value),
                                               filter=array_ops.reverse(

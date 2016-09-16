@@ -55,8 +55,8 @@ py_binary(
     srcs = [
         "graph_metrics.py",
     ],
-    srcs_version = "PY2AND3",
     main = "graph_metrics.py",
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -89,7 +89,7 @@ py_binary(
 
 py_library(
     name = "strip_unused_lib",
-    srcs = ["strip_unused.py"],
+    srcs = ["strip_unused_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
@@ -102,6 +102,7 @@ py_binary(
     srcs = ["strip_unused.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":strip_unused_lib",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform",
     ],
@@ -115,7 +116,43 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":strip_unused_lib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_library(
+    name = "optimize_for_inference_lib",
+    srcs = ["optimize_for_inference_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
         ":strip_unused",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_binary(
+    name = "optimize_for_inference",
+    srcs = ["optimize_for_inference.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":optimize_for_inference_lib",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_test(
+    name = "optimize_for_inference_test",
+    size = "small",
+    srcs = [
+        "optimize_for_inference_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":optimize_for_inference_lib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],

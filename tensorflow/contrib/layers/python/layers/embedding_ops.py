@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.platform import tf_logging as logging
 
 __all__ = ["safe_embedding_lookup_sparse", "hashed_embedding_lookup",
            "hashed_embedding_lookup_sparse"]
@@ -35,7 +36,7 @@ __all__ = ["safe_embedding_lookup_sparse", "hashed_embedding_lookup",
 def safe_embedding_lookup_sparse(embedding_weights,
                                  sparse_ids,
                                  sparse_weights=None,
-                                 combiner="mean",
+                                 combiner=None,
                                  default_id=None,
                                  name=None,
                                  partition_strategy="div"):
@@ -77,6 +78,10 @@ def safe_embedding_lookup_sparse(embedding_weights,
   Raises:
     ValueError: if `embedding_weights` is empty.
   """
+  if combiner is None:
+    logging.warn("The default value of combiner will change from \"mean\" "
+                 "to \"sqrtn\" after 2016/11/01.")
+    combiner = "mean"
   if embedding_weights is None or len(embedding_weights) < 1:
     raise ValueError("Missing embedding_weights %s." % embedding_weights)
 
@@ -88,8 +93,9 @@ def safe_embedding_lookup_sparse(embedding_weights,
   contrib_tensor_util.assert_same_float_dtype(embedding_weights +
                                               [sparse_weights])
 
-  with ops.op_scope(embedding_weights + [sparse_ids, sparse_weights], name,
-                    "embedding_lookup") as scope:
+  with ops.name_scope(name, "embedding_lookup",
+                      embedding_weights + [sparse_ids,
+                                           sparse_weights]) as scope:
     # Reshape higher-rank sparse ids and weights to linear segment ids.
     original_shape = sparse_ids.shape
     original_rank_dim = sparse_ids.shape.get_shape()[0]
@@ -199,8 +205,8 @@ def hashed_embedding_lookup(params, values, dimension, name=None):
   if not isinstance(params, list):
     params = [params]
 
-  with ops.op_scope(params + [dimension, values], name,
-                    "hashed_embedding_lookup"):
+  with ops.name_scope(name, "hashed_embedding_lookup",
+                      params + [dimension, values]):
     if dimension <= 0:
       raise ValueError("Dimension should be >0 not %d" % dimension)
 
@@ -244,7 +250,7 @@ def hashed_embedding_lookup(params, values, dimension, name=None):
 def hashed_embedding_lookup_sparse(params,
                                    sparse_values,
                                    dimension,
-                                   combiner="mean",
+                                   combiner=None,
                                    default_value=None,
                                    name=None):
   """Looks up embeddings of a sparse feature using parameter hashing.
@@ -271,14 +277,17 @@ def hashed_embedding_lookup_sparse(params,
     TypeError: If sparse_values is not a SparseTensor.
     ValueError: If combiner is not one of {"mean", "sqrtn", "sum"}.
   """
-
+  if combiner is None:
+    logging.warn("The default value of combiner will change from \"mean\" "
+                 "to \"sqrtn\" after 2016/11/01.")
+    combiner = "mean"
   if not isinstance(params, list):
     params = [params]
   if not isinstance(sparse_values, ops.SparseTensor):
     raise TypeError("sparse_values must be SparseTensor")
 
-  with ops.op_scope(params + [sparse_values], name,
-                    "hashed_sparse_embedding_lookup") as scope:
+  with ops.name_scope(name, "hashed_sparse_embedding_lookup",
+                      params + [sparse_values]) as scope:
     # Fill in the empty rows.
     if default_value is None:
       # Random default values to reduce the risk of collision.

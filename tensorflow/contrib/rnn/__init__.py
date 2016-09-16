@@ -12,14 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Ops for representing statistical distributions.
+"""Additional RNN operations and cells.
 
-## This package provides classes for statistical distributions.
+## This package provides additional contributed RNNCells.
 
+### Fused RNNCells
+@@LSTMBlockCell
+@@GRUBlockCell
+
+### LSTM-like cells
+@@CoupledInputForgetGateLSTMCell
+@@TimeFreqLSTMCell
+@@GridLSTMCell
+
+### RNNCell wrappers
+@@AttentionCellWrapper
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import, line-too-long
+from tensorflow.contrib.rnn.python.ops.gru_ops import *
+from tensorflow.contrib.rnn.python.ops.lstm_ops import *
 from tensorflow.contrib.rnn.python.ops.rnn_cell import *

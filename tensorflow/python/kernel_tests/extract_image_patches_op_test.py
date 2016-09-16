@@ -40,16 +40,15 @@ class ExtractImagePatches(tf.test.TestCase):
     strides = [1] + strides + [1]
     rates = [1] + rates + [1]
 
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
-        out_tensor = tf.extract_image_patches(
-            tf.constant(image),
-            ksizes=ksizes,
-            strides=strides,
-            rates=rates,
-            padding=padding,
-            name="im2col")
-        self.assertAllClose(patches, out_tensor.eval())
+    with self.test_session(use_gpu=True):
+      out_tensor = tf.extract_image_patches(
+          tf.constant(image),
+          ksizes=ksizes,
+          strides=strides,
+          rates=rates,
+          padding=padding,
+          name="im2col")
+      self.assertAllClose(patches, out_tensor.eval())
 
   def testKsize1x1Stride1x1Rate1x1(self):
     """Verifies that for 1x1 kernel the output equals the input."""

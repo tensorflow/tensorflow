@@ -29,8 +29,10 @@ import imghdr
 import json
 import mimetypes
 import os
+import re
 
 from six import BytesIO
+from six import StringIO
 from six.moves import BaseHTTPServer
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -65,6 +67,11 @@ _IMGHDR_TO_MIMETYPE = {
 }
 _DEFAULT_IMAGE_MIMETYPE = 'application/octet-stream'
 
+# Allows *, gzip or x-gzip, but forbid gzip;q=0
+# https://tools.ietf.org/html/rfc7231#section-5.3.4
+_ALLOWS_GZIP_PATTERN = re.compile(
+    r'(?:^|,|\s)(?:(?:x-)?gzip|\*)(?!;q=0)(?:\s|,|$)')
+
 
 def _content_type_for_image(encoded_image_string):
   image_type = imghdr.what(None, encoded_image_string)
@@ -90,6 +97,10 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
   # How many samples to include in sampling API calls by default.
   DEFAULT_SAMPLE_COUNT = 10
+
+  # NOTE TO MAINTAINERS: An accurate Content-Length MUST be specified on all
+  #                      responses using send_header.
+  protocol_version = 'HTTP/1.1'
 
   def __init__(self, multiplexer, *args):
     self._multiplexer = multiplexer
@@ -162,25 +173,54 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     prefix = os.path.commonprefix([base, absolute_path])
     return prefix == base
 
+  def _respond(self, content, content_type, code=200, encoding=None):
+    """Sends HTTP response.
+
+    All text responses are assumed to be utf-8 unless specified otherwise.
+
+    Args:
+      content: The content to respond with, which is converted to bytes.
+      content_type: The mime type of the content.
+      code: The numeric HTTP status code to use.
+      encoding: The encoding if any (not sanity checked.)
+    """
+    content = compat.as_bytes(content)
+    self.send_response(code)
+    if content_type.startswith(('text/', 'application/json')):
+      if 'charset=' not in content_type:
+        content_type += '; charset=utf-8'
+    self.send_header('Content-Type', content_type)
+    self.send_header('Content-Length', len(content))
+    if encoding:
+      self.send_header('Content-Encoding', encoding)
+    self.end_headers()
+    self.wfile.write(content)
+
+  def _is_gzip_accepted(self):
+    """Returns true if Accept-Encoding contains gzip."""
+    accept_encoding = self.headers.get('Accept-Encoding', '')
+    return _ALLOWS_GZIP_PATTERN.search(accept_encoding) is not None
+
   def _send_gzip_response(self, content, content_type, code=200):
     """Writes the given content as gzip response using the given content type.
+
+    If the HTTP client does not accept gzip encoding, then the response will be
+    sent uncompressed.
 
     Args:
       content: The content to respond with.
       content_type: The mime type of the content.
       code: The numeric HTTP status code to use.
     """
-    out = BytesIO()
-    f = gzip.GzipFile(fileobj=out, mode='wb')
-    f.write(compat.as_bytes(content))
-    f.close()
-    gzip_content = out.getvalue()
-    self.send_response(code)
-    self.send_header('Content-Type', content_type)
-    self.send_header('Content-Length', len(gzip_content))
-    self.send_header('Content-Encoding', 'gzip')
-    self.end_headers()
-    self.wfile.write(gzip_content)
+    encoding = None
+    if self._is_gzip_accepted():
+      out = BytesIO()
+      f = gzip.GzipFile(fileobj=out, mode='wb', compresslevel=3)
+      f.write(compat.as_bytes(content))
+      f.close()
+      content = out.getvalue()
+      encoding = 'gzip'
+    self._respond(content, content_type, code, encoding)
 
   def _send_json_response(self, obj, code=200):
     """Writes out the given object as JSON using the given HTTP status code.
@@ -191,14 +231,8 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       obj: The object to respond with.
       code: The numeric HTTP status code to use.
     """
-
-    output = json.dumps(json_util.WrapSpecialFloats(obj))
-
-    self.send_response(code)
-    self.send_header('Content-Type', 'application/json')
-    self.send_header('Content-Length', len(output))
-    self.end_headers()
-    self.wfile.write(compat.as_bytes(output))
+    content = json.dumps(json_util.WrapSpecialFloats(obj))
+    self._respond(content, 'application/json', code)
 
   def _send_csv_response(self, serialized_csv, code=200):
     """Writes out the given string, which represents CSV data.
@@ -210,12 +244,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       serialized_csv: A string containing some CSV data.
       code: The numeric HTTP status code to use.
     """
-
-    self.send_response(code)
-    self.send_header('Content-Type', 'text/csv')
-    self.send_header('Content-Length', len(serialized_csv))
-    self.end_headers()
-    self.wfile.write(serialized_csv)
+    self._respond(serialized_csv, 'text/csv', code)
 
   def _serve_scalars(self, query_params):
     """Given a tag and single run, return array of ScalarEvents.
@@ -248,7 +277,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       values = self._multiplexer.Scalars(run, tag)
 
     if query_params.get('format') == _OutputFormat.CSV:
-      string_io = BytesIO()
+      string_io = StringIO()
       writer = csv.writer(string_io)
       writer.writerow(['Wall time', 'Step', 'Value'])
       writer.writerows(values)
@@ -325,7 +354,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     run = query_params.get('run')
     compressed_histograms = self._multiplexer.CompressedHistograms(run, tag)
     if query_params.get('format') == _OutputFormat.CSV:
-      string_io = BytesIO()
+      string_io = StringIO()
       writer = csv.writer(string_io)
 
       # Build the headers; we have two columns for timing and two columns for
@@ -372,12 +401,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     image = self._multiplexer.Images(run, tag)[index]
     encoded_image_string = image.encoded_image_string
     content_type = _content_type_for_image(encoded_image_string)
-
-    self.send_response(200)
-    self.send_header('Content-Type', content_type)
-    self.send_header('Content-Length', len(encoded_image_string))
-    self.end_headers()
-    self.wfile.write(encoded_image_string)
+    self._respond(encoded_image_string, content_type)
 
   def _query_for_individual_image(self, run, tag, index):
     """Builds a URL for accessing the specified image.
@@ -429,12 +453,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     audio = self._multiplexer.Audio(run, tag)[index]
     encoded_audio_string = audio.encoded_audio_string
     content_type = audio.content_type
-
-    self.send_response(200)
-    self.send_header('Content-Type', content_type)
-    self.send_header('Content-Length', len(encoded_audio_string))
-    self.end_headers()
-    self.wfile.write(encoded_audio_string)
+    self._respond(encoded_audio_string, content_type)
 
   def _query_for_individual_audio(self, run, tag, index):
     """Builds a URL for accessing the specified audio.
@@ -497,39 +516,39 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       path: The path of the static file, relative to the tensorboard/ directory.
     """
     # Strip off the leading forward slash.
-    path = path.lstrip('/')
-    if not self._path_is_safe(path):
-      logging.info('path %s not safe, sending 404', path)
+    orig_path = path.lstrip('/')
+    if not self._path_is_safe(orig_path):
+      logging.info('path %s not safe, sending 404', orig_path)
       # Traversal attack, so 404.
       self.send_error(404)
       return
-
-    if path.startswith('external'):
+    # Resource loader wants a path relative to //WORKSPACE/tensorflow.
+    path = os.path.join('tensorboard', orig_path)
+    # Open the file and read it.
+    try:
+      contents = resource_loader.load_resource(path)
+    except IOError:
       # For compatibility with latest version of Bazel, we renamed bower
       # packages to use '_' rather than '-' in their package name.
       # This means that the directory structure is changed too.
       # So that all our recursive imports work, we need to modify incoming
       # requests to map onto the new directory structure.
+      path = orig_path
       components = path.split('/')
-      components[1] = components[1].replace('-', '_')
+      components[0] = components[0].replace('-', '_')
       path = ('/').join(components)
-      path = os.path.join('../', path)
-    else:
-      path = os.path.join('tensorboard', path)
-    # Open the file and read it.
-    try:
-      contents = resource_loader.load_resource(path)
-    except IOError:
-      logging.info('path %s not found, sending 404', path)
-      self.send_error(404)
-      return
-
-    self.send_response(200)
-
-    mimetype = mimetypes.guess_type(path)[0] or 'application/octet-stream'
-    self.send_header('Content-Type', mimetype)
-    self.end_headers()
-    self.wfile.write(contents)
+      # Bazel keeps all the external dependencies in //WORKSPACE/external.
+      # and resource loader wants a path relative to //WORKSPACE/tensorflow/.
+      path = os.path.join('../external', path)
+      try:
+        contents = resource_loader.load_resource(path)
+      except IOError:
+        logging.info('path %s not found, sending 404', path)
+        self.send_error(404)
+        return
+    mimetype, encoding = mimetypes.guess_type(path)
+    mimetype = mimetype or 'application/octet-stream'
+    self._respond(contents, mimetype, encoding=encoding)
 
   def do_GET(self):  # pylint: disable=invalid-name
     """Handler for all get requests."""

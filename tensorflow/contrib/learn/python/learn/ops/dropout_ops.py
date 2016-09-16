@@ -50,7 +50,7 @@ def dropout(tensor_in, prob, name=None):
   Raises:
     ValueError: If `keep_prob` is not in `(0, 1]`.
   """
-  with ops.op_scope([tensor_in], name, "dropout") as name:
+  with ops.name_scope(name, "dropout", [tensor_in]) as name:
     if isinstance(prob, float):
       prob = vs.get_variable("prob", [],
                              initializer=init_ops.constant_initializer(prob),

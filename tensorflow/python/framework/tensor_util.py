@@ -382,7 +382,8 @@ def make_tensor_proto(values, dtype=None, shape=None):
   if is_quantized:
     numpy_dtype = dtype
 
-  if dtype is not None and not dtype.base_dtype == numpy_dtype.base_dtype:
+  if dtype is not None and (not hasattr(dtype, "base_dtype") or
+                            dtype.base_dtype != numpy_dtype.base_dtype):
     raise TypeError("Incompatible types: %s vs. %s" % (dtype, nparray.dtype))
 
   # If shape is not given, get the shape from the numpy array.
@@ -455,6 +456,17 @@ def MakeNdarray(tensor):
 
   if tensor.tensor_content:
     return np.fromstring(tensor.tensor_content, dtype=dtype).reshape(shape)
+  elif tensor_dtype == dtypes.float16:
+    # the half_val field of the TensorProto stores the binary representation
+    # of the fp16: we need to reinterpret this as a proper float16
+    if len(tensor.half_val) == 1:
+      tmp = np.array(tensor.half_val[0], dtype=np.uint16)
+      tmp.dtype = np.float16
+      return np.repeat(tmp, num_elements).reshape(shape)
+    else:
+      tmp = np.fromiter(tensor.half_val, dtype=np.uint16)
+      tmp.dtype = np.float16
+      return tmp.reshape(shape)
   elif tensor_dtype == dtypes.float32:
     if len(tensor.float_val) == 1:
       return np.repeat(np.array(tensor.float_val[0], dtype=dtype),
@@ -562,7 +574,7 @@ def _ConstantValue(tensor):
   elif tensor.op.type == "Rank":
     input_shape = tensor.op.inputs[0].get_shape()
     if input_shape.ndims is not None:
-      return input_shape.ndims
+      return np.array([input_shape.ndims], dtype=np.int32)
     else:
       return None
   elif tensor.op.type == "Range":
@@ -593,6 +605,14 @@ def _ConstantValue(tensor):
         return None
       values.append(value)
     return np.concatenate(values, axis=dim)
+  elif tensor.op.type == "Pack":
+    values = []
+    for x in tensor.op.inputs:
+      value = constant_value(x)
+      if value is None:
+        return None
+      values.append(value)
+    return np.array(values)
   else:
     return None
 

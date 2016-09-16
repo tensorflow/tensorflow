@@ -18,18 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-
 import six
 
+from tensorflow.contrib import losses
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import nn_ops
 
 
 def regression_target(label_name=None,
@@ -70,7 +68,7 @@ def multi_class_target(n_classes, label_name=None, weight_column_name=None):
       will be multiplied by the loss of the example.
 
   Returns:
-    An instance of _TargetColumn
+    An instance of _MultiClassTargetColumn.
 
   Raises:
     ValueError: if n_classes is < 2
@@ -107,6 +105,13 @@ def binary_svm_target(label_name=None, weight_column_name=None):
                                 weight_column_name=weight_column_name)
 
 
+class ProblemType(object):
+  UNSPECIFIED = 0
+  CLASSIFICATION = 1
+  LINEAR_REGRESSION = 2
+  LOGISTIC_REGRESSION = 3
+
+
 class _TargetColumn(object):
   """_TargetColumn is the abstraction for a single head in a model.
 
@@ -124,7 +129,7 @@ class _TargetColumn(object):
   """
 
   def __init__(self, loss_fn, num_label_columns, label_name,
-               weight_column_name):
+               weight_column_name, problem_type):
     if not loss_fn:
       raise ValueError("loss_fn must be provided")
     if num_label_columns is None:  # n_classes can be 0
@@ -134,6 +139,7 @@ class _TargetColumn(object):
     self._num_label_columns = num_label_columns
     self._label_name = label_name
     self._weight_column_name = weight_column_name
+    self._problem_type = problem_type
 
   def logits_to_predictions(self, logits, proba=False):
     # Abstrat, Subclasses must implement.
@@ -163,8 +169,54 @@ class _TargetColumn(object):
           math_ops.to_float(features[self._weight_column_name]),
           shape=(-1,))
 
+  @property
+  def problem_type(self):
+    return self._problem_type
+
+  def _weighted_loss(self, loss, weight_tensor):
+    """Returns cumulative weighted loss."""
+    unweighted_loss = array_ops.reshape(loss, shape=(-1,))
+    weighted_loss = math_ops.mul(unweighted_loss,
+                                 array_ops.reshape(
+                                     weight_tensor, shape=(-1,)))
+    return weighted_loss
+
+  def training_loss(self, logits, target, features, name="training_loss"):
+    """Returns training loss tensor for this head.
+
+    Training loss is different from the loss reported on the tensorboard as we
+    should respect the example weights when computing the gradient.
+
+      L = sum_{i} w_{i} * l_{i} / B
+
+    where B is the number of examples in the batch, l_{i}, w_{i} are individual
+    losses, and example weight.
+
+    Args:
+      logits: logits, a float tensor.
+      target: either a tensor for labels or in multihead case, a dict of string
+        to target tensor.
+      features: features dict.
+      name: Op name.
+
+    Returns:
+      Loss tensor.
+    """
+    target = target[self.name] if isinstance(target, dict) else target
+    loss_unweighted = self._loss_fn(logits, target)
+
+    weight_tensor = self.get_weight_tensor(features)
+    if weight_tensor is None:
+      return math_ops.reduce_mean(loss_unweighted, name=name)
+    loss_weighted = self._weighted_loss(loss_unweighted, weight_tensor)
+    return math_ops.reduce_mean(loss_weighted, name=name)
+
   def loss(self, logits, target, features):
     """Returns loss tensor for this head.
+
+    The loss returned is the weighted average.
+
+      L = sum_{i} w_{i} * l_{i} / sum_{i} w_{i}
 
     Args:
       logits: logits, a float tensor.
@@ -181,15 +233,11 @@ class _TargetColumn(object):
     weight_tensor = self.get_weight_tensor(features)
     if weight_tensor is None:
       return math_ops.reduce_mean(loss_unweighted, name="loss")
-    else:
-      loss_unweighted = array_ops.reshape(loss_unweighted, shape=(-1,))
-      loss_weighted = math_ops.mul(
-          loss_unweighted,
-          array_ops.reshape(weight_tensor, shape=(-1,)))
-      return math_ops.div(
-          math_ops.reduce_sum(loss_weighted),
-          math_ops.to_float(math_ops.reduce_sum(weight_tensor)),
-          name="loss")
+    loss_weighted = self._weighted_loss(loss_unweighted, weight_tensor)
+    return math_ops.div(
+        math_ops.reduce_sum(loss_weighted),
+        math_ops.to_float(math_ops.reduce_sum(weight_tensor)),
+        name="loss")
 
 
 class _RegressionTargetColumn(_TargetColumn):
@@ -200,7 +248,8 @@ class _RegressionTargetColumn(_TargetColumn):
         loss_fn=loss_fn,
         num_label_columns=target_dimension,
         label_name=label_name,
-        weight_column_name=weight_column_name)
+        weight_column_name=weight_column_name,
+        problem_type=ProblemType.LINEAR_REGRESSION)
 
   def logits_to_predictions(self, logits, proba=False):
     if self.num_label_columns == 1:
@@ -228,7 +277,8 @@ class _MultiClassTargetColumn(_TargetColumn):
         loss_fn=loss_fn,
         num_label_columns=1 if n_classes == 2 else n_classes,
         label_name=label_name,
-        weight_column_name=weight_column_name)
+        weight_column_name=weight_column_name,
+        problem_type=ProblemType.CLASSIFICATION)
 
   def logits_to_predictions(self, logits, proba=False):
     if self.num_label_columns == 1:
@@ -241,7 +291,7 @@ class _MultiClassTargetColumn(_TargetColumn):
 
   def _default_eval_metrics(self):
     if self._num_label_columns == 1:
-      return _get_default_binary_metrics_for_eval(thresholds=[.5])
+      return get_default_binary_metrics_for_eval(thresholds=[.5])
     return {}
 
   def get_eval_ops(self, features, logits, targets, metrics=None):
@@ -297,8 +347,17 @@ class _BinarySvmTargetColumn(_MultiClassTargetColumn):
   """_TargetColumn for binary classification using SVMs."""
 
   def __init__(self, label_name, weight_column_name):
+    def loss_fn(logits, target):
+      check_shape_op = control_flow_ops.Assert(
+          math_ops.less_equal(array_ops.rank(target), 2),
+          ["target's shape should be either [batch_size, 1] or [batch_size]"])
+      with ops.control_dependencies([check_shape_op]):
+        target = array_ops.reshape(
+            target, shape=[array_ops.shape(target)[0], 1])
+      return losses.hinge_loss(logits, target)
+
     super(_BinarySvmTargetColumn, self).__init__(
-        loss_fn=_binary_hinge_loss,
+        loss_fn=loss_fn,
         n_classes=2,
         label_name=label_name,
         weight_column_name=weight_column_name)
@@ -331,22 +390,6 @@ def _log_loss_with_two_classes(logits, target):
   return loss_vec
 
 
-# TODO(sibyl-vie3Poto): Move this to contrib/losses/python/losses/loss_ops.py.
-def _binary_hinge_loss(logits, target):
-  """Method that returns the loss vector for binary hinge loss."""
-  check_shape_op = logging_ops.Assert(
-      math_ops.less_equal(
-          array_ops.rank(target), 2),
-      ["target's shape should be either [batch_size, 1] or [batch_size]"])
-  with ops.control_dependencies([check_shape_op]):
-    target = array_ops.reshape(target, shape=[array_ops.shape(target)[0], 1])
-  # First need to convert binary labels to -1/1 labels (as floats).
-  all_ones = array_ops.ones_like(logits)
-  labels = math_ops.sub(2 * math_ops.to_float(target), all_ones)
-  loss_vec = nn_ops.relu(math_ops.sub(all_ones, math_ops.mul(labels, logits)))
-  return loss_vec
-
-
 def _softmax_cross_entropy_loss(logits, target):
   # sigmoid_cross_entropy_with_logits requires [batch_size, 1] target.
   # Check that we got int32/int64 for classification.
@@ -365,7 +408,7 @@ def _run_metrics(predictions, targets, metrics, weights):
   result = {}
   targets = math_ops.cast(targets, predictions.dtype)
   for name, metric in six.iteritems(metrics or {}):
-    if "weights" in inspect.getargspec(metric)[0]:
+    if weights is not None:
       result[name] = metric(predictions, targets, weights=weights)
     else:
       result[name] = metric(predictions, targets)
@@ -373,7 +416,7 @@ def _run_metrics(predictions, targets, metrics, weights):
   return result
 
 
-def _get_default_binary_metrics_for_eval(thresholds):
+def get_default_binary_metrics_for_eval(thresholds):
   """Returns a dictionary of basic metrics for logistic regression.
 
   Args:
@@ -390,36 +433,59 @@ def _get_default_binary_metrics_for_eval(thresholds):
   # a reminder to users.
   metrics[_MetricKeys.ACCURACY_BASELINE] = _targets_streaming_mean
 
-  metrics[_MetricKeys.AUC] = metrics_lib.streaming_auc
+  metrics[_MetricKeys.AUC] = _streaming_auc
 
   for threshold in thresholds:
-    metrics[_MetricKeys.ACCURACY_MEAN % threshold] = _streaming_with_threshold(
-        metrics_lib.streaming_accuracy, threshold)
+    metrics[_MetricKeys.ACCURACY_MEAN % threshold] = _accuracy_at_threshold(
+        threshold)
     # Precision for positive examples.
-    metrics[_MetricKeys.PRECISION_MEAN % threshold] = _streaming_with_threshold(
-        metrics_lib.streaming_precision, threshold)
+    metrics[_MetricKeys.PRECISION_MEAN % threshold] = _streaming_at_threshold(
+        metrics_lib.streaming_precision_at_thresholds, threshold)
     # Recall for positive examples.
-    metrics[_MetricKeys.RECALL_MEAN % threshold] = _streaming_with_threshold(
-        metrics_lib.streaming_recall, threshold)
+    metrics[_MetricKeys.RECALL_MEAN % threshold] = _streaming_at_threshold(
+        metrics_lib.streaming_recall_at_thresholds, threshold)
 
   return metrics
 
 
-# TODO(zakaria): support weights.
-def _targets_streaming_mean(unused_predictions, targets):
-  return metrics_lib.streaming_mean(targets)
+def _float_weights_or_none(weights):
+  if weights is None:
+    return None
+  return math_ops.to_float(weights)
 
 
-def _predictions_streaming_mean(predictions, unused_targets):
-  return metrics_lib.streaming_mean(predictions)
+def _targets_streaming_mean(unused_predictions, targets, weights=None):
+  return metrics_lib.streaming_mean(targets, weights=weights)
 
 
-def _streaming_with_threshold(streaming_metrics_fn, threshold):
+def _predictions_streaming_mean(predictions, unused_targets, weights=None):
+  return metrics_lib.streaming_mean(predictions, weights=weights)
 
-  def _streaming_metrics(predictions, targets):
-    return streaming_metrics_fn(predictions=math_ops.to_float(
-        math_ops.greater_equal(predictions, threshold)),
-                                labels=targets)
+
+def _streaming_auc(predictions, targets, weights=None):
+  return metrics_lib.streaming_auc(predictions, targets,
+                                   weights=_float_weights_or_none(weights))
+
+
+def _accuracy_at_threshold(threshold):
+
+  def _accuracy_metric(predictions, targets, weights=None):
+    threshold_predictions = math_ops.to_float(
+        math_ops.greater_equal(predictions, threshold))
+    return metrics_lib.streaming_accuracy(predictions=threshold_predictions,
+                                          labels=targets,
+                                          weights=weights)
+
+  return _accuracy_metric
+
+
+def _streaming_at_threshold(streaming_metrics_fn, threshold):
+
+  def _streaming_metrics(predictions, targets, weights=None):
+    precision_tensor, update_op = streaming_metrics_fn(
+        predictions, labels=targets, thresholds=[threshold],
+        weights=_float_weights_or_none(weights))
+    return array_ops.squeeze(precision_tensor), update_op
 
   return _streaming_metrics
 

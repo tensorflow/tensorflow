@@ -32,6 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import logging_ops
@@ -52,7 +53,7 @@ def match_filenames_once(pattern, name=None):
   Returns:
     A variable that is initialized to the list of files matching pattern.
   """
-  with ops.op_scope([pattern], name, "matching_filenames") as name:
+  with ops.name_scope(name, "matching_filenames", [pattern]) as name:
     return variables.Variable(io_ops.matching_files(pattern), trainable=False,
                               name=name, validate_shape=False)
 
@@ -76,7 +77,7 @@ def limit_epochs(tensor, num_epochs=None, name=None):
     return tensor
   if num_epochs <= 0:
     raise ValueError("num_epochs must be > 0 not %d." % num_epochs)
-  with ops.op_scope([tensor], name, "limit_epochs") as name:
+  with ops.name_scope(name, "limit_epochs", [tensor]) as name:
     zero64 = constant_op.constant(0, dtype=dtypes.int64)
     epochs = variables.Variable(
         zero64, name="epochs", trainable=False,
@@ -92,7 +93,7 @@ def input_producer(input_tensor, element_shape=None, num_epochs=None,
   """Output the rows of `input_tensor` to a queue for an input pipeline.
 
   Args:
-    input_tensor: A tensor with the rows to produce. Must be at
+    input_tensor: A tensor with the rows to produce. Must be at least
       one-dimensional. Must either have a fully-defined shape, or
       `element_shape` must be defined.
     element_shape: (Optional.) A `TensorShape` representing the shape of a
@@ -102,7 +103,7 @@ def input_producer(input_tensor, element_shape=None, num_epochs=None,
       `OutOfRange` error. If not specified, `input_producer` can cycle through
       the rows of `input_tensor` an unlimited number of times.
     shuffle: (Optional.) A boolean. If true, the rows are randomly shuffled
-      within each eopch.
+      within each epoch.
     seed: (Optional.) An integer. The seed to use if `shuffle` is true.
     capacity: (Optional.) The capacity of the queue to be used for buffering
       the input.
@@ -120,7 +121,7 @@ def input_producer(input_tensor, element_shape=None, num_epochs=None,
   Raises:
     ValueError: If the shape of the input cannot be inferred from the arguments.
   """
-  with ops.op_scope([input_tensor], name, "input_producer"):
+  with ops.name_scope(name, "input_producer", [input_tensor]):
     input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
     element_shape = input_tensor.get_shape()[1:].merge_with(element_shape)
     if not element_shape.is_fully_defined():
@@ -176,11 +177,12 @@ def string_input_producer(string_tensor, num_epochs=None, shuffle=True,
   if not isinstance(string_tensor, ops.Tensor) and not string_tensor:
     raise ValueError(not_null_err)
 
-  with ops.op_scope([string_tensor], name, "input_producer") as name:
+  with ops.name_scope(name, "input_producer", [string_tensor]) as name:
     string_tensor = ops.convert_to_tensor(string_tensor, dtype=dtypes.string)
     with ops.control_dependencies([
-        logging_ops.Assert(math_ops.greater(array_ops.size(string_tensor), 0),
-                           [not_null_err])]):
+        control_flow_ops.Assert(
+            math_ops.greater(array_ops.size(string_tensor), 0),
+            [not_null_err])]):
       string_tensor = array_ops.identity(string_tensor)
     return input_producer(
         input_tensor=string_tensor,
@@ -216,7 +218,7 @@ def range_input_producer(limit, num_epochs=None, shuffle=True, seed=None,
     A Queue with the output integers.  A `QueueRunner` for the Queue
     is added to the current `Graph`'s `QUEUE_RUNNER` collection.
   """
-  with ops.op_scope([limit], name, "input_producer") as name:
+  with ops.name_scope(name, "input_producer", [limit]) as name:
     range_tensor = math_ops.range(limit)
     return input_producer(
         range_tensor, [], num_epochs, shuffle, seed, capacity,
@@ -253,7 +255,7 @@ def slice_input_producer(tensor_list, num_epochs=None, shuffle=True, seed=None,
   Raises:
     ValueError: if `slice_input_producer` produces nothing from `tensor_list`.
   """
-  with ops.op_scope(tensor_list, name, "input_producer"):
+  with ops.name_scope(name, "input_producer", tensor_list):
     tensor_list = ops.convert_n_to_tensor_or_indexed_slices(tensor_list)
     if not tensor_list:
       raise ValueError(
@@ -519,7 +521,7 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
 
   If `enqueue_many` is `True`, `tensors` is assumed to represent a batch of
   examples, where the first dimension is indexed by example, and all members of
-  `tensor_list` should have the same size in the first dimension.  If an input
+  `tensors` should have the same size in the first dimension.  If an input
   tensor has shape `[*, x, y, z]`, the output will have shape `[batch_size, x,
   y, z]`.  The `capacity` argument controls the how long the prefetching is
   allowed to grow the queues.
@@ -553,11 +555,11 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
   Args:
     tensors: The list or dictionary of tensors to enqueue.
     batch_size: The new batch size pulled from the queue.
-    num_threads: The number of threads enqueuing `tensor_list`.
+    num_threads: The number of threads enqueuing `tensors`.
     capacity: An integer. The maximum number of elements in the queue.
-    enqueue_many: Whether each tensor in `tensor_list` is a single example.
+    enqueue_many: Whether each tensor in `tensors` is a single example.
     shapes: (Optional) The shapes for each example.  Defaults to the
-      inferred shapes for `tensor_list`.
+      inferred shapes for `tensors`.
     dynamic_pad: Boolean.  Allow variable dimensions in input shapes.
       The given dimensions are padded upon dequeue so that tensors within a
       batch have the same shapes.
@@ -575,7 +577,7 @@ def batch(tensors, batch_size, num_threads=1, capacity=32,
       inferred from the elements of `tensors`.
   """
   tensor_list = _as_tensor_list(tensors)
-  with ops.op_scope(tensor_list, name, "batch") as name:
+  with ops.name_scope(name, "batch", tensor_list) as name:
     tensor_list = _validate(tensor_list)
     (tensor_list, sparse_info) = _serialize_sparse_tensors(
         tensor_list, enqueue_many)
@@ -609,7 +611,7 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
   """Runs a list of tensors to fill a queue to create batches of examples.
 
   The `tensors_list` argument is a list of tuples of tensors, or a list of
-  dictionaries of tensors.  Each element in the list is treated similarily
+  dictionaries of tensors.  Each element in the list is treated similarly
   to the `tensors` argument of `tf.train.batch()`.
 
   Enqueues a different list of tensors in different threads.
@@ -688,7 +690,7 @@ def batch_join(tensors_list, batch_size, capacity=32, enqueue_many=False,
       inferred from the elements of `tensor_list_list`.
   """
   tensor_list_list = _as_tensor_list_list(tensors_list)
-  with ops.op_scope(_flatten(tensor_list_list), name, "batch_join") as name:
+  with ops.name_scope(name, "batch_join", _flatten(tensor_list_list)) as name:
     tensor_list_list = _validate_join(tensor_list_list)
     tensor_list_list, sparse_info = _serialize_sparse_tensors_join(
         tensor_list_list, enqueue_many)
@@ -791,7 +793,7 @@ def shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
       inferred from the elements of `tensors`.
   """
   tensor_list = _as_tensor_list(tensors)
-  with ops.op_scope(tensor_list, name, "shuffle_batch") as name:
+  with ops.name_scope(name, "shuffle_batch", tensor_list) as name:
     tensor_list = _validate(tensor_list)
     tensor_list, sparse_info = _serialize_sparse_tensors(
         tensor_list, enqueue_many)
@@ -826,7 +828,7 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
   """Create batches by randomly shuffling tensors.
 
   The `tensors_list` argument is a list of tuples of tensors, or a list of
-  dictionaries of tensors.  Each element in the list is treated similarily
+  dictionaries of tensors.  Each element in the list is treated similarly
   to the `tensors` argument of `tf.train.shuffle_batch()`.
 
   This version enqueues a different list of tensors in different threads.
@@ -894,8 +896,8 @@ def shuffle_batch_join(tensors_list, batch_size, capacity,
       inferred from the elements of `tensors_list`.
   """
   tensor_list_list = _as_tensor_list_list(tensors_list)
-  with ops.op_scope(
-      _flatten(tensor_list_list), name, "shuffle_batch_join") as name:
+  with ops.name_scope(name, "shuffle_batch_join",
+                      _flatten(tensor_list_list)) as name:
     tensor_list_list = _validate_join(tensor_list_list)
     tensor_list_list, sparse_info = _serialize_sparse_tensors_join(
         tensor_list_list, enqueue_many)

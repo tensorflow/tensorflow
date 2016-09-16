@@ -275,7 +275,7 @@ Example 2:
 
 - - -
 
-### `tf.while_loop(cond, body, loop_vars, parallel_iterations=10, back_prop=True, swap_memory=False, name=None)` {#while_loop}
+### `tf.while_loop(cond, body, loop_vars, shape_invariants=None, parallel_iterations=10, back_prop=True, swap_memory=False, name=None)` {#while_loop}
 
 Repeat `body` while the condition `cond` is true.
 
@@ -286,11 +286,39 @@ arity (length and structure) and types as `loop_vars`. `loop_vars` is a
 and `body`. `cond` and `body` both take as many arguments as there are
 `loop_vars`.
 
+While `cond` evaluates to true, `body` is executed.
+
 In addition to regular Tensors or IndexedSlices, the body may accept and
 return TensorArray objects.  The flows of the TensorArray objects will
 be appropriately forwarded between loops and during gradient calculations.
 
-While `cond` evaluates to true, `body` is executed.
+For correctness, `tf.while_loop()` strictly enforces shape invariants for
+the loop variables. A shape invariant is a (possibly partial) shape that
+is unchanged across the iterations of the loop. An error will be raised
+if the shape of a loop variable after an iteration is determined to be more
+general than or incompatible with its shape invariant. For example, a shape
+of [11, None] is more general than a shape of [11, 17], and [11, 21] is not
+compatible with [11, 17]. By default (if the argument `shape_invariants` is
+not specified), it is assumed that the initial shape of each tensor in
+`loop_vars` is the same in every iteration. The `shape_invariants` argument
+allows the caller to specify a less specific shape invariant for each loop
+variable, which is needed if the shape varies between iterations. The
+[`Tensor.set_shape()`](../../api_docs/python/framework.md#Tensor.set_shape)
+function may also be used in the `body` function to indicate that
+the output loop variable has a particular shape. The shape invariant for
+SparseTensor and IndexedSlices are treated specially as follows:
+
+a) If a loop variable is a SparseTensor, the shape invariant must be
+TensorShape([r]) where r is the rank of the dense tensor represented
+by the sparse tensor. It means the shapes of the three tensors of the
+SparseTensor are ([None], [None, r], [r]). NOTE: The shape invariant here
+is the shape of the SparseTensor.shape property. It must be the shape of
+a vector.
+
+b) If a loop variable is an IndexedSlices, the shape invariant must be
+a shape invariant of the values tensor of the IndexedSlices. It means
+the shapes of the three tensors of the IndexedSlices are (shape, [shape[0]],
+[shape.ndims]).
 
 `while_loop` implements non-strict semantics, enabling multiple iterations
 to run in parallel. The maximum number of parallel iterations can be
@@ -312,6 +340,7 @@ sequences and large batches.
 *  <b>`body`</b>: A callable that represents the loop body.
 *  <b>`loop_vars`</b>: A (possibly nested) tuple or list of numpy array, `Tensor`,
     and `TensorArray` objects.
+*  <b>`shape_invariants`</b>: The shape invariants for the loop variables.
 *  <b>`parallel_iterations`</b>: The number of iterations allowed to run in parallel.
 *  <b>`back_prop`</b>: Whether backprop is enabled for this while loop.
 *  <b>`swap_memory`</b>: Whether GPU-CPU memory swap is enabled for this loop.
@@ -319,13 +348,15 @@ sequences and large batches.
 
 ##### Returns:
 
-  The output tensors for the loop variables after the loop.
+  The output tensors for the loop variables after the loop. When the length
+  of `loop_vars` is 1 this is a Tensor, TensorArray or IndexedSlice and when
+  the length of `loop_vars` is greater than 1 it returns a list.
 
 ##### Raises:
 
 
 *  <b>`TypeError`</b>: if `cond` or `body` is not callable.
-*  <b>`ValueError`</b>: if `loop_var` is empty.
+*  <b>`ValueError`</b>: if `loop_vars` is empty.
 
 
 *  <b>`Example`</b>: 
@@ -346,6 +377,18 @@ Example with nesting:
   ijk_final = tf.while_loop(c, b, ijk_0)
   ```
 
+Example using shape_invariants:
+
+  ```python
+  i0 = tf.constant(0)
+  m0 = tf.ones([2, 2])
+  c = lambda i, m: i < 10
+  b = lambda i, m: [i+1, tf.concat(0, [m, m])]
+  tf.while_loop(
+      c, b, loop_vars=[i0, m0],
+      shape_invariants=[i0.get_shape(), tensor_shape.TensorShape([None, 2])])
+  ```
+
 
 
 ## Logical Operators
@@ -358,6 +401,9 @@ to your graph.
 ### `tf.logical_and(x, y, name=None)` {#logical_and}
 
 Returns the truth value of x AND y element-wise.
+
+*NOTE*: `LogicalAnd` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
@@ -394,6 +440,9 @@ Returns the truth value of NOT x element-wise.
 
 Returns the truth value of x OR y element-wise.
 
+*NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
 ##### Args:
 
 
@@ -425,6 +474,9 @@ operators to your graph.
 
 Returns the truth value of (x == y) element-wise.
 
+*NOTE*: `Equal` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
 ##### Args:
 
 
@@ -442,6 +494,9 @@ Returns the truth value of (x == y) element-wise.
 ### `tf.not_equal(x, y, name=None)` {#not_equal}
 
 Returns the truth value of (x != y) element-wise.
+
+*NOTE*: `NotEqual` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
@@ -461,6 +516,9 @@ Returns the truth value of (x != y) element-wise.
 
 Returns the truth value of (x < y) element-wise.
 
+*NOTE*: `Less` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
 ##### Args:
 
 
@@ -478,6 +536,9 @@ Returns the truth value of (x < y) element-wise.
 ### `tf.less_equal(x, y, name=None)` {#less_equal}
 
 Returns the truth value of (x <= y) element-wise.
+
+*NOTE*: `LessEqual` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 
@@ -497,6 +558,9 @@ Returns the truth value of (x <= y) element-wise.
 
 Returns the truth value of (x > y) element-wise.
 
+*NOTE*: `Greater` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
 ##### Args:
 
 
@@ -514,6 +578,9 @@ Returns the truth value of (x > y) element-wise.
 ### `tf.greater_equal(x, y, name=None)` {#greater_equal}
 
 Returns the truth value of (x >= y) element-wise.
+
+*NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
 ##### Args:
 

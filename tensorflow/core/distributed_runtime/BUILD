@@ -51,9 +51,15 @@ cc_library(
 
 cc_library(
     name = "worker_interface",
-    hdrs = ["worker_interface.h"],
+    srcs = ["tensor_coding.cc"],
+    hdrs = [
+        "tensor_coding.h",
+        "worker_interface.h",
+    ],
     deps = [
         ":call_options",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:worker_proto_cc",
     ],
@@ -76,6 +82,23 @@ cc_test(
         ":call_options",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_test(
+    name = "tensor_coding_test",
+    size = "small",
+    srcs = ["tensor_coding_test.cc"],
+    linkstatic = 1,
+    deps = [
+        ":worker_interface",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:worker_proto_cc",
     ],
 )
 
@@ -122,6 +145,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:master_proto_cc",
         "//tensorflow/core:worker_proto_cc",
     ],
@@ -134,6 +158,7 @@ cc_library(
     deps = [
         ":master_env",
         ":master_session_interface",
+        ":scheduler",
         ":worker_cache",
         ":worker_interface",
         "//tensorflow/core:core_cpu",
@@ -160,6 +185,17 @@ cc_library(
     srcs = [],
     hdrs = ["master_session_interface.h"],
     deps = ["//tensorflow/core:lib"],
+)
+
+cc_library(
+    name = "scheduler",
+    srcs = ["scheduler.cc"],
+    hdrs = ["scheduler.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:tensorflow_opensource",
+    ],
 )
 
 cc_library(
@@ -240,12 +276,12 @@ cc_library(
 # on grpc_testlib.
 tf_cuda_cc_tests(
     size = "medium",
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
-    tests = [
+    srcs = [
         "executor_test.cc",
         #"master_test.cc",  # TODO(b/27683709): Re-enable when not flaky.
     ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":master",
         ":remote_device",
@@ -276,11 +312,11 @@ tf_cuda_cc_tests(
 
 tf_cuda_cc_tests(
     size = "small",
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["manual"],
-    tests = [
+    srcs = [
         "remote_device_test.cc",
     ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["manual"],
     deps = [
         ":master",
         ":remote_device",

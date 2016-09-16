@@ -20,9 +20,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import copy
+import re
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -80,7 +82,7 @@ def must_run_on_cpu(node, pin_variables_on_cpu=False):
   if isinstance(node, ops.Operation):
     node_def = node.node_def
   else:
-    assert isinstance(node, graph_pb2.NodeDef)
+    assert isinstance(node, node_def_pb2.NodeDef)
     node_def = node
 
   # If the op is a variable-related op, should we pin it on CPU?
@@ -225,7 +227,7 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
   else:
     returned_variables = []
   found_variables = dict(zip(variable_dict_names, returned_variables))
-  logging.info("Frozen %d variables." % len(returned_variables))
+  logging.info("Froze %d variables." % len(returned_variables))
 
   # This graph only includes the nodes needed to evaluate the output nodes, and
   # removes unneeded nodes like those involved in saving and assignment.
@@ -234,7 +236,7 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
   output_graph_def = graph_pb2.GraphDef()
   how_many_converted = 0
   for input_node in inference_graph.node:
-    output_node = graph_pb2.NodeDef()
+    output_node = node_def_pb2.NodeDef()
     if input_node.name in found_variables:
       output_node.op = "Const"
       output_node.name = input_node.name
@@ -251,3 +253,78 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
     output_graph_def.node.extend([output_node])
   print("Converted %d variables to const ops." % how_many_converted)
   return output_graph_def
+
+
+def remove_training_nodes(input_graph):
+  """Prunes out nodes that aren't needed for inference.
+
+  There are nodes like Identity and CheckNumerics that are only useful
+  during training, and can be removed in graphs that will be used for
+  nothing but inference. Here we identify and remove them, returning an
+  equivalent graph. To be specific, CheckNumerics nodes are always removed, and
+  Identity nodes that aren't involved in control edges are spliced out so that
+  their input and outputs are directly connected.
+
+  Args:
+    input_graph: Model to analyze and prune.
+
+  Returns:
+    A list of nodes with the unnecessary ones removed.
+  """
+
+  types_to_remove = {"CheckNumerics": True}
+
+  input_nodes = input_graph.node
+  names_to_remove = {}
+  for node in input_nodes:
+    if node.op in types_to_remove:
+      names_to_remove[node.name] = True
+
+  nodes_after_removal = []
+  for node in input_nodes:
+    if node.name in names_to_remove:
+      continue
+    new_node = node_def_pb2.NodeDef()
+    new_node.CopyFrom(node)
+    input_before_removal = node.input
+    del new_node.input[:]
+    for full_input_name in input_before_removal:
+      input_name = re.sub(r"^\^", "", full_input_name)
+      if input_name in names_to_remove:
+        continue
+      new_node.input.append(full_input_name)
+    nodes_after_removal.append(new_node)
+
+  types_to_splice = {"Identity": True}
+  names_to_splice = {}
+  for node in nodes_after_removal:
+    if node.op in types_to_splice:
+      # We don't want to remove nodes that have control edge inputs, because
+      # they might be involved in subtle dependency issues that removing them
+      # will jeopardize.
+      has_control_edge = False
+      for input_name in node.input:
+        if re.match(r"^\^", input_name):
+          has_control_edge = True
+      if not has_control_edge:
+        names_to_splice[node.name] = node.input[0]
+
+  nodes_after_splicing = []
+  for node in nodes_after_removal:
+    if node.name in names_to_splice:
+      continue
+    new_node = node_def_pb2.NodeDef()
+    new_node.CopyFrom(node)
+    input_before_removal = node.input
+    del new_node.input[:]
+    for full_input_name in input_before_removal:
+      input_name = re.sub(r"^\^", "", full_input_name)
+      if input_name in names_to_splice:
+        new_node.input.append(names_to_splice[input_name])
+      else:
+        new_node.input.append(full_input_name)
+    nodes_after_splicing.append(new_node)
+
+  output_graph = graph_pb2.GraphDef()
+  output_graph.node.extend(nodes_after_splicing)
+  return output_graph
