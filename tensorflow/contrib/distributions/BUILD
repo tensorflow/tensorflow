@@ -48,7 +48,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "operator_pd_diag_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/operator_pd_diag_test.py"],
     additional_deps = [
         ":distributions_py",
@@ -262,7 +262,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "normal_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/normal_test.py"],
     additional_deps = [
         ":distributions_py",
