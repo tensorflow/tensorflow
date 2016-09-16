@@ -369,8 +369,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         # ellipsis at middle
         _ = checker[0:1, ..., 0:1]
         # multiple ellipses not allowed
-        with self.assertRaisesRegexp(ValueError,
-                                     "Multiple ellipses not allowed"):
+        with self.assertRaisesRegexp(ValueError, "Multiple ellipses"):
           _ = checker[..., :, ...].eval()
 
   def testShrink(self):
@@ -545,11 +544,9 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
         _ = grad[3:0:-2, 1:3, 2]
         _ = grad[:, -1, :]
         _ = grad[:, -2, :]
-        with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                     "out of bounds"):
+        with self.assertRaisesRegexp(ValueError, "out of bounds"):
           _ = grad[:, -200, :]
-        with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                     "out of bounds"):
+        with self.assertRaisesRegexp(ValueError, "out of bounds"):
           _ = grad[:, 200, :]
 
 

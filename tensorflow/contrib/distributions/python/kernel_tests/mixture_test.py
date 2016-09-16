@@ -446,5 +446,104 @@ class MixtureTest(tf.test.TestCase):
         self.assertAllClose(true_entropy_lower_bound, entropy_lower_bound_value)
 
 
+class MixtureBenchmark(tf.test.Benchmark):
+
+  def _runSamplingBenchmark(self, name,
+                            create_distribution, use_gpu, num_components,
+                            batch_size, num_features, sample_size):
+    config = tf.ConfigProto()
+    config.allow_soft_placement = True
+    np.random.seed(127)
+    with tf.Session(config=config, graph=tf.Graph()) as sess:
+      tf.set_random_seed(0)
+      with tf.device("/gpu:0" if use_gpu else "/cpu:0"):
+        mixture = create_distribution(
+            num_components=num_components,
+            batch_size=batch_size,
+            num_features=num_features)
+        sample_op = mixture.sample(sample_size).op
+        sess.run(tf.initialize_all_variables())
+        reported = self.run_op_benchmark(
+            sess, sample_op,
+            min_iters=10,
+            name=("%s_%s_components_%d_batch_%d_features_%d_sample_%d"
+                  % (name, use_gpu, num_components,
+                     batch_size, num_features, sample_size)))
+        print("\t".join(["%s", "%d", "%d", "%d", "%d", "%g"])
+              % (use_gpu, num_components, batch_size,
+                 num_features, sample_size, reported["wall_time"]))
+
+  def benchmarkSamplingMVNDiag(self):
+    print("mvn_diag\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
+
+    def create_distribution(batch_size, num_components, num_features):
+      cat = distributions_py.Categorical(
+          logits=np.random.randn(batch_size, num_components))
+      mus = [
+          tf.Variable(np.random.randn(batch_size, num_features))
+          for _ in range(num_components)]
+      sigmas = [
+          tf.Variable(np.random.rand(batch_size, num_features))
+          for _ in range(num_components)]
+      components = list(
+          (distributions_py.MultivariateNormalDiag,
+           {"mu": mu, "diag_stdev": sigma})
+          for (mu, sigma) in zip(mus, sigmas))
+      return distributions_py.Mixture(cat, components)
+
+    for use_gpu in False, True:
+      if use_gpu and not tf.test.is_gpu_available():
+        continue
+      for num_components in 1, 8, 16:
+        for batch_size in 1, 32:
+          for num_features in 1, 64, 512:
+            for sample_size in 1, 32, 128:
+              self._runSamplingBenchmark(
+                  "mvn_diag", create_distribution=create_distribution,
+                  use_gpu=use_gpu,
+                  num_components=num_components,
+                  batch_size=batch_size,
+                  num_features=num_features,
+                  sample_size=sample_size)
+
+  def benchmarkSamplingMVNFull(self):
+    print("mvn_full\tuse_gpu\tcomponents\tbatch\tfeatures\tsample\twall_time")
+
+    def psd(x):
+      """Construct batch-wise PSD matrices."""
+      return np.stack([np.dot(np.transpose(z), z) for z in x])
+
+    def create_distribution(batch_size, num_components, num_features):
+      cat = distributions_py.Categorical(
+          logits=np.random.randn(batch_size, num_components))
+      mus = [
+          tf.Variable(np.random.randn(batch_size, num_features))
+          for _ in range(num_components)]
+      sigmas = [
+          tf.Variable(
+              psd(np.random.rand(batch_size, num_features, num_features)))
+          for _ in range(num_components)]
+      components = list(
+          (distributions_py.MultivariateNormalFull,
+           {"mu": mu, "sigma": sigma})
+          for (mu, sigma) in zip(mus, sigmas))
+      return distributions_py.Mixture(cat, components)
+
+    for use_gpu in False, True:
+      if use_gpu and not tf.test.is_gpu_available():
+        continue
+      for num_components in 1, 8, 16:
+        for batch_size in 1, 32:
+          for num_features in 1, 64, 512:
+            for sample_size in 1, 32, 128:
+              self._runSamplingBenchmark(
+                  "mvn_full", create_distribution=create_distribution,
+                  use_gpu=use_gpu,
+                  num_components=num_components,
+                  batch_size=batch_size,
+                  num_features=num_features,
+                  sample_size=sample_size)
+
+
 if __name__ == "__main__":
   tf.test.main()

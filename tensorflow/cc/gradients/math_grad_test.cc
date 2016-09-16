@@ -29,6 +29,327 @@ namespace {
 // TODO(andydavis) Test gradient function against numeric gradients output.
 // TODO(andydavis) As more gradients are added move common test functions
 // to a testutil library.
+
+class CWiseUnaryGradTest : public ::testing::Test {
+ protected:
+  CWiseUnaryGradTest() : scope_(Scope::NewRootScope().WithDevice("/cpu:0")) {}
+
+  enum UnaryOpType {
+    ABS,
+    NEG,
+    INV,
+    SQUARE,
+    SQRT,
+    RSQRT,
+    EXP,
+    LOG,
+    TANH,
+    SIGMOID,
+    SIGN,
+    SIN,
+    COS,
+    ASIN,
+    ACOS,
+    TAN,
+    ATAN
+  };
+
+  void TestCWiseGrad(UnaryOpType op_type, std::function<float(int)> x_fn,
+                     std::function<float(float)> dy_fn,
+                     std::function<float(float, float)> dx_fn) {
+    Tensor x(DT_FLOAT, {2, 3, 2});
+    auto x_flat = x.flat<float>();
+    for (int i = 0; i < x_flat.size(); ++i) {
+      x_flat(i) = x_fn(i);
+    }
+
+    Tensor dy(DT_FLOAT, {2, 3, 2});
+    auto dy_flat = dy.flat<float>();
+    for (int i = 0; i < dy_flat.size(); ++i) {
+      dy_flat(i) = dy_fn(x_flat(i));
+    }
+
+    Tensor dx(DT_FLOAT, {2, 3, 2});
+    auto dx_flat = dx.flat<float>();
+    for (int i = 0; i < dx_flat.size(); ++i) {
+      dx_flat(i) = dx_fn(x_flat(i), dy_flat(i));
+    }
+
+    Output y;
+    switch (op_type) {
+      case ABS:
+        y = Abs(scope_, x);
+        break;
+      case NEG:
+        y = Neg(scope_, x);
+        break;
+      case INV:
+        y = Inv(scope_, x);
+        break;
+      case SQUARE:
+        y = Square(scope_, x);
+        break;
+      case SQRT:
+        y = Sqrt(scope_, x);
+        break;
+      case RSQRT:
+        y = Rsqrt(scope_, x);
+        break;
+      case EXP:
+        y = Exp(scope_, x);
+        break;
+      case LOG:
+        y = Log(scope_, x);
+        break;
+      case TANH:
+        y = Tanh(scope_, x);
+        break;
+      case SIGMOID:
+        y = Sigmoid(scope_, x);
+        break;
+      case SIGN:
+        y = Sign(scope_, x);
+        break;
+      case SIN:
+        y = Sin(scope_, x);
+        break;
+      case COS:
+        y = Cos(scope_, x);
+        break;
+      case ASIN:
+        y = Asin(scope_, x);
+        break;
+      case ACOS:
+        y = Acos(scope_, x);
+        break;
+      case TAN:
+        y = Tan(scope_, x);
+        break;
+      case ATAN:
+        y = Atan(scope_, x);
+        break;
+    }
+
+    std::vector<Output> grad_outputs;
+    TF_ASSERT_OK(test::CallGradFunction(
+        scope_, Operation(y.node()), {ops::Const(scope_, dy)}, &grad_outputs));
+    Tensor output;
+    test::GetTensor(scope_, grad_outputs[0], &output);
+    test::ExpectClose(output, dx);
+  }
+
+  float RV(std::vector<float> v) { return v[random::New64() % v.size()]; }
+
+  Scope scope_;
+};
+
+TEST_F(CWiseUnaryGradTest, Abs) {
+  auto x_fn = [this](const int i) { return RV({-1, 0, 1}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) { return x * dy; };
+  TestCWiseGrad(ABS, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Neg) {
+  auto x_fn = [this](const int i) { return RV({-1, 0, 1}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) { return -dy; };
+  TestCWiseGrad(NEG, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Inv) {
+  auto x_fn = [this](const int i) { return RV({-1, 1, -2, 2, -3, 3, -4, 4}); };
+  auto dy_fn = [this](const float x) { return RV({0, -2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) {
+    return -(1 / (x * x)) * dy;
+  };
+  TestCWiseGrad(INV, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Square) {
+  auto x_fn = [this](const int i) { return RV({0, -1, 1, -2, 2, -3, 3}); };
+  auto dy_fn = [this](const float x) { return RV({0, -7, 7, -8, 8, -9, 9}); };
+  auto dx_fn = [this](const float x, const float dy) { return 2 * x * dy; };
+  TestCWiseGrad(SQUARE, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Sqrt) {
+  auto x_fn = [this](const int i) { return RV({0, 1, 2, 3, 4, 5, 6, 7}); };
+  auto dy_fn = [this](const float x) { return x + RV({8, 9, 10, 11, 12, 13}); };
+  auto dx_fn = [this](const float x, const float dy) {
+    return dy * 0.5 * (1.0 / std::sqrt(x));
+  };
+  TestCWiseGrad(SQRT, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Rsqrt) {
+  auto x_fn = [this](const int i) { return RV({1, 2, 3, 4, 5, 6, 7, 8}); };
+  auto dy_fn = [this](const float x) { return x + RV({8, 9, 10, 11, 12, 13}); };
+  auto dx_fn = [this](const float x, const float dy) {
+    return dy * -0.5 * (1 / std::sqrt(x)) * (1 / x);
+  };
+  TestCWiseGrad(RSQRT, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Exp) {
+  auto x_fn = [this](const int i) { return RV({0, -1, 1, -2, 2, -3, 3}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) {
+    return dy * std::exp(x);
+  };
+  TestCWiseGrad(EXP, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Log) {
+  auto x_fn = [this](const int i) { return RV({-1, 1, -2, 2, -3, 3, -4, 4}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) { return dy * (1.0 / x); };
+  TestCWiseGrad(LOG, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Tanh) {
+  auto x_fn = [this](const int i) { return RV({0, -1, 1, -2, 2, -3, 3}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) {
+    const float y = std::tanh(x);
+    return dy * (1.0 - y * y);
+  };
+  TestCWiseGrad(TANH, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Sigmoid) {
+  auto x_fn = [this](const int i) { return RV({0, -1, 1, -2, 2, -3, 3}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) {
+    const float y = 1.0 / (1.0 + std::exp(-x));
+    return dy * y * (1.0 - y);
+  };
+  TestCWiseGrad(SIGMOID, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Sign) {
+  auto x_fn = [this](const int i) { return RV({0, -1, 1, -2, 2, -3, 3}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) { return 0.0; };
+  TestCWiseGrad(SIGN, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Sin) {
+  auto x_fn = [this](const int i) { return RV({0, -1, 1, -2, 2, -3, 3}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) {
+    return dy * std::cos(x);
+  };
+  TestCWiseGrad(SIN, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Cos) {
+  auto x_fn = [this](const int i) { return RV({0, -1, 1, -2, 2, -3, 3}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) {
+    return dy * -1.0 * std::sin(x);
+  };
+  TestCWiseGrad(COS, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Asin) {
+  auto x_fn = [this](const int i) { return RV({0, -0.5, 0.5, -1, 1}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) {
+    return dy * (1.0 / std::sqrt(1.0 - x * x));
+  };
+  TestCWiseGrad(ASIN, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Acos) {
+  auto x_fn = [this](const int i) { return RV({0, -0.5, 0.5, -1, 1}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) {
+    return dy * (-1.0 / std::sqrt(1.0 - x * x));
+  };
+  TestCWiseGrad(ACOS, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Tan) {
+  auto x_fn = [this](const int i) { return RV({0, -1, 1, -2, 2, -3, 3}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) {
+    const float cosx = std::cos(x);
+    return dy * (1 / (cosx * cosx));
+  };
+  TestCWiseGrad(TAN, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Atan) {
+  auto x_fn = [this](const int i) { return RV({0, -1, 1, -2, 2, -3, 3}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) {
+    return dy * (1 / (1 + x * x));
+  };
+  TestCWiseGrad(ATAN, x_fn, dy_fn, dx_fn);
+}
+
+class CWiseUnaryComplexGradTest : public ::testing::Test {
+ protected:
+  CWiseUnaryComplexGradTest()
+      : scope_(Scope::NewRootScope().WithDevice("/cpu:0")) {}
+
+  enum UnaryOpType { REAL, IMAG, CONJ };
+
+  void TestCWiseGradComplex(UnaryOpType op_type, const Tensor& x,
+                            const Tensor& dy, const Tensor& dx_expected) {
+    Output y;
+    switch (op_type) {
+      case REAL:
+        y = Real(scope_, x);
+        break;
+      case IMAG:
+        y = Imag(scope_, x);
+        break;
+      case CONJ:
+        y = Conj(scope_, x);
+        break;
+    }
+
+    std::vector<Output> grad_outputs;
+    TF_ASSERT_OK(test::CallGradFunction(
+        scope_, Operation(y.node()), {ops::Const(scope_, dy)}, &grad_outputs));
+    Tensor dx;
+    test::GetTensor(scope_, grad_outputs[0], &dx);
+    test::ExpectClose(dx, dx_expected);
+  }
+
+  Scope scope_;
+};
+
+TEST_F(CWiseUnaryComplexGradTest, Real) {
+  Tensor x = test::AsTensor<complex64>(
+      {{1, -1}, {-2, 2}, {3, -3}, {-4, 4}, {8, -8}, {-9, 9}}, {2, 3});
+  Tensor dy = test::AsTensor<float>({11, -12, 13, -14, 15, -16}, {2, 3});
+  Tensor dx_expected = test::AsTensor<complex64>(
+      {{11, 0}, {-12, 0}, {13, 0}, {-14, 0}, {15, 0}, {-16, 0}}, {2, 3});
+  TestCWiseGradComplex(REAL, x, dy, dx_expected);
+}
+
+TEST_F(CWiseUnaryComplexGradTest, Imag) {
+  Tensor x = test::AsTensor<complex64>(
+      {{1, -1}, {-2, 2}, {3, -3}, {-4, 4}, {8, -8}, {-9, 9}}, {2, 3});
+  Tensor dy = test::AsTensor<float>({11, -12, 13, -14, 15, -16}, {2, 3});
+  Tensor dx_expected = test::AsTensor<complex64>(
+      {{0, 11}, {0, -12}, {0, 13}, {0, -14}, {0, 15}, {0, -16}}, {2, 3});
+  TestCWiseGradComplex(IMAG, x, dy, dx_expected);
+}
+
+TEST_F(CWiseUnaryComplexGradTest, Conj) {
+  Tensor x = test::AsTensor<complex64>(
+      {{1, -1}, {-2, 2}, {3, -3}, {-4, 4}, {8, -8}, {-9, 9}}, {2, 3});
+  Tensor dy = test::AsTensor<complex64>(
+      {{1, -1}, {-2, 2}, {3, -3}, {-4, 4}, {8, -8}, {-9, 9}}, {2, 3});
+  Tensor dx_expected = test::AsTensor<complex64>(
+      {{1, 1}, {-2, -2}, {3, 3}, {-4, -4}, {8, 8}, {-9, -9}}, {2, 3});
+  TestCWiseGradComplex(CONJ, x, dy, dx_expected);
+}
+
 class MathGradTest : public ::testing::Test {
  protected:
   MathGradTest() : root_(Scope::NewRootScope().WithDevice("/cpu:0")) {}

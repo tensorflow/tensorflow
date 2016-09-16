@@ -23,6 +23,11 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
 
+// As of September 2016, we continue to attempt to avoid the use of gmock aka
+// googlemock included in the test framework
+// (https://github.com/google/googletest) to discourage over-eager use of mocks
+// that lead to cumbersome class hierarchies and tests that might end up not
+// testing real code in important ways.
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
 #include "tensorflow/core/platform/google/build_config/gunit.h"
 #else

@@ -23,19 +23,79 @@ limitations under the License.
 
 namespace tensorflow {
 
+// This class and its subclasses allow ValidateStridedSliceOp to be called with
+// different implementations of partial tensors.
+class ShapeReadWriteInterface {
+ public:
+  virtual ~ShapeReadWriteInterface() {}
+  virtual int dims() const = 0;
+  // Returns -1 for unknown size.
+  virtual int64 dim_size(int idx) const = 0;
+  // Passes -1 for unknown dim size.
+  virtual void add_dim(int64 size) = 0;
+};
+
+// Implementation of ShapeReadWriteInterface that modifies the given TensorShape
+// <shape> in-place. Does not support adding unknown dims in add_dim.
+class ShapeReadWriteFromTensorShape : public ShapeReadWriteInterface {
+ public:
+  ShapeReadWriteFromTensorShape(TensorShape* shape)
+      : const_shape_(shape), shape_(shape) {}
+  ShapeReadWriteFromTensorShape(const TensorShape* shape)
+      : const_shape_(shape) {}
+  ~ShapeReadWriteFromTensorShape() override {}
+  int dims() const override;
+  int64 dim_size(int idx) const override;
+  void add_dim(int64 size) override;
+
+ private:
+  const TensorShape* const const_shape_;
+  // same as const_shape_, or nullptr if the non-const ctr is used.
+  TensorShape* const shape_ = nullptr;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(ShapeReadWriteFromTensorShape);
+};
+
+// Implementation of ShapeReadWriteInterface that modifies the given
+// TensorShapeProto in place.
+class ShapeReadWriteFromTensorShapeProto : public ShapeReadWriteInterface {
+ public:
+  ShapeReadWriteFromTensorShapeProto(TensorShapeProto* shape)
+      : const_shape_(shape), shape_(shape) {}
+  ShapeReadWriteFromTensorShapeProto(const TensorShapeProto* shape)
+      : const_shape_(shape) {}
+  ~ShapeReadWriteFromTensorShapeProto() override {}
+  int dims() const override;
+  int64 dim_size(int idx) const override;
+  void add_dim(int64 size) override;
+
+ private:
+  const TensorShapeProto* const const_shape_;
+  // same as shape_, or nullptr if the non-const ctr is used.
+  TensorShapeProto* const shape_ = nullptr;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(ShapeReadWriteFromTensorShapeProto);
+};
+
 // Runs validation on the strided slice op parameters.
 //
 // Is a separate translation unit from the kernel so that:
 // 1. The op's shape function can use it.
 // 2. The code size is reduced vs templating this on the kernel's type.
+//
+// Note that when input_shape is not fully specified, only <final_shape> and
+// <processing_shape> are valid; <is_identity>, <is_simple_slice> and other
+// output parameters will not be accurate.
 Status ValidateStridedSliceOp(
     const Tensor& begin_tensor, const Tensor& end_tensor,
-    const Tensor& strides_tensor, const TensorShape& input_shape,
+    const Tensor& strides_tensor, const ShapeReadWriteInterface& input_shape,
     int32 begin_mask_spec, int32 end_mask_spec, const int32 ellipsis_mask,
-    int32 new_axis_mask, int32 shrink_axis_mask, TensorShape* processing_shape,
-    TensorShape* final_shape, bool* is_identity, bool* is_simple_slice,
-    bool* slice_dim0, gtl::InlinedVector<int64, 4>* begin,
-    gtl::InlinedVector<int64, 4>* end, gtl::InlinedVector<int64, 4>* strides);
+    int32 new_axis_mask, int32 shrink_axis_mask,
+    ShapeReadWriteInterface* processing_shape,
+    ShapeReadWriteInterface* final_shape, bool* is_identity,
+    bool* is_simple_slice, bool* slice_dim0,
+    gtl::InlinedVector<int64, 4>* begin, gtl::InlinedVector<int64, 4>* end,
+    gtl::InlinedVector<int64, 4>* strides);
 
 }  // namespace tensorflow
 

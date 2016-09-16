@@ -21,6 +21,248 @@ namespace tensorflow {
 namespace ops {
 namespace {
 
+// TODO(andydavis) Add control dependencies to gradient functions (as needed).
+
+Status AbsGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  // dx = dy * sign(x)
+  grad_outputs->push_back(Mul(scope, grad_inputs[0], Sign(scope, op.input(0))));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Abs", AbsGrad);
+
+Status NegGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  // dx = -dy;
+  grad_outputs->push_back(Neg(scope, grad_inputs[0]));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Neg", NegGrad);
+
+Status InvGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  // dx = dy * (-1 * (y * y))
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], Neg(scope, Square(scope, op.output(0)))));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Inv", InvGrad);
+
+Status SquareGrad(const Scope& scope, const Operation& op,
+                  const std::vector<Output>& grad_inputs,
+                  std::vector<Output>* grad_outputs) {
+  // dx = dy * (2 * x)
+  auto two = Cast(scope, Const(scope, 2), op.input(0).type());
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], Mul(scope, two, op.input(0))));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Square", SquareGrad);
+
+Status SqrtGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  // y = sqrt(x)
+  // dy/dx =  0.5 * (1 / sqrt(x)) = 0.5 * (1 / y)
+  // dx = dy * (0.5 * (1 / y))
+  auto y_inv = Inv(scope, op.output(0));
+  auto half = Cast(scope, Const(scope, 0.5), op.input(0).type());
+  auto dx = Mul(scope, grad_inputs[0], Mul(scope, half, y_inv));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Sqrt", SqrtGrad);
+
+Status RsqrtGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // y = 1/x^1/2 = x^-1/2
+  // dy/dx = -1/2 * x^-3/2 = -1/2 * x^-1/2 * x^-1 = -1/2 * y * x^-1
+  // dx = dy * (-1/2 * y * x^-1)
+  auto x_inv = Inv(scope, op.input(0));
+  auto y = op.output(0);
+  auto neghalf = Cast(scope, Const(scope, -0.5), op.input(0).type());
+  auto a = Mul(scope, neghalf, x_inv);
+  auto b = Mul(scope, a, y);
+  auto dx = Mul(scope, grad_inputs[0], b);
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Rsqrt", RsqrtGrad);
+
+Status ExpGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  // y = exp(x)
+  // dy/dx = exp(x)
+  // dx = dy * y
+  grad_outputs->push_back(Mul(scope, grad_inputs[0], op.output(0)));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Exp", ExpGrad);
+
+Status LogGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  // f(x) = log(x) = y
+  // df/dx = 1 / x
+  // dx = dy * (1 / x)
+  grad_outputs->push_back(Mul(scope, grad_inputs[0], Inv(scope, op.input(0))));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Log", LogGrad);
+
+Status TanhGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  // y = tanh(x)
+  // dy/dx = 1 - (tanh(x))^2 = 1 - y^2
+  // dx = dy * (1 - y^2)
+  auto y2 = Square(scope, op.output(0));
+  auto one = Cast(scope, Const(scope, 1.0), op.input(0).type());
+  auto dx = Mul(scope, grad_inputs[0], Sub(scope, one, y2));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Tanh", TanhGrad);
+
+Status SigmoidGrad(const Scope& scope, const Operation& op,
+                   const std::vector<Output>& grad_inputs,
+                   std::vector<Output>* grad_outputs) {
+  // y = 1 / (1 + exp(-x))
+  // dy/dx = y * (1 - y)
+  // dx = dy * y * (1 - y)
+  auto y = op.output(0);
+  auto one = Cast(scope, Const(scope, 1.0), op.input(0).type());
+  auto dx = Mul(scope, grad_inputs[0], Mul(scope, y, Sub(scope, one, y)));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Sigmoid", SigmoidGrad);
+
+Status SignGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  auto shape = Shape(scope, op.input(0));
+  auto zero = Cast(scope, Const(scope, 0.0), op.input(0).type());
+  auto dx = Fill(scope, shape, zero);
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Sign", SignGrad);
+
+Status SinGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  // y = sin(x)
+  // dy/dx = cos(x)
+  // dx = dy * cos(x)
+  auto dx = Mul(scope, grad_inputs[0], Cos(scope, op.input(0)));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Sin", SinGrad);
+
+Status CosGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  // y = cos(x)
+  // dy/dx = -sin(x)
+  // dx = dy * -sin(x)
+  auto dx = Mul(scope, grad_inputs[0], Neg(scope, Sin(scope, op.input(0))));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Cos", CosGrad);
+
+Status AsinGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  // y = asin(x)
+  // dy/dx = 1 / (1 - x * x)^1/2
+  // dx = dy * (1 / (1 - x * x)^1/2)
+  auto x2 = Square(scope, op.input(0));
+  auto one = Cast(scope, Const(scope, 1.0), op.input(0).type());
+  auto dydx = Inv(scope, Sqrt(scope, Sub(scope, one, x2)));
+  auto dx = Mul(scope, grad_inputs[0], dydx);
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Asin", AsinGrad);
+
+Status AcosGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  // y = acos(x)
+  // dy/dx = - 1 / (1 - x * x)^1/2
+  // dx = dy * (- 1 / (1 - x * x)^1/2)
+  auto x2 = Square(scope, op.input(0));
+  auto one = Cast(scope, Const(scope, 1.0), op.input(0).type());
+  auto dydx = Neg(scope, Inv(scope, Sqrt(scope, Sub(scope, one, x2))));
+  auto dx = Mul(scope, grad_inputs[0], dydx);
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Acos", AcosGrad);
+
+Status TanGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  // y = tan(x)
+  // dy/dx = sec(x)^2 = 1 / cos(x)^2
+  // dx = dy * (1 / cos(x)^2)
+  auto dydx = Square(scope, Inv(scope, Cos(scope, op.input(0))));
+  auto dx = Mul(scope, grad_inputs[0], dydx);
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Tan", TanGrad);
+
+Status AtanGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  // y = arctan(x)
+  // dy/dx = 1 / (1 + x^2)
+  // dx = dy * (1 / (1 + x^2)
+  auto one = Cast(scope, Const(scope, 1.0), op.input(0).type());
+  auto dydx = Inv(scope, Add(scope, one, Square(scope, op.input(0))));
+  auto dx = Mul(scope, grad_inputs[0], dydx);
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Atan", AtanGrad);
+
+Status RealGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  auto zero = Cast(scope, Const(scope, 0.0), op.output(0).type());
+  auto dx = Complex(scope, grad_inputs[0], zero);
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Real", RealGrad);
+
+Status ImagGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  auto zero = Cast(scope, Const(scope, 0.0), op.output(0).type());
+  auto dx = Complex(scope, zero, grad_inputs[0]);
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Imag", ImagGrad);
+
+Status ConjGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  grad_outputs->push_back(Conj(scope, grad_inputs[0]));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Conj", ConjGrad);
+
 // MatMulGrad helper function used to compute two MatMul operations
 // based on input matrix transposition combinations.
 Status MatMulGradHelper(const Scope& scope, const bool is_batch,
@@ -91,7 +333,6 @@ Status MatMulGrad(const Scope& scope, const Operation& op,
   return MatMulGradCommon(scope, op, false, grad_inputs, "transpose_a",
                           "transpose_b", grad_outputs);
 }
-
 REGISTER_GRADIENT_OP("MatMul", MatMulGrad);
 
 Status BatchMatMulGrad(const Scope& scope, const Operation& op,

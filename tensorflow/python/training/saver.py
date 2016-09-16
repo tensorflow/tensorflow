@@ -1333,8 +1333,11 @@ class Saver(object):
     if self._is_empty:
       return
 
-    if not file_io.get_matching_files(
-        _prefix_to_checkpoint_path(save_path, self.saver_def.version)):
+    # Performs this check only for V1, as the V2 restore op can read either a
+    # V1 ckpt or a V2 ckpt, making this check invalid.
+    if (self.saver_def.version is saver_pb2.SaverDef.V1) and (
+        not file_io.get_matching_files(
+            _prefix_to_checkpoint_path(save_path, self.saver_def.version))):
       raise ValueError("Restore called with invalid save path %s" % save_path)
 
     sess.run(self.saver_def.restore_op_name,

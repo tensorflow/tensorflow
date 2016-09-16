@@ -189,6 +189,8 @@ calls. If failure occurred in the process, will be called as well.
 
 A setter called automatically by the target estimator.
 
+If the estimator is locked, this method does nothing.
+
 ##### Args:
 
 
@@ -392,6 +394,8 @@ Callback after a step is finished or `end()` is called.
 
 A setter called automatically by the target estimator.
 
+If the estimator is locked, this method does nothing.
+
 ##### Args:
 
 
@@ -557,6 +561,8 @@ End epoch.
 #### `tf.contrib.learn.monitors.CheckpointSaver.set_estimator(estimator)` {#CheckpointSaver.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -788,6 +794,8 @@ In addition, the callback has the opportunity to stop training by returning
 
 A setter called automatically by the target estimator.
 
+If the estimator is locked, this method does nothing.
+
 ##### Args:
 
 
@@ -1012,6 +1020,8 @@ Callback before every n'th step begins.
 
 A setter called automatically by the target estimator.
 
+If the estimator is locked, this method does nothing.
+
 ##### Args:
 
 
@@ -1217,6 +1227,8 @@ calls. If failure occurred in the process, will be called as well.
 
 A setter called automatically by the target estimator.
 
+If the estimator is locked, this method does nothing.
+
 ##### Args:
 
 
@@ -1371,6 +1383,8 @@ Callback after a step is finished or `end()` is called.
 #### `tf.contrib.learn.monitors.LoggingTrainable.set_estimator(estimator)` {#LoggingTrainable.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -1558,6 +1572,8 @@ Callback after a step is finished or `end()` is called.
 #### `tf.contrib.learn.monitors.NanLoss.set_estimator(estimator)` {#NanLoss.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -1748,6 +1764,8 @@ Callback after a step is finished or `end()` is called.
 #### `tf.contrib.learn.monitors.PrintTensor.set_estimator(estimator)` {#PrintTensor.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -2113,6 +2131,8 @@ calls. If failure occurred in the process, will be called as well.
 #### `tf.contrib.learn.monitors.StopAtStep.set_estimator(estimator)` {#StopAtStep.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -2504,6 +2524,8 @@ Callback before every n'th step begins.
 #### `tf.contrib.learn.monitors.ValidationMonitor.set_estimator(estimator)` {#ValidationMonitor.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 

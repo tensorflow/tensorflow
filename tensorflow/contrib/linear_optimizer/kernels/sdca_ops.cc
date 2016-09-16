@@ -28,6 +28,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/contrib/linear_optimizer/kernels/hinge-loss.h"
 #include "tensorflow/contrib/linear_optimizer/kernels/logistic-loss.h"
+#include "tensorflow/contrib/linear_optimizer/kernels/smooth-hinge-loss.h"
 #include "tensorflow/contrib/linear_optimizer/kernels/squared-loss.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -611,6 +612,8 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
       loss_updater_.reset(new SquaredLossUpdater);
     } else if (loss_type == "hinge_loss") {
       loss_updater_.reset(new HingeLossUpdater);
+    } else if (loss_type == "smooth_hinge_loss") {
+      loss_updater_.reset(new SmoothHingeLossUpdater);
     } else {
       OP_REQUIRES(context, false, errors::InvalidArgument(
                                       "Unsupported loss type: ", loss_type));
