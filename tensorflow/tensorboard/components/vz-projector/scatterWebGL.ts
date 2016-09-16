@@ -73,14 +73,12 @@ export abstract class ScatterWebGL implements Scatter {
   /** Holds the indexes of the points to be labeled. */
   protected highlightedPoints: number[] = [];
 
-  protected colorAccessor: (index: number) => string;
-  protected highlightStroke: (i: number) => string;
-
   protected abstract onRecreateScene(
       scene: THREE.Scene, sceneIs3D: boolean, backgroundColor: number);
   protected abstract removeAllFromScene(scene: THREE.Scene);
   protected abstract onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement);
-  protected abstract onSetColorAccessor();
+  protected abstract onSetColorAccessor(
+      colorAccessor: (index: number) => string);
   protected abstract onHighlightPoints(
       pointIndexes: number[], highlightStroke: (i: number) => string);
   protected abstract onPickingRender(
@@ -647,8 +645,7 @@ export abstract class ScatterWebGL implements Scatter {
   }
 
   setColorAccessor(colorAccessor: (index: number) => string) {
-    this.colorAccessor = colorAccessor;
-    this.onSetColorAccessor();
+    this.onSetColorAccessor(colorAccessor);
     this.render();
   }
 
@@ -723,7 +720,6 @@ export abstract class ScatterWebGL implements Scatter {
     this.favorLabels = favorLabels;
     this.highlightedPoints = pointIndexes;
     this.labeledPoints = pointIndexes;
-    this.highlightStroke = highlightStroke;
     this.onHighlightPoints(pointIndexes, highlightStroke);
     this.render();
   }
