@@ -25,6 +25,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gen_array_ops
 
 
 @ops.RegisterGradient("Conv2DBackpropInput")
@@ -203,6 +204,27 @@ def _BiasAddGrad(op, received_grad):
   return (received_grad, gen_nn_ops.bias_add_grad(out_backprop=received_grad,
                                                   data_format=data_format))
 
+@ops.RegisterGradient("BiasAddGrad")
+def _BiasAddGradGrad(op, received_grad):
+  """Gradient for the BiasAddGrad op.
+
+  Args:
+    op: BiasAddGrad op for which we are calculating gradients.
+    received_grad: The gradients passed to the BiasAddGrad op.
+    
+  Returns:
+    A single gradient Tensor for the input to BiasAddGrad (which
+    is the gradient of the bias term in BiasAdd)
+  """
+  
+  try:
+    data_format = op.get_attr("data_format")
+  except ValueError:
+    data_format = None
+    
+  zeros = gen_array_ops._zeros_like(op.inputs[0])
+  return gen_nn_ops._bias_add(zeros, received_grad, data_format=data_format)#, name=name)
+  
 
 @ops.RegisterGradient("BiasAddV1")
 def _BiasAddGradV1(unused_bias_op, received_grad):
