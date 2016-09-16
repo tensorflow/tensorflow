@@ -590,6 +590,10 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
   def config(self):
     return self._estimator.config
 
+  @property
+  def model_dir(self):
+    return self._model_dir
+
 
 # TODO(zoy): Use model_fn similar to LinearClassifier.
 class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
