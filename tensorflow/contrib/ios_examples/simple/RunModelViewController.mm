@@ -34,8 +34,6 @@
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 
-#include "tensorflow/core/util/memmapped_file_system.h"
-
 #include "ios_image_load.h"
 
 NSString* RunInferenceOnImage();
@@ -138,50 +136,30 @@ NSString* FilePathForResourceName(NSString* name, NSString* extension) {
 }
 
 NSString* RunInferenceOnImage() {
+  tensorflow::SessionOptions options;
+
+  tensorflow::Session* session_pointer = nullptr;
+  tensorflow::Status session_status = tensorflow::NewSession(options, &session_pointer);
+  if (!session_status.ok()) {
+    std::string status_string = session_status.ToString();
+    return [NSString stringWithFormat: @"Session create failed - %s",
+	status_string.c_str()];
+  }
+  std::unique_ptr<tensorflow::Session> session(session_pointer);
+  LOG(INFO) << "Session created.";
+
   tensorflow::GraphDef tensorflow_graph;
   LOG(INFO) << "Graph created.";
 
-  NSString* network_path = FilePathForResourceName(@"mmap_snapchat", @"pb");
-  tensorflow::MemmappedEnv memmapped_env(tensorflow::Env::Default());
-  tensorflow::Status mmap_status =
-    memmapped_env.InitializeFromFile([network_path UTF8String]);
-  if (!mmap_status.ok()) {
-    LOG(INFO) << "MMap failed with " << mmap_status.error_message();
-    return @"Mmap failed";
-  }
-  
-  tensorflow::Status load_graph_status = ReadBinaryProto(
-                               &memmapped_env, tensorflow::MemmappedFileSystem::kMemmappedPackageDefaultGraphDef,
-                               &tensorflow_graph);
-  if (!load_graph_status.ok()) {
-    LOG(INFO) << "MMap load graph failed with " << load_graph_status.error_message();
-    return @"Mmap load graph failed";
-  }
+  NSString* network_path = FilePathForResourceName(@"tensorflow_inception_graph", @"pb");
+  PortableReadFileToProto([network_path UTF8String], &tensorflow_graph);
 
-//  PortableReadFileToProto([network_path UTF8String], &tensorflow_graph);
-//  LOG(INFO) << "graph node size: " << tensorflow_graph.node_size();
-//  LOG(INFO) << "graph=" << tensorflow_graph.DebugString();
-
-  tensorflow::SessionOptions options;
-  options.env = &memmapped_env;
-  LOG(INFO) << "mmapped_env=" << &memmapped_env;
-//  tensorflow::Session* session_pointer = nullptr;
-//  tensorflow::Status session_status = tensorflow::NewSession(options, &session_pointer);
-  std::unique_ptr<tensorflow::Session> session(NewSession(options));
-//  if (!session_status.ok()) {
-//    std::string status_string = session_status.ToString();
-//    return [NSString stringWithFormat: @"Session create failed - %s",
-//            status_string.c_str()];
-//  }
-//  std::unique_ptr<tensorflow::Session> session(session_pointer);
-  LOG(INFO) << "Session created.";
-  
+  LOG(INFO) << "Creating session.";
   tensorflow::Status s = session->Create(tensorflow_graph);
   if (!s.ok()) {
     LOG(ERROR) << "Could not create TensorFlow Graph: " << s;
     return @"";
   }
-  LOG(INFO) << "c";
 
   // Read the label list
   NSString* labels_path = FilePathForResourceName(@"imagenet_comp_graph_label_strings", @"txt");
@@ -237,10 +215,8 @@ NSString* RunInferenceOnImage() {
   std::string input_layer = "input";
   std::string output_layer = "output";
   std::vector<tensorflow::Tensor> outputs;
-  LOG(INFO) << "d";
   tensorflow::Status run_status = session->Run({{input_layer, image_tensor}},
 				               {output_layer}, {}, &outputs);
-  LOG(INFO) << "e";
   if (!run_status.ok()) {
     LOG(ERROR) << "Running model failed: " << run_status;
     tensorflow::LogAllRegisteredKernels();
@@ -263,7 +239,7 @@ NSString* RunInferenceOnImage() {
     const float confidence = result.first;
     const int index = result.second;
 
-    ss << index << " " << confidence << " ";
+    ss << index << " " << confidence << "  ";
 
     // Write out the result as a string
     if (index < label_strings.size()) {

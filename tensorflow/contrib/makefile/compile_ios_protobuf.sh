@@ -47,7 +47,7 @@ IPHONESIMULATOR_SYSROOT=`xcrun --sdk iphonesimulator --show-sdk-path`
 IOS_SDK_VERSION=`xcrun --sdk iphoneos --show-sdk-version`
 MIN_SDK_VERSION=9.2
 
-CFLAGS="-DNDEBUG -g -O0 -pipe -fPIC -fcxx-exceptions"
+CFLAGS="-DNDEBUG -Os -pipe -fPIC -fno-exceptions"
 CXXFLAGS="${CFLAGS} -std=c++11 -stdlib=libc++"
 LDFLAGS="-stdlib=libc++"
 LIBS="-lc++ -lc++abi"

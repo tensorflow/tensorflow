@@ -36,7 +36,7 @@
 #include "tensorflow/core/public/session.h"
 
 namespace {
-  
+
 // Helper class used to load protobufs efficiently.
 class IfstreamInputStream : public ::google::protobuf::io::CopyingInputStream {
  public:
@@ -163,7 +163,6 @@ tensorflow::Status LoadMemoryMappedModel(
     NSString* file_name, NSString* file_type,
     std::unique_ptr<tensorflow::Session>* session,
     std::unique_ptr<tensorflow::MemmappedEnv>* memmapped_env) {
-
   NSString* network_path = FilePathForResourceName(file_name, file_type);
   memmapped_env->reset(
       new tensorflow::MemmappedEnv(tensorflow::Env::Default()));
@@ -184,8 +183,14 @@ tensorflow::Status LoadMemoryMappedModel(
               << load_graph_status.error_message();
     return load_graph_status;
   }
-  
+
   tensorflow::SessionOptions options;
+  // Disable optimizations on this graph so that constant folding doesn't
+  // increase the memory footprint by creating new constant copies of the weight
+  // parameters.
+  options.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_opt_level(::tensorflow::OptimizerOptions::L0);
   options.env = memmapped_env->get();
 
   tensorflow::Session* session_pointer = nullptr;

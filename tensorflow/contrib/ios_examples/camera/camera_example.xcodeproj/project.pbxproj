@@ -27,6 +27,7 @@
 		596F2E8A1D80D2F300F4A15F /* retrained_graph.pb in Resources */ = {isa = PBXBuildFile; fileRef = 596F2E881D80D2F300F4A15F /* retrained_graph.pb */; };
 		596F2E8B1D80D2F300F4A15F /* retrained_labels.txt in Resources */ = {isa = PBXBuildFile; fileRef = 596F2E891D80D2F300F4A15F /* retrained_labels.txt */; };
 		596F2E8D1D80E7D200F4A15F /* retrained_optimized.pb in Resources */ = {isa = PBXBuildFile; fileRef = 596F2E8C1D80E7D200F4A15F /* retrained_optimized.pb */; };
+		596F2E8F1D81F0A600F4A15F /* retrained_mmap.pb in Resources */ = {isa = PBXBuildFile; fileRef = 596F2E8E1D81F0A600F4A15F /* retrained_mmap.pb */; };
 		5993C7721D5D4E980048CE6A /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5993C7711D5D4E980048CE6A /* Accelerate.framework */; };
 		59EFAF8D1D808C8E003396F6 /* inception_mmap.pb in Resources */ = {isa = PBXBuildFile; fileRef = 59EFAF8C1D808C8E003396F6 /* inception_mmap.pb */; };
 /* End PBXBuildFile section */
@@ -60,6 +61,7 @@
 		596F2E881D80D2F300F4A15F /* retrained_graph.pb */ = {isa = PBXFileReference; lastKnownFileType = file; path = retrained_graph.pb; sourceTree = "<group>"; };
 		596F2E891D80D2F300F4A15F /* retrained_labels.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = retrained_labels.txt; sourceTree = "<group>"; };
 		596F2E8C1D80E7D200F4A15F /* retrained_optimized.pb */ = {isa = PBXFileReference; lastKnownFileType = file; path = retrained_optimized.pb; sourceTree = "<group>"; };
+		596F2E8E1D81F0A600F4A15F /* retrained_mmap.pb */ = {isa = PBXFileReference; lastKnownFileType = file; path = retrained_mmap.pb; sourceTree = "<group>"; };
 		5993C7711D5D4E980048CE6A /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS9.3.sdk/System/Library/Frameworks/Accelerate.framework; sourceTree = DEVELOPER_DIR; };
 		59EFAF8C1D808C8E003396F6 /* inception_mmap.pb */ = {isa = PBXFileReference; lastKnownFileType = file; path = inception_mmap.pb; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -93,6 +95,7 @@
 				591D3ED91CFFA83A0059011C /* tensorflow_inception_graph.pb */,
 				596F2E881D80D2F300F4A15F /* retrained_graph.pb */,
 				596F2E891D80D2F300F4A15F /* retrained_labels.txt */,
+				596F2E8E1D81F0A600F4A15F /* retrained_mmap.pb */,
 				596F2E8C1D80E7D200F4A15F /* retrained_optimized.pb */,
 			);
 			path = data;
@@ -213,6 +216,7 @@
 			files = (
 				596F2E8D1D80E7D200F4A15F /* retrained_optimized.pb in Resources */,
 				591D3EDA1CFFA83A0059011C /* grace_hopper.jpg in Resources */,
+				596F2E8F1D81F0A600F4A15F /* retrained_mmap.pb in Resources */,
 				591D3EDC1CFFA83A0059011C /* tensorflow_inception_graph.pb in Resources */,
 				596F2E8B1D80D2F300F4A15F /* retrained_labels.txt in Resources */,
 				592FF90D18EDD0DA00C164F8 /* MainStoryboard_iPhone.storyboard in Resources */,
