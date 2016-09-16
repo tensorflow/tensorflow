@@ -39,16 +39,19 @@ namespace tensorflow {
 
   class FPUDevice : public LocalDevice {
   public:
-    FPUDevice(const SessionOptions& options, const string& name,
-	      Bytes memory_needed, int fpu_id, int clusters,
+    FPUDevice(const SessionOptions& options, const string& name, Bytes memory, 
 	      Allocator *fpu_allocator, Allocator *cpu_allocator)
-      : LocalDevice(options, Device::BuildDeviceAttributes(name, DEVICE_FPU, memory_needed,
+      : LocalDevice(options, Device::BuildDeviceAttributes(name, DEVICE_FPU, memory,
 							   BUS_ANY, "physical description"),
 		    fpu_allocator),
 	fpu_allocator_(fpu_allocator),
 	cpu_allocator_(cpu_allocator) {
       // Do I need to free these contexts later?
       device_contexts_.push_back(new FPUDeviceContext());
+    }
+
+    ~FPUDevice() override {
+      delete fpu_allocator_;
     }
       
     Allocator* GetAllocator(AllocatorAttributes attr) override {
@@ -57,8 +60,6 @@ namespace tensorflow {
       else
 	return this->fpu_allocator_;
     }
-
-    ~FPUDevice() override { }
     
     void Compute(OpKernel* op_kernel, OpKernelContext* context) override {
       op_kernel->Compute(context);
@@ -89,8 +90,33 @@ namespace tensorflow {
     Status Sync() override { return Status::OK(); }
     
   protected:
-    Allocator *fpu_allocator_, *cpu_allocator_;  // Not owned
+    Allocator *fpu_allocator_;
+    Allocator *cpu_allocator_;  // Not owned
     std::vector<FPUDeviceContext*> device_contexts_;
+  };
+
+  class FPUAllocator : public Allocator {
+  public:
+    FPUAllocator() {}
+    ~FPUAllocator() override {}
+    
+    string Name() override { return "device:FPU"; }
+    
+    void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+      void* p = port::aligned_malloc(num_bytes, alignment);
+      return p;
+    }
+    
+    void DeallocateRaw(void* ptr) override {
+      port::aligned_free(ptr);
+    }
+
+    size_t AllocatedSizeSlow(void* ptr) override {
+      return port::MallocExtension_GetAllocatedSize(ptr);
+    }
+
+  private:
+    TF_DISALLOW_COPY_AND_ASSIGN(FPUAllocator);
   };
 
 
@@ -111,8 +137,8 @@ namespace tensorflow {
       }
       for (int i = 0; i < n; i++) {
 	devices->push_back(new FPUDevice(options, strings::StrCat(name_prefix, "/device:FPU:", i), 
-					 Bytes(256 << 20), valid_fpu_ids[i], 1, 
-					 cpu_allocator() /* fpu_allocator */, cpu_allocator()));
+					 Bytes(256 << 20), new FPUAllocator(), 
+					 cpu_allocator()));
       }
     }
     
