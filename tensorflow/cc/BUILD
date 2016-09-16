@@ -266,6 +266,7 @@ tf_cc_test(
         ":test_op",
         ":test_op_op_lib",
         ":testutil",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

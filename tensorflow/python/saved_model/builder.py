@@ -86,7 +86,7 @@ class SavedModelBuilder(object):
 
     self._export_dir = export_dir
     if not file_io.file_exists(export_dir):
-      file_io.create_dir(self._export_dir)
+      file_io.recursive_create_dir(self._export_dir)
 
     # Boolean to track whether variables and assets corresponding to the
     # SavedModel have been saved. Specifically, the first meta graph to be added
@@ -152,7 +152,7 @@ class SavedModelBuilder(object):
         compat.as_bytes(constants.ASSETS_DIRECTORY))
 
     if not file_io.file_exists(assets_destination_dir):
-      file_io.create_dir(assets_destination_dir)
+      file_io.recursive_create_dir(assets_destination_dir)
 
     # Copy each asset from source path to destination path.
     for asset_source_filepath in asset_source_filepath_list:
@@ -315,7 +315,7 @@ class SavedModelBuilder(object):
       The path to which the SavedModel protocol buffer was written.
     """
     if not file_io.file_exists(self._export_dir):
-      file_io.create_dir(self._export_dir)
+      file_io.recursive_create_dir(self._export_dir)
 
     if as_text:
       path = os.path.join(

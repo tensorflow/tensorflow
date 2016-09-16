@@ -42,14 +42,39 @@ measurable element of `predictions` is scaled by the corresponding value of
 
 - - -
 
-### `tf.contrib.losses.add_loss(loss)` {#add_loss}
+### `tf.contrib.losses.add_loss(*args, **kwargs)` {#add_loss}
 
-Adds a externally defined loss to collection of losses.
+Adds a externally defined loss to the collection of losses.
 
 ##### Args:
 
 
 *  <b>`loss`</b>: A loss `Tensor`.
+*  <b>`loss_collection`</b>: Optional collection to add the loss to.
+
+
+- - -
+
+### `tf.contrib.losses.compute_weighted_loss(losses, weight=1.0)` {#compute_weighted_loss}
+
+Computes the weighted loss.
+
+##### Args:
+
+
+*  <b>`losses`</b>: A tensor of size [batch_size, d1, ... dN].
+*  <b>`weight`</b>: A tensor of size [1] or [batch_size, d1, ... dK] where K < N.
+
+##### Returns:
+
+  A scalar `Tensor` that returns the weighted loss.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the weight is None or the shape is not compatible with the
+    losses shape or if the number of dimensions (rank) of either losses or
+    weight is missing.
 
 
 - - -
@@ -85,18 +110,19 @@ unit-normalized.
 
 - - -
 
-### `tf.contrib.losses.get_losses(scope=None)` {#get_losses}
+### `tf.contrib.losses.get_losses(scope=None, loss_collection='losses')` {#get_losses}
 
-Gets the list of loss variables.
+Gets the list of losses from the loss_collection.
 
 ##### Args:
 
 
 *  <b>`scope`</b>: an optional scope for filtering the losses to return.
+*  <b>`loss_collection`</b>: Optional losses collection.
 
 ##### Returns:
 
-  a list of loss variables.
+  a list of loss tensors.
 
 
 - - -

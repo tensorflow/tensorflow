@@ -1576,8 +1576,7 @@ class _CrossedColumn(_FeatureColumn,
 
   Raises:
     TypeError: if all items in columns are not an instance of _SparseColumn,
-      _CrossedColumn, or _BucketizedColumn or
-      hash_bucket_size is not an int.
+      _CrossedColumn, or _BucketizedColumn.
     ValueError: if hash_bucket_size is not > 1 or len(columns) is not > 1. Also,
       if only one of `ckpt_to_load_from` and `tensor_name_in_ckpt` is specified.
   """
@@ -1602,10 +1601,6 @@ class _CrossedColumn(_FeatureColumn,
     if len(columns) < 2:
       raise ValueError("columns must contain at least 2 elements. "
                        "columns: {}".format(columns))
-
-    if not isinstance(hash_bucket_size, int):
-      raise TypeError("hash_bucket_size must be an int. "
-                      "hash_bucket_size: {}".format(hash_bucket_size))
 
     if hash_bucket_size < 2:
       raise ValueError("hash_bucket_size must be at least 2. "

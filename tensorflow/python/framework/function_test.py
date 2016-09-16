@@ -110,45 +110,36 @@ class FunctionTest(tf.test.TestCase):
 
   def testDefineFunction2Args(self):
 
+    @function.Defun(tf.float32, tf.float32)
     def APlus2B(a, b):
       return a + b * 2
 
     with tf.Graph().as_default():
-      f = function.define_function(APlus2B, {"a": tf.float32,
-                                             "b": tf.float32})
       one = tf.constant([1.0])
       two = tf.constant([2.0])
-      call = function.call_function(f, one, two)
+      call = APlus2B(one, two)
       self.assertEquals("APlus2B", call.op.name)
       with tf.Session() as sess:
         self.assertAllEqual([5.0], sess.run(call))
 
   def testGradientFunc(self):
 
+    @function.Defun(tf.float32, func_name="XSquarePlusOneFn")
     def XSquarePlusOne(x):
       return x * x + 1.0
 
+    @function.Defun(tf.float32, tf.float32)
     def XSquarePlusOneGrad(x, dy):
       dx = functional_ops._symbolic_gradient(
-          input=[x, dy],
-          Tout=[tf.float32],
-          # This line on define_function to register the above
-          # function with name "XSquarePlusOneFn"
-          f="XSquarePlusOneFn",
-          name="dx")
+          input=[x, dy], Tout=[tf.float32], f="XSquarePlusOneFn", name="dx")
       return dx
 
     g = tf.Graph()
     with g.as_default():
-      # This line registers the Function "XSquarePlusOneFn"
-      f = function.define_function(
-          XSquarePlusOne, {"x": tf.float32}, func_name="XSquarePlusOneFn")
-      g = function.define_function(XSquarePlusOneGrad, {"x": tf.float32,
-                                                        "dy": tf.float32})
       epsilon = tf.constant([0.1])
       two = tf.constant([2.0])
-      call_f = function.call_function(f, two)
-      call_g = function.call_function(g, two, epsilon)
+      call_f = XSquarePlusOne(two)
+      call_g = XSquarePlusOneGrad(two, epsilon)
 
       with tf.Session() as sess:
         self.assertAllClose([5.0], sess.run(call_f))
@@ -248,7 +239,7 @@ class FunctionTest(tf.test.TestCase):
   def testZNoDepOnY(self):
 
     @function.Defun(tf.float32, tf.float32)
-    def Foo(x, y):
+    def Foo(x, y):  # pylint: disable=unused-argument
       return x * 2
 
     with tf.Graph().as_default():
@@ -264,109 +255,130 @@ class FunctionTest(tf.test.TestCase):
 
   def testDefineFunctionNoArgs(self):
 
+    @function.Defun()
     def AConstant():
       return tf.constant([42])
 
     with tf.Graph().as_default():
-      f_def = function.define_function(AConstant, {})
-      call = function.call_function(f_def)
+
+      call = AConstant()
       self.assertEquals("AConstant", call.op.name)
       with tf.Session() as sess:
         self.assertAllEqual([42], sess.run(call))
 
   def testDefineFunctionNames(self):
 
+    @function.Defun(tf.float32)
     def Foo(a):
       return a + 1
 
     with tf.Graph().as_default():
-      f_def = function.define_function(Foo, {"a": tf.float32})
       one = tf.constant([1.0])
-      call1 = function.call_function(f_def, one)
+      call1 = Foo(one)
       self.assertEquals("Foo", call1.op.name)
-      call2 = function.call_function(f_def, one)
+      call2 = Foo(one)
       self.assertEquals("Foo_1", call2.op.name)
-      call3 = function.call_function(f_def, one, name="mine")
+      # pylint: disable=unexpected-keyword-arg
+      call3 = Foo(one, name="mine")
       self.assertEquals("mine", call3.op.name)
       with tf.name_scope("my"):
-        call4 = function.call_function(f_def, one, name="precious")
+        call4 = Foo(one, name="precious")
         self.assertEquals("my/precious", call4.op.name)
 
   def testDefineErrors(self):
-
-    def NoResult():
-      pass
-
-    def DefaultArg(unused_a=12):
-      return tf.constant([1])
-
-    def KwArgs(**unused_kwargs):
-      return tf.constant([1])
-
-    def PlusMinus(a, b):
-      return a + b, b - a
-
     with tf.Graph().as_default():
-      # pylint: disable=expression-not-assigned
       with self.assertRaisesRegexp(ValueError, "return at least one tensor"):
-        function.define_function(NoResult, {}).definition
+
+        @function.Defun()
+        def NoResult():
+          pass
+
+        _ = NoResult.definition
       with self.assertRaisesRegexp(ValueError, "are not supported"):
-        function.define_function(DefaultArg, {}).definition
+
+        @function.Defun()
+        def DefaultArg(unused_a=12):
+          return tf.constant([1])
+
+        _ = DefaultArg.definition
       with self.assertRaisesRegexp(ValueError, "are not supported"):
-        function.define_function(KwArgs, {}).definition
+
+        @function.Defun()
+        def KwArgs(**unused_kwargs):
+          return tf.constant([1])
+
+        _ = KwArgs.definition
       with self.assertRaisesRegexp(ValueError, "specified input types"):
-        function.define_function(PlusMinus, {}).definition
+
+        @function.Defun()
+        def PlusMinusV1(a, b):
+          return a + b, b - a
+
+        _ = PlusMinusV1.definition
       with self.assertRaisesRegexp(ValueError, "specified input types"):
-        function.define_function(PlusMinus, {"c": tf.float32}).definition
+
+        @function.Defun(c=tf.float32)
+        def PlusMinusV2(a, b):
+          return a + b, b - a
+
+        _ = PlusMinusV2.definition
       with self.assertRaisesRegexp(ValueError, "type for argument: b"):
-        function.define_function(PlusMinus, {"a": tf.float32,
-                                             "c": tf.float32}).definition
+
+        @function.Defun(a=tf.float32, c=tf.float32)
+        def PlusMinusV3(a, b):
+          return a + b, b - a
+
+        _ = PlusMinusV3.definition
       with self.assertRaisesRegexp(ValueError, "specified input types"):
-        function.define_function(PlusMinus, {"a": tf.float32,
-                                             "b": tf.float32,
-                                             "c": tf.float32}).definition
-      # pylint: enable=expression-not-assigned
+
+        @function.Defun(a=tf.float32, b=tf.float32, c=tf.float32)
+        def PlusMinusV4(a, b):
+          return a + b, b - a
+
+        _ = PlusMinusV4.definition
 
   def testCallErrors(self):
 
+    @function.Defun()
     def Const():
       return tf.constant(1)
 
+    @function.Defun(tf.int32)
     def PlusOne(a):
       return a + 1
 
+    @function.Defun(tf.int32, tf.int32)
     def PlusMinus(a, b):
       return a + b, b - a
 
     with tf.Graph().as_default():
       one = tf.constant([1])
       two = tf.constant([2])
-      const = function.define_function(Const, {})
-      plus_one = function.define_function(PlusOne, {"a": tf.int32})
-      plus_minus = function.define_function(PlusMinus, {"a": tf.int32,
-                                                        "b": tf.int32})
 
-      function.call_function(const)
+      _ = Const()
+      # pylint: disable=too-many-function-args
+      # pylint: disable=unexpected-keyword-arg
+      # pylint: disable=no-value-for-parameter
       with self.assertRaisesRegexp(ValueError, "arguments: 0"):
-        function.call_function(const, one)
+        _ = Const(one)
       with self.assertRaisesRegexp(ValueError, "arguments: 0"):
-        function.call_function(const, one, two)
+        _ = Const(one, two)
 
       with self.assertRaisesRegexp(ValueError, "arguments: 1"):
-        function.call_function(plus_one)
-      function.call_function(plus_one, one)
+        _ = PlusOne()
+      _ = PlusOne(one)
       with self.assertRaisesRegexp(ValueError, "arguments: 1"):
-        function.call_function(plus_one, one, two)
+        _ = PlusOne(one, two)
 
       with self.assertRaisesRegexp(ValueError, "arguments: 2"):
-        function.call_function(plus_minus)
+        _ = PlusMinus()
       with self.assertRaisesRegexp(ValueError, "arguments: 2"):
-        function.call_function(plus_minus, one)
-      function.call_function(plus_minus, one, two)
+        _ = PlusMinus(one)
+      _ = PlusMinus(one, two)
 
-      function.call_function(plus_one, one, name="p1")
+      _ = PlusOne(one, name="p1")
       with self.assertRaisesRegexp(ValueError, "Unknown keyword arguments"):
-        function.call_function(plus_one, one, device="/gpu:0")
+        _ = PlusOne(one, device="/gpu:0")
 
   def testDupDefinition(self):
 
@@ -518,8 +530,8 @@ class FunctionTest(tf.test.TestCase):
     g = tf.Graph()
     with g.as_default():
       Foo.add_to_graph(g)
-      with self.assertRaisesRegexp(ValueError,
-                                   "Mismatch number of args: 2 vs. 1"):
+      with self.assertRaisesRegexp(
+          ValueError, "Expected number of arguments: 1, received: 2"):
         _ = foo(tf.constant(2, tf.float32), tf.constant(2, tf.float32))
 
     g = tf.Graph()
@@ -684,6 +696,8 @@ class FunctionInlineControlTest(tf.test.TestCase):
       @function.Defun(dtype)
       def Forward(x):
         for _ in range(10):
+          # pylint: disable=unexpected-keyword-arg
+          # pylint: disable=cell-var-from-loop
           x = Cell(x, noinline=noinline)
         return tf.reduce_sum(x, [0, 1])
 

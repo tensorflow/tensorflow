@@ -13,23 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-syntax = "proto3";
+#include "tensorflow/core/platform/file_system.h"
 
-package tensorflow;
+#include "tensorflow/core/platform/test.h"
 
-import "tensorflow/core/util/event.proto";
+namespace tensorflow {
+namespace {
 
-// Reply message from EventListener to the client, i.e., to the source of the
-// Event protocal buffers, e.g., debug ops inserted by a debugged runtime to a
-// TensorFlow graph being executed.
-message EventReply {
+TEST(FileSystemTest, GetNameFromURI) {
+  EXPECT_EQ("foo", GetNameFromURI("file://foo"));
+  EXPECT_EQ("file:/", GetNameFromURI("file:/"));
+  EXPECT_EQ("file:", GetNameFromURI("file:"));
+  EXPECT_EQ("bar", GetNameFromURI("bar"));
 }
 
-// EventListener: Receives Event protos, e.g., from debugged TensorFlow
-// runtime(s).
-service EventListener {
-  // Client(s) can use this RPC method to send the EventListener Event protos.
-  // The Event protos can hold information such as intermediate tensors from
-  // a debugged graph being executed.
-  rpc SendEvents(stream Event) returns (stream EventReply);
-}
+}  // namespace
+}  // namespace tensorflow

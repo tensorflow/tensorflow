@@ -18,6 +18,7 @@ cc_library(
         "hinge-loss.h",
         "logistic-loss.h",
         "loss.h",
+        "smooth-hinge-loss.h",
         "squared-loss.h",
     ],
     deps = [

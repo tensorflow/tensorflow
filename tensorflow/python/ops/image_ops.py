@@ -237,26 +237,24 @@ def _is_tensor(x):
   return isinstance(x, (ops.Tensor, variables.Variable))
 
 
-def _ImageDimensions(images, static_only=True):
+def _ImageDimensions(image):
   """Returns the dimensions of an image tensor.
 
   Args:
-    images: 4-D Tensor of shape `[batch, height, width, channels]`
-    static_only: Boolean, whether to return only static shape.
+    image: A 3-D Tensor of shape `[height, width, channels]`.
 
   Returns:
-    list of integers `[batch, height, width, channels]`, when static shape is
-    fully defined or `static_only` is `True`.
-    list of integer scalar tensors `[batch, height, width, channels]`, when
-    static shape is not fully defined.
+    A list of `[height, width, channels]` corresponding to the dimensions of the
+    input image.  Dimensions that are statically known are python integers,
+    otherwise they are integer scalar tensors.
   """
-  # A simple abstraction to provide names for each dimension. This abstraction
-  # should make it simpler to switch dimensions in the future (e.g. if we ever
-  # want to switch height and width.)
-  if static_only or images.get_shape().is_fully_defined():
-    return images.get_shape().as_list()
+  if image.get_shape().is_fully_defined():
+    return image.get_shape().as_list()
   else:
-    return array_ops.unpack(array_ops.shape(images))
+    static_shape = image.get_shape().with_rank(3).as_list()
+    dynamic_shape = array_ops.unpack(array_ops.shape(image), 3)
+    return [s if s is not None else d
+            for s, d in zip(static_shape, dynamic_shape)]
 
 
 def _Check3DImage(image, require_static=True):
@@ -538,7 +536,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
   assert_ops = []
   assert_ops += _Check3DImage(image, require_static=False)
 
-  height, width, depth = _ImageDimensions(image, static_only=False)
+  height, width, depth = _ImageDimensions(image)
   after_padding_width = target_width - offset_width - width
   after_padding_height = target_height - offset_height - height
 
@@ -598,7 +596,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
   assert_ops = []
   assert_ops += _Check3DImage(image, require_static=False)
 
-  height, width, depth = _ImageDimensions(image, static_only=False)
+  height, width, depth = _ImageDimensions(image)
 
   assert_ops += _assert(offset_width >= 0, ValueError,
                         'offset_width must be >= 0.')
@@ -686,7 +684,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
     else:
       return x == y
 
-  height, width, _ = _ImageDimensions(image, static_only=False)
+  height, width, _ = _ImageDimensions(image)
   width_diff = target_width - width
   offset_crop_width = max_(-width_diff // 2, 0)
   offset_pad_width = max_(width_diff // 2, 0)
@@ -708,8 +706,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   if resized.get_shape().ndims is None:
     raise ValueError('resized contains no shape.')
 
-  resized_height, resized_width, _ = \
-    _ImageDimensions(resized, static_only=False)
+  resized_height, resized_width, _ = _ImageDimensions(resized)
 
   assert_ops = []
   assert_ops += _assert(equal_(resized_height, target_height), ValueError,
@@ -774,11 +771,13 @@ def resize_images(images,
     raise ValueError('\'images\' contains no shape.')
   # TODO(shlens): Migrate this functionality to the underlying Op's.
   is_batch = True
-  if len(images.get_shape()) == 3:
+  if images.get_shape().ndims == 3:
     is_batch = False
     images = array_ops.expand_dims(images, 0)
+  elif images.get_shape().ndims != 4:
+    raise ValueError('\'images\' must have either 3 or 4 dimensions.')
 
-  _, height, width, depth = _ImageDimensions(images)
+  _, height, width, _ = images.get_shape().as_list()
 
   try:
     size = ops.convert_to_tensor(size, dtypes.int32, name='size')

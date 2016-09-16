@@ -76,8 +76,8 @@ string GetNameFromURI(const string& name) {
   // If the URI confirmed to scheme://filename, skip the two '/'s and return
   // filename. Otherwise return the original 'name', and leave it up to the
   // implementations to handle the full URI.
-  if (filename[0] == '/' && filename[1] == '/') {
-    return filename.substr(2).ToString();
+  if (filename.Consume("//")) {
+    return filename.ToString();
   }
   return name;
 }

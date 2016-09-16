@@ -98,7 +98,6 @@ tf_proto_library(
     srcs = glob(
         ["**/*.proto"],
         exclude = [
-            "debug/debug_service.proto",
             "protobuf/worker.proto",
             "protobuf/worker_service.proto",
             "protobuf/master.proto",
@@ -1405,6 +1404,7 @@ tf_cc_tests(
         "lib/strings/strcat_test.cc",
         "lib/strings/stringprintf_test.cc",
         "lib/wav/wav_io_test.cc",
+        "platform/file_system_test.cc",
         "platform/fingerprint_test.cc",
         "platform/integral_types_test.cc",
         "platform/logging_test.cc",
@@ -1720,6 +1720,33 @@ tf_cc_test(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:queue_ops",
         "//tensorflow/core/kernels:variable_ops",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime_graph_runner_test",
+    size = "small",
+    srcs = ["common_runtime/graph_runner_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core/kernels:cwise_op",
         "//third_party/eigen3",
     ],
 )

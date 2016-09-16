@@ -268,10 +268,14 @@ bool ParseExample(protobuf::io::CodedInputStream* stream,
                   parsed::Example* example) {
   DCHECK(stream != nullptr);
   DCHECK(example != nullptr);
-  if (stream->ExpectTag(kDelimitedTag(1))) {
-    if (!ParseFeatures(stream, example)) return false;
+  // Loop over the input stream which may contain multiple serialized Example
+  // protos merged together as strings. This behavior is consistent with Proto's
+  // ParseFromString when string representations are concatenated.
+  while (!stream->ExpectAtEnd()) {
+    if (stream->ExpectTag(kDelimitedTag(1))) {
+      if (!ParseFeatures(stream, example)) return false;
+    }
   }
-  if (!stream->ExpectAtEnd()) return false;
   return true;
 }
 
@@ -439,6 +443,8 @@ Status FastParseSerializedExample(
             size, " but output shape: ", shape.DebugString());
       };
 
+      // TODO(b/31499934): Make sure concatented serialized tf.Example protos
+      // get parsed correctly when they contain dense features and add tests.
       switch (config.dense[d].dtype) {
         case DT_INT64: {
           SmallVector<int64> list;

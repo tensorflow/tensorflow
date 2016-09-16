@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -690,6 +691,7 @@ struct TF_OperationDescription {
 
   NodeBuilder node_builder;
   TF_Graph* graph;
+  std::vector<tensorflow::string> colocation_constraints;
 };
 
 struct TF_Operation {
@@ -853,6 +855,11 @@ void TF_AddInputList(TF_OperationDescription* desc, const TF_Port* inputs,
 
 void TF_AddControlInput(TF_OperationDescription* desc, TF_Operation* input) {
   desc->node_builder.ControlInput(&input->node);
+}
+
+void TF_ColocateWith(TF_OperationDescription* desc, TF_Operation* op) {
+  desc->colocation_constraints.emplace_back(tensorflow::strings::StrCat(
+      tensorflow::kColocationGroupPrefix, op->node.name()));
 }
 
 void TF_SetAttrString(TF_OperationDescription* desc, const char* attr_name,
@@ -1055,6 +1062,10 @@ TF_Operation* TF_FinishOperation(TF_OperationDescription* desc,
     status->status = InvalidArgument("Duplicate node name in graph: '",
                                      desc->node_builder.node_name(), "'");
   } else {
+    std::sort(desc->colocation_constraints.begin(),
+              desc->colocation_constraints.end());
+    desc->node_builder.Attr(tensorflow::kColocationAttrName,
+                            desc->colocation_constraints);
     status->status = desc->node_builder.Finalize(&desc->graph->graph, &ret);
 
     if (status->status.ok()) {
