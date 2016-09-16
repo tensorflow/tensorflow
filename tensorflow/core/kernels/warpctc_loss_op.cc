@@ -48,7 +48,6 @@ class WarpCTCLossOp<CPUDevice> : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    printf("warp cpu ctc\n");
     const Tensor& input_tensor = ctx->input(0);
     const Tensor& labels_indices_tensor = ctx->input(1);
     const Tensor& labels_values_tensor = ctx->input(2);
