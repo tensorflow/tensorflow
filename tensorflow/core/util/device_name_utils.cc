@@ -162,16 +162,6 @@ bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
       }
       progress = true;
     }
-    if (str_util::ConsumePrefix(&fullname, "/fpu:") ||
-        str_util::ConsumePrefix(&fullname, "/FPU:")) {
-      p->has_type = true;
-      p->type = "FPU";  // Treat '/fpu:..' as uppercase '/device:FPU:...'
-      p->has_id = !str_util::ConsumePrefix(&fullname, "*");
-      if (p->has_id && !ConsumeNumber(&fullname, &p->id)) {
-        return false;
-      }
-      progress = true;
-    }
 
     if (!progress) {
       return false;

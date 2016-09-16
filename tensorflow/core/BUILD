@@ -417,7 +417,6 @@ cc_library(
     deps = [
         ":core_cpu",
         ":gpu_runtime",
-	":fpu_runtime"
     ],
 )
 
@@ -461,7 +460,6 @@ tf_cuda_library(
         ":direct_session",
         ":example_parser_configuration",
         ":gpu_runtime",
-	":fpu_runtime",
         ":lib",
     ],
 )
@@ -1215,23 +1213,6 @@ tf_cuda_library(
     ],
     alwayslink = 1,
 )
-
-cc_library(
-    name = "fpu_runtime",
-    srcs = ["common_runtime/fpu/fpu_device.cc"],
-    copts = tf_copts(),
-    linkstatic = 1,
-    deps = [
-        ":core_cpu_internal",
-        ":framework",
-        ":lib",
-        ":lib_internal",
-        ":proto_text",
-        ":protos_all_cc",
-    ],
-    alwayslink = 1,
-)
-
 
 # -----------------------------------------------------------------------------
 # Tests

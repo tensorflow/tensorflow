@@ -110,7 +110,7 @@ namespace tensorflow {
 	n = valid_fpu_ids.size();
       }
       for (int i = 0; i < n; i++) {
-	devices->push_back(new FPUDevice(options, strings::StrCat(name_prefix, "/fpu:", i), 
+	devices->push_back(new FPUDevice(options, strings::StrCat(name_prefix, "/device:FPU:", i), 
 					 Bytes(256 << 20), valid_fpu_ids[i], 1, 
 					 cpu_allocator() /* fpu_allocator */, cpu_allocator()));
       }

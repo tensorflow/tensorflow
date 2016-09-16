@@ -155,9 +155,7 @@ class DeviceSpec(object):
         elif ly == 2 and y[0] == "task":
           self.task = y[1]
         elif ((ly == 1 or ly == 2) and
-              ((y[0].upper() == "GPU") or 
-               (y[0].upper() == "CPU") or
-               (y[0].upper() == "FPU"))):
+              ((y[0].upper() == "GPU") or (y[0].upper() == "CPU"))):
           if self.device_type is not None:
             raise ValueError("Cannot specify multiple device types: %s" % spec)
           self.device_type = y[0].upper()
