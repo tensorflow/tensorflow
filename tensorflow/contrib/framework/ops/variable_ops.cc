@@ -31,9 +31,9 @@ REGISTER_OP("ZeroInitializer")
         return Status::OK();
     })
     .Doc(R"doc(
-Initialize 'ref' with all zeros. If 'ref' tensor is not initialized, the tensor
-will first be allocated memory, then be filled with all zeros; otherwise you
-will get ValueError. This op is intended to save memory during initialization,
+Initialize 'ref' with all zeros. This op requires that the tensor is not
+initialized. The tensor will first be allocated memory, then be filled with all
+zeros. This op is intended to save memory during initialization,
 if you use this op, you should not run initializer of the 'ref' tensor.
 
 ref: Should be from a `Variable` node.
