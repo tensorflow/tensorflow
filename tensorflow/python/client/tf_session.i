@@ -24,7 +24,6 @@ limitations under the License.
 %}
 
 // Required to use PyArray_* functions.
-%include "tensorflow/python/platform/numpy.i"
 %init %{
 tensorflow::ImportNumpy();
 %}
