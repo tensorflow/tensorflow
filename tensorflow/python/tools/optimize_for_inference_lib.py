@@ -387,6 +387,8 @@ def fuse_resize_and_conv(input_graph_def):
       mirror_pad_op = None
       if input_op.op == "ResizeBilinear":
         resize_op = input_op
+      else:
+        resize_op = None
 
     # There are no ops to be fused into the conv, so skip replacing this one.
     if not mirror_pad_op and not resize_op:
