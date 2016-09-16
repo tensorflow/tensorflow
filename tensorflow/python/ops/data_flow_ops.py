@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import hashlib
 import re
 
 import six
@@ -603,11 +604,16 @@ class RandomShuffleQueue(QueueBase):
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
     names = _as_name_list(names, dtypes)
-    # If shared_name is provided and an op seed was not provided, we must ensure
-    # that we use the same seed for all queues with the same shared_name.
-    if shared_name is not None and seed is None:
-      seed = hash(shared_name)
     seed1, seed2 = random_seed.get_seed(seed)
+    if seed1 is None and seed2 is None:
+      seed1, seed2 = 0, 0
+    elif seed is None and shared_name is not None:
+      # This means that graph seed is provided but op seed is not provided.
+      # If shared_name is also provided, make seed2 depend only on the graph
+      # seed and shared_name. (seed2 from get_seed() is generally dependent on
+      # the id of the last op created.)
+      string = (str(seed1) + shared_name).encode("utf-8")
+      seed2 = int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
     queue_ref = gen_data_flow_ops._random_shuffle_queue(
         component_types=dtypes, shapes=shapes, capacity=capacity,
         min_after_dequeue=min_after_dequeue, seed=seed1, seed2=seed2,
