@@ -153,6 +153,13 @@ See trainable.Trainable.
 
 - - -
 
+#### `tf.contrib.learn.LinearClassifier.get_variable_value(name)` {#LinearClassifier.get_variable_value}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.LinearClassifier.model_dir` {#LinearClassifier.model_dir}
 
 
