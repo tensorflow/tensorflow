@@ -239,7 +239,7 @@ class FunctionTest(tf.test.TestCase):
   def testZNoDepOnY(self):
 
     @function.Defun(tf.float32, tf.float32)
-    def Foo(x, y):
+    def Foo(x, y):  # pylint: disable=unused-argument
       return x * 2
 
     with tf.Graph().as_default():
@@ -278,6 +278,7 @@ class FunctionTest(tf.test.TestCase):
       self.assertEquals("Foo", call1.op.name)
       call2 = Foo(one)
       self.assertEquals("Foo_1", call2.op.name)
+      # pylint: disable=unexpected-keyword-arg
       call3 = Foo(one, name="mine")
       self.assertEquals("mine", call3.op.name)
       with tf.name_scope("my"):
@@ -355,6 +356,9 @@ class FunctionTest(tf.test.TestCase):
       two = tf.constant([2])
 
       _ = Const()
+      # pylint: disable=too-many-function-args
+      # pylint: disable=unexpected-keyword-arg
+      # pylint: disable=no-value-for-parameter
       with self.assertRaisesRegexp(ValueError, "arguments: 0"):
         _ = Const(one)
       with self.assertRaisesRegexp(ValueError, "arguments: 0"):
@@ -692,6 +696,8 @@ class FunctionInlineControlTest(tf.test.TestCase):
       @function.Defun(dtype)
       def Forward(x):
         for _ in range(10):
+          # pylint: disable=unexpected-keyword-arg
+          # pylint: disable=cell-var-from-loop
           x = Cell(x, noinline=noinline)
         return tf.reduce_sum(x, [0, 1])
 
