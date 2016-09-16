@@ -1055,25 +1055,26 @@ class AssignFromCheckpointFnTest(tf.test.TestCase):
 
 class ZeroInitializerOpTest(tf.test.TestCase):
 
-  def _testZeroInitializer(self, shape, dtype):
-    var0 = tf.Variable(tf.zeros(shape, dtype=dtype))
-    var1 = tf.Variable(tf.ones(shape, dtype=dtype))
-    var0_zero = tf.contrib.framework.zero_initializer(var0)
-    var1_zero = tf.contrib.framework.zero_initializer(var1)
+  def _testZeroInitializer(self, shape, initializer, use_init):
+    var = tf.Variable(initializer)
+    var_zero = tf.contrib.framework.zero_initializer(var)
     with self.test_session() as sess:
       with self.assertRaisesOpError("Attempting to use uninitialized value"):
-        var0.eval()
-      with self.assertRaisesOpError("Attempting to use uninitialized value"):
-        var1.eval()
-      var0_zero.eval()
-      var1_zero.eval()
-      self.assertAllClose(np.zeros(shape), var0.eval())
-      self.assertAllClose(np.zeros(shape), var1.eval())
+        var.eval()
+      if use_init:
+        sess.run(var.initializer)
+        with self.assertRaisesOpError("input is already initialized"):
+          var_zero.eval()
+        self.assertAllClose(np.ones(shape), var.eval())
+      else:
+        var_zero.eval()
+        self.assertAllClose(np.zeros(shape), var.eval())
 
   def testZeroInitializer(self):
-    for shape in ([10, 20], [10], [5,], [10, 20, 30]):
-      for dtype in (tf.int32, tf.int64, tf.float32, tf.float64):
-        self._testZeroInitializer(shape, dtype)
+    for dtype in (tf.int32, tf.int64, tf.float32, tf.float64):
+      for use_init in (False, True):
+        self._testZeroInitializer(
+            [10, 20], tf.ones([10, 20], dtype = dtype), use_init)
 
 if __name__ == '__main__':
   tf.test.main()

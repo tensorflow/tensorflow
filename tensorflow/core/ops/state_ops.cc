@@ -452,27 +452,4 @@ output: A copy of the input before increment. If nothing else modifies the
   input, the values produced will all be distinct.
 )doc");
 
-REGISTER_OP("ZeroInitializer")
-    .Input("ref: Ref(T)")
-    .Output("output_ref: Ref(T)")
-    .Attr("T: realnumbertype")
-    .Attr("use_locking: bool = true")
-    .SetAllowsUninitializedInput()
-    .SetShapeFn([](InferenceContext* c) {
-        c->set_output(0, c->input(0));
-        return Status::OK();
-    })
-    .Doc(R"doc(
-Initialize 'ref' with all zeros. If 'ref' tensor is not initialized, the tensor
-will first be allocated memory, then be filled with all zeros; otherwise this
-op has no effect. This op is intended to save memory during initialization.
-
-ref: Should be from a `Variable` node. If uninitialized, ref tensor will first
-  be allocated memory, then be initialized with zeros; otherwise this op has no
-  effect.
-use_locking: If True, the initialization will be protected by a lock; otherwise
-  the behavior is undefined, but may exhibit less contention.
-output_ref:= Same as "ref".
-)doc");
-
 }  // namespace tensorflow
