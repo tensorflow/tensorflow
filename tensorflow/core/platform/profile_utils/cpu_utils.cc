@@ -47,10 +47,21 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
   GetCpuUtilsHelperSingletonInstance().EnableClockCycleProfiling(enable);
 }
 
+/* static */ std::chrono::duration<double> CpuUtils::ConvertClockCycleToTime(
+    const int64 clock_cycle) {
+  return std::chrono::duration<double>(static_cast<double>(clock_cycle) /
+                                       GetCycleCounterFrequency());
+}
+
 /* static */ int64 CpuUtils::GetCycleCounterFrequencyImpl() {
+// TODO(satok): do not switch by macro here
 #if defined(__ANDROID__)
-  // TODO(satok): Support android
+#if defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
+  // This profiling tool only supports Ver 21 or upper on Android
+  return GetCpuUtilsHelperSingletonInstance().CalculateCpuFrequency();
+#else  // defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
   return INVALID_FREQUENCY;
+#endif
 #elif defined(__linux__)
   double bogomips;
   FILE* fp = popen("grep '^bogomips' /proc/cpuinfo | head -1", "r");

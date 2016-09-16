@@ -38,6 +38,10 @@ class ICpuUtilsHelper {
   // Enable clock cycle profile
   // You can enable / disable profile if it's supported by the platform
   virtual void EnableClockCycleProfiling(bool enable) = 0;
+  // Return cpu frequency.
+  // CAVEAT: as this method may read file and/or call system calls,
+  // this call is supposed to be slow.
+  virtual int64 CalculateCpuFrequency() = 0;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(ICpuUtilsHelper);

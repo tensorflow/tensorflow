@@ -17,6 +17,7 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_PROFILEUTILS_CPU_UTILS_H__
 #define TENSORFLOW_PLATFORM_PROFILEUTILS_CPU_UTILS_H__
 
+#include <chrono>
 #include <memory>
 
 #include "tensorflow/core/platform/macros.h"
@@ -116,6 +117,10 @@ class CpuUtils {
   // You can enable / disable profile if it's supported by the platform
   static void EnableClockCycleProfiling(bool enable);
 
+  // Return chrono::duration per each clock
+  static std::chrono::duration<double> ConvertClockCycleToTime(
+      const int64 clock_cycle);
+
  private:
   class DefaultCpuUtilsHelper : public ICpuUtilsHelper {
    public:
@@ -123,6 +128,7 @@ class CpuUtils {
     void ResetClockCycle() final {}
     uint64 GetCurrentClockCycle() final { return DUMMY_CYCLE_CLOCK; }
     void EnableClockCycleProfiling(bool /* enable */) final {}
+    int64 CalculateCpuFrequency() final { return INVALID_FREQUENCY; }
 
    private:
     TF_DISALLOW_COPY_AND_ASSIGN(DefaultCpuUtilsHelper);
