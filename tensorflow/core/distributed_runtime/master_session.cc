@@ -55,9 +55,9 @@ namespace tensorflow {
 namespace {
 // A little bit of per-step state.
 struct PerStepState {
-  bool collect_costs;
-  bool collect_timeline;
-  bool collect_rpcs;
+  bool collect_costs = false;
+  bool collect_timeline = false;
+  bool collect_rpcs = false;
   Microseconds start_micros = Microseconds(0);
   Microseconds end_micros = Microseconds(0);
   std::vector<StepStats> step_stats;  // per partition
@@ -1123,6 +1123,7 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
 
   pss.collect_timeline = req->options().trace_level() == RunOptions::FULL_TRACE;
   pss.collect_costs = (0 == (count % CostFrequency(count)));
+  pss.collect_rpcs = false;
 
   TF_RETURN_IF_ERROR(rcg->RunPartitions(env_, step_id, count,
                                         execution_state_.get(), &pss, opts,

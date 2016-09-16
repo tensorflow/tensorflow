@@ -371,19 +371,12 @@ class Mixture(distribution.Distribution):
         lookup_partitioned_batch_indices = (
             batch_size * math_ops.range(n_class) +
             partitioned_batch_indices[c])
-
-        # Try to avoid a reshape to make the sample + batch one
-        # row (for array_ops.gather).  This can be done only when
-        # the batch shape is known and is rank 1.
-        if static_batch_shape.ndims == 1:
-          samples_class_c = array_ops.gather(
-              samples_class_c, lookup_partitioned_batch_indices)
-        else:
-          samples_class_c = array_ops.reshape(
-              samples_class_c,
-              array_ops.concat(0, ([n_class * batch_size], event_shape)))
-          samples_class_c = array_ops.gather(
-              samples_class_c, lookup_partitioned_batch_indices)
+        samples_class_c = array_ops.reshape(
+            samples_class_c,
+            array_ops.concat(0, ([n_class * batch_size], event_shape)))
+        samples_class_c = array_ops.gather(
+            samples_class_c, lookup_partitioned_batch_indices,
+            name="samples_class_c_gather")
         samples_class[c] = samples_class_c
 
       # Stitch back together the samples across the components.

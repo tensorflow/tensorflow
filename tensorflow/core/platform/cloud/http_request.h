@@ -50,7 +50,7 @@ class HttpRequest {
   };
 
   HttpRequest();
-  explicit HttpRequest(std::unique_ptr<LibCurl> libcurl);
+  explicit HttpRequest(LibCurl* libcurl);
   virtual ~HttpRequest();
 
   virtual Status Init();
@@ -127,7 +127,7 @@ class HttpRequest {
   Status CheckMethodNotSet() const;
   Status CheckNotSent() const;
 
-  std::unique_ptr<LibCurl> libcurl_;
+  LibCurl* libcurl_;
 
   FILE* put_body_ = nullptr;
 
@@ -162,8 +162,6 @@ class HttpRequest {
 class LibCurl {
  public:
   virtual ~LibCurl() {}
-  /// Lazy initialization of the dynamic libcurl library.
-  virtual Status MaybeLoadDll() = 0;
 
   virtual CURL* curl_easy_init() = 0;
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,

@@ -25,9 +25,10 @@ from tensorflow.python.framework import dtypes
 
 class ConfusionMatrixTest(tf.test.TestCase):
 
-  def _testConfMatrix(self, predictions, labels, truth):
+  def _testConfMatrix(self, predictions, labels, truth, weights=None):
     with self.test_session():
-      ans = tf.contrib.metrics.confusion_matrix(predictions, labels)
+      ans = tf.contrib.metrics.confusion_matrix(
+          predictions, labels, weights=weights)
       tf_ans = ans.eval()
       self.assertAllClose(tf_ans, truth, atol=1e-10)
 
@@ -103,6 +104,25 @@ class ConfusionMatrixTest(tf.test.TestCase):
 
   def testInt64MultipleLabels(self, dtype=np.int64):
     self._testMultipleLabels(dtype)
+
+  def testWeighted(self):
+    predictions = np.arange(5, dtype=np.int32)
+    labels = np.arange(5, dtype=np.int32)
+    weights = tf.constant(np.arange(5, dtype=np.int32))
+
+    truth = np.asarray(
+        [[0, 0, 0, 0, 0],
+         [0, 1, 0, 0, 0],
+         [0, 0, 2, 0, 0],
+         [0, 0, 0, 3, 0],
+         [0, 0, 0, 0, 4]],
+        dtype=np.int32)
+
+    self._testConfMatrix(
+        predictions=predictions,
+        labels=labels,
+        weights=weights,
+        truth=truth)
 
   def testInvalidRank(self):
     predictions = np.asarray([[1, 2, 3]])

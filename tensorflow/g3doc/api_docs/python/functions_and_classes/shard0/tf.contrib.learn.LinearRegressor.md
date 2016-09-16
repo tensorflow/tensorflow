@@ -42,7 +42,7 @@ Input of `fit` and `evaluate` should have following features,
       key=column.name, value=a `Tensor`
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=None, target_dimension=1, config=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=None, target_dimension=1, _joint_weights=False, config=None)` {#LinearRegressor.__init__}
 
 Construct a `LinearRegressor` estimator object.
 
@@ -67,6 +67,10 @@ Construct a `LinearRegressor` estimator object.
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
 *  <b>`target_dimension`</b>: dimension of the target for multilabels.
+  _joint_weights: If True use a single (possibly partitioned) variable to
+    store the weights. It's faster, but requires all feature columns are
+    sparse and have the 'sum' combiner. Incompatible with SDCAOptimizer.
+
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
 
 ##### Returns:
