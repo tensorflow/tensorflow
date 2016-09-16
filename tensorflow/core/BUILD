@@ -1403,6 +1403,7 @@ tf_cc_tests(
         "lib/strings/strcat_test.cc",
         "lib/strings/stringprintf_test.cc",
         "lib/wav/wav_io_test.cc",
+        "platform/file_system_test.cc",
         "platform/fingerprint_test.cc",
         "platform/integral_types_test.cc",
         "platform/logging_test.cc",
