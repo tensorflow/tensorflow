@@ -81,12 +81,12 @@ class SvdOp : public LinearAlgebraOp<Scalar> {
       svd.compute(inputs[0],
                   (full_matrices_ ? Eigen::ComputeFullU | Eigen::ComputeFullV
                                   : Eigen::ComputeThinU | Eigen::ComputeThinV));
-      outputs->at(0) = svd.singularValues();
+      outputs->at(0) = svd.singularValues().template cast<Scalar>();
       outputs->at(1) = svd.matrixU();
       outputs->at(2) = svd.matrixV();
     } else {
       svd.compute(inputs[0]);
-      outputs->at(0) = svd.singularValues();
+      outputs->at(0) = svd.singularValues().template cast<Scalar>();
     }
   }
 

@@ -49,25 +49,11 @@ module Categorizer {
   /* Canonical TensorFlow ops are namespaced using forward slashes.
    * This fallback categorizer categorizes by the top-level namespace.
    */
-  export var topLevelNamespaceCategorizer: Categorizer = splitCategorizer(/\//);
-
   // Try to produce good categorizations on legacy graphs, which often
   // are namespaced like l1_foo/bar or l2_baz/bam.
   // If there is no leading underscore before the first forward slash,
   // then it behaves the same as topLevelNamespaceCategorizer
-  export var legacyUnderscoreCategorizer: Categorizer =
-      splitCategorizer(/[\/_]/);
-
-  export function fallbackCategorizer(s: string): Categorizer {
-    switch (s) {
-      case 'TopLevelNamespaceCategorizer':
-        return topLevelNamespaceCategorizer;
-      case 'LegacyUnderscoreCategorizer':
-        return legacyUnderscoreCategorizer;
-      default:
-        throw new Error('Unrecognized categorization strategy: ' + s);
-    }
-  }
+  export var rootNameUnderscoreCategorizer = rootNameCategorizer(/[\/_]/);
 
   /* An 'extractor' is a function that takes a tag name, and 'extracts' a
    * category name.
@@ -81,14 +67,14 @@ module Categorizer {
       if (tags.length === 0) {
         return [];
       }
-      var sortedTags = tags.slice().sort(VZ.Sorting.compareTagNames);
-      var categories: Category[] = [];
-      var currentCategory = {
+      let sortedTags = tags.slice().sort(VZ.Sorting.compareTagNames);
+      let categories: Category[] = [];
+      let currentCategory = {
         name: extractor(sortedTags[0]),
         tags: [],
       };
       sortedTags.forEach((t: string) => {
-        var topLevel = extractor(t);
+        let topLevel = extractor(t);
         if (currentCategory.name !== topLevel) {
           categories.push(currentCategory);
           currentCategory = {
@@ -103,12 +89,32 @@ module Categorizer {
     };
   }
 
-  function splitCategorizer(r: RegExp): Categorizer {
-    var extractor = (t: string) => {
-      return t.split(r)[0];
-    };
+  /** Split on a regex, taking just the first element after splitting.
+   * It's like getting the root directory. E.g. if you split on slash, then
+   * 'foo/bar/zod' will go to 'foo'
+   */
+  function rootNameCategorizer(r: RegExp): Categorizer {
+    let extractor = (t: string) => { return t.split(r)[0]; };
     return extractorToCategorizer(extractor);
   }
+
+  /* Split on a regex, taking all the prefix until the last split.
+   * It's like getting the dirname of a path. E.g. if you split on slash, then
+   * 'foo/bar/zod' will go to 'foo/bar'.
+   * In the case where there are no splits (e.g. 'foo') then it uses 'foo' as
+   * the category name.
+   */
+  function dnameExtractor(t: string) {
+    let splits = t.split('/');
+    if (splits.length === 1) {
+      return t;
+    } else {
+      let last = _.last(splits);
+      return t.slice(0, t.length - last.length - 1);
+    }
+  }
+
+  export var directoryNameCategorizer = extractorToCategorizer(dnameExtractor);
 
   export interface CategoryDefinition {
     name: string;
@@ -116,35 +122,44 @@ module Categorizer {
   }
 
   export function defineCategory(ruledef: string): CategoryDefinition {
-    var r = new RegExp(ruledef);
-    var f = function(tag: string): boolean {
-      return r.test(tag);
-    };
+    let r = new RegExp(ruledef);
+    let f = function(tag: string): boolean { return r.test(tag); };
     return { name: ruledef, matches: f };
   }
 
   export function _categorizer(
       rules: CategoryDefinition[], fallback: Categorizer) {
     return function(tags: string[]): Category[] {
-      var remaining: d3.Set = d3.set(tags);
-      var userSpecified = rules.map((def: CategoryDefinition) => {
-        var tags: string[] = [];
+      let remaining: d3.Set = d3.set(tags);
+      let userSpecified = rules.map((def: CategoryDefinition) => {
+        let tags: string[] = [];
         remaining.forEach((t: string) => {
           if (def.matches(t)) {
             tags.push(t);
           }
         });
-        var cat = {name: def.name, tags: tags.sort(VZ.Sorting.compareTagNames)};
+        let cat = {name: def.name, tags: tags.sort(VZ.Sorting.compareTagNames)};
         return cat;
       });
-      var defaultCategories = fallback(remaining.values());
+      let defaultCategories = fallback(remaining.values());
       return userSpecified.concat(defaultCategories);
     };
   }
 
+  export function fallbackCategorizer(s: string): Categorizer {
+    switch (s) {
+      case 'DirectoryNameCategorizer':
+        return directoryNameCategorizer;
+      case 'RootNameUnderscoreCategorizer':
+        return rootNameUnderscoreCategorizer;
+      default:
+        throw new Error('Unrecognized categorization strategy: ' + s);
+    }
+  }
+
   export function categorizer(s: CustomCategorization): Categorizer {
-    var rules = s.categoryDefinitions.map(defineCategory);
-    var fallback = fallbackCategorizer(s.fallbackCategorizer);
+    let rules = s.categoryDefinitions.map(defineCategory);
+    let fallback = fallbackCategorizer(s.fallbackCategorizer);
     return _categorizer(rules, fallback);
   };
 }

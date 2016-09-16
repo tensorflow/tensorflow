@@ -46,6 +46,7 @@ REGISTER_OP("PyFuncStateless")
     .Attr("token: string")
     .Attr("Tin: list(type) >= 0")
     .Attr("Tout: list(type)")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 A stateless version of PyFunc.
 )doc");

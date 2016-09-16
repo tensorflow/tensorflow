@@ -30,6 +30,15 @@ config_setting(
 )
 
 config_setting(
+    name = "android_arm64",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "android_cpu": "arm64-v8a",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
     visibility = ["//visibility:public"],
@@ -95,6 +104,7 @@ filegroup(
         "//tensorflow/contrib/ffmpeg/default:all_files",
         "//tensorflow/contrib/framework:all_files",
         "//tensorflow/contrib/graph_editor:all_files",
+        "//tensorflow/contrib/grid_rnn:all_files",
         "//tensorflow/contrib/layers:all_files",
         "//tensorflow/contrib/layers/kernels:all_files",
         "//tensorflow/contrib/learn:all_files",
@@ -136,6 +146,7 @@ filegroup(
         "//tensorflow/examples/label_image:all_files",
         "//tensorflow/examples/learn:all_files",
         "//tensorflow/examples/skflow:all_files",
+        "//tensorflow/examples/tutorials/estimators:all_files",
         "//tensorflow/examples/tutorials/mnist:all_files",
         "//tensorflow/examples/tutorials/word2vec:all_files",
         "//tensorflow/g3doc/how_tos/adding_an_op:all_files",
@@ -152,6 +163,7 @@ filegroup(
         "//tensorflow/python:all_files",
         "//tensorflow/python/debug:all_files",
         "//tensorflow/python/kernel_tests:all_files",
+        "//tensorflow/python/saved_model:all_files",
         "//tensorflow/python/tools:all_files",
         "//tensorflow/tensorboard:all_files",
         "//tensorflow/tensorboard/app:all_files",
@@ -166,6 +178,7 @@ filegroup(
         "//tensorflow/tools/docker:all_files",
         "//tensorflow/tools/docker/notebooks:all_files",
         "//tensorflow/tools/docs:all_files",
+        "//tensorflow/tools/git:all_files",
         "//tensorflow/tools/proto_text:all_files",
         "//tensorflow/tools/test:all_files",
         "//tensorflow/user_ops:all_files",

@@ -85,7 +85,7 @@ Status LoadLibrary(const char* library_filename, void** result,
   }
   string str;
   op_list.SerializeToString(&str);
-  char* str_buf = reinterpret_cast<char*>(operator new(str.length()));
+  char* str_buf = reinterpret_cast<char*>(malloc(str.length()));
   memcpy(str_buf, str.data(), str.length());
   *buf = str_buf;
   *len = str.length();

@@ -40,8 +40,8 @@ class Categorical(distribution.Distribution):
       self,
       logits,
       dtype=dtypes.int32,
-      validate_args=True,
-      allow_nan_stats=False,
+      validate_args=False,
+      allow_nan_stats=True,
       name="Categorical"):
     """Initialize Categorical distributions using class log-probabilities.
 
@@ -52,7 +52,7 @@ class Categorical(distribution.Distribution):
           indexes into the classes.
       dtype: The type of the event samples (default: int32).
       validate_args: Unused in this distribution.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -94,6 +94,7 @@ class Categorical(distribution.Distribution):
           dtype=dtype,
           parameters={"logits": self._logits, "num_classes": self._num_classes},
           is_continuous=False,
+          is_reparameterized=False,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)

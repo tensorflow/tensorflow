@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import math
 
+from tensorflow.contrib.bayesflow.python.ops import special_math
 from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import kullback_leibler
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
@@ -84,8 +85,8 @@ class Normal(distribution.Distribution):
   def __init__(self,
                mu,
                sigma,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Normal"):
     """Construct Normal distributions with mean and stddev `mu` and `sigma`.
 
@@ -96,9 +97,10 @@ class Normal(distribution.Distribution):
       mu: Floating point tensor, the means of the distribution(s).
       sigma: Floating point tensor, the stddevs of the distribution(s).
         sigma must contain only positive values.
-      validate_args: Whether to assert that `sigma > 0`. If `validate_args` is
-        `False`, correct output is not guaranteed when input is invalid.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert that
+        `sigma > 0`. If `validate_args` is `False`, correct output is not
+        guaranteed when input is invalid.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -116,6 +118,7 @@ class Normal(distribution.Distribution):
         super(Normal, self).__init__(
             dtype=self._sigma.dtype,
             parameters={"mu": self._mu, "sigma": self._sigma},
+            is_continuous=True,
             is_reparameterized=True,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
@@ -124,19 +127,8 @@ class Normal(distribution.Distribution):
   @staticmethod
   def _param_shapes(sample_shape):
     return dict(
-        zip(("mu", "sigma"), ([ops.convert_to_tensor(sample_shape)] * 2)))
-
-  @staticmethod
-  def _safe_transforms():
-    """Default parameter transforms.
-
-    Transforms applied:
-      sigma: softplus
-
-    Returns:
-      `dict` of parameter name to callable parameter transform.
-    """
-    return {"sigma": nn.softplus}
+        zip(("mu", "sigma"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 2)))
 
   @property
   def mu(self):
@@ -169,20 +161,22 @@ class Normal(distribution.Distribution):
 
   def _log_prob(self, x):
     return (-0.5 * math.log(2. * math.pi) - math_ops.log(self.sigma)
-            -0.5 * math_ops.square((x - self.mu) / self.sigma))
+            -0.5 * math_ops.square(self._z(x)))
 
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))
 
   def _log_cdf(self, x):
-    return math_ops.log(self._cdf(x))
+    return special_math.log_ndtr(self._z(x))
 
   def _cdf(self, x):
-    # TODO(ebrevdo): wrap this in a Defun with a custom Defun
-    # gradient because the analytic gradient may be faster than
-    # automatic differentiation.
-    return (0.5 + 0.5*math_ops.erf(
-        1. / (math.sqrt(2.) * self.sigma) * (x - self.mu)))
+    return special_math.ndtr(self._z(x))
+
+  def _log_survival_function(self, x):
+    return special_math.log_ndtr(-self._z(x))
+
+  def _survival_function(self, x):
+    return special_math.ndtr(-self._z(x))
 
   def _entropy(self):
     # Use broadcasting rules to calculate the full broadcast sigma.
@@ -200,6 +194,29 @@ class Normal(distribution.Distribution):
 
   def _mode(self):
     return self._mean()
+
+  def _z(self, x):
+    """Standardize input `x` to a unit normal."""
+    with ops.name_scope("standardize", values=[x]):
+      return (x - self.mu) / self.sigma
+
+
+class NormalWithSoftplusSigma(Normal):
+  """Normal with softplus applied to `sigma`."""
+
+  def __init__(self,
+               mu,
+               sigma,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="NormalWithSoftplusSigma"):
+    with ops.name_scope(name, values=[mu, sigma]) as ns:
+      super(NormalWithSoftplusSigma, self).__init__(
+          mu=mu,
+          sigma=nn.softplus(sigma),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)
 
 
 @kullback_leibler.RegisterKL(Normal, Normal)

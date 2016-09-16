@@ -213,7 +213,7 @@ Status OAuthClient::GetTokenFromServiceAccountJson(
   TF_RETURN_IF_ERROR(request->Init());
   TF_RETURN_IF_ERROR(request->SetUri(oauth_server_uri.ToString()));
   TF_RETURN_IF_ERROR(
-      request->SetPostRequest(request_body.c_str(), request_body.size()));
+      request->SetPostFromBuffer(request_body.c_str(), request_body.size()));
   TF_RETURN_IF_ERROR(request->SetResultBuffer(response_buffer.get(),
                                               kResponseBufferSize, &response));
   TF_RETURN_IF_ERROR(request->Send());
@@ -247,7 +247,7 @@ Status OAuthClient::GetTokenFromRefreshTokenJson(
   TF_RETURN_IF_ERROR(request->Init());
   TF_RETURN_IF_ERROR(request->SetUri(oauth_server_uri.ToString()));
   TF_RETURN_IF_ERROR(
-      request->SetPostRequest(request_body.c_str(), request_body.size()));
+      request->SetPostFromBuffer(request_body.c_str(), request_body.size()));
   TF_RETURN_IF_ERROR(request->SetResultBuffer(response_buffer.get(),
                                               kResponseBufferSize, &response));
   TF_RETURN_IF_ERROR(request->Send());

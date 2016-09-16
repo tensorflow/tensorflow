@@ -35,7 +35,6 @@ import time
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.contrib.factorization.python.ops import clustering_ops
 from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.examples.tutorials.mnist import mnist
 
@@ -143,13 +142,13 @@ def inference(inp, num_clusters, hidden1_units, hidden2_units):
     kmeans_training_op: An op to train the clustering.
   """
   # Clustering
-  kmeans = clustering_ops.KMeans(
+  kmeans = tf.contrib.factorization.KMeans(
       inp,
       num_clusters,
-      distance_metric=clustering_ops.COSINE_DISTANCE,
+      distance_metric=tf.contrib.factorization.COSINE_DISTANCE,
       # TODO(agarwal): kmeans++ is currently causing crash in dbg mode.
       # Enable this after fixing.
-      # initial_clusters=clustering_ops.KMEANS_PLUS_PLUS_INIT,
+      # initial_clusters=tf.contrib.factorization.KMEANS_PLUS_PLUS_INIT,
       use_mini_batch=True)
 
   all_scores, _, clustering_scores, kmeans_training_op = kmeans.training_graph()

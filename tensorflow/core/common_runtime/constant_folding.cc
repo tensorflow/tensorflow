@@ -279,13 +279,16 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
       edges_to_remove.push_back(out_edge);
     }
   }
-  string node_name = n->name();
+  const string& node_name = n->name();
   Node* constant_node;
   auto builder = NodeDefBuilder(strings::StrCat(graph->NewName(node_name),
                                                 "__cf__", UniqueConstantId()),
                                 "Const")
                      .Attr("dtype", constant.dtype())
                      .Attr("value", constant);
+  if (partition_device) {
+    builder.Device(partition_device->name());
+  }
   NodeDef def;
   if (!builder.Finalize(&def).ok()) {
     return false;
@@ -306,6 +309,9 @@ bool ReplaceTensorWithConstant(Graph* graph, Device* partition_device,
     graph->RemoveEdge(edge);
   }
   graph->AddEdge(graph->source_node(), -1, constant_node, -1);
+  if (partition_device) {
+    constant_node->set_assigned_device_name(partition_device->name());
+  }
   return true;
 }
 

@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_logging_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -80,9 +80,7 @@ def tensor_summary(display_name,  # pylint: disable=invalid-name
   return val
 
 
-ops.NoGradient("TensorSummary")
+ops.NotDifferentiable("TensorSummary")
 
 
-@ops.RegisterShape("TensorSummary")
-def _ScalarShape(unused_op):
-  return [tensor_shape.scalar()]
+ops.RegisterShape("TensorSummary")(common_shapes.call_cpp_shape_fn)

@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
@@ -235,6 +236,7 @@ def read_keyed_batch_features(file_pattern,
                               feature_queue_capacity=100,
                               num_queue_runners=2,
                               parser_num_threads=None,
+                              parse_fn=None,
                               name=None):
   """Adds operations to read, queue, batch and parse `Example` protos.
 
@@ -269,6 +271,8 @@ def read_keyed_batch_features(file_pattern,
       a full queue when the subsequent computations overall are cheaper than
       parsing.
     parser_num_threads: (Deprecated) The number of threads to parse examples.
+    parse_fn: Parsing function, takes `Example` Tensor returns parsed
+      representation. If `None`, no parsing is done.
     name: Name of resulting op.
 
   Returns:
@@ -289,7 +293,7 @@ def read_keyed_batch_features(file_pattern,
         file_pattern, batch_size, reader, randomize_input=randomize_input,
         num_epochs=num_epochs, queue_capacity=queue_capacity,
         num_threads=reader_num_threads, read_batch_size=batch_size,
-        name=scope)
+        parse_fn=parse_fn, name=scope)
     # Parse the example.
     feature_map = parsing_ops.parse_example(examples, features)
     return queue_parsed_features(
@@ -374,8 +378,10 @@ def queue_parsed_features(parsed_features,
     # than two queue-runners may hog the cpu on the worker to fill up the queue.
     for _ in range(num_queue_runners):
       queue_runner.add_queue_runner(
-          queue_runner.QueueRunner(input_queue, [input_queue.enqueue(
-              tensors_to_enqueue)]))
+          queue_runner.QueueRunner(
+              input_queue, [input_queue.enqueue(tensors_to_enqueue)],
+              queue_closed_exception_types=(errors.OutOfRangeError,
+                                            errors.CancelledError)))
 
     dequeued_tensors = input_queue.dequeue()
 
@@ -407,7 +413,8 @@ def queue_parsed_features(parsed_features,
 def read_batch_features(file_pattern, batch_size, features, reader,
                         randomize_input=True, num_epochs=None,
                         queue_capacity=10000, feature_queue_capacity=100,
-                        reader_num_threads=1, parser_num_threads=1, name=None):
+                        reader_num_threads=1, parser_num_threads=1,
+                        parse_fn=None, name=None):
   """Adds operations to read, queue, batch and parse `Example` protos.
 
   Given file pattern (or list of files), will setup a queue for file names,
@@ -439,6 +446,8 @@ def read_batch_features(file_pattern, batch_size, features, reader,
     reader_num_threads: The number of threads to read examples.
     parser_num_threads: The number of threads to parse examples.
       records to read at once
+    parse_fn: Parsing function, takes `Example` Tensor returns parsed
+      representation. If `None`, no parsing is done.
     name: Name of resulting op.
 
   Returns:
@@ -453,7 +462,8 @@ def read_batch_features(file_pattern, batch_size, features, reader,
       queue_capacity=queue_capacity,
       feature_queue_capacity=feature_queue_capacity,
       reader_num_threads=reader_num_threads,
-      parser_num_threads=parser_num_threads, name=name)
+      parser_num_threads=parser_num_threads,
+      parse_fn=parse_fn, name=name)
   return features
 
 

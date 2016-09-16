@@ -39,6 +39,13 @@ Initializes a BaseEstimator instance.
 
 - - -
 
+#### `tf.contrib.learn.BaseEstimator.__repr__()` {#BaseEstimator.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.BaseEstimator.config` {#BaseEstimator.config}
 
 
@@ -66,7 +73,7 @@ Exports inference graph into given dir. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
 
     Args:
       export_dir: A string containing a directory to write the exported graph
@@ -269,7 +276,7 @@ component of a nested object.
 Estimator class is the basic TensorFlow model trainer/evaluator.
 - - -
 
-#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None, params=None, weight_column_name=None)` {#Estimator.__init__}
+#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None, params=None, feature_engineering_fn=None)` {#Estimator.__init__}
 
 Constructs an Estimator instance.
 
@@ -284,7 +291,7 @@ Constructs an Estimator instance.
       * `(features, targets, mode) -> (predictions, loss, train_op)`
       * `(features, targets, mode, params) -> (predictions, loss, train_op)`
 
-  Where
+    Where
 
       * `features` are single `Tensor` or `dict` of `Tensor`s
              (depending on data passed to `fit`),
@@ -306,14 +313,23 @@ Constructs an Estimator instance.
 *  <b>`config`</b>: Configuration object.
 *  <b>`params`</b>: `dict` of hyper parameters that will be passed into `model_fn`.
           Keys are names of parameters, values are basic python types.
-*  <b>`weight_column_name`</b>: A string defining feature column name representing
-    weights. It is used to down weight or boost examples during training. It
-    will be multiplied by the loss of the example.
+*  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
+                          targets which are the output of `input_fn` and
+                          returns features and targets which will be fed
+                          into `model_fn`. Please check `model_fn` for
+                          a definition of features and targets.
 
 ##### Raises:
 
 
 *  <b>`ValueError`</b>: parameters of `model_fn` don't match `params`.
+
+
+- - -
+
+#### `tf.contrib.learn.Estimator.__repr__()` {#Estimator.__repr__}
+
+
 
 
 - - -
@@ -345,7 +361,7 @@ Exports inference graph into given dir. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
 
     Args:
       export_dir: A string containing a directory to write the exported graph
@@ -610,11 +626,9 @@ Input of `fit` and `evaluate` should have following features,
     Both features' `value` must be a `SparseTensor`.
   - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
     whose `value` is a `Tensor`.
-  - if `feature_columns` is `None`, then `input` must contain only real
-    valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=None, config=None)` {#DNNClassifier.__init__}
 
 Initializes a DNNClassifier instance.
 
@@ -652,6 +666,13 @@ Initializes a DNNClassifier instance.
 ##### Returns:
 
   A `DNNClassifier` estimator.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.__repr__()` {#DNNClassifier.__repr__}
+
+
 
 
 - - -
@@ -704,7 +725,7 @@ Exports inference graph into given dir. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
 
     Args:
       export_dir: A string containing a directory to write the exported graph
@@ -994,11 +1015,9 @@ Input of `fit` and `evaluate` should have following features,
     Both features' `value` must be a `SparseTensor`.
   - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
     whose `value` is a `Tensor`.
-  - if `feature_columns` is `None`, then `input` must contain only real
-    valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#DNNRegressor.__init__}
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=None, config=None)` {#DNNRegressor.__init__}
 
 Initializes a `DNNRegressor` instance.
 
@@ -1034,6 +1053,13 @@ Initializes a `DNNRegressor` instance.
 ##### Returns:
 
   A `DNNRegressor` estimator.
+
+
+- - -
+
+#### `tf.contrib.learn.DNNRegressor.__repr__()` {#DNNRegressor.__repr__}
+
+
 
 
 - - -
@@ -1086,7 +1112,7 @@ Exports inference graph into given dir. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
 
     Args:
       export_dir: A string containing a directory to write the exported graph
@@ -1305,532 +1331,6 @@ component of a nested object.
 
 - - -
 
-### `class tf.contrib.learn.TensorFlowDNNClassifier` {#TensorFlowDNNClassifier}
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.__init__(*args, **kwargs)` {#TensorFlowDNNClassifier.__init__}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.bias_` {#TensorFlowDNNClassifier.bias_}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.config` {#TensorFlowDNNClassifier.config}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.dnn_bias_` {#TensorFlowDNNClassifier.dnn_bias_}
-
-Returns bias of deep neural network part.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.dnn_weights_` {#TensorFlowDNNClassifier.dnn_weights_}
-
-Returns weights of deep neural network part.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#TensorFlowDNNClassifier.evaluate}
-
-See `Evaluable`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
-      `input_fn` or `feed_fn` is provided.
-      Or if `metrics` is not `None` or `dict`.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.export(*args, **kwargs)` {#TensorFlowDNNClassifier.export}
-
-Exports inference graph into given dir. (deprecated arguments)
-
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
-Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
-
-    Args:
-      export_dir: A string containing a directory to write the exported graph
-        and checkpoints.
-      input_fn: If `use_deprecated_input_fn` is true, then a function that given
-        `Tensor` of `Example` strings, parses it into features that are then
-        passed to the model. Otherwise, a function that takes no argument and
-        returns a tuple of (features, targets), where features is a dict of
-        string key to `Tensor` and targets is a `Tensor` that's currently not
-        used (and so can be `None`).
-      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
-        the raw `Example` strings `Tensor` that the exported model will take as
-        input.
-      use_deprecated_input_fn: Determines the signature format of `input_fn`.
-      signature_fn: Function that returns a default signature and a named
-        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-        for features and `Tensor` or `dict` of `Tensor`s for predictions.
-      default_batch_size: Default batch size of the `Example` placeholder.
-      exports_to_keep: Number of exports to keep.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.fit(x, y, steps=None, batch_size=None, monitors=None, logdir=None)` {#TensorFlowDNNClassifier.fit}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.get_params(deep=True)` {#TensorFlowDNNClassifier.get_params}
-
-Get parameters for this estimator.
-
-##### Args:
-
-
-*  <b>`deep`</b>: boolean, optional
-
-    If `True`, will return the parameters for this estimator and
-    contained subobjects that are estimators.
-
-##### Returns:
-
-  params : mapping of string to any
-  Parameter names mapped to their values.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.get_variable_names()` {#TensorFlowDNNClassifier.get_variable_names}
-
-Returns list of all variable names in this model.
-
-##### Returns:
-
-  List of names.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.get_variable_value(name)` {#TensorFlowDNNClassifier.get_variable_value}
-
-Returns value of the variable given by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Numpy array - value of the tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.linear_bias_` {#TensorFlowDNNClassifier.linear_bias_}
-
-Returns bias of the linear part.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.linear_weights_` {#TensorFlowDNNClassifier.linear_weights_}
-
-Returns weights per feature of the linear part.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.model_dir` {#TensorFlowDNNClassifier.model_dir}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=None, monitors=None)` {#TensorFlowDNNClassifier.partial_fit}
-
-Incremental fit on a batch of samples.
-
-This method is expected to be called several times consecutively
-on different or the same chunks of the dataset. This either can
-implement iterative training or out-of-core/online training.
-
-This is especially useful when the whole dataset is too big to
-fit in memory at the same time. Or when model is taking long time
-to converge, and you want to split up training into subparts.
-
-##### Args:
-
-
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of targets. The training target values
-     (class labels in classification, real numbers in regression). If set,
-     `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`.
-*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-    dimension of `x`. Must be `None` if `input_fn` is provided.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-    inside the training loop.
-
-##### Returns:
-
-  `self`, for chaining.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
-      provided.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.predict(x=None, input_fn=None, batch_size=None, outputs=None, axis=1)` {#TensorFlowDNNClassifier.predict}
-
-Predict class or regression for `x`.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.predict_proba(x=None, input_fn=None, batch_size=None, outputs=None)` {#TensorFlowDNNClassifier.predict_proba}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.save(path)` {#TensorFlowDNNClassifier.save}
-
-Saves checkpoints and graph to given path.
-
-##### Args:
-
-
-*  <b>`path`</b>: Folder to save model to.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.set_params(**params)` {#TensorFlowDNNClassifier.set_params}
-
-Set the parameters of this estimator.
-
-The method works on simple estimators as well as on nested objects
-(such as pipelines). The former have parameters of the form
-``<component>__<parameter>`` so that it's possible to update each
-component of a nested object.
-
-##### Args:
-
-
-*  <b>`**params`</b>: Parameters.
-
-##### Returns:
-
-  self
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If params contain invalid names.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNClassifier.weights_` {#TensorFlowDNNClassifier.weights_}
-
-
-
-
-
-- - -
-
-### `class tf.contrib.learn.TensorFlowDNNRegressor` {#TensorFlowDNNRegressor}
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.__init__(*args, **kwargs)` {#TensorFlowDNNRegressor.__init__}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.bias_` {#TensorFlowDNNRegressor.bias_}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.config` {#TensorFlowDNNRegressor.config}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.dnn_bias_` {#TensorFlowDNNRegressor.dnn_bias_}
-
-Returns bias of deep neural network part.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.dnn_weights_` {#TensorFlowDNNRegressor.dnn_weights_}
-
-Returns weights of deep neural network part.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#TensorFlowDNNRegressor.evaluate}
-
-See `Evaluable`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
-      `input_fn` or `feed_fn` is provided.
-      Or if `metrics` is not `None` or `dict`.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.export(*args, **kwargs)` {#TensorFlowDNNRegressor.export}
-
-Exports inference graph into given dir. (deprecated arguments)
-
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
-Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
-
-    Args:
-      export_dir: A string containing a directory to write the exported graph
-        and checkpoints.
-      input_fn: If `use_deprecated_input_fn` is true, then a function that given
-        `Tensor` of `Example` strings, parses it into features that are then
-        passed to the model. Otherwise, a function that takes no argument and
-        returns a tuple of (features, targets), where features is a dict of
-        string key to `Tensor` and targets is a `Tensor` that's currently not
-        used (and so can be `None`).
-      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
-        the raw `Example` strings `Tensor` that the exported model will take as
-        input.
-      use_deprecated_input_fn: Determines the signature format of `input_fn`.
-      signature_fn: Function that returns a default signature and a named
-        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-        for features and `Tensor` or `dict` of `Tensor`s for predictions.
-      default_batch_size: Default batch size of the `Example` placeholder.
-      exports_to_keep: Number of exports to keep.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.fit(x, y, steps=None, batch_size=None, monitors=None, logdir=None)` {#TensorFlowDNNRegressor.fit}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.get_params(deep=True)` {#TensorFlowDNNRegressor.get_params}
-
-Get parameters for this estimator.
-
-##### Args:
-
-
-*  <b>`deep`</b>: boolean, optional
-
-    If `True`, will return the parameters for this estimator and
-    contained subobjects that are estimators.
-
-##### Returns:
-
-  params : mapping of string to any
-  Parameter names mapped to their values.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.get_variable_names()` {#TensorFlowDNNRegressor.get_variable_names}
-
-Returns list of all variable names in this model.
-
-##### Returns:
-
-  List of names.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.get_variable_value(name)` {#TensorFlowDNNRegressor.get_variable_value}
-
-Returns value of the variable given by name.
-
-##### Args:
-
-
-*  <b>`name`</b>: string, name of the tensor.
-
-##### Returns:
-
-  Numpy array - value of the tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.linear_bias_` {#TensorFlowDNNRegressor.linear_bias_}
-
-Returns bias of the linear part.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.linear_weights_` {#TensorFlowDNNRegressor.linear_weights_}
-
-Returns weights per feature of the linear part.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.model_dir` {#TensorFlowDNNRegressor.model_dir}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=None, monitors=None)` {#TensorFlowDNNRegressor.partial_fit}
-
-Incremental fit on a batch of samples.
-
-This method is expected to be called several times consecutively
-on different or the same chunks of the dataset. This either can
-implement iterative training or out-of-core/online training.
-
-This is especially useful when the whole dataset is too big to
-fit in memory at the same time. Or when model is taking long time
-to converge, and you want to split up training into subparts.
-
-##### Args:
-
-
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of targets. The training target values
-     (class labels in classification, real numbers in regression). If set,
-     `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`.
-*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-    dimension of `x`. Must be `None` if `input_fn` is provided.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-    inside the training loop.
-
-##### Returns:
-
-  `self`, for chaining.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
-      provided.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.predict(x=None, input_fn=None, batch_size=None, outputs=None, axis=1)` {#TensorFlowDNNRegressor.predict}
-
-Predict class or regression for `x`.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.predict_proba(x=None, input_fn=None, batch_size=None, outputs=None)` {#TensorFlowDNNRegressor.predict_proba}
-
-
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.save(path)` {#TensorFlowDNNRegressor.save}
-
-Saves checkpoints and graph to given path.
-
-##### Args:
-
-
-*  <b>`path`</b>: Folder to save model to.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.set_params(**params)` {#TensorFlowDNNRegressor.set_params}
-
-Set the parameters of this estimator.
-
-The method works on simple estimators as well as on nested objects
-(such as pipelines). The former have parameters of the form
-``<component>__<parameter>`` so that it's possible to update each
-component of a nested object.
-
-##### Args:
-
-
-*  <b>`**params`</b>: Parameters.
-
-##### Returns:
-
-  self
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If params contain invalid names.
-
-
-- - -
-
-#### `tf.contrib.learn.TensorFlowDNNRegressor.weights_` {#TensorFlowDNNRegressor.weights_}
-
-
-
-
-
-- - -
-
 ### `class tf.contrib.learn.TensorFlowEstimator` {#TensorFlowEstimator}
 
 Base class for all TensorFlow estimators.
@@ -1881,6 +1381,13 @@ Initializes a TensorFlowEstimator instance.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowEstimator.__repr__()` {#TensorFlowEstimator.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowEstimator.config` {#TensorFlowEstimator.config}
 
 
@@ -1919,7 +1426,7 @@ Exports inference graph into given dir. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
 
     Args:
       export_dir: A string containing a directory to write the exported graph
@@ -2249,11 +1756,9 @@ Input of `fit` and `evaluate` should have following features,
     Both features' `value` must be a `SparseTensor`.
   - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
     whose `value` is a `Tensor`.
-  - if `feature_columns` is `None`, then `input` must contains only real
-    valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#LinearClassifier.__init__}
+#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=None, config=None)` {#LinearClassifier.__init__}
 
 Construct a `LinearClassifier` estimator object.
 
@@ -2408,11 +1913,9 @@ Input of `fit` and `evaluate` should have following features,
        key=weight column name, value=a `SparseTensor`}
   - if isinstance(column, `RealValuedColumn`):
       key=column.name, value=a `Tensor`
-  - if `feature_columns` is `None`:
-      input must contains only real valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, target_dimension=1, config=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=None, target_dimension=1, config=None)` {#LinearRegressor.__init__}
 
 Construct a `LinearRegressor` estimator object.
 
@@ -2442,6 +1945,13 @@ Construct a `LinearRegressor` estimator object.
 ##### Returns:
 
   A `LinearRegressor` estimator.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.__repr__()` {#LinearRegressor.__repr__}
+
+
 
 
 - - -
@@ -2494,7 +2004,7 @@ Exports inference graph into given dir. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
 
     Args:
       export_dir: A string containing a directory to write the exported graph
@@ -2770,6 +2280,13 @@ Initializes a TensorFlowRNNClassifier instance.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNClassifier.__repr__()` {#TensorFlowRNNClassifier.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNClassifier.bias_` {#TensorFlowRNNClassifier.bias_}
 
 Returns bias of the rnn layer.
@@ -2815,7 +2332,7 @@ Exports inference graph into given dir. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
 
     Args:
       export_dir: A string containing a directory to write the exported graph
@@ -3149,6 +2666,13 @@ Initializes a TensorFlowRNNRegressor instance.
 
 - - -
 
+#### `tf.contrib.learn.TensorFlowRNNRegressor.__repr__()` {#TensorFlowRNNRegressor.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.TensorFlowRNNRegressor.bias_` {#TensorFlowRNNRegressor.bias_}
 
 Returns bias of the rnn layer.
@@ -3194,7 +2718,7 @@ Exports inference graph into given dir. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
 
     Args:
       export_dir: A string containing a directory to write the exported graph
@@ -3478,6 +3002,13 @@ Perform various training, evaluation, and inference actions on a graph.
 ### `class tf.contrib.learn.NanLossDuringTrainingError` {#NanLossDuringTrainingError}
 
 
+- - -
+
+#### `tf.contrib.learn.NanLossDuringTrainingError.__str__()` {#NanLossDuringTrainingError.__str__}
+
+
+
+
 
 - - -
 
@@ -3490,7 +3021,7 @@ If you're a Google-internal user using command line flags with learn_runner.py
 probably want to use learn_runner.EstimatorConfig instead.
 - - -
 
-#### `tf.contrib.learn.RunConfig.__init__(master=None, task=None, num_ps_replicas=None, num_cores=4, log_device_placement=False, gpu_memory_fraction=1, cluster_spec=None, tf_random_seed=None, save_summary_steps=100, save_checkpoints_secs=600, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000, job_name=None, is_chief=None)` {#RunConfig.__init__}
+#### `tf.contrib.learn.RunConfig.__init__(master=None, task=None, num_ps_replicas=None, num_cores=4, log_device_placement=False, gpu_memory_fraction=1, cluster_spec=None, tf_random_seed=None, save_summary_steps=100, save_checkpoints_secs=600, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000, job_name=None, is_chief=None, evaluation_master='')` {#RunConfig.__init__}
 
 Constructor.
 
@@ -3559,6 +3090,7 @@ Example:
     must exist in the `cluster_spec.jobs`.
 *  <b>`is_chief`</b>: whether or not this task (as identified by the other parameters)
     should be the chief task.
+*  <b>`evaluation_master`</b>: the master on which to perform evaluation.
 
 ##### Raises:
 
@@ -3903,7 +3435,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
 
 - - -
 
-### `tf.contrib.learn.read_batch_features(file_pattern, batch_size, features, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, feature_queue_capacity=100, reader_num_threads=1, parser_num_threads=1, name=None)` {#read_batch_features}
+### `tf.contrib.learn.read_batch_features(file_pattern, batch_size, features, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, feature_queue_capacity=100, reader_num_threads=1, parser_num_threads=1, parse_fn=None, name=None)` {#read_batch_features}
 
 Adds operations to read, queue, batch and parse `Example` protos.
 
@@ -3938,6 +3470,8 @@ All ops are added to the default graph.
 *  <b>`reader_num_threads`</b>: The number of threads to read examples.
 *  <b>`parser_num_threads`</b>: The number of threads to parse examples.
     records to read at once
+*  <b>`parse_fn`</b>: Parsing function, takes `Example` Tensor returns parsed
+    representation. If `None`, no parsing is done.
 *  <b>`name`</b>: Name of resulting op.
 
 ##### Returns:

@@ -101,7 +101,6 @@ PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 "tensorflow/python/platform/default/_resource_loader_test.py:"\
 "tensorflow/python/platform/default/flags_test.py:"\
 "tensorflow/python/platform/default/logging_test.py:"\
-"tensorflow/python/platform/default/gfile_test.py:"\
 "tensorflow/contrib/learn/nonlinear_test.py:"\
 "tensorflow/contrib/learn/python/learn/tests/nonlinear_test.py"
 
@@ -113,8 +112,7 @@ PY_TEST_GPU_BLACKLIST="${PY_TEST_GPU_BLACKLIST}:"\
 
 # Tests that should be run in the exclusive mode (i.e., not parallel with
 # other tests)
-PY_TEST_EXCLUSIVE_LIST="tensorflow/python/platform/gfile_test.py:"\
-"tensorflow/python/platform/default/gfile_test.py"
+PY_TEST_EXCLUSIVE_LIST=""
 
 # Append custom list of exclusive tests
 if [[ ! -z "${TF_BUILD_EXTRA_EXCLUSIVE_INSTALL_TESTS}" ]]; then

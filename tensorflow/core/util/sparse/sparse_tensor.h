@@ -148,7 +148,7 @@ class SparseTensor {
                                          const int num_split);
 
   // Picks out the dimensions according to `dim_indices`.
-  std::vector<int64> PickDims(gtl::ArraySlice<int64> dim_indices) {
+  std::vector<int64> PickDims(gtl::ArraySlice<int64> dim_indices) const {
     std::vector<int64> res(dim_indices.size());
     for (size_t i = 0; i < dim_indices.size(); ++i) {
       res[i] = shape_.dim_size(dim_indices[i]);
@@ -344,7 +344,9 @@ bool SparseTensor::ToDense(Tensor* out, bool initialize) {
 
   std::vector<int64> strides(dims_);
   const auto& out_shape = out->shape();
-  strides[dims_ - 1] = 1;
+  if (dims_ > 0) {
+    strides[dims_ - 1] = 1;
+  }
   for (int d = dims_ - 2; d >= 0; --d) {
     strides[d] = strides[d + 1] * out_shape.dim_size(d + 1);
   }

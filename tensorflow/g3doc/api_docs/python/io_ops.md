@@ -1296,6 +1296,34 @@ Fields:
   dtype: Data type of input.
 - - -
 
+#### `tf.VarLenFeature.__getnewargs__()` {#VarLenFeature.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.VarLenFeature.__getstate__()` {#VarLenFeature.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.VarLenFeature.__new__(_cls, dtype)` {#VarLenFeature.__new__}
+
+Create new instance of VarLenFeature(dtype,)
+
+
+- - -
+
+#### `tf.VarLenFeature.__repr__()` {#VarLenFeature.__repr__}
+
+Return a nicely formatted representation string
+
+
+- - -
+
 #### `tf.VarLenFeature.dtype` {#VarLenFeature.dtype}
 
 Alias for field number 0
@@ -1316,6 +1344,34 @@ Fields:
   dtype: Data type of input.
   default_value: Value to be used if an example is missing this feature. It
       must be compatible with `dtype`.
+- - -
+
+#### `tf.FixedLenFeature.__getnewargs__()` {#FixedLenFeature.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.FixedLenFeature.__getstate__()` {#FixedLenFeature.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.FixedLenFeature.__new__(_cls, shape, dtype, default_value=None)` {#FixedLenFeature.__new__}
+
+Create new instance of FixedLenFeature(shape, dtype, default_value)
+
+
+- - -
+
+#### `tf.FixedLenFeature.__repr__()` {#FixedLenFeature.__repr__}
+
+Return a nicely formatted representation string
+
+
 - - -
 
 #### `tf.FixedLenFeature.default_value` {#FixedLenFeature.default_value}
@@ -1352,6 +1408,34 @@ Fields:
   dtype: Data type of input.
   allow_missing: Whether to allow this feature to be missing from a feature
     list item.
+- - -
+
+#### `tf.FixedLenSequenceFeature.__getnewargs__()` {#FixedLenSequenceFeature.__getnewargs__}
+
+Return self as a plain tuple.  Used by copy and pickle.
+
+
+- - -
+
+#### `tf.FixedLenSequenceFeature.__getstate__()` {#FixedLenSequenceFeature.__getstate__}
+
+Exclude the OrderedDict from pickling
+
+
+- - -
+
+#### `tf.FixedLenSequenceFeature.__new__(_cls, shape, dtype, allow_missing=False)` {#FixedLenSequenceFeature.__new__}
+
+Create new instance of FixedLenSequenceFeature(shape, dtype, allow_missing)
+
+
+- - -
+
+#### `tf.FixedLenSequenceFeature.__repr__()` {#FixedLenSequenceFeature.__repr__}
+
+Return a nicely formatted representation string
+
+
 - - -
 
 #### `tf.FixedLenSequenceFeature.allow_missing` {#FixedLenSequenceFeature.allow_missing}
@@ -2434,7 +2518,7 @@ with shape `[batch_size, x, y, z]`.
 
 If `enqueue_many` is `True`, `tensors` is assumed to represent a batch of
 examples, where the first dimension is indexed by example, and all members of
-`tensor_list` should have the same size in the first dimension.  If an input
+`tensors` should have the same size in the first dimension.  If an input
 tensor has shape `[*, x, y, z]`, the output will have shape `[batch_size, x,
 y, z]`.  The `capacity` argument controls the how long the prefetching is
 allowed to grow the queues.
@@ -2470,11 +2554,11 @@ operations that depend on fixed batch_size would fail.
 
 *  <b>`tensors`</b>: The list or dictionary of tensors to enqueue.
 *  <b>`batch_size`</b>: The new batch size pulled from the queue.
-*  <b>`num_threads`</b>: The number of threads enqueuing `tensor_list`.
+*  <b>`num_threads`</b>: The number of threads enqueuing `tensors`.
 *  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
-*  <b>`enqueue_many`</b>: Whether each tensor in `tensor_list` is a single example.
+*  <b>`enqueue_many`</b>: Whether each tensor in `tensors` is a single example.
 *  <b>`shapes`</b>: (Optional) The shapes for each example.  Defaults to the
-    inferred shapes for `tensor_list`.
+    inferred shapes for `tensors`.
 *  <b>`dynamic_pad`</b>: Boolean.  Allow variable dimensions in input shapes.
     The given dimensions are padded upon dequeue so that tensors within a
     batch have the same shapes.

@@ -20,7 +20,6 @@ import * as scatter from './scatter';
 import {shuffle} from './util';
 import * as vector from './vector';
 
-
 /**
  * A DataSource is our ground truth data. The original parsed data should never
  * be modified, only copied out.
@@ -74,13 +73,10 @@ function hasWebGLSupport(): boolean {
 }
 
 const WEBGL_SUPPORT = hasWebGLSupport();
-const MAX_TSNE_ITERS = 500;
-/**
- * Sampling is used when computing expensive operations such as PCA, or T-SNE.
- */
-const SAMPLE_SIZE = 10000;
+/** Sampling is used when computing expensive operations such as T-SNE. */
+export const SAMPLE_SIZE = 10000;
 /** Number of dimensions to sample when doing approximate PCA. */
-const PCA_SAMPLE_DIM = 100;
+export const PCA_SAMPLE_DIM = 200;
 /** Number of pca components to compute. */
 const NUM_PCA_COMPONENTS = 10;
 /** Reserved metadata attribute used for trace information. */
@@ -108,6 +104,8 @@ export class DataSet implements scatter.DataSet {
   nearestK: number;
   tSNEShouldStop = true;
   dim = [0, 0];
+  hasTSNERun: boolean = false;
+
   private tsne: TSNE;
 
   /**
@@ -125,11 +123,7 @@ export class DataSet implements scatter.DataSet {
         metadata: dp.metadata,
         dataSourceIndex: dp.dataSourceIndex,
         vector: dp.vector.slice(),
-        projectedPoint: {
-          x: 0,
-          y: 0,
-          z: 0,
-        },
+        projectedPoint: [0, 0, 0],
         projections: {}
       });
       indicesSeen.push(false);
@@ -184,7 +178,6 @@ export class DataSet implements scatter.DataSet {
     return traces;
   }
 
-
   /**
    * Computes the centroid, shifts all points to that centroid,
    * then makes them all unit norm.
@@ -219,15 +212,16 @@ export class DataSet implements scatter.DataSet {
     }
     return runAsyncTask('Computing PCA...', () => {
       // Approximate pca vectors by sampling the dimensions.
-      let numDim = Math.min(this.points[0].vector.length, PCA_SAMPLE_DIM);
-      let reducedDimData =
-          vector.projectRandom(this.points.map(d => d.vector), numDim);
+      let dim = this.points[0].vector.length;
+      let vectors = this.points.map(d => d.vector);
+      if (dim > PCA_SAMPLE_DIM) {
+        vectors = vector.projectRandom(vectors, PCA_SAMPLE_DIM);
+      }
       let sigma = numeric.div(
-          numeric.dot(numeric.transpose(reducedDimData), reducedDimData),
-          reducedDimData.length);
+          numeric.dot(numeric.transpose(vectors), vectors), vectors.length);
       let U: any;
       U = numeric.svd(sigma).U;
-      let pcaVectors = reducedDimData.map(vector => {
+      let pcaVectors = vectors.map(vector => {
         let newV: number[] = [];
         for (let d = 0; d < NUM_PCA_COMPONENTS; d++) {
           let dot = 0;
@@ -241,8 +235,9 @@ export class DataSet implements scatter.DataSet {
       for (let j = 0; j < NUM_PCA_COMPONENTS; j++) {
         let label = 'pca-' + j;
         this.projections.add(label);
-        this.points.forEach(
-            (d, i) => { d.projections[label] = pcaVectors[i][j]; });
+        this.points.forEach((d, i) => {
+          d.projections[label] = pcaVectors[i][j];
+        });
       }
     });
   }
@@ -251,6 +246,7 @@ export class DataSet implements scatter.DataSet {
   projectTSNE(
       perplexity: number, learningRate: number, tsneDim: number,
       stepCallback: (iter: number) => void) {
+    this.hasTSNERun = true;
     let k = Math.floor(3 * perplexity);
     let opt = {epsilon: learningRate, perplexity: perplexity, dim: tsneDim};
     this.tsne = new TSNE(opt);
@@ -258,7 +254,7 @@ export class DataSet implements scatter.DataSet {
     let iter = 0;
 
     let step = () => {
-      if (this.tSNEShouldStop || iter > MAX_TSNE_ITERS) {
+      if (this.tSNEShouldStop) {
         stepCallback(null);
         return;
       }
@@ -298,7 +294,6 @@ export class DataSet implements scatter.DataSet {
       runAsyncTask('Initializing T-SNE...', () => {
         this.tsne.initDataDist(this.nearest);
       }).then(step);
-
 
     });
   }

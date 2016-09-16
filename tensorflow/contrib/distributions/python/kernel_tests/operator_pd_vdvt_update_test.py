@@ -64,9 +64,9 @@ class OperatorPDSqrtVDVTUpdateTest(
 
     # If diag is None, then it defaults to the identity matrix, so DV^T = V^T
     if diag is None:
-      diag_vt = tf.batch_matrix_transpose(v)
+      diag_vt = tf.matrix_transpose(v)
     else:
-      diag_mat = tf.batch_matrix_diag(diag)
+      diag_mat = tf.matrix_diag(diag)
       diag_vt = tf.batch_matmul(diag_mat, v, adj_y=True)
 
     v_diag_vt = tf.batch_matmul(v, diag_vt)

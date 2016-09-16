@@ -137,9 +137,9 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
 
   def _add_to_tensor(self, mat):
     # Add to a tensor in O(k) time!
-    mat_diag = array_ops.batch_matrix_diag_part(mat)
+    mat_diag = array_ops.matrix_diag_part(mat)
     new_diag = constant_op.constant(1, dtype=self.dtype) + mat_diag
-    return array_ops.batch_matrix_set_diag(mat, new_diag)
+    return array_ops.matrix_set_diag(mat, new_diag)
 
   def _inv_quadratic_form_on_vectors(self, x):
     self._check_x(x)
@@ -182,7 +182,7 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
 
   def _batch_matmul(self, x, transpose_x=False):
     if transpose_x:
-      x = array_ops.batch_matrix_transpose(x)
+      x = array_ops.matrix_transpose(x)
     self._check_x(x)
     return x
 
@@ -199,7 +199,7 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
 
   def _to_dense(self):
     diag = array_ops.ones(self.vector_shape(), dtype=self.dtype)
-    dense = array_ops.batch_matrix_diag(diag)
+    dense = array_ops.matrix_diag(diag)
     dense.set_shape(self.get_shape())
     return dense
 

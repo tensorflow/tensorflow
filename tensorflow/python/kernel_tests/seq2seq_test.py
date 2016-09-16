@@ -263,6 +263,45 @@ class Seq2SeqTest(tf.test.TestCase):
         res = sess.run([mem])
         self.assertEqual((2, 2), res[0].shape)
 
+  def testDynamicAttentionDecoder1(self):
+    with self.test_session() as sess:
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        cell = tf.nn.rnn_cell.GRUCell(2)
+        inp = tf.constant(0.5, shape=[2, 2, 2])
+        enc_outputs, enc_state = tf.nn.dynamic_rnn(cell, inp, dtype=tf.float32)
+        attn_states = enc_outputs
+        dec_inp = [tf.constant(0.4, shape=[2, 2])] * 3
+        dec, mem = tf.nn.seq2seq.attention_decoder(
+            dec_inp, enc_state,
+            attn_states, cell, output_size=4)
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run(dec)
+        self.assertEqual(3, len(res))
+        self.assertEqual((2, 4), res[0].shape)
+
+        res = sess.run([mem])
+        self.assertEqual((2, 2), res[0].shape)
+
+  def testDynamicAttentionDecoder2(self):
+    with self.test_session() as sess:
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        cell = tf.nn.rnn_cell.GRUCell(2)
+        inp = tf.constant(0.5, shape=[2, 2, 2])
+        enc_outputs, enc_state = tf.nn.dynamic_rnn(cell, inp, dtype=tf.float32)
+        attn_states = enc_outputs
+        dec_inp = [tf.constant(0.4, shape=[2, 2])] * 3
+        dec, mem = tf.nn.seq2seq.attention_decoder(
+            dec_inp, enc_state,
+            attn_states, cell, output_size=4,
+            num_heads=2)
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run(dec)
+        self.assertEqual(3, len(res))
+        self.assertEqual((2, 4), res[0].shape)
+
+        res = sess.run([mem])
+        self.assertEqual((2, 2), res[0].shape)
+
   def testAttentionDecoderStateIsTuple(self):
     with self.test_session() as sess:
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
@@ -288,6 +327,32 @@ class Seq2SeqTest(tf.test.TestCase):
         self.assertEqual((2, 2), res[0][0].h.shape)
         self.assertEqual((2, 2), res[0][1].c.shape)
         self.assertEqual((2, 2), res[0][1].h.shape)
+
+    def testDynamicAttentionDecoderStateIsTuple(self):
+      with self.test_session() as sess:
+        with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+          cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=True)
+          cell = tf.nn.rnn_cell.MultiRNNCell(cells=[cell] * 2,
+                                             state_is_tuple=True)
+          inp = tf.constant(0.5, shape=[2, 2, 2])
+          enc_outputs, enc_state = tf.nn.rnn(cell, inp, dtype=tf.float32)
+          attn_states = tf.concat(1, [tf.reshape(e, [-1, 1, cell.output_size])
+                                      for e in enc_outputs])
+          dec_inp = [tf.constant(0.4, shape=[2, 2])] * 3
+          dec, mem = tf.nn.seq2seq.attention_decoder(
+              dec_inp, enc_state,
+              attn_states, cell, output_size=4)
+          sess.run([tf.initialize_all_variables()])
+          res = sess.run(dec)
+          self.assertEqual(3, len(res))
+          self.assertEqual((2, 4), res[0].shape)
+
+          res = sess.run([mem])
+          self.assertEqual(2, len(res[0]))
+          self.assertEqual((2, 2), res[0][0].c.shape)
+          self.assertEqual((2, 2), res[0][0].h.shape)
+          self.assertEqual((2, 2), res[0][1].c.shape)
+          self.assertEqual((2, 2), res[0][1].h.shape)
 
   def testEmbeddingAttentionDecoder(self):
     with self.test_session() as sess:

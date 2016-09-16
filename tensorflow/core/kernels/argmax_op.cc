@@ -67,7 +67,7 @@ class ArgOp : public OpKernel {
                                 input.shape().DebugString()));
 
     TensorShape output_shape;
-    TensorShape input_shape = input.shape();
+    const TensorShape& input_shape = input.shape();
     for (int d = 0; d < input_dims - 1; ++d) {
       output_shape.AddDim(input_shape.dim_size((d < dim) ? d : d + 1));
     }

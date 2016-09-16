@@ -499,7 +499,7 @@ TEST(GetSignatures, WrongProtoInAny) {
   const auto status = GetSignatures(meta_graph_def, &read_signatures);
   EXPECT_FALSE(status.ok());
   EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("Expected signature Any type_url for: "
+                  .contains("Expected Any type_url for: "
                             "tensorflow.serving.Signatures"))
       << status.error_message();
 }

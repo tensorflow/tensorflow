@@ -212,7 +212,7 @@ export function findKNNofPoint<T>(
   let kMin = new KMin<NearestEntry>(k);
   let a = accessor(dataPoints[pointIndex]);
   for (let i = 0; i < dataPoints.length; ++i) {
-    if (i == pointIndex) {
+    if (i === pointIndex) {
       continue;
     }
     let b = accessor(dataPoints[i]);

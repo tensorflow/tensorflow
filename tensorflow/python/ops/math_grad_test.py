@@ -33,7 +33,7 @@ class SquaredDifferenceOpTest(tf.test.TestCase):
     l = np.random.randn(*left_shape)
     r = np.random.randn(*right_shape)
 
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       left_tensor = tf.constant(l, shape=left_shape)
       right_tensor = tf.constant(r, shape=right_shape)
       output = tf.squared_difference(left_tensor, right_tensor)
@@ -71,7 +71,7 @@ class AbsOpTest(tf.test.TestCase):
       value = tf.convert_to_tensor(self._biasedRandN(shape, bias=bias),
                                    dtype=dtype)
 
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       if dtype in (tf.complex64, tf.complex128):
         output = tf.complex_abs(value)
       else:
@@ -145,19 +145,6 @@ class SegmentMinOrMaxGradientTest(tf.test.TestCase):
     segment_max = tf.segment_max(data, segment_ids)
     with self.test_session():
       error = tf.test.compute_gradient_error(inputs, [1], segment_max, [1])
-      self.assertLess(error, 1e-4)
-
-
-class SqrtGradGradTest(tf.test.TestCase):
-
-  def testSqrtGradGrad(self):
-    inputs_numpy = np.array([0.5, 1.0, 2.0])
-    inputs = tf.constant(inputs_numpy, dtype=tf.float32)
-    sqrt = tf.sqrt(inputs)
-    sqrt_grad = tf.gradients(sqrt, inputs)[0]
-    with self.test_session():
-      error = tf.test.compute_gradient_error(inputs, [3], sqrt_grad, [3],
-                                             x_init_value=inputs_numpy)
       self.assertLess(error, 1e-4)
 
 

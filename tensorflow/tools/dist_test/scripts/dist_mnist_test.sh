@@ -19,9 +19,9 @@
 # grpc pods and service set up.
 #
 # Usage:
-#    dist_mnist_test.sh <worker_grpc_urls>
-#                       [--num-workers <NUM_WORKERS>]
-#                       [--num-parameter-servers <NUM_PARAMETER_SERVERS>]
+#    dist_mnist_test.sh [--ps-hosts <PS_HOSTS>] 
+#                       [--worker-hosts <WORKER_HOSTS>]
+#                       [--num-gpus <NUM_GPUS>]
 #                       [--sync-replicas]
 #
 # --sync-replicas
@@ -29,12 +29,17 @@
 #   (workers) will be aggregated before applied, which avoids stale parameter
 #   updates.
 #
-# worker_grp_url is the list of IP addresses or the GRPC URLs of the worker of
-# the worker sessions, separated with spaces,
-# e.g., "grpc://1.2.3.4:2222 grpc://5.6.7.8:2222"
+# ps-hosts/worker-hosts is the list of IP addresses or the GRPC URLs of the ps/worker of
+# the worker sessions, separated with ","
+# e.g., "localhost:2222,localhost:2223"
 #
-# --num-workers <NUM_WORKERS>:
-#   Specifies the number of workers to run
+# --num-gpus <NUM_GPUS>:
+#   Specifies the number of gpus to use
+#
+# NOTES: 
+# If you have the error "$'\r': command not found"
+# Please run the command below to remove trailing '\r' character that causes the error:
+#   sed -i 's/\r$//' dist_mnist_test.sh 
 
 
 # Configurations
@@ -47,30 +52,27 @@ die() {
 }
 
 if [[ $# == "0" ]]; then
-  die "Usage: $0 <WORKER_GRPC_URLS> [--num-workers <NUM_WORKERS>] "\
-"[--num-parameter-servers <NUM_PARAMETER_SERVERS>] [--sync-replicas]"
+  die "Usage: $0 [--ps-hosts <PS_HOSTS>] [--worker-hosts <WORKER_HOSTS>] "\
+"[--num-gpus <NUM_GPUS>] [--sync-replicas]"
 fi
 
-WORKER_GRPC_URLS=$1
-shift
-
 # Process additional input arguments
-N_WORKERS=2  # Default value
-N_PS=2  # Default value
 SYNC_REPLICAS=0
 
 while true; do
-  if [[ "$1" == "--num-workers" ]]; then
-    N_WORKERS=$2
-  elif [[ "$1" == "--num-parameter-servers" ]]; then
-    N_PS=$2
+  if [[ "$1" == "--ps-hosts" ]]; then
+  	PS_HOSTS=$2
+  elif [[ "$1" == "--worker-hosts" ]]; then
+    WORKER_HOSTS=$2
+  elif [[ "$1" == "--num-gpus" ]]; then
+    N_GPUS=$2
   elif [[ "$1" == "--sync-replicas" ]]; then
     SYNC_REPLICAS="1"
     die "ERROR: --sync-replicas (synchronized-replicas) mode is not fully "\
 "supported by this test yet."
     # TODO(cais): Remove error message once sync-replicas is fully supported
   fi
-  shift
+  shift 2
 
   if [[ -z "$1" ]]; then
     break
@@ -79,21 +81,17 @@ done
 
 SYNC_REPLICAS_FLAG=""
 if [[ ${SYNC_REPLICAS} == "1" ]]; then
-  SYNC_REPLICAS_FLAG="--sync_replicas"
+  SYNC_REPLICAS_FLAG="True"
+else
+  SYNC_REPLICAS_FLAG="False"
 fi
 
-echo "N_WORKERS = ${N_WORKERS}"
-echo "N_PS = ${N_PS}"
+echo "PS_HOSTS = ${PS_HOSTS}"
+echo "WORKER_HOSTS = ${WORKER_HOSTS}"
+echo "NUM_GPUS = ${N_GPUS}"
 echo "SYNC_REPLICAS = ${SYNC_REPLICAS}"
 echo "SYNC_REPLICAS_FLAG = ${SYNC_REPLICAS_FLAG}"
 
-# Verify the validity of the GRPC URLs
-for WORKER_GRPC_URL in ${WORKER_GRPC_URLS}; do
-  if [[ -z $(echo "${WORKER_GRPC_URL}" | \
-       grep -E "^grpc://.+:[0-9]+") ]]; then
-    die "Invalid worker GRPC URL: \"${WORKER_GRPC_URL}\""
-  fi
-done
 
 # Current working directory
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -102,36 +100,69 @@ PY_DIR=$(dirname "${DIR}")/python
 MNIST_REPLICA="${PY_DIR}/mnist_replica.py"
 
 WKR_LOG_PREFIX="/tmp/worker"
+PS_LOG_PREFIX="/tmp/ps"
 
 # First, download the data from a single process, to avoid race-condition
 # during data downloading
-WORKER_GRPC_URL_0=$(echo ${WORKER_GRPC_URLS} | awk '{print $1}')
 
 timeout ${TIMEOUT} python "${MNIST_REPLICA}" \
-    --worker_grpc_url="${WORKER_GRPC_URL_0}" \
-    --worker_index=0 \
-    --num_workers=${N_WORKERS} \
-    --num_parameter_servers=${N_PS} \
-    ${SYNC_REPLICAS_FLAG} \
+    --ps_hosts="${PS_HOSTS}" \
+    --worker_hosts="${WORKER_HOSTS}" \
+    --job_name="worker" \
+    --task_index=0 \
+    --num_gpus=${N_GPUS} \
+    --sync_replicas=${SYNC_REPLICAS_FLAG} \
     --download_only || \
     die "Download-only step of MNIST replica FAILED"
 
+
+# Get N_PS by PS_HOSTS
+N_PS=$(echo ${PS_HOSTS} | awk -F "," '{printf NF}')
+# Replace the delimiter with " "
+PS_ARRAY=$(echo ${PS_HOSTS} | awk -F "," '{for(i=1;i<=NF;i++){printf $i" "}}')
+# Run a number of ps in parallel. In general, we only set 1 ps.
+echo "${N_PS} ps process(es) running in parallel..."
+
+IDX=0
+PS=($PS_HOSTS)
+while true; do
+  timeout ${TIMEOUT} python "${MNIST_REPLICA}" \
+      --ps_hosts="${PS_HOSTS}" \
+      --worker_hosts="${WORKER_HOSTS}" \
+      --job_name="ps" \
+      --task_index=${IDX} \
+      --num_gpus=${N_GPUS} \
+      --sync_replicas=${SYNC_REPLICAS_FLAG} \ | tee "${PS_LOG_PREFIX}${IDX}.log" &
+  echo "PS ${IDX}: "
+  echo "  PS HOST: ${PS_ARRAY[IDX]}"
+  echo "  log file: ${PS_LOG_PREFIX}${IDX}.log"
+
+  ((IDX++))
+  if [[ "${IDX}" == "${N_PS}" ]]; then
+    break
+  fi
+done
+
+
+# Get N_WORKERS by WORKER_HOSTS
+N_WORKERS=$(echo ${WORKER_HOSTS} | awk -F "," '{printf NF}')
+# Replace the delimiter with " "
+WORKER_ARRAY=$(echo ${WORKER_HOSTS} | awk -F "," '{for(i=1;i<=NF;i++){printf $i" "}}')
 # Run a number of workers in parallel
 echo "${N_WORKERS} worker process(es) running in parallel..."
 
 INDICES=""
 IDX=0
-URLS=($WORKER_GRPC_URLS)
 while true; do
-  WORKER_GRPC_URL="${URLS[IDX]}"
   timeout ${TIMEOUT} python "${MNIST_REPLICA}" \
-      --worker_grpc_url="${WORKER_GRPC_URL}" \
-      --worker_index=${IDX} \
-      --num_workers=${N_WORKERS} \
-      --num_parameter_servers=${N_PS} \
-      ${SYNC_REPLICAS_FLAG} 2>&1 | tee "${WKR_LOG_PREFIX}${IDX}.log" &
+      --ps_hosts="${PS_HOSTS}" \
+      --worker_hosts="${WORKER_HOSTS}" \
+      --job_name="worker" \
+      --task_index=${IDX} \
+      --num_gpus=${N_GPUS} \
+      --sync_replicas=${SYNC_REPLICAS_FLAG} \ | tee "${WKR_LOG_PREFIX}${IDX}.log" &
   echo "Worker ${IDX}: "
-  echo "  GRPC URL: ${WORKER_GRPC_URL}"
+  echo "  WORKER HOST: ${WORKER_ARRAY[IDX]}"
   echo "  log file: ${WKR_LOG_PREFIX}${IDX}.log"
 
   INDICES="${INDICES} ${IDX}"
@@ -141,6 +172,9 @@ while true; do
     break
   fi
 done
+
+
+
 
 # Poll until all final validation cross entropy values become available or
 # operation times out

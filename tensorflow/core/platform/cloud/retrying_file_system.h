@@ -59,6 +59,8 @@ class RetryingFileSystem : public FileSystem {
 
   Status RenameFile(const string& src, const string& target) override;
 
+  Status IsDirectory(const string& dir) override;
+
  private:
   std::unique_ptr<FileSystem> base_file_system_;
 

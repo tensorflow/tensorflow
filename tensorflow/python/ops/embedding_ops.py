@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import tf_logging as logging
 
 
 def embedding_lookup(params, ids, partition_strategy="mod", name=None,
@@ -173,7 +174,7 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
 def embedding_lookup_sparse(params, sp_ids, sp_weights,
                             partition_strategy="mod",
                             name=None,
-                            combiner="mean"):
+                            combiner=None):
   """Computes embeddings for the given ids and weights.
 
   This op assumes that there is at least one id for each row in the dense tensor
@@ -233,6 +234,10 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
       None nor SparseTensor.
     ValueError: If combiner is not one of {"mean", "sqrtn", "sum"}.
   """
+  if combiner is None:
+    logging.warn("The default value of combiner will change from \"mean\" "
+                 "to \"sqrtn\" after 2016/11/01.")
+    combiner = "mean"
   if combiner not in ("mean", "sqrtn", "sum"):
     raise ValueError("combiner must be one of 'mean', 'sqrtn' or 'sum'")
   if not isinstance(params, list):

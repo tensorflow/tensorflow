@@ -40,30 +40,20 @@ class MatrixSolveOpTest(tf.test.TestCase):
 
         np_ans = np.linalg.solve(a_np, b)
         with self.test_session():
-          # Test the batch version, which works for ndim >= 2
-          tf_ans = tf.batch_matrix_solve(a, b, adjoint=adjoint)
+          tf_ans = tf.matrix_solve(a, b, adjoint=adjoint)
           out = tf_ans.eval()
           self.assertEqual(tf_ans.get_shape(), out.shape)
           self.assertEqual(np_ans.shape, out.shape)
           self.assertAllClose(np_ans, out)
 
-          if a.ndim == 2:
-            # Test the simple version
-            tf_ans = tf.matrix_solve(a, b, adjoint=adjoint)
-            out = tf_ans.eval()
-            self.assertEqual(out.shape, tf_ans.get_shape())
-            self.assertEqual(np_ans.shape, out.shape)
-            self.assertAllClose(np_ans, out)
-
   def testSolve(self):
-    # 2x2 matrices, 2x1 right-hand side.
     matrix = np.array([[1., 2.], [3., 4.]])
-    rhs0 = np.array([[1.], [1.]])
-    self._verifySolve(matrix, rhs0)
-    # 2x2 matrices, 2xx right-hand sides.
-    matrix = np.array([[1., 2.], [3., 4.]])
-    rhs1 = np.array([[1., 0., 1.], [0., 1., 1.]])
+    # 2x1 right-hand side.
+    rhs1 = np.array([[1.], [1.]])
     self._verifySolve(matrix, rhs1)
+    # 2x3 right-hand sides.
+    rhs3 = np.array([[1., 0., 1.], [0., 1., 1.]])
+    self._verifySolve(matrix, rhs3)
 
   def testSolveBatch(self):
     matrix = np.array([[1., 2.], [3., 4.]])

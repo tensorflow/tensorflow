@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/record_reader.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -42,6 +43,10 @@ PyRecordReader* PyRecordReader::New(const string& filename, uint64 start_offset,
   RecordReaderOptions options;
   if (compression_type_string == "ZLIB") {
     options.compression_type = RecordReaderOptions::ZLIB_COMPRESSION;
+    options.zlib_options = ZlibCompressionOptions::DEFAULT();
+  } else if (compression_type_string == "GZIP") {
+    options.compression_type = RecordReaderOptions::ZLIB_COMPRESSION;
+    options.zlib_options = ZlibCompressionOptions::GZIP();
   }
   reader->reader_ = new RecordReader(reader->file_, options);
   return reader;

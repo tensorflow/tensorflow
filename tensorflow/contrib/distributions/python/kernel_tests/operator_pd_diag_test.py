@@ -80,7 +80,7 @@ class OperatorPDDiagTest(
   """Most tests done in the base classes."""
 
   def _diag_to_matrix(self, diag):
-    return tf.batch_matrix_diag(diag).eval()
+    return tf.matrix_diag(diag).eval()
 
   @property
   def operator_class(self):
@@ -92,7 +92,7 @@ class OperatorPDSqrtDiagTest(
   """Most tests done in the base classes."""
 
   def _diag_to_matrix(self, diag):
-    return tf.batch_matrix_diag(diag**2).eval()
+    return tf.matrix_diag(diag**2).eval()
 
   @property
   def operator_class(self):

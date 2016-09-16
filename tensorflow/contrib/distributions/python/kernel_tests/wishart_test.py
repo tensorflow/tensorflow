@@ -116,15 +116,13 @@ class WishartCholeskyTest(tf.test.TestCase):
       chol_w_chol = distributions.WishartCholesky(
           df, chol(scale), cholesky_input_output_matrices=True)
       self.assertAllClose(chol_x, chol_w_chol.sample_n(1, seed=42).eval())
-      eigen_values = tf.batch_matrix_diag_part(
-          chol_w_chol.sample_n(1000, seed=42))
+      eigen_values = tf.matrix_diag_part(chol_w_chol.sample_n(1000, seed=42))
       np.testing.assert_array_less(0., eigen_values.eval())
 
       full_w_chol = distributions.WishartFull(
           df, scale, cholesky_input_output_matrices=True)
       self.assertAllClose(chol_x, full_w_chol.sample_n(1, seed=42).eval())
-      eigen_values = tf.batch_matrix_diag_part(
-          full_w_chol.sample_n(1000, seed=42))
+      eigen_values = tf.matrix_diag_part(full_w_chol.sample_n(1000, seed=42))
       np.testing.assert_array_less(0., eigen_values.eval())
 
       # Check first and second moments.
@@ -296,7 +294,8 @@ class WishartCholeskyTest(tf.test.TestCase):
       with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
                                    "cannot be less than"):
         chol_w = distributions.WishartCholesky(df=df_deferred,
-                                               scale=chol_scale_deferred)
+                                               scale=chol_scale_deferred,
+                                               validate_args=True)
         sess.run(chol_w.log_prob(np.asarray(x, dtype=np.float32)),
                  feed_dict={df_deferred: 2., chol_scale_deferred: chol_scale})
 

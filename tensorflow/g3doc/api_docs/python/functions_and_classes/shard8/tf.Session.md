@@ -297,3 +297,19 @@ If no resource containers are provided, all containers are reset.
     resetting containers.
 
 
+
+#### Other Methods
+- - -
+
+#### `tf.Session.__enter__()` {#Session.__enter__}
+
+
+
+
+- - -
+
+#### `tf.Session.__exit__(exec_type, exec_value, exec_tb)` {#Session.__exit__}
+
+
+
+

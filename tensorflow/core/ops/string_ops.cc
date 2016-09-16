@@ -95,7 +95,7 @@ REGISTER_OP("ReduceJoin")
     .Attr("keep_dims: bool = false")
     .Attr("separator: string = ''")
     .Output("output: string")
-    .SetShapeFn(shape_inference::ReductionShape)
+    .SetShapeFn(shape_inference::ReductionShapeForReduceJoin)
     .Doc(R"doc(
 Joins a string Tensor across the given dimensions.
 

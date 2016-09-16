@@ -338,4 +338,64 @@ TEST(NNOpsTest, Dilation2DShapeTest) {
   INFER_OK(op, "[1,7,7,2];[2,2,2]", "[d0_0,5,5,d1_2]");
 }
 
+TEST(NNOpsTest, FractionalPool_ShapeFn) {
+  for (const char* op_name : {"FractionalAvgPool", "FractionalMaxPool"}) {
+    ShapeInferenceTestOp op(op_name);
+    auto set_op = [&op, op_name](const std::vector<float>& pooling_ratio) {
+      TF_ASSERT_OK(NodeDefBuilder("test", op_name)
+                       .Input("input", 0, DT_FLOAT)
+                       .Attr("pooling_ratio", pooling_ratio)
+                       .Finalize(&op.node_def));
+    };
+
+    set_op(std::vector<float>{2.0, 1, 1 / 1.5, 1 / 2.0});
+
+    // Rank check.
+    INFER_ERROR("must be rank 4", op, "[?,?,?]");
+
+    // Unknown inputs.
+    INFER_OK(op, "?", "[?,?,?,?];[?];[?]");
+    INFER_OK(op, "[?,?,?,?]", "[?,?,?,?];[?];[?]");
+
+    INFER_OK(op, "[10,20,30,40]", "[5,20,45,80];[20];[45]");
+    INFER_OK(op, "[?,20,30,40]", "[?,20,45,80];[20];[45]");
+    INFER_OK(op, "[10,?,30,40]", "[5,?,45,80];[?];[45]");
+    INFER_OK(op, "[10,20,?,40]", "[5,20,?,80];[20];[?]");
+    INFER_OK(op, "[10,20,30,?]", "[5,20,45,?];[20];[45]");
+
+    // Wrong number of values for pooling_ratio.
+    set_op(std::vector<float>{.5, 1.0, 1.5});
+    INFER_ERROR("pooling_ratio field", op, "?");
+    set_op(std::vector<float>{1, 2, 3, 4, 5});
+    INFER_ERROR("pooling_ratio field", op, "?");
+
+    // Check dim size >= 0.
+    set_op(std::vector<float>{-1, 2, 3, 4});
+    INFER_ERROR("is negative", op, "[1,2,3,4]");
+  }
+}
+
+TEST(NNOpsTest, FractionalMaxPoolGrad) {
+  ShapeInferenceTestOp op("FractionalMaxPoolGrad");
+
+  // Note that the shape fn only uses input[0] for computation.
+  INFER_ERROR("must be rank 4", op, "[?,?,?];?;?;?;?");
+  INFER_OK(op, "?;?;?;?;?", "[?,?,?,?]");
+  INFER_OK(op, "[?,?,3,4];?;?;?;?", "in0");
+}
+
+TEST(NNOpsTest, FractionalAvgPoolGrad) {
+  ShapeInferenceTestOp op("FractionalAvgPoolGrad");
+  op.input_tensors.resize(1);
+
+  // With no input shape tensor, returns unknown of rank 4.
+  INFER_OK(op, "?;?;?;?", "[?,?,?,?]");
+
+  // When input tensor is known, its values determine output shape.
+  std::vector<int32> shape{1, 2, 3, 4};
+  Tensor shape_t = test::AsTensor<int32>(shape);
+  op.input_tensors[0] = &shape_t;
+  INFER_OK(op, "[5];?;?;?", "[1,2,3,4]");
+}
+
 }  // end namespace tensorflow

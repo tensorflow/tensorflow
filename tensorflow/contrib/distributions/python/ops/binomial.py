@@ -88,8 +88,8 @@ class Binomial(distribution.Distribution):
                n,
                logits=None,
                p=None,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Binomial"):
     """Initialize a batch of Binomial distributions.
 
@@ -105,10 +105,10 @@ class Binomial(distribution.Distribution):
       p:  Positive floating point tensor with shape broadcastable to
         `[N1,..., Nm]` `m >= 0`, `p in [0, 1]`. Each entry represents the
         probability of success for independent Binomial distributions.
-      validate_args: Whether to assert valid values for parameters `n` and `p`,
-        and `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
-        guaranteed.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert valid values
+        for parameters `n`, `p`, and `x` in `prob` and `log_prob`.
+        If `False` and inputs are invalid, correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -139,6 +139,7 @@ class Binomial(distribution.Distribution):
             dtype=self._p.dtype,
             parameters={"n": self._n, "p": self._p, "logits": self._logits},
             is_continuous=False,
+            is_reparameterized=False,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             name=ns)

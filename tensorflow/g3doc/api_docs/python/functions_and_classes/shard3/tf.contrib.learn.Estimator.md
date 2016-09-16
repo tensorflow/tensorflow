@@ -1,7 +1,7 @@
 Estimator class is the basic TensorFlow model trainer/evaluator.
 - - -
 
-#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None, params=None, weight_column_name=None)` {#Estimator.__init__}
+#### `tf.contrib.learn.Estimator.__init__(model_fn=None, model_dir=None, config=None, params=None, feature_engineering_fn=None)` {#Estimator.__init__}
 
 Constructs an Estimator instance.
 
@@ -16,7 +16,7 @@ Constructs an Estimator instance.
       * `(features, targets, mode) -> (predictions, loss, train_op)`
       * `(features, targets, mode, params) -> (predictions, loss, train_op)`
 
-  Where
+    Where
 
       * `features` are single `Tensor` or `dict` of `Tensor`s
              (depending on data passed to `fit`),
@@ -38,14 +38,23 @@ Constructs an Estimator instance.
 *  <b>`config`</b>: Configuration object.
 *  <b>`params`</b>: `dict` of hyper parameters that will be passed into `model_fn`.
           Keys are names of parameters, values are basic python types.
-*  <b>`weight_column_name`</b>: A string defining feature column name representing
-    weights. It is used to down weight or boost examples during training. It
-    will be multiplied by the loss of the example.
+*  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
+                          targets which are the output of `input_fn` and
+                          returns features and targets which will be fed
+                          into `model_fn`. Please check `model_fn` for
+                          a definition of features and targets.
 
 ##### Raises:
 
 
 *  <b>`ValueError`</b>: parameters of `model_fn` don't match `params`.
+
+
+- - -
+
+#### `tf.contrib.learn.Estimator.__repr__()` {#Estimator.__repr__}
+
+
 
 
 - - -
@@ -77,7 +86,7 @@ Exports inference graph into given dir. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
 
     Args:
       export_dir: A string containing a directory to write the exported graph

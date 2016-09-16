@@ -30,7 +30,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import histogram_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
@@ -108,12 +107,12 @@ def _check_labels_and_scores(boolean_labels, scores, check_shape):
           boolean_labels.dtype)
 
     if check_shape:
-      labels_rank_1 = logging_ops.Assert(
+      labels_rank_1 = control_flow_ops.Assert(
           math_ops.equal(1, array_ops.rank(boolean_labels)),
           ['Argument boolean_labels should have rank 1.  Found: ',
            boolean_labels.name, array_ops.shape(boolean_labels)])
 
-      scores_rank_1 = logging_ops.Assert(
+      scores_rank_1 = control_flow_ops.Assert(
           math_ops.equal(1, array_ops.rank(scores)),
           ['Argument scores should have rank 1.  Found: ', scores.name,
            array_ops.shape(scores)])

@@ -28,6 +28,7 @@ filegroup(
 tf_cc_test(
     name = "quantized_matmul_op_for_hexagon_test",
     size = "small",
+    srcs = ["quantized_matmul_op_for_hexagon_test.cc"],
     deps = [
         "//tensorflow/contrib/quantization:cc_array_ops",
         "//tensorflow/contrib/quantization:cc_math_ops",

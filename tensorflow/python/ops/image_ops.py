@@ -53,7 +53,7 @@ Example:
 ```python
 # Decode a JPG image and resize it to 299 by 299 using default method.
 image = tf.image.decode_jpeg(...)
-resized_image = tf.image.resize_images(image, 299, 299)
+resized_image = tf.image.resize_images(image, [299, 299])
 ```
 
 @@resize_images
@@ -165,7 +165,6 @@ from __future__ import print_function
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -173,10 +172,10 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_nn_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -186,14 +185,20 @@ from tensorflow.python.ops.gen_image_ops import *
 from tensorflow.python.util.all_util import make_all
 
 
-ops.NoGradient('RandomCrop')
-ops.NoGradient('RGBToHSV')
-ops.NoGradient('HSVToRGB')
-ops.NoGradient('DrawBoundingBoxes')
-ops.NoGradient('SampleDistortedBoundingBox')
+ops.NotDifferentiable('RandomCrop')
+# TODO(b/31222613): This op may be differentiable, and there may be
+# latent bugs here.
+ops.NotDifferentiable('RGBToHSV')
+# TODO(b/31222613): This op may be differentiable, and there may be
+# latent bugs here.
+ops.NotDifferentiable('HSVToRGB')
+ops.NotDifferentiable('DrawBoundingBoxes')
+ops.NotDifferentiable('SampleDistortedBoundingBox')
 # TODO(bsteiner): Implement the gradient function for extract_glimpse
-ops.NoGradient('ExtractGlimpse')
-ops.NoGradient('NonMaxSuppression')
+# TODO(b/31222613): This op may be differentiable, and there may be
+# latent bugs here.
+ops.NotDifferentiable('ExtractGlimpse')
+ops.NotDifferentiable('NonMaxSuppression')
 
 
 def _assert(cond, ex_type, msg):
@@ -212,7 +217,7 @@ def _assert(cond, ex_type, msg):
     A list, containing at most one assert op.
   """
   if _is_tensor(cond):
-    return [logging_ops.Assert(cond, [msg])]
+    return [control_flow_ops.Assert(cond, [msg])]
   else:
     if not cond:
       raise ex_type(msg)
@@ -398,31 +403,40 @@ def flip_up_down(image):
   return array_ops.reverse(image, [True, False, False])
 
 
-def rot90(image, k=1):
+def rot90(image, k=1, name=None):
   """Rotate an image counter-clockwise by 90 degrees.
 
   Args:
-    image: A 3-D tensor of shape `[height, width, channels].`
-    k: Number of times the image is rotated by 90 degrees.
+    image: A 3-D tensor of shape `[height, width, channels]`.
+    k: A scalar integer. The number of times the image is rotated by 90 degrees.
+    name: A name for this operation (optional).
 
   Returns:
     A rotated 3-D tensor of the same type and shape as `image`.
   """
-  image = ops.convert_to_tensor(image, name='image')
-  _Check3DImage(image, require_static=False)
-  k %= 4
-  if k == 0:
-    return image
-  elif k == 1:
-    return array_ops.transpose(
-        array_ops.reverse(image, [False, True, False]),
-        [1, 0, 2], name='rot90')
-  elif k == 2:
-    return array_ops.reverse(image, [True, True, False], name='rot90')
-  elif k == 3:
-    return array_ops.reverse(
-        array_ops.transpose(image, [1, 0, 2], name='rot90'),
-        [False, True, False])
+  with ops.name_scope(name, 'rot90', [image, k]) as scope:
+    image = ops.convert_to_tensor(image, name='image')
+    _Check3DImage(image, require_static=False)
+    k = ops.convert_to_tensor(k, dtype=dtypes.int32, name='k')
+    k.get_shape().assert_has_rank(0)
+    k = math_ops.mod(k, 4)
+
+    def _rot90():
+      return array_ops.transpose(array_ops.reverse(image, [False, True, False]),
+                                 [1, 0, 2])
+    def _rot180():
+      return array_ops.reverse(image, [True, True, False])
+    def _rot270():
+      return array_ops.reverse(array_ops.transpose(image, [1, 0, 2]),
+                               [False, True, False])
+    cases = [(math_ops.equal(k, 1), _rot90),
+             (math_ops.equal(k, 2), _rot180),
+             (math_ops.equal(k, 3), _rot270)]
+
+    ret = control_flow_ops.case(cases, default=lambda: image, exclusive=True,
+                                name=scope)
+    ret.set_shape([None, None, image.get_shape()[2]])
+    return ret
 
 
 def transpose_image(image):
@@ -715,14 +729,13 @@ class ResizeMethod(object):
 
 
 def resize_images(images,
-                  new_height,
-                  new_width,
+                  size,
                   method=ResizeMethod.BILINEAR,
                   align_corners=False):
-  """Resize `images` to `new_width`, `new_height` using the specified `method`.
+  """Resize `images` to `size` using the specified `method`.
 
   Resized images will be distorted if their original aspect ratio is not
-  the same as `new_width`, `new_height`.  To avoid distortions see
+  the same as `size`.  To avoid distortions see
   [`resize_image_with_crop_or_pad`](#resize_image_with_crop_or_pad).
 
   `method` can be one of:
@@ -738,8 +751,8 @@ def resize_images(images,
   Args:
     images: 4-D Tensor of shape `[batch, height, width, channels]` or
             3-D Tensor of shape `[height, width, channels]`.
-    new_height: integer.
-    new_width: integer.
+    size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
+          new size for the images.
     method: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
     align_corners: bool. If true, exactly align all 4 corners of the input and
                    output. Defaults to `false`.
@@ -747,6 +760,7 @@ def resize_images(images,
   Raises:
     ValueError: if the shape of `images` is incompatible with the
       shape arguments to this function
+    ValueError: if `size` has invalid shape or type.
     ValueError: if an unsupported resize method is specified.
 
   Returns:
@@ -766,22 +780,16 @@ def resize_images(images,
 
   _, height, width, depth = _ImageDimensions(images)
 
-  # Handle tensor-valued sizes as well as Python integers.
   try:
-    new_width = ops.convert_to_tensor(new_width, dtypes.int32,
-                                      name='new_width')
-    new_width.get_shape().assert_has_rank(0)
+    size = ops.convert_to_tensor(size, dtypes.int32, name='size')
   except (TypeError, ValueError):
-    raise ValueError('new_width must be a scalar integer')
-  try:
-    new_height = ops.convert_to_tensor(new_height, dtypes.int32,
-                                       name='new_height')
-    new_height.get_shape().assert_has_rank(0)
-  except (TypeError, ValueError):
-    raise ValueError('new_height must be a scalar integer')
-
-  new_width_const = tensor_util.constant_value(new_width)
-  new_height_const = tensor_util.constant_value(new_height)
+    raise ValueError('\'size\' must be a 1-D int32 Tensor')
+  if not size.get_shape().is_compatible_with([2]):
+    raise ValueError('\'size\' must be a 1-D Tensor of 2 elements: '
+                     'new_height, new_width')
+  size_const_as_shape = tensor_util.constant_value_as_shape(size)
+  new_height_const = size_const_as_shape[0].value
+  new_width_const = size_const_as_shape[1].value
 
   # If we can determine that the height and width will be unmodified by this
   # transformation, we avoid performing the resize.
@@ -792,23 +800,21 @@ def resize_images(images,
       images = array_ops.squeeze(images, squeeze_dims=[0])
     return images
 
-  new_size = array_ops.pack([new_height, new_width])
-
   if method == ResizeMethod.BILINEAR:
     images = gen_image_ops.resize_bilinear(images,
-                                           new_size,
+                                           size,
                                            align_corners=align_corners)
   elif method == ResizeMethod.NEAREST_NEIGHBOR:
     images = gen_image_ops.resize_nearest_neighbor(images,
-                                                   new_size,
+                                                   size,
                                                    align_corners=align_corners)
   elif method == ResizeMethod.BICUBIC:
     images = gen_image_ops.resize_bicubic(images,
-                                          new_size,
+                                          size,
                                           align_corners=align_corners)
   elif method == ResizeMethod.AREA:
     images = gen_image_ops.resize_area(images,
-                                       new_size,
+                                       size,
                                        align_corners=align_corners)
   else:
     raise ValueError('Resize method is not implemented.')
@@ -999,14 +1005,9 @@ def adjust_contrast(images, contrast_factor):
     return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 
 
-ops.RegisterShape('AdjustContrast')(
-    common_shapes.unchanged_shape_with_rank_at_least(3))
-ops.RegisterShape('AdjustContrastv2')(
-    common_shapes.unchanged_shape_with_rank_at_least(3))
-ops.RegisterShape('DrawBoundingBoxes')(
-    common_shapes.unchanged_shape_with_rank_at_least(3))
-
-
+ops.RegisterShape('AdjustContrast')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('AdjustContrastv2')(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape('DrawBoundingBoxes')(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape('SampleDistortedBoundingBox')(common_shapes.call_cpp_shape_fn)
 
 
@@ -1015,26 +1016,9 @@ ops.RegisterShape('SampleDistortedBoundingBox')(common_shapes.call_cpp_shape_fn)
 @ops.RegisterShape('ResizeBicubic')
 @ops.RegisterShape('ResizeArea')
 def _ResizeShape(op):
-  """Shape function for the resize_bilinear and resize_nearest_neighbor ops."""
-  input_shape = op.inputs[0].get_shape().with_rank(4)
-  unused_size_shape = op.inputs[1].get_shape().merge_with([2])
-  size = tensor_util.constant_value(op.inputs[1])
-  if size is not None:
-    height = size[0]
-    width = size[1]
-  else:
-    height = None
-    width = None
-  return [tensor_shape.TensorShape(
-      [input_shape[0], height, width, input_shape[3]])]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
-@ops.RegisterShape('DecodeGif')
-def _DecodeGifShape(op):
-  """Shape function for decode gif."""
-  unused_input_shape = op.inputs[0].get_shape().merge_with(
-      tensor_shape.scalar())
-  return [tensor_shape.TensorShape([None, None, None, 3])]
-
+ops.RegisterShape('DecodeGif')(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape('DecodeJpeg')(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape('DecodePng')(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape('EncodeJpeg')(common_shapes.call_cpp_shape_fn)
@@ -1334,58 +1318,20 @@ def adjust_saturation(image, saturation_factor, name=None):
 # TODO(irving): Remove once the C++ RandomCrop op is deprecated.
 @ops.RegisterShape('RandomCrop')
 def _random_crop_shape(op):
-  """Shape function for RandomCrop op."""
-  image_shape = op.inputs[0].get_shape().with_rank(3)
-  if image_shape.ndims is not None:
-    channels = image_shape[-1].value
-  else:
-    channels = None
-
-  size = tensor_util.constant_value(op.inputs[1])
-  if size is None:
-    output_shape = [None, None, channels]
-  elif size.shape == (2,):
-    output_shape = [size[0], size[1], channels]
-  else:
-    raise ValueError('Input "size" must be a vector of two elements.')
-
-  return [tensor_shape.TensorShape(output_shape)]
+  return common_shapes.call_cpp_shape_fn(
+      op, input_tensors_needed=[1])
 
 
 @ops.RegisterShape('ExtractGlimpse')
 def _extract_glimpse_shape(op):
-  """Shape function for ExtractGlimpse op."""
-  input_shape = op.inputs[0].get_shape().with_rank(4)
-  unused_size_shape = op.inputs[1].get_shape().merge_with(
-      tensor_shape.vector(2))
-  offsets_shape = op.inputs[2].get_shape().merge_with(
-      input_shape[:1].concatenate([2]))
-  offsets_shape = offsets_shape
-  size_value = tensor_util.constant_value(op.inputs[1])
-  if size_value is not None:
-    height = size_value[0]
-    width = size_value[1]
-  else:
-    height = None
-    width = None
-  return [tensor_shape.TensorShape(
-      [input_shape[0], height, width, input_shape[3]])]
+  return common_shapes.call_cpp_shape_fn(
+      op, input_tensors_needed=[1])
 
 
 @ops.RegisterShape('CropAndResize')
 def _crop_and_resize_shape(op):
-  """Shape function for the CropAndResize op."""
-  image_shape = op.inputs[0].get_shape().with_rank(4)
-  box_shape = op.inputs[1].get_shape().with_rank(2)
-  crop_size = tensor_util.constant_value(op.inputs[3])
-  if crop_size is not None:
-    crop_height = crop_size[0]
-    crop_width = crop_size[1]
-  else:
-    crop_height = None
-    crop_width = None
-  return [tensor_shape.TensorShape(
-      [box_shape[0], crop_height, crop_width, image_shape[3]])]
+  return common_shapes.call_cpp_shape_fn(
+      op, input_tensors_needed=[3])
 
 
 ops.RegisterShape('NonMaxSuppression')(common_shapes.call_cpp_shape_fn)

@@ -115,13 +115,17 @@ class Experiment(object):
       The trained estimator.
     """
     start = time.time()
+
+    # Start the server, if needed. It's important to start the server before
+    # we (optionally) sleep for the case where no device_filters are set.
+    # Otherwise, the servers will wait to connect to each other before starting
+    # to train. We might as well start as soon as we can.
+    if self._estimator.config.cluster_spec:
+      self._start_server()
+
     if delay_secs is None:
       task_id = self._estimator.config.task or 0
       delay_secs = min(60, task_id * 5)
-
-    # Start the server, if needed.
-    if self._estimator.config.cluster_spec:
-      self._start_server()
 
     if delay_secs:
       elapsed_secs = time.time() - start

@@ -49,7 +49,8 @@ class RunConfig(object):
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
                job_name=None,
-               is_chief=None):
+               is_chief=None,
+               evaluation_master=''):
     """Constructor.
 
     If set to None, `master`, `task`, `num_ps_replicas`, `cluster_spec`,
@@ -115,6 +116,7 @@ class RunConfig(object):
         must exist in the `cluster_spec.jobs`.
       is_chief: whether or not this task (as identified by the other parameters)
         should be the chief task.
+      evaluation_master: the master on which to perform evaluation.
 
     Raises:
       ValueError: if num_ps_replicas and cluster_spec are set (cluster_spec
@@ -145,10 +147,16 @@ class RunConfig(object):
 
     # Set is_chief.
     self._is_chief = is_chief
-    # When the TF_CONFIG environment variable is set, we can set the default
-    # of is_chief to 0 when job_name is "master" and task is 0.
-    if (self._is_chief is None) and config:
-      self._is_chief = (self._job_name == 'master' and self.task == 0)
+    if self._is_chief is None:
+      if not self._job_name:
+        self._is_chief = (self.task == 0)
+      elif config:
+        # When the TF_CONFIG environment variable is set, we can set the
+        # default of is_chief to 0 when job_name is "master" and task is 0.
+        self._is_chief = (self._job_name == 'master' and self.task == 0)
+      else:
+        # Legacy behavior is that is_chief is None if task == 0.
+        self._is_chief = (self._job_name == 'worker' and self.task == 0)
 
     # Enforce that is_chief is only applicable to workers or masters
     # (Cloud ML) with task == 0.
@@ -168,6 +176,8 @@ class RunConfig(object):
       raise ValueError(
           'Master task 0 must be chief. Please check is_chief, job_name, and '
           'task, which may have been set in TF_CONFIG environment variable.')
+
+    self.evaluation_master = evaluation_master or ''
 
     gpu_options = GPUOptions(
         per_process_gpu_memory_fraction=gpu_memory_fraction)
@@ -224,7 +234,7 @@ def _get_master(cluster_spec, job_name, task_index):
           '%s\n\n'
           'Note that these value may be coming from the TF_CONFIG environment '
           'variable.' % (task_index, job_name, cluster_spec))
-    return addresses[task_index]
+    return 'grpc://' + addresses[task_index]
 
   # For backwards compatibility, we return empty string if job_name was
   # not set (job_name did not previously exist).

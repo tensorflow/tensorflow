@@ -73,7 +73,7 @@ class BetaTest(tf.test.TestCase):
     a = [[1., 2, 3]]
     b = [[2., 4, 3]]
     with self.test_session():
-      dist = tf.contrib.distributions.Beta(a, b)
+      dist = tf.contrib.distributions.Beta(a, b, validate_args=True)
       dist.pdf([.1, .3, .6]).eval()
       dist.pdf([.2, .3, .5]).eval()
       # Either condition can trigger.
@@ -183,13 +183,13 @@ class BetaTest(tf.test.TestCase):
     with tf.Session():
       a = np.array([1., 2, 3])
       b = np.array([2., 4, 1.2])
-      dist = tf.contrib.distributions.Beta(a, b)
+      dist = tf.contrib.distributions.Beta(a, b, allow_nan_stats=False)
       with self.assertRaisesOpError("Condition x < y.*"):
         dist.mode().eval()
 
       a = np.array([2., 2, 3])
       b = np.array([1., 4, 1.2])
-      dist = tf.contrib.distributions.Beta(a, b)
+      dist = tf.contrib.distributions.Beta(a, b, allow_nan_stats=False)
       with self.assertRaisesOpError("Condition x < y.*"):
         dist.mode().eval()
 
@@ -285,6 +285,13 @@ class BetaTest(tf.test.TestCase):
         self.assertAllEqual(np.ones(shape, dtype=np.bool), 0. <= x)
         self.assertAllEqual(np.ones(shape, dtype=np.bool), 1. >= x)
         self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=1e-4, atol=0)
+
+  def testBetaWithSoftplusAB(self):
+    with self.test_session():
+      a, b = -4.2, -9.1
+      dist = tf.contrib.distributions.BetaWithSoftplusAB(a, b)
+      self.assertAllClose(tf.nn.softplus(a).eval(), dist.a.eval())
+      self.assertAllClose(tf.nn.softplus(b).eval(), dist.b.eval())
 
 
 if __name__ == "__main__":

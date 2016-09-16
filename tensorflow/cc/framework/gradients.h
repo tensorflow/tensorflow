@@ -37,6 +37,13 @@ Status AddSymbolicGradients(const Scope& scope,
                             const std::vector<ops::Output>& grad_inputs,
                             std::vector<ops::Output>* grad_outputs);
 
+// Returns a sentinel Output that represents 'no gradient' (i.e. no gradient
+// flows along some graph edge during backpropagation).
+// Can be returned in 'grad_outputs' by an invocation of 'AddSymbolicGradients'
+// (note that gradient flow through an Output can be stopped through the use of
+// the StopGradient node).
+ops::Output NoGradient();
+
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_GRADIENTS_H_

@@ -1194,30 +1194,6 @@ and update ops when the list of metrics is long. For example:
   names to update ops.
 
 
-- - -
-
-### `tf.contrib.metrics.run_metric(metric, predictions, targets, weights=None)` {#run_metric}
-
-Runs a single metric.
-
-This function runs metric on given predictions and targets. weights will be
-used if metric contains 'weights' in its argument.
-
-##### Args:
-
-
-*  <b>`metric`</b>: A function that evaluates targets given predictions.
-*  <b>`predictions`</b>: A `Tensor` of arbitrary shape.
-*  <b>`targets`</b>: A `Tensor` of the same shape as `predictions`.
-*  <b>`weights`</b>: A set of weights that can be used in metric function to compute
-    weighted result.
-
-##### Returns:
-
-
-*  <b>`result`</b>: result returned by metric function.
-
-
 
 ## Set `Ops`
 
@@ -1289,9 +1265,9 @@ Compute number of unique elements along last dimension of `a`.
 
 ##### Returns:
 
-  For `a` ranked `n`, this is a `Tensor` with rank `n-1`, and the same 1st
-  `n-1` dimensions as `a`. Each value is the number of unique elements in
-  the corresponding `[0...n-1]` dimension of `a`.
+  `int32` `Tensor` of set sizes. For `a` ranked `n`, this is a `Tensor` with
+  rank `n-1`, and the same 1st `n-1` dimensions as `a`. Each value is the
+  number of unique elements in the corresponding `[0...n-1]` dimension of `a`.
 
 ##### Raises:
 

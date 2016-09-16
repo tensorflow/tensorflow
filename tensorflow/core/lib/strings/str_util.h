@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
 #define TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
 
+#include <functional>
 #include <string>
 #include <vector>
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -80,9 +81,24 @@ string Uppercase(StringPiece s);
 // set of characters that can be used as word boundaries.
 void TitlecaseString(string* s, StringPiece delimiters);
 
+// Converts a time interval as double to a human readable
+// string. For example:
+//   0.001       -> "1 ms"
+//   10.0        -> "10 s"
+//   933120.0    -> "10.8 days"
+//   39420000.0  -> "1.25 years"
+//   -10         -> "-10 s"
+string HumanReadableElapsedTime(double seconds);
+
 // Join functionality
 template <typename T>
 string Join(const T& s, const char* sep);
+
+// A variant of Join where for each element of "s", f(&dest_string, elem)
+// is invoked (f is often constructed with a lambda of the form:
+//   [](string* result, ElemType elem)
+template <typename T, typename Formatter>
+string Join(const T& s, const char* sep, Formatter f);
 
 struct AllowEmpty {
   bool operator()(StringPiece sp) const { return true; }
@@ -115,6 +131,30 @@ string Join(const T& s, const char* sep) {
   bool first = true;
   for (const auto& x : s) {
     tensorflow::strings::StrAppend(&result, (first ? "" : sep), x);
+    first = false;
+  }
+  return result;
+}
+
+template <typename T>
+class Formatter {
+ public:
+  Formatter(std::function<void(string*, T)> f) : f_(f) {}
+  void operator()(string* out, const T& t) { f_(out, t); }
+
+ private:
+  std::function<void(string*, T)> f_;
+};
+
+template <typename T, typename Formatter>
+string Join(const T& s, const char* sep, Formatter f) {
+  string result;
+  bool first = true;
+  for (const auto& x : s) {
+    if (!first) {
+      result.append(sep);
+    }
+    f(&result, x);
     first = false;
   }
   return result;

@@ -447,9 +447,9 @@ class Word2Vec(object):
     correct = 0
 
     try:
-        total = self._analogy_questions.shape[0]
+      total = self._analogy_questions.shape[0]
     except AttributeError as e:
-        raise AttributeError("Need to read analogy questions.")
+      raise AttributeError("Need to read analogy questions.")
 
     start = 0
     while start < total:
@@ -479,8 +479,9 @@ class Word2Vec(object):
     idx = self._predict(wid)
     for c in [self._id2word[i] for i in idx[0, :]]:
       if c not in [w0, w1, w2]:
-        return c
-    return "unknown"
+        print(c)
+        break
+    print("unknown")
 
   def nearby(self, words, num=20):
     """Prints out nearby words given a list of words."""
