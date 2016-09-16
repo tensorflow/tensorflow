@@ -22,6 +22,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_DNN_H_
 #define TENSORFLOW_STREAM_EXECUTOR_DNN_H_
 
+#include <functional>
 #include <limits>
 #include <memory>
 
@@ -775,13 +776,87 @@ enum class ElementwiseOperation { kAdd, kMultiply };
 string ElementwiseOperationString(ElementwiseOperation op);
 
 // Suite of operations typically used for implementing Deep/Convolutional Neural
-// Nets.
+// Nets. Note: A false return value of an operation indicates the
+// implementation is not available.
 class DnnSupport {
  public:
   DnnSupport() {}
   virtual ~DnnSupport() {}
 
   virtual port::Status Init() = 0;
+
+  // Performs a single-precision forward batch normalization operation onto
+  // the stream.
+  //
+  // Arguments:
+  //  stream: borrowed pointer to the stream that the batch normalization
+  //    operation should be enqueued onto.
+  //  x: input data.
+  //  scale: scaling parameters.
+  //  offset: offset parameters.
+  //  estimated_mean: population mean estimated during training.
+  //    Used for inference only; empty for training.
+  //  estimated_variance: population variance estimated during traning,
+  //    used for inference only; empty for training.
+  //  x_desc: dimensions of the input data, which is the same as the dimensions
+  //    of the output.
+  //  scale_offset_desc: dimensions of scale and offset.
+  //  epsilon: a small floating point number added to the variance of x.
+  //  y: output data.
+  //  batch_mean: batch mean, to be used to compute the running mean.
+  //  batch_variance: batch variance, to be used to compute
+  //    the running variance.
+  //  reserve_space_1: saved mean, to be reused in the backward gradient
+  //    computation.
+  //  reserve_space_2: saved variance, to be reused in the backward gradient
+  //    computation.
+  //  is_training: Set to true for training, false for inference.
+  //  var_to_inv_var: a function to convert the variance to inverted variance
+  //    for cuDNN v4 forward inference.
+  //  inv_var_to_var: a function to convert the inverted variance to
+  //    variance for cuDNN v4 forward training, to be used for TensorFlow
+  //    to calculate the running variance.
+  virtual bool DoBatchNormalizationForward(
+      Stream* stream, const DeviceMemory<float>& x,
+      const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+      const DeviceMemory<float>& estimated_mean,
+      const DeviceMemory<float>& estimated_variance,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      DeviceMemory<float>* y, DeviceMemory<float>* batch_mean,
+      DeviceMemory<float>* batch_var, DeviceMemory<float>* reserve_space_1,
+      DeviceMemory<float>* reserve_space_2, bool is_training,
+      std::function<const DeviceMemory<float>&()> var_to_inv_var,
+      std::function<void()> inv_var_to_var) {
+    return false;
+  }
+
+  // Performs a single-precision backward batch normalization gradient
+  // computation operation onto the stream.
+  //
+  // Arguments:
+  //  stream: borrowed pointer to the stream that the batch normalization
+  //    gradient computation operation should be enqueued onto.
+  //  y_backprop: gradient with regard to output y.
+  //  x: input data.
+  //  scale: scaling parameters.
+  //  x_desc: dimensions of the input data, which is the same as the dimensions
+  //    of the output.
+  //  scale_offset_desc: dimensions of scale and offset.
+  //  epsilon: a small floating point number added to the variance of x.
+  //  x_backprop: gradient with respect to input x.
+  //  scale_backprop: gradient with respect to scale.
+  //  offset_backprop: gradient with respect to offset.
+  virtual bool DoBatchNormalizationBackward(
+      Stream* stream, const DeviceMemory<float>& y_backprop,
+      const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
+      const DeviceMemory<float>& mean, const DeviceMemory<float>& variance,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
+      DeviceMemory<float>* offset_backprop) {
+    return false;
+  }
 
   // Enqueues a single-precision convolution operation onto the stream.
   //

@@ -112,7 +112,7 @@ def optimize_loss(loss,
       update_ops = set(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
     # Make sure update ops are ran before computing loss.
     if update_ops:
-      loss = control_flow_ops.with_dependencies(update_ops, loss)
+      loss = control_flow_ops.with_dependencies(list(update_ops), loss)
 
     # Moving average of the loss with decay.
     # TODO(b/30439864): moving_average_decay should be removed.

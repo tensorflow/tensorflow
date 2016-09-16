@@ -14,15 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/http_request.h"
-#include <dlfcn.h>
-#include <stdio.h>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
@@ -40,147 +37,127 @@ constexpr char kCertsPath[] = "/etc/ssl/certs";
 // Set to 1 to enable verbose debug output from curl.
 constexpr uint64 kVerboseOutput = 0;
 
+// Timeout for the whole request. Set only to prevent hanging indefinitely.
+constexpr uint32 kRequestTimeoutSeconds = 3600;  // 1 hour
+// Timeout for the connection phase.
+constexpr uint32 kConnectTimeoutSeconds = 120;  // 2 minutes
+
 /// An implementation that dynamically loads libcurl and forwards calls to it.
 class LibCurlProxy : public LibCurl {
  public:
-  ~LibCurlProxy() {
-    if (dll_handle_) {
-      dlclose(dll_handle_);
-    }
-  }
+  static LibCurlProxy* Load() {
+    static LibCurlProxy* libcurl = []() -> LibCurlProxy* {
+      std::unique_ptr<LibCurlProxy> libcurl(new LibCurlProxy);
+      Status status = libcurl->LoadAndBind();
+      if (!status.ok()) {
+        return nullptr;
+      }
+      libcurl->curl_global_init_(CURL_GLOBAL_ALL);
+      return libcurl.release();
+    }();
 
-  Status MaybeLoadDll() override {
-    if (dll_handle_) {
-      return Status::OK();
-    }
-    // This may have been linked statically; if curl_easy_init is in the
-    // current binary, no need to search for a dynamic version.
-    dll_handle_ = load_dll(nullptr);
-    if (!dll_handle_) {
-      dll_handle_ = load_dll(kCurlLibLinux);
-    }
-    if (!dll_handle_) {
-      dll_handle_ = load_dll(kCurlLibMac);
-    }
-    if (!dll_handle_) {
-      return errors::FailedPrecondition(strings::StrCat(
-          "Could not initialize the libcurl library. Please make sure that "
-          "libcurl is installed in the OS or statically linked to the "
-          "TensorFlow binary."));
-    }
-    curl_global_init_(CURL_GLOBAL_ALL);
-    return Status::OK();
+    return libcurl;
   }
 
   CURL* curl_easy_init() override {
-    CHECK(dll_handle_);
     return curl_easy_init_();
   }
 
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             uint64 param) override {
-    CHECK(dll_handle_);
     return curl_easy_setopt_(curl, option, param);
   }
 
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             const char* param) override {
-    CHECK(dll_handle_);
     return curl_easy_setopt_(curl, option, param);
   }
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             void* param) override {
-    CHECK(dll_handle_);
     return curl_easy_setopt_(curl, option, param);
   }
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             size_t (*param)(void*, size_t, size_t,
                                             FILE*)) override {
-    CHECK(dll_handle_);
     return curl_easy_setopt_(curl, option, param);
   }
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                             size_t (*param)(const void*, size_t, size_t,
                                             void*)) override {
-    CHECK(dll_handle_);
     return curl_easy_setopt_(curl, option, param);
   }
 
   CURLcode curl_easy_perform(CURL* curl) override {
-    CHECK(dll_handle_);
     return curl_easy_perform_(curl);
   }
 
   CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
                              uint64* value) override {
-    CHECK(dll_handle_);
     return curl_easy_getinfo_(curl, info, value);
   }
   CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
                              double* value) override {
-    CHECK(dll_handle_);
     return curl_easy_getinfo_(curl, info, value);
   }
   void curl_easy_cleanup(CURL* curl) override {
-    CHECK(dll_handle_);
     return curl_easy_cleanup_(curl);
   }
   char* curl_easy_escape(CURL* curl, const char* str, int length) override {
-    CHECK(dll_handle_);
     return curl_easy_escape_(curl, str, length);
   }
 
   curl_slist* curl_slist_append(curl_slist* list, const char* str) override {
-    CHECK(dll_handle_);
     return curl_slist_append_(list, str);
   }
 
   void curl_slist_free_all(curl_slist* list) override {
-    CHECK(dll_handle_);
     return curl_slist_free_all_(list);
   }
 
   void curl_free(void* p) override {
-    CHECK(dll_handle_);
     curl_free_(p);
   }
 
  private:
-  // Loads the dynamic library and binds the required methods.
-  // Returns the library handle in case of success or nullptr otherwise.
-  // 'name' can be nullptr.
-  void* load_dll(const char* name) {
-    void* handle = nullptr;
-    handle = dlopen(name, RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE);
-    if (!handle) {
-      return nullptr;
-    }
+  Status LoadAndBind() {
+    auto TryLoadAndBind = [this](const char* name, void** handle) -> Status {
+      TF_RETURN_IF_ERROR(Env::Default()->LoadLibrary(name, handle));
+#define BIND_CURL_FUNC(function)                             \
+  do {                                                       \
+    void* symbol_ptr = nullptr;                              \
+    TF_RETURN_IF_ERROR(Env::Default()->GetSymbolFromLibrary( \
+        *handle, #function, &symbol_ptr));                   \
+    *reinterpret_cast<void**>(&(function##_)) = symbol_ptr;  \
+  } while (0)
 
-#define BIND_CURL_FUNC(function) \
-  *reinterpret_cast<void**>(&(function##_)) = dlsym(handle, #function)
-
-    BIND_CURL_FUNC(curl_global_init);
-    BIND_CURL_FUNC(curl_easy_init);
-    BIND_CURL_FUNC(curl_easy_setopt);
-    BIND_CURL_FUNC(curl_easy_perform);
-    BIND_CURL_FUNC(curl_easy_getinfo);
-    BIND_CURL_FUNC(curl_slist_append);
-    BIND_CURL_FUNC(curl_slist_free_all);
-    BIND_CURL_FUNC(curl_easy_cleanup);
-    BIND_CURL_FUNC(curl_easy_escape);
-    BIND_CURL_FUNC(curl_free);
-
+      BIND_CURL_FUNC(curl_global_init);
+      BIND_CURL_FUNC(curl_easy_init);
+      BIND_CURL_FUNC(curl_easy_setopt);
+      BIND_CURL_FUNC(curl_easy_perform);
+      BIND_CURL_FUNC(curl_easy_getinfo);
+      BIND_CURL_FUNC(curl_slist_append);
+      BIND_CURL_FUNC(curl_slist_free_all);
+      BIND_CURL_FUNC(curl_easy_cleanup);
+      BIND_CURL_FUNC(curl_easy_escape);
+      BIND_CURL_FUNC(curl_free);
 #undef BIND_CURL_FUNC
+      return Status::OK();
+    };
 
-    if (curl_global_init_ == nullptr) {
-      dlerror();  // Clear dlerror before attempting to open libraries.
-      dlclose(handle);
-      return nullptr;
+    // This may have been linked statically; if curl_easy_init is in the
+    // current binary, no need to search for a dynamic version.
+    Status status = TryLoadAndBind(nullptr, &handle_);
+    if (status.ok()) {
+      return status;
     }
-    return handle;
+    status = TryLoadAndBind(kCurlLibLinux, &handle_);
+    if (status.ok()) {
+      return status;
+    }
+    return TryLoadAndBind(kCurlLibMac, &handle_);
   }
 
-  void* dll_handle_ = nullptr;
+  void* handle_ = nullptr;
   CURLcode (*curl_global_init_)(int64) = nullptr;
   CURL* (*curl_easy_init_)(void) = nullptr;
   CURLcode (*curl_easy_setopt_)(CURL*, CURLoption, ...) = nullptr;
@@ -195,11 +172,10 @@ class LibCurlProxy : public LibCurl {
 };
 }  // namespace
 
-HttpRequest::HttpRequest()
-    : HttpRequest(std::unique_ptr<LibCurl>(new LibCurlProxy)) {}
+HttpRequest::HttpRequest() : HttpRequest(LibCurlProxy::Load()) {}
 
-HttpRequest::HttpRequest(std::unique_ptr<LibCurl> libcurl)
-    : libcurl_(std::move(libcurl)),
+HttpRequest::HttpRequest(LibCurl* libcurl)
+    : libcurl_(libcurl),
       default_response_buffer_(new char[CURL_MAX_WRITE_SIZE]) {}
 
 HttpRequest::~HttpRequest() {
@@ -219,9 +195,11 @@ Status HttpRequest::Init() {
     return errors::FailedPrecondition("Already initialized.");
   }
   if (!libcurl_) {
-    return errors::FailedPrecondition("libcurl proxy cannot be nullptr.");
+    return errors::FailedPrecondition(
+        "Could not initialize the libcurl library. Please make sure that "
+        "libcurl is installed in the OS or statically linked to the "
+        "TensorFlow binary.");
   }
-  TF_RETURN_IF_ERROR(libcurl_->MaybeLoadDll());
   curl_ = libcurl_->curl_easy_init();
   if (!curl_) {
     return errors::Internal("Couldn't initialize a curl session.");
@@ -232,6 +210,11 @@ Status HttpRequest::Init() {
   libcurl_->curl_easy_setopt(
       curl_, CURLOPT_USERAGENT,
       strings::StrCat("TensorFlow/", TF_VERSION_STRING).c_str());
+  // Do not use signals for timeouts - does not work in multi-threaded programs.
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_TIMEOUT, kRequestTimeoutSeconds);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT,
+                             kConnectTimeoutSeconds);
 
   // If response buffer is not set, libcurl will print results to stdout,
   // so we always set it.
