@@ -35,21 +35,6 @@ Dataset = collections.namedtuple('Dataset', ['data', 'target'])
 Datasets = collections.namedtuple('Datasets', ['train', 'validation', 'test'])
 
 
-@deprecated('2016-09-15', 'Please use load_csv_{with|without}_header instead.')
-def load_csv(filename, target_dtype, target_column=-1, has_header=True):
-  """Load dataset from CSV file."""
-  if has_header:
-    return load_csv_with_header(filename=filename,
-                                target_dtype=target_dtype,
-                                features_dtype=np.float64,
-                                target_column=target_column)
-  else:
-    return load_csv_without_header(filename=filename,
-                                   target_dtype=target_dtype,
-                                   features_dtype=np.float64,
-                                   target_column=target_column)
-
-
 def load_csv_with_header(filename,
                          target_dtype,
                          features_dtype,
