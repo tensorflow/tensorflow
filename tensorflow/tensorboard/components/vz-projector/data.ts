@@ -208,7 +208,7 @@ export class DataSet implements scatter.DataSet {
   /** Projects the dataset along the top 10 principal components. */
   projectPCA(): Promise<void> {
     if (this.projections.has('pca-0')) {
-      return Promise.resolve<void>();
+      return Promise.resolve();
     }
     return runAsyncTask('Computing PCA...', () => {
       // Approximate pca vectors by sampling the dimensions.
