@@ -279,6 +279,14 @@ bool ConsumePrefix(StringPiece* s, StringPiece expected) {
   return false;
 }
 
+bool ConsumeSuffix(StringPiece* s, StringPiece expected) {
+  if (s->ends_with(expected)) {
+    s->remove_suffix(expected.size());
+    return true;
+  }
+  return false;
+}
+
 bool ConsumeLeadingDigits(StringPiece* s, uint64* val) {
   const char* p = s->data();
   const char* limit = p + s->size();

@@ -71,6 +71,10 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val);
 // Otherwise, return false.
 bool ConsumePrefix(StringPiece* s, StringPiece expected);
 
+// If "*s" ends with "expected", remove it and return true.
+// Otherwise, return false.
+bool ConsumeSuffix(StringPiece* s, StringPiece expected);
+
 // Return lower-cased version of s.
 string Lowercase(StringPiece s);
 
