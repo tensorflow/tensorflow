@@ -220,14 +220,11 @@ def _BiasAddGradGrad(op, received_grad):
     data_format = op.get_attr("data_format")
   except ValueError:
     data_format = None
-    
-  #zeros = array_ops.zeros_like(op.inputs[0])
-  #return gen_nn_ops._bias_add(zeros, received_grad, data_format=data_format)
   
   shape = array_ops.shape(op.inputs[0])
   rank = array_ops.rank(op.inputs[0])
   bias_shape = array_ops.shape(received_grad)
-
+  
   if data_format is "NCHW":
     expanded_shape = array_ops.concat(
       0,
@@ -241,9 +238,7 @@ def _BiasAddGradGrad(op, received_grad):
     tile_mults = array_ops.concat(0, [shape[:-1], [1]])
   
   expanded_grad = array_ops.reshape(received_grad, expanded_shape)
-  tiled_grad = array_ops.tile(expanded_grad, tile_mults)
-  
-  return tiled_grad
+  return array_ops.tile(expanded_grad, tile_mults)
   
 
 @ops.RegisterGradient("BiasAddV1")
