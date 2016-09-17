@@ -148,13 +148,30 @@ class ExperimentTest(tf.test.TestCase):
     # The server should not have started because there was no ClusterSpec.
     self.assertFalse(mock_server.called)
 
-  def test_train_raises_if_job_name_is_missing(self):
-    no_job_name = tf.contrib.learn.RunConfig(
+  @tf.test.mock.patch('tensorflow.python.training.server_lib.Server')  # pylint: disable=line-too-long
+  def test_train_server_does_not_start_with_empty_master(self, mock_server):
+    config = tf.contrib.learn.RunConfig(
         cluster_spec=tf.train.ClusterSpec(
             {'ps': ['host1:2222', 'host2:2222'],
              'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
         ),
+        master='',)
+    ex = tf.contrib.learn.Experiment(TestEstimator(config),
+                                     train_input_fn='train_input',
+                                     eval_input_fn='eval_input')
+    ex.train()
+
+    # The server should not have started because master was the empty string.
+    self.assertFalse(mock_server.called)
+
+  def test_train_raises_if_job_name_is_missing(self):
+    no_job_name = tf.contrib.learn.RunConfig(
+        cluster_spec=tf.train.ClusterSpec(
+            {'ps': ['host1:2222', 'host2:2222'],
+             'worker': ['host3:2222', 'host4:2222', 'host5:2222']},
+        ),
         task=1,
+        master='host3:2222',  # Normally selected by job_name
     )
     with self.assertRaises(ValueError):
       ex = tf.contrib.learn.Experiment(TestEstimator(no_job_name),

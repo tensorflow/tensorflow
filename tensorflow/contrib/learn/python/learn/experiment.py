@@ -120,7 +120,7 @@ class Experiment(object):
     # we (optionally) sleep for the case where no device_filters are set.
     # Otherwise, the servers will wait to connect to each other before starting
     # to train. We might as well start as soon as we can.
-    if self._estimator.config.cluster_spec:
+    if self._estimator.config.cluster_spec and self._estimator.config.master:
       self._start_server()
 
     if delay_secs is None:
