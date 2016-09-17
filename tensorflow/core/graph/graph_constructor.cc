@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/optimizer_cse.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -337,17 +336,6 @@ void GraphConstructor::Convert() {
 
   if (status_->ok()) {
     FixupSourceAndSinkEdges(g_);
-
-    if (opts_.optimizer_do_cse) {
-      if (!back_edges.empty()) {
-        VLOG(1) << "Not doing CSE. We need to figure out how to handle "
-                << "loops in the CSE phase.";
-      } else {
-        VLOG(1) << "Starting CSE: graph of " << CountNodes(g_) << " nodes";
-        OptimizeCSE(g_, opts_.cse_consider_function);
-        VLOG(1) << "Finished CSE: graph of " << CountNodes(g_) << " nodes";
-      }
-    }
   }
 }
 
@@ -365,19 +353,6 @@ bool GraphConstructor::TypeValidateEdge(const Edge* edge) {
   return true;
 }
 
-static void SetDoCSE(const OptimizerOptions& optimizer_opt, bool force,
-                     GraphConstructorOptions* graph_opt) {
-  graph_opt->optimizer_do_cse =
-      force || optimizer_opt.do_common_subexpression_elimination();
-}
-
-static void SetDoConstantFolding(const OptimizerOptions& optimizer_opt,
-                                 bool force,
-                                 GraphConstructorOptions* graph_opt) {
-  graph_opt->optimizer_do_constant_folding =
-      force || optimizer_opt.do_constant_folding();
-}
-
 }  // namespace
 
 // ----------------------------------------------------------------------------
@@ -385,20 +360,6 @@ static void SetDoConstantFolding(const OptimizerOptions& optimizer_opt,
 // ----------------------------------------------------------------------------
 
 GraphConstructorOptions::GraphConstructorOptions() {}
-
-GraphConstructorOptions::GraphConstructorOptions(const OptimizerOptions& opts) {
-  // Set the individually specified options first.
-  SetDoCSE(opts, false, this);
-  SetDoConstantFolding(opts, false, this);
-
-  // Set options that the level signifies
-  if (opts.opt_level() == OptimizerOptions::L0) {
-    // No optimizations performed.
-  } else if (opts.opt_level() == OptimizerOptions::L1) {
-    SetDoCSE(opts, true, this);
-    SetDoConstantFolding(opts, true, this);
-  }
-}
 
 // ----------------------------------------------------------------------------
 // ConvertGraphDefToGraph
