@@ -376,8 +376,9 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
    */
   private makeLabels(
       labeledPoints: number[], labelAccessor: (index: number) => string,
-      cameraPos: THREE.Vector3, cameraTarget: THREE.Vector3,
-      nearestPointZ: number, farthestPointZ: number) {
+      highlightedPoints: number[], cameraPos: THREE.Vector3,
+      cameraTarget: THREE.Vector3, nearestPointZ: number,
+      farthestPointZ: number) {
     if (this.points == null) {
       return;
     }
@@ -469,9 +470,9 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
       }
     }
 
-    if (this.highlightedPoints.length > 0) {
+    if (highlightedPoints.length > 0) {
       // Force-draw the first favored point with increased font size.
-      let index = this.highlightedPoints[0];
+      let index = highlightedPoints[0];
       let point = this.dataSet_.points[index];
       this.gc.font = (FONT_SIZE * dpr * 1.7).toString() + 'px roboto';
       let coords = new THREE.Vector3(
@@ -543,7 +544,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     this.geometry.addAttribute('isHighlight', highlights);
 
     this.colorSprites(null);
-    this.highlightSprites(null);
+    this.highlightSprites(null, null);
   }
 
   private resetTraces() {
@@ -576,7 +577,8 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     colors.needsUpdate = true;
   }
 
-  private highlightSprites(highlightStroke: (index: number) => string) {
+  private highlightSprites(
+      highlightedPoints: number[], highlightStroke: (index: number) => string) {
     if (this.geometry == null) {
       return;
     }
@@ -585,12 +587,12 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     for (let i = 0; i < this.dataSet_.points.length; i++) {
       highlights.setX(i, 0.0);
     }
-    if (highlightStroke) {
+    if (highlightedPoints && highlightStroke) {
       let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
       // Traverse in reverse so that the point we are hovering over
       // (highlightedPoints[0]) is painted last.
-      for (let i = this.highlightedPoints.length - 1; i >= 0; i--) {
-        let assocPoint = this.highlightedPoints[i];
+      for (let i = highlightedPoints.length - 1; i >= 0; i--) {
+        let assocPoint = highlightedPoints[i];
         let color = new THREE.Color(highlightStroke(i));
         // Fill colors array (single array of numPoints*3 elements,
         // triples of which refer to the rgb values of a single vertex).
@@ -716,7 +718,7 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
     scene.fog = this.fog;
     this.addSprites(scene);
     this.colorSprites(null);
-    this.highlightSprites(null);
+    this.highlightSprites(null, null);
     this.addTraces(scene);
   }
 
@@ -746,13 +748,13 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
   protected onRender(
       camera: THREE.Camera, cameraTarget: THREE.Vector3,
       colorAccessor: (index: number) => string, labeledPoints: number[],
-      labelAccessor: (index: number) => string,
+      labelAccessor: (index: number) => string, highlightedPoints: number[],
       highlightStroke: (index: number) => string) {
     if (!this.geometry) {
       return;
     }
     this.colorSprites(colorAccessor);
-    this.highlightSprites(highlightStroke);
+    this.highlightSprites(highlightedPoints, highlightStroke);
 
     let nearFarPoints = this.getNearFarPoints(camera.position, cameraTarget);
     this.setFogDistances(nearFarPoints[0], nearFarPoints[1]);
@@ -766,8 +768,8 @@ export class ScatterWebGLPointsCanvasLabels extends ScatterWebGL {
 
     if (this.image == null) {
       this.makeLabels(
-          labeledPoints, labelAccessor, camera.position, cameraTarget,
-          nearFarPoints[0], nearFarPoints[1]);
+          labeledPoints, labelAccessor, highlightedPoints, camera.position,
+          cameraTarget, nearFarPoints[0], nearFarPoints[1]);
     }
   }
 }

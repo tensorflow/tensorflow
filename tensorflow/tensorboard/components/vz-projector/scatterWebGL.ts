@@ -70,9 +70,6 @@ const TAR_2D = {
  * independent of how a 3D scatter plot is actually rendered.
  */
 export abstract class ScatterWebGL implements Scatter {
-  /** Holds the indexes of the points to be labeled. */
-  protected highlightedPoints: number[] = [];
-
   protected abstract onRecreateScene(
       scene: THREE.Scene, sceneIs3D: boolean, backgroundColor: number);
   protected abstract removeAllFromScene(scene: THREE.Scene);
@@ -82,7 +79,7 @@ export abstract class ScatterWebGL implements Scatter {
   protected abstract onRender(
       camera: THREE.Camera, cameraTarget: THREE.Vector3,
       colorAccessor: (index: number) => string, labeledPoints: number[],
-      labelAccessor: (index: number) => string,
+      labelAccessor: (index: number) => string, highlightedPoints: number[],
       highlightStroke: (index: number) => string);
   protected abstract onUpdate();
   protected abstract onResize(newWidth: number, newHeight: number);
@@ -91,11 +88,12 @@ export abstract class ScatterWebGL implements Scatter {
   private dataSet: DataSet;
   private containerNode: HTMLElement;
 
+  private highlightedPoints: number[] = [];
+  private highlightStroke: (index: number) => string;
   private labeledPoints: number[] = [];
   private favorLabels: (i: number) => boolean;
   private labelAccessor: (index: number) => string;
   private colorAccessor: (index: number) => string;
-  private highlightStroke: (index: number) => string;
   private onHoverListeners: OnHoverListener[] = [];
   private onSelectionListeners: OnSelectionListener[] = [];
   private lazySusanAnimation: number;
@@ -638,7 +636,8 @@ export abstract class ScatterWebGL implements Scatter {
     this.light.position.set(lightPos.x, lightPos.y, lightPos.z);
     this.onRender(
         this.perspCamera, this.cameraControls.target, this.colorAccessor,
-        this.labeledPoints, this.labelAccessor, this.highlightStroke);
+        this.labeledPoints, this.labelAccessor, this.highlightedPoints,
+        this.highlightStroke);
     this.renderer.render(this.scene, this.perspCamera);
   }
 
