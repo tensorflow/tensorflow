@@ -66,6 +66,21 @@ def optimize_loss(loss,
                   summaries=None):
   """Given loss and parameters for optimizer, returns a training op.
 
+  Various ways of passing optimizers, include:
+    - string, name of the optimizer like 'SGD', 'Adam', see OPTIMIZER_CLS_NAMES
+        for full list. E.g. `optimize_loss(..., optimizer='Adam')`.
+    - function, takes learning rate `Tensor` as argument and must return
+        `Optimizer` instance. E.g. `optimize_loss(...,
+        optimizer=lambda lr: tf.train.MomentumOptimizer(lr, momentum=0.5))`.
+      Alternatively, if `learning_rate` is `None`, the function takes no
+      arguments. E.g. `optimize_loss(..., learning_rate=None,
+        optimizer=lambda: tf.train.MomentumOptimizer(0.5, momentum=0.5))`.
+    - class, subclass of `Optimizer` that takes only one required argument -
+        learning rate, such as AdamOptimizer, AdagradOptimizer.
+        E.g. `optimize_loss(..., optimizer=tf.train.AdagradOptimizer)`.
+    - object, instance of subclass of `Optimizer`.
+        E.g., `optimizer_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
+
   Args:
     loss: Tensor, 0 dimensional.
     global_step: Tensor, step counter for each update.
@@ -75,8 +90,9 @@ def optimize_loss(loss,
                  'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
                class should be sub-class of tf.Optimizer that implements
                  `compute_gradients` and `apply_gradients` functions.
-               optimizer instance should be instantion of tf.Optimizer sub-class
-                 and have `compute_gradients` and `apply_gradients` functions.
+               optimizer instance should be instantion of `tf.Optimizer`
+                 sub-class and have `compute_gradients` and `apply_gradients`
+                 functions.
     gradient_noise_scale: float or None, adds 0-mean normal noise scaled by this
                           value.
     gradient_multipliers: dict of variables or variable names to floats.
@@ -127,40 +143,57 @@ def optimize_loss(loss,
       loss = control_flow_ops.with_dependencies([loss_averages_op], loss)
 
     # Learning rate variable, with possible decay.
-    if (isinstance(learning_rate, ops.Tensor)
-        and learning_rate.get_shape().ndims == 0):
-      lr = learning_rate
-    elif isinstance(learning_rate, float):
-      lr = vs.get_variable(
-          "learning_rate", [], trainable=False,
-          initializer=init_ops.constant_initializer(learning_rate))
-    else:
-      raise ValueError("Learning rate should be 0d Tensor or float. "
-                       "Got %s of type %s" % (
-                           str(learning_rate), str(type(learning_rate))))
+    lr = None
+    if learning_rate is not None:
+      if (isinstance(learning_rate, ops.Tensor)
+          and learning_rate.get_shape().ndims == 0):
+        lr = learning_rate
+      elif isinstance(learning_rate, float):
+        lr = vs.get_variable(
+            "learning_rate", [], trainable=False,
+            initializer=init_ops.constant_initializer(learning_rate))
+      else:
+        raise ValueError("Learning rate should be 0d Tensor or float. "
+                         "Got %s of type %s" % (
+                             str(learning_rate), str(type(learning_rate))))
     if summaries is None:
       summaries = ["loss", "learning_rate"]
-    if learning_rate_decay_fn is not None:
+    if learning_rate is not None and learning_rate_decay_fn is not None:
       lr = learning_rate_decay_fn(lr, global_step)
       if "learning_rate" in summaries:
         logging_ops.scalar_summary("learning_rate", lr)
 
     # Create optimizer, given specified parameters.
     if isinstance(optimizer, six.string_types):
+      if lr is None:
+        raise ValueError("Learning rate is None, but should be specified if "
+                         "optimizer is string (%s)." % optimizer)
       if optimizer not in OPTIMIZER_CLS_NAMES:
         raise ValueError(
             "Optimizer name should be one of [%s], you provided %s."
             % (", ".join(OPTIMIZER_CLS_NAMES), optimizer))
       opt = OPTIMIZER_CLS_NAMES[optimizer](learning_rate=lr)
-    elif isinstance(optimizer, type) and issubclass(optimizer,
-                                                    optimizer_.Optimizer):
+    elif (isinstance(optimizer, type)
+          and issubclass(optimizer, optimizer_.Optimizer)):
+      if lr is None:
+        raise ValueError("Learning rate is None, but should be specified if "
+                         "optimizer is class (%s)." % optimizer)
       opt = optimizer(learning_rate=lr)
     elif isinstance(optimizer, optimizer_.Optimizer):
       opt = optimizer
+    elif callable(optimizer):
+      if learning_rate is not None:
+        opt = optimizer(lr)
+      else:
+        opt = optimizer()
+      if not isinstance(opt, optimizer_.Optimizer):
+        raise ValueError("Unrecognized optimizer: function should return "
+                         "subclass of Optimizer. Got %s." % str(opt))
     else:
       raise ValueError("Unrecognized optimizer: should be string, "
-                       "subclass of Optimizer or instance of "
-                       "subclass of Optimizer. Got %s." % str(optimizer))
+                       "subclass of Optimizer, instance of "
+                       "subclass of Optimizer or function with one argument. "
+                       "Got %s." % str(optimizer))
 
     # All trainable variables, if specific variables are not specified.
     if variables is None:
