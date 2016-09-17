@@ -172,7 +172,7 @@ You can then do any preprocessing of these examples you want. This would be any
 processing that doesn't depend on trainable parameters. Examples include
 normalization of your data, picking a random slice, adding noise or distortions,
 etc.  See
-[`tensorflow/models/image/cifar10/cifar10.py`](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10.py)
+[`tensorflow/models/image/cifar10/cifar10_input.py`](https://www.tensorflow.org/code/tensorflow/models/image/cifar10/cifar10_input.py)
 for an example.
 
 ### Batching
@@ -253,7 +253,7 @@ summary to the graph that indicates how full the example queue is. If you have
 enough reading threads, that summary will stay above zero.  You can
 [view your summaries as training progresses using TensorBoard](../../how_tos/summaries_and_tensorboard/index.md).
 
-### Creating threads to prefetch using `QueueRunner` objects 
+### Creating threads to prefetch using `QueueRunner` objects
 
 The short version: many of the `tf.train` functions listed above add
 [`QueueRunner`](../../api_docs/python/train.md#QueueRunner) objects to your
