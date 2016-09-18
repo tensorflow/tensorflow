@@ -2665,6 +2665,13 @@ class Graph(object):
     """
     self._check_not_finalized()
     with self._lock:
+      # if node does not have collections attr, create the key
+      if not value._variable.op.node_def.attr.__contains__('collections'):
+          value._variable.op.node_def.attr['collections'].list\
+                  .CopyFrom(attr_value_pb2.AttrValue.ListValue())
+      # then add collection to attr map if not exists
+      if not any([coll==name for coll in value._variable.op.node_def.attr['collections'].list.s]):
+         value._variable.op.node_def.attr['collections'].list.s.append(name)
       if name not in self._collections:
         self._collections[name] = [value]
       else:
