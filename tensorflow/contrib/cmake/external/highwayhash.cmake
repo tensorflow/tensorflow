@@ -12,9 +12,9 @@ set(highwayhash_STATIC_LIBRARIES
 )
 set(highwayhash_INCLUDES ${highwayhash_BUILD})
 
-set(highwayhash_HEADERS
-    "${highwayhash_BUILD}/highwayhash/*.h"
-)
+file(GLOB highwayhash_HEADERS RELATIVE
+     "${highwayhash_BUILD}/highwayhash"
+     "${highwayhash_BUILD}/highwayhash/*.h")
 
 ExternalProject_Add(highwayhash
     PREFIX highwayhash
@@ -37,5 +37,5 @@ add_custom_target(highwayhash_copy_headers_to_destination
 
 foreach(header_file ${highwayhash_HEADERS})
     add_custom_command(TARGET highwayhash_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${highwayhash_INCLUDE_DIR}/highwayhash)
+    COMMAND ${CMAKE_COMMAND} -E copy ${highwayhash_BUILD}/highwayhash/${header_file} ${highwayhash_INCLUDE_DIR}/highwayhash)
 endforeach()
