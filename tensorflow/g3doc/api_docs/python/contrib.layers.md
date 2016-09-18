@@ -866,7 +866,7 @@ Optimize weights given a loss.
 
 - - -
 
-### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, moving_average_decay=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None)` {#optimize_loss}
+### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None)` {#optimize_loss}
 
 Given loss and parameters for optimizer, returns a training op.
 
@@ -905,8 +905,6 @@ Various ways of passing optimizers, include:
                         If present, gradients for specified
                         variables will be multiplied by given constant.
 *  <b>`clip_gradients`</b>: float or `None`, clips gradients by this value.
-*  <b>`moving_average_decay`</b>: Deprecated. float or None, takes into account previous
-                        loss to make learning smoother due to outliers.
 *  <b>`learning_rate_decay_fn`</b>: function, takes `learning_rate` and `global_step`
                           `Tensor`s, returns `Tensor`.
                           Can be used to implement any learning rate decay
