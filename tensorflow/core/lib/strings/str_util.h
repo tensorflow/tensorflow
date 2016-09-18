@@ -85,15 +85,6 @@ string Uppercase(StringPiece s);
 // set of characters that can be used as word boundaries.
 void TitlecaseString(string* s, StringPiece delimiters);
 
-// Converts a time interval as double to a human readable
-// string. For example:
-//   0.001       -> "1 ms"
-//   10.0        -> "10 s"
-//   933120.0    -> "10.8 days"
-//   39420000.0  -> "1.25 years"
-//   -10         -> "-10 s"
-string HumanReadableElapsedTime(double seconds);
-
 // Join functionality
 template <typename T>
 string Join(const T& s, const char* sep);
