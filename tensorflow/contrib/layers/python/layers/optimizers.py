@@ -30,7 +30,6 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as vars_
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as optimizer_
 from tensorflow.python.training import training as train
 
@@ -58,7 +57,6 @@ def optimize_loss(loss,
                   gradient_noise_scale=None,
                   gradient_multipliers=None,
                   clip_gradients=None,
-                  moving_average_decay=None,
                   learning_rate_decay_fn=None,
                   update_ops=None,
                   variables=None,
@@ -99,8 +97,6 @@ def optimize_loss(loss,
                           If present, gradients for specified
                           variables will be multiplied by given constant.
     clip_gradients: float or `None`, clips gradients by this value.
-    moving_average_decay: Deprecated. float or None, takes into account previous
-                          loss to make learning smoother due to outliers.
     learning_rate_decay_fn: function, takes `learning_rate` and `global_step`
                             `Tensor`s, returns `Tensor`.
                             Can be used to implement any learning rate decay
@@ -129,18 +125,6 @@ def optimize_loss(loss,
     # Make sure update ops are ran before computing loss.
     if update_ops:
       loss = control_flow_ops.with_dependencies(list(update_ops), loss)
-
-    # Moving average of the loss with decay.
-    # TODO(b/30439864): moving_average_decay should be removed.
-    if moving_average_decay is not None:
-      logging.warn("'moving_average_decay' is deprecated. Please use "
-                   "tensorboard's builtin averaging instead.")
-      # Generate moving averages of the loss.
-      loss_averages = train.ExponentialMovingAverage(moving_average_decay,
-                                                     name="avg")
-      loss_averages_op = loss_averages.apply([loss])
-      logging_ops.scalar_summary("loss/mean", loss_averages.average(loss))
-      loss = control_flow_ops.with_dependencies([loss_averages_op], loss)
 
     # Learning rate variable, with possible decay.
     lr = None
