@@ -914,6 +914,7 @@
   * [`CoupledInputForgetGateLSTMCell`](../../api_docs/python/contrib.rnn.md#CoupledInputForgetGateLSTMCell)
   * [`GridLSTMCell`](../../api_docs/python/contrib.rnn.md#GridLSTMCell)
   * [`GRUBlockCell`](../../api_docs/python/contrib.rnn.md#GRUBlockCell)
+  * [`LayerNormBasicLSTMCell`](../../api_docs/python/contrib.rnn.md#LayerNormBasicLSTMCell)
   * [`LSTMBlockCell`](../../api_docs/python/contrib.rnn.md#LSTMBlockCell)
   * [`TimeFreqLSTMCell`](../../api_docs/python/contrib.rnn.md#TimeFreqLSTMCell)
 
