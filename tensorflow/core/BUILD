@@ -1350,6 +1350,7 @@ cc_library(
         ":test",
         "//tensorflow/core/platform/default/build_config:test_main",
     ],
+    alwayslink = 1,
 )
 
 # Low level library tests
