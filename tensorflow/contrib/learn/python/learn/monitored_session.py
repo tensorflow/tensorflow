@@ -309,6 +309,11 @@ class MonitoredSession(object):
   def scaffold(self):
     return self._scaffold
 
+  @property
+  def graph(self):
+    """The graph that was launched in this session."""
+    return self._tf_sess.graph
+
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     """Run ops in the monitored session.
 

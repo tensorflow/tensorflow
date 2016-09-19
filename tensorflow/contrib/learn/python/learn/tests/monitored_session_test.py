@@ -861,6 +861,12 @@ class MonitoredSessionTest(tf.test.TestCase):
       self.assertTrue(session.should_stop())
       self.assertTrue(session._is_closed())
 
+  def test_graph(self):
+    g = tf.Graph()
+    with g.as_default():
+      session = monitored_session.MonitoredSession()
+      self.assertEqual(g, session.graph)
+
 
 if __name__ == '__main__':
   tf.test.main()
