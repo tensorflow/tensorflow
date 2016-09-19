@@ -35,6 +35,8 @@ from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework import list_variables
+from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -46,7 +48,6 @@ from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.contrib.learn.python.learn.utils import export
 
 from tensorflow.python.framework import errors
@@ -446,7 +447,7 @@ class BaseEstimator(
     Returns:
       Numpy array - value of the tensor.
     """
-    return checkpoints.load_variable(self.model_dir, name)
+    return load_variable(self.model_dir, name)
 
   def get_variable_names(self):
     """Returns list of all variable names in this model.
@@ -454,7 +455,7 @@ class BaseEstimator(
     Returns:
       List of names.
     """
-    return [name for name, _ in checkpoints.list_variables(self.model_dir)]
+    return [name for name, _ in list_variables(self.model_dir)]
 
   @property
   def model_dir(self):
