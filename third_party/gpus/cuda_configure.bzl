@@ -191,6 +191,11 @@ def _compute_capabilities(repository_ctx):
 
 
 def _cpu_value(repository_ctx):
+  os_name = repository_ctx.os.name.lower()
+  if os_name.startswith("mac os"):
+    return "Darwin"
+  if os_name.find("windows") != -1:
+    return "Windows"
   result = repository_ctx.execute(["uname", "-s"])
   return result.stdout.strip()
 
@@ -227,6 +232,17 @@ def _cuda_symlink_files(cpu_value, cuda_version, cudnn_version):
         cuda_rand_lib = "lib/libcurand%s.dylib" % cuda_ext,
         cuda_fft_lib = "lib/libcufft%s.dylib" % cuda_ext,
         cuda_cupti_lib = "extras/CUPTI/lib/libcupti%s.dylib" % cuda_ext)
+  elif cpu_value == "Windows":
+    return struct(
+        cuda_lib_path = "lib",
+        cuda_rt_lib = "lib/cudart%s.dll" % cuda_ext,
+        cuda_rt_lib_static = "lib/cudart_static.lib",
+        cuda_blas_lib = "lib/cublas%s.dll" % cuda_ext,
+        cuda_dnn_lib = "lib/cudnn%s.dll" % cudnn_ext,
+        cuda_dnn_lib_alt = "cudnn%s.dll" % cudnn_ext,
+        cuda_rand_lib = "lib/curand%s.dll" % cuda_ext,
+        cuda_fft_lib = "lib/cufft%s.dll" % cuda_ext,
+        cuda_cupti_lib = "extras/CUPTI/lib/cupti%s.dll" % cuda_ext)
   else:
     auto_configure_fail("Not supported CPU value %s" % cpu_value)
 
