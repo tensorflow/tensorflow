@@ -427,13 +427,16 @@ void TF_Run_wrapper_helper(TF_Session* session, const char* handle,
     }
     input_names.push_back(key_string);
 
-    PyArrayObject* array = reinterpret_cast<PyArrayObject*>(
-        PyArray_FromAny(value, nullptr, 0, 0, NPY_ARRAY_CARRAY, nullptr));
-    if (!array) {
+    // The array object will be dereferenced at the end of this iteration
+    // (or if we return early due to an error).
+    Safe_PyObjectPtr array_safe(make_safe(
+        PyArray_FromAny(value, nullptr, 0, 0, NPY_ARRAY_CARRAY, nullptr)));
+    if (!array_safe) {
       Set_TF_Status_from_Status(out_status,
                                 errors::InvalidArgument(kFeedDictErrorMsg));
       return;
     }
+    PyArrayObject* array = reinterpret_cast<PyArrayObject*>(array_safe.get());
 
     // Convert numpy dtype to TensorFlow dtype.
     TF_DataType dtype = TF_FLOAT;
