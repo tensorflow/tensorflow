@@ -218,9 +218,5 @@ class EinsumTest(tf.test.TestCase):
     assert err < 1e-8
 
 
-class EinsumTestGpu(EinsumTest):
-  _use_gpu = True
-
-
 if __name__ == '__main__':
   tf.test.main()

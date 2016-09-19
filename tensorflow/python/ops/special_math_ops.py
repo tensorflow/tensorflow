@@ -91,7 +91,7 @@ def lbeta(x, name='lbeta'):
 
 
 def einsum(axes, *inputs):
-  r"""
+  """
   A generalized contraction between tensors of arbitrary dimension.
 
   Like numpy.einsum.
