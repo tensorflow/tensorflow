@@ -142,10 +142,13 @@ function setup_python {
 
   for x in $EXPECTED_PATHS; do
     if [ -e "$x" ]; then
-      rm "$x"
+      # This makes ./configure slow on Windows, but it works.
+      rm -rf "$x"
     fi
   done
 
+# ln -sf is acutally implemented as copying in msys since creating symbolic links is privileged on Windows
+# So we need -rf to remove them above.
   ln -sf "${python_include}" util/python/python_include
   ln -sf "${python_lib}" util/python/python_lib
   ln -sf "${numpy_include}" third_party/py/numpy/numpy_include
@@ -159,13 +162,24 @@ function setup_python {
   echo "export PYTHON_BIN_PATH=$PYTHON_BIN_PATH" > tools/python_bin_path.sh
 }
 
+PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
+function is_windows() {
+  # On windows, the shell script is actually running in msys
+  if [[ "${PLATFORM}" =~ msys_nt* ]]; then
+    true
+  else
+    false
+  fi
+}
+
 function check_python {
   for x in $EXPECTED_PATHS; do
     if [ ! -e "$x" ]; then
       echo -e "\n\nERROR: Cannot find '${x}'.  Did you run configure?\n\n" 1>&2
       exit 1
     fi
-    if [ ! -L "${x}" ]; then
+    # Don't check symbolic link on Windows
+    if ! is_windows && [ ! -L "${x}" ]; then
       echo -e "\n\nERROR: '${x}' is not a symbolic link.  Internal error.\n\n" 1>&2
       exit 1
     fi
