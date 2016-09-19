@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet, Mode, OnHoverListener, OnSelectionListener, Scatter} from './scatter';
+import {DataSet, Mode, OnHoverListener, OnSelectionListener, ScatterPlot} from './scatterPlot';
+import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
+import {getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
+import {dist_2D} from './vector';
 
-import {dist_2D, Point2D} from './vector';
 
 // Colors (in various necessary formats).
 const BACKGROUND_COLOR_DAY = 0xffffff;
@@ -65,28 +67,15 @@ const TAR_2D = {
 };
 
 /**
- * ScatterWebGL maintains a three.js instantiation and context,
+ * ScatterPlotWebGLContainer maintains a three.js instantiation and context,
  * animation state, day/night state, and all other logic that's
  * independent of how a 3D scatter plot is actually rendered.
  */
-export abstract class ScatterWebGL implements Scatter {
-  protected abstract onRecreateScene(
-      scene: THREE.Scene, sceneIs3D: boolean, backgroundColor: number);
-  protected abstract removeAllFromScene(scene: THREE.Scene);
-  protected abstract onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement);
-  protected abstract onPickingRender(
-      camera: THREE.Camera, cameraTarget: THREE.Vector3);
-  protected abstract onRender(
-      camera: THREE.Camera, cameraTarget: THREE.Vector3,
-      colorAccessor: (index: number) => string, labeledPoints: number[],
-      labelAccessor: (index: number) => string, highlightedPoints: number[],
-      highlightStroke: (index: number) => string);
-  protected abstract onUpdate();
-  protected abstract onResize(newWidth: number, newHeight: number);
-  protected abstract onSetDayNightMode(isNight: boolean);
-
+export class ScatterPlotWebGLContainer implements ScatterPlot {
   private dataSet: DataSet;
   private containerNode: HTMLElement;
+
+  private visualizers: ScatterPlotWebGLVisualizer[] = [];
 
   private highlightedPoints: number[] = [];
   private highlightStroke: (index: number) => string;
@@ -132,7 +121,6 @@ export abstract class ScatterWebGL implements Scatter {
   private mouseIsDown = false;
   private isDragSequence = false;
   private animationID: number;
-
 
   constructor(
       container: d3.Selection<any>, labelAccessor: (index: number) => string) {
@@ -428,8 +416,9 @@ export abstract class ScatterWebGL implements Scatter {
 
   /** Returns the squared distance to the mouse for the i-th point. */
   private getDist2ToMouse(i: number, e: MouseEvent) {
-    let point = this.getProjectedPointFromIndex(i);
-    let screenCoords = this.vector3DToScreenCoords(point);
+    let point = getProjectedPointFromIndex(this.dataSet, i);
+    let screenCoords = vector3DToScreenCoords(
+        this.perspCamera, this.width, this.height, point);
     let dpr = window.devicePixelRatio;
     return dist_2D(
         [e.offsetX * dpr, e.offsetY * dpr], [screenCoords[0], screenCoords[1]]);
@@ -438,7 +427,7 @@ export abstract class ScatterWebGL implements Scatter {
   private adjustSelectionSphere(e: MouseEvent) {
     let dist = this.getDist2ToMouse(this.nearestPoint, e) / 100;
     this.selectionSphere.scale.set(dist, dist, dist);
-    let selectedPoints: Array<number> = new Array();
+    let selectedPoints: number[] = [];
     this.dataSet.points.forEach(point => {
       let pt = point.projectedPoint;
       let pointVect = new THREE.Vector3(pt[0], pt[1], pt[2]);
@@ -453,26 +442,6 @@ export abstract class ScatterWebGL implements Scatter {
     this.labeledPoints = selectedPoints;
     // Whenever anything is selected, we want to set the corect point color.
     this.onSelectionListeners.forEach(l => l(selectedPoints));
-  }
-
-  protected getProjectedPointFromIndex(i: number): THREE.Vector3 {
-    return new THREE.Vector3(
-        this.dataSet.points[i].projectedPoint[0],
-        this.dataSet.points[i].projectedPoint[1],
-        this.dataSet.points[i].projectedPoint[2]);
-  }
-
-  protected vector3DToScreenCoords(v: THREE.Vector3): Point2D {
-    let dpr = window.devicePixelRatio;
-    let vector = new THREE.Vector3().copy(v).project(this.perspCamera);
-    let coords: Point2D = [
-      // project() returns the point in perspCamera's coordinates, with the
-      // origin in the center and a positive upward y. To get it into screen
-      // coordinates, normalize by adding 1 and dividing by 2.
-      ((vector.x + 1) / 2 * this.width) * dpr,
-      -((vector.y - 1) / 2 * this.height) * dpr
-    ];
-    return coords;
   }
 
   /** Cancels current animation */
@@ -534,7 +503,9 @@ export abstract class ScatterWebGL implements Scatter {
   /** Removes all geometry from the scene. */
   private removeAll() {
     this.removeOldAxes();
-    this.removeAllFromScene(this.scene);
+    this.visualizers.forEach(v => {
+      v.removeAllFromScene(this.scene);
+    });
   }
 
   private createSelectionSphere() {
@@ -586,11 +557,18 @@ export abstract class ScatterWebGL implements Scatter {
 
   // PUBLIC API
 
+  /** Adds a visualizer to the set, will start dispatching events to it */
+  addVisualizer(visualizer: ScatterPlotWebGLVisualizer) {
+    this.visualizers.push(visualizer);
+  }
+
   recreateScene() {
     this.removeAll();
     this.cancelAnimation();
     let sceneIs3D = this.zAccessor != null;
-    this.onRecreateScene(this.scene, sceneIs3D, this.backgroundColor);
+    this.visualizers.forEach(v => {
+      v.onRecreateScene(this.scene, sceneIs3D, this.backgroundColor);
+    });
     this.resize(false);
     if (this.zAccessor) {
       this.addAxis3D();
@@ -606,15 +584,20 @@ export abstract class ScatterWebGL implements Scatter {
   setDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
     this.removeAll();
     this.dataSet = dataSet;
-    this.onDataSet(dataSet, spriteImage);
     this.labeledPoints = [];
     this.highlightedPoints = [];
+    this.visualizers.forEach(v => {
+      v.onDataSet(dataSet, spriteImage);
+    });
   }
 
   update() {
     this.cancelAnimation();
     this.getPointsCoordinates();
-    this.onUpdate();
+    this.visualizers.forEach(v => {
+      v.onUpdate();
+    });
+    this.render();
   }
 
   render() {
@@ -626,7 +609,9 @@ export abstract class ScatterWebGL implements Scatter {
     // with colors that are actually point ids, so that sampling the texture at
     // the mouse's current x,y coordinates will reveal the data point that the
     // mouse is over.
-    this.onPickingRender(this.perspCamera, this.cameraControls.target);
+    this.visualizers.forEach(v => {
+      v.onPickingRender(this.perspCamera, this.cameraControls.target);
+    });
     this.renderer.render(this.scene, this.perspCamera, this.pickingTexture);
 
     // Render second pass to color buffer, to be displayed on the canvas.
@@ -634,10 +619,12 @@ export abstract class ScatterWebGL implements Scatter {
     lightPos.x += 1;
     lightPos.y += 1;
     this.light.position.set(lightPos.x, lightPos.y, lightPos.z);
-    this.onRender(
-        this.perspCamera, this.cameraControls.target, this.colorAccessor,
-        this.labeledPoints, this.labelAccessor, this.highlightedPoints,
-        this.highlightStroke);
+    this.visualizers.forEach(v => {
+      v.onRender(
+          this.perspCamera, this.cameraControls.target, this.width, this.height,
+          this.colorAccessor, this.labeledPoints, this.labelAccessor,
+          this.highlightedPoints, this.highlightStroke);
+    });
     this.renderer.render(this.scene, this.perspCamera);
   }
 
@@ -728,7 +715,9 @@ export abstract class ScatterWebGL implements Scatter {
     this.backgroundColor =
         (isNight ? BACKGROUND_COLOR_NIGHT : BACKGROUND_COLOR_DAY);
     this.renderer.setClearColor(this.backgroundColor);
-    this.onSetDayNightMode(isNight);
+    this.visualizers.forEach(v => {
+      v.onSetDayNightMode(isNight);
+    });
   }
 
   showAxes(show: boolean) {}
@@ -744,7 +733,9 @@ export abstract class ScatterWebGL implements Scatter {
     this.renderer.setSize(this.width, this.height);
     this.pickingTexture = new THREE.WebGLRenderTarget(this.width, this.height);
     this.pickingTexture.texture.minFilter = THREE.LinearFilter;
-    this.onResize(this.width, this.height);
+    this.visualizers.forEach(v => {
+      v.onResize(this.width, this.height);
+    });
     if (render) {
       this.render();
     };
