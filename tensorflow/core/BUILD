@@ -630,6 +630,7 @@ filegroup(
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
             "platform/google/**/*",
+            "platform/hadoop/**/*",
             "platform/jpeg.*",
             "platform/png.*",
             "platform/gif.*",
