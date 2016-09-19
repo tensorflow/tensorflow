@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 export type Spec = {
-  is: string; properties: {
+  is: string; properties?: {
     [key: string]:
         (Function |
          {
@@ -24,6 +24,7 @@ export type Spec = {
            observer?: string;
          })
   };
+  observers?: string[];
 };
 
 export function PolymerElement(spec: Spec) {

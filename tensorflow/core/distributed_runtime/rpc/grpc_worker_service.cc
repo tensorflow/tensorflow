@@ -325,7 +325,10 @@ class GrpcWorkerService : public AsyncServiceInterface {
       return;
     }
     StepStatsCollector* collector = nullptr;
-    // TODO(mrry): Collect results from a profiler if available.
+    if (call->request.exec_opts().record_timeline()) {
+      collector = new StepStatsCollector(call->response.mutable_step_stats());
+      // TODO(mrry,pbar): GPU tracing for distributed steps.
+    }
     CancellationManager* cm = new CancellationManager;
     call->SetCancelCallback([this, cm, step_id]() {
       cm->StartCancel();
@@ -340,7 +343,8 @@ class GrpcWorkerService : public AsyncServiceInterface {
     }
     env_->graph_mgr->ExecuteAsync(
         call->request.graph_handle(), step_id, call->request.exec_opts(),
-        collector, cm, in, out, [this, call, cm, out, token](Status s) {
+        collector, cm, in, out,
+        [this, call, cm, out, token, collector](Status s) {
           call->ClearCancelCallback();
           {
             mutex_lock l(mu_);
@@ -359,6 +363,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
               val.AsProtoField(proto);
             }
           }
+          delete collector;
           delete out;
           call->SendResponse(ToGrpcStatus(s));
         });
@@ -426,11 +431,12 @@ class GrpcWorkerService : public AsyncServiceInterface {
             // device type*.
             // const size_t bytes = is_dead ? 0 : val.TotalBytes();
             const bool on_host = send_args.alloc_attrs.on_host();
-            const DeviceContext* send_dev_context = send_args.device_context;
             {
               // Non-DMA cases.
               if (src_dev->tensorflow_gpu_device_info() && (!on_host)) {
 #if GOOGLE_CUDA
+                const DeviceContext* send_dev_context =
+                    send_args.device_context;
                 RecvTensorResponse* tmp = new RecvTensorResponse;
                 tmp->set_is_dead(is_dead);
                 CHECK(send_dev_context)

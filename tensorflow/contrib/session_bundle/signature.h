@@ -117,6 +117,7 @@ Status BindGenericInputs(const GenericSignature& signature,
 Status BindGenericNames(const GenericSignature& signature,
                         const std::vector<string>& input_names,
                         std::vector<string>* bound_names);
+
 }  // namespace serving
 }  // namespace tensorflow
 

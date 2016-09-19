@@ -67,10 +67,9 @@ function zerosArray(length: number): number[] {
   return result;
 }
 
-
 /** Returns the square euclidean distance between two vectors. */
 export function dist2(a: number[], b: number[]): number {
-  if (a.length != b.length) {
+  if (a.length !== b.length) {
     throw new Error('Vectors a and b must be of same length');
   }
 
@@ -105,7 +104,7 @@ function gaussRandom(rng: () => number): number {
   let u = 2 * rng() - 1;
   let v = 2 * rng() - 1;
   let r = u * u + v * v;
-  if (r == 0 || r > 1) {
+  if (r === 0 || r > 1) {
     return gaussRandom(rng);
   }
   let c = Math.sqrt(-2 * Math.log(r) / r);
@@ -173,7 +172,7 @@ function nearest2P(
       let psum = 0.0;
       for (let k = 0; k < neighbors.length; ++k) {
         let neighbor = neighbors[k];
-        let pij = (i == neighbor.index) ? 0 : Math.exp(-neighbor.dist * beta);
+        let pij = (i === neighbor.index) ? 0 : Math.exp(-neighbor.dist * beta);
         pRow[k] = pij;
         psum += pij;
       }
@@ -273,9 +272,9 @@ export class TSNE {
     this.epsilon = opt.epsilon || 10;
     this.rng = opt.rng || Math.random;
     this.dim = opt.dim;
-    if (opt.dim == 2) {
+    if (opt.dim === 2) {
       this.dist2 = dist2_2D;
-    } else if (opt.dim == 3) {
+    } else if (opt.dim === 3) {
       this.dist2 = dist2_3D;
     } else {
       this.dist2 = dist2;

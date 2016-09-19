@@ -130,6 +130,10 @@ class MockFileSystem : public FileSystem {
     return calls_.ConsumeNextCall("RenameFile");
   }
 
+  Status IsDirectory(const string& dirname) override {
+    return calls_.ConsumeNextCall("IsDirectory");
+  }
+
   std::unique_ptr<WritableFile> writable_file_to_return;
   std::unique_ptr<RandomAccessFile> random_access_file_to_return;
 
@@ -569,6 +573,35 @@ TEST(RetryingFileSystemTest, Stat_AllRetriesFailed) {
 
   FileStatistics stat;
   EXPECT_EQ("Last error", fs.Stat("file_name", &stat).error_message());
+}
+
+TEST(RetryingFileSystemTest, IsDirectory_SuccessWith2ndTry) {
+  ExpectedCalls expected_fs_calls(
+      {std::make_tuple("IsDirectory",
+                       errors::Unavailable("Something is wrong")),
+       std::make_tuple("IsDirectory", Status::OK())});
+  std::unique_ptr<MockFileSystem> base_fs(
+      new MockFileSystem(expected_fs_calls));
+  RetryingFileSystem fs(std::move(base_fs));
+
+  std::vector<string> result;
+  TF_EXPECT_OK(fs.IsDirectory("gs://path/dir"));
+}
+
+TEST(RetryingFileSystemTest, IsDirectory_AllRetriesFailed) {
+  ExpectedCalls expected_fs_calls(
+      {std::make_tuple("IsDirectory",
+                       errors::Unavailable("Something is wrong")),
+       std::make_tuple("IsDirectory",
+                       errors::Unavailable("Something is wrong again")),
+       std::make_tuple("IsDirectory", errors::Unavailable("And again")),
+       std::make_tuple("IsDirectory", errors::Unavailable("Last error"))});
+  std::unique_ptr<MockFileSystem> base_fs(
+      new MockFileSystem(expected_fs_calls));
+  RetryingFileSystem fs(std::move(base_fs));
+
+  std::vector<string> result;
+  EXPECT_EQ("Last error", fs.IsDirectory("gs://path/dir").error_message());
 }
 
 }  // namespace

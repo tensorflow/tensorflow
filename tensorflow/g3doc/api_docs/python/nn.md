@@ -88,7 +88,7 @@ See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -670,6 +670,44 @@ Our Conv3D implements a form of cross-correlation.
 ##### Returns:
 
   A `Tensor`. Has the same type as `input`.
+
+
+- - -
+
+### `tf.nn.conv3d_transpose(value, filter, output_shape, strides, padding='SAME', name=None)` {#conv3d_transpose}
+
+The transpose of `conv3d`.
+
+This operation is sometimes called "deconvolution" after [Deconvolutional
+Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
+actually the transpose (gradient) of `conv3d` rather than an actual
+deconvolution.
+
+##### Args:
+
+
+*  <b>`value`</b>: A 5-D `Tensor` of type `float` and shape
+    `[batch, depth, height, width, in_channels]`.
+*  <b>`filter`</b>: A 5-D `Tensor` with the same type as `value` and shape
+    `[depth, height, width, output_channels, in_channels]`.  `filter`'s
+    `in_channels` dimension must match that of `value`.
+*  <b>`output_shape`</b>: A 1-D `Tensor` representing the output shape of the
+    deconvolution op.
+*  <b>`strides`</b>: A list of ints. The stride of the sliding window for each
+    dimension of the input tensor.
+*  <b>`padding`</b>: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+    See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+*  <b>`name`</b>: Optional name for the returned tensor.
+
+##### Returns:
+
+  A `Tensor` with the same type as `value`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If input/output depth does not match `filter`'s shape, or if
+    padding is other than `'VALID'` or `'SAME'`.
 
 
 
@@ -1471,7 +1509,7 @@ For each batch `i` and class `j` we have
 
 - - -
 
-### `tf.nn.softmax_cross_entropy_with_logits(logits, labels, name=None)` {#softmax_cross_entropy_with_logits}
+### `tf.nn.softmax_cross_entropy_with_logits(logits, labels, dim=-1, name=None)` {#softmax_cross_entropy_with_logits}
 
 Computes softmax cross entropy between `logits` and `labels`.
 
@@ -1500,6 +1538,7 @@ and the same dtype (either `float16`, `float32`, or `float64`).
 
 *  <b>`logits`</b>: Unscaled log probabilities.
 *  <b>`labels`</b>: Each row `labels[i]` must be a valid probability distribution.
+*  <b>`dim`</b>: The class dimension. Defaulted to -1 which is the last dimension.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1672,7 +1711,7 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
 
 - - -
 
-### `tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, partition_strategy='mod', name=None, combiner='mean')` {#embedding_lookup_sparse}
+### `tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, partition_strategy='mod', name=None, combiner=None)` {#embedding_lookup_sparse}
 
 Computes embeddings for the given ids and weights.
 
@@ -1795,7 +1834,7 @@ for correctness than performance, unlike in rnn().
 *  <b>`sequence_length`</b>: (optional) An int32/int64 vector sized `[batch_size]`.
 *  <b>`initial_state`</b>: (optional) An initial state for the RNN.
     If `cell.state_size` is an integer, this must be
-    a `Tensor` of appropriate type and shape `[batch_size x cell.state_size]`.
+    a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
     If `cell.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell.state_size`.
 *  <b>`dtype`</b>: (optional) The data type for the initial state and expected output.
@@ -1979,7 +2018,7 @@ given.
     containing the actual lengths for each of the sequences.
 *  <b>`initial_state_fw`</b>: (optional) An initial state for the forward RNN.
     This must be a tensor of appropriate type and shape
-    `[batch_size x cell_fw.state_size]`.
+    `[batch_size, cell_fw.state_size]`.
     If `cell_fw.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell_fw.state_size`.
 *  <b>`initial_state_bw`</b>: (optional) Same as for `initial_state_fw`, but using
@@ -2063,7 +2102,7 @@ length(s) of the sequence(s) or completely unrolled if length(s) is not given.
     [batch_size, input_size], or a nested tuple of such elements.
 *  <b>`initial_state_fw`</b>: (optional) An initial state for the forward RNN.
     This must be a tensor of appropriate type and shape
-    `[batch_size x cell_fw.state_size]`.
+    `[batch_size, cell_fw.state_size]`.
     If `cell_fw.state_size` is a tuple, this should be a tuple of
     tensors having shapes `[batch_size, s] for s in cell_fw.state_size`.
 *  <b>`initial_state_bw`</b>: (optional) Same as for `initial_state_fw`, but using
@@ -2091,7 +2130,7 @@ length(s) of the sequence(s) or completely unrolled if length(s) is not given.
 
 - - -
 
-### `tf.nn.raw_rnn(cell, loop_fn, initial_state, parallel_iterations=None, swap_memory=False, scope=None)` {#raw_rnn}
+### `tf.nn.raw_rnn(cell, loop_fn, parallel_iterations=None, swap_memory=False, scope=None)` {#raw_rnn}
 
 Creates an `RNN` specified by RNNCell `cell` and loop function `loop_fn`.
 
@@ -2109,16 +2148,18 @@ Instead of working with `Tensor` objects, most operations work with
 `TensorArray` objects directly.
 
 The operation of `raw_rnn`, in pseudo-code, is basically the following:
+
 ```
-emit_ta = TensorArray(dynamic_size=True, dtype=initial_state.dtype)
 time = tf.constant(0, dtype=tf.int32)
-(finished, next_input, _, loop_state) = loop_fn(
-    time=time, cell_output=None, loop_state=None)
+(finished, next_input, initial_state, _, loop_state) = loop_fn(
+    time=time, cell_output=None, cell_state=None, loop_state=None)
+emit_ta = TensorArray(dynamic_size=True, dtype=initial_state.dtype)
 state = initial_state
 while not all(finished):
-  (output, next_state) = cell(next_input, state)
-  (next_finished, next_input, emit, loop_state) = loop_fn(
-      time=time + 1, cell_output=output, loop_state=loop_state)
+  (output, cell_state) = cell(next_input, state)
+  (next_finished, next_input, next_state, emit, loop_state) = loop_fn(
+      time=time + 1, cell_output=output, cell_state=cell_state,
+      loop_state=loop_state)
   # Emit zeros and copy forward state for minibatch entries that are finished.
   state = tf.select(finished, state, next_state)
   emit = tf.select(finished, tf.zeros_like(emit), emit)
@@ -2142,8 +2183,14 @@ sequence_length = tf.placeholder(shape=(batch_size,), dtype=tf.int32)
 inputs_ta = tf.TensorArray(dtype=tf.float32, size=max_time)
 inputs_ta = inputs_ta.unpack(inputs)
 
-def loop_fn(time, cell_output, loop_state):
+cell = tf.nn.rnn_cell.LSTMCell(num_units)
+
+def loop_fn(time, cell_output, cell_state, loop_state):
   emit_output = cell_output  # == None for time == 0
+  if cell_output is None:  # time == 0
+    next_cell_state = cell.zero_state(batch_size, tf.float32)
+  else:
+    next_cell_state = cell_state
   elements_finished = (time >= sequence_length)
   finished = tf.reduce_all(elements_finished)
   next_input = tf.cond(
@@ -2151,11 +2198,10 @@ def loop_fn(time, cell_output, loop_state):
       lambda: tf.zeros([batch_size, input_depth], dtype=tf.float32),
       lambda: inputs_ta.read(time))
   next_loop_state = None
-  return (elements_finished, next_input, emit_output, next_loop_state)
+  return (elements_finished, next_input, next_cell_state,
+          emit_output, next_loop_state)
 
-cell = tf.nn.rnn_cell.LSTMCell(num_units, state_is_tuple=True)
-initial_state = cell.zero_state(batch_size, tf.float32)
-outputs_ta, final_state, _ = raw_rnn(cell, loop_fn, initial_state)
+outputs_ta, final_state, _ = raw_rnn(cell, loop_fn)
 outputs = outputs_ta.pack()
 ```
 
@@ -2163,25 +2209,46 @@ outputs = outputs_ta.pack()
 
 
 *  <b>`cell`</b>: An instance of RNNCell.
-*  <b>`loop_fn`</b>: A callable that takes inputs `(time, cell_output, loop_state)` and
-    returns the tuple `(finished, next_input, emit_output, next_loop_state)`.
+*  <b>`loop_fn`</b>: A callable that takes inputs
+    `(time, cell_output, cell_state, loop_state)`
+    and returns the tuple
+    `(finished, next_input, next_cell_state, emit_output, next_loop_state)`.
     Here `time` is an int32 scalar `Tensor`, `cell_output` is a
     `Tensor` or (possibly nested) tuple of tensors as determined by
-    `cell.output_size`.  In addition, `finished` is a boolean `Tensor` of
-    shape `[batch_size]`, `next_input` is the next input to feed to `cell`,
-    and `emit_output` is the output to store for this iteration.  Note that
-    `emit_output` should be a `Tensor` or (possibly nested) tuple of tensors
-    with shapes and structure matching `cell.output_size` and `cell_output`
-    above.  The parameter `loop_state` and output `next_loop_state` may be
-    either a single or (possibly nested) tuple of tensors.  This paramter
+    `cell.output_size`, and `cell_state` is a `Tensor`
+    or (possibly nested) tuple of tensors, as determined by the `loop_fn`
+    on its first call (and should match `cell.state_size`).
+    The outputs are: `finished`, a boolean `Tensor` of
+    shape `[batch_size]`, `next_input`: the next input to feed to `cell`,
+    `next_cell_state`: the next state to feed to `cell`,
+    and `emit_output`: the output to store for this iteration.
+
+    Note that `emit_output` should be a `Tensor` or (possibly nested)
+    tuple of tensors with shapes and structure matching `cell.output_size`
+    and `cell_output` above.  The parameter `cell_state` and output
+    `next_cell_state` may be either a single or (possibly nested) tuple
+    of tensors.  The parameter `loop_state` and
+    output `next_loop_state` may be either a single or (possibly nested) tuple
+    of `Tensor` and `TensorArray` objects.  This last parameter
     may be ignored by `loop_fn` and the return value may be `None`.  If it
     is not `None`, then the `loop_state` will be propagated through the RNN
     loop, for use purely by `loop_fn` to keep track of its own state.
     The `next_loop_state` parameter returned may be `None`.
 
     The first call to `loop_fn` will be `time = 0`, `cell_output = None`,
-    and `loop_state = None`.  Its `emit_output` value in this case may be
-    either `None` or a (possibly nested) tuple structure of Tensors, e.g.,
+    `cell_state = None`, and `loop_state = None`.  For this call:
+    The `next_cell_state` value should be the value with which to initialize
+    the cell's state.  It may be a final state from a previous RNN or it
+    may be the output of `cell.zero_state()`.  It should be a
+    (possibly nested) tuple structure of tensors.
+    If `cell.state_size` is an integer, this must be
+    a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
+    If `cell.state_size` is a `TensorShape`, this must be a `Tensor` of
+    appropriate type and shape `[batch_size] + cell.state_size`.
+    If `cell.state_size` is a (possibly nested) tuple of ints or
+    `TensorShape`, this will be a tuple having the corresponding shapes.
+    The `emit_output` value may be  either `None` or a (possibly nested)
+    tuple structure of tensors, e.g.,
     `(tf.zeros(shape_0, dtype=dtype_0), tf.zeros(shape_1, dtype=dtype_1))`.
     If this first `emit_output` return value is `None`,
     then the `emit_ta` result of `raw_rnn` will have the same structure and
@@ -2192,13 +2259,6 @@ outputs = outputs_ta.pack()
     consistent across all time steps.
 
 
-*  <b>`initial_state`</b>: An initial state for the RNN.
-    If `cell.state_size` is an integer, this must be
-    a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
-    If `cell.state_size` is a `TensorShape`, this must be a `Tensor` of
-    appropriate type and shape `[batch_size] + cell.state_size`.
-    If `cell.state_size` is a (possibly nested) tuple of ints or
-    `TensorShape`, this will be a tuple having the corresponding shapes.
 *  <b>`parallel_iterations`</b>: (Default: 32).  The number of iterations to run in
     parallel.  Those operations which do not have any temporal dependency
     and can be run in parallel, will be.  This parameter trades off
@@ -2214,26 +2274,25 @@ outputs = outputs_ta.pack()
 
   A tuple `(emit_ta, final_state, final_loop_state)` where:
 
-    `emit_ta`: The RNN output `TensorArray`.
-       If `loop_fn` returns a (possibly nested) set of Tensors for
-       `emit_output` during initialization, (inputs `time = 0`,
-       `cell_output = None`, and `loop_state = None`), then `emit_ta` will
-       have the same structure, dtypes, and shapes as `emit_output` instead.
-       If `loop_fn` returns `emit_output = None` during this call,
-       the structure of `cell.output_size` is used:
+  `emit_ta`: The RNN output `TensorArray`.
+     If `loop_fn` returns a (possibly nested) set of Tensors for
+     `emit_output` during initialization, (inputs `time = 0`,
+     `cell_output = None`, and `loop_state = None`), then `emit_ta` will
+     have the same structure, dtypes, and shapes as `emit_output` instead.
+     If `loop_fn` returns `emit_output = None` during this call,
+     the structure of `cell.output_size` is used:
+     If `cell.output_size` is a (possibly nested) tuple of integers
+     or `TensorShape` objects, then `emit_ta` will be a tuple having the
+     same structure as `cell.output_size`, containing TensorArrays whose
+     elements' shapes correspond to the shape data in `cell.output_size`.
 
-       If `cell.output_size` is a (possibly nested) tuple of integers
-       or `TensorShape` objects, then `emit_ta` will be a tuple having the
-       same structure as `cell.output_size`, containing TensorArrays whose
-       elements' shapes correspond to the shape data in `cell.output_size`.
+  `final_state`: The final cell state.  If `cell.state_size` is an int, this
+    will be shaped `[batch_size, cell.state_size]`.  If it is a
+    `TensorShape`, this will be shaped `[batch_size] + cell.state_size`.
+    If it is a (possibly nested) tuple of ints or `TensorShape`, this will
+    be a tuple having the corresponding shapes.
 
-    `final_state`: The final cell state.  If `cell.state_size` is an int, this
-      will be shaped `[batch_size, cell.state_size]`.  If it is a
-      `TensorShape`, this will be shaped `[batch_size] + cell.state_size`.
-      If it is a (possibly nested) tuple of ints or `TensorShape`, this will
-      be a tuple having the corresponding shapes.
-
-    `final_loop_state`: The final loop state as returned by `loop_fn`.
+  `final_loop_state`: The final loop state as returned by `loop_fn`.
 
 ##### Raises:
 
@@ -2247,7 +2306,7 @@ outputs = outputs_ta.pack()
 
 - - -
 
-### `tf.nn.ctc_loss(inputs, labels, sequence_length, preprocess_collapse_repeated=False, ctc_merge_repeated=True)` {#ctc_loss}
+### `tf.nn.ctc_loss(inputs, labels, sequence_length, preprocess_collapse_repeated=False, ctc_merge_repeated=True, time_major=True)` {#ctc_loss}
 
 Computes the CTC (Connectionist Temporal Classification) Loss.
 
@@ -2317,8 +2376,12 @@ Here is a table of the (roughly) expected first order behavior:
 ##### Args:
 
 
-*  <b>`inputs`</b>: 3-D `float` `Tensor` sized
-    `[max_time x batch_size x num_classes]`. The logits.
+*  <b>`inputs`</b>: 3-D `float` `Tensor`.
+    If time_major == False, this will be a `Tensor` shaped:
+      `[batch_size x max_time x num_classes]`.
+    If time_major == True (default), this will be a `Tensor` shaped:
+      `[max_time x batch_size x num_classes]`.
+    The logits.
 *  <b>`labels`</b>: An `int32` `SparseTensor`.
     `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
     the id for (batch b, time t).
@@ -2329,6 +2392,13 @@ Here is a table of the (roughly) expected first order behavior:
 *  <b>`preprocess_collapse_repeated`</b>: Boolean.  Default: False.
     If True, repeated labels are collapsed prior to the CTC calculation.
 *  <b>`ctc_merge_repeated`</b>: Boolean.  Default: True.
+*  <b>`time_major`</b>: The shape format of the `inputs` Tensors.
+    If True, these `Tensors` must be shaped `[max_time, batch_size, num_classes]`.
+    If False, these `Tensors` must be shaped `[batch_size, max_time, num_classes]`.
+    Using `time_major = True` (default) is a bit more efficient because it avoids
+    transposes at the beginning of the ctc_loss calculation.  However, most
+    TensorFlow data is batch-major, so by this function also accepts inputs
+    in batch-major form.
 
 ##### Returns:
 

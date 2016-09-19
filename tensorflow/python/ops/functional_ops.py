@@ -30,6 +30,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -576,9 +577,4 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     return output_pack(results_flat)
 
 
-@ops.RegisterShape("SymbolicGradient")
-def _symbolic_gradient_shape(op):
-  # Say, (u, v) = f(x, y, z), _symbolic_gradient(f) is a function of
-  # (x, y, z, du, dv) -> (dx, dy, dz). Therefore, shapes of its
-  # outputs (dx, dy, dz) are the same as (x, y, z).
-  return [op.inputs[i].get_shape() for i in range(len(op.outputs))]
+ops.RegisterShape("SymbolicGradient")(common_shapes.call_cpp_shape_fn)

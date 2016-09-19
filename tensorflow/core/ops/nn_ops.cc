@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -41,6 +42,39 @@ Status InputTensorShapeOrUnknown(InferenceContext* c, int input_idx,
     TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(input_idx, &out));
   }
   c->set_output(0, out);
+  return Status::OK();
+}
+
+Status FractionalPoolShapeFn(InferenceContext* c) {
+  ShapeHandle input;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+
+  std::vector<float> pooling_ratio;
+  TF_RETURN_IF_ERROR(c->GetAttr("pooling_ratio", &pooling_ratio));
+  if (pooling_ratio.size() != 4) {
+    return errors::InvalidArgument(
+        "pooling_ratio field must specify 4 dimensions");
+  }
+  std::vector<DimensionHandle> output_dims;
+  for (int i = 0; i < 4; ++i) {
+    DimensionHandle d = c->Dim(input, i);
+    if (c->ValueKnown(d)) {
+      // This must match the same logic in the kernel function in
+      // core/kernels/fractional_max_pool_op.cc.
+      auto val = static_cast<int64>(floor(c->Value(d) / pooling_ratio[i]));
+      if (val < 0) {
+        return errors::InvalidArgument("Size computed for dim ", i,
+                                       " is negative: ", val);
+      }
+      output_dims.push_back(c->MakeDim(val));
+    } else {
+      output_dims.push_back(c->UnknownDim());
+    }
+  }
+
+  c->set_output(0, c->MakeShape(output_dims));
+  c->set_output(1, c->Vector(output_dims[1]));
+  c->set_output(2, c->Vector(output_dims[2]));
   return Status::OK();
 }
 
@@ -424,6 +458,46 @@ data_format: Specify the data format of the input and output data. With the
     Alternatively, the format could be "NCHW", the data storage order of:
         [batch, in_channels, in_height, in_width].
 )doc");
+
+REGISTER_OP("FusedResizeAndPadConv2D")
+    .Input("input: T")
+    .Input("size: int32")
+    .Input("paddings: int32")
+    .Input("filter: T")
+    .Output("output: T")
+    .Attr("T: {half, float, double}")
+    .Attr("resize_align_corners: bool = false")
+    .Attr(GetMirrorPadModeAttrString())
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Doc(R"doc(
+Performs a resize and padding as a preprocess during a convolution.
+
+It's often possible to do spatial transformations more efficiently as part of
+the packing stage of a convolution, so this op allows for an optimized
+implementation where these stages are fused together. This prevents the need to
+write out the intermediate results as whole tensors, reducing memory pressure,
+and we can get some latency gains by merging the transformation calculations.
+The data_format attribute for Conv2D isn't supported by this op, and defaults to
+'NHWC' order.
+Internally this op uses a single per-graph scratch buffer, which means that it
+will block if multiple versions are being run in parallel. This is because this
+operator is primarily an optimization to minimize memory usage.
+
+input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
+  new size for the images.
+paddings: A two-column matrix specifying the padding sizes. The number of
+  rows must be the same as the rank of `input`.
+filter: 4-D with shape
+  `[filter_height, filter_width, in_channels, out_channels]`.
+resize_align_corners: If true, rescale input by (new_height - 1) / (height - 1),
+  which exactly aligns the 4 corners of images and resized images. If false, rescale
+  by new_height / height. Treat similarly the width dimension.
+strides: 1-D of length 4.  The stride of the sliding window for each dimension
+   of `input`. Must be in the same order as the dimension specified with format.
+padding: The type of padding algorithm to use.
+ )doc");
 
 // --------------------------------------------------------------------------
 
@@ -1011,15 +1085,17 @@ REGISTER_OP("Dilation2D")
       DimensionHandle filter_cols_dim = c->Dim(filter_shape, 1);
       DimensionHandle output_depth_dim = c->Dim(filter_shape, 2);
 
+      if (!c->ValueKnown(in_rows_dim) || !c->ValueKnown(in_cols_dim) ||
+          !c->ValueKnown(filter_rows_dim) || !c->ValueKnown(filter_cols_dim)) {
+        ShapeHandle output_shape =
+            c->MakeShape({batch_size_dim, InferenceContext::kUnknownDim,
+                          InferenceContext::kUnknownDim, output_depth_dim});
+        c->set_output(0, output_shape);
+        return Status::OK();
+      }
       DimensionHandle unused;
       TF_RETURN_IF_ERROR(
           c->Merge(c->Dim(input_shape, 3), output_depth_dim, &unused));
-
-      // At the moment we need to know the values of several fields.
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_rows_dim, "filter_rows"));
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(filter_cols_dim, "filter_cols"));
 
       auto in_rows = c->Value(in_rows_dim);
       auto in_cols = c->Value(in_cols_dim);
@@ -1186,7 +1262,7 @@ backprops: The gradients:
 REGISTER_OP("Elu")
     .Input("features: T")
     .Output("activations: T")
-    .Attr("T: {float, double}")
+    .Attr("T: realnumbertype")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Computes exponential linear: `exp(features) - 1` if < 0, `features` otherwise.
@@ -1199,7 +1275,7 @@ REGISTER_OP("EluGrad")
     .Input("gradients: T")
     .Input("outputs: T")
     .Output("backprops: T")
-    .Attr("T: {float, double}")
+    .Attr("T: realnumbertype")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
     .Doc(R"doc(
 Computes gradients for the exponential linear (Elu) operation.
@@ -1529,6 +1605,7 @@ REGISTER_OP("FractionalMaxPool")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .Attr("T: {float, double, int32, int64}")
+    .SetShapeFn(FractionalPoolShapeFn)
     .Doc(R"doc(
 Performs fractional max pooling on the input.
 
@@ -1603,6 +1680,9 @@ REGISTER_OP("FractionalMaxPoolGrad")
     .Output("output: T")
     .Attr("overlapping: bool = false")
     .Attr("T: {float, double, int32, int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRank(c, 4);
+    })
     .Doc(R"doc(
 Computes gradient of the FractionalMaxPool function.
 
@@ -1640,6 +1720,7 @@ REGISTER_OP("FractionalAvgPool")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .Attr("T: {float, double, int32, int64}")
+    .SetShapeFn(FractionalPoolShapeFn)
     .Doc(R"doc(
 Performs fractional average pooling on the input.
 
@@ -1688,6 +1769,16 @@ REGISTER_OP("FractionalAvgPoolGrad")
     .Output("output: T")
     .Attr("overlapping: bool = false")
     .Attr("T: {float, double, int32, int64}")
+    .SetShapeFn([](InferenceContext* c) {
+      if (c->input_tensor(0) != nullptr) {
+        ShapeHandle out;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+        c->set_output(0, out);
+      } else {
+        c->set_output(0, c->UnknownShapeOfRank(4));
+      }
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes gradient of the FractionalAvgPool function.
 

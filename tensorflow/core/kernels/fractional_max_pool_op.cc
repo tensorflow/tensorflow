@@ -72,6 +72,8 @@ class FractionalMaxPoolOp : public OpKernel {
     }
     // Output size.
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
+      // This must match the same logic in the shape function in
+      // core/ops/nn_ops.cc.
       output_size_.push_back(
           static_cast<int>(floor(input_size_[i] / pooling_ratio_[i])));
       DCHECK_GT(output_size_[i], 0);

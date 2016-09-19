@@ -142,11 +142,11 @@ class Distribution(BaseDistribution):
   b = tf.exp(tf.matmul(logits, weights_b))
 
   # Will raise exception if ANY batch member has a < 1 or b < 1.
-  dist = distributions.beta(a, b, allow_nan_stats=False)  # default is False
+  dist = distributions.beta(a, b, allow_nan_stats=False)
   mode = dist.mode().eval()
 
   # Will return NaN for batch members with either a < 1 or b < 1.
-  dist = distributions.beta(a, b, allow_nan_stats=True)
+  dist = distributions.beta(a, b, allow_nan_stats=True)  # Default behavior
   mode = dist.mode().eval()
   ```
 
@@ -162,28 +162,30 @@ class Distribution(BaseDistribution):
   """
 
   def __init__(self,
-               dtype=None,
-               parameters=None,
-               is_continuous=True,
-               is_reparameterized=False,
-               validate_args=True,
-               allow_nan_stats=False,
+               dtype,
+               parameters,
+               is_continuous,
+               is_reparameterized,
+               validate_args,
+               allow_nan_stats,
                name=None):
     """Constructs the `Distribution`.
+
+    **This is a private method for subclass use.**
 
     Args:
       dtype: The type of the event samples. `None` implies no type-enforcement.
       parameters: Python dictionary of parameters used by this `Distribution`.
-      is_continuous: Python boolean, default `True`. If `True` this
+      is_continuous: Python boolean. If `True` this
         `Distribution` is continuous over its supported domain.
-      is_reparameterized: Python boolean, default `False`. If `True` this
+      is_reparameterized: Python boolean. If `True` this
         `Distribution` can be reparameterized in terms of some standard
         distribution with a function whose Jacobian is constant for the support
         of the standard distribution.
-      validate_args: Whether to validate input with asserts. If `validate_args`
-        is `False`, and the inputs are invalid, correct behavior is not
-        guaranteed.
-      allow_nan_stats: Python boolean, default `False`. If `False`, raise an
+      validate_args: Python boolean.  Whether to validate input with asserts.
+        If `validate_args` is `False`, and the inputs are invalid,
+        correct behavior is not guaranteed.
+      allow_nan_stats: Pytho nboolean.  If `False`, raise an
         exception if a statistic (e.g., mean, mode) is undefined for any batch
         member. If True, batch members with valid parameters leading to
         undefined statistics will return `NaN` for this statistic.
@@ -251,93 +253,6 @@ class Distribution(BaseDistribution):
   @staticmethod
   def _param_shapes(sample_shape):
     raise NotImplementedError("_param_shapes not implemented")
-
-  @classmethod
-  def from_params(cls, make_safe=True, **kwargs):
-    """Given (unconstrained) parameters, return an instantiated distribution.
-
-    Subclasses should implement a static method `_safe_transforms` that returns
-    a dict of parameter transforms, which will be used if `make_safe = True`.
-
-    Example usage:
-
-    ```
-    # Let's say we want a sample of size (batch_size, 10)
-    shapes = MultiVariateNormalDiag.param_shapes([batch_size, 10])
-
-    # shapes has a Tensor shape for mu and sigma
-    # shapes == {
-    #   "mu": tf.constant([batch_size, 10]),
-    #   "sigma": tf.constant([batch_size, 10]),
-    # }
-
-    # Here we parameterize mu and sigma with the output of a linear
-    # layer. Note that sigma is unconstrained.
-    params = {}
-    for name, shape in shapes.items():
-      params[name] = linear(x, shape[1])
-
-    # Note that you can forward other kwargs to the `Distribution`, like
-    # `allow_nan_stats` or `name`.
-    mvn = MultiVariateNormalDiag.from_params(**params, allow_nan_stats=True)
-    ```
-
-    Distribution parameters may have constraints (e.g. `sigma` must be positive
-    for a `Normal` distribution) and the `from_params` method will apply default
-    parameter transforms. If a user wants to use their own transform, they can
-    apply it externally and set `make_safe=False`.
-
-    Args:
-      make_safe: Whether the `params` should be constrained. If True,
-        `from_params` will apply default parameter transforms. If False, no
-        parameter transforms will be applied.
-      **kwargs: dict of parameters for the distribution.
-
-    Returns:
-      A distribution parameterized by possibly transformed parameters in
-      `kwargs`.
-
-    Raises:
-      TypeError: if `make_safe` is `True` but `_safe_transforms` is not
-        implemented directly for `cls`.
-    """
-    params = kwargs
-    if make_safe:
-      with ops.name_scope("DistributionFromParams", values=params.values()):
-        # Check to ensure the _safe_transforms function used is defined directly
-        # on cls and not on a parent.
-        if super(cls, cls)._safe_transforms == cls._safe_transforms:
-          raise TypeError("_safe_transforms not implemented for %s" %
-                          cls.__name__)
-
-        transforms = cls._safe_transforms()
-        for param_name, param in params.items():
-          if param_name in transforms:
-            params[param_name] = transforms[param_name](param)
-
-    return cls(**params)
-
-  @staticmethod
-  def _safe_transforms():
-    """Default parameter transforms.
-
-    Subclasses should document the transforms applied to the parameters.
-
-    Using the normal distribution as an example (docstring omitted):
-
-    ```
-    @staticmethod
-    def _safe_transforms():
-      return {"sigma": nn.softplus}
-    ```
-
-    Note that `mu` is not the returned dict because no constraining transform
-    is necessary.
-
-    Returns:
-      `dict` of parameter names to callable that will constrain the parameter.
-    """
-    raise NotImplementedError("_safe_transforms is not implemented")
 
   @property
   def name(self):
@@ -540,6 +455,16 @@ class Distribution(BaseDistribution):
   def log_cdf(self, value, name="log_cdf"):
     """Log cumulative distribution function.
 
+    Given random variable `X`, the cumulative distribution function `cdf` is:
+
+    ```
+    log_cdf(x) := Log[ P[X <= x] ]
+    ```
+
+    Often, a numerical approximation can be used for `log_cdf(x)` that yields
+    a more accurate answer than simply taking the logarithm of the `cdf` when
+    `x << -1`.
+
     Args:
       value: `float` or `double` `Tensor`.
       name: The name to give this op.
@@ -556,6 +481,12 @@ class Distribution(BaseDistribution):
   def cdf(self, value, name="cdf"):
     """Cumulative distribution function.
 
+    Given random variable `X`, the cumulative distribution function `cdf` is:
+
+    ```
+    cdf(x) := P[X <= x]
+    ```
+
     Args:
       value: `float` or `double` `Tensor`.
       name: The name to give this op.
@@ -568,6 +499,57 @@ class Distribution(BaseDistribution):
     with self._name_scope(name, values=[value]):
       value = ops.convert_to_tensor(value, name="value")
       return self._cdf(value)
+
+  def log_survival_function(self, value, name="log_survival_function"):
+    """Log survival function.
+
+    Given random variable `X`, the survival function is defined:
+
+    ```
+    log_survival_function(x) = Log[ P[X > x] ]
+                             = Log[ 1 - P[X <= x] ]
+                             = Log[ 1 - cdf(x) ]
+    ```
+
+    Typically, different numerical approximations can be used for the log
+    survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+    Args:
+      value: `float` or `double` `Tensor`.
+      name: The name to give this op.
+
+    Returns:
+      `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+        `self.dtype`.
+    """
+    self._check_hasattr(self._log_survival_function)
+    with self._name_scope(name, values=[value]):
+      value = ops.convert_to_tensor(value, name="value")
+      return self._log_survival_function(value)
+
+  def survival_function(self, value, name="survival_function"):
+    """Survival function.
+
+    Given random variable `X`, the survival function is defined:
+
+    ```
+    survival_function(x) = P[X > x]
+                         = 1 - P[X <= x]
+                         = 1 - cdf(x).
+    ```
+
+    Args:
+      value: `float` or `double` `Tensor`.
+      name: The name to give this op.
+
+    Returns:
+      Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+        `self.dtype`.
+    """
+    self._check_hasattr(self._survival_function)
+    with self._name_scope(name, values=[value]):
+      value = ops.convert_to_tensor(value, name="value")
+      return self._survival_function(value)
 
   def entropy(self, name="entropy"):
     """Shanon entropy in nats."""

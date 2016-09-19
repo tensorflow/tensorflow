@@ -24,12 +24,7 @@
 		592FF90D18EDD0DA00C164F8 /* MainStoryboard_iPhone.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 592FF90A18EDD0DA00C164F8 /* MainStoryboard_iPhone.storyboard */; };
 		592FF92518EE240200C164F8 /* CameraExampleAppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 592FF92218EE240200C164F8 /* CameraExampleAppDelegate.m */; };
 		592FF92618EE240200C164F8 /* CameraExampleViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = 592FF92418EE240200C164F8 /* CameraExampleViewController.mm */; };
-		596F2E8A1D80D2F300F4A15F /* retrained_graph.pb in Resources */ = {isa = PBXBuildFile; fileRef = 596F2E881D80D2F300F4A15F /* retrained_graph.pb */; };
-		596F2E8B1D80D2F300F4A15F /* retrained_labels.txt in Resources */ = {isa = PBXBuildFile; fileRef = 596F2E891D80D2F300F4A15F /* retrained_labels.txt */; };
-		596F2E8D1D80E7D200F4A15F /* retrained_optimized.pb in Resources */ = {isa = PBXBuildFile; fileRef = 596F2E8C1D80E7D200F4A15F /* retrained_optimized.pb */; };
-		596F2E8F1D81F0A600F4A15F /* retrained_mmap.pb in Resources */ = {isa = PBXBuildFile; fileRef = 596F2E8E1D81F0A600F4A15F /* retrained_mmap.pb */; };
 		5993C7721D5D4E980048CE6A /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5993C7711D5D4E980048CE6A /* Accelerate.framework */; };
-		59EFAF8D1D808C8E003396F6 /* inception_mmap.pb in Resources */ = {isa = PBXBuildFile; fileRef = 59EFAF8C1D808C8E003396F6 /* inception_mmap.pb */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -58,12 +53,7 @@
 		592FF92218EE240200C164F8 /* CameraExampleAppDelegate.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = CameraExampleAppDelegate.m; sourceTree = SOURCE_ROOT; };
 		592FF92318EE240200C164F8 /* CameraExampleViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraExampleViewController.h; sourceTree = SOURCE_ROOT; };
 		592FF92418EE240200C164F8 /* CameraExampleViewController.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = CameraExampleViewController.mm; sourceTree = SOURCE_ROOT; };
-		596F2E881D80D2F300F4A15F /* retrained_graph.pb */ = {isa = PBXFileReference; lastKnownFileType = file; path = retrained_graph.pb; sourceTree = "<group>"; };
-		596F2E891D80D2F300F4A15F /* retrained_labels.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = retrained_labels.txt; sourceTree = "<group>"; };
-		596F2E8C1D80E7D200F4A15F /* retrained_optimized.pb */ = {isa = PBXFileReference; lastKnownFileType = file; path = retrained_optimized.pb; sourceTree = "<group>"; };
-		596F2E8E1D81F0A600F4A15F /* retrained_mmap.pb */ = {isa = PBXFileReference; lastKnownFileType = file; path = retrained_mmap.pb; sourceTree = "<group>"; };
 		5993C7711D5D4E980048CE6A /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS9.3.sdk/System/Library/Frameworks/Accelerate.framework; sourceTree = DEVELOPER_DIR; };
-		59EFAF8C1D808C8E003396F6 /* inception_mmap.pb */ = {isa = PBXFileReference; lastKnownFileType = file; path = inception_mmap.pb; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -91,12 +81,7 @@
 			children = (
 				591D3ED71CFFA83A0059011C /* grace_hopper.jpg */,
 				591D3ED81CFFA83A0059011C /* imagenet_comp_graph_label_strings.txt */,
-				59EFAF8C1D808C8E003396F6 /* inception_mmap.pb */,
 				591D3ED91CFFA83A0059011C /* tensorflow_inception_graph.pb */,
-				596F2E881D80D2F300F4A15F /* retrained_graph.pb */,
-				596F2E891D80D2F300F4A15F /* retrained_labels.txt */,
-				596F2E8E1D81F0A600F4A15F /* retrained_mmap.pb */,
-				596F2E8C1D80E7D200F4A15F /* retrained_optimized.pb */,
 			);
 			path = data;
 			sourceTree = SOURCE_ROOT;
@@ -214,15 +199,10 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				596F2E8D1D80E7D200F4A15F /* retrained_optimized.pb in Resources */,
 				591D3EDA1CFFA83A0059011C /* grace_hopper.jpg in Resources */,
-				596F2E8F1D81F0A600F4A15F /* retrained_mmap.pb in Resources */,
 				591D3EDC1CFFA83A0059011C /* tensorflow_inception_graph.pb in Resources */,
-				596F2E8B1D80D2F300F4A15F /* retrained_labels.txt in Resources */,
 				592FF90D18EDD0DA00C164F8 /* MainStoryboard_iPhone.storyboard in Resources */,
 				591D3EDB1CFFA83A0059011C /* imagenet_comp_graph_label_strings.txt in Resources */,
-				59EFAF8D1D808C8E003396F6 /* inception_mmap.pb in Resources */,
-				596F2E8A1D80D2F300F4A15F /* retrained_graph.pb in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

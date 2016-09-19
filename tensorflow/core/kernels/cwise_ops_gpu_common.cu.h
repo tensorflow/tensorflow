@@ -119,6 +119,9 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS, has_errors> {
 #define DEFINE_UNARY5(F, T0, T1, T2, T3, T4) \
   DEFINE_UNARY2(F, T0, T1);                  \
   DEFINE_UNARY3(F, T2, T3, T4)
+#define DEFINE_UNARY6(F, T0, T1, T2, T3, T4, T5) \
+  DEFINE_UNARY2(F, T0, T1);                      \
+  DEFINE_UNARY4(F, T2, T3, T4, T5)
 
 // Macros to explicitly instantiate kernels on GPU for multiple types
 // (T0, T1, etc.) for BinaryFunctor.

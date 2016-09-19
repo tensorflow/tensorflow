@@ -469,6 +469,54 @@ layers are called with `scope='stack'`.
 
 - - -
 
+### `tf.contrib.layers.safe_embedding_lookup_sparse(embedding_weights, sparse_ids, sparse_weights=None, combiner=None, default_id=None, name=None, partition_strategy='div')` {#safe_embedding_lookup_sparse}
+
+Lookup embedding results, accounting for invalid IDs and empty features.
+
+The partitioned embedding in `embedding_weights` must all be the same shape
+except for the first dimension. The first dimension is allowed to vary as the
+vocabulary size is not necessarily a multiple of `P`.
+
+Invalid IDs (< 0) are pruned from input IDs and weights, as well as any IDs
+with non-positive weight. For an entry with no features, the embedding vector
+for `default_id` is returned, or the 0-vector if `default_id` is not supplied.
+
+The ids and weights may be multi-dimensional. Embeddings are always aggregated
+along the last dimension.
+
+##### Args:
+
+
+*  <b>`embedding_weights`</b>: A list of `P` float tensors or values representing
+      partitioned embedding tensors.  The total unpartitioned shape should be
+      `[e_0, e_1, ..., e_m]`, where `e_0` represents the vocab size and
+      `e_1, ..., e_m` are the embedding dimensions.
+*  <b>`sparse_ids`</b>: `SparseTensor` of shape `[d_0, d_1, ..., d_n]` containing the
+      ids. `d_0` is typically batch size.
+*  <b>`sparse_weights`</b>: `SparseTensor` of same shape as `sparse_ids`, containing
+      float weights corresponding to `sparse_ids`, or `None` if all weights
+      are be assumed to be 1.0.
+*  <b>`combiner`</b>: A string specifying how to combine embedding results for each
+      entry. Currently "mean", "sqrtn" and "sum" are supported, with "mean"
+      the default.
+*  <b>`default_id`</b>: The id to use for an entry with no features.
+*  <b>`name`</b>: A name for this operation (optional).
+*  <b>`partition_strategy`</b>: A string specifying the partitioning strategy.
+      Currently `"div"` and `"mod"` are supported. Default is `"div"`.
+
+
+##### Returns:
+
+  Dense tensor of shape `[d_0, d_1, ..., d_{n-1}, e_1, ..., e_m]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `embedding_weights` is empty.
+
+
+- - -
+
 ### `tf.contrib.layers.separable_convolution2d(*args, **kwargs)` {#separable_convolution2d}
 
 Adds a depth-separable 2D convolution with optional batch_norm layer.
@@ -849,7 +897,8 @@ Given loss and parameters for optimizer, returns a training op.
                           functions.
                           For example: tf.train.exponential_decay.
 *  <b>`update_ops`</b>: list of update `Operation`s to execute at each step. If `None`,
-              uses elements of UPDATE_OPS collection.
+              uses elements of UPDATE_OPS collection. The order of execution
+              between `update_ops` and `loss` is non-deterministic.
 *  <b>`variables`</b>: list of variables to optimize or
              `None` to use all trainable variables.
 *  <b>`name`</b>: The name for this operation is used to scope operations and summaries.

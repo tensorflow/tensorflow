@@ -200,7 +200,7 @@ class TensorShape {
   DataType data_type() const { return static_cast<DataType>(buf()[13]); }
   void set_data_type(DataType dt) {
     // We only have 8 bits available to store DataType, so make sure it fits
-    DCHECK_LT(static_cast<uint32>(dt), 256);
+    DCHECK_LT(static_cast<uint32>(dt), 256u);
     buf()[13] = static_cast<uint8>(dt);
   }
 

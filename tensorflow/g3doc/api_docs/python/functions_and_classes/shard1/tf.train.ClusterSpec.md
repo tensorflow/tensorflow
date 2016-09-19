@@ -55,6 +55,20 @@ addresses.
 #### Other Methods
 - - -
 
+#### `tf.train.ClusterSpec.__bool__()` {#ClusterSpec.__bool__}
+
+
+
+
+- - -
+
+#### `tf.train.ClusterSpec.__eq__(other)` {#ClusterSpec.__eq__}
+
+
+
+
+- - -
+
 #### `tf.train.ClusterSpec.__init__(cluster)` {#ClusterSpec.__init__}
 
 Creates a `ClusterSpec`.
@@ -72,6 +86,20 @@ Creates a `ClusterSpec`.
 
 *  <b>`TypeError`</b>: If `cluster` is not a dictionary mapping strings to lists
     of strings, and not a `tf.train.ClusterDef` protobuf.
+
+
+- - -
+
+#### `tf.train.ClusterSpec.__ne__(other)` {#ClusterSpec.__ne__}
+
+
+
+
+- - -
+
+#### `tf.train.ClusterSpec.__nonzero__()` {#ClusterSpec.__nonzero__}
+
+
 
 
 - - -

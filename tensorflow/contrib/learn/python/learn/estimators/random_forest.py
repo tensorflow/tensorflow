@@ -108,13 +108,16 @@ class TensorForestEstimator(estimator.BaseEstimator):
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
   def predict_proba(
-      self, x=None, input_fn=None, batch_size=None, as_iterable=False):
+      self, x=None, input_fn=None, batch_size=None, outputs=None,
+      as_iterable=False):
     """Returns prediction probabilities for given features (classification).
 
     Args:
       x: features.
       input_fn: Input function. If set, x and y must be None.
       batch_size: Override default batch size.
+      outputs: list of `str`, name of the output to predict.
+        If `None`, returns all.
       as_iterable: If True, return an iterable which keeps yielding predictions
         for each example until inputs are exhausted. Note: The inputs must
         terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -127,14 +130,19 @@ class TensorForestEstimator(estimator.BaseEstimator):
     Raises:
       ValueError: If both or neither of x and input_fn were given.
     """
-    return super(TensorForestEstimator, self).predict(
-        x=x, input_fn=input_fn, batch_size=batch_size, as_iterable=as_iterable)
+    results = super(TensorForestEstimator, self).predict(
+        x=x, input_fn=input_fn, batch_size=batch_size, outputs=outputs,
+        as_iterable=as_iterable)
+    if as_iterable:
+      return (r['probabilities'] for r in results)
+    else:
+      return results['probabilities']
 
   @deprecated_arg_values(
       estimator.AS_ITERABLE_DATE, estimator.AS_ITERABLE_INSTRUCTIONS,
       as_iterable=False)
   def predict(
-      self, x=None, input_fn=None, axis=None, batch_size=None,
+      self, x=None, input_fn=None, axis=None, batch_size=None, outputs=None,
       as_iterable=False):
     """Returns predictions for given features.
 
@@ -144,6 +152,8 @@ class TensorForestEstimator(estimator.BaseEstimator):
       axis: Axis on which to argmax (for classification).
             Last axis is used by default.
       batch_size: Override default batch size.
+      outputs: list of `str`, name of the output to predict.
+        If `None`, returns all.
       as_iterable: If True, return an iterable which keeps yielding predictions
         for each example until inputs are exhausted. Note: The inputs must
         terminate if you want the iterable to terminate (e.g. be sure to pass
@@ -154,7 +164,8 @@ class TensorForestEstimator(estimator.BaseEstimator):
       predictions if as_iterable is True).
     """
     probabilities = self.predict_proba(
-        x=x, input_fn=input_fn, batch_size=batch_size, as_iterable=as_iterable)
+        x=x, input_fn=input_fn, batch_size=batch_size, outputs=outputs,
+        as_iterable=as_iterable)
     if self.params.regression:
       return probabilities
     else:
@@ -162,6 +173,27 @@ class TensorForestEstimator(estimator.BaseEstimator):
         return (np.argmax(p, axis=0) for p in probabilities)
       else:
         return np.argmax(probabilities, axis=1)
+
+  def predict_with_keys(
+      self, x=None, input_fn=None, axis=None, batch_size=None, outputs=None,
+      as_iterable=False):
+    """Same as predict but also returns the example keys."""
+    results = super(TensorForestEstimator, self).predict(
+        x=x, input_fn=input_fn, batch_size=batch_size, outputs=outputs,
+        as_iterable=as_iterable)
+    if self.params.regression:
+      if as_iterable:
+        return ((r['probabilities'], r.get('keys', None)) for r in results)
+      else:
+        return results['probabilities'], results.get('keys', None)
+    else:
+      if as_iterable:
+        return ((np.argmax(r['probabilities'], axis=0),
+                 r.get('keys', None)) for r in results)
+
+      else:
+        return np.argmax(results['probabilities'], axis=1), results.get('keys',
+                                                                        None)
 
   def _get_train_ops(self, features, targets):
     """Method that builds model graph and returns trainer ops.
@@ -173,7 +205,7 @@ class TensorForestEstimator(estimator.BaseEstimator):
     Returns:
       Tuple of train `Operation` and loss `Tensor`.
     """
-    features, spec = data_ops.ParseDataTensorOrDict(features)
+    features, _, spec = data_ops.ParseDataTensorOrDict(features)
     labels = data_ops.ParseLabelTensorOrDict(targets)
     _assert_float32(features)
     _assert_float32(labels)
@@ -200,12 +232,17 @@ class TensorForestEstimator(estimator.BaseEstimator):
     graph_builder = self.graph_builder_class(
         self.params, device_assigner=self.device_assigner, training=False,
         **self.construction_args)
-    features, spec = data_ops.ParseDataTensorOrDict(features)
+    features, keys, spec = data_ops.ParseDataTensorOrDict(features)
     _assert_float32(features)
-    return graph_builder.inference_graph(features, data_spec=spec)
+    output_dict = {
+        'probabilities': graph_builder.inference_graph(features,
+                                                       data_spec=spec)}
+    if keys is not None:
+      output_dict['keys'] = keys
+    return output_dict
 
   def _get_eval_ops(self, features, targets, metrics):
-    features, spec = data_ops.ParseDataTensorOrDict(features)
+    features, _, spec = data_ops.ParseDataTensorOrDict(features)
     labels = data_ops.ParseLabelTensorOrDict(targets)
     _assert_float32(features)
     _assert_float32(labels)

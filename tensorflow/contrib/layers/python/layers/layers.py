@@ -135,7 +135,7 @@ def batch_norm(inputs,
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     if update_ops:
-      updates = tf.group(update_ops)
+      updates = tf.group(*update_ops)
       total_loss = control_flow_ops.with_dependencies([updates], total_loss)
 
   One can set update_collections=None to force the updates in place, but that

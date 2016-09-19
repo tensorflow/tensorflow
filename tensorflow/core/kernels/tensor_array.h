@@ -182,10 +182,13 @@ class TensorArray : public ResourceBase {
 
   template <typename Device, typename T>
   Status WriteOrAggregateMany(OpKernelContext* ctx,
+                              const std::vector<int32>& indices,
                               std::vector<PersistentTensor>* values) {
     mutex_lock l(mu_);
-    for (int32 i = values->size() - 1; i >= 0; --i) {
-      Status s = LockedWriteOrAggregate<Device, T>(ctx, i, &(*values)[i]);
+    int32 i = 0;
+    for (const int32 ix : indices) {
+      Status s = LockedWriteOrAggregate<Device, T>(ctx, ix, &(*values)[i]);
+      ++i;
       TF_RETURN_IF_ERROR(s);
     }
     return Status::OK();
@@ -214,13 +217,15 @@ class TensorArray : public ResourceBase {
   }
 
   template <typename Device, typename T>
-  Status ReadMany(OpKernelContext* ctx, std::vector<PersistentTensor>* values,
-                  int32 size) {
+  Status ReadMany(OpKernelContext* ctx, const std::vector<int32>& indices,
+                  std::vector<PersistentTensor>* values) {
     mutex_lock l(mu_);
     values->clear();
-    values->resize(size);
-    for (std::size_t i = 0; i < size; ++i) {
-      Status s = LockedRead<Device, T>(ctx, i, &(*values)[i]);
+    values->resize(indices.size());
+    int32 i = 0;
+    for (const int32 ix : indices) {
+      Status s = LockedRead<Device, T>(ctx, ix, &(*values)[i]);
+      ++i;
       if (!s.ok()) return s;
     }
     return Status::OK();

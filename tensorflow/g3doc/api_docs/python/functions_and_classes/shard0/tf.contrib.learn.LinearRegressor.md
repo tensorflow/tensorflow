@@ -40,11 +40,9 @@ Input of `fit` and `evaluate` should have following features,
        key=weight column name, value=a `SparseTensor`}
   - if isinstance(column, `RealValuedColumn`):
       key=column.name, value=a `Tensor`
-  - if `feature_columns` is `None`:
-      input must contains only real valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=True, target_dimension=1, config=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=None, target_dimension=1, _joint_weights=False, config=None)` {#LinearRegressor.__init__}
 
 Construct a `LinearRegressor` estimator object.
 
@@ -69,11 +67,22 @@ Construct a `LinearRegressor` estimator object.
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
 *  <b>`target_dimension`</b>: dimension of the target for multilabels.
+  _joint_weights: If True use a single (possibly partitioned) variable to
+    store the weights. It's faster, but requires all feature columns are
+    sparse and have the 'sum' combiner. Incompatible with SDCAOptimizer.
+
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
 
 ##### Returns:
 
   A `LinearRegressor` estimator.
+
+
+- - -
+
+#### `tf.contrib.learn.LinearRegressor.__repr__()` {#LinearRegressor.__repr__}
+
+
 
 
 - - -
@@ -126,7 +135,7 @@ Exports inference graph into given dir. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False &  be removed altogether.
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
 
     Args:
       export_dir: A string containing a directory to write the exported graph

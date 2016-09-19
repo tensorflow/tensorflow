@@ -490,9 +490,67 @@ class StochasticTensor(BaseStochasticTensor):
                           self._value_type)
 
 
+class ObservedStochasticTensor(StochasticTensor):
+  """A StochasticTensor with an observed value."""
+
+  # pylint: disable=super-init-not-called
+  def __init__(self, dist_cls, value, name=None, **dist_args):
+    """Construct an `ObservedStochasticTensor`.
+
+    `ObservedStochasticTensor` will instantiate a distribution from `dist_cls`
+    and `dist_args` but use the provided value instead of sampling from the
+    distribution. The provided value argument must be appropriately shaped
+    to have come from the constructed distribution.
+
+    Args:
+      dist_cls: a `Distribution` class.
+      value: a Tensor containing the observed value
+      name: a name for this `ObservedStochasticTensor` and its ops.
+      **dist_args: keyword arguments to be passed through to `dist_cls` on
+          construction.
+
+    Raises:
+      TypeError: if `dist_cls` is not a `Distribution`.
+      ValueError: if `value` is not compatible with the distribution.
+    """
+    if not issubclass(dist_cls, distributions.Distribution):
+      raise TypeError("dist_cls must be a subclass of Distribution")
+    self._dist_cls = dist_cls
+    self._dist_args = dist_args
+    with ops.name_scope(name, "ObservedStochasticTensor",
+                        list(dist_args.values()) + [value]) as scope:
+      self._name = scope
+      self._dist = dist_cls(**dist_args)
+      dist_shape = self._dist.get_batch_shape().concatenate(
+          self._dist.get_event_shape())
+      value = ops.convert_to_tensor(value)
+      value_shape = value.get_shape()
+
+      if not value_shape.is_compatible_with(dist_shape):
+        if value_shape.ndims < dist_shape.ndims:
+          raise ValueError(
+              "Rank of observed value (%d) must be >= rank of a sample from the"
+              " distribution (%d)." % (value_shape.ndims, dist_shape.ndims))
+        sample_shape = value_shape[(value_shape.ndims - dist_shape.ndims):]
+        if not sample_shape.is_compatible_with(dist_shape):
+          raise ValueError(
+              "Shape of observed value %s is incompatible with the shape of a "
+              "sample from the distribution %s." % (value_shape, dist_shape))
+      if value.dtype != self._dist.dtype:
+        raise ValueError("Type of observed value (%s) does not match type of "
+                         "distribuiton (%s)." % (value.dtype, self._dist.dtype))
+      self._value = array_ops.identity(value)
+    # pylint: disable=non-parent-init-called
+    BaseStochasticTensor.__init__(self)
+
+  def loss(self, final_loss, name=None):
+    return None
+
+
 __all__ = [
     "BaseStochasticTensor",
     "StochasticTensor",
+    "ObservedStochasticTensor",
     "MeanValue",
     "SampleValue",
     "SampleAndReshapeValue",

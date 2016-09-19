@@ -43,25 +43,27 @@ class UpdateFertileSlotsTest(test_util.TensorFlowTestCase):
 
   def testSimple(self):
     with self.test_session():
-      (node_map_updates, accumulators_cleared,
+      (n2a_map_updates, a2n_map_updates, accumulators_cleared,
        accumulators_allocated) = self.ops.update_fertile_slots(
            self.finished, self.non_fertile_leaves, self.non_fertile_leaf_scores,
            self.end_of_tree, self.total_counts, self.node_map,
            self.stale_leaves)
 
-      self.assertAllEqual([[2, 4], [-1, 0]], node_map_updates.eval())
+      self.assertAllEqual([[2, 4], [-1, 0]], n2a_map_updates.eval())
+      self.assertAllEqual([[0], [4]], a2n_map_updates.eval())
       self.assertAllEqual([], accumulators_cleared.eval())
       self.assertAllEqual([0], accumulators_allocated.eval())
 
   def testNoFinished(self):
     with self.test_session():
-      (node_map_updates, accumulators_cleared,
+      (n2a_map_updates, a2n_map_updates, accumulators_cleared,
        accumulators_allocated) = self.ops.update_fertile_slots(
            [], self.non_fertile_leaves, self.non_fertile_leaf_scores,
            self.end_of_tree, self.total_counts, self.node_map,
            self.stale_leaves)
 
-      self.assertAllEqual((2, 0), node_map_updates.eval().shape)
+      self.assertAllEqual((2, 0), n2a_map_updates.eval().shape)
+      self.assertAllEqual((2, 0), a2n_map_updates.eval().shape)
       self.assertAllEqual([], accumulators_cleared.eval())
       self.assertAllEqual([], accumulators_allocated.eval())
 
@@ -71,11 +73,11 @@ class UpdateFertileSlotsTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError(
           'Number of non fertile leaves should be the same in '
           'non_fertile_leaves and non_fertile_leaf_scores.'):
-        (node_map_updates, _, _) = self.ops.update_fertile_slots(
+        (n2a_map_updates, _, _, _) = self.ops.update_fertile_slots(
             self.finished, self.non_fertile_leaves,
             self.non_fertile_leaf_scores, self.end_of_tree, self.total_counts,
             self.node_map, self.stale_leaves)
-        self.assertAllEqual((2, 0), node_map_updates.eval().shape)
+        self.assertAllEqual((2, 0), n2a_map_updates.eval().shape)
 
 
 if __name__ == '__main__':

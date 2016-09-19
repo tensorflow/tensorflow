@@ -111,6 +111,7 @@ concatenated.
 @@conv2d_transpose
 @@conv1d
 @@conv3d
+@@conv3d_transpose
 
 ## Pooling
 

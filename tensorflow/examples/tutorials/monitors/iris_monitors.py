@@ -70,5 +70,5 @@ print("Accuracy: {0:f}".format(accuracy_score))
 # Classify two new flower samples.
 new_samples = np.array(
     [[6.4, 3.2, 4.5, 1.5], [5.8, 3.1, 5.0, 1.7]], dtype=float)
-y = classifier.predict(new_samples)
+y = list(classifier.predict(new_samples, as_iterable=True))
 print("Predictions: {}".format(str(y)))

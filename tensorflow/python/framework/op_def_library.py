@@ -349,6 +349,23 @@ class OpDefLibrary(object):
             (op_type_name, producer, deprecation_version,
              op_def.deprecation.explanation))
 
+    # Fill in the list of default types for all "type" attrs.  This
+    # will be used to choose a preferred dtype to convert to in the
+    # absence of input type information.
+    #
+    # TODO(b/31302892): Currently the defaults don't work in the right
+    # way if you have two inputs, one of whose type resolution depends
+    # on the other.  Handling this will require restructuring this code
+    # significantly.
+    default_type_attr_map = {}
+    for attr_def in op_def.attr:
+      if attr_def.type != "type":
+        continue
+      key = attr_def.name
+      if attr_def.HasField("default_value"):
+        default_type_attr_map[key] = dtypes.as_dtype(
+            attr_def.default_value.type)
+
     # Requires that op_def has passed validation (using the C++
     # ValidateOpDef() from ../framework/op_def_util.h).
     attrs = {}
@@ -390,6 +407,7 @@ class OpDefLibrary(object):
           # In cases where we expect all elements of the list to have the
           # same dtype, try to cast non-Tensor elements to that type.
           dtype = None
+          default_dtype = None
           if input_arg.type != types_pb2.DT_INVALID:
             dtype = input_arg.type
           elif input_arg.number_attr:
@@ -401,11 +419,19 @@ class OpDefLibrary(object):
                   dtype = t.dtype
                   break
 
+            # dtype still not found, prefer using the default dtype
+            # from the attr.
+            if dtype is None and input_arg.type_attr in default_type_attr_map:
+              default_dtype = default_type_attr_map[input_arg.type_attr]
+
           try:
             if not input_arg.is_ref and dtype:
               dtype = dtypes.as_dtype(dtype).base_dtype
             values = ops.convert_n_to_tensor(
-                values, name=input_arg.name, dtype=dtype if dtype else None,
+                values,
+                name=input_arg.name,
+                dtype=dtype if dtype else None,
+                preferred_dtype=default_dtype,
                 as_ref=input_arg.is_ref)
             if input_arg.number_attr and len(
                 set(v.dtype.base_dtype for v in values)) > 1:
@@ -444,14 +470,24 @@ class OpDefLibrary(object):
           # In cases where we have an expected type, try to convert non-Tensor
           # arguments to that type.
           dtype = None
+          default_dtype = None
           if input_arg.type != types_pb2.DT_INVALID:
             dtype = input_arg.type
           elif input_arg.type_attr in attrs:
             dtype = attrs[input_arg.type_attr]
+          elif input_arg.type_attr in default_type_attr_map:
+            # The dtype could not be inferred solely from the inputs,
+            # so we prefer the attr's default, so code that adds a new attr
+            # with a default is backwards compatible.
+            default_dtype = default_type_attr_map[input_arg.type_attr]
+
           try:
             values = ops.convert_to_tensor(
-                values, name=input_arg.name, dtype=dtype,
-                as_ref=input_arg.is_ref)
+                values,
+                name=input_arg.name,
+                dtype=dtype,
+                as_ref=input_arg.is_ref,
+                preferred_dtype=default_dtype)
           except ValueError:
             # What type does convert_to_tensor think it has?
             observed = ops.convert_to_tensor(values,
@@ -462,6 +498,14 @@ class OpDefLibrary(object):
               raise TypeError("%s expected type of %s." %
                               (prefix, dtypes.as_dtype(input_arg.type).name))
             else:
+              # Update the maps with the default, if needed.
+              k = input_arg.type_attr
+              if k in default_type_attr_map:
+                if k not in attrs:
+                  attrs[k] = default_type_attr_map[k]
+                  if k not in inferred_from:
+                    inferred_from[k] = "Default in OpDef"
+
               raise TypeError(
                   "%s type %s of argument '%s'." %
                   (prefix, dtypes.as_dtype(attrs[input_arg.type_attr]).name,
@@ -651,9 +695,11 @@ class OpDefLibrary(object):
           attr_value.list.tensor.extend(
               [_MakeTensor(x, key) for x in value])
         elif attr_def.type == "func":
-          if not isinstance(value, compat.bytes_or_text_types):
-            raise TypeError("Expects a string for the func name")
-          attr_value.func.name = value
+          if isinstance(value, compat.bytes_or_text_types):
+            attr_value.func.name = value
+          else:
+            value.add_to_graph(ops.get_default_graph())
+            attr_value.func.name = value.name
         else:
           raise TypeError("Unrecognized Attr type " + attr_def.type)
 

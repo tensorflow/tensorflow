@@ -222,6 +222,16 @@ TEST(JoinStrings, Basic) {
   EXPECT_EQ(str_util::Join(sp, "--"), "hi--there--strings");
 }
 
+TEST(JoinStrings, Join3) {
+  std::vector<string> s;
+  s = {"hi"};
+  auto l1 = [](string* out, string s) { *out += s; };
+  EXPECT_EQ(str_util::Join(s, " ", l1), "hi");
+  s = {"hi", "there", "strings"};
+  auto l2 = [](string* out, string s) { *out += s[0]; };
+  EXPECT_EQ(str_util::Join(s, " ", l2), "h t s");
+}
+
 TEST(Split, Basic) {
   EXPECT_TRUE(str_util::Split("", ',').empty());
   EXPECT_EQ(str_util::Join(str_util::Split("a", ','), "|"), "a");
@@ -285,6 +295,25 @@ TEST(TitlecaseString, Basic) {
   s = "dense";
   str_util::TitlecaseString(&s, " ");
   ASSERT_EQ(s, "Dense");
+}
+
+TEST(HumanReadableElapsedTime, Basic) {
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(-10), "-10 s");
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(-0.001), "-1 ms");
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(-60.0), "-1 min");
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(0.00000001), "0.01 us");
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(0.0000012), "1.2 us");
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(0.0012), "1.2 ms");
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(0.12), "120 ms");
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(1.12), "1.12 s");
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(90.0), "1.5 min");
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(600.0), "10 min");
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(9000.0), "2.5 h");
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(87480.0), "1.01 days");
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(7776000.0), "2.96 months");
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(78840000.0), "2.5 years");
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(382386614.40), "12.1 years");
+  EXPECT_EQ(str_util::HumanReadableElapsedTime(DBL_MAX), "5.7e+300 years");
 }
 
 }  // namespace tensorflow

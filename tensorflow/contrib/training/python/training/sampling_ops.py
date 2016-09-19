@@ -113,7 +113,7 @@ def stratified_sample(tensors, labels, target_probs, batch_size,
 
     # Check that all zero initial probabilities also have zero target
     # probabilities.
-    assert_op = logging_ops.Assert(
+    assert_op = control_flow_ops.Assert(
         math_ops.reduce_all(math_ops.logical_or(
             math_ops.not_equal(init_probs, 0),
             math_ops.equal(target_probs, 0))),

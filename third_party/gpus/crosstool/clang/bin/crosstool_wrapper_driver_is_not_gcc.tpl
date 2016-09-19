@@ -95,6 +95,7 @@ def GetHostCompilerOptions(argv):
   parser.add_argument('-iquote', nargs='*', action='append')
   parser.add_argument('--sysroot', nargs=1)
   parser.add_argument('-g', nargs='*', action='append')
+  parser.add_argument('-fno-canonical-system-headers', action='store_true')
 
   args, _ = parser.parse_known_args(argv)
 
@@ -106,6 +107,8 @@ def GetHostCompilerOptions(argv):
     opts += ' -iquote ' + ' -iquote '.join(sum(args.iquote, []))
   if args.g:
     opts += ' -g' + ' -g'.join(sum(args.g, []))
+  if args.fno_canonical_system_headers:
+    opts += ' -fno-canonical-system-headers'
   if args.sysroot:
     opts += ' --sysroot ' + args.sysroot[0]
 
@@ -229,7 +232,7 @@ def InvokeNvcc(argv, log=False):
   out = ' -o ' + out_file[0]
 
   supported_cuda_compute_capabilities = [ %{cuda_compute_capabilities} ]
-  nvccopts = ''
+  nvccopts = '-D_FORCE_INLINES '
   for capability in supported_cuda_compute_capabilities:
     capability = capability.replace('.', '')
     nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s,compute_%s\" ' % (

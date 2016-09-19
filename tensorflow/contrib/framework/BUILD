@@ -19,7 +19,6 @@ py_library(
         "python/framework/tensor_util.py",
         "python/ops/__init__.py",
         "python/ops/arg_scope.py",
-        "python/ops/embedding_ops.py",
         "python/ops/ops.py",
         "python/ops/prettyprint_ops.py",
         "python/ops/variables.py",

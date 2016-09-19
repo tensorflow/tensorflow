@@ -27,8 +27,9 @@ namespace io {
 
 static string Match(Env* env, const string& suffix_pattern) {
   std::vector<string> results;
-  Status s = GetMatchingFiles(env, JoinPath(testing::TmpDir(), suffix_pattern),
-                              &results);
+  // Testing with unclean paths (// instead of /)
+  Status s = GetMatchingFiles(
+      env, strings::StrCat(testing::TmpDir(), "//", suffix_pattern), &results);
   if (!s.ok()) {
     return s.ToString();
   } else {

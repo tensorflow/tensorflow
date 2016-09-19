@@ -101,19 +101,18 @@ class StackOpTest(tf.test.TestCase):
     self._testMultiStack(use_gpu=False)
     self._testMultiStack(use_gpu=True)
 
-  def _testDuplicateStack(self, use_gpu):
+  def _testSameNameStacks(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       h1 = gen_data_flow_ops._stack(tf.float32, stack_name="foo")
       c1 = gen_data_flow_ops._stack_push(h1, 4.0)
       h2 = gen_data_flow_ops._stack(tf.float32, stack_name="foo")
       c2 = gen_data_flow_ops._stack_push(h2, 5.0)
       r = c1 + c2
-      with self.assertRaises(errors.AlreadyExistsError):
-        r.eval()
+      self.assertNotEqual(h1.eval()[1], h2.eval()[1])
 
-  def testDuplicateStack(self):
-    self._testDuplicateStack(use_gpu=False)
-    self._testDuplicateStack(use_gpu=True)
+  def testSameNameStacks(self):
+    self._testSameNameStacks(use_gpu=False)
+    self._testSameNameStacks(use_gpu=True)
 
   def _testCloseStack(self, use_gpu):
     with self.test_session(use_gpu=use_gpu) as sess:

@@ -861,11 +861,11 @@ string DebugString(const GraphDef& instantiated_func_def) {
 
 string DebugStringWhole(const GraphDef& gdef) {
   string ret;
-  for (auto fdef : gdef.library().function()) {
+  for (const auto& fdef : gdef.library().function()) {
     strings::StrAppend(&ret, Print(fdef));
   }
   strings::StrAppend(&ret, "\n");
-  for (auto ndef : gdef.node()) {
+  for (const auto& ndef : gdef.node()) {
     strings::StrAppend(&ret, Print(ndef), "\n");
   }
   return ret;

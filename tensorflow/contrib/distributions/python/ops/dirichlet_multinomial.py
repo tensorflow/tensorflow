@@ -103,8 +103,8 @@ class DirichletMultinomial(distribution.Distribution):
   def __init__(self,
                n,
                alpha,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="DirichletMultinomial"):
     """Initialize a batch of DirichletMultinomial distributions.
 
@@ -118,10 +118,10 @@ class DirichletMultinomial(distribution.Distribution):
         `n` with shape broadcastable to `[N1,..., Nm, k]` `m >= 0`.  Defines
         this as a batch of `N1 x ... x Nm` different `k` class Dirichlet
         multinomial distributions.
-      validate_args: Whether to assert valid values for parameters `alpha` and
-        `n`, and `x` in `prob` and `log_prob`.  If `False`, correct behavior is
-        not guaranteed.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert valid
+        values for parameters `alpha` and `n`, and `x` in `prob` and
+        `log_prob`.  If `False`, correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -159,6 +159,7 @@ class DirichletMultinomial(distribution.Distribution):
                       "alpha_sum": self._alpha_sum,
                       "n": self._n},
           is_continuous=False,
+          is_reparameterized=False,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
@@ -212,8 +213,8 @@ class DirichletMultinomial(distribution.Distribution):
     variance = -math_ops.batch_matmul(
         array_ops.expand_dims(normalized_alpha, -1),
         array_ops.expand_dims(normalized_alpha, -2))
-    variance = array_ops.batch_matrix_set_diag(
-        variance, normalized_alpha * (1. - normalized_alpha))
+    variance = array_ops.matrix_set_diag(variance, normalized_alpha *
+                                         (1. - normalized_alpha))
     shared_factor = (self.n * (alpha_sum + self.n) /
                      (alpha_sum + 1) * array_ops.ones_like(self.alpha))
     variance *= array_ops.expand_dims(shared_factor, -1)

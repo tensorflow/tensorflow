@@ -118,6 +118,7 @@ class BaseMonitor(object):
     self._current_step = None
     self._max_steps = None
     self._estimator = None
+    self._estimator_locked = False
 
   @property
   def run_on_all_workers(self):
@@ -126,16 +127,28 @@ class BaseMonitor(object):
   def set_estimator(self, estimator):
     """A setter called automatically by the target estimator.
 
+    If the estimator is locked, this method does nothing.
+
     Args:
       estimator: the estimator that this monitor monitors.
 
     Raises:
       ValueError: if the estimator is None.
     """
+    if self._estimator_locked:
+      return
     if estimator is None:
       raise ValueError("Missing estimator.")
     # TODO(mdan): This should fail if called twice with the same estimator.
     self._estimator = estimator
+
+  def _lock_estimator(self):
+    """Locks the estimator until _unlock_estimator is called."""
+    self._estimator_locked = True
+
+  def _unlock_estimator(self):
+    """Unlocks the estimator."""
+    self._estimator_locked = False
 
   def begin(self, max_steps=None):
     """Called at the beginning of training.
@@ -959,7 +972,7 @@ class ExportMonitor(EveryN):
           default_batch_size=self._default_batch_size,
           input_feature_key=self._input_feature_key,
           use_deprecated_input_fn=self._use_deprecated_input_fn)
-    except (RuntimeError, TypeError):
+    except RuntimeError:
       # Currently we are not syncronized with saving checkpoints, which leads to
       # runtime errors when we are calling export on the same global step.
       # Exports depend on saved checkpoints for constructing the graph and
@@ -978,11 +991,15 @@ class ExportMonitor(EveryN):
                    "yet.")
       return
     try:
-      self._estimator.export(self.export_dir,
-                             exports_to_keep=self.exports_to_keep,
-                             signature_fn=self.signature_fn,
-                             default_batch_size=self._default_batch_size)
-    except (RuntimeError, TypeError):
+      self._estimator.export(
+          self.export_dir,
+          exports_to_keep=self.exports_to_keep,
+          signature_fn=self.signature_fn,
+          input_fn=self._input_fn,
+          default_batch_size=self._default_batch_size,
+          input_feature_key=self._input_feature_key,
+          use_deprecated_input_fn=self._use_deprecated_input_fn)
+    except RuntimeError:
       logging.info("Skipping exporting for the same step.")
 
 

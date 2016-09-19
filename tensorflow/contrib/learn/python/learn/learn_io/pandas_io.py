@@ -60,10 +60,16 @@ def extract_pandas_data(data):
   if not isinstance(data, pd.DataFrame):
     return data
 
-  if all(dtype.name in PANDAS_DTYPES for dtype in data.dtypes):
+  bad_data = [column for column in data
+              if data[column].dtype.name not in PANDAS_DTYPES]
+
+  if not bad_data:
     return data.values.astype('float')
   else:
-    raise ValueError('Data types for data must be int, float, or bool.')
+    error_report = [("'" + str(column) + "' type='" +
+                     data[column].dtype.name + "'") for column in bad_data]
+    raise ValueError('Data types for extracting pandas data must be int, '
+                     'float, or bool. Found: ' + ', '.join(error_report))
 
 
 def extract_pandas_matrix(data):
@@ -100,9 +106,14 @@ def extract_pandas_labels(labels):
     if len(labels.columns) > 1:
       raise ValueError('Only one column for labels is allowed.')
 
-    if all(dtype.name in PANDAS_DTYPES for dtype in labels.dtypes):
+    bad_data = [column for column in labels
+                if labels[column].dtype.name not in PANDAS_DTYPES]
+    if not bad_data:
       return labels.values
     else:
-      raise ValueError('Data types for labels must be int, float, or bool.')
+      error_report = ["'" + str(column) + "' type="
+                      + str(labels[column].dtype.name) for column in bad_data]
+      raise ValueError('Data types for extracting labels must be int, '
+                       'float, or bool. Found: ' + ', '.join(error_report))
   else:
     return labels

@@ -26,6 +26,7 @@ import tensorflow as tf
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 
 
 class VariablesTestCase(tf.test.TestCase):
@@ -445,6 +446,84 @@ class ObsoleteIsInitializedTest(tf.test.TestCase):
         inited.op.run()
       v.initializer.run()
       inited.op.run()
+
+
+class PartitionedVariableTest(tf.test.TestCase):
+
+  def testPartitionedVariable(self):
+    with tf.Graph().as_default():
+      v0 = tf.Variable([0])
+      v1 = tf.Variable([1])
+      v0._set_save_slice_info(variables.Variable.SaveSliceInfo(
+          v0.name, [2], [0], [1]))
+      v1._set_save_slice_info(variables.Variable.SaveSliceInfo(
+          v0.name, [2], [1], [1]))
+      partitions = [2]
+
+      # Pass variable_list as [v1, v0] to ensure they are properly
+      # re-sorted to [v0, v1] based on their slice info offsets.
+      partitioned_variable = variables.PartitionedVariable(
+          name="two_vars",
+          shape=[2],
+          dtype=v0.dtype,
+          variable_list=[v1, v0],
+          partitions=partitions)
+
+      concatenated = tf.convert_to_tensor(partitioned_variable)
+      num_partitions = len(partitioned_variable)
+      iterated_partitions = list(partitioned_variable)
+      self.assertEqual(2, num_partitions)
+      self.assertEqual([v0, v1], iterated_partitions)
+      self.assertEqual([2], concatenated.get_shape())
+
+  def testPartitionedVariableFailures(self):
+    with tf.Graph().as_default():
+      with self.assertRaisesRegexp(ValueError, "empty"):
+        variables.PartitionedVariable(
+            name="fail",
+            shape=2,
+            dtype=tf.int32,
+            variable_list=[],
+            partitions=[])
+
+      with self.assertRaisesRegexp(ValueError, "must have a save_slice_info"):
+        v0 = tf.Variable([0])
+        partitions = [1]
+        variables.PartitionedVariable(
+            name="two_vars",
+            shape=[1],
+            dtype=v0.dtype,
+            variable_list=[v0],
+            partitions=partitions)
+
+      with self.assertRaisesRegexp(ValueError, "full shapes must match"):
+        v0 = tf.Variable([0])
+        v1 = tf.Variable([1])
+        v0._set_save_slice_info(variables.Variable.SaveSliceInfo(
+            v0.name, [2], [0], [1]))
+        v1._set_save_slice_info(variables.Variable.SaveSliceInfo(
+            v0.name, [2], [1], [1]))
+        partitions = [2]
+
+        variables.PartitionedVariable(
+            name="two_vars",
+            shape=[3],
+            dtype=v0.dtype,
+            variable_list=[v1, v0],
+            partitions=partitions)
+
+      with self.assertRaisesRegexp(ValueError, "must be positive"):
+        v0 = tf.Variable([0])
+        v0._set_save_slice_info(variables.Variable.SaveSliceInfo(
+            v0.name, [2], [0], [1]))
+        partitions = [0]
+
+        variables.PartitionedVariable(
+            name="two_vars",
+            shape=[2],
+            dtype=v0.dtype,
+            variable_list=[v0],
+            partitions=partitions)
 
 
 class VariableContainerTest(tf.test.TestCase):

@@ -139,7 +139,7 @@ to compile your Op into a dynamic library.
 ```bash
 TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
 
-g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I $TF_INC
+g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I $TF_INC -O2
 ```
 
 On Mac OS X, the additional flag "-undefined dynamic_lookup" is required when
@@ -1071,7 +1071,7 @@ Details about registering gradient functions with
   integer index `i`, the gradient function would `return [x_grad, None]`.
 
 * If there is no meaningful gradient for the op at all, use
-  `ops.NoGradient("OpName")` to disable automatic differentiation.
+  `ops.NotDifferentiable("OpName")` to disable automatic differentiation.
 
 Note that at the time the gradient function is called, only the data flow graph
 of ops is available, not the tensor data itself.  Thus, all computation must be

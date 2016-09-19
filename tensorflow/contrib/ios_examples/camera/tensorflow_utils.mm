@@ -130,10 +130,8 @@ tensorflow::Status LoadModel(NSString* file_name, NSString* file_type,
     return session_status;
   }
   session->reset(session_pointer);
-  LOG(INFO) << "Session created.";
 
   tensorflow::GraphDef tensorflow_graph;
-  LOG(INFO) << "Graph created.";
 
   NSString* model_path = FilePathForResourceName(file_name, file_type);
   if (!model_path) {
@@ -149,7 +147,6 @@ tensorflow::Status LoadModel(NSString* file_name, NSString* file_type,
     return tensorflow::errors::NotFound([model_path UTF8String]);
   }
 
-  LOG(INFO) << "Creating session.";
   tensorflow::Status create_status = (*session)->Create(tensorflow_graph);
   if (!create_status.ok()) {
     LOG(ERROR) << "Could not create TensorFlow Graph: " << create_status;
@@ -169,7 +166,7 @@ tensorflow::Status LoadMemoryMappedModel(
   tensorflow::Status mmap_status =
       (memmapped_env->get())->InitializeFromFile([network_path UTF8String]);
   if (!mmap_status.ok()) {
-    LOG(INFO) << "MMap failed with " << mmap_status.error_message();
+    LOG(ERROR) << "MMap failed with " << mmap_status.error_message();
     return mmap_status;
   }
 
@@ -179,8 +176,8 @@ tensorflow::Status LoadMemoryMappedModel(
       tensorflow::MemmappedFileSystem::kMemmappedPackageDefaultGraphDef,
       &tensorflow_graph);
   if (!load_graph_status.ok()) {
-    LOG(INFO) << "MMap load graph failed with "
-              << load_graph_status.error_message();
+    LOG(ERROR) << "MMap load graph failed with "
+               << load_graph_status.error_message();
     return load_graph_status;
   }
 
@@ -201,7 +198,6 @@ tensorflow::Status LoadMemoryMappedModel(
     return session_status;
   }
 
-  LOG(INFO) << "Creating session.";
   tensorflow::Status create_status = session_pointer->Create(tensorflow_graph);
   if (!create_status.ok()) {
     LOG(ERROR) << "Could not create TensorFlow Graph: " << create_status;
@@ -209,7 +205,6 @@ tensorflow::Status LoadMemoryMappedModel(
   }
 
   session->reset(session_pointer);
-  LOG(INFO) << "Session created.";
 
   return tensorflow::Status::OK();
 }

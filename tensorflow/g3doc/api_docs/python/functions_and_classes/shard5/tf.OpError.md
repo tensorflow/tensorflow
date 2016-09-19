@@ -48,6 +48,13 @@ Creates a new `OpError` indicating that a particular op failed.
 
 - - -
 
+#### `tf.OpError.__str__()` {#OpError.__str__}
+
+
+
+
+- - -
+
 #### `tf.OpError.error_code` {#OpError.error_code}
 
 The integer error code that describes the error.

@@ -11,6 +11,14 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_android",
+    "if_ios",
+    "if_mobile",
+    "if_not_mobile",
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -100,15 +108,18 @@ cc_library(
     name = "session_bundle",
     srcs = ["session_bundle.cc"],
     hdrs = ["session_bundle.h"],
+    copts = if_ios(["-DGOOGLE_LOGGING"]),
+    visibility = ["//visibility:public"],
     deps = [
-        ":manifest_proto_cc",
         ":signature",
+    ] + if_not_mobile([
+        ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow_opensource",
-    ],
+        # mobile not supported yet
+    ]),
 )
 
 # This is a lite version of the session_bundle target that does not link in any
@@ -118,15 +129,18 @@ cc_library(
     name = "session_bundle_lite",
     srcs = ["session_bundle.cc"],
     hdrs = ["session_bundle.h"],
+    copts = if_ios(["-DGOOGLE_LOGGING"]),
     visibility = ["//visibility:public"],
     deps = [
-        ":manifest_proto_cc",
         ":signature_lite",
+    ] + if_not_mobile([
+        ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ],
+        # mobile not supported yet
+    ]),
 )
 
 cc_test(
@@ -188,13 +202,15 @@ cc_library(
     name = "signature",
     srcs = ["signature.cc"],
     hdrs = ["signature.h"],
-    deps = [
+    visibility = ["//visibility:public"],
+    deps = if_not_mobile([
         ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow_opensource",
-    ],
+        # mobile not supported yet
+    ]),
 )
 
 # This is a lite version of the signature target that does not link in any
@@ -205,12 +221,13 @@ cc_library(
     srcs = ["signature.cc"],
     hdrs = ["signature.h"],
     visibility = ["//visibility:public"],
-    deps = [
+    deps = if_not_mobile([
         ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-    ],
+        # mobile not supported yet
+    ]),
 )
 
 cc_test(
@@ -254,3 +271,6 @@ tf_proto_library(
     cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
+
+# -----------------------------------------------------------------------------
+# Google-internal targets go here (must be at the end).

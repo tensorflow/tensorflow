@@ -76,7 +76,7 @@ class BatchToSpaceErrorHandlingTest(tf.test.TestCase):
     x_np = [[[[1], [2]], [[3], [4]]]]
     crops = np.zeros((2, 2), dtype=np.int32)
     block_size = 10
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       out_tf = tf.batch_to_space(x_np, crops, block_size)
       out_tf.eval()
 
@@ -85,7 +85,7 @@ class BatchToSpaceErrorHandlingTest(tf.test.TestCase):
     x_np = [[[[1], [2], [3]], [[3], [4], [7]]]]
     crops = np.zeros((2, 2), dtype=np.int32)
     block_size = 3
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       _ = tf.batch_to_space(x_np, crops, block_size)
 
   def testUnknownShape(self):

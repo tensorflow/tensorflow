@@ -87,7 +87,7 @@ class VariableScopeTest(tf.test.TestCase):
 
       w = tf.get_variable("w",
                           initializer=numpy.array([1, 2, 3]),
-                          dtype=tf.int32)
+                          dtype=tf.int64)
       sess.run(tf.initialize_variables([w]))
       self.assertAllClose(w.eval(), [1, 2, 3])
 
@@ -178,6 +178,15 @@ class VariableScopeTest(tf.test.TestCase):
         v = tf.get_variable("v")
         sess.run(tf.initialize_variables([v]))
         self.assertAllClose(v.eval(), 0.1)
+
+      # Check that non-float32 initializer creates a non-float32 variable.
+      init = tf.constant(1, dtype=tf.int32)
+      t = tf.get_variable("t", initializer=init)
+      self.assertEqual(t.dtype.base_dtype, tf.int32)
+
+      # Raise error if `initializer` dtype and `dtype` are not identical.
+      with self.assertRaisesRegexp(ValueError, "don't match"):
+        tf.get_variable("s", initializer=init, dtype=tf.float64)
 
   def testControlDeps(self):
     with self.test_session() as sess:
@@ -604,6 +613,27 @@ class VariableScopeTest(tf.test.TestCase):
                            "outer/default/w:0")
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer_1/default/scope2/")
+
+  def testGetLocalVar(self):
+    with self.test_session():
+      # Check that local variable respects naming.
+      with tf.variable_scope("outer") as outer:
+        with tf.variable_scope(outer, "default", []):
+          local_var = variable_scope.get_local_variable(
+              "w", [], collections=["foo"])
+          self.assertEqual(local_var.name, "outer/w:0")
+
+      # Since variable is local, it should be in the local variable collection
+      # but not the the trainable collection.
+      self.assertIn(local_var, tf.get_collection(tf.GraphKeys.LOCAL_VARIABLES))
+      self.assertIn(local_var, tf.get_collection("foo"))
+      self.assertNotIn(
+          local_var, tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES))
+
+      # Check that local variable respects `reuse`.
+      with tf.variable_scope(outer, "default", reuse=True):
+        self.assertEqual(variable_scope.get_local_variable("w", []).name,
+                         "outer/w:0")
 
 
 def axis0_into1_partitioner(shape=None, **unused_kwargs):

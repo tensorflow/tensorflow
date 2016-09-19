@@ -96,6 +96,54 @@ svg0 and svg1 in place to reflect the fact that their inputs have now being
 swapped.
 - - -
 
+#### `tf.contrib.graph_editor.SubGraphView.__bool__()` {#SubGraphView.__bool__}
+
+Allows for implicit boolean conversion.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__copy__()` {#SubGraphView.__copy__}
+
+Create a copy of this subgraph.
+
+Note that this class is a "view", copying it only create another view and
+does not copy the underlying part of the tf.Graph.
+
+##### Returns:
+
+  A new identical instance of the original subgraph view.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__enter__()` {#SubGraphView.__enter__}
+
+Allow Python context to minize the life time of a subgraph view.
+
+A subgraph view is meant to be a lightweight and transient object. A short
+lifetime will alleviate the "out-of-sync" issue mentioned earlier. For that
+reason, a SubGraphView instance can be used within a Python context. For
+example:
+
+from tensorflow.contrib import graph_editor as ge
+with ge.make_sgv(...) as sgv:
+  print(sgv)
+
+##### Returns:
+
+  Itself.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__exit__(exc_type, exc_value, traceback)` {#SubGraphView.__exit__}
+
+
+
+
+- - -
+
 #### `tf.contrib.graph_editor.SubGraphView.__init__(inside_ops=(), passthrough_ts=())` {#SubGraphView.__init__}
 
 Create a subgraph containing the given ops and the "passthrough" tensors.
@@ -116,6 +164,20 @@ Create a subgraph containing the given ops and the "passthrough" tensors.
 
 *  <b>`TypeError`</b>: if inside_ops cannot be converted to a list of tf.Operation or
     if passthrough_ts cannot be converted to a list of tf.Tensor.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__nonzero__()` {#SubGraphView.__nonzero__}
+
+Allows for implicit boolean conversion.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__str__()` {#SubGraphView.__str__}
+
+
 
 
 - - -

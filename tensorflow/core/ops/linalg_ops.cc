@@ -24,21 +24,6 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-// Return in <out> the result of making <s> a square matrix.
-Status MakeSquareMatrix(InferenceContext* c, ShapeHandle s, ShapeHandle* out) {
-  TF_RETURN_IF_ERROR(c->WithRank(s, 2, &s));
-  DimensionHandle d;
-  TF_RETURN_IF_ERROR(c->Merge(c->Dim(s, 0), c->Dim(s, 1), &d));
-  *out = c->Matrix(d, d);
-  return Status::OK();
-}
-
-Status UnchangedSquareShapeFn(InferenceContext* c) {
-  ShapeHandle out;
-  TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &out));
-  c->set_output(0, out);
-  return Status::OK();
-}
 
 // Return in <out> the result of making the end of <s> a square matrix.
 Status MakeBatchSquareMatrix(InferenceContext* c, ShapeHandle input,
@@ -62,25 +47,9 @@ Status BatchUnchangedSquareShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
-Status SquareMatrixSolveShapeFn(InferenceContext* c) {
-  ShapeHandle lhs;
-  ShapeHandle rhs;
-  TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &lhs));
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &rhs));
-
-  // lhs and rhs have the same number of rows. Make a new output
-  // shape that uses rows to replace rhs.dim[0].
-  DimensionHandle rows;
-  TF_RETURN_IF_ERROR(c->Merge(c->Dim(lhs, 0), c->Dim(rhs, 0), &rows));
-  ShapeHandle out;
-  TF_RETURN_IF_ERROR(c->ReplaceDim(rhs, 0, rows, &out));
-  c->set_output(0, out);
-  return Status::OK();
-}
-
-// Inputs are [...,M,N] and [...,M,K].  Output is [...,N,K].
-// If <square>, then input is [...,M,M].
-Status BatchMatrixSolveShapeFn(InferenceContext* c, bool square) {
+// The first input is [...,M,N] and second input is either [...,M,K] or [...,M].
+// Output is [...,N,K] or [...,N]. If <square>, then input is [...,M,M].
+Status MatrixSolveShapeFn(InferenceContext* c, bool square) {
   ShapeHandle lhs;
   ShapeHandle rhs;
   if (square) {
@@ -90,31 +59,65 @@ Status BatchMatrixSolveShapeFn(InferenceContext* c, bool square) {
   }
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &rhs));
 
-  // Make the common batch subshape between the two dimensions.
   ShapeHandle lhs_batch_shape;
-  ShapeHandle batch_shape;
+  ShapeHandle rhs_batch_shape;
+  // Make the common batch subshape.
   TF_RETURN_IF_ERROR(c->Subshape(lhs, 0, -2, &lhs_batch_shape));
-  TF_RETURN_IF_ERROR(c->Subshape(rhs, 0, -2, &batch_shape));
-  TF_RETURN_IF_ERROR(c->Merge(lhs_batch_shape, batch_shape, &batch_shape));
+  TF_RETURN_IF_ERROR(c->Subshape(rhs, 0, -2, &rhs_batch_shape));
+  // Make sure the batch dimensions match between lhs and rhs.
+  TF_RETURN_IF_ERROR(
+      c->Merge(lhs_batch_shape, rhs_batch_shape, &lhs_batch_shape));
 
-  // lhs and rhs have the same value for m.
   DimensionHandle m;
+  // lhs and rhs have the same value for m to be compatible.
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(lhs, -2), c->Dim(rhs, -2), &m));
-
   DimensionHandle n = c->Dim(lhs, -1);
   if (square) {
     TF_RETURN_IF_ERROR(c->Merge(m, n, &n));
   }
 
-  // Build final shape (batch_shape + n + k) in <out>.
   ShapeHandle out;
-  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Vector(n), &out));
+  // Build final shape (batch_shape + n + k) in <out>.
+  TF_RETURN_IF_ERROR(c->Concatenate(lhs_batch_shape, c->Vector(n), &out));
   TF_RETURN_IF_ERROR(c->Concatenate(out, c->Vector(c->Dim(rhs, -1)), &out));
   c->set_output(0, out);
   return Status::OK();
 }
 
-Status BatchSvdShapeHelperFn(InferenceContext* c, ShapeHandle input) {
+// Input is [...,N,N]. Outputs are:
+//   [...,N];[0], if compute_v is false,
+//   [...,N];[...,N,N], if compute_v is true.
+Status SelfAdjointEigV2ShapeFn(InferenceContext* c) {
+  ShapeHandle input;
+  TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &input));
+  DimensionHandle n;
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(input, -2), c->Dim(input, -1), &n));
+  ShapeHandle batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &batch_shape));
+  ShapeHandle e_shape;
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Vector(n), &e_shape));
+  c->set_output(0, e_shape);
+  bool compute_v;
+  TF_RETURN_IF_ERROR(c->GetAttr("compute_v", &compute_v));
+  if (compute_v) {
+    ShapeHandle v_shape;
+    TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(n, n), &v_shape));
+    c->set_output(1, v_shape);
+  } else {
+    c->set_output(1, c->Vector(0ll));
+  }
+  return Status::OK();
+}
+
+// Input is [...,M,N].  First output is [...,min(M,N)].
+// Second and third outputs are:
+//   [0]; [0], if compute_uv is false.
+//   [...,M,M]; [...,N,N], if compute_uv is true and full_matrices is true,
+//   [...,M,P]; [...,N,P], if compute_uv is true and full_matrices is false,
+// where P = min(M,N).
+Status SvdShapeFn(InferenceContext* c) {
+  ShapeHandle input;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
   DimensionHandle m = c->Dim(input, -2);
   DimensionHandle n = c->Dim(input, -1);
   DimensionHandle p;
@@ -151,94 +154,9 @@ Status BatchSvdShapeHelperFn(InferenceContext* c, ShapeHandle input) {
   return Status::OK();
 }
 
-// Input is [M,N].  First output is [min(M,N)].
-// Second and third outputs are:
-//   [0]; [0], if compute_uv is false.
-//   [M,M]; [N,N], if compute_uv is true and full_matrices is true,
-//   [M,P]; [N,P], if compute_uv is true and full_matrices is false,
-// where P = min(M,N).
-Status SvdShapeFn(InferenceContext* c) {
-  ShapeHandle input;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
-  return BatchSvdShapeHelperFn(c, input);
-}
-
-// Input is [...,M,N].  First output is [...,min(M,N)].
-// Second and third outputs are:
-//   [0]; [0], if compute_uv is false.
-//   [...,M,M]; [...,N,N], if compute_uv is true and full_matrices is true,
-//   [...,M,P]; [...,N,P], if compute_uv is true and full_matrices is false,
-// where P = min(M,N).
-Status BatchSvdShapeFn(InferenceContext* c) {
-  ShapeHandle input;
-  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
-  return BatchSvdShapeHelperFn(c, input);
-}
-
-// Input is [N,N]. Outputs are:
-//   [N];[0], if compute_v is false,
-//   [N];[N,N], if compute_v is true.
-Status SelfAdjointEigV2ShapeFn(InferenceContext* c) {
-  ShapeHandle input;
-  TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &input));
-  DimensionHandle n;
-  TF_RETURN_IF_ERROR(c->Merge(c->Dim(input, 0), c->Dim(input, 1), &n));
-  c->set_output(0, c->Vector(n));
-  bool compute_v;
-  TF_RETURN_IF_ERROR(c->GetAttr("compute_v", &compute_v));
-  if (compute_v) {
-    c->set_output(1, c->Matrix(n, n));
-  } else {
-    c->set_output(1, c->Vector(0ll));
-  }
-  return Status::OK();
-}
-
-// Input is [...,N,N]. Outputs are:
-//   [...,N];[0], if compute_v is false,
-//   [...,N];[...,N,N], if compute_v is true.
-Status BatchSelfAdjointEigV2ShapeFn(InferenceContext* c) {
-  ShapeHandle input;
-  TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &input));
-  DimensionHandle n;
-  TF_RETURN_IF_ERROR(c->Merge(c->Dim(input, -2), c->Dim(input, -1), &n));
-  ShapeHandle batch_shape;
-  TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &batch_shape));
-  ShapeHandle e_shape;
-  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Vector(n), &e_shape));
-  c->set_output(0, e_shape);
-  bool compute_v;
-  TF_RETURN_IF_ERROR(c->GetAttr("compute_v", &compute_v));
-  if (compute_v) {
-    ShapeHandle v_shape;
-    TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(n, n), &v_shape));
-    c->set_output(1, v_shape);
-  } else {
-    c->set_output(1, c->Vector(0ll));
-  }
-  return Status::OK();
-}
-
 }  // namespace
 
 REGISTER_OP("MatrixDeterminant")
-    .Input("input: T")
-    .Output("output: T")
-    .Attr("T: {float, double}")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle input;
-      TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &input));
-      c->set_output(0, c->Scalar());
-      return Status::OK();
-    })
-    .Doc(R"doc(
-Computes the determinant of a square matrix.
-
-input: A tensor of shape `[M, M]`.
-output: A scalar, equal to the determinant of the input.
-)doc");
-
-REGISTER_OP("BatchMatrixDeterminant")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {float, double}")
@@ -256,7 +174,7 @@ REGISTER_OP("BatchMatrixDeterminant")
       return Status::OK();
     })
     .Doc(R"doc(
-Computes the determinants for a batch of square matrices.
+Computes the determinant of one ore more square matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices. The output is a tensor containing the determinants
@@ -271,32 +189,10 @@ REGISTER_OP("MatrixInverse")
     .Output("output: T")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
-    .SetShapeFn(UnchangedSquareShapeFn)
-    .Doc(R"doc(
-Computes the inverse of a square invertible matrix or its adjoint (conjugate
-transpose).
-
-The op uses LU decomposition with partial pivoting to compute the inverse.
-
-If the matrix is not invertible there is no guarantee what the op does. It
-may detect the condition and raise an exception or it may simply return a
-garbage result.
-
-input: Shape is `[M, M]`.
-output: Shape is `[M, M]`. If `adjoint` is `False` then `output` contains the
-matrix inverse of `input`. If `adjoint` is `True` then `output` contains the
-matrix inverse of the adjoint of `input`.
-)doc");
-
-REGISTER_OP("BatchMatrixInverse")
-    .Input("input: T")
-    .Output("output: T")
-    .Attr("adjoint: bool = False")
-    .Attr("T: {double, float}")
     .SetShapeFn(BatchUnchangedSquareShapeFn)
     .Doc(R"doc(
-Computes the inverse of square invertible matrices or their adjoints
-(conjugate transposes).
+Computes the inverse of one or more square invertible matrices or their
+adjoints (conjugate transposes).
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices. The output is a tensor of the same shape as the input
@@ -316,28 +212,9 @@ REGISTER_OP("Cholesky")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float}")
-    .SetShapeFn(UnchangedSquareShapeFn)
-    .Doc(R"doc(
-Computes the Cholesky decomposition of a square matrix.
-
-The input has to be symmetric and positive definite. Only the lower-triangular
-part of the input will be used for this operation. The upper-triangular part
-will not be read.
-
-The result is the lower-triangular matrix of the Cholesky decomposition of the
-input, `L`, so that `input = L L^*`.
-
-input: Shape is `[M, M]`.
-output: Shape is `[M, M]`.
-)doc");
-
-REGISTER_OP("BatchCholesky")
-    .Input("input: T")
-    .Output("output: T")
-    .Attr("T: {double, float}")
     .SetShapeFn(BatchUnchangedSquareShapeFn)
     .Doc(R"doc(
-Computes the Cholesky decomposition of a batch of square matrices.
+Computes the Cholesky decomposition of one or more square matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices, with the same constraints as the single matrix Cholesky
@@ -353,25 +230,6 @@ REGISTER_OP("CholeskyGrad")
     .Input("grad: T")
     .Output("output: T")
     .Attr("T: {float, double}")
-    .SetShapeFn(UnchangedSquareShapeFn)
-    .Doc(R"doc(
-Computes the reverse mode backpropagated gradient of the Cholesky algorithm.
-
-For an explanation see "Differentiation of the Cholesky algorithm" by
-Iain Murray http://arxiv.org/abs/1602.07527.
-
-l: Output of Cholesky algorithm l = chol(A). Shape is `[M, M]`.
-  Algorithm depends only on lower triangular part of this matrix.
-grad: df/dl where f is some scalar function. Shape is `[M, M]`.
-  Algorithm depends only on lower triangular part of this matrix.
-output: Symmetrized version of df/dA . Shape is `[M, M]`.
-)doc");
-
-REGISTER_OP("BatchCholeskyGrad")
-    .Input("l: T")
-    .Input("grad: T")
-    .Output("output: T")
-    .Attr("T: {float, double}")
     .SetShapeFn(BatchUnchangedSquareShapeFn)
     .Doc(R"doc(
 Computes the reverse mode backpropagated gradient of the Cholesky algorithm.
@@ -379,7 +237,7 @@ Computes the reverse mode backpropagated gradient of the Cholesky algorithm.
 For an explanation see "Differentiation of the Cholesky algorithm" by
 Iain Murray http://arxiv.org/abs/1602.07527.
 
-l: Output of batch Cholesky algorithm l = batch_cholesky(A). Shape is `[..., M, M]`.
+l: Output of batch Cholesky algorithm l = cholesky(A). Shape is `[..., M, M]`.
   Algorithm depends only on lower triangular part of the innermost matrices of
   this tensor.
 grad: df/dl where f is some scalar function. Shape is `[..., M, M]`.
@@ -393,34 +251,6 @@ REGISTER_OP("SelfAdjointEig")
     .Output("output: T")
     .Attr("T: {double, float}")
     .Deprecated(11, "Use SelfAdjointEigV2 instead.")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle input;
-      TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &input));
-
-      DimensionHandle d = c->Dim(input, 0);
-      DimensionHandle d_plus_1;
-      TF_RETURN_IF_ERROR(c->Add(d, 1, &d_plus_1));
-      c->set_output(0, c->Matrix(d_plus_1, d));
-      return Status::OK();
-    })
-    .Doc(R"doc(
-Computes the Eigen Decomposition of a square Self-Adjoint matrix.
-
-Only the lower-triangular part of the input will be used in this case. The
-upper-triangular part will not be read.
-
-The result is a M+1 x M matrix whose first row is the eigenvalues, and
-subsequent rows are eigenvectors.
-
-input: Shape is `[M, M]`.
-output: Shape is `[M+1, M]`.
-)doc");
-
-REGISTER_OP("BatchSelfAdjointEig")
-    .Input("input: T")
-    .Output("output: T")
-    .Attr("T: {double, float}")
-    .Deprecated(11, "Use BatchSelfAdjointEigV2 instead.")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &input));
@@ -457,35 +287,7 @@ REGISTER_OP("SelfAdjointEigV2")
     .Attr("T: {double, float}")
     .SetShapeFn(SelfAdjointEigV2ShapeFn)
     .Doc(R"doc(
-Computes the eigen decomposition of a self-adjoint (\"symmetric\") matrix.
-
-Computes the eigenvalues and (optionally) eigenvectors such that
-`input = v * diag(e)`.
-
-```prettyprint
-# a is a self-adjoint matrix.
-# e is a vector of eigenvalues.
-# v is a matrix of eigenvectors.
-e, v = self_adjoint_eig(a)
-e = self_adjoint_eig(a, compute_v=False)
-```
-
-input: `Tensor` input of shape `[N, N]`.
-compute_v: If `True` then eigenvectors will be computed and returned in `v`.
-  Otherwise, only the eigenvalues will be computed.
-e: Eigenvalues. Shape is `[N]`.
-v: Eigenvectors. Shape is `[N, N]`.
-)doc");
-
-REGISTER_OP("BatchSelfAdjointEigV2")
-    .Input("input: T")
-    .Output("e: T")
-    .Output("v: T")
-    .Attr("compute_v: bool = True")
-    .Attr("T: {double, float}")
-    .SetShapeFn(BatchSelfAdjointEigV2ShapeFn)
-    .Doc(R"doc(
-Computes the eigen decomposition of a batch of square self-adjoint matrices.
+Computes the eigen decomposition of one or more square self-adjoint matrices.
 
 Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in
 `input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.
@@ -494,8 +296,8 @@ Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in
 # a is a tensor.
 # e is a tensor of eigenvalues.
 # v is a tensor of eigenvectors.
-e, v = batch_self_adjoint_eig(a)
-e = batch_self_adjoint_eig(a, compute_v=False)
+e, v = self_adjoint_eig(a)
+e = self_adjoint_eig(a, compute_v=False)
 ```
 
 input: `Tensor` input of shape `[N, N]`.
@@ -511,36 +313,18 @@ REGISTER_OP("MatrixSolve")
     .Output("output: T")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
-    .SetShapeFn(SquareMatrixSolveShapeFn)
-    .Doc(R"doc(
-Solves a system of linear equations. Checks for invertibility.
-
-matrix: Shape is `[M, M]`.
-rhs: Shape is `[M, K]`.
-output: Shape is `[M, K]`. If `adjoint` is `False` then `output` that solves
-`matrix` * `output` = `rhs`. If `adjoint` is `True` then `output` that solves
-`adjoint(matrix)` * `output` = `rhs`.
-adjoint: Boolean indicating whether to solve with `matrix` or its adjoint.
-)doc");
-
-REGISTER_OP("BatchMatrixSolve")
-    .Input("matrix: T")
-    .Input("rhs: T")
-    .Output("output: T")
-    .Attr("adjoint: bool = False")
-    .Attr("T: {double, float}")
     .SetShapeFn([](InferenceContext* c) {
-      return BatchMatrixSolveShapeFn(c, true /* square (*/);
+      return MatrixSolveShapeFn(c, true /* square (*/);
     })
     .Doc(R"doc(
-Solves systems of linear equations. Checks for invertibility.
+Solves systems of linear equations.
 
-Matrix is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-form square matrices. Rhs is a tensor of shape
-`[..., M, K]`. The output is a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output
-matrix satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
-If `adjoint` is `True` then each output
-matrix satisfies `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.
+`Matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices. `Rhs` is a tensor of shape `[..., M, K]`. The `output` is
+a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output matrix
+satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
+If `adjoint` is `True` then each output matrix satisfies
+`adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.
 
 matrix: Shape is `[..., M, M]`.
 rhs: Shape is `[..., M, K]`.
@@ -556,40 +340,8 @@ REGISTER_OP("MatrixTriangularSolve")
     .Attr("lower: bool = True")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
-    .SetShapeFn(SquareMatrixSolveShapeFn)
-    .Doc(R"doc(
-Solves a system of linear equations with an upper or lower triangular matrix by
-backsubstitution.
-
-`matrix` is a matrix of shape `[M, M]`. If `lower` is `True` then the strictly
-upper triangular part of `matrix` is assumed to be zero and not accessed.
-If `lower` is False then the strictly lower triangular part of `matrix` is
-assumed to be zero and not accessed.
-`rhs` is a matrix of shape [M, K]`.
-
-The output is a matrix of shape `[M, K]`. If `adjoint` is `False` the output
-satisfies the matrix equation `matrix` * `output` = `rhs`.
-If `adjoint` is `False` then `output` satisfies the matrix equation
-`matrix` * `output` = `rhs`.
-If `adjoint` is `True` then `output` satisfies the matrix equation
-`adjoint(matrix)` * `output` = `rhs`.
-
-matrix: Shape is `[M, M]`.
-rhs: Shape is `[M, K]`.
-output: Shape is `[M, K]`.
-lower: Boolean indicating whether `matrix` is lower or upper triangular
-adjoint: Boolean indicating whether to solve with `matrix` or its adjoint.
-)doc");
-
-REGISTER_OP("BatchMatrixTriangularSolve")
-    .Input("matrix: T")
-    .Input("rhs: T")
-    .Output("output: T")
-    .Attr("lower: bool = True")
-    .Attr("adjoint: bool = False")
-    .Attr("T: {double, float}")
     .SetShapeFn([](InferenceContext* c) {
-      return BatchMatrixSolveShapeFn(c, true /* square (*/);
+      return MatrixSolveShapeFn(c, true /* square (*/);
     })
     .Doc(R"doc(
 Solves systems of linear equations with upper or lower triangular matrices by
@@ -600,10 +352,10 @@ square matrices. If `lower` is `True` then the strictly upper triangular part
 of each inner-most matrix is assumed to be zero and not accessed.
 If `lower` is False then the strictly lower triangular part of each inner-most
 matrix is assumed to be zero and not accessed.
-`rhs` is a tensor of shape [..., M, K]`.
+`rhs` is a tensor of shape `[..., M, K]`.
 
-The output is a tensor of shape `[..., M, K]`. If `adjoint` is `True` then the
-innermost matrices in output` satisfy matrix equations
+The output is a tensor of shape `[..., M, K]`. If `adjoint` is
+`True` then the innermost matrices in output` satisfy matrix equations
 `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
 If `adjoint` is `False` then the strictly then the  innermost matrices in
 `output` satisfy matrix equations
@@ -626,66 +378,12 @@ REGISTER_OP("MatrixSolveLs")
     .Attr("T: {double, float}")
     .Attr("fast: bool = True")
     .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle lhs;
-      ShapeHandle rhs;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &lhs));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &rhs));
-
-      // The matrix and right-hand side must have the same number of rows.
-      DimensionHandle unused;
-      TF_RETURN_IF_ERROR(c->Merge(c->Dim(lhs, 0), c->Dim(rhs, 0), &unused));
-
-      c->set_output(0, c->Matrix(c->Dim(lhs, 1), c->Dim(rhs, 1)));
-      return Status::OK();
+      ShapeHandle l2_regularizer;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &l2_regularizer));
+      return MatrixSolveShapeFn(c, false /* square */);
     })
     .Doc(R"doc(
-Solves a linear least-squares problem.
-
-Below we will use the following notation
-`matrix`=\\(A \in \Re^{m \times n}\\),
-`rhs`=\\(B  \in \Re^{m \times k}\\),
-`output`=\\(X  \in \Re^{n \times k}\\),
-`l2_regularizer`=\\(\lambda\\).
-
-If `fast` is `True`, then the solution is computed by solving the normal
-equations using Cholesky decomposition. Specifically, if \\(m \ge n\\) then
-\\(X = (A^T A + \lambda I)^{-1} A^T B\\), which solves the least-squares
-problem \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}} ||A Z - B||_F^2 +
-\lambda ||Z||_F^2\\). If \\(m \lt n\\) then `output` is computed as
-\\(X = A^T (A A^T + \lambda I)^{-1} B\\),
-which (for \\(\lambda = 0\\)) is the minimum-norm solution to the
-under-determined linear system, i.e.
-\\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}} ||Z||_F^2 \\),
-subject to \\(A Z = B\\).
-Notice that the fast path is only numerically stable when \\(A\\) is
-numerically full rank and has a condition number
-\\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach}}}\\)
-or \\(\lambda\\) is sufficiently large.
-
-If `fast` is `False` an algorithm based on the numerically robust complete
-orthogonal decomposition is used. This computes the minimum-norm
-least-squares solution, even when \\(A\\) is rank deficient. This path is
-typically 6-7 times slower than the fast path. If `fast` is `False` then
-`l2_regularizer` is ignored.
-
-matrix: Shape is `[M, N]`.
-rhs: Shape is `[M, K]`.
-output: Shape is `[N, K]` containing the tensor that solves
-  `matrix * output = rhs` in the least-squares sense.
-)doc");
-
-REGISTER_OP("BatchMatrixSolveLs")
-    .Input("matrix: T")
-    .Input("rhs: T")
-    .Input("l2_regularizer: double")
-    .Output("output: T")
-    .Attr("T: {double, float}")
-    .Attr("fast: bool = True")
-    .SetShapeFn([](InferenceContext* c) {
-      return BatchMatrixSolveShapeFn(c, false /* square */);
-    })
-    .Doc(R"doc(
-Solves multiple linear least-squares problems.
+Solves one or more linear least-squares problems.
 
 `matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions
 form matrices of size `[M, N]`. Rhs is a tensor of shape `[..., M, K]`.
@@ -693,7 +391,6 @@ The output is a tensor shape `[..., N, K]` where each output matrix solves
 each of the equations matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]
 in the least squares sense.
 
-Below we will use the following notation for each pair of
 matrix and right-hand sides in the batch:
 
 `matrix`=\\(A \in \Re^{m \times n}\\),
@@ -723,6 +420,7 @@ typically 6-7 times slower than the fast path. If `fast` is `False` then
 matrix: Shape is `[..., M, N]`.
 rhs: Shape is `[..., M, K]`.
 output: Shape is `[..., N, K]`.
+l2_regularizer: Scalar tensor.
 )doc");
 
 REGISTER_OP("Svd")
@@ -735,46 +433,7 @@ REGISTER_OP("Svd")
     .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(SvdShapeFn)
     .Doc(R"doc(
-Computes the singular value decomposition of a matrix.
-
-Computes the SVD of if `input` such that `input = u * diag(s) * transpose(v)`
-
-```prettyprint
-# a is a matrix.
-# s is a vector of singular values.
-# u is the matrix of left singular vectors.
-# v is a matrix of right singular vectors.
-s, u, v = svd(a)
-s, _, _ = svd(a, compute_uv=False)
-```
-
-input: Shape is `[M, N]`. Let `P` be the minimum of `M` and `N`.
-s: Singular values. Shape is `[P]`.
-u: Left singular vectors; if `full_matrices` is `False` then shape is `[M, M]`.
-  If `full_matrices` is `True` then shape is `[M, P]`.
-  Undefined if `compute_uv` is `False`.
-v: Left singular vectors. If `full_matrices` is `False` then shape is `[N, N]`.
-  If `full_matrices` is `True` then shape is `[N, P]`.
-  Undefined if `compute_uv` is false.
-compute_uv: If true, left and right singular vectors will be
-  computed and returned in `u` and `v`, respectively.
-  If false, `u` and `v` are not set and should never referenced.
-full_matrices: If true, compute full-sized `u` and `v`. If false
-  (the default), compute only the leading `P` singular vectors.
-  Ignored if `compute_uv` is `False`.
-)doc");
-
-REGISTER_OP("BatchSvd")
-    .Input("input: T")
-    .Output("s: T")
-    .Output("u: T")
-    .Output("v: T")
-    .Attr("compute_uv: bool = True")
-    .Attr("full_matrices: bool = False")
-    .Attr("T: {double, float, complex64, complex128}")
-    .SetShapeFn(BatchSvdShapeFn)
-    .Doc(R"doc(
-Computes the singular value decompositions of a batch of matrices.
+Computes the singular value decompositions of one or more matrices.
 
 Computes the SVD of each inner matrix in `input` such that
 `input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`
@@ -784,8 +443,8 @@ Computes the SVD of each inner matrix in `input` such that
 # s is a tensor of singular values for each matrix.
 # u is the tensor containing of left singular vectors for each matrix.
 # v is the tensor containing of right singular vectors for each matrix.
-s, u, v = batch_svd(a)
-s, _, _ = batch_svd(a, compute_uv=False)
+s, u, v = svd(a)
+s, _, _ = svd(a, compute_uv=False)
 ```
 
 input: A tensor of shape `[..., M, N]` whose inner-most 2 dimensions
@@ -804,5 +463,85 @@ full_matrices: If true, compute full-sized `u` and `v`. If false
   (the default), compute only the leading `P` singular vectors.
   Ignored if `compute_uv` is `False`.
 )doc");
+
+// Deprecated op registrations:
+
+// Can be deleted after 3feb2017.
+REGISTER_OP("BatchSelfAdjointEig")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: {double, float}")
+    .Deprecated(11, "Use SelfAdjointEigV2 instead.");
+
+// Can all be deleted after 9mar2017.
+REGISTER_OP("BatchMatrixDeterminant")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Deprecated(13, "Use MatrixDeterminant instead.");
+
+REGISTER_OP("BatchMatrixInverse")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("adjoint: bool = False")
+    .Attr("T: {double, float}")
+    .Deprecated(13, "Use MatrixInverse instead.");
+
+REGISTER_OP("BatchCholesky")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: {double, float}")
+    .Deprecated(13, "Use Cholesky instead.");
+
+REGISTER_OP("BatchCholeskyGrad")
+    .Input("l: T")
+    .Input("grad: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Deprecated(13, "Use CholeskyGrad instead.");
+
+REGISTER_OP("BatchSelfAdjointEigV2")
+    .Input("input: T")
+    .Output("e: T")
+    .Output("v: T")
+    .Attr("compute_v: bool = True")
+    .Attr("T: {double, float}")
+    .Deprecated(13, "Use SelfAdjointEigV2 instead.");
+
+REGISTER_OP("BatchMatrixSolve")
+    .Input("matrix: T")
+    .Input("rhs: T")
+    .Output("output: T")
+    .Attr("adjoint: bool = False")
+    .Attr("T: {double, float}")
+    .Deprecated(13, "Use MatrixSolve instead.");
+
+REGISTER_OP("BatchMatrixTriangularSolve")
+    .Input("matrix: T")
+    .Input("rhs: T")
+    .Output("output: T")
+    .Attr("lower: bool = True")
+    .Attr("adjoint: bool = False")
+    .Attr("T: {double, float}")
+    .Deprecated(13, "Use MatrixTriangularSolve instead.");
+
+REGISTER_OP("BatchMatrixSolveLs")
+    .Input("matrix: T")
+    .Input("rhs: T")
+    .Input("l2_regularizer: double")
+    .Output("output: T")
+    .Attr("T: {double, float}")
+    .Attr("fast: bool = True")
+    .Deprecated(13, "Use MatrixSolveLs instead.");
+
+REGISTER_OP("BatchSvd")
+    .Input("input: T")
+    .Output("s: T")
+    .Output("u: T")
+    .Output("v: T")
+    .Attr("compute_uv: bool = True")
+    .Attr("full_matrices: bool = False")
+    .Attr("T: {double, float, complex64, complex128}")
+    .Deprecated(13, "Use Svd instead.");
 
 }  // namespace tensorflow

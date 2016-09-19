@@ -19,9 +19,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "tensorflow/core/framework/tensor.h"
-// TBD(keveman): This is going to be moved to //third_party/tensorflow
-// eventually. Remove the NOLINT comment when moving.
-#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"

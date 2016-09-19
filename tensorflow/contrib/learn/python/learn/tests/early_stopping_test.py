@@ -47,26 +47,29 @@ class EarlyStoppingTest(tf.test.TestCase):
         x_train, y_train, test_size=0.2, random_state=42)
     val_monitor = learn.monitors.ValidationMonitor(
         x_val, y_val, every_n_steps=50, early_stopping_rounds=100,
-        early_stopping_metric='accuracy', early_stopping_metric_minimize=False)
+        early_stopping_metric='loss', early_stopping_metric_minimize=False)
+
+    feature_columns = learn.infer_real_valued_columns_from_input(iris.data)
 
     # classifier without early stopping - overfitting
-    classifier1 = learn.TensorFlowDNNClassifier(
-        hidden_units=[10, 20, 10], n_classes=3, steps=1000)
-    classifier1.fit(x_train, y_train)
+    classifier1 = learn.DNNClassifier(
+        feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3)
+    classifier1.fit(x_train, y_train, steps=1000)
     _ = accuracy_score(y_test, classifier1.predict(x_test))
 
-    # Full 1000 steps, 12 summaries and no evaluation summary.
-    # 12 summaries = global_step + first + every 100 out of 1000 steps.
-    self.assertEqual(12, len(_get_summary_events(classifier1.model_dir)))
+    # Full 1000 steps, 19 summaries and no evaluation summary:
+    # 1 summary of net at step 1
+    # 9 x (1 summary of net and 1 summary of global step) for steps 101, 201,...
+    self.assertEqual(19, len(_get_summary_events(classifier1.model_dir)))
     with self.assertRaises(ValueError):
       _get_summary_events(classifier1.model_dir + '/eval')
 
     # classifier with early stopping - improved accuracy on testing set
-    classifier2 = learn.TensorFlowDNNClassifier(
-        hidden_units=[10, 20, 10], n_classes=3, steps=2000,
+    classifier2 = learn.DNNClassifier(
+        hidden_units=[10, 20, 10], feature_columns=feature_columns, n_classes=3,
         config=tf.contrib.learn.RunConfig(save_checkpoints_secs=1))
 
-    classifier2.fit(x_train, y_train, monitors=[val_monitor])
+    classifier2.fit(x_train, y_train, monitors=[val_monitor], steps=2000)
     _ = accuracy_score(y_val, classifier2.predict(x_val))
     _ = accuracy_score(y_test, classifier2.predict(x_test))
 

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
@@ -35,6 +36,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import compat
 
 
 class TensorTest(test_util.TensorFlowTestCase):
@@ -66,7 +68,8 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
     sp_value = ops.SparseTensorValue(indices, values, shape)
     for sp in [
         ops.SparseTensor(indices, values, shape),
-        ops.SparseTensor.from_value(sp_value)]:
+        ops.SparseTensor.from_value(sp_value),
+        ops.SparseTensor.from_value(ops.SparseTensor(indices, values, shape))]:
       self.assertEqual(sp.indices.dtype, dtypes.int64)
       self.assertEqual(sp.values.dtype, dtypes.string)
       self.assertEqual(sp.shape.dtype, dtypes.int64)
@@ -279,6 +282,31 @@ class OperationTest(test_util.TensorFlowTestCase):
                        output_types = [dtypes.float32])
     self.assertEqual(tensor_shape.unknown_shape(),
                      _apply_op(g, "an_op", [], [dtypes.float32]).get_shape())
+
+  def testConvertToTensorPreferred(self):
+    with self.test_session():
+      values = [2, 3, 5, 7]
+      tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.float32)
+      self.assertEqual(dtypes.float32, tensor.dtype)
+
+    with self.test_session():
+      # Convert empty tensor to anything
+      values = []
+      tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.int64)
+      self.assertEqual(dtypes.int64, tensor.dtype)
+
+    with self.test_session():
+      # The preferred dtype is a type error and will convert to
+      # float32 instead.
+      values = [1.23]
+      tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.int64)
+      self.assertEqual(dtypes.float32, tensor.dtype)
+
+  def testConvertToInvalidTensorType(self):
+    with self.assertRaises(TypeError):
+      # Forcing an invalid dtype should fail with a type error.
+      values = [1.23]
+      _ = ops.convert_to_tensor(values, dtype=dtypes.int64)
 
   def testNoConvert(self):
     # Operation cannot be converted to Tensor
@@ -879,7 +907,7 @@ def an_op(g):
   return _apply_op(g, "an_op", [], [dtypes.float32])
 
 
-ops.NoGradient("an_op")
+ops.NotDifferentiable("an_op")
 
 
 def copy_op(x):
@@ -1213,6 +1241,51 @@ class GraphTest(test_util.TensorFlowTestCase):
     self.assertEqual(a, g.as_graph_element(ConvertibleObj()))
     with self.assertRaises(TypeError):
       g.as_graph_element(NonConvertibleObj())
+
+
+class AttrScopeTest(test_util.TensorFlowTestCase):
+
+  def _get_test_attrs(self):
+    x = control_flow_ops.no_op()
+    try:
+      a = compat.as_text(x.get_attr("_A"))
+    except ValueError:
+      a = None
+    try:
+      b = compat.as_text(x.get_attr("_B"))
+    except ValueError:
+      b = None
+    print(a, b)
+    return (a, b)
+
+  def testNoLabel(self):
+    with self.test_session():
+      self.assertAllEqual((None, None), self._get_test_attrs())
+
+  def testLabelMap(self):
+    with self.test_session() as sess:
+      a1 = self._get_test_attrs()
+      with sess.graph._attr_scope(
+          {"_A": attr_value_pb2.AttrValue(s=compat.as_bytes("foo"))}):
+        a2 = self._get_test_attrs()
+        with sess.graph._attr_scope(
+            {"_A": None,
+             "_B": attr_value_pb2.AttrValue(s=compat.as_bytes("bar"))}):
+          a3 = self._get_test_attrs()
+          with sess.graph._attr_scope(
+              {"_A": attr_value_pb2.AttrValue(s=compat.as_bytes("baz"))}):
+            a4 = self._get_test_attrs()
+          a5 = self._get_test_attrs()
+        a6 = self._get_test_attrs()
+      a7 = self._get_test_attrs()
+
+      self.assertAllEqual((None, None), a1)
+      self.assertAllEqual(("foo", None), a2)
+      self.assertAllEqual((None, "bar"), a3)
+      self.assertAllEqual(("baz", "bar"), a4)
+      self.assertAllEqual((None, "bar"), a5)
+      self.assertAllEqual(("foo", None), a6)
+      self.assertAllEqual((None, None), a7)
 
 ops.RegisterShape("KernelLabel")(common_shapes.scalar_shape)
 

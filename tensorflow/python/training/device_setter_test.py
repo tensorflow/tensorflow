@@ -77,7 +77,7 @@ class DeviceSetterTest(tf.test.TestCase):
       self.assertDeviceEqual("/job:moon/task:1", w.device)
       self.assertDeviceEqual("/job:moon/task:1", w.initializer.device)
       self.assertDeviceEqual("/job:sun", a.device)
-  
+
   def testPS2TasksWithCPUConstraint(self):
     cluster_spec = tf.train.ClusterSpec({
         "sun": ["sun0:2222", "sun1:2222", "sun2:2222"],

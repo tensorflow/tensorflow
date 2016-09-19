@@ -135,6 +135,16 @@ class TransformTest(tf.test.TestCase):
     self.assertNear(c_val, 2.001, ERROR_TOLERANCE)
     self.assertNear(c_new_val, 3.001, ERROR_TOLERANCE)
 
+  def test_graph_replace_missing(self):
+    tf.reset_default_graph()
+    a = tf.constant(1.0, name="a")
+    b = tf.constant(2.0, name="b")
+    c = a + 2 * b
+    d = tf.constant(2.0, name="d")
+    res = ge.graph_replace([b, c], {a: d})
+    self.assertEqual(res[0].name, "b:0")
+    self.assertEqual(res[1].name, "add_1:0")
+
 
 if __name__ == "__main__":
   tf.test.main()

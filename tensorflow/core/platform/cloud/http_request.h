@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_HTTP_REQUEST_H_
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <curl/curl.h>
 #include "tensorflow/core/lib/core/errors.h"
@@ -49,7 +50,7 @@ class HttpRequest {
   };
 
   HttpRequest();
-  explicit HttpRequest(std::unique_ptr<LibCurl> libcurl);
+  explicit HttpRequest(LibCurl* libcurl);
   virtual ~HttpRequest();
 
   virtual Status Init();
@@ -72,24 +73,36 @@ class HttpRequest {
   /// Makes the request a DELETE request.
   virtual Status SetDeleteRequest();
 
-  /// \brief Makes the request a POST request.
+  /// \brief Makes the request a PUT request.
   ///
-  /// The request body will be taken from the specified file.
-  virtual Status SetPostRequest(const string& body_filepath);
+  /// The request body will be taken from the specified file starting from
+  /// the given offset.
+  virtual Status SetPutFromFile(const string& body_filepath, size_t offset);
+
+  /// Makes the request a PUT request with an empty body.
+  virtual Status SetPutEmptyBody();
 
   /// \brief Makes the request a POST request.
   ///
   /// The request body will be taken from the specified buffer.
-  virtual Status SetPostRequest(const char* buffer, size_t size);
+  virtual Status SetPostFromBuffer(const char* buffer, size_t size);
 
-  /// Makes the request a POST request.
-  virtual Status SetPostRequest();
+  /// Makes the request a POST request with an empty body.
+  virtual Status SetPostEmptyBody();
 
   /// \brief Specifies the buffer for receiving the response body.
   ///
   /// The interface is made similar to RandomAccessFile::Read.
   virtual Status SetResultBuffer(char* scratch, size_t size,
                                  StringPiece* result);
+
+  /// \brief Returns the response headers of a completed request.
+  ///
+  /// If the header is not found, returns an empty string.
+  virtual string GetResponseHeader(const string& name) const;
+
+  /// Returns the response code of a completed request.
+  virtual uint64 GetResponseCode() const;
 
   /// \brief Sends the formed request.
   ///
@@ -107,13 +120,16 @@ class HttpRequest {
   /// A read callback in the form which can be accepted by libcurl.
   static size_t ReadCallback(void* ptr, size_t size, size_t nmemb,
                              FILE* userdata);
+  /// A header callback in the form which can be accepted by libcurl.
+  static size_t HeaderCallback(const void* ptr, size_t size, size_t nmemb,
+                               void* this_object);
   Status CheckInitialized() const;
   Status CheckMethodNotSet() const;
   Status CheckNotSent() const;
 
-  std::unique_ptr<LibCurl> libcurl_;
+  LibCurl* libcurl_;
 
-  FILE* post_body_ = nullptr;
+  FILE* put_body_ = nullptr;
 
   StringPiece post_body_buffer_;
   size_t post_body_read_ = 0;
@@ -127,6 +143,9 @@ class HttpRequest {
 
   std::unique_ptr<char[]> default_response_buffer_;
   StringPiece default_response_string_piece_;
+
+  std::unordered_map<string, string> response_headers_;
+  uint64 response_code_ = 0;
 
   // Members to enforce the usage flow.
   bool is_initialized_ = false;
@@ -143,8 +162,6 @@ class HttpRequest {
 class LibCurl {
  public:
   virtual ~LibCurl() {}
-  /// Lazy initialization of the dynamic libcurl library.
-  virtual Status MaybeLoadDll() = 0;
 
   virtual CURL* curl_easy_init() = 0;
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,

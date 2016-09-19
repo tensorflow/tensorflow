@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections as collections_lib
 import contextlib
+import functools
 import traceback
 
 import six
@@ -35,8 +36,8 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
 __all__ = ["VariableScope", "get_variable_scope",
-           "get_variable", "variable_scope", "variable_op_scope",
-           "no_regularizer"]
+           "get_variable", "get_local_variable", "variable_scope",
+           "variable_op_scope", "no_regularizer"]
 
 
 class _PartitionInfo(object):
@@ -562,11 +563,11 @@ class _VariableStore(object):
       # pylint: enable=protected-access
 
       # pylint: disable=protected-access
-    partitioned_var = variables._PartitionedVariable(name=name,
-                                                     shape=shape,
-                                                     dtype=dtype,
-                                                     variable_list=vs,
-                                                     partitions=partitions)
+    partitioned_var = variables.PartitionedVariable(name=name,
+                                                    shape=shape,
+                                                    dtype=dtype,
+                                                    variable_list=vs,
+                                                    partitions=partitions)
     # pylint: enable=protected-access
 
     self._partitioned_vars[name] = partitioned_var
@@ -814,8 +815,6 @@ class VariableScope(object):
                    validate_shape=True,
                    custom_getter=None):
     """Gets an existing variable with this name or create a new one."""
-    if initializer is None:
-      initializer = self._initializer
     if regularizer is None:
       regularizer = self._regularizer
     if caching_device is None:
@@ -824,13 +823,24 @@ class VariableScope(object):
       partitioner = self._partitioner
     if custom_getter is None:
       custom_getter = self._custom_getter
-    if dtype is None:
-      dtype = self._dtype
 
     full_name = self.name + "/" + name if self.name else name
     # Variable names only depend on variable_scope (full_name here),
     # not name_scope, so we reset it below for the time of variable creation.
     with ops.name_scope(None):
+      # Check that `initializer` dtype and `dtype` are consistent before
+      # replacing them with defaults.
+      if (dtype is not None and initializer is not None and
+          not callable(initializer)):
+        init_dtype = ops.convert_to_tensor(initializer).dtype.base_dtype
+        if init_dtype != dtype:
+          raise ValueError("Initializer type '%s' and explicit dtype '%s' "
+                           "don't match." % (init_dtype, dtype))
+      if initializer is None:
+        initializer = self._initializer
+      if dtype is None:
+        dtype = self._dtype
+
       return var_store.get_variable(
           full_name, shape=shape, dtype=dtype, initializer=initializer,
           regularizer=regularizer, reuse=self.reuse, trainable=trainable,
@@ -1001,8 +1011,8 @@ def get_variable(name,
 
   Raises:
     ValueError: when creating a new variable and shape is not declared,
-      or when violating reuse during variable creation. Reuse is set inside
-      `variable_scope`.
+      when violating reuse during variable creation, or when `initializer` dtype
+      and `dtype` don't match. Reuse is set inside `variable_scope`.
   """
   return get_variable_scope().get_variable(
       _get_default_variable_store(), name, shape=shape, dtype=dtype,
@@ -1010,6 +1020,19 @@ def get_variable(name,
       collections=collections, caching_device=caching_device,
       partitioner=partitioner, validate_shape=validate_shape,
       custom_getter=custom_getter)
+
+
+@functools.wraps(get_variable)
+def get_local_variable(*args, **kwargs):
+  kwargs["trainable"] = False
+  if "collections" in kwargs:
+    kwargs["collections"] += [ops.GraphKeys.LOCAL_VARIABLES]
+  else:
+    kwargs["collections"] = [ops.GraphKeys.LOCAL_VARIABLES]
+  get_local_variable.__doc__ = (
+      "Gets an existing local variable or creates a new one.\n\n" +
+      get_local_variable.__doc__)
+  return get_variable(*args, **kwargs)
 
 
 def _get_partitioned_variable(name,

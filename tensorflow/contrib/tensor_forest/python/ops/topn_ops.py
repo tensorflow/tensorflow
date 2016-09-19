@@ -29,8 +29,8 @@ TOPN_OPS_FILE = '_topn_ops.so'
 _topn_ops = None
 _ops_lock = threading.Lock()
 
-ops.NoGradient('TopNInsert')
-ops.NoGradient('TopNRemove')
+ops.NotDifferentiable('TopNInsert')
+ops.NotDifferentiable('TopNRemove')
 
 
 ops.RegisterShape('TopNInsert')(common_shapes.call_cpp_shape_fn)

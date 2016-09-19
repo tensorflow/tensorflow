@@ -12,30 +12,29 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-var assert = chai.assert;
 
 module Categorizer {
   describe('categorizer', () => {
-    describe('topLevelNamespaceCategorizer', () => {
+    describe('directoryNameCategorizer', () => {
       it('returns empty array on empty tags',
-         () => { assert.lengthOf(topLevelNamespaceCategorizer([]), 0); });
+         () => { assert.lengthOf(directoryNameCategorizer([]), 0); });
 
       it('handles a simple case', () => {
-        var simple = [
+        let simple = [
           'foo1/bar', 'foo1/zod', 'foo2/bar', 'foo2/zod', 'gosh/lod/mar',
           'gosh/lod/ned'
         ];
-        var expected = [
+        let expected = [
           {name: 'foo1', tags: ['foo1/bar', 'foo1/zod']},
           {name: 'foo2', tags: ['foo2/bar', 'foo2/zod']},
-          {name: 'gosh', tags: ['gosh/lod/mar', 'gosh/lod/ned']},
+          {name: 'gosh/lod', tags: ['gosh/lod/mar', 'gosh/lod/ned']},
         ];
-        assert.deepEqual(topLevelNamespaceCategorizer(simple), expected);
+        assert.deepEqual(directoryNameCategorizer(simple), expected);
       });
 
       it('orders the categories', () => {
-        var test = ['e', 'f', 'g', 'a', 'b', 'c'];
-        var expected = [
+        let test = ['e', 'f', 'g', 'a', 'b', 'c'];
+        let expected = [
           {name: 'a', tags: ['a']},
           {name: 'b', tags: ['b']},
           {name: 'c', tags: ['c']},
@@ -43,13 +42,13 @@ module Categorizer {
           {name: 'f', tags: ['f']},
           {name: 'g', tags: ['g']},
         ];
-        assert.deepEqual(topLevelNamespaceCategorizer(test), expected);
+        assert.deepEqual(directoryNameCategorizer(test), expected);
       });
 
       it('handles cases where category names overlap node names', () => {
-        var test = ['a', 'a/a', 'a/b', 'a/c', 'b', 'b/a'];
-        var actual = topLevelNamespaceCategorizer(test);
-        var expected = [
+        let test = ['a', 'a/a', 'a/b', 'a/c', 'b', 'b/a'];
+        let actual = directoryNameCategorizer(test);
+        let expected = [
           {name: 'a', tags: ['a', 'a/a', 'a/b', 'a/c']},
           {name: 'b', tags: ['b', 'b/a']},
         ];
@@ -58,18 +57,39 @@ module Categorizer {
 
       it('handles singleton case', () => {
         assert.deepEqual(
-            topLevelNamespaceCategorizer(['a']), [{name: 'a', tags: ['a']}]);
+            directoryNameCategorizer(['a']), [{name: 'a', tags: ['a']}]);
+      });
+
+      it('splits on bottom level name', () => {
+        let example = [
+          'foo1/bar',
+          'foo1/zod',
+          'foo2/bar',
+          'foo2/zod',
+          'gosh/lod/mar',
+          'gosh/lod/ned',
+          'gosh/zod/mar',
+          'gosh/zod/ned/y',
+        ];
+        let expected = [
+          {name: 'foo1', tags: ['foo1/bar', 'foo1/zod']},
+          {name: 'foo2', tags: ['foo2/bar', 'foo2/zod']},
+          {name: 'gosh/lod', tags: ['gosh/lod/mar', 'gosh/lod/ned']},
+          {name: 'gosh/zod', tags: ['gosh/zod/mar']},
+          {name: 'gosh/zod/ned', tags: ['gosh/zod/ned/y']},
+        ];
+        assert.deepEqual(directoryNameCategorizer(example), expected);
       });
     });
 
-    describe('legacyUnderscoreCategorizer', () => {
+    describe('RootNameUnderscoreCategorizer', () => {
       it('splits by shorter of first _ or /', () => {
-        var tags = [
+        let tags = [
           'l0_bar/foo', 'l0_bar/baz', 'l0_foo/wob', 'l1_zoink/bla',
           'l1_wibble/woz', 'l1/foo_woink', 'l2/wozzle_wizzle'
         ];
-        var actual = legacyUnderscoreCategorizer(tags);
-        var expected = [
+        let actual = rootNameUnderscoreCategorizer(tags);
+        let expected = [
           {name: 'l0', tags: ['l0_bar/baz', 'l0_bar/foo', 'l0_foo/wob']},
           {name: 'l1', tags: ['l1/foo_woink', 'l1_wibble/woz', 'l1_zoink/bla']},
           {name: 'l2', tags: ['l2/wozzle_wizzle']},
@@ -85,15 +105,15 @@ module Categorizer {
 
       function testCategorizer(
           defs: string[], fallback: Categorizer, tags: string[]): Category[] {
-        var catDefs = defs.map(defineCategory);
+        let catDefs = defs.map(defineCategory);
         return _categorizer(catDefs, fallback)(tags);
       }
 
       it('categorizes by regular expression', () => {
-        var defs = ['foo..', 'bar..'];
-        var tags = ['fooab', 'fooxa', 'barts', 'barms'];
-        var actual = testCategorizer(defs, noFallbackCategorizer, tags);
-        var expected = [
+        let defs = ['foo..', 'bar..'];
+        let tags = ['fooab', 'fooxa', 'barts', 'barms'];
+        let actual = testCategorizer(defs, noFallbackCategorizer, tags);
+        let expected = [
           {name: 'foo..', tags: ['fooab', 'fooxa']},
           {name: 'bar..', tags: ['barms', 'barts']},
         ];
@@ -101,10 +121,10 @@ module Categorizer {
       });
 
       it('matches non-exclusively', () => {
-        var tags = ['abc', 'bar', 'zod'];
-        var actual =
+        let tags = ['abc', 'bar', 'zod'];
+        let actual =
             testCategorizer(['...', 'bar'], noFallbackCategorizer, tags);
-        var expected = [
+        let expected = [
           {name: '...', tags: ['abc', 'bar', 'zod']},
           {name: 'bar', tags: ['bar']},
         ];
@@ -112,9 +132,9 @@ module Categorizer {
       });
 
       it('creates categories for unmatched rules', () => {
-        var actual =
+        let actual =
             testCategorizer(['a', 'b', 'c'], noFallbackCategorizer, []);
-        var expected = [
+        let expected = [
           {name: 'a', tags: []},
           {name: 'b', tags: []},
           {name: 'c', tags: []},
@@ -123,10 +143,10 @@ module Categorizer {
       });
 
       it('category regexs work with special characters', () => {
-        var defs = ['^\\w+$', '^\\d+$', '^\\/..$'];
-        var tags = ['foo', '3243', '/xa'];
-        var actual = testCategorizer(defs, noFallbackCategorizer, tags);
-        var expected = [
+        let defs = ['^\\w+$', '^\\d+$', '^\\/..$'];
+        let tags = ['foo', '3243', '/xa'];
+        let actual = testCategorizer(defs, noFallbackCategorizer, tags);
+        let expected = [
           {name: '^\\w+$', tags: ['3243', 'foo']},
           {name: '^\\d+$', tags: ['3243']},
           {name: '^\\/..$', tags: ['/xa']},
@@ -135,20 +155,20 @@ module Categorizer {
       });
 
       it('category tags are sorted', () => {
-        var tags = ['a', 'z', 'c', 'd', 'e', 'x', 'f', 'y', 'g'];
-        var sorted = tags.slice().sort();
-        var expected = [{name: '.*', tags: sorted}];
-        var actual = testCategorizer(['.*'], noFallbackCategorizer, tags);
+        let tags = ['a', 'z', 'c', 'd', 'e', 'x', 'f', 'y', 'g'];
+        let sorted = tags.slice().sort();
+        let expected = [{name: '.*', tags: sorted}];
+        let actual = testCategorizer(['.*'], noFallbackCategorizer, tags);
         assert.deepEqual(actual, expected);
       });
 
       it('if nonexclusive: all tags passed to fallback', () => {
-        var passedToDefault = null;
+        let passedToDefault = null;
         function defaultCategorizer(tags: string[]): Category[] {
           passedToDefault = tags;
           return [];
         }
-        var tags = ['foo', 'bar', 'foo123'];
+        let tags = ['foo', 'bar', 'foo123'];
         testCategorizer(['foo'], defaultCategorizer, tags);
         assert.deepEqual(passedToDefault, tags);
       });

@@ -113,7 +113,7 @@ def _check_multiple_of(value, multiple_of):
   """
   assert isinstance(value, ops.Tensor)
   with ops.control_dependencies([
-      logging_ops.Assert(
+      control_flow_ops.Assert(
           math_ops.logical_and(
               math_ops.equal(math_ops.mod(value, multiple_of), 0),
               math_ops.not_equal(value, 0)),
@@ -146,7 +146,7 @@ def _check_rank(value, expected_rank):
   """
   assert isinstance(value, ops.Tensor)
   with ops.control_dependencies([
-      logging_ops.Assert(
+      control_flow_ops.Assert(
           math_ops.equal(expected_rank, array_ops.rank(value)),
           [string_ops.string_join(
               ["Rank of tensor %s should be: " % value.name,
@@ -195,7 +195,7 @@ def _check_shape(value, expected_shape):
   else:
     value = _check_rank(value, len(expected_shape))
   with ops.control_dependencies([
-      logging_ops.Assert(
+      control_flow_ops.Assert(
           math_ops.reduce_all(math_ops.equal(expected_shape, array_ops.shape(
               value))), [string_ops.string_join([
                   "Shape of tensor %s should be: " % value.name,
@@ -272,7 +272,7 @@ def _check_dimensions(value, dimensions, expected_sizes, debug_prefix):
         raise ValueError("Dimensions check failed for %s: %s"
                          % (debug_prefix, str(e)))
   with ops.control_dependencies([
-      logging_ops.Assert(
+      control_flow_ops.Assert(
           math_ops.equal(expected_size, array_ops.shape(value)[dimension]),
           [string_ops.string_join(
               ["Dimension %d of tensor labeled %s should be: "
@@ -851,7 +851,7 @@ class SequenceQueueingStateSaver(object):
 
         # Make sure that the length is <= the padded_length
         with ops.control_dependencies([
-            logging_ops.Assert(
+            control_flow_ops.Assert(
                 math_ops.less_equal(self._length, self._padded_length),
                 ["Input length should be <= than length from sequences:",
                  self._length, " vs. ", self._padded_length])]):
@@ -1383,7 +1383,7 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
       for key, value in input_sequences.items():
         value_length = array_ops.shape(value)[0]
         with ops.control_dependencies([
-            logging_ops.Assert(
+            control_flow_ops.Assert(
                 math_ops.logical_and(
                     math_ops.equal(value_length % num_unroll, 0),
                     math_ops.not_equal(value_length, 0)),
@@ -1454,7 +1454,7 @@ def _padding(sequences, num_unroll):
   lengths = [array_ops.shape(value)[0] for value in sequences_dict.values()]
   length = lengths[0]
   all_lengths_equal = [
-      logging_ops.Assert(
+      control_flow_ops.Assert(
           math_ops.equal(l, length), [string_ops.string_join(
               ["All sequence lengths must match, but received lengths: ",
                string_ops.as_string(lengths)])])

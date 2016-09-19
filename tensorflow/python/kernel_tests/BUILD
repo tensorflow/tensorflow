@@ -54,7 +54,6 @@ py_tests(
         "random_shuffle_queue_test.py",
         "save_restore_ops_test.py",
         "segment_reduction_ops_test.py",
-        "self_adjoint_eig_op_test.py",
         "sparse_add_op_test.py",
         "sparse_concat_op_test.py",
         "sparse_reorder_op_test.py",
@@ -73,12 +72,18 @@ py_tests(
         "variables_test.py",
         "where_op_test.py",
     ],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
 )
 
 cuda_py_tests(
     name = "cast_op_test",
     size = "small",
     srcs = ["cast_op_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
     tags = ["noasan"],
 )
 
@@ -86,6 +91,9 @@ cuda_py_test(
     name = "dense_update_ops_no_tsan_test",
     size = "small",
     srcs = ["dense_update_ops_no_tsan_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
     tags = ["notsan"],
 )
 
@@ -93,6 +101,9 @@ tf_py_test(
     name = "diag_op_test",
     size = "medium",
     srcs = ["diag_op_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
     shard_count = 2,
 )
 
@@ -101,7 +112,7 @@ py_tests(
     size = "small",
     srcs = ["reader_ops_test.py"],
     additional_deps = [
-        "//tensorflow/python:lib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -110,7 +121,6 @@ cuda_py_tests(
     size = "small",
     srcs = [
         "argmax_op_test.py",
-        "array_ops_test.py",
         "batch_matmul_op_test.py",
         "batchtospace_op_test.py",
         "betainc_op_test.py",
@@ -149,13 +159,11 @@ cuda_py_tests(
         "random_crop_test.py",
         "random_ops_test.py",
         "reduce_join_op_test.py",
-        "reduction_ops_test.py",
         "relu_op_test.py",
         "reshape_op_test.py",
         "reverse_sequence_op_test.py",
         "rnn_cell_test.py",
         "scalar_strict_test.py",
-        "scan_ops_test.py",
         "session_ops_test.py",
         "shape_ops_test.py",
         "softmax_op_test.py",
@@ -180,12 +188,16 @@ cuda_py_tests(
         "xent_op_test.py",
         "zero_division_test.py",
     ],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
 )
 
 cuda_py_tests(
     name = "medium_kernel_tests",
     size = "medium",
     srcs = [
+        "array_ops_test.py",
         "atrous_conv2d_test.py",
         "conv2d_backprop_filter_grad_test.py",
         "conv3d_transpose_test.py",
@@ -196,13 +208,28 @@ cuda_py_tests(
         "pooling_ops_3d_test.py",  # http://b/30600785
         "pooling_ops_test.py",
         "random_gamma_test.py",
+        "reduction_ops_test.py",
         "rnn_test.py",
-        "scatter_ops_test.py",
+        "scan_ops_test.py",
         "seq2seq_test.py",
         "slice_op_test.py",
         "sparse_matmul_op_test.py",
         "sparse_ops_test.py",
         "sparse_tensor_dense_matmul_op_test.py",
+    ],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+cuda_py_tests(
+    name = "large_kernel_tests",
+    size = "large",
+    srcs = [
+        "scatter_ops_test.py",
+    ],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -212,6 +239,9 @@ cuda_py_test(
     name = "extract_image_patches_grad_test",
     size = "medium",
     srcs = ["extract_image_patches_grad_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
     tags = ["notap"],  # http://b/31080670
 )
 
@@ -219,6 +249,9 @@ cuda_py_test(
     name = "concat_op_test",
     size = "medium",
     srcs = ["concat_op_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
     tags = ["notsan"],  # http://b/30445083
 )
 
@@ -226,15 +259,28 @@ cuda_py_tests(
     name = "kernel_tests_with_sharding",
     size = "medium",
     srcs = [
-        "batch_matrix_band_part_op_test.py",
         "conv_ops_3d_test.py",
-        "cwise_ops_test.py",
         "embedding_ops_test.py",
         "linalg_grad_test.py",
+        "matrix_band_part_op_test.py",
+        "self_adjoint_eig_op_test.py",
         "svd_op_test.py",
     ],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+    shard_count = 20,
+)
+
+cuda_py_test(
+    name = "cwise_ops_test",
+    size = "medium",
+    srcs = ["cwise_ops_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
     shard_count = 50,
-    tags = ["notap"],  # b/30226163
+    tags = ["notap"],  # http://b/30226163
 )
 
 filegroup(

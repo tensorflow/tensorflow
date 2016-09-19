@@ -13,15 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-export interface Point3D {
-  /** Original x coordinate. */
-  x: number;
-  /** Original y coordinate. */
-  y: number;
-  /** Original z coordinate. */
-  z: number;
-}
-;
+import {Point3D} from './vector';
 
 /** The spacial data of points and lines that will be shown in the projector. */
 export interface DataSet {
@@ -74,7 +66,7 @@ export interface Scatter {
   setMode(mode: Mode): void;
   /** Returns the interaction mode. */
   getMode(): Mode;
-  /** Resets the zoom level to 1.*/
+  /** Resets the zoom level to 1. */
   resetZoom(): void;
   /**
    * Increases/decreases the zoom level.
@@ -94,8 +86,6 @@ export interface Scatter {
   highlightPoints(
       pointIndexes: number[], highlightStroke?: (index: number) => string,
       favorLabels?: (index: number) => boolean): void;
-  /** Whether to show labels or not. */
-  showLabels(show: boolean): void;
   /** Toggle between day and night modes. */
   setDayNightMode(isNight: boolean): void;
   /** Show/hide tick labels. */

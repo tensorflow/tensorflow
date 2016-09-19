@@ -54,6 +54,7 @@ class OptimizeForInferenceTest(tf.test.TestCase):
                                              shape=shape)))
 
   def testOptimizeForInference(self):
+    unused_constant_name = "unused_constant"
     unconnected_add_name = "unconnected_add"
     a_constant_name = "a_constant"
     b_constant_name = "b_constant"
@@ -64,9 +65,14 @@ class OptimizeForInferenceTest(tf.test.TestCase):
     add_name = "add"
     unused_output_add_name = "unused_output_add"
     graph_def = tf.GraphDef()
+    unused_constant = self.create_constant_node_def(unused_constant_name,
+                                                    value=0,
+                                                    dtype=tf.float32,
+                                                    shape=[])
+    graph_def.node.extend([unused_constant])
     unconnected_add_node = self.create_node_def("Add", unconnected_add_name,
-                                                ["no_such_node",
-                                                 "no_such_node"])
+                                                [unused_constant_name,
+                                                 unused_constant_name])
     self.set_attr_dtype(unconnected_add_node, "T", tf.float32)
     graph_def.node.extend([unconnected_add_node])
     a_constant = self.create_constant_node_def(a_constant_name,
@@ -159,6 +165,65 @@ class OptimizeForInferenceTest(tf.test.TestCase):
 
     for node in optimized_graph_def.node:
       self.assertNotEqual("BatchNormWithGlobalNormalization", node.op)
+
+  def testFuseResizePadAndConv(self):
+    with self.test_session() as sess:
+      inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
+      input_op = tf.constant(np.array(inputs), shape=[1, 2, 3, 2],
+                             dtype=tf.float32)
+      resize_op = tf.image.resize_bilinear(input_op, [12, 4],
+                                           align_corners=False)
+      pad_op = tf.pad(resize_op, [[0, 0], [1, 1], [2, 2], [0, 0]],
+                      mode="REFLECT")
+      weights = [1, 2, 3, 4, 0.1, 0.2, 0.3, 0.4]
+      weights_op = tf.constant(np.array(weights), shape=[1, 2, 2, 2],
+                               dtype=tf.float32)
+      tf.nn.conv2d(pad_op, weights_op, [1, 1, 1, 1],
+                   padding="VALID", name="output")
+      original_graph_def = sess.graph_def
+      original_result = sess.run(["output:0"])
+    optimized_graph_def = optimize_for_inference_lib.fuse_resize_and_conv(
+        original_graph_def)
+
+    with self.test_session() as sess:
+      _ = tf.import_graph_def(optimized_graph_def, input_map={},
+                              name="optimized")
+      optimized_result = sess.run(["optimized/output:0"])
+
+    self.assertAllClose(original_result, optimized_result)
+
+    for node in optimized_graph_def.node:
+      self.assertNotEqual("Conv2D", node.op)
+      self.assertNotEqual("MirrorPad", node.op)
+      self.assertNotEqual("ResizeBilinear", node.op)
+
+  def testFuseResizeAndConv(self):
+    with self.test_session() as sess:
+      inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
+      input_op = tf.constant(np.array(inputs), shape=[1, 2, 3, 2],
+                             dtype=tf.float32)
+      resize_op = tf.image.resize_bilinear(input_op, [12, 4],
+                                           align_corners=False)
+      weights = [1, 2, 3, 4, 0.1, 0.2, 0.3, 0.4]
+      weights_op = tf.constant(np.array(weights), shape=[1, 2, 2, 2],
+                               dtype=tf.float32)
+      tf.nn.conv2d(resize_op, weights_op, [1, 1, 1, 1],
+                   padding="VALID", name="output")
+      original_graph_def = sess.graph_def
+      original_result = sess.run(["output:0"])
+    optimized_graph_def = optimize_for_inference_lib.fuse_resize_and_conv(
+        original_graph_def)
+
+    with self.test_session() as sess:
+      _ = tf.import_graph_def(optimized_graph_def, input_map={},
+                              name="optimized")
+      optimized_result = sess.run(["optimized/output:0"])
+
+    self.assertAllClose(original_result, optimized_result)
+
+    for node in optimized_graph_def.node:
+      self.assertNotEqual("Conv2D", node.op)
+      self.assertNotEqual("ResizeBilinear", node.op)
 
 
 if __name__ == "__main__":

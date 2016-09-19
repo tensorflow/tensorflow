@@ -26,8 +26,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 
 
-def confusion_matrix(predictions, labels, num_classes=None,
-                     dtype=dtypes.int32, name=None):
+def confusion_matrix(predictions, labels, num_classes=None, dtype=dtypes.int32,
+                     name=None, weights=None):
   """Computes the confusion matrix from predictions and labels.
 
   Calculate the Confusion Matrix for a pair of prediction and
@@ -41,6 +41,9 @@ def confusion_matrix(predictions, labels, num_classes=None,
        [0, 1, 0]
        [0, 1, 0]
        [0, 0, 1]]
+
+  If `weights` is not None, then the confusion matrix elements are the
+  corresponding `weights` elements.
 
   Where the matrix rows represent the prediction labels and the columns
   represents the real labels. The confusion matrix is always a 2-D array
@@ -57,31 +60,40 @@ def confusion_matrix(predictions, labels, num_classes=None,
                  using both predictions and labels array.
     dtype: Data type of the confusion matrix.
     name: Scope name.
+    weights: An optional `Tensor` whose shape matches `predictions`.
 
   Returns:
     A k X k matrix represeting the confusion matrix, where k is the number of
     possible labels in the classification task.
 
   Raises:
-    ValueError: If both predictions and labels are not 1-D vectors and do not
-                have the same size.
+    ValueError: If both predictions and labels are not 1-D vectors and have
+      mismatched shapes, or if `weights` is not `None` and its shape doesn't
+      match `predictions`.
   """
   with ops.name_scope(name, 'confusion_matrix',
                       [predictions, labels, num_classes]) as name:
     predictions, labels = metric_ops_util.remove_squeezable_dimensions(
         ops.convert_to_tensor(
-            predictions, name='predictions', dtype=dtypes.int64),
-        ops.convert_to_tensor(labels, name='labels', dtype=dtypes.int64))
+            predictions, name='predictions'),
+        ops.convert_to_tensor(labels, name='labels'))
+    predictions = math_ops.cast(predictions, dtypes.int64)
+    labels = math_ops.cast(labels, dtypes.int64)
 
     if num_classes is None:
       num_classes = math_ops.maximum(math_ops.reduce_max(predictions),
                                      math_ops.reduce_max(labels)) + 1
 
+    if weights is not None:
+      predictions.get_shape().assert_is_compatible_with(weights.get_shape())
+      weights = math_ops.cast(weights, dtype)
+
     shape = array_ops.pack([num_classes, num_classes])
     indices = array_ops.transpose(array_ops.pack([predictions, labels]))
-    values = array_ops.ones_like(predictions, dtype)
+    values = (array_ops.ones_like(predictions, dtype)
+              if weights is None else weights)
     cm_sparse = ops.SparseTensor(
-        indices=indices, values=values, shape=shape)
+        indices=indices, values=values, shape=math_ops.to_int64(shape))
     zero_matrix = array_ops.zeros(math_ops.to_int32(shape), dtype)
 
     return sparse_ops.sparse_add(zero_matrix, cm_sparse)
