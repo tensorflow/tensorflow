@@ -61,8 +61,9 @@ def _assert_float_dtype(dtype):
   return dtype
 
 
-# TODO(irving) Move array_ops.zeros_initializer here.
-zeros_initializer = array_ops.zeros_initializer
+def zeros_initializer(shape, dtype=dtypes.float32, partition_info=None):
+  """An adaptor for zeros() to match the Initializer spec."""
+  return array_ops.zeros(shape, dtype)
 
 
 def ones_initializer(shape, dtype=dtypes.float32, partition_info=None):
