@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
+import sys
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
