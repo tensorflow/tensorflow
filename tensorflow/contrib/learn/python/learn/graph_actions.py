@@ -247,8 +247,15 @@ def _monitored_train(graph,
         saver=tf_saver.Saver(
             sharded=True, max_to_keep=keep_checkpoint_max, defer_build=True))
 
-    if supervisor_is_chief:
-      # See question about adding the summary writer to the scaffold.
+    if not supervisor_is_chief:
+      session_creator = monitored_session.WorkerSessionCreator(
+          scaffold=scaffold,
+          master=supervisor_master)
+    else:
+      session_creator = monitored_session.ChiefSessionCreator(
+          scaffold=scaffold,
+          checkpoint_dir=output_dir,
+          master=supervisor_master)
       summary_writer = summary_writer_cache.SummaryWriterCache.get(output_dir)
       all_hooks.append(
           basic_session_run_hooks.StepCounterHook(
@@ -270,11 +277,8 @@ def _monitored_train(graph,
     all_hooks.extend(hooks)
 
     with monitored_session.MonitoredSession(
-        supervisor_master,
-        is_chief=supervisor_is_chief,
-        checkpoint_dir=output_dir,
-        hooks=all_hooks,
-        scaffold=scaffold) as super_sess:
+        session_creator=session_creator,
+        hooks=all_hooks) as super_sess:
       loss = None
       while not super_sess.should_stop():
         _, loss = super_sess.run([train_op, loss_op], feed_fn() if feed_fn else

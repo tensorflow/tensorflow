@@ -19,8 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
+
 from tensorflow.contrib.learn.python.learn import session_run_hook
-from tensorflow.contrib.learn.python.learn import summary_writer_cache
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
@@ -31,7 +32,6 @@ from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as training_saver
 from tensorflow.python.training import session_manager as sm
-from tensorflow.python.training import training_util
 
 
 # TODO(touts): Share that with the Supervisor.
@@ -148,6 +148,7 @@ class Scaffold(object):
     self._saver.build()
 
     ops.get_default_graph().finalize()
+    return self
 
   @property
   def init_fn(self):
@@ -200,6 +201,91 @@ class Scaffold(object):
                                   data_flow_ops.initialize_all_tables())
 
 
+class SessionCreator(object):
+  """A factory for tf.Session."""
+
+  @abc.abstractmethod
+  def create_session(self):
+    raise NotImplementedError(
+        'create_session is not implemented for {}.'.format(self))
+
+
+class ChiefSessionCreator(SessionCreator):
+  """Creates a tf.Session  for a chief."""
+
+  def __init__(self, scaffold=None, master='', config=None,
+               checkpoint_dir=None):
+    """Initializes a chief session creator.
+
+    Args:
+      scaffold: A `Scaffold` used for gathering or building supportive ops. If
+        not specified a default one is created. It's used to finalize the graph.
+      master: `String` representation of the TensorFlow master to use.
+      config: `ConfigProto` proto used to configure the session.
+      checkpoint_dir: A string.  Optional path to a directory where to restore
+        variables.
+    """
+    self._checkpoint_dir = checkpoint_dir
+    self._scaffold = scaffold or Scaffold()
+    self._session_manager = None
+    self._master = master
+    self._config = config
+
+  def _get_session_manager(self):
+    if self._session_manager:
+      return self._session_manager
+
+    self._session_manager = sm.SessionManager(
+        local_init_op=self._scaffold.local_init_op,
+        ready_op=self._scaffold.ready_op,
+        graph=ops.get_default_graph())
+    return self._session_manager
+
+  def create_session(self):
+    self._scaffold.finalize()
+    return self._get_session_manager().prepare_session(
+        self._master,
+        saver=self._scaffold.saver,
+        checkpoint_dir=self._checkpoint_dir,
+        config=self._config,
+        init_op=self._scaffold.init_op,
+        init_feed_dict=self._scaffold.init_feed_dict,
+        init_fn=self._scaffold.init_fn)
+
+
+class WorkerSessionCreator(SessionCreator):
+  """Creates a tf.Session for a worker."""
+
+  def __init__(self, scaffold=None, master='', config=None):
+    """Initializes a worker session creator.
+
+    Args:
+      scaffold: A `Scaffold` used for gathering or building supportive ops. If
+        not specified a default one is created. It's used to finalize the graph.
+      master: `String` representation of the TensorFlow master to use.
+      config: `ConfigProto` proto used to configure the session.
+    """
+    self._scaffold = scaffold or Scaffold()
+    self._session_manager = None
+    self._master = master
+    self._config = config
+
+  def _get_session_manager(self):
+    if self._session_manager:
+      return self._session_manager
+
+    self._session_manager = sm.SessionManager(
+        local_init_op=self._scaffold.local_init_op,
+        ready_op=self._scaffold.ready_op,
+        graph=ops.get_default_graph())
+    return self._session_manager
+
+  def create_session(self):
+    self._scaffold.finalize()
+    return self._get_session_manager().wait_for_session(
+        self._master, config=self._config)
+
+
 class MonitoredSession(object):
   """Session-like object that handles initialization, recovery and hooks.
 
@@ -239,80 +325,28 @@ class MonitoredSession(object):
     processed if the monitored_session is used as a context.
   """
 
-  def __init__(self,
-               master='',
-               is_chief=True,
-               checkpoint_dir=None,
-               hooks=None,
-               scaffold=None,
-               config=None):
+  def __init__(self, session_creator=None, hooks=None):
     """Creates a MonitoredSession.
 
     Args:
-      master: `String` representation of the TensorFlow master to use.
-      is_chief: If True, it will take care of initialization and recovery the
-        underlying TensorFlow session. If False, it will wait on a chief to
-        initialize or recover the TensorFlow session.
-      checkpoint_dir: A string.  Optional path to a directory where to restore
-        variables.
+      session_creator: A factory object to create session.
       hooks: An iterable of `SessionRunHook' objects.
-      scaffold: A `Scaffold` used for gathering or building supportive ops. If
-        not specified a default one is created. It's used to finalize the graph.
-      config: `ConfigProto` proto used to configure the session.
     """
-    self._graph = ops.get_default_graph()
-    self._master = master
-    self._checkpoint_dir = checkpoint_dir
-    self._is_chief = is_chief
-    self._config = config
     self._hooks = hooks or []
-    self._scaffold = scaffold or Scaffold()
-    self._coord = None
     for h in self._hooks:
       h.begin()
     # Create the session.
-    self._scaffold.finalize()
-    self._session_manager = sm.SessionManager(
-        local_init_op=self._scaffold.local_init_op,
-        ready_op=self._scaffold.ready_op,
-        graph=ops.get_default_graph())
-    self._sess = _RecoverableSession(self._create_session)
-    self.write_graph()
-
-  def _create_session(self):
-    """Factory for the _RecoverableSession.
-
-    Returns:
-      A session, initialized or recovered as needed.
-    """
-    if self._is_chief:
-      tf_sess = self._session_manager.prepare_session(
-          self._master,
-          saver=self._scaffold.saver,
-          checkpoint_dir=self._checkpoint_dir,
-          config=self._config,
-          init_op=self._scaffold.init_op,
-          init_feed_dict=self._scaffold.init_feed_dict,
-          init_fn=self._scaffold.init_fn)
-    else:
-      tf_sess = self._session_manager.wait_for_session(
-          self._master, config=self._config)
-    # Keep the tf_sess for quick runs of global step when needed.
-    self._tf_sess = tf_sess
-    # We don't want coordinator to suppress any exception.
-    self._coord = coordinator.Coordinator(clean_stop_exception_types=[])
-    queue_runner.start_queue_runners(sess=tf_sess, coord=self._coord)
-    return _CoordinatedSession(_HookedSession(tf_sess, self._hooks),
-                               self._coord)
-
-  @property
-  def scaffold(self):
-    return self._scaffold
+    self._coordinated_creator = self._CoordinatedSessionCreator(
+        session_creator=session_creator or ChiefSessionCreator(),
+        hooks=self._hooks)
+    self._sess = _RecoverableSession(self._coordinated_creator)
 
   @property
   def graph(self):
     """The graph that was launched in this session."""
-    return self._tf_sess.graph
+    if self._coordinated_creator.tf_sess is None:
+      return None
+    return self._coordinated_creator.tf_sess.graph
 
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     """Run ops in the monitored session.
@@ -341,27 +375,6 @@ class MonitoredSession(object):
   def close(self):
     self._close_internal()
 
-  def _close_internal(self, exception_type=None):
-    try:
-      if not exception_type:
-        for h in self._hooks:
-          h.end(self._tf_sess)
-    finally:
-      try:
-        self._sess.close()
-      finally:
-        self._sess = None
-        self._tf_sess = None
-        self._coord = None
-
-  def _is_closed(self):
-    """Return True if the supervised session is closed.  For tests only.
-
-    Returns:
-      A boolean.
-    """
-    return self._tf_sess is None
-
   def __enter__(self):
     return self
 
@@ -372,16 +385,45 @@ class MonitoredSession(object):
     # __exit__ should return True to suppress an exception.
     return exception_type is None
 
-  def write_graph(self):
-    """Saves current graph."""
-    if self._checkpoint_dir is not None and self._is_chief:
-      summary_writer = summary_writer_cache.SummaryWriterCache.get(
-          self._checkpoint_dir)
-      training_util.write_graph(
-          self._graph.as_graph_def(add_shapes=True),
-          self._checkpoint_dir,
-          'graph.pbtxt')
-      summary_writer.add_graph(self._graph)
+  class _CoordinatedSessionCreator(object):
+    """Factory for the _RecoverableSession."""
+
+    def __init__(self, session_creator, hooks):
+      self._session_creator = session_creator
+      self._hooks = hooks
+      self.coord = None
+      self.tf_sess = None
+
+    def create_session(self):
+      """Creates a coordinated session."""
+      # Keep the tf_sess for unit testing.
+      self.tf_sess = self._session_creator.create_session()
+      # We don't want coordinator to suppress any exception.
+      self.coord = coordinator.Coordinator(clean_stop_exception_types=[])
+      queue_runner.start_queue_runners(sess=self.tf_sess, coord=self.coord)
+      return _CoordinatedSession(
+          _HookedSession(self.tf_sess, self._hooks), self.coord)
+
+  def _close_internal(self, exception_type=None):
+    try:
+      if not exception_type:
+        for h in self._hooks:
+          h.end(self._coordinated_creator.tf_sess)
+    finally:
+      try:
+        self._sess.close()
+      finally:
+        self._sess = None
+        self._coordinated_creator.tf_sess = None
+        self._coordinated_creator.coord = None
+
+  def _is_closed(self):
+    """Return True if the supervised session is closed.  For tests only.
+
+    Returns:
+      A boolean.
+    """
+    return self._coordinated_creator.tf_sess is None
 
 
 class _WrappedSession(object):
@@ -449,32 +491,30 @@ class _WrappedSession(object):
 class _RecoverableSession(_WrappedSession):
   """A wrapped session that recreates a session on `tf.errors.AbortedError`.
 
-  The constructor is passed a session _factory_, not a session.  The factory is
-  a no-argument function that must return a `Session`.
+  The constructor is passed a SessionCreator object, not a session.
 
   Calls to `run()` are delegated to the wrapped session.  If a call raises the
   exception `tf.errors.AbortedError`, the wrapped session is closed, and a new
   one is created by calling the factory again.
   """
 
-  def __init__(self, sess_factory):
+  def __init__(self, sess_creator):
     """Create a new `_RecoverableSession`.
 
-    The value returned by calling `sess_factory()` will be the
+    The value returned by calling `sess_creator.create_session()` will be the
     session wrapped by this recoverable session.
 
     Args:
-      sess_factory: A callable with no arguments that returns a
-        `tf.Session` when called.
+      sess_creator: A 'SessionCreator' to be wrapped by recoverable.
     """
-    self._factory = sess_factory
-    _WrappedSession.__init__(self, sess_factory())
+    self._sess_creator = sess_creator
+    _WrappedSession.__init__(self, self._sess_creator.create_session())
 
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     while True:
       try:
         if not self._sess:
-          self._sess = self._factory()
+          self._sess = self._sess_creator.create_session()
         return self._sess.run(fetches,
                               feed_dict=feed_dict,
                               options=options,
