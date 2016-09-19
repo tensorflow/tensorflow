@@ -51,15 +51,15 @@ class DirichletTest(tf.test.TestCase):
   def testPdfXProper(self):
     alpha = [[1., 2, 3]]
     with self.test_session():
-      dist = tf.contrib.distributions.Dirichlet(alpha)
+      dist = tf.contrib.distributions.Dirichlet(alpha, validate_args=True)
       dist.pdf([.1, .3, .6]).eval()
       dist.pdf([.2, .3, .5]).eval()
       # Either condition can trigger.
-      with self.assertRaisesOpError('Condition x > 0.*|Condition x < y.*'):
+      with self.assertRaisesOpError("Condition x > 0.*|Condition x < y.*"):
         dist.pdf([-1., 1, 1]).eval()
-      with self.assertRaisesOpError('Condition x > 0.*'):
+      with self.assertRaisesOpError("Condition x > 0.*"):
         dist.pdf([0., .1, .9]).eval()
-      with self.assertRaisesOpError('Condition x ~= y.*'):
+      with self.assertRaisesOpError("Condition x ~= y.*"):
         dist.pdf([.1, .2, .8]).eval()
 
   def testPdfZeroBatches(self):
@@ -153,8 +153,9 @@ class DirichletTest(tf.test.TestCase):
   def testDirichletMode_invalid(self):
     with self.test_session():
       alpha = np.array([1., 2, 3])
-      dirichlet = tf.contrib.distributions.Dirichlet(alpha=alpha)
-      with self.assertRaisesOpError('Condition x < y.*'):
+      dirichlet = tf.contrib.distributions.Dirichlet(
+          alpha=alpha, allow_nan_stats=False)
+      with self.assertRaisesOpError("Condition x < y.*"):
         dirichlet.mode().eval()
 
   def testDirichletMode_enable_allow_nan_stats(self):
@@ -191,5 +192,5 @@ class DirichletTest(tf.test.TestCase):
               sample_values[:, 0], stats.beta(a=1., b=2.).cdf)[0],
           0.01)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

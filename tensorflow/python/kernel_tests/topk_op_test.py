@@ -81,7 +81,7 @@ class TopKTest(tf.test.TestCase):
   def testKTooLarge(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
     with self.assertRaisesRegexp(
-        ValueError, r"input.shape \(2, 2\) must have last dimension >= k = 4"):
+        ValueError, r"must have last dimension >= k = 4"):
       tf.nn.top_k(inputs, 4)
 
   def testTopKGradients(self):

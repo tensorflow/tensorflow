@@ -41,8 +41,8 @@ class OpError(Exception):
     """Creates a new `OpError` indicating that a particular op failed.
 
     Args:
-      node_def: The `graph_pb2.NodeDef` proto representing the op that failed,
-        if known; otherwise None.
+      node_def: The `node_def_pb2.NodeDef` proto representing the op that
+        failed, if known; otherwise None.
       op: The `ops.Operation` that failed, if known; otherwise None.
       message: The message string describing the failure.
       error_code: The `error_codes_pb2.Code` describing the error.
@@ -428,10 +428,21 @@ _CODE_TO_EXCEPTION_CLASS = {
     DATA_LOSS: DataLossError,
 }
 
+_EXCEPTION_CLASS_TO_CODE = dict((
+    (class_, code) for (code, class_) in _CODE_TO_EXCEPTION_CLASS.items()))
+
+
+def exception_type_from_error_code(error_code):
+  return _CODE_TO_EXCEPTION_CLASS[error_code]
+
+
+def error_code_from_exception_type(cls):
+  return _EXCEPTION_CLASS_TO_CODE[cls]
+
 
 def _make_specific_exception(node_def, op, message, error_code):
   try:
-    exc_type = _CODE_TO_EXCEPTION_CLASS[error_code]
+    exc_type = exception_type_from_error_code(error_code)
     return exc_type(node_def, op, message)
   except KeyError:
     warnings.warn("Unknown error code: %d" % error_code)

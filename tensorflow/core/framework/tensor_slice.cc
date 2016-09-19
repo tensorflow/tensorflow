@@ -82,6 +82,13 @@ void TensorSlice::Clear() {
   lengths_.clear();
 }
 
+bool TensorSlice::IsFull() const {
+  for (int d = 0; d < dims(); ++d) {
+    if (!IsFullAt(d)) return false;
+  }
+  return true;
+}
+
 void TensorSlice::SetFullSlice(int dim) {
   Clear();
   starts_.reserve(dim);
@@ -179,6 +186,11 @@ bool TensorSlice::Intersect(const TensorSlice& other,
   }
   // If we are here, we know there is overlap in every dimension.
   return true;
+}
+
+bool TensorSlice::operator==(const TensorSlice& other) const {
+  return dims() == other.dims() && starts_ == other.starts_ &&
+         lengths_ == other.lengths_;
 }
 
 void TensorSlice::ComputeRelative(const TensorSlice& sub,

@@ -23,7 +23,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
+#endif  // GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
@@ -85,7 +87,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
   }
 
 // This macro creates a new request for the given RPC method name
-// (e.g., `ENQUEUE_REQUEST(GetStatus);`), and enqueues it on
+// (e.g., `ENQUEUE_REQUEST(GetStatus, false);`), and enqueues it on
 // `this->cq_`.
 //
 // This macro is invoked one or more times for each RPC method to
@@ -95,17 +97,17 @@ class GrpcWorkerService : public AsyncServiceInterface {
 // The implementation of the request handler for each RPC method
 // must ensure that it calls ENQUEUE_REQUEST() for that RPC method,
 // to keep accepting new requests.
-#define ENQUEUE_REQUEST(method, supports_cancel)                              \
-  do {                                                                        \
-    mutex_lock l(shutdown_mu_);                                               \
-    if (!is_shutdown_) {                                                      \
-      Call<GrpcWorkerService, grpc::WorkerService::AsyncService,              \
-           method##Request, method##Response>::                               \
-          EnqueueRequest(&worker_service_, cq_,                               \
-                         &grpc::WorkerService::AsyncService::Request##method, \
-                         &GrpcWorkerService::method##Handler,                 \
-                         (supports_cancel));                                  \
-    }                                                                         \
+#define ENQUEUE_REQUEST(method, supports_cancel)                       \
+  do {                                                                 \
+    mutex_lock l(shutdown_mu_);                                        \
+    if (!is_shutdown_) {                                               \
+      Call<GrpcWorkerService, grpc::WorkerService::AsyncService,       \
+           method##Request, method##Response>::                        \
+          EnqueueRequestForMethod(                                     \
+              &worker_service_, cq_,                                   \
+              static_cast<int>(GrpcWorkerMethod::k##method),           \
+              &GrpcWorkerService::method##Handler, (supports_cancel)); \
+    }                                                                  \
   } while (0)
 
   // This method blocks forever handling requests from the completion queue.
@@ -145,7 +147,6 @@ class GrpcWorkerService : public AsyncServiceInterface {
           static_cast<UntypedCall<GrpcWorkerService>::Tag*>(tag);
       if (callback_tag) {
         callback_tag->OnCompleted(this, ok);
-        delete callback_tag;
       } else {
         // NOTE(mrry): A null `callback_tag` indicates that this is
         // the shutdown alarm.
@@ -267,9 +268,9 @@ class GrpcWorkerService : public AsyncServiceInterface {
     if (!is_shutdown_) {
       Call<GrpcWorkerService, grpc::WorkerService::AsyncService,
            RecvTensorRequest, ::grpc::ByteBuffer>::
-          EnqueueRequest(
+          EnqueueRequestForMethod(
               &worker_service_, cq_,
-              &grpc::WorkerService::AsyncService::RequestRecvTensorRaw,
+              static_cast<int>(GrpcWorkerMethod::kRecvTensor),
               &GrpcWorkerService::RecvTensorHandlerRaw,
               true /* supports cancel*/);
     }
@@ -324,7 +325,10 @@ class GrpcWorkerService : public AsyncServiceInterface {
       return;
     }
     StepStatsCollector* collector = nullptr;
-    // TODO(mrry): Collect results from a profiler if available.
+    if (call->request.exec_opts().record_timeline()) {
+      collector = new StepStatsCollector(call->response.mutable_step_stats());
+      // TODO(mrry,pbar): GPU tracing for distributed steps.
+    }
     CancellationManager* cm = new CancellationManager;
     call->SetCancelCallback([this, cm, step_id]() {
       cm->StartCancel();
@@ -339,7 +343,8 @@ class GrpcWorkerService : public AsyncServiceInterface {
     }
     env_->graph_mgr->ExecuteAsync(
         call->request.graph_handle(), step_id, call->request.exec_opts(),
-        collector, cm, in, out, [this, call, cm, out, token](Status s) {
+        collector, cm, in, out,
+        [this, call, cm, out, token, collector](Status s) {
           call->ClearCancelCallback();
           {
             mutex_lock l(mu_);
@@ -358,6 +363,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
               val.AsProtoField(proto);
             }
           }
+          delete collector;
           delete out;
           call->SendResponse(ToGrpcStatus(s));
         });
@@ -425,10 +431,12 @@ class GrpcWorkerService : public AsyncServiceInterface {
             // device type*.
             // const size_t bytes = is_dead ? 0 : val.TotalBytes();
             const bool on_host = send_args.alloc_attrs.on_host();
-            const DeviceContext* send_dev_context = send_args.device_context;
             {
               // Non-DMA cases.
               if (src_dev->tensorflow_gpu_device_info() && (!on_host)) {
+#if GOOGLE_CUDA
+                const DeviceContext* send_dev_context =
+                    send_args.device_context;
                 RecvTensorResponse* tmp = new RecvTensorResponse;
                 tmp->set_is_dead(is_dead);
                 CHECK(send_dev_context)
@@ -456,6 +464,10 @@ class GrpcWorkerService : public AsyncServiceInterface {
                 GPUUtil::SetProtoFromGPU(val, src_dev, send_dev_context,
                                          tmp->mutable_tensor(), is_dead,
                                          response_ready);
+#else
+                call->SendResponse(ToGrpcStatus(
+                    errors::Internal("No GPU device in process")));
+#endif  // GOOGLE_CUDA
               } else {
                 grpc::EncodeTensorToByteBuffer(is_dead, val, &call->response);
                 call->SendResponse(ToGrpcStatus(Status::OK()));

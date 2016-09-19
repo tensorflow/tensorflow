@@ -432,9 +432,11 @@ class PoolingTest(tf.test.TestCase):
 
   def _testDepthwiseMaxPoolInvalidConfig(self, in_size, ksize, strides,
                                          error_msg, use_gpu=False):
-    t = tf.constant(1.0, shape=in_size)
-    with self.assertRaisesRegexp(ValueError, error_msg):
-      t = tf.nn.max_pool(t, ksize=ksize, strides=strides, padding="SAME")
+    with self.test_session(use_gpu=use_gpu) as sess:
+      t = tf.constant(1.0, shape=in_size)
+      with self.assertRaisesRegexp(tf.errors.UnimplementedError, error_msg):
+        t = tf.nn.max_pool(
+            t, ksize=ksize, strides=strides, padding="SAME").eval()
 
   def testDepthwiseMaxPoolInvalidConfigs(self):
     self._testDepthwiseMaxPoolInvalidConfig(
@@ -927,29 +929,39 @@ class PoolingTest(tf.test.TestCase):
         pool_func(tf.placeholder(tf.float32, shape=[1, 3]),
                   ksize=[1, 1, 1, 1], strides=[1, 1, 1, 1], padding="SAME")
 
-    # Illegal strides.
-    for pool_func in [tf.nn.max_pool, tf.nn.avg_pool,
-                      tf.nn.max_pool_with_argmax]:
-      with self.assertRaisesRegexp(ValueError, "strides in the batch"):
-        pool_func(tf.placeholder(tf.float32),
-                  ksize=[1, 1, 1, 1], strides=[2, 1, 1, 1], padding="SAME")
-    with self.assertRaisesRegexp(ValueError, "strides in the batch and depth"):
-      tf.nn.avg_pool(tf.placeholder(tf.float32),
-                     ksize=[1, 1, 1, 1], strides=[1, 1, 1, 2], padding="SAME")
+  def testOpEdgeCases(self):
+    with self.test_session() as sess:
+      pool_funcs = [tf.nn.max_pool, tf.nn.avg_pool]
+      if tf.test.is_gpu_available():
+        pool_funcs.append(tf.nn.max_pool_with_argmax)
+      for pool_func in pool_funcs:
+        # Illegal strides.
+        with self.assertRaisesRegexp(
+            tf.errors.UnimplementedError,
+            "Pooling is not yet supported on the batch"):
+          sess.run(
+              pool_func(
+                  tf.placeholder(tf.float32),
+                  ksize=[1, 1, 1, 1],
+                  strides=[2, 1, 1, 1],
+                  padding="SAME"))
 
-    # Filter larger than input.
-    for pool_func in [tf.nn.max_pool, tf.nn.avg_pool,
-                      tf.nn.max_pool_with_argmax]:
-      with self.assertRaisesRegexp(ValueError,
-                                   "Filter must not be larger than the input"):
-        pool_func(tf.placeholder(tf.float32,
-                                        shape=[32, 20, 20, 3]),
-                  ksize=[1, 20, 21, 1], strides=[1, 1, 1, 1], padding="SAME")
-      with self.assertRaisesRegexp(ValueError,
-                                   "Filter must not be larger than the input"):
-        pool_func(tf.placeholder(tf.float32,
-                                        shape=[32, 20, 20, 3]),
-                  ksize=[1, 21, 20, 1], strides=[1, 1, 1, 1], padding="SAME")
+        # Filter too large.
+        with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+          sess.run(
+              pool_func(
+                  tf.placeholder(
+                      tf.float32, shape=[32, 20, 20, 3]),
+                  ksize=[1, 20, 21, 1],
+                  strides=[1, 1, 1, 1],
+                  padding="VALID"))
+        with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+          pool_func(
+              tf.placeholder(
+                  tf.float32, shape=[32, 20, 20, 3]),
+              ksize=[1, 21, 20, 1],
+              strides=[1, 1, 1, 1],
+              padding="VALID")
 
 
 def GetMaxPoolFwdTest(input_size, filter_size, strides, padding):

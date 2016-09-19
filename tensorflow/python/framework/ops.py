@@ -26,12 +26,12 @@ import linecache
 import re
 import sys
 import threading
-import weakref
 
 import six
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -577,7 +577,11 @@ _tensor_conversion_func_registry = {
 register_dense_tensor_like_type(Tensor)
 
 
-def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
+def convert_to_tensor(value,
+                      dtype=None,
+                      name=None,
+                      as_ref=False,
+                      preferred_dtype=None):
   """Converts the given `value` to a `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -610,6 +614,11 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
     name: Optional name to use if a new `Tensor` is created.
     as_ref: True if we want the result as a ref tensor. Only used if a new
       `Tensor` is created.
+    preferred_dtype: Optional element type for the returned tensor,
+      used when dtype is None. In some cases, a caller may not have a
+      dtype in mind when converting to a tensor, so preferred_dtype
+      can be used as a soft preference.  If the conversion to
+      `preferred_dtype` is not possible, this argument has no effect.
 
   Returns:
     A `Tensor` based on `value`.
@@ -625,9 +634,31 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
   for _, funcs_at_priority in sorted(_tensor_conversion_func_registry.items()):
     for base_type, conversion_func in funcs_at_priority:
       if isinstance(value, base_type):
-        ret = conversion_func(value, dtype=dtype, name=name, as_ref=as_ref)
+        # If dtype is None but preferred_dtype is not None, we try to
+        # cast to preferred_dtype first.
+        ret = None
+        if dtype is None and preferred_dtype is not None:
+          try:
+            ret = conversion_func(
+                value, dtype=preferred_dtype, name=name, as_ref=as_ref)
+          except (TypeError, ValueError):
+            # Could not coerce the conversion to use the preferred dtype.
+            ret = None
+
+          if ret is not None and ret is not NotImplemented:
+            if (ret.dtype.base_dtype !=
+                dtypes.as_dtype(preferred_dtype).base_dtype):
+              raise TypeError("convert_to_tensor did not convert to "
+                              "the preferred dtype: %s vs %s " %
+                              (ret.dtype.base_dtype,
+                               dtypes.as_dtype(preferred_dtype).base_dtype))
+
+        if ret is None:
+          ret = conversion_func(value, dtype=dtype, name=name, as_ref=as_ref)
+
         if ret is NotImplemented:
           continue
+
         if not isinstance(ret, Tensor):
           raise RuntimeError(
               "%sConversion function %r for type %s returned non-Tensor: %r"
@@ -644,7 +675,11 @@ def convert_to_tensor(value, dtype=None, name=None, as_ref=False):
                   % (error_prefix, value, type(value)))
 
 
-def convert_n_to_tensor(values, dtype=None, name=None, as_ref=False):
+def convert_n_to_tensor(values,
+                        dtype=None,
+                        name=None,
+                        as_ref=False,
+                        preferred_dtype=None):
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -654,6 +689,11 @@ def convert_n_to_tensor(values, dtype=None, name=None, as_ref=False):
       created, in which case element `i` will be given the name `name
       + '_' + i`.
     as_ref: True if the caller wants the results as ref tensors.
+    preferred_dtype: Optional element type for the returned tensors,
+      used when dtype is None. In some cases, a caller may not have a
+      dtype in mind when converting to a tensor, so preferred_dtype
+      can be used as a soft preference.  If the conversion to
+      `preferred_dtype` is not possible, this argument has no effect.
 
   Returns:
     A list of `Tensor` and/or `IndexedSlices` objects.
@@ -669,7 +709,13 @@ def convert_n_to_tensor(values, dtype=None, name=None, as_ref=False):
   ret = []
   for i, value in enumerate(values):
     n = None if name is None else "%s_%d" % (name, i)
-    ret.append(convert_to_tensor(value, dtype=dtype, name=n, as_ref=as_ref))
+    ret.append(
+        convert_to_tensor(
+            value,
+            dtype=dtype,
+            name=n,
+            as_ref=as_ref,
+            preferred_dtype=preferred_dtype))
   return ret
 
 
@@ -1103,9 +1149,9 @@ def _NodeDef(op_type, name, device=None, attrs=None):
       AttrValue).
 
   Returns:
-    A graph_pb2.NodeDef protocol buffer.
+    A node_def_pb2.NodeDef protocol buffer.
   """
-  node_def = graph_pb2.NodeDef()
+  node_def = node_def_pb2.NodeDef()
   node_def.op = compat.as_bytes(op_type)
   node_def.name = compat.as_bytes(name)
   if attrs is not None:
@@ -1170,8 +1216,8 @@ class Operation(object):
         [A-Za-z0-9.][A-Za-z0-9_.\\-/]*
 
     Args:
-      node_def: `graph_pb2.NodeDef`.  `NodeDef` for the `Operation`.
-        Used for attributes of `graph_pb2.NodeDef`, typically `name`,
+      node_def: `node_def_pb2.NodeDef`.  `NodeDef` for the `Operation`.
+        Used for attributes of `node_def_pb2.NodeDef`, typically `name`,
         `op`, and `device`.  The `input` attribute is irrelevant here
         as it will be computed when generating the model.
       g: `Graph`. The parent graph.
@@ -1199,7 +1245,7 @@ class Operation(object):
         or if `inputs` and `input_types` are incompatible.
       ValueError: if the `node_def` name is not valid.
     """
-    if not isinstance(node_def, graph_pb2.NodeDef):
+    if not isinstance(node_def, node_def_pb2.NodeDef):
       raise TypeError("node_def needs to be a NodeDef: %s" % node_def)
     if node_def.ByteSize() >= (1 << 31) or node_def.ByteSize() < 0:
       raise ValueError(
@@ -1501,7 +1547,7 @@ class Operation(object):
 
     Returns:
       A
-      [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+      [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/node_def.proto)
       protocol buffer.
     """
     return self._node_def
@@ -1620,16 +1666,25 @@ class RegisterGradient(object):
     return f
 
 
-def NoGradient(op_type):
-  """Specifies that ops of type `op_type` do not have a defined gradient.
+def NotDifferentiable(op_type):
+  """Specifies that ops of type `op_type` is not differentiable.
+
+  This function should *not* be used for operations that have a
+  well-defined gradient that is not yet implemented.
 
   This function is only used when defining a new op type. It may be
   used for ops such as `tf.size()` that are not differentiable.  For
   example:
 
   ```python
-  tf.NoGradient("Size")
+  tf.NotDifferentiable("Size")
   ```
+
+  The gradient computed for 'op_type' will then propagate zeros.
+
+  For ops that have a well-defined gradient but are not yet implemented,
+  no declaration should be made, and an error *must* be thrown if
+  an attempt to request its gradient is made.
 
   Args:
     op_type: The string type of an operation. This corresponds to the
@@ -1642,6 +1697,10 @@ def NoGradient(op_type):
   if not isinstance(op_type, six.string_types):
     raise TypeError("op_type must be a string")
   _gradient_registry.register(None, op_type)
+
+
+# Alias for the old name, will be eventually removed.
+NoGradient = NotDifferentiable
 
 
 def get_gradient_function(op):
@@ -1977,6 +2036,8 @@ class Graph(object):
     self._collections = {}
     # The graph-level random seed
     self._seed = None
+    # A dictionary of attributes that should be applied to all ops.
+    self._attr_scope_map = {}
     # A map from op type to the kernel label that should be used.
     self._op_to_kernel_label_map = {}
     # A map from op type to an alternative op type that should be used when
@@ -1987,8 +2048,6 @@ class Graph(object):
     self._finalized = False
     # Functions defined in the graph
     self._functions = collections.OrderedDict()
-    self._function_gradient = collections.OrderedDict()
-    self._function_python_gradient = collections.OrderedDict()
     # Default GraphDef versions
     self._graph_def_versions = versions_pb2.VersionDef(
         producer=versions.GRAPH_DEF_VERSION,
@@ -2154,15 +2213,15 @@ class Graph(object):
             raise ValueError("GraphDef cannot be larger than 2GB.")
       if self._functions:
         for f in self._functions.values():
-          bytesize += f.ByteSize()
+          bytesize += f.definition.ByteSize()
           if bytesize >= (1 << 31) or bytesize < 0:
             raise ValueError("GraphDef cannot be larger than 2GB.")
-        graph.library.function.extend(self._functions.values())
-        for func in self._function_gradient:
-          grad_def = function_pb2.GradientDef()
-          grad_def.function_name = func
-          grad_def.gradient_func = self._function_gradient[func]
-          graph.library.gradient.extend([grad_def])
+          graph.library.function.extend([f.definition])
+          if f.grad_func_name:
+            grad_def = function_pb2.GradientDef()
+            grad_def.function_name = f.name
+            grad_def.gradient_func = f.grad_func_name
+            graph.library.gradient.extend([grad_def])
       return graph, self._version
 
   def as_graph_def(self, from_version=None, add_shapes=False):
@@ -2209,49 +2268,31 @@ class Graph(object):
     Returns:
       The function def proto.
     """
-    return self._functions[name]
+    return self._functions.get(name, None)
 
-  def _add_function(self, function_def, grad_function_name=None,
-                    python_grad_func=None):
+  def _add_function(self, function):
     """Adds a function to the graph.
-
-    The function is specified as a [`FunctionDef`]
-    (https://www.tensorflow.org/code/tensorflow/core/framework/function.proto)
-    protocol buffer.
 
     After the function has been added, you can call to the function by
     passing the function name in place of an op name to
     `Graph.create_op()`.
 
     Args:
-      function_def: A `FunctionDef` protocol buffer.
-      grad_function_name: If not None, this specifies the name of a function
-                          that shall be used as the gradient function of
-                          the function being added.
-      python_grad_func: If not None, specifies the gradient function with the
-                        same interface as expected by `tf.RegisterGradient`.
-                        No more than one of {grad_function_name,
-                        python_grad_func} may be specified.
+      function: A `_DefinedFunction` object.
 
 
     Raises:
       ValueError: if another function is defined with the same name.
     """
-    name = function_def.signature.name
-    previous_def = self._functions.get(name, None)
-    if previous_def:
-      if previous_def != function_def:
-        raise ValueError("Another function is already defined with that name")
-      else:
-        # No need to add again.
-        return
-    self._functions[name] = function_def
-    if grad_function_name is not None and python_grad_func is not None:
+    name = function.name
+    previous = self._functions.get(name, None)
+    if previous:
+      raise ValueError("Another function is already defined with that name")
+    # Sanity checks on gradient definition.
+    if (function.grad_func_name is not None) and (
+        function.python_grad_func is not None):
       raise ValueError("Gradient defined twice for function %s" % name)
-    if grad_function_name is not None:
-      self._function_gradient[name] = grad_function_name
-    if python_grad_func is not None:
-      self._function_python_gradient[name] = python_grad_func
+    self._functions[name] = function
 
   # Helper functions to create operations.
   def create_op(self, op_type, inputs, dtypes,
@@ -2309,6 +2350,12 @@ class Graph(object):
       name = self.unique_name(name)
 
     node_def = _NodeDef(op_type, name, device=None, attrs=attrs)
+
+    # Apply any additional attributes requested. Do not overwrite any existing
+    # attributes.
+    for key, value in self._attr_scope_map.items():
+      if key not in node_def.attr:
+        node_def.attr[key].CopyFrom(value)
 
     # Apply a kernel label if one has been specified for this op_type.
     try:
@@ -3308,6 +3355,69 @@ class Graph(object):
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
+  def _attr_scope(self, attr_map):
+    """EXPERIMENTAL: A context manager for setting attributes on operators.
+
+    This context manager can be used to add additional
+    attributes to operators within the scope of the context.
+
+    For example:
+
+       with ops.Graph().as_default() as g:
+         f_1 = Foo()  # No extra attributes
+         with g._attr_scope({"_a": tf.attr_value_pb2.AttrValue(b=False)}):
+           f_2 = Foo()  # Additional attribute _a=False
+           with g._attr_scope({"_a": tf.attr_value_pb2.AttrValue(b=True)}):
+             f_3 = Foo()  # Additional attribute _a=False
+             with g._attr_scope({"_a": None}):
+               f_4 = Foo()  # No additional attributes.
+
+    Args:
+      attr_map: A dictionary mapping attr name strings to
+        AttrValue protocol buffers or None.
+
+    Returns:
+      A context manager that sets the kernel label to be used for one or more
+      ops created in that context.
+
+    Raises:
+      TypeError: If attr_map is not a dictionary mapping
+        strings to AttrValue protobufs.
+    """
+    if not isinstance(attr_map, dict):
+      raise TypeError("attr_map must be a dictionary mapping "
+                      "strings to AttrValue protocol buffers")
+    # The saved_attrs dictionary stores any currently-set labels that
+    # will be overridden by this context manager.
+    saved_attrs = {}
+    # Install the given attribute
+    for name, attr in attr_map.items():
+      if not (isinstance(name, six.string_types)
+              and isinstance(attr, (type(None), attr_value_pb2.AttrValue))):
+        raise TypeError("attr_map must be a dictionary mapping "
+                        "strings to AttrValue protocol buffers")
+      try:
+        saved_attrs[name] = self._attr_scope_map[name]
+      except KeyError:
+        pass
+      if attr is None:
+        del self._attr_scope_map[name]
+      else:
+        self._attr_scope_map[name] = attr
+    try:
+      yield  # The code within the context runs here.
+    finally:
+      # Remove the attributes set for this context, and restore any saved
+      # attributes.
+      for name, attr in attr_map.items():
+        try:
+          self._attr_scope_map[name] = saved_attrs[name]
+        except KeyError:
+          del self._attr_scope_map[name]
+  # pylint: enable=g-doc-return-or-yield
+
+  # pylint: disable=g-doc-return-or-yield
+  @contextlib.contextmanager
   def _kernel_label_map(self, op_to_kernel_label_map):
     """EXPERIMENTAL: A context manager for setting kernel labels.
 
@@ -3591,7 +3701,7 @@ def default_session(session):
   Returns:
     A context manager for the default session.
   """
-  return _default_session_stack.get_controller(weakref.ref(session))
+  return _default_session_stack.get_controller(session)
 
 
 def get_default_session():
@@ -3608,17 +3718,7 @@ def get_default_session():
   Returns:
     The default `Session` being used in the current thread.
   """
-  ref = _default_session_stack.get_default()
-  if ref is None:
-    # No default session has been registered.
-    return None
-  else:
-    # De-reference ref.
-    ret = ref()
-    if ret is None:
-      # This should never happen with the current session implementations.
-      raise RuntimeError("Default session has been garbage collected.")
-  return ret
+  return _default_session_stack.get_default()
 
 
 def _eval_using_default_session(tensors, feed_dict, graph, session=None):
@@ -3918,6 +4018,10 @@ class GraphKeys(object):
   READY_FOR_LOCAL_INIT_OP = "ready_for_local_init_op"
   SUMMARY_OP = "summary_op"
   GLOBAL_STEP = "global_step"
+
+  # Key for control flow context.
+  COND_CONTEXT = "cond_context"
+  WHILE_CONTEXT = "while_context"
 
 
 def add_to_collection(name, value):

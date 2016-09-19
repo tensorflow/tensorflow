@@ -33,6 +33,11 @@ RecordWriter::RecordWriter(WritableFile* dest,
     zlib_output_buffer_.reset(new ZlibOutputBuffer(
         dest_, options.zlib_options.input_buffer_size,
         options.zlib_options.output_buffer_size, options.zlib_options));
+    Status s = zlib_output_buffer_->Init();
+    if (!s.ok()) {
+      LOG(FATAL) << "Failed to initialize Zlib inputbuffer. Error: "
+                 << s.ToString();
+    }
 #endif  // IS_SLIM_BUILD
   } else if (options.compression_type == RecordWriterOptions::NONE) {
     // Nothing to do

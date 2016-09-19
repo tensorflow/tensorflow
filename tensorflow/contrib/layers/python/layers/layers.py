@@ -52,6 +52,7 @@ __all__ = ['avg_pool2d',
            'dropout',
            'flatten',
            'fully_connected',
+           'layer_norm',
            'linear',
            'max_pool2d',
            'one_hot_encoding',
@@ -129,6 +130,18 @@ def batch_norm(inputs,
 
   Can be used as a normalizer function for conv2d and fully_connected.
 
+  Note: When is_training is True the moving_mean and moving_variance need to be
+  updated, by default the update_ops are placed in tf.GraphKeys.UPDATE_OPS so
+  they need to be added as a dependency to the train_op, example:
+
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    if update_ops:
+      updates = tf.group(*update_ops)
+      total_loss = control_flow_ops.with_dependencies([updates], total_loss)
+
+  One can set update_collections=None to force the updates in place, but that
+  can have speed penalty, specially in distributed settings.
+
   Args:
     inputs: a tensor with 2 or more dimensions, where the first dimension has
       `batch_size`. The normalization is over all but the last dimension.
@@ -138,10 +151,12 @@ def batch_norm(inputs,
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
     epsilon: small float added to variance to avoid dividing by zero.
-    activation_fn: Optional activation function.
+    activation_fn: activation function, default set to None to skip it and
+      maintain a linear activation.
     updates_collections: collections to collect the update ops for computation.
+      The updates_ops need to be excuted with the train_op.
       If None, a control dependency would be added to make sure the updates are
-      computed.
+      computed in place.
     is_training: whether or not the layer is in training mode. In training mode
       it would accumulate the statistics of the moments into `moving_mean` and
       `moving_variance` using an exponential moving average with the given
@@ -226,7 +241,9 @@ def batch_norm(inputs,
     need_moments = is_training_value is None or is_training_value
     if need_moments:
       # Calculate the moments based on the individual batch.
-      mean, variance = nn.moments(inputs, axis, shift=moving_mean)
+      # Use a copy of moving_mean as a shift to compute more reliable moments.
+      shift = math_ops.add(moving_mean, 0)
+      mean, variance = nn.moments(inputs, axis, shift=shift)
       moving_vars_fn = lambda: (moving_mean, moving_variance)
       if updates_collections is None:
         def _force_updates():
@@ -264,9 +281,10 @@ def batch_norm(inputs,
     outputs = nn.batch_normalization(
         inputs, mean, variance, beta, gamma, epsilon)
     outputs.set_shape(inputs_shape)
-    if activation_fn:
+    if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -286,7 +304,8 @@ def bias_add(inputs,
   Args:
     inputs: a tensor of with at least rank 2 and value for the last dimension,
       e.g. `[batch_size, depth]`, `[None, None, None, depth]`.
-    activation_fn: Optional activation function.
+    activation_fn: activation function, default set to None to skip it and
+      maintain a linear activation.
     initializer: An initializer for the bias, defaults to 0.
     regularizer: A regularizer like the result of
       `l1_regularizer` or `l2_regularizer`.
@@ -316,9 +335,10 @@ def bias_add(inputs,
                                       collections=biases_collections,
                                       trainable=trainable)
     outputs = nn.bias_add(inputs, biases)
-    if activation_fn:
+    if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -365,10 +385,12 @@ def convolution2d(inputs,
     rate: integer. If less than or equal to 1, a standard convolution is used.
       If greater than 1, than the a'trous convolution is applied and `stride`
       must be set to 1.
-    activation_fn: activation function.
+    activation_fn: activation function, set to None to skip it and maintain
+      a linear activation.
     normalizer_fn: normalization function to use instead of `biases`. If
-      `normalize_fn` is provided then `biases_initializer` and
+      `normalizer_fn` is provided then `biases_initializer` and
       `biases_regularizer` are ignored and `biases` are not created nor added.
+      default set to None for no normalizer function
     normalizer_params: normalization function parameters.
     weights_initializer: An initializer for the weights.
     weights_regularizer: Optional regularizer for the weights.
@@ -414,7 +436,7 @@ def convolution2d(inputs,
     else:
       outputs = nn.conv2d(inputs, weights, [1, stride_h, stride_w, 1],
                           padding=padding)
-    if normalizer_fn:
+    if normalizer_fn is not None:
       normalizer_params = normalizer_params or {}
       outputs = normalizer_fn(outputs, **normalizer_params)
     else:
@@ -429,9 +451,10 @@ def convolution2d(inputs,
                                           collections=biases_collections,
                                           trainable=trainable)
         outputs = nn.bias_add(outputs, biases)
-    if activation_fn:
+    if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -473,10 +496,12 @@ def convolution2d_in_plane(
       Can be an int if both strides are the same. Note that presently
       both strides must have the same value.
     padding: the padding type to use, either 'SAME' or 'VALID'.
-    activation_fn: activation function.
+    activation_fn: activation function, set to None to skip it and maintain
+      a linear activation.
     normalizer_fn: normalization function to use instead of `biases`. If
-      `normalize_fn` is provided then `biases_initializer` and
+      `normalizer_fn` is provided then `biases_initializer` and
       `biases_regularizer` are ignored and `biases` are not created nor added.
+      default set to None for no normalizer function
     normalizer_params: normalization function parameters.
     weights_initializer: An initializer for the weights.
     weights_regularizer: Optional regularizer for the weights.
@@ -513,7 +538,7 @@ def convolution2d_in_plane(
     depthwise_weights = array_ops.tile(weights, [1, 1, num_filters_in, 1])
     outputs = nn.depthwise_conv2d(inputs, depthwise_weights,
                                   [1, stride_h, stride_w, 1], padding)
-    if normalizer_fn:
+    if normalizer_fn is not None:
       normalizer_params = normalizer_params or {}
       outputs = normalizer_fn(outputs, **normalizer_params)
     else:
@@ -529,9 +554,10 @@ def convolution2d_in_plane(
                                           trainable=trainable)
         outputs = nn.bias_add(outputs, biases)
 
-    if activation_fn:
+    if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -568,10 +594,12 @@ def convolution2d_transpose(
       Can be an int if both strides are the same.  Note that presently
       both strides must have the same value.
     padding: one of 'VALID' or 'SAME'.
-    activation_fn: activation function.
+    activation_fn: activation function, set to None to skip it and maintain
+      a linear activation.
     normalizer_fn: normalization function to use instead of `biases`. If
-      `normalize_fn` is provided then `biases_initializer` and
+      `normalizer_fn` is provided then `biases_initializer` and
       `biases_regularizer` are ignored and `biases` are not created nor added.
+      default set to None for no normalizer function
     normalizer_params: normalization function parameters.
     weights_initializer: An initializer for the weights.
     weights_regularizer: Optional regularizer for the weights.
@@ -641,7 +669,7 @@ def convolution2d_transpose(
     out_shape[2] = get_deconv_dim(out_shape[2], stride_w, kernel_w, padding)
     outputs.set_shape(out_shape)
 
-    if normalizer_fn:
+    if normalizer_fn is not None:
       normalizer_params = normalizer_params or {}
       outputs = normalizer_fn(outputs, **normalizer_params)
     else:
@@ -656,9 +684,10 @@ def convolution2d_transpose(
                                           collections=biases_collections)
         outputs = nn.bias_add(outputs, biases)
 
-    if activation_fn:
+    if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -761,10 +790,12 @@ def fully_connected(inputs,
     inputs: A tensor of with at least rank 2 and value for the last dimension,
       i.e. `[batch_size, depth]`, `[None, None, None, channels]`.
     num_outputs: Integer or long, the number of output units in the layer.
-    activation_fn: activation function.
+    activation_fn: activation function, set to None to skip it and maintain
+      a linear activation.
     normalizer_fn: normalization function to use instead of `biases`. If
-      `normalize_fn` is provided then `biases_initializer` and
+      `normalizer_fn` is provided then `biases_initializer` and
       `biases_regularizer` are ignored and `biases` are not created nor added.
+      default set to None for no normalizer function
     normalizer_params: normalization function parameters.
     weights_initializer: An initializer for the weights.
     weights_regularizer: Optional regularizer for the weights.
@@ -814,7 +845,7 @@ def fully_connected(inputs,
       # Reshape inputs
       inputs = array_ops.reshape(inputs, [-1, num_input_units])
     outputs = standard_ops.matmul(inputs, weights)
-    if normalizer_fn:
+    if normalizer_fn is not None:
       normalizer_params = normalizer_params or {}
       outputs = normalizer_fn(outputs, **normalizer_params)
     else:
@@ -829,13 +860,102 @@ def fully_connected(inputs,
                                           collections=biases_collections,
                                           trainable=trainable)
         outputs = nn.bias_add(outputs, biases)
-    if activation_fn:
+    if activation_fn is not None:
       outputs = activation_fn(outputs)
     if len(static_shape) > 2:
       # Reshape back outputs
       outputs = array_ops.reshape(outputs, array_ops.pack(out_shape))
       outputs.set_shape(static_shape)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
+
+
+@add_arg_scope
+def layer_norm(inputs,
+               center=True,
+               scale=True,
+               activation_fn=None,
+               reuse=None,
+               variables_collections=None,
+               outputs_collections=None,
+               trainable=True,
+               scope=None):
+  """Adds a Layer Normalization layer from https://arxiv.org/abs/1607.06450.
+
+    "Layer Normalization"
+
+    Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton
+
+  Can be used as a normalizer function for conv2d and fully_connected.
+
+  Args:
+    inputs: a tensor with 2 or more dimensions. The normalization
+            occurs over all but the first dimension.
+    center: If True, subtract `beta`. If False, `beta` is ignored.
+    scale: If True, multiply by `gamma`. If False, `gamma` is
+      not used. When the next layer is linear (also e.g. `nn.relu`), this can be
+      disabled since the scaling can be done by the next layer.
+    activation_fn: activation function, default set to None to skip it and
+      maintain a linear activation.
+    reuse: whether or not the layer and its variables should be reused. To be
+      able to reuse the layer scope must be given.
+    variables_collections: optional collections for the variables.
+    outputs_collections: collections to add the outputs.
+    trainable: If `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    scope: Optional scope for `variable_op_scope`.
+
+  Returns:
+    A `Tensor` representing the output of the operation.
+
+  Raises:
+    ValueError: if rank or last dimension of `inputs` is undefined.
+  """
+  with variable_scope.variable_scope(scope, 'LayerNorm', [inputs],
+                                     reuse=reuse) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    inputs_shape = inputs.get_shape()
+    inputs_rank = inputs_shape.ndims
+    if inputs_rank is None:
+      raise ValueError('Inputs %s has undefined rank.' % inputs.name)
+    dtype = inputs.dtype.base_dtype
+    axis = list(range(1, inputs_rank))
+    params_shape = inputs_shape[-1:]
+    if not params_shape.is_fully_defined():
+      raise ValueError('Inputs %s has undefined last dimension %s.' % (
+          inputs.name, params_shape))
+    # Allocate parameters for the beta and gamma of the normalization.
+    beta, gamma = None, None
+    if center:
+      beta_collections = utils.get_variable_collections(variables_collections,
+                                                        'beta')
+      beta = variables.model_variable('beta',
+                                      shape=params_shape,
+                                      dtype=dtype,
+                                      initializer=init_ops.zeros_initializer,
+                                      collections=beta_collections,
+                                      trainable=trainable)
+    if scale:
+      gamma_collections = utils.get_variable_collections(variables_collections,
+                                                         'gamma')
+      gamma = variables.model_variable('gamma',
+                                       shape=params_shape,
+                                       dtype=dtype,
+                                       initializer=init_ops.ones_initializer,
+                                       collections=gamma_collections,
+                                       trainable=trainable)
+    # Calculate the moments on the last axis (layer activations).
+    mean, variance = nn.moments(inputs, axis, keep_dims=True)
+    # Compute layer normalization using the batch_normalization function.
+    variance_epsilon = 1E-12
+    outputs = nn.batch_normalization(
+        inputs, mean, variance, beta, gamma, variance_epsilon)
+    outputs.set_shape(inputs_shape)
+    if activation_fn is not None:
+      outputs = activation_fn(outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope,
+                                       outputs)
 
 
 @add_arg_scope
@@ -910,7 +1030,7 @@ def one_hot_encoding(labels,
 
 
 def _apply_activation(y, activation_fn, output_collections):
-  if activation_fn:
+  if activation_fn is not None:
     y = activation_fn(y)
   ops.add_to_collections(list(output_collections or []) +
                          [ops.GraphKeys.ACTIVATIONS], y)
@@ -1005,10 +1125,12 @@ def separable_convolution2d(
     stride: a list of length 2: [stride_height, stride_width], specifying the
       depthwise convolution stride. Can be an int if both strides are the same.
     padding: one of 'VALID' or 'SAME'.
-    activation_fn: activation function.
+    activation_fn: activation function, set to None to skip it and maintain
+      a linear activation.
     normalizer_fn: normalization function to use instead of `biases`. If
-      `normalize_fn` is provided then `biases_initializer` and
+      `normalizer_fn` is provided then `biases_initializer` and
       `biases_regularizer` are ignored and `biases` are not created nor added.
+      default set to None for no normalizer function
     normalizer_params: normalization function parameters.
     weights_initializer: An initializer for the weights.
     weights_regularizer: Optional regularizer for the weights.
@@ -1067,7 +1189,7 @@ def separable_convolution2d(
       outputs = nn.depthwise_conv2d(inputs, depthwise_weights, strides, padding)
       num_outputs = depth_multiplier * num_filters_in
 
-    if normalizer_fn:
+    if normalizer_fn is not None:
       normalizer_params = normalizer_params or {}
       outputs = normalizer_fn(outputs, **normalizer_params)
     else:
@@ -1082,9 +1204,10 @@ def separable_convolution2d(
                                           collections=biases_collections)
         outputs = nn.bias_add(outputs, biases)
 
-    if activation_fn:
+    if activation_fn is not None:
       outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -1257,8 +1380,8 @@ def legacy_fully_connected(x,
   Args:
     x: The input `Tensor`.
     num_output_units: The size of the output.
-    activation_fn: A function that requires a single Tensor that is applied as a
-      non-linearity. If None is used, do not apply any activation.
+    activation_fn: activation function, default set to None to skip it and
+      maintain a linear activation.
     weight_init: An optional weight initialization, defaults to
       `xavier_initializer`.
     bias_init: An initializer for the bias, defaults to 0. Set to `None` in

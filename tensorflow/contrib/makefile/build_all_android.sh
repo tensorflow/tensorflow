@@ -46,18 +46,18 @@ shift $((OPTIND - 1))
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd ${SCRIPT_DIR}/../../../
 
-if [[ "${ONLY_MAKE_TENSORFLOW}" != "true" ]]; then
-  # Remove any old files first.
-  make -f tensorflow/contrib/makefile/Makefile clean
-  rm -rf tensorflow/contrib/makefile/downloads
+# Remove any old files first.
+make -f tensorflow/contrib/makefile/Makefile clean
 
+if [[ "${ONLY_MAKE_TENSORFLOW}" != "true" ]]; then
+  rm -rf tensorflow/contrib/makefile/downloads
   # Pull down the required versions of the frameworks we need.
   tensorflow/contrib/makefile/download_dependencies.sh
+fi
 
-  # Compile protobuf for the target Android device architectures.
+# Compile protobuf for the target Android device architectures.
   CC_PREFIX="${CC_PREFIX}" NDK_ROOT="${NDK_ROOT}" \
 tensorflow/contrib/makefile/compile_android_protobuf.sh -c
-fi
 
 if [[ "${USE_HEXAGON}" == "true" ]]; then
     HEXAGON_PARENT_DIR=$(cd ../hexagon && pwd)

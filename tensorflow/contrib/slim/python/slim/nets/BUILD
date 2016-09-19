@@ -6,7 +6,10 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 package(
-    default_visibility = ["//tensorflow:__subpackages__"],
+    default_visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow_models:__subpackages__",
+    ],
 )
 
 py_library(
@@ -15,6 +18,8 @@ py_library(
         ":alexnet",
         ":inception",
         ":overfeat",
+        ":resnet_v1",
+        ":resnet_v2",
         ":vgg",
     ],
 )
@@ -31,7 +36,6 @@ py_test(
     srcs = ["alexnet_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":alexnet",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -72,7 +76,6 @@ py_test(
     shard_count = 3,
     srcs_version = "PY2AND3",
     deps = [
-        ":inception",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -84,7 +87,6 @@ py_test(
     shard_count = 3,
     srcs_version = "PY2AND3",
     deps = [
-        ":inception",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -96,7 +98,6 @@ py_test(
     shard_count = 3,
     srcs_version = "PY2AND3",
     deps = [
-        ":inception",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -113,7 +114,50 @@ py_test(
     srcs = ["overfeat_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":overfeat",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "resnet_utils",
+    srcs = ["resnet_utils.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "resnet_v1",
+    srcs = ["resnet_v1.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":resnet_utils",
+    ],
+)
+
+py_test(
+    name = "resnet_v1_test",
+    size = "medium",
+    srcs = ["resnet_v1_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "resnet_v2",
+    srcs = ["resnet_v2.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":resnet_utils",
+    ],
+)
+
+py_test(
+    name = "resnet_v2_test",
+    size = "medium",
+    srcs = ["resnet_v2_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -130,7 +174,6 @@ py_test(
     srcs = ["vgg_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":vgg",
         "//tensorflow:tensorflow_py",
     ],
 )

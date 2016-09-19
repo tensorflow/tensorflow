@@ -50,7 +50,7 @@ class RemoteDeviceTest : public ::testing::Test {
     int port;
     CHECK(RE2::FullMatch(hostport, "(.+):(\\d+)", &host, &port));
     GrpcChannelSpec spec;
-    spec.AddHostPortsJob("localhost", {hostport}, 1);
+    spec.AddHostPortsJob("localhost", {hostport});
     worker_cache_.reset(
         NewGrpcWorkerCache(NewGrpcChannelCache(spec, NewHostPortGrpcChannel)));
     remote_name_ = strings::StrCat("/job:", host, "/replica:0/task:0");

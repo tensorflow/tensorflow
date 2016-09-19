@@ -18,12 +18,13 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/strided_slice_op.h"
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 namespace {
 
@@ -39,16 +40,44 @@ Status GetAxisForPackAndUnpack(InferenceContext* c, int32 rank_after_pack,
   return Status::OK();
 }
 
+template <typename T>
+std::vector<int64> AsInt64(const Tensor* tensor, int num_elements) {
+  std::vector<int64> ret(num_elements);
+  auto data = tensor->vec<T>();
+  for (int i = 0; i < num_elements; ++i) {
+    ret[i] = data(i);
+  }
+  return ret;
+}
+
+template <typename T>
+Status PadKnown(InferenceContext* c, ShapeHandle input,
+                const Tensor* paddings_t, int32 num_dims) {
+  // paddings_t is known.
+  std::vector<DimensionHandle> dims(num_dims);
+  auto paddings_data = paddings_t->matrix<T>();
+  for (int i = 0; i < num_dims; ++i) {
+    const T pad0 = paddings_data(i, 0);
+    const T pad1 = paddings_data(i, 1);
+    if (pad0 < 0 || pad1 < 0) {
+      return errors::InvalidArgument("Paddings must be non-negative");
+    }
+    TF_RETURN_IF_ERROR(c->Add(c->Dim(input, i), pad0 + pad1, &dims[i]));
+  }
+  c->set_output(0, c->MakeShape(dims));
+  return Status::OK();
+}
+
 Status PadShapeFn(InferenceContext* c) {
   // Paddings is a matrix of [input_rank, 2].
-  const Shape* paddings;
+  ShapeHandle paddings;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &paddings));
-  const Dimension* unused;
+  DimensionHandle unused;
   TF_RETURN_IF_ERROR(c->WithValue(c->Dim(paddings, 1), 2, &unused));
 
   // n_dim and input.rank are equivalent.
-  const Shape* input = c->input(0);
-  const Dimension* n_dim = c->Dim(paddings, 0);
+  ShapeHandle input = c->input(0);
+  DimensionHandle n_dim = c->Dim(paddings, 0);
   if (c->ValueKnown(n_dim)) {
     TF_RETURN_IF_ERROR(c->WithRank(input, c->Value(n_dim), &input));
   } else if (c->RankKnown(input)) {
@@ -73,19 +102,11 @@ Status PadShapeFn(InferenceContext* c) {
   const auto num_dims = c->Value(n_dim);
   DCHECK_EQ(num_dims, paddings_t->shape().dim_size(0));
 
-  // paddings_t is known.
-  auto paddings_data = paddings_t->matrix<int32>();
-  std::vector<const Dimension*> dims(num_dims);
-  for (int i = 0; i < num_dims; ++i) {
-    const int32 pad0 = paddings_data(i, 0);
-    const int32 pad1 = paddings_data(i, 1);
-    if (pad0 < 0 || pad1 < 0) {
-      return errors::InvalidArgument("Paddings must be non-negative");
-    }
-    TF_RETURN_IF_ERROR(c->Add(c->Dim(input, i), pad0 + pad1, &dims[i]));
+  if (paddings_t->dtype() == DT_INT32) {
+    return PadKnown<int32>(c, input, paddings_t, num_dims);
+  } else {
+    return PadKnown<int64>(c, input, paddings_t, num_dims);
   }
-  c->set_output(0, c->MakeShape(dims));
-  return Status::OK();
 }
 
 }  // namespace
@@ -98,7 +119,7 @@ REGISTER_OP("Pack")
     .Attr("axis: int = 0")
     .SetShapeFn([](InferenceContext* c) {
       // Validate shapes of all inputs are compatible
-      const Shape* cur = c->input(c->num_inputs() - 1);
+      ShapeHandle cur = c->input(c->num_inputs() - 1);
       for (int i = c->num_inputs() - 2; i >= 0; --i) {
         TF_RETURN_WITH_CONTEXT_IF_ERROR(c->Merge(c->input(i), cur, &cur),
                                         "From merging shape ", i,
@@ -116,7 +137,7 @@ REGISTER_OP("Pack")
 
       // Copy all dimensions over, inserting a dimension of value #inputs
       // at <axis>.
-      std::vector<const Dimension*> dims;
+      std::vector<DimensionHandle> dims;
       int index = 0;
       while (index < axis) dims.push_back(c->Dim(cur, index++));
       dims.push_back(c->MakeDim(c->num_inputs()));
@@ -162,8 +183,8 @@ REGISTER_OP("Unpack")
     .Attr("T: type")
     .Attr("axis: int = 0")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* s = c->input(0);
-      const Shape* out;
+      ShapeHandle s = c->input(0);
+      ShapeHandle out;
       if (c->RankKnown(s)) {
         // Determine the axis that will be removed, converting from negative
         // axes to a positive point per negative indexing rules.
@@ -172,12 +193,12 @@ REGISTER_OP("Unpack")
         TF_RETURN_IF_ERROR(GetAxisForPackAndUnpack(c, rank, &axis));
 
         // The axis dim matches the number of outputs.
-        const Dimension* unused;
+        DimensionHandle unused;
         TF_RETURN_IF_ERROR(
             c->WithValue(c->Dim(s, axis), c->num_outputs(), &unused));
 
         // Copy all dimensions, removing the <axis> dimension.
-        std::vector<const Dimension*> dims;
+        std::vector<DimensionHandle> dims;
         for (int i = 0; i < rank; ++i) {
           if (i != axis) dims.push_back(c->Dim(s, i));
         }
@@ -272,11 +293,11 @@ REGISTER_OP("Split")
     .Attr("num_split: int >= 1")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
-      const Dimension* split_dimension;
+      DimensionHandle split_dimension;
       TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(0, &split_dimension));
       int num_split = c->num_outputs();
-      const Shape* input = c->input(1);
-      const Shape* out;
+      ShapeHandle input = c->input(1);
+      ShapeHandle out;
       if (!c->ValueKnown(split_dimension)) {
         if (c->RankKnown(input)) {
           out = c->UnknownShapeOfRank(c->Rank(input));
@@ -286,9 +307,10 @@ REGISTER_OP("Split")
       } else {
         int64 split_dim = c->Value(split_dimension);
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, split_dim + 1, &input));
-        const Dimension* split_dim_size;
+        DimensionHandle split_dim_size;
         TF_RETURN_WITH_CONTEXT_IF_ERROR(
-            c->Divide(c->Dim(input, split_dim), num_split, &split_dim_size),
+            c->Divide(c->Dim(input, split_dim), num_split,
+                      true /* evenly_divisible */, &split_dim_size),
             "Number of ways to split should evenly divide the split dimension");
         TF_RETURN_IF_ERROR(
             c->ReplaceDim(input, split_dim, split_dim_size, &out));
@@ -319,7 +341,7 @@ REGISTER_OP("Const")
       TF_RETURN_IF_ERROR(c->GetAttr("value", &proto));
       TF_RETURN_IF_ERROR(TensorShape::IsValidShape(proto->tensor_shape()));
       TensorShape shape(proto->tensor_shape());
-      std::vector<const Dimension*> dims;
+      std::vector<DimensionHandle> dims;
       for (int i = 0; i < shape.dims(); ++i) {
         dims.push_back(c->MakeDim(shape.dim_size(i)));
       }
@@ -345,7 +367,7 @@ REGISTER_OP("ImmutableConst")
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_from_attr));
       TensorShapeProto shape_proto;
       shape_from_attr.AsProto(&shape_proto);
-      const Shape* output_shape;
+      ShapeHandle output_shape;
       TF_RETURN_IF_ERROR(
           c->MakeShapeFromShapeProto(shape_proto, &output_shape));
       c->set_output(0, output_shape);
@@ -381,10 +403,10 @@ REGISTER_OP("Diag")
     .Output("output: T")
     .Attr("T: {float, double, int32, int64, complex64}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* in = c->input(0);
+      ShapeHandle in = c->input(0);
       TF_RETURN_IF_ERROR(c->WithRankAtMost(in, 3, &in));
       // Output shape is original concatenated with itself.
-      const Shape* out;
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->Concatenate(in, in, &out));
       c->set_output(0, out);
       return Status::OK();
@@ -419,7 +441,7 @@ REGISTER_OP("DiagPart")
     .Output("diagonal: T")
     .Attr("T: {float, double, int32, int64, complex64}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* in = c->input(0);
+      ShapeHandle in = c->input(0);
       if (!c->RankKnown(in)) {
         c->set_output(0, c->UnknownShape());
         return Status::OK();
@@ -433,7 +455,7 @@ REGISTER_OP("DiagPart")
       const int32 mid = rank / 2;
 
       // output dim[i] is the merge of in.dim[i] and in.dim[i+mid].
-      std::vector<const Dimension*> dims(mid);
+      std::vector<DimensionHandle> dims(mid);
       for (int i = 0; i < mid; ++i) {
         TF_RETURN_IF_ERROR(
             c->Merge(c->Dim(in, i), c->Dim(in, i + mid), &dims[i]));
@@ -469,19 +491,19 @@ diagonal: The extracted diagonal.
 )doc");
 
 // --------------------------------------------------------------------------
-REGISTER_OP("BatchMatrixDiag")
+REGISTER_OP("MatrixDiag")
     .Input("diagonal: T")
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* in;
+      ShapeHandle in;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &in));
       if (!c->RankKnown(in)) {
         c->set_output(0, c->UnknownShape());
         return Status::OK();
       }
       const int32 rank = c->Rank(in);
-      const Shape* out;
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(
           c->Concatenate(in, c->Vector(c->Dim(in, rank - 1)), &out));
       c->set_output(0, out);
@@ -505,7 +527,7 @@ For example:
 
 and diagonal.shape = (2, 4)
 
-tf.batch_matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
+tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
                                      [0, 2, 0, 0]
                                      [0, 0, 3, 0]
                                      [0, 0, 0, 4]],
@@ -522,23 +544,23 @@ output: Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
 )doc");
 
 // --------------------------------------------------------------------------
-REGISTER_OP("BatchMatrixSetDiag")
+REGISTER_OP("MatrixSetDiag")
     .Input("input: T")
     .Input("diagonal: T")
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input;
-      const Shape* diag;
+      ShapeHandle input;
+      ShapeHandle diag;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &diag));
 
-      const Dimension* square_dim;
+      DimensionHandle square_dim;
       TF_RETURN_IF_ERROR(
           c->Merge(c->Dim(input, -2), c->Dim(input, -1), &square_dim));
       TF_RETURN_IF_ERROR(c->Merge(square_dim, c->Dim(diag, -1), &square_dim));
 
-      const Shape* output;
+      ShapeHandle output;
       TF_RETURN_IF_ERROR(c->Concatenate(diag, c->Vector(square_dim), &output));
       TF_RETURN_IF_ERROR(c->Merge(input, output, &output));
 
@@ -568,12 +590,12 @@ output: Rank `k+1`, with `output.shape = input.shape`.
 )doc");
 
 // --------------------------------------------------------------------------
-REGISTER_OP("BatchMatrixDiagPart")
+REGISTER_OP("MatrixDiagPart")
     .Input("input: T")
     .Output("diagonal: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* in;
+      ShapeHandle in;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &in));
       if (!c->RankKnown(in)) {
         c->set_output(0, c->UnknownShape());
@@ -581,12 +603,12 @@ REGISTER_OP("BatchMatrixDiagPart")
       }
       const int32 rank = c->Rank(in);
       // Last two dims must match.
-      const Dimension* unused;
+      DimensionHandle unused;
       TF_RETURN_IF_ERROR(
           c->Merge(c->Dim(in, rank - 1), c->Dim(in, rank - 2), &unused));
 
       // Output shape has all dims but last of input.
-      std::vector<const Dimension*> dims;
+      std::vector<DimensionHandle> dims;
       for (int i = 0; i < rank - 1; ++i) dims.push_back(c->Dim(in, i));
       c->set_output(0, c->MakeShape(dims));
       return Status::OK();
@@ -618,7 +640,7 @@ For example:
 
 and input.shape = (2, 4, 4)
 
-tf.batch_matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
+tf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
 
 which has shape (2, 4)
 ```
@@ -629,7 +651,7 @@ diagonal: The extracted diagonal(s) having shape
 )doc");
 
 // --------------------------------------------------------------------------
-REGISTER_OP("BatchMatrixBandPart")
+REGISTER_OP("MatrixBandPart")
     .Input("input: T")
     .Input("num_lower: int64")
     .Input("num_upper: int64")
@@ -658,12 +680,12 @@ For example:
                  [-2, -1,  0, 1]
                  [-3, -2, -1, 0]],
 
-tf.batch_matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
+tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
                                              [-1,  0,  1, 2]
                                              [ 0, -1,  0, 1]
                                              [ 0,  0, -1, 0]],
 
-tf.batch_matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
+tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
                                             [-1,  0,  1, 0]
                                             [-2, -1,  0, 1]
                                             [ 0, -2, -1, 0]]
@@ -672,9 +694,9 @@ tf.batch_matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
 Useful special cases:
 
 ```prettyprint
- tf.batch_matrix_band_part(input, 0, -1) ==> Upper triangular part.
- tf.batch_matrix_band_part(input, -1, 0) ==> Lower triangular part.
- tf.batch_matrix_band_part(input, 0, 0) ==> Diagonal.
+ tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
+ tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
+ tf.matrix_band_part(input, 0, 0) ==> Diagonal.
 ```
 
 input: Rank `k` tensor.
@@ -695,10 +717,10 @@ REGISTER_OP("Reverse")
         "T: {uint8, int8, int32, int64, bool, half, float, double, complex64, "
         "complex128}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input = c->input(0);
-      const Shape* dims;
+      ShapeHandle input = c->input(0);
+      ShapeHandle dims;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &dims));
-      const Dimension* dims_dim = c->Dim(dims, 0);
+      DimensionHandle dims_dim = c->Dim(dims, 0);
       if (c->ValueKnown(dims_dim)) {
         TF_RETURN_IF_ERROR(c->WithRank(input, c->Value(dims_dim), &input));
       }
@@ -795,7 +817,7 @@ REGISTER_OP("EditDistance")
 
       auto h_values = hypothesis_shape_t->flat<int64>();
       auto t_values = truth_shape_t->flat<int64>();
-      std::vector<const Dimension*> dims(hypothesis_shape_t->NumElements() - 1);
+      std::vector<DimensionHandle> dims(hypothesis_shape_t->NumElements() - 1);
       for (int i = 0; i < dims.size(); ++i) {
         dims[i] = c->MakeDim(std::max(h_values(i), t_values(i)));
       }
@@ -869,7 +891,7 @@ REGISTER_OP("Fill")
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* out;
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
       c->set_output(0, out);
       return Status::OK();
@@ -900,12 +922,12 @@ REGISTER_OP("Gather")
     .Attr("Tparams: type")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &unused));
-      const Shape* params_subshape;
+      ShapeHandle params_subshape;
       TF_RETURN_IF_ERROR(c->Subshape(c->input(0), 1, &params_subshape));
-      const Shape* indices_shape = c->input(1);
-      const Shape* out;
+      ShapeHandle indices_shape = c->input(1);
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, params_subshape, &out));
       c->set_output(0, out);
       return Status::OK();
@@ -941,10 +963,10 @@ REGISTER_OP("GatherNd")
     .Attr("Tparams: type")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* params = c->input(0);
-      const Shape* indices;
+      ShapeHandle params = c->input(0);
+      ShapeHandle indices;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices));
-      const Dimension* r_dim = c->Dim(indices, -1);
+      DimensionHandle r_dim = c->Dim(indices, -1);
 
       if (!c->RankKnown(params) || !c->ValueKnown(r_dim)) {
         c->set_output(0, c->UnknownShape());
@@ -959,11 +981,11 @@ REGISTER_OP("GatherNd")
       }
 
       // Remove r_dim from indices to get output.
-      const Shape* indices_slice;
-      const Shape* params_slice;
+      ShapeHandle indices_slice;
+      ShapeHandle params_slice;
       TF_RETURN_IF_ERROR(c->Subshape(indices, 0, -1, &indices_slice));
       TF_RETURN_IF_ERROR(c->Subshape(params, c->Value(r_dim), &params_slice));
-      const Shape* out;
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->Concatenate(indices_slice, params_slice, &out));
       c->set_output(0, out);
       return Status::OK();
@@ -1127,12 +1149,13 @@ message: Prefix of the error message.
 // --------------------------------------------------------------------------
 REGISTER_OP("Reshape")
     .Input("tensor: T")
-    .Input("shape: int32")
+    .Input("shape: Tshape")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* in = c->input(0);
-      const Shape* out;
+      ShapeHandle in = c->input(0);
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &out));
 
       // If the rank and all dimensions of the input tensor are known, we may
@@ -1141,8 +1164,8 @@ REGISTER_OP("Reshape")
       // dimension information.
       // Additionally, if the rank of the out shape is unknown we have no shape
       // information to go off of.
-      const Dimension* num_in_elems = c->NumElements(in);
-      const Dimension* num_out_elems = c->NumElements(out);
+      DimensionHandle num_in_elems = c->NumElements(in);
+      DimensionHandle num_out_elems = c->NumElements(out);
       if (!c->ValueKnown(num_in_elems) || !c->RankKnown(out)) {
         // Do nothing. We have no shape information to infer from so we directly
         // return out as our shape.
@@ -1159,9 +1182,9 @@ REGISTER_OP("Reshape")
         // If we don't know the number of output elements, we can infer
         // the missing dimension.
         int32 unknown_idx = -1;
-        const Dimension* known_elems = c->MakeDim(1);
+        DimensionHandle known_elems = c->MakeDim(1);
         for (int32 i = 0; i < c->Rank(out); ++i) {
-          const Dimension* dim = c->Dim(out, i);
+          DimensionHandle dim = c->Dim(out, i);
           if (!c->ValueKnown(dim)) {
             if (unknown_idx >= 0) {
               return errors::InvalidArgument(
@@ -1173,9 +1196,10 @@ REGISTER_OP("Reshape")
             TF_RETURN_IF_ERROR(c->Multiply(known_elems, dim, &known_elems));
           }
         }
-        const Dimension* inferred_dim;
-        TF_RETURN_IF_ERROR(
-            c->Divide(num_in_elems, c->Value(known_elems), &inferred_dim));
+        DimensionHandle inferred_dim;
+        TF_RETURN_IF_ERROR(c->Divide(num_in_elems, c->Value(known_elems),
+                                     true /* evenly_divisible */,
+                                     &inferred_dim));
         TF_RETURN_IF_ERROR(c->ReplaceDim(out, unknown_idx, inferred_dim, &out));
       }
 
@@ -1247,10 +1271,11 @@ shape: Defines the shape of the output tensor.
 
 // --------------------------------------------------------------------------
 REGISTER_OP("InvertPermutation")
-    .Input("x: int32")
-    .Output("y: int32")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* x;
+      ShapeHandle x;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &x));
       c->set_output(0, x);
       return Status::OK();
@@ -1281,14 +1306,15 @@ y: 1-D.
 // --------------------------------------------------------------------------
 REGISTER_OP("Transpose")
     .Input("x: T")
-    .Input("perm: int32")
+    .Input("perm: Tperm")
     .Output("y: T")
     .Attr("T: type")
+    .Attr("Tperm: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input = c->input(0);
-      const Shape* perm_shape = c->input(1);
+      ShapeHandle input = c->input(0);
+      ShapeHandle perm_shape = c->input(1);
       const Tensor* perm = c->input_tensor(1);
-      const Dimension* perm_elems = c->NumElements(perm_shape);
+      DimensionHandle perm_elems = c->NumElements(perm_shape);
       // If we don't have rank information on the input or value information on
       // perm we can't return any shape information, otherwise we have enough
       // information to at least find the rank of the output.
@@ -1307,7 +1333,7 @@ REGISTER_OP("Transpose")
       } else {
         rank = perm->NumElements();
       }
-      std::vector<const Dimension*> dims;
+      std::vector<DimensionHandle> dims;
       dims.resize(rank);
       TF_RETURN_IF_ERROR(c->WithRank(input, rank, &input));
       // Ensure that perm is a vector and has rank elements.
@@ -1318,9 +1344,15 @@ REGISTER_OP("Transpose")
       // all shape informantion, otherwise we can only return rank information,
       // but no information for the dimensions.
       if (perm != nullptr) {
-        auto flat_perm = perm->flat<int32>();
+        std::vector<int64> data;
+        if (perm->dtype() == DT_INT32) {
+          data = AsInt64<int32>(perm, rank);
+        } else {
+          data = AsInt64<int64>(perm, rank);
+        }
+
         for (int32 i = 0; i < rank; ++i) {
-          int32 in_idx = flat_perm(i);
+          int64 in_idx = data[i];
           if (in_idx >= rank) {
             return errors::InvalidArgument(
                 "perm dim ", in_idx, " is out of range of input rank ", rank);
@@ -1347,8 +1379,9 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
 REGISTER_OP("Unique")
     .Input("x: T")
     .Output("y: T")
-    .Output("idx: int32")
+    .Output("idx: out_idx")
     .Attr("T: type")
+    .Attr("out_idx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
       c->set_output(1, c->input(0));
@@ -1382,11 +1415,12 @@ idx: 1-D.
 REGISTER_OP("UniqueWithCounts")
     .Input("x: T")
     .Output("y: T")
-    .Output("idx: int32")
-    .Output("count: int32")
+    .Output("idx: out_idx")
+    .Output("count: out_idx")
     .Attr("T: type")
+    .Attr("out_idx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      auto* uniq = c->Vector(InferenceContext::kUnknownDim);
+      auto uniq = c->Vector(InferenceContext::kUnknownDim);
       c->set_output(0, uniq);
       c->set_output(1, c->input(0));
       c->set_output(2, uniq);
@@ -1423,7 +1457,7 @@ namespace {
 
 Status ShapeShapeFn(InferenceContext* c) {
   for (int i = 0; i < c->num_inputs(); ++i) {
-    const Dimension* dim;
+    DimensionHandle dim;
     if (c->RankKnown(c->input(i))) {
       dim = c->MakeDim(c->Rank(c->input(i)));
     } else {
@@ -1439,8 +1473,9 @@ Status ShapeShapeFn(InferenceContext* c) {
 // --------------------------------------------------------------------------
 REGISTER_OP("Shape")
     .Input("input: T")
-    .Output("output: int32")
+    .Output("output: out_type")
     .Attr("T: type")
+    .Attr("out_type: {int32, int64} = DT_INT32")
     .SetShapeFn(ShapeShapeFn)
     .Doc(R"doc(
 Returns the shape of a tensor.
@@ -1458,9 +1493,10 @@ shape(t) ==> [2, 2, 3]
 
 REGISTER_OP("ShapeN")
     .Input("input: N * T")
-    .Output("output: N * int32")
+    .Output("output: N * out_type")
     .Attr("N: int")
     .Attr("T: type")
+    .Attr("out_type: {int32, int64} = DT_INT32")
     .SetShapeFn(ShapeShapeFn)
     .Doc(R"doc(
 Returns shape of tensors.
@@ -1471,14 +1507,15 @@ This operation returns N 1-D integer tensors representing shape of `input[i]s`.
 // --------------------------------------------------------------------------
 REGISTER_OP("ReverseSequence")
     .Input("input: T")
-    .Input("seq_lengths: int64")
+    .Input("seq_lengths: Tlen")
     .Output("output: T")
     .Attr("seq_dim: int")
     .Attr("batch_dim: int = 0")
     .Attr("T: type")
+    .Attr("Tlen: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input = c->input(0);
-      const Shape* seq_lens_shape;
+      ShapeHandle input = c->input(0);
+      ShapeHandle seq_lens_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &seq_lens_shape));
 
       int64 seq_dim;
@@ -1501,12 +1538,12 @@ REGISTER_OP("ReverseSequence")
                                        seq_dim, " vs. ", input_rank);
       }
 
-      const Dimension* batch_dim_dim = c->Dim(input, batch_dim);
+      DimensionHandle batch_dim_dim = c->Dim(input, batch_dim);
       TF_RETURN_IF_ERROR(
           c->Merge(batch_dim_dim, c->Dim(seq_lens_shape, 0), &batch_dim_dim));
 
       // Replace batch_dim of input with batch_size
-      const Shape* output_shape;
+      ShapeHandle output_shape;
       TF_RETURN_IF_ERROR(
           c->ReplaceDim(input, batch_dim, batch_dim_dim, &output_shape));
       c->set_output(0, output_shape);
@@ -1605,8 +1642,9 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
 // --------------------------------------------------------------------------
 REGISTER_OP("Size")
     .Input("input: T")
-    .Output("output: int32")
+    .Output("output: out_type")
     .Attr("T: type")
+    .Attr("out_type: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Returns the size of a tensor.
@@ -1627,11 +1665,11 @@ namespace {
 
 template <typename T>
 Status SliceHelper(InferenceContext* c, const Tensor* begin_t,
-                   const Tensor* sizes_t, std::vector<const Dimension*>* dims) {
+                   const Tensor* sizes_t, std::vector<DimensionHandle>* dims) {
   auto begin_vec = begin_t->vec<T>();
   auto sizes_vec = sizes_t->vec<T>();
   for (int i = 0; i < sizes_t->NumElements(); ++i) {
-    const Dimension* dim = c->Dim(c->input(0), i);
+    DimensionHandle dim = c->Dim(c->input(0), i);
     if (sizes_vec(i) != -1) {
       if (c->ValueKnown(dim)) {
         auto dim_val = c->Value(dim);
@@ -1664,7 +1702,7 @@ Status SliceHelper(InferenceContext* c, const Tensor* begin_t,
 
       dims->emplace_back(c->MakeDim(sizes_vec(i)));
     } else {
-      const Dimension* result;
+      DimensionHandle result;
       TF_RETURN_IF_ERROR(c->Subtract(dim, begin_vec(i), &result));
       dims->emplace_back(result);
     }
@@ -1684,16 +1722,16 @@ REGISTER_OP("Slice")
     .Attr("T: type")
     .Attr("Index: {int32,int64}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input = c->input(0);
-      const Shape* begin_shape;
+      ShapeHandle input = c->input(0);
+      ShapeHandle begin_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &begin_shape));
-      const Shape* sizes_shape;
+      ShapeHandle sizes_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &sizes_shape));
 
       // Merge to check compatibility of begin and sizes tensors.
       TF_RETURN_IF_ERROR(c->Merge(begin_shape, sizes_shape, &begin_shape));
 
-      const Dimension* ndims = c->Dim(begin_shape, 0);
+      DimensionHandle ndims = c->Dim(begin_shape, 0);
       if (c->ValueKnown(ndims)) {
         TF_RETURN_IF_ERROR(c->WithRank(input, c->Value(ndims), &input));
       }
@@ -1702,7 +1740,7 @@ REGISTER_OP("Slice")
       const Tensor* sizes_t = c->input_tensor(2);
 
       if (sizes_t != nullptr && begin_t != nullptr) {
-        std::vector<const Dimension*> dims;
+        std::vector<DimensionHandle> dims;
         // If the begin and sizes tensors are available, then
         // we can be precise about the shape of the output.
         if (begin_t->dtype() == DT_INT64) {
@@ -1756,6 +1794,60 @@ REGISTER_OP("StridedSlice")
     .Attr("ellipsis_mask: int = 0")
     .Attr("new_axis_mask: int = 0")
     .Attr("shrink_axis_mask: int = 0")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input = c->input(0);
+      ShapeHandle begin_shape, end_shape, strides_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &begin_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &end_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &strides_shape));
+      TF_RETURN_IF_ERROR(c->Merge(begin_shape, end_shape, &begin_shape));
+      TF_RETURN_IF_ERROR(c->Merge(begin_shape, strides_shape, &begin_shape));
+      DimensionHandle sparse_dims_dim = c->Dim(begin_shape, 0);
+
+      const Tensor* begin_value = c->input_tensor(1);
+      const Tensor* end_value = c->input_tensor(2);
+      const Tensor* strides_value = c->input_tensor(3);
+      if (begin_value == nullptr || end_value == nullptr ||
+          strides_value == nullptr || !c->RankKnown(input) ||
+          !c->ValueKnown(sparse_dims_dim)) {
+        c->set_output(0, c->UnknownShape());
+        return Status::OK();
+      }
+
+      TensorShapeProto input_shape_proto;
+      for (int i = 0; i < c->Rank(input); ++i) {
+        auto dim = c->Dim(input, i);
+        input_shape_proto.add_dim()->set_size(c->ValueKnown(dim) ? c->Value(dim)
+                                                                 : -1);
+      }
+
+      int32 begin_mask, end_mask, ellipsis_mask, new_axis_mask,
+          shrink_axis_mask;
+      TF_RETURN_IF_ERROR(c->GetAttr("begin_mask", &begin_mask));
+      TF_RETURN_IF_ERROR(c->GetAttr("end_mask", &end_mask));
+      TF_RETURN_IF_ERROR(c->GetAttr("ellipsis_mask", &ellipsis_mask));
+      TF_RETURN_IF_ERROR(c->GetAttr("new_axis_mask", &new_axis_mask));
+      TF_RETURN_IF_ERROR(c->GetAttr("shrink_axis_mask", &shrink_axis_mask));
+
+      TensorShapeProto processing_shape, final_shape;
+      ShapeReadWriteFromTensorShapeProto wrapped_processing_shape(
+          &processing_shape);
+      ShapeReadWriteFromTensorShapeProto wrapped_final_shape(&final_shape);
+      bool is_identity, is_simple_slice, slice_dim0;
+      gtl::InlinedVector<int64, 4> begin, end, strides;
+      TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
+          *begin_value, *end_value, *strides_value,
+          ShapeReadWriteFromTensorShapeProto(&input_shape_proto), begin_mask,
+          end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
+          &wrapped_processing_shape, &wrapped_final_shape, &is_identity,
+          &is_simple_slice, &slice_dim0, &begin, &end, &strides));
+
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(final_shape, &out));
+      c->set_output(0, out);
+
+      return Status::OK();
+    })
     .Doc(R"doc(
 Return a strided slice from `input`.
 
@@ -1811,6 +1903,12 @@ REGISTER_OP("StridedSliceGrad")
     .Attr("ellipsis_mask: int = 0")
     .Attr("new_axis_mask: int = 0")
     .Attr("shrink_axis_mask: int = 0")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Returns the gradient of `StridedSlice`.
 
@@ -1824,17 +1922,47 @@ Arguments are the same as StridedSliceGrad with the exception that
 shape of `StridedSlice`'s `input`.
 )doc");
 
+REGISTER_OP("StridedSliceAssign")
+    .Input("ref: Ref(T)")
+    .Input("begin: Index")
+    .Input("end: Index")
+    .Input("strides: Index")
+    .Input("value: T")
+    .Output("output_ref: Ref(T)")
+    .Attr("T: type")
+    .Attr("Index: {int32, int64}")
+    .Attr("begin_mask: int = 0")
+    .Attr("end_mask: int = 0")
+    .Attr("ellipsis_mask: int = 0")
+    .Attr("new_axis_mask: int = 0")
+    .Attr("shrink_axis_mask: int = 0")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Assign `value` to the sliced l-value reference of `ref`.
+
+The values of `value` are assigned to the positions in the variable
+`ref` that are selected by the slice parameters. The slice parameters
+`begin, `end`, `strides`, etc. work exactly as in `StridedSlice`.
+
+NOTE this op currently does not support broadcasting and so `value`'s
+shape must be exactly the shape produced by the slice of `ref`.
+
+)doc");
+// TODO(aselle): Fix this documentation once StridedSliceAssign Supports
+// broadcasting.
 // --------------------------------------------------------------------------
+
 REGISTER_OP("Tile")
     .Input("input: T")
-    .Input("multiples: int32")
+    .Input("multiples: Tmultiples")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("Tmultiples: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input;
-      const Shape* multiples;
+      ShapeHandle input;
+      ShapeHandle multiples;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &multiples));
-      const Dimension* multiples_dim0 = c->Dim(multiples, 0);
+      DimensionHandle multiples_dim0 = c->Dim(multiples, 0);
       if (!c->ValueKnown(multiples_dim0)) {
         // Length of multiples vector unknown, so output is unknown.
         //
@@ -1853,12 +1981,15 @@ REGISTER_OP("Tile")
         return Status::OK();
       }
 
-      // Multiply each input dimension by its corresponding value
-      // from the multiples tensor.
-      auto multiples_data = multiples_t->vec<int32>();
-      std::vector<const Dimension*> dims(rank);
+      std::vector<int64> data;
+      if (multiples_t->dtype() == DT_INT32) {
+        data = AsInt64<int32>(multiples_t, rank);
+      } else {
+        data = AsInt64<int64>(multiples_t, rank);
+      }
+      std::vector<DimensionHandle> dims(rank);
       for (int i = 0; i < rank; ++i) {
-        const int32 multiple = multiples_data(i);
+        const int64 multiple = data[i];
         TF_RETURN_IF_ERROR(c->Multiply(c->Dim(input, i), multiple, &dims[i]));
       }
       c->set_output(0, c->MakeShape(dims));
@@ -1939,13 +2070,14 @@ where(input) ==> [[0, 0, 0],
 
 // --------------------------------------------------------------------------
 REGISTER_OP("BroadcastGradientArgs")
-    .Input("s0: int32")
-    .Input("s1: int32")
-    .Output("r0: int32")
-    .Output("r1: int32")
+    .Input("s0: T")
+    .Input("s1: T")
+    .Output("r0: T")
+    .Output("r1: T")
+    .Attr("T: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       // TODO(mrry): Implement constant_value for BroadcastGradientArgs?
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
@@ -1961,9 +2093,10 @@ This is typically used by gradient computations for a broadcasting operation.
 // --------------------------------------------------------------------------
 REGISTER_OP("Pad")
     .Input("input: T")
-    .Input("paddings: int32")
+    .Input("paddings: Tpaddings")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("Tpaddings: {int32, int64} = DT_INT32")
     .SetShapeFn(PadShapeFn)
     .Doc(R"doc(
 Pads a tensor with zeros.
@@ -1996,9 +2129,10 @@ pad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]
 // --------------------------------------------------------------------------
 REGISTER_OP("MirrorPad")
     .Input("input: T")
-    .Input("paddings: int32")
+    .Input("paddings: Tpaddings")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("Tpaddings: {int32, int64} = DT_INT32")
     .Attr(GetMirrorPadModeAttrString())
     .SetShapeFn(PadShapeFn)
     .Doc(R"doc(
@@ -2042,16 +2176,38 @@ output: The padded tensor.
 )doc");
 
 // --------------------------------------------------------------------------
+namespace {
+template <typename T>
+Status MirrorPadKnown(InferenceContext* c, ShapeHandle input,
+                      const Tensor* paddings_t, int32 input_rank) {
+  auto paddings_data = paddings_t->matrix<T>();
+  std::vector<DimensionHandle> dims(input_rank);
+  for (int i = 0; i < input_rank; ++i) {
+    const int64 pad0 = static_cast<int64>(paddings_data(i, 0));
+    const int64 pad1 = static_cast<int64>(paddings_data(i, 1));
+    if (pad0 < 0 || pad1 < 0) {
+      return errors::InvalidArgument("Paddings must be non-negative");
+    }
+
+    TF_RETURN_IF_ERROR(c->Subtract(c->Dim(input, i), pad0 + pad1, &dims[i]));
+  }
+  c->set_output(0, c->MakeShape(dims));
+  return Status::OK();
+}
+
+}  // namespace
+
 REGISTER_OP("MirrorPadGrad")
     .Input("input: T")
-    .Input("paddings: int32")
+    .Input("paddings: Tpaddings")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("Tpaddings: {int32, int64} = DT_INT32")
     .Attr(GetMirrorPadModeAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* paddings;
+      ShapeHandle paddings;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &paddings));
-      const Dimension* pad_0 = c->Dim(paddings, 0);
+      DimensionHandle pad_0 = c->Dim(paddings, 0);
       if (!c->ValueKnown(pad_0)) {
         // We don't know the rank of the output since the first
         // padding dimension is unknown.
@@ -2060,7 +2216,7 @@ REGISTER_OP("MirrorPadGrad")
       }
 
       int64 input_rank = c->Value(pad_0);
-      const Shape* input;
+      ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), input_rank, &input));
       TF_RETURN_IF_ERROR(
           c->Merge(paddings, c->Matrix(input_rank, 2), &paddings));
@@ -2074,20 +2230,11 @@ REGISTER_OP("MirrorPadGrad")
         return Status::OK();
       }
 
-      auto paddings_data = paddings_t->matrix<int32>();
-      std::vector<const Dimension*> dims(input_rank);
-      for (int i = 0; i < input_rank; ++i) {
-        const int64 pad0 = static_cast<int64>(paddings_data(i, 0));
-        const int64 pad1 = static_cast<int64>(paddings_data(i, 1));
-        if (pad0 < 0 || pad1 < 0) {
-          return errors::InvalidArgument("Paddings must be non-negative");
-        }
-
-        TF_RETURN_IF_ERROR(
-            c->Subtract(c->Dim(input, i), pad0 + pad1, &dims[i]));
+      if (paddings_t->dtype() == DT_INT32) {
+        return MirrorPadKnown<int32>(c, input, paddings_t, input_rank);
+      } else {
+        return MirrorPadKnown<int64>(c, input, paddings_t, input_rank);
       }
-      c->set_output(0, c->MakeShape(dims));
-      return Status::OK();
     })
     .Doc(R"doc(
 Gradient op for `MirrorPad` op. This op folds a mirror-padded tensor.
@@ -2137,7 +2284,7 @@ REGISTER_OP("Placeholder")
 
       TensorShapeProto shape_proto;
       shape.AsProto(&shape_proto);
-      const Shape* out;
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &out));
       c->set_output(0, out);
       return Status::OK();
@@ -2162,17 +2309,17 @@ REGISTER_OP("PlaceholderWithDefault")
     .Attr("dtype: type")
     .Attr("shape: shape")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input = c->input(0);
+      ShapeHandle input = c->input(0);
       PartialTensorShape shape;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
       TensorShapeProto shape_proto;
       shape.AsProto(&shape_proto);
-      const Shape* out;
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &out));
 
       // We merge for compatibility checking, but return the output,
       // since output_shape may be less precise than input_shape.
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->Merge(input, out, &unused));
       c->set_output(0, out);
       return Status::OK();
@@ -2189,30 +2336,47 @@ shape: The (possibly partial) shape of the tensor.
 // --------------------------------------------------------------------------
 REGISTER_OP("ExpandDims")
     .Input("input: T")
-    .Input("dim: int32")
+    .Input("dim: Tdim")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("Tdim: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input = c->input(0);
-      const Shape* expand_dim;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &expand_dim));
+      ShapeHandle input = c->input(0);
 
       const Tensor* dim_t = c->input_tensor(1);
+      if (dim_t != nullptr && dim_t->NumElements() != 1) {
+        return errors::InvalidArgument(
+            "'dim' input must be a tensor with a single value");
+      }
       if (dim_t == nullptr || !c->RankKnown(input)) {
         c->set_output(0, c->UnknownShape());
         return Status::OK();
       }
-      int32 which_dim = dim_t->flat<int32>()(0);
-      if (which_dim < 0) {
-        which_dim += c->Rank(input) + 1;
+
+      int64 dim;
+      if (dim_t->dtype() == DT_INT32) {
+        dim = static_cast<int64>(dim_t->flat<int32>()(0));
+      } else {
+        dim = dim_t->flat<int64>()(0);
       }
 
-      const Shape* end;
-      TF_RETURN_IF_ERROR(c->Subshape(input, which_dim, &end));
+      const int32 rank = c->Rank(input);
+      const int32 min_dim = -1 * rank - 1;
+      if (dim < min_dim || dim > rank) {
+        return errors::InvalidArgument("dim ", dim, " not in the interval [",
+                                       min_dim, ", ", rank, "].");
+      }
+
+      if (dim < 0) {
+        dim += rank + 1;
+      }
+
+      ShapeHandle end;
+      TF_RETURN_IF_ERROR(c->Subshape(input, dim, &end));
 
       // Build output as start + 1 + end.
-      const Shape* output;
-      TF_RETURN_IF_ERROR(c->Subshape(input, 0, which_dim, &output));
+      ShapeHandle output;
+      TF_RETURN_IF_ERROR(c->Subshape(input, 0, dim, &output));
       TF_RETURN_IF_ERROR(c->Concatenate(output, c->Vector(1), &output));
       TF_RETURN_IF_ERROR(c->Concatenate(output, end, &output));
       c->set_output(0, output);
@@ -2265,7 +2429,7 @@ REGISTER_OP("Squeeze")
     .Attr("T: type")
     .Attr("squeeze_dims: list(int) >= 0 = []")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input = c->input(0);
+      ShapeHandle input = c->input(0);
       if (!c->RankKnown(input)) {
         // Input shape unknown.
         return shape_inference::UnknownShape(c);
@@ -2287,7 +2451,7 @@ REGISTER_OP("Squeeze")
         }
       }
 
-      std::vector<const Dimension*> result_shape;
+      std::vector<DimensionHandle> result_shape;
       for (int i = 0; i < input_rank; ++i) {
         // True if squeeze_dims contains an entry to squeeze this
         // dimension.
@@ -2295,7 +2459,7 @@ REGISTER_OP("Squeeze")
             std::find(squeeze_dims.begin(), squeeze_dims.end(), i) !=
             squeeze_dims.end();
 
-        const Dimension* dim = c->Dim(input, i);
+        DimensionHandle dim = c->Dim(input, i);
 
         if (!c->ValueKnown(dim)) {
           // Assume that the squeezed dimension will be 1 at runtime.
@@ -2359,14 +2523,15 @@ REGISTER_OP("ListDiff")
     .Input("x: T")
     .Input("y: T")
     .Output("out: T")
-    .Output("idx: int32")
+    .Output("idx: out_idx")
     .Attr("T: type")
+    .Attr("out_idx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unused;
+      ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
       // TODO(mrry): Indicate that the length falls within an interval?
-      const Shape* out = c->Vector(InferenceContext::kUnknownDim);
+      ShapeHandle out = c->Vector(InferenceContext::kUnknownDim);
       c->set_output(0, out);
       c->set_output(1, out);
       return Status::OK();
@@ -2405,22 +2570,24 @@ idx: 1-D. Positions of `x` values preserved in `out`.
 // --------------------------------------------------------------------------
 REGISTER_OP("SpaceToBatch")
     .Input("input: T")
-    .Input("paddings: int32")
+    .Input("paddings: Tpaddings")
     .Output("output: T")
     .Attr("T: type")
+    .Attr("Tpaddings: {int32, int64} = DT_INT32")
     .Attr("block_size: int >= 2")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input;
+      ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
-      const Shape* paddings;
+      ShapeHandle paddings;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &paddings));
 
-      const Dimension* pad0_dim = c->Dim(paddings, 0);
-      const Dimension* pad1_dim = c->Dim(paddings, 1);
+      DimensionHandle pad0_dim = c->Dim(paddings, 0);
+      DimensionHandle pad1_dim = c->Dim(paddings, 1);
 
       if (!c->ValueKnown(pad0_dim) || !c->ValueKnown(pad1_dim)) {
-        return shape_inference::UnknownShape(c);
+        c->set_output(0, c->UnknownShapeOfRank(4));
+        return Status::OK();
       }
 
       int64 pad0 = c->Value(pad0_dim);
@@ -2433,19 +2600,28 @@ REGISTER_OP("SpaceToBatch")
       int32 block_size;
       TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
 
-      const Dimension* output_height;
-      const Dimension* output_width;
+      DimensionHandle output_height;
+      DimensionHandle output_width;
 
       const Tensor* paddings_t = c->input_tensor(1);
       if (paddings_t == nullptr) {
         output_height = c->UnknownDim();
         output_width = c->UnknownDim();
       } else {
-        auto pad_matrix = paddings_t->matrix<int32>();
-        const int32 pad_top = pad_matrix(0, 0);
-        const int32 pad_bottom = pad_matrix(0, 1);
-        const int32 pad_left = pad_matrix(1, 0);
-        const int32 pad_right = pad_matrix(1, 1);
+        int64 pad_top, pad_bottom, pad_left, pad_right;
+        if (paddings_t->dtype() == DT_INT32) {
+          auto pad_matrix = paddings_t->matrix<int32>();
+          pad_top = pad_matrix(0, 0);
+          pad_bottom = pad_matrix(0, 1);
+          pad_left = pad_matrix(1, 0);
+          pad_right = pad_matrix(1, 1);
+        } else {
+          auto pad_matrix = paddings_t->matrix<int64>();
+          pad_top = pad_matrix(0, 0);
+          pad_bottom = pad_matrix(0, 1);
+          pad_left = pad_matrix(1, 0);
+          pad_right = pad_matrix(1, 1);
+        }
 
         if (pad_top < 0 || pad_bottom < 0 || pad_left < 0 || pad_right < 0) {
           return errors::InvalidArgument("Paddings cannot be negative.");
@@ -2457,13 +2633,16 @@ REGISTER_OP("SpaceToBatch")
             c->Add(c->Dim(input, 2), pad_left + pad_right, &output_width));
       }
 
-      const Dimension* batch;
+      DimensionHandle batch;
       TF_RETURN_IF_ERROR(
           c->Multiply(c->Dim(input, 0), block_size * block_size, &batch));
 
       // Will return an error if block_size does not evenly divide.
-      TF_RETURN_IF_ERROR(c->Divide(output_height, block_size, &output_height));
-      TF_RETURN_IF_ERROR(c->Divide(output_width, block_size, &output_width));
+      TF_RETURN_IF_ERROR(c->Divide(output_height, block_size,
+                                   true /* evenly_divisible */,
+                                   &output_height));
+      TF_RETURN_IF_ERROR(c->Divide(output_width, block_size,
+                                   true /* evenly_divisible */, &output_width));
 
       c->set_output(0, c->MakeShape({batch, output_height, output_width,
                                      c->Dim(input, 3)}));
@@ -2570,22 +2749,24 @@ regular convolution.
 // --------------------------------------------------------------------------
 REGISTER_OP("BatchToSpace")
     .Input("input: T")
-    .Input("crops: int32")
+    .Input("crops: Tidx")
     .Output("output: T")
     .Attr("T: type")
     .Attr("block_size: int >= 2")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input;
+      ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
-      const Shape* crops;
+      ShapeHandle crops;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &crops));
 
-      const Dimension* crops0_dim = c->Dim(crops, 0);
-      const Dimension* crops1_dim = c->Dim(crops, 1);
+      DimensionHandle crops0_dim = c->Dim(crops, 0);
+      DimensionHandle crops1_dim = c->Dim(crops, 1);
 
       if (!c->ValueKnown(crops0_dim) || !c->ValueKnown(crops1_dim)) {
-        return shape_inference::UnknownShape(c);
+        c->set_output(0, c->UnknownShapeOfRank(4));
+        return Status::OK();
       }
 
       int64 crops0 = c->Value(crops0_dim);
@@ -2598,24 +2779,33 @@ REGISTER_OP("BatchToSpace")
       int32 block_size;
       TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
 
-      const Dimension* batch;
+      DimensionHandle batch;
       // Will return an error if does not evenly divide
-      TF_RETURN_IF_ERROR(
-          c->Divide(c->Dim(input, 0), block_size * block_size, &batch));
+      TF_RETURN_IF_ERROR(c->Divide(c->Dim(input, 0), block_size * block_size,
+                                   true /* evenly_divisible */, &batch));
 
-      const Dimension* output_height;
-      const Dimension* output_width;
+      DimensionHandle output_height;
+      DimensionHandle output_width;
 
       const Tensor* crops_t = c->input_tensor(1);
       if (crops_t == nullptr) {
         output_height = c->UnknownDim();
         output_width = c->UnknownDim();
       } else {
-        auto crops_matrix = crops_t->matrix<int32>();
-        const int32 crops_top = crops_matrix(0, 0);
-        const int32 crops_bottom = crops_matrix(0, 1);
-        const int32 crops_left = crops_matrix(1, 0);
-        const int32 crops_right = crops_matrix(1, 1);
+        int64 crops_top, crops_bottom, crops_left, crops_right;
+        if (crops_t->dtype() == DT_INT32) {
+          auto crops_matrix = crops_t->matrix<int32>();
+          crops_top = crops_matrix(0, 0);
+          crops_bottom = crops_matrix(0, 1);
+          crops_left = crops_matrix(1, 0);
+          crops_right = crops_matrix(1, 1);
+        } else {
+          auto crops_matrix = crops_t->matrix<int64>();
+          crops_top = crops_matrix(0, 0);
+          crops_bottom = crops_matrix(0, 1);
+          crops_left = crops_matrix(1, 0);
+          crops_right = crops_matrix(1, 1);
+        }
 
         if (crops_top < 0 || crops_bottom < 0 || crops_left < 0 ||
             crops_right < 0) {
@@ -2733,20 +2923,21 @@ REGISTER_OP("SpaceToDepth")
     .Attr("T: type")
     .Attr("block_size: int >= 2")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input;
+      ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
       int32 block_size;
       TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
 
-      const Dimension* output_height;
-      const Dimension* output_width;
-      const Dimension* output_depth;
+      DimensionHandle output_height;
+      DimensionHandle output_width;
+      DimensionHandle output_depth;
       // Will return an error if does not evenly divide
-      TF_RETURN_IF_ERROR(
-          c->Divide(c->Dim(input, 1), block_size, &output_height));
-      TF_RETURN_IF_ERROR(
-          c->Divide(c->Dim(input, 2), block_size, &output_width));
+      TF_RETURN_IF_ERROR(c->Divide(c->Dim(input, 1), block_size,
+                                   true /* evenly_divisible */,
+                                   &output_height));
+      TF_RETURN_IF_ERROR(c->Divide(c->Dim(input, 2), block_size,
+                                   true /* evenly_divisible */, &output_width));
 
       TF_RETURN_IF_ERROR(c->Multiply(c->Dim(input, 3), block_size * block_size,
                                      &output_depth));
@@ -2840,21 +3031,21 @@ REGISTER_OP("DepthToSpace")
     .Attr("T: type")
     .Attr("block_size: int >= 2")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input;
+      ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
       int32 block_size;
       TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
 
-      const Dimension* output_height;
-      const Dimension* output_width;
-      const Dimension* output_depth;
+      DimensionHandle output_height;
+      DimensionHandle output_width;
+      DimensionHandle output_depth;
       TF_RETURN_IF_ERROR(
           c->Multiply(c->Dim(input, 1), block_size, &output_height));
       TF_RETURN_IF_ERROR(
           c->Multiply(c->Dim(input, 2), block_size, &output_width));
-      TF_RETURN_IF_ERROR(
-          c->Divide(c->Dim(input, 3), block_size * block_size, &output_depth));
+      TF_RETURN_IF_ERROR(c->Divide(c->Dim(input, 3), block_size * block_size,
+                                   true /* evenly_divisible */, &output_depth));
 
       c->set_output(0, c->MakeShape({c->Dim(input, 0), output_height,
                                      output_width, output_depth}));
@@ -2956,7 +3147,7 @@ REGISTER_OP("ExtractImagePatches")
     .Attr("T: realnumbertype")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input_shape;
+      ShapeHandle input_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
 
       std::vector<int32> ksizes;
@@ -2998,14 +3189,20 @@ REGISTER_OP("ExtractImagePatches")
       int32 ksize_rows_eff = ksize_rows + (ksize_rows - 1) * (rate_rows - 1);
       int32 ksize_cols_eff = ksize_cols + (ksize_cols - 1) * (rate_cols - 1);
 
-      const Dimension* batch_size_dim = c->Dim(input_shape, 0);
-      const Dimension* in_rows_dim = c->Dim(input_shape, 1);
-      const Dimension* in_cols_dim = c->Dim(input_shape, 2);
-      const Dimension* output_depth_dim = c->Dim(input_shape, 3);
+      DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
+      DimensionHandle in_rows_dim = c->Dim(input_shape, 1);
+      DimensionHandle in_cols_dim = c->Dim(input_shape, 2);
+      DimensionHandle output_depth_dim;
+      TF_RETURN_IF_ERROR(c->Multiply(
+          c->Dim(input_shape, 3), ksize_rows * ksize_cols, &output_depth_dim));
 
-      // At the moment we need to know the values of several fields.
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_rows_dim, "in_rows"));
-      TF_RETURN_IF_ERROR(c->ValidateKnownDim(in_cols_dim, "in_cols"));
+      if (!c->ValueKnown(in_rows_dim) || !c->ValueKnown(in_cols_dim)) {
+        ShapeHandle output_shape =
+            c->MakeShape({batch_size_dim, InferenceContext::kUnknownDim,
+                          InferenceContext::kUnknownDim, output_depth_dim});
+        c->set_output(0, output_shape);
+        return Status::OK();
+      }
       auto in_rows = c->Value(in_rows_dim);
       auto in_cols = c->Value(in_cols_dim);
 
@@ -3020,7 +3217,7 @@ REGISTER_OP("ExtractImagePatches")
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
           in_cols, ksize_cols_eff, stride_cols, padding, &output_cols,
           &padding_before, &padding_after));
-      const Shape* output_shape = c->MakeShape(
+      ShapeHandle output_shape = c->MakeShape(
           {batch_size_dim, output_rows, output_cols, output_depth_dim});
       c->set_output(0, output_shape);
       return Status::OK();
@@ -3057,7 +3254,7 @@ REGISTER_OP("Bitcast")
     .Attr("T: numbertype")
     .Attr("type: numbertype")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* input = c->input(0);
+      ShapeHandle input = c->input(0);
       if (!c->RankKnown(input)) {
         // Input shape unknown.
         return shape_inference::UnknownShape(c);
@@ -3079,7 +3276,7 @@ REGISTER_OP("Bitcast")
                                        "one of the type sizes is zero.");
       }
 
-      const Shape* new_shape;
+      ShapeHandle new_shape;
       if (input_type_size == output_type_size) {
         // No change in size.
         new_shape = input;
@@ -3087,7 +3284,7 @@ REGISTER_OP("Bitcast")
         TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, 1, &new_shape));
 
         int64 divisor_val = output_type_size / input_type_size;
-        const Dimension* last_dim = c->Dim(new_shape, -1);
+        DimensionHandle last_dim = c->Dim(new_shape, -1);
         if (!c->ValueKnown(last_dim) || c->Value(last_dim) == divisor_val) {
           TF_RETURN_IF_ERROR(c->Subshape(new_shape, 0, -1, &new_shape));
         } else {
@@ -3098,7 +3295,7 @@ REGISTER_OP("Bitcast")
       } else {
         // Input type size is larger than output type size.
         int64 divisor_val = input_type_size / output_type_size;
-        const Shape* extension = c->Vector(divisor_val);
+        ShapeHandle extension = c->Vector(divisor_val);
         TF_RETURN_IF_ERROR(c->Concatenate(input, extension, &new_shape));
       }
 
@@ -3136,10 +3333,10 @@ REGISTER_OP("OneHot")
       TF_RETURN_IF_ERROR(c->GetAttr("axis", &axis));
       if (axis < -1) return errors::InvalidArgument("axis must be >= -1");
 
-      const Dimension* depth;
+      DimensionHandle depth;
       TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &depth));
 
-      const Shape* indices = c->input(0);
+      ShapeHandle indices = c->input(0);
       if (!c->RankKnown(indices)) return shape_inference::UnknownShape(c);
 
       int32 new_rank = c->Rank(indices) + 1;
@@ -3147,9 +3344,9 @@ REGISTER_OP("OneHot")
       // C++ returns negative values from % if the dividend is negative.
       int32 depth_index = (axis + new_rank) % new_rank;
       // Out shape is indices[0:depth_index] + [depth] + indices[depth_index:].
-      const Shape* front;
-      const Shape* back;
-      const Shape* out;
+      ShapeHandle front;
+      ShapeHandle back;
+      ShapeHandle out;
       TF_RETURN_IF_ERROR(c->Subshape(indices, 0, depth_index, &front));
       TF_RETURN_IF_ERROR(c->Subshape(indices, depth_index, &back));
       TF_RETURN_IF_ERROR(c->Concatenate(front, c->Vector(depth), &front));
@@ -3335,6 +3532,7 @@ REGISTER_OP("Copy")
     .Output("output: T")
     .Attr("T: type")
     .Attr("tensor_name: string = ''")
+    .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Copy Op.
 
@@ -3354,6 +3552,7 @@ REGISTER_OP("CopyHost")
     .Output("output: T")
     .Attr("T: type")
     .Attr("tensor_name: string = ''")
+    .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Copy Host Op.
 
@@ -3372,6 +3571,7 @@ REGISTER_OP("DebugIdentity")
     .Attr("T: type")
     .Attr("tensor_name: string = ''")
     .Attr("debug_urls: list(string) = []")
+    .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Debug Identity Op.
 
@@ -3390,6 +3590,7 @@ REGISTER_OP("DebugNanCount")
     .Attr("T: type")
     .Attr("tensor_name: string = ''")
     .Attr("debug_urls: list(string) = []")
+    .SetAllowsUninitializedInput()
     .Doc(R"doc(
 Debug NaN Value Counter Op
 
@@ -3401,5 +3602,32 @@ tensor_name: Name of the input tensor.
 debug_urls: List of URLs to debug targets, e.g.,
             file:///foo/tfdbg_dump, grpc:://localhost:11011
 )doc");
+
+// Deprecated op registrations:
+
+// The following can be deleted after 10mar2017.
+REGISTER_OP("BatchMatrixDiag")
+    .Input("diagonal: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Deprecated(14, "Use MatrixDiag");
+REGISTER_OP("BatchMatrixSetDiag")
+    .Input("input: T")
+    .Input("diagonal: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Deprecated(14, "Use MatrixSetDiag");
+REGISTER_OP("BatchMatrixDiagPart")
+    .Input("input: T")
+    .Output("diagonal: T")
+    .Attr("T: type")
+    .Deprecated(14, "Use MatrixDiagPart");
+REGISTER_OP("BatchMatrixBandPart")
+    .Input("input: T")
+    .Input("num_lower: int64")
+    .Input("num_upper: int64")
+    .Output("band: T")
+    .Attr("T: type")
+    .Deprecated(14, "Use MatrixBandPart");
 
 }  // namespace tensorflow

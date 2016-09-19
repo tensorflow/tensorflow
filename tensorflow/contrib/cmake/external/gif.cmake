@@ -10,6 +10,8 @@ set(gif_HEADERS
     "${gif_INSTALL}/include/gif_lib.h"
 )
 
+set(ENV{CFLAGS} "$ENV{CFLAGS} -fPIC")
+
 ExternalProject_Add(gif
     PREFIX gif
     URL ${gif_URL}
@@ -20,6 +22,7 @@ ExternalProject_Add(gif
     INSTALL_COMMAND $(MAKE) install
     CONFIGURE_COMMAND
     ${CMAKE_CURRENT_BINARY_DIR}/gif/src/gif/configure
+    --with-pic
     --prefix=${gif_INSTALL}
     --enable-shared=yes
 )

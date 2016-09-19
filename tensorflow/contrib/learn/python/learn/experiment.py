@@ -25,14 +25,19 @@ from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
-from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import server_lib
 
-FLAGS = flags.FLAGS
+
+__all__ = ["Experiment"]
 
 
 class Experiment(object):
   """Experiment is a class containing all information needed to train a model.
+
+  After an experiment is created (by passing an Estimator and inputs for
+  training and evaluation), an Experiment instance knows how to invoke training
+  and eval loops in a sensible fashion for distributed training.
   """
 
   def __init__(self,
@@ -47,6 +52,10 @@ class Experiment(object):
                eval_delay_secs=120,
                continuous_eval_throttle_secs=60):
     """Constructor for `Experiment`.
+
+    Creates an Experiment instance. None of the functions passed to this
+    constructor are executed at construction time. They are stored and used
+    when a method is executed which requires it.
 
     Args:
       estimator: Object implementing `Trainable` and `Evaluable`.
@@ -89,6 +98,10 @@ class Experiment(object):
     self._eval_delay_secs = eval_delay_secs
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
 
+  @property
+  def estimator(self):
+    return self._estimator
+
   def train(self, delay_secs=None):
     """Fit the estimator using the training data.
 
@@ -101,14 +114,23 @@ class Experiment(object):
     Returns:
       The trained estimator.
     """
+    start = time.time()
+
+    # Start the server, if needed. It's important to start the server before
+    # we (optionally) sleep for the case where no device_filters are set.
+    # Otherwise, the servers will wait to connect to each other before starting
+    # to train. We might as well start as soon as we can.
+    if self._estimator.config.cluster_spec:
+      self._start_server()
+
     if delay_secs is None:
-      task_id = 0
-      if hasattr(FLAGS, "task"):
-        task_id = FLAGS.task
-      delay_secs = min(60, task_id*5)
+      task_id = self._estimator.config.task or 0
+      delay_secs = min(60, task_id * 5)
 
     if delay_secs:
-      logging.info("Waiting %d secs before starting training.", delay_secs)
+      elapsed_secs = time.time() - start
+      remaining = delay_secs - elapsed_secs
+      logging.info("Waiting %d secs before starting training.", remaining)
       time.sleep(delay_secs)
 
     return self._estimator.fit(input_fn=self._train_input_fn,
@@ -218,6 +240,17 @@ class Experiment(object):
                           delay_secs=delay_secs,
                           throttle_delay_secs=throttle_delay_secs)
 
+  def run_std_server(self):
+    """Starts a TensorFlow server and joins the serving thread.
+
+    Typically used for parameter servers.
+
+    Raises:
+      ValueError: if not enough information is available in the estimator's
+        config to create a server.
+    """
+    self._start_server().join()
+
   def test(self):
     """Tests training and evaluating the estimator both for a single step.
 
@@ -232,3 +265,20 @@ class Experiment(object):
                                     steps=1,
                                     metrics=self._eval_metrics,
                                     name="one_pass")
+
+  def _start_server(self):
+    """Creates, starts, and returns a server_lib.Server."""
+    config = self._estimator.config
+    if (not config.cluster_spec or not config.job_name or not config.master or
+        config.task is None):
+      raise ValueError("Could not start server; be sure to specify "
+                       "cluster_spec, job_name, master, and task in "
+                       "RunConfig or set the TF_CONFIG environment variable.")
+    server = server_lib.Server(
+        config.cluster_spec,
+        job_name=config.job_name,
+        task_index=config.task,
+        config=config.tf_config,
+        start=False)
+    server.start()
+    return server

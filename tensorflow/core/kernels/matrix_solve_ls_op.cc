@@ -28,10 +28,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <class Scalar, bool SupportsBatchOperation>
-class MatrixSolveLsOp : public LinearAlgebraOp<Scalar, SupportsBatchOperation> {
+template <class Scalar>
+class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
  public:
-  typedef LinearAlgebraOp<Scalar, SupportsBatchOperation> Base;
+  typedef LinearAlgebraOp<Scalar> Base;
 
   explicit MatrixSolveLsOp(OpKernelConstruction* context) : Base(context) {
     OP_REQUIRES_OK(context, context->GetAttr("fast", &fast_));
@@ -155,10 +155,9 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar, SupportsBatchOperation> {
   bool fast_;
 };
 
-REGISTER_LINALG_OP("MatrixSolveLs", (MatrixSolveLsOp<float, false>), float);
-REGISTER_LINALG_OP("MatrixSolveLs", (MatrixSolveLsOp<double, false>), double);
-REGISTER_LINALG_OP("BatchMatrixSolveLs", (MatrixSolveLsOp<float, true>), float);
-REGISTER_LINALG_OP("BatchMatrixSolveLs", (MatrixSolveLsOp<double, true>),
-                   double);
+REGISTER_LINALG_OP("MatrixSolveLs", (MatrixSolveLsOp<float>), float);
+REGISTER_LINALG_OP("MatrixSolveLs", (MatrixSolveLsOp<double>), double);
+REGISTER_LINALG_OP("BatchMatrixSolveLs", (MatrixSolveLsOp<float>), float);
+REGISTER_LINALG_OP("BatchMatrixSolveLs", (MatrixSolveLsOp<double>), double);
 
 }  // namespace tensorflow

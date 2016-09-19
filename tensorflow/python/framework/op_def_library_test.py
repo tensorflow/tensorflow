@@ -47,6 +47,8 @@ ops.RegisterShape("AttrShape")(None)
 ops.RegisterShape("AttrShapeList")(None)
 ops.RegisterShape("AttrPartialShape")(None)
 ops.RegisterShape("AttrPartialShapeList")(None)
+ops.RegisterShape("AttrTypeDefault")(None)
+ops.RegisterShape("AttrListTypeDefault")(None)
 ops.RegisterShape("Binary")(None)
 ops.RegisterShape("ComplexStruct")(None)
 ops.RegisterShape("InPolymorphicTwice")(None)
@@ -866,6 +868,44 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     op = self._lib.apply_op("ReservedAttr", range_=7, name="x")
     self.assertProtoEquals("""
       name: 'x' op: 'ReservedAttr' attr { key: 'range' value { i: 7 } }
+      """, op.node_def)
+
+  def testDefaultAttrType(self):
+    self._add_op("name: 'AttrTypeDefault' "
+                 "input_arg { name: 'a' type_attr: 'T' } "
+                 "attr { name: 'T' type: 'type' "
+                 "       default_value { type: DT_INT32 } }")
+
+    # Give an input whose type has no obvious output type.
+    op = self._lib.apply_op("AttrTypeDefault", a=[], name="n")
+    self.assertProtoEquals("""
+      name: 'n' op: 'AttrTypeDefault' input: 'n/a'
+      attr { key: 'T' value { type: DT_INT32 } }
+      """, op.node_def)
+
+    # Give an input whose type can be inferred as different
+    # than the default.
+    op = self._lib.apply_op("AttrTypeDefault", a=[1.0], name="f")
+    self.assertProtoEquals("""
+      name: 'f' op: 'AttrTypeDefault' input: 'f/a'
+      attr { key: 'T' value { type: DT_FLOAT } }
+      """, op.node_def)
+
+  def testDefaultListAttrType(self):
+    self._add_op("name: 'AttrListTypeDefault' "
+                 "input_arg { name: 'a' type_attr: 'T' number_attr: 'N' } "
+                 "input_arg { name: 'b' type_attr: 'T' number_attr: 'N' } "
+                 "attr { name: 'T' type: 'type' "
+                 "       default_value { type: DT_INT32 } }"
+                 "attr { name: 'N' type: 'int' }")
+
+    # Give an input whose type can be inferred as different
+    # than the default.
+    op = self._lib.apply_op("AttrListTypeDefault", a=[1.0], b=[2.0], name="n")
+    self.assertProtoEquals("""
+      name: 'n' op: 'AttrListTypeDefault' input: 'n/a_0' input: 'n/b_0'
+      attr { key: 'T' value { type: DT_FLOAT } }
+      attr { key: 'N' value { i: 1 } }
       """, op.node_def)
 
   def testNIntsIn(self):

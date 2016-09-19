@@ -94,7 +94,12 @@ class TensorSlice {
   }
 
   // If we have a full slice along dimension "d".
-  bool IsFullAt(int d) const { return lengths_[d] < 0; }
+  bool IsFullAt(int d) const {
+    return lengths_[d] == kFullExtent && starts_[d] == 0;
+  }
+
+  // If this is a full slice, i.e. IsFullAt(d) for every d.
+  bool IsFull() const;
 
   // Set the slice to be a full slice of "dim" dimensions
   void SetFullSlice(int dim);
@@ -128,6 +133,10 @@ class TensorSlice {
   bool Overlaps(const TensorSlice& other) const {
     return Intersect(other, nullptr);
   }
+
+  // Equals iff "*this" and "other" are logically equivalent.
+  bool operator==(const TensorSlice& other) const;
+  bool operator!=(const TensorSlice& other) const { return !(*this == other); }
 
   // Interaction with TensorShape.
 

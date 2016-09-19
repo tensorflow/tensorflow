@@ -37,7 +37,7 @@ size 1.
 
 
 *  <b>`input`</b>: A `Tensor`.
-*  <b>`dim`</b>: A `Tensor` of type `int32`.
+*  <b>`dim`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     0-D (scalar). Specifies the dimension index at which to
     expand the shape of `input`.
 *  <b>`name`</b>: A name for the operation (optional).

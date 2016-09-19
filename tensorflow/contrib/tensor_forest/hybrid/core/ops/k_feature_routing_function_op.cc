@@ -29,12 +29,16 @@
 #include "tensorflow/contrib/tensor_forest/hybrid/core/ops/utils.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
+
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 using tensorforest::CheckTensorBounds;
 using tensorforest::LeftProbabilityK;
@@ -44,15 +48,23 @@ using tensorforest::LeftProbabilityK;
 // that an instance is routed to each leaf node.'  It is defined in
 // 'Deep Neural Decision Forests' by Kontschieder et al.
 REGISTER_OP("KFeatureRoutingFunction")
-  .Attr("layer_num: int")
-  .Attr("max_nodes: int")
-  .Attr("num_features_per_node: int")
-  .Attr("random_seed: int")
-  .Input("input_data: float")
-  .Input("tree_parameters: float")
-  .Input("tree_biases: float")
-  .Output("probabilities: float")
-  .Doc(R"doc(
+    .Attr("layer_num: int")
+    .Attr("max_nodes: int")
+    .Attr("num_features_per_node: int")
+    .Attr("random_seed: int")
+    .Input("input_data: float")
+    .Input("tree_parameters: float")
+    .Input("tree_biases: float")
+    .Output("probabilities: float")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input, params;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &params));
+
+      c->set_output(0, c->Matrix(c->Dim(input, 0), c->Dim(params, 0)));
+      return Status::OK();
+    })
+    .Doc(R"doc(
 
   Returns the probability that each input will reach each leaf node.  Each
   decision is made based on k features.

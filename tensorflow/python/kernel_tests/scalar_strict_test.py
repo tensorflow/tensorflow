@@ -77,9 +77,6 @@ class ScalarStrictTest(tf.test.TestCase):
     self.check(tf.fill, (2, 3), 'dims must be a vector', [3, 3])
     self.check(tf.fill, ([2], [3]), 'value must be a scalar', [3, 3])
 
-  def testAssert(self):
-    self.check(tf.Assert, ([True], (7,)), 'should be a scalar', None)
-
   def testPad(self):
     self.check(tf.pad, (7, [[1, 2]]),
                'The first dimension of paddings must be the rank of inputs',

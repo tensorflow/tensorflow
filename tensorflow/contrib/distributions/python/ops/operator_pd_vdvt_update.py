@@ -82,7 +82,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
                diag=None,
                verify_pd=True,
                verify_shapes=True,
-               name='OperatorPDSqrtVDVTUpdate'):
+               name="OperatorPDSqrtVDVTUpdate"):
     """Initialize an `OperatorPDSqrtVDVTUpdate`.
 
     Args:
@@ -102,12 +102,12 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     """
 
     if not isinstance(operator, operator_pd.OperatorPDBase):
-      raise TypeError('operator was not instance of OperatorPDBase.')
+      raise TypeError("operator was not instance of OperatorPDBase.")
 
     with ops.name_scope(name):
-      with ops.name_scope('init', values=operator.inputs + [v, diag]):
+      with ops.name_scope("init", values=operator.inputs + [v, diag]):
         self._operator = operator
-        self._v = ops.convert_to_tensor(v, name='v')
+        self._v = ops.convert_to_tensor(v, name="v")
         self._verify_pd = verify_pd
         self._verify_shapes = verify_shapes
         self._name = name
@@ -116,7 +116,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
         # and determinant lemmas require diag to be PD.  So require diag PD
         # whenever we ask to "verify_pd".
         if diag is not None:
-          self._diag = ops.convert_to_tensor(diag, name='diag')
+          self._diag = ops.convert_to_tensor(diag, name="diag")
           self._diag_operator = operator_pd_diag.OperatorPDDiag(
               diag, verify_pd=self.verify_pd)
           # No need to verify that the inverse of a PD is PD.
@@ -136,7 +136,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
 
   def _get_identity_operator(self, v):
     """Get an `OperatorPDIdentity` to play the role of `D` in `VDV^T`."""
-    with ops.name_scope('get_identity_operator', values=[v]):
+    with ops.name_scope("get_identity_operator", values=[v]):
       if v.get_shape().is_fully_defined():
         v_shape = v.get_shape().as_list()
         v_batch_shape = v_shape[:-2]
@@ -154,7 +154,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
   def _check_types(self, operator, v, diag):
     def msg():
       string = (
-          'dtypes must match:  Found operator.dtype = %s, v.dtype = %s'
+          "dtypes must match:  Found operator.dtype = %s, v.dtype = %s"
           % (operator.dtype, v.dtype))
       return string
 
@@ -162,21 +162,21 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
       raise TypeError(msg())
     if diag is not None:
       if diag.dtype != v.dtype:
-        raise TypeError('%s, diag.dtype = %s' % (msg(), diag.dtype))
+        raise TypeError("%s, diag.dtype = %s" % (msg(), diag.dtype))
 
   def _check_shapes_static(self, operator, v, diag):
     """True if they are compatible. Raise if not. False if could not check."""
     def msg():
       # Error message when shapes don't match.
-      string = '  Found: operator.shape = %s, v.shape = %s' % (s_op, s_v)
+      string = "  Found: operator.shape = %s, v.shape = %s" % (s_op, s_v)
       if diag is not None:
-        string += ', diag.shape = ' % s_d
+        string += ", diag.shape = " % s_d
       return string
 
     s_op = operator.get_shape()
     s_v = v.get_shape()
 
-    # If everything is not fully defined, return False because we couldn't check
+    # If everything is not fully defined, return False because we couldn"t check
     if not (s_op.is_fully_defined() and s_v.is_fully_defined()):
       return False
     if diag is not None:
@@ -188,33 +188,33 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
 
     # Check tensor rank.
     if s_v.ndims != s_op.ndims:
-      raise ValueError('v should have same rank as operator' + msg())
+      raise ValueError("v should have same rank as operator" + msg())
     if diag is not None:
       if s_d.ndims != s_op.ndims - 1:
-        raise ValueError('diag should have rank 1 less than operator' + msg())
+        raise ValueError("diag should have rank 1 less than operator" + msg())
 
     # Check batch shape
     if s_v[:-2] != s_op[:-2]:
-      raise ValueError('v and operator should have same batch shape' + msg())
+      raise ValueError("v and operator should have same batch shape" + msg())
     if diag is not None:
       if s_d[:-1] != s_op[:-2]:
         raise ValueError(
-            'diag and operator should have same batch shape' + msg())
+            "diag and operator should have same batch shape" + msg())
 
     # Check event shape
     if s_v[-2] != s_op[-1]:
       raise ValueError(
-          'v and operator should be compatible for matmul' + msg())
+          "v and operator should be compatible for matmul" + msg())
     if diag is not None:
       if s_d[-1] != s_v[-1]:
-        raise ValueError('diag and v should have same last dimension' + msg())
+        raise ValueError("diag and v should have same last dimension" + msg())
 
     return True
 
   def _check_shapes_dynamic(self, operator, v, diag):
     """Return (v, diag) with Assert dependencies, which check shape."""
     checks = []
-    with ops.name_scope('check_shapes', values=[operator, v, diag]):
+    with ops.name_scope("check_shapes", values=[operator, v, diag]):
       s_v = array_ops.shape(v)
       r_op = operator.rank()
       r_v = array_ops.rank(v)
@@ -299,14 +299,14 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     #                = det(C) * det(D) * det(M)
     #
     # Here we compute the Cholesky factor of "C", then pass the result on.
-    diag_chol_c = array_ops.batch_matrix_diag_part(self._chol_capacitance(
-        batch_mode=False))
+    diag_chol_c = array_ops.matrix_diag_part(
+        self._chol_capacitance(batch_mode=False))
     return self._sqrt_log_det_core(diag_chol_c)
 
   def _batch_sqrt_log_det(self):
     # Here we compute the Cholesky factor of "C", then pass the result on.
-    diag_chol_c = array_ops.batch_matrix_diag_part(self._chol_capacitance(
-        batch_mode=True))
+    diag_chol_c = array_ops.matrix_diag_part(
+        self._chol_capacitance(batch_mode=True))
     return self._sqrt_log_det_core(diag_chol_c)
 
   def _chol_capacitance(self, batch_mode):
@@ -327,10 +327,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     # D^{-1} + V^T M^{-1} V
     capacitance = self._diag_inv_operator.add_to_tensor(vt_minv_v)
     # Cholesky[D^{-1} + V^T M^{-1} V]
-    if batch_mode:
-      return linalg_ops.batch_cholesky(capacitance)
-    else:
-      return linalg_ops.cholesky(capacitance)
+    return linalg_ops.cholesky(capacitance)
 
   def _sqrt_log_det_core(self, diag_chol_c):
     """Finish computation of Sqrt[Log[Det]]."""
@@ -449,7 +446,7 @@ class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
     # V^T M^{-1} rhs
     vt_minv_rhs = math_ops.batch_matmul(v, minv_rhs, adj_x=True)
     # C^{-1} V^T M^{-1} rhs
-    cinv_vt_minv_rhs = linalg_ops.batch_cholesky_solve(cchol, vt_minv_rhs)
+    cinv_vt_minv_rhs = linalg_ops.cholesky_solve(cchol, vt_minv_rhs)
     # V C^{-1} V^T M^{-1} rhs
     v_cinv_vt_minv_rhs = math_ops.batch_matmul(v, cinv_vt_minv_rhs)
     # M^{-1} V C^{-1} V^T M^{-1} rhs

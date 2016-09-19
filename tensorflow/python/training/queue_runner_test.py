@@ -259,5 +259,41 @@ class QueueRunnerTest(tf.test.TestCase):
       # The variable should be 3.
       self.assertEqual(3, var.eval())
 
+  def testQueueRunnerSerializationRoundTrip(self):
+    graph = tf.Graph()
+    with graph.as_default():
+      queue = tf.FIFOQueue(10, tf.float32, name="queue")
+      enqueue_op = tf.no_op(name="enqueue")
+      close_op = tf.no_op(name="close")
+      cancel_op = tf.no_op(name="cancel")
+      qr0 = tf.train.QueueRunner(
+          queue, [enqueue_op], close_op, cancel_op,
+          queue_closed_exception_types=(
+              tf.errors.OutOfRangeError, tf.errors.CancelledError))
+      qr0_proto = tf.train.QueueRunner.to_proto(qr0)
+      qr0_recon = tf.train.QueueRunner.from_proto(qr0_proto)
+      self.assertEqual("queue", qr0_recon.queue.name)
+      self.assertEqual(1, len(qr0_recon.enqueue_ops))
+      self.assertEqual(enqueue_op, qr0_recon.enqueue_ops[0])
+      self.assertEqual(close_op, qr0_recon.close_op)
+      self.assertEqual(cancel_op, qr0_recon.cancel_op)
+      self.assertEqual(
+          (tf.errors.OutOfRangeError, tf.errors.CancelledError),
+          qr0_recon.queue_closed_exception_types)
+
+      # Assert we reconstruct an OutOfRangeError for QueueRunners
+      # created before QueueRunnerDef had a queue_closed_exception_types field.
+      del qr0_proto.queue_closed_exception_types[:]
+      qr0_legacy_recon = tf.train.QueueRunner.from_proto(qr0_proto)
+      self.assertEqual("queue", qr0_legacy_recon.queue.name)
+      self.assertEqual(1, len(qr0_legacy_recon.enqueue_ops))
+      self.assertEqual(enqueue_op, qr0_legacy_recon.enqueue_ops[0])
+      self.assertEqual(close_op, qr0_legacy_recon.close_op)
+      self.assertEqual(cancel_op, qr0_legacy_recon.cancel_op)
+      self.assertEqual(
+          (tf.errors.OutOfRangeError,),
+          qr0_legacy_recon.queue_closed_exception_types)
+
+
 if __name__ == "__main__":
   tf.test.main()

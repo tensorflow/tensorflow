@@ -184,7 +184,12 @@ ifeq ($(TARGET),OSX)
 endif
 # Make sure that we don't strip global constructors on Linux.
 ifeq ($(TARGET),LINUX)
+ifeq ($(HAS_GEN_HOST_PROTOC),true)
+	LIBFLAGS += -L$(MAKEFILE_DIR)/gen/protobuf-host/lib
+	export LD_LIBRARY_PATH=$(MAKEFILE_DIR)/gen/protobuf-host/lib
+endif
 	LIBFLAGS += -Wl,--allow-multiple-definition -Wl,--whole-archive
+	LDFLAGS := -Wl,--no-whole-archive
 endif
 # If we're on Linux, also link in the dl library.
 ifeq ($(TARGET),LINUX)
@@ -224,7 +229,7 @@ ifeq ($(TARGET),ANDROID)
 	CXX := $(CC_PREFIX) $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/bin/arm-linux-androideabi-g++
 	CXXFLAGS +=\
 --sysroot $(NDK_ROOT)/platforms/android-21/arch-arm \
--Wno-c++11-narrowing \
+-Wno-narrowing \
 -march=armv7-a \
 -fPIE
 
@@ -264,6 +269,7 @@ ifeq ($(TARGET),ANDROID)
 		INCLUDES += -I$(HEXAGON_INCLUDE)
 		LIBS += -lgemm_wrapper
 		LDFLAGS += -L$(HEXAGON_LIBS)
+		CXXFLAGS += -DUSE_HEXAGON_LIBS
 	endif
 
 endif  # ANDROID
@@ -284,6 +290,7 @@ ifeq ($(TARGET),IOS)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch armv7 \
 		-D__thread= \
+		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-mno-thumb \
 		-DTF_LEAN_BINARY \
@@ -294,6 +301,7 @@ ifeq ($(TARGET),IOS)
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch armv7 \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
+		-framework Accelerate \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -305,6 +313,7 @@ ifeq ($(TARGET),IOS)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch armv7s \
 		-D__thread= \
+		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-mno-thumb \
 		-DTF_LEAN_BINARY \
@@ -315,6 +324,7 @@ ifeq ($(TARGET),IOS)
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch armv7s \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
+		-framework Accelerate \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -326,6 +336,7 @@ ifeq ($(TARGET),IOS)
 		CXXFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-arch arm64 \
 		-D__thread= \
+		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
@@ -335,6 +346,7 @@ ifeq ($(TARGET),IOS)
 		${IPHONEOS_SYSROOT}
 		LDFLAGS := -arch arm64 \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
+		-framework Accelerate \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -346,6 +358,7 @@ ifeq ($(TARGET),IOS)
 		CXXFLAGS += -mios-simulator-version-min=$(MIN_SDK_VERSION) \
 		-arch i386 \
 		-D__thread= \
+		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
@@ -355,6 +368,7 @@ ifeq ($(TARGET),IOS)
 		${IPHONESIMULATOR_SYSROOT}
 		LDFLAGS := -arch i386 \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
+		-framework Accelerate \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -366,6 +380,7 @@ ifeq ($(TARGET),IOS)
 		CXXFLAGS += -mios-simulator-version-min=$(MIN_SDK_VERSION) \
 		-arch x86_64 \
 		-D__thread= \
+		-DUSE_GEMM_FOR_CONV \
 		-Wno-c++11-narrowing \
 		-DTF_LEAN_BINARY \
 		-D__ANDROID_TYPES_SLIM__ \
@@ -375,6 +390,7 @@ ifeq ($(TARGET),IOS)
 		${IPHONESIMULATOR_SYSROOT}
 		LDFLAGS := -arch x86_64 \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
+		-framework Accelerate \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -408,8 +424,10 @@ $(wildcard tensorflow/core/graph/*.cc) \
 $(wildcard tensorflow/core/lib/*/*.cc) \
 $(wildcard tensorflow/core/platform/*.cc) \
 $(wildcard tensorflow/core/platform/*/*.cc) \
+$(wildcard tensorflow/core/platform/*/*/*.cc) \
 $(wildcard tensorflow/core/util/*.cc) \
-$(wildcard tensorflow/core/util/*/*.cc)
+$(wildcard tensorflow/core/util/*/*.cc) \
+tensorflow/core/util/version_info.cc
 CORE_CC_EXCLUDE_SRCS := \
 $(wildcard tensorflow/core/*/*test.cc) \
 $(wildcard tensorflow/core/*/*testutil*) \
@@ -421,6 +439,8 @@ $(wildcard tensorflow/core/*/*/*testlib*) \
 $(wildcard tensorflow/core/*/*/*main.cc) \
 $(wildcard tensorflow/core/graph/dot.*) \
 $(wildcard tensorflow/core/lib/gif/*) \
+$(wildcard tensorflow/core/lib/io/zlib*) \
+$(wildcard tensorflow/core/lib/io/record*) \
 $(wildcard tensorflow/core/lib/jpeg/*) \
 $(wildcard tensorflow/core/lib/png/*) \
 $(wildcard tensorflow/core/util/events_writer.*) \
@@ -464,6 +484,11 @@ BENCHMARK_OBJS := $(addprefix $(OBJDIR), $(BENCHMARK_SRCS:.cc=.o))
 all: $(LIB_PATH) $(BENCHMARK_NAME)
 
 # Rules for target compilation.
+
+
+.phony_version_info:
+tensorflow/core/util/version_info.cc: .phony_version_info
+	python tensorflow/tools/git/gen_git_source.py --raw_generate $@
 
 # Gathers together all the objects we've compiled into a single '.a' archive.
 $(LIB_PATH): $(LIB_OBJS)
@@ -541,6 +566,7 @@ $(HOST_GENDIR)%.pb.cc $(HOST_GENDIR)%.pb.h: %.proto
 # Gets rid of all generated files.
 clean:
 	rm -rf $(MAKEFILE_DIR)/gen
+	rm -rf tensorflow/core/util/version_info.cc
 
 # Gets rid of target files only, leaving the host alone. Also leaves the lib
 # directory untouched deliberately, so we can persist multiple architectures

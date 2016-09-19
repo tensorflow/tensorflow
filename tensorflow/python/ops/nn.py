@@ -19,7 +19,7 @@
 The activation ops provide different types of nonlinearities for use in neural
 networks.  These include smooth nonlinearities (`sigmoid`, `tanh`, `elu`,
 `softplus`, and `softsign`), continuous but not everywhere differentiable
-functions (`relu`, `relu6`, and `relu_x`), and random regularization
+functions (`relu`, `relu6`, `crelu` and `relu_x`), and random regularization
 (`dropout`).
 
 All activation ops apply componentwise, and produce a tensor of the same
@@ -27,6 +27,7 @@ shape as the input tensor.
 
 @@relu
 @@relu6
+@@crelu
 @@elu
 @@softplus
 @@softsign
@@ -110,6 +111,7 @@ concatenated.
 @@conv2d_transpose
 @@conv1d
 @@conv3d
+@@conv3d_transpose
 
 ## Pooling
 
@@ -131,6 +133,8 @@ to the `Convolution` section for details about the padding calculation.
 @@max_pool_with_argmax
 @@avg_pool3d
 @@max_pool3d
+@@fractional_avg_pool
+@@fractional_max_pool
 
 ## Morphological filtering
 
@@ -220,7 +224,9 @@ Neural Networks.  Most accept an `RNNCell`-subclassed object
 @@dynamic_rnn
 @@rnn
 @@state_saving_rnn
+@@bidirectional_dynamic_rnn
 @@bidirectional_rnn
+@@raw_rnn
 
 ## Conectionist Temporal Classification (CTC)
 
@@ -547,7 +553,8 @@ def l2_normalize(x, dim, epsilon=1e-12, name=None):
 
   Args:
     x: A `Tensor`.
-    dim: Dimension along which to normalize.
+    dim: Dimension along which to normalize.  A scalar or a vector of
+      integers.
     epsilon: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
       divisor if `norm < sqrt(epsilon)`.
     name: A name for this operation (optional).
@@ -557,7 +564,7 @@ def l2_normalize(x, dim, epsilon=1e-12, name=None):
   """
   with ops.name_scope(name, "l2_normalize", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    square_sum = math_ops.reduce_sum(math_ops.square(x), [dim], keep_dims=True)
+    square_sum = math_ops.reduce_sum(math_ops.square(x), dim, keep_dims=True)
     x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
     return math_ops.mul(x, x_inv_norm, name=name)
 

@@ -51,6 +51,18 @@ Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
 Can be used as a normalizer function for conv2d and fully_connected.
 
+Note: When is_training is True the moving_mean and moving_variance need to be
+updated, by default the update_ops are placed in tf.GraphKeys.UPDATE_OPS so
+they need to be added as a dependency to the train_op, example:
+
+  update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+  if update_ops:
+    updates = tf.group(update_ops)
+    total_loss = control_flow_ops.with_dependencies([updates], total_loss)
+
+One can set update_collections=None to force the updates in place, but that
+can have speed penalty, specially in distributed settings.
+
 ##### Args:
 
 
@@ -64,8 +76,9 @@ Can be used as a normalizer function for conv2d and fully_connected.
 *  <b>`epsilon`</b>: small float added to variance to avoid dividing by zero.
 *  <b>`activation_fn`</b>: Optional activation function.
 *  <b>`updates_collections`</b>: collections to collect the update ops for computation.
+    The updates_ops need to be excuted with the train_op.
     If None, a control dependency would be added to make sure the updates are
-    computed.
+    computed in place.
 *  <b>`is_training`</b>: whether or not the layer is in training mode. In training mode
     it would accumulate the statistics of the moments into `moving_mean` and
     `moving_variance` using an exponential moving average with the given
@@ -324,6 +337,46 @@ prior to the initial matrix multiply by `weights`.
 
 - - -
 
+### `tf.contrib.layers.layer_norm(*args, **kwargs)` {#layer_norm}
+
+Adds a Layer Normalization layer from https://arxiv.org/abs/1607.06450.
+
+  "Layer Normalization"
+
+  Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton
+
+Can be used as a normalizer function for conv2d and fully_connected.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: a tensor with 2 or more dimensions. The normalization
+          occurs over all but the first dimension.
+*  <b>`center`</b>: If True, subtract `beta`. If False, `beta` is ignored.
+*  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
+    not used. When the next layer is linear (also e.g. `nn.relu`), this can be
+    disabled since the scaling can be done by the next layer.
+*  <b>`activation_fn`</b>: Optional activation function.
+*  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
+    able to reuse the layer scope must be given.
+*  <b>`variables_collections`</b>: optional collections for the variables.
+*  <b>`outputs_collections`</b>: collections to add the outputs.
+*  <b>`trainable`</b>: If `True` also add variables to the graph collection
+    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+*  <b>`scope`</b>: Optional scope for `variable_op_scope`.
+
+##### Returns:
+
+  A `Tensor` representing the output of the operation.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if rank or last dimension of `inputs` is undefined.
+
+
+- - -
+
 ### `tf.contrib.layers.max_pool2d(*args, **kwargs)` {#max_pool2d}
 
 Adds a 2D Max Pooling op.
@@ -412,6 +465,54 @@ layers are called with `scope='stack'`.
 
 
 *  <b>`ValueError`</b>: if the op is unknown or wrong.
+
+
+- - -
+
+### `tf.contrib.layers.safe_embedding_lookup_sparse(embedding_weights, sparse_ids, sparse_weights=None, combiner=None, default_id=None, name=None, partition_strategy='div')` {#safe_embedding_lookup_sparse}
+
+Lookup embedding results, accounting for invalid IDs and empty features.
+
+The partitioned embedding in `embedding_weights` must all be the same shape
+except for the first dimension. The first dimension is allowed to vary as the
+vocabulary size is not necessarily a multiple of `P`.
+
+Invalid IDs (< 0) are pruned from input IDs and weights, as well as any IDs
+with non-positive weight. For an entry with no features, the embedding vector
+for `default_id` is returned, or the 0-vector if `default_id` is not supplied.
+
+The ids and weights may be multi-dimensional. Embeddings are always aggregated
+along the last dimension.
+
+##### Args:
+
+
+*  <b>`embedding_weights`</b>: A list of `P` float tensors or values representing
+      partitioned embedding tensors.  The total unpartitioned shape should be
+      `[e_0, e_1, ..., e_m]`, where `e_0` represents the vocab size and
+      `e_1, ..., e_m` are the embedding dimensions.
+*  <b>`sparse_ids`</b>: `SparseTensor` of shape `[d_0, d_1, ..., d_n]` containing the
+      ids. `d_0` is typically batch size.
+*  <b>`sparse_weights`</b>: `SparseTensor` of same shape as `sparse_ids`, containing
+      float weights corresponding to `sparse_ids`, or `None` if all weights
+      are be assumed to be 1.0.
+*  <b>`combiner`</b>: A string specifying how to combine embedding results for each
+      entry. Currently "mean", "sqrtn" and "sum" are supported, with "mean"
+      the default.
+*  <b>`default_id`</b>: The id to use for an entry with no features.
+*  <b>`name`</b>: A name for this operation (optional).
+*  <b>`partition_strategy`</b>: A string specifying the partitioning strategy.
+      Currently `"div"` and `"mod"` are supported. Default is `"div"`.
+
+
+##### Returns:
+
+  Dense tensor of shape `[d_0, d_1, ..., d_{n-1}, e_1, ..., e_m]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `embedding_weights` is empty.
 
 
 - - -
@@ -796,7 +897,8 @@ Given loss and parameters for optimizer, returns a training op.
                           functions.
                           For example: tf.train.exponential_decay.
 *  <b>`update_ops`</b>: list of update `Operation`s to execute at each step. If `None`,
-              uses elements of UPDATE_OPS collection.
+              uses elements of UPDATE_OPS collection. The order of execution
+              between `update_ops` and `loss` is non-deterministic.
 *  <b>`variables`</b>: list of variables to optimize or
              `None` to use all trainable variables.
 *  <b>`name`</b>: The name for this operation is used to scope operations and summaries.

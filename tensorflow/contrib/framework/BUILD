@@ -19,10 +19,8 @@ py_library(
         "python/framework/tensor_util.py",
         "python/ops/__init__.py",
         "python/ops/arg_scope.py",
-        "python/ops/embedding_ops.py",
         "python/ops/ops.py",
         "python/ops/prettyprint_ops.py",
-        "python/ops/sampling_ops.py",
         "python/ops/variables.py",
     ],
     srcs_version = "PY2AND3",
@@ -80,23 +78,6 @@ py_test(
     size = "small",
     srcs = ["python/ops/variables_test.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
-)
-
-py_test(
-    name = "sampling_ops_test",
-    size = "small",
-    srcs = ["python/ops/sampling_ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
-)
-
-py_test(
-    name = "sampling_ops_threading_test",
-    size = "small",
-    srcs = ["python/ops/sampling_ops_threading_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
     deps = ["//tensorflow:tensorflow_py"],
 )
 

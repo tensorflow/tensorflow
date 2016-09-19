@@ -223,10 +223,13 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3])
-
-    classifier.fit(input_fn=_input_fn_train, steps=100)
-    scores = classifier.evaluate(input_fn=_input_fn_eval,
-                                 steps=100)
+    classifier.fit(input_fn=_input_fn_train, steps=100, monitors=(
+        tf.contrib.learn.monitors.CaptureVariable(var_name='loss'),
+        tf.contrib.learn.monitors.CaptureVariable(
+            var_name='centered_bias/training_loss'),
+        tf.contrib.learn.monitors.CaptureVariable(var_name='training_loss'),
+    ))
+    scores = classifier.evaluate(input_fn=_input_fn_eval, steps=100)
     # If there is no weight column, model should learn y=Not(x). All examples in
     # eval data set are y=x. So if weight column is ignored, then accuracy
     # should be zero.
@@ -251,8 +254,12 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         linear_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3])
-
-    classifier.fit(input_fn=_input_fn_train, steps=100)
+    classifier.fit(input_fn=_input_fn_train, steps=100, monitors=(
+        tf.contrib.learn.monitors.CaptureVariable(var_name='loss'),
+        tf.contrib.learn.monitors.CaptureVariable(
+            var_name='centered_bias/training_loss'),
+        tf.contrib.learn.monitors.CaptureVariable(var_name='training_loss'),
+    ))
     scores = classifier.evaluate(input_fn=_input_fn_train, steps=100)
     # If weight column is ignored, then accuracy should be 0.25. If it's not
     # ignored, then it should be greater than 0.6.
@@ -498,6 +505,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     self.assertNotIn('dnn/logits/weights', classifier.get_variable_names())
     self.assertEquals(1, len(classifier.linear_bias_))
     self.assertEquals(2, len(classifier.linear_weights_))
+    print(classifier.linear_weights_)
     self.assertEquals(1, len(classifier.linear_weights_['linear/age/weight']))
     self.assertEquals(
         100, len(classifier.linear_weights_['linear/language/weights']))

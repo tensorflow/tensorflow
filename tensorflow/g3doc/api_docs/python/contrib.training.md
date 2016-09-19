@@ -718,3 +718,290 @@ It should be run in a separate thread via e.g. a `QueueRunner`.
 
 
 
+
+
+## Online data resampling
+
+Use ['stratified_sample'](#stratified_sample) or
+['stratified_sample_unknown_dist'](#stratified_sample_unknown_dist) to resample
+from the data and change the class proportions that the Tensorflow graph sees.
+For instance, if you have a binary classification dataset that is 99.9% class
+1, a common approach is to resample from the data so that the data is more
+balanced.
+
+- - -
+
+### `tf.contrib.training.stratified_sample(tensors, labels, target_probs, batch_size, init_probs=None, enqueue_many=False, queue_capacity=16, threads_per_queue=1, name=None)` {#stratified_sample}
+
+Stochastically creates batches based on per-class probabilities.
+
+This method discards examples. Internally, it creates one queue to amortize
+the cost of disk reads, and one queue to hold the properly-proportioned
+batch. See `stratified_sample_unknown_dist` for a function that performs
+stratified sampling with one queue per class and doesn't require knowing the
+class data-distribution ahead of time.
+
+##### Args:
+
+
+*  <b>`tensors`</b>: List of tensors for data. All tensors are either one item or a
+      batch, according to enqueue_many.
+*  <b>`labels`</b>: Tensor for label of data. Label is a single integer or a batch,
+      depending on enqueue_many. It is not a one-hot vector.
+*  <b>`target_probs`</b>: Target class proportions in batch. An object whose type has a
+      registered Tensor conversion function.
+*  <b>`batch_size`</b>: Size of batch to be returned.
+*  <b>`init_probs`</b>: Class proportions in the data. An object whose type has a
+      registered Tensor conversion function, or `None` for estimating the
+      initial distribution.
+*  <b>`enqueue_many`</b>: Bool. If true, interpret input tensors as having a batch
+      dimension.
+*  <b>`queue_capacity`</b>: Capacity of the large queue that holds input examples.
+*  <b>`threads_per_queue`</b>: Number of threads for the large queue that holds input
+      examples and for the final queue with the proper class proportions.
+*  <b>`name`</b>: Optional prefix for ops created by this function.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: enqueue_many is True and labels doesn't have a batch
+      dimension, or if enqueue_many is False and labels isn't a scalar.
+*  <b>`ValueError`</b>: enqueue_many is True, and batch dimension on data and labels
+      don't match.
+*  <b>`ValueError`</b>: if probs don't sum to one.
+*  <b>`ValueError`</b>: if a zero initial probability class has a nonzero target
+      probability.
+*  <b>`TFAssertion`</b>: if labels aren't integers in [0, num classes).
+
+##### Returns:
+
+  (data_batch, label_batch), where data_batch is a list of tensors of the same
+      length as `tensors`
+
+##### Example:
+
+  # Get tensor for a single data and label example.
+  data, label = data_provider.Get(['data', 'label'])
+
+  # Get stratified batch according to per-class probabilities.
+  target_probs = [...distribution you want...]
+  [data_batch], labels = tf.contrib.training.stratified_sample(
+      [data], label, target_probs)
+
+  # Run batch through network.
+  ...
+
+
+- - -
+
+### `tf.contrib.training.stratified_sample_unknown_dist(tensors, labels, probs, batch_size, enqueue_many=False, queue_capacity=16, threads_per_queue=1, name=None)` {#stratified_sample_unknown_dist}
+
+Stochastically creates batches based on per-class probabilities.
+
+**NOTICE** This sampler can be significantly slower than `stratified_sample`
+due to each thread discarding all examples not in its assigned class.
+
+This uses a number of threads proportional to the number of classes. See
+`stratified_sample` for an implementation that discards fewer examples and
+uses a fixed number of threads. This function's only advantage over
+`stratified_sample` is that the class data-distribution doesn't need to be
+known ahead of time.
+
+##### Args:
+
+
+*  <b>`tensors`</b>: List of tensors for data. All tensors are either one item or a
+      batch, according to enqueue_many.
+*  <b>`labels`</b>: Tensor for label of data. Label is a single integer or a batch,
+      depending on enqueue_many. It is not a one-hot vector.
+*  <b>`probs`</b>: Target class probabilities. An object whose type has a registered
+      Tensor conversion function.
+*  <b>`batch_size`</b>: Size of batch to be returned.
+*  <b>`enqueue_many`</b>: Bool. If true, interpret input tensors as having a batch
+      dimension.
+*  <b>`queue_capacity`</b>: Capacity of each per-class queue.
+*  <b>`threads_per_queue`</b>: Number of threads for each per-class queue.
+*  <b>`name`</b>: Optional prefix for ops created by this function.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: enqueue_many is True and labels doesn't have a batch
+      dimension, or if enqueue_many is False and labels isn't a scalar.
+*  <b>`ValueError`</b>: enqueue_many is True, and batch dimension of data and labels
+      don't match.
+*  <b>`ValueError`</b>: if probs don't sum to one.
+*  <b>`TFAssertion`</b>: if labels aren't integers in [0, num classes).
+
+##### Returns:
+
+  (data_batch, label_batch), where data_batch is a list of tensors of the same
+      length as `tensors`
+
+##### Example:
+
+  # Get tensor for a single data and label example.
+  data, label = data_provider.Get(['data', 'label'])
+
+  # Get stratified batch according to per-class probabilities.
+  init_probs = [1.0/NUM_CLASSES for _ in range(NUM_CLASSES)]
+  [data_batch], labels = (
+      tf.contrib.training.stratified_sample_unknown_dist(
+          [data], label, init_probs, 16))
+
+  # Run batch through network.
+  ...
+
+
+
+## Bucketing
+
+Use ['bucket'](#bucket) or
+['bucket_by_sequence_length'](#bucket_by_sequence_length) to stratify
+minibatches into groups ("buckets").  Use `bucket_by_sequence_length`
+with the argument `dynamic_pad=True` to receive minibatches of similarly
+sized sequences for efficient training via `dynamic_rnn`.
+
+- - -
+
+### `tf.contrib.training.bucket(tensors, which_bucket, batch_size, num_buckets, num_threads=1, capacity=32, shapes=None, dynamic_pad=False, allow_smaller_final_batch=False, keep_input=None, shared_name=None, name=None)` {#bucket}
+
+Lazy bucketing of input tensors according to `which_bucket`.
+
+The argument `tensors` can be a list or a dictionary of tensors.
+The value returned by the function will be of the same type
+as `tensors`.
+
+The tensors entering this function are put into the bucket given by
+`which_bucket`.  Each bucket has its own queue.  When a bucket contains
+`batch_size` elements, this minibatch is pushed onto a top queue.  The
+tensors returned from this function are a the result of dequeueing the
+next minibatch from this top queue.
+
+This function is implemented using several queues. A `QueueRunner` for the
+queues is added to the current `Graph`'s `QUEUE_RUNNER` collection.
+
+As the returned tensors are the result of of a dequeue operation, evaluating
+them will throw a `tf.errors.OutOfRangeError` when the input queue is
+exhausted.  If these tensors are feeding another input queue, its queue runner
+will catch this exception, however, if they are used in your main thread
+you are responsible for catching this yourself.
+
+*N.B.:* If `dynamic_pad` is `False`, you must ensure that either
+(i) the `shapes` argument is passed, or (ii) all of the tensors in
+`tensors` must have fully-defined shapes. `ValueError` will be
+raised if neither of these conditions holds.
+
+If `dynamic_pad` is `True`, it is sufficient that the *rank* of the
+tensors is known, but individual dimensions may have shape `None`.
+In this case, for each enqueue the dimensions with value `None`
+may have a variable length; upon dequeue, the output tensors will be padded
+on the right to the maximum shape of the tensors in the current minibatch.
+For numbers, this padding takes value 0.  For strings, this padding is
+the empty string.  See `PaddingFIFOQueue` for more info.
+
+If `allow_smaller_final_batch` is `True`, a smaller batch value than
+`batch_size` is returned when the queues are closed and there are not enough
+elements to fill the batch, otherwise the pending elements are discarded.
+In addition, all output tensors' static shapes, as accessed via the
+`get_shape()` method will have a 0th `Dimension` value of `None`, and
+operations that depend on fixed batch_size would fail.
+
+##### Args:
+
+
+*  <b>`tensors`</b>: The list or dictionary of tensors, representing a single element,
+    to bucket.  Nested lists are not supported.
+*  <b>`which_bucket`</b>: An `int32` scalar Tensor taking a value in `[0, num_buckets)`.
+*  <b>`batch_size`</b>: The new batch size pulled from the queue
+    (python int or int32 scalar).
+*  <b>`num_buckets`</b>: A python integer, the number of buckets.
+*  <b>`num_threads`</b>: An integer.  The number of threads enqueuing `tensors`.
+*  <b>`capacity`</b>: An integer. The maximum number of minibatches in the top queue,
+    and also the maximum number of elements within each bucket.
+*  <b>`shapes`</b>: (Optional) The shapes for each example.  Defaults to the
+    inferred shapes for `tensors`.
+*  <b>`dynamic_pad`</b>: Boolean.  Allow variable dimensions in input shapes.
+    The given dimensions are padded upon dequeue so that tensors within a
+    batch have the same shapes.
+*  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
+    batches to be smaller if there are insufficient items left in the queues.
+*  <b>`keep_input`</b>: (Optional).  A `bool` scalar Tensor.  If provided, this tensor
+    controls whether the input is added to the queue or not.  If it evaluates
+    `True`, then `tensors` are added to the bucket; otherwise they are
+    dropped.  This tensor essentially acts as a filtering mechanism.
+    The default behavior is to assume `keep_input=True`.
+*  <b>`shared_name`</b>: (Optional). If set, the queues will be shared under the given
+    name across multiple sessions.
+*  <b>`name`</b>: (Optional) A name for the operations.
+
+##### Returns:
+
+  A tuple `(bucket, outputs)` where `bucket` is
+  a `int32` scalar tensor and `outputs` is a list or
+  dictionary of batched outputs corresponding to elements of `tensors`.
+  Every step will receive a new bucket of outputs.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the `shapes` are not specified, and cannot be
+    inferred from the elements of `tensors`.
+
+
+- - -
+
+### `tf.contrib.training.bucket_by_sequence_length(input_length, tensors, batch_size, bucket_boundaries, num_threads=1, capacity=32, shapes=None, dynamic_pad=False, allow_smaller_final_batch=False, keep_input=None, shared_name=None, name=None)` {#bucket_by_sequence_length}
+
+Lazy bucketing of inputs according to their length.
+
+This method calls `tf.contrib.training.bucket` under the hood, after first
+subdividing the bucket boundaries into separate buckets and identifying which
+bucket the given `input_length` belongs to.  See the documentation for
+`which_bucket` for details of the other arguments.
+
+##### Args:
+
+
+*  <b>`input_length`</b>: `int32` scalar `Tensor`, the sequence length of tensors.
+*  <b>`tensors`</b>: The list or dictionary of tensors, representing a single element,
+    to bucket.  Nested lists are not supported.
+*  <b>`batch_size`</b>: The new batch size pulled from the queue
+    (python int or int32 scalar).
+*  <b>`bucket_boundaries`</b>: int list, increasing non-negative numbers.
+    The edges of the buckets to use when bucketing tensors.  Two extra buckets
+    are created, one for `input_length < bucket_boundaries[0]` and
+    one for `input_length >= bucket_boundaries[-1]`.
+*  <b>`num_threads`</b>: An integer.  The number of threads enqueuing `tensors`.
+*  <b>`capacity`</b>: An integer. The maximum number of minibatches in the top queue,
+    and also the maximum number of elements within each bucket.
+*  <b>`shapes`</b>: (Optional) The shapes for each example.  Defaults to the
+    inferred shapes for `tensors`.
+*  <b>`dynamic_pad`</b>: Boolean.  Allow variable dimensions in input shapes.
+    The given dimensions are padded upon dequeue so that tensors within a
+    batch have the same shapes.
+*  <b>`allow_smaller_final_batch`</b>: (Optional) Boolean. If `True`, allow the final
+    batches to be smaller if there are insufficient items left in the queues.
+*  <b>`keep_input`</b>: (Optional).  A `bool` scalar Tensor.  If provided, this tensor
+    controls whether the input is added to the queue or not.  If it evaluates
+    `True`, then `tensors` are added to the bucket; otherwise they are
+    dropped.  This tensor essentially acts as a filtering mechanism.
+    The default behavior is to assume `keep_input=True`.
+*  <b>`shared_name`</b>: (Optional). If set, the queues will be shared under the given
+    name across multiple sessions.
+*  <b>`name`</b>: (Optional) A name for the operations.
+
+##### Returns:
+
+  A tuple `(sequence_length, outputs)` where `sequence_length` is
+  a 1-D `Tensor` of size `batch_size` and `outputs` is a list or dictionary
+  of batched, bucketed, outputs corresponding to elements of `tensors`.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: if `bucket_boundaries` is not a list of python integers.
+*  <b>`ValueError`</b>: if `bucket_boundaries` is empty or contains non-increasing
+    values.
+
+

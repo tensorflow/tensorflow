@@ -12,6 +12,7 @@ tensorflow/core/framework/tensor.pb_text.cc
 tensorflow/core/framework/summary.pb_text.cc
 tensorflow/core/framework/step_stats.pb_text.cc
 tensorflow/core/framework/op_def.pb_text.cc
+tensorflow/core/framework/node_def.pb_text.cc
 tensorflow/core/framework/log_memory.pb_text.cc
 tensorflow/core/framework/kernel_def.pb_text.cc
 tensorflow/core/framework/graph.pb_text.cc

@@ -26,7 +26,7 @@ import tensorflow as tf
 class Chi2Test(tf.test.TestCase):
 
   def testChi2LogPDF(self):
-    with tf.Session():
+    with self.test_session():
       batch_size = 6
       df = tf.constant([2.0] * batch_size, dtype=np.float64)
       df_v = 2.0
@@ -43,7 +43,7 @@ class Chi2Test(tf.test.TestCase):
       self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
 
   def testChi2CDF(self):
-    with tf.Session():
+    with self.test_session():
       batch_size = 6
       df = tf.constant([2.0] * batch_size, dtype=np.float64)
       df_v = 2.0
@@ -57,7 +57,7 @@ class Chi2Test(tf.test.TestCase):
       self.assertAllClose(cdf.eval(), expected_cdf)
 
   def testChi2Mean(self):
-    with tf.Session():
+    with self.test_session():
       df_v = np.array([1., 3, 5], dtype=np.float64)
       expected_mean = stats.chi2.mean(df_v)
       chi2 = tf.contrib.distributions.Chi2(df=df_v)
@@ -65,7 +65,7 @@ class Chi2Test(tf.test.TestCase):
       self.assertAllClose(chi2.mean().eval(), expected_mean)
 
   def testChi2Variance(self):
-    with tf.Session():
+    with self.test_session():
       df_v = np.array([1., 3, 5], np.float64)
       expected_variances = stats.chi2.var(df_v)
       chi2 = tf.contrib.distributions.Chi2(df=df_v)
@@ -73,13 +73,19 @@ class Chi2Test(tf.test.TestCase):
       self.assertAllClose(chi2.variance().eval(), expected_variances)
 
   def testChi2Entropy(self):
-    with tf.Session():
+    with self.test_session():
       df_v = np.array([1., 3, 5], dtype=np.float64)
       expected_entropy = stats.chi2.entropy(df_v)
       chi2 = tf.contrib.distributions.Chi2(df=df_v)
       self.assertEqual(chi2.entropy().get_shape(), (3,))
       self.assertAllClose(chi2.entropy().eval(), expected_entropy)
 
+  def testChi2WithAbsDf(self):
+    with self.test_session():
+      df_v = np.array([-1.3, -3.2, 5], dtype=np.float64)
+      chi2 = tf.contrib.distributions.Chi2WithAbsDf(df=df_v)
+      self.assertAllClose(tf.floor(tf.abs(df_v)).eval(), chi2.df.eval())
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   tf.test.main()

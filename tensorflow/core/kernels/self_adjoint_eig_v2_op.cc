@@ -27,11 +27,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-template <class Scalar, bool SupportsBatchOperation>
-class SelfAdjointEigV2Op
-    : public LinearAlgebraOp<Scalar, SupportsBatchOperation> {
+template <class Scalar>
+class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
  public:
-  typedef LinearAlgebraOp<Scalar, SupportsBatchOperation> Base;
+  typedef LinearAlgebraOp<Scalar> Base;
 
   explicit SelfAdjointEigV2Op(OpKernelConstruction* context) : Base(context) {
     OP_REQUIRES_OK(context, context->GetAttr("compute_v", &compute_v_));
@@ -80,12 +79,9 @@ class SelfAdjointEigV2Op
   bool compute_v_;
 };
 
-REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<float, false>),
-                   float);
-REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<double, false>),
-                   double);
-REGISTER_LINALG_OP("BatchSelfAdjointEigV2", (SelfAdjointEigV2Op<float, true>),
-                   float);
-REGISTER_LINALG_OP("BatchSelfAdjointEigV2", (SelfAdjointEigV2Op<double, true>),
+REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<float>), float);
+REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<double>), double);
+REGISTER_LINALG_OP("BatchSelfAdjointEigV2", (SelfAdjointEigV2Op<float>), float);
+REGISTER_LINALG_OP("BatchSelfAdjointEigV2", (SelfAdjointEigV2Op<double>),
                    double);
 }  // namespace tensorflow

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/base64.h"
 
+#include <cstring>
 #include <memory>
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -57,35 +58,11 @@ inline uint32 Convert(char x) {
   return static_cast<uint32>(z);
 }
 
-Status DecodeOneChar(const char* codes, char* result) {
-  const uint32 packed = (Convert(codes[0]) << 2) |
-                        (Convert(codes[1]) >> 4);
+Status DecodeThreeChars(const char* codes, char* result) {
+  const uint32 packed = (Convert(codes[0]) << 18) | (Convert(codes[1]) << 12) |
+                        (Convert(codes[2]) << 6) | (Convert(codes[3]));
   // Convert() return value has upper 25 bits set if input is invalid.
   // Therefore `packed` has high bits set iff at least one of code is invalid.
-  if (TF_PREDICT_FALSE((packed & 0xFF000000) != 0)) {
-    return errors::InvalidArgument("Invalid character found in base64.");
-  }
-  *result = static_cast<char>(packed);
-  return Status::OK();
-}
-
-Status DecodeTwoChars(const char* codes, char* result) {
-  const uint32 packed = (Convert(codes[0]) << 10) |
-                        (Convert(codes[1]) << 4) |
-                        (Convert(codes[2]) >> 2);
-  if (TF_PREDICT_FALSE((packed & 0xFF000000) != 0)) {
-    return errors::InvalidArgument("Invalid character found in base64.");
-  }
-  result[0] = static_cast<char>(packed >> 8);
-  result[1] = static_cast<char>(packed);
-  return Status::OK();
-}
-
-Status DecodeThreeChars(const char* codes, char* result) {
-  const uint32 packed = (Convert(codes[0]) << 18) |
-                        (Convert(codes[1]) << 12) |
-                        (Convert(codes[2]) << 6) |
-                        (Convert(codes[3]));
   if (TF_PREDICT_FALSE((packed & 0xFF000000) != 0)) {
     return errors::InvalidArgument("Invalid character found in base64.");
   }
@@ -106,7 +83,10 @@ Status Base64Decode(StringPiece data, string* decoded) {
     return Status::OK();
   }
 
-  // max_decoded_size may overestimate by up to 3 bytes.
+  // This decoding procedure will write 3 * ceil(data.size() / 4) bytes to be
+  // output buffer, then truncate if necessary. Therefore we must overestimate
+  // and allocate sufficient amount. Currently max_decoded_size may overestimate
+  // by up to 3 bytes.
   const size_t max_decoded_size = 3 * (data.size() / 4) + 3;
   std::unique_ptr<char[]> buffer(new char[max_decoded_size]);
   char* current = buffer.get();
@@ -135,24 +115,21 @@ Status Base64Decode(StringPiece data, string* decoded) {
     }
   }
 
-  switch (end - b64) {
-    case 4:
-      TF_RETURN_IF_ERROR(DecodeThreeChars(b64, current));
-      current += 3;
-      break;
-    case 3:
-      TF_RETURN_IF_ERROR(DecodeTwoChars(b64, current));
-      current += 2;
-      break;
-    case 2:
-      TF_RETURN_IF_ERROR(DecodeOneChar(b64, current));
-      current += 1;
-      break;
-    default:  // case 1
-      // We may check this condition early by checking data.size() % 4 == 1.
-      return errors::InvalidArgument(
-          "Base64 string length cannot be 1 modulo 4.");
+  const int remain = static_cast<int>(end - b64);
+  if (TF_PREDICT_FALSE(remain == 1)) {
+    // We may check this condition early by checking data.size() % 4 == 1.
+    return errors::InvalidArgument(
+        "Base64 string length cannot be 1 modulo 4.");
   }
+
+  // A valid base64 character will replace paddings, if any.
+  char tail[4] = {kBase64UrlSafeChars[0], kBase64UrlSafeChars[0],
+                  kBase64UrlSafeChars[0], kBase64UrlSafeChars[0]};
+  // Copy tail of the input into the array, then decode.
+  std::memcpy(tail, b64, remain * sizeof(*b64));
+  TF_RETURN_IF_ERROR(DecodeThreeChars(tail, current));
+  // We know how many parsed characters are valid.
+  current += remain - 1;
 
   decoded->assign(buffer.get(), current - buffer.get());
   return Status::OK();

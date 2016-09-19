@@ -19,7 +19,7 @@ limitations under the License.
 namespace tensorflow {
 
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("Variable")
     .Output("ref: Ref(dtype)")
@@ -69,7 +69,7 @@ REGISTER_OP("TemporaryVariable")
     .SetShapeFn([](InferenceContext* c) {
       TensorShapeProto shape_proto;
       TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_proto));
-      const Shape* output;
+      ShapeHandle output;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &output));
       c->set_output(0, output);
       return Status::OK();
@@ -201,12 +201,12 @@ output_ref:= Same as "ref".  Returned as a convenience for operations that want
 namespace {
 
 Status ScatterUpdateShape(InferenceContext* c) {
-  const Shape* var_shape = c->input(0);
-  const Shape* indices_shape = c->input(1);
+  ShapeHandle var_shape = c->input(0);
+  ShapeHandle indices_shape = c->input(1);
 
-  const Shape* unused_updates_shape;
-  const Shape* concat;
-  const Shape* var_subshape;
+  ShapeHandle unused_updates_shape;
+  ShapeHandle concat;
+  ShapeHandle var_subshape;
   TF_RETURN_IF_ERROR(c->Subshape(var_shape, 1, &var_subshape));
   TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, var_subshape, &concat));
   TF_RETURN_IF_ERROR(c->Merge(c->input(2), concat, &unused_updates_shape));
@@ -348,13 +348,93 @@ use_locking: If True, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
 
+REGISTER_OP("ScatterMul")
+    .Input("ref: Ref(T)")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Output("output_ref: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ScatterUpdateShape)
+    .Doc(R"doc(
+Multiplies sparse updates into a variable reference.
+
+This operation computes
+
+    # Scalar indices
+    ref[indices, ...] *= updates[...]
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] *= updates[i, ...]
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] *= updates[i, ..., j, ...]
+
+This operation outputs `ref` after the update is done.
+This makes it easier to chain operations that need to use the reset value.
+
+Duplicate entries are handled correctly: if multiple `indices` reference
+the same location, their contributions multiply.
+
+Requires `updates.shape = indices.shape + ref.shape[1:]`.
+
+ref: Should be from a `Variable` node.
+indices: A tensor of indices into the first dimension of `ref`.
+updates: A tensor of updated values to multiply to `ref`.
+output_ref:= Same as `ref`.  Returned as a convenience for operations that want
+  to use the updated values after the update is done.
+use_locking: If True, the operation will be protected by a lock;
+  otherwise the behavior is undefined, but may exhibit less contention.
+)doc");
+
+REGISTER_OP("ScatterDiv")
+    .Input("ref: Ref(T)")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Output("output_ref: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ScatterUpdateShape)
+    .Doc(R"doc(
+Divides a variable reference by sparse updates.
+
+This operation computes
+
+    # Scalar indices
+    ref[indices, ...] /= updates[...]
+
+    # Vector indices (for each i)
+    ref[indices[i], ...] /= updates[i, ...]
+
+    # High rank indices (for each i, ..., j)
+    ref[indices[i, ..., j], ...] /= updates[i, ..., j, ...]
+
+This operation outputs `ref` after the update is done.
+This makes it easier to chain operations that need to use the reset value.
+
+Duplicate entries are handled correctly: if multiple `indices` reference
+the same location, their contributions divide.
+
+Requires `updates.shape = indices.shape + ref.shape[1:]`.
+
+ref: Should be from a `Variable` node.
+indices: A tensor of indices into the first dimension of `ref`.
+updates: A tensor of values that `ref` is divided by.
+output_ref:= Same as `ref`.  Returned as a convenience for operations that want
+  to use the updated values after the update is done.
+use_locking: If True, the operation will be protected by a lock;
+  otherwise the behavior is undefined, but may exhibit less contention.
+)doc");
+
 REGISTER_OP("CountUpTo")
     .Input("ref: Ref(T)")
     .Output("output: T")
     .Attr("limit: int")
     .Attr("T: {int32, int64}")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* output;
+      ShapeHandle output;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &output));
       c->set_output(0, output);
       return Status::OK();

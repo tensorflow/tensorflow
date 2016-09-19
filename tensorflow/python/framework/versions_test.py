@@ -25,8 +25,10 @@ class VersionTest(tf.test.TestCase):
 
   def testVersion(self):
     self.assertEqual(type(tf.__version__), str)
+    self.assertEqual(type(tf.VERSION), str)
     # This pattern will need to grow as we include alpha, builds, etc.
     self.assertRegexpMatches(tf.__version__, r'^\d+\.\d+\.\w+$')
+    self.assertRegexpMatches(tf.VERSION, r'^\d+\.\d+\.\w+$')
 
   def testGraphDefVersion(self):
     version = tf.GRAPH_DEF_VERSION
@@ -38,6 +40,11 @@ class VersionTest(tf.test.TestCase):
     self.assertLessEqual(0, min_producer)
     self.assertLessEqual(min_producer, version)
 
+  def testGitAndCompilerVersion(self):
+    self.assertEqual(type(tf.__git_version__), str)
+    self.assertEqual(type(tf.__compiler_version__), str)
+    self.assertEqual(type(tf.GIT_VERSION), str)
+    self.assertEqual(type(tf.COMPILER_VERSION), str)
 
 if __name__ == "__main__":
   tf.test.main()

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""# TensorFlow Graph Editor.
+"""TensorFlow Graph Editor.
 
 The TensorFlow Graph Editor library allows for modification of an existing
 tf.Graph instance in-place.
@@ -61,7 +61,7 @@ Note that this procedure is very costly because a new session must be created
 after any modifications. Among other things, it takes time because the entire
 graph state must be saved and restored again.
 
-### Sub-graph
+## Sub-graph
 
 Most of the functions in the Graph Editor library operate on *sub-graph*.
 More precisely, they take as input arguments instances of the SubGraphView class
@@ -94,7 +94,7 @@ to avoid any confusion, the default graph is never used and the graph on
 which to operate must always be explicitely given. This is the reason why
 *graph=tf.get_default_graph()* is used in the code snippets above.
 
-### Modules overview
+## Modules overview
 
 * util: utility functions.
 * select: various selection methods of TensorFlow tensors and operations.
@@ -109,7 +109,7 @@ which to operate must always be explicitely given. This is the reason why
 * transform: the Transformer class, which enables transforming
   (or simply copying) a subgraph into another one.
 
-### Module: util
+## Module: util
 
 @@make_list_of_op
 @@get_tensors
@@ -121,7 +121,7 @@ which to operate must always be explicitely given. This is the reason why
 @@make_placeholder_from_tensor
 @@make_placeholder_from_dtype_and_shape
 
-### Module: select
+## Module: select
 
 @@filter_ts
 @@filter_ts_from_regex
@@ -140,13 +140,13 @@ which to operate must always be explicitely given. This is the reason why
 @@select_ts
 @@select_ops_and_ts
 
-### Module: subgraph
+## Module: subgraph
 
 @@SubGraphView
 @@make_view
 @@make_view_from_scope
 
-### Module: reroute
+## Module: reroute
 
 @@swap_ts
 @@reroute_a2b_ts
@@ -163,7 +163,7 @@ which to operate must always be explicitely given. This is the reason why
 @@remove_control_inputs
 @@add_control_inputs
 
-### Module: edit
+## Module: edit
 
 @@detach_control_inputs
 @@detach_control_outputs
@@ -173,7 +173,7 @@ which to operate must always be explicitely given. This is the reason why
 @@connect
 @@bypass
 
-### Module: transform
+## Module: transform
 
 @@replace_t_with_placeholder_handler
 @@keep_t_if_possible_handler
@@ -183,13 +183,15 @@ which to operate must always be explicitely given. This is the reason why
 @@transform_op_in_place
 @@Transformer
 @@copy
+@@copy_with_input_replacements
+@@graph_replace
 
-### Module: match
+## Module: match
 
 @@op_type
 @@OpMatcher
 
-### Useful aliases
+## Useful aliases
 
 @@ph
 @@sgv

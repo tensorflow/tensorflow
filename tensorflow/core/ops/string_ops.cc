@@ -19,9 +19,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
+using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
-using shape_inference::Shape;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("StringToHashBucketFast")
     .Input("input: string")
@@ -95,7 +95,7 @@ REGISTER_OP("ReduceJoin")
     .Attr("keep_dims: bool = false")
     .Attr("separator: string = ''")
     .Output("output: string")
-    .SetShapeFn(shape_inference::ReductionShape)
+    .SetShapeFn(shape_inference::ReductionShapeForReduceJoin)
     .Doc(R"doc(
 Joins a string Tensor across the given dimensions.
 
@@ -180,7 +180,7 @@ REGISTER_OP("StringJoin")
       // Merge the non-scalars to find the output shape.
       // Don't merge inputs with unknown rank, as they can actually be scalars
       // or the output shape.
-      const Shape* out = c->UnknownShape();
+      ShapeHandle out = c->UnknownShape();
       for (int i = 0; i < c->num_inputs(); ++i) {
         if (c->RankKnown(c->input(i)) && c->Rank(c->input(i)) != 0) {
           TF_RETURN_IF_ERROR(c->Merge(out, c->input(i), &out));
@@ -206,14 +206,13 @@ REGISTER_OP("StringSplit")
     .Output("values: string")
     .Output("shape: int64")
     .SetShapeFn([](InferenceContext* c) {
-      const Shape* unsed_shape;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unsed_shape));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unsed_shape));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
 
-      c->set_output(0, c->Matrix(InferenceContext::kUnknownDim,
-                                 InferenceContext::kUnknownDim));
+      c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 2));
       c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
-      c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(2, c->Vector(2));
       return Status::OK();
     })
     .Doc(R"doc(

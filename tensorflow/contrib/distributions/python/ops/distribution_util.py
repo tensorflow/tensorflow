@@ -18,14 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -62,7 +64,7 @@ def assert_close(
           y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.less_equal(math_ops.abs(x-y), tol))
-    return logging_ops.Assert(
+    return control_flow_ops.Assert(
         condition, data, summarize=summarize)
 
 
@@ -91,13 +93,14 @@ def assert_integer_form(
 
 
 def assert_symmetric(matrix):
-  matrix_t = array_ops.batch_matrix_transpose(matrix)
+  matrix_t = array_ops.matrix_transpose(matrix)
   return control_flow_ops.with_dependencies(
       [check_ops.assert_equal(matrix, matrix_t)], matrix)
 
 
 def get_logits_and_prob(
-    logits=None, p=None, multidimensional=False, validate_args=True, name=None):
+    logits=None, p=None,
+    multidimensional=False, validate_args=False, name="GetLogitsAndProb"):
   """Converts logits to probabilities and vice-versa, and returns both.
 
   Args:
@@ -108,8 +111,9 @@ def get_logits_and_prob(
       This will additionally assert that the values in the last dimension
       sum to one. If `False`, will instead assert that each value is in
       `[0, 1]`.
-    validate_args: Whether to assert `0 <= p <= 1` if multidimensional is
-      `False`, otherwise that the last dimension of `p` sums to one.
+    validate_args: `Boolean`, default `False`.  Whether to assert `0 <= p <= 1`
+      if multidimensional is `False`, otherwise that the last dimension of `p`
+      sums to one.
     name: A name for this operation (optional).
 
   Returns:
@@ -120,18 +124,16 @@ def get_logits_and_prob(
   Raises:
     ValueError: if neither `p` nor `logits` were passed in, or both were.
   """
-  if p is None and logits is None:
-    raise ValueError("Must pass p or logits.")
-  elif p is not None and logits is not None:
-    raise ValueError("Must pass either p or logits, not both.")
-  elif p is None:
-    with ops.name_scope(name, values=[logits]):
+  with ops.name_scope(name, values=[p, logits]):
+    if p is None and logits is None:
+      raise ValueError("Must pass p or logits.")
+    elif p is not None and logits is not None:
+      raise ValueError("Must pass either p or logits, not both.")
+    elif p is None:
       logits = array_ops.identity(logits, name="logits")
-    with ops.name_scope(name):
       with ops.name_scope("p"):
         p = math_ops.sigmoid(logits)
-  elif logits is None:
-    with ops.name_scope(name):
+    elif logits is None:
       with ops.name_scope("p"):
         p = array_ops.identity(p)
         if validate_args:
@@ -147,7 +149,7 @@ def get_logits_and_prob(
           p = control_flow_ops.with_dependencies(dependencies, p)
       with ops.name_scope("logits"):
         logits = math_ops.log(p) - math_ops.log(1. - p)
-  return (logits, p)
+    return (logits, p)
 
 
 def log_combinations(n, counts, name="log_combinations"):
@@ -183,7 +185,7 @@ def log_combinations(n, counts, name="log_combinations"):
     return total_permutations - redundant_permutations
 
 
-def batch_matrix_diag_transform(matrix, transform=None, name=None):
+def matrix_diag_transform(matrix, transform=None, name=None):
   """Transform diagonal of [batch-]matrix, leave rest of matrix unchanged.
 
   Create a trainable covariance defined by a Cholesky factor:
@@ -195,7 +197,7 @@ def batch_matrix_diag_transform(matrix, transform=None, name=None):
 
   # Make the diagonal positive.  If the upper triangle was zero, this would be a
   # valid Cholesky factor.
-  chol = batch_matrix_diag_transform(matrix, transform=tf.nn.softplus)
+  chol = matrix_diag_transform(matrix, transform=tf.nn.softplus)
 
   # OperatorPDCholesky ignores the upper triangle.
   operator = OperatorPDCholesky(chol)
@@ -207,7 +209,7 @@ def batch_matrix_diag_transform(matrix, transform=None, name=None):
   # Get a trainable Cholesky factor.
   matrix_values = tf.contrib.layers.fully_connected(activations, 4)
   matrix = tf.reshape(matrix_values, (batch_size, 2, 2))
-  chol = batch_matrix_diag_transform(matrix, transform=tf.nn.softplus)
+  chol = matrix_diag_transform(matrix, transform=tf.nn.softplus)
 
   # Get a trainable mean.
   mu = tf.contrib.layers.fully_connected(activations, 2)
@@ -227,18 +229,172 @@ def batch_matrix_diag_transform(matrix, transform=None, name=None):
       be applied to the diagonal of `matrix`.  If `None`, `matrix` is returned
       unchanged.  Defaults to `None`.
     name:  A name to give created ops.
-      Defaults to "batch_matrix_diag_transform".
+      Defaults to "matrix_diag_transform".
 
   Returns:
     A `Tensor` with same shape and `dtype` as `matrix`.
   """
-  with ops.name_scope(name, "batch_matrix_diag_transform", [matrix]):
+  with ops.name_scope(name, "matrix_diag_transform", [matrix]):
     matrix = ops.convert_to_tensor(matrix, name="matrix")
     if transform is None:
       return matrix
     # Replace the diag with transformed diag.
-    diag = array_ops.batch_matrix_diag_part(matrix)
+    diag = array_ops.matrix_diag_part(matrix)
     transformed_diag = transform(diag)
-    transformed_mat = array_ops.batch_matrix_set_diag(matrix, transformed_diag)
+    transformed_mat = array_ops.matrix_set_diag(matrix, transformed_diag)
 
   return transformed_mat
+
+
+def rotate_transpose(x, shift, name="rotate_transpose"):
+  """Circularly moves dims left or right.
+
+  Effectively identical to:
+
+  ```python
+  numpy.transpose(x, numpy.roll(numpy.arange(len(x.shape)), shift))
+  ```
+
+  When `validate_args=False` additional graph-runtime checks are
+  performed. These checks entail moving data from to GPU to CPU.
+
+  Example:
+
+    ```python
+    x = ... # Tensor of shape [1, 2, 3, 4].
+    rotate_transpose(x, -1)  # result shape: [2, 3, 4, 1]
+    rotate_transpose(x, -2)  # result shape: [3, 4, 1, 2]
+    rotate_transpose(x,  1)  # result shape: [4, 1, 2, 3]
+    rotate_transpose(x,  2)  # result shape: [3, 4, 1, 2]
+    rotate_transpose(x, 7) == rotate_transpose(x, 3)
+    rotate_transpose(x, -7) == rotate_transpose(x, -3)
+    ```
+
+  Args:
+    x: `Tensor`.
+    shift: `Tensor`. Number of dimensions to transpose left (shift<0) or
+      transpose right (shift>0).
+    name: `String`. The name to give this op.
+
+  Returns:
+    rotated_x: Input `Tensor` with dimensions circularly rotated by shift.
+
+  Raises:
+    TypeError: if shift is not integer type.
+  """
+  with ops.name_scope(name, values=[x, shift]):
+    x = ops.convert_to_tensor(x, name="x")
+    shift = ops.convert_to_tensor(shift, name="shift")
+    # We do not assign back to preserve constant-ness.
+    check_ops.assert_integer(shift)
+    shift_value_static = tensor_util.constant_value(shift)
+    ndims = x.get_shape().ndims
+    if ndims is not None and shift_value_static is not None:
+      if ndims < 2: return x
+      shift_value_static = np.sign(shift_value_static) * (
+          abs(shift_value_static) % ndims)
+      if shift_value_static == 0: return x
+      perm = np.roll(np.arange(ndims), shift_value_static)
+      return array_ops.transpose(x, perm=perm)
+    else:
+      # Consider if we always had a positive shift, and some specified
+      # direction.
+      # When shifting left we want the new array:
+      #   last(x, n-shift) + first(x, shift)
+      # and if shifting right then we want:
+      #   last(x, shift) + first(x, n-shift)
+      # Observe that last(a) == slice(a, n) and first(a) == slice(0, a).
+      # Also, we can encode direction and shift as one: direction * shift.
+      # Combining these facts, we have:
+      #   a = cond(shift<0, -shift, n-shift)
+      #   last(x, n-a) + first(x, a) == x[a:n] + x[0:a]
+      # Finally, we transform shift by modulo length so it can be specified
+      # independently from the array upon which it operates (like python).
+      ndims = array_ops.rank(x)
+      shift = math_ops.select(math_ops.less(shift, 0),
+                              math_ops.mod(-shift, ndims),
+                              ndims - math_ops.mod(shift, ndims))
+      first = math_ops.range(0, shift)
+      last = math_ops.range(shift, ndims)
+      perm = array_ops.concat(0, (last, first))
+      return array_ops.transpose(x, perm=perm)
+
+
+def pick_vector(cond,
+                true_vector,
+                false_vector,
+                name="pick_vector"):
+  """Picks possibly different length row `Tensor`s based on condition.
+
+  Value `Tensor`s should have exactly one dimension.
+
+  If `cond` is a python Boolean or `tf.constant` then either `true_vector` or
+  `false_vector` is immediately returned. I.e., no graph nodes are created and
+  no validation happens.
+
+  Args:
+    cond: `Tensor`. Must have `dtype=tf.bool` and be scalar.
+    true_vector: `Tensor` of one dimension. Returned when cond is `True`.
+    false_vector: `Tensor` of one dimension. Returned when cond is `False`.
+    name: `String`. The name to give this op.
+
+  Example:
+
+  ```python
+  pick_vector(tf.less(0, 5), tf.range(10, 12), tf.range(15, 18))
+  # result is tensor: [10, 11].
+  pick_vector(tf.less(5, 0), tf.range(10, 12), tf.range(15, 18))
+  # result is tensor: [15, 16, 17].
+  ```
+
+  Returns:
+    true_or_false_vector: `Tensor`.
+
+  Raises:
+    TypeError: if `cond.dtype != tf.bool`
+    TypeError: if `cond` is not a constant and
+      `true_vector.dtype != false_vector.dtype`
+  """
+  with ops.op_scope((cond, true_vector, false_vector), name):
+    cond = ops.convert_to_tensor(cond, name="cond")
+    if cond.dtype != dtypes.bool:
+      raise TypeError("%s.dtype=%s which is not %s" %
+                      (cond.name, cond.dtype, dtypes.bool))
+    cond_value_static = tensor_util.constant_value(cond)
+    if cond_value_static is not None:
+      return true_vector if cond_value_static else false_vector
+    true_vector = ops.convert_to_tensor(true_vector, name="true_vector")
+    false_vector = ops.convert_to_tensor(false_vector, name="false_vector")
+    if true_vector.dtype != false_vector.dtype:
+      raise TypeError(
+          "%s.dtype=%s does not match %s.dtype=%s"
+          % (true_vector.name, true_vector.dtype,
+             false_vector.name, false_vector.dtype))
+    n = array_ops.shape(true_vector)[0]
+    return array_ops.slice(array_ops.concat(0, (true_vector, false_vector)),
+                           [math_ops.select(cond, 0, n)],
+                           [math_ops.select(cond, n, -1)])
+
+
+def append_class_fun_doc(fn, doc_str):
+  """Appends the `doc_str` argument to `fn.__doc__`.
+
+  This function is primarily needed because Python 3 changes how docstrings are
+  programmatically set.
+
+  Args:
+    fn: Class function.
+    doc_str: String
+  """
+  # TODO(b/31100586): Figure out why appending accumulates rather than resets
+  # for each subclass.
+  if sys.version_info.major < 3:
+    if fn.__func__.__doc__ is None:
+      fn.__func__.__doc__ = doc_str
+    # else:
+    #   fn.__func__.__doc__ += doc_str
+  else:
+    if fn.__doc__ is None:
+      fn.__doc__ = doc_str
+    # else:
+    #   fn.__doc__ += doc_str

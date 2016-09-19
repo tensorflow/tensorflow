@@ -34,6 +34,13 @@ class PyOpTest(tf.test.TestCase):
     def my_func(x, y):
       return np.sinh(x) + np.cosh(y)
 
+    # single type
+    with self.test_session():
+      x = tf.constant(1.0, tf.float32)
+      y = tf.constant(2.0, tf.float32)
+      z = tf.py_func(my_func, [x, y], tf.float32)
+      self.assertEqual(z.eval(), my_func(1.0, 2.0).astype(np.float32))
+
     # scalar
     with self.test_session():
       x = tf.constant(1.0, tf.float32)

@@ -22,8 +22,6 @@ from __future__ import print_function
 import functools
 
 from tensorflow.contrib import rnn as contrib_rnn
-from tensorflow.contrib.learn.python.learn.ops import autoencoder_ops
-from tensorflow.contrib.learn.python.learn.ops import dnn_ops
 from tensorflow.contrib.learn.python.learn.ops import losses_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -81,8 +79,9 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
     uniform_unit_scaling_initialzer will be used.
   """
   with vs.variable_scope('linear_regression'):
-    logging_ops.histogram_summary('linear_regression.x', x)
-    logging_ops.histogram_summary('linear_regression.y', y)
+    scope_name = vs.get_variable_scope().name
+    logging_ops.histogram_summary('%s.x' % scope_name, x)
+    logging_ops.histogram_summary('%s.y' % scope_name, y)
     dtype = x.dtype.base_dtype
     y_shape = y.get_shape()
     if len(y_shape) == 1:
@@ -103,8 +102,8 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
                              initializer=init_ops.random_normal_initializer(
                                  init_mean, init_stddev, dtype=dtype),
                              dtype=dtype)
-    logging_ops.histogram_summary('linear_regression.weights', weights)
-    logging_ops.histogram_summary('linear_regression.bias', bias)
+    logging_ops.histogram_summary('%s.weights' % scope_name, weights)
+    logging_ops.histogram_summary('%s.bias' % scope_name, bias)
     return losses_ops.mean_squared_error_regressor(x, y, weights, bias)
 
 
@@ -139,8 +138,9 @@ def logistic_regression(x,
     uniform_unit_scaling_initialzer will be used.
   """
   with vs.variable_scope('logistic_regression'):
-    logging_ops.histogram_summary('%s.x' % vs.get_variable_scope().name, x)
-    logging_ops.histogram_summary('%s.y' % vs.get_variable_scope().name, y)
+    scope_name = vs.get_variable_scope().name
+    logging_ops.histogram_summary('%s.x' % scope_name, x)
+    logging_ops.histogram_summary('%s.y' % scope_name, y)
     dtype = x.dtype.base_dtype
     # Set up the requested initialization.
     if init_mean is None:
@@ -157,10 +157,8 @@ def logistic_regression(x,
                              initializer=init_ops.random_normal_initializer(
                                  init_mean, init_stddev, dtype=dtype),
                              dtype=dtype)
-    logging_ops.histogram_summary('%s.weights' % vs.get_variable_scope().name,
-                                  weights)
-    logging_ops.histogram_summary('%s.bias' % vs.get_variable_scope().name,
-                                  bias)
+    logging_ops.histogram_summary('%s.weights' % scope_name, weights)
+    logging_ops.histogram_summary('%s.bias' % scope_name, bias)
     # If no class weight provided, try to retrieve one from pre-defined
     # tensor name in the graph.
     if not class_weight:
@@ -177,66 +175,8 @@ def logistic_regression(x,
                                          class_weight=class_weight)
 
 
-def get_dnn_model(hidden_units, target_predictor_fn, dropout=None):
-  """Returns a function that creates a DNN TensorFlow subgraph.
-
-  Args:
-    hidden_units: List of values of hidden units for layers.
-    target_predictor_fn: Function that will predict target from input
-                         features. This can be logistic regression,
-                         linear regression or any other model,
-                         that takes x, y and returns predictions and loss
-                         tensors.
-    dropout: When not none, causes dropout regularization to be used,
-             with the specified probability of removing a given coordinate.
-
-  Returns:
-    A function that creates the subgraph.
-  """
-
-  def dnn_estimator(x, y):
-    """DNN estimator with target predictor function on top."""
-    layers = dnn_ops.dnn(x, hidden_units, dropout=dropout)
-    return target_predictor_fn(layers, y)
-
-  return dnn_estimator
-
-
-def get_autoencoder_model(hidden_units, target_predictor_fn,
-                          activation, add_noise=None, dropout=None):
-  """Returns a function that creates a Autoencoder TensorFlow subgraph.
-
-  Args:
-    hidden_units: List of values of hidden units for layers.
-    target_predictor_fn: Function that will predict target from input
-                         features. This can be logistic regression,
-                         linear regression or any other model,
-                         that takes x, y and returns predictions and loss
-                         tensors.
-    activation: activation function used to map inner latent layer onto
-                reconstruction layer.
-    add_noise: a function that adds noise to tensor_in,
-           e.g. def add_noise(x):
-                    return(x + np.random.normal(0, 0.1, (len(x), len(x[0]))))
-    dropout: When not none, causes dropout regularization to be used,
-             with the specified probability of removing a given coordinate.
-
-  Returns:
-      A function that creates the subgraph.
-  """
-  def dnn_autoencoder_estimator(x):
-    """Autoencoder estimator with target predictor function on top."""
-    encoder, decoder = autoencoder_ops.dnn_autoencoder(
-        x, hidden_units, activation,
-        add_noise=add_noise, dropout=dropout)
-    return encoder, decoder, target_predictor_fn(x, decoder)
-  return dnn_autoencoder_estimator
-
-
 ## This will be in TensorFlow 0.7.
 ## TODO(ilblackdragon): Clean this up when it's released
-
-
 def _reverse_seq(input_seq, lengths):
   """Reverse a list of Tensors up to specified lengths.
 

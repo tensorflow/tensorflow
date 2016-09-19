@@ -16,6 +16,7 @@ set(tf_op_lib_names
     "attention_ops"
     "candidate_sampling_ops"
     "control_flow_ops"
+    "ctc_ops"
     "data_flow_ops"
     "image_ops"
     "io_ops"

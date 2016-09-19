@@ -13,14 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/util/presized_cuckoo_map.h"
+#include <array>
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/util/presized_cuckoo_map.h"
 
 namespace tensorflow {
 namespace {
+
+TEST(PresizedCuckooMapTest, MultiplyHigh) {
+  struct Testcase {
+    uint64 x;
+    uint64 y;
+    uint64 result;
+  };
+  std::array<Testcase, 7> testcases{
+      {{0, 0, 0},
+       {0xffffffff, 0xffffffff, 0},
+       {0x2, 0xf000000000000000, 1},
+       {0x3, 0xf000000000000000, 2},
+       {0x3, 0xf000000000000001, 2},
+       {0x3, 0xffffffffffffffff, 2},
+       {0xffffffffffffffff, 0xffffffffffffffff, 0xfffffffffffffffe}}};
+  for (auto &tc : testcases) {
+    EXPECT_EQ(tc.result, presized_cuckoo_map::multiply_high_u64(tc.x, tc.y));
+  }
+}
 
 TEST(PresizedCuckooMapTest, Basic) {
   PresizedCuckooMap<int> pscm(1000);
@@ -34,24 +54,31 @@ TEST(PresizedCuckooMapTest, TooManyItems) {
   static constexpr int kTableSize = 1000;
   PresizedCuckooMap<int> pscm(kTableSize);
   for (uint64 i = 0; i < kTableSize; i++) {
-    EXPECT_TRUE(pscm.InsertUnique(i, i));
+    uint64 key =
+        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64)));
+    ASSERT_TRUE(pscm.InsertUnique(key, i));
   }
   // Try to over-fill the table.  A few of these
   // inserts will succeed, but should start failing.
   uint64 failed_at = 0;
   for (uint64 i = kTableSize; i < (2 * kTableSize); i++) {
-    if (!pscm.InsertUnique(i, i)) {
+    uint64 key =
+        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64)));
+    if (!pscm.InsertUnique(key, i)) {
       failed_at = i;
       break;
     }
   }
   // Requirement 1:  Table must return failure when it's full.
   EXPECT_NE(failed_at, 0);
+
   // Requirement 2:  Table must preserve all items inserted prior
   // to the failure.
   for (uint64 i = 0; i < failed_at; i++) {
     int out;
-    EXPECT_TRUE(pscm.Find(i, &out));
+    uint64 key =
+        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64)));
+    EXPECT_TRUE(pscm.Find(key, &out));
     EXPECT_EQ(out, i);
   }
 }
@@ -61,6 +88,22 @@ TEST(PresizedCuckooMapTest, ZeroSizeMap) {
   int out;
   for (uint64 i = 0; i < 100; i++) {
     EXPECT_FALSE(pscm.Find(i, &out));
+  }
+}
+
+TEST(PresizedCuckooMapTest, RepeatedClear) {
+  PresizedCuckooMap<int> pscm(2);
+  int out;
+  for (int i = 0; i < 100; ++i) {
+    pscm.InsertUnique(0, 0);
+    pscm.InsertUnique(1, 1);
+    EXPECT_TRUE(pscm.Find(0, &out));
+    EXPECT_EQ(0, out);
+    EXPECT_TRUE(pscm.Find(1, &out));
+    EXPECT_EQ(1, out);
+    pscm.Clear(2);
+    EXPECT_FALSE(pscm.Find(0, &out));
+    EXPECT_FALSE(pscm.Find(1, &out));
   }
 }
 

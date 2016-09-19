@@ -1,5 +1,6 @@
 # Description:
-#   Contains ops for statistical distributions (with pdf, cdf, sample, etc...).
+#   Contains ops for working with statistical distributions,
+#   particularly useful for Bayesian inference.
 #   APIs here are meant to evolve over time.
 
 licenses(["notice"])  # Apache 2.0
@@ -17,11 +18,48 @@ py_library(
 )
 
 cuda_py_test(
+    name = "entropy_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/entropy_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "monte_carlo_test",
+    size = "small",
+    srcs = ["python/kernel_tests/monte_carlo_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "special_math_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/special_math_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "stochastic_graph_test",
     size = "small",
     srcs = ["python/kernel_tests/stochastic_graph_test.py"],
     additional_deps = [
         ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -33,6 +71,31 @@ cuda_py_test(
     srcs = ["python/kernel_tests/variational_inference_test.py"],
     additional_deps = [
         ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "stochastic_tensor_test",
+    size = "small",
+    srcs = ["python/kernel_tests/stochastic_tensor_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "stochastic_gradient_estimators_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/stochastic_gradient_estimators_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
@@ -44,6 +107,7 @@ cuda_py_test(
     srcs = ["examples/reinforce_simple/reinforce_simple_example.py"],
     additional_deps = [
         ":bayesflow_py",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],

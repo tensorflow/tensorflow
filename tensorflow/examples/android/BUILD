@@ -73,6 +73,8 @@ filegroup(
             "**/OWNERS",
             "bin/**",
             "gen/**",
+            "gradleBuild/**",
+            "libs/**",
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],

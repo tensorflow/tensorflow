@@ -77,6 +77,6 @@ Some useful partitioners are available.  See, e.g.,
 
 
 *  <b>`ValueError`</b>: when creating a new variable and shape is not declared,
-    or when violating reuse during variable creation. Reuse is set inside
-    `variable_scope`.
+    when violating reuse during variable creation, or when `initializer` dtype
+    and `dtype` don't match. Reuse is set inside `variable_scope`.
 

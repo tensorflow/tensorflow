@@ -189,6 +189,8 @@ calls. If failure occurred in the process, will be called as well.
 
 A setter called automatically by the target estimator.
 
+If the estimator is locked, this method does nothing.
+
 ##### Args:
 
 
@@ -392,6 +394,8 @@ Callback after a step is finished or `end()` is called.
 
 A setter called automatically by the target estimator.
 
+If the estimator is locked, this method does nothing.
+
 ##### Args:
 
 
@@ -557,6 +561,8 @@ End epoch.
 #### `tf.contrib.learn.monitors.CheckpointSaver.set_estimator(estimator)` {#CheckpointSaver.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -788,6 +794,8 @@ In addition, the callback has the opportunity to stop training by returning
 
 A setter called automatically by the target estimator.
 
+If the estimator is locked, this method does nothing.
+
 ##### Args:
 
 
@@ -853,20 +861,33 @@ When overriding this method, you must call the super implementation.
 Monitor that exports Estimator every N steps.
 - - -
 
-#### `tf.contrib.learn.monitors.ExportMonitor.__init__(every_n_steps, export_dir, exports_to_keep=5, signature_fn=None, default_batch_size=1)` {#ExportMonitor.__init__}
+#### `tf.contrib.learn.monitors.ExportMonitor.__init__(*args, **kwargs)` {#ExportMonitor.__init__}
 
-Initializes ExportMonitor.
+Initializes ExportMonitor. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
+Instructions for updating:
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will both become required args.
 
+    Args:
+      every_n_steps: Run monitor every N steps.
+      export_dir: str, folder to export.
+      input_fn: A function that takes no argument and returns a tuple of
+        (features, targets), where features is a dict of string key to `Tensor`
+        and targets is a `Tensor` that's currently not used (and so can be
+        `None`).
+      input_feature_key: String key into the features dict returned by
+        `input_fn` that corresponds to the raw `Example` strings `Tensor` that
+        the exported model will take as input.
+      exports_to_keep: int, number of exports to keep.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `dict` of `Tensor`s for predictions.
+      default_batch_size: Default batch size of the `Example` placeholder.
 
-*  <b>`every_n_steps`</b>: Run monitor every N steps.
-*  <b>`export_dir`</b>: str, folder to export.
-*  <b>`exports_to_keep`</b>: int, number of exports to keep.
-*  <b>`signature_fn`</b>: Function that returns a default signature and a named
-    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-    for features and `dict` of `Tensor`s for predictions.
-*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
+    Raises:
+      ValueError: If `input_fn` and `input_feature_key` are not both defined or
+        are not both `None`.
 
 
 - - -
@@ -998,6 +1019,8 @@ Callback before every n'th step begins.
 #### `tf.contrib.learn.monitors.ExportMonitor.set_estimator(estimator)` {#ExportMonitor.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -1204,6 +1227,8 @@ calls. If failure occurred in the process, will be called as well.
 
 A setter called automatically by the target estimator.
 
+If the estimator is locked, this method does nothing.
+
 ##### Args:
 
 
@@ -1358,6 +1383,8 @@ Callback after a step is finished or `end()` is called.
 #### `tf.contrib.learn.monitors.LoggingTrainable.set_estimator(estimator)` {#LoggingTrainable.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -1545,6 +1572,8 @@ Callback after a step is finished or `end()` is called.
 #### `tf.contrib.learn.monitors.NanLoss.set_estimator(estimator)` {#NanLoss.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -1735,6 +1764,8 @@ Callback after a step is finished or `end()` is called.
 #### `tf.contrib.learn.monitors.PrintTensor.set_estimator(estimator)` {#PrintTensor.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -2100,6 +2131,8 @@ calls. If failure occurred in the process, will be called as well.
 #### `tf.contrib.learn.monitors.StopAtStep.set_estimator(estimator)` {#StopAtStep.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 
@@ -2491,6 +2524,8 @@ Callback before every n'th step begins.
 #### `tf.contrib.learn.monitors.ValidationMonitor.set_estimator(estimator)` {#ValidationMonitor.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 

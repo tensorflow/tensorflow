@@ -76,10 +76,10 @@ py_test(
 
 tf_cc_tests(
     size = "small",
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tests = [
+    srcs = [
         "ops/set_ops_test.cc",
     ],
+    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":set_ops_op_lib",
         "//tensorflow/cc:cc_ops",

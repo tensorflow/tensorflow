@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import math
 
 from tensorflow.python.framework import ops
@@ -426,7 +427,10 @@ class GridLSTMCell(rnn_cell.RNNCell):
                share_time_frequency_weights=False,
                cell_clip=None, initializer=None,
                num_unit_shards=1, forget_bias=1.0,
-               feature_size=None, frequency_skip=None):
+               feature_size=None, frequency_skip=None,
+               num_frequency_blocks=1,
+               couple_input_forget_gates=False,
+               state_is_tuple=False):
     """Initialize the parameters for an LSTM cell.
 
     Args:
@@ -447,18 +451,43 @@ class GridLSTMCell(rnn_cell.RNNCell):
       feature_size: int, The size of the input feature the LSTM spans over.
       frequency_skip: int, The amount the LSTM filter is shifted by in
         frequency.
+      num_frequency_blocks: int, The total number of frequency blocks needed to
+        cover the whole input feature.
+      couple_input_forget_gates: bool, Whether to couple the input and forget
+        gates, i.e. f_gate = 1.0 - i_gate, to reduce model parameters and
+        computation cost.
+      state_is_tuple: If True, accepted and returned states are 2-tuples of
+        the `c_state` and `m_state`.  By default (False), they are concatenated
+        along the column axis.  This default behavior will soon be deprecated.
     """
+    if not state_is_tuple:
+      logging.warn("%s: Using a concatenated state is slower and will soon be "
+                   "deprecated.  Use state_is_tuple=True.", self)
     self._num_units = num_units
     self._use_peepholes = use_peepholes
     self._share_time_frequency_weights = share_time_frequency_weights
+    self._couple_input_forget_gates = couple_input_forget_gates
+    self._state_is_tuple = state_is_tuple
     self._cell_clip = cell_clip
     self._initializer = initializer
     self._num_unit_shards = num_unit_shards
     self._forget_bias = forget_bias
     self._feature_size = feature_size
     self._frequency_skip = frequency_skip
-    self._state_size = 2 * num_units
-    self._output_size = num_units
+    self._num_frequency_blocks = int(num_frequency_blocks)
+    if state_is_tuple:
+      state_names = ""
+      for freq_index in range(self._num_frequency_blocks):
+        name_prefix = "state_f%02d" % freq_index
+        state_names += ("%s_c, %s_m," % (name_prefix, name_prefix))
+      self._state_tuple_type = collections.namedtuple(
+          "GridLSTMStateTuple", state_names.strip(','))
+      self._state_size = self._state_tuple_type(
+              *([num_units, num_units] * self._num_frequency_blocks))
+    else:
+      self._state_tuple_type = None
+      self._state_size = num_units * self._num_frequency_blocks * 2
+    self._output_size = num_units * self._num_frequency_blocks * 2
 
   @property
   def output_size(self):
@@ -467,6 +496,10 @@ class GridLSTMCell(rnn_cell.RNNCell):
   @property
   def state_size(self):
     return self._state_size
+
+  @property
+  def state_tuple_type(self):
+    return self._state_tuple_type
 
   def __call__(self, inputs, state, scope=None):
     """Run one step of LSTM.
@@ -489,6 +522,7 @@ class GridLSTMCell(rnn_cell.RNNCell):
     """
     sigmoid = math_ops.sigmoid
     tanh = math_ops.tanh
+    num_gates = 3 if self._couple_input_forget_gates else 4
 
     freq_inputs = self._make_tf_features(inputs)
     dtype = inputs.dtype
@@ -496,59 +530,68 @@ class GridLSTMCell(rnn_cell.RNNCell):
     with vs.variable_scope(scope or type(self).__name__,
                            initializer=self._initializer):  # "GridLSTMCell"
       concat_w_f = _get_concat_variable(
-          "W_f", [actual_input_size + 2*self._num_units, 4 * self._num_units],
+          "W_f", [actual_input_size + 2 * self._num_units,
+                  num_gates * self._num_units],
           dtype, self._num_unit_shards)
       b_f = vs.get_variable(
-          "B_f", shape=[4 * self._num_units],
+          "B_f", shape=[num_gates * self._num_units],
           initializer=array_ops.zeros_initializer, dtype=dtype)
       if not self._share_time_frequency_weights:
         concat_w_t = _get_concat_variable(
-            "W_t", [actual_input_size + 2*self._num_units, 4 * self._num_units],
+            "W_t", [actual_input_size + 2 * self._num_units,
+                    num_gates * self._num_units],
             dtype, self._num_unit_shards)
         b_t = vs.get_variable(
-            "B_t", shape=[4 * self._num_units],
+            "B_t", shape=[num_gates * self._num_units],
             initializer=array_ops.zeros_initializer, dtype=dtype)
 
       if self._use_peepholes:
         # Diagonal connections
-        w_f_diag_freqf = vs.get_variable(
-            "W_F_diag_freqf", shape=[self._num_units], dtype=dtype)
+        if not self._couple_input_forget_gates:
+          w_f_diag_freqf = vs.get_variable(
+              "W_F_diag_freqf", shape=[self._num_units], dtype=dtype)
+          w_f_diag_freqt = vs.get_variable(
+              "W_F_diag_freqt", shape=[self._num_units], dtype=dtype)
         w_i_diag_freqf = vs.get_variable(
             "W_I_diag_freqf", shape=[self._num_units], dtype=dtype)
-        w_o_diag_freqf = vs.get_variable(
-            "W_O_diag_freqf", shape=[self._num_units], dtype=dtype)
-        w_f_diag_freqt = vs.get_variable(
-            "W_F_diag_freqt", shape=[self._num_units], dtype=dtype)
         w_i_diag_freqt = vs.get_variable(
             "W_I_diag_freqt", shape=[self._num_units], dtype=dtype)
+        w_o_diag_freqf = vs.get_variable(
+            "W_O_diag_freqf", shape=[self._num_units], dtype=dtype)
         w_o_diag_freqt = vs.get_variable(
             "W_O_diag_freqt", shape=[self._num_units], dtype=dtype)
         if not self._share_time_frequency_weights:
-          w_f_diag_timef = vs.get_variable(
-              "W_F_diag_timef", shape=[self._num_units], dtype=dtype)
+          if not self._couple_input_forget_gates:
+            w_f_diag_timef = vs.get_variable(
+                "W_F_diag_timef", shape=[self._num_units], dtype=dtype)
+            w_f_diag_timet = vs.get_variable(
+                "W_F_diag_timet", shape=[self._num_units], dtype=dtype)
           w_i_diag_timef = vs.get_variable(
               "W_I_diag_timef", shape=[self._num_units], dtype=dtype)
-          w_o_diag_timef = vs.get_variable(
-              "W_O_diag_timef", shape=[self._num_units], dtype=dtype)
-          w_f_diag_timet = vs.get_variable(
-              "W_F_diag_timet", shape=[self._num_units], dtype=dtype)
           w_i_diag_timet = vs.get_variable(
               "W_I_diag_timet", shape=[self._num_units], dtype=dtype)
+          w_o_diag_timef = vs.get_variable(
+              "W_O_diag_timef", shape=[self._num_units], dtype=dtype)
           w_o_diag_timet = vs.get_variable(
               "W_O_diag_timet", shape=[self._num_units], dtype=dtype)
 
       # initialize the first freq state to be zero
-      m_prev_freq = array_ops.zeros([int(inputs.get_shape()[0]),
-                                     self._num_units], dtype)
-      c_prev_freq = array_ops.zeros([int(inputs.get_shape()[0]),
-                                     self._num_units], dtype)
+      m_prev_freq = array_ops.zeros(
+          [int(inputs.get_shape()[0]), self._num_units], dtype)
+      c_prev_freq = array_ops.zeros(
+          [int(inputs.get_shape()[0]), self._num_units], dtype)
       for freq_index in range(len(freq_inputs)):
-        c_prev_time = array_ops.slice(state, [0, 2 * freq_index *
-                                              self._num_units],
-                                      [-1, self._num_units])
-        m_prev_time = array_ops.slice(state, [0, (2 * freq_index + 1) *
-                                              self._num_units],
-                                      [-1, self._num_units])
+        if self._state_is_tuple:
+          name_prefix = "state_f%02d" % freq_index
+          c_prev_time = getattr(state, name_prefix + "_c")
+          m_prev_time = getattr(state, name_prefix + "_m")
+        else:
+          c_prev_time = array_ops.slice(
+              state, [0, 2 * freq_index * self._num_units],
+              [-1, self._num_units])
+          m_prev_time = array_ops.slice(
+              state, [0, (2 * freq_index + 1) * self._num_units],
+              [-1, self._num_units])
 
         # i = input_gate, j = new_input, f = forget_gate, o = output_gate
         cell_inputs = array_ops.concat(1, [freq_inputs[freq_index], m_prev_time,
@@ -557,7 +600,13 @@ class GridLSTMCell(rnn_cell.RNNCell):
         # F-LSTM
         lstm_matrix_freq = nn_ops.bias_add(math_ops.matmul(cell_inputs,
                                                            concat_w_f), b_f)
-        i_freq, j_freq, f_freq, o_freq = array_ops.split(1, 4, lstm_matrix_freq)
+        if self._couple_input_forget_gates:
+          i_freq, j_freq, o_freq = array_ops.split(1, num_gates,
+                                                   lstm_matrix_freq)
+          f_freq = None
+        else:
+          i_freq, j_freq, f_freq, o_freq = array_ops.split(1, num_gates,
+                                                           lstm_matrix_freq)
         # T-LSTM
         if self._share_time_frequency_weights:
           i_time = i_freq
@@ -567,18 +616,34 @@ class GridLSTMCell(rnn_cell.RNNCell):
         else:
           lstm_matrix_time = nn_ops.bias_add(math_ops.matmul(cell_inputs,
                                                              concat_w_t), b_t)
-          i_time, j_time, f_time, o_time = array_ops.split(1, 4,
-                                                           lstm_matrix_time)
+          if self._couple_input_forget_gates:
+            i_time, j_time, o_time = array_ops.split(1, num_gates,
+                                                     lstm_matrix_time)
+            f_time = None
+          else:
+            i_time, j_time, f_time, o_time = array_ops.split(1, 4,
+                                                             lstm_matrix_time)
 
         # F-LSTM c_freq
+        # input gate activations
         if self._use_peepholes:
-          c_freq = (sigmoid(f_freq + self._forget_bias + w_f_diag_freqf * (
-              c_prev_freq) + w_f_diag_freqt * c_prev_time) * c_prev_freq +
-                    sigmoid(i_freq + w_i_diag_freqf * c_prev_freq + (
-                        w_i_diag_freqt * c_prev_time)) * tanh(j_freq))
+          i_freq_g = sigmoid(i_freq +
+                             w_i_diag_freqf * c_prev_freq +
+                             w_i_diag_freqt * c_prev_time)
         else:
-          c_freq = (sigmoid(f_freq + self._forget_bias) * c_prev_freq +
-                    sigmoid(i_freq) * tanh(j_freq))
+          i_freq_g = sigmoid(i_freq)
+        # forget gate activations
+        if self._couple_input_forget_gates:
+          f_freq_g = 1.0 - i_freq_g
+        else:
+          if self._use_peepholes:
+            f_freq_g = sigmoid(f_freq + self._forget_bias +
+                               w_f_diag_freqf * c_prev_freq +
+                               w_f_diag_freqt * c_prev_time)
+          else:
+            f_freq_g = sigmoid(f_freq + self._forget_bias)
+        # cell state
+        c_freq = f_freq_g * c_prev_freq + i_freq_g * tanh(j_freq)
         if self._cell_clip is not None:
           # pylint: disable=invalid-unary-operand-type
           c_freq = clip_ops.clip_by_value(c_freq, -self._cell_clip,
@@ -586,30 +651,45 @@ class GridLSTMCell(rnn_cell.RNNCell):
           # pylint: enable=invalid-unary-operand-type
 
         # T-LSTM c_freq
+        # input gate activations
         if self._use_peepholes:
           if self._share_time_frequency_weights:
-            c_time = sigmoid(f_time + self._forget_bias + w_f_diag_freqf * (
-                c_prev_freq + w_f_diag_freqt * c_prev_time)) * c_prev_time + (
-                    sigmoid(i_time + w_i_diag_freqf * c_prev_freq + (
-                        w_i_diag_freqt * c_prev_time)) * tanh(j_time))
+            i_time_g = sigmoid(i_time +
+                               w_i_diag_freqf * c_prev_freq +
+                               w_i_diag_freqt * c_prev_time)
           else:
-            c_time = sigmoid(f_time + self._forget_bias + w_f_diag_timef * (
-                c_prev_time + w_f_diag_timet * c_prev_time)) * c_prev_time + (
-                    sigmoid(i_time + w_i_diag_timef * c_prev_freq + (
-                        w_i_diag_timet * c_prev_time)) * tanh(j_time))
+            i_time_g = sigmoid(i_time +
+                               w_i_diag_timef * c_prev_freq +
+                               w_i_diag_timet * c_prev_time)
         else:
-          c_time = (sigmoid(f_time + self._forget_bias) * c_prev_time +
-                    sigmoid(i_time) * tanh(j_time))
-
+          i_time_g = sigmoid(i_time)
+        # forget gate activations
+        if self._couple_input_forget_gates:
+          f_time_g = 1.0 - i_time_g
+        else:
+          if self._use_peepholes:
+            if self._share_time_frequency_weights:
+              f_time_g = sigmoid(f_time + self._forget_bias +
+                                 w_f_diag_freqf * c_prev_freq +
+                                 w_f_diag_freqt * c_prev_time)
+            else:
+              f_time_g = sigmoid(f_time + self._forget_bias +
+                                 w_f_diag_timef * c_prev_freq +
+                                 w_f_diag_timet * c_prev_time)
+          else:
+            f_time_g = sigmoid(f_time + self._forget_bias)
+        # cell state
+        c_time = f_time_g * c_prev_time + i_time_g * tanh(j_time)
         if self._cell_clip is not None:
           # pylint: disable=invalid-unary-operand-type
-          c_time = clip_ops.clip_by_value(c_freq, -self._cell_clip,
+          c_time = clip_ops.clip_by_value(c_time, -self._cell_clip,
                                           self._cell_clip)
           # pylint: enable=invalid-unary-operand-type
 
         # F-LSTM m_freq
         if self._use_peepholes:
-          m_freq = sigmoid(o_freq + w_o_diag_freqf * c_freq +
+          m_freq = sigmoid(o_freq +
+                           w_o_diag_freqf * c_freq +
                            w_o_diag_freqt * c_time) * tanh(c_freq)
         else:
           m_freq = sigmoid(o_freq) * tanh(c_freq)
@@ -617,10 +697,12 @@ class GridLSTMCell(rnn_cell.RNNCell):
         # T-LSTM m_time
         if self._use_peepholes:
           if self._share_time_frequency_weights:
-            m_time = sigmoid(o_time + w_o_diag_freqf * c_freq +
+            m_time = sigmoid(o_time +
+                             w_o_diag_freqf * c_freq +
                              w_o_diag_freqt * c_time) * tanh(c_time)
           else:
-            m_time = sigmoid(o_time + w_o_diag_timef * c_freq +
+            m_time = sigmoid(o_time +
+                             w_o_diag_timef * c_freq +
                              w_o_diag_timet * c_time) * tanh(c_time)
         else:
           m_time = sigmoid(o_time) * tanh(c_time)
@@ -629,11 +711,17 @@ class GridLSTMCell(rnn_cell.RNNCell):
         c_prev_freq = c_freq
         # Concatenate the outputs for T-LSTM and F-LSTM for each shift
         if freq_index == 0:
-          state_out = array_ops.concat(1, [c_time, m_time])
-          m_out = array_ops.concat(1, [m_time, m_freq])
+          state_out_lst = [c_time, m_time]
+          m_out_lst = [m_time, m_freq]
         else:
-          state_out = array_ops.concat(1, [state_out, c_time, m_time])
-          m_out = array_ops.concat(1, [m_out, m_time, m_freq])
+          state_out_lst.extend([c_time, m_time])
+          m_out_lst.extend([m_time, m_freq])
+      if self._state_is_tuple:
+        state_out = self._state_tuple_type(*state_out_lst)
+      else:
+        state_out = array_ops.concat(1, state_out_lst)
+      # Outputs are always concated as it is never used separately.
+      m_out = array_ops.concat(1, m_out_lst)
     return m_out, state_out
 
   def _make_tf_features(self, input_feat):
@@ -654,6 +742,11 @@ class GridLSTMCell(rnn_cell.RNNCell):
       raise ValueError("Cannot infer input_size from static shape inference.")
     num_feats = int((input_size - self._feature_size) / (
         self._frequency_skip)) + 1
+    if num_feats != self._num_frequency_blocks:
+      raise ValueError(
+          "Invalid num_frequency_blocks, requires %d but gets %d, please check"
+          " the input size and filter config are correct." % (
+              self._num_frequency_blocks, num_feats))
     freq_inputs = []
     for f in range(num_feats):
       cur_input = array_ops.slice(input_feat, [0, f*self._frequency_skip],

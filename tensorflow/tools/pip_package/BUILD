@@ -48,6 +48,7 @@ sh_binary(
         "//tensorflow/models/rnn/translate:package",
         "//tensorflow/python:util_example_parser_configuration",
         "//tensorflow/python/debug:all_files",
+        "//tensorflow/python/saved_model:all_files",
         "//tensorflow/tensorboard",
     ],
 )

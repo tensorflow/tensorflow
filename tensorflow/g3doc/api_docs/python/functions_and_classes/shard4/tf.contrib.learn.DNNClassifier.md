@@ -51,11 +51,9 @@ Input of `fit` and `evaluate` should have following features,
     Both features' `value` must be a `SparseTensor`.
   - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
     whose `value` is a `Tensor`.
-  - if `feature_columns` is `None`, then `input` must contain only real
-    valued `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=True, config=None)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=None, config=None)` {#DNNClassifier.__init__}
 
 Initializes a DNNClassifier instance.
 
@@ -97,7 +95,21 @@ Initializes a DNNClassifier instance.
 
 - - -
 
+#### `tf.contrib.learn.DNNClassifier.__repr__()` {#DNNClassifier.__repr__}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.DNNClassifier.bias_` {#DNNClassifier.bias_}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.DNNClassifier.config` {#DNNClassifier.config}
 
 
 
@@ -132,22 +144,33 @@ See `Evaluable`.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.export(export_dir, signature_fn=None, input_fn=default_input_fn, default_batch_size=1, exports_to_keep=None)` {#DNNClassifier.export}
+#### `tf.contrib.learn.DNNClassifier.export(*args, **kwargs)` {#DNNClassifier.export}
 
-Exports inference graph into given dir.
+Exports inference graph into given dir. (deprecated arguments)
 
-##### Args:
+SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
+Instructions for updating:
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
 
-
-*  <b>`export_dir`</b>: A string containing a directory to write the exported graph
-    and checkpoints.
-*  <b>`signature_fn`</b>: Function that returns a default signature and a named
-    signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-    for features and `Tensor` or `dict` of `Tensor`s for predictions.
-*  <b>`input_fn`</b>: Function that given `Tensor` of `Example` strings, parses it
-    into features that are then passed to the model.
-*  <b>`default_batch_size`</b>: Default batch size of the `Example` placeholder.
-*  <b>`exports_to_keep`</b>: Number of exports to keep.
+    Args:
+      export_dir: A string containing a directory to write the exported graph
+        and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, targets), where features is a dict of
+        string key to `Tensor` and targets is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds to
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input.
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      default_batch_size: Default batch size of the `Example` placeholder.
+      exports_to_keep: Number of exports to keep.
 
 
 - - -

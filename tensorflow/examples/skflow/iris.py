@@ -36,7 +36,8 @@ def main(unused_argv):
 
   # Fit and predict.
   classifier.fit(x_train, y_train, steps=200)
-  score = metrics.accuracy_score(y_test, classifier.predict(x_test))
+  predictions = list(classifier.predict(x_test, as_iterable=True))
+  score = metrics.accuracy_score(y_test, predictions)
   print('Accuracy: {0:f}'.format(score))
 
 

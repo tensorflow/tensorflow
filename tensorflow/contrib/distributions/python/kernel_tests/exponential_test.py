@@ -122,6 +122,12 @@ class ExponentialTest(tf.test.TestCase):
                 sample_values[:, 1, i], stats.expon(scale=1.0/lam_v[i]).cdf)[0],
             0.01)
 
+  def testExponentialWithSoftplusLam(self):
+    with self.test_session():
+      lam = [-2.2, -3.4]
+      exponential = tf.contrib.distributions.ExponentialWithSoftplusLam(lam=lam)
+      self.assertAllClose(tf.nn.softplus(lam).eval(), exponential.lam.eval())
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   tf.test.main()

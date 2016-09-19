@@ -916,6 +916,52 @@ class SdcaWithHingeLossTest(SdcaModelTest):
       self.assertAllClose(0.4, regularized_loss.eval(), atol=0.02)
 
 
+class SdcaWithSmoothHingeLossTest(SdcaModelTest):
+  """SDCA optimizer test class for smooth hinge loss."""
+
+  def testSimple(self):
+    # Setup test data
+    example_protos = [
+        make_example_proto({'age': [0],
+                            'gender': [0]}, 0),
+        make_example_proto({'age': [1],
+                            'gender': [1]}, 1),
+    ]
+    example_weights = [1.0, 1.0]
+    with self._single_threaded_test_session():
+      examples = make_example_dict(example_protos, example_weights)
+      variables = make_variable_dict(1, 1)
+      options = dict(
+          symmetric_l2_regularization=1.0,
+          symmetric_l1_regularization=0,
+          loss_type='smooth_hinge_loss')
+      model = SdcaModel(examples, variables, options)
+      tf.initialize_all_variables().run()
+
+      # Before minimization, the weights default to zero. There is no loss due
+      # to regularization, only unregularized loss which is 0.5 * (1+1) = 1.0.
+      predictions = model.predictions(examples)
+      self.assertAllClose([0.0, 0.0], predictions.eval())
+      unregularized_loss = model.unregularized_loss(examples)
+      regularized_loss = model.regularized_loss(examples)
+      self.assertAllClose(1.0, unregularized_loss.eval())
+      self.assertAllClose(1.0, regularized_loss.eval())
+
+      # After minimization, the model separates perfectly the data points. There
+      # are 4 sparse weights: 2 for age (say w1, w2) and 2 for gender (say w3
+      # and w4). The minimization leads to w1=w3=1/3 and w2=w4=-1/3. This gives
+      # an unregularized hinge loss of 0.33 and a 0.11 L2 loss
+      train_op = model.minimize()
+      for _ in range(_MAX_ITERATIONS):
+        train_op.run()
+
+      binary_predictions = get_binary_predictions_for_hinge(predictions)
+      self.assertAllClose([-0.67, 0.67], predictions.eval(), atol=0.05)
+      self.assertAllEqual([0, 1], binary_predictions.eval())
+      self.assertAllClose(0.33, unregularized_loss.eval(), atol=0.02)
+      self.assertAllClose(0.44, regularized_loss.eval(), atol=0.02)
+
+
 class SparseFeatureColumnTest(SdcaModelTest):
   """Tests for SparseFeatureColumn.
   """
@@ -952,9 +998,9 @@ class SdcaFprintTest(SdcaModelTest):
       in_data = tf.constant(['abc', 'very looooooong string', 'def'])
       out_data = _sdca_ops.sdca_fprint(in_data)
       self.assertAllEqual(
-          [b'\x04l\x12\xd2\xaf\xb2\x809E\x9e\x02\x13\x90\xf0\x85\xa0',
-           b'\x9f\x0f\x91P\x9aG.Ql\xf2Y\xf9M%Z\xbc',
-           b'"0\xe00"\x18_\x08\x12?\xa0\x17\xd8\x9c\x99y'], out_data.eval())
+          [b'\x04l\x12\xd2\xaf\xb2\x809E\x9e\x02\x13',
+           b'\x9f\x0f\x91P\x9aG.Ql\xf2Y\xf9',
+           b'"0\xe00"\x18_\x08\x12?\xa0\x17'], out_data.eval())
 
 
 class ShardedMutableHashTableTest(SdcaModelTest):
@@ -982,7 +1028,27 @@ class ShardedMutableHashTableTest(SdcaModelTest):
         result = output.eval()
         self.assertAllEqual([0, 1, -1], result)
 
-        self.assertAllEqual(3, table.values_reduce_sum().eval())
+  def testExportSharded(self):
+    with self._single_threaded_test_session():
+      default_val = -1
+      num_shards = 2
+      keys = tf.constant(['a1', 'b1', 'c2'])
+      values = tf.constant([0, 1, 2], tf.int64)
+      table = _ShardedMutableHashTable(
+          tf.string, tf.int64, default_val, num_shards=num_shards)
+      self.assertAllEqual(0, table.size().eval())
+
+      table.insert(keys, values).run()
+      self.assertAllEqual(3, table.size().eval())
+
+      keys_list, values_list = table.export_sharded()
+      self.assertAllEqual(num_shards, len(keys_list))
+      self.assertAllEqual(num_shards, len(values_list))
+
+      self.assertAllEqual(set([b'b1', b'c2']), set(keys_list[0].eval()))
+      self.assertAllEqual([b'a1'], keys_list[1].eval())
+      self.assertAllEqual(set([1, 2]), set(values_list[0].eval()))
+      self.assertAllEqual([0], values_list[1].eval())
 
 
 if __name__ == '__main__':

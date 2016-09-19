@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import copy
 import inspect
 import itertools
 import os
@@ -32,9 +33,11 @@ import six
 from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
+from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn import trainable
@@ -112,7 +115,9 @@ def infer_real_valued_columns_from_input_fn(input_fn):
   it.
 
   Args:
-    input_fn: Function returning a tuple of input and target `Tensor` objects.
+    input_fn: Input function returning a tuple of:
+        features - Dictionary of string feature name to `Tensor` or `Tensor`.
+        target - `Tensor` of target objects.
 
   Returns:
     List of `FeatureColumn` objects.
@@ -163,12 +168,88 @@ def _get_replica_device_setter(config):
   """
   ps_ops = ['Variable', 'AutoReloadVariable',
             'MutableHashTable', 'MutableHashTableOfTensors']
+
+  if config.job_name:
+    worker_device = '/job:%s/task:%d' % (config.job_name, config.task)
+  else:
+    worker_device = '/job:worker'
+
   if config.num_ps_replicas > 0:
     return device_setter.replica_device_setter(
-        ps_tasks=config.num_ps_replicas, merge_devices=False, ps_ops=ps_ops,
-        cluster=config.cluster_spec)
+        ps_tasks=config.num_ps_replicas, worker_device=worker_device,
+        merge_devices=False, ps_ops=ps_ops, cluster=config.cluster_spec)
   else:
     return None
+
+
+def _make_metrics_ops(metrics, features, targets, predictions):
+  """Add metrics to run on features, targets, and predictions dicts or tensors.
+
+  `metrics` contains a specification for how to run metrics. It is a dict
+  mapping friendly names to either `MetricSpec` objects, or directly to a metric
+  function (assuming that predictions and targets are single tensors), or to
+  a `(pred_name, metric)` tuples, which passes `predictions[pred_name]` and
+  targets to `metric` (assuming targets is a single tensor).
+
+  Users are encouraged to use `MetricSpec` objects, which are more flexible and
+  cleaner. They also lead to clearer errors.
+
+  Args:
+    metrics: A dict mapping names to metrics specification, for example
+      `MetricSpec` objects.
+    features: A dict of tensors returned from an input_fn as features/inputs.
+    targets: A single tensor or a dict of tensors returned from an input_fn as
+      labels.
+    predictions: A single tensor or a dict of tensors output from a model as
+      predictions.
+
+  Returns:
+    A dict mapping the friendly given in `metrics` to the result of calling the
+    given metric function.
+
+  Raises:
+    ValueError: If metrics specifications do not work with the type of
+      features/targets/predictions provided. Mostly, a dict is given but no
+      pred_name specified.
+  """
+  metrics = metrics or {}
+  if isinstance(targets, dict) and len(targets) == 1:
+    # Unpack single target into just tensor.
+    targets = targets[list(targets.keys())[0]]
+  result = {}
+  for name, metric in six.iteritems(metrics):
+    if isinstance(metric, metric_spec.MetricSpec):
+      result[name] = metric.create_metric_ops(features, targets, predictions)
+      continue
+
+    # TODO(b/31229024): Remove the rest of this loop
+    logging.warning('Please specify metrics using MetricSpec. Using bare '
+                    'functions or (key, fn) tuples is deprecated and support '
+                    'for it will be removed on Oct 1, 2016.')
+
+    if isinstance(name, tuple):
+      # Multi-head metrics.
+      if not isinstance(predictions, dict):
+        raise ValueError(
+            'Metrics passed provide (name, prediction), '
+            'but predictions are not dict. '
+            'Metrics: %s, Predictions: %s.' % (metrics, predictions))
+      # Here are two options: targets are single Tensor or a dict.
+      if isinstance(targets, dict) and name[1] in targets:
+        # If targets are dict and the prediction name is in it, apply metric.
+        result[name[0]] = metric(predictions[name[1]], targets[name[1]])
+      else:
+        # Otherwise pass the targets to the metric.
+        result[name[0]] = metric(predictions[name[1]], targets)
+    else:
+      # Single head metrics.
+      if isinstance(predictions, dict):
+        raise ValueError(
+            'Metrics passed provide only name, no prediction, '
+            'but predictions are dict. '
+            'Metrics: %s, Targets: %s.' % (metrics, targets))
+      result[name] = metric(predictions, targets)
+  return result
 
 
 class BaseEstimator(
@@ -223,6 +304,11 @@ class BaseEstimator(
     self._targets_info = None
 
     self._graph = None
+
+  @property
+  def config(self):
+    # TODO(wicke): make RunConfig immutable, and then return it without a copy.
+    return copy.deepcopy(self._config)
 
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
@@ -376,28 +462,56 @@ class BaseEstimator(
   def model_dir(self):
     return self._model_dir
 
-  def export(self, export_dir, signature_fn=None,
-             input_fn=export.default_input_fn, default_batch_size=1,
+  @deprecated_arg_values(
+      '2016-09-23',
+      'The signature of the input_fn accepted by export is changing to be '
+      'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate. '
+      'input_fn and input_feature_key will become required args, '
+      'and use_deprecated_input_fn will default to False and be removed '
+      'altogether.',
+      use_deprecated_input_fn=True,
+      input_fn=None,
+      input_feature_key=None)
+  def export(self,
+             export_dir,
+             input_fn=export._default_input_fn,
+             input_feature_key=None,
+             use_deprecated_input_fn=True,
+             signature_fn=None,
+             default_batch_size=1,
              exports_to_keep=None):
     """Exports inference graph into given dir.
 
     Args:
       export_dir: A string containing a directory to write the exported graph
         and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, targets), where features is a dict of
+        string key to `Tensor` and targets is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds to
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input.
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
         for features and `Tensor` or `dict` of `Tensor`s for predictions.
-      input_fn: Function that given `Tensor` of `Example` strings, parses it
-        into features that are then passed to the model.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
     """
-    export.export_estimator(estimator=self,
-                            export_dir=export_dir,
-                            signature_fn=signature_fn,
-                            input_fn=input_fn,
-                            default_batch_size=default_batch_size,
-                            exports_to_keep=exports_to_keep)
+    # pylint: disable=protected-access
+    export._export_estimator(estimator=self,
+                             export_dir=export_dir,
+                             signature_fn=signature_fn,
+                             input_fn=input_fn,
+                             input_feature_key=input_feature_key,
+                             use_deprecated_input_fn=use_deprecated_input_fn,
+                             default_batch_size=default_batch_size,
+                             exports_to_keep=exports_to_keep)
+    # pylint: enable=protected-access
 
   @abc.abstractproperty
   def _get_train_ops(self, features, targets):
@@ -434,21 +548,26 @@ class BaseEstimator(
     Args:
       features: `Tensor` or `dict` of `Tensor` objects.
       targets: `Tensor` or `dict` of `Tensor` objects.
-      metrics: Dict of metric ops to run. If None, the default metric functions
-        are used; if {}, no metrics are used. If model has one output (i.e.,
-        returning single predction), keys are `str`, e.g. `'accuracy'` - just a
-        name of the metric that will show up in the logs / summaries.
-        Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
-        - name of the metric and name of `Tensor` in the predictions to run
-        this metric on. Metric ops should support streaming, e.g., returning
+      metrics: Dict of metrics to run. If None, the default metric functions
+        are used; if {}, no metrics are used. Otherwise, `metrics` should map
+        friendly names for the metric to a `MetricSpec` object defining which
+        model outputs to evaluate against which targets with which metric
+        function. Metric ops should support streaming, e.g., returning
         update_op and value tensors. See more details in
-        ../../../../metrics/python/metrics/ops/streaming_metrics.py.
+        `../../../../metrics/python/metrics/ops/streaming_metrics.py` and
+        `../metric_spec.py`.
 
     Returns:
       metrics: `dict` of `Tensor` objects.
     """
     raise NotImplementedError('_get_eval_ops not implemented in BaseEstimator')
 
+  @deprecated(
+      '2016-09-23',
+      'The signature of the input_fn accepted by export is changing to be '
+      'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate, '
+      'which makes this function useless. This will be removed after the '
+      'deprecation date.')
   def _get_feature_ops_from_example(self, examples_batch):
     """Returns feature parser for given example batch using features info.
 
@@ -479,7 +598,7 @@ class BaseEstimator(
                          (str(features), str(self._features_info)))
     else:
       self._features_info = tensor_signature.create_signatures(features)
-      logging.warning('Setting feature info to %s', str(self._features_info))
+      logging.info('Setting feature info to %s', str(self._features_info))
     if targets is not None:
       if self._targets_info is not None:
         logging.warning('Given targets: %s, required signatures: %s.',
@@ -490,7 +609,7 @@ class BaseEstimator(
                            (str(targets), str(self._targets_info)))
       else:
         self._targets_info = tensor_signature.create_signatures(targets)
-        logging.warning('Setting targets info to %s', str(self._targets_info))
+        logging.info('Setting targets info to %s', str(self._targets_info))
 
   def _train_model(self,
                    input_fn,
@@ -542,7 +661,7 @@ class BaseEstimator(
           if not isinstance(m, session_run_hook.SessionRunHook)
       ]
 
-      supervisor_is_chief = (self._config.task == 0)
+      supervisor_is_chief = self._config.is_chief
       if not supervisor_is_chief:
         # Prune list of monitor to the ones runnable on all workers.
         deprecated_monitors = [m for m in deprecated_monitors
@@ -635,7 +754,7 @@ class BaseEstimator(
           eval_dict=eval_dict,
           update_op=update_op,
           global_step_tensor=global_step,
-          supervisor_master=self._config.master,
+          supervisor_master=self._config.evaluation_master,
           feed_fn=feed_fn,
           max_steps=steps)
 
@@ -732,6 +851,10 @@ class BaseEstimator(
       logging.info('Reached end of inputs for predict_iter.')
 
 
+def _identity_feature_engineering_fn(features, targets):
+  return features, targets
+
+
 class Estimator(BaseEstimator):
   """Estimator class is the basic TensorFlow model trainer/evaluator.
   """
@@ -740,7 +863,8 @@ class Estimator(BaseEstimator):
                model_fn=None,
                model_dir=None,
                config=None,
-               params=None):
+               params=None,
+               feature_engineering_fn=None):
     """Constructs an Estimator instance.
 
     Args:
@@ -752,7 +876,7 @@ class Estimator(BaseEstimator):
           * `(features, targets, mode) -> (predictions, loss, train_op)`
           * `(features, targets, mode, params) -> (predictions, loss, train_op)`
 
-      Where
+        Where
 
           * `features` are single `Tensor` or `dict` of `Tensor`s
                  (depending on data passed to `fit`),
@@ -773,6 +897,11 @@ class Estimator(BaseEstimator):
       config: Configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                              targets which are the output of `input_fn` and
+                              returns features and targets which will be fed
+                              into `model_fn`. Please check `model_fn` for
+                              a definition of features and targets.
 
     Raises:
       ValueError: parameters of `model_fn` don't match `params`.
@@ -791,9 +920,12 @@ class Estimator(BaseEstimator):
                         model_fn)
     self._model_fn = model_fn
     self.params = params
+    self._feature_engineering_fn = (
+        feature_engineering_fn or _identity_feature_engineering_fn)
 
   def _call_model_fn(self, features, targets, mode):
     """Calls model function with support of 2, 3 or 4 arguments."""
+    features, targets = self._feature_engineering_fn(features, targets)
     model_fn_args = _get_arguments(self._model_fn)
     if 'mode' in model_fn_args:
       if 'params' in model_fn_args:
@@ -829,15 +961,14 @@ class Estimator(BaseEstimator):
     Args:
       features: `Tensor` or `dict` of `Tensor` objects.
       targets: `Tensor` or `dict` of `Tensor` objects.
-      metrics: Dict of metric ops to run. If None, the default metric functions
-        are used; if {}, no metrics are used. If model has one output (i.e.,
-        returning single predction), keys are `str`, e.g. `'accuracy'` - just a
-        name of the metric that will show up in the logs / summaries.
-        Otherwise, keys are tuple of two `str`, e.g. `('accuracy', 'classes')`
-        - name of the metric and name of `Tensor` in the predictions to run
-        this metric on. Metric ops should support streaming, e.g., returning
+      metrics: Dict of metrics to run. If None, the default metric functions
+        are used; if {}, no metrics are used. Otherwise, `metrics` should map
+        friendly names for the metric to a `MetricSpec` object defining which
+        model outputs to evaluate against which targets with which metric
+        function. Metric ops should support streaming, e.g., returning
         update_op and value tensors. See more details in
-        ../../../../metrics/python/metrics/ops/streaming_metrics.py.
+        `../../../../metrics/python/metrics/ops/streaming_metrics.py` and
+        `../metric_spec.py`.
 
     Returns:
       metrics: `dict` of `Tensor` objects.
@@ -847,34 +978,7 @@ class Estimator(BaseEstimator):
     """
     predictions, loss, _ = self._call_model_fn(features, targets, ModeKeys.EVAL)
     result = {'loss': metrics_lib.streaming_mean(loss)}
-
-    metrics = metrics or {}
-    if isinstance(targets, dict) and len(targets) == 1:
-      # Unpack single target into just tensor.
-      targets = targets[list(targets.keys())[0]]
-    for name, metric in six.iteritems(metrics):
-      if isinstance(name, tuple):
-        # Multi-head metrics.
-        if not isinstance(predictions, dict):
-          raise ValueError(
-              'Metrics passed provide (name, prediction), '
-              'but predictions are not dict. '
-              'Metrics: %s, Predictions: %s.' % (metrics, predictions))
-        # Here are two options: targets are single Tensor or a dict.
-        if isinstance(targets, dict) and name[1] in targets:
-          # If targets are dict and the prediction name is in it, apply metric.
-          result[name[0]] = metric(predictions[name[1]], targets[name[1]])
-        else:
-          # Otherwise pass the targets to the metric.
-          result[name[0]] = metric(predictions[name[1]], targets)
-      else:
-        # Single head metrics.
-        if isinstance(predictions, dict):
-          raise ValueError(
-              'Metrics passed provide only name, no prediction, '
-              'but predictions are dict. '
-              'Metrics: %s, Targets: %s.' % (metrics, targets))
-        result[name] = metric(predictions, targets)
+    result.update(_make_metrics_ops(metrics, features, targets, predictions))
     return result
 
   def _get_predict_ops(self, features):

@@ -90,6 +90,7 @@ import time
 import numpy as np
 import six
 
+from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn.summary_writer_cache import SummaryWriterCache
@@ -117,6 +118,7 @@ class BaseMonitor(object):
     self._current_step = None
     self._max_steps = None
     self._estimator = None
+    self._estimator_locked = False
 
   @property
   def run_on_all_workers(self):
@@ -125,16 +127,28 @@ class BaseMonitor(object):
   def set_estimator(self, estimator):
     """A setter called automatically by the target estimator.
 
+    If the estimator is locked, this method does nothing.
+
     Args:
       estimator: the estimator that this monitor monitors.
 
     Raises:
       ValueError: if the estimator is None.
     """
+    if self._estimator_locked:
+      return
     if estimator is None:
       raise ValueError("Missing estimator.")
     # TODO(mdan): This should fail if called twice with the same estimator.
     self._estimator = estimator
+
+  def _lock_estimator(self):
+    """Locks the estimator until _unlock_estimator is called."""
+    self._estimator_locked = True
+
+  def _unlock_estimator(self):
+    """Unlocks the estimator."""
+    self._estimator_locked = False
 
   def begin(self, max_steps=None):
     """Called at the beginning of training.
@@ -883,9 +897,18 @@ class ExportMonitor(EveryN):
   # TODO(philstahlfeld): Investigate switching export.export_estimator
   # configuration values to **kwargs so that updates to the export_estimator
   # function don't have to be reflected here.
+  @deprecated_arg_values(
+      "2016-09-23",
+      "The signature of the input_fn accepted by export is changing to be "
+      "consistent with what's used by tf.Learn Estimator's train/evaluate. "
+      "input_fn and input_feature_key will both become required args.",
+      input_fn=None,
+      input_feature_key=None)
   def __init__(self,
                every_n_steps,
                export_dir,
+               input_fn=None,
+               input_feature_key=None,
                exports_to_keep=5,
                signature_fn=None,
                default_batch_size=1):
@@ -894,14 +917,34 @@ class ExportMonitor(EveryN):
     Args:
       every_n_steps: Run monitor every N steps.
       export_dir: str, folder to export.
+      input_fn: A function that takes no argument and returns a tuple of
+        (features, targets), where features is a dict of string key to `Tensor`
+        and targets is a `Tensor` that's currently not used (and so can be
+        `None`).
+      input_feature_key: String key into the features dict returned by
+        `input_fn` that corresponds to the raw `Example` strings `Tensor` that
+        the exported model will take as input.
       exports_to_keep: int, number of exports to keep.
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
         for features and `dict` of `Tensor`s for predictions.
       default_batch_size: Default batch size of the `Example` placeholder.
+
+    Raises:
+      ValueError: If `input_fn` and `input_feature_key` are not both defined or
+        are not both `None`.
     """
+    if (input_fn is None) != (input_feature_key is None):
+      raise ValueError(
+          "input_fn and input_feature_key must both be defined or both be "
+          "None. Not passing in input_fn and input_feature_key is also "
+          "deprecated, so you should go with the former.")
+
     super(ExportMonitor, self).__init__(every_n_steps=every_n_steps)
     self._export_dir = export_dir
+    self._input_fn = input_fn
+    self._input_feature_key = input_feature_key
+    self._use_deprecated_input_fn = input_fn is None
     self._exports_to_keep = exports_to_keep
     self._signature_fn = signature_fn
     self._default_batch_size = default_batch_size
@@ -921,13 +964,22 @@ class ExportMonitor(EveryN):
   def every_n_step_end(self, step, outputs):
     super(ExportMonitor, self).every_n_step_end(step, outputs)
     try:
-      self._estimator.export(self.export_dir,
-                             exports_to_keep=self.exports_to_keep,
-                             signature_fn=self.signature_fn,
-                             default_batch_size=self._default_batch_size)
-    except (RuntimeError, TypeError):
+      self._estimator.export(
+          self.export_dir,
+          exports_to_keep=self.exports_to_keep,
+          signature_fn=self.signature_fn,
+          input_fn=self._input_fn,
+          default_batch_size=self._default_batch_size,
+          input_feature_key=self._input_feature_key,
+          use_deprecated_input_fn=self._use_deprecated_input_fn)
+    except RuntimeError:
       # Currently we are not syncronized with saving checkpoints, which leads to
       # runtime errors when we are calling export on the same global step.
+      # Exports depend on saved checkpoints for constructing the graph and
+      # getting the global step from the graph instance saved in the checkpoint.
+      # If the checkpoint is stale with respect to current step, the global step
+      # is taken to be the last saved checkpoints global step and exporter
+      # doesn't export the same checkpoint again with the following error.
       logging.info("Skipping exporting for the same step. "
                    "Consider exporting less frequently.")
 
@@ -939,11 +991,15 @@ class ExportMonitor(EveryN):
                    "yet.")
       return
     try:
-      self._estimator.export(self.export_dir,
-                             exports_to_keep=self.exports_to_keep,
-                             signature_fn=self.signature_fn,
-                             default_batch_size=self._default_batch_size)
-    except (RuntimeError, TypeError):
+      self._estimator.export(
+          self.export_dir,
+          exports_to_keep=self.exports_to_keep,
+          signature_fn=self.signature_fn,
+          input_fn=self._input_fn,
+          default_batch_size=self._default_batch_size,
+          input_feature_key=self._input_feature_key,
+          use_deprecated_input_fn=self._use_deprecated_input_fn)
+    except RuntimeError:
       logging.info("Skipping exporting for the same step.")
 
 

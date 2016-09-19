@@ -107,12 +107,11 @@ class InceptionV2Test(tf.test.TestCase):
     batch_size = 5
     height, width = 224, 224
     inputs = tf.random_uniform((batch_size, height, width, 3))
-    with slim.arg_scope([slim.conv2d, slim.separable_conv2d],
-                        normalizer_fn=slim.batch_norm):
+    with slim.arg_scope(inception.inception_v2_arg_scope()):
       inception.inception_v2_base(inputs)
     total_params, _ = slim.model_analyzer.analyze_vars(
         slim.get_model_variables())
-    self.assertAlmostEqual(10173240, total_params)
+    self.assertAlmostEqual(10173112, total_params)
 
   def testBuildEndPointsWithDepthMultiplierLessThanOne(self):
     batch_size = 5

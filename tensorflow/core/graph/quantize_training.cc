@@ -74,7 +74,7 @@ inline bool IsGradientNode(const Graph* graph, const Node* node) {
 // Returns true if the root tensor op type is known, false otherwise.
 bool FindType(const Graph* graph, const Node* node, bool* signed_input,
               bool* range_given, float* input_min, float* input_max) {
-  const string src_op = node->type_string();
+  const string& src_op = node->type_string();
   if (src_op == "Const" || src_op == "Variable") {
     *signed_input = true;
     *range_given = false;

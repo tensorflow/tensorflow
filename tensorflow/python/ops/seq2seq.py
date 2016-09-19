@@ -61,6 +61,7 @@ from __future__ import print_function
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from six.moves import zip     # pylint: disable=redefined-builtin
 
+from tensorflow.python import shape
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -248,8 +249,11 @@ def embedding_rnn_decoder(decoder_inputs,
 
   Returns:
     A tuple of the form (outputs, state), where:
-      outputs: A list of the same length as decoder_inputs of 2D Tensors with
-        shape [batch_size x output_size] containing the generated outputs.
+      outputs: A list of the same length as decoder_inputs of 2D Tensors. The
+        output is of shape [batch_size x cell.output_size] when
+        output_projection is not None (and represents the dense representation
+        of predicted tokens). It is of shape [batch_size x num_decoder_symbols]
+        when output_projection is None.
       state: The state of each decoder cell in each time-step. This is a list
         with length len(decoder_inputs) -- one item for each time-step.
         It is a 2D Tensor of shape [batch_size x cell.state_size].
@@ -317,9 +321,11 @@ def embedding_rnn_seq2seq(encoder_inputs,
 
   Returns:
     A tuple of the form (outputs, state), where:
-      outputs: A list of the same length as decoder_inputs of 2D Tensors with
-        shape [batch_size x num_decoder_symbols] containing the generated
-        outputs.
+      outputs: A list of the same length as decoder_inputs of 2D Tensors. The
+        output is of shape [batch_size x cell.output_size] when
+        output_projection is not None (and represents the dense representation
+        of predicted tokens). It is of shape [batch_size x num_decoder_symbols]
+        when output_projection is None.
       state: The state of each decoder cell in each time-step. This is a list
         with length len(decoder_inputs) -- one item for each time-step.
         It is a 2D Tensor of shape [batch_size x cell.state_size].
@@ -563,8 +569,8 @@ def attention_decoder(decoder_inputs,
     raise ValueError("Must provide at least 1 input to attention decoder.")
   if num_heads < 1:
     raise ValueError("With less than 1 heads, use a non-attention decoder.")
-  if not attention_states.get_shape()[1:2].is_fully_defined():
-    raise ValueError("Shape[1] and [2] of attention_states must be known: %s"
+  if attention_states.get_shape()[2].value is None:
+    raise ValueError("Shape[2] of attention_states must be known: %s"
                      % attention_states.get_shape())
   if output_size is None:
     output_size = cell.output_size
@@ -575,6 +581,8 @@ def attention_decoder(decoder_inputs,
 
     batch_size = array_ops.shape(decoder_inputs[0])[0]  # Needed for reshaping.
     attn_length = attention_states.get_shape()[1].value
+    if attn_length is None:
+      attn_length = shape(attention_states)[1]
     attn_size = attention_states.get_shape()[2].value
 
     # To calculate W1 * h_t we use a 1-by-1 convolution, need to reshape before.
@@ -1079,7 +1087,9 @@ def model_with_buckets(encoder_inputs, decoder_inputs, targets, weights,
   Returns:
     A tuple of the form (outputs, losses), where:
       outputs: The outputs for each bucket. Its j'th element consists of a list
-        of 2D Tensors of shape [batch_size x num_decoder_symbols] (jth outputs).
+        of 2D Tensors. The shape of output tensors can be either
+        [batch_size x output_size] or [batch_size x num_decoder_symbols]
+        depending on the seq2seq model used.
       losses: List of scalar Tensors, representing losses for each bucket, or,
         if per_example_loss is set, a list of 1D batch-sized float Tensors.
 

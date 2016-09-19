@@ -30,13 +30,16 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import saver as tf_saver
 
 
 __all__ = ['add_model_variable',
            'assert_global_step',
            'assert_or_get_global_step',
            'assign_from_checkpoint',
+           'assign_from_checkpoint_fn',
            'assign_from_values',
+           'assign_from_values_fn',
            'create_global_step',
            'get_global_step',
            'get_or_create_global_step',
@@ -191,7 +194,7 @@ def local_variable(initial_value, validate_shape=True, name=None):
 
 
 @contrib_add_arg_scope
-def variable(name, shape=None, dtype=dtypes.float32, initializer=None,
+def variable(name, shape=None, dtype=None, initializer=None,
              regularizer=None, trainable=True, collections=None,
              caching_device=None, device=None):
   """Gets an existing variable with these parameters or creates a new one.
@@ -285,7 +288,7 @@ def get_variables(scope=None, suffix=None, collection=ops.GraphKeys.VARIABLES):
     collection: in which collection search for. Defaults to GraphKeys.VARIABLES.
 
   Returns:
-    a list of variables in colelction with scope and suffix.
+    a list of variables in collection with scope and suffix.
   """
   if suffix is not None:
     if ':' not in suffix:
@@ -302,7 +305,7 @@ def get_model_variables(scope=None, suffix=None):
     suffix: an optional suffix for filtering the variables to return.
 
   Returns:
-    a list of variables in colelction with scope and suffix.
+    a list of variables in collection with scope and suffix.
   """
   return get_variables(scope, suffix, ops.GraphKeys.MODEL_VARIABLES)
 
@@ -315,7 +318,7 @@ def get_local_variables(scope=None, suffix=None):
     suffix: an optional suffix for filtering the variables to return.
 
   Returns:
-    a list of variables in colelction with scope and suffix.
+    a list of variables in collection with scope and suffix.
   """
   return get_variables(scope, suffix, ops.GraphKeys.LOCAL_VARIABLES)
 
@@ -461,6 +464,28 @@ def assign_from_values(var_names_to_values):
   return assign_op, feed_dict
 
 
+def assign_from_values_fn(var_names_to_values):
+  """Returns a function that assigns specific variables from the given values.
+
+  This function provides a mechanism for performing assignment of variables
+  to values in a way that does not fill the graph with large assignment values.
+
+  Args:
+    var_names_to_values: A map from variable names to values.
+
+  Returns:
+    A function that takes a single argument, a `tf.Session`, that applies the
+    assignment operation.
+
+  Raises:
+    ValueError: if any of the given variable names were not found.
+  """
+  assign_op, feed_dict = assign_from_values(var_names_to_values)
+  def callback(session):
+    return session.run(assign_op, feed_dict)
+  return callback
+
+
 # TODO(nsilberman): add flag to load exponential moving averages instead
 def assign_from_checkpoint(model_path, var_list):
   """Creates an operation to assign specific variables from a checkpoint.
@@ -501,10 +526,60 @@ def assign_from_checkpoint(model_path, var_list):
         name=placeholder_name)
     assign_ops.append(var.assign(placeholder_value))
 
+    if var.get_shape() != var_value.shape:
+      raise ValueError(
+          'Total size of new array must be unchanged for %s '
+          'lh_shape: [%s], rh_shape: [%s]'
+          % (checkpoint_var_name, str(var_value.shape), str(var.get_shape())))
+
     feed_dict[placeholder_value] = var_value.reshape(var.get_shape())
 
   assign_op = control_flow_ops.group(*assign_ops)
   return assign_op, feed_dict
+
+
+def assign_from_checkpoint_fn(model_path, var_list, ignore_missing_vars=False,
+                              reshape_variables=False):
+  """Returns a function that assigns specific variables from a checkpoint.
+
+  Args:
+    model_path: The full path to the model checkpoint. To get latest checkpoint
+        use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
+    var_list: A list of `Variable` objects or a dictionary mapping names in the
+        checkpoint to the correspoing variables to initialize. If empty or None,
+        it would return  no_op(), None.
+    ignore_missing_vars: Boolean, if True it would ignore variables missing in
+        the checkpoint with a warning instead of failing.
+    reshape_variables: Boolean, if True it would automatically reshape variables
+        which are of different shape then the ones stored in the checkpoint but
+        which have the same number of elements.
+
+  Returns:
+    A function that takes a single argument, a `tf.Session`, that applies the
+    assignment operation.
+
+  Raises:
+    ValueError: If the checkpoint specified at `model_path` is missing one of
+      the variables in `var_list`.
+  """
+  if ignore_missing_vars:
+    reader = pywrap_tensorflow.NewCheckpointReader(model_path)
+    if isinstance(var_list, dict):
+      var_dict = var_list
+    else:
+      var_dict = {var.op.name: var for var in var_list}
+    available_vars = {}
+    for var in var_dict:
+      if reader.has_tensor(var):
+        available_vars[var] = var_dict[var]
+      else:
+        logging.warning(
+            'Variable %s missing in checkpoint %s', var, model_path)
+    var_list = available_vars
+  saver = tf_saver.Saver(var_list, reshape=reshape_variables)
+  def callback(session):
+    saver.restore(session, model_path)
+  return callback
 
 
 class VariableDeviceChooser(object):

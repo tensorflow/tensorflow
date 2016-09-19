@@ -21,7 +21,7 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 
@@ -191,7 +191,7 @@ def _assert_shape_op(expected_shape, actual_tensor):
   with ops.name_scope('assert_shape', values=[actual_tensor]) as scope:
     actual_shape = array_ops.shape(actual_tensor, name='actual')
     is_shape = _is_shape(expected_shape, actual_tensor, actual_shape)
-    return logging_ops.Assert(
+    return control_flow_ops.Assert(
         is_shape, [
             'Wrong shape for %s [expected] [actual].' % actual_tensor.name,
             expected_shape,
@@ -329,4 +329,3 @@ def convert_to_tensor_or_sparse_tensor(
               dtype.name, value.dtype.name))
     return value
   return ops.convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
-

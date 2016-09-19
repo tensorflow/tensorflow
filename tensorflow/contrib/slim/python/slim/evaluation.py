@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ the metrics and finally call the `evaluation` method:
       "mse": slim.metrics.mean_squared_error(predictions, labels),
   })
 
-  init_op = tf.group(
+  inital_op = tf.group(
       tf.initialize_all_variables(),
       tf.initialize_local_variables())
 
@@ -42,7 +42,7 @@ the metrics and finally call the `evaluation` method:
     metric_values = slim.evaluation(
         sess,
         num_evals=1,
-        init_op=init_op,
+        inital_op=initial_op,
         eval_op=names_to_updates.values(),
         final_op=name_to_values.values())
 
@@ -126,17 +126,20 @@ import time
 
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
-from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import summary_io
 from tensorflow.python.training import supervisor
 from tensorflow.python.training import training_util
 
-__all__ = ['evaluation', 'evaluation_loop', 'wait_for_new_checkpoint']
+__all__ = [
+    'evaluate_once',
+    'evaluation',
+    'evaluation_loop',
+    'wait_for_new_checkpoint',
+    'checkpoints_iterator',
+]
 
 
 def wait_for_new_checkpoint(checkpoint_dir,
@@ -156,6 +159,7 @@ def wait_for_new_checkpoint(checkpoint_dir,
   Returns:
     a new checkpoint path, or None if the timeout was reached.
   """
+  logging.info('Waiting for new checkpoint at %s', checkpoint_dir)
   stop_time = time.time() + timeout if timeout is not None else None
   while True:
     checkpoint_path = tf_saver.latest_checkpoint(checkpoint_dir)
@@ -164,13 +168,49 @@ def wait_for_new_checkpoint(checkpoint_dir,
         return None
       time.sleep(seconds_to_sleep)
     else:
+      logging.info('Found new checkpoint at %s', checkpoint_path)
       return checkpoint_path
+
+
+def checkpoints_iterator(checkpoint_dir,
+                         min_interval_secs=0,
+                         timeout=None):
+  """Continuously yield new checkpoint files as they appear.
+
+  The iterator only checks for new checkpoints when control flow has been
+  reverted to it. This means it can miss checkpoints if your code takes longer
+  to run between iterations than `min_interval_secs` or the interval at which
+  new checkpoints are written.
+
+  Args:
+    checkpoint_dir: The directory in which checkpoints are saved.
+    min_interval_secs: The minimum number of seconds between yielding
+      checkpoints.
+    timeout: The maximum amount of time to wait between checkpoints. If left as
+      `None`, then the process will wait indefinitely.
+
+  Yields:
+    String paths to latest checkpoint files as they arrive. Stops yielding only
+    if/when waiting for a checkpoint times out.
+  """
+  checkpoint_path = None
+  while True:
+    checkpoint_path = wait_for_new_checkpoint(
+        checkpoint_dir, checkpoint_path, timeout=timeout)
+    if checkpoint_path is None:
+      # timed out
+      return
+    start = time.time()
+    yield checkpoint_path
+    time_to_next_eval = start + min_interval_secs - time.time()
+    if time_to_next_eval > 0:
+      time.sleep(time_to_next_eval)
 
 
 def evaluation(sess,
                num_evals=1,
-               init_op=None,
-               init_op_feed_dict=None,
+               initial_op=None,
+               initial_op_feed_dict=None,
                eval_op=None,
                eval_op_feed_dict=None,
                final_op=None,
@@ -189,8 +229,8 @@ def evaluation(sess,
   Args:
     sess: The current TensorFlow `Session`.
     num_evals: The number of times to execute `eval_op`.
-    init_op: An operation run at the beginning of evaluation.
-    init_op_feed_dict: A feed dictionary to use when executing `init_op`.
+    initial_op: An operation run at the beginning of evaluation.
+    initial_op_feed_dict: A feed dictionary to use when executing `initial_op`.
     eval_op: A operation run `num_evals` times.
     eval_op_feed_dict: The feed dictionary to use when executing the `eval_op`.
     final_op: An operation to execute after all of the `eval_op` executions. The
@@ -209,9 +249,9 @@ def evaluation(sess,
   Raises:
     ValueError: if `summary_op` is provided but `global_step` is `None`.
   """
-  if init_op is not None:
-    logging.info('Executing init op')
-    sess.run(init_op, init_op_feed_dict)
+  if initial_op is not None:
+    logging.info('Executing initial eval op')
+    sess.run(initial_op, initial_op_feed_dict)
 
   if eval_op is not None:
     logging.info('Executing eval ops')
@@ -241,10 +281,95 @@ def evaluation(sess,
 _USE_DEFAULT = 0
 
 
+def evaluate_once(master,
+                  checkpoint_path,
+                  logdir,
+                  num_evals=1,
+                  initial_op=None,
+                  initial_op_feed_dict=None,
+                  eval_op=None,
+                  eval_op_feed_dict=None,
+                  final_op=None,
+                  final_op_feed_dict=None,
+                  summary_op=_USE_DEFAULT,
+                  summary_op_feed_dict=None,
+                  variables_to_restore=None,
+                  session_config=None):
+  """Evaluates the model at the given checkpoint path.
+
+  Args:
+    master: The BNS address of the TensorFlow master.
+    checkpoint_path: The path to a checkpoint to use for evaluation.
+    logdir: The directory where the TensorFlow summaries are written to.
+    num_evals: The number of times to run `eval_op`.
+    initial_op: An operation run at the beginning of evaluation.
+    initial_op_feed_dict: A feed dictionary to use when executing `initial_op`.
+    eval_op: A operation run `num_evals` times.
+    eval_op_feed_dict: The feed dictionary to use when executing the `eval_op`.
+    final_op: An operation to execute after all of the `eval_op` executions. The
+      value of `final_op` is returned.
+    final_op_feed_dict: A feed dictionary to use when executing `final_op`.
+    summary_op: The summary_op to evaluate after running TF-Slims metric ops. By
+      default the summary_op is set to tf.merge_all_summaries().
+    summary_op_feed_dict: An optional feed dictionary to use when running the
+      `summary_op`.
+    variables_to_restore: A list of TensorFlow variables to restore during
+      evaluation. If the argument is left as `None` then
+      slim.variables.GetVariablesToRestore() is used.
+    session_config: An instance of `tf.ConfigProto` that will be used to
+      configure the `Session`. If left as `None`, the default will be used.
+
+  Returns:
+    The value of `final_op` or `None` if `final_op` is `None`.
+  """
+  if summary_op == _USE_DEFAULT:
+    summary_op = logging_ops.merge_all_summaries()
+
+  global_step = variables.get_or_create_global_step()
+
+  saver = tf_saver.Saver(variables_to_restore or
+                         variables.get_variables_to_restore())
+
+  summary_writer = summary_io.SummaryWriter(logdir)
+
+  sv = supervisor.Supervisor(graph=ops.get_default_graph(),
+                             logdir=logdir,
+                             summary_op=None,
+                             summary_writer=None,
+                             global_step=None,
+                             saver=None)
+
+  logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
+                                                         time.gmtime()))
+  with sv.managed_session(
+      master, start_standard_services=False, config=session_config) as sess:
+    saver.restore(sess, checkpoint_path)
+    sv.start_queue_runners(sess)
+    final_op_value = evaluation(sess,
+                                num_evals=num_evals,
+                                initial_op=initial_op,
+                                initial_op_feed_dict=initial_op_feed_dict,
+                                eval_op=eval_op,
+                                eval_op_feed_dict=eval_op_feed_dict,
+                                final_op=final_op,
+                                final_op_feed_dict=final_op_feed_dict,
+                                summary_op=summary_op,
+                                summary_op_feed_dict=summary_op_feed_dict,
+                                summary_writer=summary_writer,
+                                global_step=global_step)
+
+  logging.info('Finished evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
+                                                         time.gmtime()))
+
+  return final_op_value
+
+
 def evaluation_loop(master,
                     checkpoint_dir,
                     logdir,
                     num_evals=1,
+                    initial_op=None,
+                    initial_op_feed_dict=None,
                     eval_op=None,
                     eval_op_feed_dict=None,
                     final_op=None,
@@ -262,6 +387,8 @@ def evaluation_loop(master,
     checkpoint_dir: The directory where checkpoints are stored.
     logdir: The directory where the TensorFlow summaries are written to.
     num_evals: The number of times to run `eval_op`.
+    initial_op: An operation run at the beginning of evaluation.
+    initial_op_feed_dict: A feed dictionary to use when executing `initial_op`.
     eval_op: A operation run `num_evals` times.
     eval_op_feed_dict: The feed dictionary to use when executing the `eval_op`.
     final_op: An operation to execute after all of the `eval_op` executions. The
@@ -288,10 +415,6 @@ def evaluation_loop(master,
 
   global_step = variables.get_or_create_global_step()
 
-  init_op = control_flow_ops.group(tf_variables.initialize_all_variables(),
-                                   tf_variables.initialize_local_variables(),
-                                   data_flow_ops.initialize_all_tables())
-
   saver = tf_saver.Saver(variables_to_restore or
                          variables.get_variables_to_restore())
 
@@ -299,26 +422,25 @@ def evaluation_loop(master,
 
   sv = supervisor.Supervisor(graph=ops.get_default_graph(),
                              logdir=logdir,
-                             init_op=init_op,
                              summary_op=None,
                              summary_writer=None,
                              global_step=None,
                              saver=saver)
 
-  last_checkpoint = None
   number_of_evaluations = 0
-  while True:
-    last_checkpoint = wait_for_new_checkpoint(checkpoint_dir, last_checkpoint)
-    start = time.time()
+  for checkpoint_path in checkpoints_iterator(checkpoint_dir,
+                                              eval_interval_secs):
     logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
                                                            time.gmtime()))
 
     with sv.managed_session(
         master, start_standard_services=False, config=session_config) as sess:
-      sv.saver.restore(sess, last_checkpoint)
+      sv.saver.restore(sess, checkpoint_path)
       sv.start_queue_runners(sess)
       final_op_value = evaluation(sess,
                                   num_evals=num_evals,
+                                  initial_op=initial_op,
+                                  initial_op_feed_dict=initial_op_feed_dict,
                                   eval_op=eval_op,
                                   eval_op_feed_dict=eval_op_feed_dict,
                                   final_op=final_op,
@@ -336,10 +458,6 @@ def evaluation_loop(master,
       logging.info('Reached max_number_of_evaluations=%s. Exit',
                    max_number_of_evaluations)
       break
-
-    time_to_next_eval = start + eval_interval_secs - time.time()
-    if time_to_next_eval > 0:
-      time.sleep(time_to_next_eval)
 
   return final_op_value
 

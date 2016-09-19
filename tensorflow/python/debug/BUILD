@@ -16,11 +16,38 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
+    name = "debug_data",
+    srcs = ["debug_data.py"],
+    srcs_version = "PY2AND3",
+    deps = [],
+)
+
+py_library(
     name = "debug_utils",
     srcs = ["debug_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:session",
+    ],
+)
+
+py_library(
+    name = "debugger_cli_common",
+    srcs = ["cli/debugger_cli_common.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "debug_data_test",
+    size = "small",
+    srcs = [
+        "debug_data_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_data",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 
@@ -35,7 +62,9 @@ py_test(
         ":debug_utils",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -46,9 +75,25 @@ cuda_py_test(
         "session_debug_test.py",
     ],
     additional_deps = [
+        ":debug_data",
+        ":debug_utils",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:session",
+    ],
+)
+
+py_test(
+    name = "debugger_cli_common_test",
+    size = "small",
+    srcs = [
+        "cli/debugger_cli_common_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debugger_cli_common",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 

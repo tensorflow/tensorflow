@@ -125,13 +125,14 @@ class DeprecatedMixin(object):
           x, None, n_classes=None,
           batch_size=batch_size or self.batch_size,
           shuffle=False, epochs=1)
-      result = super(DeprecatedMixin, self)._infer_model(
+      result_iter = super(DeprecatedMixin, self)._infer_model(
           input_fn=predict_data_feeder.input_builder,
           feed_fn=predict_data_feeder.get_feed_dict_fn(),
-          outputs=outputs)
+          outputs=outputs, as_iterable=True)
     else:
-      result = super(DeprecatedMixin, self)._infer_model(
-          input_fn=input_fn, outputs=outputs)
+      result_iter = super(DeprecatedMixin, self)._infer_model(
+          input_fn=input_fn, outputs=outputs, as_iterable=True)
+    result = np.array(list(result_iter))
     if self.__deprecated_n_classes > 1 and axis is not None:
       return np.argmax(result, axis)
     return result
@@ -327,13 +328,12 @@ class TensorFlowEstimator(estimator.Estimator, DeprecatedMixin):
         batch_size=batch_size,
         shuffle=False, epochs=1)
 
-    preds = self._infer_model(
+    preds = np.array(list(self._infer_model(
         input_fn=predict_data_feeder.input_builder,
-        feed_fn=predict_data_feeder.get_feed_dict_fn())
+        feed_fn=predict_data_feeder.get_feed_dict_fn(),
+        as_iterable=True)))
     if self.n_classes > 1 and axis != -1:
       preds = preds.argmax(axis=axis)
-    else:
-      preds = preds
     return preds
 
   def predict(self, x, axis=1, batch_size=None):

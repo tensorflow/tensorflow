@@ -75,8 +75,8 @@ def train():
       mean = tf.reduce_mean(var)
       tf.scalar_summary('mean/' + name, mean)
       with tf.name_scope('stddev'):
-        stddev = tf.sqrt(tf.reduce_sum(tf.square(var - mean)))
-      tf.scalar_summary('sttdev/' + name, stddev)
+        stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
+      tf.scalar_summary('stddev/' + name, stddev)
       tf.scalar_summary('max/' + name, tf.reduce_max(var))
       tf.scalar_summary('min/' + name, tf.reduce_min(var))
       tf.histogram_summary(name, var)
@@ -100,7 +100,7 @@ def train():
       with tf.name_scope('Wx_plus_b'):
         preactivate = tf.matmul(input_tensor, weights) + biases
         tf.histogram_summary(layer_name + '/pre_activations', preactivate)
-      activations = act(preactivate, 'activation')
+      activations = act(preactivate, name='activation')
       tf.histogram_summary(layer_name + '/activations', activations)
       return activations
 

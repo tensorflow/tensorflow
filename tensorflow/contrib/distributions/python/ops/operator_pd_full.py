@@ -25,7 +25,7 @@ from tensorflow.python.ops import linalg_ops
 
 
 __all__ = [
-    'OperatorPDFull',
+    "OperatorPDFull",
 ]
 
 
@@ -67,7 +67,7 @@ class OperatorPDFull(operator_pd_cholesky.OperatorPDCholesky):
   in a multi-variate normal distribution.  See the class `MVNOperatorPD`.
   """
 
-  def __init__(self, matrix, verify_pd=True, name='OperatorPDFull'):
+  def __init__(self, matrix, verify_pd=True, name="OperatorPDFull"):
     """Initialize an OperatorPDFull.
 
     Args:
@@ -79,13 +79,13 @@ class OperatorPDFull(operator_pd_cholesky.OperatorPDCholesky):
       name:  A name to prepend to all ops created by this class.
     """
     with ops.name_scope(name):
-      with ops.name_scope('init', values=[matrix]):
+      with ops.name_scope("init", values=[matrix]):
         matrix = ops.convert_to_tensor(matrix)
         # Check symmetric here.  Positivity will be verified by checking the
         # diagonal of the Cholesky factor inside the parent class.  The Cholesky
-        # factorization .batch_cholesky() does not always fail for non PSD
+        # factorization linalg_ops.cholesky() does not always fail for non PSD
         # matrices, so don't rely on that.
         if verify_pd:
           matrix = distribution_util.assert_symmetric(matrix)
-        chol = linalg_ops.batch_cholesky(matrix)
+        chol = linalg_ops.cholesky(matrix)
         super(OperatorPDFull, self).__init__(chol, verify_pd=verify_pd)

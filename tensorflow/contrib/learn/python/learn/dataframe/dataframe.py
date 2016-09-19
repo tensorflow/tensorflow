@@ -59,21 +59,16 @@ class DataFrame(object):
       if not isinstance(k, str):
         raise TypeError("The only supported type for keys is string; got %s" %
                         type(k))
-      if isinstance(v, Series):
-        s = v
+      if v is None:
+        del self._columns[k]
+      elif isinstance(v, Series):
+        self._columns[k] = v
       elif isinstance(v, Transform) and v.input_valency() == 0:
-        s = v()
-      # TODO(jamieas): hook up these special cases again
-      # TODO(soergel): can these special cases be generalized?
-      # elif isinstance(v, pd.Series):
-      #   s = series.NumpySeries(v.values)
-      # elif isinstance(v, np.ndarray):
-      #   s = series.NumpySeries(v)
+        self._columns[k] = v()
       else:
         raise TypeError(
-            "Column in assignment must be an inflow.Series, pandas.Series or a"
-            " numpy array; got type '%s'." % type(v).__name__)
-      self._columns[k] = s
+            "Column in assignment must be an inflow.Series, inflow.Transform,"
+            " or None; got type '%s'." % type(v).__name__)
 
   def select_columns(self, keys):
     """Returns a new DataFrame with a subset of columns.
@@ -87,6 +82,21 @@ class DataFrame(object):
     result = type(self)()
     for key in keys:
       result[key] = self._columns[key]
+    return result
+
+  def exclude_columns(self, exclude_keys):
+    """Returns a new DataFrame with all columns not excluded via exclude_keys.
+
+    Args:
+      exclude_keys: A list of strings. Each should be the name of a column in
+        the DataFrame.  These columns will be excluded from the result.
+    Returns:
+      A new DataFrame containing all columns except those specified.
+    """
+    result = type(self)()
+    for key, value in self._columns.items():
+      if key not in exclude_keys:
+        result[key] = value
     return result
 
   def __getitem__(self, key):
@@ -115,6 +125,12 @@ class DataFrame(object):
       key = [key]
     if isinstance(value, Series):
       value = [value]
+    self.assign(**dict(zip(key, value)))
+
+  def __delitem__(self, key):
+    if isinstance(key, str):
+      key = [key]
+    value = [None for _ in key]
     self.assign(**dict(zip(key, value)))
 
   def build(self, **kwargs):

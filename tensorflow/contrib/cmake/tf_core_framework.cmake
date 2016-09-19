@@ -24,8 +24,8 @@ function(RELATIVE_PROTOBUF_GENERATE_CPP SRCS HDRS ROOT_DIR)
       OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.cc"
              "${CMAKE_CURRENT_BINARY_DIR}/${REL_DIR}/${FIL_WE}.pb.h"
       COMMAND  ${PROTOBUF_PROTOC_EXECUTABLE}
-      ARGS --cpp_out  ${CMAKE_CURRENT_BINARY_DIR} -I ${ROOT_DIR} ${ABS_FIL}
-      DEPENDS ${ABS_FIL} ${PROTOBUF_PROTOC_EXECUTABLE}
+      ARGS --cpp_out  ${CMAKE_CURRENT_BINARY_DIR} -I ${ROOT_DIR} ${ABS_FIL} -I ${PROTOBUF_INCLUDE_DIRS}
+      DEPENDS ${ABS_FIL} protobuf
       COMMENT "Running C++ protocol buffer compiler on ${FIL}"
       VERBATIM )
   endforeach()
@@ -71,13 +71,10 @@ endfunction()
 # tf_protos_cc library
 ########################################################
 
-# Build proto library
-include(FindProtobuf)
-find_package(Protobuf REQUIRED)
 include_directories(${PROTOBUF_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 file(GLOB_RECURSE tf_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
-    "${tensorflow_source_dir}/tensorflow/*.proto"
+    "${tensorflow_source_dir}/tensorflow/core/*.proto"
 )
 RELATIVE_PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS
     ${tensorflow_source_dir} ${tf_protos_cc_srcs}
@@ -95,6 +92,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/graph.proto"
     "tensorflow/core/framework/kernel_def.proto"
     "tensorflow/core/framework/log_memory.proto"
+    "tensorflow/core/framework/node_def.proto"
     "tensorflow/core/framework/op_def.proto"
     "tensorflow/core/framework/step_stats.proto"
     "tensorflow/core/framework/summary.proto"
@@ -179,6 +177,21 @@ add_dependencies(tf_core_lib
     boringssl
 )
 
+# Tricky setup to force always rebuilding
+# force_rebuild always runs forcing ${VERSION_INFO_CC} target to run
+# ${VERSION_INFO_CC} would cache, but it depends on a phony never produced
+# target.
+set(VERSION_INFO_CC ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
+add_custom_target(force_rebuild_target ALL DEPENDS ${VERSION_INFO_CC})
+add_custom_command(OUTPUT __force_rebuild COMMAND cmake -E echo)
+add_custom_command(OUTPUT
+    ${VERSION_INFO_CC}
+    COMMAND ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
+    --raw_generate ${VERSION_INFO_CC}
+    DEPENDS __force_rebuild)
+
+set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
+
 
 ########################################################
 # tf_core_framework library
@@ -210,6 +223,7 @@ list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_test_srcs})
 
 add_library(tf_core_framework OBJECT
     ${tf_core_framework_srcs}
+    ${tf_version_srcs}
     ${PROTO_TEXT_HDRS}
     ${PROTO_TEXT_SRCS})
 target_include_directories(tf_core_framework PUBLIC

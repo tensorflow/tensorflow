@@ -158,7 +158,17 @@ class Env {
   Status DeleteRecursively(const string& dirname, int64* undeleted_files,
                            int64* undeleted_dirs);
 
-  /// Creates the specified directory.
+  /// \brief Creates the specified directory and all the necessary
+  /// subdirectories. Typical return codes.
+  ///  * OK - successfully created the directory and sub directories, even if
+  ///         they were already created.
+  ///  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
+  Status RecursivelyCreateDir(const string& dirname);
+
+  /// \brief Creates the specified directory. Typical return codes
+  ///  * OK - successfully created the directory.
+  ///  * ALREADY_EXISTS - directory already exists.
+  ///  * PERMISSION_DENIED - dirname is not writable.
   Status CreateDir(const string& dirname);
 
   /// Deletes the specified directory.

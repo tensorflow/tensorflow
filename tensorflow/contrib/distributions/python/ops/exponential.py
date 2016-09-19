@@ -21,12 +21,11 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import gamma
-from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
@@ -41,17 +40,21 @@ class Exponential(gamma.Gamma):
   distribution, with Exponential(lam) = Gamma(1, lam).
   """
 
-  def __init__(
-      self, lam, validate_args=True, allow_nan_stats=False, name="Exponential"):
+  def __init__(self,
+               lam,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="Exponential"):
     """Construct Exponential distribution with parameter `lam`.
 
     Args:
       lam: Floating point tensor, the rate of the distribution(s).
         `lam` must contain only positive values.
-      validate_args: Whether to assert that `lam > 0`, and that `x > 0` in the
-        methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
-        and the inputs are invalid, correct behavior is not guaranteed.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert that
+        `lam > 0`, and that `x > 0` in the methods `prob(x)` and `log_prob(x)`.
+        If `validate_args` is `False` and the inputs are invalid, correct
+        behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member. If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -59,53 +62,52 @@ class Exponential(gamma.Gamma):
     """
     # Even though all statistics of are defined for valid inputs, this is not
     # true in the parent class "Gamma."  Therefore, passing
-    # allow_nan_stats=False
+    # allow_nan_stats=True
     # through to the parent class results in unnecessary asserts.
-    with ops.name_scope(name, values=[lam]):
-      lam = ops.convert_to_tensor(lam)
-      self._lam = lam
+    with ops.name_scope(name, values=[lam]) as ns:
+      self._lam = ops.convert_to_tensor(lam, name="lam")
       super(Exponential, self).__init__(
-          alpha=constant_op.constant(1.0, dtype=lam.dtype),
-          beta=lam,
+          alpha=array_ops.ones((), dtype=self._lam.dtype),
+          beta=self._lam,
           allow_nan_stats=allow_nan_stats,
-          validate_args=validate_args)
+          validate_args=validate_args,
+          name=ns)
+      # While the Gamma distribution is not reparameterizeable, the
+      # exponential distribution is.
+      self._is_reparameterized = True
+
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return {"lam": ops.convert_to_tensor(sample_shape, dtype=dtypes.int32)}
 
   @property
   def lam(self):
     return self._lam
 
-  @property
-  def is_reparameterized(self):
-    # While the Gamma distribution is not reparameterizeable, the
-    # exponential distribution is.
-    return True
+  def _sample_n(self, n, seed=None):
+    shape = array_ops.concat(0, ([n], array_ops.shape(self._lam)))
+    # Sample uniformly-at-random from the open-interval (0, 1).
+    sampled = random_ops.random_uniform(
+        shape,
+        minval=np.nextafter(self.dtype.as_numpy_dtype(0.),
+                            self.dtype.as_numpy_dtype(1.)),
+        maxval=array_ops.ones((), dtype=self.dtype),
+        seed=seed,
+        dtype=self.dtype)
+    return -math_ops.log(sampled) / self._lam
 
-  def sample_n(self, n, seed=None, name="sample_n"):
-    """Sample `n` observations from the Exponential Distributions.
 
-    Args:
-      n: `Scalar`, type int32, the number of observations to sample.
-      seed: Python integer, the random seed.
-      name: The name to give this op.
+class ExponentialWithSoftplusLam(Exponential):
+  """Exponential with softplus transform on `lam`."""
 
-    Returns:
-      samples: `[n, ...]`, a `Tensor` of `n` samples for each
-        of the distributions determined by the hyperparameters.
-    """
-    broadcast_shape = self._lam.get_shape()
-    with ops.name_scope(name, "ExponentialSample", [self.lam, n]):
-      n = ops.convert_to_tensor(n, name="n")
-      shape = array_ops.concat(0, ([n], array_ops.shape(self._lam)))
-      # Sample uniformly-at-random from the open-interval (0, 1).
-      sampled = random_ops.random_uniform(
-          shape, minval=np.nextafter(
-              self.dtype.as_numpy_dtype(0.), self.dtype.as_numpy_dtype(1.)),
-          maxval=constant_op.constant(1.0, dtype=self.dtype),
-          seed=seed,
-          dtype=self.dtype)
-
-      n_val = tensor_util.constant_value(n)
-      final_shape = tensor_shape.vector(n_val).concatenate(broadcast_shape)
-      sampled.set_shape(final_shape)
-
-      return -math_ops.log(sampled) / self._lam
+  def __init__(self,
+               lam,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="ExponentialWithSoftplusLam"):
+    with ops.name_scope(name, values=[lam]) as ns:
+      super(ExponentialWithSoftplusLam, self).__init__(
+          lam=nn.softplus(lam),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)

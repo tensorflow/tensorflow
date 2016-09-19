@@ -26,6 +26,7 @@ import tensorflow as tf
 """
 
 import ctypes
+import importlib
 import inspect
 import sys
 import traceback
@@ -57,12 +58,11 @@ please exit the tensorflow source tree, and relaunch your python interpreter
 from there.""" % traceback.format_exc()
   raise ImportError(msg)
 
+from tensorflow.core.framework.node_def_pb2 import *
 from tensorflow.core.framework.summary_pb2 import *
 from tensorflow.core.framework.attr_value_pb2 import *
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
-# Import things out of contrib
-import tensorflow.contrib as contrib
 
 # Framework
 from tensorflow.python.framework.framework_lib import *
@@ -75,7 +75,7 @@ from tensorflow.python.client.client_lib import *
 # Ops
 from tensorflow.python.ops.standard_ops import *
 
-# Bring in subpackages
+# Bring in subpackages.
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.user_ops import user_ops
@@ -97,9 +97,11 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import sysconfig
 from tensorflow.python.platform import test
 
+from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.all_util import make_all
 
-# Import modules whose docstrings contribute, for use by make_all below.
+# Import modules whose docstrings contribute, for use by remove_undocumented
+# below.
 from tensorflow.python.client import client_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import framework_lib
@@ -117,23 +119,10 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 
-# Don't export modules except for the few we really want
-_whitelist = set([app, compat, contrib, errors, flags, gfile, image, logging,
-                  nn, python_io, resource_loader, sysconfig, test, train,
-                  user_ops])
-
-# Export all symbols directly accessible from 'tf.' by drawing on the doc
-# strings of other modules.
-__all__ = make_all(__name__, [framework_lib, array_ops, client_lib, check_ops,
-                              constant_op, control_flow_ops, functional_ops,
-                              histogram_ops, io_ops, math_ops, nn, script_ops,
-                              session_ops, sparse_ops, state_ops, string_ops,
-                              summary, tensor_array_ops, train])
-
 # Symbols whitelisted for export without documentation.
 # TODO(cwhipkey): review these and move to contrib, expose through
 # documentation, or remove.
-__all__.extend([
+_allowed_symbols = [
     'AttrValue',
     'ConfigProto',
     'DeviceSpec',
@@ -177,11 +166,17 @@ __all__.extend([
     'sparse_segment_sqrt_n_grad',
     'unique_with_counts',
     'user_ops',
+]
+
+# This is needed temporarily because we import it explicitly.
+_allowed_symbols.extend([
+    'platform',  ## This is included by the tf.learn main template.
+    'pywrap_tensorflow',
 ])
 
 # Dtypes exported by framework/dtypes.py.
 # TODO(cwhipkey): expose these through documentation.
-__all__.extend([
+_allowed_symbols.extend([
     'QUANTIZED_DTYPES',
     'bfloat16',
     'bfloat16_ref',
@@ -228,9 +223,8 @@ __all__.extend([
 ])
 
 # Export modules and constants.
-__all__.extend([
+_allowed_symbols.extend([
     'app',
-    'contrib',
     'errors',
     'flags',
     'gfile',
@@ -246,4 +240,29 @@ __all__.extend([
     'train',
 ])
 
-__all__.append('__version__')
+# Variables framework.versions:
+_allowed_symbols.extend([
+    'VERSION',
+    'GIT_VERSION',
+    'COMPILER_VERSION',
+])
+
+# Remove all extra symbols that don't have a docstring or are not explicitly
+# referenced in the whitelist.
+remove_undocumented(__name__, _allowed_symbols,
+                    [framework_lib, array_ops, client_lib, check_ops,
+                     constant_op, control_flow_ops, functional_ops,
+                     histogram_ops, io_ops, math_ops, nn, script_ops,
+                     session_ops, sparse_ops, state_ops, string_ops,
+                     summary, tensor_array_ops, train])
+
+# Special dunders that we choose to export:
+_exported_dunders = set([
+    '__version__',
+    '__git_version__',
+    '__compiler_version__',
+])
+
+# Expose symbols minus dunders, unless they are whitelisted above.
+# This is necessary to export our dunders.
+__all__ = [s for s in dir() if s in _exported_dunders or not s.startswith('_')]

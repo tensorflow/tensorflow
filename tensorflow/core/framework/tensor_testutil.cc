@@ -22,7 +22,7 @@ namespace test {
 template <typename T>
 bool IsClose(const T& x, const T& y, double atol, double rtol) {
   // Need x == y so that infinities are close to themselves
-  return x == y || fabs(x - y) < atol + rtol * fabs(x);
+  return x == y || std::abs(x - y) < atol + rtol * std::abs(x);
 }
 
 template <typename T>
@@ -34,7 +34,7 @@ void ExpectClose(const Tensor& x, const Tensor& y, double atol, double rtol) {
       LOG(ERROR) << "x = " << x.DebugString();
       LOG(ERROR) << "y = " << y.DebugString();
       LOG(ERROR) << "atol = " << atol << " rtol = " << rtol
-                 << " tol = " << atol + rtol * std::fabs(Tx(i));
+                 << " tol = " << atol + rtol * std::abs(Tx(i));
       EXPECT_TRUE(false) << i << "-th element is not close " << Tx(i) << " vs. "
                          << Ty(i);
     }
@@ -49,6 +49,12 @@ void ExpectClose(const Tensor& x, const Tensor& y, double atol, double rtol) {
       break;
     case DT_DOUBLE:
       ExpectClose<double>(x, y, atol, rtol);
+      break;
+    case DT_COMPLEX64:
+      ExpectClose<complex64>(x, y, atol, rtol);
+      break;
+    case DT_COMPLEX128:
+      ExpectClose<complex128>(x, y, atol, rtol);
       break;
     default:
       LOG(FATAL) << "Unexpected type : " << DataTypeString(x.dtype());

@@ -126,7 +126,7 @@ In the above invocation, we set `feed_previous` to False. This means that the
 decoder will use `decoder_inputs` tensors as provided. If we set `feed_previous`
 to True, the decoder would only use the first element of `decoder_inputs`.
 All other tensors from this list would be ignored, and instead the previous
-output of the encoder would be used. This is used for decoding translations
+output of the decoder would be used. This is used for decoding translations
 in our translation model, but it can also be used during training, to make
 the model more robust to its own mistakes, similar
 to [Bengio et al., 2015](http://arxiv.org/abs/1506.03099)

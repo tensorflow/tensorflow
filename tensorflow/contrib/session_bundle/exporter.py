@@ -35,6 +35,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
@@ -129,7 +130,13 @@ class Exporter(object):
   """
 
   def __init__(self, saver):
-    self._saver = saver
+    # Makes a copy of the saver-def and disables garbage-collection, since the
+    # exporter enforces garbage-collection independently. Specifically, since
+    # the exporter performs atomic copies of the saver output, it is required
+    # that garbage-collection via the underlying saver be disabled.
+    saver_def = saver.as_saver_def()
+    saver_def.ClearField("max_to_keep")
+    self._saver = tf_saver.Saver(saver_def=saver_def)
     self._has_init = False
     self._assets_to_copy = {}
 

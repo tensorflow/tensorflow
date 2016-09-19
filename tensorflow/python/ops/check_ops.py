@@ -24,6 +24,8 @@
 @@assert_integer
 @@assert_less
 @@assert_less_equal
+@@assert_greater
+@@assert_greater_equal
 @@assert_rank
 @@assert_rank_at_least
 @@assert_type
@@ -43,7 +45,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import compat
 
@@ -62,6 +63,8 @@ __all__ = [
     'assert_integer',
     'assert_less',
     'assert_less_equal',
+    'assert_greater',
+    'assert_greater_equal',
     'assert_rank',
     'assert_rank_at_least',
     'assert_type',
@@ -305,7 +308,7 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
           y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.equal(x, y))
-    return logging_ops.Assert(condition, data, summarize=summarize)
+    return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
 def assert_less(x, y, data=None, summarize=None, message=None, name=None):
@@ -351,7 +354,7 @@ def assert_less(x, y, data=None, summarize=None, message=None, name=None):
           y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.less(x, y))
-    return logging_ops.Assert(condition, data, summarize=summarize)
+    return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
 def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
@@ -397,7 +400,101 @@ def assert_less_equal(x, y, data=None, summarize=None, message=None, name=None):
           y.name, y
       ]
     condition = math_ops.reduce_all(math_ops.less_equal(x, y))
-    return logging_ops.Assert(condition, data, summarize=summarize)
+    return control_flow_ops.Assert(condition, data, summarize=summarize)
+
+
+def assert_greater(x, y, data=None, summarize=None, message=None, name=None):
+  """Assert the condition `x > y` holds element-wise.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_greater(x, y)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_greater(x, y)], x)
+  ```
+
+  This condition holds if for every pair of (possibly broadcast) elements
+  `x[i]`, `y[i]`, we have `x[i] > y[i]`.
+  If both `x` and `y` are empty, this is trivially satisfied.
+
+  Args:
+    x:  Numeric `Tensor`.
+    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
+    data:  The tensors to print out if the condition is False.  Defaults to
+      error message and first few entries of `x`, `y`.
+    summarize: Print this many entries of each tensor.
+    message: A string to prefix to the default message.
+    name: A name for this operation (optional).  Defaults to "assert_greater".
+
+  Returns:
+    Op that raises `InvalidArgumentError` if `x > y` is False.
+  """
+  message = message or ''
+  with ops.name_scope(name, 'assert_greater', [x, y, data]):
+    x = ops.convert_to_tensor(x, name='x')
+    y = ops.convert_to_tensor(y, name='y')
+    if data is None:
+      data = [
+          message,
+          'Condition x > y did not hold element-wise: x = ', x.name, x, 'y = ',
+          y.name, y
+      ]
+    condition = math_ops.reduce_all(math_ops.greater(x, y))
+    return control_flow_ops.Assert(condition, data, summarize=summarize)
+
+
+def assert_greater_equal(x, y, data=None, summarize=None, message=None,
+                         name=None):
+  """Assert the condition `x >= y` holds element-wise.
+
+  Example of adding a dependency to an operation:
+
+  ```python
+  with tf.control_dependencies([tf.assert_greater_equal(x, y)]):
+    output = tf.reduce_sum(x)
+  ```
+
+  Example of adding dependency to the tensor being checked:
+
+  ```python
+  x = tf.with_dependencies([tf.assert_greater_equal(x, y)], x)
+  ```
+
+  This condition holds if for every pair of (possibly broadcast) elements
+  `x[i]`, `y[i]`, we have `x[i] >= y[i]`.
+  If both `x` and `y` are empty, this is trivially satisfied.
+
+  Args:
+    x:  Numeric `Tensor`.
+    y:  Numeric `Tensor`, same dtype as and broadcastable to `x`.
+    data:  The tensors to print out if the condition is False.  Defaults to
+      error message and first few entries of `x`, `y`.
+    summarize: Print this many entries of each tensor.
+    message: A string to prefix to the default message.
+    name: A name for this operation (optional).  Defaults to
+      "assert_greater_equal"
+
+  Returns:
+    Op that raises `InvalidArgumentError` if `x >= y` is False.
+  """
+  message = message or ''
+  with ops.name_scope(name, 'assert_greater_equal', [x, y, data]):
+    x = ops.convert_to_tensor(x, name='x')
+    y = ops.convert_to_tensor(y, name='y')
+    if data is None:
+      data = [
+          message,
+          'Condition x >= y did not hold element-wise: x = ', x.name, x, 'y = ',
+          y.name, y
+      ]
+    condition = math_ops.reduce_all(math_ops.greater_equal(x, y))
+    return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
 def _assert_rank_condition(x, rank, static_condition, dynamic_condition, data,
@@ -452,7 +549,7 @@ def _assert_rank_condition(x, rank, static_condition, dynamic_condition, data,
       rank_check = assert_rank(rank, 0, data=this_data)
       condition = control_flow_ops.with_dependencies([rank_check], condition)
 
-  return logging_ops.Assert(condition, data, summarize=summarize)
+  return control_flow_ops.Assert(condition, data, summarize=summarize)
 
 
 def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):

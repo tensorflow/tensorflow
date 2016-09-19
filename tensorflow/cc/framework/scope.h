@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/core/graph/shape_refiner.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
@@ -78,6 +79,10 @@ struct CompositeOpScopes;
 // will be used to indicate errors by Op-constructor functions called on any
 // child scope. The Op-constructor functions have to check the scope's status by
 // calling the ok() method before proceeding to construct the op.
+//
+// Thread safety:
+// A `Scope` object is NOT thread-safe. Threads cannot concurrently call
+// op-constructor functions on the same `Scope` object.
 class Scope {
  public:
   // The following functions are for users making graphs. They return brand new
@@ -158,6 +163,10 @@ class Scope {
 
   Graph* graph() const { return graph_.get(); }
 
+  ShapeRefiner* refiner() const { return refiner_.get(); }
+
+  std::shared_ptr<Graph> graph_as_shared_ptr() const { return graph_; }
+
   Status status() const { return *status_; }
 
   // If status() is Status::OK(), convert the Graph object stored in this scope
@@ -199,7 +208,7 @@ class Scope {
   // parent.
   typedef std::unordered_map<string, int> NameMap;
 
-  Scope(Graph* graph, Status* status, NameMap* name_map);
+  Scope(Graph* graph, Status* status, NameMap* name_map, ShapeRefiner* refiner);
   Scope(const Scope& other, Tags::ScopeName, const string& name,
         bool copy_names);
   Scope(const Scope& other, Tags::OpName, const string& name,
@@ -229,6 +238,7 @@ class Scope {
   std::shared_ptr<Graph> graph_ = nullptr;
   std::shared_ptr<Status> status_ = nullptr;
   std::shared_ptr<NameMap> name_map_ = nullptr;
+  std::shared_ptr<ShapeRefiner> refiner_ = nullptr;
 
   // If scope_used_ is not nullptr, op_name_ should be empty and
   // GetUniqueNameForOp can only be called once on this scope. More calls to

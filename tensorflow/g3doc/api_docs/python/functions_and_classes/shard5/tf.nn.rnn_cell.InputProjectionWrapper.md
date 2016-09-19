@@ -5,6 +5,13 @@ but instead concatenate the whole sequence of your inputs in time,
 do the projection on this batch-concatenated sequence, then split it.
 - - -
 
+#### `tf.nn.rnn_cell.InputProjectionWrapper.__call__(inputs, state, scope=None)` {#InputProjectionWrapper.__call__}
+
+Run the input projection and then the cell.
+
+
+- - -
+
 #### `tf.nn.rnn_cell.InputProjectionWrapper.__init__(cell, num_proj, input_size=None)` {#InputProjectionWrapper.__init__}
 
 Create a cell with input projection.
