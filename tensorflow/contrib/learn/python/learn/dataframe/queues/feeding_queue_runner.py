@@ -30,7 +30,8 @@ class FeedingQueueRunner(qr.QueueRunner):
   """A queue runner that allows the feeding of values such as numpy arrays."""
 
   def __init__(self, queue=None, enqueue_ops=None, close_op=None,
-               cancel_op=None, feed_fns=None):
+               cancel_op=None, feed_fns=None,
+               queue_closed_exception_types=None):
     """Initialize the queue runner.
 
     For further documentation, see `queue_runner.py`. Note that
@@ -44,13 +45,21 @@ class FeedingQueueRunner(qr.QueueRunner):
       cancel_op: Op to close the queue and cancel pending enqueue ops.
       feed_fns: a list of functions that return a dictionary mapping fed
         `Tensor`s to values. Must be the same length as `enqueue_ops`.
+      queue_closed_exception_types: Optional tuple of Exception types that
+        indicate that the queue has been closed when raised during an enqueue
+        operation.  Defaults to
+        `(tf.errors.OutOfRangeError, tf.errors.CancelledError)`.
 
     Raises:
       ValueError: `feed_fns` is not `None` and has different length than
         `enqueue_ops`.
     """
-    super(FeedingQueueRunner, self).__init__(queue, enqueue_ops, close_op,
-                                             cancel_op)
+    if queue_closed_exception_types is None:
+      queue_closed_exception_types = (
+          errors.OutOfRangeError, errors.CancelledError)
+    super(FeedingQueueRunner, self).__init__(
+        queue, enqueue_ops, close_op,
+        cancel_op, queue_closed_exception_types=queue_closed_exception_types)
     if feed_fns is None:
       self._feed_fns = [None for _ in enqueue_ops]
     else:
@@ -83,7 +92,7 @@ class FeedingQueueRunner(qr.QueueRunner):
         try:
           feed_dict = None if feed_fn is None else feed_fn()
           sess.run(enqueue_op, feed_dict=feed_dict)
-        except errors.OutOfRangeError:
+        except (errors.OutOfRangeError, errors.CancelledError):
           # This exception indicates that a queue was closed.
           with self._lock:
             self._runs -= 1
