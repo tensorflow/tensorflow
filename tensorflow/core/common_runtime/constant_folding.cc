@@ -117,8 +117,6 @@ void FindConstantFoldableNodes(const Graph* graph,
   }
 }
 
-typedef std::pair<Node*, int> NodeAndOutput;
-
 // Given the constant foldable nodes in 'nodes', returns a new graph 'g'. 'g'
 // will contain copies of the nodes in 'nodes'. In addition, if there is an edge
 // going from a node 'n' in 'nodes' to another node in 'orig_graph' but not in

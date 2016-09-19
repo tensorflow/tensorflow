@@ -49,7 +49,7 @@ export enum Mode {
   HOVER
 }
 
-export interface Scatter {
+export interface ScatterPlot {
   /** Sets the data for the scatter plot. */
   setDataSet(dataSet: DataSet, spriteImage?: HTMLImageElement): void;
   /** Called with each data point in order to get its color. */

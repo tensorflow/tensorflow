@@ -155,6 +155,7 @@ cc_library(
         "lib/hash/crc32c.h",  # TODO(josh11b): make internal
         "lib/histogram/histogram.h",
         "lib/io/inputbuffer.h",  # TODO(josh11b): make internal
+        "lib/io/match.h",  # TODO(vrv,jeff): remove once Env->Match change is in
         "lib/io/path.h",
         "lib/io/proto_encode_helper.h",
         "lib/io/record_reader.h",
@@ -432,6 +433,7 @@ tf_cuda_library(
     name = "core_cpu",
     hdrs = [
         "common_runtime/device.h",
+        "common_runtime/shape_refiner.h",
         "graph/algorithm.h",
         "graph/default_device.h",
         "graph/gradients.h",
@@ -439,7 +441,6 @@ tf_cuda_library(
         "graph/graph_constructor.h",
         "graph/graph_def_builder.h",
         "graph/node_builder.h",
-        "graph/shape_refiner.h",
         "graph/validate.h",
         "public/session.h",
         "public/session_options.h",
@@ -629,6 +630,7 @@ filegroup(
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
             "platform/google/**/*",
+            "platform/hadoop/**/*",
             "platform/jpeg.*",
             "platform/png.*",
             "platform/gif.*",
@@ -1350,6 +1352,7 @@ cc_library(
         ":test",
         "//tensorflow/core/platform/default/build_config:test_main",
     ],
+    alwayslink = 1,
 )
 
 # Low level library tests
@@ -1523,7 +1526,6 @@ tf_cc_tests(
         "graph/node_builder_test.cc",
         "graph/optimizer_cse_test.cc",
         "graph/quantize_training_test.cc",
-        "graph/shape_refiner_test.cc",
         "graph/subgraph_test.cc",
         "graph/tensor_id_test.cc",
         "graph/validate_test.cc",
@@ -1653,6 +1655,34 @@ tf_cc_test(
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:immutable_constant_op",
         "//tensorflow/core/kernels:matmul_op",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "common_runtime_shape_refiner_test",
+    size = "small",
+    srcs = [
+        "common_runtime/shape_refiner_test.cc",
+    ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core/kernels:array",
+        "//tensorflow/core/kernels:math",
         "//third_party/eigen3",
     ],
 )

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_GRAPH_SHAPE_REFINER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_GRAPH_SHAPE_REFINER_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
+#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
 
 #include <vector>
 
@@ -64,32 +64,32 @@ class ShapeRefiner {
   }
 
  private:
-  // Extracts the 'constant_value' of 'input_node' if possible.  Uses
-  // 'tensor_storage' for storage and sets '*input_tensor' to
-  // 'tensor_storage' if a constant value could be extracted.
-  Status ConstantValue(const Node* node, Tensor* tensor_storage,
-                       const Tensor** input_tensor) const;
+  // Extracts the subgraph ending at 'node' that is statically
+  // computable and inserts into 'out_graph'. If statically computable,
+  // 'is_constant_graph' will be true.
+  Status ExtractConstantSubgraph(
+      Node* node, Graph* out_graph, bool* is_constant_graph,
+      std::vector<std::pair<string, Tensor>>* const_inputs) TF_MUST_USE_RESULT;
 
-  // Helper functions to extract the Tensor associated with 'node'.
-  Status Constant(const Node* node, Tensor* tensor_storage,
-                  const Tensor** input_tensor) const;
-  Status Shape(const Node* node, Tensor* tensor_storage,
-               const Tensor** input_tensor) const;
-  Status Size(const Node* node, Tensor* tensor_storage,
-              const Tensor** input_tensor) const;
-  Status Rank(const Node* node, Tensor* tensor_storage,
-              const Tensor** input_tensor) const;
-  Status Range(const Node* node, Tensor* tensor_storage,
-               const Tensor** input_tensor) const;
   // Stores a map from a node to its InferenceContext.
   //
   // Owns values.
   std::unordered_map<const Node*, shape_inference::InferenceContext*>
       node_to_context_;
 
+  // Holds a cache from 'tensor name' to the tensor that is
+  // evaluatable as a constant expression.  This reduces repeated
+  // execution of the entire constant subgraph as a graph is being
+  // built up.  This could be changed to some kind of size-based LRU
+  // cache to avoid consuming too much memory, if that eventually
+  // becomes a concern.
+  //
+  // Only tensors less than 1KiB are currently stored in the cache.
+  static constexpr int64 kMaxTensorSize = 1024;
+  std::unordered_map<string, Tensor> const_tensor_map_;
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeRefiner);
 };
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_GRAPH_SHAPE_REFINER_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_

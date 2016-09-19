@@ -37,8 +37,7 @@ namespace {
 
 class GraphConstructorTest : public ::testing::Test {
  protected:
-  GraphConstructorTest() : g_(new Graph(OpRegistry::Global())) {
-  }
+  GraphConstructorTest() : g_(new Graph(OpRegistry::Global())) {}
   ~GraphConstructorTest() override {}
 
   void Convert(const string& gdef_ascii) {
@@ -107,7 +106,7 @@ class GraphConstructorTest : public ::testing::Test {
   bool HasEdge(const string& src, int src_out, const string& dst, int dst_in) {
     for (const Edge* e : g_->edges()) {
       if (e->src()->name() == src && e->src_output() == src_out &&
-          e->dst()->name() == dst && e->dst_input() == src_out)
+          e->dst()->name() == dst && e->dst_input() == dst_in)
         return true;
     }
     return false;
@@ -234,7 +233,7 @@ TEST_F(GraphConstructorTest, SimpleModel) {
   EXPECT_TRUE(HasNode("input"));
   EXPECT_TRUE(HasNode("t1"));
   EXPECT_TRUE(HasEdge("W1", 0, "t1", 0));
-  EXPECT_TRUE(HasEdge("input", 1, "t1", 0));
+  EXPECT_TRUE(HasEdge("input", 1, "t1", 1));
 }
 
 TEST_F(GraphConstructorTest, SimpleModelWithControlEdges) {
@@ -248,9 +247,9 @@ TEST_F(GraphConstructorTest, SimpleModelWithControlEdges) {
   EXPECT_TRUE(HasNode("t1"));
   EXPECT_TRUE(HasNode("t2"));
   EXPECT_TRUE(HasEdge("W1", 0, "t1", 0));
-  EXPECT_TRUE(HasEdge("input", 1, "t1", 0));
+  EXPECT_TRUE(HasEdge("input", 1, "t1", 1));
   EXPECT_TRUE(HasEdge("W1", 0, "t2", 0));
-  EXPECT_TRUE(HasEdge("input", 1, "t2", 0));
+  EXPECT_TRUE(HasEdge("input", 1, "t2", 1));
   EXPECT_TRUE(HasControlEdge("W1", "input"));
   EXPECT_TRUE(HasControlEdge("t1", "t2"));
 }

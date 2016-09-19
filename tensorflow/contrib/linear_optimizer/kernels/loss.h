@@ -27,8 +27,8 @@ class DualLossUpdater {
   // can be employed here, like newton step and/or line search or approximate
   // step that decreases the dual sub-optimality.
   virtual double ComputeUpdatedDual(
-      const int num_partitions, const double label, const double example_weight,
-      const double current_dual, const double wx,
+      const int num_loss_partitions, const double label,
+      const double example_weight, const double current_dual, const double wx,
       const double weighted_example_norm) const = 0;
 
   // Compute dual loss based on the current dual (alpha), example label (y)
@@ -41,6 +41,14 @@ class DualLossUpdater {
   // example label (y) and example weight (cost).
   virtual double ComputePrimalLoss(const double wx, const double example_label,
                                    const double example_weight) const = 0;
+
+  // Primal loss derivative used to compute the dual residue in AdaSDCA
+  virtual double PrimalLossDerivative(const double wx,
+                                      const double example_label,
+                                      const double example_weight) const = 0;
+
+  // This is gamma such that the loss derivative is 1/gamma Lipschitz
+  virtual double SmoothnessConstant() const = 0;
 
   // Converts binary example labels from 0.0 or 1.0 to appropriate range for
   // each loss function.

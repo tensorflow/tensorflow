@@ -19,11 +19,12 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
 // Options specific to constant folding optimizations.
+//
+// TODO(ashankar,vrv): This should move to where constant folding is done.
 struct ConstantFoldingOptions {
   // If "consider" is not a nullptr, then only constant fold a node "n" if
   // consider(n) returns true.
@@ -34,7 +35,6 @@ struct ConstantFoldingOptions {
 // error, in which case *g is left in an incomplete state.
 struct GraphConstructorOptions {
   GraphConstructorOptions();
-  explicit GraphConstructorOptions(const OptimizerOptions& opts);
 
   // If true, allows internal ops in the GraphDef.
   bool allow_internal_ops = false;
@@ -45,20 +45,6 @@ struct GraphConstructorOptions {
   //
   // TODO(zhifengc): if possible, consider removing this option.
   bool expect_device_spec = false;
-
-  // If true, perform common subexpression elimination on the graph.
-  // TODO(jeff): Turn this default to true?
-  bool optimizer_do_cse = false;
-
-  // If "optimizer_do_cse" is true and "cse_consider_function" is
-  // not nullptr, then only consider nodes for CSE for which
-  // "cse_consider_function(node)" returns true.
-  std::function<bool(const Node*)> cse_consider_function = nullptr;
-
-  // If true, perform constant folding on the graph.
-  bool optimizer_do_constant_folding = false;
-
-  ConstantFoldingOptions constant_folding_opts;
 };
 extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                                      const GraphDef& gdef, Graph* g);

@@ -234,7 +234,7 @@ def read_keyed_batch_features(file_pattern,
                               queue_capacity=10000,
                               reader_num_threads=1,
                               feature_queue_capacity=100,
-                              num_queue_runners=2,
+                              num_enqueue_threads=2,
                               parser_num_threads=None,
                               parse_fn=None,
                               name=None):
@@ -266,8 +266,8 @@ def read_keyed_batch_features(file_pattern,
     queue_capacity: Capacity for input queue.
     reader_num_threads: The number of threads to read examples.
     feature_queue_capacity: Capacity of the parsed features queue.
-    num_queue_runners: Number of queue runners to start for the feature queue,
-      Adding multiple queue runners for the parsed example queue helps maintain
+    num_enqueue_threads: Number of threads to enqueue the parsed example queue.
+      Using multiple threads to enqueue the parsed example queue helps maintain
       a full queue when the subsequent computations overall are cheaper than
       parsing.
     parser_num_threads: (Deprecated) The number of threads to parse examples.
@@ -300,14 +300,14 @@ def read_keyed_batch_features(file_pattern,
         feature_map,
         keys=keys,
         feature_queue_capacity=feature_queue_capacity,
-        num_queue_runners=num_queue_runners,
+        num_enqueue_threads=num_enqueue_threads,
         name=scope)
 
 
 def queue_parsed_features(parsed_features,
                           keys=None,
                           feature_queue_capacity=100,
-                          num_queue_runners=2,
+                          num_enqueue_threads=2,
                           name=None):
   """Speeds up parsing by using queues to do it asynchronously.
 
@@ -326,8 +326,8 @@ def queue_parsed_features(parsed_features,
     parsed_features: A dict of string key to `Tensor` or `SparseTensor` objects.
     keys: `Tensor` of string keys.
     feature_queue_capacity: Capacity of the parsed features queue.
-    num_queue_runners: Number of queue runners to start for the feature queue,
-      Adding multiple queue runners for the parsed example queue helps maintain
+    num_enqueue_threads: Number of threads to enqueue the parsed example queue.
+      Using multiple thrads to enqueue the parsed example queue helps maintain
       a full queue when the subsequent computations overall are cheaper than
       parsing.
     name: Name of resulting op.
@@ -374,14 +374,14 @@ def queue_parsed_features(parsed_features,
                                math_ops.cast(input_queue.size(), dtypes.float32)
                                * (1. / feature_queue_capacity))
 
-    # Add multiple queue runners so that the queue is always full. Adding more
-    # than two queue-runners may hog the cpu on the worker to fill up the queue.
-    for _ in range(num_queue_runners):
-      queue_runner.add_queue_runner(
-          queue_runner.QueueRunner(
-              input_queue, [input_queue.enqueue(tensors_to_enqueue)],
-              queue_closed_exception_types=(errors.OutOfRangeError,
-                                            errors.CancelledError)))
+    # Use multiple threads to enqueue so the queue is always full. Adding more
+    # than two threads may hog the cpu on the worker to fill up the queue.
+    enqueue_ops = [input_queue.enqueue(tensors_to_enqueue)
+                   for _ in range(num_enqueue_threads)]
+    queue_runner.add_queue_runner(queue_runner.QueueRunner(
+        input_queue, enqueue_ops,
+        queue_closed_exception_types=(errors.OutOfRangeError,
+                                      errors.CancelledError)))
 
     dequeued_tensors = input_queue.dequeue()
 

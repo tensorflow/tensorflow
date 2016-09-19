@@ -866,9 +866,24 @@ Optimize weights given a loss.
 
 - - -
 
-### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, moving_average_decay=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None)` {#optimize_loss}
+### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None)` {#optimize_loss}
 
 Given loss and parameters for optimizer, returns a training op.
+
+Various ways of passing optimizers, include:
+  - string, name of the optimizer like 'SGD', 'Adam', see OPTIMIZER_CLS_NAMES
+      for full list. E.g. `optimize_loss(..., optimizer='Adam')`.
+  - function, takes learning rate `Tensor` as argument and must return
+      `Optimizer` instance. E.g. `optimize_loss(...,
+      optimizer=lambda lr: tf.train.MomentumOptimizer(lr, momentum=0.5))`.
+    Alternatively, if `learning_rate` is `None`, the function takes no
+    arguments. E.g. `optimize_loss(..., learning_rate=None,
+      optimizer=lambda: tf.train.MomentumOptimizer(0.5, momentum=0.5))`.
+  - class, subclass of `Optimizer` that takes only one required argument -
+      learning rate, such as AdamOptimizer, AdagradOptimizer.
+      E.g. `optimize_loss(..., optimizer=tf.train.AdagradOptimizer)`.
+  - object, instance of subclass of `Optimizer`.
+      E.g., `optimizer_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
 
 ##### Args:
 
@@ -881,16 +896,15 @@ Given loss and parameters for optimizer, returns a training op.
                'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
              class should be sub-class of tf.Optimizer that implements
                `compute_gradients` and `apply_gradients` functions.
-             optimizer instance should be instantion of tf.Optimizer sub-class
-               and have `compute_gradients` and `apply_gradients` functions.
+             optimizer instance should be instantion of `tf.Optimizer`
+               sub-class and have `compute_gradients` and `apply_gradients`
+               functions.
 *  <b>`gradient_noise_scale`</b>: float or None, adds 0-mean normal noise scaled by this
                         value.
 *  <b>`gradient_multipliers`</b>: dict of variables or variable names to floats.
                         If present, gradients for specified
                         variables will be multiplied by given constant.
 *  <b>`clip_gradients`</b>: float or `None`, clips gradients by this value.
-*  <b>`moving_average_decay`</b>: Deprecated. float or None, takes into account previous
-                        loss to make learning smoother due to outliers.
 *  <b>`learning_rate_decay_fn`</b>: function, takes `learning_rate` and `global_step`
                           `Tensor`s, returns `Tensor`.
                           Can be used to implement any learning rate decay

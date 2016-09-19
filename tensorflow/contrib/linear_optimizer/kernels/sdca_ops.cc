@@ -46,10 +46,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/random/distribution_sampler.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/guarded_philox_random.h"
 #include "tensorflow/core/util/sparse/group_iterator.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -121,7 +123,7 @@ class Example {
   // Compute dot product between weights, and example feature values. This
   // method also computes the normalized example norm used in SDCA update.
   const ExampleStatistics ComputeWxAndWeightedExampleNorm(
-      const int num_partitions, const ModelWeights& model_weights,
+      const int num_loss_partitions, const ModelWeights& model_weights,
       const Regularizations& regularization) const;
 
   float example_label() const { return example_label_; }
@@ -274,7 +276,7 @@ class ModelWeights {
 // Computes the example statistics for given example, and model. Defined here
 // as we need definition of ModelWeights and Regularizations.
 const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
-    const int num_partitions, const ModelWeights& model_weights,
+    const int num_loss_partitions, const ModelWeights& model_weights,
     const Regularizations& regularization) const {
   ExampleStatistics result;
 
@@ -295,7 +297,7 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
                                        : (*sparse_features.values)(k);
       const double feature_weight =
           sparse_weights.nominals(feature_index) +
-          sparse_weights.deltas(feature_index) * num_partitions;
+          sparse_weights.deltas(feature_index) * num_loss_partitions;
       result.prev_wx +=
           feature_value *
           regularization.Shrink(sparse_weights.nominals(feature_index));
@@ -310,7 +312,8 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
 
     const Eigen::Tensor<float, 1, Eigen::RowMajor> feature_weights =
         dense_weights.nominals +
-        dense_weights.deltas * dense_weights.deltas.constant(num_partitions);
+        dense_weights.deltas *
+            dense_weights.deltas.constant(num_loss_partitions);
     const Eigen::Tensor<float, 0, Eigen::RowMajor> prev_prediction =
         (dense_vector.row() *
          regularization.EigenShrink(dense_weights.nominals))
@@ -333,6 +336,79 @@ class Examples {
   // Returns the Example at |example_index|.
   const Example& example(const int example_index) const {
     return examples_.at(example_index);
+  }
+
+  int sampled_index(const int id, const bool adaptative) const {
+    if (adaptative) return sampled_index_[id];
+    return id;
+  }
+
+  void SampleAdaptativeProbabilities(
+      const int num_partitions, const Regularizations& regularization,
+      const ModelWeights& model_weights,
+      const TTypes<float>::Matrix example_state_data,
+      const std::unique_ptr<DualLossUpdater>& loss_updater) {
+    // Compute the probabilities
+    for (int example_id = 0; example_id < num_examples(); ++example_id) {
+      const Example& example = examples_[example_id];
+      const double example_weight = example.example_weight();
+      float label = example.example_label();
+      const Status conversion_status = loss_updater->ConvertLabel(&label);
+      const ExampleStatistics example_statistics =
+          example.ComputeWxAndWeightedExampleNorm(num_partitions, model_weights,
+                                                  regularization);
+      const double kappa = example_state_data(example_id, 0) +
+                           loss_updater->PrimalLossDerivative(
+                               example_statistics.wx, label, example_weight);
+      probabilities_[example_id] =
+          example_weight * sqrt(examples_[example_id].squared_norm_ +
+                                regularization.symmetric_l2() *
+                                    loss_updater->SmoothnessConstant()) *
+          std::abs(kappa);
+    }
+
+    // Sample the index
+    random::DistributionSampler sampler(probabilities_);
+    GuardedPhiloxRandom generator;
+    generator.Init(0, 0);
+    auto local_gen = generator.ReserveSamples32(num_examples());
+    random::SimplePhilox random(&local_gen);
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> dis(0, 1);
+
+    // We use a decay of 10: the probability of an example is divided by 10
+    // once that example is picked. A good approximation of that is to only
+    // keep a picked example with probability (1 / 10) ^ k where k is the
+    // number of times we already picked that example. We add a num_retries
+    // to avoid taking too long to sample. We then fill the sampled_index with
+    // unseen examples sorted by probabilities.
+    int id = 0;
+    int num_retries = 0;
+    while (id < num_examples() && num_retries < num_examples()) {
+      int picked_id = sampler.Sample(&random);
+      if (dis(gen) > std::pow(0.1, sampled_count_[picked_id])) {
+        num_retries++;
+        continue;
+      }
+      sampled_count_[picked_id]++;
+      sampled_index_[id++] = picked_id;
+    }
+
+    std::vector<std::pair<int, float>> examples_not_seen;
+    examples_not_seen.reserve(num_examples());
+    for (int i = 0; i < num_examples(); ++i) {
+      if (sampled_count_[i] == 0)
+        examples_not_seen.emplace_back(sampled_index_[i], probabilities_[i]);
+    }
+    std::sort(
+        examples_not_seen.begin(), examples_not_seen.end(),
+        [](const std::pair<int, float>& lhs, const std::pair<int, float>& rhs) {
+          return lhs.second > rhs.second;
+        });
+    for (int i = id; i < num_examples(); ++i) {
+      sampled_count_[i] = examples_not_seen[i - id].first;
+    }
   }
 
   int num_examples() const { return examples_.size(); }
@@ -376,6 +452,11 @@ class Examples {
 
   // All examples in the batch.
   std::vector<Example> examples_;
+
+  // Adaptative sampling variables
+  std::vector<float> probabilities_;
+  std::vector<int> sampled_index_;
+  std::vector<int> sampled_count_;
 
   int num_features_ = 0;
 
@@ -423,6 +504,9 @@ Status Examples::Initialize(OpKernelContext* const context,
 
   examples_.clear();
   examples_.resize(num_examples);
+  probabilities_.resize(num_examples);
+  sampled_index_.resize(num_examples);
+  sampled_count_.resize(num_examples);
   for (int example_id = 0; example_id < num_examples; ++example_id) {
     Example* const example = &examples_[example_id];
     example->sparse_features_.resize(num_sparse_features);
@@ -618,6 +702,7 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
       OP_REQUIRES(context, false, errors::InvalidArgument(
                                       "Unsupported loss type: ", loss_type));
     }
+    OP_REQUIRES_OK(context, context->GetAttr("adaptative", &adaptative_));
     OP_REQUIRES_OK(context, context->GetAttr("num_sparse_features",
                                              &num_sparse_features_));
     OP_REQUIRES_OK(context,
@@ -637,8 +722,8 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
                                     static_cast<int64>(num_sparse_features_) +
                                         static_cast<int64>(num_dense_features_),
                                     std::numeric_limits<int>::max())));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("num_partitions", &num_partitions_));
+    OP_REQUIRES_OK(context, context->GetAttr("num_loss_partitions",
+                                             &num_loss_partitions_));
     OP_REQUIRES_OK(context, context->GetAttr("num_inner_iterations",
                                              &num_inner_iterations_));
     OP_REQUIRES_OK(context, regularizations_.Initialize(context));
@@ -646,10 +731,10 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
 
   // TODO(sibyl-Aix6ihai): Refactor/shorten this function.
   void Compute(OpKernelContext* const context) override {
-    Examples examples;
     ModelWeights model_weights;
     OP_REQUIRES_OK(context, model_weights.Initialize(context));
 
+    Examples examples;
     OP_REQUIRES_OK(context,
                    examples.Initialize(
                        context, model_weights, num_sparse_features_,
@@ -670,13 +755,21 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
     auto example_state_data = mutable_example_state_data_t.matrix<float>();
     context->set_output("out_example_state_data", mutable_example_state_data_t);
 
+    if (adaptative_) {
+      examples.SampleAdaptativeProbabilities(num_loss_partitions_,
+                                             regularizations_, model_weights,
+                                             example_state_data, loss_updater_);
+    }
+
     mutex mu;
     Status train_step_status GUARDED_BY(mu);
+    std::atomic<std::int64_t> atomic_index(-1);
     auto train_step = [&, this](const int64 begin, const int64 end) {
       // The static_cast here is safe since begin and end can be at most
       // num_examples which is an int.
-      for (int example_index = static_cast<int>(begin); example_index < end;
-           ++example_index) {
+      for (int id = static_cast<int>(begin); id < end; ++id) {
+        const int64 example_index =
+            examples.sampled_index(++atomic_index, adaptative_);
         const Example& example = examples.example(example_index);
         const float dual = example_state_data(example_index, 0);
         const float example_weight = example.example_weight();
@@ -695,10 +788,10 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
         // primal loss.
         const ExampleStatistics example_statistics =
             example.ComputeWxAndWeightedExampleNorm(
-                num_partitions_, model_weights, regularizations_);
+                num_loss_partitions_, model_weights, regularizations_);
 
         const double new_dual = loss_updater_->ComputeUpdatedDual(
-            num_partitions_, example_label, example_weight, dual,
+            num_loss_partitions_, example_label, example_weight, dual,
             example_statistics.wx, example_statistics.normalized_squared_norm);
 
         // Compute new weights.
@@ -722,6 +815,7 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
     const int64 kCostPerUnit = examples.num_features();
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *context->device()->tensorflow_cpu_worker_threads();
+
     Shard(worker_threads.num_threads, worker_threads.workers,
           examples.num_examples(), kCostPerUnit, train_step);
     OP_REQUIRES_OK(context, train_step_status);
@@ -736,7 +830,8 @@ class DistributedSdcaLargeBatchSolver : public OpKernel {
   int num_sparse_features_with_values_ = 0;
   int num_dense_features_ = 0;
   int num_inner_iterations_ = 0;
-  int num_partitions_ = 0;
+  int num_loss_partitions_ = 0;
+  bool adaptative_;
   Regularizations regularizations_;
 };
 REGISTER_KERNEL_BUILDER(

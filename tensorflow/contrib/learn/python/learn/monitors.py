@@ -389,8 +389,7 @@ class EveryN(BaseMonitor):
         step == self._max_steps):  # Note: max_steps can be None here.
       self._every_n_step_begin_called = True
       return self.every_n_step_begin(step)
-    else:
-      self._every_n_step_begin_called = False
+    self._every_n_step_begin_called = False
     return []
 
   def step_end(self, step, output):
@@ -707,17 +706,20 @@ class ValidationMonitor(EveryN):
     self._latest_path_step = step
 
     # Run evaluation and log it.
-    outputs = self._estimator.evaluate(
+    validation_outputs = self._estimator.evaluate(
         x=self.x, y=self.y, input_fn=self.input_fn, batch_size=self.batch_size,
         steps=self.eval_steps, metrics=self.metrics, name=self.name)
     stats = []
-    for name in outputs:
-      stats.append("%s = %s" % (name, str(outputs[name])))
+    for name in validation_outputs:
+      stats.append("%s = %s" % (name, str(validation_outputs[name])))
     logging.info("Validation (step %d): %s", step, ", ".join(stats))
 
     # Early stopping logic.
     if self.early_stopping_rounds is not None:
-      current_value = outputs[self.early_stopping_metric]
+      if self.early_stopping_metric not in validation_outputs:
+        raise ValueError("Metric %s missing from outputs %s." % (
+            self.early_stopping_metric, set(validation_outputs.keys())))
+      current_value = validation_outputs[self.early_stopping_metric]
       if (self._best_value is None or (self.early_stopping_metric_minimize and
                                        (current_value < self._best_value)) or
           (not self.early_stopping_metric_minimize and
@@ -1027,7 +1029,7 @@ class CheckpointSaver(BaseMonitor):
       ValueError: If both `save_steps` and `save_secs` are not `None`.
       ValueError: If both `save_steps` and `save_secs` are `None`.
     """
-    logging.info("Create CheckpointSaver")
+    logging.info("Create CheckpointSaver.")
     super(CheckpointSaver, self).__init__()
     self._saver = saver
     self._summary_writer = SummaryWriterCache.get(checkpoint_dir)

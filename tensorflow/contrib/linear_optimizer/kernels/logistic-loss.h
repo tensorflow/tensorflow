@@ -29,7 +29,7 @@ class LogisticLossUpdater : public DualLossUpdater {
   // Adding vs. Averaging in Distributed Primal-Dual Optimization.
   // Chenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan, Peter
   // Richtarik, Martin Takac http://arxiv.org/abs/1502.03508
-  double ComputeUpdatedDual(const int num_partitions, const double label,
+  double ComputeUpdatedDual(const int num_loss_partitions, const double label,
                             const double example_weight,
                             const double current_dual, const double wx,
                             const double weighted_example_norm) const final {
@@ -38,7 +38,7 @@ class LogisticLossUpdater : public DualLossUpdater {
     static const int newton_total_steps = 10;
     double x = 0;
     for (int i = 0; i < newton_total_steps; ++i) {
-      x = NewtonStep(x, num_partitions, label, wx, example_weight,
+      x = NewtonStep(x, num_loss_partitions, label, wx, example_weight,
                      weighted_example_norm, current_dual);
     }
     return 0.5 * (1 + tanh(x)) / label;
@@ -78,6 +78,23 @@ class LogisticLossUpdater : public DualLossUpdater {
     return (log(1 + exp(y_wx)) - y_wx) * example_weight;
   }
 
+  // Derivative of logistic loss
+  double PrimalLossDerivative(const double wx, const double label,
+                              const double example_weight) const final {
+    double inverse_exp_term = 0;
+    if (label * wx > 0) {
+      inverse_exp_term = exp(-label * wx) / (1 + exp(-label * wx));
+    } else {
+      inverse_exp_term = 1 / (1 + exp(label * wx));
+    }
+    return inverse_exp_term * label * example_weight;
+  }
+
+  // The smoothness constant is 4 since the derivative of logistic loss, which
+  // is exp(-x) / (1 + exp(-x)) can be shown to 0.25-Lipschitz (its derivative
+  // is bounded by 0.25)
+  double SmoothnessConstant() const final { return 4; }
+
   // Converts binary example labels from 0.0 or 1.0 to -1.0 or 1.0 respectively
   // as expected by logistic regression.
   Status ConvertLabel(float* const example_label) const final {
@@ -96,18 +113,18 @@ class LogisticLossUpdater : public DualLossUpdater {
 
  private:
   // We use Newton algorithm on a modified function (see readme.md).
-  double NewtonStep(const double x, const int num_partitions,
+  double NewtonStep(const double x, const int num_loss_partitions,
                     const double label, const double wx,
                     const double example_weight,
                     const double weighted_example_norm,
                     const double current_dual) const {
     const double tanhx = tanh(x);
     const double numerator = -2 * label * x - wx -
-                             num_partitions * weighted_example_norm *
+                             num_loss_partitions * weighted_example_norm *
                                  example_weight *
                                  (0.5 * (1 + tanhx) / label - current_dual);
     const double denominator = -2 * label -
-                               num_partitions * weighted_example_norm *
+                               num_loss_partitions * weighted_example_norm *
                                    example_weight * (1 - tanhx * tanhx) * 0.5 /
                                    label;
     return x - numerator / denominator;

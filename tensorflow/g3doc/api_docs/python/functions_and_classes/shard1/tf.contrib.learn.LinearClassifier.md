@@ -31,6 +31,7 @@ estimator = LinearClassifier(
    feature_columns=[occupation, education_x_occupation],
    optimizer=tf.contrib.linear_optimizer.SDCAOptimizer(
      example_id_column='example_id',
+     num_loss_partitions=...,
      symmetric_l2_regularization=2.0
    ))
 
@@ -147,6 +148,13 @@ See trainable.Trainable.
 - - -
 
 #### `tf.contrib.learn.LinearClassifier.get_variable_names()` {#LinearClassifier.get_variable_names}
+
+
+
+
+- - -
+
+#### `tf.contrib.learn.LinearClassifier.get_variable_value(name)` {#LinearClassifier.get_variable_value}
 
 
 

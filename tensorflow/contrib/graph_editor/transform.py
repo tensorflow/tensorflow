@@ -33,7 +33,6 @@ from tensorflow.contrib.graph_editor import select
 from tensorflow.contrib.graph_editor import subgraph
 from tensorflow.contrib.graph_editor import util
 from tensorflow.python.framework import ops as tf_ops
-from tensorflow.python.platform import tf_logging as logging
 
 __all__ = [
     "replace_t_with_placeholder_handler",
@@ -230,6 +229,7 @@ class Transformer(object):
     def __init__(self, transformer, sgv, dst_graph, dst_scope, src_scope):
       self.transformer = transformer
       self.sgv = sgv
+      self.sgv_inputs_set = frozenset(sgv.inputs)
       self.ops = frozenset(sgv.ops)
       self.control_outputs = util.ControlOutputs(sgv.graph)
       self.graph = sgv.graph
@@ -435,10 +435,7 @@ class Transformer(object):
     if dst_scope and not reuse_dst_scope:
       dst_scope = util.scope_finalize(dst_graph.unique_name(dst_scope[:-1]))
 
-    if sgv.graph is dst_graph and not dst_scope:
-      logging.warning("The source and the destination are the same! "
-                      "Beware: in-place transormation are currently "
-                      "experimental.")
+    # Create temporary info used during this transform call
     self._info = Transformer._Info(self, sgv, dst_graph, dst_scope, src_scope)
 
     # Transform the graph starting from the output tensors.
@@ -518,7 +515,7 @@ class Transformer(object):
     # If op is not in the subgraph:
     if op not in self._info.ops:
       # t_ is an input of the subgraph
-      if t in self._info.sgv.inputs:
+      if t in self._info.sgv_inputs_set:
         t_ = self.transform_external_input_handler(self._info, t)
       # t_ is a hidden input of the subgraph
       else:
