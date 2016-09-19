@@ -54,8 +54,6 @@ from __future__ import print_function
 
 import math
 
-import six  # pylint: disable=unused-import
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import variable_scope
