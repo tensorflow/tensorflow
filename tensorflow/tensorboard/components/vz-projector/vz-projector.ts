@@ -17,12 +17,14 @@ import {DataPoint, DataSet, DataSource, PCA_SAMPLE_DIM, SAMPLE_SIZE} from './dat
 import {DataProvider, getDataProvider} from './data-loader';
 import * as knn from './knn';
 import {Mode, ScatterPlot} from './scatterPlot';
-import {ScatterPlotWebGLContainer} from './scatterPlotWebGLContainer';
-import {ScatterPlotWebGLVisualizerPointsLabels} from './scatterPlotWebGLVisualizerPointsLabels';
+import {ScatterPlotWebGL} from './scatterPlotWebGL';
+import {ScatterPlotWebGLVisualizerCanvasLabels} from './scatterPlotWebGLVisualizerCanvasLabels';
+import {ScatterPlotWebGLVisualizerSprites} from './scatterPlotWebGLVisualizerSprites';
 import * as vector from './vector';
 import {ColorOption, DataPanel} from './vz-projector-data-panel';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
+
 
 /** T-SNE perplexity. Roughly how many neighbors each point influences. */
 let perplexity: number = 30;
@@ -428,14 +430,19 @@ export class Projector extends ProjectorPolymer {
     // Canvas
     {
       let container = this.dom.select('#scatter');
-      let scatterPlotWebGLContainer = new ScatterPlotWebGLContainer(
+      let scatterPlotWebGL = new ScatterPlotWebGL(
           container, i => '' + this.points[i].metadata['label']);
 
-      let pointsLabelsVisualizer = new ScatterPlotWebGLVisualizerPointsLabels(
-          scatterPlotWebGLContainer, container);
+      let pointsVisualizer =
+          new ScatterPlotWebGLVisualizerSprites(scatterPlotWebGL);
 
-      scatterPlotWebGLContainer.addVisualizer(pointsLabelsVisualizer);
-      this.scatterPlot = scatterPlotWebGLContainer;
+      let labelVisualizer =
+          new ScatterPlotWebGLVisualizerCanvasLabels(container);
+
+      scatterPlotWebGL.addVisualizer(pointsVisualizer);
+      scatterPlotWebGL.addVisualizer(labelVisualizer);
+
+      this.scatterPlot = scatterPlotWebGL;
       this.scatterPlot.setDayNightMode(modeIsNight);
     }
 

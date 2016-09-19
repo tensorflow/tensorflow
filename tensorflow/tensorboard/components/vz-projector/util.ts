@@ -55,6 +55,31 @@ export function vector3DToScreenCoords(
 }
 
 /**
+ * Gets the camera-space z coordinates of the nearest and farthest points.
+ * Ignores points that are behind the camera.
+ */
+export function getNearFarPoints(
+    dataSet: DataSet, cameraPos: THREE.Vector3,
+    cameraTarget: THREE.Vector3): [number, number] {
+  let shortestDist: number = Infinity;
+  let furthestDist: number = 0;
+  let camToTarget = new THREE.Vector3().copy(cameraTarget).sub(cameraPos);
+  for (let i = 0; i < dataSet.points.length; i++) {
+    let point = getProjectedPointFromIndex(dataSet, i);
+    let camToPoint = new THREE.Vector3().copy(point).sub(cameraPos);
+    if (camToTarget.dot(camToPoint) < 0) {
+      continue;
+    }
+    let distToCam = cameraPos.distanceToSquared(point);
+    furthestDist = Math.max(furthestDist, distToCam);
+    shortestDist = Math.min(shortestDist, distToCam);
+  }
+  furthestDist = Math.sqrt(furthestDist);
+  shortestDist = Math.sqrt(shortestDist);
+  return [shortestDist, furthestDist];
+}
+
+/**
  * Assert that the condition is satisfied; if not, log user-specified message
  * to the console.
  */

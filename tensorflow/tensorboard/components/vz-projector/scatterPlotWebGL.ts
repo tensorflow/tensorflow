@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {RenderContext} from './renderContext';
 import {DataSet, Mode, OnHoverListener, OnSelectionListener, ScatterPlot} from './scatterPlot';
 import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
-import {getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
+import {getNearFarPoints, getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
 import {dist_2D} from './vector';
 
 
@@ -67,11 +68,12 @@ const TAR_2D = {
 };
 
 /**
- * ScatterPlotWebGLContainer maintains a three.js instantiation and context,
+ * Maintains a three.js instantiation and context,
  * animation state, day/night state, and all other logic that's
- * independent of how a 3D scatter plot is actually rendered.
+ * independent of how a 3D scatter plot is actually rendered. Also holds an
+ * array of visualizers and dispatches application events to them.
  */
-export class ScatterPlotWebGLContainer implements ScatterPlot {
+export class ScatterPlotWebGL implements ScatterPlot {
   private dataSet: DataSet;
   private containerNode: HTMLElement;
 
@@ -605,6 +607,9 @@ export class ScatterPlotWebGLContainer implements ScatterPlot {
       return;
     }
 
+    let cameraSpacePointExtents: [number, number] = getNearFarPoints(
+        this.dataSet, this.perspCamera.position, this.cameraControls.target);
+
     // Render first pass to picking target. This render fills pickingTexture
     // with colors that are actually point ids, so that sampling the texture at
     // the mouse's current x,y coordinates will reveal the data point that the
@@ -619,11 +624,15 @@ export class ScatterPlotWebGLContainer implements ScatterPlot {
     lightPos.x += 1;
     lightPos.y += 1;
     this.light.position.set(lightPos.x, lightPos.y, lightPos.z);
+
+    let rc = new RenderContext(
+        this.perspCamera, this.cameraControls.target, this.width, this.height,
+        cameraSpacePointExtents[0], cameraSpacePointExtents[1],
+        this.colorAccessor, this.labeledPoints, this.labelAccessor,
+        this.highlightedPoints, this.highlightStroke);
+
     this.visualizers.forEach(v => {
-      v.onRender(
-          this.perspCamera, this.cameraControls.target, this.width, this.height,
-          this.colorAccessor, this.labeledPoints, this.labelAccessor,
-          this.highlightedPoints, this.highlightStroke);
+      v.onRender(rc);
     });
     this.renderer.render(this.scene, this.perspCamera);
   }

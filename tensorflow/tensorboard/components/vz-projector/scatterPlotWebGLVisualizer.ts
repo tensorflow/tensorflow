@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {RenderContext} from './renderContext';
 import {DataSet} from './scatterPlot';
+
 
 /**
  * ScatterPlotWebGLVisualizer is an interface used by ScatterPlotWebGLContainer
@@ -48,11 +50,7 @@ export interface ScatterPlotWebGLVisualizer {
    * Called immediately before the main scatter plot performs a color (visual)
    * render. Set up render state, lights, etc here.
    */
-  onRender(
-      camera: THREE.Camera, cameraTarget: THREE.Vector3, screenWidth: number,
-      screenHeight: number, colorAccessor: (index: number) => string,
-      labeledPoints: number[], labelAccessor: (index: number) => string,
-      highlightedPoints: number[], highlightStroke: (index: number) => string);
+  onRender(renderContext: RenderContext);
   /**
    * Called when the projector updates application state (day / night mode,
    * projection style, etc). Generally followed by a render.
