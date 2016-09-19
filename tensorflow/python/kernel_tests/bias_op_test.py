@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.ops import gen_nn_ops
 
 
 def GetTestConfigs():
@@ -131,8 +130,8 @@ class BiasAddTest(tf.test.TestCase):
           bias_tensor, bias.shape, output_tensor, np_input.shape)
          
       # Test gradient of BiasAddGrad
-      bias_add_grad = gen_nn_ops.bias_add_grad(out_backprop=output_tensor,
-                                               data_format=data_format)
+      bias_add_grad = tf.gradients(tf.nn.l2_loss(output_tensor),
+                                   bias_tensor)[0]
       
       grad_jacob_t, grad_jacob_n = tf.test.compute_gradient(
           output_tensor, np_input.shape, bias_add_grad, bias.shape
@@ -156,8 +155,8 @@ class BiasAddTest(tf.test.TestCase):
             bias_tensor, bias.shape, output_tensor, np_input.shape)
         
         
-        bias_add_grad = gen_nn_ops.bias_add_grad(out_backprop=output_tensor,
-                                                 data_format=data_format)
+        bias_add_grad = tf.gradients(tf.nn.l2_loss(output_tensor),
+                                     bias_tensor)[0]
                                                  
         
         _, grad_jacob_n = tf.test.compute_gradient(
