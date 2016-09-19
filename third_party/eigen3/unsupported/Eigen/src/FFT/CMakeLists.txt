@@ -1,6 +1,0 @@
-FILE(GLOB Eigen_FFT_SRCS "*.h")
-
-INSTALL(FILES
-  ${Eigen_FFT_SRCS}
-  DESTINATION ${INCLUDE_INSTALL_DIR}/unsupported/Eigen/src/FFT COMPONENT Devel
-  )
