@@ -46,39 +46,15 @@ You should download the example graph from [https://storage.googleapis.com/downl
 
 _Note: This has only been tested on Ubuntu._
 
-Don't forget to download dependencies if you haven't already:
-
+As a first step, you need to make sure the required packages are installed:
 ```bash
-tensorflow/contrib/makefile/download_dependencies.sh
+sudo apt-get install autoconf automake libtool curl make g++ unzip zlib1g-dev \
+git python
 ```
 
-You will need install a version of
-[protobuf 3](https://github.com/google/protobuf) on your system. We strongly
-recommend that you compile and install the version downloaded in the script
-above.
-
-On Ubuntu, you can do this:
+You should then be able to run the `build_all_linux.sh` script to compile:
 ```bash
-sudo apt-get install autoconf automake libtool curl make g++ unzip
-pushd .
-cd tensorflow/contrib/makefile/downloads/protobuf
-./autogen.sh
-./configure
-make
-make check
-sudo make install
-sudo ldconfig # refresh shared library cache
-popd
-```
-
-If you have issues (or can't use apt-get), see
-[these instructions](https://github.com/google/protobuf/blob/master/src/README.md)
-for specific installation of C++ support tools.
-
-After you have installed protobufs, you can run this from the repository root:
-
-```bash
-make -f tensorflow/contrib/makefile/Makefile
+tensorflow/contrib/makefile/build_all_linux.sh
 ```
 
 This should compile a static library in 
