@@ -177,7 +177,6 @@ setup(
     include_package_data=True,
     package_data={
         'tensorflow': ['python/_pywrap_tensorflow.so',
-                       'python/libpython_deps.so',
                      ] + matches,
     },
     zip_safe=False,
