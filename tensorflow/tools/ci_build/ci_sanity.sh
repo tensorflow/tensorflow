@@ -88,14 +88,6 @@ do_pylint() {
   #   --incremental  Performs check on only the python files changed in the
   #                  last non-merge git commit.
 
-  # Use this list to whitelist pylint errors
-  ERROR_WHITELIST="^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline "\
-"^tensorflow/python/platform/default/_gfile\.py.*\[E0301.*non-iterator "\
-"^tensorflow/python/platform/default/_googletest\.py.*\[E0102.*function already defined "\
-"^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator"
-
-  echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
-
   if [[ $# != "1" ]] && [[ $# != "2" ]]; then
     echo "Invalid syntax when invoking do_pylint"
     echo "Usage: do_pylint (PYTHON2 | PYTHON3) [--incremental]"
@@ -171,29 +163,18 @@ do_pylint() {
 
   N_ERRORS=0
   while read LINE; do
-    IS_WHITELISTED=0
-    for WL_REGEX in ${ERROR_WHITELIST}; do
-      if [[ ! -z $(echo ${LINE} | grep "${WL_REGEX}") ]]; then
-        echo "Found a whitelisted error:"
-        echo "  ${LINE}"
-        IS_WHITELISTED=1
-      fi
-    done
-
-    if [[ ${IS_WHITELISTED} == "0" ]]; then
-      echo "${LINE}" >> ${NONWL_ERRORS_FILE}
-      echo "" >> ${NONWL_ERRORS_FILE}
-      ((N_ERRORS++))
-    fi
+    echo "${LINE}" >> ${NONWL_ERRORS_FILE}
+    echo "" >> ${NONWL_ERRORS_FILE}
+    ((N_ERRORS++))
   done <${ERRORS_FILE}
 
   echo ""
   if [[ ${N_ERRORS} != 0 ]]; then
-    echo "FAIL: Found ${N_ERRORS} non-whitelited pylint errors:"
+    echo "FAIL: Found ${N_ERRORS} pylint errors:"
     cat "${NONWL_ERRORS_FILE}"
     return 1
   else
-    echo "PASS: No non-whitelisted pylint errors were found."
+    echo "PASS: No pylint errors were found."
     return 0
   fi
 }
