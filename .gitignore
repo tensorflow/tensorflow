@@ -8,6 +8,7 @@ node_modules
 /bazel-tensorflow
 /bazel-testlogs
 /bazel-tf
+/tensorflow/core/util/version_info.cc
 /tensorflow/contrib/cmake/build
 /third_party/py/numpy/numpy_include
 /tools/bazel.rc
