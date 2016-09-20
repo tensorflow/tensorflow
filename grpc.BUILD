@@ -1224,7 +1224,7 @@ cc_library(
   deps = [
     ":gpr",
     "//external:nanopb",
-    "@zlib_archive//:zlib",
+    "//external:zlib",
   ],
   copts = [
     "-std=gnu99",
