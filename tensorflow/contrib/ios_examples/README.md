@@ -17,12 +17,12 @@ This folder contains examples of how to build applications for iOS devices using
 
 ```bash
 mkdir -p ~/graphs
-curl -o ~/graphs/inception.zip \
+curl -o ~/graphs/inception5h.zip \
  https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip \
- && unzip ~/graphs/inception.zip -d ~/graphs/inception
-cp ~/graphs/inception/* tensorflow/contrib/ios_examples/benchmark/data/
-cp ~/graphs/inception/* tensorflow/contrib/ios_examples/camera/data/
-cp ~/graphs/inception/* tensorflow/contrib/ios_examples/simple/data/
+ && unzip ~/graphs/inception5h.zip -d ~/graphs/inception5h
+cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/benchmark/data/
+cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/camera/data/
+cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/simple/data/
 ```
 
  - Load the Xcode project inside the `simple` subfolder, and press Command-R to
