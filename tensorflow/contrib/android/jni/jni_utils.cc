@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/examples/android/jni/jni_utils.h"
+#include "tensorflow/contrib/android/jni/jni_utils.h"
 
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
@@ -29,8 +29,8 @@ limitations under the License.
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 #include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "google/protobuf/message_lite.h"
+#include "tensorflow/contrib/android/jni/limiting_file_input_stream.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/examples/android/jni/limiting_file_input_stream.h"
 
 static const char* const ASSET_PREFIX = "file:///android_asset/";
 
@@ -75,9 +75,9 @@ bool IsAsset(const char* const filename) {
   return strstr(filename, ASSET_PREFIX) == filename;
 }
 
-void ReadFileToProto(AAssetManager* const asset_manager,
-                     const char* const filename,
-                     google::protobuf::MessageLite* message) {
+void ReadFileToProtoOrDie(AAssetManager* const asset_manager,
+                          const char* const filename,
+                          google::protobuf::MessageLite* message) {
   if (!IsAsset(filename)) {
     VLOG(0) << "Opening file: " << filename;
     CHECK(PortableReadFileToProto(filename, message));
@@ -125,57 +125,15 @@ void ReadFileToProto(AAssetManager* const asset_manager,
   AAsset_close(asset);
 }
 
-void ReadFileToString(AAssetManager* const asset_manager,
-                      const char* const filename, std::string* str) {
-  if (!IsAsset(filename)) {
-    VLOG(0) << "Opening file: " << filename;
-    std::ifstream t(filename);
-    std::string tmp((std::istreambuf_iterator<char>(t)),
-                    std::istreambuf_iterator<char>());
-    tmp.swap(*str);
-    t.close();
-    return;
-  }
-
-  CHECK_NOTNULL(asset_manager);
-  const char* const asset_filename = filename + strlen(ASSET_PREFIX);
-  AAsset* asset =
-      AAssetManager_open(asset_manager, asset_filename, AASSET_MODE_STREAMING);
-  CHECK_NOTNULL(asset);
-  VLOG(0) << "Opening asset " << asset_filename << " from disk with copy.";
-  const off_t data_size = AAsset_getLength(asset);
-  const char* memory = reinterpret_cast<const char*>(AAsset_getBuffer(asset));
-
-  std::string tmp(memory, memory + data_size);
-  tmp.swap(*str);
-  AAsset_close(asset);
+std::string GetString(JNIEnv* env, jstring java_string) {
+  const char* raw_string = env->GetStringUTFChars(java_string, 0);
+  std::string return_str(raw_string);
+  env->ReleaseStringUTFChars(java_string, raw_string);
+  return return_str;
 }
 
-void ReadFileToVector(AAssetManager* const asset_manager,
-                      const char* const filename,
-                      std::vector<std::string>* str_vector) {
-  std::string labels_string;
-  ReadFileToString(asset_manager, filename, &labels_string);
-  std::istringstream ifs(labels_string);
-  str_vector->clear();
-  std::string label;
-  while (std::getline(ifs, label)) {
-    str_vector->push_back(label);
-  }
-  VLOG(0) << "Read " << str_vector->size() << " values from " << filename;
-}
-
-void WriteProtoToFile(const char* const filename,
-                      const google::protobuf::MessageLite& message) {
-  std::fstream outfile;
-  outfile.open(filename, std::fstream::binary | std::fstream::out);
-  std::string serialized;
-  message.SerializeToString(&serialized);
-  outfile.write(serialized.c_str(), serialized.size());
-  outfile.close();
-  if (outfile.fail()) {
-    LOG(WARNING) << "Failed to write proto to " << filename;
-    return;
-  }
-  VLOG(0) << "Wrote proto to " << filename;
+tensorflow::int64 CurrentWallTimeUs() {
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  return tv.tv_sec * 1000000 + tv.tv_usec;
 }

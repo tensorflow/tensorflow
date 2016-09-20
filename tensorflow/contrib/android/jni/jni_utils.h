@@ -20,29 +20,22 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
-
-namespace google {
-namespace protobuf {
-class MessageLite;
-}  // google
-}  // protobuf
 
 class AAssetManager;
 
 bool PortableReadFileToProto(const std::string& file_name,
-                             ::google::protobuf::MessageLite* proto);
+                             ::google::protobuf::MessageLite* proto)
+    TF_MUST_USE_RESULT;
 
-void ReadFileToProto(AAssetManager* const asset_manager,
-    const char* const filename, google::protobuf::MessageLite* message);
+// Deserializes the contents of a file into memory.
+void ReadFileToProtoOrDie(AAssetManager* const asset_manager,
+                          const char* const filename,
+                          google::protobuf::MessageLite* message);
 
-void ReadFileToString(AAssetManager* const asset_manager,
-    const char* const filename, std::string* str);
+std::string GetString(JNIEnv* env, jstring java_string);
 
-void ReadFileToVector(AAssetManager* const asset_manager,
-    const char* const filename, std::vector<std::string>* str_vector);
-
-void WriteProtoToFile(const char* const filename,
-                      const google::protobuf::MessageLite& message);
+tensorflow::int64 CurrentWallTimeUs();
 
 #endif  // ORG_TENSORFLOW_JNI_JNI_UTILS_H_

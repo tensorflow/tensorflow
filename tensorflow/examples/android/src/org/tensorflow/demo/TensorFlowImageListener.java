@@ -27,12 +27,11 @@ import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Handler;
 import android.os.Trace;
 
+import java.io.IOException;
+import java.util.List;
 import junit.framework.Assert;
-
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
-
-import java.util.List;
 
 /**
  * Class that takes in preview frames and converts the image to Bitmaps to process with Tensorflow.
@@ -61,7 +60,7 @@ public class TensorFlowImageListener implements OnImageAvailableListener {
 
   private Integer sensorOrientation;
 
-  private final TensorFlowClassifier tensorflow = new TensorFlowClassifier();
+  private final TensorFlowImageClassifier tensorflow = new TensorFlowImageClassifier();
 
   private int previewWidth = 0;
   private int previewHeight = 0;
@@ -81,9 +80,13 @@ public class TensorFlowImageListener implements OnImageAvailableListener {
       final Handler handler,
       final Integer sensorOrientation) {
     Assert.assertNotNull(sensorOrientation);
-    tensorflow.initializeTensorFlow(
+    try {
+      tensorflow.initializeTensorFlow(
         assetManager, MODEL_FILE, LABEL_FILE, NUM_CLASSES, INPUT_SIZE, IMAGE_MEAN, IMAGE_STD,
         INPUT_NAME, OUTPUT_NAME);
+    } catch (IOException e) {
+      LOGGER.e(e, "Exception!");
+    }
     this.scoreView = scoreView;
     this.handler = handler;
     this.sensorOrientation = sensorOrientation;
