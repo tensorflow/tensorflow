@@ -45,7 +45,7 @@ def load_csv_with_header(filename,
     header = next(data_file)
     n_samples = int(header[0])
     n_features = int(header[1])
-    data = np.zeros((n_samples, n_features))
+    data = np.zeros((n_samples, n_features), dtype=features_dtype)
     target = np.zeros((n_samples,), dtype=target_dtype)
     for i, row in enumerate(data_file):
       target[i] = np.asarray(row.pop(target_column), dtype=target_dtype)
@@ -68,8 +68,7 @@ def load_csv_without_header(filename,
 
   target = np.array(target, dtype=target_dtype)
   data = np.array(data)
-  return Dataset(data=np.array(data),
-                 target=np.array(target).astype(target_dtype))
+  return Dataset(data=data, target=target)
 
 
 def shrink_csv(filename, ratio):
