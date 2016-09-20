@@ -424,6 +424,7 @@ py_test(
     size = "small",
     srcs = ["python/learn/estimators/classifier_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],  # http://b/31032996
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
