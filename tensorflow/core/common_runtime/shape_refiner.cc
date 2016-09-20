@@ -27,7 +27,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-ShapeRefiner::ShapeRefiner() {}
+ShapeRefiner::ShapeRefiner(const OpRegistryInterface* ops)
+    : ops_registry_(ops) {}
 
 ShapeRefiner::~ShapeRefiner() { gtl::STLDeleteValues(&node_to_context_); }
 
@@ -56,10 +57,7 @@ Status ShapeRefiner::AddNode(const Node* node) {
 
   // Get the shape function for this node
   const OpRegistrationData* op_reg_data;
-  // TODO(vrv): Take in the OpRegistryInterface* instead of taking
-  // the global one.
-  TF_RETURN_IF_ERROR(
-      OpRegistry::Global()->LookUp(node->type_string(), &op_reg_data));
+  TF_RETURN_IF_ERROR(ops_registry_->LookUp(node->type_string(), &op_reg_data));
   if (op_reg_data->shape_inference_fn == nullptr) {
     return errors::InvalidArgument(
         "No shape inference function exists for op '", node->type_string(),
@@ -113,9 +111,7 @@ Status ShapeRefiner::AddNode(const Node* node) {
         TF_RETURN_IF_ERROR(node->input_edge(i, &input_edge));
 
         bool is_constant_graph;
-        // TODO(vrv): Like above, get the OpRegistry from somewhere.
-        // We probably also want the FunctionDefLibrary.
-        Graph subgraph(OpRegistry::Global());
+        Graph subgraph(ops_registry_);
 
         // We identify the possibly constant subgraph to evaluate by
         // recursively iterating backwards through the inputs to 'node'
@@ -129,6 +125,8 @@ Status ShapeRefiner::AddNode(const Node* node) {
           const string output_tensor_name = strings::StrCat(
               input_nodes[i]->name(), ":", input_edge->src_output());
           std::vector<Tensor> outputs;
+          // NOTE; we should pass in a function library runtime if we want
+          // to support constant-expression evaluation on functions.
           Status s = GraphRunner::Run(&subgraph, nullptr /* function_library */,
                                       Env::Default(), const_inputs,
                                       {output_tensor_name}, &outputs);

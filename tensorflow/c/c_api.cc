@@ -665,7 +665,10 @@ extern "C" {
 
 struct TF_Graph {
   TF_Graph()
-      : graph(OpRegistry::Global()), num_sessions(0), delete_requested(false) {}
+      : graph(OpRegistry::Global()),
+        refiner(graph.op_registry()),
+        num_sessions(0),
+        delete_requested(false) {}
   mutex mu;
   Graph graph GUARDED_BY(mu);
 
