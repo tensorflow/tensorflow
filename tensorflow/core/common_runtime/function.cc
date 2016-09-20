@@ -169,6 +169,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   Device* device() override { return device_; }
   Env* env() override { return env_; }
 
+  string DebugString(Handle h) override;
+
  private:
   typedef FunctionLibraryRuntimeImpl ME;
 
@@ -194,6 +196,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   // The instantiated and transformed function is encoded as a Graph
   // object, and an executor is created for the graph.
   struct Item : public core::RefCounted {
+    const Graph* graph = nullptr;  // Owned by exec.
     Executor* exec = nullptr;
 
     ~Item() override { delete this->exec; }
@@ -474,6 +477,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   TF_RETURN_IF_ERROR(NewLocalExecutor(params, g, &exec));
 
   *item = new Item;
+  (*item)->graph = g;
   (*item)->exec = exec;
   return Status::OK();
 }
@@ -560,6 +564,16 @@ bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {
   const OpDef* op_def;
   const Status s = lib_def_->LookUpOpDef(func, &op_def);
   return s.ok() && op_def->is_stateful();
+}
+
+string FunctionLibraryRuntimeImpl::DebugString(Handle handle) {
+  Item* item = nullptr;
+  Status s = GetOrCreateItem(handle, &item);
+  if (s.ok()) {
+    return tensorflow::DebugString(item->graph);
+  } else {
+    return s.ToString();
+  }
 }
 
 FunctionLibraryRuntime* NewFunctionLibraryRuntime(
