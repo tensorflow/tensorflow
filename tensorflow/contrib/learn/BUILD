@@ -457,6 +457,7 @@ py_test(
     size = "large",
     srcs = ["python/learn/estimators/dnn_sampled_softmax_classifier_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],  # http://b/31616095
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
