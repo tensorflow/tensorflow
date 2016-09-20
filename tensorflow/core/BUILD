@@ -1505,7 +1505,7 @@ tf_cc_tests(
         "framework/op_kernel_test.cc",
         "framework/op_registration_test.cc",
         "framework/partial_tensor_shape_test.cc",
-        "framework/rendezvous_test.cc",
+        # "framework/rendezvous_test.cc",  # flaky b/30476344
         "framework/resource_mgr_test.cc",
         "framework/shape_inference_test.cc",
         "framework/shape_inference_testutil_test.cc",
