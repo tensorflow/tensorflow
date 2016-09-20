@@ -110,7 +110,7 @@ Status ShapeRefiner::AddNode(const Node* node) {
         const Edge* input_edge;
         TF_RETURN_IF_ERROR(node->input_edge(i, &input_edge));
 
-        bool is_constant_graph;
+        bool is_constant_graph = false;
         Graph subgraph(ops_registry_);
 
         // We identify the possibly constant subgraph to evaluate by
@@ -200,6 +200,7 @@ Status ShapeRefiner::SetShape(const Node* node, int output_port,
 Status ShapeRefiner::ExtractConstantSubgraph(
     Node* target_node, Graph* out_graph, bool* is_constant_graph,
     std::vector<std::pair<string, Tensor>>* const_inputs) {
+  *is_constant_graph = false;
   std::unordered_set<string> const_inputs_added;
 
   if (target_node->op_def().is_stateful()) {
