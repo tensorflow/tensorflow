@@ -704,7 +704,6 @@ cc_library(
     deps = [
         ":android_test_proto_lib",
         ":ios_tensorflow_lib",
-        "//base",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",
     ],
