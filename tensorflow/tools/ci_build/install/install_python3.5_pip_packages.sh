@@ -63,6 +63,12 @@ wget -q https://bootstrap.pypa.io/get-pip.py
 python3.5 get-pip.py
 rm -f get-pip.py
 
+# Install six.
+pip3.5 install --upgrade six==1.10.0
+
+# Install protobuf.
+pip3.5 install --upgrade protobuf==3.0.0
+
 # Install numpy, scipy and scikit-learn required by the builds
 pip3.5 install --upgrade numpy==1.11.0
 
