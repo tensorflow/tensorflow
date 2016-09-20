@@ -36,11 +36,15 @@ export class ScatterPlotWebGLVisualizerAxes implements
       yScale: d3.scale.Linear<number, number>) {
     this.xScale = xScale;
     this.yScale = yScale;
-    this.createAxis2D();
     this.axis3D = new THREE.AxisHelper();
   }
 
   private createAxis2D() {
+    if (this.axis2D) {
+      this.axis2D.material.dispose();
+      this.axis2D.geometry.dispose();
+    }
+
     let vertices = new Float32Array([
       0,  // origin
       0,
@@ -93,6 +97,7 @@ export class ScatterPlotWebGLVisualizerAxes implements
     if (sceneIs3D) {
       scene.add(this.axis3D);
     } else {
+      this.createAxis2D();
       scene.add(this.axis2D);
     }
   }
