@@ -259,10 +259,6 @@ def rank_internal(input, name=None, optimize=True):
       return gen_array_ops.rank(input, name=name)
 
 
-#DEPRECATED
-zeros_initializer = init_ops.zeros_initializer
-
-
 def _SliceHelper(tensor, slice_spec, var=None):
   """Overload for Tensor.__getitem__.
 
