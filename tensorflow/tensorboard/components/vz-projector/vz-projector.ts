@@ -20,6 +20,7 @@ import {Mode, ScatterPlot} from './scatterPlot';
 import {ScatterPlotWebGL} from './scatterPlotWebGL';
 import {ScatterPlotWebGLVisualizerCanvasLabels} from './scatterPlotWebGLVisualizerCanvasLabels';
 import {ScatterPlotWebGLVisualizerSprites} from './scatterPlotWebGLVisualizerSprites';
+import {ScatterPlotWebGLVisualizerTraces} from './scatterPlotWebGLVisualizerTraces';
 import * as vector from './vector';
 import {ColorOption, DataPanel} from './vz-projector-data-panel';
 // tslint:disable-next-line:no-unused-variable
@@ -435,6 +436,9 @@ export class Projector extends ProjectorPolymer {
 
       scatterPlotWebGL.addVisualizer(
           new ScatterPlotWebGLVisualizerSprites(scatterPlotWebGL));
+
+      scatterPlotWebGL.addVisualizer(
+          new ScatterPlotWebGLVisualizerTraces(scatterPlotWebGL));
 
       scatterPlotWebGL.addVisualizer(
           new ScatterPlotWebGLVisualizerCanvasLabels(container));
