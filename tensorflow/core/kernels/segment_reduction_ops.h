@@ -30,6 +30,7 @@ namespace functor {
 // for usage without templates.
 template <typename Device, typename T, typename Index>
 struct UnsortedSegmentBaseFunctor{
+  virtual ~UnsortedSegmentBaseFunctor(){}
   virtual void operator()(OpKernelContext* ctx, const Device& d,
                   const Index output_rows, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
