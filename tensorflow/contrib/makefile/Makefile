@@ -148,7 +148,6 @@ DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)/$*.Td
 INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
--I$(MAKEFILE_DIR)/downloads/gemmlowp/ \
 -I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_VERSION) \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
