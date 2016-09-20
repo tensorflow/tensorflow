@@ -611,18 +611,6 @@ py_test(
 )
 
 py_test(
-    name = "dropout_ops_test",
-    size = "small",
-    srcs = ["python/learn/ops/tests/dropout_ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
     name = "seq2seq_ops_test",
     size = "small",
     srcs = ["python/learn/ops/tests/seq2seq_ops_test.py"],
