@@ -140,6 +140,8 @@ cc_library(
         "lib/io/py_record_reader.h",
     ],
     deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
     ],
 )
@@ -153,6 +155,8 @@ cc_library(
         "lib/io/py_record_writer.h",
     ],
     deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
     ],
 )

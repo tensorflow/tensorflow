@@ -21,6 +21,7 @@ import tempfile
 
 from tensorflow.core.util import event_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary.impl import gcs
@@ -46,8 +47,9 @@ class GCSFileLoader(object):
       name = temp_file.name
       logging.debug('Temp file created at %s', name)
       gcs.CopyContents(self._gcs_path, self._gcs_offset, temp_file)
-      reader = pywrap_tensorflow.PyRecordReader_New(
-          compat.as_bytes(name), 0, compat.as_bytes(''))
+      with errors.raise_exception_on_not_ok_status() as status:
+        reader = pywrap_tensorflow.PyRecordReader_New(
+            compat.as_bytes(name), 0, compat.as_bytes(''), status)
       while reader.GetNext():
         event = event_pb2.Event()
         event.ParseFromString(reader.record())
