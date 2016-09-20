@@ -433,14 +433,11 @@ export class Projector extends ProjectorPolymer {
       let scatterPlotWebGL = new ScatterPlotWebGL(
           container, i => '' + this.points[i].metadata['label']);
 
-      let pointsVisualizer =
-          new ScatterPlotWebGLVisualizerSprites(scatterPlotWebGL);
+      scatterPlotWebGL.addVisualizer(
+          new ScatterPlotWebGLVisualizerSprites(scatterPlotWebGL));
 
-      let labelVisualizer =
-          new ScatterPlotWebGLVisualizerCanvasLabels(container);
-
-      scatterPlotWebGL.addVisualizer(pointsVisualizer);
-      scatterPlotWebGL.addVisualizer(labelVisualizer);
+      scatterPlotWebGL.addVisualizer(
+          new ScatterPlotWebGLVisualizerCanvasLabels(container));
 
       this.scatterPlot = scatterPlotWebGL;
       this.scatterPlot.setDayNightMode(modeIsNight);
