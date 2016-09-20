@@ -69,6 +69,9 @@ pip3.5 install --upgrade six==1.10.0
 # Install protobuf.
 pip3.5 install --upgrade protobuf==3.0.0
 
+# Remove obsolete version of six.
+rm -rf /usr/lib/python3/dist-packages/six*
+
 # Install numpy, scipy and scikit-learn required by the builds
 pip3.5 install --upgrade numpy==1.11.0
 
