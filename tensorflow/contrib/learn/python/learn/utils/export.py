@@ -214,7 +214,8 @@ def _export_estimator(estimator,
                       default_batch_size,
                       exports_to_keep,
                       input_feature_key=None,
-                      use_deprecated_input_fn=True):
+                      use_deprecated_input_fn=True,
+                      prediction_key=None):
   if use_deprecated_input_fn:
     input_fn = input_fn or _default_input_fn
   elif input_fn is None or input_feature_key is None:
@@ -234,6 +235,8 @@ def _export_estimator(estimator,
       examples = features[input_feature_key]
 
     predictions = estimator._get_predict_ops(features)
+    if prediction_key is not None:
+      predictions = predictions[prediction_key]
 
     # Explicit signature_fn takes priority
     if signature_fn:

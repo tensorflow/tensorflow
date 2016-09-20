@@ -473,10 +473,11 @@ class BaseEstimator(
       input_feature_key=None)
   def export(self,
              export_dir,
-             input_fn=export._default_input_fn,
+             input_fn=export._default_input_fn,  # pylint: disable=protected-access
              input_feature_key=None,
              use_deprecated_input_fn=True,
              signature_fn=None,
+             prediction_key=None,
              default_batch_size=1,
              exports_to_keep=None):
     """Exports inference graph into given dir.
@@ -498,6 +499,10 @@ class BaseEstimator(
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
         for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      prediction_key: The key for a tensor in the `predictions` dict (output
+        from the `model_fn`) to use as the `predictions` input to the
+        `signature_fn`. Optional. If `None`, predictions will pass to
+        `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
     """
@@ -505,6 +510,7 @@ class BaseEstimator(
     export._export_estimator(estimator=self,
                              export_dir=export_dir,
                              signature_fn=signature_fn,
+                             prediction_key=prediction_key,
                              input_fn=input_fn,
                              input_feature_key=input_feature_key,
                              use_deprecated_input_fn=use_deprecated_input_fn,
