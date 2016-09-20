@@ -262,7 +262,8 @@ class Im2ColConvFunctor {
                 errors::InvalidArgument("Im2Col patch too large for buffer"));
     const size_t patches_per_chunk =
         max_chunk_size / (filter_value_count * sizeof(T1));
-    const size_t chunk_value_count = max_chunk_size / sizeof(T1);
+    const size_t chunk_value_count =
+      (max_chunk_size + (sizeof(T1) - 1)) / sizeof(T1);
     // Because memory allocation is very expensive on mobile platforms, try to
     // allocate a persistent buffer that will be kept around between calls. We
     // use TensorFlow's resource management to ensure that the memory will be
