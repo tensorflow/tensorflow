@@ -26,6 +26,7 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
+from tensorflow.contrib.learn.python.learn.estimators import estimator_test_utils
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -59,6 +60,10 @@ def _iris_input_multiclass_fn():
 
 
 class DNNClassifierTest(tf.test.TestCase):
+
+  def testEstimatorContract(self):
+    estimator_test_utils.assert_estimator_contract(
+        self, tf.contrib.learn.DNNClassifier)
 
   def testLogisticRegression_MatrixData(self):
     """Tests binary classification using matrix data as input."""
@@ -507,6 +512,10 @@ class DNNClassifierTest(tf.test.TestCase):
 
 
 class DNNRegressorTest(tf.test.TestCase):
+
+  def testEstimatorContract(self):
+    estimator_test_utils.assert_estimator_contract(
+        self, tf.contrib.learn.DNNRegressor)
 
   def testRegression_MatrixData(self):
     """Tests regression using matrix data as input."""

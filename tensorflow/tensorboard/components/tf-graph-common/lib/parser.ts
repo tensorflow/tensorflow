@@ -65,9 +65,11 @@ export function fetchAndParseMetadata(path: string, tracker: ProgressTracker) {
           },
           tracker)
       .then((arrayBuffer: ArrayBuffer) => {
-        return tf.graph.util.runTask('Parsing metadata.pbtxt', 60, () => {
-          return arrayBuffer != null ? parseStatsPbTxt(arrayBuffer) : null;
-        }, tracker);
+        return tf.graph.util.runAsyncPromiseTask(
+            'Parsing metadata.pbtxt', 60, () => {
+              return arrayBuffer != null ? parseStatsPbTxt(arrayBuffer) :
+                                           Promise.resolve(null);
+            }, tracker);
       });
 }
 

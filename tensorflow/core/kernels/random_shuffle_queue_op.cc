@@ -102,12 +102,11 @@ RandomShuffleQueue::RandomShuffleQueue(
 }
 
 Status RandomShuffleQueue::Initialize() {
-  Status s = TypedQueue::Initialize();
-  if (!s.ok()) return s;
+  TF_RETURN_IF_ERROR(TypedQueue::Initialize());
 
   mutex_lock lock(mu_);
   for (int i = 0; i < num_components(); ++i) {
-    queues_.back().reserve(min_after_dequeue_);
+    queues_[i].reserve(min_after_dequeue_);
   }
   return Status::OK();
 }

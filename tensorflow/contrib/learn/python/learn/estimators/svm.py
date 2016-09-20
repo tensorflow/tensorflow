@@ -50,10 +50,18 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
   """Support Vector Machine (SVM) model for binary classification.
 
   Currently, only linear SVMs are supported. For the underlying optimization
-  problem, the SDCAOptimizer is used.
+  problem, the `SDCAOptimizer` is used. For performance and convergence tuning,
+  the num_loss_partitions parameter passed to `SDCAOptimizer` (see `__init__()`
+  method), should be set to (#concurrent train ops per worker) x (#workers). If
+  num_loss_partitions is larger or equal to this value, convergence is
+  guaranteed but becomes slower as num_loss_partitions increases. If it is set
+  to a smaller value, the optimizer is more agressive in reducing the global
+  loss but convergence is not guaranteed. The recommended value in tf.learn
+  (where there is one process per worker) is the number of workers running the
+  train steps. It defaults to 1 (single machine).
 
   Example Usage:
-  ```
+  ```python
   real_feature_column = real_valued_column(...)
   sparse_feature_column = sparse_column_with_hash_bucket(...)
 
@@ -84,26 +92,6 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
         whose `value` is a `SparseTensor`.
       - if `column` is a `RealValuedColumn, a feature with `key=column.name`
         whose `value` is a `Tensor`.
-
-  Parameters:
-    example_id_column: A string defining the feature column name representing
-      example ids. Used to initialize the underlying optimizer.
-    feature_columns: An iterable containing all the feature columns used by the
-      model. All items in the set should be instances of classes derived from
-      `FeatureColumn`.
-    weight_column_name: A string defining feature column name representing
-      weights. It is used to down weight or boost examples during training. It
-      will be multiplied by the loss of the example.
-    model_dir: Directory to save model parameters, graph and etc. This can also
-        be used to load checkpoints from the directory into a estimator to
-        continue training a previously saved model.
-    l1_regularization: L1-regularization parameter. Refers to global L1
-    regularization (across all examples).
-    l2_regularization: L2-regularization parameter. Refers to global L2
-    regularization (across all examples).
-    kernels: A list of kernels for the SVM. Currently, no kernels are supported.
-      Reserved for future use for non-linear SVMs
-    config: RunConfig object to configure the runtime settings.
   """
 
   def __init__(self,
@@ -113,12 +101,41 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
                model_dir=None,
                l1_regularization=0.0,
                l2_regularization=0.0,
+               num_loss_partitions=1,
                kernels=None,
                config=None):
+    """Constructs a `SVM~ estimator object.
+
+    Args:
+      example_id_column: A string defining the feature column name representing
+        example ids. Used to initialize the underlying optimizer.
+      feature_columns: An iterable containing all the feature columns used by
+        the model. All items in the set should be instances of classes derived
+        from `FeatureColumn`.
+      weight_column_name: A string defining feature column name representing
+        weights. It is used to down weight or boost examples during training. It
+        will be multiplied by the loss of the example.
+      model_dir: Directory to save model parameters, graph and etc. This can
+        also be used to load checkpoints from the directory into a estimator to
+        continue training a previously saved model.
+      l1_regularization: L1-regularization parameter. Refers to global L1
+        regularization (across all examples).
+      l2_regularization: L2-regularization parameter. Refers to global L2
+        regularization (across all examples).
+      num_loss_partitions: number of partitions of the (global) loss function
+        optimized by the underlying optimizer (SDCAOptimizer).
+      kernels: A list of kernels for the SVM. Currently, no kernels are
+        supported. Reserved for future use for non-linear SVMs.
+     config: RunConfig object to configure the runtime settings.
+
+    Raises:
+      ValueError: if kernels passed is not None.
+    """
     if kernels is not None:
       raise ValueError("Kernel SVMs are not currently supported.")
     self._optimizer = sdca_optimizer.SDCAOptimizer(
         example_id_column=example_id_column,
+        num_loss_partitions=num_loss_partitions,
         symmetric_l1_regularization=l1_regularization,
         symmetric_l2_regularization=l2_regularization)
 

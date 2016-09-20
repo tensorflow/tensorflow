@@ -201,9 +201,9 @@ TEST(HingeLoss, ComputeUpdatedDual) {
                          0.3 /* wx */, 100.0 /* weighted_example_norm */),
               1e-3);
   // When label=-1.0, example_weight=1.0, current_dual=0.4, wx=0.6,
-  // weighted_example_norm=10.0 and num_partitions=10, it turns out that the
-  // optimal value to update the dual to is 0.384 which is within the permitted
-  // range and thus should be the value returned.
+  // weighted_example_norm=10.0 and num_loss_partitions=10, it turns out that
+  // the optimal value to update the dual to is 0.384 which is within the
+  // permitted range and thus should be the value returned.
   EXPECT_NEAR(-0.416, loss_updater.ComputeUpdatedDual(
                           10 /* num partitions */, -1.0 /* label */,
                           1.0 /* example weight */, -0.4 /* current_dual */,

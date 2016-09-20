@@ -39,7 +39,7 @@ class HingeLossUpdater : public DualLossUpdater {
   //
   // TODO(sibyl-vie3Poto): Write up a doc with concrete derivation and point to it from
   // here.
-  double ComputeUpdatedDual(const int num_partitions, const double label,
+  double ComputeUpdatedDual(const int num_loss_partitions, const double label,
                             const double example_weight,
                             const double current_dual, const double wx,
                             const double weighted_example_norm) const final {
@@ -52,7 +52,7 @@ class HingeLossUpdater : public DualLossUpdater {
     const double candidate_optimal_dual =
         current_dual +
         (label - wx) /
-            (num_partitions * example_weight * weighted_example_norm);
+            (num_loss_partitions * example_weight * weighted_example_norm);
     if (label * candidate_optimal_dual < 0) {
       return 0.0;
     }
@@ -92,6 +92,18 @@ class HingeLossUpdater : public DualLossUpdater {
     const double y_wx = example_label * wx;
     return std::max(0.0, 1 - y_wx) * example_weight;
   }
+
+  double PrimalLossDerivative(const double wx, const double label,
+                              const double example_weight) const final {
+    if (label * wx < 1) {
+      return -label * example_weight;
+    }
+    return 0;
+  }
+
+  // The smoothness constant is 0 since the derivative of the loss is not
+  // Lipschitz
+  double SmoothnessConstant() const final { return 0; }
 
   // Converts binary example labels from 0.0 or 1.0 to -1.0 or 1.0 respectively
   // as expected by hinge loss.

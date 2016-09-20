@@ -94,16 +94,12 @@ class SavedModelTest(tf.test.TestCase):
     # Restore the graph with a single predefined tag whose variables were saved.
     with self.test_session(graph=tf.Graph()) as sess:
       loader.load(sess, [constants.TAG_TRAINING], export_dir)
-      tf.train.write_graph(
-          sess.graph.as_graph_def(), "/tmp/", "training_graph", as_text=True)
       self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
 
     # Restore the graph with a single predefined tag whose variables were not
     # saved.
     with self.test_session(graph=tf.Graph()) as sess:
       loader.load(sess, [constants.TAG_SERVING], export_dir)
-      tf.train.write_graph(
-          sess.graph.as_graph_def(), "/tmp/", "serving_graph", as_text=True)
       self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
 
     # Restore the graph with multiple tags. Provide duplicate tags to test set

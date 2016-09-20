@@ -24,7 +24,9 @@ distribution:
 
 ```
 logit_normal = TransformedDistribution(
-  base_dist=Normal(mu, sigma),
+  base_dist_cls=tf.contrib.distributions.Normal,
+  mu=mu,
+  sigma=sigma,
   transform=lambda x: tf.sigmoid(x),
   inverse=lambda y: tf.log(y) - tf.log(1. - y),
   log_det_jacobian=(lambda x:

@@ -79,11 +79,18 @@ Status TensorResponse::ParseFrom(Source* source) {
     input.SetTotalBytesLimit(INT_MAX, INT_MAX);  // Unlimited
 
     // Pre-parse into local storage, then delegate to device.
-    RecvTensorResponse proto;
-    if (!proto.ParseFromCodedStream(&input) || !input.ConsumedEntireMessage()) {
+    if (!meta_.ParseFromCodedStream(&input) || !input.ConsumedEntireMessage()) {
       return errors::InvalidArgument("Cannot parse tensor from response");
     }
-    return device_->MakeTensorFromProto(proto.tensor(), alloc_attrs_, &tensor_);
+    Status s =
+        device_->MakeTensorFromProto(meta_.tensor(), alloc_attrs_, &tensor_);
+    // Reduce memory usage for big tensors.
+    {
+      TensorProto empty;
+      meta_.mutable_tensor()->Swap(&empty);
+    }
+    meta_.clear_tensor();
+    return s;
   }
   if (already_used_) {
     ClearTensor();

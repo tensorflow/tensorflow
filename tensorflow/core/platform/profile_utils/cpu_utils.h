@@ -17,6 +17,9 @@ limitations under the License.
 #ifndef TENSORFLOW_PLATFORM_PROFILEUTILS_CPU_UTILS_H__
 #define TENSORFLOW_PLATFORM_PROFILEUTILS_CPU_UTILS_H__
 
+#include <chrono>
+#include <memory>
+
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/profile_utils/i_cpu_utils_helper.h"
 #include "tensorflow/core/platform/types.h"
@@ -29,6 +32,13 @@ namespace tensorflow {
 
 namespace profile_utils {
 
+// CpuUtils is a profiling tool with static functions
+// designed to be called from multiple classes.
+// A dedicated class which inherits ICpuUtilsHelper is
+// stored as a function-local static variable which inherits
+// GetCpuUtilsHelperSingletonInstance that caches CPU information,
+// because loading CPU information may take a long time.
+// Users must call EnableClockCycleProfiling before using CpuUtils.
 class CpuUtils {
  public:
   // Constant for invalid frequency.
@@ -44,7 +54,7 @@ class CpuUtils {
   static inline uint64 GetCurrentClockCycle() {
 #if defined(__ANDROID__)
 #if defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
-    return GetCpuUtilsHelper().GetCurrentClockCycle();
+    return GetCpuUtilsHelperSingletonInstance().GetCurrentClockCycle();
 #else   // defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
     return DUMMY_CYCLE_CLOCK;
 #endif  // defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
@@ -88,24 +98,15 @@ class CpuUtils {
 #endif
   }
 
-  // Return cpu frequency. As this method caches the cpu frequency internally,
-  // there is no overhead except function call to call this method.
-  static int64 GetCpuFrequency();
-
-  // Return cached cpu count per each micro second.
+  // Return cycle counter frequency.
   // As this method caches the cpu frequency internally,
-  // there is no overhead except function call to call this method.
-  static int GetClockPerMicroSec();
+  // the first call will incur overhead, but not subsequent calls.
+  static int64 GetCycleCounterFrequency();
 
   // Return micro secound per each clock
   // As this method caches the cpu frequency internally,
-  // there is no overhead except function call to call this method.
+  // the first call will incur overhead, but not subsequent calls.
   static double GetMicroSecPerClock();
-
-  // Initialize CpuUtils
-  // This method is called from the static initializer declared in cpu_utils.cc
-  // This initializes state and cached static variables declared in functions.
-  static void Initialize();
 
   // Reset clock cycle
   // Resetting clock cycle is recommended to prevent
@@ -116,14 +117,18 @@ class CpuUtils {
   // You can enable / disable profile if it's supported by the platform
   static void EnableClockCycleProfiling(bool enable);
 
+  // Return chrono::duration per each clock
+  static std::chrono::duration<double> ConvertClockCycleToTime(
+      const int64 clock_cycle);
+
  private:
   class DefaultCpuUtilsHelper : public ICpuUtilsHelper {
    public:
     DefaultCpuUtilsHelper() = default;
-    void Initialize() final {}
     void ResetClockCycle() final {}
     uint64 GetCurrentClockCycle() final { return DUMMY_CYCLE_CLOCK; }
     void EnableClockCycleProfiling(bool /* enable */) final {}
+    int64 CalculateCpuFrequency() final { return INVALID_FREQUENCY; }
 
    private:
     TF_DISALLOW_COPY_AND_ASSIGN(DefaultCpuUtilsHelper);
@@ -133,9 +138,15 @@ class CpuUtils {
   // CAVEAT: as this method calls system call and parse the mssage,
   // this call may be slow. This is why this class caches the value by
   // StaticVariableInitializer.
-  static int64 GetCpuFrequencyImpl();
+  static int64 GetCycleCounterFrequencyImpl();
 
-  static ICpuUtilsHelper& GetCpuUtilsHelper();
+  // Return a singleton of ICpuUtilsHelper
+  // ICpuUtilsHelper is declared as a function-local static variable
+  // for the following two reasons:
+  // 1. Avoid passing instances to all classes which want
+  // to use profiling tools in CpuUtils
+  // 2. Minimize the overhead of acquiring ICpuUtilsHelper
+  static ICpuUtilsHelper& GetCpuUtilsHelperSingletonInstance();
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuUtils);
 };

@@ -16,12 +16,15 @@ limitations under the License.
 import {DataPoint, DataSet, DataSource, PCA_SAMPLE_DIM, SAMPLE_SIZE} from './data';
 import {DataProvider, getDataProvider} from './data-loader';
 import * as knn from './knn';
-import {Mode, Scatter} from './scatter';
-import {ScatterWebGLPointsCanvasLabels} from './scatterWebGLPointsCanvasLabels';
+import {Mode, ScatterPlot} from './scatterPlot';
+import {ScatterPlotWebGL} from './scatterPlotWebGL';
+import {ScatterPlotWebGLVisualizerCanvasLabels} from './scatterPlotWebGLVisualizerCanvasLabels';
+import {ScatterPlotWebGLVisualizerSprites} from './scatterPlotWebGLVisualizerSprites';
 import * as vector from './vector';
 import {ColorOption, DataPanel} from './vz-projector-data-panel';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
+
 
 /** T-SNE perplexity. Roughly how many neighbors each point influences. */
 let perplexity: number = 30;
@@ -90,7 +93,7 @@ export class Projector extends ProjectorPolymer {
   private hasPcaZ: boolean;
   // The working subset of the data source's original data set.
   private currentDataSet: DataSet;
-  private scatter: Scatter;
+  private scatterPlot: ScatterPlot;
   private dim: number;
   private selectedDistance: (a: number[], b: number[]) => number;
   private highlightedPoints: {index: number, color: string}[];
@@ -135,24 +138,24 @@ export class Projector extends ProjectorPolymer {
     let labelAccessor = (i: number): string => {
       return this.points[i].metadata[this.labelOption] as string;
     };
-    this.scatter.setLabelAccessor(labelAccessor);
+    this.scatterPlot.setLabelAccessor(labelAccessor);
   }
 
   colorOptionChanged() {
     let colorMap = this.colorOption.map;
     if (colorMap == null) {
-      this.scatter.setColorAccessor(null);
+      this.scatterPlot.setColorAccessor(null);
       return;
     };
     let colors = (i: number) => {
       return colorMap(this.points[i].metadata[this.colorOption.name]);
     };
-    this.scatter.setColorAccessor(colors);
+    this.scatterPlot.setColorAccessor(colors);
   }
 
   updateDataSource(ds: DataSource) {
     this.dataSource = ds;
-    if (this.scatter == null || this.dataSource == null) {
+    if (this.scatterPlot == null || this.dataSource == null) {
       // We are not ready yet.
       return;
     }
@@ -186,7 +189,8 @@ export class Projector extends ProjectorPolymer {
 
   private setDataSet(ds: DataSet) {
     this.currentDataSet = ds;
-    this.scatter.setDataSet(this.currentDataSet, this.dataSource.spriteImage);
+    this.scatterPlot.setDataSet(
+        this.currentDataSet, this.dataSource.spriteImage);
     this.updateMenuButtons();
     this.dim = this.currentDataSet.dim[1];
     this.dom.select('span.numDataPoints').text(this.currentDataSet.dim[0]);
@@ -247,7 +251,9 @@ export class Projector extends ProjectorPolymer {
       // Make sure tsne stays in the same dimension as PCA.
       dimension = this.hasPcaZ ? 3 : 2;
       tsneToggle.checked = this.hasPcaZ;
-      this.showPCA(() => { this.scatter.recreateScene(); });
+      this.showPCA(() => {
+        this.scatterPlot.recreateScene();
+      });
     });
     this.dom.on('pca-x-changed', () => this.showPCA());
     this.dom.on('pca-y-changed', () => this.showPCA());
@@ -259,9 +265,9 @@ export class Projector extends ProjectorPolymer {
       // Make sure PCA stays in the same dimension as tsne.
       this.hasPcaZ = tsneToggle.checked;
       dimension = tsneToggle.checked ? 3 : 2;
-      if (this.scatter) {
+      if (this.scatterPlot) {
         this.showTSNE();
-        this.scatter.recreateScene();
+        this.scatterPlot.recreateScene();
       }
     });
 
@@ -298,13 +304,13 @@ export class Projector extends ProjectorPolymer {
 
     // View controls
     this.dom.select('.reset-zoom').on('click', () => {
-      this.scatter.resetZoom();
+      this.scatterPlot.resetZoom();
     });
     this.dom.select('.zoom-in').on('click', () => {
-      this.scatter.zoomStep(2);
+      this.scatterPlot.zoomStep(2);
     });
     this.dom.select('.zoom-out').on('click', () => {
-      this.scatter.zoomStep(0.5);
+      this.scatterPlot.zoomStep(0.5);
     });
 
     // Toolbar controls
@@ -332,7 +338,7 @@ export class Projector extends ProjectorPolymer {
     let searchInputChanged = (value: string) => {
       if (value.trim() === '') {
         searchBoxInfo.style('color', CALLOUT_COLOR).text('Enter a regex.');
-        if (this.scatter != null) {
+        if (this.scatterPlot != null) {
           this.selectedPoints = [];
           this.selectionWasUpdated();
         }
@@ -352,7 +358,7 @@ export class Projector extends ProjectorPolymer {
           let neighbors = this.findNeighbors(indices[0]);
           if (indices.length === 1) {
             this.clickedPoint = indices[0];
-            this.scatter.clickOnPoint(this.clickedPoint);
+            this.scatterPlot.clickOnPoint(this.clickedPoint);
           }
           this.selectedPoints = indices;
           this.updateNNList(neighbors);
@@ -366,9 +372,9 @@ export class Projector extends ProjectorPolymer {
     let searchButton = this.dom.select('.search');
 
     searchButton.on('click', () => {
-      let mode = this.scatter.getMode();
-      this.scatter.setMode(mode === Mode.SEARCH ? Mode.HOVER : Mode.SEARCH);
-      if (this.scatter.getMode() === Mode.HOVER) {
+      let mode = this.scatterPlot.getMode();
+      this.scatterPlot.setMode(mode === Mode.SEARCH ? Mode.HOVER : Mode.SEARCH);
+      if (this.scatterPlot.getMode() === Mode.HOVER) {
         this.selectedPoints = [];
         this.selectionWasUpdated();
       } else {
@@ -402,8 +408,8 @@ export class Projector extends ProjectorPolymer {
     let selectModeButton = this.dom.select('.selectMode');
 
     selectModeButton.on('click', () => {
-      let mode = this.scatter.getMode();
-      this.scatter.setMode(mode === Mode.SELECT ? Mode.HOVER : Mode.SELECT);
+      let mode = this.scatterPlot.getMode();
+      this.scatterPlot.setMode(mode === Mode.SELECT ? Mode.HOVER : Mode.SELECT);
       this.updateMenuButtons();
     });
 
@@ -411,19 +417,36 @@ export class Projector extends ProjectorPolymer {
     let modeIsNight = dayNightModeButton.classed('selected');
     dayNightModeButton.on('click', () => {
       modeIsNight = !modeIsNight;
-      this.scatter.setDayNightMode(modeIsNight);
-      this.scatter.update();
+      this.scatterPlot.setDayNightMode(modeIsNight);
+      this.scatterPlot.update();
       dayNightModeButton.classed('selected', modeIsNight);
     });
 
     // Resize
-    window.addEventListener('resize', () => { this.scatter.resize(); });
+    window.addEventListener('resize', () => {
+      this.scatterPlot.resize();
+    });
 
     // Canvas
-    this.scatter = new ScatterWebGLPointsCanvasLabels(
-        this.dom.select('#scatter'),
-        i => '' + this.points[i].metadata['label']);
-    this.scatter.onHover(hoveredIndex => {
+    {
+      let container = this.dom.select('#scatter');
+      let scatterPlotWebGL = new ScatterPlotWebGL(
+          container, i => '' + this.points[i].metadata['label']);
+
+      let pointsVisualizer =
+          new ScatterPlotWebGLVisualizerSprites(scatterPlotWebGL);
+
+      let labelVisualizer =
+          new ScatterPlotWebGLVisualizerCanvasLabels(container);
+
+      scatterPlotWebGL.addVisualizer(pointsVisualizer);
+      scatterPlotWebGL.addVisualizer(labelVisualizer);
+
+      this.scatterPlot = scatterPlotWebGL;
+      this.scatterPlot.setDayNightMode(modeIsNight);
+    }
+
+    this.scatterPlot.onHover(hoveredIndex => {
       if (hoveredIndex == null) {
         this.highlightedPoints = [];
       } else {
@@ -438,7 +461,7 @@ export class Projector extends ProjectorPolymer {
       this.selectionWasUpdated();
     });
 
-    this.scatter.onSelection(
+    this.scatterPlot.onSelection(
         selectedPoints => this.updateSelection(selectedPoints));
 
     // Selection controls
@@ -450,7 +473,7 @@ export class Projector extends ProjectorPolymer {
       this.setDataSet(subset);
       this.dom.select('.reset-filter').style('display', null);
       this.selectedPoints = [];
-      this.scatter.recreateScene();
+      this.scatterPlot.recreateScene();
       this.selectionWasUpdated();
       this.updateIsolateButton();
     });
@@ -463,8 +486,8 @@ export class Projector extends ProjectorPolymer {
 
     this.dom.select('.clear-selection').on('click', () => {
       this.selectedPoints = [];
-      this.scatter.setMode(Mode.HOVER);
-      this.scatter.clickOnPoint(null);
+      this.scatterPlot.setMode(Mode.HOVER);
+      this.scatterPlot.clickOnPoint(null);
       this.updateMenuButtons();
       this.selectionWasUpdated();
     });
@@ -498,17 +521,19 @@ export class Projector extends ProjectorPolymer {
 
   private showPCA(callback?: () => void) {
     this.currentDataSet.projectPCA().then(() => {
-      this.scatter.showTickLabels(false);
+      this.scatterPlot.showTickLabels(false);
       let x = this.pcaX;
       let y = this.pcaY;
       let z = this.pcaZ;
       let hasZ = dimension === 3;
-      this.scatter.setXAccessor(i => this.points[i].projections['pca-' + x]);
-      this.scatter.setYAccessor(i => this.points[i].projections['pca-' + y]);
-      this.scatter.setZAccessor(
+      this.scatterPlot.setXAccessor(
+          i => this.points[i].projections['pca-' + x]);
+      this.scatterPlot.setYAccessor(
+          i => this.points[i].projections['pca-' + y]);
+      this.scatterPlot.setZAccessor(
           hasZ ? (i => this.points[i].projections['pca-' + z]) : null);
-      this.scatter.setAxisLabels('pca-' + x, 'pca-' + y);
-      this.scatter.update();
+      this.scatterPlot.setAxisLabels('pca-' + x, 'pca-' + y);
+      this.scatterPlot.update();
       if (callback) {
         callback();
       }
@@ -525,7 +550,7 @@ export class Projector extends ProjectorPolymer {
     pane.select('.ink-panel-content[data-panel="' + id + '"]')
         .classed('active', true);
     if (id === 'pca') {
-      this.showPCA(() => this.scatter.recreateScene());
+      this.showPCA(() => this.scatterPlot.recreateScene());
     } else if (id === 'tsne') {
       this.showTSNE();
     } else if (id === 'custom') {
@@ -534,38 +559,38 @@ export class Projector extends ProjectorPolymer {
   }
 
   private showCustom() {
-    this.scatter.showTickLabels(true);
+    this.scatterPlot.showTickLabels(true);
     let xDir = vector.sub(this.centroids.xRight, this.centroids.xLeft);
     this.currentDataSet.projectLinear(xDir, 'linear-x');
-    this.scatter.setXAccessor(i => this.points[i].projections['linear-x']);
+    this.scatterPlot.setXAccessor(i => this.points[i].projections['linear-x']);
 
     let yDir = vector.sub(this.centroids.yUp, this.centroids.yDown);
     this.currentDataSet.projectLinear(yDir, 'linear-y');
-    this.scatter.setYAccessor(i => this.points[i].projections['linear-y']);
+    this.scatterPlot.setYAccessor(i => this.points[i].projections['linear-y']);
 
     // Scatter is only in 2D in projection mode.
-    this.scatter.setZAccessor(null);
+    this.scatterPlot.setZAccessor(null);
 
     let xLabel = this.centroidValues.xLeft + ' → ' + this.centroidValues.xRight;
     let yLabel = this.centroidValues.yUp + ' → ' + this.centroidValues.yDown;
-    this.scatter.setAxisLabels(xLabel, yLabel);
-    this.scatter.update();
-    this.scatter.recreateScene();
+    this.scatterPlot.setAxisLabels(xLabel, yLabel);
+    this.scatterPlot.update();
+    this.scatterPlot.recreateScene();
   }
 
   private get points() { return this.currentDataSet.points; }
 
   private showTSNE() {
-    this.scatter.showTickLabels(false);
-    this.scatter.setXAccessor(i => this.points[i].projections['tsne-0']);
-    this.scatter.setYAccessor(i => this.points[i].projections['tsne-1']);
-    this.scatter.setZAccessor(
+    this.scatterPlot.showTickLabels(false);
+    this.scatterPlot.setXAccessor(i => this.points[i].projections['tsne-0']);
+    this.scatterPlot.setYAccessor(i => this.points[i].projections['tsne-1']);
+    this.scatterPlot.setZAccessor(
         dimension === 3 ? (i => this.points[i].projections['tsne-2']) : null);
-    this.scatter.setAxisLabels('tsne-0', 'tsne-1');
+    this.scatterPlot.setAxisLabels('tsne-0', 'tsne-1');
     if (!this.currentDataSet.hasTSNERun) {
       this.runTSNE();
     } else {
-      this.scatter.update();
+      this.scatterPlot.update();
     }
   }
 
@@ -574,7 +599,7 @@ export class Projector extends ProjectorPolymer {
         perplexity, learningRate, dimension, (iteration: number) => {
           if (iteration != null) {
             this.dom.select('.run-tsne-iter').text(iteration);
-            this.scatter.update();
+            this.scatterPlot.update();
           }
         });
   }
@@ -631,21 +656,21 @@ export class Projector extends ProjectorPolymer {
     let favor = (i: number) => {
       return i === 0 || (i < this.highlightedPoints.length ? false : true);
     };
-    this.scatter.highlightPoints(allPoints, stroke, favor);
+    this.scatterPlot.highlightPoints(allPoints, stroke, favor);
     this.updateIsolateButton();
   }
 
   private updateMenuButtons() {
     let searchBox = this.dom.select('.control.search-box');
     this.dom.select('.search').classed(
-        'selected', this.scatter.getMode() === Mode.SEARCH);
-    let searchMode = this.scatter.getMode() === Mode.SEARCH;
+        'selected', this.scatterPlot.getMode() === Mode.SEARCH);
+    let searchMode = this.scatterPlot.getMode() === Mode.SEARCH;
     this.dom.select('.control.search-box')
         .style('width', searchMode ? '110px' : null)
         .style('margin-right', searchMode ? '10px' : null);
     (searchBox.select('input').node() as HTMLInputElement).focus();
     this.dom.select('.selectMode')
-        .classed('selected', this.scatter.getMode() === Mode.SELECT);
+        .classed('selected', this.scatterPlot.getMode() === Mode.SELECT);
   }
 
   /**

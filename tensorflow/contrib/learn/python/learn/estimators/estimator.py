@@ -446,8 +446,6 @@ class BaseEstimator(
     Returns:
       Numpy array - value of the tensor.
     """
-    if name.endswith(':0'):
-      name = name[:-2]
     return checkpoints.load_variable(self.model_dir, name)
 
   def get_variable_names(self):

@@ -21,10 +21,7 @@ from __future__ import print_function
 
 import random
 
-import numpy as np
 import tensorflow as tf
-from tensorflow.contrib.learn.python.learn.estimators._sklearn import accuracy_score
-from tensorflow.contrib.learn.python.learn.estimators._sklearn import mean_squared_error
 
 
 class NonLinearTest(tf.test.TestCase):
@@ -41,8 +38,6 @@ class NonLinearTest(tf.test.TestCase):
         feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3,
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
     classifier.fit(iris.data, iris.target, max_steps=200)
-    score = accuracy_score(iris.target, classifier.predict(iris.data))
-    self.assertGreater(score, 0.9, "Failed with score = {0}".format(score))
     weights = classifier.weights_
     self.assertEqual(weights[0].shape, (4, 10))
     self.assertEqual(weights[1].shape, (10, 20))
@@ -59,8 +54,6 @@ class NonLinearTest(tf.test.TestCase):
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
     regressor.fit(
         boston.data, boston.target, steps=300, batch_size=boston.data.shape[0])
-    score = mean_squared_error(boston.target, regressor.predict(boston.data))
-    self.assertLess(score, 110, "Failed with score = {0}".format(score))
     weights = regressor.weights_
     self.assertEqual(weights[0].shape, (13, 10))
     self.assertEqual(weights[1].shape, (10, 20))
@@ -77,8 +70,6 @@ class NonLinearTest(tf.test.TestCase):
         feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3,
         dropout=0.0, config=tf.contrib.learn.RunConfig(tf_random_seed=1))
     classifier.fit(iris.data, iris.target, max_steps=200)
-    score = accuracy_score(iris.target, classifier.predict(iris.data))
-    self.assertGreater(score, 0.9, "Failed with score = {0}".format(score))
 
   def testDNNDropout0_1(self):
     # Dropping only a little.
@@ -88,9 +79,6 @@ class NonLinearTest(tf.test.TestCase):
         feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3,
         dropout=0.1, config=tf.contrib.learn.RunConfig(tf_random_seed=1))
     classifier.fit(iris.data, iris.target, max_steps=200)
-    score = accuracy_score(iris.target, classifier.predict(iris.data))
-    # If the quality is lower - dropout is not working.
-    self.assertGreater(score, 0.9, "Failed with score = {0}".format(score))
 
   def testDNNDropout0_9(self):
     # Dropping out most of it.
@@ -100,10 +88,6 @@ class NonLinearTest(tf.test.TestCase):
         feature_columns=feature_columns, hidden_units=[10, 20, 10], n_classes=3,
         dropout=0.9, config=tf.contrib.learn.RunConfig(tf_random_seed=1))
     classifier.fit(iris.data, iris.target, max_steps=200)
-    score = accuracy_score(iris.target, classifier.predict(iris.data))
-    self.assertGreater(score, 0.3, "Failed with score = {0}".format(score))
-    # If the quality is higher - dropout is not working.
-    self.assertLess(score, 0.6, "Failed with score = {0}".format(score))
 
 
 if __name__ == "__main__":

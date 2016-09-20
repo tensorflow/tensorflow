@@ -25,6 +25,7 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
+from tensorflow.contrib.learn.python.learn.estimators import estimator_test_utils
 
 
 def _get_quantile_based_buckets(feature_values, num_buckets):
@@ -58,6 +59,10 @@ def _iris_input_logistic_fn():
 
 
 class DNNLinearCombinedClassifierTest(tf.test.TestCase):
+
+  def testEstimatorContract(self):
+    estimator_test_utils.assert_estimator_contract(
+        self, tf.contrib.learn.DNNLinearCombinedClassifier)
 
   def testLogisticRegression_MatrixData(self):
     """Tests binary classification using matrix data as input."""
@@ -575,6 +580,10 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
 
 
 class DNNLinearCombinedRegressorTest(tf.test.TestCase):
+
+  def testEstimatorContract(self):
+    estimator_test_utils.assert_estimator_contract(
+        self, tf.contrib.learn.DNNLinearCombinedRegressor)
 
   def _input_fn_train(self):
     # Create 4 rows of (y = x)

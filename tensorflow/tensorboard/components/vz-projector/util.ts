@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {DataSet} from './scatterPlot';
+import {Point2D} from './vector';
+
 /** Shuffles the array in-place in O(n) time using Fisher-Yates algorithm. */
 export function shuffle<T>(array: T[]): T[] {
   let m = array.length;
@@ -29,6 +32,51 @@ export function shuffle<T>(array: T[]): T[] {
     array[i] = t;
   }
   return array;
+}
+
+/** Retrieves a projected point from the data set as a THREE.js vector */
+export function getProjectedPointFromIndex(
+    dataSet: DataSet, i: number): THREE.Vector3 {
+  return new THREE.Vector3(
+      dataSet.points[i].projectedPoint[0], dataSet.points[i].projectedPoint[1],
+      dataSet.points[i].projectedPoint[2]);
+}
+
+/** Projects a 3d point into screen space */
+export function vector3DToScreenCoords(
+    cam: THREE.Camera, w: number, h: number, v: THREE.Vector3): Point2D {
+  let dpr = window.devicePixelRatio;
+  let pv = new THREE.Vector3().copy(v).project(cam);
+
+  // The screen-space origin is at the middle of the screen, with +y up.
+  let coords: Point2D =
+      [((pv.x + 1) / 2 * w) * dpr, -((pv.y - 1) / 2 * h) * dpr];
+  return coords;
+}
+
+/**
+ * Gets the camera-space z coordinates of the nearest and farthest points.
+ * Ignores points that are behind the camera.
+ */
+export function getNearFarPoints(
+    dataSet: DataSet, cameraPos: THREE.Vector3,
+    cameraTarget: THREE.Vector3): [number, number] {
+  let shortestDist: number = Infinity;
+  let furthestDist: number = 0;
+  let camToTarget = new THREE.Vector3().copy(cameraTarget).sub(cameraPos);
+  for (let i = 0; i < dataSet.points.length; i++) {
+    let point = getProjectedPointFromIndex(dataSet, i);
+    let camToPoint = new THREE.Vector3().copy(point).sub(cameraPos);
+    if (camToTarget.dot(camToPoint) < 0) {
+      continue;
+    }
+    let distToCam = cameraPos.distanceToSquared(point);
+    furthestDist = Math.max(furthestDist, distToCam);
+    shortestDist = Math.min(shortestDist, distToCam);
+  }
+  furthestDist = Math.sqrt(furthestDist);
+  shortestDist = Math.sqrt(shortestDist);
+  return [shortestDist, furthestDist];
 }
 
 /**

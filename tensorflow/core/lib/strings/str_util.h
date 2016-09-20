@@ -71,6 +71,10 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val);
 // Otherwise, return false.
 bool ConsumePrefix(StringPiece* s, StringPiece expected);
 
+// If "*s" ends with "expected", remove it and return true.
+// Otherwise, return false.
+bool ConsumeSuffix(StringPiece* s, StringPiece expected);
+
 // Return lower-cased version of s.
 string Lowercase(StringPiece s);
 
@@ -80,15 +84,6 @@ string Uppercase(StringPiece s);
 // Capitalize first character of each word in "*s".  "delimiters" is a
 // set of characters that can be used as word boundaries.
 void TitlecaseString(string* s, StringPiece delimiters);
-
-// Converts a time interval as double to a human readable
-// string. For example:
-//   0.001       -> "1 ms"
-//   10.0        -> "10 s"
-//   933120.0    -> "10.8 days"
-//   39420000.0  -> "1.25 years"
-//   -10         -> "-10 s"
-string HumanReadableElapsedTime(double seconds);
 
 // Join functionality
 template <typename T>

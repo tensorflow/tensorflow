@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/graph/shape_refiner.h"
+#include "tensorflow/core/common_runtime/shape_refiner.h"
 
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -203,10 +203,10 @@ TEST(ShapeRefinerTest, InputTensorDependencies) {
   Node* node;
 
   Tensor a(DT_FLOAT, TensorShape({}));
-  a.scalar<float>()() = 0.0;
+  a.scalar<float>()() = 1.0;
 
   Tensor b(DT_FLOAT, TensorShape({}));
-  b.scalar<float>()() = 0.0;
+  b.scalar<float>()() = 2.0;
 
   Node* input_a = test::graph::Constant(&graph, a);
   Node* input_b = test::graph::Constant(&graph, b);
@@ -331,6 +331,70 @@ TEST(ShapeRefinerTest, PropagateRange) {
 
   shape_inference::InferenceContext* ctx = m.GetContext(shape_data);
   EXPECT_EQ("[1,4,7,10]", ctx->DebugString(ctx->output(0)));
+}
+
+TEST(ShapeRefinerTest, ConstantValueTwoInputsToSameNode) {
+  Scope root = Scope::NewRootScope();
+  // This node is used as two inputs to 'range'.
+  auto begin_and_delta = ops::Const(root, 1);
+  auto limit = ops::Const(root, 4);
+  auto range = ops::Range(root, begin_and_delta, limit, begin_and_delta);
+
+  Node* shape_data;
+  TF_ASSERT_OK(NodeBuilder("Test", "ShapeData")
+                   .Input(range.node())
+                   .Finalize(root.graph(), &shape_data));
+
+  ShapeRefiner m;
+  TF_ASSERT_OK(m.AddNode(begin_and_delta.node()));
+  TF_ASSERT_OK(m.AddNode(limit.node()));
+  TF_ASSERT_OK(m.AddNode(range.node()));
+  TF_ASSERT_OK(m.AddNode(shape_data));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(shape_data);
+  EXPECT_EQ("[1,2,3]", ctx->DebugString(ctx->output(0)));
+}
+
+// Creates a graph where 'begin' is attempted to be visited during
+// constant value evaluation after having been processed once.
+TEST(ShapeRefinerTest, ConstantValueVisitNodeTwice) {
+  Scope root = Scope::NewRootScope();
+  auto begin = ops::Const(root, 1);
+  auto limit = ops::Const(root, 8);
+  auto delta = ops::Const(root, 3);
+
+  auto d1 = ops::Add(root, begin, limit);  // 9
+  auto d2 = ops::Add(root, begin, delta);  // 4
+  // Visiting flimit's children will visit 'begin' before 'd1'.
+  // It will then visit d1, whose child is 'begin'.  That edge still
+  // must be visited.
+  auto flimit = ops::Sub(root, begin, d1);  // 1-9=-8
+  auto fdelta = ops::Sub(root, begin, d2);  // 1-4=-3
+  auto nl = ops::Abs(root, flimit);         // 8
+  auto nd = ops::Abs(root, fdelta);         // 3
+
+  auto range = ops::Range(root, begin, nl, nd);
+
+  Node* shape_data;
+  TF_ASSERT_OK(NodeBuilder("Test", "ShapeData")
+                   .Input(range.node())
+                   .Finalize(root.graph(), &shape_data));
+
+  ShapeRefiner m;
+  TF_ASSERT_OK(m.AddNode(begin.node()));
+  TF_ASSERT_OK(m.AddNode(limit.node()));
+  TF_ASSERT_OK(m.AddNode(delta.node()));
+  TF_ASSERT_OK(m.AddNode(d1.node()));
+  TF_ASSERT_OK(m.AddNode(d2.node()));
+  TF_ASSERT_OK(m.AddNode(flimit.node()));
+  TF_ASSERT_OK(m.AddNode(fdelta.node()));
+  TF_ASSERT_OK(m.AddNode(nl.node()));
+  TF_ASSERT_OK(m.AddNode(nd.node()));
+  TF_ASSERT_OK(m.AddNode(range.node()));
+  TF_ASSERT_OK(m.AddNode(shape_data));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(shape_data);
+  EXPECT_EQ("[1,4,7]", ctx->DebugString(ctx->output(0)));
 }
 
 }  // namespace

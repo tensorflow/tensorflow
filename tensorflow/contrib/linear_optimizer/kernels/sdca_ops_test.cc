@@ -201,7 +201,7 @@ void GetGraphs(const int32 num_examples, const int32 num_sparse_feature_groups,
             .Attr("num_dense_features", num_dense_feature_groups)
             .Attr("l1", 0.0)
             .Attr("l2", 1.0)
-            .Attr("num_partitions", 1)
+            .Attr("num_loss_partitions", 1)
             .Attr("num_inner_iterations", 2)
             .Input(sparse_example_indices)
             .Input(sparse_feature_indices)

@@ -560,7 +560,7 @@ def _softmax(logits, compute_op, dim=-1, name=None):
 
 
 def softmax(logits, dim=-1, name=None):
-  """Computes log softmax activations.
+  """Computes softmax activations.
 
   For each batch `i` and class `j` we have
 
@@ -587,7 +587,7 @@ def log_softmax(logits, dim=-1, name=None):
 
   For each batch `i` and class `j` we have
 
-      logsoftmax = logits - reduce_sum(exp(logits), dim)
+      logsoftmax = logits - log(reduce_sum(exp(logits), dim))
 
   Args:
     logits: A non-empty `Tensor`. Must be one of the following types: `half`,

@@ -16,7 +16,7 @@ limitations under the License.
 import {runAsyncTask} from './async';
 import {TSNE} from './bh_tsne';
 import * as knn from './knn';
-import * as scatter from './scatter';
+import * as scatterPlot from './scatterPlot';
 import {shuffle} from './util';
 import * as vector from './vector';
 
@@ -47,7 +47,7 @@ export class DataSource {
   }
 }
 
-export interface DataPoint extends scatter.DataPoint {
+export interface DataPoint extends scatterPlot.DataPoint {
   /** The point in the original space. */
   vector: number[];
 
@@ -89,9 +89,9 @@ const TRACE_METADATA_ATTR = '__next__';
  * requires normalizing and shifting the vector space, we make a copy of the
  * data so we can still always create new subsets based on the original data.
  */
-export class DataSet implements scatter.DataSet {
+export class DataSet implements scatterPlot.DataSet {
   points: DataPoint[];
-  traces: scatter.DataTrace[];
+  traces: scatterPlot.DataTrace[];
 
   sampledDataIndices: number[] = [];
 
@@ -139,8 +139,8 @@ export class DataSet implements scatter.DataSet {
 
   private computeTraces(points: DataPoint[], indicesSeen: boolean[]) {
     // Compute traces.
-    let indexToTrace: {[index: number]: scatter.DataTrace} = {};
-    let traces: scatter.DataTrace[] = [];
+    let indexToTrace: {[index: number]: scatterPlot.DataTrace} = {};
+    let traces: scatterPlot.DataTrace[] = [];
     for (let i = 0; i < points.length; i++) {
       if (indicesSeen[i]) {
         continue;
@@ -160,7 +160,7 @@ export class DataSet implements scatter.DataSet {
         continue;
       }
       // The current point is pointing to a new/unseen trace.
-      let newTrace: scatter.DataTrace = {pointIndices: []};
+      let newTrace: scatterPlot.DataTrace = {pointIndices: []};
       indexToTrace[i] = newTrace;
       traces.push(newTrace);
       let currentIndex = i;
@@ -208,7 +208,7 @@ export class DataSet implements scatter.DataSet {
   /** Projects the dataset along the top 10 principal components. */
   projectPCA(): Promise<void> {
     if (this.projections.has('pca-0')) {
-      return Promise.resolve<void>();
+      return Promise.resolve();
     }
     return runAsyncTask('Computing PCA...', () => {
       // Approximate pca vectors by sampling the dimensions.

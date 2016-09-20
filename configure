@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-DO_NOT_SUBMIT_WARNING="Unofficial setting. DO NOT SUBMIT!!!"
-
 # Find out the absolute path to where ./configure resides
 pushd `dirname $0` #> /dev/null
 SOURCE_BASE_DIR=`pwd -P`
@@ -58,6 +56,28 @@ if [ "$TF_NEED_GCP" == "1" ]; then
 else
   # Update Bazel build configuration.
   perl -pi -e "s,WITH_GCP_SUPPORT = (False|True),WITH_GCP_SUPPORT = False,s" tensorflow/core/platform/default/build_config.bzl
+fi
+
+while [ "$TF_NEED_HDFS" == "" ]; do
+  read -p "Do you wish to build TensorFlow with "\
+"Hadoop File System support? [y/N] " INPUT
+  case $INPUT in
+    [Yy]* ) echo "Hadoop File System support will be enabled for "\
+"TensorFlow"; TF_NEED_HDFS=1;;
+    [Nn]* ) echo "No Hadoop File System support will be enabled for "\
+"TensorFlow"; TF_NEED_HDFS=0;;
+    "" ) echo "No Hadoop File System support will be enabled for "\
+"TensorFlow"; TF_NEED_HDFS=0;;
+    * ) echo "Invalid selection: " $INPUT;;
+  esac
+done
+
+if [ "$TF_NEED_HDFS" == "1" ]; then
+  # Update Bazel build configuration.
+  perl -pi -e "s,WITH_HDFS_SUPPORT = (False|True),WITH_HDFS_SUPPORT = True,s" tensorflow/core/platform/default/build_config.bzl
+else
+  # Update Bazel build configuration.
+  perl -pi -e "s,WITH_HDFS_SUPPORT = (False|True),WITH_HDFS_SUPPORT = False,s" tensorflow/core/platform/default/build_config.bzl
 fi
 
 ## Find swig path
