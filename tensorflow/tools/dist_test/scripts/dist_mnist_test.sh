@@ -133,7 +133,7 @@ timeout ${TIMEOUT} python "${MNIST_REPLICA}" \
 # Get N_PS by PS_HOSTS
 N_PS=$(echo ${PS_HOSTS} | awk -F "," '{printf NF}')
 # Replace the delimiter with " "
-PS_ARRAY=$(echo ${PS_HOSTS} | awk -F "," '{for(i=1;i<=NF;i++){printf $i" "}}')
+PS_ARRAY=($(echo ${PS_HOSTS} | awk -F "," '{for(i=1;i<=NF;i++){printf $i" "}}'))
 # Run a number of ps in parallel. In general, we only set 1 ps.
 echo "${N_PS} ps process(es) running in parallel..."
 
@@ -166,7 +166,7 @@ fi
 # Get N_WORKERS by WORKER_HOSTS
 N_WORKERS=$(echo ${WORKER_HOSTS} | awk -F "," '{printf NF}')
 # Replace the delimiter with " "
-WORKER_ARRAY=$(echo ${WORKER_HOSTS} | awk -F "," '{for(i=1;i<=NF;i++){printf $i" "}}')
+WORKER_ARRAY=($(echo ${WORKER_HOSTS} | awk -F "," '{for(i=1;i<=NF;i++){printf $i" "}}'))
 # Run a number of workers in parallel
 echo "${N_WORKERS} worker process(es) running in parallel..."
 
