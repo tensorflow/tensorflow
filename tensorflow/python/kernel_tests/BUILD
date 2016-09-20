@@ -445,6 +445,7 @@ cuda_py_test(
     additional_deps = [
         "//tensorflow:tensorflow_py",
     ],
+    shard_count = 20,
 )
 
 cuda_py_test(
