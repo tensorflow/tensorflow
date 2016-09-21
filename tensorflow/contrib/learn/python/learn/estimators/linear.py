@@ -571,7 +571,8 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
         input_fn=input_fn or default_input_fn,
         input_feature_key=input_feature_key,
         use_deprecated_input_fn=use_deprecated_input_fn,
-        signature_fn=signature_fn or export.classification_signature_fn,
+        signature_fn=(
+            signature_fn or export.classification_signature_fn_with_prob),
         prediction_key=_PROBABILITIES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)

@@ -119,6 +119,23 @@ def classification_signature_fn(examples, unused_features, predictions):
   return default_signature, {}
 
 
+def classification_signature_fn_with_prob(
+    examples, unused_features, predictions):
+  """Classification signature from given examples and predicted probabilities.
+
+  Args:
+    examples: `Tensor`.
+    unused_features: `dict` of `Tensor`s.
+    predictions: `Tensor` of predicted probabilities.
+
+  Returns:
+    Tuple of default classification signature and empty named signatures.
+  """
+  default_signature = exporter.classification_signature(
+      examples, scores_tensor=predictions)
+  return default_signature, {}
+
+
 def regression_signature_fn(examples, unused_features, predictions):
   """Creates regression signature from given examples and predictions.
 
