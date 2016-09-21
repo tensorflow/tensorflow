@@ -1244,7 +1244,7 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
       return variable_scope.get_variable(
           name,
           shape=[self.dimension, num_outputs],
-          initializer=array_ops.zeros_initializer,
+          initializer=init_ops.zeros_initializer,
           collections=_add_variable_collection(weight_collections))
 
     if self.name:
@@ -1834,7 +1834,7 @@ class DataFrameColumn(_FeatureColumn,
       return variable_scope.get_variable(
           name,
           shape=[self.dimension, num_outputs],
-          initializer=array_ops.zeros_initializer,
+          initializer=init_ops.zeros_initializer,
           collections=_add_variable_collection(weight_collections))
 
     if self.name:

@@ -34,7 +34,6 @@ import pandas
 
 import tensorflow as tf
 from tensorflow.contrib import learn
-from tensorflow.contrib.layers import conv2d
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_bool('test_with_fake_data', False,
@@ -55,7 +54,8 @@ def char_cnn_model(x, y):
                          [-1, MAX_DOCUMENT_LENGTH, 256, 1])
   with tf.variable_scope('CNN_Layer1'):
     # Apply Convolution filtering on input sequence.
-    conv1 = conv2d(byte_list, N_FILTERS, FILTER_SHAPE1, padding='VALID')
+    conv1 = tf.contrib.layers.convolution2d(byte_list, N_FILTERS,
+                             FILTER_SHAPE1, padding='VALID')
     # Add a RELU for non linearity.
     conv1 = tf.nn.relu(conv1)
     # Max pooling across output of Convolution+Relu.
@@ -65,7 +65,9 @@ def char_cnn_model(x, y):
     pool1 = tf.transpose(pool1, [0, 1, 3, 2])
   with tf.variable_scope('CNN_Layer2'):
     # Second level of convolution filtering.
-    conv2 = conv2d(pool1, N_FILTERS, FILTER_SHAPE2, padding='VALID')
+    conv2 = tf.contrib.layers.convolution2d(pool1, N_FILTERS,
+                                            FILTER_SHAPE2,
+                                            padding='VALID')
     # Max across each filter to get useful features for classification.
     pool2 = tf.squeeze(tf.reduce_max(conv2, 1), squeeze_dims=[1])
 

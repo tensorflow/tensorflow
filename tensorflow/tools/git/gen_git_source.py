@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,6 +30,7 @@ from __future__ import print_function
 import argparse
 import json
 import os
+import subprocess
 import shutil
 
 
@@ -111,7 +112,10 @@ def configure(src_base_path, debug=False):
     if src is None:
       open(os.path.join(gen_path, target), "w").write("")
     else:
-      os.symlink(src, os.path.join(gen_path, target))
+      if hasattr(os, 'symlink'):
+        os.symlink(src, os.path.join(gen_path, target))
+      else:
+        shutil.copy2(src, os.path.join(gen_path, target))
 
   json.dump(spec, open(os.path.join(gen_path, "spec.json"), "w"), indent=2)
   if debug:
@@ -157,9 +161,8 @@ def generate(arglist):
       raise RuntimeError(
           "Run ./configure again, branch was '%s' but is now '%s'" %
           (old_branch, new_branch))
-    strs["tf_git_version"] = os.popen(
-        "git -C \"%s\" describe --long --dirty --tags" %
-        (data["path"],)).read().strip()
+    strs["tf_git_version"] = subprocess.check_output(
+        ["git", "-C", data["path"], "describe", "--long", "--dirty", "--tags"]).strip()
   # TODO(aselle): Check for escaping
   cpp_file = "\n".join("const char* %s() {return \"%s\";}" % (x, y)
                        for x, y in strs.items())
@@ -177,7 +180,7 @@ def raw_generate(output_file):
   """
 
   strs = {"tf_compiler_version": "__VERSION__"}
-  version = os.popen("git describe --long --dirty --tags").read().strip()
+  version = subprocess.check_output(["git", "describe", "--long", "--dirty", "--tags"]).strip()
   version = version if version else "unknown"
   strs["tf_git_version"] = version
   cpp_file = "\n".join("const char* %s() {return \"%s\";}" % (x, y)

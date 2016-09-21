@@ -26,7 +26,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.git_repository(
     name = "com_googlesource_code_re2",
     remote = "https://github.com/google/re2.git",
-    commit = "fc6337a382bfd4f7c861abea08f872d3c85b31da",
+    commit = "7bab3dc83df6a838cc004cc7a7f51d5fe1a427d5",
   )
 
   native.git_repository(
@@ -203,4 +203,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     url = "http://zlib.net/zlib-1.2.8.tar.gz",
     sha256 = "36658cb768a54c1d4dec43c3116c27ed893e88b02ecfcb44f2166f9c0b7f2a0d",
     build_file = str(Label("//:zlib.BUILD")),
+  )
+
+  native.bind(
+    name = "zlib",
+    actual = "@zlib_archive//:zlib",
   )

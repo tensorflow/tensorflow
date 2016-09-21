@@ -138,6 +138,8 @@ common math computations that reduce various dimensions of a tensor.
 
 @@accumulate_n
 
+@@einsum
+
 ## Scan
 
 TensorFlow provides several operations that you can use to perform scans

@@ -30,6 +30,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import histogram_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
@@ -152,7 +153,7 @@ def _auc_hist_accumulate(hist_true, hist_false, nbins, collections):
     # Holds running total histogram of scores for records labeled True.
     hist_true_acc = variable_scope.get_variable(
         'hist_true_acc',
-        initializer=array_ops.zeros_initializer(
+        initializer=init_ops.zeros_initializer(
             [nbins],
             dtype=hist_true.dtype),
         collections=collections,
@@ -160,7 +161,7 @@ def _auc_hist_accumulate(hist_true, hist_false, nbins, collections):
     # Holds running total histogram of scores for records labeled False.
     hist_false_acc = variable_scope.get_variable(
         'hist_false_acc',
-        initializer=array_ops.zeros_initializer(
+        initializer=init_ops.zeros_initializer(
             [nbins],
             dtype=hist_false.dtype),
         collections=collections,

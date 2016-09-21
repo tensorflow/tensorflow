@@ -243,4 +243,4 @@ try:
   plot_with_labels(low_dim_embs, labels)
 
 except ImportError:
-  print("Please install sklearn and matplotlib to visualize embeddings.")
+  print("Please install sklearn, matplotlib, and scipy to visualize embeddings.")

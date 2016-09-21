@@ -128,7 +128,9 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS, has_errors> {
 #define DEFINE_BINARY1(F, T)                         \
   template struct BinaryFunctor<GPUDevice, F<T>, 1>; \
   template struct BinaryFunctor<GPUDevice, F<T>, 2>; \
-  template struct BinaryFunctor<GPUDevice, F<T>, 3>
+  template struct BinaryFunctor<GPUDevice, F<T>, 3>; \
+  template struct BinaryFunctor<GPUDevice, F<T>, 4>; \
+  template struct BinaryFunctor<GPUDevice, F<T>, 5>
 #define DEFINE_BINARY2(F, T0, T1) \
   DEFINE_BINARY1(F, T0);          \
   DEFINE_BINARY1(F, T1)

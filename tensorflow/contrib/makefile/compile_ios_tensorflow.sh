@@ -16,9 +16,21 @@
 # Builds the TensorFlow core library with ARM and x86 architectures for iOS, and
 # packs them into a fat file.
 
+function less_than_required_version() {
+  echo $1 | (IFS=. read major minor micro
+    if [ $major -ne $2 ]; then
+      [ $major -lt $2 ]
+    elif [ $minor -ne $3 ]; then
+      [ $minor -lt $3 ]
+    else
+      [ ${micro:-0} -lt $4 ]
+    fi
+  )
+}
+
 ACTUAL_XCODE_VERSION=`xcodebuild -version | head -n 1 | sed 's/Xcode //'`
 REQUIRED_XCODE_VERSION=7.3.0
-if [ ${ACTUAL_XCODE_VERSION//.} -lt ${REQUIRED_XCODE_VERSION//.} ]
+if less_than_required_version $ACTUAL_XCODE_VERSION 7 3 0
 then
     echo "error: Xcode ${REQUIRED_XCODE_VERSION} or later is required."
     exit 1

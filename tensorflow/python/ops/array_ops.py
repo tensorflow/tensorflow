@@ -265,13 +265,6 @@ def rank_internal(input, name=None, optimize=True):
       return gen_array_ops.rank(input, name=name)
 
 
-# DEPRECATED use init_ops.zeros_initializer
-# TODO(irving) Move it to init_ops.py
-def zeros_initializer(shape, dtype=dtypes.float32, partition_info=None):
-  """An adaptor for zeros() to match the Initializer spec."""
-  return zeros(shape, dtype)
-
-
 def _SliceHelper(tensor, slice_spec, var=None):
   """Overload for Tensor.__getitem__.
 

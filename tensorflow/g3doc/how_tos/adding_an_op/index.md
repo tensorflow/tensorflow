@@ -1000,6 +1000,11 @@ cuda_op_kernel.cu.o -I $TF_INC -fPIC -lcudart
 `cuda_op_kernel.so` produced above can be loaded as usual in Python, using the
 `tf.load_op_library` function.
 
+Note that if your CUDA libraries are not installed in `/usr/local/lib64`,
+you'll need to specify the path explicitly in the second (g++) command above.
+For example, add `-L /usr/local/cuda-8.0/lib64/` if your CUDA is installed in 
+`/usr/local/cuda-8.0`.
+
 ## Implement the gradient in Python
 
 Given a graph of ops, TensorFlow uses automatic differentiation

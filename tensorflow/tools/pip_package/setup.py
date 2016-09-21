@@ -27,7 +27,7 @@ from setuptools import find_packages, setup, Command, Extension
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-_VERSION = '0.10.0rc0'
+_VERSION = '0.10.0'
 
 numpy_version = "1.8.2"
 if platform.system() == "Darwin":
