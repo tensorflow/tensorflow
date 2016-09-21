@@ -1156,7 +1156,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   For example:
 
   ```python
-  tf.zeros([3, 4], int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+  tf.zeros([3, 4], tf.int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
   ```
 
   Args:
@@ -1260,7 +1260,7 @@ def ones(shape, dtype=dtypes.float32, name=None):
   For example:
 
   ```python
-  tf.ones([2, 3], int32) ==> [[1, 1, 1], [1, 1, 1]]
+  tf.ones([2, 3], tf.int32) ==> [[1, 1, 1], [1, 1, 1]]
   ```
 
   Args:
