@@ -2,10 +2,7 @@
 # TensorFlow SavedModel.
 
 package(
-    default_visibility = ["//visibility:private"],
-    features = [
-        "-layering_check",
-    ],
+    default_visibility = ["//tensorflow/python/saved_model:__subpackages__"],
 )
 
 licenses(["notice"])  # Apache 2.0

@@ -159,6 +159,7 @@ filegroup(
         "//tensorflow/python/debug:all_files",
         "//tensorflow/python/kernel_tests:all_files",
         "//tensorflow/python/saved_model:all_files",
+        "//tensorflow/python/saved_model/example:all_files",
         "//tensorflow/python/tools:all_files",
         "//tensorflow/tensorboard:all_files",
         "//tensorflow/tensorboard/app:all_files",
