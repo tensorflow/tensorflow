@@ -207,7 +207,7 @@ class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
 
       b = vs.get_variable(
           "B", shape=[3 * self._num_units],
-          initializer=array_ops.zeros_initializer, dtype=dtype)
+          initializer=init_ops.zeros_initializer, dtype=dtype)
 
       # j = new_input, f = forget_gate, o = output_gate
       cell_inputs = array_ops.concat(1, [inputs, m_prev])
@@ -334,7 +334,7 @@ class TimeFreqLSTMCell(rnn_cell.RNNCell):
           dtype, self._num_unit_shards)
       b = vs.get_variable(
           "B", shape=[4 * self._num_units],
-          initializer=array_ops.zeros_initializer, dtype=dtype)
+          initializer=init_ops.zeros_initializer, dtype=dtype)
 
       # Diagonal connections
       if self._use_peepholes:
@@ -537,7 +537,7 @@ class GridLSTMCell(rnn_cell.RNNCell):
           dtype, self._num_unit_shards)
       b_f = vs.get_variable(
           "B_f", shape=[num_gates * self._num_units],
-          initializer=array_ops.zeros_initializer, dtype=dtype)
+          initializer=init_ops.zeros_initializer, dtype=dtype)
       if not self._share_time_frequency_weights:
         concat_w_t = _get_concat_variable(
             "W_t", [actual_input_size + 2 * self._num_units,
@@ -545,7 +545,7 @@ class GridLSTMCell(rnn_cell.RNNCell):
             dtype, self._num_unit_shards)
         b_t = vs.get_variable(
             "B_t", shape=[num_gates * self._num_units],
-            initializer=array_ops.zeros_initializer, dtype=dtype)
+            initializer=init_ops.zeros_initializer, dtype=dtype)
 
       if self._use_peepholes:
         # Diagonal connections
