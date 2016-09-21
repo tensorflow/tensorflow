@@ -192,7 +192,58 @@ class StreamingMeanTest(tf.test.TestCase):
 
       self.assertAlmostEqual(1.65, sess.run(mean), 5)
 
-  def testWeightedValues(self):
+  def test1dWeightedValues(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      values_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      # Create the queue that populates the weighted labels.
+      weights_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 1))
+      _enqueue_vector(sess, weights_queue, [1])
+      _enqueue_vector(sess, weights_queue, [0])
+      _enqueue_vector(sess, weights_queue, [0])
+      _enqueue_vector(sess, weights_queue, [1])
+      weights = weights_queue.dequeue()
+
+      mean, update_op = metrics.streaming_mean(values, weights)
+
+      tf.initialize_local_variables().run()
+      for _ in range(4):
+        update_op.eval()
+      self.assertAlmostEqual((0 + 1 - 3.2 + 4.0) / 4.0, mean.eval(), 5)
+
+  def test1dWeightedValues_placeholders(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      feed_values = (
+          (0, 1),
+          (-4.2, 9.1),
+          (6.5, 0),
+          (-3.2, 4.0)
+      )
+      values = tf.placeholder(dtype=tf.float32)
+
+      # Create the queue that populates the weighted labels.
+      weights_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 1))
+      _enqueue_vector(sess, weights_queue, [1])
+      _enqueue_vector(sess, weights_queue, [0])
+      _enqueue_vector(sess, weights_queue, [0])
+      _enqueue_vector(sess, weights_queue, [1])
+      weights = weights_queue.dequeue()
+
+      mean, update_op = metrics.streaming_mean(values, weights)
+
+      tf.initialize_local_variables().run()
+      for i in range(4):
+        update_op.eval(feed_dict={values: feed_values[i]})
+      self.assertAlmostEqual((0 + 1 - 3.2 + 4.0) / 4.0, mean.eval(), 5)
+
+  def test2dWeightedValues(self):
     with self.test_session() as sess:
       # Create the queue that populates the values.
       values_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
@@ -212,10 +263,36 @@ class StreamingMeanTest(tf.test.TestCase):
 
       mean, update_op = metrics.streaming_mean(values, weights)
 
-      sess.run(tf.initialize_local_variables())
+      tf.initialize_local_variables().run()
       for _ in range(4):
-        sess.run(update_op)
-      self.assertAlmostEqual(-0.8, sess.run(mean), 5)
+        update_op.eval()
+      self.assertAlmostEqual((0 + 1 - 4.2 + 0) / 4.0, mean.eval(), 5)
+
+  def test2dWeightedValues_placeholders(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      feed_values = (
+          (0, 1),
+          (-4.2, 9.1),
+          (6.5, 0),
+          (-3.2, 4.0)
+      )
+      values = tf.placeholder(dtype=tf.float32)
+
+      # Create the queue that populates the weighted labels.
+      weights_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
+      _enqueue_vector(sess, weights_queue, [1, 1])
+      _enqueue_vector(sess, weights_queue, [1, 0])
+      _enqueue_vector(sess, weights_queue, [0, 1])
+      _enqueue_vector(sess, weights_queue, [0, 0])
+      weights = weights_queue.dequeue()
+
+      mean, update_op = metrics.streaming_mean(values, weights)
+
+      tf.initialize_local_variables().run()
+      for i in range(4):
+        update_op.eval(feed_dict={values: feed_values[i]})
+      self.assertAlmostEqual((0 + 1 - 4.2 + 0) / 4.0, mean.eval(), 5)
 
 
 class StreamingMeanTensorTest(tf.test.TestCase):
@@ -294,7 +371,32 @@ class StreamingMeanTensorTest(tf.test.TestCase):
 
       self.assertAllClose([[-0.9/4., 3.525]], sess.run(mean), 5)
 
-  def testWeighted1(self):
+  def testWeighted1d(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      values_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      # Create the queue that populates the weights.
+      weights_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 1))
+      _enqueue_vector(sess, weights_queue, [[1]])
+      _enqueue_vector(sess, weights_queue, [[0]])
+      _enqueue_vector(sess, weights_queue, [[1]])
+      _enqueue_vector(sess, weights_queue, [[0]])
+      weights = weights_queue.dequeue()
+
+      mean, update_op = metrics.streaming_mean_tensor(values, weights)
+
+      sess.run(tf.initialize_local_variables())
+      for _ in range(4):
+        sess.run(update_op)
+      self.assertAllClose([[3.25, 0.5]], sess.run(mean), 5)
+
+  def testWeighted2d_1(self):
     with self.test_session() as sess:
       # Create the queue that populates the values.
       values_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
@@ -319,7 +421,7 @@ class StreamingMeanTensorTest(tf.test.TestCase):
         sess.run(update_op)
       self.assertAllClose([[-2.1, 0.5]], sess.run(mean), 5)
 
-  def testWeightedValues2(self):
+  def testWeighted2d_2(self):
     with self.test_session() as sess:
       # Create the queue that populates the values.
       values_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
@@ -547,17 +649,73 @@ class StreamingPrecisionTest(tf.test.TestCase):
       self.assertAlmostEqual(0.5, update_op.eval())
       self.assertAlmostEqual(0.5, precision.eval())
 
-  def testWeighted(self):
-    predictions = tf.constant([1, 0, 1, 0], shape=(1, 4))
-    labels = tf.constant([0, 1, 1, 0], shape=(1, 4))
-    weights = tf.constant([1, 2, 3, 4], shape=(1, 4))
+  def testWeighted1d(self):
+    predictions = tf.constant([[1, 0, 1, 0], [1, 0, 1, 0]])
+    labels = tf.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
     precision, update_op = metrics.streaming_precision(
-        predictions, labels, weights=weights)
+        predictions, labels, weights=tf.constant([[2], [5]]))
 
-    with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
-      self.assertAlmostEqual(0.75, update_op.eval())
-      self.assertAlmostEqual(0.75, precision.eval())
+    with self.test_session():
+      tf.initialize_local_variables().run()
+      weighted_tp = 2.0 + 5.0
+      weighted_positives = (2.0 + 2.0) + (5.0 + 5.0)
+      expected_precision = weighted_tp / weighted_positives
+      self.assertAlmostEqual(expected_precision, update_op.eval())
+      self.assertAlmostEqual(expected_precision, precision.eval())
+
+  def testWeighted1d_placeholders(self):
+    predictions = tf.placeholder(dtype=tf.float32)
+    labels = tf.placeholder(dtype=tf.float32)
+    feed_dict = {
+        predictions: ((1, 0, 1, 0), (1, 0, 1, 0)),
+        labels: ((0, 1, 1, 0), (1, 0, 0, 1))
+    }
+    precision, update_op = metrics.streaming_precision(
+        predictions, labels, weights=tf.constant([[2], [5]]))
+
+    with self.test_session():
+      tf.initialize_local_variables().run()
+      weighted_tp = 2.0 + 5.0
+      weighted_positives = (2.0 + 2.0) + (5.0 + 5.0)
+      expected_precision = weighted_tp / weighted_positives
+      self.assertAlmostEqual(
+          expected_precision, update_op.eval(feed_dict=feed_dict))
+      self.assertAlmostEqual(
+          expected_precision, precision.eval(feed_dict=feed_dict))
+
+  def testWeighted2d(self):
+    predictions = tf.constant([[1, 0, 1, 0], [1, 0, 1, 0]])
+    labels = tf.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
+    precision, update_op = metrics.streaming_precision(
+        predictions, labels, weights=tf.constant([[1, 2, 3, 4], [4, 3, 2, 1]]))
+
+    with self.test_session():
+      tf.initialize_local_variables().run()
+      weighted_tp = 3.0 + 4.0
+      weighted_positives = (1.0 + 3.0) + (4.0 + 2.0)
+      expected_precision = weighted_tp / weighted_positives
+      self.assertAlmostEqual(expected_precision, update_op.eval())
+      self.assertAlmostEqual(expected_precision, precision.eval())
+
+  def testWeighted2d_placeholders(self):
+    predictions = tf.placeholder(dtype=tf.float32)
+    labels = tf.placeholder(dtype=tf.float32)
+    feed_dict = {
+        predictions: ((1, 0, 1, 0), (1, 0, 1, 0)),
+        labels: ((0, 1, 1, 0), (1, 0, 0, 1))
+    }
+    precision, update_op = metrics.streaming_precision(
+        predictions, labels, weights=tf.constant([[1, 2, 3, 4], [4, 3, 2, 1]]))
+
+    with self.test_session():
+      tf.initialize_local_variables().run()
+      weighted_tp = 3.0 + 4.0
+      weighted_positives = (1.0 + 3.0) + (4.0 + 2.0)
+      expected_precision = weighted_tp / weighted_positives
+      self.assertAlmostEqual(
+          expected_precision, update_op.eval(feed_dict=feed_dict))
+      self.assertAlmostEqual(
+          expected_precision, precision.eval(feed_dict=feed_dict))
 
   def testAllIncorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
@@ -658,17 +816,35 @@ class StreamingRecallTest(tf.test.TestCase):
       self.assertAlmostEqual(0.5, update_op.eval())
       self.assertAlmostEqual(0.5, recall.eval())
 
-  def testWeighted(self):
-    predictions = tf.constant([1, 0, 1, 0], shape=(1, 4))
-    labels = tf.constant([0, 1, 1, 0], shape=(1, 4))
-    weights = tf.constant([1, 2, 3, 4], shape=(1, 4))
+  def testWeighted1d(self):
+    predictions = tf.constant([[1, 0, 1, 0], [0, 1, 0, 1]])
+    labels = tf.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
+    weights = tf.constant([[2], [5]])
     recall, update_op = metrics.streaming_recall(
         predictions, labels, weights=weights)
 
     with self.test_session() as sess:
       sess.run(tf.initialize_local_variables())
-      self.assertAlmostEqual(0.6, update_op.eval())
-      self.assertAlmostEqual(0.6, recall.eval())
+      weighted_tp = 2.0 + 5.0
+      weighted_t = (2.0 + 2.0) + (5.0 + 5.0)
+      expected_precision = weighted_tp / weighted_t
+      self.assertAlmostEqual(expected_precision, update_op.eval())
+      self.assertAlmostEqual(expected_precision, recall.eval())
+
+  def testWeighted2d(self):
+    predictions = tf.constant([[1, 0, 1, 0], [0, 1, 0, 1]])
+    labels = tf.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
+    weights = tf.constant([[1, 2, 3, 4], [4, 3, 2, 1]])
+    recall, update_op = metrics.streaming_recall(
+        predictions, labels, weights=weights)
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_local_variables())
+      weighted_tp = 3.0 + 1.0
+      weighted_t = (2.0 + 3.0) + (4.0 + 1.0)
+      expected_precision = weighted_tp / weighted_t
+      self.assertAlmostEqual(expected_precision, update_op.eval())
+      self.assertAlmostEqual(expected_precision, recall.eval())
 
   def testAllIncorrect(self):
     np_inputs = np.random.randint(0, 2, size=(100, 1))
@@ -760,7 +936,20 @@ class StreamingAUCTest(tf.test.TestCase):
 
       self.assertAlmostEqual(0.5, auc.eval())
 
-  def testWeighted(self):
+  def testWeighted1d(self):
+    with self.test_session() as sess:
+      predictions = tf.constant([1, 0, 1, 0], shape=(1, 4), dtype=tf.float32)
+      labels = tf.constant([0, 1, 1, 0], shape=(1, 4))
+      weights = tf.constant([2], shape=(1, 1))
+      auc, update_op = metrics.streaming_auc(predictions, labels,
+                                             weights=weights)
+
+      sess.run(tf.initialize_local_variables())
+      self.assertAlmostEqual(0.5, sess.run(update_op), 5)
+
+      self.assertAlmostEqual(0.5, auc.eval(), 5)
+
+  def testWeighted2d(self):
     with self.test_session() as sess:
       predictions = tf.constant([1, 0, 1, 0], shape=(1, 4), dtype=tf.float32)
       labels = tf.constant([0, 1, 1, 0], shape=(1, 4))
@@ -1008,7 +1197,25 @@ class StreamingSpecificityAtSensitivityTest(tf.test.TestCase):
       self.assertAlmostEqual(0.6, sess.run(update_op))
       self.assertAlmostEqual(0.6, specificity.eval())
 
-  def testWeighted(self):
+  def testWeighted1d(self):
+    predictions_values = [0.1, 0.2, 0.4, 0.3, 0.0,
+                          0.1, 0.2, 0.2, 0.26, 0.26]
+    labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+    weights_values = [3]
+
+    predictions = tf.constant(predictions_values, dtype=tf.float32)
+    labels = tf.constant(labels_values)
+    weights = tf.constant(weights_values)
+    specificity, update_op = metrics.streaming_specificity_at_sensitivity(
+        predictions, labels, weights=weights, sensitivity=0.4)
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_local_variables())
+
+      self.assertAlmostEqual(0.6, sess.run(update_op))
+      self.assertAlmostEqual(0.6, specificity.eval())
+
+  def testWeighted2d(self):
     predictions_values = [0.1, 0.2, 0.4, 0.3, 0.0,
                           0.1, 0.2, 0.2, 0.26, 0.26]
     labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
@@ -1240,7 +1447,34 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       self.assertAlmostEqual(0, prec.eval())
       self.assertAlmostEqual(0, rec.eval())
 
-  def testWeights(self):
+  def testWeights1d(self):
+    with self.test_session() as sess:
+      predictions = tf.constant([[1, 0], [1, 0]], shape=(2, 2),
+                                dtype=tf.float32)
+      labels = tf.constant([[0, 1], [1, 0]], shape=(2, 2))
+      weights = tf.constant([[0], [1]], shape=(2, 1), dtype=tf.float32)
+      thresholds = [0.5, 1.1]
+      prec, prec_op = metrics.streaming_precision_at_thresholds(
+          predictions, labels, thresholds, weights=weights)
+      rec, rec_op = metrics.streaming_recall_at_thresholds(
+          predictions, labels, thresholds, weights=weights)
+
+      [prec_low, prec_high] = tf.split(0, 2, prec)
+      prec_low = tf.reshape(prec_low, shape=())
+      prec_high = tf.reshape(prec_high, shape=())
+      [rec_low, rec_high] = tf.split(0, 2, rec)
+      rec_low = tf.reshape(rec_low, shape=())
+      rec_high = tf.reshape(rec_high, shape=())
+
+      sess.run(tf.initialize_local_variables())
+      sess.run([prec_op, rec_op])
+
+      self.assertAlmostEqual(1.0, prec_low.eval(), places=5)
+      self.assertAlmostEqual(0.0, prec_high.eval(), places=5)
+      self.assertAlmostEqual(1.0, rec_low.eval(), places=5)
+      self.assertAlmostEqual(0.0, rec_high.eval(), places=5)
+
+  def testWeights2d(self):
     with self.test_session() as sess:
       predictions = tf.constant([[1, 0], [1, 0]], shape=(2, 2),
                                 dtype=tf.float32)

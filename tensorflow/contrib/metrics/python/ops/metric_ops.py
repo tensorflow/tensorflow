@@ -122,7 +122,7 @@ def _count_condition(values, weights=None, metrics_collections=None,
 
   Args:
     values: A `bool` `Tensor` of arbitrary size.
-    weights: An optional `Tensor` whose shape matches `values`.
+    weights: An optional `Tensor` whose shape is broadcastable to `values`.
     metrics_collections: An optional list of collections that the metric
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
@@ -142,7 +142,6 @@ def _count_condition(values, weights=None, metrics_collections=None,
 
   values = math_ops.to_float(values)
   if weights is not None:
-    values.get_shape().assert_is_compatible_with(weights.get_shape())
     weights = math_ops.to_float(weights)
     values = math_ops.mul(values, weights)
 
@@ -158,46 +157,6 @@ def _count_condition(values, weights=None, metrics_collections=None,
   return value_tensor, update_op
 
 
-def _streaming_true_negatives(predictions, labels, weights=None,
-                              metrics_collections=None,
-                              updates_collections=None,
-                              name=None):
-  """Sum the weights of true_negatives.
-
-  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
-
-  Args:
-    predictions: The predicted values, a `bool` `Tensor` of arbitrary
-      dimensions.
-    labels: The ground truth values, a `bool` `Tensor` whose dimensions must
-      match `predictions`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
-    metrics_collections: An optional list of collections that the metric
-      value variable should be added to.
-    updates_collections: An optional list of collections that the metric update
-      ops should be added to.
-    name: An optional variable_scope name.
-
-  Returns:
-    value_tensor: A tensor representing the current value of the metric.
-    update_op: An operation that accumulates the error from a batch of data.
-
-  Raises:
-    ValueError: If `predictions` and `labels` have mismatched shapes, or if
-      `weights` is not `None` and its shape doesn't match `predictions`, or if
-      either `metrics_collections` or `updates_collections` are not a list or
-      tuple.
-  """
-  with variable_scope.variable_scope(
-      [predictions, labels], name, 'true_negatives'):
-
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    is_true_negative = math_ops.logical_and(math_ops.equal(labels, 0),
-                                            math_ops.equal(predictions, 0))
-    return _count_condition(is_true_negative, weights, metrics_collections,
-                            updates_collections)
-
-
 def _streaming_true_positives(predictions, labels, weights=None,
                               metrics_collections=None,
                               updates_collections=None,
@@ -211,7 +170,7 @@ def _streaming_true_positives(predictions, labels, weights=None,
       dimensions.
     labels: The ground truth values, a `bool` `Tensor` whose dimensions must
       match `predictions`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that the metric
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
@@ -251,7 +210,7 @@ def _streaming_false_positives(predictions, labels, weights=None,
       dimensions.
     labels: The ground truth values, a `bool` `Tensor` whose dimensions must
       match `predictions`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that the metric
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
@@ -291,7 +250,7 @@ def _streaming_false_negatives(predictions, labels, weights=None,
       dimensions.
     labels: The ground truth values, a `bool` `Tensor` whose dimensions must
       match `predictions`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that the metric
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
@@ -317,6 +276,31 @@ def _streaming_false_negatives(predictions, labels, weights=None,
                             updates_collections)
 
 
+def _broadcast_weights(weights, values):
+  """Broadcast `weights` to the same shape as `values`.
+
+  This returns a version of `weights` following the same broadcast rules as
+  `mul(weights, values)`. When computing a weighted average, use this function
+  to broadcast `weights` before summing them; e.g.,
+  `reduce_sum(w * v) / reduce_sum(_broadcast_weights(w, v))`.
+
+  Args:
+    weights: `Tensor` whose shape is broadcastable to `values`.
+    values: `Tensor` of any shape.
+
+  Returns:
+    `weights` broadcast to `values` shape.
+  """
+  weights_shape = weights.get_shape()
+  values_shape = values.get_shape()
+  if (weights_shape.is_fully_defined() and
+      values_shape.is_fully_defined() and
+      weights_shape.is_compatible_with(values_shape)):
+    return weights
+  return math_ops.mul(
+      weights, array_ops.ones_like(values), name='broadcast_weights')
+
+
 def streaming_mean(values, weights=None, metrics_collections=None,
                    updates_collections=None, name=None):
   """Computes the (weighted) mean of the given values.
@@ -335,7 +319,7 @@ def streaming_mean(values, weights=None, metrics_collections=None,
 
   Args:
     values: A `Tensor` of arbitrary dimensions.
-    weights: An optional `Tensor` whose shape matches `values`.
+    weights: An optional `Tensor` whose shape is broadcastable to `values`.
     metrics_collections: An optional list of collections that `mean`
       should be added to.
     updates_collections: An optional list of collections that `update_op`
@@ -360,10 +344,9 @@ def streaming_mean(values, weights=None, metrics_collections=None,
     count = _create_local('count', shape=[])
 
     if weights is not None:
-      values.get_shape().assert_is_compatible_with(weights.get_shape())
       weights = math_ops.to_float(weights)
       values = math_ops.mul(values, weights)
-      num_values = math_ops.reduce_sum(weights)
+      num_values = math_ops.reduce_sum(_broadcast_weights(weights, values))
     else:
       num_values = math_ops.to_float(array_ops.size(values))
 
@@ -405,7 +388,7 @@ def streaming_mean_tensor(values, weights=None, metrics_collections=None,
 
   Args:
     values: A `Tensor` of arbitrary dimensions.
-    weights: An optional `Tensor` whose shape matches `values`.
+    weights: An optional `Tensor` whose shape is broadcastable to `values`.
     metrics_collections: An optional list of collections that `mean`
       should be added to.
     updates_collections: An optional list of collections that `update_op`
@@ -427,13 +410,11 @@ def streaming_mean_tensor(values, weights=None, metrics_collections=None,
     total = _create_local('total_tensor', shape=values.get_shape())
     count = _create_local('count_tensor', shape=values.get_shape())
 
+    num_values = array_ops.ones_like(values)
     if weights is not None:
-      values.get_shape().assert_is_compatible_with(weights.get_shape())
       weights = math_ops.to_float(weights)
       values = math_ops.mul(values, weights)
-      num_values = weights
-    else:
-      num_values = array_ops.ones_like(values)
+      num_values = math_ops.mul(num_values, weights)
 
     total_compute_op = state_ops.assign_add(total, values)
     count_compute_op = state_ops.assign_add(count, num_values)
@@ -481,7 +462,7 @@ def streaming_accuracy(predictions, labels, weights=None,
     predictions: The predicted values, a `Tensor` of any shape.
     labels: The ground truth values, a `Tensor` whose shape matches
       `predictions`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that `accuracy` should
       be added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -536,7 +517,7 @@ def streaming_precision(predictions, labels, ignore_mask=None, weights=None,
     labels: The ground truth values, a `bool` `Tensor` whose dimensions must
       match `predictions`.
     ignore_mask: An optional, `bool` `Tensor` whose shape matches `predictions`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that `precision` should
       be added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -617,7 +598,7 @@ def streaming_recall(predictions, labels, ignore_mask=None, weights=None,
     labels: The ground truth values, a `bool` `Tensor` whose dimensions must
       match `predictions`.
     ignore_mask: An optional, `bool` `Tensor` whose shape matches `predictions`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that `recall` should
       be added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -695,9 +676,10 @@ def _tp_fn_tn_fp(predictions, labels, thresholds, weights=None):
   Args:
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
-    labels: A `bool` `Tensor` whose shape matches `predictions`.
+    labels: A `Tensor` whose shape matches `predictions`. `labels` will be cast
+      to `bool`.
     thresholds: A python list or tuple of float thresholds in `[0, 1]`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
 
   Returns:
     true_positive: A variable of shape [len(thresholds)].
@@ -720,28 +702,29 @@ def _tp_fn_tn_fp(predictions, labels, thresholds, weights=None):
 
   num_thresholds = len(thresholds)
 
-  # Reshape predictions and labels
-  predictions = array_ops.reshape(predictions, [-1, 1])
-  labels = array_ops.reshape(math_ops.cast(labels, dtype=dtypes.bool), [1, -1])
+  # Reshape predictions and labels.
+  predictions_2d = array_ops.reshape(predictions, [-1, 1])
+  labels_2d = array_ops.reshape(
+      math_ops.cast(labels, dtype=dtypes.bool), [1, -1])
 
   # Use static shape if known.
-  num_predictions = predictions.get_shape().as_list()[0]
+  num_predictions = predictions_2d.get_shape().as_list()[0]
 
   # Otherwise use dynamic shape.
   if num_predictions is None:
-    num_predictions = array_ops.shape(predictions)[0]
+    num_predictions = array_ops.shape(predictions_2d)[0]
   thresh_tiled = array_ops.tile(
       array_ops.expand_dims(array_ops.constant(thresholds), [1]),
       array_ops.pack([1, num_predictions]))
 
   # Tile the predictions after thresholding them across different thresholds.
   pred_is_pos = math_ops.greater(
-      array_ops.tile(array_ops.transpose(predictions), [num_thresholds, 1]),
+      array_ops.tile(array_ops.transpose(predictions_2d), [num_thresholds, 1]),
       thresh_tiled)
   pred_is_neg = math_ops.logical_not(pred_is_pos)
 
   # Tile labels by number of thresholds
-  label_is_pos = array_ops.tile(labels, [num_thresholds, 1])
+  label_is_pos = array_ops.tile(labels_2d, [num_thresholds, 1])
   label_is_neg = math_ops.logical_not(label_is_pos)
 
   true_positives = _create_local('true_positives', shape=[num_thresholds])
@@ -760,8 +743,8 @@ def _tp_fn_tn_fp(predictions, labels, thresholds, weights=None):
 
   if weights is not None:
     weights = math_ops.to_float(weights)
-    weights_tiled = array_ops.tile(
-        array_ops.reshape(weights, [1, -1]), [num_thresholds, 1])
+    weights_tiled = array_ops.tile(array_ops.reshape(
+        _broadcast_weights(weights, predictions), [1, -1]), [num_thresholds, 1])
     thresh_tiled.get_shape().assert_is_compatible_with(
         weights_tiled.get_shape())
     is_true_positive *= weights_tiled
@@ -811,7 +794,7 @@ def streaming_auc(predictions, labels, weights=None, num_thresholds=200,
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     labels: A `bool` `Tensor` whose shape matches `predictions`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     num_thresholds: The number of thresholds to use when discretizing the roc
       curve.
     metrics_collections: An optional list of collections that `auc` should be
@@ -906,7 +889,7 @@ def streaming_specificity_at_sensitivity(
       are in the range `[0, 1]`.
     labels: A `bool` `Tensor` whose shape matches `predictions`.
     sensitivity: A scalar value in range `[0, 1]`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     num_thresholds: The number of thresholds to use for matching the given
       sensitivity.
     metrics_collections: An optional list of collections that `specificity`
@@ -1010,7 +993,7 @@ def streaming_sensitivity_at_specificity(
       are in the range `[0, 1]`.
     labels: A `bool` `Tensor` whose shape matches `predictions`.
     specificity: A scalar value in range `[0, 1]`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     num_thresholds: The number of thresholds to use for matching the given
       specificity.
     metrics_collections: An optional list of collections that `sensitivity`
@@ -1095,7 +1078,7 @@ def streaming_precision_at_thresholds(predictions, labels, thresholds,
       are in the range `[0, 1]`.
     labels: A `bool` `Tensor` whose shape matches `predictions`.
     thresholds: A python list or tuple of float thresholds in `[0, 1]`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that `auc` should be
       added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -1167,7 +1150,7 @@ def streaming_recall_at_thresholds(predictions, labels, thresholds,
       are in the range `[0, 1]`.
     labels: A `bool` `Tensor` whose shape matches `predictions`.
     thresholds: A python list or tuple of float thresholds in `[0, 1]`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that `recall` should be
       added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -1243,7 +1226,7 @@ def streaming_recall_at_k(predictions, labels, k, ignore_mask=None,
       `int64`.
     k: The number of top elements to look at for computing recall.
     ignore_mask: An optional, `bool` `Tensor` whose shape matches `predictions`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that `recall_at_k`
       should be added to.
     updates_collections: An optional list of collections `update_op` should be
@@ -1573,7 +1556,6 @@ def _streaming_sparse_true_positive_at_k(predictions_idx,
     tp = set_ops.set_size(set_ops.set_intersection(predictions_idx, labels))
     tp = math_ops.to_double(tp)
     if weights is not None:
-      tp.get_shape().assert_is_compatible_with(weights.get_shape())
       weights = math_ops.to_double(weights)
       tp = math_ops.mul(tp, weights)
     batch_total_tp = math_ops.reduce_sum(tp)
@@ -1631,7 +1613,6 @@ def _streaming_sparse_false_positive_at_k(predictions_idx,
                                                  aminusb=True))
     fp = math_ops.to_double(fp)
     if weights is not None:
-      fp.get_shape().assert_is_compatible_with(weights.get_shape())
       weights = math_ops.to_double(weights)
       fp = math_ops.mul(fp, weights)
     batch_total_fp = math_ops.reduce_sum(fp)
@@ -1689,7 +1670,6 @@ def _streaming_sparse_false_negative_at_k(predictions_idx,
                                                  aminusb=False))
     fn = math_ops.to_double(fn)
     if weights is not None:
-      fn.get_shape().assert_is_compatible_with(weights.get_shape())
       weights = math_ops.to_double(weights)
       fn = math_ops.mul(fn, weights)
     batch_total_fn = math_ops.reduce_sum(fn)
@@ -1724,7 +1704,7 @@ def streaming_mean_absolute_error(predictions, labels, weights=None,
   Args:
     predictions: A `Tensor` of arbitrary shape.
     labels: A `Tensor` of the same shape as `predictions`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that
       `mean_absolute_error` should be added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -1777,7 +1757,7 @@ def streaming_mean_relative_error(predictions, labels, normalizer, weights=None,
     predictions: A `Tensor` of arbitrary shape.
     labels: A `Tensor` of the same shape as `predictions`.
     normalizer: A `Tensor` of the same shape as `predictions`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that
       `mean_relative_error` should be added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -1836,7 +1816,7 @@ def streaming_mean_squared_error(predictions, labels, weights=None,
   Args:
     predictions: A `Tensor` of arbitrary shape.
     labels: A `Tensor` of the same shape as `predictions`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that
       `mean_squared_error` should be added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -1888,7 +1868,7 @@ def streaming_root_mean_squared_error(predictions, labels, weights=None,
   Args:
     predictions: A `Tensor` of arbitrary shape.
     labels: A `Tensor` of the same shape as `predictions`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that
       `root_mean_squared_error` should be added to.
     updates_collections: An optional list of collections that `update_op` should
@@ -1992,7 +1972,8 @@ def streaming_covariance(predictions,
       weighted_predictions = predictions
       weighted_labels = labels
     else:
-      batch_count = math_ops.reduce_sum(weights)  # n_B in update equation
+      batch_count = math_ops.reduce_sum(
+          _broadcast_weights(weights, labels))  # n_B in eqn
       weighted_predictions = predictions * weights
       weighted_labels = labels * weights
 
@@ -2153,8 +2134,8 @@ def streaming_mean_cosine_distance(predictions, labels, dim, weights=None,
     predictions: A `Tensor` of the same shape as `labels`.
     labels: A `Tensor` of arbitrary shape.
     dim: The dimension along which the cosine distance is computed.
-    weights: An optional `Tensor` whose shape matches `predictions`, and whose
-      dimension `dim` is 1.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`,
+      and whose dimension `dim` is 1.
     metrics_collections: An optional list of collections that the metric
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
@@ -2221,7 +2202,7 @@ def streaming_percentage_less(values, threshold, ignore_mask=None, weights=None,
     values: A numeric `Tensor` of arbitrary size.
     threshold: A scalar threshold.
     ignore_mask: An optional, `bool` `Tensor` whose shape matches `values`.
-    weights: An optional `Tensor` whose shape matches `values`.
+    weights: An optional `Tensor` whose shape is broadcastable to `values`.
     metrics_collections: An optional list of collections that the metric
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
@@ -2283,7 +2264,7 @@ def streaming_mean_iou(predictions,
       have. This value must be provided, since a confusion matrix of
       dimension = [num_classes, num_classes] will be allocated.
     ignore_mask: An optional, `bool` `Tensor` whose shape matches `predictions`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that `mean_iou`
       should be added to.
     updates_collections: An optional list of collections `update_op` should be
