@@ -1210,6 +1210,17 @@ Returns all variables created with collection=[LOCAL_VARIABLES].
 
 - - -
 
+### `tf.model_variables()` {#model_variables}
+
+Returns all variables in the MODEL_VARIABLES collection.
+
+##### Returns:
+
+  A list of local Variable objects.
+
+
+- - -
+
 ### `tf.moving_average_variables()` {#moving_average_variables}
 
 Returns all variables that maintain their moving averages.
