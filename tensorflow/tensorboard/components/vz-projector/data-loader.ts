@@ -207,22 +207,23 @@ function parseAndMergeMetadata(
     content: string, data: DataPoint[]): Promise<ColumnStats[]> {
   return runAsyncTask('Parsing metadata...', () => {
     let lines = content.split('\n').filter(line => line.trim().length > 0);
-    let hasHeader = (lines.length - 1 === data.length);
-
-    // Dimension mismatch.
-    if (lines.length !== data.length && !hasHeader) {
-      updateWarningMessage(`Number of tensors (${data
-                               .length}) do not match the
-                            number of lines in metadata (${lines.length}).`);
-    }
+    let hasHeader = lines[0].indexOf('\t') >= 0;
 
     // If the first row doesn't contain metadata keys, we assume that the values
     // are labels.
-    let columnNames: string[] = ['label'];
+    let columnNames = ['label'];
     if (hasHeader) {
       columnNames = lines[0].split('\t');
       lines = lines.slice(1);
     }
+
+    // Dimension mismatch.
+    if (lines.length !== data.length) {
+      updateWarningMessage(
+          `Number of tensors (${data.length}) do not match` +
+          ` the number of lines in metadata (${lines.length}).`);
+    }
+
     let columnStats: ColumnStats[] = columnNames.map(name => {
       return {
         name: name,
@@ -240,7 +241,14 @@ function parseAndMergeMetadata(
         let value = rowValues[colIndex];
         let set = setOfValues[colIndex];
         let stats = columnStats[colIndex];
+        // Normalize missing values.
+        value = (value === '' ? null : value);
         data[i].metadata[name] = value;
+
+        // Skip missing values.
+        if (value == null) {
+          return;
+        }
 
         // Update stats.
         if (!stats.tooManyUniqueValues) {
@@ -252,6 +260,8 @@ function parseAndMergeMetadata(
         if (isNaN(value as any)) {
           stats.isNumeric = false;
         } else {
+          // Parse the data as number.
+          data[i].metadata[name] = +value;
           stats.min = Math.min(stats.min, +value);
           stats.max = Math.max(stats.max, +value);
         }

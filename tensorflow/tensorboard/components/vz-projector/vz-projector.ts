@@ -38,7 +38,8 @@ let numNN = 100;
 
 /** Highlight stroke color for the nearest neighbors. */
 const NN_HIGHLIGHT_COLOR = '#6666FA';
-
+/** Color to denote a missing value. */
+const MISSING_VALUE_COLOR = 'black';
 /** Highlight stroke color for the selected point */
 const POINT_HIGHLIGHT_COLOR_DAY = 'black';
 const POINT_HIGHLIGHT_COLOR_NIGHT = new THREE.Color(0xFFE11F).getStyle();
@@ -149,7 +150,11 @@ export class Projector extends ProjectorPolymer {
       return;
     };
     let colors = (i: number) => {
-      return colorMap(this.points[i].metadata[this.colorOption.name]);
+      let value = this.points[i].metadata[this.colorOption.name];
+      if (value == null) {
+        return MISSING_VALUE_COLOR;
+      }
+      return colorMap(value);
     };
     this.scatterPlot.setColorAccessor(colors);
   }
