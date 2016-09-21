@@ -209,7 +209,7 @@ with tf.Session(graph=graph) as session:
       for i in xrange(valid_size):
         valid_word = reverse_dictionary[valid_examples[i]]
         top_k = 8  # number of nearest neighbors
-        nearest = (-sim[i, :]).argsort()[1 : top_k + 1]
+        nearest = (-sim[i, :]).argsort()[1:top_k + 1]
         log_str = "Nearest to %s:" % valid_word
         for k in xrange(top_k):
           close_word = reverse_dictionary[nearest[k]]
