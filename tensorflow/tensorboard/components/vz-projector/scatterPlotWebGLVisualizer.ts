@@ -58,16 +58,12 @@ export interface ScatterPlotWebGLVisualizer {
    */
   onRender(renderContext: RenderContext);
   /**
-   * Called when the projector updates application state (day / night mode,
-   * projection style, etc). Generally followed by a render.
+   * Called when the projector updates application state (projection style,
+   * etc). Generally followed by a render.
    */
   onUpdate();
   /**
    * Called when the canvas size changes.
    */
   onResize(newWidth: number, newHeight: number);
-  /**
-   * Called when the application toggles between day and night mode.
-   */
-  onSetDayNightMode(isNight: boolean);
 }

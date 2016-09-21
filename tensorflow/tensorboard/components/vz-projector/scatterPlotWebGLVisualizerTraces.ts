@@ -186,6 +186,5 @@ export class ScatterPlotWebGLVisualizerTraces implements
   onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {}
   onRender(renderContext: RenderContext) {}
   onResize(newWidth: number, newHeight: number) {}
-  onSetDayNightMode(isNight: boolean) {}
   onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }

@@ -40,8 +40,7 @@ const NN_HIGHLIGHT_COLOR = '#6666FA';
 /** Color to denote a missing value. */
 const MISSING_VALUE_COLOR = 'black';
 /** Highlight stroke color for the selected point */
-const POINT_HIGHLIGHT_COLOR_DAY = 'black';
-const POINT_HIGHLIGHT_COLOR_NIGHT = new THREE.Color(0xFFE11F).getStyle();
+const POINT_HIGHLIGHT_COLOR = 'black';
 
 /** Color scale for nearest neighbors. */
 const NN_COLOR_SCALE =
@@ -418,15 +417,6 @@ export class Projector extends ProjectorPolymer {
       this.updateMenuButtons();
     });
 
-    let dayNightModeButton = this.dom.select('.nightDayMode');
-    let modeIsNight = dayNightModeButton.classed('selected');
-    dayNightModeButton.on('click', () => {
-      modeIsNight = !modeIsNight;
-      this.scatterPlot.setDayNightMode(modeIsNight);
-      this.scatterPlot.update();
-      dayNightModeButton.classed('selected', modeIsNight);
-    });
-
     // Resize
     window.addEventListener('resize', () => {
       this.scatterPlot.resize();
@@ -448,7 +438,6 @@ export class Projector extends ProjectorPolymer {
           new ScatterPlotWebGLVisualizerCanvasLabels(container));
 
       this.scatterPlot = scatterPlotWebGL;
-      this.scatterPlot.setDayNightMode(modeIsNight);
     }
 
     this.scatterPlot.onHover(hoveredIndex => {
@@ -457,11 +446,8 @@ export class Projector extends ProjectorPolymer {
       } else {
         let point = this.points[hoveredIndex];
         this.dom.select('#hoverInfo').text(point.metadata['label']);
-        this.highlightedPoints = [{
-          index: hoveredIndex,
-          color: modeIsNight ? POINT_HIGHLIGHT_COLOR_NIGHT :
-                               POINT_HIGHLIGHT_COLOR_DAY,
-        }];
+        this.highlightedPoints =
+            [{index: hoveredIndex, color: POINT_HIGHLIGHT_COLOR}];
       }
       this.selectionWasUpdated();
     });

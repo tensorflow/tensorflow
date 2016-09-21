@@ -26,9 +26,6 @@ const IMAGE_SIZE = 30;
 const POINT_COLOR = 0x7575D9;
 const POINT_COLOR_GRAYED = 0x888888;
 
-const BLENDING_DAY = THREE.MultiplyBlending;
-const BLENDING_NIGHT = THREE.AdditiveBlending;
-
 // Constants relating to the indices of buffer arrays.
 /** Item size of a single point in a bufferArray representing colors */
 const RGB_NUM_BYTES = 3;
@@ -142,8 +139,6 @@ export class ScatterPlotWebGLVisualizerSprites implements
   private pickingColors: Float32Array;
   private renderColors: Float32Array;
 
-  private blending: THREE.Blending = BLENDING_DAY;
-
   constructor(scatterPlotWebGL: ScatterPlotWebGL) {
     scatterPlotWebGL.onSelection((s: number[]) => this.onSelectionChanged(s));
   }
@@ -188,7 +183,7 @@ export class ScatterPlotWebGLVisualizerSprites implements
       depthTest: haveImage,
       depthWrite: haveImage,
       fog: true,
-      blending: (this.image ? THREE.NormalBlending : this.blending),
+      blending: (this.image ? THREE.NormalBlending : THREE.MultiplyBlending),
     });
 
     this.pickingMaterial = new THREE.ShaderMaterial({
@@ -199,7 +194,7 @@ export class ScatterPlotWebGLVisualizerSprites implements
       depthTest: true,
       depthWrite: true,
       fog: false,
-      blending: (this.image ? THREE.NormalBlending : this.blending),
+      blending: (this.image ? THREE.NormalBlending : THREE.MultiplyBlending),
     });
 
     // And finally initialize it and add it to the scene.
@@ -357,10 +352,6 @@ export class ScatterPlotWebGLVisualizerSprites implements
   onSelectionChanged(selection: number[]) {
     this.defaultPointColor =
         (selection.length > 0) ? POINT_COLOR_GRAYED : POINT_COLOR;
-  }
-
-  onSetDayNightMode(isNight: boolean) {
-    this.blending = (isNight ? BLENDING_NIGHT : BLENDING_DAY);
   }
 
   onRecreateScene(

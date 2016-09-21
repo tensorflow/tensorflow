@@ -114,6 +114,5 @@ export class ScatterPlotWebGLVisualizerAxes implements
   onRender(renderContext: RenderContext) {}
   onUpdate() {}
   onResize(newWidth: number, newHeight: number) {}
-  onSetDayNightMode(isNight: boolean) {}
   onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }

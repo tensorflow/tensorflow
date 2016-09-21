@@ -89,24 +89,20 @@ const VERTEX_SHADER = `
     }`;
 
 const FRAGMENT_SHADER = `
-    uniform bool isNightMode;
     uniform sampler2D texture;
     uniform bool picking;
     varying vec2 vUv;
     varying vec3 vColor;
-      void main() {
-        if (picking) {
-          gl_FragColor = vec4(vColor, 1.0);
-        } else {
-          vec4 fromTexture = texture2D(texture, vUv);
-          vec4 color = vec4(vColor, 1.0);
-          if (isNightMode) {
-            gl_FragColor = vec4(vec3(1.0 - fromTexture), 0.8) * color;
-          } else {
-            gl_FragColor = color + fromTexture;
-          }
-        }
-      }`;
+
+    void main() {
+      if (picking) {
+        gl_FragColor = vec4(vColor, 1.0);
+      } else {
+        vec4 fromTexture = texture2D(texture, vUv);
+        vec4 color = vec4(vColor, 1.0);
+        gl_FragColor = color + fromTexture;
+      }
+    }`;
 
 type GlyphTexture = {
   texture: THREE.Texture; lengths: Float32Array; offsets: Float32Array;
@@ -128,7 +124,6 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
   private totalVertexCount: number;
   private labelVertexMap: number[][];
   private glyphTexture: GlyphTexture;
-  private nightMode: boolean = false;
 
   constructor(scatterPlotWebGL: ScatterPlotWebGL) {
     scatterPlotWebGL.onSelection((s: number[]) => this.onSelectionChanged(s));
@@ -136,7 +131,6 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
 
     this.uniforms = {
       texture: {type: 't', value: this.glyphTexture.texture},
-      isNightMode: {type: 'bool', value: false},
       picking: {type: 'bool', value: false},
       camPos: {type: 'float', value: new THREE.Vector3()}
     };
@@ -316,7 +310,6 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
 
   onRender(renderContext: RenderContext) {
     this.material.uniforms.texture.value = this.glyphTexture.texture;
-    this.material.uniforms.isNightMode.value = this.nightMode;
     this.material.uniforms.picking.value = false;
     this.material.uniforms.camPos.value = renderContext.camera.position;
   }
@@ -342,8 +335,4 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
 
   onResize(newWidth: number, newHeight: number) {}
   onSelectionChanged(selection: number[]) {}
-
-  onSetDayNightMode(isNight: boolean) {
-    this.nightMode = isNight;
-  }
 }
