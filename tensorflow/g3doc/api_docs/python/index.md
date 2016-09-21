@@ -192,6 +192,7 @@
   * [`digamma`](../../api_docs/python/math_ops.md#digamma)
   * [`div`](../../api_docs/python/math_ops.md#div)
   * [`edit_distance`](../../api_docs/python/math_ops.md#edit_distance)
+  * [`einsum`](../../api_docs/python/math_ops.md#einsum)
   * [`erf`](../../api_docs/python/math_ops.md#erf)
   * [`erfc`](../../api_docs/python/math_ops.md#erfc)
   * [`exp`](../../api_docs/python/math_ops.md#exp)

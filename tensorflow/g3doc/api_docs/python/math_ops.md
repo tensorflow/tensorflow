@@ -2377,6 +2377,16 @@ tf.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
 
 
 
+- - -
+
+### `tf.einsum(axes, *inputs)` {#einsum}
+
+A generalized contraction between tensors of arbitrary dimension.
+
+Like numpy.einsum.
+
+
+
 ## Scan
 
 TensorFlow provides several operations that you can use to perform scans
