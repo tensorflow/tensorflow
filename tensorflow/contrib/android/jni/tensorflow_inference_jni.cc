@@ -231,7 +231,9 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
     j##JAVA_DTYPE* values = env->Get##DTYPE##ArrayElements(arr, &iCopied);  \
     j##JAVA_DTYPE* value_ptr = values;                                      \
     const int array_size = env->GetArrayLength(arr);                        \
-    for (int i = 0; i < std::min(tensor_mapped.size(), array_size); ++i) {  \
+    for (int i = 0;                                                         \
+         i < std::min(static_cast<int>(tensor_mapped.size()), array_size);  \
+         ++i) {                                                             \
       tensor_mapped(i) = *value_ptr++;                                      \
     }                                                                       \
     env->Release##DTYPE##ArrayElements(arr, values, JNI_ABORT);             \
