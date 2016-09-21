@@ -61,7 +61,8 @@ def optimize_loss(loss,
                   update_ops=None,
                   variables=None,
                   name=None,
-                  summaries=None):
+                  summaries=None,
+                  colocate_gradients=False):
   """Given loss and parameters for optimizer, returns a training op.
 
   Various ways of passing optimizers, include:
@@ -184,7 +185,8 @@ def optimize_loss(loss,
       variables = vars_.trainable_variables()
 
     # Compute gradients.
-    gradients = opt.compute_gradients(loss, variables)
+    gradients = opt.compute_gradients(loss, variables,
+                                      colocate_gradients_with_ops=colocate_gradients)
 
     # Optionally add gradient noise.
     if gradient_noise_scale is not None:
