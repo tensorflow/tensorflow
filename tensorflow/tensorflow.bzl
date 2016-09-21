@@ -398,10 +398,6 @@ def _cuda_copts():
                 "-nvcc_options=ftz=true",
             ]
         ),
-        "@local_config_cuda//cuda:using_gcudacc": (
-            common_cuda_opts +
-            ["--gcudacc_flag=-ftz=true"]
-        ),
         "@local_config_cuda//cuda:using_clang": (
             common_cuda_opts +
             [
