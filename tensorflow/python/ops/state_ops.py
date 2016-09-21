@@ -34,6 +34,10 @@ collected in the graph.
 @@report_uninitialized_variables
 @@assert_variables_initialized
 
+@@assign
+@@assign_add
+@@assign_sub
+
 ## Saving and Restoring Variables
 
 @@Saver
