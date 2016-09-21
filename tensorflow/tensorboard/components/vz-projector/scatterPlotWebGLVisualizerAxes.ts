@@ -115,4 +115,5 @@ export class ScatterPlotWebGLVisualizerAxes implements
   onUpdate() {}
   onResize(newWidth: number, newHeight: number) {}
   onSetDayNightMode(isNight: boolean) {}
+  onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }

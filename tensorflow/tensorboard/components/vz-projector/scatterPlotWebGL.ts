@@ -585,6 +585,9 @@ export class ScatterPlotWebGL implements ScatterPlot {
 
   setLabelAccessor(labelAccessor: (index: number) => string) {
     this.labelAccessor = labelAccessor;
+    this.visualizers.forEach(v => {
+      v.onSetLabelAccessor(labelAccessor);
+    });
   }
 
   setMode(mode: Mode) {

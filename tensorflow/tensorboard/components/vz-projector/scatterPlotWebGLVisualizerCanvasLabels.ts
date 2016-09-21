@@ -220,8 +220,6 @@ export class ScatterPlotWebGLVisualizerCanvasLabels implements
     this.labelStroke = (isNight ? LABEL_STROKE_NIGHT : LABEL_STROKE_DAY);
   }
 
-  onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {}
-
   onRender(rc: RenderContext) {
     if (this.labelsActive) {
       this.makeLabels(
@@ -230,4 +228,7 @@ export class ScatterPlotWebGLVisualizerCanvasLabels implements
           rc.nearestCameraSpacePointZ, rc.farthestCameraSpacePointZ);
     }
   }
+
+  onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {}
+  onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }

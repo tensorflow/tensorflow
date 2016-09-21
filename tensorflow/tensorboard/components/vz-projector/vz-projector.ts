@@ -26,7 +26,6 @@ import {ColorOption, DataPanel} from './vz-projector-data-panel';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
 
-
 /** T-SNE perplexity. Roughly how many neighbors each point influences. */
 let perplexity: number = 30;
 /** T-SNE learning rate. */

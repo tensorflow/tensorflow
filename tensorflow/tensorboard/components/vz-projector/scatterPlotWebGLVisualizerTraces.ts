@@ -187,4 +187,5 @@ export class ScatterPlotWebGLVisualizerTraces implements
   onRender(renderContext: RenderContext) {}
   onResize(newWidth: number, newHeight: number) {}
   onSetDayNightMode(isNight: boolean) {}
+  onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }
