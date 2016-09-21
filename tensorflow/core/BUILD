@@ -77,6 +77,7 @@ load(
     "tf_proto_library_cc",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
+    "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
     "tf_additional_lib_deps",
     "tf_additional_stream_executor_srcs",
@@ -127,7 +128,7 @@ cc_library(
         "platform/platform.h",
         "platform/protobuf.h",
         "platform/types.h",
-    ],
+    ] + glob(tf_additional_proto_hdrs()),
     deps = [
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:proto_parsing",
@@ -912,11 +913,15 @@ cc_library(
             "platform/profile_utils/**/*.h",
             "platform/profile_utils/**/*.cc",
         ] + tf_additional_lib_srcs(),
-        exclude = [
-            "**/*test*",
-            "platform/**/cuda.h",
-            "platform/**/stream_executor.h",
-        ],
+        exclude =
+            [
+                "**/*test*",
+                "platform/**/cuda.h",
+                "platform/**/stream_executor.h",
+            ] +
+            # Protobuf deps already included through the ":lib_proto_parsing"
+            # dependency.
+            tf_additional_proto_srcs(),
     ),
     hdrs = glob(tf_additional_lib_hdrs()) + [
         "lib/core/blocking_counter.h",
@@ -961,6 +966,7 @@ cc_library(
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
+        ":lib_proto_parsing",
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//third_party/eigen3",
