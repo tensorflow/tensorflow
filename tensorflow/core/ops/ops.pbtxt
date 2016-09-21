@@ -2769,7 +2769,61 @@ op {
     }
   }
   summary: "BatchToSpace for 4-D tensors of type T."
-  description: "Rearranges (permutes) data from batch into blocks of spatial data, followed by\ncropping. This is the reverse transformation of SpaceToBatch. More specifically,\nthis op outputs a copy of the input tensor where values from the `batch`\ndimension are moved in spatial blocks to the `height` and `width` dimensions,\nfollowed by cropping along the `height` and `width` dimensions."
+  description: "This is a legacy version of the more general BatchToSpaceND.\n\nRearranges (permutes) data from batch into blocks of spatial data, followed by\ncropping. This is the reverse transformation of SpaceToBatch. More specifically,\nthis op outputs a copy of the input tensor where values from the `batch`\ndimension are moved in spatial blocks to the `height` and `width` dimensions,\nfollowed by cropping along the `height` and `width` dimensions."
+}
+op {
+  name: "BatchToSpaceND"
+  input_arg {
+    name: "input"
+    description: "N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,\nwhere spatial_shape has M dimensions."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "block_shape"
+    description: "1-D with shape `[M]`, all values must be >= 1."
+    type_attr: "Tblock_shape"
+  }
+  input_arg {
+    name: "crops"
+    description: "2-D with shape `[M, 2]`, all values must be >= 0.\n  `crops[i] = [crop_start, crop_end]` specifies the amount to crop from input\n  dimension `i + 1`, which corresponds to spatial dimension `i`.  It is\n  required that\n  `crop_start[i] + crop_end[i] <= block_shape[i] * input_shape[i + 1]`.\n\nThis operation is equivalent to the following steps:\n\n1. Reshape `input` to `reshaped` of shape:\n     [block_shape[0], ..., block_shape[M-1],\n      batch / prod(block_shape),\n      input_shape[1], ..., input_shape[N-1]]\n\n2. Permute dimensions of `reshaped` to produce `permuted` of shape\n     [batch / prod(block_shape),\n\n      input_shape[1], block_shape[0],\n      ...,\n      input_shape[M], block_shape[M-1],\n\n      input_shape[M+1], ..., input_shape[N-1]]\n\n3. Reshape `permuted` to produce `reshaped_permuted` of shape\n     [batch / prod(block_shape),\n\n      input_shape[1] * block_shape[0],\n      ...,\n      input_shape[M] * block_shape[M-1],\n\n      input_shape[M+1],\n      ...,\n      input_shape[N-1]]\n\n4. Crop the start and end of dimensions `[1, ..., M]` of\n   `reshaped_permuted` according to `crops` to produce the output of shape:\n     [batch / prod(block_shape),\n\n      input_shape[1] * block_shape[0] - crops[0,0] - crops[0,1],\n      ...,\n      input_shape[M] * block_shape[M-1] - crops[M-1,0] - crops[M-1,1],\n\n      input_shape[M+1], ..., input_shape[N-1]]\n\nSome examples:\n\n(1) For the following input of shape `[4, 1, 1, 1]`, `block_shape = [2, 2]`, and\n    `crops = [[0, 0], [0, 0]]`:\n\n```prettyprint\n[[[[1]]], [[[2]]], [[[3]]], [[[4]]]]\n```\n\nThe output tensor has shape `[1, 2, 2, 1]` and value:\n\n```prettyprint\nx = [[[[1], [2]], [[3], [4]]]]\n```\n\n(2) For the following input of shape `[4, 1, 1, 3]`, `block_shape = [2, 2]`, and\n    `crops = [[0, 0], [0, 0]]`:\n\n```prettyprint\n[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]\n```\n\nThe output tensor has shape `[1, 2, 2, 3]` and value:\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\n(3) For the following input of shape `[4, 2, 2, 1]`, `block_shape = [2, 2]`, and\n    `crops = [[0, 0], [0, 0]]`:\n\n```prettyprint\nx = [[[[1], [3]], [[5], [7]]],\n     [[[2], [4]], [[10], [12]]],\n     [[[5], [7]], [[13], [15]]],\n     [[[6], [8]], [[14], [16]]]]\n```\n\nThe output tensor has shape `[1, 4, 4, 1]` and value:\n\n```prettyprint\nx = [[[1],   [2],  [3],  [4]],\n     [[5],   [6],  [7],  [8]],\n     [[9],  [10], [11],  [12]],\n     [[13], [14], [15],  [16]]]\n```\n\n(4) For the following input of shape `[8, 1, 3, 1]`, `block_shape = [2, 2]`, and\n    `crops = [[0, 0], [2, 0]]`:\n\n```prettyprint\nx = [[[[0], [1], [3]]], [[[0], [9], [11]]],\n     [[[0], [2], [4]]], [[[0], [10], [12]]],\n     [[[0], [5], [7]]], [[[0], [13], [15]]],\n     [[[0], [6], [8]]], [[[0], [14], [16]]]]\n```\n\nThe output tensor has shape `[2, 2, 4, 1]` and value:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]]],\n     [[[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```"
+    type_attr: "Tcrops"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tblock_shape"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tcrops"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "BatchToSpace for N-D tensors of type T."
+  description: "This operation reshapes the \"batch\" dimension 0 into `M + 1` dimensions of shape\n`block_shape + [batch]`, interleaves these blocks back into the grid defined by\nthe spatial dimensions `[1, ..., M]`, to obtain a result with the same rank as\nthe input.  The spatial dimensions of this intermediate result are then\noptionally cropped according to `crops` to produce the output.  This is the\nreverse of SpaceToBatch.  See below for a precise description."
 }
 op {
   name: "Betainc"
@@ -14023,7 +14077,61 @@ op {
     minimum: 2
   }
   summary: "SpaceToBatch for 4-D tensors of type T."
-  description: "Zero-pads and then rearranges (permutes) blocks of spatial data into batch.\nMore specifically, this op outputs a copy of the input tensor where values from\nthe `height` and `width` dimensions are moved to the `batch` dimension. After\nthe zero-padding, both `height` and `width` of the input must be divisible by the\nblock size."
+  description: "This is a legacy version of the more general SpaceToBatchND.\n\nZero-pads and then rearranges (permutes) blocks of spatial data into batch.\nMore specifically, this op outputs a copy of the input tensor where values from\nthe `height` and `width` dimensions are moved to the `batch` dimension. After\nthe zero-padding, both `height` and `width` of the input must be divisible by the\nblock size."
+}
+op {
+  name: "SpaceToBatchND"
+  input_arg {
+    name: "input"
+    description: "N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,\nwhere spatial_shape has `M` dimensions."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "block_shape"
+    description: "1-D with shape `[M]`, all values must be >= 1."
+    type_attr: "Tblock_shape"
+  }
+  input_arg {
+    name: "paddings"
+    description: "2-D with shape `[M, 2]`, all values must be >= 0.\n  `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension\n  `i + 1`, which corresponds to spatial dimension `i`.  It is required that\n  `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.\n\nThis operation is equivalent to the following steps:\n\n1. Zero-pad the start and end of dimensions `[1, ..., M]` of the\n   input according to `paddings` to produce `padded` of shape `padded_shape`.\n\n2. Reshape `padded` to `reshaped_padded` of shape:\n     [batch] +\n     [padded_shape[1] / block_shape[0],\n       block_shape[0],\n      ...,\n      padded_shape[M] / block_shape[M-1],\n      block_shape[M-1]] +\n     remaining_shape\n\n3. Permute dimensions of `reshaped_padded` to produce\n   `permuted_reshaped_padded` of shape:\n     block_shape +\n     [batch] +\n     [padded_shape[1] / block_shape[0],\n      ...,\n      padded_shape[M] / block_shape[M-1]] +\n     remaining_shape\n\n4. Reshape `permuted_reshaped_padded` to flatten `block_shape` into the batch\n   dimension, producing an output tensor of shape:\n     [batch * prod(block_shape)] +\n     [padded_shape[1] / block_shape[0],\n      ...,\n      padded_shape[M] / block_shape[M-1]] +\n     remaining_shape\n\nSome examples:\n\n(1) For the following input of shape `[1, 2, 2, 1]`, `block_shape = [2, 2]`, and\n    `paddings = [[0, 0], [0, 0]]`:\n\n```prettyprint\nx = [[[[1], [2]], [[3], [4]]]]\n```\n\nThe output tensor has shape `[4, 1, 1, 1]` and value:\n\n```prettyprint\n[[[[1]]], [[[2]]], [[[3]]], [[[4]]]]\n```\n\n(2) For the following input of shape `[1, 2, 2, 3]`, `block_shape = [2, 2]`, and\n    `paddings = [[0, 0], [0, 0]]`:\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThe output tensor has shape `[4, 1, 1, 3]` and value:\n\n```prettyprint\n[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]\n```\n\n(3) For the following input of shape `[1, 4, 4, 1]`, `block_shape = [2, 2]`, and\n    `paddings = [[0, 0], [0, 0]]`:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]],\n      [[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```\n\nThe output tensor has shape `[4, 2, 2, 1]` and value:\n\n```prettyprint\nx = [[[[1], [3]], [[5], [7]]],\n     [[[2], [4]], [[10], [12]]],\n     [[[5], [7]], [[13], [15]]],\n     [[[6], [8]], [[14], [16]]]]\n```\n\n(4) For the following input of shape `[2, 2, 4, 1]`, block_shape = `[2, 2]`, and\n    paddings = `[[0, 0], [2, 0]]`:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]]],\n     [[[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```\n\nThe output tensor has shape `[8, 1, 3, 1]` and value:\n\n```prettyprint\nx = [[[[0], [1], [3]]], [[[0], [9], [11]]],\n     [[[0], [2], [4]]], [[[0], [10], [12]]],\n     [[[0], [5], [7]]], [[[0], [13], [15]]],\n     [[[0], [6], [8]]], [[[0], [14], [16]]]]\n```\n\nAmong others, this operation is useful for reducing atrous convolution into\nregular convolution."
+    type_attr: "Tpaddings"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tblock_shape"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tpaddings"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "SpaceToBatch for N-D tensors of type T."
+  description: "This operation divides \"spatial\" dimensions `[1, ..., M]` of the input into a\ngrid of blocks of shape `block_shape`, and interleaves these blocks with the\n\"batch\" dimension (0) such that in the output, the spatial dimensions\n`[1, ..., M]` correspond to the position within the grid, and the batch\ndimension combines both the position within a spatial block and the original\nbatch position.  Prior to division into blocks, the spatial dimensions of the\ninput are optionally zero padded according to `paddings`.  See below for a\nprecise description."
 }
 op {
   name: "SpaceToDepth"
