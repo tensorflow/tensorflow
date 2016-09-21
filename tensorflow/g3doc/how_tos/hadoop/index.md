@@ -14,7 +14,7 @@ data to an HDFS path. For example:
 ```python
 filename_queue = tf.train.string_input_producer([
     "hdfs://namenode:8020/path/to/file1.csv",
-    "hdfs://namonode:8020/path/to/file2.csv",
+    "hdfs://namenode:8020/path/to/file2.csv",
 ])
 ```
 
