@@ -25,6 +25,7 @@ types in your graph.
 @@to_int32
 @@to_int64
 @@cast
+@@bitcast
 @@saturate_cast
 
 ## Shapes and Shaping
@@ -33,6 +34,7 @@ TensorFlow provides several operations that you can use to determine the shape
 of a tensor and change the shape of a tensor.
 
 @@shape
+@@shape_n
 @@size
 @@rank
 @@reshape
@@ -66,6 +68,7 @@ or join multiple tensors together.
 @@depth_to_space
 @@gather
 @@gather_nd
+@@unique_with_counts
 @@dynamic_partition
 @@dynamic_stitch
 @@boolean_mask
