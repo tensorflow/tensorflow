@@ -142,7 +142,7 @@ def StartMultiplexerReloadingThread(multiplexer, path_to_run, load_interval):
 class ThreadedHTTPServer(socketserver.ThreadingMixIn,
                          BaseHTTPServer.HTTPServer):
   """A threaded HTTP server."""
-  daemon = True
+  daemon_threads = True
 
 
 def BuildServer(multiplexer, host, port):

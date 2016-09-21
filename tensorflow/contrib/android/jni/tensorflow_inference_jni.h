@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,19 +28,33 @@ extern "C" {
 #endif  // __cplusplus
 
 #define TENSORFLOW_METHOD(METHOD_NAME) \
-  Java_org_tensorflow_demo_TensorFlowClassifier_##METHOD_NAME  // NOLINT
+  Java_org_tensorflow_contrib_android_TensorFlowInferenceInterface_##METHOD_NAME  // NOLINT
+
+#define FILL_NODE_SIGNATURE(DTYPE, JAVA_DTYPE)                               \
+  JNIEXPORT void TENSORFLOW_METHOD(fillNode##DTYPE)(                         \
+      JNIEnv * env, jobject thiz, jstring node_name, jint x, jint y, jint z, \
+      jint d, j##JAVA_DTYPE##Array arr)
+
+#define READ_NODE_SIGNATURE(DTYPE, JAVA_DTYPE)               \
+  JNIEXPORT jint TENSORFLOW_METHOD(readNode##DTYPE)(         \
+      JNIEnv * env, jobject thiz, jstring node_name_jstring, \
+      j##JAVA_DTYPE##Array arr)
 
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(initializeTensorFlow)(
-    JNIEnv* env, jobject thiz, jobject java_asset_manager, jstring model,
-    jstring labels, jint num_classes, jint model_input_size, jint image_mean,
-    jfloat image_std, jstring input_name, jstring output_name);
+    JNIEnv* env, jobject thiz, jobject java_asset_manager, jstring model);
 
-JNIEXPORT jstring JNICALL TENSORFLOW_METHOD(classifyImageBmp)(JNIEnv* env,
-                                                              jobject thiz,
-                                                              jobject bitmap);
+JNIEXPORT jint JNICALL TENSORFLOW_METHOD(runInference)(
+    JNIEnv* env, jobject thiz, jobjectArray output_name_strings);
 
-JNIEXPORT jstring JNICALL TENSORFLOW_METHOD(classifyImageRgb)(
-    JNIEnv* env, jobject thiz, jintArray image, jint width, jint height);
+JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz);
+
+FILL_NODE_SIGNATURE(Float, float);
+FILL_NODE_SIGNATURE(Int, int);
+FILL_NODE_SIGNATURE(Double, double);
+
+READ_NODE_SIGNATURE(Float, float);
+READ_NODE_SIGNATURE(Int, int);
+READ_NODE_SIGNATURE(Double, double);
 
 #ifdef __cplusplus
 }  // extern "C"

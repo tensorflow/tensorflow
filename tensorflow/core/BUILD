@@ -704,7 +704,6 @@ cc_library(
     deps = [
         ":android_test_proto_lib",
         ":ios_tensorflow_lib",
-        "//base",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",
     ],
@@ -1125,6 +1124,8 @@ filegroup(
         "platform/strong_hash.h",
         "platform/thread_annotations.h",
         "platform/types.h",
+        "public/session.h",
+        "public/session_options.h",
         "public/version.h",
         "util/device_name_utils.h",
     ],

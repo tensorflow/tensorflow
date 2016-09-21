@@ -38,14 +38,14 @@ TEST(ShapeRefinerTest, Constant) {
   // and that its shape is correct.
   Scope root = Scope::NewRootScope();
   auto c = ops::Const(root, 42.0f);
-  ShapeRefiner m;
+  ShapeRefiner m(OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(c.node()));
 
   EXPECT_SHAPE("[]", m, c, 0);
 }
 
 TEST(ShapeRefinerTest, MatMul) {
-  ShapeRefiner m;
+  ShapeRefiner m(OpRegistry::Global());
 
   Scope root = Scope::NewRootScope();
   auto a = ops::Const(root, {{1.0f}, {2.0f}});
@@ -62,7 +62,7 @@ TEST(ShapeRefinerTest, MatMul) {
 }
 
 TEST(ShapeRefinerTest, InvalidOrder) {
-  ShapeRefiner m;
+  ShapeRefiner m(OpRegistry::Global());
   Scope root = Scope::NewRootScope();
   auto a = ops::Const(root, {{1.0f}, {2.0f}});
   auto b = ops::Const(root, {{1.0f, 2.0f}});
@@ -77,7 +77,7 @@ TEST(ShapeRefinerTest, InvalidOrder) {
 }
 
 TEST(ShapeRefinerTest, BadShapes) {
-  ShapeRefiner m;
+  ShapeRefiner m(OpRegistry::Global());
   Scope root = Scope::NewRootScope();
   auto a = ops::Const(root, {{1.0f}, {2.0f}});
   auto b = ops::Const(root, {{1.0f}, {2.0f}});
@@ -93,7 +93,7 @@ TEST(ShapeRefinerTest, BadShapes) {
 }
 
 TEST(ShapeRefinerTest, SetShape) {
-  ShapeRefiner m;
+  ShapeRefiner m(OpRegistry::Global());
 
   Scope root = Scope::NewRootScope();
   auto a = ops::Placeholder(root, DT_FLOAT);
@@ -135,7 +135,7 @@ TEST(ShapeRefinerTest, PropagateConstants) {
     auto dim = ops::Variable(root, {}, DT_INT32);
 
     auto am = ops::ArgMax(root, input, dim);
-    ShapeRefiner m;
+    ShapeRefiner m(OpRegistry::Global());
     TF_ASSERT_OK(m.AddNode(input.node()));
     TF_ASSERT_OK(m.AddNode(dim.node()));
     TF_ASSERT_OK(m.AddNode(am.node()));
@@ -152,7 +152,7 @@ TEST(ShapeRefinerTest, PropagateConstants) {
     auto dim = ops::Const(root, 1);
 
     auto am = ops::ArgMax(root, input, dim);
-    ShapeRefiner m;
+    ShapeRefiner m(OpRegistry::Global());
     TF_ASSERT_OK(m.AddNode(input.node()));
     TF_ASSERT_OK(m.AddNode(dim.node()));
     TF_ASSERT_OK(m.AddNode(am.node()));
@@ -168,7 +168,7 @@ TEST(ShapeRefinerTest, PropagateConstants) {
     auto dim = ops::Const(root, 0);
 
     auto am = ops::ArgMax(root, input, dim);
-    ShapeRefiner m;
+    ShapeRefiner m(OpRegistry::Global());
     TF_ASSERT_OK(m.AddNode(input.node()));
     TF_ASSERT_OK(m.AddNode(dim.node()));
     TF_ASSERT_OK(m.AddNode(am.node()));
@@ -198,7 +198,7 @@ REGISTER_OP("TestOp")
 }  // namespace
 
 TEST(ShapeRefinerTest, InputTensorDependencies) {
-  ShapeRefiner m;
+  ShapeRefiner m(OpRegistry::Global());
   Graph graph(OpRegistry::Global());
   Node* node;
 
@@ -259,7 +259,7 @@ TEST(ShapeRefinerTest, PropagateShape) {
                    .Input(shape.node())
                    .Finalize(root.graph(), &shape_data));
 
-  ShapeRefiner m;
+  ShapeRefiner m(OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(input.node()));
   TF_ASSERT_OK(m.AddNode(shape.node()));
   TF_ASSERT_OK(m.AddNode(shape_data));
@@ -280,7 +280,7 @@ TEST(ShapeRefinerTest, PropagateSize) {
                    .Input(size.node())
                    .Finalize(root.graph(), &shape_data));
 
-  ShapeRefiner m;
+  ShapeRefiner m(OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(input.node()));
   TF_ASSERT_OK(m.AddNode(size.node()));
   TF_ASSERT_OK(m.AddNode(shape_data));
@@ -301,7 +301,7 @@ TEST(ShapeRefinerTest, PropagateRank) {
                    .Input(rank.node())
                    .Finalize(root.graph(), &shape_data));
 
-  ShapeRefiner m;
+  ShapeRefiner m(OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(input.node()));
   TF_ASSERT_OK(m.AddNode(rank.node()));
   TF_ASSERT_OK(m.AddNode(shape_data));
@@ -322,7 +322,7 @@ TEST(ShapeRefinerTest, PropagateRange) {
                    .Input(range.node())
                    .Finalize(root.graph(), &shape_data));
 
-  ShapeRefiner m;
+  ShapeRefiner m(OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(begin.node()));
   TF_ASSERT_OK(m.AddNode(limit.node()));
   TF_ASSERT_OK(m.AddNode(delta.node()));
@@ -345,7 +345,7 @@ TEST(ShapeRefinerTest, ConstantValueTwoInputsToSameNode) {
                    .Input(range.node())
                    .Finalize(root.graph(), &shape_data));
 
-  ShapeRefiner m;
+  ShapeRefiner m(OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(begin_and_delta.node()));
   TF_ASSERT_OK(m.AddNode(limit.node()));
   TF_ASSERT_OK(m.AddNode(range.node()));
@@ -380,7 +380,7 @@ TEST(ShapeRefinerTest, ConstantValueVisitNodeTwice) {
                    .Input(range.node())
                    .Finalize(root.graph(), &shape_data));
 
-  ShapeRefiner m;
+  ShapeRefiner m(OpRegistry::Global());
   TF_ASSERT_OK(m.AddNode(begin.node()));
   TF_ASSERT_OK(m.AddNode(limit.node()));
   TF_ASSERT_OK(m.AddNode(delta.node()));

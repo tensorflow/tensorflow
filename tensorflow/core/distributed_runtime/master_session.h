@@ -23,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 
 class Device;
-class MasterEnv;
+struct MasterEnv;
 class MasterSessionInterface;
 
 namespace internal {

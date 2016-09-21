@@ -32,8 +32,9 @@ Scope::Scope(Graph* graph, Status* status, Scope::NameMap* name_map,
       scope_used_(nullptr) {}
 
 Scope Scope::NewRootScope() {
-  return Scope(new Graph(OpRegistry::Global()), new Status, new Scope::NameMap,
-               new ShapeRefiner);
+  Graph* graph = new Graph(OpRegistry::Global());
+  ShapeRefiner* refiner = new ShapeRefiner(graph->op_registry());
+  return Scope(graph, new Status, new Scope::NameMap, refiner);
 }
 
 Scope::Scope(const Scope& other, Scope::Tags::ScopeName, const string& name,

@@ -31,7 +31,7 @@ namespace tensorflow {
 // construction time.
 class ShapeRefiner {
  public:
-  ShapeRefiner();
+  explicit ShapeRefiner(const OpRegistryInterface* ops);
   ~ShapeRefiner();
 
   // Performs validation of 'node' and runs 'node's shape function,
@@ -70,6 +70,8 @@ class ShapeRefiner {
   Status ExtractConstantSubgraph(
       Node* node, Graph* out_graph, bool* is_constant_graph,
       std::vector<std::pair<string, Tensor>>* const_inputs) TF_MUST_USE_RESULT;
+
+  const OpRegistryInterface* ops_registry_ = nullptr;
 
   // Stores a map from a node to its InferenceContext.
   //

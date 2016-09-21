@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.contrib.layers import conv2d
 from tensorflow.contrib.learn.python.learn import ops
 
 

@@ -29,6 +29,7 @@ from tensorflow.python.client import session
 from tensorflow.python.debug import debug_data
 from tensorflow.python.debug import debug_utils
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -327,6 +328,14 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
         self.assertGreaterEqual(rel_time, prev_rel_time)
         prev_rel_time = rel_time
 
+      # Test querying debug watch keys from node name.
+      watch_keys = dump.debug_watch_keys("while/Identity")
+      self.assertEqual(["while/Identity:0:DebugIdentity"], watch_keys)
+
+      # Test querying debug datum instances from debug watch key.
+      self.assertEqual(10, len(dump.watch_key_to_data(watch_keys[0])))
+      self.assertEqual([], dump.watch_key_to_data("foo"))
+
   def testFindNodesWithBadTensorValues(self):
     with session.Session() as sess:
       u_name = "testFindNodesWithBadTensorValues/u"
@@ -424,6 +433,34 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
       node_names = dump.nodes()
       self.assertTrue(u_name in node_names)
       self.assertTrue(u_read_name in node_names)
+
+      # Test querying node attributes.
+      u_attr = dump.node_attributes(u_name)
+      self.assertEqual(dtypes.float32, u_attr["dtype"].type)
+      self.assertEqual(1, len(u_attr["shape"].shape.dim))
+      self.assertEqual(2, u_attr["shape"].shape.dim[0].size)
+
+      with self.assertRaisesRegexp(ValueError, "No node named \"foo\" exists"):
+        dump.node_attributes("foo")
+
+      # Test querying the debug watch keys with node names.
+      self.assertEqual(["%s:0:DebugIdentity" % u_name],
+                       dump.debug_watch_keys(u_name))
+      self.assertEqual(["%s:0:DebugIdentity" % v_name],
+                       dump.debug_watch_keys(v_name))
+      self.assertEqual(["%s:0:DebugIdentity" % w_name],
+                       dump.debug_watch_keys(w_name))
+      self.assertEqual([], dump.debug_watch_keys("foo"))
+
+      # Test querying debug datum instances from debug watch.
+      u_data = dump.watch_key_to_data(dump.debug_watch_keys(u_name)[0])
+      self.assertEqual(1, len(u_data))
+      self.assertEqual(u_name, u_data[0].node_name)
+      self.assertEqual(0, u_data[0].output_slot)
+      self.assertEqual("DebugIdentity", u_data[0].debug_op)
+      self.assertGreaterEqual(u_data[0].timestamp, 0)
+
+      self.assertEqual([], dump.watch_key_to_data("foo"))
 
       # Test the inputs lookup of the DebugDumpDir object.
       self.assertEqual([], dump.node_inputs(u_name))

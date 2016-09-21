@@ -35,6 +35,8 @@ from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework import list_variables
+from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -46,7 +48,6 @@ from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.contrib.learn.python.learn.utils import export
 
 from tensorflow.python.framework import errors
@@ -446,7 +447,7 @@ class BaseEstimator(
     Returns:
       Numpy array - value of the tensor.
     """
-    return checkpoints.load_variable(self.model_dir, name)
+    return load_variable(self.model_dir, name)
 
   def get_variable_names(self):
     """Returns list of all variable names in this model.
@@ -454,7 +455,7 @@ class BaseEstimator(
     Returns:
       List of names.
     """
-    return [name for name, _ in checkpoints.list_variables(self.model_dir)]
+    return [name for name, _ in list_variables(self.model_dir)]
 
   @property
   def model_dir(self):
@@ -472,10 +473,11 @@ class BaseEstimator(
       input_feature_key=None)
   def export(self,
              export_dir,
-             input_fn=export._default_input_fn,
+             input_fn=export._default_input_fn,  # pylint: disable=protected-access
              input_feature_key=None,
              use_deprecated_input_fn=True,
              signature_fn=None,
+             prediction_key=None,
              default_batch_size=1,
              exports_to_keep=None):
     """Exports inference graph into given dir.
@@ -497,6 +499,10 @@ class BaseEstimator(
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
         for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      prediction_key: The key for a tensor in the `predictions` dict (output
+        from the `model_fn`) to use as the `predictions` input to the
+        `signature_fn`. Optional. If `None`, predictions will pass to
+        `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
     """
@@ -504,6 +510,7 @@ class BaseEstimator(
     export._export_estimator(estimator=self,
                              export_dir=export_dir,
                              signature_fn=signature_fn,
+                             prediction_key=prediction_key,
                              input_fn=input_fn,
                              input_feature_key=input_feature_key,
                              use_deprecated_input_fn=use_deprecated_input_fn,

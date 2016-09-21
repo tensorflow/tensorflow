@@ -131,6 +131,12 @@ cc_library(
 )
 
 cc_library(
+    name = "stats_publisher_interface",
+    hdrs = ["stats_publisher_interface.h"],
+    deps = ["//tensorflow/core:protos_all_cc"],
+)
+
+cc_library(
     name = "master",
     srcs = ["master.cc"],
     hdrs = ["master.h"],

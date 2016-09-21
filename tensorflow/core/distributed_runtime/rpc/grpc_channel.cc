@@ -36,8 +36,6 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-RE2* kTargetRE = new RE2("^/job:([^/]+)/replica:([0-9]+)/task:([0-9]+)$");
-RE2* kHostPortRE = new RE2("([^:/]+):(\\d+)");
 
 string MakeAddress(const string& job, int task) {
   return strings::StrCat("/job:", job, "/replica:0/task:", task);
@@ -55,6 +53,7 @@ SharedGrpcChannelPtr NewHostPortGrpcChannel(const string& target) {
 
 namespace {
 Status ValidateHostPortPair(const string& host_port) {
+  const static RE2* kHostPortRE = new RE2("([^:/]+):(\\d+)");
   string host;
   int port;
   if (!RE2::FullMatch(host_port, *kHostPortRE, &host, &port)) {
@@ -205,6 +204,9 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
   }
 
   string TranslateTask(const string& target) override {
+    const static RE2* kTargetRE =
+        new RE2("^/job:([^/]+)/replica:([0-9]+)/task:([0-9]+)$");
+
     RegexpStringPiece job;
     int32 replica;
     int32 task;

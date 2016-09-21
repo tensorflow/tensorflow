@@ -92,6 +92,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
         for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      prediction_key: The key for a tensor in the `predictions` dict (output
+        from the `model_fn`) to use as the `predictions` input to the
+        `signature_fn`. Optional. If `None`, predictions will pass to
+        `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
 
@@ -380,6 +384,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
         for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      prediction_key: The key for a tensor in the `predictions` dict (output
+        from the `model_fn`) to use as the `predictions` input to the
+        `signature_fn`. Optional. If `None`, predictions will pass to
+        `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
 
@@ -744,6 +752,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
         for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      prediction_key: The key for a tensor in the `predictions` dict (output
+        from the `model_fn`) to use as the `predictions` input to the
+        `signature_fn`. Optional. If `None`, predictions will pass to
+        `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
 
@@ -1131,6 +1143,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
         for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      prediction_key: The key for a tensor in the `predictions` dict (output
+        from the `model_fn`) to use as the `predictions` input to the
+        `signature_fn`. Optional. If `None`, predictions will pass to
+        `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
 
@@ -1445,6 +1461,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
         for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      prediction_key: The key for a tensor in the `predictions` dict (output
+        from the `model_fn`) to use as the `predictions` input to the
+        `signature_fn`. Optional. If `None`, predictions will pass to
+        `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
 
@@ -2047,6 +2067,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
         for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      prediction_key: The key for a tensor in the `predictions` dict (output
+        from the `model_fn`) to use as the `predictions` input to the
+        `signature_fn`. Optional. If `None`, predictions will pass to
+        `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
 
@@ -2375,6 +2399,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
         for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      prediction_key: The key for a tensor in the `predictions` dict (output
+        from the `model_fn`) to use as the `predictions` input to the
+        `signature_fn`. Optional. If `None`, predictions will pass to
+        `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
 
@@ -2761,6 +2789,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
         for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      prediction_key: The key for a tensor in the `predictions` dict (output
+        from the `model_fn`) to use as the `predictions` input to the
+        `signature_fn`. Optional. If `None`, predictions will pass to
+        `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
 

@@ -103,6 +103,12 @@ class CumsumTest(tf.test.TestCase):
       for axis in (-3, -2, -1, 0, 1, 2):
         self._compareAll(x, axis)
 
+  def test6D(self):
+    for dtype in self.valid_dtypes:
+      x = np.arange(1, 145).reshape([2, 2, 3, 3, 2, 2]).astype(dtype)
+      for axis in range(-6, 6, 3):
+        self._compareAll(x, axis)
+
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
     input_tensor = tf.convert_to_tensor(x)
@@ -195,6 +201,12 @@ class CumprodTest(tf.test.TestCase):
     for dtype in self.valid_dtypes:
       x = np.arange(1, 21).reshape([2, 2, 5]).astype(dtype)
       for axis in (-3, -2, -1, 0, 1, 2):
+        self._compareAll(x, axis)
+
+  def test6D(self):
+    for dtype in self.valid_dtypes:
+      x = np.arange(1, 145).reshape([2, 2, 3, 3, 2, 2]).astype(dtype)
+      for axis in range(-6, 6, 3):
         self._compareAll(x, axis)
 
   def testInvalidAxis(self):

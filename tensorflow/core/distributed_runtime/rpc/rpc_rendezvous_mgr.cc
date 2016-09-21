@@ -192,7 +192,10 @@ class RpcRecvTensorFreeList {
   std::vector<RpcRecvTensorCall*> objects_ GUARDED_BY(mu_);
 };
 
-static RpcRecvTensorFreeList call_freelist_;
+static RpcRecvTensorFreeList* get_call_freelist() {
+  static RpcRecvTensorFreeList* call_freelist = new RpcRecvTensorFreeList();
+  return call_freelist;
+}
 
 // A private cache that wraps env->worker_cache and allows reuse of
 // WorkerInterface objects.
@@ -275,7 +278,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
   }
 
   // Prepare a RecvTensor call that can handle being aborted.
-  RpcRecvTensorCall* call = call_freelist_.New();
+  RpcRecvTensorCall* call = get_call_freelist()->New();
 
   // key.src_device identifies a remote device.
   if (!DeviceNameUtils::SplitDeviceName(parsed.src_device, &call->src_worker_,
@@ -293,7 +296,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     s = env_->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
   }
   if (!s.ok()) {
-    call_freelist_.Release(call);
+    get_call_freelist()->Release(call);
     done(s, Args(), recv_args, Tensor{}, false);
     return;
   }
@@ -315,7 +318,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
     call->done()(s, Args(), call->recv_args(), call->tensor(), call->is_dead());
     cache_->ReleaseWorker(call->src_worker_, call->wi_);
     call->wi_ = nullptr;
-    call_freelist_.Release(call);
+    get_call_freelist()->Release(call);
     Unref();
   });
 }
