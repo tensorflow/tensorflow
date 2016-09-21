@@ -102,6 +102,9 @@ namespace tensorflow {
     
     string Name() override { return "device:FPU"; }
     
+    /* The void* could be a handle to a hardware allocation descriptor
+     * See tensorflow/stream_executor/device_memory.h
+     */
     void* AllocateRaw(size_t alignment, size_t num_bytes) override {
       void* p = port::aligned_malloc(num_bytes, alignment);
       return p;
