@@ -27,13 +27,8 @@ import tensorflow as tf
 
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import estimator_test_utils
-
-# pylint: disable=g-import-not-at-top
-try:
-  from sklearn.cross_validation import cross_val_score
-  HAS_SKLEARN = True
-except ImportError:
-  HAS_SKLEARN = False
+from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
+from tensorflow.python.ops import math_ops
 
 
 def _prepare_iris_data_for_logistic_regression():
@@ -350,6 +345,7 @@ class DNNClassifierTest(tf.test.TestCase):
       # For the case of binary classification, the 2nd column of "predictions"
       # denotes the model predictions.
       predictions = tf.slice(predictions, [0, 1], [-1, 1])
+      targets = math_ops.cast(targets, predictions.dtype)
       return tf.reduce_sum(tf.mul(predictions, targets))
 
     classifier = tf.contrib.learn.DNNClassifier(
@@ -362,9 +358,15 @@ class DNNClassifierTest(tf.test.TestCase):
         input_fn=_input_fn_train,
         steps=100,
         metrics={
-            'my_accuracy': tf.contrib.metrics.streaming_accuracy,
-            ('my_precision', 'classes'): tf.contrib.metrics.streaming_precision,
-            ('my_metric', 'probabilities'): _my_metric_op
+            'my_accuracy': MetricSpec(
+                metric_fn=tf.contrib.metrics.streaming_accuracy,
+                prediction_key='classes'),
+            'my_precision': MetricSpec(
+                metric_fn=tf.contrib.metrics.streaming_precision,
+                prediction_key='classes'),
+            'my_metric': MetricSpec(
+                metric_fn=_my_metric_op,
+                prediction_key='probabilities')
         })
     self.assertTrue(
         set(['loss', 'my_accuracy', 'my_precision', 'my_metric'
@@ -375,21 +377,14 @@ class DNNClassifierTest(tf.test.TestCase):
 
     # Test the case where the 2nd element of the key is neither "classes" nor
     # "probabilities".
-    with self.assertRaises(ValueError):
-      classifier.evaluate(
-          input_fn=_input_fn_train,
-          steps=100,
-          metrics={('bad_name', 'bad_type'): tf.contrib.metrics.streaming_auc})
-
-    # Test the case where the tuple of the key doesn't have 2 elements.
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(KeyError, 'bad_type'):
       classifier.evaluate(
           input_fn=_input_fn_train,
           steps=100,
           metrics={
-              ('bad_length_name', 'classes', 'bad_length'):
-                  tf.contrib.metrics.streaming_accuracy
-          })
+              'bad_name': MetricSpec(
+                  metric_fn=tf.contrib.metrics.streaming_auc,
+                  prediction_key='bad_type')})
 
   def testTrainSaveLoad(self):
     """Tests that insures you can save and reload a trained model."""
@@ -466,6 +461,31 @@ class DNNClassifierTest(tf.test.TestCase):
     self.assertGreater(scores['accuracy'], 0.9)
     self.assertLess(scores['loss'], 0.3)
 
+  def testExport(self):
+    """Tests export model for servo."""
+
+    def input_fn():
+      return {
+          'age': tf.constant([1]),
+          'language': tf.SparseTensor(values=['english'],
+                                      indices=[[0, 0]],
+                                      shape=[1, 1])
+      }, tf.constant([[1]])
+
+    language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
+    feature_columns = [
+        tf.contrib.layers.real_valued_column('age'),
+        tf.contrib.layers.embedding_column(language, dimension=1)
+    ]
+
+    classifier = tf.contrib.learn.DNNClassifier(
+        feature_columns=feature_columns,
+        hidden_units=[3, 3])
+    classifier.fit(input_fn=input_fn, steps=100)
+
+    export_dir = tempfile.mkdtemp()
+    classifier.export(export_dir)
+
   def testDisableCenteredBias(self):
     """Tests that we can disable centered bias."""
     cont_features = [
@@ -483,32 +503,6 @@ class DNNClassifierTest(tf.test.TestCase):
     scores = classifier.evaluate(input_fn=_iris_input_multiclass_fn, steps=1)
     self.assertGreater(scores['accuracy'], 0.8)
     self.assertLess(scores['loss'], 0.3)
-
-  def testSklearnCompatibility(self):
-    """Tests compatibility with sklearn"""
-    if not HAS_SKLEARN:
-      return
-    iris = tf.contrib.learn.datasets.load_iris()
-
-    cont_features = [
-        tf.contrib.layers.real_valued_column('', dimension=4)]
-    kwargs = {
-        'n_classes': 3,
-        'feature_columns': cont_features,
-        'optimizer' : 'Adam',
-        'hidden_units' : [3, 4]
-    }
-
-    classifier = tf.contrib.learn.DNNClassifier(**kwargs)
-
-    scores = cross_val_score(
-      classifier,
-      iris.data[1:5],
-      iris.target[1:5],
-      scoring='accuracy',
-      fit_params={'steps': 100}
-    )
-    self.assertAllClose(scores, [1, 1, 1])
 
 
 class DNNRegressorTest(tf.test.TestCase):
