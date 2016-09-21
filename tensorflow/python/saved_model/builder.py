@@ -26,7 +26,7 @@ import os
 
 from google.protobuf.any_pb2 import Any
 
-from tensorflow.contrib.session_bundle import manifest_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -123,12 +123,12 @@ class SavedModelBuilder(object):
 
     Args:
       asset_filename: The filename of the asset to be added.
-      asset_tensor: The asset tensor used to populate the tensor binding of the
+      asset_tensor: The asset tensor used to populate the tensor info of the
           asset proto.
     """
-    asset_proto = manifest_pb2.AssetFile()
+    asset_proto = meta_graph_pb2.AssetFileDef()
     asset_proto.filename = asset_filename
-    asset_proto.tensor_binding.tensor_name = asset_tensor.name
+    asset_proto.tensor_info.name = asset_tensor.name
 
     asset_any_proto = Any()
     asset_any_proto.Pack(asset_proto)

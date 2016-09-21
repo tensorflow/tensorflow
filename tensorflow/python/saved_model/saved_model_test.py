@@ -20,8 +20,8 @@ from __future__ import print_function
 import os
 import tensorflow as tf
 
-from tensorflow.contrib.session_bundle import manifest_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import builder as saved_model_builder
@@ -363,7 +363,7 @@ class SavedModelTest(tf.test.TestCase):
       collection_def = foo_graph.collection_def
       assets_any = collection_def[constants.ASSETS_KEY].any_list.value
       self.assertEqual(len(assets_any), 1)
-      asset = manifest_pb2.AssetFile()
+      asset = meta_graph_pb2.AssetFileDef()
       assets_any[0].Unpack(asset)
       assets_path = os.path.join(
           compat.as_bytes(export_dir),
@@ -372,7 +372,7 @@ class SavedModelTest(tf.test.TestCase):
       asset_contents = file_io.read_file_to_string(assets_path)
       self.assertEqual("foo bar baz", compat.as_text(asset_contents))
       self.assertEqual("hello42.txt", asset.filename)
-      self.assertEqual("asset_file_tensor:0", asset.tensor_binding.tensor_name)
+      self.assertEqual("asset_file_tensor:0", asset.tensor_info.name)
       ignored_asset_path = os.path.join(
           compat.as_bytes(export_dir),
           compat.as_bytes(constants.ASSETS_DIRECTORY),

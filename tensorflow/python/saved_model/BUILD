@@ -21,7 +21,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/session_bundle:manifest_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
@@ -56,7 +55,6 @@ py_test(
         ":loader",
         ":utils",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/session_bundle:manifest_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
