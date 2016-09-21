@@ -15,6 +15,11 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
+package_group(
+    name = "friends",
+    packages = ["//tensorflow/..."],
+)
+
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -413,6 +418,7 @@ tf_kernel_libraries(
         ":depth_space_ops",
         ":extract_image_patches_op",
         ":fill_functor",
+        ":gather_op_cpu_impl",
         ":ops_util",
         ":split_lib",
         ":strided_slice_op",
@@ -427,6 +433,18 @@ tf_kernel_libraries(
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_io_utils",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "gather_op_cpu_impl",
+    hdrs = ["gather_op_cpu_impl.h"],
+    visibility = [":friends"],
+    deps = [
+        ":bounds_check",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
 )
@@ -1962,6 +1980,7 @@ filegroup(
         "function_ops.cc",
         "gather_op.cc",
         "gather_op.h",
+        "gather_op_cpu_impl.h",
         "identity_op.cc",
         "identity_op.h",
         "immutable_constant_op.cc",
