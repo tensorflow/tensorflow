@@ -293,8 +293,6 @@ tf_cuda_library(
         "util/example_proto_fast_parsing.h",
         "util/example_proto_helper.h",
         "util/guarded_philox_random.h",
-        "util/memmapped_file_system.h",
-        "util/memmapped_file_system_writer.h",
         "util/mirror_pad_mode.h",
         "util/padding.h",
         "util/port.h",
@@ -311,7 +309,13 @@ tf_cuda_library(
         "util/use_cudnn.h",
         "util/util.h",
         "util/work_sharder.h",
-    ],
+    ] + select({
+            "//tensorflow:windows" : [],
+            "//conditions:default" : [
+                "util/memmapped_file_system.h",
+                "util/memmapped_file_system_writer.h",
+            ],
+    }),
     visibility = ["//visibility:public"],
     deps = [":framework_internal"],
 )
@@ -949,20 +953,34 @@ cc_library(
             "lib/**/*.cc",
             "platform/*.h",
             "platform/*.cc",
-            "platform/profile_utils/**/*.h",
-            "platform/profile_utils/**/*.cc",
-        ] + tf_additional_lib_srcs(),
-        exclude =
-            [
-                "**/*test*",
-                "platform/**/cuda.h",
-                "platform/**/stream_executor.h",
-            ] +
-            # Protobuf deps already included through the ":lib_proto_parsing"
-            # dependency.
-            tf_additional_proto_srcs(),
+       ],
+        exclude = [
+            "**/*test*",
+            "platform/**/cuda.h",
+            "platform/**/stream_executor.h",
+        ]
+    ) + select({
+                "//tensorflow:windows" : [],
+                "//conditions:default" : glob([
+                    "platform/profile_utils/**/*.h",
+                    "platform/profile_utils/**/*.cc",
+                ],
+                exclude = [
+                    "**/*test*",
+                    "platform/**/cuda.h",
+                    "platform/**/stream_executor.h",
+                ]),
+    }) + tf_additional_lib_srcs(
+                exclude = [
+                    "**/*test*",
+                    "platform/**/cuda.h",
+                    "platform/**/stream_executor.h",
+                ] +
+                # Protobuf deps already included through the ":lib_proto_parsing"
+                # dependency.
+                tf_additional_proto_srcs(),
     ),
-    hdrs = glob(tf_additional_lib_hdrs()) + [
+    hdrs = tf_additional_lib_hdrs() + [
         "lib/core/blocking_counter.h",
         "lib/core/refcount.h",
         "lib/gif/gif_io.h",
@@ -1054,8 +1072,16 @@ tf_cuda_library(
             "util/reporter.h",
             "util/reporter.cc",
             "framework/fake_input.*",
+            "util/memmapped_file_system.*",
+            "util/memmapped_file_system_writer.*",
         ],
-    ),
+    ) + select({
+            "//tensorflow:windows" : [],
+            "//conditions:default" : glob([
+                "util/memmapped_file_system.*",
+                "util/memmapped_file_system_writer.*",
+            ]),
+    }),
     hdrs = [
         "framework/op_segment.h",
         "framework/rendezvous.h",  # only needed for tests
