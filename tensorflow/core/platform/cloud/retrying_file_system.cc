@@ -24,6 +24,8 @@ namespace {
 
 // In case of failure, every call will be retried kMaxAttempts-1 times.
 constexpr int kMaxAttempts = 4;
+// Maximum backoff time in seconds
+constexpr int maximumBackoffSeconds = 32;
 
 bool IsRetriable(Status status) {
   switch (status.code()) {
@@ -39,7 +41,9 @@ bool IsRetriable(Status status) {
 
 Status CallWithRetries(const std::function<Status()>& f) {
   int attempts = 0;
+  int delay;
   while (true) {
+    delay = 1 << attempts;
     attempts++;
     auto status = f();
     if (!IsRetriable(status) || attempts >= kMaxAttempts) {
@@ -47,6 +51,8 @@ Status CallWithRetries(const std::function<Status()>& f) {
     }
     LOG(ERROR) << "The operation resulted in an error and will be retried: "
                << status.ToString();
+    delay = delay > maximumBackoffSeconds ? maximumBackoffSeconds : delay;
+    sleep(delay);
   }
 }
 
