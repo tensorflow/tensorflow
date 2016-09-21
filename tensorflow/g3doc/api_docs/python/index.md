@@ -121,6 +121,7 @@
 
 * **[Tensor Transformations](../../api_docs/python/array_ops.md)**:
   * [`batch_to_space`](../../api_docs/python/array_ops.md#batch_to_space)
+  * [`batch_to_space_nd`](../../api_docs/python/array_ops.md#batch_to_space_nd)
   * [`bitcast`](../../api_docs/python/array_ops.md#bitcast)
   * [`boolean_mask`](../../api_docs/python/array_ops.md#boolean_mask)
   * [`cast`](../../api_docs/python/array_ops.md#cast)
@@ -137,6 +138,7 @@
   * [`pack`](../../api_docs/python/array_ops.md#pack)
   * [`pad`](../../api_docs/python/array_ops.md#pad)
   * [`rank`](../../api_docs/python/array_ops.md#rank)
+  * [`required_space_to_batch_paddings`](../../api_docs/python/array_ops.md#required_space_to_batch_paddings)
   * [`reshape`](../../api_docs/python/array_ops.md#reshape)
   * [`reverse`](../../api_docs/python/array_ops.md#reverse)
   * [`reverse_sequence`](../../api_docs/python/array_ops.md#reverse_sequence)
@@ -146,6 +148,7 @@
   * [`size`](../../api_docs/python/array_ops.md#size)
   * [`slice`](../../api_docs/python/array_ops.md#slice)
   * [`space_to_batch`](../../api_docs/python/array_ops.md#space_to_batch)
+  * [`space_to_batch_nd`](../../api_docs/python/array_ops.md#space_to_batch_nd)
   * [`space_to_depth`](../../api_docs/python/array_ops.md#space_to_depth)
   * [`split`](../../api_docs/python/array_ops.md#split)
   * [`squeeze`](../../api_docs/python/array_ops.md#squeeze)
