@@ -25,7 +25,7 @@ namespace {
 // In case of failure, every call will be retried kMaxAttempts-1 times.
 constexpr int kMaxAttempts = 4;
 // Maximum backoff time in seconds
-constexpr int maximumBackoffSeconds = 32;
+constexpr int kMaximumBackoffSeconds = 32;
 
 bool IsRetriable(Status status) {
   switch (status.code()) {
@@ -41,9 +41,8 @@ bool IsRetriable(Status status) {
 
 Status CallWithRetries(const std::function<Status()>& f) {
   int attempts = 0;
-  int delay;
   while (true) {
-    delay = 1 << attempts;
+    int delay = std::min(initial_delay_seconds << attempts, kMaximumBackoffSeconds);
     attempts++;
     auto status = f();
     if (!IsRetriable(status) || attempts >= kMaxAttempts) {
@@ -51,15 +50,14 @@ Status CallWithRetries(const std::function<Status()>& f) {
     }
     LOG(ERROR) << "The operation resulted in an error and will be retried: "
                << status.ToString();
-    delay = delay > maximumBackoffSeconds ? maximumBackoffSeconds : delay;
     sleep(delay);
   }
 }
 
 class RetryingRandomAccessFile : public RandomAccessFile {
  public:
-  RetryingRandomAccessFile(std::unique_ptr<RandomAccessFile> base_file)
-      : base_file_(std::move(base_file)) {}
+  RetryingRandomAccessFile(std::unique_ptr<RandomAccessFile> base_file, int delay_seconds = 1)
+      : base_file_(std::move(base_file)), initial_delay_seconds(delay_seconds) {}
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
@@ -69,12 +67,13 @@ class RetryingRandomAccessFile : public RandomAccessFile {
 
  private:
   std::unique_ptr<RandomAccessFile> base_file_;
+  int initial_delay_seconds;
 };
 
 class RetryingWritableFile : public WritableFile {
  public:
-  RetryingWritableFile(std::unique_ptr<WritableFile> base_file)
-      : base_file_(std::move(base_file)) {}
+  RetryingWritableFile(std::unique_ptr<WritableFile> base_file, int delay_seconds = 1)
+      : base_file_(std::move(base_file)), initial_delay_seconds(delay_seconds) {}
 
   Status Append(const StringPiece& data) override {
     return CallWithRetries(
@@ -92,6 +91,7 @@ class RetryingWritableFile : public WritableFile {
 
  private:
   std::unique_ptr<WritableFile> base_file_;
+  int initial_delay_seconds;
 };
 
 }  // namespace
@@ -102,7 +102,7 @@ Status RetryingFileSystem::NewRandomAccessFile(
   TF_RETURN_IF_ERROR(CallWithRetries(std::bind(&FileSystem::NewRandomAccessFile,
                                                base_file_system_.get(),
                                                filename, &base_file)));
-  result->reset(new RetryingRandomAccessFile(std::move(base_file)));
+  result->reset(new RetryingRandomAccessFile(std::move(base_file), 0));
   return Status::OK();
 }
 
@@ -112,7 +112,7 @@ Status RetryingFileSystem::NewWritableFile(
   TF_RETURN_IF_ERROR(CallWithRetries(std::bind(&FileSystem::NewWritableFile,
                                                base_file_system_.get(),
                                                filename, &base_file)));
-  result->reset(new RetryingWritableFile(std::move(base_file)));
+  result->reset(new RetryingWritableFile(std::move(base_file), 0));
   return Status::OK();
 }
 
@@ -122,7 +122,7 @@ Status RetryingFileSystem::NewAppendableFile(
   TF_RETURN_IF_ERROR(CallWithRetries(std::bind(&FileSystem::NewAppendableFile,
                                                base_file_system_.get(),
                                                filename, &base_file)));
-  result->reset(new RetryingWritableFile(std::move(base_file)));
+  result->reset(new RetryingWritableFile(std::move(base_file), 0));
   return Status::OK();
 }
 
