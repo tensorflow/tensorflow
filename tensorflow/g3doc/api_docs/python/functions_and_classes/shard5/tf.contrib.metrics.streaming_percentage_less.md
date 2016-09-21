@@ -24,7 +24,7 @@ Instructions for updating:
     values: A numeric `Tensor` of arbitrary size.
     threshold: A scalar threshold.
     ignore_mask: An optional, `bool` `Tensor` whose shape matches `values`.
-    weights: An optional `Tensor` whose shape matches `values`.
+    weights: An optional `Tensor` whose shape is broadcastable to `values`.
     metrics_collections: An optional list of collections that the metric
       value variable should be added to.
     updates_collections: An optional list of collections that the metric update
