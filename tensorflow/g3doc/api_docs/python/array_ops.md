@@ -180,6 +180,37 @@ tf.cast(a, tf.int32) ==> [1, 2]  # dtype=tf.int32
 
 - - -
 
+### `tf.bitcast(input, type, name=None)` {#bitcast}
+
+Bitcasts a tensor from one type to another without copying data.
+
+Given a tensor `input`, this operation returns a tensor that has the same buffer
+data as `input` with datatype `type`.
+
+If the input datatype `T` is larger than the output datatype `type` then the
+shape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].
+
+If `T` is smaller than `type`, the operator requires that the rightmost
+dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
+[..., sizeof(`type`)/sizeof(`T`)] to [...].
+
+*NOTE*: Bitcast is implemented as a low-level cast, so machines with different
+endian orderings will give different results.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`type`</b>: A `tf.DType` from: `tf.float32, tf.float64, tf.int64, tf.int32, tf.uint8, tf.uint16, tf.int16, tf.int8, tf.complex64, tf.complex128, tf.qint8, tf.quint8, tf.qint32, tf.half`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `type`.
+
+
+- - -
+
 ### `tf.saturate_cast(value, dtype, name=None)` {#saturate_cast}
 
 Performs a safe saturating cast of `value` to `dtype`.
@@ -232,6 +263,26 @@ shape(t) ==> [2, 2, 3]
 ##### Returns:
 
   A `Tensor` of type `out_type`.
+
+
+- - -
+
+### `tf.shape_n(input, out_type=None, name=None)` {#shape_n}
+
+Returns shape of tensors.
+
+This operation returns N 1-D integer tensors representing shape of `input[i]s`.
+
+##### Args:
+
+
+*  <b>`input`</b>: A list of at least 1 `Tensor` objects of the same type.
+*  <b>`out_type`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A list with the same number of `Tensor` objects as `input` of `Tensor` objects of type out_type.
 
 
 - - -
@@ -2035,6 +2086,46 @@ Batched indexing into a 3-tensor:
 
 - - -
 
+### `tf.unique_with_counts(x, out_idx=None, name=None)` {#unique_with_counts}
+
+Finds unique elements in a 1-D tensor.
+
+This operation returns a tensor `y` containing all of the unique elements of `x`
+sorted in the same order that they occur in `x`. This operation also returns a
+tensor `idx` the same size as `x` that contains the index of each value of `x`
+in the unique output `y`. Finally, it returns a third tensor `count` that
+contains the count of each element of `y` in `x`. In other words:
+
+`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
+
+For example:
+
+```prettyprint
+# tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
+y, idx, count = unique_with_counts(x)
+y ==> [1, 2, 4, 7, 8]
+idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
+count ==> [2, 1, 3, 1, 2]
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. 1-D.
+*  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (y, idx, count).
+
+*  <b>`y`</b>: A `Tensor`. Has the same type as `x`. 1-D.
+*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D.
+*  <b>`count`</b>: A `Tensor` of type `out_idx`. 1-D.
+
+
+- - -
+
 ### `tf.dynamic_partition(data, partitions, num_partitions, name=None)` {#dynamic_partition}
 
 Partitions `data` into `num_partitions` tensors using indices from `partitions`.
@@ -2318,98 +2409,5 @@ The output will be
 
 *  <b>`TypeError`</b>: If dtype of either `on_value` or `off_value` don't match `dtype`
 *  <b>`TypeError`</b>: If dtype of `on_value` and `off_value` don't match one another
-
-
-
-## Other Functions and Classes
-- - -
-
-### `tf.bitcast(input, type, name=None)` {#bitcast}
-
-Bitcasts a tensor from one type to another without copying data.
-
-Given a tensor `input`, this operation returns a tensor that has the same buffer
-data as `input` with datatype `type`.
-
-If the input datatype `T` is larger than the output datatype `type` then the
-shape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].
-
-If `T` is smaller than `type`, the operator requires that the rightmost
-dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
-[..., sizeof(`type`)/sizeof(`T`)] to [...].
-
-*NOTE*: Bitcast is implemented as a low-level cast, so machines with different
-endian orderings will give different results.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`type`</b>: A `tf.DType` from: `tf.float32, tf.float64, tf.int64, tf.int32, tf.uint8, tf.uint16, tf.int16, tf.int8, tf.complex64, tf.complex128, tf.qint8, tf.quint8, tf.qint32, tf.half`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `type`.
-
-
-- - -
-
-### `tf.shape_n(input, out_type=None, name=None)` {#shape_n}
-
-Returns shape of tensors.
-
-This operation returns N 1-D integer tensors representing shape of `input[i]s`.
-
-##### Args:
-
-
-*  <b>`input`</b>: A list of at least 1 `Tensor` objects of the same type.
-*  <b>`out_type`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A list with the same number of `Tensor` objects as `input` of `Tensor` objects of type out_type.
-
-
-- - -
-
-### `tf.unique_with_counts(x, out_idx=None, name=None)` {#unique_with_counts}
-
-Finds unique elements in a 1-D tensor.
-
-This operation returns a tensor `y` containing all of the unique elements of `x`
-sorted in the same order that they occur in `x`. This operation also returns a
-tensor `idx` the same size as `x` that contains the index of each value of `x`
-in the unique output `y`. Finally, it returns a third tensor `count` that
-contains the count of each element of `y` in `x`. In other words:
-
-`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
-
-For example:
-
-```prettyprint
-# tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
-y, idx, count = unique_with_counts(x)
-y ==> [1, 2, 4, 7, 8]
-idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
-count ==> [2, 1, 3, 1, 2]
-```
-
-##### Args:
-
-
-*  <b>`x`</b>: A `Tensor`. 1-D.
-*  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A tuple of `Tensor` objects (y, idx, count).
-
-*  <b>`y`</b>: A `Tensor`. Has the same type as `x`. 1-D.
-*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D.
-*  <b>`count`</b>: A `Tensor` of type `out_idx`. 1-D.
 
 
