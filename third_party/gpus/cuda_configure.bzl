@@ -331,6 +331,33 @@ def _file(repository_ctx, label):
       {})
 
 
+_DUMMY_CROSSTOOL_BZL_FILE = """
+def error_gpu_disabled():
+  fail("ERROR: Building with --config=cuda but TensorFlow is not configured " +
+       "to build with GPU support. Please re-run ./configure and enter 'Y' " +
+       "at the prompt to build with GPU support.")
+
+  native.genrule(
+      name = "error_gen_crosstool",
+      outs = ["CROSSTOOL"],
+      cmd = "echo 'Should not be run.' && exit 1",
+  )
+
+  native.filegroup(
+      name = "crosstool",
+      srcs = [":CROSSTOOL"],
+      output_licenses = ["unencumbered"],
+  )
+"""
+
+
+_DUMMY_CROSSTOOL_BUILD_FILE = """
+load("//crosstool:error_gpu_disabled.bzl", "error_gpu_disabled")
+
+error_gpu_disabled()
+"""
+
+
 def _create_dummy_repository(repository_ctx):
   cpu_value = _cpu_value(repository_ctx)
   symlink_files = _cuda_symlink_files(cpu_value, _DEFAULT_CUDA_VERSION,
@@ -371,6 +398,12 @@ def _create_dummy_repository(repository_ctx):
                for c in _DEFAULT_CUDA_COMPUTE_CAPABILITIES]),
        })
 
+  # If cuda_configure is not configured to build with GPU support, and the user
+  # attempts to build with --config=cuda, add a dummy build rule to intercept
+  # this and fail with an actionable error message.
+  repository_ctx.file("crosstool/error_gpu_disabled.bzl",
+                      _DUMMY_CROSSTOOL_BZL_FILE)
+  repository_ctx.file("crosstool/BUILD", _DUMMY_CROSSTOOL_BUILD_FILE)
 
 def _symlink_dir(repository_ctx, src_dir, dest_dir):
   """Symlinks all the files in a directory.
