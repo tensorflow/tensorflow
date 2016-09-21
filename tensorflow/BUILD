@@ -169,7 +169,6 @@ filegroup(
         "//tensorflow/tensorboard/lib:all_files",
         "//tensorflow/tensorboard/lib/python:all_files",
         "//tensorflow/tensorboard/scripts:all_files",
-        "//tensorflow/third_party/hadoop:all_files",
         "//tensorflow/tools/dist_test/server:all_files",
         "//tensorflow/tools/docker:all_files",
         "//tensorflow/tools/docker/notebooks:all_files",
@@ -178,6 +177,7 @@ filegroup(
         "//tensorflow/tools/proto_text:all_files",
         "//tensorflow/tools/test:all_files",
         "//tensorflow/user_ops:all_files",
+        "//third_party/hadoop:all_files",
     ],
     visibility = [":__subpackages__"],
 )
