@@ -89,6 +89,10 @@ Status LoadSavedModel(const string& export_dir,
                       const SessionOptions& session_options,
                       const RunOptions& run_options,
                       SavedModelBundle* const bundle) {
+  if (!MaybeSavedModelDirectory(export_dir)) {
+    return Status(error::Code::NOT_FOUND,
+                  "SavedModel not found in export directory: " + export_dir);
+  }
   LOG(INFO) << "Loading SavedModel from: " << export_dir;
 
   SavedModel saved_model_proto;
@@ -108,6 +112,15 @@ Status LoadSavedModel(const string& export_dir,
 
   LOG(INFO) << "Done loading SavedModel.";
   return Status::OK();
+}
+
+bool MaybeSavedModelDirectory(const string& export_dir) {
+  const string saved_model_pb_path =
+      io::JoinPath(export_dir, kSavedModelFilenamePb);
+  const string saved_model_pbtxt_path =
+      io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
+  return Env::Default()->FileExists(saved_model_pb_path) ||
+         Env::Default()->FileExists(saved_model_pbtxt_path);
 }
 
 }  // namespace tensorflow

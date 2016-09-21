@@ -43,6 +43,13 @@ Status LoadSavedModel(const string& export_dir,
                       const RunOptions& run_options,
                       SavedModelBundle* const bundle);
 
+// Checks whether the provided directory could contain a SavedModel. Note that
+// the method does not load any data by itself. If the method returns `false`,
+// the export directory definitely does not contain a SavedModel. If the method
+// returns `true`, the export directory may contain a SavedModel but provides no
+// guarantee that it can be loaded.
+bool MaybeSavedModelDirectory(const string& export_dir);
+
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CC_SAVED_MODEL_LOADER_H_
