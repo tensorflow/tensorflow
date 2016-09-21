@@ -85,6 +85,7 @@ filegroup(
         ":all_files",
         "//tensorflow/c:all_files",
         "//tensorflow/cc:all_files",
+        "//tensorflow/cc/saved_model:all_files",
         "//tensorflow/contrib:all_files",
         "//tensorflow/contrib/android:all_files",
         "//tensorflow/contrib/bayesflow:all_files",
