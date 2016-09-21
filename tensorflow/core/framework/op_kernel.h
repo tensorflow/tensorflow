@@ -66,7 +66,6 @@ class OpKernelConstruction;  // declared below
 class OpKernelContext;       // declared below
 class ResourceMgr;
 
-// TODO(josh11b): Make reference-counted if needed.
 class OpKernel {
  public:
   // OpKernel won't be instantiated by the scheduler, so you may perform
@@ -212,7 +211,6 @@ class PersistentTensor {
 
 class OpKernelConstruction {
  public:
-  // TODO(yuanbyu): Probably reduce the number of arguments.
   OpKernelConstruction(DeviceType device_type, DeviceBase* device,
                        Allocator* allocator, const NodeDef* node_def,
                        const OpDef* op_def, FunctionLibraryRuntime* flib,
@@ -306,10 +304,6 @@ class OpKernelConstruction {
   template <class T>
   Status GetAttr(StringPiece attr_name, T* value) const;
 
-  // May be used, e.g., to get GPU handles, etc.
-  // TODO(tucker): Add example usage.
-  DeviceBase* device() const { return device_; }
-
   // Return the device type.
   const DeviceType& device_type() const { return device_type_; }
 
@@ -324,6 +318,18 @@ class OpKernelConstruction {
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(Status s);
   void CtxFailureWithWarning(Status s);
+
+  // Unrecommended functions: these are functions that have some
+  // current uses but are not recommended for use, and may go away at
+  // some future major version release.
+
+  // May be used, e.g., to get GPU handles, etc.
+  //
+  // Currently only used to call MakeTensorFromProto() for
+  // implementing ConstantOp for every device.  See comments
+  // on Device::MakeTensorFromProto for longer-term replacement
+  // ideas.
+  DeviceBase* device() const { return device_; }
 
  private:
   const DeviceType device_type_;
@@ -593,8 +599,6 @@ class OpKernelContext {
   //   // modify the values in t
   // }
   // REQUIRES: IsRefType(input_dtype(index))
-  // TODO(mrry): Convert this to return Status.
-  mutex* input_ref_mutex(int index);
   Status input_ref_mutex(StringPiece name, mutex** out_mutex);
 
   // Returns a mutable input tensor. Must be used to access Ref
@@ -603,8 +607,7 @@ class OpKernelContext {
   // will be visible to other Ops reading the same ref tensor. If
   // !lock_held the input mutex will be acquired before returning the
   // Tensor.
-  // TODO(mrry):
-  // Convert this to return Status.
+  // TODO(mrry): Convert this to return Status.
   Tensor mutable_input(int index, bool lock_held);
 
   // Returns the named mutable input tensor in "tensor", as defined in
@@ -782,28 +785,20 @@ class OpKernelContext {
   // index.  REQUIRES: !IsRefType(expected_output_dtype(index))
   // REQUIRES: 'tensor' must have the same MemoryType as
   // output_memory_types[index]. See comment above.
-  // TODO(mrry): Convert this to return Status.
-  void set_output(int index, const Tensor& tensor);
   Status set_output(StringPiece name, const Tensor& tensor);
 
   // To output a reference.  Caller retains ownership of mu and tensor_for_ref,
   // and they must outlive all uses within the step. See comment above.
   // REQUIRES: IsRefType(expected_output_dtype(index))
-  // TODO(mrry): Convert this to return Status.
-  void set_output_ref(int index, mutex* mu, Tensor* tensor_for_ref);
   Status set_output_ref(StringPiece name, mutex* mu, Tensor* tensor_for_ref);
 
   // Returns nullptr if allocate_output() or set_output() have not been called.
-  // TODO(mrry): Convert this to return Status.
-  Tensor* mutable_output(int index);
   Status mutable_output(StringPiece name, Tensor** tensor);
 
   // Transfers ownership of an output tensor to the caller.
   // NOTE: For non-reference outputs, the caller takes responsibility
   // for deletion. For reference outputs, the caller does NOT take
   // responsibility for deletion.
-  // TODO(mrry): Convert this to return Status.
-  TensorValue release_output(int index);
   Status release_output(StringPiece name, TensorValue* value);
 
   // Records device specific state about how the input tensors were
@@ -945,6 +940,18 @@ class OpKernelContext {
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(Status s);
   void CtxFailureWithWarning(Status s);
+
+  // Unrecommended functions: these are functions that have some
+  // current uses but are not recommended for use, and may go away at
+  // some future major version release.
+  //
+  // The following functions all have versions that return Status
+  // to capture error conditions, and are strongly preferred.
+  Tensor* mutable_output(int index);
+  void set_output(int index, const Tensor& tensor);
+  mutex* input_ref_mutex(int index);
+  void set_output_ref(int index, mutex* mu, Tensor* tensor_for_ref);
+  TensorValue release_output(int index);
 
  private:
   Allocator* get_allocator(AllocatorAttributes attr);

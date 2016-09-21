@@ -2208,30 +2208,6 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "android_tensorflow_kernels_no_rtti_lite_runtime",
-    srcs = select({
-        "//tensorflow:android": [
-            "//tensorflow/core/kernels:android_core_ops",
-            "//tensorflow/core/kernels:android_extended_ops",
-        ],
-        "//conditions:default": [],
-    }),
-    copts = tf_copts() + tf_opts_nortti_if_android(),
-    tags = [
-        "manual",
-        "notap",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//base",
-        "//tensorflow/core:android_proto_lib_no_rtti_lite_runtime",
-        "//tensorflow/core:android_tensorflow_lib_lite_no_rtti_lite_runtime",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
 # -----------------------------------------------------------------------------
 # Google-internal targets.  These must be at the end for syncrepo.
 

@@ -360,7 +360,7 @@ class CommandHandlerRegistry(object):
     handler = self._handlers[resolved_prefix]
     try:
       output = handler(argv, screen_info=screen_info)
-    except Exception as e:  # pylint: disable=broad-except
+    except BaseException as e:  # pylint: disable=broad-except
       output = RichTextLines(
           ["Error occurred during handling of command: %s %s:" %
            (resolved_prefix, " ".join(argv)), "%s: %s" % (type(e), str(e))])

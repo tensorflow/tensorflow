@@ -20,6 +20,7 @@ import {Mode, ScatterPlot} from './scatterPlot';
 import {ScatterPlotWebGL} from './scatterPlotWebGL';
 import {ScatterPlotWebGLVisualizerCanvasLabels} from './scatterPlotWebGLVisualizerCanvasLabels';
 import {ScatterPlotWebGLVisualizerSprites} from './scatterPlotWebGLVisualizerSprites';
+import {ScatterPlotWebGLVisualizerTraces} from './scatterPlotWebGLVisualizerTraces';
 import * as vector from './vector';
 import {ColorOption, DataPanel} from './vz-projector-data-panel';
 // tslint:disable-next-line:no-unused-variable
@@ -37,7 +38,8 @@ let numNN = 100;
 
 /** Highlight stroke color for the nearest neighbors. */
 const NN_HIGHLIGHT_COLOR = '#6666FA';
-
+/** Color to denote a missing value. */
+const MISSING_VALUE_COLOR = 'black';
 /** Highlight stroke color for the selected point */
 const POINT_HIGHLIGHT_COLOR_DAY = 'black';
 const POINT_HIGHLIGHT_COLOR_NIGHT = new THREE.Color(0xFFE11F).getStyle();
@@ -148,7 +150,11 @@ export class Projector extends ProjectorPolymer {
       return;
     };
     let colors = (i: number) => {
-      return colorMap(this.points[i].metadata[this.colorOption.name]);
+      let value = this.points[i].metadata[this.colorOption.name];
+      if (value == null) {
+        return MISSING_VALUE_COLOR;
+      }
+      return colorMap(value);
     };
     this.scatterPlot.setColorAccessor(colors);
   }
@@ -433,14 +439,14 @@ export class Projector extends ProjectorPolymer {
       let scatterPlotWebGL = new ScatterPlotWebGL(
           container, i => '' + this.points[i].metadata['label']);
 
-      let pointsVisualizer =
-          new ScatterPlotWebGLVisualizerSprites(scatterPlotWebGL);
+      scatterPlotWebGL.addVisualizer(
+          new ScatterPlotWebGLVisualizerSprites(scatterPlotWebGL));
 
-      let labelVisualizer =
-          new ScatterPlotWebGLVisualizerCanvasLabels(container);
+      scatterPlotWebGL.addVisualizer(
+          new ScatterPlotWebGLVisualizerTraces(scatterPlotWebGL));
 
-      scatterPlotWebGL.addVisualizer(pointsVisualizer);
-      scatterPlotWebGL.addVisualizer(labelVisualizer);
+      scatterPlotWebGL.addVisualizer(
+          new ScatterPlotWebGLVisualizerCanvasLabels(container));
 
       this.scatterPlot = scatterPlotWebGL;
       this.scatterPlot.setDayNightMode(modeIsNight);

@@ -169,9 +169,12 @@ void Stat(const string& filename, FileStatistics* stats,
 }
 
 tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
-    const string& filename, size_t buffer_size) {
+    const string& filename, size_t buffer_size, TF_Status* out_status) {
   std::unique_ptr<tensorflow::RandomAccessFile> file;
-  if (!tensorflow::Env::Default()->NewRandomAccessFile(filename, &file).ok()) {
+  tensorflow::Status status =
+      tensorflow::Env::Default()->NewRandomAccessFile(filename, &file);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
     return nullptr;
   }
   std::unique_ptr<tensorflow::io::RandomAccessInputStream> input_stream(
@@ -182,9 +185,13 @@ tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
   return buffered_input_stream.release();
 }
 
-tensorflow::WritableFile* CreateWritableFile(const string& filename) {
+tensorflow::WritableFile* CreateWritableFile(
+    const string& filename, TF_Status* out_status) {
   std::unique_ptr<tensorflow::WritableFile> file;
-  if (!tensorflow::Env::Default()->NewWritableFile(filename, &file).ok()) {
+  tensorflow::Status status =
+      tensorflow::Env::Default()->NewWritableFile(filename, &file);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
     return nullptr;
   }
   return file.release();
@@ -230,8 +237,9 @@ bool IsDirectory(const string& dirname, TF_Status* out_status);
 void Stat(const string& filename, tensorflow::FileStatistics* stats,
           TF_Status* out_status);
 tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
-    const string& filename, size_t buffer_size);
-tensorflow::WritableFile* CreateWritableFile(const string& filename);
+    const string& filename, size_t buffer_size, TF_Status* out_status);
+tensorflow::WritableFile* CreateWritableFile(const string& filename,
+                                             TF_Status* out_status);
 void AppendToFile(const string& file_content, tensorflow::WritableFile* file,
                   TF_Status* out_status);
 void FlushWritableFile(tensorflow::WritableFile* file, TF_Status* out_status);

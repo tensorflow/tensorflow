@@ -25,16 +25,6 @@ const IMAGE_SIZE = 30;
 const POINT_COLOR = 0x7575D9;
 const POINT_COLOR_GRAYED = 0x888888;
 
-const TRACE_START_HUE = 60;
-const TRACE_END_HUE = 360;
-const TRACE_SATURATION = 1;
-const TRACE_LIGHTNESS = .3;
-const TRACE_DEFAULT_OPACITY = .2;
-const TRACE_DEFAULT_LINEWIDTH = 2;
-const TRACE_SELECTED_OPACITY = .9;
-const TRACE_SELECTED_LINEWIDTH = 3;
-const TRACE_DESELECTED_OPACITY = .05;
-
 const BLENDING_DAY = THREE.MultiplyBlending;
 const BLENDING_NIGHT = THREE.AdditiveBlending;
 
@@ -150,8 +140,6 @@ export class ScatterPlotWebGLVisualizerSprites implements
   private points: THREE.Points;
   private pickingColors: Float32Array;
   private renderColors: Float32Array;
-  private traces: THREE.Line[];
-  private tracePositionBuffer: {[trace: number]: THREE.BufferAttribute} = {};
 
   private blending: THREE.Blending = BLENDING_DAY;
 
@@ -216,75 +204,6 @@ export class ScatterPlotWebGLVisualizerSprites implements
     // And finally initialize it and add it to the scene.
     this.points = new THREE.Points(this.geometry, this.renderMaterial);
     scene.add(this.points);
-  }
-
-  /**
-   * Create line traces between connected points and instantiate the geometry.
-   */
-  private addTraces(scene: THREE.Scene) {
-    if (!this.dataSet || !this.dataSet.traces) {
-      return;
-    }
-
-    this.traces = [];
-
-    for (let i = 0; i < this.dataSet.traces.length; i++) {
-      let dataTrace = this.dataSet.traces[i];
-
-      let geometry = new THREE.BufferGeometry();
-      let colors: number[] = [];
-
-      for (let j = 0; j < dataTrace.pointIndices.length - 1; j++) {
-        this.dataSet.points[dataTrace.pointIndices[j]].traceIndex = i;
-        this.dataSet.points[dataTrace.pointIndices[j + 1]].traceIndex = i;
-
-        let color1 =
-            this.getPointInTraceColor(j, dataTrace.pointIndices.length);
-        let color2 =
-            this.getPointInTraceColor(j + 1, dataTrace.pointIndices.length);
-
-        colors.push(
-            color1.r / 255, color1.g / 255, color1.b / 255, color2.r / 255,
-            color2.g / 255, color2.b / 255);
-      }
-
-      geometry.addAttribute('position', this.tracePositionBuffer[i]);
-      this.tracePositionBuffer[i].needsUpdate = true;
-
-      geometry.addAttribute(
-          'color',
-          new THREE.BufferAttribute(new Float32Array(colors), RGB_NUM_BYTES));
-
-      // We use the same material for every line.
-      let material = new THREE.LineBasicMaterial({
-        linewidth: TRACE_DEFAULT_LINEWIDTH,
-        opacity: TRACE_DEFAULT_OPACITY,
-        transparent: true,
-        vertexColors: THREE.VertexColors
-      });
-
-      let trace = new THREE.LineSegments(geometry, material);
-      this.traces.push(trace);
-      scene.add(trace);
-    }
-  }
-
-  private removeAllTraces(scene: THREE.Scene) {
-    if (!this.traces) {
-      return;
-    }
-
-    for (let i = 0; i < this.traces.length; i++) {
-      scene.remove(this.traces[i]);
-    }
-    this.traces = [];
-  }
-
-  private getPointInTraceColor(index: number, totalPoints: number) {
-    let hue = TRACE_START_HUE +
-        (TRACE_END_HUE - TRACE_START_HUE) * index / totalPoints;
-
-    return d3.hsl(hue, TRACE_SATURATION, TRACE_LIGHTNESS).rgb();
   }
 
   private calibratePointSize() {
@@ -356,18 +275,6 @@ export class ScatterPlotWebGLVisualizerSprites implements
     this.highlightSprites(null, null);
   }
 
-  private resetTraces() {
-    if (!this.traces) {
-      return;
-    }
-    for (let i = 0; i < this.traces.length; i++) {
-      this.traces[i].material.opacity = TRACE_DEFAULT_OPACITY;
-      (this.traces[i].material as THREE.LineBasicMaterial).linewidth =
-          TRACE_DEFAULT_LINEWIDTH;
-      this.traces[i].material.needsUpdate = true;
-    }
-  }
-
   private colorSprites(colorAccessor: (index: number) => string) {
     if (this.geometry == null) {
       return;
@@ -422,37 +329,13 @@ export class ScatterPlotWebGLVisualizerSprites implements
       this.positionBuffer.setXYZ(i, pp[0], pp[1], pp[2]);
     }
 
-    // Update the traces.
-    for (let i = 0; i < this.dataSet.traces.length; i++) {
-      let dataTrace = this.dataSet.traces[i];
-
-      let vertexCount = 0;
-      for (let j = 0; j < dataTrace.pointIndices.length - 1; j++) {
-        let point1 = this.dataSet.points[dataTrace.pointIndices[j]];
-        let point2 = this.dataSet.points[dataTrace.pointIndices[j + 1]];
-
-        this.tracePositionBuffer[i].setXYZ(
-            vertexCount, point1.projectedPoint[0], point1.projectedPoint[1],
-            point1.projectedPoint[2]);
-        this.tracePositionBuffer[i].setXYZ(
-            vertexCount + 1, point2.projectedPoint[0], point2.projectedPoint[1],
-            point2.projectedPoint[2]);
-        vertexCount += 2;
-      }
-    }
-
     if (this.geometry) {
       this.positionBuffer.needsUpdate = true;
-
-      for (let i = 0; i < this.dataSet.traces.length; i++) {
-        this.tracePositionBuffer[i].needsUpdate = true;
-      }
     }
   }
 
   removeAllFromScene(scene: THREE.Scene) {
     scene.remove(this.points);
-    this.removeAllTraces(scene);
   }
 
   /**
@@ -481,35 +364,11 @@ export class ScatterPlotWebGLVisualizerSprites implements
     let positions =
         new Float32Array(this.dataSet.points.length * XYZ_NUM_BYTES);
     this.positionBuffer = new THREE.BufferAttribute(positions, XYZ_NUM_BYTES);
-
-    // Set up the position buffer arrays for each trace.
-    for (let i = 0; i < this.dataSet.traces.length; i++) {
-      let dataTrace = this.dataSet.traces[i];
-      let traces = new Float32Array(
-          2 * (dataTrace.pointIndices.length - 1) * XYZ_NUM_BYTES);
-      this.tracePositionBuffer[i] =
-          new THREE.BufferAttribute(traces, XYZ_NUM_BYTES);
-    }
   }
 
   onSelectionChanged(selection: number[]) {
-    this.resetTraces();
-    this.defaultPointColor = POINT_COLOR;
-    if (selection.length > 0) {
-      this.defaultPointColor = POINT_COLOR_GRAYED;
-      let selectedIndex = selection[0];
-      let traceIndex = this.dataSet.points[selectedIndex].traceIndex;
-      if (traceIndex) {
-        for (let i = 0; i < this.traces.length; i++) {
-          this.traces[i].material.opacity = TRACE_DESELECTED_OPACITY;
-          this.traces[i].material.needsUpdate = true;
-        }
-        this.traces[traceIndex].material.opacity = TRACE_SELECTED_OPACITY;
-        (this.traces[traceIndex].material as THREE.LineBasicMaterial)
-            .linewidth = TRACE_SELECTED_LINEWIDTH;
-        this.traces[traceIndex].material.needsUpdate = true;
-      }
-    }
+    this.defaultPointColor =
+        (selection.length > 0) ? POINT_COLOR_GRAYED : POINT_COLOR;
   }
 
   onSetDayNightMode(isNight: boolean) {
@@ -524,7 +383,6 @@ export class ScatterPlotWebGLVisualizerSprites implements
     this.addSprites(scene);
     this.colorSprites(null);
     this.highlightSprites(null, null);
-    this.addTraces(scene);
   }
 
   onUpdate() {
