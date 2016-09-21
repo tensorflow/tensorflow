@@ -175,9 +175,7 @@ class RandomAccessFile {
                       char* scratch) const = 0;
 
  private:
-  /// No copying allowed
-  RandomAccessFile(const RandomAccessFile&);
-  void operator=(const RandomAccessFile&);
+  TF_DISALLOW_COPY_AND_ASSIGN(RandomAccessFile);
 };
 
 /// \brief A file abstraction for sequential writing.
@@ -195,9 +193,7 @@ class WritableFile {
   virtual Status Sync() = 0;
 
  private:
-  /// No copying allowed
-  WritableFile(const WritableFile&);
-  void operator=(const WritableFile&);
+  TF_DISALLOW_COPY_AND_ASSIGN(WritableFile);
 };
 
 /// \brief A readonly memmapped file abstraction.

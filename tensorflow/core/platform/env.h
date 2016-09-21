@@ -251,11 +251,8 @@ class Env {
                                       void** symbol) = 0;
 
  private:
-  /// No copying allowed
-  Env(const Env&);
-  void operator=(const Env&);
-
   std::unique_ptr<FileSystemRegistry> file_system_registry_;
+  TF_DISALLOW_COPY_AND_ASSIGN(Env);
 };
 
 /// \brief An implementation of Env that forwards all calls to another Env.
@@ -319,9 +316,7 @@ class Thread {
   virtual ~Thread();
 
  private:
-  /// No copying allowed
-  Thread(const Thread&);
-  void operator=(const Thread&);
+  TF_DISALLOW_COPY_AND_ASSIGN(Thread);
 };
 
 /// \brief Options to configure a Thread.
