@@ -81,10 +81,6 @@ tf_py_test(
         ":platform",
         ":platform_test",
     ],
-    tags = [
-        "manual",
-        "notap",
-    ],
 )
 
 tf_py_test(
