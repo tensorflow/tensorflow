@@ -14285,45 +14285,17 @@ mixture probabilities) and a list of `Distribution` objects
 all having matching dtype, batch shape, event shape, and continuity
 properties (the components).
 
-The user does not pass the list of distributions directly, but rather a
-list of `(constructor, batch_tensor_params_dict)` pairs,
-called `components`. The list of distributions is created via:
-
-```python
-distributions = [
-  c(**params_dict) for (c, params_dict) in zip(*components)
-]
-```
-
-This form allows for certain types of batch-shape optimizations within
-this class.
-
-An example of `components`:
-
-```python
-components = [
-  (tf.contrib.distributions.Normal, {"mu": 3.0, "sigma": 1.0}),
-  (functools.partial(tf.contrib.distributions.Normal, validate_args=False),
-   {"mu": 3.0, "sigma": 2.0}),
-  (tf.contrib.distributions.Normal.from_params,
-   {"mu": 1.0, "sigma": -1.0})
-]
-```
-
 The `num_classes` of `cat` must be possible to infer at graph construction
-time and match `len(distributions)`.
+time and match `len(components)`.
 
 ##### Args:
 
 
 *  <b>`cat`</b>: A `Categorical` distribution instance, representing the probabilities
       of `distributions`.
-*  <b>`components`</b>: A list or tuple of `(constructor, batch_tensor_params)`
-    tuples.  The `constructor` must be a callable, and `batch_tensor_params`
-    must be a dict mapping constructor kwargs to batchwise parameters.
-    Each `Distribution` instance created by calling
-    `constructor(**batch_tensor_params)` must have the same type, be defined
-    on the same domain, and have matching `event_shape` and `batch_shape`.
+*  <b>`components`</b>: A list or tuple of `Distribution` instances.
+    Each instance must have the same type, be defined on the same domain,
+    and have matching `event_shape` and `batch_shape`.
 *  <b>`validate_args`</b>: `Boolean`, default `False`.  If `True`, raise a runtime
     error if batch or event ranks are inconsistent between cat and any of
     the distributions.  This is only checked if the ranks cannot be
@@ -14339,16 +14311,13 @@ time and match `len(distributions)`.
 
 *  <b>`TypeError`</b>: If cat is not a `Categorical`, or `components` is not
     a list or tuple, or the elements of `components` are not
-    tuples of the form `(callable, dict)`, or the objects resulting
-    from calling `callable(**dict)` are not instances of `Distribution`, or
-    the resulting instances of `Distribution` do not have matching
-    continuity properties, or do not have matching `dtype`.
-*  <b>`ValueError`</b>: If `components` is an empty list or tuple, or the
-    distributions created from `components` do have a statically known event
-    rank.  If `cat.num_classes` cannot be inferred at graph creation time,
+    instances of `Distribution`, or do not have matching `dtype`.
+*  <b>`ValueError`</b>: If `components` is an empty list or tuple, or its
+    elements do not have a statically known event rank.
+    If `cat.num_classes` cannot be inferred at graph creation time,
     or the constant value of `cat.num_classes` is not equal to
-    `len(distributions)`, or all `distributions` and `cat` do not have
-    matching static batch shapes, or all components' distributions do not
+    `len(components)`, or all `components` and `cat` do not have
+    matching static batch shapes, or all components do not
     have matching static event shapes.
 
 
@@ -14427,7 +14396,7 @@ cdf(x) := P[X <= x]
 
 - - -
 
-#### `tf.contrib.distributions.Mixture.distributions` {#Mixture.distributions}
+#### `tf.contrib.distributions.Mixture.components` {#Mixture.components}
 
 
 
@@ -14453,7 +14422,7 @@ Shanon entropy in nats.
 A lower bound on the entropy of this mixture model.
 
 The bound below is not always very tight, and its usefulness depends
-on the mixture probabilities and the distributions in use.
+on the mixture probabilities and the components in use.
 
 A lower bound is useful for ELBO when the `Mixture` is the variational
 distribution:
