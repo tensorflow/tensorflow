@@ -317,25 +317,18 @@ class FunctionTest(tf.test.TestCase):
         _ = PlusMinusV1.definition
       with self.assertRaisesRegexp(ValueError, "specified input types"):
 
-        @function.Defun(c=tf.float32)
+        @function.Defun(tf.float32)
         def PlusMinusV2(a, b):
           return a + b, b - a
 
         _ = PlusMinusV2.definition
-      with self.assertRaisesRegexp(ValueError, "type for argument: b"):
+      with self.assertRaisesRegexp(ValueError, "specified input types"):
 
-        @function.Defun(a=tf.float32, c=tf.float32)
+        @function.Defun(tf.float32, tf.float32, tf.float32)
         def PlusMinusV3(a, b):
           return a + b, b - a
 
         _ = PlusMinusV3.definition
-      with self.assertRaisesRegexp(ValueError, "specified input types"):
-
-        @function.Defun(a=tf.float32, b=tf.float32, c=tf.float32)
-        def PlusMinusV4(a, b):
-          return a + b, b - a
-
-        _ = PlusMinusV4.definition
 
   def testCallErrors(self):
 

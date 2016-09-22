@@ -1549,7 +1549,7 @@ class MetaGraphTest(tf.test.TestCase):
       v0 = tf.Variable(0.0)
       var = tf.Variable(10.0)
       tf.add(v0, var)
-      @function.Defun(x=tf.float32)
+      @function.Defun(tf.float32)
       def minus_one(x):
         return x - 1
       minus_one(tf.identity(v0))
