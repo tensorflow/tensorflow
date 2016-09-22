@@ -90,6 +90,7 @@ filegroup(
         "//tensorflow/contrib/android:all_files",
         "//tensorflow/contrib/bayesflow:all_files",
         "//tensorflow/contrib/copy_graph:all_files",
+        "//tensorflow/contrib/crf:all_files",
         "//tensorflow/contrib/cudnn_rnn:all_files",
         "//tensorflow/contrib/distributions:all_files",
         "//tensorflow/contrib/factorization:all_files",
