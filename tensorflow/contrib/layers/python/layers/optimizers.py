@@ -62,7 +62,7 @@ def optimize_loss(loss,
                   variables=None,
                   name=None,
                   summaries=None,
-                  colocate_gradients=False):
+                  colocate_gradients_with_ops=False):
   """Given loss and parameters for optimizer, returns a training op.
 
   Various ways of passing optimizers, include:
@@ -112,6 +112,8 @@ def optimize_loss(loss,
     summaries: List of internal quantities to visualize on tensorboard. If not
                set only the loss and the learning rate will be reported. The
                complete list is in OPTIMIZER_SUMMARIES.
+    colocate_gradients_with_ops: If True, try colocating gradients with the 
+                                 corresponding op.
 
   Returns:
     Training op.
