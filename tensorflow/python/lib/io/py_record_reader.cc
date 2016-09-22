@@ -43,14 +43,9 @@ PyRecordReader* PyRecordReader::New(const string& filename, uint64 start_offset,
   reader->offset_ = start_offset;
   reader->file_ = file.release();
 
-  RecordReaderOptions options;
-  if (compression_type_string == "ZLIB") {
-    options.compression_type = RecordReaderOptions::ZLIB_COMPRESSION;
-    options.zlib_options = ZlibCompressionOptions::DEFAULT();
-  } else if (compression_type_string == "GZIP") {
-    options.compression_type = RecordReaderOptions::ZLIB_COMPRESSION;
-    options.zlib_options = ZlibCompressionOptions::GZIP();
-  }
+  RecordReaderOptions options =
+      RecordReaderOptions::CreateRecordReaderOptions(compression_type_string);
+
   reader->reader_ = new RecordReader(reader->file_, options);
   return reader;
 }
