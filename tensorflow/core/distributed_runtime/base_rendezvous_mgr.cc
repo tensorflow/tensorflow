@@ -130,7 +130,6 @@ BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id,
                                            bool tolerate_dup_recv)
     : env_(env),
       step_id_(step_id),
-      tolerate_dup_recv_(tolerate_dup_recv),
       local_(NewLocalRendezvous(tolerate_dup_recv)) {}
 
 BaseRemoteRendezvous::~BaseRemoteRendezvous() {
