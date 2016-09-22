@@ -661,6 +661,15 @@
   * [`ELBOForms`](../../api_docs/python/contrib.bayesflow.variational_inference.md#ELBOForms)
   * [`register_prior`](../../api_docs/python/contrib.bayesflow.variational_inference.md#register_prior)
 
+* **[CRF (contrib)](../../api_docs/python/contrib.crf.md)**:
+  * [`crf_binary_score`](../../api_docs/python/contrib.crf.md#crf_binary_score)
+  * [`crf_log_likelihood`](../../api_docs/python/contrib.crf.md#crf_log_likelihood)
+  * [`crf_log_norm`](../../api_docs/python/contrib.crf.md#crf_log_norm)
+  * [`crf_sequence_score`](../../api_docs/python/contrib.crf.md#crf_sequence_score)
+  * [`crf_unary_score`](../../api_docs/python/contrib.crf.md#crf_unary_score)
+  * [`CrfForwardRnnCell`](../../api_docs/python/contrib.crf.md#CrfForwardRnnCell)
+  * [`viterbi_decode`](../../api_docs/python/contrib.crf.md#viterbi_decode)
+
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
   * [`BaseDistribution`](../../api_docs/python/contrib.distributions.md#BaseDistribution)
   * [`Bernoulli`](../../api_docs/python/contrib.distributions.md#Bernoulli)
