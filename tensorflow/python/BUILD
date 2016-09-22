@@ -1584,6 +1584,19 @@ py_test(
     ],
 )
 
+py_test(
+    name = "future_api_test",
+    size = "small",
+    srcs = [
+        "util/future_api_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_library(
     name = "util_example_parser_configuration",
     srcs = ["util/example_parser_configuration.py"],

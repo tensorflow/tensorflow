@@ -142,21 +142,26 @@ _allowed_symbols = [
     'RunMetadata',
     'SessionLog',
     'Summary',
+    'compat',
+    'user_ops',
+    'initialize_all_tables',
+]
+
+# The following symbols are kept for compatibility. It is our plan
+# to remove them in the future.
+_allowed_symbols.extend([
     'arg_max',
     'arg_min',
     'bytes',
-    'compat',
     'create_partitioned_variables',
     'deserialize_many_sparse',
-    'initialize_all_tables',
     'lin_space',
     'list_diff',  # Use tf.listdiff instead.
     'parse_single_sequence_example',
     'serialize_many_sparse',
     'serialize_sparse',
     'sparse_matmul',   ## use tf.matmul instead.
-    'user_ops',
-]
+])
 
 # This is needed temporarily because we import it explicitly.
 _allowed_symbols.extend([
