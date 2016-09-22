@@ -40,7 +40,7 @@ bool IsRetriable(Status status) {
 }
 
 Status CallWithRetries(const std::function<Status()>& f,
-                       const initial_delay_seconds) {
+                       const int initial_delay_seconds) {
   int retries = 0;
   while (true) {
     auto status = f();
@@ -113,7 +113,7 @@ Status RetryingFileSystem::NewRandomAccessFile(
   TF_RETURN_IF_ERROR(CallWithRetries(std::bind(&FileSystem::NewRandomAccessFile,
                                                base_file_system_.get(),
                                                filename, &base_file),
-                                     initial_delay_seconds_);
+                                     initial_delay_seconds_));
   result->reset(new RetryingRandomAccessFile(std::move(base_file)));
   return Status::OK();
 }
@@ -124,7 +124,7 @@ Status RetryingFileSystem::NewWritableFile(
   TF_RETURN_IF_ERROR(CallWithRetries(std::bind(&FileSystem::NewWritableFile,
                                                base_file_system_.get(),
                                                filename, &base_file),
-                                     initial_delay_seconds_);
+                                     initial_delay_seconds_));
   result->reset(new RetryingWritableFile(std::move(base_file)));
   return Status::OK();
 }
@@ -135,7 +135,7 @@ Status RetryingFileSystem::NewAppendableFile(
   TF_RETURN_IF_ERROR(CallWithRetries(std::bind(&FileSystem::NewAppendableFile,
                                                base_file_system_.get(),
                                                filename, &base_file),
-                                     initial_delay_seconds_);
+                                     initial_delay_seconds_));
   result->reset(new RetryingWritableFile(std::move(base_file)));
   return Status::OK();
 }

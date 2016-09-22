@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_RETRYING_FILE_SYSTEM_H_
 #define TENSORFLOW_CORE_PLATFORM_RETRYING_FILE_SYSTEM_H_
 
+#include <unistd.h>
+
 #include <string>
 #include <vector>
 #include "tensorflow/core/lib/core/status.h"
