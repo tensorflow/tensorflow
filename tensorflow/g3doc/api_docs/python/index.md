@@ -947,6 +947,7 @@
   * [`streaming_recall_at_k`](../../api_docs/python/contrib.metrics.md#streaming_recall_at_k)
   * [`streaming_root_mean_squared_error`](../../api_docs/python/contrib.metrics.md#streaming_root_mean_squared_error)
   * [`streaming_sensitivity_at_specificity`](../../api_docs/python/contrib.metrics.md#streaming_sensitivity_at_specificity)
+  * [`streaming_sparse_average_precision_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_average_precision_at_k)
   * [`streaming_sparse_precision_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_precision_at_k)
   * [`streaming_sparse_recall_at_k`](../../api_docs/python/contrib.metrics.md#streaming_sparse_recall_at_k)
   * [`streaming_specificity_at_sensitivity`](../../api_docs/python/contrib.metrics.md#streaming_specificity_at_sensitivity)
