@@ -26,8 +26,10 @@ namespace tensorflow {
 /// A wrapper to add retry logic to another file system.
 class RetryingFileSystem : public FileSystem {
  public:
-  RetryingFileSystem(std::unique_ptr<FileSystem> base_file_system, int delay_seconds = 1)
-      : base_file_system_(std::move(base_file_system)), initial_delay_seconds(delay_seconds) {}
+  RetryingFileSystem(std::unique_ptr<FileSystem> base_file_system,
+                     int delay_seconds = 1)
+      : base_file_system_(std::move(base_file_system)),
+        initial_delay_seconds_(delay_seconds) {}
 
   Status NewRandomAccessFile(
       const string& filename,
@@ -61,7 +63,7 @@ class RetryingFileSystem : public FileSystem {
 
  private:
   std::unique_ptr<FileSystem> base_file_system_;
-  int initial_delay_seconds;
+  const int initial_delay_seconds_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RetryingFileSystem);
 };

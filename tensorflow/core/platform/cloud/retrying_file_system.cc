@@ -23,8 +23,8 @@ namespace tensorflow {
 namespace {
 
 // In case of failure, every call will be retried kMaxAttempts-1 times.
-constexpr int kMaxAttempts = 4;
-// Maximum backoff time in seconds
+constexpr int kMaxAttempts = 3;
+// Maximum backoff time in seconds.
 constexpr int kMaximumBackoffSeconds = 32;
 
 bool IsRetriable(Status status) {
@@ -39,59 +39,70 @@ bool IsRetriable(Status status) {
   }
 }
 
-Status CallWithRetries(const std::function<Status()>& f) {
-  int attempts = 0;
+Status CallWithRetries(const std::function<Status()>& f,
+                       const initial_delay_seconds) {
+  int attempt = 0;
   while (true) {
-    int delay = std::min(initial_delay_seconds << attempts, kMaximumBackoffSeconds);
-    attempts++;
     auto status = f();
-    if (!IsRetriable(status) || attempts >= kMaxAttempts) {
+    if (!IsRetriable(status) || attempt > kMaxAttempts) {
       return status;
     }
     LOG(ERROR) << "The operation resulted in an error and will be retried: "
                << status.ToString();
+    const int delay = std::min(initial_delay_seconds << attempt,
+                               kMaximumBackoffSeconds);
     sleep(delay);
+    attempt++;
   }
 }
 
 class RetryingRandomAccessFile : public RandomAccessFile {
  public:
-  RetryingRandomAccessFile(std::unique_ptr<RandomAccessFile> base_file, int delay_seconds = 1)
-      : base_file_(std::move(base_file)), initial_delay_seconds(delay_seconds) {}
+  RetryingRandomAccessFile(std::unique_ptr<RandomAccessFile> base_file,
+                           int delay_seconds = 1)
+      : base_file_(std::move(base_file)),
+        initial_delay_seconds_(delay_seconds) {}
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     return CallWithRetries(std::bind(&RandomAccessFile::Read, base_file_.get(),
-                                     offset, n, result, scratch));
+                                     offset, n, result, scratch),
+                           initial_delay_seconds_);
   }
 
  private:
   std::unique_ptr<RandomAccessFile> base_file_;
-  int initial_delay_seconds;
+  const int initial_delay_seconds_;
 };
 
 class RetryingWritableFile : public WritableFile {
  public:
-  RetryingWritableFile(std::unique_ptr<WritableFile> base_file, int delay_seconds = 1)
-      : base_file_(std::move(base_file)), initial_delay_seconds(delay_seconds) {}
+  RetryingWritableFile(std::unique_ptr<WritableFile> base_file,
+                       int delay_seconds = 1)
+      : base_file_(std::move(base_file)),
+        initial_delay_seconds_(delay_seconds) {}
 
   Status Append(const StringPiece& data) override {
     return CallWithRetries(
-        std::bind(&WritableFile::Append, base_file_.get(), data));
+        std::bind(&WritableFile::Append, base_file_.get(), data),
+        initial_delay_seconds_);
   }
   Status Close() override {
-    return CallWithRetries(std::bind(&WritableFile::Close, base_file_.get()));
+    return CallWithRetries(std::bind(&WritableFile::Close, base_file_.get()),
+                           initial_delay_seconds_);
   }
   Status Flush() override {
-    return CallWithRetries(std::bind(&WritableFile::Flush, base_file_.get()));
+    return CallWithRetries(std::bind(&WritableFile::Flush, base_file_.get()),
+                           initial_delay_seconds_);
   }
   Status Sync() override {
-    return CallWithRetries(std::bind(&WritableFile::Sync, base_file_.get()));
+    return CallWithRetries(std::bind(&WritableFile::Sync, base_file_.get()),
+                           initial_delay_seconds_);
   }
 
  private:
   std::unique_ptr<WritableFile> base_file_;
-  int initial_delay_seconds;
+  const int initial_delay_seconds_;
 };
 
 }  // namespace
@@ -101,8 +112,9 @@ Status RetryingFileSystem::NewRandomAccessFile(
   std::unique_ptr<RandomAccessFile> base_file;
   TF_RETURN_IF_ERROR(CallWithRetries(std::bind(&FileSystem::NewRandomAccessFile,
                                                base_file_system_.get(),
-                                               filename, &base_file)));
-  result->reset(new RetryingRandomAccessFile(std::move(base_file), 0));
+                                               filename, &base_file),
+                                     initial_delay_seconds_);
+  result->reset(new RetryingRandomAccessFile(std::move(base_file)));
   return Status::OK();
 }
 
@@ -111,8 +123,9 @@ Status RetryingFileSystem::NewWritableFile(
   std::unique_ptr<WritableFile> base_file;
   TF_RETURN_IF_ERROR(CallWithRetries(std::bind(&FileSystem::NewWritableFile,
                                                base_file_system_.get(),
-                                               filename, &base_file)));
-  result->reset(new RetryingWritableFile(std::move(base_file), 0));
+                                               filename, &base_file),
+                                     initial_delay_seconds_);
+  result->reset(new RetryingWritableFile(std::move(base_file)));
   return Status::OK();
 }
 
@@ -121,15 +134,17 @@ Status RetryingFileSystem::NewAppendableFile(
   std::unique_ptr<WritableFile> base_file;
   TF_RETURN_IF_ERROR(CallWithRetries(std::bind(&FileSystem::NewAppendableFile,
                                                base_file_system_.get(),
-                                               filename, &base_file)));
-  result->reset(new RetryingWritableFile(std::move(base_file), 0));
+                                               filename, &base_file),
+                                     initial_delay_seconds_);
+  result->reset(new RetryingWritableFile(std::move(base_file)));
   return Status::OK();
 }
 
 Status RetryingFileSystem::NewReadOnlyMemoryRegionFromFile(
     const string& filename, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   return CallWithRetries(std::bind(&FileSystem::NewReadOnlyMemoryRegionFromFile,
-                                   base_file_system_.get(), filename, result));
+                                   base_file_system_.get(), filename, result),
+                         initial_delay_seconds_);
 }
 
 bool RetryingFileSystem::FileExists(const string& fname) {
@@ -139,38 +154,45 @@ bool RetryingFileSystem::FileExists(const string& fname) {
 
 Status RetryingFileSystem::Stat(const string& fname, FileStatistics* stat) {
   return CallWithRetries(
-      std::bind(&FileSystem::Stat, base_file_system_.get(), fname, stat));
+      std::bind(&FileSystem::Stat, base_file_system_.get(), fname, stat),
+      initial_delay_seconds_);
 }
 
 Status RetryingFileSystem::GetChildren(const string& dir,
                                        std::vector<string>* result) {
   return CallWithRetries(std::bind(&FileSystem::GetChildren,
-                                   base_file_system_.get(), dir, result));
+                                   base_file_system_.get(), dir, result),
+                         initial_delay_seconds_);
 }
 
 Status RetryingFileSystem::DeleteFile(const string& fname) {
   return CallWithRetries(
-      std::bind(&FileSystem::DeleteFile, base_file_system_.get(), fname));
+      std::bind(&FileSystem::DeleteFile, base_file_system_.get(), fname),
+      initial_delay_seconds_);
 }
 
 Status RetryingFileSystem::CreateDir(const string& dirname) {
   return CallWithRetries(
-      std::bind(&FileSystem::CreateDir, base_file_system_.get(), dirname));
+      std::bind(&FileSystem::CreateDir, base_file_system_.get(), dirname),
+      initial_delay_seconds_);
 }
 
 Status RetryingFileSystem::DeleteDir(const string& dirname) {
   return CallWithRetries(
-      std::bind(&FileSystem::DeleteDir, base_file_system_.get(), dirname));
+      std::bind(&FileSystem::DeleteDir, base_file_system_.get(), dirname),
+      initial_delay_seconds_);
 }
 
 Status RetryingFileSystem::GetFileSize(const string& fname, uint64* file_size) {
   return CallWithRetries(std::bind(&FileSystem::GetFileSize,
-                                   base_file_system_.get(), fname, file_size));
+                                   base_file_system_.get(), fname, file_size),
+                         initial_delay_seconds_);
 }
 
 Status RetryingFileSystem::RenameFile(const string& src, const string& target) {
   return CallWithRetries(
-      std::bind(&FileSystem::RenameFile, base_file_system_.get(), src, target));
+      std::bind(&FileSystem::RenameFile, base_file_system_.get(), src, target),
+      initial_delay_seconds_);
 }
 
 }  // namespace tensorflow
