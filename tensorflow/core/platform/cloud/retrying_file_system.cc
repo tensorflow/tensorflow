@@ -22,7 +22,7 @@ namespace tensorflow {
 
 namespace {
 
-// In case of failure, every call will be retried kMaxAttempts-1 times.
+// In case of failure, every call will be retried kMaxAttempts times.
 constexpr int kMaxAttempts = 3;
 // Maximum backoff time in seconds.
 constexpr int kMaximumBackoffSeconds = 32;
@@ -44,7 +44,7 @@ Status CallWithRetries(const std::function<Status()>& f,
   int attempt = 0;
   while (true) {
     auto status = f();
-    if (!IsRetriable(status) || attempt > kMaxAttempts) {
+    if (!IsRetriable(status) || attempt >= kMaxAttempts) {
       return status;
     }
     LOG(ERROR) << "The operation resulted in an error and will be retried: "
