@@ -49,6 +49,42 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "gradient_checker",
+    srcs = ["framework/gradient_checker.cc"],
+    hdrs = ["framework/gradient_checker.h"],
+    deps = [
+        ":cc_ops",
+        ":client_session",
+        ":grad_op_registry",
+        ":gradients",
+        ":ops",
+        ":scope",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "framework_gradient_checker_test",
+    srcs = ["framework/gradient_checker_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":grad_op_registry",
+        ":grad_ops",
+        ":gradient_checker",
+        ":testutil",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
     name = "grad_ops",
     deps = [
         ":array_grad",
