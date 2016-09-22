@@ -1566,7 +1566,10 @@ py_library(
     name = "util",
     srcs = glob(
         ["util/**/*.py"],
-        exclude = ["util/example_parser*"],
+        exclude = [
+            "util/example_parser*",
+            "util/**/*_test.py",
+        ],
     ),
     srcs_version = "PY2AND3",
     deps = ["@protobuf//:protobuf_python"],
