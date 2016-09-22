@@ -151,7 +151,6 @@ _allowed_symbols = [
 _allowed_symbols.extend([
     'arg_max',
     'arg_min',
-    'bytes',
     'create_partitioned_variables',
     'deserialize_many_sparse',
     'lin_space',
