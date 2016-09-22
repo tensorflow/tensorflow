@@ -687,7 +687,8 @@ class FunctionInlineControlTest(tf.test.TestCase):
             do_constant_folding=True)))
     for noinline in [False, True]:
 
-      @function.Defun(dtype)
+      # pylint: disable=unexpected-keyword-arg
+      @function.Defun(dtype, extra_kwargs={"noinline": noinline})
       def Cell(v):
         # If v is a vector [n, 1], x is a big square matrix.
         x = tf.tanh(v + tf.transpose(v, [1, 0]))
@@ -696,9 +697,8 @@ class FunctionInlineControlTest(tf.test.TestCase):
       @function.Defun(dtype)
       def Forward(x):
         for _ in range(10):
-          # pylint: disable=unexpected-keyword-arg
           # pylint: disable=cell-var-from-loop
-          x = Cell(x, noinline=noinline)
+          x = Cell(x)
         return tf.reduce_sum(x, [0, 1])
 
       g = tf.Graph()

@@ -299,7 +299,8 @@ class _DefinedFunction(object):
                input_types,
                func_name=None,
                grad_func=None,
-               python_grad_func=None):
+               python_grad_func=None,
+               extra_kwargs=None):
     """Creates _DefinedFunction.
 
     Args:
@@ -312,6 +313,8 @@ class _DefinedFunction(object):
         to None.
       python_grad_func: A python callable implementing the gradient of
         the function python-side.
+      extra_kwargs: A dict. extra_kwargs is passed to every call site of
+        this function.
 
     Raises:
       ValueError: The function definition is invalid.
@@ -321,6 +324,7 @@ class _DefinedFunction(object):
     self._func_name = func_name or _get_func_name(func)
     self._grad_func = grad_func
     self._python_grad_func = python_grad_func
+    self._extra_kwargs = extra_kwargs
     self._definition = None  # Constructed lazily.
 
     argspec = inspect.getargspec(func)
@@ -442,6 +446,10 @@ class _DefinedFunction(object):
 
   def __call__(self, *args, **kwargs):
     self.add_to_graph(ops.get_default_graph())
+    if self._extra_kwargs:
+      for k in self._extra_kwargs:
+        if k not in kwargs:
+          kwargs[k] = self._extra_kwargs[k]
     return _call(self._definition.signature, *args, **kwargs)
 
 
@@ -514,10 +522,13 @@ class Defun(object):
            to the graph. At most one of grad_func and python_grad_func
            can be specified.
 
+         extra_kwargs - (optional) A dict. extra_kwargs is passed to
+           every call site of this function.
     """
     self._func_name = input_types.pop("func_name", None)
     self._grad_func = input_types.pop("grad_func", None)
     self._python_grad_func = input_types.pop("python_grad_func", None)
+    self._extra_kwargs = input_types.pop("extra_kwargs", None)
     assert not input_type_list or not input_types, (
         "Can't specify both *input_type_list and **input_types")
     self._input_types = input_types
@@ -529,7 +540,7 @@ class Defun(object):
     else:
       inp_types = self._input_type_list
     return _DefinedFunction(f, inp_types, self._func_name, self._grad_func,
-                            self._python_grad_func)
+                            self._python_grad_func, self._extra_kwargs)
 
 
 class Declare(object):
