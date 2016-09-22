@@ -38,9 +38,9 @@ py_library(
 tf_custom_op_library(
     name = "python/ops/_variable_ops.so",
     srcs = [
-        "ops/variable_ops.cc",
         "kernels/zero_initializer_op.cc",
         "kernels/zero_initializer_op.h",
+        "ops/variable_ops.cc",
     ],
 )
 
