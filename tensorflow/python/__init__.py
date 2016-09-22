@@ -142,7 +142,6 @@ _allowed_symbols = [
     'RunMetadata',
     'SessionLog',
     'Summary',
-    'compat',
     'user_ops',
     'initialize_all_tables',
 ]
@@ -220,6 +219,7 @@ _allowed_symbols.extend([
 # Export modules and constants.
 _allowed_symbols.extend([
     'app',
+    'compat',
     'errors',
     'flags',
     'gfile',
@@ -246,7 +246,7 @@ _allowed_symbols.extend([
 # referenced in the whitelist.
 remove_undocumented(__name__, _allowed_symbols,
                     [framework_lib, array_ops, client_lib, check_ops,
-                     constant_op, control_flow_ops, functional_ops,
+                     compat, constant_op, control_flow_ops, functional_ops,
                      histogram_ops, io_ops, math_ops, nn, script_ops,
                      session_ops, sparse_ops, state_ops, string_ops,
                      summary, tensor_array_ops, train])
