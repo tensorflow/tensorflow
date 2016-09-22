@@ -24,6 +24,7 @@ operators to your graph.
 @@add
 @@sub
 @@mul
+@@scalar_mul
 @@div
 @@truediv
 @@floordiv

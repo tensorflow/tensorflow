@@ -152,12 +152,9 @@ _allowed_symbols = [
     'lin_space',
     'list_diff',  # Use tf.listdiff instead.
     'parse_single_sequence_example',
-    'scalar_mul',
     'serialize_many_sparse',
     'serialize_sparse',
-    'sparse_matmul',
-    'sparse_segment_mean_grad',
-    'sparse_segment_sqrt_n_grad',
+    'sparse_matmul',   ## use tf.matmul instead.
     'user_ops',
 ]
 
