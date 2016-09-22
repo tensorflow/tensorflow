@@ -567,6 +567,12 @@ clean:
 	rm -rf $(MAKEFILE_DIR)/gen
 	rm -rf tensorflow/core/util/version_info.cc
 
+# Gets rid of all generated files except protobuf libs generated
+# before calling make.  This allows users not to recompile proto libs everytime.
+clean_except_protobuf_libs:
+	find $(MAKEFILE_DIR)/gen -mindepth 1 -maxdepth 1 ! -name "protobuf" ! -name "protobuf-host" -exec rm -r "{}" \;
+	rm -rf tensorflow/core/util/version_info.cc
+
 # Gets rid of target files only, leaving the host alone. Also leaves the lib
 # directory untouched deliberately, so we can persist multiple architectures
 # across builds for iOS.
