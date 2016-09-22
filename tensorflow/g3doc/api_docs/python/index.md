@@ -144,6 +144,7 @@
   * [`reverse`](../../api_docs/python/array_ops.md#reverse)
   * [`reverse_sequence`](../../api_docs/python/array_ops.md#reverse_sequence)
   * [`saturate_cast`](../../api_docs/python/array_ops.md#saturate_cast)
+  * [`sequence_mask`](../../api_docs/python/array_ops.md#sequence_mask)
   * [`shape`](../../api_docs/python/array_ops.md#shape)
   * [`shape_n`](../../api_docs/python/array_ops.md#shape_n)
   * [`size`](../../api_docs/python/array_ops.md#size)
