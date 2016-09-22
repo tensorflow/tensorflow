@@ -188,7 +188,7 @@ def optimize_loss(loss,
 
     # Compute gradients.
     gradients = opt.compute_gradients(loss, variables,
-                                      colocate_gradients_with_ops=colocate_gradients)
+                                      colocate_gradients_with_ops=colocate_gradients_with_ops)
 
     # Optionally add gradient noise.
     if gradient_noise_scale is not None:
