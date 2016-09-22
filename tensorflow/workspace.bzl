@@ -152,6 +152,14 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     actual = "@grpc//:grpc++_unsecure",
   )
 
+  native.new_git_repository(
+    name = "linenoise",
+    commit = "c894b9e59f02203dbe4e2be657572cf88c4230c3",
+    init_submodules = True,
+    remote = "https://github.com/antirez/linenoise.git",
+    build_file = str(Label("//:linenoise.BUILD")),
+  )
+
   native.new_http_archive(
     name = "jsoncpp_git",
     url = "http://github.com/open-source-parsers/jsoncpp/archive/11086dd6a7eba04289944367ca82cea71299ed70.tar.gz",
