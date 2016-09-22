@@ -142,7 +142,6 @@ _allowed_symbols = [
     'RunMetadata',
     'SessionLog',
     'Summary',
-    'user_ops',
     'initialize_all_tables',
 ]
 
@@ -232,6 +231,7 @@ _allowed_symbols.extend([
     'sysconfig',
     'test',
     'train',
+    'user_ops',
 ])
 
 # Variables framework.versions:
