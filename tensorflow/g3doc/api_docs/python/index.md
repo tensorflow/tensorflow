@@ -254,7 +254,6 @@
   * [`sin`](../../api_docs/python/math_ops.md#sin)
   * [`sparse_segment_mean`](../../api_docs/python/math_ops.md#sparse_segment_mean)
   * [`sparse_segment_sqrt_n`](../../api_docs/python/math_ops.md#sparse_segment_sqrt_n)
-  * [`sparse_segment_sqrt_n_grad`](../../api_docs/python/math_ops.md#sparse_segment_sqrt_n_grad)
   * [`sparse_segment_sum`](../../api_docs/python/math_ops.md#sparse_segment_sum)
   * [`sqrt`](../../api_docs/python/math_ops.md#sqrt)
   * [`square`](../../api_docs/python/math_ops.md#square)

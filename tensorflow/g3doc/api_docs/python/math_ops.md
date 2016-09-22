@@ -80,6 +80,32 @@ Returns x * y element-wise.
 
 - - -
 
+### `tf.scalar_mul(scalar, x)` {#scalar_mul}
+
+Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
+
+Intended for use in gradient code which might deal with `IndexedSlices`
+objects, which are easy to multiply by a scalar but more expensive to
+multiply with arbitrary tensors.
+
+##### Args:
+
+
+*  <b>`scalar`</b>: A 0-D scalar `Tensor`. Must have known shape.
+*  <b>`x`</b>: A `Tensor` or `IndexedSlices` to be scaled.
+
+##### Returns:
+
+  `scalar * x` of the same type (`Tensor` or `IndexedSlices`) as `x`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if scalar is not a 0-D `scalar`.
+
+
+- - -
+
 ### `tf.div(x, y, name=None)` {#div}
 
 Returns x / y element-wise.
@@ -3111,60 +3137,5 @@ invert_permutation(x) ==> [2, 4, 3, 0, 1]
 ##### Returns:
 
   A `Tensor`. Has the same type as `x`. 1-D.
-
-
-
-## Other Functions and Classes
-- - -
-
-### `tf.scalar_mul(scalar, x)` {#scalar_mul}
-
-Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
-
-Intended for use in gradient code which might deal with `IndexedSlices`
-objects, which are easy to multiply by a scalar but more expensive to
-multiply with arbitrary tensors.
-
-##### Args:
-
-
-*  <b>`scalar`</b>: A 0-D scalar `Tensor`. Must have known shape.
-*  <b>`x`</b>: A `Tensor` or `IndexedSlices` to be scaled.
-
-##### Returns:
-
-  `scalar * x` of the same type (`Tensor` or `IndexedSlices`) as `x`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if scalar is not a 0-D `scalar`.
-
-
-- - -
-
-### `tf.sparse_segment_sqrt_n_grad(grad, indices, segment_ids, output_dim0, name=None)` {#sparse_segment_sqrt_n_grad}
-
-Computes gradients for SparseSegmentSqrtN.
-
-Returns tensor "output" with same shape as grad, except for dimension 0 whose
-value is output_dim0.
-
-##### Args:
-
-
-*  <b>`grad`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-    gradient propagated to the SparseSegmentSqrtN op.
-*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
-    indices passed to the corresponding SparseSegmentSqrtN op.
-*  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
-    segment_ids passed to the corresponding SparseSegmentSqrtN op.
-*  <b>`output_dim0`</b>: A `Tensor` of type `int32`.
-    dimension 0 of "data" passed to SparseSegmentSqrtN op.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `grad`.
 
 
