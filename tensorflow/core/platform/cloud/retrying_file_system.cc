@@ -41,18 +41,18 @@ bool IsRetriable(Status status) {
 
 Status CallWithRetries(const std::function<Status()>& f,
                        const initial_delay_seconds) {
-  int retry = 0;
+  int retries = 0;
   while (true) {
     auto status = f();
-    if (!IsRetriable(status) || retry >= kMaxRetries) {
+    if (!IsRetriable(status) || retries >= kMaxRetries) {
       return status;
     }
     LOG(ERROR) << "The operation resulted in an error and will be retried: "
                << status.ToString();
-    const int delay = std::min(initial_delay_seconds << retry,
+    const int delay = std::min(initial_delay_seconds << retries,
                                kMaximumBackoffSeconds);
     sleep(delay);
-    retry++;
+    retries++;
   }
 }
 
