@@ -39,9 +39,8 @@ tf_custom_op_library(
     name = "python/ops/_variable_ops.so",
     srcs = [
         "ops/variable_ops.cc",
-    ],
-    deps = [
-        "//tensorflow/contrib/framework/kernels:zero_initializer_op",
+        "kernels/zero_initializer_op.cc",
+        "kernels/zero_initializer_op.h",
     ],
 )
 

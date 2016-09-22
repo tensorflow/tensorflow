@@ -48,7 +48,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/factorization/kernels:all_kernels",
-        "//tensorflow/contrib/framework/kernels:all_kernels",
         "//tensorflow/contrib/layers:bucketization_op_kernel",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
         "//tensorflow/contrib/linear_optimizer:sdca_op_kernels",
