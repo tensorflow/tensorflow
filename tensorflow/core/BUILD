@@ -1733,6 +1733,7 @@ tf_cc_test(
     name = "common_runtime_direct_session_with_tracking_alloc_test",
     size = "small",
     srcs = ["common_runtime/direct_session_with_tracking_alloc_test.cc"],
+    args = ["--heap_check=local"],  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":core",
