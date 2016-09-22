@@ -12,7 +12,6 @@ Note: Functions taking `Tensor` arguments can also take anything accepted by
 TensorFlow provides allows you to wrap python/numpy functions as
 TensorFlow operators.
 
-## Other Functions and Classes
 - - -
 
 ### `tf.py_func(func, inp, Tout, stateful=True, name=None)` {#py_func}
