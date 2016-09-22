@@ -15069,8 +15069,7 @@ op {
   attr {
     name: "concat_dim"
     type: "int"
-    description: "Dimension to concatenate along."
-    has_minimum: true
+    description: "Dimension to concatenate along. Must be in range [-rank, rank),\nwhere rank is the number of dimensions in each input `SparseTensor`."
   }
   attr {
     name: "N"
