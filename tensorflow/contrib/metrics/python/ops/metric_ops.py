@@ -31,13 +31,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.util.all_util import make_all
 
 
 IGNORE_MASK_DATE = '2016-10-19'
@@ -89,6 +89,27 @@ def _safe_div(numerator, denominator, name):
       math_ops.greater(denominator, 0),
       math_ops.truediv(numerator, denominator),
       0,
+      name=name)
+
+
+def _safe_scalar_div(numerator, denominator, name):
+  """Divides two values, returning 0 if the denominator is != 0.
+
+  Args:
+    numerator: A scalar `float64` `Tensor`.
+    denominator: A scalar `float64` `Tensor`.
+    name: Name for the returned op.
+
+  Returns:
+    0 if `denominator` == 0, else `numerator` / `denominator`
+  """
+  numerator.get_shape().with_rank_at_most(1)
+  denominator.get_shape().with_rank_at_most(1)
+  return control_flow_ops.cond(
+      math_ops.equal(
+          array_ops.constant(0.0, dtype=dtypes.float64), denominator),
+      lambda: array_ops.constant(0.0, dtype=dtypes.float64),
+      lambda: math_ops.div(numerator, denominator),
       name=name)
 
 
@@ -1197,6 +1218,13 @@ def streaming_recall_at_thresholds(predictions, labels, thresholds,
     return recall, update_op
 
 
+def _at_k_name(name, k, class_id=None):
+  name = '%s_at_%d' % (name, k)
+  if class_id is not None:
+    name = '%s_class%d' % (name, class_id)
+  return name
+
+
 @deprecated_args(IGNORE_MASK_DATE, IGNORE_MASK_INSTRUCTIONS, 'ignore_mask')
 def streaming_recall_at_k(predictions, labels, k, ignore_mask=None,
                           weights=None, metrics_collections=None,
@@ -1251,7 +1279,7 @@ def streaming_recall_at_k(predictions, labels, k, ignore_mask=None,
                         _mask_weights(ignore_mask, weights),
                         metrics_collections,
                         updates_collections,
-                        name or ('recall_at_%d' % k))
+                        name or _at_k_name('recall', k))
 
 
 # TODO(ptucker): Validate range of values in labels?
@@ -1330,11 +1358,8 @@ def streaming_sparse_recall_at_k(predictions,
       `predictions`, or if either `metrics_collections` or `updates_collections`
       are not a list or tuple.
   """
-  default_name = 'recall_at_%d' % k
-  if class_id is not None:
-    default_name = '%s_class%d' % (default_name, class_id)
-
-  with ops.name_scope(name, default_name, [predictions, labels]) as scope:
+  default_name = _at_k_name('recall', k, class_id=class_id)
+  with ops.name_scope(name, default_name, (predictions, labels)) as scope:
     _, top_k_idx = nn.top_k(predictions, k)
     top_k_idx = math_ops.to_int64(top_k_idx)
     weights = _mask_weights(ignore_mask, weights)
@@ -1433,10 +1458,8 @@ def streaming_sparse_precision_at_k(predictions,
       `predictions`, or if either `metrics_collections` or `updates_collections`
       are not a list or tuple.
   """
-  default_name = 'precision_at_%d' % k
-  if class_id is not None:
-    default_name = '%s_class%d' % (default_name, class_id)
-  with ops.name_scope(name, default_name, [predictions, labels]) as scope:
+  default_name = _at_k_name('precision', k, class_id=class_id)
+  with ops.name_scope(name, default_name, (predictions, labels)) as scope:
     _, top_k_idx = nn.top_k(predictions, k)
     top_k_idx = math_ops.to_int64(top_k_idx)
     weights = _mask_weights(ignore_mask, weights)
@@ -1457,6 +1480,288 @@ def streaming_sparse_precision_at_k(predictions,
     return metric, update
 
 
+def num_relevant(labels, k):
+  """Computes number of relevant values for each row in labels.
+
+  For labels with shape [D1, ... DN, num_labels], this is the minimum of
+  `num_labels` and `k`.
+
+  Args:
+    labels: `int64` `Tensor` or `SparseTensor` with shape
+      [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
+      target classes for the associated prediction. Commonly, N=1 and `labels`
+      has shape [batch_size, num_labels].
+    k: Integer, k for @k metric.
+
+  Returns:
+    Integer `Tensor` of shape [D1, ... DN], where each value is the number of
+    relevant values for that row.
+
+  Raises:
+    ValueError: if inputs have invalid dtypes or values.
+  """
+  if k < 1:
+    raise ValueError('Invalid k=%s.' % k)
+  with ops.name_scope(None, 'num_relevant', (labels,)) as scope:
+    # For SparseTensor, calculate separate count for each row.
+    if isinstance(labels, (ops.SparseTensor, ops.SparseTensorValue)):
+      labels_sizes = set_ops.set_size(labels)
+      return math_ops.minimum(labels_sizes, k, name=scope)
+
+    # For dense Tensor, calculate scalar count based on last dimension, and
+    # tile across labels shape.
+    labels_shape = array_ops.shape(labels)
+    labels_size = labels_shape[-1]
+    num_relevant_scalar = math_ops.minimum(labels_size, k)
+    return array_ops.fill(labels_shape[0:-1], num_relevant_scalar, name=scope)
+
+
+def expand_and_tile(tensor, multiple, dim=0, name=None):
+  """Slice `tensor` shape in 2, then tile along the sliced dimension.
+
+  A new dimension is inserted in shape of `tensor` before `dim`, then values are
+  tiled `multiple` times along the new dimension.
+
+  Args:
+    tensor: Input `Tensor`.
+    multiple: Integer, number of times to tile.
+    dim: Integer, dimension along which to tile.
+    name: Name of operation.
+
+  Returns:
+    `Tensor` result of expanding and tiling `tensor`.
+
+  Raises:
+    ValueError: if `multiple` is less than 1, or `dim` is not in
+    `[-rank(tensor), rank(tensor)]`.
+  """
+  if multiple < 1:
+    raise ValueError('Invalid multiple %s, must be > 0.' % multiple)
+  with ops.name_scope(
+      name, 'expand_and_tile', (tensor, multiple, dim)) as scope:
+    # Sparse.
+    if isinstance(tensor, ops.SparseTensorValue):
+      tensor = ops.SparseTensor.from_value(tensor)
+    if isinstance(tensor, ops.SparseTensor):
+      if dim < 0:
+        expand_dims = array_ops.reshape(
+            array_ops.size(tensor.shape) + dim, [1])
+      else:
+        expand_dims = [dim]
+      expanded_shape = array_ops.concat(
+          0, (array_ops.slice(tensor.shape, [0], expand_dims), [1],
+              array_ops.slice(tensor.shape, expand_dims, [-1])),
+          name='expanded_shape')
+      expanded = sparse_ops.sparse_reshape(
+          tensor, shape=expanded_shape, name='expand')
+      if multiple == 1:
+        return expanded
+      return sparse_ops.sparse_concat(
+          dim - 1 if dim < 0 else dim, [expanded] * multiple, name=scope)
+
+    # Dense.
+    expanded = array_ops.expand_dims(
+        tensor, dim if (dim >= 0) else (dim - 1), name='expand')
+    if multiple == 1:
+      return expanded
+    ones = array_ops.ones_like(array_ops.shape(tensor))
+    tile_multiples = array_ops.concat(
+        0, (ones[:dim], (multiple,), ones[dim:]), name='multiples')
+    return array_ops.tile(expanded, tile_multiples, name=scope)
+
+
+def sparse_average_precision_at_k(predictions, labels, k):
+  """Computes average precision@k of predictions with respect to sparse labels.
+
+  From en.wikipedia.org/wiki/Information_retrieval#Average_precision, formula
+  for each row is:
+
+    AveP = sum_{i=1...k} P_{i} * rel_{i} / num_relevant_items
+
+  A "row" is the elements in dimension [D1, ... DN] of `predictions`, `labels`,
+  and the result `Tensors`. In the common case, this is [batch_size]. Each row
+  of the results contains the average precision for that row.
+
+  Internally, a `top_k` operation computes a `Tensor` indicating the top `k`
+  `predictions`. Set operations applied to `top_k` and `labels` calculate the
+  true positives, which are used to calculate the precision ("P_{i}" term,
+  above).
+
+  Args:
+    predictions: Float `Tensor` with shape [D1, ... DN, num_classes] where
+      N >= 1. Commonly, N=1 and `predictions` has shape
+      [batch size, num_classes]. The final dimension contains the logit values
+      for each class. [D1, ... DN] must match `labels`.
+    labels: `int64` `Tensor` or `SparseTensor` with shape
+      [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
+      target classes for the associated prediction. Commonly, N=1 and `labels`
+      has shape [batch_size, num_labels]. [D1, ... DN] must match
+      `predictions_idx`. Values should be in range [0, num_classes], where
+      num_classes is the last dimension of `predictions`.
+    k: Integer, k for @k metric. This will calculate an average precision for
+      range `[1,k]`, as documented above.
+
+  Returns:
+    `float64` `Tensor` of shape [D1, ... DN], where each value is the average
+    precision for that row.
+
+  Raises:
+    ValueError: if k is invalid.
+  """
+  if k < 1:
+    raise ValueError('Invalid k=%s.' % k)
+  with ops.name_scope(
+      None, 'average_precision', (predictions, labels, k)) as scope:
+    # Calculate top k indices to produce [D1, ... DN, k] tensor.
+    _, predictions_idx = nn.top_k(predictions, k)
+    predictions_idx = math_ops.to_int64(predictions_idx, name='predictions_idx')
+
+    # Expand dims to produce [D1, ... DN, k, 1] tensor. This gives us a separate
+    # prediction for each k, so we can calculate separate true positive values
+    # for each k.
+    predictions_idx_per_k = array_ops.expand_dims(
+        predictions_idx, -1, name='predictions_idx_per_k')
+
+    # Replicate labels k times to produce [D1, ... DN, k, num_labels] tensor.
+    labels_per_k = expand_and_tile(
+        labels, multiple=k, dim=-1, name='labels_per_k')
+
+    # The following tensors are all of shape [D1, ... DN, k], containing values
+    # per row, per k value.
+    # `relevant_per_k` (int32) - Relevance indicator, 1 if the prediction at
+    #     that k value is correct, 0 otherwise. This is the "rel_{i}" term from
+    #     the formula above.
+    # `tp_per_k` (int32) - True positive counts.
+    # `retrieved_per_k` (int32) - Number of predicted values at each k. This is
+    #     the precision denominator.
+    # `precision_per_k` (float64) - Precision at each k. This is the "P_{i}"
+    #     term from the formula above.
+    # `relevant_precision_per_k` (float64) - Relevant precisions; i.e.,
+    #     precisions at all k for which relevance indicator is true.
+    relevant_per_k = _sparse_true_positive_at_k(
+        predictions_idx_per_k, labels_per_k, name='relevant_per_k')
+    tp_per_k = math_ops.cumsum(relevant_per_k, axis=-1, name='tp_per_k')
+    retrieved_per_k = math_ops.cumsum(
+        array_ops.ones_like(relevant_per_k), axis=-1, name='retrieved_per_k')
+    precision_per_k = math_ops.div(
+        math_ops.to_double(tp_per_k), math_ops.to_double(retrieved_per_k),
+        name='precision_per_k')
+    relevant_precision_per_k = math_ops.mul(
+        precision_per_k, math_ops.to_double(relevant_per_k),
+        name='relevant_precision_per_k')
+
+    # Reduce along k dimension to get the sum, yielding a [D1, ... DN] tensor.
+    precision_sum = math_ops.reduce_sum(
+        relevant_precision_per_k, reduction_indices=(-1,), name='precision_sum')
+
+    # Divide by number of relevant items to get average precision. These are
+    # the "num_relevant_items" and "AveP" terms from the formula above.
+    num_relevant_items = math_ops.to_double(num_relevant(labels, k))
+    return math_ops.div(precision_sum, num_relevant_items, name=scope)
+
+
+def streaming_sparse_average_precision_at_k(predictions,
+                                            labels,
+                                            k,
+                                            weights=None,
+                                            metrics_collections=None,
+                                            updates_collections=None,
+                                            name=None):
+  """Computes average precision@k of predictions with respect to sparse labels.
+
+  See `sparse_average_precision_at_k` for details on formula. `weights` are
+  applied to the result of `sparse_average_precision_at_k`
+
+  `streaming_sparse_average_precision_at_k` creates two local variables,
+  `average_precision_at_<k>/count` and `average_precision_at_<k>/total`, that
+  are used to compute the frequency. This frequency is ultimately returned as
+  `precision_at_<k>`: an idempotent operation that simply divides
+  `true_positive_at_<k>` by total (`true_positive_at_<k>` +
+  `false_positive_at_<k>`).
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `precision_at_<k>`. Internally, a `top_k` operation computes a `Tensor`
+  indicating the top `k` `predictions`. Set operations applied to `top_k` and
+  `labels` calculate the true positives and false positives weighted by
+  `weights`. Then `update_op` increments `true_positive_at_<k>` and
+  `false_positive_at_<k>` using these values.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    predictions: Float `Tensor` with shape [D1, ... DN, num_classes] where
+      N >= 1. Commonly, N=1 and `predictions` has shape
+      [batch size, num_classes]. The final dimension contains the logit values
+      for each class. [D1, ... DN] must match `labels`.
+    labels: `int64` `Tensor` or `SparseTensor` with shape
+      [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
+      target classes for the associated prediction. Commonly, N=1 and `labels`
+      has shape [batch_size, num_labels]. [D1, ... DN] must match
+      `predictions_idx`. Values should be in range [0, num_classes], where
+      num_classes is the last dimension of `predictions`.
+    k: Integer, k for @k metric. This will calculate an average precision for
+      range `[1,k]`, as documented above.
+    weights: An optional `Tensor` whose shape is broadcastable to the the first
+      [D1, ... DN] dimensions of `predictions` and `labels`.
+    metrics_collections: An optional list of collections that values should
+      be added to.
+    updates_collections: An optional list of collections that updates should
+      be added to.
+    name: Name of new update operation, and namespace for other dependant ops.
+
+  Returns:
+    mean_average_precision: Scalar `float64` `Tensor` with the mean average
+      precision values.
+    update: `Operation` that increments  variables appropriately, and whose
+      value matches `metric`.
+  """
+  default_name = _at_k_name('average_precision', k)
+  with ops.name_scope(name, default_name, (predictions, labels)) as scope:
+    # Calculate per-example average precision, and apply weights.
+    average_precision = sparse_average_precision_at_k(
+        predictions=predictions, labels=labels, k=k)
+    if weights is not None:
+      weights = math_ops.to_double(weights)
+      average_precision = math_ops.mul(average_precision, weights)
+
+    # Create accumulation variables and update ops for max average precision and
+    # total average precision.
+    with ops.name_scope(None, 'max', (average_precision,)) as max_scope:
+      # `max` is the max possible precision. Since max for any row is 1.0:
+      # - For the unweighted case, this is just the number of rows.
+      # - For the weighted case, it's the sum of the weights broadcast across
+      #   `average_precision` rows.
+      max_var = contrib_variables.local_variable(
+          array_ops.zeros([], dtype=dtypes.float64), name=max_scope)
+      if weights is None:
+        batch_max = math_ops.to_double(
+            array_ops.size(average_precision, name='batch_max'))
+      else:
+        # TODO(ptucker): More efficient way to broadcast?
+        broadcast_weights = math_ops.mul(
+            weights, array_ops.ones_like(average_precision),
+            name='broadcast_weights')
+        batch_max = math_ops.reduce_sum(broadcast_weights, name='batch_max')
+      max_update = state_ops.assign_add(max_var, batch_max, name='update')
+    with ops.name_scope(None, 'total', (average_precision,)) as total_scope:
+      total_var = contrib_variables.local_variable(
+          array_ops.zeros([], dtype=dtypes.float64), name=total_scope)
+      batch_total = math_ops.reduce_sum(average_precision, name='batch_total')
+      total_update = state_ops.assign_add(total_var, batch_total, name='update')
+
+    # Divide total by max to get mean, for both vars and the update ops.
+    mean_average_precision = _safe_scalar_div(total_var, max_var, name='mean')
+    update = _safe_scalar_div(total_update, max_update, name=scope)
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, mean_average_precision)
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update)
+
+    return mean_average_precision, update
+
+
 def _select_class_id(ids, selected_id):
   """Filter all but `selected_id` out of `ids`.
 
@@ -1469,7 +1774,7 @@ def _select_class_id(ids, selected_id):
     which might be smaller. This contains only the entries equal to
     `selected_id`.
   """
-  if isinstance(ids, ops.SparseTensor):
+  if isinstance(ids, (ops.SparseTensor, ops.SparseTensorValue)):
     return sparse_ops.sparse_retain(
         ids, math_ops.equal(ids.values, selected_id))
 
@@ -1498,7 +1803,8 @@ def _maybe_select_class_id(labels, predictions_idx, selected_id=None):
       has shape [batch_size, num_labels]. [D1, ... DN] must match
       `predictions_idx`.
     predictions_idx: `int64` `Tensor` of class IDs, with shape [D1, ... DN, k]
-      where N >= 1. Commonly, N=1 and predictions has shape [batch size, k].
+      where N >= 1. Commonly, N=1 and `predictions_idx` has shape
+      [batch size, k].
     selected_id: Int id to select.
 
   Returns:
@@ -1508,6 +1814,46 @@ def _maybe_select_class_id(labels, predictions_idx, selected_id=None):
     return labels, predictions_idx
   return (_select_class_id(labels, selected_id),
           _select_class_id(predictions_idx, selected_id))
+
+
+def _sparse_true_positive_at_k(predictions_idx,
+                               labels,
+                               class_id=None,
+                               weights=None,
+                               name=None):
+  """Calculates true positives for recall@k and precision@k.
+
+  If `class_id` is specified, calculate binary true positives for `class_id`
+      only.
+  If `class_id` is not specified, calculate metrics for `k` predicted vs
+      `n` label classes, where `n` is the 2nd dimension of `labels_sparse`.
+
+  Args:
+    predictions_idx: 1-D or higher `int64` `Tensor` with last dimension `k`,
+      top `k` predicted classes. For rank `n`, the first `n-1` dimensions must
+      match `labels`.
+    labels: `int64` `Tensor` or `SparseTensor` with shape
+      [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
+      target classes for the associated prediction. Commonly, N=1 and `labels`
+      has shape [batch_size, num_labels]. [D1, ... DN] must match
+      `predictions_idx`.
+    class_id: Class for which we want binary metrics.
+    weights: `Tensor` whose shape is broadcastable to the the first [D1, ... DN]
+      dimensions of `predictions_idx` and `labels`.
+    name: Name of operation.
+
+  Returns:
+    A [D1, ... DN] `Tensor` of true positive counts.
+  """
+  with ops.name_scope(name, 'true_positives', (predictions_idx, labels)):
+    labels, predictions_idx = _maybe_select_class_id(
+        labels, predictions_idx, class_id)
+    tp = set_ops.set_size(set_ops.set_intersection(predictions_idx, labels))
+    tp = math_ops.to_double(tp)
+    if weights is not None:
+      weights = math_ops.to_double(weights)
+      tp = math_ops.mul(tp, weights)
+    return tp
 
 
 def _streaming_sparse_true_positive_at_k(predictions_idx,
@@ -1546,23 +1892,56 @@ def _streaming_sparse_true_positive_at_k(predictions_idx,
   Raises:
     ValueError: If `weights` is not `None` and has an incomptable shape.
   """
-  default_name = 'true_positive_at_%d' % k
-  if class_id is not None:
-    default_name = '%s_class%d' % (default_name, class_id)
-  with ops.name_scope(name, default_name, [predictions_idx, labels]) as scope:
-    labels, predictions_idx = _maybe_select_class_id(labels,
-                                                     predictions_idx,
-                                                     class_id)
-    tp = set_ops.set_size(set_ops.set_intersection(predictions_idx, labels))
-    tp = math_ops.to_double(tp)
-    if weights is not None:
-      weights = math_ops.to_double(weights)
-      tp = math_ops.mul(tp, weights)
-    batch_total_tp = math_ops.reduce_sum(tp)
+  default_name = _at_k_name('true_positive', k, class_id=class_id)
+  with ops.name_scope(name, default_name, (predictions_idx, labels)) as scope:
+    tp = _sparse_true_positive_at_k(
+        predictions_idx=predictions_idx, labels=labels, class_id=class_id,
+        weights=weights)
+    batch_total_tp = math_ops.to_double(math_ops.reduce_sum(tp))
 
     var = contrib_variables.local_variable(
         array_ops.zeros([], dtype=dtypes.float64), name=scope)
     return var, state_ops.assign_add(var, batch_total_tp, name='update')
+
+
+def _sparse_false_positive_at_k(predictions_idx,
+                                labels,
+                                class_id=None,
+                                weights=None):
+  """Calculates false positives for precision@k.
+
+  If `class_id` is specified, calculate binary true positives for `class_id`
+      only.
+  If `class_id` is not specified, calculate metrics for `k` predicted vs
+      `n` label classes, where `n` is the 2nd dimension of `labels_sparse`.
+
+  Args:
+    predictions_idx: 1-D or higher `int64` `Tensor` with last dimension `k`,
+      top `k` predicted classes. For rank `n`, the first `n-1` dimensions must
+      match `labels`.
+    labels: `int64` `Tensor` or `SparseTensor` with shape
+      [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
+      target classes for the associated prediction. Commonly, N=1 and `labels`
+      has shape [batch_size, num_labels]. [D1, ... DN] must match
+      `predictions_idx`.
+    class_id: Class for which we want binary metrics.
+    weights: `Tensor` whose shape is broadcastable to the the first [D1, ... DN]
+      dimensions of `predictions_idx` and `labels`.
+
+  Returns:
+    A [D1, ... DN] `Tensor` of false positive counts.
+  """
+  with ops.name_scope(None, 'false_positives', (predictions_idx, labels)):
+    labels, predictions_idx = _maybe_select_class_id(labels,
+                                                     predictions_idx,
+                                                     class_id)
+    fp = set_ops.set_size(set_ops.set_difference(
+        predictions_idx, labels, aminusb=True))
+    fp = math_ops.to_double(fp)
+    if weights is not None:
+      weights = math_ops.to_double(weights)
+      fp = math_ops.mul(fp, weights)
+    return fp
 
 
 def _streaming_sparse_false_positive_at_k(predictions_idx,
@@ -1601,25 +1980,57 @@ def _streaming_sparse_false_positive_at_k(predictions_idx,
   Raises:
     ValueError: If `weights` is not `None` and has an incomptable shape.
   """
-  default_name = 'false_positive_at_%d' % k
-  if class_id is not None:
-    default_name = '%s_class%d' % (default_name, class_id)
-  with ops.name_scope(name, default_name, [predictions_idx, labels]) as scope:
-    labels, predictions_idx = _maybe_select_class_id(labels,
-                                                     predictions_idx,
-                                                     class_id)
-    fp = set_ops.set_size(set_ops.set_difference(predictions_idx,
-                                                 labels,
-                                                 aminusb=True))
-    fp = math_ops.to_double(fp)
-    if weights is not None:
-      weights = math_ops.to_double(weights)
-      fp = math_ops.mul(fp, weights)
-    batch_total_fp = math_ops.reduce_sum(fp)
+  default_name = _at_k_name('false_positive', k, class_id=class_id)
+  with ops.name_scope(name, default_name, (predictions_idx, labels)) as scope:
+    fp = _sparse_false_positive_at_k(
+        predictions_idx=predictions_idx, labels=labels, class_id=class_id,
+        weights=weights)
+    batch_total_fp = math_ops.to_double(math_ops.reduce_sum(fp))
 
     var = contrib_variables.local_variable(
         array_ops.zeros([], dtype=dtypes.float64), name=scope)
     return var, state_ops.assign_add(var, batch_total_fp, name='update')
+
+
+def _sparse_false_negative_at_k(predictions_idx,
+                                labels,
+                                class_id=None,
+                                weights=None):
+  """Calculates false negatives for recall@k.
+
+  If `class_id` is specified, calculate binary true positives for `class_id`
+      only.
+  If `class_id` is not specified, calculate metrics for `k` predicted vs
+      `n` label classes, where `n` is the 2nd dimension of `labels_sparse`.
+
+  Args:
+    predictions_idx: 1-D or higher `int64` `Tensor` with last dimension `k`,
+      top `k` predicted classes. For rank `n`, the first `n-1` dimensions must
+      match `labels`.
+    labels: `int64` `Tensor` or `SparseTensor` with shape
+      [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
+      target classes for the associated prediction. Commonly, N=1 and `labels`
+      has shape [batch_size, num_labels]. [D1, ... DN] must match
+      `predictions_idx`.
+    class_id: Class for which we want binary metrics.
+    weights: `Tensor` whose shape is broadcastable to the the first [D1, ... DN]
+      dimensions of `predictions_idx` and `labels`.
+
+  Returns:
+    A [D1, ... DN] `Tensor` of false negative counts.
+  """
+  with ops.name_scope(None, 'false_negatives', (predictions_idx, labels)):
+    labels, predictions_idx = _maybe_select_class_id(labels,
+                                                     predictions_idx,
+                                                     class_id)
+    fn = set_ops.set_size(set_ops.set_difference(predictions_idx,
+                                                 labels,
+                                                 aminusb=False))
+    fn = math_ops.to_double(fn)
+    if weights is not None:
+      weights = math_ops.to_double(weights)
+      fn = math_ops.mul(fn, weights)
+    return fn
 
 
 def _streaming_sparse_false_negative_at_k(predictions_idx,
@@ -1658,21 +2069,12 @@ def _streaming_sparse_false_negative_at_k(predictions_idx,
   Raises:
     ValueError: If `weights` is not `None` and has an incomptable shape.
   """
-  default_name = 'false_negative_at_%d' % k
-  if class_id is not None:
-    default_name = '%s_class%d' % (default_name, class_id)
-  with ops.name_scope(name, default_name, [predictions_idx, labels]) as scope:
-    labels, predictions_idx = _maybe_select_class_id(labels,
-                                                     predictions_idx,
-                                                     class_id)
-    fn = set_ops.set_size(set_ops.set_difference(predictions_idx,
-                                                 labels,
-                                                 aminusb=False))
-    fn = math_ops.to_double(fn)
-    if weights is not None:
-      weights = math_ops.to_double(weights)
-      fn = math_ops.mul(fn, weights)
-    batch_total_fn = math_ops.reduce_sum(fn)
+  default_name = _at_k_name('false_negative', k, class_id=class_id)
+  with ops.name_scope(name, default_name, (predictions_idx, labels)) as scope:
+    fn = _sparse_false_negative_at_k(
+        predictions_idx=predictions_idx, labels=labels, class_id=class_id,
+        weights=weights)
+    batch_total_fn = math_ops.to_double(math_ops.reduce_sum(fn))
 
     var = contrib_variables.local_variable(
         array_ops.zeros([], dtype=dtypes.float64), name=scope)
@@ -2076,9 +2478,9 @@ def streaming_pearson_correlation(predictions,
     update_op: An operation that updates the underlying variables appropriately.
 
   Raises:
-    ValueError: If labels and predictions are of different sizes or if the
-      ignore_mask is of the wrong size or if either `metrics_collections` or
-      `updates_collections` are not a list or tuple.
+    ValueError: If `labels` and `predictions` are of different sizes, or if
+      `weights` is the wrong size, or if either `metrics_collections` or
+      `updates_collections` are not a `list` or `tuple`.
   """
   with variable_scope.variable_scope(name, 'pearson_r', [predictions, labels]):
     predictions, labels = metric_ops_util.remove_squeezable_dimensions(
@@ -2392,4 +2794,28 @@ def aggregate_metric_map(names_to_tuples):
   return dict(zip(metric_names, value_ops)), dict(zip(metric_names, update_ops))
 
 
-__all__ = make_all(__name__)
+__all__ = [
+    'aggregate_metric_map',
+    'aggregate_metrics',
+    'streaming_accuracy',
+    'streaming_auc',
+    'streaming_mean',
+    'streaming_mean_absolute_error',
+    'streaming_mean_cosine_distance',
+    'streaming_mean_iou',
+    'streaming_mean_relative_error',
+    'streaming_mean_squared_error',
+    'streaming_mean_tensor',
+    'streaming_percentage_less',
+    'streaming_precision',
+    'streaming_precision_at_thresholds',
+    'streaming_recall',
+    'streaming_recall_at_k',
+    'streaming_recall_at_thresholds',
+    'streaming_root_mean_squared_error',
+    'streaming_sensitivity_at_specificity',
+    'streaming_sparse_average_precision_at_k',
+    'streaming_sparse_precision_at_k',
+    'streaming_sparse_recall_at_k',
+    'streaming_specificity_at_sensitivity',
+]
