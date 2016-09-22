@@ -122,6 +122,7 @@ filegroup(
         "//tensorflow/contrib/slim/python/slim/nets:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
+        "//tensorflow/contrib/tensorboard:all_files",
         "//tensorflow/contrib/testing:all_files",
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
