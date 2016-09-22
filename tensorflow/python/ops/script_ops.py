@@ -17,6 +17,8 @@
 TensorFlow provides allows you to wrap python/numpy functions as
 TensorFlow operators.
 
+@@py_func
+
 """
 
 # pylint: disable=g-bad-name

@@ -152,7 +152,6 @@ _allowed_symbols = [
     'lin_space',
     'list_diff',  # Use tf.listdiff instead.
     'parse_single_sequence_example',
-    'py_func',
     'scalar_mul',
     'serialize_many_sparse',
     'serialize_sparse',
