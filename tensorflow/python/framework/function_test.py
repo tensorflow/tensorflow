@@ -574,8 +574,7 @@ class UnrollLSTMTest(tf.test.TestCase):
       return Loop(cell, weights, inp)
 
     cell = function.Defun(
-        x=tf.float32, mprev=tf.float32, cprev=tf.float32,
-        weights=tf.float32)(cell)
+        tf.float32, tf.float32, tf.float32, tf.float32)(cell)
     if mode == "cell":
       # Just represent the LSTM as a function.
       return Loop(cell, weights, inp)
@@ -681,7 +680,7 @@ class FunctionInlineControlTest(tf.test.TestCase):
     for noinline in [False, True]:
 
       # pylint: disable=unexpected-keyword-arg
-      @function.Defun(dtype, extra_kwargs={"noinline": noinline})
+      @function.Defun(dtype, noinline=noinline)
       def Cell(v):
         # If v is a vector [n, 1], x is a big square matrix.
         x = tf.tanh(v + tf.transpose(v, [1, 0]))
