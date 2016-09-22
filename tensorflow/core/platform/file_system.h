@@ -225,11 +225,14 @@ class FileSystemRegistry {
       std::vector<string>* schemes) = 0;
 };
 
-// Given URI of the form [scheme://]<filename>, return 'scheme'.
-string GetSchemeFromURI(const string& name);
-
-// Given URI of the form [scheme://]<filename>, return 'filename'.
-string GetNameFromURI(const string& name);
+// Populates the scheme, host, and path from a URI.
+//
+// Corner cases:
+// - If the URI is invalid, scheme and host are set to empty strings and the
+//   passed string is assumed to be a path
+// - If the URI omits the path (e.g. file://host), then the path is left empty.
+void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
+              StringPiece* path);
 
 }  // namespace tensorflow
 

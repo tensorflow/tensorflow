@@ -220,16 +220,34 @@ TEST(EnvTest, IPFS) {
   }
 }
 
-TEST(EnvTest, GetSchemeForURI) {
-  EXPECT_EQ(GetSchemeFromURI("http://foo"), "http");
-  EXPECT_EQ(GetSchemeFromURI("/encrypted/://foo"), "");
-  EXPECT_EQ(GetSchemeFromURI("/usr/local/foo"), "");
-  EXPECT_EQ(GetSchemeFromURI("file:///usr/local/foo"), "file");
-  EXPECT_EQ(GetSchemeFromURI("local.file:///usr/local/foo"), "local.file");
-  EXPECT_EQ(GetSchemeFromURI("a-b:///foo"), "");
-  EXPECT_EQ(GetSchemeFromURI(":///foo"), "");
-  EXPECT_EQ(GetSchemeFromURI("9dfd:///foo"), "");
+#define EXPECT_PARSE_URI(uri, scheme, host, path) \
+  do {                                            \
+    StringPiece s, h, p;                          \
+    ParseURI(uri, &s, &h, &p);                    \
+    EXPECT_EQ(scheme, s.ToString());              \
+    EXPECT_EQ(host, h.ToString());                \
+    EXPECT_EQ(path, p.ToString());                \
+  } while (0)
+
+TEST(EnvTest, ParseURI) {
+  EXPECT_PARSE_URI("http://foo", "http", "foo", "");
+  EXPECT_PARSE_URI("/encrypted/://foo", "", "", "/encrypted/://foo");
+  EXPECT_PARSE_URI("/usr/local/foo", "", "", "/usr/local/foo");
+  EXPECT_PARSE_URI("file:///usr/local/foo", "file", "", "/usr/local/foo");
+  EXPECT_PARSE_URI("local.file:///usr/local/foo", "local.file", "",
+                   "/usr/local/foo");
+  EXPECT_PARSE_URI("a-b:///foo", "", "", "a-b:///foo");
+  EXPECT_PARSE_URI(":///foo", "", "", ":///foo");
+  EXPECT_PARSE_URI("9dfd:///foo", "", "", "9dfd:///foo");
+  EXPECT_PARSE_URI("file:", "", "", "file:");
+  EXPECT_PARSE_URI("file:/", "", "", "file:/");
+  EXPECT_PARSE_URI("hdfs://localhost:8020/path/to/file", "hdfs",
+                   "localhost:8020", "/path/to/file");
+  EXPECT_PARSE_URI("hdfs://localhost:8020", "hdfs", "localhost:8020", "");
+  EXPECT_PARSE_URI("hdfs://localhost:8020/", "hdfs", "localhost:8020", "/");
 }
+
+#undef EXPECT_PARSE_URI
 
 TEST(EnvTest, SleepForMicroseconds) {
   Env* env = Env::Default();

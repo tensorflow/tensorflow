@@ -69,8 +69,9 @@ Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
 Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 
 Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
-  string scheme = GetSchemeFromURI(fname);
-  FileSystem* file_system = file_system_registry_->Lookup(scheme);
+  StringPiece scheme, host, path;
+  ParseURI(fname, &scheme, &host, &path);
+  FileSystem* file_system = file_system_registry_->Lookup(scheme.ToString());
   if (!file_system) {
     return errors::Unimplemented("File system scheme ", scheme,
                                  " not implemented");

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/posix/error.h"
 #include "third_party/hadoop/hdfs.h"
@@ -124,22 +125,14 @@ HadoopFileSystem::~HadoopFileSystem() {}
 Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   TF_RETURN_IF_ERROR(hdfs_->status());
 
-  if (!fname.Consume("hdfs://")) {
-    return errors::InvalidArgument("HDFS path must start with hdfs://");
-  }
-  auto first_slash = fname.find('/');
-  string namenode;
-  if (first_slash == string::npos) {
-    namenode = fname.ToString();
-  } else {
-    namenode = fname.substr(0, first_slash).ToString();
-  }
+  StringPiece scheme, namenode, path;
+  ParseURI(fname, &scheme, &namenode, &path);
 
   hdfsBuilder* builder = hdfs_->hdfsNewBuilder();
   if (namenode == "localfilesystem") {
     hdfs_->hdfsBuilderSetNameNode(builder, nullptr);
   } else {
-    hdfs_->hdfsBuilderSetNameNode(builder, namenode.c_str());
+    hdfs_->hdfsBuilderSetNameNode(builder, namenode.ToString().c_str());
   }
   *fs = hdfs_->hdfsBuilderConnect(builder);
   if (*fs == nullptr) {
@@ -149,14 +142,9 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
 }
 
 string HadoopFileSystem::TranslateName(const string& name) const {
-  StringPiece sp = name;
-  sp.Consume("hdfs://");
-  auto first_slash = sp.find('/');
-  if (first_slash == string::npos) {
-    return string();
-  }
-  sp.remove_prefix(first_slash);
-  return sp.ToString();
+  StringPiece scheme, namenode, path;
+  ParseURI(name, &scheme, &namenode, &path);
+  return path.ToString();
 }
 
 class HDFSRandomAccessFile : public RandomAccessFile {

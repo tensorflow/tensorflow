@@ -74,18 +74,14 @@ Status ParseGcsPath(StringPiece fname, string* bucket, string* object) {
   if (!bucket || !object) {
     return errors::Internal("bucket and object cannot be null.");
   }
-  if (!fname.Consume("gs://")) {
+  StringPiece scheme, bucketp, objectp;
+  ParseURI(fname, &scheme, &bucketp, &objectp);
+  if (scheme != "gs") {
     return errors::InvalidArgument("GCS path must start with gs://");
   }
-  auto first_slash = fname.find('/');
-  if (first_slash == string::npos) {
-    *bucket = fname.ToString();
-    *object = string();
-  } else {
-    *bucket = fname.substr(0, first_slash).ToString();
-    fname.remove_prefix(first_slash + 1);
-    *object = fname.ToString();
-  }
+  *bucket = bucketp.ToString();
+  objectp.Consume("/");
+  *object = objectp.ToString();
   return Status::OK();
 }
 
