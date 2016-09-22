@@ -23,7 +23,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`predictions`</b>: The predicted values, a `Tensor` of any shape.
 *  <b>`labels`</b>: The ground truth values, a `Tensor` whose shape matches
     `predictions`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape matches `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`metrics_collections`</b>: An optional list of collections that `accuracy` should
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that `update_op` should

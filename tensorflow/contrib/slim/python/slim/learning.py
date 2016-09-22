@@ -663,7 +663,7 @@ def train(train_op,
       raise ValueError('Cannot provide trace_every_n_steps because '
                        'logdir=None')
 
-  if sync_optimizer and startup_delay_steps > 0:
+  if sync_optimizer is not None and startup_delay_steps > 0:
     raise ValueError(
         'startup_delay_steps must be zero when sync_optimizer is supplied.')
 
@@ -697,7 +697,7 @@ def train(train_op,
 
     cleanup_op = None
 
-    if is_chief and sync_optimizer:
+    if is_chief and sync_optimizer is not None:
       if not isinstance(sync_optimizer,
                         sync_replicas_optimizer.SyncReplicasOptimizer):
         raise ValueError(
@@ -761,7 +761,7 @@ def train(train_op,
                              number_of_steps or sys.maxint))
         sv.start_queue_runners(sess)
         logging.info('Starting Queues.')
-        if is_chief and sync_optimizer:
+        if is_chief and sync_optimizer is not None:
           sv.start_queue_runners(sess, [chief_queue_runner])
         try:
           while not sv.should_stop():

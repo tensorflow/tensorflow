@@ -2,6 +2,8 @@
 
 BatchToSpace for 4-D tensors of type T.
 
+This is a legacy version of the more general BatchToSpaceND.
+
 Rearranges (permutes) data from batch into blocks of spatial data, followed by
 cropping. This is the reverse transformation of SpaceToBatch. More specifically,
 this op outputs a copy of the input tensor where values from the `batch`

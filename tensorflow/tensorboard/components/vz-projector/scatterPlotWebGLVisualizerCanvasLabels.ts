@@ -20,10 +20,8 @@ import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
 import {getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
 import {Point2D} from './vector';
 
-const LABEL_COLOR_DAY = 0x000000;
-const LABEL_COLOR_NIGHT = 0xffffff;
-const LABEL_STROKE_DAY = 0xffffff;
-const LABEL_STROKE_NIGHT = 0x000000;
+const LABEL_COLOR = 0x000000;
+const LABEL_STROKE = 0xffffff;
 
 // The maximum number of labels to draw to keep the frame rate up.
 const SAMPLE_SIZE = 10000;
@@ -40,8 +38,8 @@ export class ScatterPlotWebGLVisualizerCanvasLabels implements
   private gc: CanvasRenderingContext2D;
   private canvas: HTMLCanvasElement;
   private labelCanvasIsCleared = true;
-  private labelColor: number = LABEL_COLOR_DAY;
-  private labelStroke: number = LABEL_STROKE_DAY;
+  private labelColor: number = LABEL_COLOR;
+  private labelStroke: number = LABEL_STROKE;
   private labelsActive: boolean = true;
   private sceneIs3D: boolean = true;
 
@@ -215,13 +213,6 @@ export class ScatterPlotWebGLVisualizerCanvasLabels implements
     this.removeAllLabels();
   }
 
-  onSetDayNightMode(isNight: boolean) {
-    this.labelColor = (isNight ? LABEL_COLOR_NIGHT : LABEL_COLOR_DAY);
-    this.labelStroke = (isNight ? LABEL_STROKE_NIGHT : LABEL_STROKE_DAY);
-  }
-
-  onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {}
-
   onRender(rc: RenderContext) {
     if (this.labelsActive) {
       this.makeLabels(
@@ -230,4 +221,7 @@ export class ScatterPlotWebGLVisualizerCanvasLabels implements
           rc.nearestCameraSpacePointZ, rc.farthestCameraSpacePointZ);
     }
   }
+
+  onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {}
+  onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }

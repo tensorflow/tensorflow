@@ -47,6 +47,7 @@ from tensorflow.tools.test import run_and_gather_logs_lib
 
 FLAGS = tf.app.flags.FLAGS
 
+tf.app.flags.DEFINE_string("name", "", """Benchmark target identifier.""")
 tf.app.flags.DEFINE_string("test_name", "", """Test target to run.""")
 tf.app.flags.DEFINE_string(
     "test_args", "", """Test arguments, space separated.""")
@@ -73,10 +74,11 @@ def gather_build_configuration():
 
 
 def main(unused_args):
+  name = FLAGS.name
   test_name = FLAGS.test_name
   test_args = FLAGS.test_args
   test_results, _ = run_and_gather_logs_lib.run_and_gather_logs(
-      test_name, test_args)
+      name, test_name, test_args)
 
   # Additional bits we receive from bazel
   test_results.build_configuration.CopyFrom(gather_build_configuration())

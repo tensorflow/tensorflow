@@ -969,13 +969,12 @@ TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
   // Paddings not known, but batch size can be computed.
   INFER_OK(op, "[1,10,10,3];[2,2]", "[4,?,?,d0_3]");
 
-  // Unknown paddings means unknown shape of rank 4.
-  INFER_OK(op, "[1,10,10,3];?", "[?,?,?,?]");
+  // Unknown paddings means width and height.
+  INFER_OK(op, "[1,10,10,3];?", "[4,?,?,d0_3]");
 
   // Paddings not correct shape
-  INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[1,10,10,3];[4]");
-  INFER_ERROR("SpaceToBatch requires paddings with shape [2,2]", op,
-              "[1,10,10,3];[2,3]");
+  INFER_ERROR("rank", op, "[1,10,10,3];[4]");
+  INFER_ERROR("3 and 2", op, "[1,10,10,3];[2,3]");
 
   Tensor paddings = test::AsTensor<int32>({4, 2, 2, 4}, {{2, 2}});
   op.input_tensors[1] = &paddings;
@@ -995,6 +994,83 @@ TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
   INFER_ERROR("cannot be negative", op, "[1,10,10,3];[2,2]");
 }
 
+TEST(ArrayOpsTest, SpaceToBatchND_ShapeFn) {
+  ShapeInferenceTestOp op("SpaceToBatchND");
+  op.input_tensors.resize(3);
+  TF_ASSERT_OK(NodeDefBuilder("test", "SpaceToBatchND")
+                   .Input("input", 0, DT_FLOAT)
+                   .Input("block_shape", 1, DT_INT32)
+                   .Input("paddings", 2, DT_INT32)
+                   .Finalize(&op.node_def));
+
+  // Verify that input shape and paddings shape can be unknown.
+  INFER_OK(op, "?;[2];?", "?");
+
+  // Only number of input dimensions is known.
+  INFER_OK(op, "[?,?,?,?];[2];?", "[?,?,?,d0_3]");
+
+  // Dimensions are partially known.
+  INFER_OK(op, "[?,?,?,2];[2];?", "[?,?,?,d0_3]");
+
+  {
+    // Dimensions are partially known, block_shape known.
+    Tensor block_shape = test::AsTensor<int32>({2, 3});
+    op.input_tensors[1] = &block_shape;
+    INFER_OK(op, "[3,?,?,2];[2];?", "[18,?,?,d0_3]");
+
+    // Dimensions are partially known, block_shape and paddings known.
+    {
+      Tensor paddings = test::AsTensor<int32>({1, 1, 0, 1}, {{2, 2}});
+      op.input_tensors[2] = &paddings;
+      INFER_OK(op, "[3,?,2,2];[2];[2,2]", "[18,?,1,d0_3]");
+      op.input_tensors[2] = nullptr;
+    }
+
+    // Dimensions are fully known, block_shape and paddings are known.
+    {
+      Tensor paddings = test::AsTensor<int32>({1, 1, 0, 0}, {{2, 2}});
+      op.input_tensors[2] = &paddings;
+      INFER_OK(op, "[3,2,3,2];[2];[2,2]", "[18,2,1,d0_3]");
+      op.input_tensors[2] = nullptr;
+    }
+
+    op.input_tensors[1] = nullptr;
+  }
+
+  INFER_ERROR("block_shape must have rank 1", op, "?;[1,1];?");
+  INFER_ERROR("block_shape must have known size", op, "?;[?];?");
+
+  {
+    Tensor block_shape = test::AsTensor<int32>({0, 2});
+    op.input_tensors[1] = &block_shape;
+    INFER_ERROR("block_shape must be positive", op, "[1,2,2];[2];[2,2]");
+    op.input_tensors[1] = nullptr;
+  }
+
+  {
+    Tensor block_shape = test::AsTensor<int32>({1, 1});
+    op.input_tensors[1] = &block_shape;
+    Tensor paddings = test::AsTensor<int32>({0, -1, 0, 0}, {{2, 2}});
+    op.input_tensors[2] = &paddings;
+    INFER_ERROR("paddings cannot be negative", op, "[1,2,2];[2];[2,2]");
+    op.input_tensors[1] = nullptr;
+    op.input_tensors[2] = nullptr;
+  }
+
+  {
+    Tensor block_shape = test::AsTensor<int32>({3, 3});
+    op.input_tensors[1] = &block_shape;
+    Tensor paddings = test::AsTensor<int32>({0, 0, 0, 0}, {{2, 2}});
+    op.input_tensors[2] = &paddings;
+    INFER_ERROR("divisible", op, "[1,2,3,1];[2];[2,2]");
+    op.input_tensors[1] = nullptr;
+    op.input_tensors[2] = nullptr;
+  }
+
+  INFER_ERROR("rank", op, "[1,3,3,1];[2];[1]");
+  INFER_ERROR("shape", op, "[1,3,3,1];[2];[1,2]");
+}
+
 TEST(ArrayOpsTest, BatchToSpace_ShapeFn) {
   ShapeInferenceTestOp op("BatchToSpace");
   op.input_tensors.resize(2);
@@ -1008,16 +1084,15 @@ TEST(ArrayOpsTest, BatchToSpace_ShapeFn) {
   INFER_OK(op, "[4,8,8,3];[2,2]", "[1,?,?,d0_3]");
 
   // block_size not compatible with batch size
-  INFER_ERROR("Dimension size must be evenly divisible by 4 but is 5", op,
+  INFER_ERROR("Dimension size must be evenly divisible by", op,
               "[5,8,8,3];[2,2]");
 
-  // Unknown croppings means unknown shape
-  INFER_OK(op, "[4,8,8,3];?", "[?,?,?,?]");
+  // Unknown croppings means unknown width and height.
+  INFER_OK(op, "[4,8,8,3];?", "[1,?,?,d0_3]");
 
   // croppings not correct shape
-  INFER_ERROR("Shape must be rank 2 but is rank 1", op, "[4,8,8,3];[4]");
-  INFER_ERROR("BatchToSpace requires crops with shape [2,2]", op,
-              "[4,8,8,3];[2,3]");
+  INFER_ERROR("rank", op, "[4,8,8,3];[4]");
+  INFER_ERROR("3 and 2", op, "[4,8,8,3];[2,3]");
 
   Tensor croppings = test::AsTensor<int64>({4, 2, 2, 4}, {{2, 2}});
   op.input_tensors[1] = &croppings;
@@ -1037,6 +1112,90 @@ TEST(ArrayOpsTest, BatchToSpace_ShapeFn) {
   croppings = test::AsTensor<int32>({1, -2, 3, 4}, {{2, 2}});
   op.input_tensors[1] = &croppings;
   INFER_ERROR("cannot be negative", op, "[4,8,8,3];[2,2]");
+}
+
+TEST(ArrayOpsTest, BatchToSpaceND_ShapeFn) {
+  ShapeInferenceTestOp op("BatchToSpaceND");
+  op.input_tensors.resize(3);
+  TF_ASSERT_OK(NodeDefBuilder("test", "BatchToSpaceND")
+                   .Input("input", 0, DT_FLOAT)
+                   .Input("block_shape", 1, DT_INT32)
+                   .Input("crops", 2, DT_INT32)
+                   .Finalize(&op.node_def));
+
+  // Verify that input shape and crops shape can be unknown.
+  INFER_OK(op, "?;[2];?", "?");
+
+  // Only number of input dimensions is known.
+  INFER_OK(op, "[?,?,?,?];[2];?", "[?,?,?,d0_3]");
+
+  {
+    // Dimensions are partially known, block_shape known.
+    Tensor block_shape = test::AsTensor<int32>({2, 3});
+    op.input_tensors[1] = &block_shape;
+    INFER_OK(op, "[?,?,?,2];[2];?", "[?,?,?,d0_3]");
+
+    INFER_OK(op, "[18,?,?,2];[2];?", "[3,?,?,d0_3]");
+
+    // Dimensions are partially known, block_shape and crops known.
+    {
+      Tensor crops = test::AsTensor<int32>({1, 1, 0, 1}, {{2, 2}});
+      op.input_tensors[2] = &crops;
+      INFER_OK(op, "[18,?,2,2];[2];[2,2]", "[3,?,5,d0_3]");
+      op.input_tensors[2] = nullptr;
+    }
+
+    // Dimensions are fully known, block_shape and crops are known.
+    {
+      Tensor crops = test::AsTensor<int32>({1, 1, 0, 0}, {{2, 2}});
+      op.input_tensors[2] = &crops;
+      INFER_OK(op, "[18,2,1,2];[2];[2,2]", "[3,2,3,d0_3]");
+      op.input_tensors[2] = nullptr;
+    }
+
+    op.input_tensors[1] = nullptr;
+  }
+
+  INFER_ERROR("block_shape must have rank 1", op, "?;[1,1];?");
+  INFER_ERROR("block_shape must have known size", op, "?;[?];?");
+  INFER_ERROR("rank", op, "[2,2];[2];[2,2]");
+  INFER_ERROR("rank", op, "[2,2,3];[3];[3,2]");
+
+  {
+    Tensor block_shape = test::AsTensor<int32>({0, 2});
+    op.input_tensors[1] = &block_shape;
+    INFER_ERROR("block_shape must be positive", op, "[1,2,2];[2];[2,2]");
+    op.input_tensors[1] = nullptr;
+  }
+
+  {
+    Tensor block_shape = test::AsTensor<int32>({1, 1});
+    op.input_tensors[1] = &block_shape;
+    Tensor paddings = test::AsTensor<int32>({0, -1, 0, 0}, {{2, 2}});
+    op.input_tensors[2] = &paddings;
+    INFER_ERROR("crops cannot be negative", op, "[1,2,2];[2];[2,2]");
+    op.input_tensors[1] = nullptr;
+    op.input_tensors[2] = nullptr;
+  }
+
+  // The amount to crop exceeds the padded size.
+  {
+    Tensor block_shape = test::AsTensor<int32>({2, 2});
+    op.input_tensors[1] = &block_shape;
+    Tensor crops = test::AsTensor<int32>({3, 2, 0, 0}, {{2, 2}});
+    op.input_tensors[2] = &crops;
+    INFER_ERROR("Negative", op, "[4,2,3,1];[2];[2,2]");
+    op.input_tensors[1] = nullptr;
+    op.input_tensors[2] = nullptr;
+  }
+
+  // The batch size is not divisible by the product of the block_shape.
+  {
+    Tensor block_shape = test::AsTensor<int32>({2, 3});
+    op.input_tensors[1] = &block_shape;
+    INFER_ERROR("divisible", op, "[3,1,1,1];[2];[2,2]");
+    op.input_tensors[1] = nullptr;
+  }
 }
 
 TEST(ArrayOpsTest, SpaceToDepth_ShapeFn) {

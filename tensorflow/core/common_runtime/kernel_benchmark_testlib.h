@@ -54,7 +54,6 @@ class Benchmark {
 
  private:
   thread::ThreadPool* pool_ = nullptr;
-  thread::ThreadPool* non_blocking_pool_ = nullptr;
   Device* device_ = nullptr;
   Rendezvous* rendez_ = nullptr;
   Executor* exec_ = nullptr;

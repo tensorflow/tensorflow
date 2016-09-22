@@ -98,6 +98,13 @@ class PyOpTest(tf.test.TestCase):
       self.assertAllClose(y.eval(), 0.0)
       self.assertAllClose(z.eval(), 1.0)
 
+    # returns a tuple, Tout and inp a tuple
+    with self.test_session():
+      x = tf.constant(0.0, tf.float64)
+      y, z = tf.py_func(tuple_func, (x,), (tf.float64, tf.float64))
+      self.assertAllClose(y.eval(), 0.0)
+      self.assertAllClose(z.eval(), 1.0)
+
   def testStrings(self):
 
     def read_fixed_length_numpy_strings():
