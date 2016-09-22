@@ -756,7 +756,7 @@ TEST(GcsFileSystemTest, RenameFile_Folder) {
            "path1%2F/rewriteTo/b/bucket/o/path2%2F\n"
            "Auth Token: fake_token\n"
            "Post: yes\n",
-           ""),
+           "{\"done\": true}"),
        // Deleting the original directory marker.
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
@@ -771,7 +771,7 @@ TEST(GcsFileSystemTest, RenameFile_Folder) {
            "path2%2Fsubfolder%2Ffile1.txt\n"
            "Auth Token: fake_token\n"
            "Post: yes\n",
-           ""),
+           "{\"done\": true}"),
        // Deleting the first original file.
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
@@ -785,7 +785,7 @@ TEST(GcsFileSystemTest, RenameFile_Folder) {
            "path1%2Ffile2.txt/rewriteTo/b/bucket/o/path2%2Ffile2.txt\n"
            "Auth Token: fake_token\n"
            "Post: yes\n",
-           ""),
+           "{\"done\": true}"),
        // Deleting the second original file.
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
@@ -823,7 +823,7 @@ TEST(GcsFileSystemTest, RenameFile_Object) {
            "path%2Fsrc.txt/rewriteTo/b/bucket/o/path%2Fdst.txt\n"
            "Auth Token: fake_token\n"
            "Post: yes\n",
-           ""),
+           "{\"done\": true}"),
        // Deleting the original file.
        new FakeHttpRequest(
            "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
@@ -838,6 +838,41 @@ TEST(GcsFileSystemTest, RenameFile_Object) {
 
   TF_EXPECT_OK(
       fs.RenameFile("gs://bucket/path/src.txt", "gs://bucket/path/dst.txt"));
+}
+
+/// Tests the case when rewrite couldn't complete in one RPC.
+TEST(GcsFileSystemTest, RenameFile_Object_Incomplete) {
+  std::vector<HttpRequest*> requests(
+      {// IsDirectory is checking whether there are children objects.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
+           "fields=items%2Fname%2CnextPageToken&prefix=path%2Fsrc.txt%2F"
+           "&maxResults=1\n"
+           "Auth Token: fake_token\n",
+           "{}"),
+       // IsDirectory is checking if the path exists as an object.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "path%2Fsrc.txt?fields=size%2Cupdated\n"
+           "Auth Token: fake_token\n",
+           strings::StrCat("{\"size\": \"1010\","
+                           "\"updated\": \"2016-04-29T23:15:24.896Z\"}")),
+       // Copying to the new location.
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "path%2Fsrc.txt/rewriteTo/b/bucket/o/path%2Fdst.txt\n"
+           "Auth Token: fake_token\n"
+           "Post: yes\n",
+           "{\"done\": false}")});
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */, 5 /* max upload attempts */);
+
+  EXPECT_EQ(
+      errors::Code::UNIMPLEMENTED,
+      fs.RenameFile("gs://bucket/path/src.txt", "gs://bucket/path/dst.txt")
+          .code());
 }
 
 TEST(GcsFileSystemTest, Stat_Object) {

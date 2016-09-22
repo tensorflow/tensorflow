@@ -100,6 +100,71 @@ string MaybeAppendSlash(const string& name) {
   return name;
 }
 
+Status ParseJson(StringPiece json, Json::Value* result) {
+  Json::Reader reader;
+  if (!reader.parse(json.ToString(), *result)) {
+    return errors::Internal("Couldn't parse JSON response from GCS.");
+  }
+  return Status::OK();
+}
+
+/// Reads a JSON value with the given name from a parent JSON value.
+Status GetValue(const Json::Value& parent, const string& name,
+                Json::Value* result) {
+  *result = parent.get(name, Json::Value::null);
+  if (*result == Json::Value::null) {
+    return errors::Internal(strings::StrCat(
+        "The field '", name, "' was expected in the JSON response."));
+  }
+  return Status::OK();
+}
+
+/// Reads a string JSON value with the given name from a parent JSON value.
+Status GetStringValue(const Json::Value& parent, const string& name,
+                      string* result) {
+  Json::Value result_value;
+  TF_RETURN_IF_ERROR(GetValue(parent, name, &result_value));
+  if (!result_value.isString()) {
+    return errors::Internal(
+        strings::StrCat("The field '", name,
+                        "' in the JSON response was expected to be a string."));
+  }
+  *result = result_value.asString();
+  return Status::OK();
+}
+
+/// Reads a long JSON value with the given name from a parent JSON value.
+Status GetInt64Value(const Json::Value& parent, const string& name,
+                     int64* result) {
+  Json::Value result_value;
+  TF_RETURN_IF_ERROR(GetValue(parent, name, &result_value));
+  if (result_value.isNumeric()) {
+    *result = result_value.asInt64();
+    return Status::OK();
+  }
+  if (result_value.isString() &&
+      strings::safe_strto64(result_value.asString().c_str(), result)) {
+    return Status::OK();
+  }
+  return errors::Internal(
+      strings::StrCat("The field '", name,
+                      "' in the JSON response was expected to be a number."));
+}
+
+/// Reads a boolean JSON value with the given name from a parent JSON value.
+Status GetBoolValue(const Json::Value& parent, const string& name,
+                    bool* result) {
+  Json::Value result_value;
+  TF_RETURN_IF_ERROR(GetValue(parent, name, &result_value));
+  if (!result_value.isBool()) {
+    return errors::Internal(strings::StrCat(
+        "The field '", name,
+        "' in the JSON response was expected to be a boolean."));
+  }
+  *result = result_value.asBool();
+  return Status::OK();
+}
+
 /// A GCS-based implementation of a random access file with a read-ahead buffer.
 class GcsRandomAccessFile : public RandomAccessFile {
  public:
@@ -608,40 +673,17 @@ Status GcsFileSystem::StatForObject(const string& bucket, const string& object,
       request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       request->Send(), " when reading metadata of gs://", bucket, "/", object);
-  std::stringstream response_stream;
-  response_stream << response_piece;
 
   Json::Value root;
-  Json::Reader reader;
-  if (!reader.parse(response_stream.str(), root)) {
-    return errors::Internal("Couldn't parse JSON response from GCS.");
-  }
+  TF_RETURN_IF_ERROR(ParseJson(response_piece, &root));
 
   // Parse file size.
-  const auto size = root.get("size", Json::Value::null);
-  if (size == Json::Value::null) {
-    return errors::Internal("'size' was expected in the JSON response.");
-  }
-  if (size.isNumeric()) {
-    stat->length = size.asUInt64();
-  } else if (size.isString()) {
-    if (!strings::safe_strto64(size.asString().c_str(), &(stat->length))) {
-      return errors::Internal("'size' couldn't be parsed as a nubmer.");
-    }
-  } else {
-    return errors::Internal("'size' is not a number in the JSON response.");
-  }
+  TF_RETURN_IF_ERROR(GetInt64Value(root, "size", &(stat->length)));
 
   // Parse file modification time.
-  const auto updated = root.get("updated", Json::Value::null);
-  if (updated == Json::Value::null) {
-    return errors::Internal("'updated' was expected in the JSON response.");
-  }
-  if (!updated.isString()) {
-    return errors::Internal(
-        "'updated' is expected to be a string in the JSON response.");
-  }
-  TF_RETURN_IF_ERROR(ParseRfc3339Time(updated.asString(), &(stat->mtime_nsec)));
+  string updated;
+  TF_RETURN_IF_ERROR(GetStringValue(root, "updated", &updated));
+  TF_RETURN_IF_ERROR(ParseRfc3339Time(updated, &(stat->mtime_nsec)));
 
   stat->is_directory = false;
 
@@ -713,13 +755,8 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
     TF_RETURN_IF_ERROR(
         request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
     TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading ", dirname);
-    std::stringstream response_stream;
-    response_stream << response_piece;
     Json::Value root;
-    Json::Reader reader;
-    if (!reader.parse(response_stream.str(), root)) {
-      return errors::Internal("Couldn't parse JSON response from GCS.");
-    }
+    TF_RETURN_IF_ERROR(ParseJson(response_piece, &root));
     const auto items = root.get("items", Json::Value::null);
     if (items == Json::Value::null) {
       // Empty results.
@@ -734,20 +771,16 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
         return errors::Internal(
             "Unexpected JSON format: 'items' should be a list of objects.");
       }
-      const auto name = item.get("name", Json::Value::null);
-      if (name == Json::Value::null || !name.isString()) {
-        return errors::Internal(
-            "Unexpected JSON format: 'items.name' is missing or not a string.");
-      }
+      string name;
+      TF_RETURN_IF_ERROR(GetStringValue(item, "name", &name));
       // The names should be relative to the 'dirname'. That means the
       // 'object_prefix', which is part of 'dirname', should be removed from the
       // beginning of 'name'.
-      const string& name_str = name.asString();
-      StringPiece relative_path(name_str);
+      StringPiece relative_path(name);
       if (!relative_path.Consume(object_prefix)) {
-        return errors::Internal(strings::StrCat(
-            "Unexpected response: the returned file name ", name_str,
-            " doesn't match the prefix ", object_prefix));
+        return errors::Internal(
+            strings::StrCat("Unexpected response: the returned file name ",
+                            name, " doesn't match the prefix ", object_prefix));
       }
       result->emplace_back(relative_path.ToString());
       if (++retrieved_results >= max_results) {
@@ -885,8 +918,27 @@ Status GcsFileSystem::RenameObject(const string& src, const string& target) {
       request->EscapeString(target_object))));
   TF_RETURN_IF_ERROR(request->AddAuthBearerHeader(auth_token));
   TF_RETURN_IF_ERROR(request->SetPostEmptyBody());
+  std::unique_ptr<char[]> scratch(new char[kBufferSize]);
+  StringPiece response_piece;
+  TF_RETURN_IF_ERROR(
+      request->SetResultBuffer(scratch.get(), kBufferSize, &response_piece));
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when renaming ", src,
                                   " to ", target);
+
+  Json::Value root;
+  TF_RETURN_IF_ERROR(ParseJson(response_piece, &root));
+  bool done;
+  TF_RETURN_IF_ERROR(GetBoolValue(root, "done", &done));
+  if (!done) {
+    // If GCS didn't complete rewrite in one call, this means that a large file
+    // is being copied to a bucket with a different storage class or location,
+    // which requires multiple rewrite calls.
+    // TODO(surkov): implement multi-step rewrites.
+    return errors::Unimplemented(
+        strings::StrCat("Couldn't rename ", src, " to ", target,
+                        ": moving large files between buckets with different "
+                        "locations or storage classes is not supported."));
+  }
 
   TF_RETURN_IF_ERROR(DeleteFile(src));
   return Status::OK();
