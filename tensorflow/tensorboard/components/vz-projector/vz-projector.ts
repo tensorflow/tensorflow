@@ -410,6 +410,14 @@ export class Projector extends ProjectorPolymer {
       this.updateMenuButtons();
     });
 
+    let dayNightModeButton = this.dom.select('.nightDayMode');
+    let modeIsNight = dayNightModeButton.classed('selected');
+    dayNightModeButton.on('click', () => {
+      modeIsNight = !modeIsNight;
+      dayNightModeButton.classed('selected', modeIsNight);
+      this.scatterPlot.setDayNightMode(modeIsNight);
+    });
+
     // Resize
     window.addEventListener('resize', () => {
       this.scatterPlot.resize();

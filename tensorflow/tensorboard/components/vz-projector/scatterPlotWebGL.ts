@@ -649,6 +649,12 @@ export class ScatterPlotWebGL implements ScatterPlot {
 
   getHighlightedPoints(): number[] { return this.highlightedPoints; }
 
+  setDayNightMode(isNight: boolean) {
+    d3.select(this.containerNode)
+        .selectAll('canvas')
+        .style('filter', isNight ? 'invert(100%)' : null);
+  }
+
   showAxes(show: boolean) {}
   showTickLabels(show: boolean) {}
   setAxisLabels(xLabel: string, yLabel: string) {}
