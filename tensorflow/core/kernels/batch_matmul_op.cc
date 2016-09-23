@@ -51,49 +51,23 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
     auto Ty = in_y.tensor<Scalar, 3>();
     auto Tz = out->tensor<Scalar, 3>();
 
-    // Number of matrix multiplies i.e. size of the batch.
+    // Shards "n"-matmuls into "num" shards. Each shard is
+    // dispatched to a thread.
+    auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     const int64 num_units = in_x.dim_size(0);
     const int64 cost_per_unit =
-        in_x.dim_size(1) * in_x.dim_size(2) * out->dim_size(2);
-
-    // For large matrix products it is counter-productive to parallelize
-    // over the batch dimension.
-    const int64 kMaxCostOuterParallelism = 128 * 256 * 256;  // heuristic.
-    bool parallelize_inner = true;
-    if (num_units == 1 ||
-        (cost_per_unit > kMaxCostOuterParallelism && out->dim_size(2) > 1)) {
-      LaunchBatchMatMul<CPUDevice, Scalar>::Run(
-          context, parallelize_inner, Tx, Ty, adj_x, adj_y, Tz, 0, num_units);
-    } else {
-      auto worker_threads =
-          *(context->device()->tensorflow_cpu_worker_threads());
-      int num_threads = worker_threads.num_threads;
-      // For small matrices and large batches, it is counter-productive
-      // to parallelize the inner matrix multiplies.
-      parallelize_inner =
-          num_threads > num_units && out->dim_size(2) > 1;  // heuristic.
-
-      // TODO(rmlarsen): The parallelized contraction in Eigen can deadlock when
-      // running num_threads or more contractions in parallel. Launch on all
-      // worker_threads.num_threads threads here once that is fixed.
-      const int num_outer_threads =
-          parallelize_inner ? std::max(1, num_threads - 1) : num_threads;
-
-      Shard(num_outer_threads, worker_threads.workers, num_units, cost_per_unit,
-            [context, parallelize_inner, &Tx, &Ty, adj_x, adj_y, &Tz](
-                int start, int limit) {
-              LaunchBatchMatMul<CPUDevice, Scalar>::Run(
-                  context, parallelize_inner, Tx, Ty, adj_x, adj_y, Tz, start,
-                  limit);
-            });
-    }
+        in_x.dim_size(0) * in_x.dim_size(1) * out->dim_size(2);
+    Shard(worker_threads.num_threads, worker_threads.workers, num_units,
+          cost_per_unit, [&Tx, &Ty, adj_x, adj_y, &Tz](int start, int limit) {
+            LaunchBatchMatMul<CPUDevice, Scalar>::Run(Tx, Ty, adj_x, adj_y, Tz,
+                                                      start, limit);
+          });
   }
 
   template <typename In, typename Out>
-  static void Run(const OpKernelContext* context, bool parallelize_inner, In Tx,
-                  In Ty, bool adj_x, bool adj_y, Out Tz, int start, int limit) {
+  static void Run(In Tx, In Ty, bool adj_x, bool adj_y, Out Tz, int start,
+                  int limit) {
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_pairs;
-    const Eigen::ThreadPoolDevice d = context->eigen_cpu_device();
 
     Eigen::internal::scalar_conjugate_op<Scalar> conj;
     if (!adj_x && !adj_y) {
@@ -102,11 +76,7 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
         auto y = Ty.template chip<0>(i);
         auto z = Tz.template chip<0>(i);
         contract_pairs[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
-        if (parallelize_inner) {
-          z.device(d) = x.contract(y, contract_pairs);  // matmul
-        } else {
-          z = x.contract(y, contract_pairs);  // matmul
-        }
+        z = x.contract(y, contract_pairs);  // matmul
       }
     } else if (!adj_x && adj_y) {
       for (int i = start; i < limit; ++i) {
@@ -114,11 +84,7 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
         auto y = Ty.template chip<0>(i).unaryExpr(conj);
         auto z = Tz.template chip<0>(i);
         contract_pairs[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 1);
-        if (parallelize_inner) {
-          z.device(d) = x.contract(y, contract_pairs);  // matmul
-        } else {
-          z = x.contract(y, contract_pairs);  // matmul
-        }
+        z = x.contract(y, contract_pairs);  // matmul
       }
     } else if (adj_x && !adj_y) {
       for (int i = start; i < limit; ++i) {
@@ -126,11 +92,7 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
         auto y = Ty.template chip<0>(i);
         auto z = Tz.template chip<0>(i);
         contract_pairs[0] = Eigen::IndexPair<Eigen::DenseIndex>(0, 0);
-        if (parallelize_inner) {
-          z.device(d) = x.contract(y, contract_pairs);  // matmul
-        } else {
-          z = x.contract(y, contract_pairs);  // matmul
-        }
+        z = x.contract(y, contract_pairs);  // matmul
       }
     } else {
       for (int i = start; i < limit; ++i) {
@@ -138,11 +100,7 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
         auto y = Ty.template chip<0>(i).unaryExpr(conj);
         auto z = Tz.template chip<0>(i);
         contract_pairs[0] = Eigen::IndexPair<Eigen::DenseIndex>(0, 1);
-        if (parallelize_inner) {
-          z.device(d) = x.contract(y, contract_pairs);  // matmul
-        } else {
-          z = x.contract(y, contract_pairs);  // matmul
-        }
+        z = x.contract(y, contract_pairs);  // matmul
       }
     }
   }
