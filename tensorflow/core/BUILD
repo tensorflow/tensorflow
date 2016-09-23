@@ -64,6 +64,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "if_ios",
+    "if_not_windows",
     "tf_copts",
     "tf_cc_test",
     "tf_cc_tests",
@@ -871,12 +872,12 @@ cc_library(
 # Libraries with GPU facilities that are useful for writing kernels.
 cc_library(
     name = "gpu_lib",
-    srcs = [
+    srcs = if_not_windows([
         "common_runtime/gpu/gpu_event_mgr.cc",
-    ],
-    hdrs = [
+    ]),
+    hdrs = if_not_windows([
         "common_runtime/gpu/gpu_event_mgr.h",
-    ],
+    ]),
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -886,8 +887,7 @@ cc_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
-        ":stream_executor",
-    ],
+    ] + if_not_windows([":stream_executor"]),
 )
 
 cc_library(
@@ -1341,7 +1341,7 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "gpu_runtime",
-    srcs = [
+    srcs = if_not_windows([
         "common_runtime/gpu/gpu_bfc_allocator.cc",
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
@@ -1353,8 +1353,8 @@ tf_cuda_library(
         "common_runtime/gpu/pool_allocator.cc",
         "common_runtime/gpu/process_state.cc",
         "common_runtime/gpu_device_context.h",
-    ],
-    hdrs = [
+    ]),
+    hdrs = if_not_windows([
         "common_runtime/gpu/gpu_bfc_allocator.h",
         "common_runtime/gpu/gpu_debug_allocator.h",
         "common_runtime/gpu/gpu_device.h",
@@ -1363,7 +1363,7 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_util.h",
         "common_runtime/gpu/pool_allocator.h",
         "common_runtime/gpu/process_state.h",
-    ],
+    ]),
     copts = tf_copts(),
     linkstatic = 1,
     deps = [
@@ -1375,9 +1375,8 @@ tf_cuda_library(
         ":lib",
         ":lib_internal",
         ":protos_all_cc",
-        ":stream_executor",
         "//third_party/eigen3",
-    ],
+    ] + if_not_windows([":stream_executor"]),
     alwayslink = 1,
 )
 
