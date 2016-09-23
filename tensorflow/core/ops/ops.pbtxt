@@ -4254,7 +4254,6 @@ op {
     }
   }
   summary: "Increments \'ref\' until it reaches \'limit\'."
-  description: "This operation outputs \"ref\" after the update is done.  This makes it\neasier to chain operations that need to use the updated value."
 }
 op {
   name: "CropAndResize"
