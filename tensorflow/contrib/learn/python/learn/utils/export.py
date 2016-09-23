@@ -77,8 +77,8 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
                   named_graph_signatures=named_graph_signatures,
                   assets_collection=ops.get_collection(
                       ops.GraphKeys.ASSET_FILEPATHS))
-      export.export(export_dir, contrib_variables.get_global_step(), session,
-                    exports_to_keep=exports_to_keep)
+      return export.export(export_dir, contrib_variables.get_global_step(),
+                           session, exports_to_keep=exports_to_keep)
 
 
 def generic_signature_fn(examples, unused_features, predictions):
@@ -293,8 +293,12 @@ def _export_estimator(estimator,
             examples, features, predictions)
     if exports_to_keep is not None:
       exports_to_keep = gc.largest_export_versions(exports_to_keep)
-    _export_graph(g, _get_saver(), checkpoint_path, export_dir,
-                  default_graph_signature=default_signature,
-                  named_graph_signatures=named_graph_signatures,
-                  exports_to_keep=exports_to_keep)
+    return _export_graph(
+        g,
+        _get_saver(),
+        checkpoint_path,
+        export_dir,
+        default_graph_signature=default_signature,
+        named_graph_signatures=named_graph_signatures,
+        exports_to_keep=exports_to_keep)
 # pylint: enable=protected-access
