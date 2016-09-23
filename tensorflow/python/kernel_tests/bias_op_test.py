@@ -132,11 +132,8 @@ class BiasAddTest(tf.test.TestCase):
       # Test gradient of BiasAddGrad
       bias_add_grad = tf.gradients(tf.nn.l2_loss(output_tensor),
                                    bias_tensor)[0]
-      
       grad_jacob_t, grad_jacob_n = tf.test.compute_gradient(
-          output_tensor, np_input.shape, bias_add_grad, bias.shape
-      )
-      
+          output_tensor, np_input.shape, bias_add_grad, bias.shape)
       
       if dtype == np.float16:
         # Compare fp16 theoretical gradients to fp32 numerical gradients,
@@ -154,14 +151,10 @@ class BiasAddTest(tf.test.TestCase):
         _, bias_jacob_n = tf.test.compute_gradient(
             bias_tensor, bias.shape, output_tensor, np_input.shape)
         
-        
         bias_add_grad = tf.gradients(tf.nn.l2_loss(output_tensor),
                                      bias_tensor)[0]
-                                                 
-        
         _, grad_jacob_n = tf.test.compute_gradient(
-            output_tensor, np_input.shape, bias_add_grad, bias.shape
-        )
+            output_tensor, np_input.shape, bias_add_grad, bias.shape)
         
       threshold = 2e-3
       if dtype == tf.float64:
