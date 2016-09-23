@@ -5,7 +5,12 @@ set(jpeg_URL http://www.ijg.org/files/jpegsrc.v9a.tar.gz)
 set(jpeg_HASH SHA256=3a753ea48d917945dd54a2d97de388aa06ca2eb1066cbfdc6652036349fe05a7)
 set(jpeg_BUILD ${CMAKE_BINARY_DIR}/jpeg/src/jpeg)
 set(jpeg_INSTALL ${CMAKE_BINARY_DIR}/jpeg/install)
-set(jpeg_STATIC_LIBRARIES ${jpeg_INSTALL}/lib/libjpeg.a)
+
+if(WIN32)
+  set(jpeg_STATIC_LIBRARIES ${jpeg_INSTALL}/lib/libjpeg.lib)
+else()
+  set(jpeg_STATIC_LIBRARIES ${jpeg_INSTALL}/lib/libjpeg.a)
+endif()
 
 set(jpeg_HEADERS
     "${jpeg_INSTALL}/include/jconfig.h"

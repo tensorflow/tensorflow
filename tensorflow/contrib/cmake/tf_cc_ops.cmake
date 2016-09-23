@@ -157,7 +157,11 @@ foreach(tf_cc_op_lib_name ${tf_cc_op_lib_names})
         ${boringssl_STATIC_LIBRARIES}
         ${CMAKE_DL_LIBS}
     )
-
+    if(tensorflow_ENABLE_SSL_SUPPORT)
+      target_link_libraries(${tf_cc_op_lib_name}_gen_cc PRIVATE
+          ${boringssl_STATIC_LIBRARIES})
+    endif()
+  
     target_compile_options(${tf_cc_op_lib_name}_gen_cc PRIVATE
         -fno-exceptions
         -DEIGEN_AVOID_STL_ARRAY
