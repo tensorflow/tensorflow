@@ -947,25 +947,26 @@ tf_proto_library_cc(
 
 cc_library(
     name = "lib_internal",
-    srcs = glob(
-        [
-            "lib/**/*.h",
-            "lib/**/*.cc",
-            "platform/*.h",
-            "platform/*.cc",
-       ],
-        exclude = [
-            "**/*test*",
-            "platform/**/cuda.h",
-            "platform/**/stream_executor.h",
-        ]
-    ) + select({
-                "//tensorflow:windows" : [],
+    srcs = select({
+                "//tensorflow:windows" : glob([
+                    "lib/**/*.h",
+                    "lib/**/*.cc",
+                    "platform/*.h",
+                    "platform/*.cc",
+                ],  exclude = [
+                    "**/*test*",
+                    "platform/**/cuda.h",
+                    "platform/**/stream_executor.h",
+                    "platform/load_library.cc",
+                ]),
                 "//conditions:default" : glob([
+                    "lib/**/*.h",
+                    "lib/**/*.cc",
+                    "platform/*.h",
+                    "platform/*.cc",
                     "platform/profile_utils/**/*.h",
                     "platform/profile_utils/**/*.cc",
-                ],
-                exclude = [
+                ],  exclude = [
                     "**/*test*",
                     "platform/**/cuda.h",
                     "platform/**/stream_executor.h",
