@@ -143,6 +143,7 @@ cc_library(
     hdrs = [
         # TODO(josh11b): Make many of these internal.
         "lib/core/arena.h",
+        "lib/core/bitmap.h",
         "lib/core/bits.h",
         "lib/core/casts.h",
         "lib/core/coding.h",
@@ -1381,6 +1382,7 @@ tf_cc_tests(
     srcs = [
         "lib/core/arena_test.cc",
         "lib/core/bit_cast_test.cc",
+        "lib/core/bitmap_test.cc",
         "lib/core/blocking_counter_test.cc",
         "lib/core/coding_test.cc",
         "lib/core/notification_test.cc",
