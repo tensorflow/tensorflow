@@ -129,7 +129,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   ParseURI(fname, &scheme, &namenode, &path);
 
   hdfsBuilder* builder = hdfs_->hdfsNewBuilder();
-  if (namenode == "localfilesystem") {
+  if (scheme == "file") {
     hdfs_->hdfsBuilderSetNameNode(builder, nullptr);
   } else {
     hdfs_->hdfsBuilderSetNameNode(builder, namenode.ToString().c_str());
