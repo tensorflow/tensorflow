@@ -60,9 +60,6 @@ HOST_OBJDIR := $(MAKEFILE_DIR)/gen/host_obj/
 HOST_BINDIR := $(MAKEFILE_DIR)/gen/host_bin/
 HOST_GENDIR := $(MAKEFILE_DIR)/gen/host_obj/
 
-# Find the current Eigen version from the Bazel configuration
-EIGEN_VERSION := $(shell grep eigen_version tensorflow/workspace.bzl | head -1 | sed -e 's/.*eigen_version.*=.*"\(.*\)"/\1/')
-
 # Settings for the host compiler.
 HOST_CXX := $(CC_PREFIX) gcc
 HOST_CXXFLAGS := --std=c++11
@@ -75,7 +72,7 @@ HOST_LDOPTS += -L/usr/local/lib
 HOST_INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
--I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_VERSION) \
+-I$(MAKEFILE_DIR)/downloads/eigen \
 -I$(HOST_GENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	HOST_INCLUDES += -I$(MAKEFILE_DIR)/gen/protobuf-host/include
@@ -148,7 +145,7 @@ DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)/$*.Td
 INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
--I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_VERSION) \
+-I$(MAKEFILE_DIR)/downloads/eigen \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
@@ -240,7 +237,7 @@ ifeq ($(TARGET),ANDROID)
 -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/armeabi/include \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
--I$(MAKEFILE_DIR)/downloads/eigen-eigen-$(EIGEN_VERSION) \
+-I$(MAKEFILE_DIR)/downloads/eigen \
 -I$(MAKEFILE_DIR)/gen/protobuf/include \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
@@ -568,6 +565,12 @@ $(HOST_GENDIR)%.pb.cc $(HOST_GENDIR)%.pb.h: %.proto
 # Gets rid of all generated files.
 clean:
 	rm -rf $(MAKEFILE_DIR)/gen
+	rm -rf tensorflow/core/util/version_info.cc
+
+# Gets rid of all generated files except protobuf libs generated
+# before calling make.  This allows users not to recompile proto libs everytime.
+clean_except_protobuf_libs:
+	find $(MAKEFILE_DIR)/gen -mindepth 1 -maxdepth 1 ! -name "protobuf" ! -name "protobuf-host" -exec rm -r "{}" \;
 	rm -rf tensorflow/core/util/version_info.cc
 
 # Gets rid of target files only, leaving the host alone. Also leaves the lib

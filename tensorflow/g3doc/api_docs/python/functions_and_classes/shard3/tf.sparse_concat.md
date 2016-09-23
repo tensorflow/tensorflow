@@ -83,7 +83,8 @@ Graphically this is equivalent to doing
 ##### Args:
 
 
-*  <b>`concat_dim`</b>: Dimension to concatenate along.
+*  <b>`concat_dim`</b>: Dimension to concatenate along. Must be in range [-rank, rank),
+    where rank is the number of dimensions in each input `SparseTensor`.
 *  <b>`sp_inputs`</b>: List of `SparseTensor` to concatenate.
 *  <b>`name`</b>: A name prefix for the returned tensors (optional).
 *  <b>`expand_nonconcat_dim`</b>: Whether to allow the expansion in the non-concat

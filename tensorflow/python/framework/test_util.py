@@ -535,7 +535,8 @@ class TensorFlowTestCase(googletest.TestCase):
       self.fail(exception_type.__name__ + " not raised")
     except Exception as e:  # pylint: disable=broad-except
       if not isinstance(e, exception_type) or not predicate(e):
-        raise AssertionError(e)
+        raise AssertionError("Exception of type %s: %s" %
+                             (str(type(e)), str(e)))
   # pylint: enable=g-doc-return-or-yield
 
   def assertRaisesOpError(self, expected_err_re_or_predicate):

@@ -1335,10 +1335,11 @@ class Saver(object):
 
     # Performs this check only for V1, as the V2 restore op can read either a
     # V1 ckpt or a V2 ckpt, making this check invalid.
-    if (self.saver_def.version is saver_pb2.SaverDef.V1) and (
-        not file_io.get_matching_files(
-            _prefix_to_checkpoint_path(save_path, self.saver_def.version))):
-      raise ValueError("Restore called with invalid save path %s" % save_path)
+    if self.saver_def.version == saver_pb2.SaverDef.V1:
+      file_path = _prefix_to_checkpoint_path(save_path, self.saver_def.version)
+      if not file_io.get_matching_files(file_path):
+        raise ValueError("Restore called with invalid save path: %r. "
+                         "File path is: %r" % (save_path, file_path))
 
     sess.run(self.saver_def.restore_op_name,
              {self.saver_def.filename_tensor_name: save_path})
@@ -1355,7 +1356,7 @@ class Saver(object):
 
 
 def _prefix_to_checkpoint_path(prefix, format_version=saver_pb2.SaverDef.V1):
-  """Yields the pathname of a checkpoint file, given the checkpoint prefix.
+  """Returns the pathname of a checkpoint file, given the checkpoint prefix.
 
   For V1 checkpoint, simply returns the prefix itself (the data file).  For V2,
   returns the pathname to the index file.

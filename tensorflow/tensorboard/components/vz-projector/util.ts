@@ -80,6 +80,20 @@ export function getNearFarPoints(
 }
 
 /**
+ * Generate a texture for the points/images and sets some initial params
+ */
+export function createTexture(image: HTMLImageElement|
+                              HTMLCanvasElement): THREE.Texture {
+  let tex = new THREE.Texture(image);
+  tex.needsUpdate = true;
+  // Used if the texture isn't a power of 2.
+  tex.minFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  tex.flipY = false;
+  return tex;
+}
+
+/**
  * Assert that the condition is satisfied; if not, log user-specified message
  * to the console.
  */

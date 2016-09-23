@@ -47,6 +47,22 @@ bool ParseInt32Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
   return false;
 }
 
+bool ParseInt64Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
+                    tensorflow::int64* dst, bool* value_parsing_ok) {
+  *value_parsing_ok = true;
+  if (arg.Consume("--") && arg.Consume(flag) && arg.Consume("=")) {
+    char extra;
+    if (sscanf(arg.data(), "%lld%c", dst, &extra) != 1) {
+      LOG(ERROR) << "Couldn't interpret value " << arg << " for flag " << flag
+                 << ".";
+      *value_parsing_ok = false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
 bool ParseBoolFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
                    bool* dst, bool* value_parsing_ok) {
   *value_parsing_ok = true;
@@ -78,6 +94,9 @@ bool ParseBoolFlag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
 Flag::Flag(const char* name, tensorflow::int32* dst)
     : name_(name), type_(TYPE_INT), int_value_(dst) {}
 
+Flag::Flag(const char* name, tensorflow::int64* dst)
+    : name_(name), type_(TYPE_INT64), int64_value_(dst) {}
+
 Flag::Flag(const char* name, bool* dst)
     : name_(name), type_(TYPE_BOOL), bool_value_(dst) {}
 
@@ -88,6 +107,8 @@ bool Flag::Parse(string arg, bool* value_parsing_ok) const {
   bool result = false;
   if (type_ == TYPE_INT) {
     result = ParseInt32Flag(arg, name_, int_value_, value_parsing_ok);
+  } else if (type_ == TYPE_INT64) {
+    result = ParseInt64Flag(arg, name_, int64_value_, value_parsing_ok);
   } else if (type_ == TYPE_BOOL) {
     result = ParseBoolFlag(arg, name_, bool_value_, value_parsing_ok);
   } else if (type_ == TYPE_STRING) {

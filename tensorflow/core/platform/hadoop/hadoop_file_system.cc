@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/posix/error.h"
-#include "tensorflow/third_party/hadoop/hdfs.h"
+#include "third_party/hadoop/hdfs.h"
 
 namespace tensorflow {
 

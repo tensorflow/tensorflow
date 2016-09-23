@@ -125,7 +125,8 @@ class ClassifierTest(tf.test.TestCase):
       default_signature = signatures.default_signature
       return default_signature
 
-  def testExportMonitorRegressionSignature(self):
+  # Disable this test case until b/31032996 is fixed.
+  def _testExportMonitorRegressionSignature(self):
     iris = tf.contrib.learn.datasets.load_iris()
     est = tf.contrib.learn.Classifier(model_fn=logistic_model_fn, n_classes=3)
     export_dir = tempfile.mkdtemp() + 'export/'

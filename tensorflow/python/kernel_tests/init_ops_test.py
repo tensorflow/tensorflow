@@ -277,6 +277,13 @@ class UniformUnitScalingInitializationTest(tf.test.TestCase):
       self.assertFalse(identicaltest(self, init1, init3))
       self.assertFalse(identicaltest(self, init2, init3))
 
+  def testZeroSize(self):
+    shape = [0, 2]
+    with self.test_session():
+      x = tf.get_variable("x", shape=shape,
+                          initializer=tf.uniform_unit_scaling_initializer())
+      self.assertAllEqual(shape, x.eval().shape)
+
   def testDuplicatedInitializer(self):
     init = tf.uniform_unit_scaling_initializer()
     self.assertFalse(duplicated_initializer(self, init, 1))

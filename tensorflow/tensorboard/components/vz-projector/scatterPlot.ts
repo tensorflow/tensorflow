@@ -86,8 +86,6 @@ export interface ScatterPlot {
   highlightPoints(
       pointIndexes: number[], highlightStroke?: (index: number) => string,
       favorLabels?: (index: number) => boolean): void;
-  /** Toggle between day and night modes. */
-  setDayNightMode(isNight: boolean): void;
   /** Show/hide tick labels. */
   showTickLabels(show: boolean): void;
   /** Whether to show axes or not. */

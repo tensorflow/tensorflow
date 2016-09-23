@@ -1451,7 +1451,7 @@ equivalent formulation
 
 ### `tf.nn.softmax(logits, dim=-1, name=None)` {#softmax}
 
-Computes softmax activations.
+Computes log softmax activations.
 
 For each batch `i` and class `j` we have
 
@@ -1485,7 +1485,7 @@ Computes log softmax activations.
 
 For each batch `i` and class `j` we have
 
-    logsoftmax = logits - log(reduce_sum(exp(logits), dim))
+    logsoftmax = logits - reduce_sum(exp(logits), dim)
 
 ##### Args:
 
@@ -1572,16 +1572,16 @@ output of `softmax`, as it will produce incorrect results.
 A common use case is to have logits of shape `[batch_size, num_classes]` and
 labels of shape `[batch_size]`. But higher dimensions are supported.
 
-##### Args:
+Args:
 
-
-*  <b>`logits`</b>: Unscaled log probabilities of rank `r` and shape
+  logits: Unscaled log probabilities of rank `r` and shape
     `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
-*  <b>`labels`</b>: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
+  labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
     `int64`. Each entry in `labels` must be an index in `[0, num_classes)`.
-    Other values will result in a loss of 0, but incorrect gradient
-    computations.
-*  <b>`name`</b>: A name for the operation (optional).
+    Other values will raise an exception when this op is run on CPU, and
+    return `NaN` for corresponding corresponding loss and gradient rows
+    on GPU.
+  name: A name for the operation (optional).
 
 ##### Returns:
 

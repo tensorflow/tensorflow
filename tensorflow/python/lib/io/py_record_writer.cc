@@ -39,14 +39,9 @@ PyRecordWriter* PyRecordWriter::New(const string& filename,
   PyRecordWriter* writer = new PyRecordWriter;
   writer->file_ = file.release();
 
-  RecordWriterOptions options;
-  if (compression_type_string == "ZLIB") {
-    options.compression_type = RecordWriterOptions::ZLIB_COMPRESSION;
-    options.zlib_options = ZlibCompressionOptions::DEFAULT();
-  } else if (compression_type_string == "GZIP") {
-    options.compression_type = RecordWriterOptions::ZLIB_COMPRESSION;
-    options.zlib_options = ZlibCompressionOptions::GZIP();
-  }
+  RecordWriterOptions options =
+      RecordWriterOptions::CreateRecordWriterOptions(compression_type_string);
+
   writer->writer_ = new RecordWriter(writer->file_, options);
   return writer;
 }

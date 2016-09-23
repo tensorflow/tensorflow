@@ -560,7 +560,7 @@ def _softmax(logits, compute_op, dim=-1, name=None):
 
 
 def softmax(logits, dim=-1, name=None):
-  """Computes softmax activations.
+  """Computes log softmax activations.
 
   For each batch `i` and class `j` we have
 
@@ -587,7 +587,7 @@ def log_softmax(logits, dim=-1, name=None):
 
   For each batch `i` and class `j` we have
 
-      logsoftmax = logits - log(reduce_sum(exp(logits), dim))
+      logsoftmax = logits - reduce_sum(exp(logits), dim)
 
   Args:
     logits: A non-empty `Tensor`. Must be one of the following types: `half`,
@@ -716,12 +716,14 @@ def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
   labels of shape `[batch_size]`. But higher dimensions are supported.
 
   Args:
+
     logits: Unscaled log probabilities of rank `r` and shape
       `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
     labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
       `int64`. Each entry in `labels` must be an index in `[0, num_classes)`.
-      Other values will result in a loss of 0, but incorrect gradient
-      computations.
+      Other values will raise an exception when this op is run on CPU, and
+      return `NaN` for corresponding corresponding loss and gradient rows
+      on GPU.
     name: A name for the operation (optional).
 
   Returns:

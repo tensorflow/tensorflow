@@ -415,18 +415,13 @@ Status DirectSession::Run(const RunOptions& run_options,
   const int64 build_cost_model =
       options_.config.graph_options().build_cost_model();
   if (do_trace || build_cost_model > 0) {
-    run_state.collector.reset(new StepStatsCollector(
-        run_metadata->mutable_step_stats(),
-        (build_cost_model > 0) ? &cost_model_manager_ : nullptr));
+    run_state.collector.reset(
+        new StepStatsCollector(run_metadata->mutable_step_stats()));
     args.stats_collector = run_state.collector.get();
   }
 
-  // TODO(pbar) CostModel still gets very confused when presented
-  // with trace data from the GPUTracer. This will need fixing if the
-  // cost model needs meaningful GPU timing information.
   std::unique_ptr<GPUTracer> tracer;
-  if (!build_cost_model &&
-      run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
+  if (run_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
     tracer.reset(CreateGPUTracer());
     // tracer will be NULL on non-GPU platforms.
     if (tracer) tracer->Start();
@@ -462,6 +457,17 @@ Status DirectSession::Run(const RunOptions& run_options,
   mutex_lock l(executor_lock_);
   ++executors_and_keys->step_count;
   if (executors_and_keys->step_count == build_cost_model) {
+    // Build the cost model
+    std::unordered_map<string, const Graph*> device_to_graph;
+    for (const PerPartitionExecutorsAndLib& partition :
+         executors_and_keys->items) {
+      const Graph* graph = partition.graph;
+      const string device = partition.flib->device()->name();
+      device_to_graph[device] = graph;
+    }
+    args.stats_collector->BuildCostModel(&cost_model_manager_, device_to_graph);
+
+    // annotate stats onto cost graph.
     CostGraphDef* cost_graph = run_metadata->mutable_cost_graph();
     for (const auto& item : executors_and_keys->items) {
       TF_RETURN_IF_ERROR(
@@ -547,8 +553,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   }
 
   if (options_.config.graph_options().build_cost_model()) {
-    run_state->collector.reset(
-        new StepStatsCollector(nullptr, &cost_model_manager_));
+    run_state->collector.reset(new StepStatsCollector(nullptr));
     args.stats_collector = run_state->collector.get();
   }
 
@@ -647,6 +652,7 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
       partial_runs_.erase(handle);
     }
   }
+
   return s;
 }
 

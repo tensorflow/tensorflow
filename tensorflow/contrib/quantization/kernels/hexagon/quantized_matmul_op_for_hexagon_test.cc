@@ -46,7 +46,7 @@ class QuantizedMatMulOpForHexagonTest : public OpsTestBase {
               << ", hexagon binary version = "
               << hexagon_gemm_wrapper_GetHexagonBinaryVersion() << ")";
     LOG(INFO) << "Cpu frequency = "
-              << profile_utils::CpuUtils::GetCpuFrequency();
+              << profile_utils::CpuUtils::GetCycleCounterFrequency();
 #else
     LOG(WARNING) << "Hexagon libs are not linked.";
 #endif

@@ -317,25 +317,18 @@ class FunctionTest(tf.test.TestCase):
         _ = PlusMinusV1.definition
       with self.assertRaisesRegexp(ValueError, "specified input types"):
 
-        @function.Defun(c=tf.float32)
+        @function.Defun(tf.float32)
         def PlusMinusV2(a, b):
           return a + b, b - a
 
         _ = PlusMinusV2.definition
-      with self.assertRaisesRegexp(ValueError, "type for argument: b"):
+      with self.assertRaisesRegexp(ValueError, "specified input types"):
 
-        @function.Defun(a=tf.float32, c=tf.float32)
+        @function.Defun(tf.float32, tf.float32, tf.float32)
         def PlusMinusV3(a, b):
           return a + b, b - a
 
         _ = PlusMinusV3.definition
-      with self.assertRaisesRegexp(ValueError, "specified input types"):
-
-        @function.Defun(a=tf.float32, b=tf.float32, c=tf.float32)
-        def PlusMinusV4(a, b):
-          return a + b, b - a
-
-        _ = PlusMinusV4.definition
 
   def testCallErrors(self):
 
@@ -581,8 +574,7 @@ class UnrollLSTMTest(tf.test.TestCase):
       return Loop(cell, weights, inp)
 
     cell = function.Defun(
-        x=tf.float32, mprev=tf.float32, cprev=tf.float32,
-        weights=tf.float32)(cell)
+        tf.float32, tf.float32, tf.float32, tf.float32)(cell)
     if mode == "cell":
       # Just represent the LSTM as a function.
       return Loop(cell, weights, inp)
@@ -687,7 +679,8 @@ class FunctionInlineControlTest(tf.test.TestCase):
             do_constant_folding=True)))
     for noinline in [False, True]:
 
-      @function.Defun(dtype)
+      # pylint: disable=unexpected-keyword-arg
+      @function.Defun(dtype, noinline=noinline)
       def Cell(v):
         # If v is a vector [n, 1], x is a big square matrix.
         x = tf.tanh(v + tf.transpose(v, [1, 0]))
@@ -696,9 +689,8 @@ class FunctionInlineControlTest(tf.test.TestCase):
       @function.Defun(dtype)
       def Forward(x):
         for _ in range(10):
-          # pylint: disable=unexpected-keyword-arg
           # pylint: disable=cell-var-from-loop
-          x = Cell(x, noinline=noinline)
+          x = Cell(x)
         return tf.reduce_sum(x, [0, 1])
 
       g = tf.Graph()

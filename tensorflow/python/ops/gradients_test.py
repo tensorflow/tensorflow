@@ -312,7 +312,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
   @classmethod
   def _GetFunc(cls, **kwargs):
-    return function.Defun(x=tf.float32, b=tf.float32, **kwargs)(
+    return function.Defun(tf.float32, tf.float32, **kwargs)(
         cls.XSquarePlusB)
 
   def _GetFuncGradients(self, f, x_value, b_value):
@@ -351,7 +351,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
   def testFunctionGradientsWithGradFunc(self):
     g = ops.Graph()
     with g.as_default():
-      grad_func = function.Defun(x=tf.float32, b=tf.float32, g=tf.float32)(
+      grad_func = function.Defun(tf.float32, tf.float32, tf.float32)(
           self.XSquarePlusBGradient)
       f = self._GetFunc(grad_func=grad_func)
       # Get gradients (should add SymbolicGradient node for function, which
@@ -373,7 +373,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
   def testFunctionGradientWithGradFuncAndRegistration(self):
     g = ops.Graph()
     with g.as_default():
-      grad_func = function.Defun(x=tf.float32, b=tf.float32, g=tf.float32)(
+      grad_func = function.Defun(tf.float32, tf.float32, tf.float32)(
           self.XSquarePlusBGradient)
       with self.assertRaisesRegexp(ValueError, "Gradient defined twice"):
         f = self._GetFunc(grad_func=grad_func,

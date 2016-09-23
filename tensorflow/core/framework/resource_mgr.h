@@ -56,8 +56,8 @@ namespace tensorflow {
 //   // Create a var.
 //   MyVar* my_var = new MyVar;
 //   my_var.val = Tensor(DT_FLOAT, my_shape);
-//   my_val.val.flat<float>().setZeros();   // 0 initialized.
-//   ctx->SetStatus(rm.Create("my_container", "my_name", my_val));
+//   my_var.val.flat<float>().setZeros();   // 0 initialized.
+//   ctx->SetStatus(rm.Create("my_container", "my_name", my_var));
 //
 //   // += a variable.
 //   MyVar* my_var = nullptr;

@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
@@ -44,13 +43,17 @@ class GraphConstructorTest : public ::testing::Test {
     CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef_));
   }
 
-  void ExpectError(const string& gdef_ascii, const string& expected_error_re) {
+  void ExpectError(const string& gdef_ascii,
+                   const std::vector<string>& expected_error_strs) {
     Convert(gdef_ascii);
     GraphConstructorOptions opts;
     Status status = ConvertGraphDefToGraph(opts, gdef_, g_.get());
     EXPECT_FALSE(status.ok());
-    EXPECT_TRUE(RE2::PartialMatch(status.error_message(), expected_error_re))
-        << status;
+
+    for (const string& error : expected_error_strs) {
+      EXPECT_TRUE(status.error_message().find(error) != string::npos)
+          << "Expected to find '" << error << "' in " << status;
+    }
   }
 
   void ExpectOK(const string& gdef_ascii) {
@@ -129,14 +132,12 @@ REGISTER_OP("TestInt").Input("a: int32");
 TEST_F(GraphConstructorTest, InvalidNodeName) {
   auto expect_invalid_name = [this](const char* name) {
     ExpectError(strings::StrCat("node { name: '", name, "' op: 'ABC' }"),
-                strings::StrCat("Node '", name,
-                                "': Node name contains invalid characters"));
+                {"Node name contains invalid characters"});
   };
 
   expect_invalid_name("a:b");
   expect_invalid_name("_abc");  // Can't start with '_'
   // Name is a\b, but proto text format escapes slashes so we use a\\b here.
-  // This works for ExpectError too, since re2 also treats \\ as one slash.
   expect_invalid_name(R"(a\\b)");
   expect_invalid_name("/a");
   expect_invalid_name("-a");
@@ -153,7 +154,7 @@ TEST_F(GraphConstructorTest, InvalidSourceNodeName) {
       "node { name: 'input' op: 'TestInput' }"
       "node { name: 't1' op: 'TestMul' input: 'W999' input: 'input' }",
 
-      "Unknown input node.*W999");
+      {"Unknown input node", "W999"});
 }
 
 TEST_F(GraphConstructorTest, InvalidSourceNodeIndex) {
@@ -162,7 +163,7 @@ TEST_F(GraphConstructorTest, InvalidSourceNodeIndex) {
       "node { name: 'input' op: 'TestInput' }"
       "node { name: 't1' op: 'TestMul' input: [ 'W1:1', 'input:1' ] }",
 
-      "Connecting to invalid output 1 of source node W1");
+      {"Connecting to invalid output 1 of source node W1"});
 }
 
 TEST_F(GraphConstructorTest, GraphWithCycle) {
@@ -171,7 +172,7 @@ TEST_F(GraphConstructorTest, GraphWithCycle) {
       "node { name: 't1' op: 'TestMul' input: [ 'input:0', 't2' ] }"
       "node { name: 't2' op: 'TestMul' input: [ 'input:1', 't1' ] }",
 
-      "cycle");
+      {"cycle"});
 }
 
 TEST_F(GraphConstructorTest, TypeMismatch) {
@@ -179,8 +180,8 @@ TEST_F(GraphConstructorTest, TypeMismatch) {
       "node { name: 'input' op: 'TestInput' }"
       "node { name: 'int' op: 'TestInt' input: [ 'input' ] }",
 
-      "Input 0 of node int was passed float from input:0 incompatible with "
-      "expected int32.");
+      {"Input 0 of node int was passed float from input:0 incompatible with "
+       "expected int32."});
 }
 
 TEST_F(GraphConstructorTest, EmptyGraph) {
@@ -197,20 +198,20 @@ TEST_F(GraphConstructorTest, VersionGraph) {
 
 TEST_F(GraphConstructorTest, LowVersion) {
   ExpectError(strings::StrCat("versions { producer: ", -1, " }"),
-              strings::StrCat(R"(^GraphDef producer version -1 below min )"
-                              "producer ",
-                              TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
-                              " supported by TensorFlow ", TF_VERSION_STRING,
-                              R"(\.  Please regenerate your graph\.$)"));
+              {strings::StrCat("GraphDef producer version -1 below min "
+                               "producer ",
+                               TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
+                               " supported by TensorFlow ", TF_VERSION_STRING,
+                               ".  Please regenerate your graph.")});
 }
 
 TEST_F(GraphConstructorTest, HighVersion) {
   const int version = TF_GRAPH_DEF_VERSION + 1;
   ExpectError(strings::StrCat("versions { min_consumer: ", version, " }"),
-              strings::StrCat(R"(^GraphDef min consumer version )", version,
-                              " above current version ", TF_GRAPH_DEF_VERSION,
-                              " for TensorFlow ", TF_VERSION_STRING,
-                              R"(\.  Please upgrade TensorFlow\.$)"));
+              {strings::StrCat("GraphDef min consumer version ", version,
+                               " above current version ", TF_GRAPH_DEF_VERSION,
+                               " for TensorFlow ", TF_VERSION_STRING,
+                               ".  Please upgrade TensorFlow.")});
 }
 
 TEST_F(GraphConstructorTest, BadVersion) {
@@ -219,9 +220,9 @@ TEST_F(GraphConstructorTest, BadVersion) {
   ExpectError(
       strings::StrCat("versions { producer: ", version, " bad_consumers: ", bad,
                       " }"),
-      strings::StrCat(
-          R"(^GraphDef disallows consumer version )", bad,
-          R"(\.  Please upgrade TensorFlow: this version is likely buggy\.$)"));
+      {strings::StrCat(
+          "GraphDef disallows consumer version ", bad,
+          ".  Please upgrade TensorFlow: this version is likely buggy.")});
 }
 
 TEST_F(GraphConstructorTest, SimpleModel) {
@@ -260,7 +261,7 @@ TEST_F(GraphConstructorTest, Error_ControlEdgeBeforeRealInput) {
       "node { name: 'input' op: 'TestInput' input: [ '^W1' ] }"
       "node { name: 't1' op: 'TestMul' input: [ 'W1', 'input:1' ] }"
       "node { name: 't2' op: 'TestMul' input: [ 'W1', '^t1', 'input:1' ] }",
-      "Node 't2': Control dependencies must come after regular dependencies");
+      {"Node 't2': Control dependencies must come after regular dependencies"});
 }
 
 TEST_F(GraphConstructorTest, CopyGraph) {
