@@ -286,13 +286,20 @@ class SavedModelBuilder(object):
     # Save asset files and write them to disk, if any.
     self._save_and_write_assets(assets_collection)
 
-    export_path = os.path.join(
+    # Create the variables sub-directory, if it does not exist.
+    variables_dir = os.path.join(
         compat.as_text(self._export_dir),
+        compat.as_text(constants.VARIABLES_DIRECTORY))
+    if not file_io.file_exists(variables_dir):
+      file_io.recursive_create_dir(variables_dir)
+
+    variables_path = os.path.join(
+        compat.as_text(variables_dir),
         compat.as_text(constants.VARIABLES_FILENAME))
 
     # Save the variables and export meta graph def.
     saver = tf_saver.Saver(variables.all_variables())
-    saver.save(sess, export_path, write_meta_graph=False)
+    saver.save(sess, variables_path, write_meta_graph=False)
     meta_graph_def = saver.export_meta_graph()
 
     # Tag the meta graph def and add it to the SavedModel.

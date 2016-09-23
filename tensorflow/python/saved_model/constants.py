@@ -29,4 +29,5 @@ SAVED_MODEL_FILENAME_PBTXT = "saved_model.pbtxt"
 TAG_SERVING = "serve"
 TAG_TRAINING = "train"
 
+VARIABLES_DIRECTORY = "variables"
 VARIABLES_FILENAME = "saved_model_variables"

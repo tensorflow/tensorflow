@@ -24,6 +24,9 @@ constexpr char kSavedModelFilenamePb[] = "saved_model.pb";
 // SavedModel text format proto filename.
 constexpr char kSavedModelFilenamePbTxt[] = "saved_model.pbtxt";
 
+// Directory in which to save the SavedModel variables.
+constexpr char kSavedModelVariablesDirectory[] = "variables";
+
 // SavedModel variables filename.
 constexpr char kSavedModelVariablesFilename[] = "saved_model_variables";
 
