@@ -16469,17 +16469,17 @@ op {
   }
   input_arg {
     name: "begin"
-    description: "`begin[i]` specifies the offset into the `i`th dimension of\n`input` to slice from."
+    description: "`begin[k]` specifies the offset into the `k`th range specification.\nThe exact dimension this corresponds to will be determined by context.\nOut-of-bounds values will be silently clamped. If the `k`th bit of\n`begin_mask` then `begin[k]` is ignored and the full range of the\nappropriate dimension is used instead. Negative values causes indexing\nto start from the highest element e.g. If `foo==[1,2,3]` then `foo[-1]==3`."
     type_attr: "Index"
   }
   input_arg {
     name: "end"
-    description: "`end[i]` specifies the first offset into the `i`th dimension of\n`input` that will not be extracted. Out or range values are\nclamped to `[0,dim[i]) if slice[i] > 0` or `[-1,dim[i]-1]`\n`if slice[i] < 0`"
+    description: "`end[i]` is like `begin` with the exception that `end_mask` is\nused to determine full ranges."
     type_attr: "Index"
   }
   input_arg {
     name: "strides"
-    description: "`strides[i]` specifies the increment in the `i`th dimension\nafter extracting a given element. Negative indices will reverse\nthe original order. Out or range values are\nclamped to `[0,dim[i]) if slice[i]>0` or `[-1,dim[i]-1] if slice[i] < 0`"
+    description: "`strides[i]` specifies the increment in the `i`th specification\nafter extracting a given element. Negative indices will reverse\nthe original order. Out or range values are\nclamped to `[0,dim[i]) if slice[i]>0` or `[-1,dim[i]-1] if slice[i] < 0`"
     type_attr: "Index"
   }
   output_arg {
@@ -16522,7 +16522,7 @@ op {
     default_value {
       i: 0
     }
-    description: "a bitmask where bit `i` being 1 means the `i`th\nposition is actually an ellipsis. One bit at most can be 1."
+    description: "a bitmask where bit `i` being 1 means the `i`th\nposition is actually an ellipsis. One bit at most can be 1.\nIf `ellipsis_mask == 0`, then an implicit ellipsis mask of `1 << (m+1)`\nis provided. This means that `foo[3:5] == foo[3:5, ...]`. An ellipsis\nimplicitly creates as many range specifications as necessary to fully\nspecify the sliced range for every dimension. For example for a 4-dimensional\ntensor `foo` the slice `foo[2, ..., 5:8]` implies `foo[2, :, :, 5:8]`."
   }
   attr {
     name: "new_axis_mask"
@@ -16530,7 +16530,7 @@ op {
     default_value {
       i: 0
     }
-    description: "a bitmask where bit `i` being 1 means the `i`th\nposition creates a dimension in the tensor of length 1. Thus\nthe total number of elements remain unchanged but the shape\ngets a 1 in the appropriate position."
+    description: "a bitmask where bit `i` being 1 means the `i`th\nspecification creates a new shape 1 dimension. For example\n`foo[:4, tf.newaxis, :2]` would produce a shape `(4, 1, 2)` tensor."
   }
   attr {
     name: "shrink_axis_mask"
@@ -16538,10 +16538,10 @@ op {
     default_value {
       i: 0
     }
-    description: "a bitmask where bit `i` implies that the `i`th\nposition should shrink the dimensionality. begin and end\nmust imply a slice of size 1 in the dimension. For example in\npython one might do `foo[:,3,:]` which would result in\n`shrink_axis_mask` being 2."
+    description: "a bitmask where bit `i` implies that the `i`th\nspecification should shrink the dimensionality. begin and end\nmust imply a slice of size 1 in the dimension. For example in\npython one might do `foo[:, 3, :]` which would result in\n`shrink_axis_mask` being 2."
   }
   summary: "Return a strided slice from `input`."
-  description: "The output tensor is a tensor with dimensions implied by `begin`,\n`end`, and `strides`, whose values are extracted from `begin`.\n\nSpecifically, the result tensor at index `(i[0], i[1], ..., i[n-1])`\nwill obtain the value `input[begin[0] + i[0] * stride[0], ..., `\n                            `begin[n-1] + i[n-1] * stride[n-1])]`.\n\n*Requirements*:\n  `0 != strides[i] for i in [0, n)`"
+  description: "Note, most python users will want to use the Python `Tensor.__getitem__`\nor `Variable.__getitem__` rather than this op directly.\n\nThe goal of this op is to produce a new tensor with a subset of\nthe elements from the `n` dimensional `input` tensor. The subset is chosen using\na sequence of `m` sparse range specifications encoded into the arguments\nof this function. Note, in some cases\n`m` could be equal to `n`, but this need not be the case. Each\nrange specification entry can be one of the following:\n\n- An ellipsis (...). Ellipses are used to imply zero or more\n  dimensions of full-dimension selection and are produced using\n  `ellipsis_mask`. For example, `foo[...]` is the identity slice.\n\n- A new axis. This is used to insert a new shape=1 dimension and is\n  produced using `new_axis_mask`. For example, `foo[:, ...]` where\n  `foo` is shape `(3, 4)` produces a `(1, 3, 4)` tensor.\n\n\n- A range `begin:end:stride`. This is used to specify how much to choose from\n  a given dimension. `stride` can be any integer but 0.  `begin` is an integer\n  which represents the index of the first value to select while `end` represents\n  the index of the last value to select. The number of values selected in each\n  dimension is `end - begin` if `stride > 0` and `begin - end` if `stride < 0`.\n  `begin` and `end` can be negative where `-1` is the last element, `-2` is\n  the second to last. `begin_mask` controls whether to replace the explicitly\n  given `begin` with an implicit effective value of `0` if `stride > 0` and\n  `-1` if `stride < 0`. `end_mask` is analogous but produces the number\n  required to create the largest open interval. For example, given a shape\n  `(3,)` tensor `foo[:]`, the effective `begin` and `end` are `0` and `3`. Do\n  not assume this is equivalent to `foo[0:-1]` which has an effective `begin`\n  and `end` of `0` and `2`. Another example is `foo[-2::-1]` which reverses the\n  first dimension of a tensor while dropping the last two (in the original\n  order elements). For example `foo = [1,2,3,4]; foo[-2::-1]` is `[4,3]`.\n\n- A single index. This is used to keep only elements that have a given\n  index. For example (`foo[2, :]` on a shape `(5,6)` tensor produces a\n  shape `(6,)` tensor. This is encoded in `begin` and `end` and\n  `shrink_axis_mask`.\n\nEach conceptual range specification is encoded in the op\'s argument. This\nencoding is best understand by considering a non-trivial example. In\nparticular,\n`foo[1, 2:4, None, ..., :-3:-1, :]` will be encoded as\n\n```prettyprint\nbegin = [1, 2, x, x, 0, x] # x denotes don\'t care (usually 0)\nend = [2, 4, x, x, -3, x]\nstrides = [1, 1, x, x, -1, 1]\nbegin_mask = 1<<4 | 1 << 5 = 48\nend_mask = 1<<5 = 32\nellipsis_mask = 1<<3 = 8\nnew_axis_mask = 1<<2 4\nshrink_axis_mask = 1<<0\n```\n\nIn this case if `foo.shape` is (5, 5, 5, 5, 5, 5) the final shape of\nthe slice becomes (2, 1, 5, 5, 2, 5).\nLet us walk step by step through each argument specification.\n\n1.  The first argument in the example slice is turned into `begin = 1` and\n`end = begin + 1 = 2`. To disambiguate from the original spec `2:4` we\nalso set the appropriate bit in `shrink_axis_mask`.\n\n2. `2:4` is contributes 2, 4, 1 to begin, end, and stride. All masks have\nzero bits contributed.\n\n3. None is a synonym for `tf.newaxis`. This means insert a dimension of size 1\ndimension in the final shape. Dummy values are contributed to begin,\nend and stride, while the new_axis_mask bit is set.\n\n4. `...` grab the full ranges from as many dimensions as needed to\nfully specify a slice for every dimension of the input shape.\n\n5. `:-3:-1` shows the use of negative indices. A negative index `i` associated\nwith a dimension that has shape `s` is converted to a positive index\n`s + i`. So `-1` becomes `s-1` (i.e. the last element). This conversion\nis done internally so begin, end and strides receive x, -3, and -1.\nThe appropriate begin_mask bit is set to indicate the start range is the\nfull range (ignoring the x).\n\n6. `:` indicates that the entire contents of the corresponding dimension\nis selected. This is equivalent to `::` or `0::1`. begin, end, and strides\nreceive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and\n`end_mask` are also set.\n\n*Requirements*:\n  `0 != strides[i] for i in [0, m)`\n  `ellipsis_mask must be a power of two (only one ellipsis)`"
 }
 op {
   name: "StridedSliceAssign"
