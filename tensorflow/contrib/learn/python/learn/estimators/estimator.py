@@ -505,17 +505,21 @@ class BaseEstimator(
         `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
+
+    Returns:
+      The string path to the exported directory.
     """
     # pylint: disable=protected-access
-    export._export_estimator(estimator=self,
-                             export_dir=export_dir,
-                             signature_fn=signature_fn,
-                             prediction_key=prediction_key,
-                             input_fn=input_fn,
-                             input_feature_key=input_feature_key,
-                             use_deprecated_input_fn=use_deprecated_input_fn,
-                             default_batch_size=default_batch_size,
-                             exports_to_keep=exports_to_keep)
+    return export._export_estimator(
+        estimator=self,
+        export_dir=export_dir,
+        signature_fn=signature_fn,
+        prediction_key=prediction_key,
+        input_fn=input_fn,
+        input_feature_key=input_feature_key,
+        use_deprecated_input_fn=use_deprecated_input_fn,
+        default_batch_size=default_batch_size,
+        exports_to_keep=exports_to_keep)
     # pylint: enable=protected-access
 
   @abc.abstractproperty

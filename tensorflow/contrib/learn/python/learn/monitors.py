@@ -950,6 +950,7 @@ class ExportMonitor(EveryN):
     self._exports_to_keep = exports_to_keep
     self._signature_fn = signature_fn
     self._default_batch_size = default_batch_size
+    self._last_export_dir = None
 
   @property
   def export_dir(self):
@@ -963,10 +964,14 @@ class ExportMonitor(EveryN):
   def signature_fn(self):
     return self._signature_fn
 
+  @property
+  def last_export_dir(self):
+    return self._last_export_dir
+
   def every_n_step_end(self, step, outputs):
     super(ExportMonitor, self).every_n_step_end(step, outputs)
     try:
-      self._estimator.export(
+      self._last_export_dir = self._estimator.export(
           self.export_dir,
           exports_to_keep=self.exports_to_keep,
           signature_fn=self.signature_fn,
@@ -993,7 +998,7 @@ class ExportMonitor(EveryN):
                    "yet.")
       return
     try:
-      self._estimator.export(
+      self._last_export_dir = self._estimator.export(
           self.export_dir,
           exports_to_keep=self.exports_to_keep,
           signature_fn=self.signature_fn,
