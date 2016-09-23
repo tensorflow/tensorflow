@@ -34,26 +34,24 @@ string CreateTestFile(Env* env, const string& filename, int length) {
 }
 }  // namespace
 
+string BaseDir() { return io::JoinPath(testing::TmpDir(), "base_dir"); }
+
 class DefaultEnvTest : public ::testing::Test {
  protected:
-  void SetUp() override {
-    base_dir_ = io::JoinPath(testing::TmpDir(), "base_dir");
-    env_->CreateDir(base_dir_);
-  }
+  void SetUp() override { env_->CreateDir(BaseDir()); }
 
   void TearDown() override {
     int64 undeleted_files, undeleted_dirs;
-    env_->DeleteRecursively(base_dir_, &undeleted_files, &undeleted_dirs);
+    env_->DeleteRecursively(BaseDir(), &undeleted_files, &undeleted_dirs);
   }
 
-  string base_dir_;
   Env* env_ = Env::Default();
 };
 
 TEST_F(DefaultEnvTest, ReadFileToString) {
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
                            1 << 20, (1 << 20) + 1}) {
-    const string filename = strings::StrCat(base_dir_, "/bar/..//file", length);
+    const string filename = strings::StrCat(BaseDir(), "/bar/..//file", length);
 
     // Write a file with the given length
     const string input = CreateTestFile(env_, filename, length);
@@ -76,7 +74,7 @@ TEST_F(DefaultEnvTest, FileToReadonlyMemoryRegion) {
   for (const int length : {1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
                            1 << 20, (1 << 20) + 1}) {
     const string filename =
-        io::JoinPath(base_dir_, strings::StrCat("file", length));
+        io::JoinPath(BaseDir(), strings::StrCat("file", length));
 
     // Write a file with the given length
     const string input = CreateTestFile(env_, filename, length);
@@ -100,7 +98,7 @@ TEST_F(DefaultEnvTest, DeleteRecursively) {
   // root_dir -> dirs: child_dir1, child_dir2; files: root_file1, root_file2
   // child_dir1 -> files: child1_file1
   // child_dir2 -> empty
-  const string parent_dir = io::JoinPath(base_dir_, "root_dir");
+  const string parent_dir = io::JoinPath(BaseDir(), "root_dir");
   const string child_dir1 = io::JoinPath(parent_dir, "child_dir1");
   const string child_dir2 = io::JoinPath(parent_dir, "child_dir2");
   TF_EXPECT_OK(env_->CreateDir(parent_dir));
@@ -128,7 +126,7 @@ TEST_F(DefaultEnvTest, DeleteRecursively) {
 
 TEST_F(DefaultEnvTest, DeleteRecursivelyFail) {
   // Try to delete a non-existent directory.
-  const string parent_dir = io::JoinPath(base_dir_, "root_dir");
+  const string parent_dir = io::JoinPath(BaseDir(), "root_dir");
 
   int64 undeleted_files, undeleted_dirs;
   Status s =
@@ -139,7 +137,7 @@ TEST_F(DefaultEnvTest, DeleteRecursivelyFail) {
 }
 
 TEST_F(DefaultEnvTest, RecursivelyCreateDir) {
-  const string create_path = io::JoinPath(base_dir_, "a//b/c/d");
+  const string create_path = io::JoinPath(BaseDir(), "a//b/c/d");
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));  // repeat creation.
   EXPECT_TRUE(env_->FileExists(create_path));
@@ -151,24 +149,24 @@ TEST_F(DefaultEnvTest, RecursivelyCreateDirEmpty) {
 
 TEST_F(DefaultEnvTest, RecursivelyCreateDirSubdirsExist) {
   // First create a/b.
-  const string subdir_path = io::JoinPath(base_dir_, "a/b");
-  TF_CHECK_OK(env_->CreateDir(io::JoinPath(base_dir_, "a")));
+  const string subdir_path = io::JoinPath(BaseDir(), "a/b");
+  TF_CHECK_OK(env_->CreateDir(io::JoinPath(BaseDir(), "a")));
   TF_CHECK_OK(env_->CreateDir(subdir_path));
   EXPECT_TRUE(env_->FileExists(subdir_path));
 
   // Now try to recursively create a/b/c/d/
-  const string create_path = io::JoinPath(base_dir_, "a/b/c/d/");
+  const string create_path = io::JoinPath(BaseDir(), "a/b/c/d/");
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));
   TF_CHECK_OK(env_->RecursivelyCreateDir(create_path));  // repeat creation.
   EXPECT_TRUE(env_->FileExists(create_path));
-  EXPECT_TRUE(env_->FileExists(io::JoinPath(base_dir_, "a/b/c")));
+  EXPECT_TRUE(env_->FileExists(io::JoinPath(BaseDir(), "a/b/c")));
 }
 
 TEST_F(DefaultEnvTest, LocalFileSystem) {
   // Test filename with file:// syntax.
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
                            1 << 20, (1 << 20) + 1}) {
-    string filename = io::JoinPath(base_dir_, strings::StrCat("file", length));
+    string filename = io::JoinPath(BaseDir(), strings::StrCat("file", length));
 
     filename = strings::StrCat("file://", filename);
 
@@ -188,16 +186,17 @@ TEST_F(DefaultEnvTest, LocalFileSystem) {
   }
 }
 
-#define EXPECT_PARSE_URI(uri, scheme, host, path) \
-  do {                                            \
-    StringPiece s, h, p;                          \
-    ParseURI(uri, &s, &h, &p);                    \
-    EXPECT_EQ(scheme, s.ToString());              \
-    EXPECT_EQ(host, h.ToString());                \
-    EXPECT_EQ(path, p.ToString());                \
+#define EXPECT_PARSE_URI(uri, scheme, host, path)  \
+  do {                                             \
+    StringPiece s, h, p;                           \
+    ParseURI(uri, &s, &h, &p);                     \
+    EXPECT_EQ(scheme, s.ToString());               \
+    EXPECT_EQ(host, h.ToString());                 \
+    EXPECT_EQ(path, p.ToString());                 \
+    EXPECT_EQ(uri, CreateURI(scheme, host, path)); \
   } while (0)
 
-TEST_F(DefaultEnvTest, ParseURI) {
+TEST_F(DefaultEnvTest, CreateParseURI) {
   EXPECT_PARSE_URI("http://foo", "http", "foo", "");
   EXPECT_PARSE_URI("/encrypted/://foo", "", "", "/encrypted/://foo");
   EXPECT_PARSE_URI("/usr/local/foo", "", "", "/usr/local/foo");
@@ -226,6 +225,39 @@ TEST_F(DefaultEnvTest, SleepForMicroseconds) {
   // sometimes give slightly inconsistent values between the start and the
   // finish (e.g. because the two calls run on different CPUs).
   EXPECT_GE(delta, sleep_time - 10);
+}
+
+class TmpDirFileSystem : public NullFileSystem {
+ public:
+  bool FileExists(const string& dir) override {
+    StringPiece scheme, host, path;
+    ParseURI(dir, &scheme, &host, &path);
+    if (path.empty()) return false;
+    return Env::Default()->FileExists(io::JoinPath(BaseDir(), path));
+  }
+
+  Status CreateDir(const string& dir) override {
+    StringPiece scheme, host, path;
+    ParseURI(dir, &scheme, &host, &path);
+    if (scheme != "tmpdirfs") {
+      return errors::FailedPrecondition("scheme must be tmpdirfs");
+    }
+    if (host != "testhost") {
+      return errors::FailedPrecondition("host must be testhost");
+    }
+    return Env::Default()->CreateDir(io::JoinPath(BaseDir(), path));
+  }
+};
+
+REGISTER_FILE_SYSTEM("tmpdirfs", TmpDirFileSystem);
+
+TEST_F(DefaultEnvTest, RecursivelyCreateDirWithUri) {
+  Env* env = Env::Default();
+  const string create_path = "tmpdirfs://testhost/a/b/c/d";
+  EXPECT_FALSE(env->FileExists(create_path));
+  TF_CHECK_OK(env->RecursivelyCreateDir(create_path));
+  TF_CHECK_OK(env->RecursivelyCreateDir(create_path));  // repeat creation.
+  EXPECT_TRUE(env->FileExists(create_path));
 }
 
 // Creates a new TestEnv that uses Env::Default for all basic ops but
@@ -275,18 +307,15 @@ REGISTER_FILE_SYSTEM_ENV(GetTestEnv(), "ipfs", InterPlanetaryFileSystem);
 
 class TestEnvTest : public ::testing::Test {
  protected:
-  void SetUp() override {
-    base_dir_ = io::JoinPath(testing::TmpDir(), "base_dir");
-    env_->CreateDir(base_dir_);
-  }
+  void SetUp() override { env_->CreateDir(BaseDir()); }
 
   void TearDown() override {
     int64 undeleted_files, undeleted_dirs;
-    env_->DeleteRecursively(base_dir_, &undeleted_files, &undeleted_dirs);
+    env_->DeleteRecursively(BaseDir(), &undeleted_files, &undeleted_dirs);
   }
 
   // Returns all the matched entries as a comma separated string removing the
-  // common prefix of base_dir_.
+  // common prefix of BaseDir().
   string Match(const string& base_dir, const string& suffix_pattern) {
     std::vector<string> results;
     Status s = env_->GetMatchingPaths(io::JoinPath(base_dir, suffix_pattern),
@@ -305,7 +334,6 @@ class TestEnvTest : public ::testing::Test {
     }
   }
 
-  string base_dir_;
   Env* env_ = GetTestEnv();
 };
 
@@ -336,87 +364,87 @@ TEST_F(TestEnvTest, IPFSMatch) {
 }
 
 TEST_F(TestEnvTest, MatchNonExistentFile) {
-  EXPECT_EQ(Match(base_dir_, "thereisnosuchfile"), "");
+  EXPECT_EQ(Match(BaseDir(), "thereisnosuchfile"), "");
 }
 
 TEST_F(TestEnvTest, MatchSimple) {
   // Create a few files.
   TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(base_dir_, "match-00"), ""));
+      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-00"), ""));
   TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(base_dir_, "match-0a"), ""));
+      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-0a"), ""));
   TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(base_dir_, "match-01"), ""));
+      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-01"), ""));
   TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(base_dir_, "match-aaa"), ""));
+      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-aaa"), ""));
 
-  EXPECT_EQ(Match(base_dir_, "match-*"),
+  EXPECT_EQ(Match(BaseDir(), "match-*"),
             "match-00,match-01,match-0a,match-aaa");
-  EXPECT_EQ(Match(base_dir_, "match-0[0-9]"), "match-00,match-01");
-  EXPECT_EQ(Match(base_dir_, "match-?[0-9]"), "match-00,match-01");
-  EXPECT_EQ(Match(base_dir_, "match-?a*"), "match-0a,match-aaa");
-  EXPECT_EQ(Match(base_dir_, "match-??"), "match-00,match-01,match-0a");
+  EXPECT_EQ(Match(BaseDir(), "match-0[0-9]"), "match-00,match-01");
+  EXPECT_EQ(Match(BaseDir(), "match-?[0-9]"), "match-00,match-01");
+  EXPECT_EQ(Match(BaseDir(), "match-?a*"), "match-0a,match-aaa");
+  EXPECT_EQ(Match(BaseDir(), "match-??"), "match-00,match-01,match-0a");
 }
 
 TEST_F(TestEnvTest, MatchDirectory) {
   // Create some directories.
   TF_EXPECT_OK(
-      env_->RecursivelyCreateDir(io::JoinPath(base_dir_, "match-00/abc")));
+      env_->RecursivelyCreateDir(io::JoinPath(BaseDir(), "match-00/abc")));
   TF_EXPECT_OK(
-      env_->RecursivelyCreateDir(io::JoinPath(base_dir_, "match-0a/abc")));
+      env_->RecursivelyCreateDir(io::JoinPath(BaseDir(), "match-0a/abc")));
   TF_EXPECT_OK(
-      env_->RecursivelyCreateDir(io::JoinPath(base_dir_, "match-01/abc")));
+      env_->RecursivelyCreateDir(io::JoinPath(BaseDir(), "match-01/abc")));
   TF_EXPECT_OK(
-      env_->RecursivelyCreateDir(io::JoinPath(base_dir_, "match-aaa/abc")));
+      env_->RecursivelyCreateDir(io::JoinPath(BaseDir(), "match-aaa/abc")));
 
   // Create a few files.
   TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(base_dir_, "match-00/abc/x"), ""));
+      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-00/abc/x"), ""));
   TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(base_dir_, "match-0a/abc/x"), ""));
+      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-0a/abc/x"), ""));
   TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(base_dir_, "match-01/abc/x"), ""));
+      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-01/abc/x"), ""));
   TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(base_dir_, "match-aaa/abc/x"), ""));
+      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-aaa/abc/x"), ""));
 
-  EXPECT_EQ(Match(base_dir_, "match-*/abc/x"),
+  EXPECT_EQ(Match(BaseDir(), "match-*/abc/x"),
             "match-00/abc/x,match-01/abc/x,match-0a/abc/x,match-aaa/abc/x");
-  EXPECT_EQ(Match(base_dir_, "match-0[0-9]/abc/x"),
+  EXPECT_EQ(Match(BaseDir(), "match-0[0-9]/abc/x"),
             "match-00/abc/x,match-01/abc/x");
-  EXPECT_EQ(Match(base_dir_, "match-?[0-9]/abc/x"),
+  EXPECT_EQ(Match(BaseDir(), "match-?[0-9]/abc/x"),
             "match-00/abc/x,match-01/abc/x");
-  EXPECT_EQ(Match(base_dir_, "match-?a*/abc/x"),
+  EXPECT_EQ(Match(BaseDir(), "match-?a*/abc/x"),
             "match-0a/abc/x,match-aaa/abc/x");
-  EXPECT_EQ(Match(base_dir_, "match-?[^a]/abc/x"),
+  EXPECT_EQ(Match(BaseDir(), "match-?[^a]/abc/x"),
             "match-00/abc/x,match-01/abc/x");
 }
 
 TEST_F(TestEnvTest, MatchMultipleWildcards) {
   // Create some directories.
   TF_EXPECT_OK(
-      env_->RecursivelyCreateDir(io::JoinPath(base_dir_, "match-00/abc")));
+      env_->RecursivelyCreateDir(io::JoinPath(BaseDir(), "match-00/abc")));
   TF_EXPECT_OK(
-      env_->RecursivelyCreateDir(io::JoinPath(base_dir_, "match-01/abc")));
+      env_->RecursivelyCreateDir(io::JoinPath(BaseDir(), "match-01/abc")));
   TF_EXPECT_OK(
-      env_->RecursivelyCreateDir(io::JoinPath(base_dir_, "match-02/abc")));
+      env_->RecursivelyCreateDir(io::JoinPath(BaseDir(), "match-02/abc")));
 
   // Create a few files.
   TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(base_dir_, "match-00/abc/00"), ""));
+      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-00/abc/00"), ""));
   TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(base_dir_, "match-00/abc/01"), ""));
+      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-00/abc/01"), ""));
   TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(base_dir_, "match-00/abc/09"), ""));
+      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-00/abc/09"), ""));
   TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(base_dir_, "match-01/abc/00"), ""));
+      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-01/abc/00"), ""));
   TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(base_dir_, "match-01/abc/04"), ""));
+      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-01/abc/04"), ""));
   TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(base_dir_, "match-01/abc/10"), ""));
+      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-01/abc/10"), ""));
   TF_EXPECT_OK(
-      WriteStringToFile(env_, io::JoinPath(base_dir_, "match-02/abc/00"), ""));
+      WriteStringToFile(env_, io::JoinPath(BaseDir(), "match-02/abc/00"), ""));
 
-  EXPECT_EQ(Match(base_dir_, "match-0[0-1]/abc/0[0-8]"),
+  EXPECT_EQ(Match(BaseDir(), "match-0[0-1]/abc/0[0-8]"),
             "match-00/abc/00,match-00/abc/01,match-01/abc/00,match-01/abc/04");
 }
 
