@@ -1056,11 +1056,13 @@ tf_kernel_libraries(
         "reader_ops",
         "restore_op",
         "save_op",
+        "save_restore_v2_ops",
         "text_line_reader_op",
         "tf_record_reader_op",
         "whole_file_read_ops",
     ],
     deps = [
+        ":bounds_check_lib",
         ":ops_util",
         ":reader_base",
         ":save_restore_tensor",
@@ -1068,14 +1070,18 @@ tf_kernel_libraries(
         "//tensorflow/core:io_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 
 tf_cc_tests(
     size = "small",
     srcs = [
+        "merge_v2_checkpoints_op_test.cc",
         "restore_op_test.cc",
+        "restore_v2_op_test.cc",
         "save_op_test.cc",
+        "save_v2_op_test.cc",
     ],
     deps = [
         ":io",
@@ -1090,6 +1096,7 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 
