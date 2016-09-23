@@ -100,8 +100,10 @@ bool BFCAllocator::Extend(size_t rounded_bytes) {
     increased_allocation = true;
   }
 
+  size_t available_bytes = memory_limit_ - total_region_allocated_bytes_;
+
   // Try allocating.
-  size_t bytes = curr_region_allocation_bytes_;
+  size_t bytes = std::min(curr_region_allocation_bytes_, available_bytes);
   void* mem_addr = suballocator_->Alloc(32, bytes);
   if (mem_addr == nullptr && !started_backpedal_) {
     // Only backpedal once.
