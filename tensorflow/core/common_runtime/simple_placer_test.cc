@@ -689,8 +689,9 @@ TEST_F(SimplePlacerTest,
   Status s = Place(&g);
   EXPECT_TRUE(
       StringPiece(s.error_message())
-          .contains("Cannot assign a device to node 'var3': Node had no "
-                    "OpKernel registered"));
+          .contains("Cannot colocate nodes 'var3' and 'assign3' because no "
+                    "device type supports both of those nodes and the other "
+                    "nodes colocated with them."));
 }
 
 TEST_F(SimplePlacerTest, TestColocationAndReferenceConnections) {

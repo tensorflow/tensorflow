@@ -185,6 +185,13 @@ regular expression:
 
 - - -
 
+#### `tf.Operation.__str__()` {#Operation.__str__}
+
+
+
+
+- - -
+
 #### `tf.Operation.colocation_groups()` {#Operation.colocation_groups}
 
 Returns the list of colocation groups of the op.

@@ -11,5 +11,5 @@ Gets the list of variables, filtered by scope and/or suffix.
 
 ##### Returns:
 
-  a list of variables in colelction with scope and suffix.
+  a list of variables in collection with scope and suffix.
 

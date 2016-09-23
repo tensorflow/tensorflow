@@ -271,6 +271,7 @@ class SdcaModel(object):
      * Binary logistic loss
      * Squared loss
      * Hinge loss
+     * Smooth hinge loss
 
     This class defines an optimizer API to train a linear model.
 
@@ -302,9 +303,9 @@ class SdcaModel(object):
       symmetric_l1_regularization: 0.0
       symmetric_l2_regularization: 1.0
       loss_type: "logistic_loss"
-      num_partitions: 1 (Optional, with default value of 1. Number of
+      num_loss_partitions: 1 (Optional, with default value of 1. Number of
       partitions of the global loss function, 1 means single machine solver,
-      and >=1 when we have more than one optimizer working concurrently.)
+      and >1 when we have more than one optimizer working concurrently.)
       num_table_shards: 1 (Optional, with default value of 1. Number of shards
       of the internal state table, typically set to match the number of
       parameter servers for large data sets.
@@ -333,7 +334,8 @@ class SdcaModel(object):
     if not examples or not variables or not options:
       raise ValueError('examples, variables and options must all be specified.')
 
-    supported_losses = ('logistic_loss', 'squared_loss', 'hinge_loss')
+    supported_losses = ('logistic_loss', 'squared_loss', 'hinge_loss',
+                        'smooth_hinge_loss')
     if options['loss_type'] not in supported_losses:
       raise ValueError('Unsupported loss_type: ', options['loss_type'])
 
@@ -367,6 +369,7 @@ class SdcaModel(object):
 
     logging_ops.scalar_summary('approximate_duality_gap',
                                self.approximate_duality_gap())
+    logging_ops.scalar_summary('examples_seen', self._hashtable.size())
 
   def _symmetric_l1_regularization(self):
     return self._options['symmetric_l1_regularization']
@@ -375,11 +378,11 @@ class SdcaModel(object):
     # Algorithmic requirement (for now) is to have minimal l2 of 1.0.
     return max(self._options['symmetric_l2_regularization'], 1.0)
 
-  def _num_partitions(self):
+  def _num_loss_partitions(self):
     # Number of partitions of the global objective.
-    # TODO(andreasst): set num_partitions automatically based on the number
+    # TODO(andreasst): set num_loss_partitions automatically based on the number
     # of workers
-    return self._options.get('num_partitions', 1)
+    return self._options.get('num_loss_partitions', 1)
 
   def _num_table_shards(self):
     # Number of hash table shards.
@@ -538,7 +541,7 @@ class SdcaModel(object):
           loss_type=self._options['loss_type'],
           l1=self._options['symmetric_l1_regularization'],
           l2=self._symmetric_l2_regularization(),
-          num_partitions=self._num_partitions(),
+          num_loss_partitions=self._num_loss_partitions(),
           # TODO(sibyl-Aix6ihai): Provide empirical evidence for this. It is better
           # to run more than one iteration on single mini-batch as we want to
           # spend more time in compute. SDCA works better with larger
@@ -640,7 +643,7 @@ class SdcaModel(object):
             sigmoid_cross_entropy_with_logits(predictions, labels),
             weights)) / math_ops.reduce_sum(weights)
 
-      if self._options['loss_type'] == 'hinge_loss':
+      if self._options['loss_type'] in ['hinge_loss', 'smooth_hinge_loss']:
         # hinge_loss = max{0, 1 - y_i w*x} where y_i \in {-1, 1}. So, we need to
         # first convert 0/1 labels into -1/1 labels.
         all_ones = array_ops.ones_like(predictions)

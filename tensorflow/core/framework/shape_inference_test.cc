@@ -785,28 +785,38 @@ TEST_F(ShapeInferenceTest, Divide) {
   auto s = c.input(0);
   auto d_6 = c.Dim(s, 0);
   auto d_unknown = c.Dim(s, 1);
+  bool evenly_divisible = true;
 
   // Dividing unknown by non-1 gives new unknown.
   DimensionHandle out;
-  EXPECT_TRUE(c.Divide(d_unknown, 2, &out).ok());
+  EXPECT_TRUE(c.Divide(d_unknown, 2, evenly_divisible, &out).ok());
   EXPECT_EQ("?", c.DebugString(out));
   EXPECT_FALSE(SameHandle(out, d_unknown));
 
   // Dividing anything by 1 returns the input.
-  EXPECT_TRUE(c.Divide(d_unknown, 1, &out).ok());
+  EXPECT_TRUE(c.Divide(d_unknown, 1, evenly_divisible, &out).ok());
   EXPECT_TRUE(SameHandle(out, d_unknown));
-  EXPECT_TRUE(c.Divide(d_6, 1, &out).ok());
+  EXPECT_TRUE(c.Divide(d_6, 1, evenly_divisible, &out).ok());
   EXPECT_TRUE(SameHandle(out, d_6));
 
-  EXPECT_TRUE(c.Divide(d_6, 2, &out).ok());
+  EXPECT_TRUE(c.Divide(d_6, 2, evenly_divisible, &out).ok());
   EXPECT_EQ("3", c.DebugString(out));
 
-  EXPECT_EQ("Dimension size must be divisible by 5 but is 6",
-            c.Divide(d_6, 5, &out).error_message());
+  EXPECT_EQ("Dimension size must be evenly divisible by 5 but is 6",
+            c.Divide(d_6, 5, evenly_divisible, &out).error_message());
   EXPECT_EQ("Divisor must be positive but is 0",
-            c.Divide(d_6, 0, &out).error_message());
+            c.Divide(d_6, 0, evenly_divisible, &out).error_message());
   EXPECT_EQ("Divisor must be positive but is -1",
-            c.Divide(d_6, -1, &out).error_message());
+            c.Divide(d_6, -1, evenly_divisible, &out).error_message());
+
+  // Repeat error cases above with evenly_divisible=false.
+  evenly_divisible = false;
+  EXPECT_TRUE(c.Divide(d_6, 5, evenly_divisible, &out).ok());
+  EXPECT_EQ("1", c.DebugString(out));
+  EXPECT_EQ("Divisor must be positive but is 0",
+            c.Divide(d_6, 0, evenly_divisible, &out).error_message());
+  EXPECT_EQ("Divisor must be positive but is -1",
+            c.Divide(d_6, -1, evenly_divisible, &out).error_message());
 }
 
 TEST_F(ShapeInferenceTest, Add) {
@@ -969,14 +979,6 @@ TEST_F(ShapeInferenceTest, FullyDefined) {
   // Return true if all information exists.
   EXPECT_TRUE(c.FullyDefined(c.Matrix(c.MakeDim(1), c.MakeDim(2))));
   EXPECT_TRUE(c.FullyDefined(c.Scalar()));
-}
-
-TEST_F(ShapeInferenceTest, ValidateKnownDim) {
-  NodeDef def;
-  InferenceContext c(&def, MakeOpDef(0, 2), {}, {});
-
-  EXPECT_FALSE(c.ValidateKnownDim(c.UnknownDim(), "unknown").ok());
-  EXPECT_TRUE(c.ValidateKnownDim(c.Dim(c.Matrix(1, 2), 0), "known").ok());
 }
 
 TEST_F(ShapeInferenceTest, Min) {

@@ -516,32 +516,36 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       path: The path of the static file, relative to the tensorboard/ directory.
     """
     # Strip off the leading forward slash.
-    path = path.lstrip('/')
-    if not self._path_is_safe(path):
-      logging.info('path %s not safe, sending 404', path)
+    orig_path = path.lstrip('/')
+    if not self._path_is_safe(orig_path):
+      logging.info('path %s not safe, sending 404', orig_path)
       # Traversal attack, so 404.
       self.send_error(404)
       return
-
-    if path.startswith('external'):
+    # Resource loader wants a path relative to //WORKSPACE/tensorflow.
+    path = os.path.join('tensorboard', orig_path)
+    # Open the file and read it.
+    try:
+      contents = resource_loader.load_resource(path)
+    except IOError:
       # For compatibility with latest version of Bazel, we renamed bower
       # packages to use '_' rather than '-' in their package name.
       # This means that the directory structure is changed too.
       # So that all our recursive imports work, we need to modify incoming
       # requests to map onto the new directory structure.
+      path = orig_path
       components = path.split('/')
-      components[1] = components[1].replace('-', '_')
+      components[0] = components[0].replace('-', '_')
       path = ('/').join(components)
-      path = os.path.join('../', path)
-    else:
-      path = os.path.join('tensorboard', path)
-    # Open the file and read it.
-    try:
-      contents = resource_loader.load_resource(path)
-    except IOError:
-      logging.info('path %s not found, sending 404', path)
-      self.send_error(404)
-      return
+      # Bazel keeps all the external dependencies in //WORKSPACE/external.
+      # and resource loader wants a path relative to //WORKSPACE/tensorflow/.
+      path = os.path.join('../external', path)
+      try:
+        contents = resource_loader.load_resource(path)
+      except IOError:
+        logging.info('path %s not found, sending 404', path)
+        self.send_error(404)
+        return
     mimetype, encoding = mimetypes.guess_type(path)
     mimetype = mimetype or 'application/octet-stream'
     self._respond(contents, mimetype, encoding=encoding)

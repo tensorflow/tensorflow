@@ -97,7 +97,7 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
     }
 
     // Verify the dimensions.
-    CHECK(expected.starts_with("[") && expected.ends_with("]"));
+    CHECK(expected.starts_with("[") && expected.ends_with("]")) << expected;
     expected.remove_prefix(1);
     expected.remove_suffix(1);
 

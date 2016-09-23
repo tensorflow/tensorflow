@@ -22,6 +22,8 @@ namespace functor {
 template struct BinaryFunctor<GPUDevice, logical_and, 1>;
 template struct BinaryFunctor<GPUDevice, logical_and, 2>;
 template struct BinaryFunctor<GPUDevice, logical_and, 3>;
+template struct BinaryFunctor<GPUDevice, logical_and, 4>;
+template struct BinaryFunctor<GPUDevice, logical_and, 5>;
 }  // namespace functor
 }  // namespace tensorflow
 

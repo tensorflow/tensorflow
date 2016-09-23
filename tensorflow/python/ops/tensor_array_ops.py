@@ -50,12 +50,14 @@ class TensorArray(object):
   @@flow
 
   @@read
-  @@unpack
-  @@split
-
-  @@write
+  @@gather
   @@pack
   @@concat
+
+  @@write
+  @@scatter
+  @@unpack
+  @@split
 
   @@grad
   """
@@ -228,8 +230,11 @@ class TensorArray(object):
           ta._elem_shape.append(val_shape)
       return ta
 
-  def pack(self, name=None):
+  def _legacy_pack(self, name=None):
     """Return the values in the TensorArray as a packed `Tensor`.
+
+    This is the legacy version of pack, kept for testing
+    backwards compatibility.
 
     All of the values must have been written and their shapes must all match.
 
@@ -249,6 +254,51 @@ class TensorArray(object):
                                                    dtype=self._dtype,
                                                    name=name,
                                                    element_shape=element_shape)
+      if self._elem_shape and self._elem_shape[0].dims is not None:
+        value.set_shape([None] + self._elem_shape[0].dims)
+      return value
+
+  def pack(self, name=None):
+    """Return the values in the TensorArray as a packed `Tensor`.
+
+    All of the values must have been written and their shapes must all match.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      All the tensors in the TensorArray packed into one tensor.
+    """
+    with ops.colocate_with(self._handle):
+      with ops.name_scope(name, "TensorArrayPack", [self._handle]):
+        return self.gather(math_ops.range(0, self.size()), name=name)
+
+  def gather(self, indices, name=None):
+    """Return selected values in the TensorArray as a packed `Tensor`.
+
+    All of selected values must have been written and their shapes
+    must all match.
+
+    Args:
+      indices: A `1-D` `Tensor` taking values in `[0, max_value)`.  If
+        the `TensorArray` is not dynamic, `max_value=size()`.
+      name: A name for the operation (optional).
+
+    Returns:
+      The in the `TensorArray` selected by `indices`, packed into one tensor.
+    """
+    with ops.colocate_with(self._handle):
+      if self._elem_shape:
+        element_shape = self._elem_shape[0]
+      else:
+        element_shape = tensor_shape.TensorShape(None)
+      value = gen_data_flow_ops._tensor_array_gather(
+          handle=self._handle,
+          indices=indices,
+          flow_in=self._flow,
+          dtype=self._dtype,
+          name=name,
+          element_shape=element_shape)
       if self._elem_shape and self._elem_shape[0].dims is not None:
         value.set_shape([None] + self._elem_shape[0].dims)
       return value
@@ -281,8 +331,11 @@ class TensorArray(object):
         value.set_shape([None] + self._elem_shape[0].dims[1:])
       return value
 
-  def unpack(self, value, name=None):
+  def _legacy_unpack(self, value, name=None):
     """Pack the values of a `Tensor` in the TensorArray.
+
+    This is the legacy version of pack, kept for testing
+    backwards compatibility.
 
     Args:
       value: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unpack.
@@ -305,6 +358,64 @@ class TensorArray(object):
       ta._elem_shape = self._elem_shape
       if ta._infer_shape:
         val_shape = flow_out.op.inputs[1].get_shape()
+        elem_shape = tensor_shape.unknown_shape()
+        if val_shape.dims is not None:
+          elem_shape = tensor_shape.TensorShape(val_shape.dims[1:])
+        if ta._elem_shape:
+          if not elem_shape == ta._elem_shape[0]:
+            raise ValueError(
+                "Inconsistent shapes: saw %s but expected %s "
+                "(and infer_shape=True)" % (elem_shape, ta._elem_shape[0]))
+        else:
+          ta._elem_shape.append(elem_shape)
+      return ta
+
+  def unpack(self, value, name=None):
+    """Pack the values of a `Tensor` in the TensorArray.
+
+    Args:
+      value: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unpack.
+      name: A name for the operation (optional).
+
+    Returns:
+      A new TensorArray object with flow that ensures the unpack occurs.
+      Use this object all for subsequent operations.
+
+    Raises:
+      ValueError: if the shape inference fails.
+    """
+    with ops.colocate_with(self._handle):
+      with ops.name_scope(name, "TensorArrayPack", [self._handle, value]):
+        num_elements = array_ops.shape(value)[0]
+        return self.scatter(
+            indices=math_ops.range(0, num_elements), value=value, name=name)
+
+  def scatter(self, indices, value, name=None):
+    """Scatter the values of a `Tensor` in specific indices of a `TensorArray`.
+
+    Args:
+      indices: A `1-D` `Tensor` taking values in `[0, max_value)`.  If
+        the `TensorArray` is not dynamic, `max_value=size()`.
+      value: (N+1)-D.  Tensor of type `dtype`.  The Tensor to unpack.
+      name: A name for the operation (optional).
+
+    Returns:
+      A new TensorArray object with flow that ensures the scatter occurs.
+      Use this object all for subsequent operations.
+
+    Raises:
+      ValueError: if the shape inference fails.
+    """
+    with ops.colocate_with(self._handle):
+      flow_out = gen_data_flow_ops._tensor_array_scatter(
+          handle=self._handle, indices=indices, value=value, flow_in=self._flow,
+          name=name)
+      ta = TensorArray(dtype=self._dtype, handle=self._handle)
+      ta._flow = flow_out
+      ta._infer_shape = self._infer_shape
+      ta._elem_shape = self._elem_shape
+      if ta._infer_shape:
+        val_shape = flow_out.op.inputs[2].get_shape()
         elem_shape = tensor_shape.unknown_shape()
         if val_shape.dims is not None:
           elem_shape = tensor_shape.TensorShape(val_shape.dims[1:])
@@ -381,8 +492,10 @@ ops.RegisterShape("TensorArraySize")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("TensorArrayClose")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("TensorArrayGrad")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("TensorArrayPack")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("TensorArrayGather")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("TensorArrayConcat")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("TensorArraySplit")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("TensorArrayUnpack")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("TensorArrayScatter")(common_shapes.call_cpp_shape_fn)
 
 # pylint: enable=protected-access

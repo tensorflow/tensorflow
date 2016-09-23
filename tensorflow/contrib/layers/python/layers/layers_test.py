@@ -40,9 +40,9 @@ class AvgPool2DTest(tf.test.TestCase):
     images = tf.random_uniform((5, height, width, 3), seed=1)
     output = tf.contrib.layers.avg_pool2d(images, [3, 3],
                                           outputs_collections='outputs')
-    output_collection = tf.get_collection('outputs')[0]
-    self.assertEquals(output_collection.name, 'AvgPool2D')
-    self.assertEquals(output_collection.outputs, output)
+    output_collected = tf.get_collection('outputs')[0]
+    self.assertEquals(output_collected.alias, 'AvgPool2D')
+    self.assertEquals(output_collected, output)
 
   def testCreateSquareAvgPool(self):
     height, width = 3, 3
@@ -207,11 +207,12 @@ class Convolution2dTest(tf.test.TestCase):
     height, width = 3, 3
     images = tf.random_uniform((5, height, width, 3), seed=1)
     with tf.name_scope('fe'):
-      conv = tf.contrib.layers.convolution2d(
-        images, 32, [3, 3], outputs_collections='outputs',
-        scope='Conv')
-    namedOutputs = tf.get_collection('outputs')[0]
-    self.assertEquals(namedOutputs.name, 'fe/Conv')
+      conv = tf.contrib.layers.convolution2d(images, 32, [3, 3],
+                                             outputs_collections='outputs',
+                                             scope='Conv')
+    output_collected = tf.get_collection('outputs')[0]
+    self.assertEquals(output_collected.alias, 'fe/Conv')
+    self.assertEquals(output_collected, conv)
 
   def testCreateConvWithoutActivation(self):
     height, width = 3, 3
@@ -865,8 +866,8 @@ class DropoutTest(tf.test.TestCase):
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.dropout(images, outputs_collections='outputs')
       c_output = tf.get_collection('outputs')[0]
-      self.assertEquals(c_output.name, 'Dropout')
-      self.assertEquals(c_output.outputs, output)
+      self.assertEquals(c_output.alias, 'Dropout')
+      self.assertEquals(c_output, output)
 
   def testDropout(self):
     height, width = 10, 10
@@ -942,8 +943,8 @@ class FlattenTest(tf.test.TestCase):
       images = np.random.uniform(size=(5, height, width, 3))
       output = tf.contrib.layers.flatten(images, outputs_collections='outputs')
       c_output = tf.get_collection('outputs')[0]
-      self.assertEquals(c_output.name, 'Flatten')
-      self.assertEquals(c_output.outputs, output)
+      self.assertEquals(c_output.alias, 'Flatten')
+      self.assertEquals(c_output, output)
 
   def testFlatten4D(self):
     height, width = 3, 3
@@ -1003,11 +1004,12 @@ class FCTest(tf.test.TestCase):
     height, width = 3, 3
     inputs = tf.random_uniform((5, height * width * 3), seed=1)
     with tf.name_scope('fe'):
-      fc = tf.contrib.layers.fully_connected(
-        inputs, 7, outputs_collections='outputs',
-        scope='fc')
-    namedOutputs = tf.get_collection('outputs')[0]
-    self.assertEquals(namedOutputs.name, 'fe/fc')
+      fc = tf.contrib.layers.fully_connected(inputs, 7,
+                                             outputs_collections='outputs',
+                                             scope='fc')
+    output_collected = tf.get_collection('outputs')[0]
+    self.assertEquals(output_collected.alias, 'fe/fc')
+    self.assertEquals(output_collected, fc)
 
   def testCreateFcCreatesWeightsAndBiasesVars(self):
     height, width = 3, 3
@@ -1561,6 +1563,29 @@ class BatchNormTest(tf.test.TestCase):
       self.assertAllClose(moving_mean.eval(), expected_mean)
       self.assertAllClose(moving_variance.eval(), expected_var)
 
+  def testCustomInitializer(self):
+    height, width = 3, 3
+    channels = 3
+    with self.test_session() as sess:
+      images = np.ones((5, height, width, channels))*9.0
+      beta = tf.constant_initializer(np.ones(channels)*5.0)
+      gamma = tf.constant_initializer(np.ones(channels)*2.0)
+      mean = tf.constant_initializer(np.ones(channels)*5.0)
+      variance = tf.constant_initializer(np.ones(channels)*4.0)
+      output = tf.contrib.layers.batch_norm(images,
+                                            is_training=False,
+                                            scale=True,
+                                            epsilon=0.0,
+                                            initializers={
+                                              'beta': beta,
+                                              'gamma': gamma,
+                                              'moving_mean': mean,
+                                              'moving_variance': variance,
+                                            })
+      sess.run(tf.initialize_all_variables())
+      outs = sess.run(output)
+      self.assertAllClose(outs, images)
+
 
 class LayerNormTest(tf.test.TestCase):
 
@@ -1660,9 +1685,9 @@ class MaxPool2DTest(tf.test.TestCase):
     images = tf.random_uniform((5, height, width, 3), seed=1)
     output = tf.contrib.layers.max_pool2d(images, [3, 3],
                                           outputs_collections='outputs')
-    outputs_collection = tf.get_collection('outputs')[0]
-    self.assertEquals(outputs_collection.name, 'MaxPool2D')
-    self.assertEquals(outputs_collection.outputs, output)
+    output_collected = tf.get_collection('outputs')[0]
+    self.assertEquals(output_collected.alias, 'MaxPool2D')
+    self.assertEquals(output_collected, output)
 
   def testCreateSquareMaxPool(self):
     height, width = 3, 3
@@ -1713,8 +1738,8 @@ class OneHotEncodingTest(tf.test.TestCase):
       output = tf.contrib.layers.one_hot_encoding(labels, num_classes=3,
                                                   outputs_collections='outputs')
       c_output = tf.get_collection('outputs')[0]
-      self.assertEquals(c_output.name, 'OneHotEncoding')
-      self.assertEquals(c_output.outputs, output)
+      self.assertEquals(c_output.alias, 'OneHotEncoding')
+      self.assertEquals(c_output, output)
 
   def testOneHotEncoding(self):
     with self.test_session():

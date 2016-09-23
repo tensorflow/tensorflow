@@ -15,7 +15,7 @@ with shape `[batch_size, x, y, z]`.
 
 If `enqueue_many` is `True`, `tensors` is assumed to represent a batch of
 examples, where the first dimension is indexed by example, and all members of
-`tensor_list` should have the same size in the first dimension.  If an input
+`tensors` should have the same size in the first dimension.  If an input
 tensor has shape `[*, x, y, z]`, the output will have shape `[batch_size, x,
 y, z]`.  The `capacity` argument controls the how long the prefetching is
 allowed to grow the queues.
@@ -51,11 +51,11 @@ operations that depend on fixed batch_size would fail.
 
 *  <b>`tensors`</b>: The list or dictionary of tensors to enqueue.
 *  <b>`batch_size`</b>: The new batch size pulled from the queue.
-*  <b>`num_threads`</b>: The number of threads enqueuing `tensor_list`.
+*  <b>`num_threads`</b>: The number of threads enqueuing `tensors`.
 *  <b>`capacity`</b>: An integer. The maximum number of elements in the queue.
-*  <b>`enqueue_many`</b>: Whether each tensor in `tensor_list` is a single example.
+*  <b>`enqueue_many`</b>: Whether each tensor in `tensors` is a single example.
 *  <b>`shapes`</b>: (Optional) The shapes for each example.  Defaults to the
-    inferred shapes for `tensor_list`.
+    inferred shapes for `tensors`.
 *  <b>`dynamic_pad`</b>: Boolean.  Allow variable dimensions in input shapes.
     The given dimensions are padded upon dequeue so that tensors within a
     batch have the same shapes.

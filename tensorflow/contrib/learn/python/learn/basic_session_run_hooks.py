@@ -35,6 +35,7 @@ from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import training_util
 
 
 class LoggingTensorHook(session_run_hook.SessionRunHook):
@@ -148,6 +149,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     """
     logging.info("Create CheckpointSaverHook")
     self._saver = saver
+    self._checkpoint_dir = checkpoint_dir
     self._summary_writer = SummaryWriterCache.get(checkpoint_dir)
     self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
     self._scaffold = scaffold
@@ -170,6 +172,14 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
           "Global step should be created to use CheckpointSaverHook.")
 
   def before_run(self, run_context):  # pylint: disable=unused-argument
+    if self._last_saved_time is None:
+      # Write graph in the first call
+      training_util.write_graph(
+          ops.get_default_graph().as_graph_def(add_shapes=True),
+          self._checkpoint_dir,
+          "graph.pbtxt")
+      self._summary_writer.add_graph(ops.get_default_graph())
+
     return SessionRunArgs(self._global_step_tensor)
 
   def after_run(self, run_context, run_values):

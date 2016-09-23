@@ -76,7 +76,7 @@ def train():
       tf.scalar_summary('mean/' + name, mean)
       with tf.name_scope('stddev'):
         stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
-      tf.scalar_summary('sttdev/' + name, stddev)
+      tf.scalar_summary('stddev/' + name, stddev)
       tf.scalar_summary('max/' + name, tf.reduce_max(var))
       tf.scalar_summary('min/' + name, tf.reduce_min(var))
       tf.histogram_summary(name, var)

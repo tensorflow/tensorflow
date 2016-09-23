@@ -76,9 +76,11 @@ StackClose
 TensorArray
 TensorArrayClose
 TensorArrayConcat
+TensorArrayGather
 TensorArrayGrad
 TensorArrayRead
 TensorArrayPack
+TensorArrayScatter
 TensorArraySize
 TensorArraySplit
 TensorArrayUnpack
@@ -121,7 +123,20 @@ TFRecordReader
 WholeFileReader
 
 # linalg_ops
-# (None)
+BatchCholesky
+BatchCholeskyGrad
+BatchMatrixDeterminant
+BatchMatrixInverse
+BatchMatrixSolve
+BatchMatrixSolveLs
+BatchMatrixTriangularSolve
+BatchSelfAdjointEig
+BatchSelfAdjointEigV2
+BatchSvd
+MatrixSolveLs
+SelfAdjointEig
+SelfAdjointEigV2
+Svd
 
 # logging_ops
 Assert
@@ -141,6 +156,7 @@ All
 Any
 BatchMatMul
 Complex
+Conj
 Max
 Mean
 Min

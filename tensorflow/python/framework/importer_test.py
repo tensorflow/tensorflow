@@ -341,6 +341,38 @@ class ImportGraphDefTest(tf.test.TestCase):
           "Cannot convert a tensor of type int32 to an input of type float" in
           str(e.exception))
 
+  def testShapeWhitelist(self):
+    # Barrier's shape is an output vector of 2, but the
+    # graph says it's a scalar.  This is currently whitelisted.
+    with tf.Graph().as_default():
+      _ = tf.import_graph_def(
+          self._MakeGraphDef("""
+          node { name: 'A' op: 'Barrier'
+                 attr { key: '_output_shapes'
+                        value { list { shape { } } } } }
+          """),
+          return_elements=["A"],
+          name="import")
+
+  def testShapeWhitelistViolation(self):
+    # L2 loss produces a scalar shape, but the graph
+    # has the wrong shape, so raise an error.
+    with tf.Graph().as_default():
+      with self.assertRaises(ValueError) as e:
+        _ = tf.import_graph_def(
+            self._MakeGraphDef("""
+              node { name: 'A' op: 'Of' }
+              node { name: 'B' op: 'L2Loss'
+                     input: 'A:0'
+                     attr { key: 'T' value { type: DT_FLOAT } }
+                     attr { key: '_output_shapes'
+                            value { list { shape { dim { size: 43 } } } } } }
+            """),
+            return_elements=["B"],
+            name="import")
+        self.assertTrue(
+            "Shapes () and (43,) are not compatible" in str(e.exception))
+
   def testInvalidSignatureTooManyInputsInGraphDef(self):
     with tf.Graph().as_default():
       with self.assertRaises(ValueError) as e:

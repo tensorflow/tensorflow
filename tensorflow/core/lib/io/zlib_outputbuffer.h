@@ -45,6 +45,7 @@ class ZlibOutputBuffer {
   // 2. the deflated output
   // with sizes `input_buffer_bytes` and `output_buffer_bytes` respectively.
   // Does not take ownership of `file`.
+  // output_buffer_bytes should be greater than 1.
   ZlibOutputBuffer(
       WritableFile* file,
       int32 input_buffer_bytes,   // size of z_stream.next_in buffer
@@ -52,6 +53,10 @@ class ZlibOutputBuffer {
       const ZlibCompressionOptions& zlib_options);
 
   ~ZlibOutputBuffer();
+
+  // Initializes some state necessary for the output buffer. This call is
+  // required before any other operation on the buffer.
+  Status Init();
 
   // Adds `data` to the compression pipeline.
   //
@@ -78,6 +83,7 @@ class ZlibOutputBuffer {
 
  private:
   WritableFile* file_;  // Not owned
+  Status init_status_;
   size_t input_buffer_capacity_;
   size_t output_buffer_capacity_;
 

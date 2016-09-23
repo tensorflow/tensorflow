@@ -154,58 +154,6 @@ Status NumericNpDTypeToTfDType(const int np, DataType* tf) {
   return Status::OK();
 }
 
-// Given an numpy ndarray object 'obj', creates a corresponding tf
-// Tensor in '*ret'.
-Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
-  PyArrayObject* input = reinterpret_cast<PyArrayObject*>(obj);
-  DataType dtype;
-  TensorShape shape;
-  for (int i = 0; i < PyArray_NDIM(input); ++i) {
-    shape.AddDim(PyArray_SHAPE(input)[i]);
-  }
-  const int np_type = PyArray_TYPE(input);
-  switch (np_type) {
-    case NPY_OBJECT: {
-      dtype = DT_STRING;
-      Tensor t(dtype, shape);
-      auto tflat = t.flat<string>();
-      PyObject** input_data = reinterpret_cast<PyObject**>(PyArray_DATA(input));
-      for (int i = 0; i < tflat.dimension(0); ++i) {
-        char* el;
-        Py_ssize_t el_size;
-        if (PyBytes_AsStringAndSize(input_data[i], &el, &el_size) == -1) {
-          return errors::Unimplemented("Unsupported object type ",
-                                       input_data[i]->ob_type->tp_name);
-        }
-        tflat(i) = string(el, el_size);
-      }
-      *ret = t;
-      break;
-    }
-    case NPY_STRING: {
-      dtype = DT_STRING;
-      Tensor t(dtype, shape);
-      auto tflat = t.flat<string>();
-      char* input_data = PyArray_BYTES(input);
-      Py_ssize_t el_size = PyArray_ITEMSIZE(input);
-      for (int i = 0; i < tflat.dimension(0); ++i) {
-        tflat(i) = string(input_data + i * el_size, el_size);
-      }
-      *ret = t;
-      break;
-    }
-    default: {
-      TF_RETURN_IF_ERROR(NumericNpDTypeToTfDType(PyArray_TYPE(input), &dtype));
-      Tensor t(dtype, shape);
-      CHECK(DataTypeCanUseMemcpy(dtype));
-      StringPiece p = t.tensor_data();
-      memcpy(const_cast<char*>(p.data()), PyArray_DATA(input), p.size());
-      *ret = t;
-    }
-  }
-  return Status::OK();
-}
-
 // Calls the registered py function through the trampoline.
 Status DoCallPyFunc(PyCall* call) {
   PyObject* trampoline = GetPyTrampoline();
@@ -259,6 +207,56 @@ Status DoCallPyFunc(PyCall* call) {
 }
 
 }  // end namespace
+
+Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
+  PyArrayObject* input = reinterpret_cast<PyArrayObject*>(obj);
+  DataType dtype;
+  TensorShape shape;
+  for (int i = 0; i < PyArray_NDIM(input); ++i) {
+    shape.AddDim(PyArray_SHAPE(input)[i]);
+  }
+  const int np_type = PyArray_TYPE(input);
+  switch (np_type) {
+    case NPY_OBJECT: {
+      dtype = DT_STRING;
+      Tensor t(dtype, shape);
+      auto tflat = t.flat<string>();
+      PyObject** input_data = reinterpret_cast<PyObject**>(PyArray_DATA(input));
+      for (int i = 0; i < tflat.dimension(0); ++i) {
+        char* el;
+        Py_ssize_t el_size;
+        if (PyBytes_AsStringAndSize(input_data[i], &el, &el_size) == -1) {
+          return errors::Unimplemented("Unsupported object type ",
+                                       input_data[i]->ob_type->tp_name);
+        }
+        tflat(i) = string(el, el_size);
+      }
+      *ret = t;
+      break;
+    }
+    case NPY_STRING: {
+      dtype = DT_STRING;
+      Tensor t(dtype, shape);
+      auto tflat = t.flat<string>();
+      char* input_data = PyArray_BYTES(input);
+      Py_ssize_t el_size = PyArray_ITEMSIZE(input);
+      for (int i = 0; i < tflat.dimension(0); ++i) {
+        tflat(i) = string(input_data + i * el_size, el_size);
+      }
+      *ret = t;
+      break;
+    }
+    default: {
+      TF_RETURN_IF_ERROR(NumericNpDTypeToTfDType(PyArray_TYPE(input), &dtype));
+      Tensor t(dtype, shape);
+      CHECK(DataTypeCanUseMemcpy(dtype));
+      StringPiece p = t.tensor_data();
+      memcpy(const_cast<char*>(p.data()), PyArray_DATA(input), p.size());
+      *ret = t;
+    }
+  }
+  return Status::OK();
+}
 
 // Creates a numpy array in 'ret' and copies the content of tensor 't'
 // into 'ret'.

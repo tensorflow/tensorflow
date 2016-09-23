@@ -12,7 +12,7 @@ block size.
 
 
 *  <b>`input`</b>: A `Tensor`. 4-D with shape `[batch, height, width, depth]`.
-*  <b>`paddings`</b>: A `Tensor` of type `int32`.
+*  <b>`paddings`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
       the padding of the input with zeros across the spatial dimensions as follows:
 

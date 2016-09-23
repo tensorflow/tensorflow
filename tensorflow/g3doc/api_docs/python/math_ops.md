@@ -69,7 +69,7 @@ Returns x * y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -90,7 +90,7 @@ Returns x / y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -937,198 +937,6 @@ functions on matrices to your graph.
 
 - - -
 
-### `tf.batch_matrix_diag(diagonal, name=None)` {#batch_matrix_diag}
-
-Returns a batched diagonal tensor with a given batched diagonal values.
-
-Given a `diagonal`, this operation returns a tensor with the `diagonal` and
-everything else padded with zeros. The diagonal is computed as follows:
-
-Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
-tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
-
-`output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
-
-For example:
-
-```prettyprint
-# 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
-
-and diagonal.shape = (2, 4)
-
-tf.batch_matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
-                                     [0, 2, 0, 0]
-                                     [0, 0, 3, 0]
-                                     [0, 0, 0, 4]],
-                                    [[5, 0, 0, 0]
-                                     [0, 6, 0, 0]
-                                     [0, 0, 7, 0]
-                                     [0, 0, 0, 8]]]
-
-which has shape (2, 4, 4)
-```
-
-##### Args:
-
-
-*  <b>`diagonal`</b>: A `Tensor`. Rank `k`, where `k >= 1`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `diagonal`.
-  Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
-
-
-- - -
-
-### `tf.batch_matrix_diag_part(input, name=None)` {#batch_matrix_diag_part}
-
-Returns the batched diagonal part of a batched tensor.
-
-This operation returns a tensor with the `diagonal` part
-of the batched `input`. The `diagonal` part is computed as follows:
-
-Assume `input` has `k` dimensions `[I, J, K, ..., N, N]`, then the output is a
-tensor of rank `k - 1` with dimensions `[I, J, K, ..., N]` where:
-
-`diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.
-
-The input must be at least a matrix.
-
-For example:
-
-```prettyprint
-# 'input' is [[[1, 0, 0, 0]
-               [0, 2, 0, 0]
-               [0, 0, 3, 0]
-               [0, 0, 0, 4]],
-              [[5, 0, 0, 0]
-               [0, 6, 0, 0]
-               [0, 0, 7, 0]
-               [0, 0, 0, 8]]]
-
-and input.shape = (2, 4, 4)
-
-tf.batch_matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
-
-which has shape (2, 4)
-```
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`.
-    Rank `k` tensor where `k >= 2` and the last two dimensions are equal.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`.
-  The extracted diagonal(s) having shape
-  `diagonal.shape = input.shape[:-1]`.
-
-
-- - -
-
-### `tf.batch_matrix_band_part(input, num_lower, num_upper, name=None)` {#batch_matrix_band_part}
-
-Copy a tensor setting everything outside a central band in each innermost matrix
-
-to zero.
-
-The `band` part is computed as follows:
-Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
-tensor with the same shape where
-
-`band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.
-
-The indicator function 'in_band(m, n)` is one if
-`(num_lower < 0 || (m-n) <= num_lower)) &&
-(num_upper < 0 || (n-m) <= num_upper)`, and zero otherwise.
-
-For example:
-
-```prettyprint
-# if 'input' is [[ 0,  1,  2, 3]
-                 [-1,  0,  1, 2]
-                 [-2, -1,  0, 1]
-                 [-3, -2, -1, 0]],
-
-tf.batch_matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
-                                             [-1,  0,  1, 2]
-                                             [ 0, -1,  0, 1]
-                                             [ 0,  0, -1, 0]],
-
-tf.batch_matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
-                                            [-1,  0,  1, 0]
-                                            [-2, -1,  0, 1]
-                                            [ 0, -2, -1, 0]]
-```
-
-Useful special cases:
-
-```prettyprint
- tf.batch_matrix_band_part(input, 0, -1) ==> Upper triangular part.
- tf.batch_matrix_band_part(input, -1, 0) ==> Lower triangular part.
- tf.batch_matrix_band_part(input, 0, 0) ==> Diagonal.
-```
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`. Rank `k` tensor.
-*  <b>`num_lower`</b>: A `Tensor` of type `int64`.
-    0-D tensor. Number of subdiagonals to keep. If negative, keep entire
-    lower triangle.
-*  <b>`num_upper`</b>: A `Tensor` of type `int64`.
-    0-D tensor. Number of superdiagonals to keep. If negative, keep
-    entire upper triangle.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`.
-  Rank `k` tensor of the same shape as input. The extracted banded tensor.
-
-
-- - -
-
-### `tf.batch_matrix_set_diag(input, diagonal, name=None)` {#batch_matrix_set_diag}
-
-Returns a batched matrix tensor with new batched diagonal values.
-
-Given `input` and `diagonal`, this operation returns a tensor with the
-same shape and values as `input`, except for the diagonals of the innermost
-matrices.  These will be overwritten by the values in `diagonal`.
-The batched matrices must be square.
-
-The output is computed as follows:
-
-Assume `input` has `k+1` dimensions `[I, J, K, ..., N, N]` and `diagonal` has
-`k` dimensions `[I, J, K, ..., N]`.  Then the output is a
-tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
-
-  * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
-  * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`. Rank `k+1`, where `k >= 1`.
-*  <b>`diagonal`</b>: A `Tensor`. Must have the same type as `input`.
-    Rank `k`, where `k >= 1`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`.
-  Rank `k+1`, with `output.shape = input.shape`.
-
-
-
-- - -
-
 ### `tf.diag(diagonal, name=None)` {#diag}
 
 Returns a diagonal tensor with a given diagonal values.
@@ -1154,7 +962,7 @@ tf.diag(diagonal) ==> [[1, 0, 0, 0]
 ##### Args:
 
 
-*  <b>`diagonal`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`.
+*  <b>`diagonal`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
     Rank k tensor where k is at most 3.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1191,7 +999,7 @@ tf.diag_part(input) ==> [1, 2, 3, 4]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
     Rank k tensor where k is 2, 4, or 6.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1284,11 +1092,203 @@ tf.transpose(x, perm=[0, 2, 1]) ==> [[[1  4]
   A transposed `Tensor`.
 
 
+
 - - -
 
-### `tf.batch_matrix_transpose(a, name='batch_matrix_transpose')` {#batch_matrix_transpose}
+### `tf.matrix_diag(diagonal, name=None)` {#matrix_diag}
 
-Transposes last two dimensions of batch matrix `a`.
+Returns a batched diagonal tensor with a given batched diagonal values.
+
+Given a `diagonal`, this operation returns a tensor with the `diagonal` and
+everything else padded with zeros. The diagonal is computed as follows:
+
+Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
+tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+
+`output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
+
+For example:
+
+```prettyprint
+# 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
+
+and diagonal.shape = (2, 4)
+
+tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
+                                     [0, 2, 0, 0]
+                                     [0, 0, 3, 0]
+                                     [0, 0, 0, 4]],
+                                    [[5, 0, 0, 0]
+                                     [0, 6, 0, 0]
+                                     [0, 0, 7, 0]
+                                     [0, 0, 0, 8]]]
+
+which has shape (2, 4, 4)
+```
+
+##### Args:
+
+
+*  <b>`diagonal`</b>: A `Tensor`. Rank `k`, where `k >= 1`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `diagonal`.
+  Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
+
+
+- - -
+
+### `tf.matrix_diag_part(input, name=None)` {#matrix_diag_part}
+
+Returns the batched diagonal part of a batched tensor.
+
+This operation returns a tensor with the `diagonal` part
+of the batched `input`. The `diagonal` part is computed as follows:
+
+Assume `input` has `k` dimensions `[I, J, K, ..., N, N]`, then the output is a
+tensor of rank `k - 1` with dimensions `[I, J, K, ..., N]` where:
+
+`diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.
+
+The input must be at least a matrix.
+
+For example:
+
+```prettyprint
+# 'input' is [[[1, 0, 0, 0]
+               [0, 2, 0, 0]
+               [0, 0, 3, 0]
+               [0, 0, 0, 4]],
+              [[5, 0, 0, 0]
+               [0, 6, 0, 0]
+               [0, 0, 7, 0]
+               [0, 0, 0, 8]]]
+
+and input.shape = (2, 4, 4)
+
+tf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
+
+which has shape (2, 4)
+```
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`.
+    Rank `k` tensor where `k >= 2` and the last two dimensions are equal.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+  The extracted diagonal(s) having shape
+  `diagonal.shape = input.shape[:-1]`.
+
+
+- - -
+
+### `tf.matrix_band_part(input, num_lower, num_upper, name=None)` {#matrix_band_part}
+
+Copy a tensor setting everything outside a central band in each innermost matrix
+
+to zero.
+
+The `band` part is computed as follows:
+Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
+tensor with the same shape where
+
+`band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.
+
+The indicator function 'in_band(m, n)` is one if
+`(num_lower < 0 || (m-n) <= num_lower)) &&
+(num_upper < 0 || (n-m) <= num_upper)`, and zero otherwise.
+
+For example:
+
+```prettyprint
+# if 'input' is [[ 0,  1,  2, 3]
+                 [-1,  0,  1, 2]
+                 [-2, -1,  0, 1]
+                 [-3, -2, -1, 0]],
+
+tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
+                                             [-1,  0,  1, 2]
+                                             [ 0, -1,  0, 1]
+                                             [ 0,  0, -1, 0]],
+
+tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
+                                            [-1,  0,  1, 0]
+                                            [-2, -1,  0, 1]
+                                            [ 0, -2, -1, 0]]
+```
+
+Useful special cases:
+
+```prettyprint
+ tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.
+ tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.
+ tf.matrix_band_part(input, 0, 0) ==> Diagonal.
+```
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Rank `k` tensor.
+*  <b>`num_lower`</b>: A `Tensor` of type `int64`.
+    0-D tensor. Number of subdiagonals to keep. If negative, keep entire
+    lower triangle.
+*  <b>`num_upper`</b>: A `Tensor` of type `int64`.
+    0-D tensor. Number of superdiagonals to keep. If negative, keep
+    entire upper triangle.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+  Rank `k` tensor of the same shape as input. The extracted banded tensor.
+
+
+- - -
+
+### `tf.matrix_set_diag(input, diagonal, name=None)` {#matrix_set_diag}
+
+Returns a batched matrix tensor with new batched diagonal values.
+
+Given `input` and `diagonal`, this operation returns a tensor with the
+same shape and values as `input`, except for the diagonals of the innermost
+matrices.  These will be overwritten by the values in `diagonal`.
+The batched matrices must be square.
+
+The output is computed as follows:
+
+Assume `input` has `k+1` dimensions `[I, J, K, ..., N, N]` and `diagonal` has
+`k` dimensions `[I, J, K, ..., N]`.  Then the output is a
+tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+
+  * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
+  * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Rank `k+1`, where `k >= 1`.
+*  <b>`diagonal`</b>: A `Tensor`. Must have the same type as `input`.
+    Rank `k`, where `k >= 1`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+  Rank `k+1`, with `output.shape = input.shape`.
+
+
+- - -
+
+### `tf.matrix_transpose(a, name='matrix_transpose')` {#matrix_transpose}
+
+Transposes last two dimensions of tensor `a`.
 
 For example:
 
@@ -1296,13 +1296,13 @@ For example:
 # Matrix with no batch dimension.
 # 'x' is [[1 2 3]
 #         [4 5 6]]
-tf.batch_matrixtranspose(x) ==> [[1 4]
+tf.matrix_transpose(x) ==> [[1 4]
                                  [2 5]
                                  [3 6]]
 
 # Matrix with two batch dimensions.
 # x.shape is [1, 2, 3, 4]
-# tf.batch_matrix_transpose(x) is shape [1, 2, 4, 3]
+# tf.matrix_transpose(x) is shape [1, 2, 4, 3]
 ```
 
 ##### Args:
@@ -1420,26 +1420,7 @@ It is computed as:
 
 ### `tf.matrix_determinant(input, name=None)` {#matrix_determinant}
 
-Computes the determinant of a square matrix.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-    A tensor of shape `[M, M]`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`.
-  A scalar, equal to the determinant of the input.
-
-
-- - -
-
-### `tf.batch_matrix_determinant(input, name=None)` {#batch_matrix_determinant}
-
-Computes the determinants for a batch of square matrices.
+Computes the determinant of one ore more square matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices. The output is a tensor containing the determinants
@@ -1457,44 +1438,13 @@ for all input submatrices `[..., :, :]`.
   A `Tensor`. Has the same type as `input`. Shape is `[...]`.
 
 
-
 - - -
 
 ### `tf.matrix_inverse(input, adjoint=None, name=None)` {#matrix_inverse}
 
-Computes the inverse of a square invertible matrix or its adjoint (conjugate
+Computes the inverse of one or more square invertible matrices or their
 
-transpose).
-
-The op uses LU decomposition with partial pivoting to compute the inverse.
-
-If the matrix is not invertible there is no guarantee what the op does. It
-may detect the condition and raise an exception or it may simply return a
-garbage result.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
-    Shape is `[M, M]`.
-*  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`.
-  Shape is `[M, M]`. If `adjoint` is `False` then `output` contains the
-  matrix inverse of `input`. If `adjoint` is `True` then `output` contains the
-  matrix inverse of the adjoint of `input`.
-
-
-- - -
-
-### `tf.batch_matrix_inverse(input, adjoint=None, name=None)` {#batch_matrix_inverse}
-
-Computes the inverse of square invertible matrices or their adjoints
-
-(conjugate transposes).
+adjoints (conjugate transposes).
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices. The output is a tensor of the same shape as the input
@@ -1519,37 +1469,11 @@ garbage result.
   A `Tensor`. Has the same type as `input`. Shape is `[..., M, M]`.
 
 
-
 - - -
 
 ### `tf.cholesky(input, name=None)` {#cholesky}
 
-Computes the Cholesky decomposition of a square matrix.
-
-The input has to be symmetric and positive definite. Only the lower-triangular
-part of the input will be used for this operation. The upper-triangular part
-will not be read.
-
-The result is the lower-triangular matrix of the Cholesky decomposition of the
-input, `L`, so that `input = L L^*`.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
-    Shape is `[M, M]`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `input`. Shape is `[M, M]`.
-
-
-- - -
-
-### `tf.batch_cholesky(input, name=None)` {#batch_cholesky}
-
-Computes the Cholesky decomposition of a batch of square matrices.
+Computes the Cholesky decomposition of one or more square matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
 form square matrices, with the same constraints as the single matrix Cholesky
@@ -1572,52 +1496,14 @@ containing the Cholesky decompositions for all input submatrices `[..., :, :]`.
 
 ### `tf.cholesky_solve(chol, rhs, name=None)` {#cholesky_solve}
 
-Solve linear equations `A X = RHS`, given Cholesky factorization of `A`.
+Solves systems of linear eqns `A X = RHS`, given Cholesky factorizations.
 
 ```python
-# Solve one system of linear equations (K = 1).
-A = [[3, 1], [1, 3]]
-RHS = [[2], [22]]  # shape 2 x 1
-chol = tf.cholesky(A)
-X = tf.cholesky_solve(chol, RHS)
-# tf.matmul(A, X) ~ RHS
-X[:, 0]  # Solution to the linear system A x = RHS[:, 0]
-
-# Solve five systems of linear equations (K = 5).
-A = [[3, 1], [1, 3]]
-RHS = [[1, 2, 3, 4, 5], [11, 22, 33, 44, 55]]  # shape 2 x 5
-...
-X[:, 2]  # Solution to the linear system A x = RHS[:, 2]
-```
-
-##### Args:
-
-
-*  <b>`chol`</b>: A `Tensor`.  Must be `float32` or `float64`, shape is `[M, M]`.
-    Cholesky factorization of `A`, e.g. `chol = tf.cholesky(A)`.  For that
-    reason, only the lower triangular part (including the diagonal) of `chol`
-    is used.  The strictly upper part is assumed to be zero and not accessed.
-*  <b>`rhs`</b>: A `Tensor`, same type as `chol`, shape is `[M, K]`, designating `K`
-    systems of linear equations.
-*  <b>`name`</b>: A name to give this `Op`.  Defaults to `cholesky_solve`.
-
-##### Returns:
-
-  Solution to `A X = RHS`, shape `[M, K]`.  The solutions to the `K` systems.
-
-
-- - -
-
-### `tf.batch_cholesky_solve(chol, rhs, name=None)` {#batch_cholesky_solve}
-
-Solve batches of linear eqns `A X = RHS`, given Cholesky factorizations.
-
-```python
-# Solve one linear system (K = 1) for every member of the length 10 batch.
+# Solve 10 separate 2x2 linear systems:
 A = ... # shape 10 x 2 x 2
 RHS = ... # shape 10 x 2 x 1
-chol = tf.batch_cholesky(A)  # shape 10 x 2 x 2
-X = tf.batch_cholesky_solve(chol, RHS)  # shape 10 x 2 x 1
+chol = tf.cholesky(A)  # shape 10 x 2 x 2
+X = tf.cholesky_solve(chol, RHS)  # shape 10 x 2 x 1
 # tf.matmul(A, X) ~ RHS
 X[3, :, 0]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 0]
 
@@ -1632,55 +1518,30 @@ X[3, :, 2]  # Solution to the linear system A[3, :, :] x = RHS[3, :, 2]
 
 
 *  <b>`chol`</b>: A `Tensor`.  Must be `float32` or `float64`, shape is `[..., M, M]`.
-    Cholesky factorization of `A`, e.g. `chol = tf.batch_cholesky(A)`.
+    Cholesky factorization of `A`, e.g. `chol = tf.cholesky(A)`.
     For that reason, only the lower triangular parts (including the diagonal)
     of the last two dimensions of `chol` are used.  The strictly upper part is
     assumed to be zero and not accessed.
 *  <b>`rhs`</b>: A `Tensor`, same type as `chol`, shape is `[..., M, K]`.
-*  <b>`name`</b>: A name to give this `Op`.  Defaults to `batch_cholesky_solve`.
+*  <b>`name`</b>: A name to give this `Op`.  Defaults to `cholesky_solve`.
 
 ##### Returns:
 
   Solution to `A x = rhs`, shape `[..., M, K]`.
 
 
-
 - - -
 
 ### `tf.matrix_solve(matrix, rhs, adjoint=None, name=None)` {#matrix_solve}
 
-Solves a system of linear equations. Checks for invertibility.
+Solves systems of linear equations.
 
-##### Args:
-
-
-*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
-    Shape is `[M, M]`.
-*  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`. Shape is `[M, K]`.
-*  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
-    Boolean indicating whether to solve with `matrix` or its adjoint.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `matrix`.
-  Shape is `[M, K]`. If `adjoint` is `False` then `output` that solves
-  `matrix` * `output` = `rhs`. If `adjoint` is `True` then `output` that solves
-  `adjoint(matrix)` * `output` = `rhs`.
-
-
-- - -
-
-### `tf.batch_matrix_solve(matrix, rhs, adjoint=None, name=None)` {#batch_matrix_solve}
-
-Solves systems of linear equations. Checks for invertibility.
-
-Matrix is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-form square matrices. Rhs is a tensor of shape
-`[..., M, K]`. The output is a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output
-matrix satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
-If `adjoint` is `True` then each output
-matrix satisfies `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.
+`Matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices. `Rhs` is a tensor of shape `[..., M, K]`. The `output` is
+a tensor shape `[..., M, K]`.  If `adjoint` is `False` then each output matrix
+satisfies `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
+If `adjoint` is `True` then each output matrix satisfies
+`adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :]`.
 
 ##### Args:
 
@@ -1699,48 +1560,9 @@ matrix satisfies `adjoint(matrix[..., :, :]) * output[..., :, :] = rhs[..., :, :
   A `Tensor`. Has the same type as `matrix`. Shape is `[..., M, K]`.
 
 
-
 - - -
 
 ### `tf.matrix_triangular_solve(matrix, rhs, lower=None, adjoint=None, name=None)` {#matrix_triangular_solve}
-
-Solves a system of linear equations with an upper or lower triangular matrix by
-
-backsubstitution.
-
-`matrix` is a matrix of shape `[M, M]`. If `lower` is `True` then the strictly
-upper triangular part of `matrix` is assumed to be zero and not accessed.
-If `lower` is False then the strictly lower triangular part of `matrix` is
-assumed to be zero and not accessed.
-`rhs` is a matrix of shape [M, K]`.
-
-The output is a matrix of shape `[M, K]`. If `adjoint` is `False` the output
-satisfies the matrix equation `matrix` * `output` = `rhs`.
-If `adjoint` is `False` then `output` satisfies the matrix equation
-`matrix` * `output` = `rhs`.
-If `adjoint` is `True` then `output` satisfies the matrix equation
-`adjoint(matrix)` * `output` = `rhs`.
-
-##### Args:
-
-
-*  <b>`matrix`</b>: A `Tensor`. Must be one of the following types: `float64`, `float32`.
-    Shape is `[M, M]`.
-*  <b>`rhs`</b>: A `Tensor`. Must have the same type as `matrix`. Shape is `[M, K]`.
-*  <b>`lower`</b>: An optional `bool`. Defaults to `True`.
-    Boolean indicating whether `matrix` is lower or upper triangular
-*  <b>`adjoint`</b>: An optional `bool`. Defaults to `False`.
-    Boolean indicating whether to solve with `matrix` or its adjoint.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `matrix`. Shape is `[M, K]`.
-
-
-- - -
-
-### `tf.batch_matrix_triangular_solve(matrix, rhs, lower=None, adjoint=None, name=None)` {#batch_matrix_triangular_solve}
 
 Solves systems of linear equations with upper or lower triangular matrices by
 
@@ -1751,10 +1573,10 @@ square matrices. If `lower` is `True` then the strictly upper triangular part
 of each inner-most matrix is assumed to be zero and not accessed.
 If `lower` is False then the strictly lower triangular part of each inner-most
 matrix is assumed to be zero and not accessed.
-`rhs` is a tensor of shape [..., M, K]`.
+`rhs` is a tensor of shape `[..., M, K]`.
 
-The output is a tensor of shape `[..., M, K]`. If `adjoint` is `True` then the
-innermost matrices in output` satisfy matrix equations
+The output is a tensor of shape `[..., M, K]`. If `adjoint` is
+`True` then the innermost matrices in output` satisfy matrix equations
 `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
 If `adjoint` is `False` then the strictly then the  innermost matrices in
 `output` satisfy matrix equations
@@ -1780,62 +1602,11 @@ If `adjoint` is `False` then the strictly then the  innermost matrices in
   A `Tensor`. Has the same type as `matrix`. Shape is `[..., M, K]`.
 
 
-
 - - -
 
 ### `tf.matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None)` {#matrix_solve_ls}
 
-Solves a linear least-squares problem.
-
-Below we will use the following notation
-`matrix`=\\(A \in \Re^{m \times n}\\),
-`rhs`=\\(B  \in \Re^{m \times k}\\),
-`output`=\\(X  \in \Re^{n \times k}\\),
-`l2_regularizer`=\\(\lambda\\).
-
-If `fast` is `True`, then the solution is computed by solving the normal
-equations using Cholesky decomposition. Specifically, if \\(m \ge n\\) then
-\\(X = (A^T A + \lambda I)^{-1} A^T B\\), which solves the regularized
-least-squares problem \\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}}
-||A Z - B||_F^2 + \lambda ||Z||_F^2\\). If \\(m \lt n\\) then `output` is
-computed as \\(X = A^T (A A^T + \lambda I)^{-1} B\\),
-which (for \\(\lambda = 0\\)) is the minimum-norm solution to the
-under-determined linear system, i.e.
-\\(X = \mathrm{argmin}_{Z \in \Re^{n \times k}} ||Z||_F^2 \\),
-subject to \\(A Z = B\\).
-Notice that the fast path is only numerically stable when \\(A\\) is
-numerically full rank and has a condition number
-\\(\mathrm{cond}(A) \lt \frac{1}{\sqrt{\epsilon_{mach}}}\\)
-or \\(\lambda\\) is sufficiently large.
-
-If `fast` is `False` then the solution is computed using the rank revealing
-QR decomposition with column pivoting. This will always compute a
-least-squares solution that minimizes the residual norm
-\\(||A X - B||_F^2 \\), even when \\(A\\) is rank deficient or
-ill-conditioned. Notice: The current version does not compute a minimum norm
-solution. If `fast` is `False` then `l2_regularizer` is ignored.
-
-##### Args:
-
-
-*  <b>`matrix`</b>: 2-D `Tensor` of shape `[M, N]`.
-*  <b>`rhs`</b>: 2-D `Tensor` of shape is `[M, K]`.
-*  <b>`l2_regularizer`</b>: 0-D  `double` `Tensor`. Ignored if `fast=False`.
-*  <b>`fast`</b>: bool. Defaults to `True`.
-*  <b>`name`</b>: string, optional name of the operation.
-
-##### Returns:
-
-
-*  <b>`output`</b>: Matrix of shape `[N, K]` containing the matrix that solves
-    `matrix * output = rhs` in the least-squares sense.
-
-
-- - -
-
-### `tf.batch_matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None)` {#batch_matrix_solve_ls}
-
-Solves multiple linear least-squares problems.
+Solves one or more linear least-squares problems.
 
 `matrix` is a tensor of shape `[..., M, N]` whose inner-most 2 dimensions
 form `M`-by-`N` matrices. Rhs is a tensor of shape `[..., M, K]` whose
@@ -1845,8 +1616,8 @@ matrices that solve the equations
 `matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]` in the least squares
 sense.
 
-Below we will use the following notation for each pair of
-matrix and right-hand sides in the batch:
+Below we will use the following notation for each pair of matrix and
+right-hand sides in the batch:
 
 `matrix`=\\(A \in \Re^{m \times n}\\),
 `rhs`=\\(B  \in \Re^{m \times k}\\),
@@ -1890,44 +1661,21 @@ typically 6-7 times slower than the fast path. If `fast` is `False` then
     squares sense.
 
 
-
 - - -
 
-### `tf.self_adjoint_eig(matrix, name=None)` {#self_adjoint_eig}
-
-Computes the eigen decomposition of a self-adjoint matrix.
-
-Computes the eigenvalues and eigenvectors of an N-by-N matrix `matrix` such
-that `matrix * v[:,i] = e(i) * v[:,i]`, for i=0...N-1.
-
-##### Args:
-
-
-*  <b>`matrix`</b>: `Tensor` of shape `[N, N]`.
-*  <b>`name`</b>: string, optional name of the operation.
-
-##### Returns:
-
-
-*  <b>`e`</b>: Eigenvalues. Shape is `[N]`.
-*  <b>`v`</b>: Eigenvectors. Shape is `[N, N]`. The columns contain the eigenvectors of
-    `matrix`.
-
-
-- - -
-
-### `tf.batch_self_adjoint_eig(tensor, name=None)` {#batch_self_adjoint_eig}
+### `tf.self_adjoint_eig(tensor, name=None)` {#self_adjoint_eig}
 
 Computes the eigen decomposition of a batch of self-adjoint matrices.
 
 Computes the eigenvalues and eigenvectors of the innermost N-by-N matrices
 in `tensor` such that
-`tensor[...,:,:] * v[..., :,i] = e(..., i) * v[...,:,i]`, for i=0...N-1.
+`tensor[...,:,:] * v[..., :,i] = e[..., i] * v[...,:,i]`, for i=0...N-1.
 
 ##### Args:
 
 
-*  <b>`tensor`</b>: `Tensor` of shape `[..., N, N]`.
+*  <b>`tensor`</b>: `Tensor` of shape `[..., N, N]`. Only the lower triangular part of
+    each inner inner matrix is referenced.
 *  <b>`name`</b>: string, optional name of the operation.
 
 ##### Returns:
@@ -1935,33 +1683,14 @@ in `tensor` such that
 
 *  <b>`e`</b>: Eigenvalues. Shape is `[..., N]`.
 *  <b>`v`</b>: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
-  matrices
-    contain eigenvectors of the corresponding matrices in `tensor`
+    matrices contain eigenvectors of the corresponding matrices in `tensor`
 
 
 - - -
 
-### `tf.self_adjoint_eigvals(matrix, name=None)` {#self_adjoint_eigvals}
+### `tf.self_adjoint_eigvals(tensor, name=None)` {#self_adjoint_eigvals}
 
-Computes the eigenvalues a self-adjoint  matrix.
-
-##### Args:
-
-
-*  <b>`matrix`</b>: `Tensor` of shape `[N, N]`.
-*  <b>`name`</b>: string, optional name of the operation.
-
-##### Returns:
-
-
-*  <b>`e`</b>: Eigenvalues of `matrix`. Shape is `[N]`.
-
-
-- - -
-
-### `tf.batch_self_adjoint_eigvals(tensor, name=None)` {#batch_self_adjoint_eigvals}
-
-Computes the eigenvalues of a batch of self-adjoint matrices.
+Computes the eigenvalues of one or more self-adjoint matrices.
 
 ##### Args:
 
@@ -1976,54 +1705,11 @@ Computes the eigenvalues of a batch of self-adjoint matrices.
     eigenvalues of `tensor[..., :, :]`.
 
 
-
 - - -
 
-### `tf.svd(matrix, compute_uv=True, full_matrices=False, name=None)` {#svd}
+### `tf.svd(tensor, compute_uv=True, full_matrices=False, name=None)` {#svd}
 
-Computes the singular value decomposition of a matrix.
-
-Computes the SVD of `matrix` such that `matrix = u * diag(s) *
-transpose(v)`
-
-```prettyprint
-# a is a matrix.
-# s is a vector of singular values.
-# u is the matrix of left singular vectors.
-# v is a matrix of right singular vectors.
-s, u, v = svd(a)
-s = svd(a, compute_uv=False)
-```
-
-##### Args:
-
-
-*  <b>`matrix`</b>: `Tensor` of shape `[M, N]`. Let `P` be the minimum of `M` and `N`.
-*  <b>`compute_uv`</b>: If `True` then left and right singular vectors will be
-    computed and returned in `u` and `v`, respectively. Otherwise, only the
-    singular values will be computed, which can be significantly faster.
-*  <b>`full_matrices`</b>: If true, compute full-sized `u` and `v`. If false
-    (the default), compute only the leading `P` singular vectors.
-    Ignored if `compute_uv` is `False`.
-*  <b>`name`</b>: string, optional name of the operation.
-
-##### Returns:
-
-
-*  <b>`s`</b>: Singular values. Shape is `[P]`.
-*  <b>`u`</b>: Right singular vectors. If `full_matrices` is `False` (default) then
-    shape is `[M, P]`; if `full_matrices` is `True` then shape is
-    `[M, M]`. Not returned if `compute_uv` is `False`.
-*  <b>`v`</b>: Left singular vectors. If `full_matrices` is `False` (default) then
-    shape is `[N, P]`. If `full_matrices` is `True` then shape is
-    `[N, N]`. Not returned if `compute_uv` is `False`.
-
-
-- - -
-
-### `tf.batch_svd(tensor, compute_uv=True, full_matrices=False, name=None)` {#batch_svd}
-
-Computes the singular value decompositions of a batch of matrices.
+Computes the singular value decompositions of one or more matrices.
 
 Computes the SVD of each inner matrix in `tensor` such that
 `tensor[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :,
@@ -2034,8 +1720,8 @@ Computes the SVD of each inner matrix in `tensor` such that
 # s is a tensor of singular values.
 # u is a tensor of left singular vectors.
 # v is a tensor of right singular vectors.
-s, u, v = batch_svd(a)
-s = batch_svd(a, compute_uv=False)
+s, u, v = svd(a)
+s = svd(a, compute_uv=False)
 ```
 
 ##### Args:
@@ -2133,7 +1819,7 @@ tf.complex_abs(x) ==> [5.25594902, 6.60492229]
 
 - - -
 
-### `tf.conj(input, name=None)` {#conj}
+### `tf.conj(x, name=None)` {#conj}
 
 Returns the complex conjugate of a complex number.
 
@@ -2146,20 +1832,25 @@ The complex conjugate returned by this operation is of the form \\(a - bj\\).
 
 For example:
 
-```
-# tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
-```
+    # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+    tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
+
+If `x` is real, it is returned unchanged.
 
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`, `complex128`.
+*  <b>`x`</b>: `Tensor` to conjugate.  Must have numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor`. Has the same type as `input`.
+  A `Tensor` that is the conjugate of `x` (with the same type).
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `x` is not a numeric tensor.
 
 
 - - -
@@ -2211,11 +1902,12 @@ For example:
 tf.real(input) ==> [-2.25, 3.25]
 ```
 
+If `input` is already real, it is returned unchanged.
+
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `complex64`,
-       `complex128`.
+*  <b>`input`</b>: A `Tensor`. Must have numeric type.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2223,116 +1915,15 @@ tf.real(input) ==> [-2.25, 3.25]
   A `Tensor` of type `float32` or `float64`.
 
 
+
+## Fourier Transform Functions
+
+TensorFlow provides several operations that you can use to add discrete
+Fourier transform functions to your graph.
+
 - - -
 
 ### `tf.fft(input, name=None)` {#fft}
-
-Compute the 1-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 vector.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`. The 1D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.ifft(input, name=None)` {#ifft}
-
-.Doc(R"doc(
-
-Compute the inverse 1-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 vector.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`.
-  The inverse 1D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.fft2d(input, name=None)` {#fft2d}
-
-Compute the 2-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`. The 2D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.ifft2d(input, name=None)` {#ifft2d}
-
-Compute the inverse 2-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`.
-  The inverse 2D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.fft3d(input, name=None)` {#fft3d}
-
-Compute the 3-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 3-D tensor.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`. The 3D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.ifft3d(input, name=None)` {#ifft3d}
-
-Compute the inverse 3-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 3-D tensor.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`.
-  The inverse 3D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.batch_fft(input, name=None)` {#batch_fft}
 
 Compute the 1-dimensional discrete Fourier Transform over the inner-most
 
@@ -2353,7 +1944,7 @@ dimension of `input`.
 
 - - -
 
-### `tf.batch_ifft(input, name=None)` {#batch_ifft}
+### `tf.ifft(input, name=None)` {#ifft}
 
 Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most
 
@@ -2374,7 +1965,7 @@ dimension of `input`.
 
 - - -
 
-### `tf.batch_fft2d(input, name=None)` {#batch_fft2d}
+### `tf.fft2d(input, name=None)` {#fft2d}
 
 Compute the 2-dimensional discrete Fourier Transform over the inner-most
 
@@ -2395,7 +1986,7 @@ Compute the 2-dimensional discrete Fourier Transform over the inner-most
 
 - - -
 
-### `tf.batch_ifft2d(input, name=None)` {#batch_ifft2d}
+### `tf.ifft2d(input, name=None)` {#ifft2d}
 
 Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
 
@@ -2416,7 +2007,7 @@ Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
 
 - - -
 
-### `tf.batch_fft3d(input, name=None)` {#batch_fft3d}
+### `tf.fft3d(input, name=None)` {#fft3d}
 
 Compute the 3-dimensional discrete Fourier Transform over the inner-most 3
 
@@ -2437,7 +2028,7 @@ dimensions of `input`.
 
 - - -
 
-### `tf.batch_ifft3d(input, name=None)` {#batch_ifft3d}
+### `tf.ifft3d(input, name=None)` {#ifft3d}
 
 Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
 
@@ -3157,7 +2748,7 @@ tf.segment_sum(c, tf.constant([0, 0, 1]))
 
 
 *  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
-*  <b>`indices`</b>: A `Tensor` of type `int32`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor. Has same rank as `segment_ids`.
 *  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
     A 1-D tensor. Values should be sorted and can be repeated.
@@ -3187,7 +2778,7 @@ dimension, selecting a subset of dimension 0, specified by `indices`.
 
 
 *  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-*  <b>`indices`</b>: A `Tensor` of type `int32`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor. Has same rank as `segment_ids`.
 *  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
     A 1-D tensor. Values should be sorted and can be repeated.
@@ -3216,7 +2807,7 @@ of segments.
 
 
 *  <b>`data`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-*  <b>`indices`</b>: A `Tensor` of type `int32`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     A 1-D tensor. Has same rank as `segment_ids`.
 *  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
     A 1-D tensor. Values should be sorted and can be repeated.
@@ -3248,7 +2839,7 @@ Returns the index with the smallest value across dimensions of a tensor.
 
 
 *  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`dimension`</b>: A `Tensor` of type `int32`.
+*  <b>`dimension`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     int32, 0 <= dimension < rank(input).  Describes which dimension
     of the input Tensor to reduce across. For vectors, use dimension = 0.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -3268,7 +2859,7 @@ Returns the index with the largest value across dimensions of a tensor.
 
 
 *  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`dimension`</b>: A `Tensor` of type `int32`.
+*  <b>`dimension`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     int32, 0 <= dimension < rank(input).  Describes which dimension
     of the input Tensor to reduce across. For vectors, use dimension = 0.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -3281,7 +2872,7 @@ Returns the index with the largest value across dimensions of a tensor.
 
 - - -
 
-### `tf.listdiff(x, y, name=None)` {#listdiff}
+### `tf.listdiff(x, y, out_idx=None, name=None)` {#listdiff}
 
 Computes the difference between two lists of numbers or strings.
 
@@ -3312,6 +2903,7 @@ idx ==> [1, 3, 5]
 
 *  <b>`x`</b>: A `Tensor`. 1-D. Values to keep.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`. 1-D. Values to remove.
+*  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -3319,7 +2911,7 @@ idx ==> [1, 3, 5]
   A tuple of `Tensor` objects (out, idx).
 
 *  <b>`out`</b>: A `Tensor`. Has the same type as `x`. 1-D. Values present in `x` but not in `y`.
-*  <b>`idx`</b>: A `Tensor` of type `int32`. 1-D. Positions of `x` values preserved in `out`.
+*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D. Positions of `x` values preserved in `out`.
 
 
 - - -
@@ -3373,7 +2965,7 @@ where(input) ==> [[0, 0, 0],
 
 - - -
 
-### `tf.unique(x, name=None)` {#unique}
+### `tf.unique(x, out_idx=None, name=None)` {#unique}
 
 Finds unique elements in a 1-D tensor.
 
@@ -3397,6 +2989,7 @@ idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
 
 
 *  <b>`x`</b>: A `Tensor`. 1-D.
+*  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -3404,7 +2997,7 @@ idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
   A tuple of `Tensor` objects (y, idx).
 
 *  <b>`y`</b>: A `Tensor`. Has the same type as `x`. 1-D.
-*  <b>`idx`</b>: A `Tensor` of type `int32`. 1-D.
+*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D.
 
 
 
@@ -3502,12 +3095,12 @@ invert_permutation(x) ==> [2, 4, 3, 0, 1]
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor` of type `int32`. 1-D.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`. 1-D.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `int32`. 1-D.
+  A `Tensor`. Has the same type as `x`. 1-D.
 
 
 
@@ -3552,7 +3145,7 @@ value is output_dim0.
 
 *  <b>`grad`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     gradient propagated to the SparseSegmentSqrtN op.
-*  <b>`indices`</b>: A `Tensor` of type `int32`.
+*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     indices passed to the corresponding SparseSegmentSqrtN op.
 *  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
     segment_ids passed to the corresponding SparseSegmentSqrtN op.

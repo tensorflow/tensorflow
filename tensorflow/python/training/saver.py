@@ -619,7 +619,17 @@ class BaseSaverBuilder(object):
         restore_op = self._AddRestoreOps(filename_tensor, saveables,
                                          restore_sequentially, reshape)
 
-    assert restore_op.name.endswith("restore_all"), restore_op.name
+    # In the following use case, it's possible to have restore_ops be called
+    # something else:
+    # - Build inference graph and export a meta_graph.
+    # - Import the inference meta_graph
+    # - Extend the inference graph to a train graph.
+    # - Export a new meta_graph.
+    # Now the second restore_op will be called "restore_all_1".
+    # As such, comment out the assert for now until we know whether supporting
+    # such usage model makes sense.
+    #
+    # assert restore_op.name.endswith("restore_all"), restore_op.name
 
     return saver_pb2.SaverDef(
         filename_tensor_name=filename_tensor.name,
@@ -1323,8 +1333,11 @@ class Saver(object):
     if self._is_empty:
       return
 
-    if not file_io.get_matching_files(
-        _prefix_to_checkpoint_path(save_path, self.saver_def.version)):
+    # Performs this check only for V1, as the V2 restore op can read either a
+    # V1 ckpt or a V2 ckpt, making this check invalid.
+    if (self.saver_def.version is saver_pb2.SaverDef.V1) and (
+        not file_io.get_matching_files(
+            _prefix_to_checkpoint_path(save_path, self.saver_def.version))):
       raise ValueError("Restore called with invalid save path %s" % save_path)
 
     sess.run(self.saver_def.restore_op_name,

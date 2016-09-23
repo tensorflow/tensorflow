@@ -117,10 +117,9 @@ class PTBModel(object):
     #
     # The alternative version of the code below is:
     #
-    # from tensorflow.models.rnn import rnn
     # inputs = [tf.squeeze(input_, [1])
     #           for input_ in tf.split(1, num_steps, inputs)]
-    # outputs, state = rnn.rnn(cell, inputs, initial_state=self._initial_state)
+    # outputs, state = tf.nn.rnn(cell, inputs, initial_state=self._initial_state)
     outputs = []
     state = self._initial_state
     with tf.variable_scope("RNN"):

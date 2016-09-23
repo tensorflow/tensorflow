@@ -173,6 +173,11 @@ class TreeTrainingVariables(object):
           shape=[params.max_nodes],
           dtype=dtypes.int32,
           initializer=init_ops.constant_initializer(-1))
+      self.accumulator_to_node_map = variable_scope.get_variable(
+          name=self.get_tree_name('accumulator_to_node_map', tree_num),
+          shape=[params.max_fertile_nodes],
+          dtype=dtypes.int32,
+          initializer=init_ops.constant_initializer(-1))
 
       self.candidate_split_features = variable_scope.get_variable(
           name=self.get_tree_name('candidate_split_features', tree_num),
@@ -631,22 +636,27 @@ class RandomTreeGraphs(object):
 
     # Calculate finished nodes.
     with ops.control_dependencies(splits_update_ops):
-      children = array_ops.squeeze(array_ops.slice(
-          self.variables.tree, [0, 0], [-1, 1]), squeeze_dims=[1])
-      is_leaf = math_ops.equal(constants.LEAF_NODE, children)
-      leaves = math_ops.to_int32(array_ops.squeeze(array_ops.where(is_leaf),
-                                                   squeeze_dims=[1]))
       finished, stale = self.training_ops.finished_nodes(
-          leaves, self.variables.node_to_accumulator_map,
+          self.variables.accumulator_to_node_map,
+          self.variables.node_to_accumulator_map,
           self.variables.candidate_split_sums,
           self.variables.candidate_split_squares,
           self.variables.accumulator_sums,
           self.variables.accumulator_squares,
-          self.variables.start_epoch, epoch,
+          self.variables.start_epoch,
+          epoch,
           num_split_after_samples=self.params.split_after_samples,
           min_split_samples=self.params.min_split_samples)
 
     # Update leaf scores.
+    # TODO(thomaswc): Store the leaf scores in a TopN and only update the
+    # scores of the leaves that were touched by this batch of input.
+    children = array_ops.squeeze(
+        array_ops.slice(self.variables.tree, [0, 0], [-1, 1]), squeeze_dims=[1])
+    is_leaf = math_ops.equal(constants.LEAF_NODE, children)
+    leaves = math_ops.to_int32(
+        array_ops.squeeze(
+            array_ops.where(is_leaf), squeeze_dims=[1]))
     non_fertile_leaves = array_ops.boolean_mask(
         leaves, math_ops.less(array_ops.gather(
             self.variables.node_to_accumulator_map, leaves), 0))
@@ -694,21 +704,21 @@ class RandomTreeGraphs(object):
 
     # Update fertile slots.
     with ops.control_dependencies([tree_update_op]):
-      (node_map_updates, accumulators_cleared, accumulators_allocated) = (
-          self.training_ops.update_fertile_slots(
-              finished,
-              non_fertile_leaves,
-              non_fertile_leaf_scores,
-              self.variables.end_of_tree,
-              self.variables.accumulator_sums,
-              self.variables.node_to_accumulator_map,
-              stale,
-              regression=self.params.regression))
+      (n2a_map_updates, a2n_map_updates, accumulators_cleared,
+       accumulators_allocated) = (self.training_ops.update_fertile_slots(
+           finished,
+           non_fertile_leaves,
+           non_fertile_leaf_scores,
+           self.variables.end_of_tree,
+           self.variables.accumulator_sums,
+           self.variables.node_to_accumulator_map,
+           stale,
+           regression=self.params.regression))
 
     # Ensure end_of_tree doesn't get updated until UpdateFertileSlots has
     # used it to calculate new leaves.
-    gated_new_eot, = control_flow_ops.tuple([new_eot],
-                                            control_inputs=[node_map_updates])
+    gated_new_eot, = control_flow_ops.tuple(
+        [new_eot], control_inputs=[n2a_map_updates])
     eot_update_op = state_ops.assign(self.variables.end_of_tree, gated_new_eot)
 
     updates = []
@@ -717,15 +727,17 @@ class RandomTreeGraphs(object):
     updates.append(thresholds_update_op)
     updates.append(epoch_update_op)
 
-    updates.append(state_ops.scatter_update(
-        self.variables.node_to_accumulator_map,
-        array_ops.squeeze(array_ops.slice(node_map_updates, [0, 0], [1, -1]),
-                          squeeze_dims=[0]),
-        array_ops.squeeze(array_ops.slice(node_map_updates, [1, 0], [1, -1]),
-                          squeeze_dims=[0])))
+    updates.append(
+        state_ops.scatter_update(self.variables.node_to_accumulator_map,
+                                 n2a_map_updates[0], n2a_map_updates[1]))
+
+    updates.append(
+        state_ops.scatter_update(self.variables.accumulator_to_node_map,
+                                 a2n_map_updates[0], a2n_map_updates[1]))
 
     cleared_and_allocated_accumulators = array_ops.concat(
         0, [accumulators_cleared, accumulators_allocated])
+
     # Calculate values to put into scatter update for candidate counts.
     # Candidate split counts are always reset back to 0 for both cleared
     # and allocated accumulators. This means some accumulators might be doubly

@@ -43,8 +43,9 @@ Status SetOutputToSizedImage(InferenceContext* c, DimensionHandle batch_dim,
     width = c->UnknownDim();
     height = c->UnknownDim();
   } else {
-    height = c->MakeDim(size_tensor->flat<int32>()(0));
-    width = c->MakeDim(size_tensor->flat<int32>()(1));
+    auto vec = size_tensor->vec<int32>();
+    height = c->MakeDim(vec(0));
+    width = c->MakeDim(vec(1));
   }
   c->set_output(0, c->MakeShape({batch_dim, height, width, channel_dim}));
   return Status::OK();
@@ -267,6 +268,28 @@ REGISTER_OP("RandomCrop")
     .Attr("seed2: int = 0")
     .SetIsStateful()
     .Deprecated(8, "Random crop is now pure Python")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle image;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &image));
+      DimensionHandle channels = c->Dim(image, -1);
+
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->Vector(2), &unused));
+
+      const Tensor* size = c->input_tensor(1);
+      DimensionHandle h;
+      DimensionHandle w;
+      if (size == nullptr) {
+        h = c->UnknownDim();
+        w = c->UnknownDim();
+      } else {
+        auto size_vec = size->vec<int64>();
+        h = c->MakeDim(size_vec(0));
+        w = c->MakeDim(size_vec(1));
+      }
+      c->set_output(0, c->MakeShape({h, w, channels}));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Randomly crop `image`.
 
@@ -476,6 +499,14 @@ contents: 0-D. PNG-encoded image.
 REGISTER_OP("DecodeGif")
     .Input("contents: string")
     .Output("image: uint8")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      c->set_output(0, c->MakeShape({InferenceContext::kUnknownDim,
+                                     InferenceContext::kUnknownDim,
+                                     InferenceContext::kUnknownDim, 3}));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Decode the first frame of a GIF-encoded image to a uint8 tensor.
 
@@ -547,7 +578,7 @@ bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
 height of the underlying image.
 
 For example, if an image is 100 x 200 pixels and the bounding box is
-`[0.1, 0.5, 0.2, 0.9]`, the bottom-left and upper-right coordinates of the
+`[0.1, 0.2, 0.5, 0.9]`, the bottom-left and upper-right coordinates of the
 bounding box will be `(10, 40)` to `(50, 180)`.
 
 Parts of the bounding box may fall outside the image.

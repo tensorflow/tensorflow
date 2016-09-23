@@ -144,7 +144,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cuda_library(
     name = "grpc_worker_service",
     srcs = ["grpc_worker_service.cc"],
     hdrs = ["grpc_worker_service.h"],
@@ -368,16 +368,16 @@ cc_library(
 
 tf_cuda_cc_tests(
     size = "small",
+    srcs = [
+        "grpc_channel_test.cc",
+        "rpc_rendezvous_mgr_test.cc",
+    ],
     linkopts = select({
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [],
-    tests = [
-        "grpc_channel_test.cc",
-        "rpc_rendezvous_mgr_test.cc",
-    ],
     deps = [
         ":grpc_channel",
         ":grpc_server_lib",
@@ -400,6 +400,7 @@ tf_cuda_cc_tests(
 tf_cc_test(
     name = "grpc_tensor_coding_test",
     size = "small",
+    srcs = ["grpc_tensor_coding_test.cc"],
     deps = [
         ":grpc_tensor_coding",
         ":grpc_testlib",
@@ -418,11 +419,11 @@ tf_cc_test(
 
 tf_cuda_cc_tests(
     size = "medium",
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["manual"],
-    tests = [
+    srcs = [
         "grpc_session_test.cc",
     ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["manual"],
     deps = [
         ":grpc_channel",
         ":grpc_server_lib",

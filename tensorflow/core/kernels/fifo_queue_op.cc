@@ -50,8 +50,13 @@ class FIFOQueueOp : public QueueOp {
     return [this](QueueInterface** ret) {
       FIFOQueue* queue = new FIFOQueue(capacity_, component_types_,
                                        component_shapes_, cinfo_.name());
-      *ret = queue;
-      return queue->Initialize();
+      Status s = queue->Initialize();
+      if (s.ok()) {
+        *ret = queue;
+      } else {
+        queue->Unref();
+      }
+      return s;
     };
   }
 

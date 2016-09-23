@@ -155,8 +155,9 @@ class SampleInputs : public OpKernel {
       int32 vi = low + rng_->Uniform(high - low);
       int64 i = internal::SubtleMustCopy(sparse_indices(vi, 0));
       if (i == input_index) {
-        *index =
-            static_cast<int32>(internal::SubtleMustCopy(sparse_indices(vi, 1)));
+        int64 ind = internal::SubtleMustCopy(sparse_indices(vi, 1));
+        CHECK(ind < kint32max);
+        *index = static_cast<int32>(ind);
         *val = sparse_values(vi);
         return true;
       }
@@ -401,6 +402,8 @@ class SampleInputs : public OpKernel {
           int32 index;
           float val;
           const bool success = get_random_feature(*it, &index, &val);
+          CHECK(index >= 0) << "sample inputs chose negative feature: "
+                            << index;
           increment_input(split_initializations_per_input_, &it,
                           &input_used_count);
           if (success) {
@@ -408,8 +411,8 @@ class SampleInputs : public OpKernel {
             new_split_feature_rows_flat(output_slot, split) = index;
             new_split_threshold_rows_flat(output_slot, split) = val;
           } else {
-            VLOG(1) << "get_random_feature failed, bailing on output for "
-                    << "accumulator " << accumulator;
+            LOG(ERROR) << "get_random_feature failed, bailing on output for "
+                       << "accumulator " << accumulator;
             break;
           }
         }

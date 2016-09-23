@@ -234,11 +234,9 @@ new_http_archive(
   strip_prefix = "neon-animation-1.2.2",
 )
 
-new_http_archive(
-  name = "numericjs",
-  build_file = "bower.BUILD",
-  url = "https://github.com/sloisel/numeric/archive/v1.2.6.tar.gz",
-  strip_prefix = "numeric-1.2.6",
+http_file(
+  name = "numericjs_numeric_1_2_6_min_js",
+  url = "http://www.numericjs.com/lib/numeric-1.2.6.min.js",
 )
 
 new_http_archive(
@@ -300,8 +298,8 @@ new_http_archive(
 new_http_archive(
   name = "paper_input",
   build_file = "bower.BUILD",
-  url = "https://github.com/polymerelements/paper-input/archive/v1.1.14.tar.gz",
-  strip_prefix = "paper-input-1.1.14",
+  url = "https://github.com/polymerelements/paper-input/archive/v1.1.18.tar.gz",
+  strip_prefix = "paper-input-1.1.18",
 )
 
 new_http_archive(
@@ -430,10 +428,14 @@ new_http_archive(
   strip_prefix = "promise-polyfill-1.0.0",
 )
 
-new_http_archive(
-  name = "three_js",
-  build_file = "bower.BUILD",
-  url = "https://github.com/mrdoob/three.js/archive/r77.tar.gz",
+http_file(
+  name = "three_js_three_min_js",
+  url = "https://raw.githubusercontent.com/mrdoob/three.js/r77/build/three.min.js",
+)
+
+http_file(
+  name = "three_js_orbitcontrols_js",
+  url = "https://raw.githubusercontent.com/mrdoob/three.js/r77/examples/js/controls/OrbitControls.js",
 )
 
 new_http_archive(
@@ -450,9 +452,7 @@ new_http_archive(
   strip_prefix = "webcomponentsjs-0.7.22",
 )
 
-new_http_archive(
-  name = "weblas",
-  build_file = "bower.BUILD",
-  url = "https://github.com/waylonflinn/weblas/archive/v0.9.0.tar.gz",
-  strip_prefix = "weblas-0.9.0",
+http_file(
+  name = "weblas_weblas_js",
+  url = "https://raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/dist/weblas.js",
 )

@@ -135,7 +135,7 @@ class InverseGammaTest(tf.test.TestCase):
       alpha_v = np.array([1.0, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       inv_gamma = tf.contrib.distributions.InverseGamma(
-          alpha=alpha_v, beta=beta_v)
+          alpha=alpha_v, beta=beta_v, allow_nan_stats=False)
       with self.assertRaisesOpError("x < y"):
         inv_gamma.mean().eval()
 
@@ -168,7 +168,8 @@ class InverseGammaTest(tf.test.TestCase):
       alpha_v = np.array([1.5, 3.0, 2.5])
       beta_v = np.array([1.0, 4.0, 5.0])
       inv_gamma = tf.contrib.distributions.InverseGamma(alpha=alpha_v,
-                                                        beta=beta_v)
+                                                        beta=beta_v,
+                                                        allow_nan_stats=False)
       with self.assertRaisesOpError("x < y"):
         inv_gamma.variance().eval()
 
@@ -290,17 +291,25 @@ class InverseGammaTest(tf.test.TestCase):
     with self.test_session():
       alpha_v = tf.constant(0.0, name="alpha")
       beta_v = tf.constant(1.0, name="beta")
-      inv_gamma = tf.contrib.distributions.InverseGamma(alpha=alpha_v,
-                                                        beta=beta_v)
+      inv_gamma = tf.contrib.distributions.InverseGamma(
+          alpha=alpha_v, beta=beta_v, validate_args=True)
       with self.assertRaisesOpError("alpha"):
         inv_gamma.mean().eval()
       alpha_v = tf.constant(1.0, name="alpha")
       beta_v = tf.constant(0.0, name="beta")
-      inv_gamma = tf.contrib.distributions.InverseGamma(alpha=alpha_v,
-                                                        beta=beta_v)
+      inv_gamma = tf.contrib.distributions.InverseGamma(
+          alpha=alpha_v, beta=beta_v, validate_args=True)
       with self.assertRaisesOpError("beta"):
         inv_gamma.mean().eval()
 
+  def testInverseGammaWithSoftplusAlphaBeta(self):
+    with self.test_session():
+      alpha = tf.constant([-0.1, -2.9], name="alpha")
+      beta = tf.constant([1.0, -4.8], name="beta")
+      inv_gamma = tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta(
+          alpha=alpha, beta=beta, validate_args=True)
+      self.assertAllClose(tf.nn.softplus(alpha).eval(), inv_gamma.alpha.eval())
+      self.assertAllClose(tf.nn.softplus(beta).eval(), inv_gamma.beta.eval())
 
 if __name__ == "__main__":
   tf.test.main()

@@ -1224,6 +1224,7 @@ cc_library(
   deps = [
     ":gpr",
     "//external:nanopb",
+    "//external:zlib",
   ],
   copts = [
     "-std=gnu99",
@@ -1557,6 +1558,9 @@ cc_library(
     "//external:protobuf_clib",
     ":grpc",
     ":gpr",
+  ],
+  copts = [
+    "-std=gnu99",
   ],
 )
 

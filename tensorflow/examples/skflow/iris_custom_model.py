@@ -59,8 +59,9 @@ def main(unused_argv):
   classifier = learn.Estimator(model_fn=my_model)
   classifier.fit(x_train, y_train, steps=1000)
 
-  y_predicted = classifier.predict(x_test)
-  score = metrics.accuracy_score(y_test, y_predicted['class'])
+  y_predicted = [
+      p['class'] for p in classifier.predict(x_test, as_iterable=True)]
+  score = metrics.accuracy_score(y_test, y_predicted)
   print('Accuracy: {0:f}'.format(score))
 
 

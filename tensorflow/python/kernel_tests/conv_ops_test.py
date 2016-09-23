@@ -918,31 +918,45 @@ class Conv2DTest(tf.test.TestCase):
                                           shape=[4, 4, 2, 2]),
                     strides=[1, 1, 1, 1], padding="SAME")
 
-    # Illegal strides.
-    with self.assertRaisesRegexp(ValueError, "strides in the batch and depth"):
-      tf.nn.conv2d(tf.placeholder(tf.float32),
-                    tf.placeholder(tf.float32),
-                    strides=[2, 1, 1, 1], padding="SAME")
-    with self.assertRaisesRegexp(ValueError, "strides in the batch and depth"):
-      tf.nn.conv2d(tf.placeholder(tf.float32),
-                    tf.placeholder(tf.float32),
-                    strides=[1, 1, 1, 2], padding="SAME")
+  def testOpEdgeCases(self):
+    with self.test_session() as sess:
+      # Illegal strides.
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   "strides in the batch and depth"):
+        sess.run(
+            tf.nn.conv2d(
+                tf.placeholder(tf.float32),
+                tf.placeholder(tf.float32),
+                strides=[2, 1, 1, 1],
+                padding="SAME"))
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   "strides in the batch and depth"):
+        sess.run(
+            tf.nn.conv2d(
+                tf.placeholder(tf.float32),
+                tf.placeholder(tf.float32),
+                strides=[1, 1, 1, 2],
+                padding="SAME"))
 
-    # Filter larger than input.
-    with self.assertRaisesRegexp(ValueError,
-                                 "Filter must not be larger than the input"):
-      tf.nn.conv2d(tf.placeholder(tf.float32,
-                                          shape=[32, 20, 20, 3]),
-                    tf.placeholder(tf.float32,
-                                          shape=[20, 21, 3, 2]),
-                    strides=[1, 1, 1, 1], padding="SAME")
-    with self.assertRaisesRegexp(ValueError,
-                                 "Filter must not be larger than the input"):
-      tf.nn.conv2d(tf.placeholder(tf.float32,
-                                          shape=[32, 20, 20, 3]),
-                    tf.placeholder(tf.float32,
-                                          shape=[21, 20, 3, 2]),
-                    strides=[1, 1, 1, 1], padding="SAME")
+      # Filter larger than input.
+      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+        sess.run(
+            tf.nn.conv2d(
+                tf.placeholder(
+                    tf.float32, shape=[32, 20, 20, 3]),
+                tf.placeholder(
+                    tf.float32, shape=[20, 21, 3, 2]),
+                strides=[1, 1, 1, 1],
+                padding="VALID"))
+      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+        sess.run(
+            tf.nn.conv2d(
+                tf.placeholder(
+                    tf.float32, shape=[32, 20, 20, 3]),
+                tf.placeholder(
+                    tf.float32, shape=[21, 20, 3, 2]),
+                strides=[1, 1, 1, 1],
+                padding="VALID"))
 
 
 # This is only a very simple test. More comprehensive tests live in

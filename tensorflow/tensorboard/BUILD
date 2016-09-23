@@ -11,6 +11,7 @@ filegroup(
     name = "frontend",
     srcs = [
         "TAG",
+        "dist/bazel-html-imports.html",
         "dist/index.html",
         "dist/tf-tensorboard.html",
         "//tensorflow/tensorboard/bower",

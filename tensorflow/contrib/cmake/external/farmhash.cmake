@@ -27,6 +27,7 @@ ExternalProject_Add(farmhash
         ${farmhash_BUILD}/configure
         --prefix=${farmhash_INSTALL}
         --enable-shared=yes
+	CXXFLAGS=-fPIC
 )
 
 # put farmhash includes in the directory where they are expected

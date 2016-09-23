@@ -194,7 +194,7 @@ class Dimension(object):
       other: Another Dimension.
 
     Returns:
-      A Dimension whose value is the sum of `self` and `other`.
+      A Dimension whose value is the product of `self` and `other`.
     """
     other = as_dimension(other)
     if self._value is None or other.value is None:
@@ -767,11 +767,10 @@ class TensorShape(object):
     """Returns a list of integers or `None` for each dimension.
 
     Returns:
-      `None` if shape is unknown; otherwise, a list of integers or `None` for
-      each dimension.
+      A list of integers or `None` for each dimension.
 
     Raises:
-      ValueError: if `self` is completely unknown.
+      ValueError: If `self` is an unknown shape with an unknown rank.
     """
     if self._dims is None:
       raise ValueError("as_list() is not defined on an unknown TensorShape.")

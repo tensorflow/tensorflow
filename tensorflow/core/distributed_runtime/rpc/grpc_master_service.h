@@ -23,7 +23,7 @@ class ServerBuilder;
 namespace tensorflow {
 
 class AsyncServiceInterface;
-class MasterEnv;
+struct MasterEnv;
 
 AsyncServiceInterface* NewGrpcMasterService(MasterEnv* env,
                                             ::grpc::ServerBuilder* builder);

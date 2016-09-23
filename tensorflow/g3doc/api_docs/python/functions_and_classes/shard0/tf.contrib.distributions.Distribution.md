@@ -87,11 +87,11 @@ a = tf.exp(tf.matmul(logits, weights_a))
 b = tf.exp(tf.matmul(logits, weights_b))
 
 # Will raise exception if ANY batch member has a < 1 or b < 1.
-dist = distributions.beta(a, b, allow_nan_stats=False)  # default is False
+dist = distributions.beta(a, b, allow_nan_stats=False)
 mode = dist.mode().eval()
 
 # Will return NaN for batch members with either a < 1 or b < 1.
-dist = distributions.beta(a, b, allow_nan_stats=True)
+dist = distributions.beta(a, b, allow_nan_stats=True)  # Default behavior
 mode = dist.mode().eval()
 ```
 
@@ -105,25 +105,27 @@ dist.mean().eval()
 ```
 - - -
 
-#### `tf.contrib.distributions.Distribution.__init__(dtype=None, parameters=None, is_continuous=True, is_reparameterized=False, validate_args=True, allow_nan_stats=False, name=None)` {#Distribution.__init__}
+#### `tf.contrib.distributions.Distribution.__init__(dtype, parameters, is_continuous, is_reparameterized, validate_args, allow_nan_stats, name=None)` {#Distribution.__init__}
 
 Constructs the `Distribution`.
+
+**This is a private method for subclass use.**
 
 ##### Args:
 
 
 *  <b>`dtype`</b>: The type of the event samples. `None` implies no type-enforcement.
 *  <b>`parameters`</b>: Python dictionary of parameters used by this `Distribution`.
-*  <b>`is_continuous`</b>: Python boolean, default `True`. If `True` this
+*  <b>`is_continuous`</b>: Python boolean. If `True` this
     `Distribution` is continuous over its supported domain.
-*  <b>`is_reparameterized`</b>: Python boolean, default `False`. If `True` this
+*  <b>`is_reparameterized`</b>: Python boolean. If `True` this
     `Distribution` can be reparameterized in terms of some standard
     distribution with a function whose Jacobian is constant for the support
     of the standard distribution.
-*  <b>`validate_args`</b>: Whether to validate input with asserts. If `validate_args`
-    is `False`, and the inputs are invalid, correct behavior is not
-    guaranteed.
-*  <b>`allow_nan_stats`</b>: Python boolean, default `False`. If `False`, raise an
+*  <b>`validate_args`</b>: Python boolean.  Whether to validate input with asserts.
+    If `validate_args` is `False`, and the inputs are invalid,
+    correct behavior is not guaranteed.
+*  <b>`allow_nan_stats`</b>: Pytho nboolean.  If `False`, raise an
     exception if a statistic (e.g., mean, mode) is undefined for any batch
     member. If True, batch members with valid parameters leading to
     undefined statistics will return `NaN` for this statistic.
@@ -177,6 +179,12 @@ independent distributions of this kind the instance represents.
 
 Cumulative distribution function.
 
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+cdf(x) := P[X <= x]
+```
+
 ##### Args:
 
 
@@ -219,63 +227,6 @@ Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
 
 
 *  <b>`event_shape`</b>: `Tensor`.
-
-
-- - -
-
-#### `tf.contrib.distributions.Distribution.from_params(cls, make_safe=True, **kwargs)` {#Distribution.from_params}
-
-Given (unconstrained) parameters, return an instantiated distribution.
-
-Subclasses should implement a static method `_safe_transforms` that returns
-a dict of parameter transforms, which will be used if `make_safe = True`.
-
-Example usage:
-
-```
-# Let's say we want a sample of size (batch_size, 10)
-shapes = MultiVariateNormalDiag.param_shapes([batch_size, 10])
-
-# shapes has a Tensor shape for mu and sigma
-# shapes == {
-#   "mu": tf.constant([batch_size, 10]),
-#   "sigma": tf.constant([batch_size, 10]),
-# }
-
-# Here we parameterize mu and sigma with the output of a linear
-# layer. Note that sigma is unconstrained.
-params = {}
-for name, shape in shapes.items():
-  params[name] = linear(x, shape[1])
-
-# Note that you can forward other kwargs to the `Distribution`, like
-# `allow_nan_stats` or `name`.
-mvn = MultiVariateNormalDiag.from_params(**params, allow_nan_stats=True)
-```
-
-Distribution parameters may have constraints (e.g. `sigma` must be positive
-for a `Normal` distribution) and the `from_params` method will apply default
-parameter transforms. If a user wants to use their own transform, they can
-apply it externally and set `make_safe=False`.
-
-##### Args:
-
-
-*  <b>`make_safe`</b>: Whether the `params` should be constrained. If True,
-    `from_params` will apply default parameter transforms. If False, no
-    parameter transforms will be applied.
-*  <b>`**kwargs`</b>: dict of parameters for the distribution.
-
-##### Returns:
-
-  A distribution parameterized by possibly transformed parameters in
-  `kwargs`.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `make_safe` is `True` but `_safe_transforms` is not
-    implemented directly for `cls`.
 
 
 - - -
@@ -325,6 +276,16 @@ Same meaning as `event_shape`. May be only partially defined.
 #### `tf.contrib.distributions.Distribution.log_cdf(value, name='log_cdf')` {#Distribution.log_cdf}
 
 Log cumulative distribution function.
+
+Given random variable `X`, the cumulative distribution function `cdf` is:
+
+```
+log_cdf(x) := Log[ P[X <= x] ]
+```
+
+Often, a numerical approximation can be used for `log_cdf(x)` that yields
+a more accurate answer than simply taking the logarithm of the `cdf` when
+`x << -1`.
 
 ##### Args:
 
@@ -404,6 +365,35 @@ Log probability density/mass function (depending on `is_continuous`).
 
 *  <b>`log_prob`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
+
+
+- - -
+
+#### `tf.contrib.distributions.Distribution.log_survival_function(value, name='log_survival_function')` {#Distribution.log_survival_function}
+
+Log survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+log_survival_function(x) = Log[ P[X > x] ]
+                         = Log[ 1 - P[X <= x] ]
+                         = Log[ 1 - cdf(x) ]
+```
+
+Typically, different numerical approximations can be used for the log
+survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  `Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -
@@ -595,6 +585,32 @@ Generate `n` samples.
 #### `tf.contrib.distributions.Distribution.std(name='std')` {#Distribution.std}
 
 Standard deviation.
+
+
+- - -
+
+#### `tf.contrib.distributions.Distribution.survival_function(value, name='survival_function')` {#Distribution.survival_function}
+
+Survival function.
+
+Given random variable `X`, the survival function is defined:
+
+```
+survival_function(x) = P[X > x]
+                     = 1 - P[X <= x]
+                     = 1 - cdf(x).
+```
+
+##### Args:
+
+
+*  <b>`value`</b>: `float` or `double` `Tensor`.
+*  <b>`name`</b>: The name to give this op.
+
+##### Returns:
+
+  Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
+    `self.dtype`.
 
 
 - - -

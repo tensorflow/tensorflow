@@ -23,16 +23,6 @@ from tensorflow.contrib.quantization.ops import gen_math_ops
 from tensorflow.contrib.quantization.ops.gen_math_ops import *
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 
 
-# QuantizedMatMul* ops.
-@ops.RegisterShape("QuantizedMatMul")
-def _QuantizedMatMulShape(op):
-  unused_a_min = op.inputs[2].get_shape().merge_with(tensor_shape.scalar())
-  unused_a_max = op.inputs[3].get_shape().merge_with(tensor_shape.scalar())
-  unused_b_min = op.inputs[4].get_shape().merge_with(tensor_shape.scalar())
-  unused_b_max = op.inputs[5].get_shape().merge_with(tensor_shape.scalar())
-  result = common_shapes.matmul_shape(op)
-  result.extend([tensor_shape.scalar(), tensor_shape.scalar()])
-  return result
+ops.RegisterShape("QuantizedMatMul")(common_shapes.call_cpp_shape_fn)

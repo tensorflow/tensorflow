@@ -33,7 +33,7 @@ class ResizeNearestNeighborOpTest(tf.test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 4).reshape(in_shape).astype(nptype)
 
-      with self.test_session() as sess:
+      with self.test_session(use_gpu=True) as sess:
         input_tensor = tf.constant(x, shape=in_shape)
         resize_out = tf.image.resize_nearest_neighbor(input_tensor,
                                                     out_shape[1:3])
@@ -49,7 +49,7 @@ class ResizeNearestNeighborOpTest(tf.test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 6).reshape(in_shape).astype(nptype)
 
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         input_tensor = tf.constant(x, shape=in_shape)
         resize_out = tf.image.resize_nearest_neighbor(input_tensor,
                                                     out_shape[1:3])
@@ -67,7 +67,7 @@ class ResizeNearestNeighborOpTest(tf.test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 24).reshape(in_shape).astype(nptype)
 
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         input_tensor = tf.constant(x, shape=in_shape)
         resize_out = tf.image.resize_nearest_neighbor(input_tensor,
                                                     out_shape[1:3])
@@ -171,6 +171,28 @@ class ResizeBilinearOpTest(tf.test.TestCase):
       grad = tf.gradients(input_tensor, [resize_out])
       self.assertEqual([None], grad)
 
+  def testCompareGpuVsCpu(self):
+    in_shape = [2, 4, 6, 3]
+    out_shape = [2, 8, 16, 3]
+
+    size = np.prod(in_shape)
+    x = 1.0 / size * np.arange(0, size).reshape(in_shape).astype(np.float32)
+    for align_corners in [True, False]:
+      grad = {}
+      for use_gpu in [False, True]:
+        with self.test_session(use_gpu=use_gpu):
+          input_tensor = tf.constant(x, shape=in_shape)
+          resized_tensor = tf.image.resize_bilinear(input_tensor,
+                                                    out_shape[1:3],
+                                                    align_corners=align_corners)
+          grad[use_gpu] = tf.test.compute_gradient(input_tensor,
+                                                   in_shape,
+                                                   resized_tensor,
+                                                   out_shape,
+                                                   x_init_value=x)
+
+      self.assertAllClose(grad[False], grad[True], rtol=1e-4, atol=1e-4)
+
 
 class CropAndResizeOpTest(tf.test.TestCase):
 
@@ -192,7 +214,7 @@ class CropAndResizeOpTest(tf.test.TestCase):
     boxes = np.array([[0, 0, 1, 1], [.1, .2, .7, .8]], dtype=np.float32)
     box_ind = np.array([0, 1], dtype=np.int32)
 
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       crops = tf.image.crop_and_resize(
           tf.constant(image, shape=image_shape),
           tf.constant(boxes, shape=[num_boxes, 4]),
@@ -277,7 +299,7 @@ class CropAndResizeOpTest(tf.test.TestCase):
               boxes = np.array(boxes, dtype=np.float32)
               box_ind = np.arange(batch, dtype=np.int32)
 
-              with self.test_session():
+              with self.test_session(use_gpu=True):
                 image_tensor = tf.constant(image, shape=image_shape)
                 boxes_tensor = tf.constant(boxes, shape=[num_boxes, 4])
                 box_ind_tensor = tf.constant(box_ind, shape=[num_boxes])

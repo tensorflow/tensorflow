@@ -208,7 +208,7 @@ of a tensor and change the shape of a tensor.
 
 - - -
 
-### `tf.shape(input, name=None)` {#shape}
+### `tf.shape(input, name=None, out_type=tf.int32)` {#shape}
 
 Returns the shape of a tensor.
 
@@ -226,15 +226,17 @@ shape(t) ==> [2, 2, 3]
 
 *  <b>`input`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`out_type`</b>: (Optional) The specified output type of the operation
+    (`int32` or `int64`). Defaults to tf.int32.
 
 ##### Returns:
 
-  A `Tensor` of type `int32`.
+  A `Tensor` of type `out_type`.
 
 
 - - -
 
-### `tf.size(input, name=None)` {#size}
+### `tf.size(input, name=None, out_type=tf.int32)` {#size}
 
 Returns the size of a tensor.
 
@@ -253,10 +255,12 @@ size(t) ==> 12
 
 *  <b>`input`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
+*  <b>`out_type`</b>: (Optional) The specified output type of the operation
+    (`int32` or `int64`). Defaults to tf.int32.
 
 ##### Returns:
 
-  A `Tensor` of type `int32`.
+  A `Tensor` of type `out_type`. Defaults to tf.int32.
 
 
 - - -
@@ -357,7 +361,8 @@ reshape(t, []) ==> 7
 
 
 *  <b>`tensor`</b>: A `Tensor`.
-*  <b>`shape`</b>: A `Tensor` of type `int32`. Defines the shape of the output tensor.
+*  <b>`shape`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    Defines the shape of the output tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -447,7 +452,7 @@ size 1.
 
 
 *  <b>`input`</b>: A `Tensor`.
-*  <b>`dim`</b>: A `Tensor` of type `int32`.
+*  <b>`dim`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     0-D (scalar). Specifies the dimension index at which to
     expand the shape of `input`.
 *  <b>`name`</b>: A name for the operation (optional).
@@ -714,7 +719,7 @@ dimension. For example, tiling `[a b c d]` by `[2]` produces
 
 
 *  <b>`input`</b>: A `Tensor`. 1-D or higher.
-*  <b>`multiples`</b>: A `Tensor` of type `int32`.
+*  <b>`multiples`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     1-D. Length must be the same as the number of dimensions in `input`
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1188,7 +1193,7 @@ block size.
 
 
 *  <b>`input`</b>: A `Tensor`. 4-D with shape `[batch, height, width, depth]`.
-*  <b>`paddings`</b>: A `Tensor` of type `int32`.
+*  <b>`paddings`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
       the padding of the input with zeros across the spatial dimensions as follows:
 
@@ -1302,7 +1307,7 @@ followed by cropping along the `height` and `width` dimensions.
     `[batch*block_size*block_size, height_pad/block_size, width_pad/block_size,
       depth]`. Note that the batch size of the input tensor must be divisible by
     `block_size * block_size`.
-*  <b>`crops`</b>: A `Tensor` of type `int32`.
+*  <b>`crops`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
     2-D tensor of non-negative integers with shape `[2, 2]`. It specifies
     how many elements to crop from the intermediate result across the spatial
     dimensions as follows:
@@ -2032,7 +2037,7 @@ endian orderings will give different results.
 
 - - -
 
-### `tf.shape_n(input, name=None)` {#shape_n}
+### `tf.shape_n(input, out_type=None, name=None)` {#shape_n}
 
 Returns shape of tensors.
 
@@ -2042,16 +2047,17 @@ This operation returns N 1-D integer tensors representing shape of `input[i]s`.
 
 
 *  <b>`input`</b>: A list of at least 1 `Tensor` objects of the same type.
+*  <b>`out_type`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A list with the same number of `Tensor` objects as `input` of `Tensor` objects of type `int32`.
+  A list with the same number of `Tensor` objects as `input` of `Tensor` objects of type out_type.
 
 
 - - -
 
-### `tf.unique_with_counts(x, name=None)` {#unique_with_counts}
+### `tf.unique_with_counts(x, out_idx=None, name=None)` {#unique_with_counts}
 
 Finds unique elements in a 1-D tensor.
 
@@ -2077,6 +2083,7 @@ count ==> [2, 1, 3, 1, 2]
 
 
 *  <b>`x`</b>: A `Tensor`. 1-D.
+*  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -2084,7 +2091,7 @@ count ==> [2, 1, 3, 1, 2]
   A tuple of `Tensor` objects (y, idx, count).
 
 *  <b>`y`</b>: A `Tensor`. Has the same type as `x`. 1-D.
-*  <b>`idx`</b>: A `Tensor` of type `int32`. 1-D.
-*  <b>`count`</b>: A `Tensor` of type `int32`. 1-D.
+*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D.
+*  <b>`count`</b>: A `Tensor` of type `out_idx`. 1-D.
 
 

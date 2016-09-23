@@ -1,6 +1,13 @@
 Operator adding dropout to inputs and outputs of the given cell.
 - - -
 
+#### `tf.nn.rnn_cell.DropoutWrapper.__call__(inputs, state, scope=None)` {#DropoutWrapper.__call__}
+
+Run the cell with the declared dropouts.
+
+
+- - -
+
 #### `tf.nn.rnn_cell.DropoutWrapper.__init__(cell, input_keep_prob=1.0, output_keep_prob=1.0, seed=None)` {#DropoutWrapper.__init__}
 
 Create a cell with added input and/or output dropout.

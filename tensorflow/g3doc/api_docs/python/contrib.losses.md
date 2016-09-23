@@ -42,14 +42,39 @@ measurable element of `predictions` is scaled by the corresponding value of
 
 - - -
 
-### `tf.contrib.losses.add_loss(loss)` {#add_loss}
+### `tf.contrib.losses.add_loss(*args, **kwargs)` {#add_loss}
 
-Adds a externally defined loss to collection of losses.
+Adds a externally defined loss to the collection of losses.
 
 ##### Args:
 
 
 *  <b>`loss`</b>: A loss `Tensor`.
+*  <b>`loss_collection`</b>: Optional collection to add the loss to.
+
+
+- - -
+
+### `tf.contrib.losses.compute_weighted_loss(losses, weight=1.0)` {#compute_weighted_loss}
+
+Computes the weighted loss.
+
+##### Args:
+
+
+*  <b>`losses`</b>: A tensor of size [batch_size, d1, ... dN].
+*  <b>`weight`</b>: A tensor of size [1] or [batch_size, d1, ... dK] where K < N.
+
+##### Returns:
+
+  A scalar `Tensor` that returns the weighted loss.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the weight is None or the shape is not compatible with the
+    losses shape or if the number of dimensions (rank) of either losses or
+    weight is missing.
 
 
 - - -
@@ -85,18 +110,19 @@ unit-normalized.
 
 - - -
 
-### `tf.contrib.losses.get_losses(scope=None)` {#get_losses}
+### `tf.contrib.losses.get_losses(scope=None, loss_collection='losses')` {#get_losses}
 
-Gets the list of loss variables.
+Gets the list of losses from the loss_collection.
 
 ##### Args:
 
 
 *  <b>`scope`</b>: an optional scope for filtering the losses to return.
+*  <b>`loss_collection`</b>: Optional losses collection.
 
 ##### Returns:
 
-  a list of loss variables.
+  a list of loss tensors.
 
 
 - - -
@@ -348,8 +374,40 @@ If `label_smoothing` is nonzero, smooth the labels towards 1/num_classes:
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If the shape of `predictions` doesn't match that of `targets` or
-    if the shape of `weight` is invalid or if `weight` is None.
+*  <b>`ValueError`</b>: If the shape of `logits` doesn't match that of `onehot_labels`
+    or if the shape of `weight` is invalid or if `weight` is None.
+
+
+- - -
+
+### `tf.contrib.losses.sparse_softmax_cross_entropy(logits, labels, weight=1.0, scope=None)` {#sparse_softmax_cross_entropy}
+
+Cross-entropy loss using tf.nn.sparse_softmax_cross_entropy_with_logits.
+
+`weight` acts as a coefficient for the loss. If a scalar is provided,
+then the loss is simply scaled by the given value. If `weight` is a
+tensor of size [`batch_size`], then the loss weights apply to each
+corresponding sample.
+
+##### Args:
+
+
+*  <b>`logits`</b>: [batch_size, num_classes] logits outputs of the network .
+*  <b>`labels`</b>: [batch_size, 1] or [batch_size] target labels of dtype `int32` or
+    `int64` in the range `[0, num_classes)`.
+*  <b>`weight`</b>: Coefficients for the loss. The tensor must be a scalar or a tensor
+    of shape [batch_size] or [batch_size, 1].
+*  <b>`scope`</b>: the scope for the operations performed in computing the loss.
+
+##### Returns:
+
+  A scalar `Tensor` representing the loss value.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If the shapes of logits, labels, and weight are incompatible, or
+    if `weight` is None.
 
 
 - - -

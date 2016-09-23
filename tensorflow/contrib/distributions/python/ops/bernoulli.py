@@ -41,8 +41,8 @@ class Bernoulli(distribution.Distribution):
                logits=None,
                p=None,
                dtype=dtypes.int32,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Bernoulli"):
     """Construct Bernoulli distributions.
 
@@ -55,9 +55,10 @@ class Bernoulli(distribution.Distribution):
           event. Each entry in the `Tensor` parameterizes an independent
           Bernoulli distribution.
       dtype: dtype for samples.
-      validate_args: Whether to assert that `0 <= p <= 1`. If not validate_args,
-       `log_pmf` may return nans.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to validate that
+        `0 <= p <= 1`. If `validate_args` is `False`, and the inputs are
+        invalid, methods like `log_pmf` may return `NaN` values.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -66,18 +67,23 @@ class Bernoulli(distribution.Distribution):
     Raises:
       ValueError: If p and logits are passed, or if neither are passed.
     """
-    self._logits, self._p = distribution_util.get_logits_and_prob(
-        name=name, logits=logits, p=p, validate_args=validate_args)
     with ops.name_scope(name) as ns:
+      self._logits, self._p = distribution_util.get_logits_and_prob(
+          logits=logits, p=p, validate_args=validate_args)
       with ops.name_scope("q"):
         self._q = 1. - self._p
       super(Bernoulli, self).__init__(
           dtype=dtype,
           parameters={"p": self._p, "q": self._q, "logits": self._logits},
           is_continuous=False,
+          is_reparameterized=False,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
           name=ns)
+
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return {"logits": ops.convert_to_tensor(sample_shape, dtype=dtypes.int32)}
 
   @property
   def logits(self):
@@ -155,6 +161,24 @@ distribution_util.append_class_fun_doc(Bernoulli.mode, doc_str="""
   Specific notes:
     1 if p > 1-p. 0 otherwise.
 """)
+
+
+class BernoulliWithSigmoidP(Bernoulli):
+  """Bernoulli with `p = sigmoid(p)`."""
+
+  def __init__(self,
+               p=None,
+               dtype=dtypes.int32,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="BernoulliWithSigmoidP"):
+    with ops.name_scope(name) as ns:
+      super(BernoulliWithSigmoidP, self).__init__(
+          p=nn.sigmoid(p),
+          dtype=dtype,
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)
 
 
 @kullback_leibler.RegisterKL(Bernoulli, Bernoulli)

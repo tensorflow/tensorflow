@@ -19,9 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.learn.python.learn.estimators import _sklearn
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
-from tensorflow.contrib.learn.python.learn.estimators.base import DeprecatedMixin
 from tensorflow.python.ops import nn
 
 
@@ -79,8 +77,6 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
       Both features' `value` must be a `SparseTensor`.
     - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
       whose `value` is a `Tensor`.
-    - if `feature_columns` is `None`, then `input` must contain only real
-      valued `Tensor`.
   """
 
   def __init__(self,
@@ -93,7 +89,7 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
                activation_fn=nn.relu,
                dropout=None,
                gradient_clip_norm=None,
-               enable_centered_bias=True,
+               enable_centered_bias=None,
                config=None):
     """Initializes a DNNClassifier instance.
 
@@ -129,6 +125,9 @@ class DNNClassifier(dnn_linear_combined.DNNLinearCombinedClassifier):
     Returns:
       A `DNNClassifier` estimator.
     """
+    if enable_centered_bias is None:
+      enable_centered_bias = True
+      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
     super(DNNClassifier, self).__init__(
         model_dir=model_dir,
         n_classes=n_classes,
@@ -211,8 +210,6 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
       Both features' `value` must be a `SparseTensor`.
     - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
       whose `value` is a `Tensor`.
-    - if `feature_columns` is `None`, then `input` must contain only real
-      valued `Tensor`.
   """
 
   def __init__(self,
@@ -224,7 +221,7 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                activation_fn=nn.relu,
                dropout=None,
                gradient_clip_norm=None,
-               enable_centered_bias=True,
+               enable_centered_bias=None,
                config=None):
     """Initializes a `DNNRegressor` instance.
 
@@ -258,6 +255,9 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     Returns:
       A `DNNRegressor` estimator.
     """
+    if enable_centered_bias is None:
+      enable_centered_bias = True
+      dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
     super(DNNRegressor, self).__init__(
         model_dir=model_dir,
         weight_column_name=weight_column_name,
@@ -283,14 +283,3 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
   @property
   def bias_(self):
     return self.dnn_bias_
-
-
-# TensorFlowDNNClassifier and TensorFlowDNNRegressor are deprecated.
-class TensorFlowDNNClassifier(DeprecatedMixin, DNNClassifier,
-                              _sklearn.ClassifierMixin):
-  pass
-
-
-class TensorFlowDNNRegressor(DeprecatedMixin, DNNRegressor,
-                             _sklearn.RegressorMixin):
-  pass

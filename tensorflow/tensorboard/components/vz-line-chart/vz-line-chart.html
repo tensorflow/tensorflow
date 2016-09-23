@@ -87,7 +87,7 @@ such as different X scales (linear and temporal), tooltips and smoothing.
         padding: 8px;
         z-index: 5;
         cursor: none;
-        margin-top: 5px;
+        margin-top: 10px;
       }
       .swatch {
         border-radius: 50%;
@@ -296,8 +296,9 @@ such as different X scales (linear and temporal), tooltips and smoothing.
         this.scopeSubtree(this.$.chartsvg, true);
       },
       _makeChart: function(xType, yScaleType, colorScale, _attached) {
-        if (this._makeChartAsyncCallbackId === null) {
+        if (this._makeChartAsyncCallbackId !== null) {
           this.cancelAsync(this._makeChartAsyncCallbackId);
+          this._makeChartAsyncCallbackId = null;
         }
 
         this._makeChartAsyncCallbackId = this.async(function() {

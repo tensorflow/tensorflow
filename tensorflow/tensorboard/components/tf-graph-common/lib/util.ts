@@ -145,6 +145,46 @@ module tf.graph.util {
   }
 
   /**
+   * Asynchronously runs an expensive task that returns a promise. Updates the
+   * tracker's progress after the promise resolves. Returns a new promise that
+   * resolves after the progress is updated.
+   */
+  export function runAsyncPromiseTask<T>(
+      msg: string, incProgressValue: number, task: () => Promise<T>,
+      tracker: ProgressTracker): Promise<T> {
+    return new Promise((resolve, reject) => {
+      let handleError = function(e) {
+        // Errors that happen inside asynchronous tasks are
+        // reported to the tracker using a user-friendly message.
+        tracker.reportError('Failed ' + msg, e);
+        reject(e);
+      };
+
+      // Update the progress message to say the current running task.
+      tracker.setMessage(msg);
+      // Run the expensive task with a delay that gives enough time for the
+      // UI to update.
+      setTimeout(function() {
+        try {
+          let start = Date.now();
+          task()
+              .then(function(value) {
+                /* tslint:disable */
+                console.log(msg, ':', Date.now() - start, 'ms');
+                // Update the progress value.
+                tracker.updateProgress(incProgressValue);
+                // Return the result to be used by other tasks.
+                resolve(value);
+              })
+              .catch(handleError);
+        } catch (e) {
+          handleError(e);
+        }
+      }, ASYNC_TASK_DELAY);
+    });
+  }
+
+  /**
    * Returns a query selector with escaped special characters that are not
    * allowed in a query selector.
    */

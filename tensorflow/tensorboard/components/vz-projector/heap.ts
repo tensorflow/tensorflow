@@ -90,7 +90,7 @@ export class MinHeap<T> {
         this.arr[right].key < this.arr[largest].key) {
       largest = right;
     }
-    if (largest != pos) {
+    if (largest !== pos) {
       this.swap(largest, pos);
       this.bubbleDown(largest);
     }
@@ -141,6 +141,6 @@ export class KMin<T> {
 
   /** Returns the largest key in the list. */
   getLargestKey(): number {
-    return this.maxHeap.size() == 0 ? null : -this.maxHeap.peek().key;
+    return this.maxHeap.size() === 0 ? null : -this.maxHeap.peek().key;
   }
 }

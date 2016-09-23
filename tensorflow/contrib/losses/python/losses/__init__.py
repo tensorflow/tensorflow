@@ -107,6 +107,7 @@ weighted average over the individual prediction errors:
 @@absolute_difference
 @@add_loss
 @@hinge_loss
+@@compute_weighted_loss
 @@cosine_distance
 @@get_losses
 @@get_regularization_losses
@@ -116,6 +117,7 @@ weighted average over the individual prediction errors:
 @@mean_squared_error
 @@sigmoid_cross_entropy
 @@softmax_cross_entropy
+@@sparse_softmax_cross_entropy
 
 The following are deprecated in favor of `mean_pairwise_squared_error` and
 `mean_squared_error`.

@@ -36,42 +36,20 @@ class CholeskySolveTest(tf.test.TestCase):
   def test_works_with_five_different_random_pos_def_matricies(self):
     with self.test_session():
       for n in range(1, 6):
-        for np_type in [np.float32, np.float64]:
-          matrix = _random_pd_matrix(n, self.rng).astype(np_type)
-          chol = tf.cholesky(matrix)
-          for k in range(1, 3):
-            rhs = self.rng.randn(n, k).astype(np_type)
-            x = tf.cholesky_solve(chol, rhs)
-            self.assertAllClose(rhs, tf.matmul(matrix, x).eval(), atol=1e-4)
-
-
-class CholeskySolveGpuTest(CholeskySolveTest):
-  _use_gpu = True
-
-
-class BatchCholeskySolveTest(tf.test.TestCase):
-  _use_gpu = False
-
-  def setUp(self):
-    self.rng = np.random.RandomState(0)
-
-  def test_works_with_five_different_random_pos_def_matricies(self):
-    with self.test_session():
-      for n in range(1, 6):
         for np_type, atol in [(np.float32, 0.05), (np.float64, 1e-5)]:
           # Create 2 x n x n matrix
           array = np.array(
               [_random_pd_matrix(n, self.rng), _random_pd_matrix(n, self.rng)]
           ).astype(np_type)
-          chol = tf.batch_cholesky(array)
+          chol = tf.cholesky(array)
           for k in range(1, 3):
             rhs = self.rng.randn(2, n, k).astype(np_type)
-            x = tf.batch_cholesky_solve(chol, rhs)
+            x = tf.cholesky_solve(chol, rhs)
             self.assertAllClose(
                 rhs, tf.batch_matmul(array, x).eval(), atol=atol)
 
 
-class BatchCholeskySolveGpuTest(BatchCholeskySolveTest):
+class CholeskySolveGpuTest(CholeskySolveTest):
   _use_gpu = True
 
 

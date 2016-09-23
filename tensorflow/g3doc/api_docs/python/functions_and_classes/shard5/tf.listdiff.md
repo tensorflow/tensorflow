@@ -1,4 +1,4 @@
-### `tf.listdiff(x, y, name=None)` {#listdiff}
+### `tf.listdiff(x, y, out_idx=None, name=None)` {#listdiff}
 
 Computes the difference between two lists of numbers or strings.
 
@@ -29,6 +29,7 @@ idx ==> [1, 3, 5]
 
 *  <b>`x`</b>: A `Tensor`. 1-D. Values to keep.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`. 1-D. Values to remove.
+*  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -36,5 +37,5 @@ idx ==> [1, 3, 5]
   A tuple of `Tensor` objects (out, idx).
 
 *  <b>`out`</b>: A `Tensor`. Has the same type as `x`. 1-D. Values present in `x` but not in `y`.
-*  <b>`idx`</b>: A `Tensor` of type `int32`. 1-D. Positions of `x` values preserved in `out`.
+*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D. Positions of `x` values preserved in `out`.
 

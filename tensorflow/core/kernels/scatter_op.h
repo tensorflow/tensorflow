@@ -27,7 +27,7 @@ class OpKernelContext;
 
 namespace scatter_op {
 
-enum class UpdateOp { ASSIGN, ADD, SUB };
+enum class UpdateOp { ASSIGN, ADD, SUB, MUL, DIV };
 
 }  // namespace scatter_op
 

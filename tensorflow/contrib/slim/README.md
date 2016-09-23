@@ -503,7 +503,7 @@ pose_loss = MyCustomLossFunction(pose_predictions, pose_labels)
 slim.losses.add_loss(pose_loss) # Letting TF-Slim know about the additional loss.
 
 # The following two ways to compute the total loss are equivalent:
-regularization_loss = tf.add_n(slim.get_regularization_losses())
+regularization_loss = tf.add_n(slim.losses.get_regularization_losses())
 total_loss1 = classification_loss + sum_of_squares_loss + pose_loss + regularization_loss
 
 # (Regularization Loss is included in the total loss by default).

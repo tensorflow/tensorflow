@@ -18,10 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -210,22 +210,10 @@ def _block_lstm(seq_len_max,
   # pylint: enable=invalid-name
 
 
-ops.RegisterShape("LSTMBlockCell")(None)
 _lstm_block_cell_grad_outputs = ["cs_prev_grad", "dicfo"]
 
 
-@ops.RegisterShape("LSTMBlockCell")
-def _LSTMBlockCellShape(op):
-  batch_size = op.inputs[0].get_shape().with_rank(2)[0].value
-  cell_size = op.inputs[1].get_shape().with_rank(2)[1].value
-
-  return (tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]))
+ops.RegisterShape("LSTMBlockCell")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient("LSTMBlockCell")
@@ -288,29 +276,8 @@ def _LSTMBlockCellGrad(op, *grad):
           wco_grad, b_grad)
 
 
-@ops.RegisterShape("LSTMBlockCellGrad")
-def _LSTMBlockCellGradShape(op):
-  batch_size = op.inputs[0].get_shape().with_rank(2)[0].value
-  cell_size = op.inputs[1].get_shape().with_rank(2)[1].value
-
-  return [tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size * 4]),
-          tensor_shape.TensorShape([cell_size]),
-          tensor_shape.TensorShape([cell_size]),
-          tensor_shape.TensorShape([cell_size])]
-
-
-@ops.RegisterShape("BlockLSTM")
-def _BlockLSTMShape(op):
-  max_len = op.get_attr("max_len")
-
-  x = op.inputs[1]
-  b = op.inputs[-1]
-
-  batch_size = x.get_shape().with_rank(2)[0].value
-  cell_size = b.get_shape().with_rank(1)[0].value / 4
-
-  return [tensor_shape.TensorShape([batch_size, cell_size])] * max_len * 7
+ops.RegisterShape("LSTMBlockCellGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BlockLSTM")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient("BlockLSTM")
@@ -365,31 +332,7 @@ def _BlockLSTMGrad(op, *grad):
                             wco_grad, wcf_grad, b_grad]
 
 
-@ops.RegisterShape("BlockLSTMGrad")
-def _BlockLSTMGradShape(op):
-  """Shape for BlockLSTM."""
-  max_len = op.get_attr("max_len")
-
-  x = op.inputs[1]
-  cs_prev = op.inputs[1 + max_len]
-  h_prev = op.inputs[2 + max_len]
-  w = op.inputs[3 + max_len]
-  wci = op.inputs[4 + max_len]
-  wco = op.inputs[5 + max_len]
-  wcf = op.inputs[6 + max_len]
-  b = op.inputs[7 + max_len]
-
-  x_shape = x.get_shape().with_rank(2)
-  cs_prev_shape = cs_prev.get_shape().with_rank(2)
-  h_prev_shape = h_prev.get_shape().with_rank(2)
-  w_shape = w.get_shape().with_rank(2)
-  wci_shape = wci.get_shape().with_rank(1)
-  wco_shape = wco.get_shape().with_rank(1)
-  wcf_shape = wcf.get_shape().with_rank(1)
-  b_shape = b.get_shape().with_rank(1)
-
-  return [x_shape] * max_len + [cs_prev_shape, h_prev_shape, w_shape, wci_shape,
-                                wco_shape, wcf_shape, b_shape]
+ops.RegisterShape("BlockLSTMGrad")(common_shapes.call_cpp_shape_fn)
 
 
 class LSTMBlockCell(rnn_cell.RNNCell):

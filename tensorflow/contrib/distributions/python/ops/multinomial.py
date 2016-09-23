@@ -92,8 +92,8 @@ class Multinomial(distribution.Distribution):
                n,
                logits=None,
                p=None,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Multinomial"):
     """Initialize a batch of Multinomial distributions.
 
@@ -111,10 +111,10 @@ class Multinomial(distribution.Distribution):
         a batch of `N1 x ... x Nm` different `k` class Multinomial
         distributions. `p`'s components in the last portion of its shape should
         sum up to 1.
-      validate_args: Whether to assert valid values for parameters `n` and `p`,
-        and `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
-        guaranteed.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert valid
+        values for parameters `n` and `p`, and `x` in `prob` and `log_prob`.
+        If `False`, correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -155,6 +155,7 @@ class Multinomial(distribution.Distribution):
                         "logits": self._logits,
                         "broadcast_shape": self._broadcast_shape},
             is_continuous=False,
+            is_reparameterized=False,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             name=ns)
@@ -206,8 +207,8 @@ class Multinomial(distribution.Distribution):
     outer_prod = math_ops.batch_matmul(
         array_ops.expand_dims(self._mean_val, -1),
         array_ops.expand_dims(p, -2))
-    return array_ops.batch_matrix_set_diag(
-        -outer_prod, self._mean_val - self._mean_val * p)
+    return array_ops.matrix_set_diag(-outer_prod,
+                                     self._mean_val - self._mean_val * p)
 
   def _assert_valid_sample(self, counts):
     """Check counts for proper shape, values, then return tensor version."""

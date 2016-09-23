@@ -3,8 +3,9 @@
 load("@protobuf//:protobuf.bzl", "cc_proto_library")
 load("@protobuf//:protobuf.bzl", "py_proto_library")
 
-# configure may change the following line to True
+# configure may change the following lines to True
 WITH_GCP_SUPPORT = False
+WITH_HDFS_SUPPORT = False
 
 # Appends a suffix to a list of deps.
 def tf_deps(deps, suffix):
@@ -105,7 +106,9 @@ def tf_additional_proto_srcs():
   return ["platform/default/integral_types.h",
           "platform/default/logging.h",
           "platform/default/logging.cc",
-          "platform/default/protobuf.h",]
+          "platform/default/protobuf.h",
+          "platform/default/protobuf.cc",
+  ]
 
 def tf_additional_stream_executor_srcs():
   return ["platform/default/stream_executor.h"]
@@ -123,5 +126,9 @@ def tf_kernel_tests_linkstatic():
   return 0
 
 def tf_additional_lib_deps():
-  return (["//tensorflow/core/platform/cloud:gcs_file_system"]
-      if WITH_GCP_SUPPORT else [])
+  deps = []
+  if WITH_GCP_SUPPORT:
+    deps.append("//tensorflow/core/platform/cloud:gcs_file_system")
+  if WITH_HDFS_SUPPORT:
+    deps.append("//tensorflow/core/platform/hadoop:hadoop_file_system")
+  return deps

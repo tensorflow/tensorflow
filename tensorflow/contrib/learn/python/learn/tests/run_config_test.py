@@ -35,7 +35,8 @@ class RunConfigTest(tf.test.TestCase):
     self.assertEquals(config.num_ps_replicas, 0)
     self.assertIsNone(config.cluster_spec)
     self.assertIsNone(config.job_name)
-    self.assertIsNone(config.is_chief)
+    self.assertTrue(config.is_chief)
+    self.assertEquals(config.evaluation_master, "")
 
   def test_values_from_tf_config(self):
     tf_config = {"cluster": {"ps": ["host1:1", "host2:2"],
@@ -45,12 +46,13 @@ class RunConfigTest(tf.test.TestCase):
     with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
       config = run_config.RunConfig()
 
-    self.assertEquals(config.master, "host4:4")
+    self.assertEquals(config.master, "grpc://host4:4")
     self.assertEquals(config.task, 1)
     self.assertEquals(config.num_ps_replicas, 2)
     self.assertEquals(config.cluster_spec.as_dict(), tf_config["cluster"])
     self.assertEquals(config.job_name, "worker")
     self.assertFalse(config.is_chief)
+    self.assertEquals(config.evaluation_master, "")
 
   def test_explicitly_specified_values(self):
     cluster_spec = tf.train.ClusterSpec({
@@ -61,7 +63,9 @@ class RunConfigTest(tf.test.TestCase):
         master="localhost:0",
         task=2,
         job_name="my_job_name",
-        cluster_spec=cluster_spec,)
+        cluster_spec=cluster_spec,
+        evaluation_master="localhost:9991"
+    )
 
     self.assertEquals(config.master, "localhost:0")
     self.assertEquals(config.task, 2)
@@ -69,6 +73,7 @@ class RunConfigTest(tf.test.TestCase):
     self.assertEquals(config.cluster_spec, cluster_spec)
     self.assertEquals(config.job_name, "my_job_name")
     self.assertFalse(config.is_chief)
+    self.assertEquals(config.evaluation_master, "localhost:9991")
 
   def test_tf_config_with_overrides(self):
     # Purpose: to test the case where TF_CONFIG is set, but then
@@ -197,6 +202,39 @@ class RunConfigTest(tf.test.TestCase):
       config = run_config.RunConfig()
 
     self.assertTrue(config.is_chief)
+
+  def test_default_is_chief_from_tf_config_without_job_name(self):
+    tf_config = {"cluster": {},
+                 "task": {}}
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      config = run_config.RunConfig()
+
+    self.assertTrue(config.is_chief)
+
+  def test_default_is_chief_without_tf_config_or_job_name(self):
+    # When is_chief is omitted, there is no TF_CONFIG and no job_name
+    # (legacy behavior), then is_chief should be True iff task == 0.
+    config = run_config.RunConfig(task=0)
+    self.assertTrue(config.is_chief)
+
+    config = run_config.RunConfig(task=1)
+    self.assertFalse(config.is_chief)
+
+  def test_default_is_chief_without_tf_config_but_has_job_name(self):
+    # When is_chief is omitted, there is no TF_CONFIG but there is a job_name,
+    # then is_chief is True iff job_name is "worker" and task == 0.
+    config = run_config.RunConfig(job_name="worker", task=0)
+    self.assertTrue(config.is_chief)
+
+    config = run_config.RunConfig(
+        job_name="worker", task=1)
+    self.assertFalse(config.is_chief)
+
+    config = run_config.RunConfig(job_name="ps", task=0)
+    self.assertFalse(config.is_chief)
+
+    config = run_config.RunConfig(job_name="ps", task=1)
+    self.assertFalse(config.is_chief)
 
   def test_bad_is_chief_combinations_raise(self):
     msg = "Task is 1, but only task 0 may be chief"

@@ -21,9 +21,11 @@ from __future__ import print_function
 import collections
 import math
 
+from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell
@@ -205,7 +207,7 @@ class CoupledInputForgetGateLSTMCell(rnn_cell.RNNCell):
 
       b = vs.get_variable(
           "B", shape=[3 * self._num_units],
-          initializer=array_ops.zeros_initializer, dtype=dtype)
+          initializer=init_ops.zeros_initializer, dtype=dtype)
 
       # j = new_input, f = forget_gate, o = output_gate
       cell_inputs = array_ops.concat(1, [inputs, m_prev])
@@ -332,7 +334,7 @@ class TimeFreqLSTMCell(rnn_cell.RNNCell):
           dtype, self._num_unit_shards)
       b = vs.get_variable(
           "B", shape=[4 * self._num_units],
-          initializer=array_ops.zeros_initializer, dtype=dtype)
+          initializer=init_ops.zeros_initializer, dtype=dtype)
 
       # Diagonal connections
       if self._use_peepholes:
@@ -535,7 +537,7 @@ class GridLSTMCell(rnn_cell.RNNCell):
           dtype, self._num_unit_shards)
       b_f = vs.get_variable(
           "B_f", shape=[num_gates * self._num_units],
-          initializer=array_ops.zeros_initializer, dtype=dtype)
+          initializer=init_ops.zeros_initializer, dtype=dtype)
       if not self._share_time_frequency_weights:
         concat_w_t = _get_concat_variable(
             "W_t", [actual_input_size + 2 * self._num_units,
@@ -543,7 +545,7 @@ class GridLSTMCell(rnn_cell.RNNCell):
             dtype, self._num_unit_shards)
         b_t = vs.get_variable(
             "B_t", shape=[num_gates * self._num_units],
-            initializer=array_ops.zeros_initializer, dtype=dtype)
+            initializer=init_ops.zeros_initializer, dtype=dtype)
 
       if self._use_peepholes:
         # Diagonal connections
@@ -884,3 +886,115 @@ class AttentionCellWrapper(rnn_cell.RNNCell):
       new_attns = array_ops.reshape(d, [-1, self._attn_size])
       new_attn_states = array_ops.slice(attn_states, [0, 1, 0], [-1, -1, -1])
       return new_attns, new_attn_states
+
+
+class LayerNormBasicLSTMCell(rnn_cell.RNNCell):
+  """LSTM unit with layer normalization and recurrent dropout.
+
+  This class adds layer normalization and recurrent dropout to a
+  basic LSTM unit. Layer normalization implementation is based on:
+
+    https://arxiv.org/abs/1607.06450.
+
+  "Layer Normalization"
+  Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton
+
+  and is applied before the internal nonlinearities.
+  Recurrent dropout is base on:
+
+    https://arxiv.org/abs/1603.05118
+
+  "Recurrent Dropout without Memory Loss"
+  Stanislau Semeniuta, Aliaksei Severyn, Erhardt Barth.
+  """
+
+  def __init__(self, num_units, forget_bias=1.0,
+               input_size=None, activation=math_ops.tanh,
+               layer_norm=True, norm_gain=1.0, norm_shift=0.0,
+               dropout_keep_prob=1.0, dropout_prob_seed=None):
+    """Initializes the basic LSTM cell.
+
+    Args:
+      num_units: int, The number of units in the LSTM cell.
+      forget_bias: float, The bias added to forget gates (see above).
+      input_size: Deprecated and unused.
+      activation: Activation function of the inner states.
+      layer_norm: If `True`, layer normalization will be applied.
+      norm_gain: float, The layer normalization gain initial value. If
+        `layer_norm` has been set to `False`, this argument will be ignored.
+      norm_shift: float, The layer normalization shift initial value. If
+        `layer_norm` has been set to `False`, this argument will be ignored.
+      dropout_keep_prob: unit Tensor or float between 0 and 1 representing the
+        recurrent dropout probability value. If float and 1.0, no dropout will
+        be applied.
+      dropout_prob_seed: (optional) integer, the randomness seed.
+    """
+
+    if input_size is not None:
+      logging.warn("%s: The input_size parameter is deprecated.", self)
+
+    self._num_units = num_units
+    self._activation = activation
+    self._forget_bias = forget_bias
+    self._keep_prob = dropout_keep_prob
+    self._seed = dropout_prob_seed
+    self._layer_norm = layer_norm
+    self._g = norm_gain
+    self._b = norm_shift
+
+  @property
+  def state_size(self):
+    return rnn_cell.LSTMStateTuple(self._num_units, self._num_units)
+
+  @property
+  def output_size(self):
+    return self._num_units
+
+  def _norm(self, inp, scope):
+    with vs.variable_scope(scope) as scope:
+      shape = inp.get_shape()[-1:]
+      gamma_init = init_ops.constant_initializer(self._g)
+      beta_init = init_ops.constant_initializer(self._b)
+      gamma = vs.get_variable("gamma", shape=shape, initializer=gamma_init)  # pylint: disable=unused-variable
+      beta = vs.get_variable("beta", shape=shape, initializer=beta_init)  # pylint: disable=unused-variable
+      normalized = layers.layer_norm(inp, reuse=True, scope=scope)
+      return normalized
+
+  def _linear(self, args, scope="linear"):
+    out_size = 4 * self._num_units
+    proj_size = args.get_shape()[-1]
+    with vs.variable_scope(scope) as scope:
+      weights = vs.get_variable("weights", [proj_size, out_size])
+      out = math_ops.matmul(args, weights)
+      if not self._layer_norm:
+        bias = vs.get_variable("b", [out_size])
+        out += bias
+      return out
+
+  def __call__(self, inputs, state, scope=None):
+    """LSTM cell with layer normalization and recurrent dropout."""
+
+    with vs.variable_scope(scope or type(self).__name__) as scope:  # LayerNormBasicLSTMCell  # pylint: disable=unused-variables
+      c, h = state
+      args = array_ops.concat(1, [inputs, h])
+      concat = self._linear(args)
+
+      i, j, f, o = array_ops.split(1, 4, concat)
+      if self._layer_norm:
+        i = self._norm(i, "input")
+        j = self._norm(j, "transform")
+        f = self._norm(f, "forget")
+        o = self._norm(o, "output")
+
+      g = self._activation(j)
+      if (not isinstance(self._keep_prob, float)) or self._keep_prob < 1:
+        g = nn_ops.dropout(g, self._keep_prob, seed=self._seed)
+
+      new_c = (c * math_ops.sigmoid(f + self._forget_bias)
+               + math_ops.sigmoid(i) * g)
+      if self._layer_norm:
+        new_c = self._norm(new_c, "state")
+      new_h = self._activation(new_c) * math_ops.sigmoid(o)
+
+      new_state = rnn_cell.LSTMStateTuple(new_c, new_h)
+      return new_h, new_state

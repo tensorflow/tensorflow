@@ -20,11 +20,14 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import tempfile
 
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.contrib import learn
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
+from tensorflow.contrib.session_bundle import manifest_pb2
 
 
 def iris_input_fn(num_epochs=None):
@@ -107,6 +110,38 @@ class ClassifierTest(tf.test.TestCase):
     self.assertAllEqual(predictions, np.argmax(predictions_proba, axis=1))
     other_score = _sklearn.accuracy_score(iris.target, predictions)
     self.assertAllClose(other_score, scores['accuracy'])
+
+  def _get_default_signature(self, export_meta_filename):
+    """Gets the default signature from the export.meta file."""
+    with tf.Session():
+      save = tf.train.import_meta_graph(export_meta_filename)
+      meta_graph_def = save.export_meta_graph()
+      collection_def = meta_graph_def.collection_def
+
+      signatures_any = collection_def['serving_signatures'].any_list.value
+      self.assertEquals(len(signatures_any), 1)
+      signatures = manifest_pb2.Signatures()
+      signatures_any[0].Unpack(signatures)
+      default_signature = signatures.default_signature
+      return default_signature
+
+  def testExportMonitorRegressionSignature(self):
+    iris = tf.contrib.learn.datasets.load_iris()
+    est = tf.contrib.learn.Classifier(model_fn=logistic_model_fn, n_classes=3)
+    export_dir = tempfile.mkdtemp() + 'export/'
+    export_monitor = learn.monitors.ExportMonitor(
+        every_n_steps=1,
+        export_dir=export_dir,
+        exports_to_keep=1,
+        signature_fn=tf.contrib.learn.classifier.classification_signature_fn)
+    est.fit(iris.data, iris.target, steps=2, monitors=[export_monitor])
+
+    self.assertTrue(tf.gfile.Exists(export_dir))
+    self.assertFalse(tf.gfile.Exists(export_dir + '00000000/export'))
+    self.assertTrue(tf.gfile.Exists(export_dir + '00000002/export'))
+    # Validate the signature
+    signature = self._get_default_signature(export_dir + '00000002/export.meta')
+    self.assertTrue(signature.HasField('classification_signature'))
 
 
 if __name__ == '__main__':

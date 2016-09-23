@@ -234,8 +234,7 @@ def get_tensors(graph):
     raise TypeError("Expected a graph, got: {}".format(type(graph)))
   ts = []
   for op in graph.get_operations():
-    concatenate_unique(ts, op.inputs)
-    concatenate_unique(ts, op.outputs)
+    ts += op.outputs
   return ts
 
 

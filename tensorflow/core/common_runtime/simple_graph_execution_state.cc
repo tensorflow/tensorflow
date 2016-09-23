@@ -44,6 +44,7 @@ SimpleGraphExecutionState::SimpleGraphExecutionState(
     const SimpleGraphExecutionStateOptions& options)
     : device_set_(options.device_set),
       session_options_(options.session_options),
+      costs_(true /*is_global*/),
       flib_def_(
           new FunctionLibraryDefinition(OpRegistry::Global(), func_def_lib)),
       graph_(nullptr) {
@@ -53,6 +54,7 @@ SimpleGraphExecutionState::SimpleGraphExecutionState(
 
 SimpleGraphExecutionState::~SimpleGraphExecutionState() {
   mutex_lock l(mu_);
+  node_name_to_cost_id_map_.clear();
   delete graph_;
 }
 
@@ -178,6 +180,10 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   GraphConstructorOptions opts;
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph(opts, original_graph_def_, new_graph.get()));
+  for (const Node* n : new_graph->nodes()) {
+    VLOG(2) << "Mapping " << n->name() << " to " << n->cost_id();
+    node_name_to_cost_id_map_[n->name()] = n->cost_id();
+  }
   if (session_options_ &&
       session_options_->config.graph_options().place_pruned_graph()) {
     // Rewrite the graph before placement.
@@ -189,10 +195,15 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   // Save stateful placements before placing.
   RestoreStatefulNodes(new_graph.get());
 
+  CostModel costs(true /*is_global*/);
+  costs_.InitFromGraph(*new_graph.get());
+  costs.MergeFromGlobal(costs_);
+
   GraphOptimizationPassOptions optimization_options;
   optimization_options.session_options = session_options_;
   optimization_options.graph = &new_graph;
   optimization_options.flib_def = flib_def_.get();
+  optimization_options.cost_model = &costs;
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
@@ -207,6 +218,31 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   SaveStatefulNodes(new_graph.get());
   graph_ = new_graph.release();
   return Status::OK();
+}
+
+void SimpleGraphExecutionState::UpdateCostsFromStats(const StepStats& ss) {
+  mutex_lock l(mu_);
+  costs_.MergeFromStats(node_name_to_cost_id_map_, ss);
+}
+
+void SimpleGraphExecutionState::MergeCostsFromGlobal(CostModel* costs) {
+  mutex_lock l(mu_);
+  costs->MergeFromGlobal(costs_);
+}
+
+Status SimpleGraphExecutionState::GlobalNodeDefByName(const string& name,
+                                                      NodeDef* out) {
+  NodeNameToCostIdMap::const_iterator iter =
+      node_name_to_cost_id_map_.find(name);
+  if (iter != node_name_to_cost_id_map_.end()) {
+    mutex_lock l(mu_);  // could use reader lock
+    const Node* node = graph_->FindNodeId(iter->second);
+    if (node) {
+      *out = node->def();
+      return Status::OK();
+    }
+  }
+  return errors::NotFound("Node name: ", name);
 }
 
 Status SimpleGraphExecutionState::BuildGraph(
@@ -234,10 +270,14 @@ Status SimpleGraphExecutionState::BuildGraph(
   std::unique_ptr<FunctionLibraryDefinition> flib(
       new FunctionLibraryDefinition(*flib_def_));
 
+  // TODO(andydavis): Clarify optimization pass requirements around CostModel.
+  CostModel costs(true /*is_global*/);
+  costs.MergeFromGlobal(costs_);
   GraphOptimizationPassOptions optimization_options;
   optimization_options.session_options = session_options_;
   optimization_options.graph = &ng;
   optimization_options.flib_def = flib.get();
+  optimization_options.cost_model = &costs;
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));

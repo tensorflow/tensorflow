@@ -73,7 +73,7 @@ def gunzip_file(gz_path, new_path):
 
 def get_wmt_enfr_train_set(directory):
   """Download the WMT en-fr training corpus to directory unless it's there."""
-  train_path = os.path.join(directory, "giga-fren.release2")
+  train_path = os.path.join(directory, "giga-fren.release2.fixed")
   if not (gfile.Exists(train_path +".fr") and gfile.Exists(train_path +".en")):
     corpus_file = maybe_download(directory, "training-giga-fren.tar",
                                  _WMT_ENFR_TRAIN_URL)
@@ -106,7 +106,7 @@ def basic_tokenizer(sentence):
   """Very basic tokenizer: split the sentence into a list of tokens."""
   words = []
   for space_separated_fragment in sentence.strip().split():
-    words.extend(re.split(_WORD_SPLIT, space_separated_fragment))
+    words.extend(_WORD_SPLIT.split(space_separated_fragment))
   return [w for w in words if w]
 
 
@@ -139,7 +139,7 @@ def create_vocabulary(vocabulary_path, data_path, max_vocabulary_size,
           print("  processing line %d" % counter)
         tokens = tokenizer(line) if tokenizer else basic_tokenizer(line)
         for w in tokens:
-          word = re.sub(_DIGIT_RE, b"0", w) if normalize_digits else w
+          word = _DIGIT_RE.sub(b"0", w) if normalize_digits else w
           if word in vocab:
             vocab[word] += 1
           else:
@@ -208,7 +208,7 @@ def sentence_to_token_ids(sentence, vocabulary,
   if not normalize_digits:
     return [vocabulary.get(w, UNK_ID) for w in words]
   # Normalize digits by 0 before looking words up in the vocabulary.
-  return [vocabulary.get(re.sub(_DIGIT_RE, b"0", w), UNK_ID) for w in words]
+  return [vocabulary.get(_DIGIT_RE.sub(b"0", w), UNK_ID) for w in words]
 
 
 def data_to_token_ids(data_path, target_path, vocabulary_path,

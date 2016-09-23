@@ -31,6 +31,7 @@ common machine learning algorithms.
 @@max_pool2d
 @@one_hot_encoding
 @@repeat
+@@safe_embedding_lookup_sparse
 @@separable_convolution2d
 @@stack
 @@unit_norm

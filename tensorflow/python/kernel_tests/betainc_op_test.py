@@ -75,7 +75,7 @@ class BetaincTest(tf.test.TestCase):
             special.betainc(0.1, 0.1, 0.1).astype(np_dt),
             tf.betainc(0.1, 0.1, 0.1).eval(), rtol=tol, atol=tol)
 
-      with self.assertRaisesRegexp(ValueError, "Shapes .* are not compatible"):
+      with self.assertRaisesRegexp(ValueError, "must be equal"):
         tf.betainc(0.5, [0.5], [[0.5]])
 
       with self.test_session(use_gpu=self.use_gpu):

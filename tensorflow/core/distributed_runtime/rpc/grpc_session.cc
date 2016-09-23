@@ -162,6 +162,8 @@ Status GrpcSession::Run(const RunOptions& run_options,
   RunStepRequest req;
   RunStepResponse resp;
 
+  *req.mutable_options() = run_options;
+
   for (const auto& it : inputs) {
     Tensor input_tensor = it.second;
     auto feed = req.add_feed();
@@ -204,6 +206,10 @@ Status GrpcSession::Run(const RunOptions& run_options,
     }
 
     (*outputs)[fetch_it->second] = output;
+  }
+
+  if (run_metadata) {
+    run_metadata->Swap(resp.mutable_metadata());
   }
 
   return Status::OK();
