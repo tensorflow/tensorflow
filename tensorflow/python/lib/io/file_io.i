@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputstream_interface.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
-#include "tensorflow/core/lib/io/match.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_statistics.h"
@@ -70,9 +69,8 @@ void WriteStringToFile(const string& filename, const string& file_content,
 std::vector<string> GetMatchingFiles(const string& filename,
                                      TF_Status* out_status) {
   std::vector<string> results;
-  tensorflow::Status status =
-      tensorflow::io::GetMatchingFiles(tensorflow::Env::Default(), filename,
-          &results);
+  tensorflow::Status status = tensorflow::Env::Default()->GetMatchingPaths(
+      filename, &results);
   if (!status.ok()) {
     Set_TF_Status_from_Status(out_status, status);
   }

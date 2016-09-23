@@ -180,6 +180,37 @@ tf.cast(a, tf.int32) ==> [1, 2]  # dtype=tf.int32
 
 - - -
 
+### `tf.bitcast(input, type, name=None)` {#bitcast}
+
+Bitcasts a tensor from one type to another without copying data.
+
+Given a tensor `input`, this operation returns a tensor that has the same buffer
+data as `input` with datatype `type`.
+
+If the input datatype `T` is larger than the output datatype `type` then the
+shape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].
+
+If `T` is smaller than `type`, the operator requires that the rightmost
+dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
+[..., sizeof(`type`)/sizeof(`T`)] to [...].
+
+*NOTE*: Bitcast is implemented as a low-level cast, so machines with different
+endian orderings will give different results.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+*  <b>`type`</b>: A `tf.DType` from: `tf.float32, tf.float64, tf.int64, tf.int32, tf.uint8, tf.uint16, tf.int16, tf.int8, tf.complex64, tf.complex128, tf.qint8, tf.quint8, tf.qint32, tf.half`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `type`.
+
+
+- - -
+
 ### `tf.saturate_cast(value, dtype, name=None)` {#saturate_cast}
 
 Performs a safe saturating cast of `value` to `dtype`.
@@ -232,6 +263,26 @@ shape(t) ==> [2, 2, 3]
 ##### Returns:
 
   A `Tensor` of type `out_type`.
+
+
+- - -
+
+### `tf.shape_n(input, out_type=None, name=None)` {#shape_n}
+
+Returns shape of tensors.
+
+This operation returns N 1-D integer tensors representing shape of `input[i]s`.
+
+##### Args:
+
+
+*  <b>`input`</b>: A list of at least 1 `Tensor` objects of the same type.
+*  <b>`out_type`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A list with the same number of `Tensor` objects as `input` of `Tensor` objects of type out_type.
 
 
 - - -
@@ -1179,9 +1230,148 @@ Extract `patches` from `images` and put them in the "depth" output dimension.
 
 - - -
 
+### `tf.space_to_batch_nd(input, block_shape, paddings, name=None)` {#space_to_batch_nd}
+
+SpaceToBatch for N-D tensors of type T.
+
+This operation divides "spatial" dimensions `[1, ..., M]` of the input into a
+grid of blocks of shape `block_shape`, and interleaves these blocks with the
+"batch" dimension (0) such that in the output, the spatial dimensions
+`[1, ..., M]` correspond to the position within the grid, and the batch
+dimension combines both the position within a spatial block and the original
+batch position.  Prior to division into blocks, the spatial dimensions of the
+input are optionally zero padded according to `paddings`.  See below for a
+precise description.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`.
+    N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
+    where spatial_shape has `M` dimensions.
+*  <b>`block_shape`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    1-D with shape `[M]`, all values must be >= 1.
+*  <b>`paddings`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    2-D with shape `[M, 2]`, all values must be >= 0.
+      `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension
+      `i + 1`, which corresponds to spatial dimension `i`.  It is required that
+      `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.
+
+    This operation is equivalent to the following steps:
+
+    1. Zero-pad the start and end of dimensions `[1, ..., M]` of the
+       input according to `paddings` to produce `padded` of shape `padded_shape`.
+
+    2. Reshape `padded` to `reshaped_padded` of shape:
+         [batch] +
+         [padded_shape[1] / block_shape[0],
+           block_shape[0],
+          ...,
+          padded_shape[M] / block_shape[M-1],
+          block_shape[M-1]] +
+         remaining_shape
+
+    3. Permute dimensions of `reshaped_padded` to produce
+       `permuted_reshaped_padded` of shape:
+         block_shape +
+         [batch] +
+         [padded_shape[1] / block_shape[0],
+          ...,
+          padded_shape[M] / block_shape[M-1]] +
+         remaining_shape
+
+    4. Reshape `permuted_reshaped_padded` to flatten `block_shape` into the batch
+       dimension, producing an output tensor of shape:
+         [batch * prod(block_shape)] +
+         [padded_shape[1] / block_shape[0],
+          ...,
+          padded_shape[M] / block_shape[M-1]] +
+         remaining_shape
+
+    Some examples:
+
+    (1) For the following input of shape `[1, 2, 2, 1]`, `block_shape = [2, 2]`, and
+        `paddings = [[0, 0], [0, 0]]`:
+
+    ```prettyprint
+    x = [[[[1], [2]], [[3], [4]]]]
+    ```
+
+    The output tensor has shape `[4, 1, 1, 1]` and value:
+
+    ```prettyprint
+    [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
+    ```
+
+    (2) For the following input of shape `[1, 2, 2, 3]`, `block_shape = [2, 2]`, and
+        `paddings = [[0, 0], [0, 0]]`:
+
+    ```prettyprint
+    x = [[[[1, 2, 3], [4, 5, 6]],
+          [[7, 8, 9], [10, 11, 12]]]]
+    ```
+
+    The output tensor has shape `[4, 1, 1, 3]` and value:
+
+    ```prettyprint
+    [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
+    ```
+
+    (3) For the following input of shape `[1, 4, 4, 1]`, `block_shape = [2, 2]`, and
+        `paddings = [[0, 0], [0, 0]]`:
+
+    ```prettyprint
+    x = [[[[1],   [2],  [3],  [4]],
+          [[5],   [6],  [7],  [8]],
+          [[9],  [10], [11],  [12]],
+          [[13], [14], [15],  [16]]]]
+    ```
+
+    The output tensor has shape `[4, 2, 2, 1]` and value:
+
+    ```prettyprint
+    x = [[[[1], [3]], [[5], [7]]],
+         [[[2], [4]], [[10], [12]]],
+         [[[5], [7]], [[13], [15]]],
+         [[[6], [8]], [[14], [16]]]]
+    ```
+
+    (4) For the following input of shape `[2, 2, 4, 1]`, block_shape = `[2, 2]`, and
+        paddings = `[[0, 0], [2, 0]]`:
+
+    ```prettyprint
+    x = [[[[1],   [2],  [3],  [4]],
+          [[5],   [6],  [7],  [8]]],
+         [[[9],  [10], [11],  [12]],
+          [[13], [14], [15],  [16]]]]
+    ```
+
+    The output tensor has shape `[8, 1, 3, 1]` and value:
+
+    ```prettyprint
+    x = [[[[0], [1], [3]]], [[[0], [9], [11]]],
+         [[[0], [2], [4]]], [[[0], [10], [12]]],
+         [[[0], [5], [7]]], [[[0], [13], [15]]],
+         [[[0], [6], [8]]], [[[0], [14], [16]]]]
+    ```
+
+    Among others, this operation is useful for reducing atrous convolution into
+    regular convolution.
+
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+
+
+- - -
+
 ### `tf.space_to_batch(input, paddings, block_size, name=None)` {#space_to_batch}
 
 SpaceToBatch for 4-D tensors of type T.
+
+This is a legacy version of the more general SpaceToBatchND.
 
 Zero-pads and then rearranges (permutes) blocks of spatial data into batch.
 More specifically, this op outputs a copy of the input tensor where values from
@@ -1290,9 +1480,188 @@ block size.
 
 - - -
 
+### `tf.required_space_to_batch_paddings(input_shape, block_shape, base_paddings=None, name=None)` {#required_space_to_batch_paddings}
+
+Calculate padding required to make block_shape divide input_shape.
+
+This function can be used to calculate a suitable paddings argument for use
+with space_to_batch_nd and batch_to_space_nd.
+
+##### Args:
+
+
+*  <b>`input_shape`</b>: int32 Tensor of shape [N].
+*  <b>`block_shape`</b>: int32 Tensor of shape [N].
+*  <b>`base_paddings`</b>: Optional int32 Tensor of shape [N, 2].  Specifies the minimum
+    amount of padding to use.  All elements must be >= 0.  If not specified,
+    defaults to 0.
+*  <b>`name`</b>: string.  Optional name prefix.
+
+##### Returns:
+
+  (paddings, crops), where:
+
+  `paddings` and `crops` are int32 Tensors of rank 2 and shape [N, 2]
+
+*  <b>`satisfying`</b>: 
+
+      paddings[i, 0] = base_paddings[i, 0].
+      0 <= paddings[i, 1] - base_paddings[i, 1] < block_shape[i]
+      (input_shape[i] + paddings[i, 0] + paddings[i, 1]) % block_shape[i] == 0
+
+      crops[i, 0] = 0
+      crops[i, 1] = paddings[i, 1] - base_paddings[i, 1]
+
+
+*  <b>`Raises`</b>: ValueError if called with incompatible shapes.
+
+
+- - -
+
+### `tf.batch_to_space_nd(input, block_shape, crops, name=None)` {#batch_to_space_nd}
+
+BatchToSpace for N-D tensors of type T.
+
+This operation reshapes the "batch" dimension 0 into `M + 1` dimensions of shape
+`block_shape + [batch]`, interleaves these blocks back into the grid defined by
+the spatial dimensions `[1, ..., M]`, to obtain a result with the same rank as
+the input.  The spatial dimensions of this intermediate result are then
+optionally cropped according to `crops` to produce the output.  This is the
+reverse of SpaceToBatch.  See below for a precise description.
+
+##### Args:
+
+
+*  <b>`input`</b>: A `Tensor`.
+    N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,
+    where spatial_shape has M dimensions.
+*  <b>`block_shape`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    1-D with shape `[M]`, all values must be >= 1.
+*  <b>`crops`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    2-D with shape `[M, 2]`, all values must be >= 0.
+      `crops[i] = [crop_start, crop_end]` specifies the amount to crop from input
+      dimension `i + 1`, which corresponds to spatial dimension `i`.  It is
+      required that
+      `crop_start[i] + crop_end[i] <= block_shape[i] * input_shape[i + 1]`.
+
+    This operation is equivalent to the following steps:
+
+    1. Reshape `input` to `reshaped` of shape:
+         [block_shape[0], ..., block_shape[M-1],
+          batch / prod(block_shape),
+          input_shape[1], ..., input_shape[N-1]]
+
+    2. Permute dimensions of `reshaped` to produce `permuted` of shape
+         [batch / prod(block_shape),
+
+          input_shape[1], block_shape[0],
+          ...,
+          input_shape[M], block_shape[M-1],
+
+          input_shape[M+1], ..., input_shape[N-1]]
+
+    3. Reshape `permuted` to produce `reshaped_permuted` of shape
+         [batch / prod(block_shape),
+
+          input_shape[1] * block_shape[0],
+          ...,
+          input_shape[M] * block_shape[M-1],
+
+          input_shape[M+1],
+          ...,
+          input_shape[N-1]]
+
+    4. Crop the start and end of dimensions `[1, ..., M]` of
+       `reshaped_permuted` according to `crops` to produce the output of shape:
+         [batch / prod(block_shape),
+
+          input_shape[1] * block_shape[0] - crops[0,0] - crops[0,1],
+          ...,
+          input_shape[M] * block_shape[M-1] - crops[M-1,0] - crops[M-1,1],
+
+          input_shape[M+1], ..., input_shape[N-1]]
+
+    Some examples:
+
+    (1) For the following input of shape `[4, 1, 1, 1]`, `block_shape = [2, 2]`, and
+        `crops = [[0, 0], [0, 0]]`:
+
+    ```prettyprint
+    [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
+    ```
+
+    The output tensor has shape `[1, 2, 2, 1]` and value:
+
+    ```prettyprint
+    x = [[[[1], [2]], [[3], [4]]]]
+    ```
+
+    (2) For the following input of shape `[4, 1, 1, 3]`, `block_shape = [2, 2]`, and
+        `crops = [[0, 0], [0, 0]]`:
+
+    ```prettyprint
+    [[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]
+    ```
+
+    The output tensor has shape `[1, 2, 2, 3]` and value:
+
+    ```prettyprint
+    x = [[[[1, 2, 3], [4, 5, 6]],
+          [[7, 8, 9], [10, 11, 12]]]]
+    ```
+
+    (3) For the following input of shape `[4, 2, 2, 1]`, `block_shape = [2, 2]`, and
+        `crops = [[0, 0], [0, 0]]`:
+
+    ```prettyprint
+    x = [[[[1], [3]], [[5], [7]]],
+         [[[2], [4]], [[10], [12]]],
+         [[[5], [7]], [[13], [15]]],
+         [[[6], [8]], [[14], [16]]]]
+    ```
+
+    The output tensor has shape `[1, 4, 4, 1]` and value:
+
+    ```prettyprint
+    x = [[[1],   [2],  [3],  [4]],
+         [[5],   [6],  [7],  [8]],
+         [[9],  [10], [11],  [12]],
+         [[13], [14], [15],  [16]]]
+    ```
+
+    (4) For the following input of shape `[8, 1, 3, 1]`, `block_shape = [2, 2]`, and
+        `crops = [[0, 0], [2, 0]]`:
+
+    ```prettyprint
+    x = [[[[0], [1], [3]]], [[[0], [9], [11]]],
+         [[[0], [2], [4]]], [[[0], [10], [12]]],
+         [[[0], [5], [7]]], [[[0], [13], [15]]],
+         [[[0], [6], [8]]], [[[0], [14], [16]]]]
+    ```
+
+    The output tensor has shape `[2, 2, 4, 1]` and value:
+
+    ```prettyprint
+    x = [[[[1],   [2],  [3],  [4]],
+          [[5],   [6],  [7],  [8]]],
+         [[[9],  [10], [11],  [12]],
+          [[13], [14], [15],  [16]]]]
+    ```
+
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor`. Has the same type as `input`.
+
+
+- - -
+
 ### `tf.batch_to_space(input, crops, block_size, name=None)` {#batch_to_space}
 
 BatchToSpace for 4-D tensors of type T.
+
+This is a legacy version of the more general BatchToSpaceND.
 
 Rearranges (permutes) data from batch into blocks of spatial data, followed by
 cropping. This is the reverse transformation of SpaceToBatch. More specifically,
@@ -1717,6 +2086,46 @@ Batched indexing into a 3-tensor:
 
 - - -
 
+### `tf.unique_with_counts(x, out_idx=None, name=None)` {#unique_with_counts}
+
+Finds unique elements in a 1-D tensor.
+
+This operation returns a tensor `y` containing all of the unique elements of `x`
+sorted in the same order that they occur in `x`. This operation also returns a
+tensor `idx` the same size as `x` that contains the index of each value of `x`
+in the unique output `y`. Finally, it returns a third tensor `count` that
+contains the count of each element of `y` in `x`. In other words:
+
+`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
+
+For example:
+
+```prettyprint
+# tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
+y, idx, count = unique_with_counts(x)
+y ==> [1, 2, 4, 7, 8]
+idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
+count ==> [2, 1, 3, 1, 2]
+```
+
+##### Args:
+
+
+*  <b>`x`</b>: A `Tensor`. 1-D.
+*  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A tuple of `Tensor` objects (y, idx, count).
+
+*  <b>`y`</b>: A `Tensor`. Has the same type as `x`. 1-D.
+*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D.
+*  <b>`count`</b>: A `Tensor` of type `out_idx`. 1-D.
+
+
+- - -
+
 ### `tf.dynamic_partition(data, partitions, num_partitions, name=None)` {#dynamic_partition}
 
 Partitions `data` into `num_partitions` tensors using indices from `partitions`.
@@ -2002,96 +2411,36 @@ The output will be
 *  <b>`TypeError`</b>: If dtype of `on_value` and `off_value` don't match one another
 
 
-
-## Other Functions and Classes
 - - -
 
-### `tf.bitcast(input, type, name=None)` {#bitcast}
+### `tf.sequence_mask(lengths, maxlen=None, dtype=tf.bool, name=None)` {#sequence_mask}
 
-Bitcasts a tensor from one type to another without copying data.
+Return a mask tensor representing the first N positions of each row.
 
-Given a tensor `input`, this operation returns a tensor that has the same buffer
-data as `input` with datatype `type`.
-
-If the input datatype `T` is larger than the output datatype `type` then the
-shape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].
-
-If `T` is smaller than `type`, the operator requires that the rightmost
-dimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from
-[..., sizeof(`type`)/sizeof(`T`)] to [...].
-
-*NOTE*: Bitcast is implemented as a low-level cast, so machines with different
-endian orderings will give different results.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-*  <b>`type`</b>: A `tf.DType` from: `tf.float32, tf.float64, tf.int64, tf.int32, tf.uint8, tf.uint16, tf.int16, tf.int8, tf.complex64, tf.complex128, tf.qint8, tf.quint8, tf.qint32, tf.half`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `type`.
-
-
-- - -
-
-### `tf.shape_n(input, out_type=None, name=None)` {#shape_n}
-
-Returns shape of tensors.
-
-This operation returns N 1-D integer tensors representing shape of `input[i]s`.
-
-##### Args:
-
-
-*  <b>`input`</b>: A list of at least 1 `Tensor` objects of the same type.
-*  <b>`out_type`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A list with the same number of `Tensor` objects as `input` of `Tensor` objects of type out_type.
-
-
-- - -
-
-### `tf.unique_with_counts(x, out_idx=None, name=None)` {#unique_with_counts}
-
-Finds unique elements in a 1-D tensor.
-
-This operation returns a tensor `y` containing all of the unique elements of `x`
-sorted in the same order that they occur in `x`. This operation also returns a
-tensor `idx` the same size as `x` that contains the index of each value of `x`
-in the unique output `y`. Finally, it returns a third tensor `count` that
-contains the count of each element of `y` in `x`. In other words:
-
-`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
-
-For example:
-
-```prettyprint
-# tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
-y, idx, count = unique_with_counts(x)
-y ==> [1, 2, 4, 7, 8]
-idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
-count ==> [2, 1, 3, 1, 2]
+Example:
+```python
+tf.sequence_mask([1, 3, 2], 5) =
+  [[True, False, False, False, False],
+   [True, True, True, False, False],
+   [True, True, False, False, False]]
 ```
 
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. 1-D.
-*  <b>`out_idx`</b>: An optional `tf.DType` from: `tf.int32, tf.int64`. Defaults to `tf.int32`.
-*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`lengths`</b>: 1D integer tensor, all its values < maxlen.
+*  <b>`maxlen`</b>: scalar integer tensor, maximum length of each row. Default: use
+          maximum over lengths.
+*  <b>`dtype`</b>: output type of the resulting tensor.
+*  <b>`name`</b>: name of the op.
 
 ##### Returns:
 
-  A tuple of `Tensor` objects (y, idx, count).
+  A 2D mask tensor, as shown in the example above, cast to specified dtype.
 
-*  <b>`y`</b>: A `Tensor`. Has the same type as `x`. 1-D.
-*  <b>`idx`</b>: A `Tensor` of type `out_idx`. 1-D.
-*  <b>`count`</b>: A `Tensor` of type `out_idx`. 1-D.
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if the arguments have invalid rank.
 
 

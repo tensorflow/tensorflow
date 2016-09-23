@@ -20,8 +20,8 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 *  <b>`predictions`</b>: A `Tensor` of the same shape as `labels`.
 *  <b>`labels`</b>: A `Tensor` of arbitrary shape.
 *  <b>`dim`</b>: The dimension along which the cosine distance is computed.
-*  <b>`weights`</b>: An optional `Tensor` whose shape matches `predictions`, and whose
-    dimension `dim` is 1.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`,
+    and whose dimension `dim` is 1.
 *  <b>`metrics_collections`</b>: An optional list of collections that the metric
     value variable should be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that the metric update

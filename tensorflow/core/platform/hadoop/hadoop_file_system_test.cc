@@ -58,8 +58,8 @@ class HadoopFileSystemTest : public ::testing::Test {
 };
 
 TEST_F(HadoopFileSystemTest, RandomAccessFile) {
-  const string fname = io::JoinPath("hdfs://localfilesystem", testing::TmpDir(),
-                                    "RandomAccessFile");
+  const string fname =
+      "file://" + io::JoinPath(testing::TmpDir(), "RandomAccessFile");
   const string content = "abcdefghijklmn";
   TF_ASSERT_OK(WriteString(fname, content));
 
@@ -84,7 +84,7 @@ TEST_F(HadoopFileSystemTest, RandomAccessFile) {
 TEST_F(HadoopFileSystemTest, WritableFile) {
   std::unique_ptr<WritableFile> writer;
   const string fname =
-      io::JoinPath("hdfs://localfilesystem", testing::TmpDir(), "WritableFile");
+      "file://" + io::JoinPath(testing::TmpDir(), "WritableFile");
   TF_EXPECT_OK(hdfs.NewWritableFile(fname, &writer));
   TF_EXPECT_OK(writer->Append("content1,"));
   TF_EXPECT_OK(writer->Append("content2"));
@@ -99,7 +99,7 @@ TEST_F(HadoopFileSystemTest, WritableFile) {
 
 TEST_F(HadoopFileSystemTest, FileExists) {
   const string fname =
-      io::JoinPath("hdfs://localfilesystem", testing::TmpDir(), "FileExists");
+      "file://" + io::JoinPath(testing::TmpDir(), "FileExists");
   EXPECT_FALSE(hdfs.FileExists(fname));
   TF_ASSERT_OK(WriteString(fname, "test"));
   EXPECT_TRUE(hdfs.FileExists(fname));
@@ -107,7 +107,7 @@ TEST_F(HadoopFileSystemTest, FileExists) {
 
 TEST_F(HadoopFileSystemTest, GetChildren) {
   const string base =
-      io::JoinPath("hdfs://localfilesystem", testing::TmpDir(), "GetChildren");
+      "file://" + io::JoinPath(testing::TmpDir(), "GetChildren");
   TF_EXPECT_OK(hdfs.CreateDir(base));
 
   const string file = io::JoinPath(base, "testfile.csv");
@@ -115,15 +115,15 @@ TEST_F(HadoopFileSystemTest, GetChildren) {
   const string subdir = io::JoinPath(base, "subdir");
   TF_EXPECT_OK(hdfs.CreateDir(subdir));
 
-  vector<string> children;
+  std::vector<string> children;
   TF_EXPECT_OK(hdfs.GetChildren(base, &children));
   std::sort(children.begin(), children.end());
-  EXPECT_EQ(vector<string>({"subdir", "testfile.csv"}), children);
+  EXPECT_EQ(std::vector<string>({"subdir", "testfile.csv"}), children);
 }
 
 TEST_F(HadoopFileSystemTest, DeleteFile) {
   const string fname =
-      io::JoinPath("hdfs://localfilesystem", testing::TmpDir(), "DeleteFile");
+      "file://" + io::JoinPath(testing::TmpDir(), "DeleteFile");
   EXPECT_FALSE(hdfs.DeleteFile(fname).ok());
   TF_ASSERT_OK(WriteString(fname, "test"));
   TF_EXPECT_OK(hdfs.DeleteFile(fname));
@@ -131,7 +131,7 @@ TEST_F(HadoopFileSystemTest, DeleteFile) {
 
 TEST_F(HadoopFileSystemTest, GetFileSize) {
   const string fname =
-      io::JoinPath("hdfs://localfilesystem", testing::TmpDir(), "GetFileSize");
+      "file://" + io::JoinPath(testing::TmpDir(), "GetFileSize");
   TF_ASSERT_OK(WriteString(fname, "test"));
   uint64 file_size = 0;
   TF_EXPECT_OK(hdfs.GetFileSize(fname, &file_size));
@@ -139,8 +139,8 @@ TEST_F(HadoopFileSystemTest, GetFileSize) {
 }
 
 TEST_F(HadoopFileSystemTest, CreateDirStat) {
-  const string dir = io::JoinPath("hdfs://localfilesystem", testing::TmpDir(),
-                                  "CreateDirStat");
+  const string dir =
+      "file://" + io::JoinPath(testing::TmpDir(), "CreateDirStat");
   TF_EXPECT_OK(hdfs.CreateDir(dir));
   FileStatistics stat;
   TF_EXPECT_OK(hdfs.Stat(dir, &stat));
@@ -148,8 +148,7 @@ TEST_F(HadoopFileSystemTest, CreateDirStat) {
 }
 
 TEST_F(HadoopFileSystemTest, DeleteDir) {
-  const string dir =
-      io::JoinPath("hdfs://localfilesystem", testing::TmpDir(), "DeleteDir");
+  const string dir = "file://" + io::JoinPath(testing::TmpDir(), "DeleteDir");
   EXPECT_FALSE(hdfs.DeleteDir(dir).ok());
   TF_EXPECT_OK(hdfs.CreateDir(dir));
   TF_EXPECT_OK(hdfs.DeleteDir(dir));
@@ -159,9 +158,9 @@ TEST_F(HadoopFileSystemTest, DeleteDir) {
 
 TEST_F(HadoopFileSystemTest, RenameFile) {
   const string fname1 =
-      io::JoinPath("hdfs://localfilesystem", testing::TmpDir(), "RenameFile1");
+      "file://" + io::JoinPath(testing::TmpDir(), "RenameFile1");
   const string fname2 =
-      io::JoinPath("hdfs://localfilesystem", testing::TmpDir(), "RenameFile2");
+      "file://" + io::JoinPath(testing::TmpDir(), "RenameFile2");
   TF_ASSERT_OK(WriteString(fname1, "test"));
   TF_EXPECT_OK(hdfs.RenameFile(fname1, fname2));
   string content;
@@ -170,8 +169,7 @@ TEST_F(HadoopFileSystemTest, RenameFile) {
 }
 
 TEST_F(HadoopFileSystemTest, StatFile) {
-  const string fname =
-      io::JoinPath("hdfs://localfilesystem", testing::TmpDir(), "StatFile");
+  const string fname = "file://" + io::JoinPath(testing::TmpDir(), "StatFile");
   TF_ASSERT_OK(WriteString(fname, "test"));
   FileStatistics stat;
   TF_EXPECT_OK(hdfs.Stat(fname, &stat));

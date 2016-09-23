@@ -142,3 +142,10 @@ quantized parameters and calculations. It also describes how the quantization
 process works under the hood.
 
 [View Tutorial](../how_tos/quantization/index.md)
+
+## How to run TensorFlow on Hadoop
+
+This tutorial shows how to read and write HDFS files, and will later describe
+running on cluster managers.
+
+[View Tutorial](../how_tos/hadoop/index.md)

@@ -32,7 +32,9 @@ limitations under the License.
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
+#if GOOGLE_CUDA
 typedef Eigen::GpuDevice GPUDevice;
+#endif  // GOOGLE_CUDA
 
 // --------------------------------------------------------------------------
 template <typename Device, typename T>
@@ -119,6 +121,7 @@ class ConcatOp : public OpKernel {
     if (output->NumElements() > 0) {
       int64 output_dim1 = output->NumElements() / inputs_flat_dim0;
       auto output_flat = output->shaped<T, 2>({inputs_flat_dim0, output_dim1});
+#if GOOGLE_CUDA
       if (std::is_same<Device, GPUDevice>::value) {
         // Switching indexing to int64 might cause performance issues.
         // Hence, we keep int32 indexing in the GPU kernel unless we need to
@@ -128,9 +131,10 @@ class ConcatOp : public OpKernel {
         } else {
           ConcatGPU64<T>(c->eigen_gpu_device(), inputs_flat, &output_flat);
         }
-      } else {
-        ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+        return;
       }
+#endif  // GOOGLE_CUDA
+      ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
     }
   }
 };

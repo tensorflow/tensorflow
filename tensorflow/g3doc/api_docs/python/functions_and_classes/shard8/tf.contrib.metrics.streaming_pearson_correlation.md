@@ -43,7 +43,7 @@ https://wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If labels and predictions are of different sizes or if the
-    ignore_mask is of the wrong size or if either `metrics_collections` or
-    `updates_collections` are not a list or tuple.
+*  <b>`ValueError`</b>: If `labels` and `predictions` are of different sizes, or if
+    `weights` is the wrong size, or if either `metrics_collections` or
+    `updates_collections` are not a `list` or `tuple`.
 

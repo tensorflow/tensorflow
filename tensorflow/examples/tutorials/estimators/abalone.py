@@ -41,15 +41,12 @@ flags.DEFINE_string(
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
-FEATURES = ["len", "diam", "height", "whole_weight", "shucked_weight",
-            "viscera_weight", "shell_weight"]
-
 # Learning rate for the model
 LEARNING_RATE = 0.001
 
 
 def maybe_download():
-  """May be downloads training data and returns train and test file names."""
+  """Maybe downloads training data and returns train and test file names."""
   if FLAGS.train_data:
     train_file_name = FLAGS.train_data
   else:

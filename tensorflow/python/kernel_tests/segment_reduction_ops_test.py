@@ -21,6 +21,8 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.util.all_util import reveal_undocumented
+
 
 class SegmentReductionHelper(tf.test.TestCase):
 
@@ -348,6 +350,12 @@ class SparseSegmentReductionHelper(SegmentReductionHelper):
 
 
 class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
+
+  def setUp(self):
+    reveal_undocumented("tensorflow.python."
+                        "sparse_segment_mean_grad", tf)
+    reveal_undocumented("tensorflow.python."
+                        "sparse_segment_sqrt_n_grad", tf)
 
   def testValues(self):
     dtypes = [tf.float32,

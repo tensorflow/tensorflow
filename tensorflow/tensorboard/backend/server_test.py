@@ -36,9 +36,11 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from google.protobuf import text_format
+from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import ProjectorConfig
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import server
+from tensorflow.tensorboard.plugins import REGISTERED_PLUGINS
 
 
 class TensorboardServerTest(tf.test.TestCase):
@@ -181,6 +183,48 @@ class TensorboardServerTest(tf.test.TestCase):
     self.assertEqual(graph.node[1].attr['_very_large_attrs'].list.s,
                      [b'very_large_attr'])
 
+  def testProjectorRunsWithEmbeddings(self):
+    """Test the format of /runs endpoint in projector."""
+    if 'projector' not in REGISTERED_PLUGINS:
+      return
+
+    run_json = self._getJson('/data/plugin/projector/runs')
+
+    self.assertEqual(run_json, ['run1'])
+
+  def testProjectorInfo(self):
+    """Test the format of /info endpoint in projector."""
+    if 'projector' not in REGISTERED_PLUGINS:
+      return
+
+    info_json = self._getJson('/data/plugin/projector/info?run=run1')
+    self.assertEqual(info_json['tensors'], {
+        'var1': {
+            'shape': [1, 2],
+            'name': 'var1',
+            'metadataFile': None
+        },
+        'var2': {
+            'shape': [10, 10],
+            'name': 'var2',
+            'metadataFile': None
+        },
+        'var3': {
+            'shape': [100, 100],
+            'name': 'var3',
+            'metadataFile': None
+        }
+    })
+
+  def testProjectorTensor(self):
+    """Test the format of /tensor endpoint in projector."""
+    if 'projector' not in REGISTERED_PLUGINS:
+      return
+
+    tensor_tsv = (self._get('/data/plugin/projector/tensor?run=run1&name=var1')
+                  .read())
+    self.assertEqual(tensor_tsv, b'6.0\t6.0')
+
   def testAcceptGzip_compressesResponse(self):
     response = self._get('/data/graph?run=run1&limit_attr_size=1024'
                          '&large_attrs_key=_very_large_attrs',
@@ -294,6 +338,29 @@ class TensorboardServerTest(tf.test.TestCase):
                                                      simple_value=i)])))
     writer.flush()
     writer.close()
+
+    if 'projector' in REGISTERED_PLUGINS:
+      self._GenerateProjectorTestData(run1_path)
+
+  def _GenerateProjectorTestData(self, run_path):
+    # Write a projector config file in run1.
+    config_path = os.path.join(run_path, 'projector_config.pbtxt')
+    config = ProjectorConfig()
+    config_pbtxt = text_format.MessageToString(config)
+    with tf.gfile.GFile(config_path, 'w') as f:
+      f.write(config_pbtxt)
+
+    # Write a checkpoint with some dummy variables.
+    with tf.Graph().as_default():
+      sess = tf.Session()
+      checkpoint_path = os.path.join(run_path, 'model')
+      tf.get_variable(
+          'var1', [1, 2], initializer=tf.constant_initializer(6.0))
+      tf.get_variable('var2', [10, 10])
+      tf.get_variable('var3', [100, 100])
+      sess.run(tf.initialize_all_variables())
+      saver = tf.train.Saver()
+      saver.save(sess, checkpoint_path)
 
 
 class ParseEventFilesSpecTest(tf.test.TestCase):

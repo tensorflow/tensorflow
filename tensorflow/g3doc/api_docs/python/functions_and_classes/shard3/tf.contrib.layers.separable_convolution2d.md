@@ -24,10 +24,12 @@ to produce the end result.
 *  <b>`stride`</b>: a list of length 2: [stride_height, stride_width], specifying the
     depthwise convolution stride. Can be an int if both strides are the same.
 *  <b>`padding`</b>: one of 'VALID' or 'SAME'.
-*  <b>`activation_fn`</b>: activation function.
+*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
+    a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
-    `normalize_fn` is provided then `biases_initializer` and
+    `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
+    default set to None for no normalizer function
 *  <b>`normalizer_params`</b>: normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.

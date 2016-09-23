@@ -15,6 +15,11 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
+package_group(
+    name = "friends",
+    packages = ["//tensorflow/..."],
+)
+
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -406,15 +411,15 @@ tf_kernel_libraries(
         "where_op",
     ],
     deps = [
-        ":batchtospace_op",
+        ":batch_space_ops",
         ":bounds_check",
         ":concat_lib",
         ":cuda_device_array",
         ":depth_space_ops",
         ":extract_image_patches_op",
         ":fill_functor",
+        ":gather_op_cpu_impl",
         ":ops_util",
-        ":spacetobatch_op",
         ":split_lib",
         ":strided_slice_op",
         ":transpose_functor",
@@ -428,6 +433,18 @@ tf_kernel_libraries(
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_io_utils",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "gather_op_cpu_impl",
+    hdrs = ["gather_op_cpu_impl.h"],
+    visibility = [":friends"],
+    deps = [
+        ":bounds_check",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
 )
@@ -1582,22 +1599,39 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "batchtospace_op",
-    prefix = "batchtospace_op",
+    name = "batch_space_ops",
+    srcs = [
+        "batchtospace_op.cc",
+        "spacetobatch_functor.cc",
+        "spacetobatch_functor.h",
+        "spacetobatch_op.cc",
+    ],
+    gpu_srcs = [
+        "spacetobatch_functor.h",
+        "spacetobatch_functor_gpu.cu.cc",
+    ],
+    visibility = ["//visibility:private"],
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
 )
 
-tf_kernel_library(
-    name = "spacetobatch_op",
-    prefix = "spacetobatch_op",
+tf_cuda_cc_test(
+    name = "spacetobatch_benchmark_test",
+    srcs = ["spacetobatch_benchmark_test.cc"],
     deps = [
+        ":batch_space_ops",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//third_party/eigen3",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -1946,6 +1980,7 @@ filegroup(
         "function_ops.cc",
         "gather_op.cc",
         "gather_op.h",
+        "gather_op_cpu_impl.h",
         "identity_op.cc",
         "identity_op.h",
         "immutable_constant_op.cc",

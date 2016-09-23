@@ -26,6 +26,32 @@ limitations under the License.
 namespace tensorflow {
 namespace io {
 
+RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
+    const string& compression_type) {
+  RecordReaderOptions options;
+  if (compression_type == "ZLIB") {
+    options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
+#if defined(IS_SLIM_BUILD)
+    LOG(ERROR) << "Compression is not supported but compression_type is set."
+               << " No compression will be used.";
+#else
+    options.zlib_options = io::ZlibCompressionOptions::DEFAULT();
+#endif  // IS_SLIM_BUILD
+  } else if (compression_type == "GZIP") {
+    options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
+#if defined(IS_SLIM_BUILD)
+    LOG(ERROR) << "Compression is not supported but compression_type is set."
+               << " No compression will be used.";
+#else
+    options.zlib_options = io::ZlibCompressionOptions::GZIP();
+#endif  // IS_SLIM_BUILD
+  } else if (compression_type != "") {
+    LOG(ERROR) << "Unsupported compression_type:" << compression_type
+               << ". No comprression will be used.";
+  }
+  return options;
+}
+
 RecordReader::RecordReader(RandomAccessFile* file,
                            const RecordReaderOptions& options)
     : src_(file), options_(options) {

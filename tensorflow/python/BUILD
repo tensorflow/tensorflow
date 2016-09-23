@@ -81,10 +81,6 @@ tf_py_test(
         ":platform",
         ":platform_test",
     ],
-    tags = [
-        "manual",
-        "notap",
-    ],
 )
 
 tf_py_test(
@@ -1566,7 +1562,10 @@ py_library(
     name = "util",
     srcs = glob(
         ["util/**/*.py"],
-        exclude = ["util/example_parser*"],
+        exclude = [
+            "util/example_parser*",
+            "util/**/*_test.py",
+        ],
     ),
     srcs_version = "PY2AND3",
     deps = ["@protobuf//:protobuf_python"],
@@ -1577,6 +1576,19 @@ py_test(
     size = "small",
     srcs = ["util/nest_test.py"],
     main = "util/nest_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "future_api_test",
+    size = "small",
+    srcs = [
+        "util/future_api_test.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":util",

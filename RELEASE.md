@@ -17,6 +17,9 @@
   instead of graph.proto.
 * ops.NoGradient was renamed ops.NotDifferentiable. ops.NoGradient will
   be removed soon.
+* dot.h / DotGraph was removed (it was an early analysis tool prior
+  to TensorBoard, no longer that useful).  It remains in history
+  should someone find the code useful.
 
 # Release 0.10.0
 

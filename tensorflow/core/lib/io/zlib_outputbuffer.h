@@ -16,20 +16,15 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_IO_COMPRESSED_OUTPUTBUFFER_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_LIB_IO_COMPRESSED_OUTPUTBUFFER_H_
 
+#include <zlib.h>
+
 #include <string>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-
-// TODO(srbs|vrv): Move to a platform/zlib.h file to centralize all
-// platform-specific includes.
-#ifdef __ANDROID__
-#include "zlib.h"
-#else
-#include <zlib.h>
-#endif  // __ANDROID__
 
 namespace tensorflow {
 namespace io {

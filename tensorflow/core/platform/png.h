@@ -21,7 +21,7 @@ limitations under the License.
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/platform/google/build_config/png.h"
 #elif defined(PLATFORM_POSIX) && !defined(IS_MOBILE_PLATFORM)
-#include "libpng-1.2.53/png.h"
+#include <png.h>
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif

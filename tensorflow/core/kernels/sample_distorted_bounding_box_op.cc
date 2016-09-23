@@ -24,6 +24,7 @@ limitations under the License.
 
 using tensorflow::random::SimplePhilox;
 
+namespace tensorflow {
 namespace {
 
 // A simple Rectangle class that supplies intersection.
@@ -190,7 +191,6 @@ bool GenerateRandomCrop(int original_width, int original_height,
 }
 }  // namespace
 
-namespace tensorflow {
 template <typename T>
 class SampleDistortedBoundingBoxOp : public OpKernel {
  public:

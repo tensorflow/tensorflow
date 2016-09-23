@@ -24,6 +24,7 @@ operators to your graph.
 @@add
 @@sub
 @@mul
+@@scalar_mul
 @@div
 @@truediv
 @@floordiv
@@ -1524,6 +1525,9 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
 
   Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
   otherwise, these are inferred.
+
+  NOTE: This operation is not differentiable and cannot be used if inputs depend
+  on trainable variables. Please use tf.add_n for such cases.
 
   For example:
 

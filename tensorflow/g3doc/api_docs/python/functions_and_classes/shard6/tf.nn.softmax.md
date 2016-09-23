@@ -1,6 +1,6 @@
 ### `tf.nn.softmax(logits, dim=-1, name=None)` {#softmax}
 
-Computes softmax activations.
+Computes log softmax activations.
 
 For each batch `i` and class `j` we have
 
