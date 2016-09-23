@@ -1,7 +1,10 @@
 # Description:
 # Python support for TensorFlow.
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = [
+    "//tensorflow:internal",
+    "//tensorflow_models:__subpackages__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
