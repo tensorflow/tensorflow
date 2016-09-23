@@ -32,7 +32,7 @@ ExternalProject_Add(png
 
 ## put png includes in the directory where they are expected
 add_custom_target(png_create_destination_dir
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${png_INCLUDE_DIR}/libpng-1.2.53
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${png_INCLUDE_DIR}
     DEPENDS png)
 
 add_custom_target(png_copy_headers_to_destination
@@ -40,5 +40,5 @@ add_custom_target(png_copy_headers_to_destination
 
 foreach(header_file ${png_HEADERS})
   add_custom_command(TARGET png_copy_headers_to_destination PRE_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${png_INCLUDE_DIR}/libpng-1.2.53)
+      COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${png_INCLUDE_DIR}/)
 endforeach()
