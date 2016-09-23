@@ -156,7 +156,6 @@ cc_library(
         "lib/hash/crc32c.h",  # TODO(josh11b): make internal
         "lib/histogram/histogram.h",
         "lib/io/inputbuffer.h",  # TODO(josh11b): make internal
-        "lib/io/match.h",  # TODO(vrv,jeff): remove once Env->Match change is in
         "lib/io/path.h",
         "lib/io/proto_encode_helper.h",
         "lib/io/record_reader.h",
@@ -937,7 +936,6 @@ cc_library(
         "lib/io/buffered_inputstream.h",
         "lib/io/inputstream_interface.h",
         "lib/io/iterator.h",
-        "lib/io/match.h",
         "lib/io/random_inputstream.h",
         "lib/io/snappy/snappy_inputbuffer.h",
         "lib/io/snappy/snappy_outputbuffer.h",
@@ -1390,7 +1388,6 @@ tf_cc_tests(
         "lib/io/buffered_inputstream_test.cc",
         "lib/io/inputbuffer_test.cc",
         "lib/io/inputstream_interface_test.cc",
-        "lib/io/match_test.cc",
         "lib/io/path_test.cc",
         "lib/io/random_inputstream_test.cc",
         "lib/io/record_reader_writer_test.cc",

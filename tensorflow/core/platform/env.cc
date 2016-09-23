@@ -131,6 +131,47 @@ Status Env::GetChildren(const string& dir, std::vector<string>* result) {
   return fs->GetChildren(dir, result);
 }
 
+Status Env::GetMatchingPaths(const string& pattern,
+                             std::vector<string>* results) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(pattern, &fs));
+  results->clear();
+  // Find the fixed prefix by looking for the first wildcard.
+  const string& fixed_prefix =
+      pattern.substr(0, pattern.find_first_of("*?[\\"));
+  std::vector<string> all_files;
+  string dir = io::Dirname(fixed_prefix).ToString();
+  if (dir.empty()) dir = ".";
+
+  // Setup a BFS to explore everything under dir.
+  std::deque<string> dir_q;
+  dir_q.push_back(dir);
+  Status ret;  // Status to return.
+  while (!dir_q.empty()) {
+    string current_dir = dir_q.front();
+    dir_q.pop_front();
+    std::vector<string> children;
+    Status s = fs->GetChildren(current_dir, &children);
+    ret.Update(s);
+    for (const string& child : children) {
+      const string child_path = io::JoinPath(current_dir, child);
+      // If the child is a directory add it to the queue.
+      if (fs->IsDirectory(child_path).ok()) {
+        dir_q.push_back(child_path);
+      }
+      all_files.push_back(child_path);
+    }
+  }
+
+  // Match all obtained files to the input pattern.
+  for (const auto& f : all_files) {
+    if (MatchPath(f, pattern)) {
+      results->push_back(f);
+    }
+  }
+  return ret;
+}
+
 Status Env::DeleteFile(const string& fname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));

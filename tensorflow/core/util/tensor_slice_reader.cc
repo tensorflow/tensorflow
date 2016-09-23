@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/iterator.h"
-#include "tensorflow/core/lib/io/match.h"
 #include "tensorflow/core/lib/io/table.h"
 #include "tensorflow/core/lib/io/table_options.h"
 #include "tensorflow/core/platform/env.h"
@@ -110,7 +109,7 @@ TensorSliceReader::TensorSliceReader(const string& filepattern,
                                      int preferred_shard)
     : filepattern_(filepattern), open_function_(std::move(open_function)) {
   VLOG(1) << "TensorSliceReader for " << filepattern;
-  Status s = io::GetMatchingFiles(Env::Default(), filepattern, &fnames_);
+  Status s = Env::Default()->GetMatchingPaths(filepattern, &fnames_);
   if (!s.ok()) {
     status_ = errors::InvalidArgument(
         "Unsuccessful TensorSliceReader constructor: "

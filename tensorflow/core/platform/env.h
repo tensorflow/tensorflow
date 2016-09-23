@@ -141,6 +141,37 @@ class Env {
   /// Original contents of *results are dropped.
   Status GetChildren(const string& dir, std::vector<string>* result);
 
+  /// \brief Returns true if the path matches the given pattern. The wildcards
+  /// allowed in pattern are described below (GetMatchingPaths).
+  virtual bool MatchPath(const string& path, const string& pattern) = 0;
+
+  /// \brief Given a pattern, stores in *results the set of paths that matches
+  /// that pattern. *results is cleared.
+  ///
+  /// pattern must match all of a name, not just a substring.
+  //
+  /// pattern: { term }
+  /// term:
+  ///   '*': matches any sequence of non-'/' characters
+  ///   '?': matches a single non-'/' character
+  ///   '[' [ '^' ] { match-list } ']':
+  ///        matches any single character (not) on the list
+  ///   c: matches character c (c != '*', '?', '\\', '[')
+  ///   '\\' c: matches character c
+  /// character-range:
+  ///   c: matches character c (c != '\\', '-', ']')
+  ///   '\\' c: matches character c
+  ///   lo '-' hi: matches character c for lo <= c <= hi
+  ///
+  /// Typical return codes
+  ///  * OK - no errors
+  ///  * UNIMPLEMENTED - Some underlying functions (like GetChildren) are not
+  ///                    implemented
+  /// The default implementation uses a combination of GetChildren, MatchPath
+  /// and IsDirectory.
+  virtual Status GetMatchingPaths(const string& pattern,
+                                  std::vector<string>* results);
+
   /// Deletes the named file.
   Status DeleteFile(const string& fname);
 
@@ -280,6 +311,10 @@ class EnvWrapper : public Env {
   Status RegisterFileSystem(const string& scheme,
                             FileSystemRegistry::Factory factory) override {
     return target_->RegisterFileSystem(scheme, factory);
+  }
+
+  bool MatchPath(const string& path, const string& pattern) override {
+    return target_->MatchPath(path, pattern);
   }
 
   uint64 NowMicros() override { return target_->NowMicros(); }
