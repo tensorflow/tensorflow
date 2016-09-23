@@ -197,7 +197,8 @@ Status RetryingFileSystem::RenameFile(const string& src, const string& target) {
 
 Status RetryingFileSystem::IsDirectory(const string& dirname) {
   return CallWithRetries(
-      std::bind(&FileSystem::IsDirectory, base_file_system_.get(), dirname));
+      std::bind(&FileSystem::IsDirectory, base_file_system_.get(), dirname),
+      initial_delay_seconds_);
 }
 
 }  // namespace tensorflow
