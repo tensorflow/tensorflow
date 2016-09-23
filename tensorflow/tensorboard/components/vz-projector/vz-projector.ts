@@ -36,7 +36,7 @@ let dimension = 3;
 let numNN = 100;
 
 /** Highlight stroke color for the nearest neighbors. */
-const NN_HIGHLIGHT_COLOR = '#6666FA';
+const NN_HIGHLIGHT_COLOR = '#FA6666';
 /** Color to denote a missing value. */
 const MISSING_VALUE_COLOR = 'black';
 /** Highlight stroke color for the selected point */
@@ -97,8 +97,6 @@ export class Projector extends ProjectorPolymer {
   private dim: number;
   private selectedDistance: (a: number[], b: number[]) => number;
   private highlightedPoints: {index: number, color: string}[];
-  // The index of a point that has been individually clicked.
-  private clickedPoint: number;
   // The index of all selected points.
   private selectedPoints: number[];
   private centroidValues: any;
@@ -123,7 +121,6 @@ export class Projector extends ProjectorPolymer {
     this.hasPcaZ = true;
     this.selectedDistance = vector.cosDistNorm;
     this.highlightedPoints = [];
-    this.clickedPoint = null;
     this.selectedPoints = [];
     this.centroidValues = {xLeft: null, xRight: null, yUp: null, yDown: null};
     this.centroids = {xLeft: null, xRight: null, yUp: null, yDown: null};
@@ -360,12 +357,8 @@ export class Projector extends ProjectorPolymer {
           searchBoxInfo.style('color', null).text(`${indices.length} matches.`);
           this.showTab('inspector');
           let neighbors = this.findNeighbors(indices[0]);
-          if (indices.length === 1) {
-            this.clickedPoint = indices[0];
-            this.scatterPlot.clickOnPoint(this.clickedPoint);
-          }
           this.selectedPoints = indices;
-          this.updateNNList(neighbors);
+          this.updateInspectorPane(neighbors);
         }
         this.selectionWasUpdated();
       }
@@ -395,7 +388,7 @@ export class Projector extends ProjectorPolymer {
       self.selectedDistance = vector.dist;
       if (self.selectedPoints.length > 0) {
         let neighbors = self.findNeighbors(self.selectedPoints[0]);
-        self.updateNNList(neighbors);
+        self.updateInspectorPane(neighbors);
       }
     });
 
@@ -405,7 +398,7 @@ export class Projector extends ProjectorPolymer {
       self.selectedDistance = vector.cosDistNorm;
       if (self.selectedPoints.length > 0) {
         let neighbors = self.findNeighbors(self.selectedPoints[0]);
-        self.updateNNList(neighbors);
+        self.updateInspectorPane(neighbors);
       }
     });
 
@@ -484,29 +477,24 @@ export class Projector extends ProjectorPolymer {
     });
   }
 
-  private updateSelection(selectedPoints: number[]) {
+  private updateSelection(points: number[]) {
     // If no points are selected, unselect everything.
-    if (!selectedPoints.length) {
-      this.clickedPoint = null;
+    if (!points.length) {
       this.selectedPoints = [];
-      this.updateNNList([]);
-    } else if (selectedPoints.length === 1) {
+      this.updateInspectorPane([]);
+    } else if (points.length === 1) {
       // If only one point is selected, we want to get its nearest neighbors
       // and change the UI accordingly.
-      this.clickedPoint = selectedPoints[0];
       this.showTab('inspector');
-      let neighbors = this.findNeighbors(this.clickedPoint);
-      this.selectedPoints =
-          [this.clickedPoint].concat(neighbors.map(n => n.index));
-      this.updateNNList(neighbors);
+      let neighbors = this.findNeighbors(points[0]);
+      this.selectedPoints = [points[0]].concat(neighbors.map(n => n.index));
+      this.updateInspectorPane(neighbors);
     } else {
-      this.clickedPoint = null;
       // Otherwise, select all points and hide nearest neighbors list.
-      this.selectedPoints = selectedPoints as number[];
+      this.selectedPoints = points;
       this.highlightedPoints = [];
-      this.updateNNList([]);
+      this.updateInspectorPane([]);
     }
-    this.updateMetadata();
     this.selectionWasUpdated();
   }
 
@@ -600,38 +588,36 @@ export class Projector extends ProjectorPolymer {
     let metadataContainerElement = this.dom.select('.ink-panel-metadata');
     metadataContainerElement.selectAll('*').remove();
 
-    let display = false;
-    if (this.clickedPoint != null) {
-      let selectedPoint = this.points[this.clickedPoint];
+    let point = this.points[this.selectedPoints[0]];
+    this.dom.select('.ink-panel-metadata-container')
+        .style('display', point != null ? '' : 'none');
 
-      for (let metadataKey in selectedPoint.metadata) {
-        if (!selectedPoint.metadata.hasOwnProperty(metadataKey)) {
-          continue;
-        }
-        let rowElement = document.createElement('div');
-        rowElement.className = 'ink-panel-metadata-row vz-projector';
-
-        let keyElement = document.createElement('div');
-        keyElement.className = 'ink-panel-metadata-key vz-projector';
-        keyElement.textContent = metadataKey;
-
-        let valueElement = document.createElement('div');
-        valueElement.className = 'ink-panel-metadata-value vz-projector';
-        valueElement.textContent = '' + selectedPoint.metadata[metadataKey];
-
-        rowElement.appendChild(keyElement);
-        rowElement.appendChild(valueElement);
-
-        metadataContainerElement.append(function() {
-          return this.appendChild(rowElement);
-        });
-      }
-
-      display = true;
+    if (point == null) {
+      return;
     }
 
-    this.dom.select('.ink-panel-metadata-container')
-        .style('display', display ? '' : 'none');
+    for (let metadataKey in point.metadata) {
+      if (!point.metadata.hasOwnProperty(metadataKey)) {
+        continue;
+      }
+      let rowElement = document.createElement('div');
+      rowElement.className = 'ink-panel-metadata-row vz-projector';
+
+      let keyElement = document.createElement('div');
+      keyElement.className = 'ink-panel-metadata-key vz-projector';
+      keyElement.textContent = metadataKey;
+
+      let valueElement = document.createElement('div');
+      valueElement.className = 'ink-panel-metadata-value vz-projector';
+      valueElement.textContent = '' + point.metadata[metadataKey];
+
+      rowElement.appendChild(keyElement);
+      rowElement.appendChild(valueElement);
+
+      metadataContainerElement.append(function() {
+        return this.appendChild(rowElement);
+      });
+    }
   }
 
   private selectionWasUpdated() {
@@ -677,18 +663,14 @@ export class Projector extends ProjectorPolymer {
   }
 
   /** Updates the nearest neighbors list in the inspector. */
-  private updateNNList(neighbors: knn.NearestEntry[]) {
+  private updateInspectorPane(neighbors: knn.NearestEntry[]) {
+    this.updateMetadata();
     let nnlist = this.dom.select('.nn-list');
     nnlist.html('');
 
     if (neighbors.length === 0) {
-      this.dom.select('#nn-title').text('');
       return;
     }
-
-    let selectedPoint = this.points[this.clickedPoint];
-    this.dom.select('#nn-title')
-        .text(selectedPoint != null ? selectedPoint.metadata['label'] : '');
 
     let minDist = neighbors.length > 0 ? neighbors[0].dist : 0;
     let n = nnlist.selectAll('.neighbor')
