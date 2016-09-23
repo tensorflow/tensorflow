@@ -193,7 +193,6 @@ cc_library(
         "platform/notification.h",
         "platform/profile_utils/cpu_utils.h",
         "platform/protobuf.h",  # TODO(josh11b): make internal
-        "platform/regexp.h",
         "platform/stacktrace.h",
         "platform/strong_hash.h",
         "platform/thread_annotations.h",
@@ -953,7 +952,6 @@ cc_library(
         "lib/strings/base64.h",
         "lib/strings/ordered_code.h",
         "lib/strings/proto_text_util.h",
-        "lib/strings/regexp.h",
         "lib/strings/scanner.h",
         "lib/wav/wav_io.h",
         "platform/demangle.h",
@@ -1204,6 +1202,19 @@ tf_cuda_library(
         "//tensorflow/core/kernels:required",
     ] + tf_additional_lib_deps(),
     alwayslink = 1,
+)
+
+# This library is deprecated and no longer publicly available.
+# Do not add more uses of it.
+cc_library(
+    name = "regexp_internal",
+    hdrs = [
+        "platform/regexp.h",
+    ],
+    visibility = [
+        "//tensorflow/contrib/tfprof:__subpackages__",
+    ],
+    deps = [":lib_internal"],
 )
 
 tf_cuda_library(
