@@ -140,6 +140,7 @@ filegroup(
         "//tensorflow/core/platform/default/build_config:all_files",
         "//tensorflow/core/platform/hadoop:all_files",
         "//tensorflow/core/util/ctc:all_files",
+        "//tensorflow/core/util/tensor_bundle:all_files",
         "//tensorflow/examples/android:all_files",
         "//tensorflow/examples/how_tos/reading_data:all_files",
         "//tensorflow/examples/image_retraining:all_files",
