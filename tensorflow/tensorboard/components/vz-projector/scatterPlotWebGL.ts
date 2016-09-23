@@ -20,8 +20,7 @@ import {ScatterPlotWebGLVisualizerAxes} from './scatterPlotWebGLVisualizerAxes';
 import {getNearFarPoints, getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
 import {dist_2D} from './vector';
 
-const BACKGROUND_COLOR_DAY = 0xffffff;
-const BACKGROUND_COLOR_NIGHT = 0x000000;
+const BACKGROUND_COLOR = 0xffffff;
 
 const MAX_ZOOM = 10;
 const MIN_ZOOM = .05;
@@ -65,7 +64,7 @@ const TAR_2D = {
 
 /**
  * Maintains a three.js instantiation and context,
- * animation state, day/night state, and all other logic that's
+ * animation state, and all other logic that's
  * independent of how a 3D scatter plot is actually rendered. Also holds an
  * array of visualizers and dispatches application events to them.
  */
@@ -100,8 +99,7 @@ export class ScatterPlotWebGL implements ScatterPlot {
   private width: number;
 
   private mode: Mode;
-  private isNight: boolean;
-  private backgroundColor: number;
+  private backgroundColor: number = BACKGROUND_COLOR;
 
   private scene: THREE.Scene;
   private renderer: THREE.WebGLRenderer;
@@ -131,11 +129,11 @@ export class ScatterPlotWebGL implements ScatterPlot {
     // Set up THREE.js.
     this.scene = new THREE.Scene();
     this.renderer = new THREE.WebGLRenderer();
+    this.renderer.setClearColor(BACKGROUND_COLOR, 1);
     this.containerNode.appendChild(this.renderer.domElement);
     this.light = new THREE.PointLight(0xFFECBF, 1, 0);
     this.scene.add(this.light);
     this.makeCamera();
-    this.setDayNightMode(false);
 
     // Render now so no black background appears during startup.
     this.renderer.render(this.scene, this.perspCamera);
@@ -585,6 +583,9 @@ export class ScatterPlotWebGL implements ScatterPlot {
 
   setLabelAccessor(labelAccessor: (index: number) => string) {
     this.labelAccessor = labelAccessor;
+    this.visualizers.forEach(v => {
+      v.onSetLabelAccessor(labelAccessor);
+    });
   }
 
   setMode(mode: Mode) {
@@ -649,13 +650,9 @@ export class ScatterPlotWebGL implements ScatterPlot {
   getHighlightedPoints(): number[] { return this.highlightedPoints; }
 
   setDayNightMode(isNight: boolean) {
-    this.isNight = isNight;
-    this.backgroundColor =
-        (isNight ? BACKGROUND_COLOR_NIGHT : BACKGROUND_COLOR_DAY);
-    this.renderer.setClearColor(this.backgroundColor);
-    this.visualizers.forEach(v => {
-      v.onSetDayNightMode(isNight);
-    });
+    d3.select(this.containerNode)
+        .selectAll('canvas')
+        .style('filter', isNight ? 'invert(100%)' : null);
   }
 
   showAxes(show: boolean) {}

@@ -17,6 +17,8 @@
 TensorFlow provides allows you to wrap python/numpy functions as
 TensorFlow operators.
 
+@@py_func
+
 """
 
 # pylint: disable=g-bad-name
@@ -132,8 +134,8 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   Args:
     func: A python function.
     inp: A list of `Tensor`.
-    Tout: A list of tensorflow data types or a single tensorflow data type
-          indicating what `func` returns.
+    Tout: A list or tuple of tensorflow data types or a single tensorflow data
+          type if there is only one, indicating what `func` returns.
     stateful: A boolean indicating whether the function should be considered
               stateful or stateless. I.e. whether it, given the same input, will
               return the same output and at the same time does not change state
@@ -162,20 +164,20 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   # the funcs registry.
   g._cleanup_py_funcs_used_in_graph.append(cleanup)
 
-  if isinstance(Tout, list):
-    is_list = True
+  if isinstance(Tout, (list, tuple)):
+    is_list_or_tuple = True
   else:
     Tout = [Tout]
-    is_list = False
+    is_list_or_tuple = False
   if stateful:
     result = gen_script_ops._py_func(
-            input=inp, token=token, Tout=Tout, name=name)
+        input=inp, token=token, Tout=Tout, name=name)
     # pylint: enable=protected-access
   else:
     result = gen_script_ops._py_func_stateless(
         input=inp, token=token, Tout=Tout, name=name)
     # pylint: enable=protected-access
-  return result if is_list else result[0]
+  return result if is_list_or_tuple else result[0]
 
 
 ops.RegisterShape("PyFunc")(common_shapes.call_cpp_shape_fn)

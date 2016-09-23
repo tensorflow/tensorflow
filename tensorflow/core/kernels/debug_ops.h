@@ -38,13 +38,6 @@ class CopyOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& src_tensor = context->input(0);
 
-    DeviceContext* device_ctxt = context->op_device_context();
-    Device* device = static_cast<Device*>(context->device());
-
-    // Determine if the input tensor is not on CPU (e.g., on GPU).
-    bool off_host_input = device->device_type() == DEVICE_GPU &&
-                          !context->input_alloc_attr(0).on_host();
-
     if (src_tensor.IsInitialized()) {
       // Source tensor is initialized. Make a copy.
       Tensor* copied_tensor;
@@ -52,7 +45,13 @@ class CopyOp : public OpKernel {
                                                        &copied_tensor));
 
 #if GOOGLE_CUDA
+      Device* device = static_cast<Device*>(context->device());
+      // Determine if the input tensor is not on CPU (e.g., on GPU).
+      bool off_host_input = device->device_type() == DEVICE_GPU &&
+                            !context->input_alloc_attr(0).on_host();
+
       if (off_host_input) {
+        DeviceContext* device_ctxt = context->op_device_context();
         // Input is not on host: deep-copy it from GPU to the same GPU.
         Notification done_copy;
         GPUUtil::CopyGPUTensorToSameGPU(

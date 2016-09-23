@@ -1611,7 +1611,6 @@ bool ExecutorState::NodeDone(const Status& s, const Node* node,
                              TaggedNodeReadyQueue* inline_ready) {
   if (stats_collector_) {
     nodestats::SetAllEnd(stats);
-    stats_collector_->UpdateCostModelNode(stats, impl_->graph_, node);
     if (!SetTimelineLabel(node, stats)) {
       // Only record non-transfer nodes.
       stats_collector_->Save(impl_->params_.device->name(), stats);

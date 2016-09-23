@@ -31,7 +31,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/third_party/hadoop:hdfs",
+        "//third_party/hadoop:hdfs",
     ],
     alwayslink = 1,
 )

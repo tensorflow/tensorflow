@@ -74,7 +74,7 @@ NodeBuilder& NodeBuilder::Input(gtl::ArraySlice<NodeOut> src_list) {
       inputs_.emplace_back(node_out.node, node_out.index);
     }
   }
-  def_builder_.Input(srcs);
+  def_builder_.Input(gtl::ArraySlice<NodeDefBuilder::NodeOut>(srcs));
   return *this;
 }
 

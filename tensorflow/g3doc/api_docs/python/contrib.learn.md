@@ -675,19 +675,21 @@ Initializes a DNNClassifier instance.
 
   A `DNNClassifier` estimator.
 
-
-- - -
-
-#### `tf.contrib.learn.DNNClassifier.__repr__()` {#DNNClassifier.__repr__}
+##### Raises:
 
 
+*  <b>`ValueError`</b>: If `n_classes` < 2.
 
 
 - - -
 
 #### `tf.contrib.learn.DNNClassifier.bias_` {#DNNClassifier.bias_}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-13.
+Instructions for updating:
+This method inspects the private state of the object, and should not be used
 
 
 - - -
@@ -699,98 +701,23 @@ Initializes a DNNClassifier instance.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.dnn_bias_` {#DNNClassifier.dnn_bias_}
-
-Returns bias of deep neural network part.
-
-
-- - -
-
-#### `tf.contrib.learn.DNNClassifier.dnn_weights_` {#DNNClassifier.dnn_weights_}
-
-Returns weights of deep neural network part.
-
-
-- - -
-
 #### `tf.contrib.learn.DNNClassifier.evaluate(x=None, y=None, input_fn=None, feed_fn=None, batch_size=None, steps=None, metrics=None, name=None)` {#DNNClassifier.evaluate}
 
-See `Evaluable`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If at least one of `x` or `y` is provided, and at least one of
-      `input_fn` or `feed_fn` is provided.
-      Or if `metrics` is not `None` or `dict`.
+See evaluable.Evaluable.
 
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.export(*args, **kwargs)` {#DNNClassifier.export}
+#### `tf.contrib.learn.DNNClassifier.export(export_dir, input_fn=None, input_feature_key=None, use_deprecated_input_fn=True, signature_fn=None, default_batch_size=1, exports_to_keep=None)` {#DNNClassifier.export}
 
-Exports inference graph into given dir. (deprecated arguments)
-
-SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
-Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
-
-    Args:
-      export_dir: A string containing a directory to write the exported graph
-        and checkpoints.
-      input_fn: If `use_deprecated_input_fn` is true, then a function that given
-        `Tensor` of `Example` strings, parses it into features that are then
-        passed to the model. Otherwise, a function that takes no argument and
-        returns a tuple of (features, targets), where features is a dict of
-        string key to `Tensor` and targets is a `Tensor` that's currently not
-        used (and so can be `None`).
-      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
-        the raw `Example` strings `Tensor` that the exported model will take as
-        input.
-      use_deprecated_input_fn: Determines the signature format of `input_fn`.
-      signature_fn: Function that returns a default signature and a named
-        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
-        for features and `Tensor` or `dict` of `Tensor`s for predictions.
-      prediction_key: The key for a tensor in the `predictions` dict (output
-        from the `model_fn`) to use as the `predictions` input to the
-        `signature_fn`. Optional. If `None`, predictions will pass to
-        `signature_fn` without filtering.
-      default_batch_size: Default batch size of the `Example` placeholder.
-      exports_to_keep: Number of exports to keep.
+See BasEstimator.export.
 
 
 - - -
 
 #### `tf.contrib.learn.DNNClassifier.fit(x=None, y=None, input_fn=None, steps=None, batch_size=None, monitors=None, max_steps=None)` {#DNNClassifier.fit}
 
-See `Trainable`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If `x` or `y` are not `None` while `input_fn` is not `None`.
-*  <b>`ValueError`</b>: If both `steps` and `max_steps` are not `None`.
-
-
-- - -
-
-#### `tf.contrib.learn.DNNClassifier.get_params(deep=True)` {#DNNClassifier.get_params}
-
-Get parameters for this estimator.
-
-##### Args:
-
-
-*  <b>`deep`</b>: boolean, optional
-
-    If `True`, will return the parameters for this estimator and
-    contained subobjects that are estimators.
-
-##### Returns:
-
-  params : mapping of string to any
-  Parameter names mapped to their values.
+See trainable.Trainable.
 
 
 - - -
@@ -817,21 +744,7 @@ Returns value of the variable given by name.
 
 ##### Returns:
 
-  Numpy array - value of the tensor.
-
-
-- - -
-
-#### `tf.contrib.learn.DNNClassifier.linear_bias_` {#DNNClassifier.linear_bias_}
-
-Returns bias of the linear part.
-
-
-- - -
-
-#### `tf.contrib.learn.DNNClassifier.linear_weights_` {#DNNClassifier.linear_weights_}
-
-Returns weights per feature of the linear part.
+  `Tensor` object.
 
 
 - - -
@@ -839,49 +752,6 @@ Returns weights per feature of the linear part.
 #### `tf.contrib.learn.DNNClassifier.model_dir` {#DNNClassifier.model_dir}
 
 
-
-
-- - -
-
-#### `tf.contrib.learn.DNNClassifier.partial_fit(x=None, y=None, input_fn=None, steps=1, batch_size=None, monitors=None)` {#DNNClassifier.partial_fit}
-
-Incremental fit on a batch of samples.
-
-This method is expected to be called several times consecutively
-on different or the same chunks of the dataset. This either can
-implement iterative training or out-of-core/online training.
-
-This is especially useful when the whole dataset is too big to
-fit in memory at the same time. Or when model is taking long time
-to converge, and you want to split up training into subparts.
-
-##### Args:
-
-
-*  <b>`x`</b>: Matrix of shape [n_samples, n_features...]. Can be iterator that
-     returns arrays of features. The training input samples for fitting the
-     model. If set, `input_fn` must be `None`.
-*  <b>`y`</b>: Vector or matrix [n_samples] or [n_samples, n_outputs]. Can be
-     iterator that returns array of targets. The training target values
-     (class labels in classification, real numbers in regression). If set,
-     `input_fn` must be `None`.
-*  <b>`input_fn`</b>: Input function. If set, `x`, `y`, and `batch_size` must be
-    `None`.
-*  <b>`steps`</b>: Number of steps for which to train model. If `None`, train forever.
-*  <b>`batch_size`</b>: minibatch size to use on the input, defaults to first
-    dimension of `x`. Must be `None` if `input_fn` is provided.
-*  <b>`monitors`</b>: List of `BaseMonitor` subclass instances. Used for callbacks
-    inside the training loop.
-
-##### Returns:
-
-  `self`, for chaining.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If at least one of `x` and `y` is provided, and `input_fn` is
-      provided.
 
 
 - - -
@@ -938,35 +808,13 @@ altogether. The behavior of this flag is described below.
 
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.set_params(**params)` {#DNNClassifier.set_params}
-
-Set the parameters of this estimator.
-
-The method works on simple estimators as well as on nested objects
-(such as pipelines). The former have parameters of the form
-``<component>__<parameter>`` so that it's possible to update each
-component of a nested object.
-
-##### Args:
-
-
-*  <b>`**params`</b>: Parameters.
-
-##### Returns:
-
-  self
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: If params contain invalid names.
-
-
-- - -
-
 #### `tf.contrib.learn.DNNClassifier.weights_` {#DNNClassifier.weights_}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-13.
+Instructions for updating:
+This method inspects the private state of the object, and should not be used
 
 
 

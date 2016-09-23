@@ -17,6 +17,7 @@ import {RenderContext} from './renderContext';
 import {DataSet} from './scatterPlot';
 import {ScatterPlotWebGL} from './scatterPlotWebGL';
 import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
+import {createTexture} from './util';
 
 const NUM_POINTS_FOG_THRESHOLD = 5000;
 const MIN_POINT_SIZE = 5.0;
@@ -24,9 +25,6 @@ const IMAGE_SIZE = 30;
 
 const POINT_COLOR = 0x7575D9;
 const POINT_COLOR_GRAYED = 0x888888;
-
-const BLENDING_DAY = THREE.MultiplyBlending;
-const BLENDING_NIGHT = THREE.AdditiveBlending;
 
 // Constants relating to the indices of buffer arrays.
 /** Item size of a single point in a bufferArray representing colors */
@@ -141,8 +139,6 @@ export class ScatterPlotWebGLVisualizerSprites implements
   private pickingColors: Float32Array;
   private renderColors: Float32Array;
 
-  private blending: THREE.Blending = BLENDING_DAY;
-
   constructor(scatterPlotWebGL: ScatterPlotWebGL) {
     scatterPlotWebGL.onSelection((s: number[]) => this.onSelectionChanged(s));
   }
@@ -159,7 +155,7 @@ export class ScatterPlotWebGLVisualizerSprites implements
     let image = this.image || canvas;
     // TODO(b/31390553): Pass sprite dim to the renderer.
     let spriteDim = 28.0;
-    let tex = this.createTexture(image);
+    let tex = createTexture(image);
     let pointSize = (this.sceneIs3D ? this.pointSize3D : this.pointSize2D);
     if (this.image) {
       pointSize = IMAGE_SIZE;
@@ -187,7 +183,7 @@ export class ScatterPlotWebGLVisualizerSprites implements
       depthTest: haveImage,
       depthWrite: haveImage,
       fog: true,
-      blending: (this.image ? THREE.NormalBlending : this.blending),
+      blending: (this.image ? THREE.NormalBlending : THREE.MultiplyBlending),
     });
 
     this.pickingMaterial = new THREE.ShaderMaterial({
@@ -198,7 +194,7 @@ export class ScatterPlotWebGLVisualizerSprites implements
       depthTest: true,
       depthWrite: true,
       fog: false,
-      blending: (this.image ? THREE.NormalBlending : this.blending),
+      blending: (this.image ? THREE.NormalBlending : THREE.MultiplyBlending),
     });
 
     // And finally initialize it and add it to the scene.
@@ -338,19 +334,6 @@ export class ScatterPlotWebGLVisualizerSprites implements
     scene.remove(this.points);
   }
 
-  /**
-   * Generate a texture for the points/images and sets some initial params
-   */
-  createTexture(image: HTMLImageElement|HTMLCanvasElement): THREE.Texture {
-    let tex = new THREE.Texture(image);
-    tex.needsUpdate = true;
-    // Used if the texture isn't a power of 2.
-    tex.minFilter = THREE.LinearFilter;
-    tex.generateMipmaps = false;
-    tex.flipY = false;
-    return tex;
-  }
-
   onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
     this.dataSet = dataSet;
     this.image = spriteImage;
@@ -371,10 +354,6 @@ export class ScatterPlotWebGLVisualizerSprites implements
         (selection.length > 0) ? POINT_COLOR_GRAYED : POINT_COLOR;
   }
 
-  onSetDayNightMode(isNight: boolean) {
-    this.blending = (isNight ? BLENDING_NIGHT : BLENDING_DAY);
-  }
-
   onRecreateScene(
       scene: THREE.Scene, sceneIs3D: boolean, backgroundColor: number) {
     this.sceneIs3D = sceneIs3D;
@@ -390,6 +369,7 @@ export class ScatterPlotWebGLVisualizerSprites implements
   }
 
   onResize(newWidth: number, newHeight: number) {}
+  onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 
   onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {
     if (!this.geometry) {

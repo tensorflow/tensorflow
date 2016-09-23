@@ -33,19 +33,21 @@ std::vector<char*> CharPointerVectorFromStrings(
 
 TEST(CommandLineFlagsTest, BasicUsage) {
   int some_int = 10;
+  int64 some_int64 = 21474836470;  // max int32 is 2147483647
   bool some_switch = false;
   tensorflow::string some_name = "something";
-  int argc = 4;
+  int argc = 5;
   std::vector<tensorflow::string> argv_strings = {
-      "program_name", "--some_int=20", "--some_switch",
-      "--some_name=somethingelse"};
+      "program_name", "--some_int=20", "--some_int64=214748364700",
+      "--some_switch", "--some_name=somethingelse"};
   std::vector<char*> argv_array = CharPointerVectorFromStrings(argv_strings);
-  bool parsed_ok =
-      ParseFlags(&argc, argv_array.data(), {Flag("some_int", &some_int),
-                                            Flag("some_switch", &some_switch),
-                                            Flag("some_name", &some_name)});
+  bool parsed_ok = ParseFlags(
+      &argc, argv_array.data(),
+      {Flag("some_int", &some_int), Flag("some_int64", &some_int64),
+       Flag("some_switch", &some_switch), Flag("some_name", &some_name)});
   EXPECT_EQ(true, parsed_ok);
   EXPECT_EQ(20, some_int);
+  EXPECT_EQ(214748364700, some_int64);
   EXPECT_EQ(true, some_switch);
   EXPECT_EQ("somethingelse", some_name);
   EXPECT_EQ(argc, 1);

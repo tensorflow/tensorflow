@@ -1942,11 +1942,16 @@ bool CudnnSupport::DoConvolveImpl(
   std::unique_ptr<CUDATimer> timer;
   if (is_profiling) {
     timer.reset(new CUDATimer(parent_));
-    timer->Init();
+    if (!timer->Init()) {
+      return false;
+    }
     // The start and stop of the timer should be as close to the Cudnn call as
     // possible. It is still possible for other threads to issue workload on
     // to this stream. So it could take multiple profiling measurements.
-    timer->Start(AsCUDAStream(stream));
+    if (!timer->Start(AsCUDAStream(stream))) {
+      timer->Destroy();
+      return false;
+    }
   }
   status = dynload::cudnnConvolutionForward(
       parent_, ToHandle(dnn_handle_),
@@ -1957,7 +1962,10 @@ bool CudnnSupport::DoConvolveImpl(
       /*workSpaceSizeInBytes=*/scratch.size(), /*beta=*/&beta,
       /*destDesc=*/output_nd.handle(), /*destData=*/output_data->opaque());
   if (is_profiling) {
-    timer->Stop(AsCUDAStream(stream));
+    if (!timer->Stop(AsCUDAStream(stream))) {
+      timer->Destroy();
+      return false;
+    }
     output_profile_result->set_is_valid(true);
     output_profile_result->set_algorithm(algo);
     output_profile_result->set_elapsed_time_in_ms(

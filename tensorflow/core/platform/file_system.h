@@ -175,9 +175,7 @@ class RandomAccessFile {
                       char* scratch) const = 0;
 
  private:
-  /// No copying allowed
-  RandomAccessFile(const RandomAccessFile&);
-  void operator=(const RandomAccessFile&);
+  TF_DISALLOW_COPY_AND_ASSIGN(RandomAccessFile);
 };
 
 /// \brief A file abstraction for sequential writing.
@@ -195,9 +193,7 @@ class WritableFile {
   virtual Status Sync() = 0;
 
  private:
-  /// No copying allowed
-  WritableFile(const WritableFile&);
-  void operator=(const WritableFile&);
+  TF_DISALLOW_COPY_AND_ASSIGN(WritableFile);
 };
 
 /// \brief A readonly memmapped file abstraction.
@@ -229,11 +225,14 @@ class FileSystemRegistry {
       std::vector<string>* schemes) = 0;
 };
 
-// Given URI of the form [scheme://]<filename>, return 'scheme'.
-string GetSchemeFromURI(const string& name);
-
-// Given URI of the form [scheme://]<filename>, return 'filename'.
-string GetNameFromURI(const string& name);
+// Populates the scheme, host, and path from a URI.
+//
+// Corner cases:
+// - If the URI is invalid, scheme and host are set to empty strings and the
+//   passed string is assumed to be a path
+// - If the URI omits the path (e.g. file://host), then the path is left empty.
+void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
+              StringPiece* path);
 
 }  // namespace tensorflow
 
