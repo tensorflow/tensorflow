@@ -513,7 +513,6 @@ cc_library(
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
         "//tensorflow/core/kernels:data_flow",
-        "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:image",
         "//tensorflow/core/kernels:io",
@@ -532,7 +531,13 @@ cc_library(
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:training_ops",
         "//tensorflow/models/embedding:word2vec_kernels",
-    ],
+    ] + if_not_windows([
+        "//tensorflow/core/kernels:fact_op",
+        "//tensorflow/core/kernels:array_not_windows",
+        "//tensorflow/core/kernels:math_not_windows",
+        "//tensorflow/core/kernels:linalg_not_windows",
+        "//tensorflow/core/kernels:logging_not_windows",
+    ]),
 )
 
 tf_cuda_library(

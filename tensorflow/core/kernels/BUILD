@@ -25,6 +25,7 @@ package_group(
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_not_windows",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
@@ -379,13 +380,45 @@ cc_header_only_library(
 # OpKernel libraries ----------------------------------------------------------
 
 tf_kernel_libraries(
+    name = "array_not_windows",
+    prefixes = [
+        "debug_ops",
+        "immutable_constant_op",
+    ],
+    deps = [
+        ":batchtospace_op",
+        ":bounds_check",
+        ":concat_lib",
+        ":cuda_device_array",
+        ":depth_space_ops",
+        ":extract_image_patches_op",
+        ":fill_functor",
+        ":ops_util",
+        ":spacetobatch_op",
+        ":split_lib",
+        ":strided_slice_op",
+        ":transpose_functor",
+        "//tensorflow/core:array_grad",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_runtime",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/debug:debug_io_utils",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_libraries(
     name = "array",
     prefixes = [
         "bcast_ops",
         "bitcast_op",
         "concat_op",
         "constant_op",
-        "debug_ops",
         "diag_op",
         "matrix_band_part_op",
         "matrix_diag_op",
@@ -394,7 +427,6 @@ tf_kernel_libraries(
         "gather_op",
         "gather_nd_op",
         "identity_op",
-        "immutable_constant_op",
         "listdiff_op",
         "mirror_pad_op",
         "one_hot_op",
@@ -1216,6 +1248,20 @@ tf_cc_tests(
 )
 
 tf_kernel_libraries(
+    name = "linalg_not_windows",
+    prefixes = [
+        "svd_op",
+    ],
+    deps = [
+        ":linalg_ops_common",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:linalg_ops_op_lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_libraries(
     name = "linalg",
     prefixes = [
         "cholesky_op",
@@ -1227,7 +1273,7 @@ tf_kernel_libraries(
         "matrix_solve_ls_op",
         "matrix_solve_op",
         "matrix_triangular_solve_op",
-        "svd_op",
+        # "svd_op",
     ],
     deps = [
         ":linalg_ops_common",
@@ -1251,10 +1297,25 @@ cc_library(
 )
 
 tf_kernel_libraries(
+    name = "logging_not_windows",
+    prefixes = [
+    # This is causing following error on Windows during the linking of tutorial_example_trainer:
+    # LINK : fatal error LNK1000: unknown error at 000000013F8D4241; consult documentation for technical support options
+        "summary_audio_op",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:logging_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_kernel_libraries(
     name = "logging",
     prefixes = [
         "logging_ops",
-        "summary_audio_op",
         "summary_image_op",
         "summary_op",
         "summary_tensor_op",
@@ -1290,6 +1351,26 @@ tf_cc_tests(
 )
 
 tf_kernel_libraries(
+    name = "math_not_windows",
+    prefixes = [
+        "cwise_op",
+        "sparse_matmul_op",
+    ],
+    deps = [
+        ":bounds_check",
+        ":fill_functor",
+        ":transpose_functor",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:math_grad",
+        "//tensorflow/core:math_ops_op_lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_libraries(
     name = "math",
     prefixes = [
         "aggregate_ops",
@@ -1299,14 +1380,12 @@ tf_kernel_libraries(
         "cast_op",
         "check_numerics_op",
         "cross_op",
-        "cwise_op",
         "fft_ops",
         "matmul_op",
         "reduction_ops",
         "segment_reduction_ops",
         "scan_ops",
         "sequence_ops",
-        "sparse_matmul_op",
     ],
     deps = [
         ":bounds_check",
@@ -1597,7 +1676,6 @@ tf_kernel_libraries(
         ":conv_2d",
         ":conv_ops",
         ":depthwise_conv_grad_op",
-        ":depthwise_conv_op",
         ":dilation_ops",
         ":fused_batch_norm_util_gpu",
         ":ops_util",
@@ -1608,7 +1686,9 @@ tf_kernel_libraries(
         "//tensorflow/core:nn_grad",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
-    ],
+    ] + if_not_windows([
+        ":depthwise_conv_op",
+    ]),
 )
 
 tf_cuda_cc_test(
