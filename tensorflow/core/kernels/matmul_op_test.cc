@@ -36,6 +36,7 @@ static Graph* Matmul(int m, int k, int n, bool transpose_a, bool transpose_b,
 #define BM_MatmulDev(M, K, N, TA, TB, T, TFTYPE, DEVICE)                       \
   static void BM_Matmul##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE( \
       int iters) {                                                             \
+    testing::UseRealTime();                                                    \
     testing::ItemsProcessed(static_cast<int64>(iters) * M * K * N * 2);        \
     test::Benchmark(#DEVICE, Matmul<T>(M, K, N, TA, TB, TFTYPE)).Run(iters);   \
   }                                                                            \
