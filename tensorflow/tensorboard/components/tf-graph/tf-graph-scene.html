@@ -801,7 +801,8 @@ Polymer({
     setTimeout(this.fit.bind(this), tf.graph.layout.PARAMS.animation.duration);
   },
   _updateLabels: function(showLabels) {
-    var titleStyle = this.getElementsByClassName('title')[0].style;
+    var mainGraphTitleElement = this.getElementsByClassName('title')[0];
+    var titleStyle = mainGraphTitleElement.style;
     var auxTitleStyle = this.getElementsByClassName('auxTitle')[0].style;
     var core = d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
       tf.graph.scene.Class.Scene.CORE)[0][0];
@@ -818,6 +819,12 @@ Polymer({
       titleStyle.left = coreX + 'px';
       if (auxX !== null && auxX !== coreX) {
         auxTitleStyle.display = 'inline';
+
+        // Make sure that the aux title is positioned rightwards enough so as to
+        // prevent overlap with the main graph title.
+        auxX = Math.max(
+            coreX + mainGraphTitleElement.getBoundingClientRect().width, auxX);
+
         auxTitleStyle.left = auxX + 'px';
       } else {
         auxTitleStyle.display = 'none';
