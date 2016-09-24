@@ -77,6 +77,7 @@ export let ProjectorPolymer = PolymerElement({
       value: 2,
       notify: true,
     },
+    routePrefix: String,
     hasPcaZ: {type: Boolean, value: true, notify: true},
     labelOption: {type: String, observer: 'labelOptionChanged'},
     colorOption: {type: Object, observer: 'colorOptionChanged'}
@@ -107,14 +108,14 @@ export class Projector extends ProjectorPolymer {
   private dataPanel: DataPanel;
   private colorOption: ColorOption;
   private labelOption: string;
+  private routePrefix: string;
 
   ready() {
     this.dataPanel = this.$['data-panel'];
     // Get the data loader and initialize the data panel with it.
-    getDataProvider(dp => {
-      this.dataProvider = dp;
-      dp.getCheckpointInfo(
-          dataInfo => { this.dataPanel.initialize(this, dp, dataInfo); });
+    getDataProvider(this.routePrefix, dataProvider => {
+      this.dataProvider = dataProvider;
+      this.dataPanel.initialize(this, dataProvider);
     });
 
     // And select a default dataset.
@@ -237,7 +238,7 @@ export class Projector extends ProjectorPolymer {
   private setupUIControls() {
     let self = this;
     // Global tabs
-    d3.selectAll('.ink-tab').on('click', function() {
+    this.dom.selectAll('.ink-tab').on('click', function() {
       let id = this.getAttribute('data-tab');
       self.showTab(id);
     });
@@ -383,7 +384,7 @@ export class Projector extends ProjectorPolymer {
     searchInputChanged('');
 
     this.dom.select('.distance a.euclidean').on('click', function() {
-      d3.selectAll('.distance a').classed('selected', false);
+      this.dom.selectAll('.distance a').classed('selected', false);
       d3.select(this).classed('selected', true);
       self.selectedDistance = vector.dist;
       if (self.selectedPoints.length > 0) {
@@ -393,7 +394,7 @@ export class Projector extends ProjectorPolymer {
     });
 
     this.dom.select('.distance a.cosine').on('click', function() {
-      d3.selectAll('.distance a').classed('selected', false);
+      this.dom.selectAll('.distance a').classed('selected', false);
       d3.select(this).classed('selected', true);
       self.selectedDistance = vector.cosDistNorm;
       if (self.selectedPoints.length > 0) {
