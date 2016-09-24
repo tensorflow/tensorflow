@@ -68,6 +68,8 @@ class DType(object):
 
   @@as_numpy_dtype
   @@as_datatype_enum
+  
+  @@limits
   """
 
   def __init__(self, type_enum):
@@ -215,6 +217,27 @@ class DType(object):
       except:
         raise TypeError("Cannot find maximum value of %s." % self)
 
+  @property
+  def limits(self, clip_negative=None):
+    """Return intensity limits, i.e. (min, max) tuple, of the dtype.
+    Args:
+      clip_negative : bool, optional
+          If True, clip the negative range (i.e. return 0 for min intensity)
+          even if the image dtype allows negative values.
+          The default behavior (None) is equivalent to True.
+    Returns
+      min, max : tuple
+        Lower and upper intensity limits.
+    """
+    if clip_negative is None:
+        clip_negative = True
+        #warn('The default of `clip_negative` in `skimage.util.dtype_limits` '
+        #     'will change to `False` in version 0.15.')
+    min, max = dtype_range[self.as_numpy_dtype]
+    if clip_negative:
+        min = 0
+    return min, max
+
   def is_compatible_with(self, other):
     """Returns True if the `other` DType will be converted to this DType.
 
@@ -270,6 +293,19 @@ class DType(object):
   def size(self):
     return np.dtype(self.as_numpy_dtype).itemsize
 
+# Define data type range of numpy dtype
+dtype_range = {np.bool_: (False, True),
+               np.bool8: (False, True),
+               np.uint8: (0, 255),
+               np.uint16: (0, 65535),
+               np.int8: (-128, 127),
+               np.int16: (-32768, 32767),
+               np.int64: (-2**63, 2**63 - 1),
+               np.uint64: (0, 2**64 - 1),
+               np.int32: (-2**31, 2**31 - 1),
+               np.uint32: (0, 2**32 - 1),
+               np.float32: (-1, 1),
+               np.float64: (-1, 1)}
 
 # Define standard wrappers for the types_pb2.DataType enum.
 float16 = DType(types_pb2.DT_HALF)
