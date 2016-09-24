@@ -147,6 +147,8 @@ type and representation (RGB or HSV).
 @@adjust_hue
 @@random_hue
 
+@@adjust_gamma
+
 @@adjust_saturation
 @@random_saturation
 
@@ -163,6 +165,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -1003,6 +1006,44 @@ def adjust_contrast(images, contrast_factor):
 
     return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 
+
+def adjust_gamma(image, gamma=1, gain=1):
+  """Performs Gamma Correction on the input image.
+    Also known as Power Law Transform. This function transforms the 
+    input image pixelwise according to the equation Out = In**gamma 
+    after scaling each pixel to the range 0 to 1.
+
+  Args:
+    image : A tensor.
+    gamma : A scalar. Non negative real number.
+    gain  : A scalar. The constant multiplier. 
+
+  Returns:
+    A tensor. Gamma corrected output image
+
+  Notes:
+    For gamma greater than 1, the histogram will shift towards left and
+    the output image will be darker than the input image.
+    For gamma less than 1, the histogram will shift towards right and
+    the output image will be brighter than the input image.
+
+  References:
+    [1] http://en.wikipedia.org/wiki/Gamma_correction
+  """
+
+  with ops.op_scope([image, gamma, gain], None, 'adjust_gamma') as name:
+    img = ops.convert_to_tensor(image, name='img', dtype=dtypes.float32)
+    image = ops.convert_to_tensor(image, name='image')
+
+    if gamma < 0:
+      raise ValueError("Gamma should be a non-negative real number")
+
+    scale = constant_op.constant(image.dtype.limits[1] - image.dtype.limits[0], dtype=dtypes.float32)
+
+    adjusted = (img / scale) ** gamma * scale * gain
+
+    return adjusted
+    
 
 ops.RegisterShape('AdjustContrast')(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape('AdjustContrastv2')(common_shapes.call_cpp_shape_fn)
