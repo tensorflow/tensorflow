@@ -154,6 +154,9 @@ Status Env::GetMatchingPaths(const string& pattern,
     Status s = fs->GetChildren(current_dir, &children);
     ret.Update(s);
     for (const string& child : children) {
+      if (child.empty()) {
+        continue;
+      }
       const string child_path = io::JoinPath(current_dir, child);
       // If the child is a directory add it to the queue.
       if (fs->IsDirectory(child_path).ok()) {
