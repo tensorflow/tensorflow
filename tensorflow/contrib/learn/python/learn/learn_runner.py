@@ -131,7 +131,7 @@ def _get_default_schedule(config):
   if config.job_name == 'master':
     # TODO(rhaertel): handle the case where there is more than one master
     # or explicitly disallow such a case.
-    return 'local_run'
+    return 'train_and_evaluate'
   elif config.job_name == 'ps':
     return 'run_std_server'
   elif config.job_name == 'worker':
