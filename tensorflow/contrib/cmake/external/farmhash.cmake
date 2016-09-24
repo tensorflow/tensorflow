@@ -45,7 +45,7 @@ endif()
 
 # put farmhash includes in the directory where they are expected
 add_custom_target(farmhash_create_destination_dir
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${farmhash_INCLUDE_DIR}/farmhash-34c13ddfab0e35422f4c3979f360635a8c050260/src
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${farmhash_INCLUDE_DIR}
     DEPENDS farmhash)
 
 add_custom_target(farmhash_copy_headers_to_destination
@@ -53,5 +53,5 @@ add_custom_target(farmhash_copy_headers_to_destination
 
 foreach(header_file ${farmhash_HEADERS})
     add_custom_command(TARGET farmhash_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${farmhash_INCLUDE_DIR}/farmhash-34c13ddfab0e35422f4c3979f360635a8c050260/src)
+    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${farmhash_INCLUDE_DIR}/)
 endforeach()
