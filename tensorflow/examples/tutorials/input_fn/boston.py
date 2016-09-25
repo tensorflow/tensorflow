@@ -64,7 +64,7 @@ def main(unused_argv):
 
   # Print out predictions
   y = regressor.predict(input_fn=lambda: input_fn(prediction_set))
-  print ("Predictions: {}".format(str(y)))
+  print("Predictions: {}".format(str(y)))
 
 if __name__ == "__main__":
   tf.app.run()
