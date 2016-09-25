@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph_constructor.h"
 
+#include <algorithm>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -50,38 +54,88 @@ bool IsValidNodeName(StringPiece s, bool allow_internal_ops) {
 
 class GraphConstructor {
  public:
-  static Status Construct(const GraphConstructorOptions& opts,
-                          const GraphDef* gdef, Graph* g) {
+  struct Options {
+    Options(const GraphConstructorOptions& in)
+        : allow_internal_ops(in.allow_internal_ops),
+          expect_device_spec(in.expect_device_spec),
+          importing(false) {}
+    Options(const ImportGraphDefOptions& in)
+        : allow_internal_ops(false),
+          expect_device_spec(false),
+          prefix(in.prefix.empty() || StringPiece(in.prefix).ends_with("/")
+                     ? in.prefix
+                     : in.prefix + "/"),
+          importing(true) {}
+
+    bool allow_internal_ops;
+    bool expect_device_spec;
+
+    string prefix;
+    // TODO(ashankar): This bool exists to separate out functionality required
+    // to make ImportGraphDef a close equivalent of Python's import_graph_def
+    // without affecting the behavior of ConvertGraphDefToGraph at the time
+    // ImportGraphDef was added.
+    //
+    // That said, the functionality here (shape and op validation) seems
+    // applicable to ConvertGraphDefToGraph as well, so make an attempt to
+    // remove this.
+    bool importing;
+  };
+
+  static Status Construct(const Options& opts, const GraphDef* gdef, Graph* g,
+                          ShapeRefiner* refiner) {
     TF_RETURN_IF_ERROR(CheckVersions(gdef->versions(), TF_GRAPH_DEF_VERSION,
                                      TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
                                      "GraphDef", "graph"));
-    GraphConstructor c(opts, gdef, g);
-    g->set_versions(gdef->versions());
-    TF_RETURN_IF_ERROR(c.BuildNodeIndex());
-    TF_RETURN_IF_ERROR(c.InitFromEdges());
-    TF_RETURN_IF_ERROR(c.Convert());
-    TF_RETURN_IF_ERROR(c.AddBackEdges());
-    FixupSourceAndSinkEdges(g);
-    return Status::OK();
+    GraphConstructor c(opts, gdef, g, refiner);
+    const Status s = c.TryImport();
+    if (!s.ok()) c.Undo();
+    return s;
   }
 
  private:
-  GraphConstructor(const GraphConstructorOptions& opts, const GraphDef* gdef,
-                   Graph* g)
-      : opts_(opts), gdef_(gdef), g_(g) {}
+  GraphConstructor(const Options& opts, const GraphDef* gdef, Graph* g,
+                   ShapeRefiner* refiner)
+      : opts_(opts),
+        gdef_(gdef),
+        g_(g),
+        original_versions_(g->versions()),
+        refiner_(refiner) {}
 
+  Status TryImport() {
+    TF_RETURN_IF_ERROR(EnsureNoNameCollisions());
+    TF_RETURN_IF_ERROR(BuildNodeIndex());
+    TF_RETURN_IF_ERROR(InitFromEdges());
+    TF_RETURN_IF_ERROR(Convert());
+    TF_RETURN_IF_ERROR(AddBackEdges());
+    TF_RETURN_IF_ERROR(UpdateVersionDef());
+    FixupSourceAndSinkEdges(g_);
+    return Status::OK();
+  }
+
+  Status EnsureNoNameCollisions();
   Status BuildNodeIndex();
   Status InitFromEdges();
   Status Convert();
   Status AddBackEdges();
+  Status UpdateVersionDef();
 
+  void Undo();
+
+  Status ValidateColocationConstraints(const NodeDef& node_def);
   Status MakeNode(const NodeDef& node_def, Node** node);
   Status MakeEdge(Node* src, int output_index, Node* dst, int input_index);
+  Status ValidateShape(Node* node);
+  Status ModifyNodeDefForImport(NodeDef* node_def);
+  void AddPrefixToNodeDef(NodeDef* node_def);
 
   // From constructor
-  const GraphConstructorOptions opts_;
+  const Options opts_;
   const GraphDef* gdef_;
   Graph* g_;
+  const VersionDef original_versions_;
+
+  ShapeRefiner* refiner_;
 
   // Mapping from node name to the index within gdef_
   struct NodeInfo {
@@ -128,6 +182,41 @@ class GraphConstructor {
   };
   std::vector<EdgeInfo> back_edges_;
 };
+
+Status GraphConstructor::EnsureNoNameCollisions() {
+  if (opts_.prefix.empty() && opts_.importing) {
+    std::unordered_set<string> existing(g_->num_nodes());
+    for (const Node* n : g_->nodes()) {
+      existing.insert(n->name());
+    }
+    for (int n = 0; n < gdef_->node_size(); ++n) {
+      const string& name = gdef_->node(n).name();
+      if (existing.find(name) != existing.end()) {
+        return errors::InvalidArgument("Node '", name,
+                                       "' already exists in the Graph");
+      }
+    }
+  } else if (!opts_.prefix.empty()) {
+    // Importing nodes with a prefix. No nodes should exist with the same
+    // prefix.
+    StringPiece prefix_no_slash(opts_.prefix);
+    prefix_no_slash.remove_suffix(1);
+    if (!IsValidNodeName(prefix_no_slash, false)) {
+      return errors::InvalidArgument("Imported node name prefix '",
+                                     opts_.prefix,
+                                     "' would lead to invalid node names");
+    }
+    for (const Node* n : g_->nodes()) {
+      if (StringPiece(n->name()).starts_with(opts_.prefix)) {
+        return errors::InvalidArgument(
+            "Import node name prefix conflicts with names of nodes already in "
+            "the Graph, such as '",
+            n->name(), "'");
+      }
+    }
+  }
+  return Status::OK();
+}
 
 Status GraphConstructor::BuildNodeIndex() {
   // Validate the node names and add them to name_index_.
@@ -198,6 +287,23 @@ Status GraphConstructor::InitFromEdges() {
   return Status::OK();
 }
 
+Status GraphConstructor::ValidateColocationConstraints(
+    const NodeDef& node_def) {
+  if (!opts_.importing) return Status::OK();
+  const auto iter = node_def.attr().find(kColocationAttrName);
+  if (iter == node_def.attr().end()) return Status::OK();
+  for (const string& c : iter->second.list().s()) {
+    StringPiece s(c);
+    if (s.Consume(kColocationGroupPrefix) &&
+        name_index_.find(s) == name_index_.end()) {
+      return errors::InvalidArgument(
+          "Node '", node_def.name(),
+          "' expects to be colocated with unknown node '", s, "'");
+    }
+  }
+  return Status::OK();
+}
+
 Status GraphConstructor::MakeNode(const NodeDef& node_def, Node** node) {
   // Add the node to the graph.
   Status status;
@@ -206,24 +312,131 @@ Status GraphConstructor::MakeNode(const NodeDef& node_def, Node** node) {
   if (opts_.expect_device_spec) {
     (*node)->set_assigned_device_name(node_def.device());
   }
-  name_index_[node_def.name()].node = *node;
   return Status::OK();
 }
 
-// Return the number of nodes in "g"
-int CountNodes(Graph* g) {
-  int nodes = 0;
-  for (Node* node : g->nodes()) {
-    VLOG(3) << node;  // Dummy use to avoid compiler warning
-    nodes++;
+Status GraphConstructor::ValidateShape(Node* node) {
+  if (!opts_.importing) return Status::OK();
+  TF_RETURN_IF_ERROR(refiner_->AddNode(node));
+  // For nodes with the _output_shapes atttribute, override the shape.
+  std::vector<TensorShapeProto> shape_attrs;
+  const char* kAttrName = "_output_shapes";
+  if (!GetNodeAttr(node->def(), kAttrName, &shape_attrs).ok()) {
+    // No _output_shapes attribute, the AddNode call above was sufficient.
+    return Status::OK();
   }
-  return nodes;
+  auto* ic = refiner_->GetContext(node);
+  DCHECK(ic != nullptr)
+      << "ShapeRefiner::AddNode() should have created the InferenceContext";
+  if (shape_attrs.size() != node->num_outputs()) {
+    return errors::InvalidArgument(
+        "Node '", node->name(), "' has ", node->num_outputs(),
+        " outputs but the ", kAttrName, " attribute specifies shapes for ",
+        shape_attrs.size(), " outputs");
+  }
+  for (int i = 0; i < shape_attrs.size(); ++i) {
+    const TensorShapeProto& p = shape_attrs[i];
+    shape_inference::ShapeHandle h;
+    Status s = ic->MakeShapeFromShapeProto(p, &h);
+    if (!s.ok()) {
+      return errors::InvalidArgument("Node '", node->name(), " has an invalid ",
+                                     kAttrName, " attribute (shape #", i,
+                                     " error:'", s.error_message(), "'");
+    }
+    s = refiner_->SetShape(node, i, h);
+    if (!s.ok()) {
+      // If the output shape is incompatible with what is inferred
+      // by the graph for a very specific whitelist of ops, then we
+      // ignore this output shape.  This can happen if there is a
+      // bug in the shape function for some operation, and the
+      // serialized graph def has the incorrect shape set when
+      // running on a newer binary with the fixed shape function.
+      // This is an escape hatch that allows us to correct shape
+      // functions that are not critical to correct execution but
+      // would cause graphs to fail if imported after correcting.
+      //
+      // This can be removed after 2017/03/08.
+      const string& op = node->def().op();
+      const std::vector<string> whitelist = {"RandomShuffleQueue",
+                                             "PaddingFIFOQueue",
+                                             "FIFOQueue",
+                                             "PriorityQueue",
+                                             "QueueSize",
+                                             "Stack",
+                                             "Barrier",
+                                             "BarrierReadySize",
+                                             "BarrierIncompleteSize",
+                                             "HashTable",
+                                             "MutableHashTable",
+                                             "MutableHashTableOfTensors",
+                                             "Mutex",
+                                             "CuckooTable",
+                                             "IndexTable",
+                                             "WholeFileReader",
+                                             "TextLineReader",
+                                             "FixedLengthRecordReader",
+                                             "TFRecordReader",
+                                             "IdentityReader",
+                                             "RefSwitch",
+                                             "RefEnter",
+                                             "RefNextIteration",
+                                             "RefMerge",
+                                             "RefIdentity"};
+      if (std::find(whitelist.begin(), whitelist.end(), op) ==
+          whitelist.end()) {
+        return errors::InvalidArgument(
+            "Node '", node->name(), "' has an ", kAttrName,
+            " attribute inconsistent with the GraphDef for output #", i, ": ",
+            s.error_message());
+      }
+    }
+  }
+  node->ClearAttr(kAttrName);
+  return Status::OK();
+}
+
+Status GraphConstructor::ModifyNodeDefForImport(NodeDef* node_def) {
+  const OpDef* op_def;
+  TF_RETURN_IF_ERROR(g_->op_registry()->LookUpOpDef(node_def->op(), &op_def));
+  AddDefaultsToNodeDef(*op_def, node_def);
+  TF_RETURN_IF_ERROR(ValidateNodeDef(*node_def, *op_def));
+  TF_RETURN_IF_ERROR(CheckOpDeprecation(*op_def, TF_GRAPH_DEF_VERSION));
+  return Status::OK();
+}
+
+void GraphConstructor::AddPrefixToNodeDef(NodeDef* node_def) {
+  const string& prefix = opts_.prefix;
+  if (prefix.empty()) return;
+  node_def->set_name(strings::StrCat(prefix, node_def->name()));
+  // Update names of input nodes
+  for (int i = 0; i < node_def->input_size(); ++i) {
+    StringPiece input(node_def->input(i));
+    if (input.Consume("^")) {
+      node_def->set_input(i, strings::StrCat("^", prefix, input));
+    } else {
+      node_def->set_input(i, strings::StrCat(prefix, input));
+    }
+  }
+  // Update names of colocation groups
+  if (node_def->attr().find(kColocationAttrName) != node_def->attr().end()) {
+    auto* list =
+        node_def->mutable_attr()->at(kColocationAttrName).mutable_list();
+    for (int i = 0; i < list->s_size(); ++i) {
+      StringPiece v(list->s(i));
+      if (v.Consume(kColocationGroupPrefix)) {
+        list->set_s(i, strings::StrCat(kColocationGroupPrefix, prefix, v));
+      }
+    }
+  }
 }
 
 Status GraphConstructor::Convert() {
   std::vector<InputInfo> inputs;
   int processed = 0;
   // Process the NodeDefs in topological order.
+  // (InitFromEdges() sets this up by filling in ready_ with nodes that have no
+  // inputs, pending_counts_ with the number of inputs for each node and
+  // outputs_ with the outputs of each node).
   while (!ready_.empty()) {
     int o = ready_.back();
     ready_.pop_back();
@@ -232,6 +445,7 @@ Status GraphConstructor::Convert() {
     inputs.clear();
     bool in_control_dependence = false;
     bool has_data_back_edge = false;
+    TF_RETURN_IF_ERROR(ValidateColocationConstraints(node_def));
     for (int i = 0; i < node_def.input_size(); ++i) {
       StringPiece input_name(node_def.input(i));
       if (input_name.Consume("^")) {
@@ -269,7 +483,19 @@ Status GraphConstructor::Convert() {
     }
 
     Node* node;
-    TF_RETURN_IF_ERROR(MakeNode(node_def, &node));
+    if (opts_.importing) {
+      // TODO(ashankar): The line below means an additional copy of the NodeDef,
+      // which can be expensive if the NodeDef contains large tensors in it.
+      // Might make sense to change the API for ImportGraphDef to take a mutable
+      // GraphDef* and avoid the copying.
+      NodeDef imported_node_def = node_def;
+      AddPrefixToNodeDef(&imported_node_def);
+      TF_RETURN_IF_ERROR(ModifyNodeDefForImport(&imported_node_def));
+      TF_RETURN_IF_ERROR(MakeNode(imported_node_def, &node));
+    } else {
+      TF_RETURN_IF_ERROR(MakeNode(node_def, &node));
+    }
+    name_index_[node_def.name()].node = node;
 
     // Add edges from inputs to *node to the graph.
     for (size_t i = 0; i < inputs.size(); ++i) {
@@ -284,6 +510,7 @@ Status GraphConstructor::Convert() {
         TF_RETURN_IF_ERROR(MakeEdge(inputs[i].node, inputs[i].index, node, i));
       }
     }
+    TF_RETURN_IF_ERROR(ValidateShape(node));
 
     // Update pending_count_ for outputs.
     for (size_t i = 0; i < outputs_[o].size(); ++i) {
@@ -319,6 +546,39 @@ Status GraphConstructor::AddBackEdges() {
   return Status::OK();
 }
 
+Status GraphConstructor::UpdateVersionDef() {
+  if (!opts_.importing) {
+    g_->set_versions(gdef_->versions());
+    return Status::OK();
+  }
+  VersionDef versions = g_->versions();
+  // This new graph is being "produced" by the binary invoking ImportGraphDef.
+  versions.set_producer(TF_GRAPH_DEF_VERSION);
+  versions.set_min_consumer(
+      std::max(versions.min_consumer(), gdef_->versions().min_consumer()));
+  if (gdef_->versions().bad_consumers_size() > 0) {
+    std::set<int> bad(versions.bad_consumers().begin(),
+                      versions.bad_consumers().end());
+    bad.insert(gdef_->versions().bad_consumers().begin(),
+               gdef_->versions().bad_consumers().end());
+    versions.clear_bad_consumers();
+    for (int v : bad) {
+      versions.add_bad_consumers(v);
+    }
+  }
+  g_->set_versions(versions);
+  return Status::OK();
+}
+
+void GraphConstructor::Undo() {
+  for (const auto& iter : name_index_) {
+    if (iter.second.node != nullptr) {
+      g_->RemoveNode(iter.second.node);
+    }
+  }
+  g_->set_versions(original_versions_);
+}
+
 Status GraphConstructor::MakeEdge(Node* src, int output_index, Node* dst,
                                   int input_index) {
   DataType src_out = src->output_type(output_index);
@@ -335,24 +595,21 @@ Status GraphConstructor::MakeEdge(Node* src, int output_index, Node* dst,
 
 }  // namespace
 
-// ----------------------------------------------------------------------------
-// GraphConstructorOptions functions
-// ----------------------------------------------------------------------------
-
-GraphConstructorOptions::GraphConstructorOptions() {}
-
-// ----------------------------------------------------------------------------
-// ConvertGraphDefToGraph
-// ----------------------------------------------------------------------------
-
 Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                               const GraphDef& gdef, Graph* g) {
-  return GraphConstructor::Construct(opts, &gdef, g);
+  ShapeRefiner refiner(g->op_registry());
+  return GraphConstructor::Construct(opts, &gdef, g, &refiner);
 }
 
-// ----------------------------------------------------------------------------
-// CopyGraph
-// ----------------------------------------------------------------------------
+Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
+                      Graph* g, ShapeRefiner* refiner) {
+  ShapeRefiner default_refiner(g->op_registry());
+  if (refiner == nullptr) {
+    refiner = &default_refiner;
+  }
+  return GraphConstructor::Construct(opts, &gdef, g, refiner);
+}
+
 void CopyGraph(const Graph& src, Graph* dest) {
   for (Node* n : dest->nodes()) {
     CHECK(n->IsSource() || n->IsSink()) << "*dest must be empty";

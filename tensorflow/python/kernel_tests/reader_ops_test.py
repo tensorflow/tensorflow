@@ -450,6 +450,60 @@ class TFRecordReaderTest(tf.test.TestCase):
       self.assertEqual(self._num_files * self._num_records, num_k)
       self.assertEqual(self._num_files * self._num_records, num_v)
 
+  def testReadZlibFiles(self):
+    files = self._CreateFiles()
+    zlib_files = []
+    for i, fn in enumerate(files):
+      with open(fn, "rb") as f:
+        cdata = zlib.compress(f.read())
+
+        zfn = os.path.join(self.get_temp_dir(), "tfrecord_%s.z" % i)
+        with open(zfn, "wb") as f:
+          f.write(cdata)
+        zlib_files.append(zfn)
+
+    with self.test_session() as sess:
+      options = tf.python_io.TFRecordOptions(TFRecordCompressionType.ZLIB)
+      reader = tf.TFRecordReader(name="test_reader", options=options)
+      queue = tf.FIFOQueue(99, [tf.string], shapes=())
+      key, value = reader.read(queue)
+
+      queue.enqueue_many([zlib_files]).run()
+      queue.close().run()
+      for i in range(self._num_files):
+        for j in range(self._num_records):
+          k, v = sess.run([key, value])
+          self.assertTrue(
+              tf.compat.as_text(k).startswith("%s:" % zlib_files[i]))
+          self.assertAllEqual(self._Record(i, j), v)
+
+  def testReadGzipFiles(self):
+    files = self._CreateFiles()
+    gzip_files = []
+    for i, fn in enumerate(files):
+      with open(fn, "rb") as f:
+        cdata = f.read()
+
+        zfn = os.path.join(self.get_temp_dir(), "tfrecord_%s.gz" % i)
+        with gzip.GzipFile(zfn, "wb") as f:
+          f.write(cdata)
+        gzip_files.append(zfn)
+
+    with self.test_session() as sess:
+      options = tf.python_io.TFRecordOptions(TFRecordCompressionType.GZIP)
+      reader = tf.TFRecordReader(name="test_reader", options=options)
+      queue = tf.FIFOQueue(99, [tf.string], shapes=())
+      key, value = reader.read(queue)
+
+      queue.enqueue_many([gzip_files]).run()
+      queue.close().run()
+      for i in range(self._num_files):
+        for j in range(self._num_records):
+          k, v = sess.run([key, value])
+          self.assertTrue(
+              tf.compat.as_text(k).startswith("%s:" % gzip_files[i]))
+          self.assertAllEqual(self._Record(i, j), v)
+
 
 class TFRecordWriterZlibTest(tf.test.TestCase):
 
@@ -488,7 +542,7 @@ class TFRecordWriterZlibTest(tf.test.TestCase):
   def _ZlibCompressFile(self, infile, name="tfrecord.z"):
     # zlib compress the file and write compressed contents to file.
     with open(infile, "rb") as f:
-      cdata = zlib.compress(f.read(), 6)
+      cdata = zlib.compress(f.read())
 
     zfn = os.path.join(self.get_temp_dir(), name)
     with open(zfn, "wb") as f:

@@ -160,24 +160,25 @@ sess.run(tf.initialize_all_variables())
 ### Predicted Class and Loss Function
 
 We can now implement our regression model. It only takes one line!  We multiply
-the vectorized input images `x` by the weight matrix `W`, add the bias `b`, and
-compute the softmax probabilities that are assigned to each class.
+the vectorized input images `x` by the weight matrix `W`, add the bias `b`.
 
 ```python
-y = tf.nn.softmax(tf.matmul(x,W) + b)
+y = tf.matmul(x,W) + b
 ```
 
 We can specify a loss function just as easily. Loss indicates how bad the
 model's prediction was on a single example; we try to minimize that while
 training across all the examples. Here, our loss function is the cross-entropy
-between the target and the model's prediction:
+between the target and the softmax activation function applied to the model's
+prediction.  As in the beginners tutorial, we use the stable formulation:
 
 ```python
-cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
+cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(y, y_))
 ```
 
-Note that `tf.reduce_sum` sums across all classes and `tf.reduce_mean` takes 
-the average over these sums.
+Note that `tf.nn.softmax_cross_entropy_with_logits` internally applies the
+softmax on the model's unnormalized model prediction and sums across all
+classes, and `tf.reduce_mean` takes the average over these sums.
 
 ## Train the Model
 
@@ -364,14 +365,14 @@ h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
 ### Readout Layer
 
-Finally, we add a softmax layer, just like for the one layer softmax regression
+Finally, we add a layer, just like for the one layer softmax regression
 above.
 
 ```python
 W_fc2 = weight_variable([1024, 10])
 b_fc2 = bias_variable([10])
 
-y_conv=tf.nn.softmax(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
+y_conv = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
 ```
 
 ### Train and Evaluate the Model
@@ -393,7 +394,7 @@ Feel free to go ahead and run this code, but it does 20,000 training iterations
 and may take a while (possibly up to half an hour), depending on your processor.
 
 ```python
-cross_entropy = tf.reduce_mean(-tf.reduce_sum(y_ * tf.log(y_conv), reduction_indices=[1]))
+cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(y_conv, y_))
 train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
 correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))

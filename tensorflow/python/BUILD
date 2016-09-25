@@ -81,10 +81,6 @@ tf_py_test(
         ":platform",
         ":platform_test",
     ],
-    tags = [
-        "manual",
-        "notap",
-    ],
 )
 
 tf_py_test(
@@ -140,6 +136,8 @@ cc_library(
         "lib/io/py_record_reader.h",
     ],
     deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
     ],
 )
@@ -153,6 +151,8 @@ cc_library(
         "lib/io/py_record_writer.h",
     ],
     deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
     ],
 )
@@ -1562,7 +1562,10 @@ py_library(
     name = "util",
     srcs = glob(
         ["util/**/*.py"],
-        exclude = ["util/example_parser*"],
+        exclude = [
+            "util/example_parser*",
+            "util/**/*_test.py",
+        ],
     ),
     srcs_version = "PY2AND3",
     deps = ["@protobuf//:protobuf_python"],
@@ -1573,6 +1576,19 @@ py_test(
     size = "small",
     srcs = ["util/nest_test.py"],
     main = "util/nest_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "future_api_test",
+    size = "small",
+    srcs = [
+        "util/future_api_test.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":util",

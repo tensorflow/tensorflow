@@ -52,6 +52,7 @@ class SummaryWriter(object):
   @@add_event
   @@add_graph
   @@add_run_metadata
+  @@get_logdir
 
   @@flush
   @@close
@@ -112,6 +113,10 @@ class SummaryWriter(object):
     if graph is not None or graph_def is not None:
       # Calling it with both graph and graph_def for backward compatibility.
       self.add_graph(graph=graph, graph_def=graph_def)
+
+  def get_logdir(self):
+    """Returns the directory where event file will be written."""
+    return self._logdir
 
   def reopen(self):
     """Reopens the summary writer.

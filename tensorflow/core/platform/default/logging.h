@@ -52,7 +52,7 @@ class LogMessage : public std::basic_ostringstream<char> {
 class LogMessageFatal : public LogMessage {
  public:
   LogMessageFatal(const char* file, int line) TF_ATTRIBUTE_COLD;
-  ~LogMessageFatal() TF_ATTRIBUTE_NORETURN;
+  TF_ATTRIBUTE_NORETURN ~LogMessageFatal();
 };
 
 #define _TF_LOG_INFO \

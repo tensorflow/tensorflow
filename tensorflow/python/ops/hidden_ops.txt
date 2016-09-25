@@ -1,4 +1,5 @@
 # array_ops
+BatchToSpace
 BroadcastGradientArgs
 ConcatOffset
 Concat
@@ -11,6 +12,7 @@ Pack
 Pad
 Placeholder
 RefIdentity
+SpaceToBatch
 Split
 Slice
 TileGrad  # Exported through array_grad instead of array_ops.

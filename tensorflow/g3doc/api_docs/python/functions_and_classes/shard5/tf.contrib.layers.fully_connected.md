@@ -19,10 +19,12 @@ prior to the initial matrix multiply by `weights`.
 *  <b>`inputs`</b>: A tensor of with at least rank 2 and value for the last dimension,
     i.e. `[batch_size, depth]`, `[None, None, None, channels]`.
 *  <b>`num_outputs`</b>: Integer or long, the number of output units in the layer.
-*  <b>`activation_fn`</b>: activation function.
+*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
+    a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
-    `normalize_fn` is provided then `biases_initializer` and
+    `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
+    default set to None for no normalizer function
 *  <b>`normalizer_params`</b>: normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.

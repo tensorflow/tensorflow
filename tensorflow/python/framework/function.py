@@ -299,28 +299,33 @@ class _DefinedFunction(object):
                input_types,
                func_name=None,
                grad_func=None,
-               python_grad_func=None):
+               python_grad_func=None,
+               **kwargs):
     """Creates _DefinedFunction.
 
     Args:
       func:  A python callable which constructs a tf function body.
       input_types: The function's argument types. Can be a tuple, list of
-        tf data types, or a dictionary of argument names to their types.
+        tf data types.
       func_name: The function name. Defaults to None, in which derives from
         'func'.
       grad_func: This function's gradient function, if not None. Defaults
         to None.
       python_grad_func: A python callable implementing the gradient of
         the function python-side.
+      **kwargs: The keyword arguments. **kwargs is passed to every call
+        site of this function.
 
     Raises:
       ValueError: The function definition is invalid.
+
     """
     self._func = func
     self._input_types = input_types
     self._func_name = func_name or _get_func_name(func)
     self._grad_func = grad_func
     self._python_grad_func = python_grad_func
+    self._extra_kwargs = kwargs
     self._definition = None  # Constructed lazily.
 
     argspec = inspect.getargspec(func)
@@ -344,16 +349,11 @@ class _DefinedFunction(object):
       argnames = argspec.args[1:]
 
     self._args = []
-    if isinstance(input_types, (list, tuple)):
-      for i in range(len(input_types)):
-        argname = argnames[i] if i < len(argnames) else ("arg%d" % i)
-        argtype = input_types[i]
-        self._args.append((argname, argtype))
-    else:
-      for name in argnames:
-        if name not in input_types:
-          raise ValueError("Missing type for argument: " + name)
-        self._args.append((name, input_types[name]))
+    assert isinstance(input_types, (list, tuple))
+    for i in range(len(input_types)):
+      argname = argnames[i] if i < len(argnames) else ("arg%d" % i)
+      argtype = input_types[i]
+      self._args.append((argname, argtype))
 
   @property
   def name(self):
@@ -387,17 +387,11 @@ class _DefinedFunction(object):
     with temp_graph.as_default():
       # List of placeholders for the function_def.
       inputs = []
-      # Arglist to call 'func'
-      kwargs = {}
       for (argname, argtype) in self._args:
         argholder = array_ops.placeholder(argtype, name=argname)
         inputs.append(argholder)
-        kwargs[argname] = argholder
       # Call func and gather the output tensors.
-      if isinstance(self._input_types, (list, tuple)):
-        outputs = self._func(*inputs)
-      else:
-        outputs = self._func(**kwargs)
+      outputs = self._func(*inputs)
       if not isinstance(outputs, ops.Tensor) and not outputs:
         raise ValueError("Function must return at least one tensor")
       # Convenience: if func only returned one value, make it a tuple.
@@ -442,6 +436,10 @@ class _DefinedFunction(object):
 
   def __call__(self, *args, **kwargs):
     self.add_to_graph(ops.get_default_graph())
+    if self._extra_kwargs:
+      for k in self._extra_kwargs:
+        if k not in kwargs:
+          kwargs[k] = self._extra_kwargs[k]
     return _call(self._definition.signature, *args, **kwargs)
 
 
@@ -486,16 +484,12 @@ class Defun(object):
 
   """
 
-  def __init__(self, *input_type_list, **input_types):
+  def __init__(self, *input_type_list, **kwargs):
     """Create a `Defun` decorator.
 
     Args:
       *input_type_list: A list of `tf.DType`
-      **input_types: Dict mapping string with `tf.DType`
-        One key for each argument of the function to decorate.
-
-       Note that these optional keyword arguments are also accepted:
-
+      **kwargs: Optional keyword arguments, including
          func_name - (optional).  A python string, the name to use to
            declare this `Function` in the graph.
 
@@ -513,23 +507,17 @@ class Defun(object):
            This will be called by tf.gradients to add the gradient ops
            to the graph. At most one of grad_func and python_grad_func
            can be specified.
-
     """
-    self._func_name = input_types.pop("func_name", None)
-    self._grad_func = input_types.pop("grad_func", None)
-    self._python_grad_func = input_types.pop("python_grad_func", None)
-    assert not input_type_list or not input_types, (
-        "Can't specify both *input_type_list and **input_types")
-    self._input_types = input_types
     self._input_type_list = input_type_list
+    self._func_name = kwargs.pop("func_name", None)
+    self._grad_func = kwargs.pop("grad_func", None)
+    self._python_grad_func = kwargs.pop("python_grad_func", None)
+    self._extra_kwargs = kwargs
 
   def __call__(self, f):
-    if self._input_types:
-      inp_types = self._input_types
-    else:
-      inp_types = self._input_type_list
-    return _DefinedFunction(f, inp_types, self._func_name, self._grad_func,
-                            self._python_grad_func)
+    return _DefinedFunction(f, self._input_type_list, self._func_name,
+                            self._grad_func, self._python_grad_func,
+                            **self._extra_kwargs)
 
 
 class Declare(object):

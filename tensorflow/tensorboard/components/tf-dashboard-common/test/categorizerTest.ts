@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 module Categorizer {
+  let assert = chai.assert;
+
   describe('categorizer', () => {
-    describe('directoryNameCategorizer', () => {
-      it('returns empty array on empty tags',
-         () => { assert.lengthOf(directoryNameCategorizer([]), 0); });
+    describe('topLevelNamespaceCategorizer', () => {
+      it('returns empty array on empty tags', () => {
+        assert.lengthOf(topLevelNamespaceCategorizer([]), 0);
+      });
 
       it('handles a simple case', () => {
         let simple = [
@@ -27,9 +30,9 @@ module Categorizer {
         let expected = [
           {name: 'foo1', tags: ['foo1/bar', 'foo1/zod']},
           {name: 'foo2', tags: ['foo2/bar', 'foo2/zod']},
-          {name: 'gosh/lod', tags: ['gosh/lod/mar', 'gosh/lod/ned']},
+          {name: 'gosh', tags: ['gosh/lod/mar', 'gosh/lod/ned']},
         ];
-        assert.deepEqual(directoryNameCategorizer(simple), expected);
+        assert.deepEqual(topLevelNamespaceCategorizer(simple), expected);
       });
 
       it('orders the categories', () => {
@@ -42,12 +45,12 @@ module Categorizer {
           {name: 'f', tags: ['f']},
           {name: 'g', tags: ['g']},
         ];
-        assert.deepEqual(directoryNameCategorizer(test), expected);
+        assert.deepEqual(topLevelNamespaceCategorizer(test), expected);
       });
 
       it('handles cases where category names overlap node names', () => {
         let test = ['a', 'a/a', 'a/b', 'a/c', 'b', 'b/a'];
-        let actual = directoryNameCategorizer(test);
+        let actual = topLevelNamespaceCategorizer(test);
         let expected = [
           {name: 'a', tags: ['a', 'a/a', 'a/b', 'a/c']},
           {name: 'b', tags: ['b', 'b/a']},
@@ -57,38 +60,17 @@ module Categorizer {
 
       it('handles singleton case', () => {
         assert.deepEqual(
-            directoryNameCategorizer(['a']), [{name: 'a', tags: ['a']}]);
-      });
-
-      it('splits on bottom level name', () => {
-        let example = [
-          'foo1/bar',
-          'foo1/zod',
-          'foo2/bar',
-          'foo2/zod',
-          'gosh/lod/mar',
-          'gosh/lod/ned',
-          'gosh/zod/mar',
-          'gosh/zod/ned/y',
-        ];
-        let expected = [
-          {name: 'foo1', tags: ['foo1/bar', 'foo1/zod']},
-          {name: 'foo2', tags: ['foo2/bar', 'foo2/zod']},
-          {name: 'gosh/lod', tags: ['gosh/lod/mar', 'gosh/lod/ned']},
-          {name: 'gosh/zod', tags: ['gosh/zod/mar']},
-          {name: 'gosh/zod/ned', tags: ['gosh/zod/ned/y']},
-        ];
-        assert.deepEqual(directoryNameCategorizer(example), expected);
+            topLevelNamespaceCategorizer(['a']), [{name: 'a', tags: ['a']}]);
       });
     });
 
-    describe('RootNameUnderscoreCategorizer', () => {
+    describe('legacyUnderscoreCategorizer', () => {
       it('splits by shorter of first _ or /', () => {
         let tags = [
           'l0_bar/foo', 'l0_bar/baz', 'l0_foo/wob', 'l1_zoink/bla',
           'l1_wibble/woz', 'l1/foo_woink', 'l2/wozzle_wizzle'
         ];
-        let actual = rootNameUnderscoreCategorizer(tags);
+        let actual = legacyUnderscoreCategorizer(tags);
         let expected = [
           {name: 'l0', tags: ['l0_bar/baz', 'l0_bar/foo', 'l0_foo/wob']},
           {name: 'l1', tags: ['l1/foo_woink', 'l1_wibble/woz', 'l1_zoink/bla']},

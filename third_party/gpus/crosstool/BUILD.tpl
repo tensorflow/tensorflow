@@ -2,10 +2,12 @@ licenses(["restricted"])
 
 package(default_visibility = ["//visibility:public"])
 
-filegroup(
-    name = "crosstool",
-    srcs = ["CROSSTOOL"],
-    output_licenses = ["unencumbered"],
+cc_toolchain_suite(
+    name = "toolchain",
+    toolchains = {
+        "local|compiler": ":cc-compiler-local",
+        "darwin|compiler": ":cc-compiler-darwin",
+    },
 )
 
 cc_toolchain(

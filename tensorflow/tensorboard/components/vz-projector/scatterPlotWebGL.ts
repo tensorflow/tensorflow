@@ -16,22 +16,17 @@ limitations under the License.
 import {RenderContext} from './renderContext';
 import {DataSet, Mode, OnHoverListener, OnSelectionListener, ScatterPlot} from './scatterPlot';
 import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
+import {ScatterPlotWebGLVisualizerAxes} from './scatterPlotWebGLVisualizerAxes';
 import {getNearFarPoints, getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
 import {dist_2D} from './vector';
 
+const BACKGROUND_COLOR = 0xffffff;
 
-// Colors (in various necessary formats).
-const BACKGROUND_COLOR_DAY = 0xffffff;
-const BACKGROUND_COLOR_NIGHT = 0x000000;
-const AXIS_COLOR = 0xb3b3b3;
-
-// Various distance bounds.
 const MAX_ZOOM = 10;
 const MIN_ZOOM = .05;
 
 // Constants relating to the camera parameters.
-/** Camera frustum vertical field of view. */
-const FOV = 70;
+const FOV_VERTICAL = 70;
 const NEAR = 0.01;
 const FAR = 100;
 
@@ -69,7 +64,7 @@ const TAR_2D = {
 
 /**
  * Maintains a three.js instantiation and context,
- * animation state, day/night state, and all other logic that's
+ * animation state, and all other logic that's
  * independent of how a 3D scatter plot is actually rendered. Also holds an
  * array of visualizers and dispatches application events to them.
  */
@@ -104,8 +99,7 @@ export class ScatterPlotWebGL implements ScatterPlot {
   private width: number;
 
   private mode: Mode;
-  private isNight: boolean;
-  private backgroundColor: number;
+  private backgroundColor: number = BACKGROUND_COLOR;
 
   private scene: THREE.Scene;
   private renderer: THREE.WebGLRenderer;
@@ -113,8 +107,6 @@ export class ScatterPlotWebGL implements ScatterPlot {
   private cameraControls: any;
   private pickingTexture: THREE.WebGLRenderTarget;
   private light: THREE.PointLight;
-  private axis3D: THREE.AxisHelper;
-  private axis2D: THREE.LineSegments;
   private selectionSphere: THREE.Mesh;
 
   private animating = false;
@@ -137,15 +129,18 @@ export class ScatterPlotWebGL implements ScatterPlot {
     // Set up THREE.js.
     this.scene = new THREE.Scene();
     this.renderer = new THREE.WebGLRenderer();
+    this.renderer.setClearColor(BACKGROUND_COLOR, 1);
     this.containerNode.appendChild(this.renderer.domElement);
     this.light = new THREE.PointLight(0xFFECBF, 1, 0);
     this.scene.add(this.light);
     this.makeCamera();
-    this.setDayNightMode(false);
 
     // Render now so no black background appears during startup.
     this.renderer.render(this.scene, this.perspCamera);
     this.addInteractionListeners();
+
+    this.addVisualizer(
+        new ScatterPlotWebGLVisualizerAxes(this.xScale, this.yScale));
   }
 
   private addInteractionListeners() {
@@ -161,8 +156,8 @@ export class ScatterPlotWebGL implements ScatterPlot {
 
   /** Set up camera and camera's controller. */
   private makeCamera() {
-    this.perspCamera =
-        new THREE.PerspectiveCamera(FOV, this.width / this.height, NEAR, FAR);
+    this.perspCamera = new THREE.PerspectiveCamera(
+        FOV_VERTICAL, this.width / this.height, NEAR, FAR);
     this.cameraControls =
         new (THREE as any)
             .OrbitControls(this.perspCamera, this.renderer.domElement);
@@ -209,71 +204,6 @@ export class ScatterPlotWebGL implements ScatterPlot {
     let target = new THREE.Vector3(TAR_2D.x, TAR_2D.y, TAR_2D.z);
     this.animate(position, target);
     this.cameraControls.enableRotate = false;
-  }
-
-  private removeOldAxes() {
-    if (this.axis3D) {
-      this.scene.remove(this.axis3D);
-    }
-    if (this.axis2D) {
-      this.scene.remove(this.axis2D);
-    }
-  }
-
-  private addAxis3D() {
-    this.axis3D = new THREE.AxisHelper();
-    this.scene.add(this.axis3D);
-  }
-
-  /** Manually make axis if we're in 2d. */
-  private addAxis2D() {
-    let vertices = new Float32Array([
-      0,
-      0,
-      0,
-      this.xScale(1),
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      this.yScale(1),
-      0,
-    ]);
-
-    let axisColor = new THREE.Color(AXIS_COLOR);
-    let axisColors = new Float32Array([
-      axisColor.r,
-      axisColor.b,
-      axisColor.g,
-      axisColor.r,
-      axisColor.b,
-      axisColor.g,
-      axisColor.r,
-      axisColor.b,
-      axisColor.g,
-      axisColor.r,
-      axisColor.b,
-      axisColor.g,
-    ]);
-
-    const RGB_NUM_BYTES = 3;
-    const XYZ_NUM_BYTES = 3;
-
-    // Create line geometry based on above position and color.
-    let lineGeometry = new THREE.BufferGeometry();
-    lineGeometry.addAttribute(
-        'position', new THREE.BufferAttribute(vertices, XYZ_NUM_BYTES));
-    lineGeometry.addAttribute(
-        'color', new THREE.BufferAttribute(axisColors, RGB_NUM_BYTES));
-
-    // And use it to create the actual object and add this new axis to the
-    // scene!
-    let axesMaterial =
-        new THREE.LineBasicMaterial({vertexColors: THREE.VertexColors});
-    this.axis2D = new THREE.LineSegments(lineGeometry, axesMaterial);
-    this.scene.add(this.axis2D);
   }
 
   private onClick(e?: MouseEvent) {
@@ -504,7 +434,6 @@ export class ScatterPlotWebGL implements ScatterPlot {
 
   /** Removes all geometry from the scene. */
   private removeAll() {
-    this.removeOldAxes();
     this.visualizers.forEach(v => {
       v.removeAllFromScene(this.scene);
     });
@@ -568,17 +497,15 @@ export class ScatterPlotWebGL implements ScatterPlot {
     this.removeAll();
     this.cancelAnimation();
     let sceneIs3D = this.zAccessor != null;
+    if (sceneIs3D) {
+      this.makeCamera3D();
+    } else {
+      this.makeCamera2D();
+    }
     this.visualizers.forEach(v => {
       v.onRecreateScene(this.scene, sceneIs3D, this.backgroundColor);
     });
     this.resize(false);
-    if (this.zAccessor) {
-      this.addAxis3D();
-      this.makeCamera3D();
-    } else {
-      this.addAxis2D();
-      this.makeCamera2D();
-    }
     this.render();
   }
 
@@ -656,6 +583,9 @@ export class ScatterPlotWebGL implements ScatterPlot {
 
   setLabelAccessor(labelAccessor: (index: number) => string) {
     this.labelAccessor = labelAccessor;
+    this.visualizers.forEach(v => {
+      v.onSetLabelAccessor(labelAccessor);
+    });
   }
 
   setMode(mode: Mode) {
@@ -720,13 +650,9 @@ export class ScatterPlotWebGL implements ScatterPlot {
   getHighlightedPoints(): number[] { return this.highlightedPoints; }
 
   setDayNightMode(isNight: boolean) {
-    this.isNight = isNight;
-    this.backgroundColor =
-        (isNight ? BACKGROUND_COLOR_NIGHT : BACKGROUND_COLOR_DAY);
-    this.renderer.setClearColor(this.backgroundColor);
-    this.visualizers.forEach(v => {
-      v.onSetDayNightMode(isNight);
-    });
+    d3.select(this.containerNode)
+        .selectAll('canvas')
+        .style('filter', isNight ? 'invert(100%)' : null);
   }
 
   showAxes(show: boolean) {}

@@ -430,6 +430,8 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
 
     cnode->set_temporary_memory_size(TempMemorySize(n).value());
 
+    cnode->set_compute_cost(MaxExecutionTime(n).value());
+
     // For now we treat all send nodes as final.
     // TODO(yuanbyu): Send nodes for fetches shouldn't be treated as final.
     cnode->set_is_final(n->IsSend());

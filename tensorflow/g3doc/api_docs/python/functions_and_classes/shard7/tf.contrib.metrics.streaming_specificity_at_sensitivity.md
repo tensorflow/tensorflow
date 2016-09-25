@@ -26,7 +26,7 @@ following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
     are in the range `[0, 1]`.
 *  <b>`labels`</b>: A `bool` `Tensor` whose shape matches `predictions`.
 *  <b>`sensitivity`</b>: A scalar value in range `[0, 1]`.
-*  <b>`weights`</b>: An optional `Tensor` whose shape matches `predictions`.
+*  <b>`weights`</b>: An optional `Tensor` whose shape is broadcastable to `predictions`.
 *  <b>`num_thresholds`</b>: The number of thresholds to use for matching the given
     sensitivity.
 *  <b>`metrics_collections`</b>: An optional list of collections that `specificity`

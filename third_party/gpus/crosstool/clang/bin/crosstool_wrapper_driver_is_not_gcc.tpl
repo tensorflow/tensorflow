@@ -134,51 +134,6 @@ def GetNvccOptions(argv):
   return ''
 
 
-def StripAndTransformNvccOptions(argv):
-  """Strips the -nvcc_options values from argv and transforms define-macros.
-
-  Args:
-    argv: A list of strings, possibly the argv passed to main().
-
-  Returns:
-    A list of strings that can be passed directly to gcudacc.
-  """
-  parser = ArgumentParser()
-  parser.add_argument('-nvcc_options', nargs='*', action='store')
-  args, leftover = parser.parse_known_args(argv)
-  if args.nvcc_options:
-    for option in args.nvcc_options:
-      (flag, _, value) = option.partition('=')
-      if 'define-macro' in flag:
-        leftover.append('-D' + value)
-  return leftover
-
-
-def InvokeGcudacc(argv, gcudacc_version, gcudacc_flags, log=False):
-  """Call gcudacc with arguments assembled from argv.
-
-  Args:
-    argv: A list of strings, possibly the argv passed to main().
-    gcudacc_version: The version of gcudacc; this is a subdirectory name under
-      the gcudacc bin/ directory.
-    gcudacc_flags: A list of extra arguments passed just for gcudacc.
-    log: True if logging is requested.
-
-  Returns:
-    The return value of calling os.system('gcudacc ' + args)
-  """
-
-  gcudacc_cmd = os.path.join(GCUDACC_PATH_BASE, gcudacc_version, 'gcudacc.par')
-  gcudacc_cmd = (
-      gcudacc_cmd +
-      ' --google_host_compiler={0} '.format(LLVM_HOST_COMPILER_PATH) +
-      ' '.join(sum(gcudacc_flags, [])) +
-      ' -- ' +
-      ' '.join(StripAndTransformNvccOptions(argv)))
-  if log: Log(gcudacc_cmd)
-  return os.system(gcudacc_cmd)
-
-
 def InvokeNvcc(argv, log=False):
   """Call nvcc with arguments assembled from argv.
 
@@ -273,20 +228,11 @@ def main():
   parser = ArgumentParser()
   parser.add_argument('-x', nargs=1)
   parser.add_argument('--cuda_log', action='store_true')
-  parser.add_argument('--use_gcudacc', action='store_true')
-  parser.add_argument('--gcudacc_version', action='store', default='v8')
-  parser.add_argument('--gcudacc_flag', nargs='*', action='append', default=[])
   args, leftover = parser.parse_known_args(sys.argv[1:])
 
   if args.x and args.x[0] == 'cuda':
     if args.cuda_log: Log('-x cuda')
     leftover = [pipes.quote(s) for s in leftover]
-    if args.use_gcudacc:
-      if args.cuda_log: Log('using gcudacc')
-      return InvokeGcudacc(argv=leftover,
-                           gcudacc_version=args.gcudacc_version,
-                           gcudacc_flags=args.gcudacc_flag,
-                           log=args.cuda_log)
     if args.cuda_log: Log('using nvcc')
     return InvokeNvcc(leftover, log=args.cuda_log)
 
@@ -296,21 +242,7 @@ def main():
   # relative location in the argv list (the compiler is actually sensitive to
   # this).
   cpu_compiler_flags = [flag for flag in sys.argv[1:]
-                             if not flag.startswith(('--cuda_log',
-                                                     '--use_gcudacc',
-                                                     '--gcudacc_version',
-                                                     '--gcudacc_flag'))]
-  if args.use_gcudacc:
-    # This macro is defined for TUs that are not marked with "-x cuda" but are
-    # built as part of a -config=cuda --use_gcudacc compilation. They are
-    # compiled with the default CPU compiler. Since the objects built from
-    # these TUs are later linked with objects that come from gcudacc, some
-    # parts of the code need to be marked for these special cases. For example,
-    # some types have to be defined similarly for gcudacc-compiled TUs and
-    # default CPU compiler-compiled TUs linked with them, but differently when
-    # nvcc is used.
-    # TODO(eliben): rename to a more descriptive name.
-    cpu_compiler_flags.append('-D__GCUDACC_HOST__')
+                             if not flag.startswith(('--cuda_log'))]
 
   return subprocess.call([CPU_COMPILER] + cpu_compiler_flags)
 

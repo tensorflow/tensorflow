@@ -196,7 +196,8 @@ def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
 
 
   Args:
-    concat_dim: Dimension to concatenate along.
+    concat_dim: Dimension to concatenate along. Must be in range [-rank, rank),
+      where rank is the number of dimensions in each input `SparseTensor`.
     sp_inputs: List of `SparseTensor` to concatenate.
     name: A name prefix for the returned tensors (optional).
     expand_nonconcat_dim: Whether to allow the expansion in the non-concat
@@ -220,10 +221,11 @@ def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
   if expand_nonconcat_dim:
     max_shape = math_ops.reduce_max(array_ops.concat(0, [array_ops.reshape(
         shape, [1, -1]) for shape in shapes]), 0)
-    shapes = [array_ops.concat(0, [max_shape[:concat_dim],
-                                   shape[concat_dim:concat_dim + 1],
-                                   max_shape[concat_dim + 1:]])
-              for shape in shapes]
+    shapes = [array_ops.concat(0, [
+        max_shape[:concat_dim],
+        shape[-1:] if concat_dim == -1 else shape[concat_dim:concat_dim + 1],
+        [] if concat_dim == -1 else max_shape[concat_dim + 1:]
+    ]) for shape in shapes]
 
   output_ind, output_val, output_shape = (
       gen_sparse_ops._sparse_concat(inds,

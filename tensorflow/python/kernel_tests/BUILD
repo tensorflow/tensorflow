@@ -445,6 +445,7 @@ cuda_py_test(
     additional_deps = [
         "//tensorflow:tensorflow_py",
     ],
+    shard_count = 20,
 )
 
 cuda_py_test(
@@ -575,7 +576,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "division_past_test",
-    size = "small",
+    size = "medium",
     srcs = ["division_past_test.py"],
     additional_deps = [
         "//tensorflow:tensorflow_py",

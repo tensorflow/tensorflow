@@ -398,10 +398,6 @@ def _cuda_copts():
                 "-nvcc_options=ftz=true",
             ]
         ),
-        "@local_config_cuda//cuda:using_gcudacc": (
-            common_cuda_opts +
-            ["--gcudacc_flag=-ftz=true"]
-        ),
         "@local_config_cuda//cuda:using_clang": (
             common_cuda_opts +
             [
@@ -771,7 +767,7 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
                     data=[":" + cc_library_name])
 
 def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
-               tags=[], shard_count=1, additional_deps=[]):
+               tags=[], shard_count=1, additional_deps=[], flaky=0):
   native.py_test(
       name=name,
       size=size,
@@ -786,10 +782,11 @@ def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
           "//tensorflow/python:extra_py_tests_deps",
           "//tensorflow/python:gradient_checker",
       ] + additional_deps,
+      flaky=flaky,
       srcs_version="PY2AND3")
 
 def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
-                 shard_count=1, additional_deps=[], tags=[]):
+                 shard_count=1, additional_deps=[], tags=[], flaky=0):
   test_tags = tags + tf_cuda_tests_tags()
   tf_py_test(name=name,
              size=size,
@@ -799,7 +796,8 @@ def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
              args=args,
              tags=test_tags,
              shard_count=shard_count,
-             additional_deps=additional_deps)
+             additional_deps=additional_deps,
+             flaky=flaky)
 
 def py_tests(name,
              srcs,

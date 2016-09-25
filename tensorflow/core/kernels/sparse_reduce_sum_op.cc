@@ -24,6 +24,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
+// TODO(b/31496047): Fix non-standard include order.
+#include <numeric>  // clang-format off
+
 using tensorflow::sparse::SparseTensor;
 using tensorflow::gtl::ArraySlice;
 

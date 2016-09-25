@@ -393,10 +393,11 @@ class LinearClassifierTest(tf.test.TestCase):
     language = tf.contrib.layers.sparse_column_with_hash_bucket('language', 100)
     age = tf.contrib.layers.real_valued_column('age')
 
-    export_dir = tempfile.mkdtemp()
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[age, language])
     classifier.fit(input_fn=input_fn, steps=100)
+
+    export_dir = tempfile.mkdtemp()
     classifier.export(export_dir)
 
   def testDisableCenteredBias(self):

@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -32,8 +31,8 @@ def kl(dist_a, dist_b, allow_nan=False, name=None):
   """Get the KL-divergence KL(dist_a || dist_b).
 
   Args:
-    dist_a: instance of distributions.Distribution.
-    dist_b: instance of distributions.Distribution.
+    dist_a: The first distribution.
+    dist_b: The second distribution.
     allow_nan: If `False` (default), a runtime error is raised
       if the KL returns NaN values for any batch entry of the given
       distributions.  If `True`, the KL may return a NaN for the given entry.
@@ -43,18 +42,9 @@ def kl(dist_a, dist_b, allow_nan=False, name=None):
     A Tensor with the batchwise KL-divergence between dist_a and dist_b.
 
   Raises:
-    TypeError: If dist_a or dist_b is not an instance of Distribution.
     NotImplementedError: If no KL method is defined for distribution types
       of dist_a and dist_b.
   """
-  if not isinstance(dist_a, distribution.Distribution):
-    raise TypeError(
-        "dist_a is not an instance of Distribution, received type: %s"
-        % type(dist_a))
-  if not isinstance(dist_b, distribution.Distribution):
-    raise TypeError(
-        "dist_b is not an instance of Distribution, received type: %s"
-        % type(dist_b))
   kl_fn = _DIVERGENCES.get((type(dist_a), type(dist_b)), None)
   if kl_fn is None:
     raise NotImplementedError(
@@ -94,16 +84,7 @@ class RegisterKL(object):
     Args:
       dist_cls_a: the class of the first argument of the KL divergence.
       dist_cls_b: the class of the second argument of the KL divergence.
-
-    Raises:
-      TypeError: if dist_cls_a or dist_cls_b are not subclasses of
-        Distribution.
     """
-
-    if not issubclass(dist_cls_a, distribution.Distribution):
-      raise TypeError("%s is not a subclass of Distribution" % dist_cls_a)
-    if not issubclass(dist_cls_b, distribution.Distribution):
-      raise TypeError("%s is not a subclass of Distribution" % dist_cls_b)
     self._key = (dist_cls_a, dist_cls_b)
 
   def __call__(self, kl_fn):

@@ -31,7 +31,7 @@ Instructions for updating:
       have. This value must be provided, since a confusion matrix of
       dimension = [num_classes, num_classes] will be allocated.
     ignore_mask: An optional, `bool` `Tensor` whose shape matches `predictions`.
-    weights: An optional `Tensor` whose shape matches `predictions`.
+    weights: An optional `Tensor` whose shape is broadcastable to `predictions`.
     metrics_collections: An optional list of collections that `mean_iou`
       should be added to.
     updates_collections: An optional list of collections `update_op` should be

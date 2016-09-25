@@ -38,6 +38,7 @@ from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
+from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -564,13 +565,17 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     def default_input_fn(unused_estimator, examples):
       return layers.parse_feature_columns_from_examples(
           examples, self._feature_columns)
-    self._estimator.export(export_dir=export_dir,
-                           input_fn=input_fn or default_input_fn,
-                           input_feature_key=input_feature_key,
-                           use_deprecated_input_fn=use_deprecated_input_fn,
-                           signature_fn=signature_fn,
-                           default_batch_size=default_batch_size,
-                           exports_to_keep=exports_to_keep)
+
+    self._estimator.export(
+        export_dir=export_dir,
+        input_fn=input_fn or default_input_fn,
+        input_feature_key=input_feature_key,
+        use_deprecated_input_fn=use_deprecated_input_fn,
+        signature_fn=(
+            signature_fn or export.classification_signature_fn_with_prob),
+        prediction_key=_PROBABILITIES,
+        default_batch_size=default_batch_size,
+        exports_to_keep=exports_to_keep)
 
   @property
   def weights_(self):

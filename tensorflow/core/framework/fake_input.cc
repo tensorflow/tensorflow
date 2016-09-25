@@ -172,7 +172,7 @@ void FakeInputImpl::NSources(int n, DataType dt) const {
   for (int i = 0; i < n; ++i) {
     srcs.emplace_back(in_node_, i, dt);
   }
-  builder_->Input(srcs);
+  builder_->Input(gtl::ArraySlice<NodeDefBuilder::NodeOut>(srcs));
 }
 
 void FakeInputImpl::SourceList(DataTypeSlice dts) const {
@@ -181,7 +181,7 @@ void FakeInputImpl::SourceList(DataTypeSlice dts) const {
   for (size_t i = 0; i < dts.size(); ++i) {
     srcs.emplace_back(in_node_, i, dts[i]);
   }
-  builder_->Input(srcs);
+  builder_->Input(gtl::ArraySlice<NodeDefBuilder::NodeOut>(srcs));
 }
 
 }  // namespace

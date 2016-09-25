@@ -77,7 +77,6 @@ target_link_libraries(grpc_tensorflow_server PUBLIC
     ${GRPC_LIBRARIES}
     tf_protos_cc
     re2_lib
-    ${boringssl_STATIC_LIBRARIES}
     ${farmhash_STATIC_LIBRARIES}
     ${gif_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}
@@ -86,6 +85,10 @@ target_link_libraries(grpc_tensorflow_server PUBLIC
     ${ZLIB_LIBRARIES}
     ${CMAKE_DL_LIBS}
 )
+if(tensorflow_ENABLE_SSL_SUPPORT)
+  target_link_libraries(grpc_tensorflow_server PUBLIC
+      ${boringssl_STATIC_LIBRARIES})
+endif()
 
 target_compile_options(grpc_tensorflow_server PRIVATE
     -fno-exceptions
