@@ -1,8 +1,8 @@
 include (ExternalProject)
 
 set(PROTOBUF_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/src)
-set(PROTOBUF_URL https://github.com/google/protobuf/releases/download/v3.0.0/protobuf-cpp-3.0.0.zip)
-set(PROTOBUF_HASH SHA256=e886ea7d08267fc3d866ac42d6dd7461ae11c491836adef6f34c04cad0be3078)
+set(PROTOBUF_URL https://github.com/google/protobuf/releases/download/v3.1.0/protobuf-cpp-3.1.0.zip)
+set(PROTOBUF_HASH SHA256=0c18ccc99e921c407f359047f9b56cca196c3ab36eed79e5979df6c1f9e623b7)
 
 if(WIN32)
   set(PROTOBUF_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/${CMAKE_BUILD_TYPE}/libprotobuf.lib)
@@ -26,4 +26,3 @@ ExternalProject_Add(protobuf
         -Dprotobuf_MSVC_STATIC_RUNTIME:BOOL=OFF
         -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
 )
-
