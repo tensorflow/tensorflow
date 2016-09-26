@@ -396,6 +396,13 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
 
 }  // namespace
 
+Status WriteBinaryProto(Env* env, const string& fname,
+                        const ::tensorflow::protobuf::MessageLite& proto) {
+  string serialized;
+  proto.AppendToString(&serialized);
+  return WriteStringToFile(env, fname, serialized);
+}
+
 Status ReadBinaryProto(Env* env, const string& fname,
                        ::tensorflow::protobuf::MessageLite* proto) {
   std::unique_ptr<RandomAccessFile> file;
