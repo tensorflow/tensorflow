@@ -10782,7 +10782,6 @@ op {
     type: "list(type)"
     description: "Data types of the outputs from the op.\nThe length of the list specifies the number of outputs."
     has_minimum: true
-    minimum: 1
   }
   summary: "Invokes a python function to compute func(input)->output."
   description: "This operation is considered stateful. For a stateless version, see\nPyFuncStateless."
@@ -10811,7 +10810,6 @@ op {
     name: "Tout"
     type: "list(type)"
     has_minimum: true
-    minimum: 1
   }
   summary: "A stateless version of PyFunc."
 }
