@@ -274,6 +274,12 @@ class Experiment(object):
     Returns:
       The result of the `evaluate` call to the `Estimator`.
     """
+    # The directory to which evaluation summaries are written are determined
+    # by adding a suffix to 'eval'; that suffix is the 'name' parameter to
+    # the various evaluate(...) methods. By setting it to None, we force
+    # the directory name to simply be 'eval'.
+    eval_dir_suffix = None
+
     # We set every_n_steps to 1, but evaluation only occurs when a new
     # snapshot is available. If, by the time we finish evaluation
     # there is a new snapshot, then we just evaluate again. Otherwise,
@@ -283,10 +289,15 @@ class Experiment(object):
       if self._min_eval_frequency:
         self._train_monitors += [monitors.ValidationMonitor(
             input_fn=self._eval_input_fn, eval_steps=self._eval_steps,
-            metrics=self._eval_metrics, every_n_steps=self._min_eval_frequency
+            metrics=self._eval_metrics, every_n_steps=self._min_eval_frequency,
+            name=eval_dir_suffix,
         )]
       self.train(delay_secs=0)
-      return self.evaluate(delay_secs=0)
+
+    return self._estimator.evaluate(input_fn=self._eval_input_fn,
+                                    steps=self._eval_steps,
+                                    metrics=self._eval_metrics,
+                                    name=eval_dir_suffix)
 
 
   def run_std_server(self):
