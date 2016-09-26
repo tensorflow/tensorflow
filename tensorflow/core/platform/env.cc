@@ -139,40 +139,20 @@ Status Env::GetMatchingPaths(const string& pattern,
   // Find the fixed prefix by looking for the first wildcard.
   const string& fixed_prefix =
       pattern.substr(0, pattern.find_first_of("*?[\\"));
-  std::vector<string> all_files;
-  string dir = io::Dirname(fixed_prefix).ToString();
-  if (dir.empty()) dir = ".";
+  const string& base_dir = io::Dirname(fixed_prefix).ToString();
+  const string& list_dir = base_dir.empty() ? "." : base_dir;
 
-  // Setup a BFS to explore everything under dir.
-  std::deque<string> dir_q;
-  dir_q.push_back(dir);
-  Status ret;  // Status to return.
-  while (!dir_q.empty()) {
-    string current_dir = dir_q.front();
-    dir_q.pop_front();
-    std::vector<string> children;
-    Status s = fs->GetChildren(current_dir, &children);
-    ret.Update(s);
-    for (const string& child : children) {
-      if (child.empty()) {
-        continue;
-      }
-      const string child_path = io::JoinPath(current_dir, child);
-      // If the child is a directory add it to the queue.
-      if (fs->IsDirectory(child_path).ok()) {
-        dir_q.push_back(child_path);
-      }
-      all_files.push_back(child_path);
-    }
-  }
+  std::vector<string> all_files;
+  TF_RETURN_IF_ERROR(fs->GetChildrenRecursively(list_dir, &all_files));
 
   // Match all obtained files to the input pattern.
   for (const auto& f : all_files) {
-    if (MatchPath(f, pattern)) {
-      results->push_back(f);
+    const string& full_path = io::JoinPath(base_dir, f);
+    if (MatchPath(full_path, pattern)) {
+      results->push_back(full_path);
     }
   }
-  return ret;
+  return Status::OK();
 }
 
 Status Env::DeleteFile(const string& fname) {
