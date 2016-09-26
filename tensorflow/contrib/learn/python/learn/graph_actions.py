@@ -239,12 +239,17 @@ def _monitored_train(graph,
           'step': global_step_tensor.name
       }, every_n_iter=log_every_steps))
 
+    def make_saver():
+      return tf_saver.Saver(
+          sharded=True, max_to_keep=keep_checkpoint_max, defer_build=True)
+
     scaffold = monitored_session.Scaffold(
         init_op=init_op,
         init_feed_dict=init_feed_dict,
         init_fn=init_fn,
-        saver=tf_saver.Saver(
-            sharded=True, max_to_keep=keep_checkpoint_max, defer_build=True))
+        saver=monitored_session.Scaffold.get_or_default('saver',
+                                                        ops.GraphKeys.SAVERS,
+                                                        make_saver))
 
     if not supervisor_is_chief:
       session_creator = monitored_session.WorkerSessionCreator(

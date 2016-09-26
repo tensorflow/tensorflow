@@ -124,23 +124,23 @@ class Scaffold(object):
   def finalize(self):
     """Creates operations if needed and finalizes the graph."""
     if self._init_op is None:
-      self._init_op = Scaffold._get_or_default(
+      self._init_op = Scaffold.get_or_default(
           'init_op', ops.GraphKeys.INIT_OP, variables.initialize_all_variables)
     if self._ready_op is None:
-      self._ready_op = Scaffold._get_or_default(
+      self._ready_op = Scaffold.get_or_default(
           'ready_op', ops.GraphKeys.READY_OP,
           variables.report_uninitialized_variables)
     if self._local_init_op is None:
-      self._local_init_op = Scaffold._get_or_default(
+      self._local_init_op = Scaffold.get_or_default(
           'local_init_op', ops.GraphKeys.LOCAL_INIT_OP,
           Scaffold._default_local_init_op)
     if self._summary_op is None:
-      self._summary_op = Scaffold._get_or_default(
+      self._summary_op = Scaffold.get_or_default(
           'summary_op', ops.GraphKeys.SUMMARY_OP,
           logging_ops.merge_all_summaries)
     # pylint: disable=g-long-lambda
     if self._saver is None:
-      self._saver = Scaffold._get_or_default(
+      self._saver = Scaffold.get_or_default(
           'saver',
           ops.GraphKeys.SAVERS,
           lambda: training_saver.Saver(sharded=True, allow_empty=True))
@@ -179,7 +179,7 @@ class Scaffold(object):
     return self._init_feed_dict
 
   @staticmethod
-  def _get_or_default(arg_name, collection_key, default_constructor):
+  def get_or_default(arg_name, collection_key, default_constructor):
     """Get from cache or create a default operation."""
     elements = ops.get_collection(collection_key)
     if elements:
