@@ -94,6 +94,8 @@ def tf_additional_lib_hdrs(exclude = []):
   return  select({
     "//tensorflow:windows" : native.glob([
         "platform/default/*.h",
+        "platform/windows/*.h",
+        "platform/posix/error.h",
       ], exclude = exclude),
     "//conditions:default" : native.glob([
         "platform/default/*.h",
@@ -105,6 +107,8 @@ def tf_additional_lib_srcs(exclude = []):
   return  select({
     "//tensorflow:windows" : native.glob([
         "platform/default/*.cc",
+        "platform/windows/*.cc",
+        "platform/posix/error.cc",
       ], exclude = exclude),
     "//conditions:default" : native.glob([
         "platform/default/*.cc",
