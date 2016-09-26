@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataPoint, DataSet, DataSource, PCA_SAMPLE_DIM, SAMPLE_SIZE} from './data';
+import {DataPoint, DataSet, DataSource, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
 import {DataProvider, getDataProvider} from './data-loader';
 import * as knn from './knn';
 import {Mode, ScatterPlot} from './scatterPlot';
@@ -23,6 +23,7 @@ import {ScatterPlotWebGLVisualizerCanvasLabels} from './scatterPlotWebGLVisualiz
 import {ScatterPlotWebGLVisualizerSprites} from './scatterPlotWebGLVisualizerSprites';
 import {ScatterPlotWebGLVisualizerTraces} from './scatterPlotWebGLVisualizerTraces';
 import * as vector from './vector';
+import {BookmarkPanel} from './vz-projector-bookmark-panel';
 import {ColorOption, DataPanel} from './vz-projector-data-panel';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
@@ -109,17 +110,22 @@ export class Projector extends ProjectorPolymer {
   private allCentroid: number[];
   private dataProvider: DataProvider;
   private dataPanel: DataPanel;
+  private bookmarkPanel: BookmarkPanel;
   private colorOption: ColorOption;
   private labelOption: string;
   private routePrefix: string;
+  private selectedProjection: Projection = 'pca';
 
   ready() {
-    this.dataPanel = this.$['data-panel'];
+    this.dataPanel = this.$['data-panel'] as DataPanel;
     // Get the data loader and initialize the data panel with it.
     getDataProvider(this.routePrefix, dataProvider => {
       this.dataProvider = dataProvider;
       this.dataPanel.initialize(this, dataProvider);
     });
+
+    this.bookmarkPanel = this.$['bookmark-panel'] as BookmarkPanel;
+    this.bookmarkPanel.initialize(this);
 
     // And select a default dataset.
     this.hasPcaZ = true;
@@ -200,7 +206,7 @@ export class Projector extends ProjectorPolymer {
     this.dim = this.currentDataSet.dim[1];
     this.dom.select('span.numDataPoints').text(this.currentDataSet.dim[0]);
     this.dom.select('span.dim').text(this.currentDataSet.dim[1]);
-    this.showTab('pca');
+    this.showTab('pca', true /* recreateScene */);
   }
 
   private setupInput(name: string) {
@@ -458,6 +464,10 @@ export class Projector extends ProjectorPolymer {
     this.scatterPlot.onSelection(
         selectedPoints => this.updateSelection(selectedPoints));
 
+    this.scatterPlot.onCameraMove(
+        (cameraPosition: THREE.Vector3, cameraTarget: THREE.Vector3) =>
+            this.bookmarkPanel.clearStateSelection());
+
     // Selection controls
     this.dom.select('.set-filter').on('click', () => {
       let highlighted = this.selectedPoints;
@@ -527,6 +537,7 @@ export class Projector extends ProjectorPolymer {
   }
 
   private showPCA(callback?: () => void) {
+    this.selectedProjection = 'pca';
     this.currentDataSet.projectPCA().then(() => {
       this.scatterPlot.showTickLabels(false);
       let x = this.pcaX;
@@ -547,7 +558,7 @@ export class Projector extends ProjectorPolymer {
     });
   }
 
-  private showTab(id: string) {
+  private showTab(id: string, recreateScene = false) {
     let tab = this.dom.select('.ink-tab[data-tab="' + id + '"]');
     let pane =
         d3.select((tab.node() as HTMLElement).parentNode.parentNode.parentNode);
@@ -557,7 +568,11 @@ export class Projector extends ProjectorPolymer {
     pane.select('.ink-panel-content[data-panel="' + id + '"]')
         .classed('active', true);
     if (id === 'pca') {
-      this.showPCA(() => this.scatterPlot.recreateScene());
+      this.showPCA(() => {
+        if (recreateScene) {
+          this.scatterPlot.recreateScene();
+        }
+      });
     } else if (id === 'tsne') {
       this.showTSNE();
     } else if (id === 'custom') {
@@ -566,6 +581,7 @@ export class Projector extends ProjectorPolymer {
   }
 
   private showCustom() {
+    this.selectedProjection = 'custom';
     this.scatterPlot.showTickLabels(true);
     let xDir = vector.sub(this.centroids.xRight, this.centroids.xLeft);
     this.currentDataSet.projectLinear(xDir, 'linear-x');
@@ -588,6 +604,7 @@ export class Projector extends ProjectorPolymer {
   private get points() { return this.currentDataSet.points; }
 
   private showTSNE() {
+    this.selectedProjection = 'tsne';
     this.scatterPlot.showTickLabels(false);
     this.scatterPlot.setXAccessor(i => this.points[i].projections['tsne-0']);
     this.scatterPlot.setYAccessor(i => this.points[i].projections['tsne-1']);
@@ -782,6 +799,58 @@ export class Projector extends ProjectorPolymer {
       predicate = (a: DataPoint) => { return a.metadata['label'] === pattern; };
     }
     return vector.centroid(this.points, predicate, accessor);
+  }
+
+  /**
+   * Gets the current view of the embedding and saves it as a State object.
+   */
+  getCurrentState(): State {
+    let state: State = {};
+
+    // Save the individual datapoint projections.
+    state.projections = [];
+    for (let i = 0; i < this.currentDataSet.points.length; i++) {
+      state.projections.push(this.currentDataSet.points[i].projections);
+    }
+
+    // Save the type of projection.
+    state.selectedProjection = this.selectedProjection;
+
+    // Save the selected points.
+    state.selectedPoints = this.selectedPoints;
+
+    // Save the camera position and target.
+    state.cameraPosition = this.scatterPlot.getCameraPosition();
+    state.cameraTarget = this.scatterPlot.getCameraTarget();
+
+    return state;
+  }
+
+  /** Loads a State object into the world. */
+  loadState(state: State) {
+    // Load the individual datapoint projections.
+    for (let i = 0; i < state.projections.length; i++) {
+      this.currentDataSet.points[i].projections = state.projections[i];
+    }
+
+    // Select the type of projection.
+    if (state.selectedProjection === 'pca') {
+      this.showPCA();
+    } else if (state.selectedProjection === 'tsne') {
+      this.currentDataSet.hasTSNERun = true;
+      this.showTSNE();
+    } else if (state.selectedProjection === 'custom') {
+      this.showCustom();
+    }
+    this.showTab(state.selectedProjection);
+
+    // Load the selected points.
+    this.selectedPoints = state.selectedPoints;
+    this.updateSelection(state.selectedPoints);
+
+    // Load the camera position and target.
+    this.scatterPlot.setCameraPositionAndTarget(
+        state.cameraPosition, state.cameraTarget);
   }
 }
 

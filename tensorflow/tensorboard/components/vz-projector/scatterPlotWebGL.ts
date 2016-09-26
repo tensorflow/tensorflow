@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet, Mode, OnHoverListener, OnSelectionListener, ScatterPlot} from './scatterPlot';
+import {DataSet, Mode, OnCameraMoveListener, OnHoverListener, OnSelectionListener, ScatterPlot} from './scatterPlot';
 import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
 import {ScatterPlotWebGLVisualizerAxes} from './scatterPlotWebGLVisualizerAxes';
 import {getNearFarPoints, getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
-import {dist_2D} from './vector';
+import {dist_2D, Point3D} from './vector';
 
 const BACKGROUND_COLOR = 0xffffff;
 
@@ -82,6 +82,7 @@ export class ScatterPlotWebGL implements ScatterPlot {
   private colorAccessor: (index: number) => string;
   private onHoverListeners: OnHoverListener[] = [];
   private onSelectionListeners: OnSelectionListener[] = [];
+  private onCameraMoveListeners: OnCameraMoveListener[] = [];
   private lazySusanAnimation: number;
 
   // Accessors for rendering and labeling the points.
@@ -166,6 +167,8 @@ export class ScatterPlotWebGL implements ScatterPlot {
     // orbit controls.
     this.cameraControls.addEventListener('start', () => {
       this.cameraControls.autoRotate = false;
+      this.onCameraMoveListeners.forEach(
+          l => l(this.perspCamera.position, this.cameraControls.target));
       cancelAnimationFrame(this.lazySusanAnimation);
     });
     // Change is called everytime the user interacts with the
@@ -203,6 +206,29 @@ export class ScatterPlotWebGL implements ScatterPlot {
     let target = new THREE.Vector3(TAR_2D.x, TAR_2D.y, TAR_2D.z);
     this.animate(position, target);
     this.cameraControls.enableRotate = false;
+  }
+
+  /** Gets the current camera position. */
+  getCameraPosition(): Point3D {
+    let currPos = this.perspCamera.position;
+    return [currPos.x, currPos.y, currPos.z];
+  }
+
+  /** Gets the current camera target. */
+  getCameraTarget(): Point3D {
+    let currTarget = this.cameraControls.target;
+    return [currTarget.x, currTarget.y, currTarget.z];
+  }
+
+  /** Sets up the camera from given position and target coordinates. */
+  setCameraPositionAndTarget(position: Point3D, target: Point3D) {
+    this.perspCamera.position.set(position[0], position[1], position[2]);
+    this.cameraControls.target.set(target[0], target[1], target[2]);
+    this.cameraControls.autoRotate = false;
+    this.animating = false;
+    cancelAnimationFrame(this.lazySusanAnimation);
+    this.cameraControls.update();
+    this.render();
   }
 
   private onClick(e?: MouseEvent) {
@@ -706,6 +732,9 @@ export class ScatterPlotWebGL implements ScatterPlot {
   }
 
   onHover(listener: OnHoverListener) { this.onHoverListeners.push(listener); }
+  onCameraMove(listener: OnCameraMoveListener) {
+    this.onCameraMoveListeners.push(listener);
+  }
 
   clickOnPoint(pointIndex: number) {
     this.nearestPoint = pointIndex;

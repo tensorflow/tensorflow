@@ -321,3 +321,32 @@ export interface DatasetMetadata {
     single_image_dim: [number, number];
   };
 }
+
+export type Projection = 'tsne' | 'pca' | 'custom';
+
+/**
+ * An interface that holds all the data for serializing the current state of
+ * the world.
+ */
+export interface State {
+  /** A label identifying this state. */
+  label?: string;
+
+  /** Whether this State is selected in the bookmarks pane. */
+  isSelected?: boolean;
+
+  /** The selected projection tab. */
+  selectedProjection?: Projection;
+
+  /** The computed projections of the tensors. */
+  projections?: {[key: string]: number}[];
+
+  /** The indices of selected points. */
+  selectedPoints?: number[];
+
+  /** Camera positioning (x, y, z). */
+  cameraPosition?: vector.Point3D;
+
+  /** Camera target (x, y, z). */
+  cameraTarget?: vector.Point3D;
+}
