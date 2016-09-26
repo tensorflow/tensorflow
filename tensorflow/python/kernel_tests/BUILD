@@ -169,9 +169,6 @@ tf_py_test(
     size = "small",
     srcs = ["io_ops_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
-    tags = [
-        "manual",  # http://b/31732612
-    ],
 )
 
 tf_py_test(
