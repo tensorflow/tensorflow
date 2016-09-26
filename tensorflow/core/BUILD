@@ -1462,6 +1462,19 @@ tf_cc_tests(
     ],
 )
 
+tf_cc_tests(
+    size = "small",
+    srcs = ["platform/file_system_test.cc"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+    ],
+)
+
 cc_test(
     name = "lib_jpeg_jpeg_mem_unittest",
     srcs = ["lib/jpeg/jpeg_mem_unittest.cc"],
