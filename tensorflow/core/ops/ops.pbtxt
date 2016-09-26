@@ -12463,7 +12463,7 @@ op {
   name: "RestoreV2"
   input_arg {
     name: "prefix"
-    description: "scalar.  The prefix of a V2 checkpoint."
+    description: "Must have a single element.  The prefix of a V2 checkpoint."
     type: DT_STRING
   }
   input_arg {
@@ -12802,7 +12802,7 @@ op {
   name: "SaveV2"
   input_arg {
     name: "prefix"
-    description: "scalar. The prefix of the V2 checkpoint to which we write the tensors."
+    description: "Must have a single element. The prefix of the V2 checkpoint to which we\nwrite the tensors."
     type: DT_STRING
   }
   input_arg {
