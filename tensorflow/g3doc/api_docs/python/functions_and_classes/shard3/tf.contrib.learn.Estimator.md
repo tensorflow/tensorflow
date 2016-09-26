@@ -112,6 +112,9 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
 
+    Returns:
+      The string path to the exported directory.
+
 
 - - -
 

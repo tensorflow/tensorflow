@@ -30,7 +30,7 @@ export type NearestEntry = {
  * vectors, no more than 40MB will be allocated in the GPU. Without the
  * allocation limit, we can freeze the graphics of the whole OS.
  */
-const OPTIMAL_GPU_BLOCK_SIZE = 512;
+const OPTIMAL_GPU_BLOCK_SIZE = 256;
 
 /**
  * Returns the K nearest neighbors for each vector where the distance

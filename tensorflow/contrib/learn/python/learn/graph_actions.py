@@ -162,7 +162,7 @@ def _monitored_train(graph,
       This feed dictionary will be used when `init_op` is evaluated.
     init_fn: Optional callable passed to Supervisor to initialize the model.
     log_every_steps: Output logs regularly. The logs contain timing data and the
-      current loss.
+      current loss. A `0` or negative value disables logging.
     supervisor_is_chief: Whether the current process is the chief supervisor in
       charge of restoring the model and running standard services.
     supervisor_master: The master string to use when preparing the session.
@@ -231,14 +231,13 @@ def _monitored_train(graph,
   # (such as ExportMonitor). Appending them after the basic_session_run_hooks.
   all_hooks = []
   with graph.as_default():
-    all_hooks.extend([
-        basic_session_run_hooks.NanTensorHook(
-            loss_op, fail_on_nan_loss=fail_on_nan_loss),
-        basic_session_run_hooks.LoggingTensorHook({
-            'loss': loss_op.name,
-            'step': global_step_tensor.name
-        }, every_n_iter=log_every_steps),
-    ])
+    all_hooks.append(basic_session_run_hooks.NanTensorHook(
+        loss_op, fail_on_nan_loss=fail_on_nan_loss))
+    if log_every_steps > 0:
+      all_hooks.append(basic_session_run_hooks.LoggingTensorHook({
+          'loss': loss_op.name,
+          'step': global_step_tensor.name
+      }, every_n_iter=log_every_steps))
 
     scaffold = monitored_session.Scaffold(
         init_op=init_op,

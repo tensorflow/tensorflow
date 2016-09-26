@@ -1002,6 +1002,13 @@ Callback before every n'th step begins.
 
 - - -
 
+#### `tf.contrib.learn.monitors.ExportMonitor.last_export_dir` {#ExportMonitor.last_export_dir}
+
+
+
+
+- - -
+
 #### `tf.contrib.learn.monitors.ExportMonitor.post_step(step, session)` {#ExportMonitor.post_step}
 
 

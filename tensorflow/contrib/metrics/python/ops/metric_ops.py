@@ -93,7 +93,7 @@ def _safe_div(numerator, denominator, name):
 
 
 def _safe_scalar_div(numerator, denominator, name):
-  """Divides two values, returning 0 if the denominator is != 0.
+  """Divides two values, returning 0 if the denominator is 0.
 
   Args:
     numerator: A scalar `float64` `Tensor`.

@@ -209,6 +209,19 @@ void FlushWritableFile(tensorflow::WritableFile* file, TF_Status* out_status) {
     Set_TF_Status_from_Status(out_status, status);
   }
 }
+
+string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
+                      size_t bytes,
+                      TF_Status* out_status) {
+  string result;
+  tensorflow::Status status = stream->ReadNBytes(bytes, &result);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+    result.clear();
+  }
+  return result;
+}
+
 %}
 
 // Ensure that the returned object is destroyed when its wrapper is
@@ -241,11 +254,15 @@ tensorflow::WritableFile* CreateWritableFile(const string& filename,
 void AppendToFile(const string& file_content, tensorflow::WritableFile* file,
                   TF_Status* out_status);
 void FlushWritableFile(tensorflow::WritableFile* file, TF_Status* out_status);
+string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
+                      size_t bytes,
+                      TF_Status* out_status);
 
 %ignoreall
 %unignore tensorflow::io::BufferedInputStream;
 %unignore tensorflow::io::BufferedInputStream::~BufferedInputStream;
 %unignore tensorflow::io::BufferedInputStream::ReadLineAsString;
+%unignore tensorflow::io::BufferedInputStream::Tell;
 %unignore tensorflow::WritableFile;
 %unignore tensorflow::WritableFile::~WritableFile;
 %include "tensorflow/core/platform/file_system.h"

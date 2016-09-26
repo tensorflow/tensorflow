@@ -24,19 +24,18 @@ it('simple 2D data', () => {
     [1, 1],
     [0, 0],
   ];
-  let tree = new SPTree(data, 1);
+  let tree = new SPTree(data);
   // Check that each point is within the bound.
   tree.visit((node, low, high) => {
     assert.equal(low.length, 2);
     assert.equal(high.length, 2);
-    node.points.forEach(point => {
-      assert.equal(point.length, 2);
-      // Each point should be in the node's bounding box.
-      assert.equal(
-          point[0] >= low[0] && point[0] <= high[0] && point[1] >= low[1] &&
-              point[1] <= high[1],
-          true);
-    });
+    let point = node.point;
+    assert.equal(point.length, 2);
+    // Each point should be in the node's bounding box.
+    assert.equal(
+        point[0] >= low[0] && point[0] <= high[0] && point[1] >= low[1] &&
+            point[1] <= high[1],
+        true);
     return false;
   });
 });
@@ -48,19 +47,18 @@ it('simple 3D data', () => {
     [1, 1, 3],
     [0, 0, 5],
   ];
-  let tree = new SPTree(data, 1);
+  let tree = new SPTree(data);
   // Check that each point is within the bound.
   tree.visit((node, low, high) => {
     assert.equal(low.length, 3);
     assert.equal(high.length, 3);
-    node.points.forEach(point => {
-      assert.equal(point.length, 3);
-      // Each point should be in the node's bounding box.
-      assert.equal(
-          point[0] >= low[0] && point[0] <= high[0] && point[1] >= low[1] &&
-              point[1] <= high[1] && point[2] >= low[2] && point[2] <= high[2],
-          true);
-    });
+    let point = node.point;
+    assert.equal(point.length, 3);
+    // Each point should be in the node's bounding box.
+    assert.equal(
+        point[0] >= low[0] && point[0] <= high[0] && point[1] >= low[1] &&
+            point[1] <= high[1] && point[2] >= low[2] && point[2] <= high[2],
+        true);
     return false;
   });
 });
@@ -72,7 +70,7 @@ it('Only visit root', () => {
     [1, 1, 3],
     [0, 0, 5],
   ];
-  let tree = new SPTree(data, 1);
+  let tree = new SPTree(data);
   let numVisits = 0;
   tree.visit((node, low, high) => {
     numVisits++;
@@ -87,13 +85,13 @@ it('Search in random data', () => {
   for (let i = 0; i < N; i++) {
     data[i] = [Math.random(), Math.random()];
   }
-  let tree = new SPTree(data, 1);
+  let tree = new SPTree(data);
   let numVisits = 0;
   let query = data[Math.floor(Math.random() * N)];
   let found = false;
   tree.visit((node, low, high) => {
     numVisits++;
-    if (node.points.length > 0 && node.points[0] === query) {
+    if (node.point === query) {
       found = true;
       return true;
     }

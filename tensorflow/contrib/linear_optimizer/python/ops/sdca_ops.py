@@ -526,15 +526,29 @@ class SdcaModel(object):
       example_state_data = self._hashtable.lookup(example_ids_hashed)
       # Solver returns example_state_update, new delta sparse_feature_weights
       # and delta dense_feature_weights.
-      esu, sfw, dfw = _sdca_ops.distributed_sdca_large_batch_solver(
+
+      weights_tensor = self._convert_n_to_tensor(self._slots[
+          'unshrinked_sparse_features_weights'])
+      sparse_weights = []
+      sparse_indices = []
+      for w, i in zip(weights_tensor, sparse_feature_indices):
+        # Find the feature ids to lookup in the variables.
+        with ops.device(w.device):
+          sparse_indices.append(
+              math_ops.cast(
+                  array_ops.unique(math_ops.cast(i, dtypes.int32))[0],
+                  dtypes.int64))
+          sparse_weights.append(array_ops.gather(w, sparse_indices[-1]))
+
+      esu, sfw, dfw = _sdca_ops.sdca_optimizer(
           sparse_example_indices,
           sparse_feature_indices,
           sparse_features_values,
           self._convert_n_to_tensor(self._examples['dense_features']),
           convert_to_tensor(self._examples['example_weights']),
           convert_to_tensor(self._examples['example_labels']),
-          self._convert_n_to_tensor(self._slots[
-              'unshrinked_sparse_features_weights']),
+          sparse_indices,
+          sparse_weights,
           self._convert_n_to_tensor(self._slots[
               'unshrinked_dense_features_weights']),
           example_state_data,
@@ -550,15 +564,14 @@ class SdcaModel(object):
           # See: http://arxiv.org/abs/1602.02136.
           num_inner_iterations=2)
 
-      out_fws = [sfw, dfw]
       with ops.control_dependencies([esu]):
         update_ops = [self._hashtable.insert(example_ids_hashed, esu)]
         # Update the weights before the proximal step.
-        for i, name in enumerate(
-            ['sparse_features_weights', 'dense_features_weights']):
-          for slot_var, out_fw in zip(self._slots['unshrinked_' + name],
-                                      out_fws[i]):
-            update_ops.append(slot_var.assign_add(out_fw))
+        for w, i, u in zip(self._slots['unshrinked_sparse_features_weights'],
+                           sparse_indices, sfw):
+          update_ops.append(state_ops.scatter_add(w, i, u))
+        for w, u in zip(self._slots['unshrinked_dense_features_weights'], dfw):
+          update_ops.append(w.assign_add(u))
 
         with ops.control_dependencies(update_ops):
           update_ops = []

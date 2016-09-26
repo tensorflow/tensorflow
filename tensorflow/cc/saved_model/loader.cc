@@ -63,11 +63,12 @@ Status Restore(const RunOptions& run_options, const string& export_dir,
                const StringPiece restore_op_name,
                const StringPiece variable_filename_const_op_name,
                Session* session) {
-  const string variables_path =
-      io::JoinPath(export_dir, kSavedModelVariablesFilename);
+  const string variables_path = io::JoinPath(
+      export_dir, kSavedModelVariablesDirectory, kSavedModelVariablesFilename);
   if (!Env::Default()->FileExists(variables_path)) {
-    return Status(error::Code::NOT_FOUND,
-                  "Could not find checkpointed variables.");
+    return Status(
+        error::Code::NOT_FOUND,
+        "Could not find checkpointed variables at: " + variables_path);
   }
 
   // Add variables to the graph.
