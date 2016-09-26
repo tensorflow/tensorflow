@@ -28,6 +28,7 @@ const RGB_ELEMENTS_PER_ENTRY = 3;
 const XYZ_ELEMENTS_PER_ENTRY = 3;
 const UV_ELEMENTS_PER_ENTRY = 2;
 const VERTICES_PER_GLYPH = 2 * 3;  // 2 triangles, 3 verts per triangle
+const POINT_COLOR = 0xFFFFFF;
 
 /**
  * Each label is made up of triangles (two per letter.) Each vertex, then, is
@@ -99,8 +100,7 @@ const FRAGMENT_SHADER = `
         gl_FragColor = vec4(vColor, 1.0);
       } else {
         vec4 fromTexture = texture2D(texture, vUv);
-        vec4 color = vec4(vColor, 1.0);
-        gl_FragColor = color + fromTexture;
+        gl_FragColor = vec4(vColor, 1.0) * fromTexture;
       }
     }`;
 
@@ -117,10 +117,13 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
   private scene: THREE.Scene;
   private labelAccessor: (index: number) => string;
   private geometry: THREE.BufferGeometry;
+  private pickingColors: Float32Array;
+  private renderColors: Float32Array;
   private material: THREE.ShaderMaterial;
   private uniforms: Object;
   private labelsMesh: THREE.Mesh;
   private positions: THREE.BufferAttribute;
+  private defaultPointColor = POINT_COLOR;
   private totalVertexCount: number;
   private labelVertexMap: number[][];
   private glyphTexture: GlyphTexture;
@@ -184,7 +187,7 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
     let numTotalLetters = 0;
     this.labelVertexMap = [];
     for (let i = 0; i < this.dataSet.points.length; i++) {
-      let label = this.labelAccessor(i);
+      let label: string = this.labelAccessor(i).toString();
       let vertsArray: number[] = [];
       for (let j = 0; j < label.length; j++) {
         for (let k = 0; k < VERTICES_PER_GLYPH; k++) {
@@ -197,7 +200,34 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
     this.totalVertexCount = numTotalLetters * VERTICES_PER_GLYPH;
   }
 
+  private createColorBuffers() {
+    let numPoints = this.dataSet.points.length;
+    this.pickingColors =
+        new Float32Array(this.totalVertexCount * RGB_ELEMENTS_PER_ENTRY);
+    this.renderColors =
+        new Float32Array(this.totalVertexCount * RGB_ELEMENTS_PER_ENTRY);
+    for (let i = 0; i < numPoints; i++) {
+      let color = new THREE.Color(i);
+      this.labelVertexMap[i].forEach((j) => {
+        this.pickingColors[RGB_ELEMENTS_PER_ENTRY * j] = color.r;
+        this.pickingColors[RGB_ELEMENTS_PER_ENTRY * j + 1] = color.g;
+        this.pickingColors[RGB_ELEMENTS_PER_ENTRY * j + 2] = color.b;
+        this.renderColors[RGB_ELEMENTS_PER_ENTRY * j] = 1.0;
+        this.renderColors[RGB_ELEMENTS_PER_ENTRY * j + 1] = 1.0;
+        this.renderColors[RGB_ELEMENTS_PER_ENTRY * j + 2] = 1.0;
+      });
+    }
+  }
+
   private createLabelGeometry() {
+    this.processLabelVerts();
+    this.createColorBuffers();
+
+    let positionArray =
+        new Float32Array(this.totalVertexCount * XYZ_ELEMENTS_PER_ENTRY);
+    this.positions =
+        new THREE.BufferAttribute(positionArray, XYZ_ELEMENTS_PER_ENTRY);
+
     let posArray =
         new Float32Array(this.totalVertexCount * XYZ_ELEMENTS_PER_ENTRY);
     let uvArray =
@@ -216,7 +246,7 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
 
     let lettersSoFar = 0;
     for (let i = 0; i < this.dataSet.points.length; i++) {
-      let label = this.labelAccessor(i);
+      let label: string = this.labelAccessor(i).toString();
       let leftOffset = 0;
       // Determine length of word in pixels.
       for (let j = 0; j < label.length; j++) {
@@ -262,6 +292,13 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
       }
     }
 
+    for (let i = 0; i < this.dataSet.points.length; i++) {
+      let pp = this.dataSet.points[i].projectedPoint;
+      this.labelVertexMap[i].forEach((j) => {
+        this.positions.setXYZ(j, pp[0], pp[1], pp[2]);
+      });
+    };
+
     this.labelsMesh = new THREE.Mesh(this.geometry, this.material);
   }
 
@@ -279,6 +316,41 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
     this.destroyLabels();
     if (this.labelAccessor) {
       this.createLabelGeometry();
+    }
+  }
+
+  private colorSprites(colorAccessor: (index: number) => string) {
+    if (this.geometry == null || this.dataSet == null) {
+      return;
+    }
+    let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
+    colors.array = this.renderColors;
+    let getColor: (index: number) => string =
+        colorAccessor ? colorAccessor : () => (this.defaultPointColor as any);
+    for (let i = 0; i < this.dataSet.points.length; i++) {
+      let color = new THREE.Color(getColor(i));
+      this.labelVertexMap[i].forEach((j) => {
+        colors.setXYZ(j, color.r, color.g, color.b);
+      });
+    }
+    colors.needsUpdate = true;
+  }
+
+  private highlightSprites(
+      highlightedPoints: number[], highlightStroke: (index: number) => string) {
+    if (this.geometry == null || this.dataSet == null) {
+      return;
+    }
+    if (highlightedPoints && highlightStroke) {
+      let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
+      for (let i = 0; i < highlightedPoints.length; i++) {
+        let assocPoint = highlightedPoints[i];
+        let color = new THREE.Color(highlightStroke(i));
+        this.labelVertexMap[assocPoint].forEach((j) => {
+          colors.setXYZ(j, color.r, color.g, color.b);
+        });
+      }
+      colors.needsUpdate = true;
     }
   }
 
@@ -306,33 +378,37 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
     this.dataSet = dataSet;
   }
 
-  onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {}
+  onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {
+    this.material.uniforms.texture.value = this.glyphTexture.texture;
+    this.material.uniforms.picking.value = true;
+    this.material.uniforms.camPos.value = camera.position;
 
-  onRender(renderContext: RenderContext) {
+    let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
+    colors.array = this.pickingColors;
+    colors.needsUpdate = true;
+  }
+
+  onRender(rc: RenderContext) {
+    this.colorSprites(rc.colorAccessor);
+    this.highlightSprites(rc.highlightedPoints, rc.highlightStroke);
+
     this.material.uniforms.texture.value = this.glyphTexture.texture;
     this.material.uniforms.picking.value = false;
-    this.material.uniforms.camPos.value = renderContext.camera.position;
+    this.material.uniforms.camPos.value = rc.camera.position;
+
+    let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
+    colors.array = this.renderColors;
+    colors.needsUpdate = true;
   }
 
   onUpdate() {
-    this.processLabelVerts();
-    let positionArray =
-        new Float32Array(this.totalVertexCount * XYZ_ELEMENTS_PER_ENTRY);
-    this.positions =
-        new THREE.BufferAttribute(positionArray, XYZ_ELEMENTS_PER_ENTRY);
-
     this.createLabels();
     if (this.labelsMesh && this.scene) {
       this.scene.add(this.labelsMesh);
     }
-    for (let i = 0; i < this.dataSet.points.length; i++) {
-      let pp = this.dataSet.points[i].projectedPoint;
-      this.labelVertexMap[i].forEach((j) => {
-        this.positions.setXYZ(j, pp[0], pp[1], pp[2]);
-      });
-    };
   }
 
-  onResize(newWidth: number, newHeight: number) {}
   onSelectionChanged(selection: number[]) {}
+
+  onResize(newWidth: number, newHeight: number) {}
 }

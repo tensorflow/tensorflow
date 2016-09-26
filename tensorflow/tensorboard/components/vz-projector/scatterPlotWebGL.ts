@@ -70,8 +70,8 @@ const TAR_2D = {
  */
 export class ScatterPlotWebGL implements ScatterPlot {
   private dataSet: DataSet;
+  private spriteImage: HTMLImageElement;
   private containerNode: HTMLElement;
-
   private visualizers: ScatterPlotWebGLVisualizer[] = [];
 
   private highlightedPoints: number[] = [];
@@ -139,8 +139,7 @@ export class ScatterPlotWebGL implements ScatterPlot {
     this.renderer.render(this.scene, this.perspCamera);
     this.addInteractionListeners();
 
-    this.addVisualizer(
-        new ScatterPlotWebGLVisualizerAxes(this.xScale, this.yScale));
+    this.addAxesToScene();
   }
 
   private addInteractionListeners() {
@@ -432,7 +431,6 @@ export class ScatterPlotWebGL implements ScatterPlot {
     }
   }
 
-  /** Removes all geometry from the scene. */
   private removeAll() {
     this.visualizers.forEach(v => {
       v.removeAllFromScene(this.scene);
@@ -486,24 +484,49 @@ export class ScatterPlotWebGL implements ScatterPlot {
     });
   }
 
+  private addAxesToScene() {
+    this.addVisualizer(
+        new ScatterPlotWebGLVisualizerAxes(this.xScale, this.yScale));
+  }
+
+  private sceneIs3D(): boolean {
+    return this.zAccessor != null;
+  }
+
   // PUBLIC API
 
   /** Adds a visualizer to the set, will start dispatching events to it */
   addVisualizer(visualizer: ScatterPlotWebGLVisualizer) {
     this.visualizers.push(visualizer);
+    if (this.dataSet) {
+      visualizer.onDataSet(this.dataSet, this.spriteImage);
+    }
+    if (this.labelAccessor) {
+      visualizer.onSetLabelAccessor(this.labelAccessor);
+    }
+    if (this.scene) {
+      visualizer.onRecreateScene(
+          this.scene, this.sceneIs3D(), this.backgroundColor);
+    }
+  }
+
+  /** Removes all visualizers attached to this scatter plot. */
+  removeAllVisualizers() {
+    this.removeAll();
+    this.visualizers = [];
+    this.addAxesToScene();
   }
 
   recreateScene() {
     this.removeAll();
     this.cancelAnimation();
-    let sceneIs3D = this.zAccessor != null;
-    if (sceneIs3D) {
+    if (this.sceneIs3D()) {
       this.makeCamera3D();
     } else {
       this.makeCamera2D();
     }
     this.visualizers.forEach(v => {
-      v.onRecreateScene(this.scene, sceneIs3D, this.backgroundColor);
+      v.onRecreateScene(this.scene, this.sceneIs3D(), this.backgroundColor);
     });
     this.resize(false);
     this.render();
@@ -513,6 +536,8 @@ export class ScatterPlotWebGL implements ScatterPlot {
   setDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
     this.removeAll();
     this.dataSet = dataSet;
+    this.spriteImage = spriteImage;
+    this.nearestPoint = null;
     this.labeledPoints = [];
     this.highlightedPoints = [];
     this.visualizers.forEach(v => {

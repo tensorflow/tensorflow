@@ -18,6 +18,7 @@ import {DataProvider, getDataProvider} from './data-loader';
 import * as knn from './knn';
 import {Mode, ScatterPlot} from './scatterPlot';
 import {ScatterPlotWebGL} from './scatterPlotWebGL';
+import {ScatterPlotWebGLVisualizer3DLabels} from './scatterPlotWebGLVisualizer3DLabels';
 import {ScatterPlotWebGLVisualizerCanvasLabels} from './scatterPlotWebGLVisualizerCanvasLabels';
 import {ScatterPlotWebGLVisualizerSprites} from './scatterPlotWebGLVisualizerSprites';
 import {ScatterPlotWebGLVisualizerTraces} from './scatterPlotWebGLVisualizerTraces';
@@ -25,6 +26,7 @@ import * as vector from './vector';
 import {ColorOption, DataPanel} from './vz-projector-data-panel';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
+
 
 /** T-SNE perplexity. Roughly how many neighbors each point influences. */
 let perplexity: number = 30;
@@ -95,6 +97,7 @@ export class Projector extends ProjectorPolymer {
   // The working subset of the data source's original data set.
   private currentDataSet: DataSet;
   private scatterPlot: ScatterPlot;
+  private labels3D: boolean = false;
   private dim: number;
   private selectedDistance: (a: number[], b: number[]) => number;
   private highlightedPoints: {index: number, color: string}[];
@@ -404,7 +407,6 @@ export class Projector extends ProjectorPolymer {
     });
 
     let selectModeButton = this.dom.select('.selectMode');
-
     selectModeButton.on('click', () => {
       let mode = this.scatterPlot.getMode();
       this.scatterPlot.setMode(mode === Mode.SELECT ? Mode.HOVER : Mode.SELECT);
@@ -419,6 +421,15 @@ export class Projector extends ProjectorPolymer {
       this.scatterPlot.setDayNightMode(modeIsNight);
     });
 
+    let labels3DModeButton = this.dom.select('.labels3DMode');
+    labels3DModeButton.on('click', () => {
+      this.labels3D = !this.labels3D;
+      this.createVisualizers();
+      this.scatterPlot.recreateScene();
+      this.scatterPlot.update();
+      this.updateMenuButtons();
+    });
+
     // Resize
     window.addEventListener('resize', () => {
       this.scatterPlot.resize();
@@ -426,20 +437,10 @@ export class Projector extends ProjectorPolymer {
 
     // Canvas
     {
-      let container = this.dom.select('#scatter');
-      let scatterPlotWebGL = new ScatterPlotWebGL(
-          container, i => '' + this.points[i].metadata['label']);
-
-      scatterPlotWebGL.addVisualizer(
-          new ScatterPlotWebGLVisualizerSprites(scatterPlotWebGL));
-
-      scatterPlotWebGL.addVisualizer(
-          new ScatterPlotWebGLVisualizerTraces(scatterPlotWebGL));
-
-      scatterPlotWebGL.addVisualizer(
-          new ScatterPlotWebGLVisualizerCanvasLabels(container));
-
-      this.scatterPlot = scatterPlotWebGL;
+      this.scatterPlot = new ScatterPlotWebGL(
+          this.getScatterContainer(),
+          i => '' + this.points[i].metadata['label']);
+      this.createVisualizers();
     }
 
     this.scatterPlot.onHover(hoveredIndex => {
@@ -484,6 +485,29 @@ export class Projector extends ProjectorPolymer {
       this.updateMenuButtons();
       this.selectionWasUpdated();
     });
+  }
+
+  private getScatterContainer(): d3.Selection<any> {
+    return this.dom.select('#scatter');
+  }
+
+  private createVisualizers() {
+    let scatterPlotWebGL = this.scatterPlot as ScatterPlotWebGL;
+    scatterPlotWebGL.removeAllVisualizers();
+
+    if (this.labels3D) {
+      scatterPlotWebGL.addVisualizer(
+          new ScatterPlotWebGLVisualizer3DLabels(scatterPlotWebGL));
+    } else {
+      scatterPlotWebGL.addVisualizer(
+          new ScatterPlotWebGLVisualizerSprites(scatterPlotWebGL));
+
+      scatterPlotWebGL.addVisualizer(
+          new ScatterPlotWebGLVisualizerTraces(scatterPlotWebGL));
+
+      scatterPlotWebGL.addVisualizer(new ScatterPlotWebGLVisualizerCanvasLabels(
+          this.getScatterContainer()));
+    }
   }
 
   private updateSelection(points: number[]) {
@@ -652,6 +676,7 @@ export class Projector extends ProjectorPolymer {
     (searchBox.select('input').node() as HTMLInputElement).focus();
     this.dom.select('.selectMode')
         .classed('selected', this.scatterPlot.getMode() === Mode.SELECT);
+    this.dom.select('.labels3DMode').classed('selected', this.labels3D);
   }
 
   /**
