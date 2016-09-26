@@ -157,6 +157,7 @@ def tf_copts():
                     "-O2",
                   ],
                   "//tensorflow:darwin": [],
+                  "//tensorflow:windows": ["/DLANG_CXX11"],
                   "//tensorflow:ios": ["-std=c++11",],
                   "//conditions:default": ["-pthread"]}))
 
