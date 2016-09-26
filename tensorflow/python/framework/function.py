@@ -253,11 +253,12 @@ def _call(sig, *inputs, **kwargs):
   attrs = _parse_kwargs_as_attrs(**kwargs)
   g = ops.get_default_graph()
   func_name = sig.name
+  inputs = [ops.convert_to_tensor(_) for _ in inputs]
   output_types = [dtypes.DType(x.type) for x in sig.output_arg]
   with ops.name_scope(name, func_name, inputs) as name:
     op = g.create_op(
         func_name,
-        list(inputs),
+        inputs,
         output_types,
         name=name,
         attrs=attrs,
