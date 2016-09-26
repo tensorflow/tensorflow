@@ -67,17 +67,17 @@ const VERTEX_SHADER = `
 
       // Make label face camera.
       // 'At' and 'Up' vectors just match that of the camera.
-      vec3 Vat = normalize(vec3(
+      vec3 Vat = vec3(
         modelViewMatrix[0][2],
         modelViewMatrix[1][2],
-        modelViewMatrix[2][2]));
+        modelViewMatrix[2][2]);
 
-      vec3 Vup = normalize(vec3(
+      vec3 Vup = vec3(
         modelViewMatrix[0][1],
         modelViewMatrix[1][1],
-        modelViewMatrix[2][1]));
+        modelViewMatrix[2][1]);
 
-      vec3 Vright = normalize(cross(Vup, Vat));
+      vec3 Vright = cross(Vup, Vat);
       Vup = cross(Vat, Vright);
       mat4 pointToCamera = mat4(Vright, 0.0, Vup, 0.0, Vat, 0.0, vec3(0), 1.0);
 
