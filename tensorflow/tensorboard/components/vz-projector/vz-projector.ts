@@ -42,7 +42,7 @@ const NN_HIGHLIGHT_COLOR = '#FA6666';
 /** Color to denote a missing value. */
 const MISSING_VALUE_COLOR = 'black';
 /** Highlight stroke color for the selected point */
-const POINT_HIGHLIGHT_COLOR = 'black';
+const POINT_HIGHLIGHT_COLOR = '#760B4F';
 
 /** Color scale for nearest neighbors. */
 const NN_COLOR_SCALE =

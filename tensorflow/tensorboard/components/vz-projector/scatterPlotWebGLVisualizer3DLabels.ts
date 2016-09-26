@@ -45,13 +45,12 @@ const POINT_COLOR = 0xFFFFFF;
 
 const VERTEX_SHADER = `
     attribute vec2 posObj;
-    varying vec2 vUv;
     attribute vec3 color;
+    varying vec2 vUv;
     varying vec3 vColor;
-    uniform float camPos;
 
     float getPointScale() {
-      float normalScale =  3.0;
+      float normalScale = 3.0;
       // Distance to the camera (world coordinates.) This is the scale factor.
       // Note that positions of verts are in world space, scaled so that the
       // lineheight is 1.
@@ -135,7 +134,6 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
     this.uniforms = {
       texture: {type: 't', value: this.glyphTexture.texture},
       picking: {type: 'bool', value: false},
-      camPos: {type: 'float', value: new THREE.Vector3()}
     };
 
     this.material = new THREE.ShaderMaterial({
@@ -343,7 +341,7 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
     }
     if (highlightedPoints && highlightStroke) {
       let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
-      for (let i = 0; i < highlightedPoints.length; i++) {
+      for (let i = highlightedPoints.length - 1; i >= 0; --i) {
         let assocPoint = highlightedPoints[i];
         let color = new THREE.Color(highlightStroke(i));
         this.labelVertexMap[assocPoint].forEach((j) => {
@@ -381,7 +379,6 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
   onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {
     this.material.uniforms.texture.value = this.glyphTexture.texture;
     this.material.uniforms.picking.value = true;
-    this.material.uniforms.camPos.value = camera.position;
 
     let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     colors.array = this.pickingColors;
@@ -394,7 +391,6 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
 
     this.material.uniforms.texture.value = this.glyphTexture.texture;
     this.material.uniforms.picking.value = false;
-    this.material.uniforms.camPos.value = rc.camera.position;
 
     let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     colors.array = this.renderColors;
