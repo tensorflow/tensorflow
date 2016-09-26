@@ -491,18 +491,13 @@ export class Projector extends ProjectorPolymer {
     if (!points.length) {
       this.selectedPoints = [];
       this.updateInspectorPane([]);
-    } else if (points.length === 1) {
-      // If only one point is selected, we want to get its nearest neighbors
-      // and change the UI accordingly.
+    } else {
+      // Get the nearest neighbors of the first selected point and update the
+      // UI accordingly.
       this.showTab('inspector');
       let neighbors = this.findNeighbors(points[0]);
       this.selectedPoints = [points[0]].concat(neighbors.map(n => n.index));
       this.updateInspectorPane(neighbors);
-    } else {
-      // Otherwise, select all points and hide nearest neighbors list.
-      this.selectedPoints = points;
-      this.highlightedPoints = [];
-      this.updateInspectorPane([]);
     }
     this.selectionWasUpdated();
   }
