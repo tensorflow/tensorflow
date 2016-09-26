@@ -123,7 +123,7 @@ def _is_distributed(config):
 def _get_default_schedule(config):
   """Returns the default schedule for the provided RunConfig."""
   if not config or not _is_distributed(config):
-    return 'local_run'
+    return 'train_and_evaluate'
 
   if not config.job_name:
     raise ValueError('Must specify a schedule')
