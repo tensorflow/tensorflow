@@ -54,9 +54,9 @@ const VERTEX_SHADER = `
       // Distance to the camera (world coordinates.) This is the scale factor.
       // Note that positions of verts are in world space, scaled so that the
       // lineheight is 1.
-      float distToCam = length((modelViewMatrix * vec4(position, 1.0)).z);
-      float unscale = distToCam;
-      float scale = max(min(unscale * 10.0, normalScale), unscale * 2.0);
+      vec4 posCamSpace = modelViewMatrix * vec4(position, 1.0);
+      float distToCam = length(posCamSpace.z);
+      float scale = max(min(distToCam * 10.0, normalScale), distToCam * 2.0);
       return scale * ${1 /
     FONT_SIZE};
     }
@@ -65,23 +65,20 @@ const VERTEX_SHADER = `
       vUv = uv;
       vColor = color;
 
-      // Make label face camera.
-      // 'At' and 'Up' vectors just match that of the camera.
-      vec3 Vat = vec3(
-        modelViewMatrix[0][2],
-        modelViewMatrix[1][2],
-        modelViewMatrix[2][2]);
+      // Rotate label to face camera.
 
-      vec3 Vup = vec3(
-        modelViewMatrix[0][1],
-        modelViewMatrix[1][1],
-        modelViewMatrix[2][1]);
+      vec4 vRight = vec4(
+        modelViewMatrix[0][0], modelViewMatrix[1][0], modelViewMatrix[2][0], 0);
 
-      vec3 Vright = cross(Vup, Vat);
-      Vup = cross(Vat, Vright);
-      mat4 pointToCamera = mat4(Vright, 0.0, Vup, 0.0, Vat, 0.0, vec3(0), 1.0);
+      vec4 vUp = vec4(
+        modelViewMatrix[0][1], modelViewMatrix[1][1], modelViewMatrix[2][1], 0);
 
-      vec2 posObj = posObj*getPointScale();
+      vec4 vAt = -vec4(
+        modelViewMatrix[0][2], modelViewMatrix[1][2], modelViewMatrix[2][2], 0);
+
+      mat4 pointToCamera = mat4(vRight, vUp, vAt, vec4(0, 0, 0, 1));
+
+      vec2 posObj = posObj * getPointScale();
 
       vec4 posRotated = pointToCamera * vec4(posObj, 0.00001, 1.0);
       vec4 mvPosition = modelViewMatrix * (vec4(position, 0.0) + posRotated);
@@ -139,7 +136,6 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
       transparent: true,
-      side: THREE.DoubleSide,
       vertexShader: VERTEX_SHADER,
       fragmentShader: FRAGMENT_SHADER,
     });
@@ -262,8 +258,8 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
 
         // First triangle
         positionObject.setXY(lettersSoFar * VERTICES_PER_GLYPH + 0, left, 0);
-        positionObject.setXY(lettersSoFar * VERTICES_PER_GLYPH + 1, left, top);
-        positionObject.setXY(lettersSoFar * VERTICES_PER_GLYPH + 2, right, 0);
+        positionObject.setXY(lettersSoFar * VERTICES_PER_GLYPH + 1, right, 0);
+        positionObject.setXY(lettersSoFar * VERTICES_PER_GLYPH + 2, left, top);
 
         // Second triangle
         positionObject.setXY(lettersSoFar * VERTICES_PER_GLYPH + 3, left, top);
@@ -279,8 +275,8 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
         let vTop = 1;
         let vBottom = 0;
         uv.setXY(lettersSoFar * VERTICES_PER_GLYPH + 0, uLeft, vTop);
-        uv.setXY(lettersSoFar * VERTICES_PER_GLYPH + 1, uLeft, vBottom);
-        uv.setXY(lettersSoFar * VERTICES_PER_GLYPH + 2, uRight, vTop);
+        uv.setXY(lettersSoFar * VERTICES_PER_GLYPH + 1, uRight, vTop);
+        uv.setXY(lettersSoFar * VERTICES_PER_GLYPH + 2, uLeft, vBottom);
         uv.setXY(lettersSoFar * VERTICES_PER_GLYPH + 3, uLeft, vBottom);
         uv.setXY(lettersSoFar * VERTICES_PER_GLYPH + 4, uRight, vTop);
         uv.setXY(lettersSoFar * VERTICES_PER_GLYPH + 5, uRight, vBottom);
