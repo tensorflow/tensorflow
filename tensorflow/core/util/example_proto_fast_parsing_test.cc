@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 
 #include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/lib/random/philox_random.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -46,6 +48,8 @@ string Serialize(const Example& example) {
   return serialized;
 }
 
+// Tests that serialized gets parsed identically by TestFastParse(..)
+// and the regular Example.ParseFromString(..).
 void TestCorrectness(const string& serialized) {
   Example example;
   Example fast_example;
@@ -63,9 +67,6 @@ void TestCorrectness(const string& serialized) {
 //   TestCorrectness(example);
 // }
 
-// Test that concatenating two Example protos in their serialized string
-// representations gets parsed identically by TestFastParse(..) and the regular
-// Example.ParseFromString(..).
 TEST(FastParse, SingleInt64WithContext) {
   Example example;
   (*example.mutable_features()->mutable_feature())["age"]
@@ -78,6 +79,30 @@ TEST(FastParse, SingleInt64WithContext) {
       ->add_value(94043);
 
   TestCorrectness(strings::StrCat(Serialize(example), Serialize(context)));
+}
+
+TEST(FastParse, DenseInt64WithContext) {
+  Example example;
+  (*example.mutable_features()->mutable_feature())["age"]
+      .mutable_int64_list()
+      ->add_value(0);
+
+  Example context;
+  (*context.mutable_features()->mutable_feature())["age"]
+      .mutable_int64_list()
+      ->add_value(15);
+
+  string serialized = Serialize(example) + Serialize(context);
+
+  {
+    Example deserialized;
+    EXPECT_TRUE(deserialized.ParseFromString(serialized));
+    EXPECT_EQ(deserialized.DebugString(), context.DebugString());
+    // Whoa! Last EQ is very surprising, but standard deserialization is what it
+    // is and Servo team requested to replicate this 'feature'.
+    // In future we should return error.
+  }
+  TestCorrectness(serialized);
 }
 
 TEST(FastParse, NonPacked) {
@@ -165,6 +190,98 @@ TEST(FastParse, SomeFeatures) {
   int64_list->add_value(86942);
 
   TestCorrectness(Serialize(example));
+}
+
+string RandStr(random::SimplePhilox* rng) {
+  static const char key_char_lookup[] =
+      "0123456789{}~`!@#$%^&*()"
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      "abcdefghijklmnopqrstuvwxyz";
+  auto len = 1 + rng->Rand32() % 200;
+  string str;
+  str.reserve(len);
+  while (len-- > 0) {
+    str.push_back(
+        key_char_lookup[rng->Rand32() % (sizeof(key_char_lookup) /
+                                         sizeof(key_char_lookup[0]))]);
+  }
+  return str;
+}
+
+void Fuzz(random::SimplePhilox* rng) {
+  // Generate keys.
+  auto num_keys = 1 + rng->Rand32() % 100;
+  std::unordered_set<string> unique_keys;
+  for (auto i = 0; i < num_keys; ++i) {
+    unique_keys.emplace(RandStr(rng));
+  }
+
+  // Generate serialized example.
+  Example example;
+  string serialized_example;
+  auto num_concats = 1 + rng->Rand32() % 4;
+  std::vector<Feature::KindCase> feat_types(
+      {Feature::kBytesList, Feature::kFloatList, Feature::kInt64List});
+  std::vector<string> all_keys(unique_keys.begin(), unique_keys.end());
+  while (num_concats--) {
+    example.Clear();
+    auto num_active_keys = 1 + rng->Rand32() % all_keys.size();
+
+    // Generate features.
+    for (auto i = 0; i < num_active_keys; ++i) {
+      auto fkey = all_keys[rng->Rand32() % all_keys.size()];
+      auto ftype_idx = rng->Rand32() % feat_types.size();
+      auto num_features = 1 + rng->Rand32() % 5;
+      switch (static_cast<Feature::KindCase>(feat_types[ftype_idx])) {
+        case Feature::kBytesList: {
+          BytesList* bytes_list =
+              (*example.mutable_features()->mutable_feature())[fkey]
+                  .mutable_bytes_list();
+          while (num_features--) {
+            bytes_list->add_value(RandStr(rng));
+          }
+          break;
+        }
+        case Feature::kFloatList: {
+          FloatList* float_list =
+              (*example.mutable_features()->mutable_feature())[fkey]
+                  .mutable_float_list();
+          while (num_features--) {
+            float_list->add_value(rng->RandFloat());
+          }
+          break;
+        }
+        case Feature::kInt64List: {
+          Int64List* int64_list =
+              (*example.mutable_features()->mutable_feature())[fkey]
+                  .mutable_int64_list();
+          while (num_features--) {
+            int64_list->add_value(rng->Rand64());
+          }
+          break;
+        }
+        default: {
+          QCHECK(false);
+          break;
+        }
+      }
+    }
+    serialized_example += example.SerializeAsString();
+  }
+
+  // Test correctness.
+  TestCorrectness(serialized_example);
+}
+
+TEST(FastParse, FuzzTest) {
+  const uint64 seed = 1337;
+  random::PhiloxRandom philox(seed);
+  random::SimplePhilox rng(&philox);
+  auto num_runs = 200;
+  while (num_runs--) {
+    LOG(INFO) << "runs left: " << num_runs;
+    Fuzz(&rng);
+  }
 }
 
 string MakeSerializedExample() {

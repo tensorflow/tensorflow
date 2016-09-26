@@ -264,9 +264,6 @@ learned through the model training process we'll go through later.
 We'll do the similar trick to define the other categorical features:
 
 ```python
-race = tf.contrib.layers.sparse_column_with_keys(column_name="race", keys=[
-  "Amer-Indian-Eskimo", "Asian-Pac-Islander", "Black", "Other", "White"])
-marital_status = tf.contrib.layers.sparse_column_with_hash_bucket("marital_status", hash_bucket_size=100)
 relationship = tf.contrib.layers.sparse_column_with_hash_bucket("relationship", hash_bucket_size=100)
 workclass = tf.contrib.layers.sparse_column_with_hash_bucket("workclass", hash_bucket_size=100)
 occupation = tf.contrib.layers.sparse_column_with_hash_bucket("occupation", hash_bucket_size=1000)
@@ -336,8 +333,8 @@ constituent column can be either a base feature column that is categorical
 or even another `CrossColumn`. Here's an example:
 
 ```python
-age_buckets_x_race_x_occupation = tf.contrib.layers.crossed_column(
-  [age_buckets, race, occupation], hash_bucket_size=int(1e6))
+age_buckets_x_education_x_occupation = tf.contrib.layers.crossed_column(
+  [age_buckets, education, occupation], hash_bucket_size=int(1e6))
 ```
 
 ## Defining The Logistic Regression Model
@@ -359,7 +356,7 @@ added to the `feature_columns` field of a model:
 model_dir = tempfile.mkdtemp()
 m = tf.contrib.learn.LinearClassifier(feature_columns=[
   gender, native_country, education, occupation, workclass, marital_status, race,
-  age_buckets, education_x_occupation, age_buckets_x_race_x_occupation],
+  age_buckets, education_x_occupation, age_buckets_x_education_x_occupation],
   model_dir=model_dir)
 ```
 
@@ -411,7 +408,7 @@ as:
 ```
 m = tf.contrib.learn.LinearClassifier(feature_columns=[
   gender, native_country, education, occupation, workclass, marital_status, race,
-  age_buckets, education_x_occupation, age_buckets_x_race_x_occupation],
+  age_buckets, education_x_occupation, age_buckets_x_education_x_occupation],
   optimizer=tf.train.FtrlOptimizer(
     learning_rate=0.1,
     l1_regularization_strength=1.0,

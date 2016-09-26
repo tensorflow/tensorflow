@@ -118,9 +118,6 @@ Does nothing. Only useful as a placeholder for control edges.
 
 Increments 'ref' until it reaches 'limit'.
 
-This operation outputs "ref" after the update is done.  This makes it
-easier to chain operations that need to use the updated value.
-
 ##### Args:
 
 

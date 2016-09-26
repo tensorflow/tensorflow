@@ -234,6 +234,10 @@ class FileSystemRegistry {
 void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
               StringPiece* path);
 
+// Creates a URI from a scheme, host, and path. If the scheme is empty, we just
+// return the path.
+string CreateURI(StringPiece scheme, StringPiece host, StringPiece path);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_FILE_SYSTEM_H_

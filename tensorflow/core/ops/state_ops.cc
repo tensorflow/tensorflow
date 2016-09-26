@@ -442,9 +442,6 @@ REGISTER_OP("CountUpTo")
     .Doc(R"doc(
 Increments 'ref' until it reaches 'limit'.
 
-This operation outputs "ref" after the update is done.  This makes it
-easier to chain operations that need to use the updated value.
-
 ref: Should be from a scalar `Variable` node.
 limit: If incrementing ref would bring it above limit, instead generates an
   'OutOfRange' error.

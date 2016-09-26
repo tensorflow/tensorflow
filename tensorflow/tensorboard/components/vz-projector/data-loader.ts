@@ -37,21 +37,25 @@ export interface CheckpointInfo {
 
 /** Interface between the data storage and the UI. */
 export interface DataProvider {
+  /** Returns a list of run names that have embedding config files. */
+  getRuns(callback: (runs: string[]) => void): void;
+
   /**
    * Returns info about the checkpoint: number of tensors, their shapes,
    * and their associated metadata files.
    */
-  getCheckpointInfo(callback: (d: CheckpointInfo) => void): void;
+  getCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void): void;
 
   /** Fetches and returns the tensor with the specified name. */
-  getTensor(tensorName: string, callback: (ds: DataSource) => void);
+  getTensor(
+      run: string, tensorName: string, callback: (ds: DataSource) => void);
 
   /**
    * Fetches the metadata for the specified tensor and merges it with the
    * specified data source.
    */
   getMetadata(
-      ds: DataSource, tensorName: string,
+      run: string, ds: DataSource, tensorName: string,
       callback: (stats: ColumnStats[]) => void): void;
 
   /**
@@ -59,7 +63,7 @@ export interface DataProvider {
    * Used in demo mode to load a tensor when the app starts. Returns null if no
    * default tensor exists.
    */
-  getDefaultTensor(): string;
+  getDefaultTensor(run: string, callback: (tensorName: string) => void): void;
 }
 
 /**
@@ -68,22 +72,31 @@ export interface DataProvider {
  */
 class ServerDataProvider implements DataProvider {
   /** Prefix added to the http requests when asking the server for data. */
-  static DATA_URL = 'data';
-  private checkpointInfo: CheckpointInfo;
+  static DEFAULT_ROUTE_PREFIX = 'data';
+  private routePrefix: string;
 
-  constructor(checkpointInfo: CheckpointInfo) {
-    this.checkpointInfo = checkpointInfo;
+  constructor(routePrefix: string) {
+    this.routePrefix = routePrefix;
   }
 
-  getCheckpointInfo(callback: (d: CheckpointInfo) => void): void {
-    callback(this.checkpointInfo);
+  getRuns(callback: (runs: string[]) => void): void {
+    d3.json(`${this.routePrefix}/runs`, (err, runs) => {
+      callback(runs);
+    });
   }
 
-  getTensor(tensorName: string, callback: (ds: DataSource) => void) {
+  getCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void): void {
+    d3.json(`${this.routePrefix}/info?run=${run}`, (err, checkpointInfo) => {
+      callback(checkpointInfo);
+    });
+  }
+
+  getTensor(
+      run: string, tensorName: string, callback: (ds: DataSource) => void) {
     // Get the tensor.
     updateMessage('Fetching tensor values...');
     d3.text(
-        `${ServerDataProvider.DATA_URL}/tensor?name=${tensorName}`,
+        `${this.routePrefix}/tensor?run=${run}&name=${tensorName}`,
         (err: Error, tsv: string) => {
           if (err) {
             console.error(err);
@@ -98,11 +111,11 @@ class ServerDataProvider implements DataProvider {
   }
 
   getMetadata(
-      ds: DataSource, tensorName: string,
+      run: string, ds: DataSource, tensorName: string,
       callback: (stats: ColumnStats[]) => void) {
     updateMessage('Fetching metadata...');
     d3.text(
-        `${ServerDataProvider.DATA_URL}/metadata`,
+        `${this.routePrefix}/metadata?run=${run}&name=${tensorName}`,
         (err: Error, rawMetadata: string) => {
           if (err) {
             console.error(err);
@@ -113,10 +126,12 @@ class ServerDataProvider implements DataProvider {
         });
   }
 
-  getDefaultTensor() {
-    let tensorNames = Object.keys(this.checkpointInfo.tensors);
-    // Return the first tensor as default if there is only 1 tensor.
-    return tensorNames.length === 1 ? tensorNames[0] : null;
+  getDefaultTensor(run: string, callback: (tensorName: string) => void) {
+    this.getCheckpointInfo(run, checkpointInfo => {
+      let tensorNames = Object.keys(checkpointInfo.tensors);
+      // Return the first tensor as default if there is only 1 tensor.
+      callback(tensorNames.length === 1 ? tensorNames[0] : null);
+    });
   }
 }
 
@@ -124,11 +139,20 @@ class ServerDataProvider implements DataProvider {
  * Returns a data provider, depending on what is available. The detection of
  * a server backend is done by issuing an HTTP request at /data/info and seeing
  * if it returns 200 or 404.
+ *
+ * @param routePrefix The prefix to add to the url routes when asking for data
+ *     from the backend. For example, when hosted inside tensorboard, the route
+ *     is prefixed by the plugin name.
+ * @param callback Called with the data provider.
  */
-export function getDataProvider(callback: (dp: DataProvider) => void) {
-  d3.json(`${ServerDataProvider.DATA_URL}/info`, (err, checkpointInfo) => {
+export function getDataProvider(
+    routePrefix: string, callback: (dp: DataProvider) => void) {
+  if (routePrefix == null) {
+    routePrefix = ServerDataProvider.DEFAULT_ROUTE_PREFIX;
+  }
+  d3.json(`${routePrefix}/runs`, (err, runs) => {
     callback(
-        err ? new DemoDataProvider() : new ServerDataProvider(checkpointInfo));
+        err ? new DemoDataProvider() : new ServerDataProvider(routePrefix));
   });
 }
 
@@ -338,7 +362,11 @@ class DemoDataProvider implements DataProvider {
   /** Name of the folder where the demo datasets are stored. */
   private static DEMO_FOLDER = 'data';
 
-  getCheckpointInfo(callback: (d: CheckpointInfo) => void): void {
+  getRuns(callback: (runs: string[]) => void): void {
+    callback(['Demo']);
+  }
+
+  getCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void): void {
     let tensorsInfo: {[name: string]: TensorInfo} = {};
     for (let name in DemoDataProvider.DEMO_DATASETS) {
       if (!DemoDataProvider.DEMO_DATASETS.hasOwnProperty(name)) {
@@ -357,9 +385,12 @@ class DemoDataProvider implements DataProvider {
     });
   }
 
-  getDefaultTensor() { return 'SmartReply 5K'; }
+  getDefaultTensor(run: string, callback: (tensorName: string) => void) {
+    callback('SmartReply 5K');
+  }
 
-  getTensor(tensorName: string, callback: (ds: DataSource) => void) {
+  getTensor(
+      run: string, tensorName: string, callback: (ds: DataSource) => void) {
     let demoDataSet = DemoDataProvider.DEMO_DATASETS[tensorName];
     let separator = demoDataSet.fpath.substr(-3) === 'tsv' ? '\t' : ' ';
     let url = `${DemoDataProvider.DEMO_FOLDER}/${demoDataSet.fpath}`;
@@ -379,7 +410,7 @@ class DemoDataProvider implements DataProvider {
   }
 
   getMetadata(
-      ds: DataSource, tensorName: string,
+      run: string, ds: DataSource, tensorName: string,
       callback: (stats: ColumnStats[]) => void) {
     let demoDataSet = DemoDataProvider.DEMO_DATASETS[tensorName];
     let dataSetPromise: Promise<ColumnStats[]> = null;

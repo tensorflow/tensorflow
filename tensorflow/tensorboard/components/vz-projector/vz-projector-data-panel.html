@@ -56,6 +56,12 @@ paper-item {
     min-height: 0px;
   };
 }
+
+.item-details {
+  margin-left: 5px;
+  color: gray;
+  font-size: 12px;
+}
 </style>
 
 <div>
@@ -78,17 +84,33 @@ paper-item {
     <div class="dir">Checkpoint: <span id="checkpoint-file"></span></div>
     <div class="dir">Metadata: <span id="metadata-file"></span></div>
   </div>
-  <!-- List of tensors in checkpoint -->
-  <paper-dropdown-menu noink no-animations label="[[getNumTensorsLabel(tensorNames)]] found">
-    <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedTensor}}">
-      <template is="dom-repeat" items="[[tensorNames]]">
-        <paper-item style="justify-content: space-between;" value="[[item.name]]" label="[[item.name]]">
-          [[item.name]]
-          <span style="margin-left: 5px; color:gray; font-size: 12px;">[[item.shape.0]]x[[item.shape.1]]</span>
+
+  <!-- List of runs -->
+  <paper-dropdown-menu noink no-animations label="[[getNumRunsLabel(runNames)]] found">
+    <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedRun}}">
+      <template is="dom-repeat" items="[[runNames]]">
+        <paper-item style="justify-content: space-between;" value="[[item]]" label="[[item]]">
+          [[item]]
         </paper-item>
       </template>
     </paper-listbox>
   </paper-dropdown-menu>
+
+  <template is="dom-if" if="[[tensorNames]]">
+    <!-- List of tensors in checkpoint -->
+    <paper-dropdown-menu noink no-animations label="[[getNumTensorsLabel(tensorNames)]] found">
+      <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedTensor}}">
+        <template is="dom-repeat" items="[[tensorNames]]">
+          <paper-item style="justify-content: space-between;" value="[[item.name]]" label="[[item.name]]">
+            [[item.name]]
+            <span class="item-details">
+              [[item.shape.0]]x[[item.shape.1]]
+            </span>
+          </paper-item>
+        </template>
+      </paper-listbox>
+    </paper-dropdown-menu>
+  </template>
 </div>
 
 <!-- Label by -->
@@ -111,7 +133,7 @@ paper-item {
       <template is="dom-repeat" items="[[colorOptions]]">
         <paper-item style="justify-content: space-between;" class$="[[getSeparatorClass(item.isSeparator)]]" value="[[item]]" label="[[item.name]]" disabled="[[item.isSeparator]]">
           [[item.name]]
-          <span style="margin-left: 5px; color:gray; font-size: 12px;">[[item.desc]]</span>
+          <span class="item-details">[[item.desc]]</span>
         </paper-item>
       </template>
     </paper-listbox>

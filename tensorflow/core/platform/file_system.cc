@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -79,6 +80,13 @@ void ParseURI(StringPiece remaining, StringPiece* scheme, StringPiece* host,
 
   // 2. The rest is the path
   *path = remaining;
+}
+
+string CreateURI(StringPiece scheme, StringPiece host, StringPiece path) {
+  if (scheme.empty()) {
+    return path.ToString();
+  }
+  return strings::StrCat(scheme, "://", host, path);
 }
 
 }  // namespace tensorflow

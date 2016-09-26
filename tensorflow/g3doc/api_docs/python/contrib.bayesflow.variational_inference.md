@@ -140,8 +140,6 @@ See `elbo` for what is used with `default`.
 
 
 
-
-## Other Functions and Classes
 - - -
 
 ### `tf.contrib.bayesflow.variational_inference.register_prior(variational, prior)` {#register_prior}

@@ -465,6 +465,7 @@ module VZ {
      * Update the selected series on the chart.
      */
     public setVisibleSeries(names: string[]) {
+      names = names.sort();
       this.seriesNames = names;
 
       names.reverse();  // draw first series on top

@@ -73,6 +73,10 @@ function hasWebGLSupport(): boolean {
 }
 
 const WEBGL_SUPPORT = hasWebGLSupport();
+const IS_FIREFOX = navigator.userAgent.toLowerCase().indexOf('firefox') >= 0;
+/** Controls whether nearest neighbors computation is done on the GPU or CPU. */
+const KNN_GPU_ENABLED = WEBGL_SUPPORT && !IS_FIREFOX;
+
 /** Sampling is used when computing expensive operations such as T-SNE. */
 export const SAMPLE_SIZE = 10000;
 /** Number of dimensions to sample when doing approximate PCA. */
@@ -283,7 +287,7 @@ export class DataSet implements scatterPlot.DataSet {
     } else {
       let sampledData = this.sampledDataIndices.map(i => this.points[i]);
       this.nearestK = k;
-      knnComputation = WEBGL_SUPPORT ?
+      knnComputation = KNN_GPU_ENABLED ?
           knn.findKNNGPUCosine(sampledData, k, (d => d.vector)) :
           knn.findKNN(
               sampledData, k, (d => d.vector),

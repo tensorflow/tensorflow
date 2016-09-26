@@ -400,6 +400,8 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
       self.assertEqual(x_name, first_bad_datum[0].node_name)
 
   def testDumpGraphStructureLookup(self):
+    # TODO(cais): Separate this test into multiple test methods.
+
     with session.Session() as sess:
       u_name = "testDumpGraphStructureLookup/u"
       v_name = "testDumpGraphStructureLookup/v"
@@ -515,6 +517,11 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
                                    "does not exist in partition graphs"):
         dump.node_device(u_name + "foo")
 
+      # Test node_exists().
+      self.assertTrue(dump.node_exists(u_name))
+      self.assertTrue(dump.node_exists(u_name + "/read"))
+      self.assertFalse(dump.node_exists(u_name + "/read" + "/foo"))
+
       # Test node_op_type().
       self.assertEqual("Variable", dump.node_op_type(u_name))
       self.assertEqual("Identity", dump.node_op_type(u_name + "/read"))
@@ -534,7 +541,7 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
         dump.partition_graphs()
 
       with self.assertRaisesRegexp(
-          RuntimeError, "Node inputs are not loaded from partiton graphs yet"):
+          RuntimeError, "Node inputs are not loaded from partition graphs yet"):
         dump.node_inputs(u_name)
 
       with self.assertRaisesRegexp(RuntimeError,
@@ -543,24 +550,25 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
 
       with self.assertRaisesRegexp(
           RuntimeError,
-          "Node recipients are not loaded from partiton graphs yet"):
+          "Node recipients are not loaded from partition graphs yet"):
         dump.node_recipients(u_name)
 
       with self.assertRaisesRegexp(
-          RuntimeError, "Node inputs are not loaded from partiton graphs yet"):
+          RuntimeError, "Node inputs are not loaded from partition graphs yet"):
         dump.transitive_inputs(u_name)
 
       with self.assertRaisesRegexp(
-          RuntimeError, "Devices are not loaded from partiton graphs yet"):
+          RuntimeError, "Devices are not loaded from partition graphs yet"):
         dump.devices()
 
       with self.assertRaisesRegexp(
-          RuntimeError, "Node devices are not loaded from partiton graphs yet"):
+          RuntimeError,
+          "Node devices are not loaded from partition graphs yet"):
         dump.node_device(u_name)
 
       with self.assertRaisesRegexp(
           RuntimeError,
-          "Node op types are not loaded from partiton graphs yet"):
+          "Node op types are not loaded from partition graphs yet"):
         dump.node_op_type(u_name)
 
   def testDumpCausalityCheck(self):

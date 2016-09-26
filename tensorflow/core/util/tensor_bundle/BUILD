@@ -9,6 +9,15 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+# To be exported to tensorflow/core:android_srcs.
+filegroup(
+    name = "android_srcs",
+    srcs = [
+        "tensor_bundle.cc",
+        "tensor_bundle.h",
+    ],
+)
+
 cc_library(
     name = "tensor_bundle",
     srcs = ["tensor_bundle.cc"],
@@ -18,7 +27,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
     ],
 )
