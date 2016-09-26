@@ -87,7 +87,8 @@ By default, saves the named tensors in full.  If the caller wishes to save
 specific slices of full tensors, "shape_and_slices" should be non-empty strings
 and correspondingly well-formed.
 
-prefix: scalar. The prefix of the V2 checkpoint to which we write the tensors.
+prefix: Must have a single element. The prefix of the V2 checkpoint to which we
+  write the tensors.
 tensor_names: shape {N}. The names of the tensors to be saved.
 shape_and_slices: shape {N}.  The slice specs of the tensors to be saved.
   Empty strings indicate that they are non-partitioned tensors.
@@ -126,7 +127,7 @@ strings and correspondingly well-formed.
 
 Callers must ensure all the named tensors are indeed stored in the checkpoint.
 
-prefix: scalar.  The prefix of a V2 checkpoint.
+prefix: Must have a single element.  The prefix of a V2 checkpoint.
 tensor_names: shape {N}.  The names of the tensors to be restored.
 shape_and_slices: shape {N}.  The slice specs of the tensors to be restored.
   Empty strings indicate that they are non-partitioned tensors.

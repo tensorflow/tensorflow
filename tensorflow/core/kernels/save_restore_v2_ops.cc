@@ -44,9 +44,9 @@ void ValidateInputs(bool is_save_op, OpKernelContext* context,
   const int kFixedInputs = 3;  // Prefix, tensor names, shape_and_slices.
   const int num_tensors = static_cast<int>(tensor_names.NumElements());
   OP_REQUIRES(
-      context, TensorShapeUtils::IsScalar(prefix.shape()),
-      errors::InvalidArgument("Input prefix should be a scalar tensor, got ",
-                              prefix.shape().DebugString(), " instead."));
+      context, prefix.NumElements() == 1,
+      errors::InvalidArgument("Input prefix should have a single element, got ",
+                              prefix.NumElements(), " instead."));
   OP_REQUIRES(context, TensorShapeUtils::IsVector(tensor_names.shape()) &&
                            TensorShapeUtils::IsVector(shape_and_slices.shape()),
               errors::InvalidArgument(
