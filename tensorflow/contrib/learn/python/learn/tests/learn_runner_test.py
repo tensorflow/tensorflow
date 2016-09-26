@@ -83,12 +83,19 @@ class MainTest(tf.test.TestCase):
     # Ensure the TF_CONFIG environment variable is unset for all tests.
     os.environ.pop("TF_CONFIG", None)
 
-  def test_run_with_explicit_args(self):
+  def test_run_with_custom_schedule(self):
     self.assertEqual(
         "simple_task, default=None.",
         learn_runner.run(build_experiment,
                          output_dir="/tmp",
                          schedule="simple_task"))
+
+  def test_run_with_explicit_local_run(self):
+    self.assertEqual(
+        "local_run",
+        learn_runner.run(build_experiment,
+                         output_dir="/tmp",
+                         schedule="local_run"))
 
   def test_schedule_from_tf_config(self):
     os.environ["TF_CONFIG"] = json.dumps(
@@ -141,17 +148,17 @@ class MainTest(tf.test.TestCase):
                             learn_runner.run, build_experiment, "",
                             "simple_task")
 
-  def test_no_schedule_and_no_config_runs_local_run(self):
+  def test_no_schedule_and_no_config_runs_train_and_evaluate(self):
     self.assertEqual(
-        "local_run",
+        "train_and_evaluate",
         learn_runner.run(build_experiment,
                          output_dir="/tmp"))
 
-  def test_no_schedule_and_non_distributed_runs_local_run(self):
+  def test_no_schedule_and_non_distributed_runs_train_and_evaluate(self):
     config = run_config.RunConfig(
         cluster_spec=build_non_distributed_cluster_spec())
     self.assertEqual(
-        "local_run",
+        "train_and_evaluate",
         learn_runner.run(lambda output_dir: TestExperiment(config=config),
                          output_dir="/tmp"))
 
