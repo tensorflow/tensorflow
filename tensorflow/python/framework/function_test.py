@@ -27,6 +27,7 @@ import tensorflow as tf
 
 from tensorflow.python.framework import function
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_logging_ops
 
 
 def _OptimizerOptions():
@@ -284,6 +285,33 @@ class FunctionTest(tf.test.TestCase):
       with tf.name_scope("my"):
         call4 = Foo(one, name="precious")
         self.assertEquals("my/precious", call4.op.name)
+
+  def testNoOp(self):
+    @function.Defun(tf.float32)
+    def Foo(x):
+      y = tf.Print(x, [x], "Hello")
+      with tf.control_dependencies([y]):
+        z = tf.no_op()
+      with tf.control_dependencies([z]):
+        return x * 2
+
+    with tf.Graph().as_default(), self.test_session():
+      z = Foo(tf.constant(3.0))
+      self.assertAllEqual(z.eval(), 6.0)
+
+  def testAssert(self):
+    @function.Defun(tf.float32)
+    def Foo(x):
+      check = gen_logging_ops._assert(tf.greater(x, 0), [x])
+      with tf.control_dependencies([check]):
+        return x * 2
+
+    g = tf.Graph()
+    with g.as_default(), self.test_session():
+      self.assertAllEqual(Foo(tf.constant(3.0)).eval(), 6.0)
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   "assertion failed.*-3"):
+        self.assertAllEqual(Foo(tf.constant(-3.0)).eval(), 6.0)
 
   def testDefineErrors(self):
     with tf.Graph().as_default():

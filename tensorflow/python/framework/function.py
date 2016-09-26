@@ -127,24 +127,27 @@ def _add_op_node(op, func):
     op_def = op_def_registry.get_registered_ops()[op.type]
   # pylint: enable=protected-access
   attrs = _get_node_def_attr(op)
-  out_index = 0
-  for arg_def in op_def.output_arg:
-    if arg_def.number_attr:
-      dtype = arg_def.type or attrs[arg_def.type_attr].type
-      num = attrs[arg_def.number_attr].i
-      node.ret.append(
-          _add_output_array(op, out_index, out_index + num, dtype, func))
-      out_index += num
-    elif arg_def.type_list_attr:
-      dtype_lst = attrs[arg_def.type_list_attr].list.type
-      num = len(dtype_lst)
-      node.ret.append(
-          _add_output_list(op, out_index, out_index + num, dtype_lst, func))
-      out_index += num
-    else:
-      node.ret.append(
-          _make_argname_from_tensor_name(op.outputs[out_index].name))
-      out_index += 1
+  if not op_def.output_arg:
+    node.ret.append(_make_argname_from_tensor_name(op.name))
+  else:
+    out_index = 0
+    for arg_def in op_def.output_arg:
+      if arg_def.number_attr:
+        dtype = arg_def.type or attrs[arg_def.type_attr].type
+        num = attrs[arg_def.number_attr].i
+        node.ret.append(
+            _add_output_array(op, out_index, out_index + num, dtype, func))
+        out_index += num
+      elif arg_def.type_list_attr:
+        dtype_lst = attrs[arg_def.type_list_attr].list.type
+        num = len(dtype_lst)
+        node.ret.append(
+            _add_output_list(op, out_index, out_index + num, dtype_lst, func))
+        out_index += num
+      else:
+        node.ret.append(
+            _make_argname_from_tensor_name(op.outputs[out_index].name))
+        out_index += 1
   inp_index = 0
   for arg_def in op_def.input_arg:
     if arg_def.number_attr:
@@ -195,9 +198,9 @@ def _graph_to_function_def(graph, name, inputs, outputs):
   func.signature.output_arg.extend([_tensor_to_argdef(o) for o in outputs])
   func_arg_placeholders = set([i.name for i in inputs])
   for op in graph.get_operations():
-    tensor_name = op.values()[0].name
-    if tensor_name not in func_arg_placeholders:
-      _add_op_node(op, func)
+    if op.values() and (op.values()[0].name in func_arg_placeholders):
+      continue
+    _add_op_node(op, func)
   return func
 
 
