@@ -28,9 +28,32 @@ namespace tensorflow {
 namespace {
 
 Status ReadSavedModel(const string& export_dir, SavedModel* saved_model_proto) {
-  const string saved_model_path =
+  const string saved_model_pb_path =
       io::JoinPath(export_dir, kSavedModelFilenamePb);
-  return ReadBinaryProto(Env::Default(), saved_model_path, saved_model_proto);
+  if (Env::Default()->FileExists(saved_model_pb_path)) {
+    return ReadBinaryProto(Env::Default(), saved_model_pb_path,
+                           saved_model_proto);
+  }
+  const string saved_model_pbtxt_path =
+      io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
+  if (Env::Default()->FileExists(saved_model_pbtxt_path)) {
+    string pbtxt_data;
+    Status status =
+        ReadFileToString(Env::Default(), saved_model_pbtxt_path, &pbtxt_data);
+    if (status != Status::OK()) {
+      return status;
+    }
+    if (!protobuf::TextFormat::ParseFromString(pbtxt_data, saved_model_proto)) {
+      return Status(error::Code::UNKNOWN,
+                    "Could not parse SavedModel proto from .pbtxt format: " +
+                        saved_model_pbtxt_path);
+    }
+    return Status::OK();
+  }
+  return Status(error::Code::NOT_FOUND,
+                "Could not find SavedModel .pb or .pbtxt at supplied export "
+                "directory path: " +
+                    export_dir);
 }
 
 Status FindMetaGraphDefToLoad(const SavedModel& saved_model_proto,
