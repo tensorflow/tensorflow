@@ -153,8 +153,8 @@ class TensorFlowDataFrameTestCase(tf.test.TestCase):
     tensorflow_df = df.TensorFlowDataFrame.from_pandas(pandas_df, shuffle=False)
 
     # Rebatch `df` into the following sizes successively.
-    batch_sizes = [8, 4, 7]
-    num_batches = 10
+    batch_sizes = [4, 7]
+    num_batches = 3
 
     final_batch_size = batch_sizes[-1]
 
