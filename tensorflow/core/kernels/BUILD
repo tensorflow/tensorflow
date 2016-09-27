@@ -2250,7 +2250,7 @@ filegroup(
     ),
     visibility = ["//visibility:public"],
 )
-# LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/contrib/makefile/tf_op_files.txt)
+# LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
 
 cc_library(
     name = "android_tensorflow_kernels",
