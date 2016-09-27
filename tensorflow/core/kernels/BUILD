@@ -1806,6 +1806,62 @@ tf_cuda_cc_tests(
     ],
 )
 
+cc_library(
+    name = "loss_updaters",
+    hdrs = [
+        "hinge-loss.h",
+        "logistic-loss.h",
+        "loss.h",
+        "smooth-hinge-loss.h",
+        "squared-loss.h",
+    ],
+    deps = ["//tensorflow/core:framework_headers_lib"],
+)
+
+cc_test(
+    name = "loss_test",
+    size = "small",
+    srcs = ["loss_test.cc"],
+    deps = [
+        ":loss_updaters",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "sdca_ops_test",
+    size = "small",
+    srcs = ["sdca_ops_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
+    deps = [
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_kernel_library(
+    name = "sdca_ops",
+    prefix = "sdca_ops",
+    deps = [
+        ":loss_updaters",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:sdca_ops_op_lib",
+        "//third_party/eigen3",
+        "@farmhash_archive//:farmhash",
+    ],
+    alwayslink = 1,
+)
+
 tf_kernel_libraries(
     name = "state",
     prefixes = [
@@ -2228,6 +2284,7 @@ filegroup(
             # unless we add the additional deps they need.
             "tf_record_reader_op.*",
             "string_to_hash_bucket_op.*",
+            "sdca_ops.*",
             "text_line_reader_op.*",
             "summary_image_op.*",
             "encode_png_op.*",
