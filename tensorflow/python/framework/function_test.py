@@ -570,6 +570,45 @@ class FunctionTest(tf.test.TestCase):
       with self.test_session(graph=g):
         self.assertAllEqual(y.eval(), 5.0)
 
+  def testCapture(self):
+    g = tf.Graph()
+    with g.as_default():
+      w = tf.Variable(tf.constant([[1.0]]))
+      b = tf.Variable(tf.constant([2.0]))
+
+      # Foo() captures w and b.
+      @function.Defun(tf.float32)
+      def Foo(x):
+
+        # Plus() captures b.
+        @function.Defun(tf.float32)
+        def Plus(y):
+          return y + b
+
+        return Plus(tf.matmul(w, x))
+
+      y = Foo(tf.constant([[10.]]))
+
+    with self.test_session(graph=g):
+      tf.initialize_all_variables().run()
+      self.assertAllEqual(y.eval(), [[12.0]])
+
+  def testCaptureControls(self):
+    g = tf.Graph()
+    with g.as_default():
+      x = tf.constant([10.0])
+      x = tf.Print(x, [x], "outer")
+
+      @function.Defun(tf.float32)
+      def Foo(y):
+        with tf.control_dependencies([x]):
+          y = tf.Print(y, [y], "inner")
+        return y
+
+      with self.assertRaisesRegexp(ValueError, "not an element of this graph."):
+        # NOTE: We still do not support capturing control deps.
+        _ = Foo(x)
+
 
 class UnrollLSTMTest(tf.test.TestCase):
   BATCH_SIZE = 16
