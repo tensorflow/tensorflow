@@ -1298,6 +1298,24 @@ tf_cuda_cc_test(
 )
 
 tf_cuda_cc_test(
+    name = "batch_matmul_op_test",
+    size = "small",
+    srcs = ["batch_matmul_op_test.cc"],
+    deps = [
+        ":batch_matmul_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
     name = "reduction_ops_test",
     size = "small",
     srcs = ["reduction_ops_test.cc"],

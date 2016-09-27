@@ -68,7 +68,7 @@ endif()
 
 # put jpeg includes in the directory where they are expected
 add_custom_target(jpeg_create_destination_dir
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${jpeg_INCLUDE_DIR}/jpeg-9a
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${jpeg_INCLUDE_DIR}
     DEPENDS jpeg)
 
 add_custom_target(jpeg_copy_headers_to_destination
@@ -76,5 +76,5 @@ add_custom_target(jpeg_copy_headers_to_destination
 
 foreach(header_file ${jpeg_HEADERS})
     add_custom_command(TARGET jpeg_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${jpeg_INCLUDE_DIR}/jpeg-9a)
+    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${jpeg_INCLUDE_DIR})
 endforeach()
