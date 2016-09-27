@@ -29,8 +29,8 @@ export interface DataPoint {
   projectedPoint: Point3D;
   /** index of the trace, used for highlighting on click */
   traceIndex?: number;
-  /** index in the original data source */
-  dataSourceIndex: number;
+  /** index in the original data set. */
+  index: number;
 }
 
 /** A single collection of points which make up a trace through space. */

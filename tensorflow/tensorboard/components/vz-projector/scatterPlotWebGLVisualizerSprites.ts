@@ -256,7 +256,7 @@ export class ScatterPlotWebGLVisualizerSprites implements
 
     // Create the array of indices.
     for (let i = 0; i < numPoints; i++) {
-      indicesShader.setX(i, this.dataSet.points[i].dataSourceIndex);
+      indicesShader.setX(i, this.dataSet.points[i].index);
     }
 
     // Finally, add all attributes to the geometry.

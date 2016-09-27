@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption, DataPoint, DataSet, DataSource, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
+import {ColorOption, DataPoint, DataSet, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
 import {DataProvider, getDataProvider} from './data-loader';
 import * as knn from './knn';
 import {Mode, ScatterPlot} from './scatterPlot';
@@ -55,6 +55,12 @@ const NN_COLOR_SCALE =
 /** Text color used for error/important messages. */
 const CALLOUT_COLOR = '#880E4F';
 
+/**
+ * The minimum number of dimensions the data should have to automatically
+ * decide to normalize the data.
+ */
+const THRESHOLD_DIM_NORMALIZE = 50;
+
 type Centroids = {
   [key: string]: number[]; xLeft: number[]; xRight: number[]; yUp: number[];
   yDown: number[];
@@ -65,30 +71,18 @@ export let ProjectorPolymer = PolymerElement({
   properties: {
     // Private.
     pcaComponents: {type: Array, value: d3.range(1, 11)},
-    pcaX: {
-      type: Number,
-      value: 0,
-      notify: true,
-    },
-    pcaY: {
-      type: Number,
-      value: 1,
-      notify: true,
-    },
-    pcaZ: {
-      type: Number,
-      value: 2,
-      notify: true,
-    },
+    pcaX: {type: Number, value: 0, observer: 'showPCA'},
+    pcaY: {type: Number, value: 1, observer: 'showPCA'},
+    pcaZ: {type: Number, value: 2, observer: 'showPCA'},
     routePrefix: String,
-    hasPcaZ: {type: Boolean, value: true, notify: true},
-    labelOption: {type: String, observer: 'labelOptionChanged'},
-    colorOption: {type: Object, observer: 'colorOptionChanged'}
+    hasPcaZ: {type: Boolean, value: true},
+    labelOption: {type: String, observer: '_labelOptionChanged'},
+    colorOption: {type: Object, observer: '_colorOptionChanged'}
   }
 });
 
 export class Projector extends ProjectorPolymer {
-  dataSource: DataSource;
+  dataSet: DataSet;
 
   private dom: d3.Selection<any>;
   private pcaX: number;
@@ -115,6 +109,7 @@ export class Projector extends ProjectorPolymer {
   private labelOption: string;
   private routePrefix: string;
   private selectedProjection: Projection = 'pca';
+  private normalizeData: boolean;
 
   ready() {
     this.dataPanel = this.$['data-panel'] as DataPanel;
@@ -129,7 +124,8 @@ export class Projector extends ProjectorPolymer {
 
     // And select a default dataset.
     this.hasPcaZ = true;
-    this.selectedDistance = vector.cosDistNorm;
+    this.selectedDistance =
+        this.normalizeData ? vector.cosDistNorm : vector.cosDist;
     this.highlightedPoints = [];
     this.selectedPoints = [];
     this.centroidValues = {xLeft: null, xRight: null, yUp: null, yDown: null};
@@ -141,14 +137,14 @@ export class Projector extends ProjectorPolymer {
     this.setupUIControls();
   }
 
-  labelOptionChanged() {
+  _labelOptionChanged() {
     let labelAccessor = (i: number): string => {
       return this.points[i].metadata[this.labelOption] as string;
     };
     this.scatterPlot.setLabelAccessor(labelAccessor);
   }
 
-  colorOptionChanged() {
+  _colorOptionChanged() {
     let colorMap = this.colorOption.map;
     if (colorMap == null) {
       this.scatterPlot.setColorAccessor(null);
@@ -164,14 +160,26 @@ export class Projector extends ProjectorPolymer {
     this.scatterPlot.setColorAccessor(colors);
   }
 
-  updateDataSource(ds: DataSource) {
-    this.dataSource = ds;
-    if (this.scatterPlot == null || this.dataSource == null) {
+  setNormalizeData(normalizeData: boolean) {
+    this.normalizeData = normalizeData;
+    // Assign the proper distance metric depending on whether the data was
+    // normalized or not.
+    if (this.selectedDistance !== vector.dist) {
+      this.selectedDistance =
+          this.normalizeData ? vector.cosDistNorm : vector.cosDist;
+    }
+    this.setCurrentDataSet(this.dataSet.getSubset());
+  }
+
+  updateDataSet(ds: DataSet) {
+    this.dataSet = ds;
+    if (this.scatterPlot == null || this.dataSet == null) {
       // We are not ready yet.
       return;
     }
-
-    this.setDataSet(this.dataSource.getDataSet());
+    this.normalizeData = this.dataSet.dim[1] >= THRESHOLD_DIM_NORMALIZE;
+    this.dataPanel.setNormalizeData(this.normalizeData);
+    this.setCurrentDataSet(this.dataSet.getSubset());
     this.dom.select('.reset-filter').style('display', 'none');
     // Regexp inputs.
     this.setupInput('xLeft');
@@ -190,7 +198,7 @@ export class Projector extends ProjectorPolymer {
    * The normalization depends on the distance metric (cosine vs euclidean).
    */
   private normalizeDist(d: number, minDist: number): number {
-    return this.selectedDistance === vector.cosDistNorm ? 1 - d : minDist / d;
+    return this.selectedDistance === vector.dist ? minDist / d : 1 - d;
   }
 
   /** Normalizes and encodes the provided distance with color. */
@@ -198,10 +206,12 @@ export class Projector extends ProjectorPolymer {
     return NN_COLOR_SCALE(this.normalizeDist(d, minDist));
   }
 
-  private setDataSet(ds: DataSet) {
+  private setCurrentDataSet(ds: DataSet) {
     this.currentDataSet = ds;
-    this.scatterPlot.setDataSet(
-        this.currentDataSet, this.dataSource.spriteImage);
+    if (this.normalizeData) {
+      this.currentDataSet.normalize();
+    }
+    this.scatterPlot.setDataSet(this.currentDataSet, this.dataSet.spriteImage);
     this.updateMenuButtons();
     this.dim = this.currentDataSet.dim[1];
     this.dom.select('span.numDataPoints').text(this.currentDataSet.dim[0]);
@@ -266,12 +276,8 @@ export class Projector extends ProjectorPolymer {
         this.scatterPlot.recreateScene();
       });
     });
-    this.dom.on('pca-x-changed', () => this.showPCA());
-    this.dom.on('pca-y-changed', () => this.showPCA());
-    this.dom.on('pca-z-changed', () => this.showPCA());
 
     // TSNE controls.
-
     tsneToggle.addEventListener('change', () => {
       // Make sure PCA stays in the same dimension as tsne.
       this.hasPcaZ = tsneToggle.checked;
@@ -393,7 +399,7 @@ export class Projector extends ProjectorPolymer {
     searchInputChanged('');
 
     this.dom.select('.distance a.euclidean').on('click', function() {
-      this.dom.selectAll('.distance a').classed('selected', false);
+      self.dom.selectAll('.distance a').classed('selected', false);
       d3.select(this).classed('selected', true);
       self.selectedDistance = vector.dist;
       if (self.selectedPoints.length > 0) {
@@ -403,9 +409,10 @@ export class Projector extends ProjectorPolymer {
     });
 
     this.dom.select('.distance a.cosine').on('click', function() {
-      this.dom.selectAll('.distance a').classed('selected', false);
+      self.dom.selectAll('.distance a').classed('selected', false);
       d3.select(this).classed('selected', true);
-      self.selectedDistance = vector.cosDistNorm;
+      self.selectedDistance =
+          this.normalizeData ? vector.cosDistNorm : vector.cosDist;
       if (self.selectedPoints.length > 0) {
         let neighbors = self.findNeighbors(self.selectedPoints[0]);
         self.updateInspectorPane(neighbors);
@@ -471,10 +478,10 @@ export class Projector extends ProjectorPolymer {
     // Selection controls
     this.dom.select('.set-filter').on('click', () => {
       let highlighted = this.selectedPoints;
-      let highlightedOrig: number[] =
-          highlighted.map(d => { return this.points[d].dataSourceIndex; });
-      let subset = this.dataSource.getDataSet(highlightedOrig);
-      this.setDataSet(subset);
+      let highlightedOrig: number[] = highlighted.map(d => {
+        return this.points[d].index;
+      });
+      this.setCurrentDataSet(this.dataSet.getSubset(highlightedOrig));
       this.dom.select('.reset-filter').style('display', null);
       this.selectedPoints = [];
       this.scatterPlot.recreateScene();
@@ -483,8 +490,7 @@ export class Projector extends ProjectorPolymer {
     });
 
     this.dom.select('.reset-filter').on('click', () => {
-      let subset = this.dataSource.getDataSet();
-      this.setDataSet(subset);
+      this.setCurrentDataSet(this.dataSet.getSubset(null));
       this.dom.select('.reset-filter').style('display', 'none');
     });
 
@@ -537,6 +543,9 @@ export class Projector extends ProjectorPolymer {
   }
 
   private showPCA(callback?: () => void) {
+    if (this.currentDataSet == null) {
+      return;
+    }
     this.selectedProjection = 'pca';
     this.currentDataSet.projectPCA().then(() => {
       this.scatterPlot.showTickLabels(false);
@@ -822,10 +831,6 @@ export class Projector extends ProjectorPolymer {
     state.cameraPosition = this.scatterPlot.getCameraPosition();
     state.cameraTarget = this.scatterPlot.getCameraTarget();
 
-    // Save the color and label by options.
-    state.colorOption = this.colorOption;
-    state.labelOption = this.labelOption;
-
     return state;
   }
 
@@ -835,12 +840,6 @@ export class Projector extends ProjectorPolymer {
     for (let i = 0; i < state.projections.length; i++) {
       this.currentDataSet.points[i].projections = state.projections[i];
     }
-
-    // Load the color and label by options.
-    this.colorOption = state.colorOption;
-    this.labelOption = state.labelOption;
-    this.set('colorOption', this.colorOption);
-    this.set('labelOption', this.labelOption);
 
     // Select the type of projection.
     if (state.selectedProjection === 'pca') {

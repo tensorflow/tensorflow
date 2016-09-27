@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {runAsyncTask, updateMessage, updateWarningMessage} from './async';
-import {DataPoint, DataSet, DatasetMetadata, DataSource} from './data';
+import {DataPoint, DataSet, DatasetMetadata} from './data';
 
 /** Maximum number of colors supported in the color map. */
 const NUM_COLORS_COLOR_MAP = 20;
@@ -47,15 +47,14 @@ export interface DataProvider {
   getCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void): void;
 
   /** Fetches and returns the tensor with the specified name. */
-  getTensor(
-      run: string, tensorName: string, callback: (ds: DataSource) => void);
+  getTensor(run: string, tensorName: string, callback: (ds: DataSet) => void);
 
   /**
    * Fetches the metadata for the specified tensor and merges it with the
    * specified data source.
    */
   getMetadata(
-      run: string, ds: DataSource, tensorName: string,
+      run: string, ds: DataSet, tensorName: string,
       callback: (stats: ColumnStats[]) => void): void;
 
   /**
@@ -91,8 +90,7 @@ class ServerDataProvider implements DataProvider {
     });
   }
 
-  getTensor(
-      run: string, tensorName: string, callback: (ds: DataSource) => void) {
+  getTensor(run: string, tensorName: string, callback: (ds: DataSet) => void) {
     // Get the tensor.
     updateMessage('Fetching tensor values...');
     d3.text(
@@ -103,15 +101,13 @@ class ServerDataProvider implements DataProvider {
             return;
           }
           parseTensors(tsv).then(dataPoints => {
-            let dataSource = new DataSource();
-            dataSource.originalDataSet = new DataSet(dataPoints);
-            callback(dataSource);
+            callback(new DataSet(dataPoints));
           });
         });
   }
 
   getMetadata(
-      run: string, ds: DataSource, tensorName: string,
+      run: string, ds: DataSet, tensorName: string,
       callback: (stats: ColumnStats[]) => void) {
     updateMessage('Fetching metadata...');
     d3.text(
@@ -121,8 +117,9 @@ class ServerDataProvider implements DataProvider {
             console.error(err);
             return;
           }
-          parseAndMergeMetadata(rawMetadata, ds.originalDataSet.points)
-              .then(columnStats => { callback(columnStats); });
+          parseAndMergeMetadata(rawMetadata, ds.points).then(columnStats => {
+            callback(columnStats);
+          });
         });
   }
 
@@ -157,18 +154,15 @@ export function getDataProvider(
 }
 
 export function parseRawTensors(
-    content: string, callback: (ds: DataSource) => void) {
+    content: string, callback: (ds: DataSet) => void) {
   parseTensors(content).then(data => {
-    let dataSource = new DataSource();
-    dataSource.originalDataSet = new DataSet(data);
-    callback(dataSource);
+    callback(new DataSet(data));
   });
 }
 
 export function parseRawMetadata(
-    contents: string, ds: DataSource,
-    callback: (stats: ColumnStats[]) => void) {
-  parseAndMergeMetadata(contents, ds.originalDataSet.points).then(stats => {
+    contents: string, ds: DataSet, callback: (stats: ColumnStats[]) => void) {
+  parseAndMergeMetadata(contents, ds.points).then(stats => {
     callback(stats);
   });
 }
@@ -188,7 +182,7 @@ function parseTensors(content: string, delim = '\t'): Promise<DataPoint[]> {
       let dataPoint: DataPoint = {
         metadata: {},
         vector: null,
-        dataSourceIndex: data.length,
+        index: data.length,
         projections: null,
         projectedPoint: null
       };
@@ -389,8 +383,7 @@ class DemoDataProvider implements DataProvider {
     callback('SmartReply 5K');
   }
 
-  getTensor(
-      run: string, tensorName: string, callback: (ds: DataSource) => void) {
+  getTensor(run: string, tensorName: string, callback: (ds: DataSet) => void) {
     let demoDataSet = DemoDataProvider.DEMO_DATASETS[tensorName];
     let separator = demoDataSet.fpath.substr(-3) === 'tsv' ? '\t' : ' ';
     let url = `${DemoDataProvider.DEMO_FOLDER}/${demoDataSet.fpath}`;
@@ -402,15 +395,13 @@ class DemoDataProvider implements DataProvider {
         return;
       }
       parseTensors(dataString, separator).then(points => {
-        let dataSource = new DataSource();
-        dataSource.originalDataSet = new DataSet(points);
-        callback(dataSource);
+        callback(new DataSet(points));
       });
     });
   }
 
   getMetadata(
-      run: string, ds: DataSource, tensorName: string,
+      run: string, ds: DataSet, tensorName: string,
       callback: (stats: ColumnStats[]) => void) {
     let demoDataSet = DemoDataProvider.DEMO_DATASETS[tensorName];
     let dataSetPromise: Promise<ColumnStats[]> = null;
@@ -425,8 +416,7 @@ class DemoDataProvider implements DataProvider {
                 reject(err);
                 return;
               }
-              resolve(parseAndMergeMetadata(
-                  rawMetadata, ds.originalDataSet.points));
+              resolve(parseAndMergeMetadata(rawMetadata, ds.points));
             });
       });
     }
