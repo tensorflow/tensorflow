@@ -17,7 +17,10 @@ licenses(["notice"])  # Apache 2.0
 
 package_group(
     name = "friends",
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//learning/deepmind/tensorflow/...",
+        "//tensorflow/...",
+    ],
 )
 
 load(
@@ -25,6 +28,7 @@ load(
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
+    "tf_cuda_library",
     "tf_opts_nortti_if_android",
     "tf_kernel_libraries",
     "tf_kernel_library",
@@ -418,7 +422,7 @@ tf_kernel_libraries(
         ":depth_space_ops",
         ":extract_image_patches_op",
         ":fill_functor",
-        ":gather_op_cpu_impl",
+        ":gather_functor",
         ":ops_util",
         ":split_lib",
         ":strided_slice_op",
@@ -433,18 +437,6 @@ tf_kernel_libraries(
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_io_utils",
-        "//third_party/eigen3",
-    ],
-)
-
-cc_library(
-    name = "gather_op_cpu_impl",
-    hdrs = ["gather_op_cpu_impl.h"],
-    visibility = [":friends"],
-    deps = [
-        ":bounds_check",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
 )
@@ -551,6 +543,21 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_library(
+    name = "gather_functor",
+    hdrs = [
+        "gather_functor.h",
+        "gather_functor_gpu.cu.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        ":bounds_check",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
     ],
 )
 
@@ -2003,9 +2010,9 @@ filegroup(
         "fill_functor.cc",
         "fill_functor.h",
         "function_ops.cc",
+        "gather_functor.h",
         "gather_op.cc",
         "gather_op.h",
-        "gather_op_cpu_impl.h",
         "identity_op.cc",
         "identity_op.h",
         "immutable_constant_op.cc",
