@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.metrics.python.ops import metric_ops_util
+from tensorflow.contrib.framework import tensor_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -73,7 +73,7 @@ def confusion_matrix(predictions, labels, num_classes=None, dtype=dtypes.int32,
   """
   with ops.name_scope(name, 'confusion_matrix',
                       [predictions, labels, num_classes]) as name:
-    predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+    predictions, labels = tensor_util.remove_squeezable_dimensions(
         ops.convert_to_tensor(
             predictions, name='predictions'),
         ops.convert_to_tensor(labels, name='labels'))
