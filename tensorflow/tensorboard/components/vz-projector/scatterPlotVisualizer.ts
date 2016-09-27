@@ -14,16 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet} from './scatterPlotWebGL';
+import {DataSet} from './scatterPlot';
 
 
 /**
- * ScatterPlotWebGLVisualizer is an interface used by ScatterPlotWebGLContainer
+ * ScatterPlotVisualizer is an interface used by ScatterPlotContainer
  * to manage and aggregate any number of concurrent visualization behaviors.
  * To add a new visualization to the 3D scatter plot, create a new class that
- * implements this interface and attach it to the ScatterPlotWebGLContainer.
+ * implements this interface and attach it to the ScatterPlotContainer.
  */
-export interface ScatterPlotWebGLVisualizer {
+export interface ScatterPlotVisualizer {
   /**
    * Called when the main scatter plot builds the scene. Add all 3D geometry to
    * the scene here, set up lights, etc.

@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet} from './scatterPlotWebGL';
-import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
+import {DataSet} from './scatterPlot';
+import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 
 const AXIS_COLOR = 0xb3b3b3;
 
@@ -23,8 +23,7 @@ const AXIS_COLOR = 0xb3b3b3;
  * Maintains and renders 2d and 3d axes for the scatter plot.
  * 2d axes are scaled relative to the data set.
  */
-export class ScatterPlotWebGLVisualizerAxes implements
-    ScatterPlotWebGLVisualizer {
+export class ScatterPlotVisualizerAxes implements ScatterPlotVisualizer {
   private axis3D: THREE.AxisHelper;
   private axis2D: THREE.LineSegments;
   private sceneIs3D: boolean = true;

@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
-import {ScatterPlotWebGLVisualizerAxes} from './scatterPlotWebGLVisualizerAxes';
+import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
+import {ScatterPlotVisualizerAxes} from './scatterPlotVisualizerAxes';
 import {getNearFarPoints, getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
 import {dist_2D, Point3D} from './vector';
 
@@ -103,11 +103,11 @@ export enum Mode {
  * independent of how a 3D scatter plot is actually rendered. Also holds an
  * array of visualizers and dispatches application events to them.
  */
-export class ScatterPlotWebGL {
+export class ScatterPlot {
   private dataSet: DataSet;
   private spriteImage: HTMLImageElement;
   private containerNode: HTMLElement;
-  private visualizers: ScatterPlotWebGLVisualizer[] = [];
+  private visualizers: ScatterPlotVisualizer[] = [];
 
   private highlightedPoints: number[] = [];
   private highlightStroke: (index: number) => string;
@@ -546,8 +546,7 @@ export class ScatterPlotWebGL {
   }
 
   private addAxesToScene() {
-    this.addVisualizer(
-        new ScatterPlotWebGLVisualizerAxes(this.xScale, this.yScale));
+    this.addVisualizer(new ScatterPlotVisualizerAxes(this.xScale, this.yScale));
   }
 
   private sceneIs3D(): boolean {
@@ -557,7 +556,7 @@ export class ScatterPlotWebGL {
   // PUBLIC API
 
   /** Adds a visualizer to the set, will start dispatching events to it */
-  addVisualizer(visualizer: ScatterPlotWebGLVisualizer) {
+  addVisualizer(visualizer: ScatterPlotVisualizer) {
     this.visualizers.push(visualizer);
     if (this.dataSet) {
       visualizer.onDataSet(this.dataSet, this.spriteImage);

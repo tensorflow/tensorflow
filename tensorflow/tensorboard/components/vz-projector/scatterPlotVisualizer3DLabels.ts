@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet, ScatterPlotWebGL} from './scatterPlotWebGL';
-import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
+import {DataSet, ScatterPlot} from './scatterPlot';
+import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import {createTexture} from './util';
 
 const FONT_SIZE = 80;
@@ -106,8 +106,7 @@ type GlyphTexture = {
 /**
  * Renders the text labels as 3d geometry in the world.
  */
-export class ScatterPlotWebGLVisualizer3DLabels implements
-    ScatterPlotWebGLVisualizer {
+export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   private dataSet: DataSet;
   private scene: THREE.Scene;
   private labelAccessor: (index: number) => string;
@@ -123,8 +122,8 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
   private labelVertexMap: number[][];
   private glyphTexture: GlyphTexture;
 
-  constructor(scatterPlotWebGL: ScatterPlotWebGL) {
-    scatterPlotWebGL.onSelection((s: number[]) => this.onSelectionChanged(s));
+  constructor(scatterPlot: ScatterPlot) {
+    scatterPlot.onSelection((s: number[]) => this.onSelectionChanged(s));
     this.createGlyphTexture();
 
     this.uniforms = {

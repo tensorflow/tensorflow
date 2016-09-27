@@ -16,11 +16,11 @@ limitations under the License.
 import {ColorOption, DataPoint, DataSet, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
 import {DataProvider, getDataProvider} from './data-loader';
 import * as knn from './knn';
-import {Mode, ScatterPlotWebGL} from './scatterPlotWebGL';
-import {ScatterPlotWebGLVisualizer3DLabels} from './scatterPlotWebGLVisualizer3DLabels';
-import {ScatterPlotWebGLVisualizerCanvasLabels} from './scatterPlotWebGLVisualizerCanvasLabels';
-import {ScatterPlotWebGLVisualizerSprites} from './scatterPlotWebGLVisualizerSprites';
-import {ScatterPlotWebGLVisualizerTraces} from './scatterPlotWebGLVisualizerTraces';
+import {Mode, ScatterPlot} from './scatterPlot';
+import {ScatterPlotVisualizer3DLabels} from './scatterPlotVisualizer3DLabels';
+import {ScatterPlotVisualizerCanvasLabels} from './scatterPlotVisualizerCanvasLabels';
+import {ScatterPlotVisualizerSprites} from './scatterPlotVisualizerSprites';
+import {ScatterPlotVisualizerTraces} from './scatterPlotVisualizerTraces';
 import * as vector from './vector';
 import {BookmarkPanel} from './vz-projector-bookmark-panel';
 import {DataPanel} from './vz-projector-data-panel';
@@ -90,7 +90,7 @@ export class Projector extends ProjectorPolymer {
   private hasPcaZ: boolean;
   // The working subset of the data source's original data set.
   private currentDataSet: DataSet;
-  private scatterPlot: ScatterPlotWebGL;
+  private scatterPlot: ScatterPlot;
   private labels3D: boolean = false;
   private dim: number;
   private selectedDistance: (a: number[], b: number[]) => number;
@@ -449,7 +449,7 @@ export class Projector extends ProjectorPolymer {
 
     // Canvas
     {
-      this.scatterPlot = new ScatterPlotWebGL(
+      this.scatterPlot = new ScatterPlot(
           this.getScatterContainer(),
           i => '' + this.points[i].metadata['label']);
       this.createVisualizers();
@@ -507,21 +507,18 @@ export class Projector extends ProjectorPolymer {
   }
 
   private createVisualizers() {
-    let scatterPlotWebGL = this.scatterPlot;
-    scatterPlotWebGL.removeAllVisualizers();
+    let scatterPlot = this.scatterPlot;
+    scatterPlot.removeAllVisualizers();
 
     if (this.labels3D) {
-      scatterPlotWebGL.addVisualizer(
-          new ScatterPlotWebGLVisualizer3DLabels(scatterPlotWebGL));
+      scatterPlot.addVisualizer(new ScatterPlotVisualizer3DLabels(scatterPlot));
     } else {
-      scatterPlotWebGL.addVisualizer(
-          new ScatterPlotWebGLVisualizerSprites(scatterPlotWebGL));
+      scatterPlot.addVisualizer(new ScatterPlotVisualizerSprites(scatterPlot));
 
-      scatterPlotWebGL.addVisualizer(
-          new ScatterPlotWebGLVisualizerTraces(scatterPlotWebGL));
+      scatterPlot.addVisualizer(new ScatterPlotVisualizerTraces(scatterPlot));
 
-      scatterPlotWebGL.addVisualizer(new ScatterPlotWebGLVisualizerCanvasLabels(
-          this.getScatterContainer()));
+      scatterPlot.addVisualizer(
+          new ScatterPlotVisualizerCanvasLabels(this.getScatterContainer()));
     }
   }
 
