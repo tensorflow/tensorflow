@@ -16,11 +16,13 @@ limitations under the License.
 -->
 
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../iron-collapse/iron-collapse.html">
 <link rel="import" href="../paper-toggle-button/paper-toggle-button.html">
 <link rel="import" href="../paper-listbox/paper-listbox.html">
 <link rel="import" href="../paper-item/paper-item.html">
 <link rel="import" href="../paper-checkbox/paper-checkbox.html">
 <link rel="import" href="vz-projector-data-panel.html">
+<link rel="import" href="vz-projector-bookmark-panel.html">
 
 <dom-module id='vz-projector'>
 <template>
@@ -410,7 +412,7 @@ limitations under the License.
   z-index: 1;
 }
 
-.ink-panel-menubar .ink-fabs .ink-fab {
+.ink-fab, vz-projector-bookmark-panel::shadow .ink-fab {
   position: relative;
   top: -20px;
   width: 40px;
@@ -424,7 +426,7 @@ limitations under the License.
   cursor: pointer;
 }
 
-.ink-panel-menubar .ink-fabs .ink-fab .material-icons {
+.ink-fab .material-icons {
   margin: 0;
   display: block;
   line-height: 24px;
@@ -459,6 +461,16 @@ paper-listbox .pca-item {
 
 .has-border {
   border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+#bookmark-panel {
+  bottom: 0;
+  position: absolute;
+  width: 300px;
+}
+#bookmark-panel-container {
+  bottom: 60px;
+  position: absolute;
 }
 
 </style>
@@ -569,6 +581,10 @@ paper-listbox .pca-item {
         <i class="material-icons">brightness_2</i>
         Night Mode
       </button>
+      <button class="menu-button labels3DMode" title="3D Labels">
+        <i class="material-icons">flip_to_front</i>
+        3D Labels
+      </button>
       <div class="ink-fabs">
         <div class="ink-fab reset-zoom" title="Zoom to fit all">
           <i class="material-icons resetZoom">home</i>
@@ -632,7 +648,11 @@ paper-listbox .pca-item {
     <div data-panel="data" class="active ink-panel-content">
       <vz-projector-data-panel id="data-panel" label-option="{{labelOption}}" color-option="{{colorOption}}"></vz-projector-data-panel>
     </div>
-  </div>
+
+    <div id="bookmark-panel-container">
+      <vz-projector-bookmark-panel id="bookmark-panel"></vz-projector-bookmark-panel>
+    </div>
 </div>
 </template>
 </dom-module>
+

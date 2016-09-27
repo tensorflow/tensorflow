@@ -115,8 +115,7 @@ const FRAGMENT_SHADER = `
   }`;
 
 /**
- * This uses GL point sprites to render
- * the scatter plot dataset, and a 2D HTML canvas to render labels.
+ * Uses GL point sprites to render the dataset.
  */
 export class ScatterPlotWebGLVisualizerSprites implements
     ScatterPlotWebGLVisualizer {
@@ -359,9 +358,11 @@ export class ScatterPlotWebGLVisualizerSprites implements
     this.sceneIs3D = sceneIs3D;
     this.fog = new THREE.Fog(backgroundColor);
     scene.fog = this.fog;
-    this.addSprites(scene);
-    this.colorSprites(null);
-    this.highlightSprites(null, null);
+    if (this.dataSet) {
+      this.addSprites(scene);
+      this.colorSprites(null);
+      this.highlightSprites(null, null);
+    }
   }
 
   onUpdate() {

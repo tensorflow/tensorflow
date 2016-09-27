@@ -151,9 +151,15 @@ module VZ {
     private _onDatasetChanged(dataset: Plottable.Dataset) {
       if (this.smoothingEnabled) {
         this.resmoothDataset(dataset);
-        this.updateSpecialDatasets(this.smoothedAccessor);
+      }
+      this.updateSpecialDatasets();
+    }
+
+    private updateSpecialDatasets() {
+      if (this.smoothingEnabled) {
+        this.updateSpecialDatasetsWithAccessor(this.smoothedAccessor);
       } else {
-        this.updateSpecialDatasets(this.scalarAccessor);
+        this.updateSpecialDatasetsWithAccessor(this.scalarAccessor);
       }
     }
 
@@ -163,7 +169,8 @@ module VZ {
      * (since usually those are context in the surrounding dataset).
      * The accessor will point to the correct data to access.
      */
-    private updateSpecialDatasets(accessor: Plottable.Accessor<number>) {
+    private updateSpecialDatasetsWithAccessor(accessor:
+                                                  Plottable.Accessor<number>) {
       let lastPointsData =
           this.datasets
               .map((d) => {
@@ -465,6 +472,7 @@ module VZ {
      * Update the selected series on the chart.
      */
     public setVisibleSeries(names: string[]) {
+      names = names.sort();
       this.seriesNames = names;
 
       names.reverse();  // draw first series on top
@@ -476,6 +484,7 @@ module VZ {
       if (this.smoothingEnabled) {
         this.smoothLinePlot.datasets(this.datasets);
       }
+      this.updateSpecialDatasets();
     }
 
     /**
@@ -496,7 +505,7 @@ module VZ {
         this.smoothLinePlot.datasets(this.datasets);
       }
 
-      this.updateSpecialDatasets(this.smoothedAccessor);
+      this.updateSpecialDatasetsWithAccessor(this.smoothedAccessor);
     }
 
     public smoothingDisable() {
@@ -505,7 +514,7 @@ module VZ {
         this.scatterPlot.y(this.scalarAccessor, this.yScale);
         this.smoothLinePlot.datasets([]);
         this.smoothingEnabled = false;
-        this.updateSpecialDatasets(this.scalarAccessor);
+        this.updateSpecialDatasetsWithAccessor(this.scalarAccessor);
       }
     }
 

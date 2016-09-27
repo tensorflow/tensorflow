@@ -47,6 +47,9 @@ class TestExperiment(tf.contrib.learn.Experiment):
   def run_std_server(self):
     return "run_std_server"
 
+  def train_and_evaluate(self):
+    return "train_and_evaluate"
+
   def simple_task(self):
     return "simple_task, default=%s." % self.default
 
@@ -80,18 +83,25 @@ class MainTest(tf.test.TestCase):
     # Ensure the TF_CONFIG environment variable is unset for all tests.
     os.environ.pop("TF_CONFIG", None)
 
-  def test_run_with_explicit_args(self):
+  def test_run_with_custom_schedule(self):
     self.assertEqual(
         "simple_task, default=None.",
         learn_runner.run(build_experiment,
                          output_dir="/tmp",
                          schedule="simple_task"))
 
+  def test_run_with_explicit_local_run(self):
+    self.assertEqual(
+        "local_run",
+        learn_runner.run(build_experiment,
+                         output_dir="/tmp",
+                         schedule="local_run"))
+
   def test_schedule_from_tf_config(self):
     os.environ["TF_CONFIG"] = json.dumps(
         {"cluster": build_distributed_cluster_spec().as_dict(),
          "task": {"type": "worker"}})
-    # RunConfig constructuor will set job_name from TF_CONFIG.
+    # RunConfig constructor will set job_name from TF_CONFIG.
     config = run_config.RunConfig()
     self.assertEqual(
         "train",
@@ -106,14 +116,14 @@ class MainTest(tf.test.TestCase):
         learn_runner.run(lambda output_dir: TestExperiment(config=config),
                          output_dir="/tmp"))
 
-  def test_schedule_from_config_runs_local_run_on_master(self):
+  def test_schedule_from_config_runs_train_and_evaluate_on_master(self):
     config = run_config.RunConfig(
         job_name="master",
         cluster_spec=build_distributed_cluster_spec(),
         task=0,
         is_chief=True)
     self.assertEqual(
-        "local_run",
+        "train_and_evaluate",
         learn_runner.run(lambda output_dir: TestExperiment(config=config),
                          output_dir="/tmp"))
 
@@ -138,17 +148,17 @@ class MainTest(tf.test.TestCase):
                             learn_runner.run, build_experiment, "",
                             "simple_task")
 
-  def test_no_schedule_and_no_config_runs_local_run(self):
+  def test_no_schedule_and_no_config_runs_train_and_evaluate(self):
     self.assertEqual(
-        "local_run",
+        "train_and_evaluate",
         learn_runner.run(build_experiment,
                          output_dir="/tmp"))
 
-  def test_no_schedule_and_non_distributed_runs_local_run(self):
+  def test_no_schedule_and_non_distributed_runs_train_and_evaluate(self):
     config = run_config.RunConfig(
         cluster_spec=build_non_distributed_cluster_spec())
     self.assertEqual(
-        "local_run",
+        "train_and_evaluate",
         learn_runner.run(lambda output_dir: TestExperiment(config=config),
                          output_dir="/tmp"))
 

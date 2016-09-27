@@ -797,6 +797,11 @@ export class Annotation {
   width: number;
   height: number;
   /**
+   * The names of nodes on either side of this edge.
+   */
+  v: string;
+  w: string;
+  /**
    * A flag whether it is an in-annotation (if true) or
    * out-annotation  (if false).
    */
@@ -836,6 +841,9 @@ export class Annotation {
     this.dy = 0;
     this.width = 0;
     this.height = 0;
+    // Properties needed for generating an ID for the edge's path element.
+    this.v = renderMetaedgeInfo.metaedge.v;
+    this.w = renderMetaedgeInfo.metaedge.w;
 
     this.isIn = isIn;
     this.points = [];

@@ -56,6 +56,114 @@ Status TwoElementOutput(InferenceContext* c) {
 
 }  // namespace
 
+REGISTER_OP("SaveV2")
+    .Input("prefix: string")
+    .Input("tensor_names: string")
+    .Input("shape_and_slices: string")
+    .Input("tensors: dtypes")
+    .Attr("dtypes: list(type)")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      ShapeHandle s;
+      DimensionHandle unused_dim;
+
+      // Validate prefix.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+
+      // Validate tensor_names and shapes_and_slices.
+      for (int i = 1; i <= 2; ++i) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &s));
+        TF_RETURN_IF_ERROR(
+            c->WithValue(c->Dim(s, 0), c->num_inputs() - 3, &unused_dim));
+      }
+      // TODO(mrry): Attempt to parse the shapes_and_slices values and use
+      // them to constrain the shape of the remaining inputs.
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Saves tensors in V2 checkpoint format.
+
+By default, saves the named tensors in full.  If the caller wishes to save
+specific slices of full tensors, "shape_and_slices" should be non-empty strings
+and correspondingly well-formed.
+
+prefix: Must have a single element. The prefix of the V2 checkpoint to which we
+  write the tensors.
+tensor_names: shape {N}. The names of the tensors to be saved.
+shape_and_slices: shape {N}.  The slice specs of the tensors to be saved.
+  Empty strings indicate that they are non-partitioned tensors.
+tensors: `N` tensors to save.
+)doc");
+
+REGISTER_OP("RestoreV2")
+    .Input("prefix: string")
+    .Input("tensor_names: string")
+    .Input("shape_and_slices: string")
+    .Output("tensors: dtypes")
+    .Attr("dtypes: list(type)")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle shape0, shape1, shape2;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &shape0));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &shape1));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &shape2));
+      TF_RETURN_IF_ERROR(c->Merge(shape1, shape2, &shape0));
+      c->set_output(0, c->UnknownShape());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Restores tensors from a V2 checkpoint.
+
+For backward compatibility with the V1 format, this Op currently allows
+restoring from a V1 checkpoint as well:
+  - This Op first attempts to find the V2 index file pointed to by "prefix", and
+    if found proceed to read it as a V2 checkpoint;
+  - Otherwise the V1 read path is invoked.
+Relying on this behavior is not recommended, as the ability to fall back to read
+V1 might be deprecated and eventually removed.
+
+By default, restores the named tensors in full.  If the caller wishes to restore
+specific slices of stored tensors, "shape_and_slices" should be non-empty
+strings and correspondingly well-formed.
+
+Callers must ensure all the named tensors are indeed stored in the checkpoint.
+
+prefix: Must have a single element.  The prefix of a V2 checkpoint.
+tensor_names: shape {N}.  The names of the tensors to be restored.
+shape_and_slices: shape {N}.  The slice specs of the tensors to be restored.
+  Empty strings indicate that they are non-partitioned tensors.
+dtypes: shape {N}.  The list of expected dtype for the tensors.  Must match
+  those stored in the checkpoint.
+tensors: shape {N}.  The restored tensors, whose shapes are read from the
+  checkpoint directly.
+)doc");
+
+REGISTER_OP("MergeV2Checkpoints")
+    .Input("checkpoint_prefixes: string")
+    .Input("destination_prefix: string")
+    .Attr("delete_old_dirs: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+V2 format specific: merges the metadata files of sharded checkpoints.  The
+result is one logical checkpoint, with one physical metadata file and renamed
+data files.
+
+Intended for "grouping" multiple checkpoints in a sharded checkpoint setup.
+
+If delete_old_dirs is true, attempts to delete recursively the dirname of each
+path in the input checkpoint_prefixes.  This is useful when those paths are non
+user-facing temporary locations.
+
+checkpoint_prefixes: prefixes of V2 checkpoints to merge.
+destination_prefix: scalar.  The desired final prefix.  Allowed to be the same
+  as one of the checkpoint_prefixes.
+delete_old_dirs: see above.
+)doc");
+
 REGISTER_OP("Save")
     .Input("filename: string")
     .Input("tensor_names: string")

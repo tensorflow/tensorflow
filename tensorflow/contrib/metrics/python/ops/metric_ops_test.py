@@ -3593,6 +3593,92 @@ class StreamingMeanIOUTest(tf.test.TestCase):
       self.assertAlmostEqual(desired_miou, miou.eval())
 
 
+class StreamingConcatTest(tf.test.TestCase):
+
+  def setUp(self):
+    tf.reset_default_graph()
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    value, _ = metrics.streaming_concat(
+        values=tf.ones((10,)),
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(tf.get_collection(my_collection_name), [value])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metrics.streaming_concat(
+        values=tf.ones((10,)),
+        updates_collections=[my_collection_name])
+    self.assertListEqual(tf.get_collection(my_collection_name), [update_op])
+
+  def testNextArraySize(self):
+    next_array_size = metrics.python.ops.metric_ops._next_array_size
+    with self.test_session():
+      self.assertEqual(next_array_size(2, growth_factor=2).eval(), 2)
+      self.assertEqual(next_array_size(3, growth_factor=2).eval(), 4)
+      self.assertEqual(next_array_size(4, growth_factor=2).eval(), 4)
+      self.assertEqual(next_array_size(5, growth_factor=2).eval(), 8)
+      self.assertEqual(next_array_size(6, growth_factor=2).eval(), 8)
+
+  def testStreamingConcat(self):
+    with self.test_session() as sess:
+      values = tf.placeholder(tf.int32, [None])
+      concatenated, update_op = metrics.streaming_concat(values)
+      sess.run(tf.initialize_local_variables())
+
+      self.assertAllEqual([], concatenated.eval())
+
+      sess.run([update_op], feed_dict={values: [0, 1, 2]})
+      self.assertAllEqual([0, 1, 2], concatenated.eval())
+
+      sess.run([update_op], feed_dict={values: [3, 4]})
+      self.assertAllEqual([0, 1, 2, 3, 4], concatenated.eval())
+
+      sess.run([update_op], feed_dict={values: [5, 6, 7, 8, 9]})
+      self.assertAllEqual(np.arange(10), concatenated.eval())
+
+  def testStreamingConcatMaxSize(self):
+    with self.test_session() as sess:
+      values = tf.range(3)
+      concatenated, update_op = metrics.streaming_concat(values, max_size=5)
+      sess.run(tf.initialize_local_variables())
+
+      self.assertAllEqual([], concatenated.eval())
+
+      sess.run([update_op])
+      self.assertAllEqual([0, 1, 2], concatenated.eval())
+
+      sess.run([update_op])
+      self.assertAllEqual([0, 1, 2, 0, 1], concatenated.eval())
+
+      sess.run([update_op])
+      self.assertAllEqual([0, 1, 2, 0, 1], concatenated.eval())
+
+  def testStreamingConcat2D(self):
+    with self.test_session() as sess:
+      values = tf.reshape(tf.range(3), (3, 1))
+      concatenated, update_op = metrics.streaming_concat(values, axis=-1)
+      sess.run(tf.initialize_local_variables())
+      for _ in range(10):
+        sess.run([update_op])
+      self.assertAllEqual([[0] * 10, [1] * 10, [2] * 10],
+                          concatenated.eval())
+
+  def testStreamingConcatErrors(self):
+    with self.assertRaises(ValueError):
+      metrics.streaming_concat(tf.placeholder(tf.float32))
+
+    values = tf.zeros((2, 3))
+    with self.assertRaises(ValueError):
+      metrics.streaming_concat(values, axis=-3, max_size=3)
+    with self.assertRaises(ValueError):
+      metrics.streaming_concat(values, axis=2, max_size=3)
+
+    with self.assertRaises(ValueError):
+      metrics.streaming_concat(tf.placeholder(tf.float32, [None, None]))
+
+
 class AggregateMetricsTest(tf.test.TestCase):
 
   def testAggregateNoMetricsRaisesValueError(self):

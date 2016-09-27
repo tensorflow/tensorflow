@@ -27,6 +27,7 @@ import tensorflow as tf
 
 from tensorflow.python.framework import function
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_logging_ops
 
 
 def _OptimizerOptions():
@@ -115,9 +116,7 @@ class FunctionTest(tf.test.TestCase):
       return a + b * 2
 
     with tf.Graph().as_default():
-      one = tf.constant([1.0])
-      two = tf.constant([2.0])
-      call = APlus2B(one, two)
+      call = APlus2B([1.0], [2.0])
       self.assertEquals("APlus2B", call.op.name)
       with tf.Session() as sess:
         self.assertAllEqual([5.0], sess.run(call))
@@ -136,10 +135,8 @@ class FunctionTest(tf.test.TestCase):
 
     g = tf.Graph()
     with g.as_default():
-      epsilon = tf.constant([0.1])
-      two = tf.constant([2.0])
-      call_f = XSquarePlusOne(two)
-      call_g = XSquarePlusOneGrad(two, epsilon)
+      call_f = XSquarePlusOne([2.0])
+      call_g = XSquarePlusOneGrad([2.0], [0.1])
 
       with tf.Session() as sess:
         self.assertAllClose([5.0], sess.run(call_f))
@@ -273,17 +270,60 @@ class FunctionTest(tf.test.TestCase):
       return a + 1
 
     with tf.Graph().as_default():
-      one = tf.constant([1.0])
-      call1 = Foo(one)
+      call1 = Foo([1.0])
       self.assertEquals("Foo", call1.op.name)
-      call2 = Foo(one)
+      call2 = Foo([1.0])
       self.assertEquals("Foo_1", call2.op.name)
       # pylint: disable=unexpected-keyword-arg
-      call3 = Foo(one, name="mine")
+      call3 = Foo([1.0], name="mine")
       self.assertEquals("mine", call3.op.name)
       with tf.name_scope("my"):
-        call4 = Foo(one, name="precious")
+        call4 = Foo([1.0], name="precious")
         self.assertEquals("my/precious", call4.op.name)
+
+  def testNoOp(self):
+
+    @function.Defun(tf.float32)
+    def Foo(x):
+      y = tf.Print(x, [x], "Hello")
+      with tf.control_dependencies([y]):
+        z = tf.no_op()
+      with tf.control_dependencies([z]):
+        return x * 2
+
+    with tf.Graph().as_default(), self.test_session():
+      z = Foo(tf.constant(3.0))
+      self.assertAllEqual(z.eval(), 6.0)
+
+  def testAssert(self):
+
+    @function.Defun(tf.float32)
+    def Foo(x):
+      check = gen_logging_ops._assert(tf.greater(x, 0), [x])
+      with tf.control_dependencies([check]):
+        return x * 2
+
+    g = tf.Graph()
+    with g.as_default(), self.test_session():
+      self.assertAllEqual(Foo(tf.constant(3.0)).eval(), 6.0)
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   "assertion failed.*-3"):
+        self.assertAllEqual(Foo(tf.constant(-3.0)).eval(), 6.0)
+
+  def testVar(self):
+
+    @function.Defun(tf.float32)
+    def Foo(x):
+      return x * x + 1
+
+    g = tf.Graph()
+    with g.as_default():
+      v = tf.Variable(tf.constant(10.0))
+      z = Foo(v)
+
+    with self.test_session(graph=g):
+      tf.initialize_all_variables().run()
+      self.assertAllEqual(z.eval(), 101.)
 
   def testDefineErrors(self):
     with tf.Graph().as_default():
@@ -345,33 +385,31 @@ class FunctionTest(tf.test.TestCase):
       return a + b, b - a
 
     with tf.Graph().as_default():
-      one = tf.constant([1])
-      two = tf.constant([2])
 
       _ = Const()
       # pylint: disable=too-many-function-args
       # pylint: disable=unexpected-keyword-arg
       # pylint: disable=no-value-for-parameter
       with self.assertRaisesRegexp(ValueError, "arguments: 0"):
-        _ = Const(one)
+        _ = Const(1)
       with self.assertRaisesRegexp(ValueError, "arguments: 0"):
-        _ = Const(one, two)
+        _ = Const(1, 2)
 
       with self.assertRaisesRegexp(ValueError, "arguments: 1"):
         _ = PlusOne()
-      _ = PlusOne(one)
+      _ = PlusOne(1)
       with self.assertRaisesRegexp(ValueError, "arguments: 1"):
-        _ = PlusOne(one, two)
+        _ = PlusOne(1, 2)
 
       with self.assertRaisesRegexp(ValueError, "arguments: 2"):
         _ = PlusMinus()
       with self.assertRaisesRegexp(ValueError, "arguments: 2"):
-        _ = PlusMinus(one)
-      _ = PlusMinus(one, two)
+        _ = PlusMinus(1)
+      _ = PlusMinus(1, 2)
 
-      _ = PlusOne(one, name="p1")
+      _ = PlusOne(1, name="p1")
       with self.assertRaisesRegexp(ValueError, "Unknown keyword arguments"):
-        _ = PlusOne(one, device="/gpu:0")
+        _ = PlusOne(1, device="/gpu:0")
 
   def testDupDefinition(self):
 
@@ -388,13 +426,12 @@ class FunctionTest(tf.test.TestCase):
       return x + 2
 
     with tf.Graph().as_default():
-      x = tf.constant(100.0)
-      y = Foo(x)
-      z = Bar(x)  # OK.
+      y = Foo(100.0)
+      z = Bar(100.0)  # OK.
       with self.test_session():
         self.assertAllEqual(y.eval(), z.eval())
       with self.assertRaisesRegexp(ValueError, "already defined"):
-        z = Baz(x)
+        z = Baz(100.0)
 
   def testFunctionDecorator(self):
 
@@ -403,8 +440,7 @@ class FunctionTest(tf.test.TestCase):
       return b - 1.0
 
     with tf.Graph().as_default():
-      two = tf.constant([2.])
-      call1 = Minus1(two)
+      call1 = Minus1([2.])
       self.assertTrue(isinstance(Minus1, function._DefinedFunction))
       self.assertEqual(Minus1.name, "Minus1")
       # pylint: disable=unexpected-keyword-arg
@@ -426,7 +462,7 @@ class FunctionTest(tf.test.TestCase):
       return Cube(x) + y
 
     with tf.Graph().as_default():
-      z = CubeXPlusY(tf.constant(3.0), tf.constant(-2.0))
+      z = CubeXPlusY(3.0, -2.0)
       with self.test_session():
         self.assertAllEqual(z.eval(), 25.0)
 
@@ -442,7 +478,7 @@ class FunctionTest(tf.test.TestCase):
       return Cube(x) + y
 
     with tf.Graph().as_default():
-      z = CubeXPlusY(tf.constant(3.0), tf.constant(-2.0))
+      z = CubeXPlusY(3.0, -2.0)
       with self.test_session():
         self.assertAllEqual(z.eval(), 25.0)
 
@@ -506,7 +542,7 @@ class FunctionTest(tf.test.TestCase):
 
     g = tf.Graph()
     with g.as_default():
-      y = foo(tf.constant(2, tf.float32))
+      y = foo(2.0)
       with self.test_session(graph=g):
         with self.assertRaisesRegexp(tf.errors.NotFoundError, "not registered"):
           _ = y.eval()
@@ -514,7 +550,7 @@ class FunctionTest(tf.test.TestCase):
     g = tf.Graph()
     with g.as_default():
       Foo.add_to_graph(g)
-      y = foo(tf.constant(2, tf.int32))
+      y = foo(2)
       with self.test_session(graph=g):
         with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
                                      "int32.*float"):
@@ -525,12 +561,12 @@ class FunctionTest(tf.test.TestCase):
       Foo.add_to_graph(g)
       with self.assertRaisesRegexp(
           ValueError, "Expected number of arguments: 1, received: 2"):
-        _ = foo(tf.constant(2, tf.float32), tf.constant(2, tf.float32))
+        _ = foo(2.0, 2.0)
 
     g = tf.Graph()
     with g.as_default():
       Foo.add_to_graph(g)
-      y = foo(tf.constant(2, tf.float32))
+      y = foo(2.0)
       with self.test_session(graph=g):
         self.assertAllEqual(y.eval(), 5.0)
 
@@ -573,8 +609,7 @@ class UnrollLSTMTest(tf.test.TestCase):
       # Constructs the complete graph in python.
       return Loop(cell, weights, inp)
 
-    cell = function.Defun(
-        tf.float32, tf.float32, tf.float32, tf.float32)(cell)
+    cell = function.Defun(tf.float32, tf.float32, tf.float32, tf.float32)(cell)
     if mode == "cell":
       # Just represent the LSTM as a function.
       return Loop(cell, weights, inp)

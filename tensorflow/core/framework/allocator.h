@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
 
 #include <stdlib.h>
-#include <unistd.h>
 
 #include <limits>
 

@@ -532,7 +532,7 @@ Your Op registration now specifies that the input's type must be `float`, or
 > REGISTER_OP("StringToNumber")
 >     .Input("string_tensor: string")
 >     .Output("output: out_type")
->     .Attr("out_type: {float, int32}");
+>     .Attr("out_type: {float, int32} = DT_FLOAT");
 >     .Doc(R"doc(
 > Converts each string in the input Tensor to the specified numeric type.
 > )doc");

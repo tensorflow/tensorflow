@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/** How many elements can be stored in each node of the tree. */
-const NODE_CAPACITY = 4;
-
 /** N-dimensional point. Usually 2D or 3D. */
 export type Point = number[];
 
@@ -31,7 +28,7 @@ export interface SPNode {
   /** The bounding box of the region this node occupies. */
   box: BBox;
   /** One or more points this node has. */
-  points?: Point[];
+  point: Point;
 }
 
 /**
@@ -45,7 +42,6 @@ export class SPTree {
   root: SPNode;
 
   private masks: number[];
-  private capacity: number;
   private dim: number;
 
   /**
@@ -54,11 +50,10 @@ export class SPTree {
    * @param data List of n-dimensional data points.
    * @param capacity Number of data points to store in a single node.
    */
-  constructor(data: Point[], capacity = NODE_CAPACITY) {
+  constructor(data: Point[]) {
     if (data.length < 1) {
       throw new Error('There should be at least 1 data point');
     }
-    this.capacity = capacity;
     // Make a bounding box based on the extent of the data.
     this.dim = data[0].length;
     // Each node has 2^d children, where d is the dimension of the space.
@@ -90,8 +85,8 @@ export class SPTree {
       center[d] = min[d] + span / 2;
       halfDim = Math.max(halfDim, span / 2);
     }
-    this.root = {box: {center: center, halfDim: halfDim}};
-    for (let i = 0; i < data.length; ++i) {
+    this.root = {box: {center: center, halfDim: halfDim}, point: data[0]};
+    for (let i = 1; i < data.length; ++i) {
       this.insert(this.root, data[i]);
     }
   }
@@ -138,17 +133,8 @@ export class SPTree {
     }
   }
 
-  private insert(node: SPNode, p: Point): boolean {
-    if (node.points == null) {
-      node.points = [];
-    }
-    // If there is space in this node, add the object here.
-    if (node.points.length < this.capacity) {
-      node.points.push(p);
-      return true;
-    }
-    // Otherwise, subdivide and then add the point to whichever node will
-    // accept it.
+  private insert(node: SPNode, p: Point) {
+    // Subdivide and then add the point to whichever node will accept it.
     if (node.children == null) {
       node.children = new Array(this.masks.length);
     }
@@ -165,20 +151,20 @@ export class SPTree {
       }
     }
     if (node.children[index] == null) {
-      this.makeChild(node, index);
+      this.makeChild(node, index, p);
+    } else {
+      this.insert(node.children[index], p);
     }
-    this.insert(node.children[index], p);
-    return true;
   }
 
-  private makeChild(node: SPNode, index: number): void {
+  private makeChild(node: SPNode, index: number, p: Point): void {
     let oldC = node.box.center;
     let h = node.box.halfDim / 2;
     let newC: Point = new Array(this.dim);
     for (let d = 0; d < this.dim; ++d) {
       newC[d] = (index & (1 << d)) ? oldC[d] + h : oldC[d] - h;
     }
-    node.children[index] = {box: {center: newC, halfDim: h}};
+    node.children[index] = {box: {center: newC, halfDim: h}, point: p};
   }
 }
 
