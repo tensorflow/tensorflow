@@ -73,6 +73,7 @@ def tf_android_core_proto_sources_relative():
         "framework/versions.proto",
         "lib/core/error_codes.proto",
         "protobuf/config.proto",
+        "protobuf/tensor_bundle.proto",
         "protobuf/saver.proto",
         "util/memmapped_file_system.proto",
         "util/saved_tensor_slice.proto",

@@ -47,6 +47,9 @@ class RetryingFileSystem : public FileSystem {
 
   Status GetChildren(const string& dir, std::vector<string>* result) override;
 
+  Status GetChildrenRecursively(const string& dir,
+                                std::vector<string>* result) override;
+
   Status Stat(const string& fname, FileStatistics* stat) override;
 
   Status DeleteFile(const string& fname) override;

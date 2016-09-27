@@ -73,6 +73,10 @@ function hasWebGLSupport(): boolean {
 }
 
 const WEBGL_SUPPORT = hasWebGLSupport();
+const IS_FIREFOX = navigator.userAgent.toLowerCase().indexOf('firefox') >= 0;
+/** Controls whether nearest neighbors computation is done on the GPU or CPU. */
+const KNN_GPU_ENABLED = WEBGL_SUPPORT && !IS_FIREFOX;
+
 /** Sampling is used when computing expensive operations such as T-SNE. */
 export const SAMPLE_SIZE = 10000;
 /** Number of dimensions to sample when doing approximate PCA. */
@@ -283,7 +287,7 @@ export class DataSet implements scatterPlot.DataSet {
     } else {
       let sampledData = this.sampledDataIndices.map(i => this.points[i]);
       this.nearestK = k;
-      knnComputation = WEBGL_SUPPORT ?
+      knnComputation = KNN_GPU_ENABLED ?
           knn.findKNNGPUCosine(sampledData, k, (d => d.vector)) :
           knn.findKNN(
               sampledData, k, (d => d.vector),
@@ -316,4 +320,33 @@ export interface DatasetMetadata {
     /** The dimensions of the image for a single data point. */
     single_image_dim: [number, number];
   };
+}
+
+export type Projection = 'tsne' | 'pca' | 'custom';
+
+/**
+ * An interface that holds all the data for serializing the current state of
+ * the world.
+ */
+export interface State {
+  /** A label identifying this state. */
+  label?: string;
+
+  /** Whether this State is selected in the bookmarks pane. */
+  isSelected?: boolean;
+
+  /** The selected projection tab. */
+  selectedProjection?: Projection;
+
+  /** The computed projections of the tensors. */
+  projections?: {[key: string]: number}[];
+
+  /** The indices of selected points. */
+  selectedPoints?: number[];
+
+  /** Camera positioning (x, y, z). */
+  cameraPosition?: vector.Point3D;
+
+  /** Camera target (x, y, z). */
+  cameraTarget?: vector.Point3D;
 }

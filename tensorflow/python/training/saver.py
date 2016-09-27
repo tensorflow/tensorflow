@@ -243,6 +243,7 @@ class BaseSaverBuilder(object):
         tensors=tensors,
         tensor_slices=tensor_slices)
 
+  # pylint: disable=unused-argument
   def restore_op(self, filename_tensor, saveable, preferred_shard):
     """Create ops to restore 'saveable'.
 
@@ -262,14 +263,14 @@ class BaseSaverBuilder(object):
     tensors = []
     for spec in saveable.specs:
       tensors.append(
-          io_ops._restore_slice(
+          io_ops.restore_v2(
               filename_tensor,
-              spec.name,
-              spec.slice_spec,
-              spec.tensor.dtype,
-              preferred_shard=preferred_shard))
+              [spec.name],
+              [spec.slice_spec],
+              [spec.tensor.dtype])[0])
 
     return tensors
+  # pylint: enable=unused-argument
 
   def sharded_filename(self, filename_tensor, shard, num_shards):
     """Append sharding information to a filename.

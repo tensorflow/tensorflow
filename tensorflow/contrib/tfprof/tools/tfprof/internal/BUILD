@@ -21,6 +21,7 @@ cc_library(
         "//tensorflow/contrib/tfprof/tools/tfprof:protos_all_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:regexp_internal",
     ],
 )
 
@@ -52,6 +53,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:regexp_internal",
     ],
 )
 
@@ -70,6 +72,7 @@ cc_library(
         "//tensorflow/contrib/tfprof/tools/tfprof:protos_all_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:regexp_internal",
     ],
 )
 
@@ -87,6 +90,7 @@ cc_library(
         "//tensorflow/contrib/tfprof/tools/tfprof:protos_all_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:regexp_internal",
     ],
 )
 
@@ -122,6 +126,7 @@ cc_library(
         ":tfprof_options",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:regexp_internal",
     ],
 )
 

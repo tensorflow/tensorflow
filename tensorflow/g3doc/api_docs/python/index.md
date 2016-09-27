@@ -943,6 +943,7 @@
   * [`set_union`](../../api_docs/python/contrib.metrics.md#set_union)
   * [`streaming_accuracy`](../../api_docs/python/contrib.metrics.md#streaming_accuracy)
   * [`streaming_auc`](../../api_docs/python/contrib.metrics.md#streaming_auc)
+  * [`streaming_concat`](../../api_docs/python/contrib.metrics.md#streaming_concat)
   * [`streaming_covariance`](../../api_docs/python/contrib.metrics.md#streaming_covariance)
   * [`streaming_mean`](../../api_docs/python/contrib.metrics.md#streaming_mean)
   * [`streaming_mean_absolute_error`](../../api_docs/python/contrib.metrics.md#streaming_mean_absolute_error)

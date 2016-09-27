@@ -39,7 +39,7 @@ class RunConfig(object):
                master=None,
                task=None,
                num_ps_replicas=None,
-               num_cores=4,
+               num_cores=0,
                log_device_placement=False,
                gpu_memory_fraction=1,
                cluster_spec=None,
@@ -94,7 +94,8 @@ class RunConfig(object):
       master: TensorFlow master. Defaults to empty string for local.
       task: Task id of the replica running the training (default: 0).
       num_ps_replicas: Number of parameter server tasks to use (default: 0).
-      num_cores: Number of cores to be used (default: 4).
+      num_cores: Number of cores to be used. If 0, the system picks an
+        appropriate number (default: 0).
       log_device_placement: Log the op placement to devices (default: False).
       gpu_memory_fraction: Fraction of GPU memory used by the process on
         each GPU uniformly on the same machine.

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/load_library.h"
+
 #include <dlfcn.h>
 
 #include "tensorflow/core/lib/core/errors.h"

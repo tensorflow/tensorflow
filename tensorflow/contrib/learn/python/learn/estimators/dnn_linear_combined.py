@@ -503,9 +503,8 @@ class DNNLinearCombinedRegressor(_DNNLinearCombinedBaseEstimator):
   occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
                                    combiner="sum")
 
-  estimator = DNNLinearCombinedClassifier(
+  estimator = DNNLinearCombinedRegressor(
       # common settings
-      n_classes=n_classes,
       weight_column_name=weight_column_name,
       # wide settings
       linear_feature_columns=[education_x_occupation],

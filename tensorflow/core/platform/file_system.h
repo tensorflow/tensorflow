@@ -58,8 +58,17 @@ class FileSystem {
 
   virtual bool FileExists(const string& fname) = 0;
 
+  /// \brief Returns the immediate children in the given directory.
+  ///
+  /// The returned paths are relative to 'dir'.
   virtual Status GetChildren(const string& dir,
                              std::vector<string>* result) = 0;
+
+  /// \brief Recursively returns all the files in the given directory.
+  ///
+  /// The returned paths are relative to 'dir'.
+  virtual Status GetChildrenRecursively(const string& dir,
+                                        std::vector<string>* result);
 
   virtual Status Stat(const string& fname, FileStatistics* stat) = 0;
 
@@ -233,6 +242,10 @@ class FileSystemRegistry {
 // - If the URI omits the path (e.g. file://host), then the path is left empty.
 void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
               StringPiece* path);
+
+// Creates a URI from a scheme, host, and path. If the scheme is empty, we just
+// return the path.
+string CreateURI(StringPiece scheme, StringPiece host, StringPiece path);
 
 }  // namespace tensorflow
 
