@@ -38,23 +38,9 @@ class ImmutableConstantOp : public OpKernel {
   static constexpr char kMemoryRegionNameAttr[] = "memory_region_name";
 
  private:
-  class ReadOnlyMemoryRegionAllocator : public ::tensorflow::Allocator {
-   public:
-    ReadOnlyMemoryRegionAllocator();
-    Status InitWithMemoryRegion(const string& name, Env* env);
-    ~ReadOnlyMemoryRegionAllocator() override;
-    string Name() override;
-    void* AllocateRaw(size_t alignment, size_t num_bytes) override;
-    void DeallocateRaw(void* ptr) override;
-    const Status& allocation_status() const { return allocation_status_; }
-
-   private:
-    std::unique_ptr<ReadOnlyMemoryRegion> memory_region_;
-    // If there is an error during allocation we keep it in this status.
-    Status allocation_status_;
-  };
-  ReadOnlyMemoryRegionAllocator allocator_;
-  Tensor tensor_;
+  string region_name_;
+  DataType dtype_;
+  TensorShape shape_;
   TF_DISALLOW_COPY_AND_ASSIGN(ImmutableConstantOp);
 };
 

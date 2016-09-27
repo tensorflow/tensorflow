@@ -1370,25 +1370,7 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
-    name = "sparse_matmul_op_test",
-    size = "small",
-    srcs = ["sparse_matmul_op_test.cc"],
-    deps = [
-        ":ops_testutil",
-        ":ops_util",
-        ":sparse_matmul_op",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cuda_cc_test(
+tf_cc_test(
     name = "immutable_constant_op_test",
     srcs = ["immutable_constant_op_test.cc"],
     deps = [
@@ -1404,6 +1386,24 @@ tf_cuda_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "sparse_matmul_op_test",
+    size = "small",
+    srcs = ["sparse_matmul_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":sparse_matmul_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
