@@ -36,9 +36,6 @@ from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.platform import resource_loader
 
-_variable_ops = load_op_library(resource_loader.get_path_to_datafile(
-    "_variable_ops.so"))
-assert _variable_ops, "Could not load _variable_ops.so"
 
 __all__ = ['add_model_variable',
            'assert_global_step',
@@ -76,6 +73,9 @@ def zero_initializer(ref, use_locking=True, name="zero_initializer"):
   Raises:
     ValueError: If ref tensor is initialized.
   """
+  _variable_ops = load_op_library(resource_loader.get_path_to_datafile(
+        "_variable_ops.so"))
+  assert _variable_ops, "Could not load _variable_ops.so"
   return gen_variable_ops.zero_initializer(ref, name=name)
 
 # shape function for _ZeroInitializerOp
