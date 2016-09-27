@@ -978,6 +978,82 @@ class FlattenTest(tf.test.TestCase):
       self.assertEqual(output.shape[0], images.get_shape()[0])
 
 
+def _sparsify(array, threshold=0.5):
+  array[array < threshold] = 0
+  non_zero = np.where(array)
+  indices = np.vstack(non_zero).T
+  values = array[non_zero]
+  shape = array.shape
+  return indices, values, shape
+
+
+class PartialFlattenTest(tf.test.TestCase):
+
+  def testDensePartialFlatten(self):
+    """Test `_inner_flatten` on `Tensor`s."""
+    shape = [2, 3, 4, 5, 6]
+    np.random.seed(5446)
+    inputs = np.random.randint(0, 100, size=shape)
+
+    for new_rank in [1, 2, 3, 4, 5]:
+      expected_new_shape = (shape[:new_rank - 1] +
+                            [np.prod(shape[new_rank - 1:])])
+      expected_flattened = np.reshape(inputs, expected_new_shape)
+
+      inputs_t = tf.constant(inputs)
+      flattened_t = tf.contrib.layers.python.layers._inner_flatten(inputs_t, new_rank)
+      static_shape = flattened_t.get_shape().as_list()
+      self.assertEqual(static_shape, expected_new_shape)
+      with self.test_session() as sess:
+        flattened = sess.run(flattened_t)
+      np.testing.assert_array_equal(expected_flattened, flattened)
+
+  def testSparsePartialFlatten(self):
+    """Test `_inner_flatten` on `SparseTensor`s."""
+    shape = [4, 3, 11, 6, 1, 3]
+    np.random.seed(10301)
+    random_ = np.random.rand(*shape)
+    indices, values, _ = _sparsify(random_)
+
+    for new_rank in [1, 2, 3, 4, 5]:
+      expected_shape = (shape[:new_rank - 1] + [np.prod(shape[new_rank - 1:])])
+      reshaped_random_ = np.reshape(random_, expected_shape)
+      expected_indices, expected_values, _ = _sparsify(reshaped_random_)
+
+      inputs_t = tf.SparseTensor(indices, values, shape)
+
+      flattened_t = tf.contrib.layers.python.layers._inner_flatten(
+          inputs_t, new_rank)
+
+      with self.test_session() as sess:
+        flattened = sess.run(flattened_t)
+
+      np.testing.assert_array_equal(expected_indices, flattened.indices)
+      np.testing.assert_array_equal(expected_values, flattened.values)
+      np.testing.assert_array_equal(expected_shape, flattened.shape)
+
+  def testIncompleteShape(self):
+    """Test `_inner_flatten` shape inference for incomplete shapes."""
+    shape = [2, None, 4, None, 5, 6]
+    inputs = tf.placeholder(tf.int32)
+    inputs.set_shape(shape)
+
+    flattened1 = tf.contrib.layers.python.layers._inner_flatten(inputs, 1)
+    self.assertEquals([None], flattened1.get_shape().as_list())
+
+    flattened2 = tf.contrib.layers.python.layers._inner_flatten(inputs, 2)
+    self.assertEquals([2, None], flattened2.get_shape().as_list())
+
+    flattened3 = tf.contrib.layers.python.layers._inner_flatten(inputs, 3)
+    self.assertEquals([2, None, None], flattened3.get_shape().as_list())
+
+    flattened4 = tf.contrib.layers.python.layers._inner_flatten(inputs, 4)
+    self.assertEquals([2, None, 4, None], flattened4.get_shape().as_list())
+
+    flattened5 = tf.contrib.layers.python.layers._inner_flatten(inputs, 5)
+    self.assertEquals([2, None, 4, None, 30], flattened5.get_shape().as_list())
+
+
 class FCTest(tf.test.TestCase):
 
   def testCreateFC(self):
