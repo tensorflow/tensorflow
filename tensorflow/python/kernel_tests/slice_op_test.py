@@ -77,6 +77,34 @@ class SliceTest(tf.test.TestCase):
         slice_val = slice_t.eval()
         self.assertAllEqual(slice_val, inp[lo:hi])
 
+  def testScalarInput(self):
+    input_val = 0
+    with self.test_session() as sess:
+      # Test with constant input; shape inference fails.
+      with self.assertRaisesWithPredicateMatch(ValueError, "out of range"):
+        tf.constant(input_val)[:].get_shape()
+
+      # Test evaluating with non-constant input; kernel execution fails.
+      input_t = tf.placeholder(tf.int32)
+      slice_t = input_t[:]
+      with self.assertRaisesWithPredicateMatch(tf.errors.InvalidArgumentError,
+                                               "out of range"):
+        sess.run([slice_t], feed_dict={input_t: input_val})
+
+  def testInvalidIndex(self):
+    input_val = [1, 2]
+    with self.test_session() as sess:
+      # Test with constant input; shape inference fails.
+      with self.assertRaisesWithPredicateMatch(ValueError, "out of range"):
+        tf.constant(input_val)[1:, 1:].get_shape()
+
+      # Test evaluating with non-constant input; kernel execution fails.
+      input_t = tf.placeholder(tf.int32)
+      slice_t = input_t[1:, 1:]
+      with self.assertRaisesWithPredicateMatch(tf.errors.InvalidArgumentError,
+                                               "out of range"):
+        sess.run([slice_t], feed_dict={input_t: input_val})
+
   def _testSliceMatrixDim0(self, x, begin, size):
     with self.test_session(use_gpu=True):
       tf_ans = tf.slice(x, [begin, 0], [size, x.shape[1]]).eval()
