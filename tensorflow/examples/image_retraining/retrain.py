@@ -83,7 +83,7 @@ tf.app.flags.DEFINE_string('output_labels', '/tmp/output_labels.txt',
                            """Where to save the trained graph's labels.""")
 
 # Details of the training configuration.
-tf.app.flags.DEFINE_integer('how_many_training_steps', 4000,
+tf.app.flags.DEFINE_integer('how_many_training_steps', 5000,
                             """How many training steps to run before ending.""")
 tf.app.flags.DEFINE_float('learning_rate', 0.01,
                           """How large a learning rate to use when training.""")
@@ -191,7 +191,7 @@ def create_image_lists(image_dir, testing_percentage, validation_percentage):
     if not file_list:
       print('No files found')
       continue
-    if len(file_list) < 20:
+    if len(file_list) < 40:
       print('WARNING: Folder has less than 20 images, which may cause issues.')
     label_name = re.sub(r'[^a-z0-9]+', ' ', dir_name.lower())
     training_images = []
