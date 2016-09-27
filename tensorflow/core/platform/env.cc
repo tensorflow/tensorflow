@@ -135,24 +135,7 @@ Status Env::GetMatchingPaths(const string& pattern,
                              std::vector<string>* results) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(pattern, &fs));
-  results->clear();
-  // Find the fixed prefix by looking for the first wildcard.
-  const string& fixed_prefix =
-      pattern.substr(0, pattern.find_first_of("*?[\\"));
-  const string& base_dir = io::Dirname(fixed_prefix).ToString();
-  const string& list_dir = base_dir.empty() ? "." : base_dir;
-
-  std::vector<string> all_files;
-  TF_RETURN_IF_ERROR(fs->GetChildrenRecursively(list_dir, &all_files));
-
-  // Match all obtained files to the input pattern.
-  for (const auto& f : all_files) {
-    const string& full_path = io::JoinPath(base_dir, f);
-    if (MatchPath(full_path, pattern)) {
-      results->push_back(full_path);
-    }
-  }
-  return Status::OK();
+  return fs->GetMatchingPaths(pattern, results);
 }
 
 Status Env::DeleteFile(const string& fname) {
