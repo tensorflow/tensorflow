@@ -288,7 +288,7 @@ class EveryN(BaseMonitor):
   This class adds three new callbacks:
     - every_n_step_begin
     - every_n_step_end
-    - every_n_pos_step
+    - every_n_post_step
 
   The callbacks are executed every n steps, or optionally every step for the
   first m steps, where m and n can both be user-specified.
@@ -967,6 +967,14 @@ class ExportMonitor(EveryN):
 
   @property
   def last_export_dir(self):
+    """Returns the directory containing the last completed export.
+
+    Returns:
+      The string path to the exported directory. NB: this functionality was
+      added on 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because the
+      estimator being fitted does not yet return a value during export.
+    """
     return self._last_export_dir
 
   def every_n_step_end(self, step, outputs):

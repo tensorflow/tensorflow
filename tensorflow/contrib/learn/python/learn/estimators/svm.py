@@ -224,15 +224,15 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
   def export(self, export_dir, signature_fn=None,
              input_fn=None, default_batch_size=1,
              exports_to_keep=None):
-    """See BasEstimator.export."""
+    """See BaseEstimator.export."""
     def default_input_fn(unused_estimator, examples):
       return layers.parse_feature_columns_from_examples(
           examples, self._feature_columns)
-    self._estimator.export(export_dir=export_dir,
-                           signature_fn=signature_fn,
-                           input_fn=input_fn or default_input_fn,
-                           default_batch_size=default_batch_size,
-                           exports_to_keep=exports_to_keep)
+    return self._estimator.export(export_dir=export_dir,
+                                  signature_fn=signature_fn,
+                                  input_fn=input_fn or default_input_fn,
+                                  default_batch_size=default_batch_size,
+                                  exports_to_keep=exports_to_keep)
 
   @property
   def weights_(self):

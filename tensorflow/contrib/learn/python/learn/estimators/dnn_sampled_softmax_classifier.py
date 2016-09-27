@@ -505,15 +505,21 @@ class _DNNSampledSoftmaxClassifier(trainable.Trainable, evaluable.Evaluable):
         used (and so can be `None`).
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
+
+    Returns:
+      The string path to the exported directory. NB: this functionality was
+      added ca. 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because subclasses
+      are not returning a value.
     """
     def default_input_fn(unused_estimator, examples):
       return layers.parse_feature_columns_from_examples(
           examples, self._feature_columns)
-    self._estimator.export(export_dir=export_dir,
-                           signature_fn=signature_fn,
-                           input_fn=input_fn or default_input_fn,
-                           default_batch_size=default_batch_size,
-                           exports_to_keep=exports_to_keep)
+    return self._estimator.export(export_dir=export_dir,
+                                  signature_fn=signature_fn,
+                                  input_fn=input_fn or default_input_fn,
+                                  default_batch_size=default_batch_size,
+                                  exports_to_keep=exports_to_keep)
 
   def get_variable_names(self):
     return self._estimator.get_variable_names()
