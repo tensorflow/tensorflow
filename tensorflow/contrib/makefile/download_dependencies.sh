@@ -19,9 +19,8 @@ set -e
 DOWNLOADS_DIR=tensorflow/contrib/makefile/downloads
 BZL_FILE_PATH=tensorflow/workspace.bzl
 
-# Temporarily specify the Eigen URL manually while we're waiting on the build
-# file changes to be synced.
-EIGEN_URL=http://bitbucket.org/eigen/eigen/get/8106cca06137.tar.gz
+EIGEN_VERSION=$(grep 'eigen_version = ' "${BZL_FILE_PATH}" | sed 's/.*=\ \"\(.*\)\"/\1/g')
+EIGEN_URL="http://bitbucket.org/eigen/eigen/get/$EIGEN_VERSION.tar.gz"
 GEMMLOWP_URL="$(grep -o 'http.*github.com/google/gemmlowp/.*tar\.gz' "${BZL_FILE_PATH}")"
 GOOGLETEST_URL="https://github.com/google/googletest/archive/release-1.8.0.tar.gz"
 PROTOBUF_URL="$(grep -o 'http.*github.com/google/protobuf/.*tar\.gz' "${BZL_FILE_PATH}")"
