@@ -21,6 +21,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
+#include <numeric>
 // TODO(ptucker): Consider switching back to hash_set - I had trouble getting it
 // to work with string values.
 #include <set>
