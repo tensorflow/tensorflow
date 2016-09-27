@@ -77,13 +77,6 @@ Node* Ones(Graph* const g, const int n) {
   return test::graph::Constant(g, data);
 }
 
-Node* StringIota(Graph* const g, const int n) {
-  Tensor data(DT_STRING, TensorShape({n}));
-  test::FillFn<string>(
-      &data, [](const int i) { return strings::StrCat(strings::Hex(i)); });
-  return test::graph::Constant(g, data);
-}
-
 Node* SparseExampleIndices(Graph* const g, const int sparse_features_per_group,
                            const int num_examples) {
   const int x_size = num_examples * 4;

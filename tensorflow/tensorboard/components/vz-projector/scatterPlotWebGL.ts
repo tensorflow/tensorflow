@@ -14,14 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet, Mode, OnHoverListener, OnSelectionListener, ScatterPlot} from './scatterPlot';
+import {DataSet, Mode, OnCameraMoveListener, OnHoverListener, OnSelectionListener, ScatterPlot} from './scatterPlot';
 import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
 import {ScatterPlotWebGLVisualizerAxes} from './scatterPlotWebGLVisualizerAxes';
 import {getNearFarPoints, getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
-import {dist_2D} from './vector';
+import {dist_2D, Point3D} from './vector';
 
-const BACKGROUND_COLOR_DAY = 0xffffff;
-const BACKGROUND_COLOR_NIGHT = 0x000000;
+const BACKGROUND_COLOR = 0xffffff;
 
 const MAX_ZOOM = 10;
 const MIN_ZOOM = .05;
@@ -65,14 +64,14 @@ const TAR_2D = {
 
 /**
  * Maintains a three.js instantiation and context,
- * animation state, day/night state, and all other logic that's
+ * animation state, and all other logic that's
  * independent of how a 3D scatter plot is actually rendered. Also holds an
  * array of visualizers and dispatches application events to them.
  */
 export class ScatterPlotWebGL implements ScatterPlot {
   private dataSet: DataSet;
+  private spriteImage: HTMLImageElement;
   private containerNode: HTMLElement;
-
   private visualizers: ScatterPlotWebGLVisualizer[] = [];
 
   private highlightedPoints: number[] = [];
@@ -83,6 +82,7 @@ export class ScatterPlotWebGL implements ScatterPlot {
   private colorAccessor: (index: number) => string;
   private onHoverListeners: OnHoverListener[] = [];
   private onSelectionListeners: OnSelectionListener[] = [];
+  private onCameraMoveListeners: OnCameraMoveListener[] = [];
   private lazySusanAnimation: number;
 
   // Accessors for rendering and labeling the points.
@@ -100,8 +100,7 @@ export class ScatterPlotWebGL implements ScatterPlot {
   private width: number;
 
   private mode: Mode;
-  private isNight: boolean;
-  private backgroundColor: number;
+  private backgroundColor: number = BACKGROUND_COLOR;
 
   private scene: THREE.Scene;
   private renderer: THREE.WebGLRenderer;
@@ -131,18 +130,17 @@ export class ScatterPlotWebGL implements ScatterPlot {
     // Set up THREE.js.
     this.scene = new THREE.Scene();
     this.renderer = new THREE.WebGLRenderer();
+    this.renderer.setClearColor(BACKGROUND_COLOR, 1);
     this.containerNode.appendChild(this.renderer.domElement);
     this.light = new THREE.PointLight(0xFFECBF, 1, 0);
     this.scene.add(this.light);
     this.makeCamera();
-    this.setDayNightMode(false);
 
     // Render now so no black background appears during startup.
     this.renderer.render(this.scene, this.perspCamera);
     this.addInteractionListeners();
 
-    this.addVisualizer(
-        new ScatterPlotWebGLVisualizerAxes(this.xScale, this.yScale));
+    this.addAxesToScene();
   }
 
   private addInteractionListeners() {
@@ -169,6 +167,8 @@ export class ScatterPlotWebGL implements ScatterPlot {
     // orbit controls.
     this.cameraControls.addEventListener('start', () => {
       this.cameraControls.autoRotate = false;
+      this.onCameraMoveListeners.forEach(
+          l => l(this.perspCamera.position, this.cameraControls.target));
       cancelAnimationFrame(this.lazySusanAnimation);
     });
     // Change is called everytime the user interacts with the
@@ -206,6 +206,29 @@ export class ScatterPlotWebGL implements ScatterPlot {
     let target = new THREE.Vector3(TAR_2D.x, TAR_2D.y, TAR_2D.z);
     this.animate(position, target);
     this.cameraControls.enableRotate = false;
+  }
+
+  /** Gets the current camera position. */
+  getCameraPosition(): Point3D {
+    let currPos = this.perspCamera.position;
+    return [currPos.x, currPos.y, currPos.z];
+  }
+
+  /** Gets the current camera target. */
+  getCameraTarget(): Point3D {
+    let currTarget = this.cameraControls.target;
+    return [currTarget.x, currTarget.y, currTarget.z];
+  }
+
+  /** Sets up the camera from given position and target coordinates. */
+  setCameraPositionAndTarget(position: Point3D, target: Point3D) {
+    this.perspCamera.position.set(position[0], position[1], position[2]);
+    this.cameraControls.target.set(target[0], target[1], target[2]);
+    this.cameraControls.autoRotate = false;
+    this.animating = false;
+    cancelAnimationFrame(this.lazySusanAnimation);
+    this.cameraControls.update();
+    this.render();
   }
 
   private onClick(e?: MouseEvent) {
@@ -434,7 +457,6 @@ export class ScatterPlotWebGL implements ScatterPlot {
     }
   }
 
-  /** Removes all geometry from the scene. */
   private removeAll() {
     this.visualizers.forEach(v => {
       v.removeAllFromScene(this.scene);
@@ -488,24 +510,49 @@ export class ScatterPlotWebGL implements ScatterPlot {
     });
   }
 
+  private addAxesToScene() {
+    this.addVisualizer(
+        new ScatterPlotWebGLVisualizerAxes(this.xScale, this.yScale));
+  }
+
+  private sceneIs3D(): boolean {
+    return this.zAccessor != null;
+  }
+
   // PUBLIC API
 
   /** Adds a visualizer to the set, will start dispatching events to it */
   addVisualizer(visualizer: ScatterPlotWebGLVisualizer) {
     this.visualizers.push(visualizer);
+    if (this.dataSet) {
+      visualizer.onDataSet(this.dataSet, this.spriteImage);
+    }
+    if (this.labelAccessor) {
+      visualizer.onSetLabelAccessor(this.labelAccessor);
+    }
+    if (this.scene) {
+      visualizer.onRecreateScene(
+          this.scene, this.sceneIs3D(), this.backgroundColor);
+    }
+  }
+
+  /** Removes all visualizers attached to this scatter plot. */
+  removeAllVisualizers() {
+    this.removeAll();
+    this.visualizers = [];
+    this.addAxesToScene();
   }
 
   recreateScene() {
     this.removeAll();
     this.cancelAnimation();
-    let sceneIs3D = this.zAccessor != null;
-    if (sceneIs3D) {
+    if (this.sceneIs3D()) {
       this.makeCamera3D();
     } else {
       this.makeCamera2D();
     }
     this.visualizers.forEach(v => {
-      v.onRecreateScene(this.scene, sceneIs3D, this.backgroundColor);
+      v.onRecreateScene(this.scene, this.sceneIs3D(), this.backgroundColor);
     });
     this.resize(false);
     this.render();
@@ -515,6 +562,8 @@ export class ScatterPlotWebGL implements ScatterPlot {
   setDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
     this.removeAll();
     this.dataSet = dataSet;
+    this.spriteImage = spriteImage;
+    this.nearestPoint = null;
     this.labeledPoints = [];
     this.highlightedPoints = [];
     this.visualizers.forEach(v => {
@@ -585,6 +634,9 @@ export class ScatterPlotWebGL implements ScatterPlot {
 
   setLabelAccessor(labelAccessor: (index: number) => string) {
     this.labelAccessor = labelAccessor;
+    this.visualizers.forEach(v => {
+      v.onSetLabelAccessor(labelAccessor);
+    });
   }
 
   setMode(mode: Mode) {
@@ -649,13 +701,9 @@ export class ScatterPlotWebGL implements ScatterPlot {
   getHighlightedPoints(): number[] { return this.highlightedPoints; }
 
   setDayNightMode(isNight: boolean) {
-    this.isNight = isNight;
-    this.backgroundColor =
-        (isNight ? BACKGROUND_COLOR_NIGHT : BACKGROUND_COLOR_DAY);
-    this.renderer.setClearColor(this.backgroundColor);
-    this.visualizers.forEach(v => {
-      v.onSetDayNightMode(isNight);
-    });
+    d3.select(this.containerNode)
+        .selectAll('canvas')
+        .style('filter', isNight ? 'invert(100%)' : null);
   }
 
   showAxes(show: boolean) {}
@@ -684,6 +732,9 @@ export class ScatterPlotWebGL implements ScatterPlot {
   }
 
   onHover(listener: OnHoverListener) { this.onHoverListeners.push(listener); }
+  onCameraMove(listener: OnCameraMoveListener) {
+    this.onCameraMoveListeners.push(listener);
+  }
 
   clickOnPoint(pointIndex: number) {
     this.nearestPoint = pointIndex;

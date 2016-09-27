@@ -19,26 +19,6 @@ import (
 	"testing"
 )
 
-func Placeholder(g *Graph, name string, dt DataType) (Output, error) {
-	b := newOpBuilder(g, "Placeholder", name)
-	b.SetAttrType("dtype", dt)
-	op, err := b.Build()
-	if err != nil {
-		return Output{}, err
-	}
-	return Output{op, 0}, nil
-}
-
-func Neg(g *Graph, name string, port Output) (Output, error) {
-	b := newOpBuilder(g, "Neg", name)
-	b.AddInput(port)
-	op, err := b.Build()
-	if err != nil {
-		return Output{}, err
-	}
-	return Output{op, 0}, nil
-}
-
 func createTestGraph(t *testing.T, dt DataType) (*Graph, Output, Output) {
 	g := NewGraph()
 	inp, err := Placeholder(g, "p1", dt)

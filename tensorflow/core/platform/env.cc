@@ -69,8 +69,9 @@ Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
 Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 
 Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
-  string scheme = GetSchemeFromURI(fname);
-  FileSystem* file_system = file_system_registry_->Lookup(scheme);
+  StringPiece scheme, host, path;
+  ParseURI(fname, &scheme, &host, &path);
+  FileSystem* file_system = file_system_registry_->Lookup(scheme.ToString());
   if (!file_system) {
     return errors::Unimplemented("File system scheme ", scheme,
                                  " not implemented");
@@ -130,6 +131,30 @@ Status Env::GetChildren(const string& dir, std::vector<string>* result) {
   return fs->GetChildren(dir, result);
 }
 
+Status Env::GetMatchingPaths(const string& pattern,
+                             std::vector<string>* results) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(pattern, &fs));
+  results->clear();
+  // Find the fixed prefix by looking for the first wildcard.
+  const string& fixed_prefix =
+      pattern.substr(0, pattern.find_first_of("*?[\\"));
+  const string& base_dir = io::Dirname(fixed_prefix).ToString();
+  const string& list_dir = base_dir.empty() ? "." : base_dir;
+
+  std::vector<string> all_files;
+  TF_RETURN_IF_ERROR(fs->GetChildrenRecursively(list_dir, &all_files));
+
+  // Match all obtained files to the input pattern.
+  for (const auto& f : all_files) {
+    const string& full_path = io::JoinPath(base_dir, f);
+    if (MatchPath(full_path, pattern)) {
+      results->push_back(full_path);
+    }
+  }
+  return Status::OK();
+}
+
 Status Env::DeleteFile(const string& fname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
@@ -139,9 +164,11 @@ Status Env::DeleteFile(const string& fname) {
 Status Env::RecursivelyCreateDir(const string& dirname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  StringPiece scheme, host, remaining_dir;
+  ParseURI(dirname, &scheme, &host, &remaining_dir);
   std::vector<StringPiece> sub_dirs;
-  StringPiece remaining_dir(dirname);
-  while (!fs->FileExists(remaining_dir.ToString()) && !remaining_dir.empty()) {
+  while (!fs->FileExists(CreateURI(scheme, host, remaining_dir)) &&
+         !remaining_dir.empty()) {
     // Basename returns "" for / ending dirs.
     if (!remaining_dir.ends_with("/")) {
       sub_dirs.push_back(io::Basename(remaining_dir));
@@ -156,7 +183,7 @@ Status Env::RecursivelyCreateDir(const string& dirname) {
   string built_path = remaining_dir.ToString();
   for (const StringPiece sub_dir : sub_dirs) {
     built_path = io::JoinPath(built_path, sub_dir);
-    TF_RETURN_IF_ERROR(fs->CreateDir(built_path));
+    TF_RETURN_IF_ERROR(fs->CreateDir(CreateURI(scheme, host, built_path)));
   }
   return Status::OK();
 }
@@ -351,6 +378,13 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
 };
 
 }  // namespace
+
+Status WriteBinaryProto(Env* env, const string& fname,
+                        const ::tensorflow::protobuf::MessageLite& proto) {
+  string serialized;
+  proto.AppendToString(&serialized);
+  return WriteStringToFile(env, fname, serialized);
+}
 
 Status ReadBinaryProto(Env* env, const string& fname,
                        ::tensorflow::protobuf::MessageLite* proto) {

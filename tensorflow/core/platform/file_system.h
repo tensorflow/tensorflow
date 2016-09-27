@@ -58,8 +58,17 @@ class FileSystem {
 
   virtual bool FileExists(const string& fname) = 0;
 
+  /// \brief Returns the immediate children in the given directory.
+  ///
+  /// The returned paths are relative to 'dir'.
   virtual Status GetChildren(const string& dir,
                              std::vector<string>* result) = 0;
+
+  /// \brief Recursively returns all the files in the given directory.
+  ///
+  /// The returned paths are relative to 'dir'.
+  virtual Status GetChildrenRecursively(const string& dir,
+                                        std::vector<string>* result);
 
   virtual Status Stat(const string& fname, FileStatistics* stat) = 0;
 
@@ -175,9 +184,7 @@ class RandomAccessFile {
                       char* scratch) const = 0;
 
  private:
-  /// No copying allowed
-  RandomAccessFile(const RandomAccessFile&);
-  void operator=(const RandomAccessFile&);
+  TF_DISALLOW_COPY_AND_ASSIGN(RandomAccessFile);
 };
 
 /// \brief A file abstraction for sequential writing.
@@ -195,9 +202,7 @@ class WritableFile {
   virtual Status Sync() = 0;
 
  private:
-  /// No copying allowed
-  WritableFile(const WritableFile&);
-  void operator=(const WritableFile&);
+  TF_DISALLOW_COPY_AND_ASSIGN(WritableFile);
 };
 
 /// \brief A readonly memmapped file abstraction.
@@ -229,11 +234,18 @@ class FileSystemRegistry {
       std::vector<string>* schemes) = 0;
 };
 
-// Given URI of the form [scheme://]<filename>, return 'scheme'.
-string GetSchemeFromURI(const string& name);
+// Populates the scheme, host, and path from a URI.
+//
+// Corner cases:
+// - If the URI is invalid, scheme and host are set to empty strings and the
+//   passed string is assumed to be a path
+// - If the URI omits the path (e.g. file://host), then the path is left empty.
+void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
+              StringPiece* path);
 
-// Given URI of the form [scheme://]<filename>, return 'filename'.
-string GetNameFromURI(const string& name);
+// Creates a URI from a scheme, host, and path. If the scheme is empty, we just
+// return the path.
+string CreateURI(StringPiece scheme, StringPiece host, StringPiece path);
 
 }  // namespace tensorflow
 

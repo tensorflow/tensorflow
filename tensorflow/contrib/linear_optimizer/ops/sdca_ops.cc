@@ -18,7 +18,7 @@ namespace tensorflow {
 
 // --------------------------------------------------------------------------
 
-REGISTER_OP("DistributedSdcaLargeBatchSolver")
+REGISTER_OP("SdcaOptimizer")
     .Attr(
         "loss_type: {'logistic_loss', 'squared_loss', 'hinge_loss',"
         "'smooth_hinge_loss'}")
@@ -36,6 +36,7 @@ REGISTER_OP("DistributedSdcaLargeBatchSolver")
     .Input("dense_features: num_dense_features * float")
     .Input("example_weights: float")
     .Input("example_labels: float")
+    .Input("sparse_indices: num_sparse_features * int64")
     .Input("sparse_weights: num_sparse_features * float")
     .Input("dense_weights: num_dense_features * float")
     .Input("example_state_data: float")
@@ -59,8 +60,12 @@ Adding vs. Averaging in Distributed Primal-Dual Optimization.
 Chenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan, Peter Richtarik,
 Martin Takac http://arxiv.org/abs/1502.03508
 
+Stochastic Dual Coordinate Ascent with Adaptive Probabilities
+Dominik Csiba, Zheng Qu, Peter Richtarik https://arxiv.org/abs/1502.08053
+
 loss_type: Type of the primal loss. Currently SdcaSolver supports logistic,
   squared and hinge losses.
+adaptative: Whether to use Adapative SDCA for the inner loop.
 num_sparse_features: Number of sparse feature groups to train on.
 num_sparse_features_with_values: Number of sparse feature groups with values
   associated with it, otherwise implicitly treats values as 1.0.
@@ -78,6 +83,9 @@ example_weights: a vector which contains the weight associated with each
   example.
 example_labels: a vector which contains the label/target associated with each
   example.
+sparse_indices: a list of vectors where each value is the indices which has
+  corresponding weights in sparse_weights. This field maybe ommitted for the
+  dense approach.
 sparse_weights: a list of vectors where each value is the weight associated with
   a sparse feature group.
 dense_weights: a list of vectors where the values are the weights associated

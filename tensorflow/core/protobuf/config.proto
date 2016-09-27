@@ -112,6 +112,10 @@ message GraphOptions {
 
   // If true, transfer float values between processes as bfloat16.
   bool enable_bfloat16_sendrecv = 7;
+
+  // If > 0, record a timeline every this many steps.
+  // EXPERIMENTAL: This currently has no effect in MasterSession.
+  int32 timeline_step = 8;
 };
 
 message ThreadPoolOptionProto {

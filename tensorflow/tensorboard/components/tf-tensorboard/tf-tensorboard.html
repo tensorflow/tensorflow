@@ -22,6 +22,7 @@ limitations under the License.
 <link rel="import" href="../paper-checkbox/paper-checkbox.html">
 <link rel="import" href="../paper-toolbar/paper-toolbar.html">
 <link rel="import" href="../paper-button/paper-button.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
 <link rel="import" href="../paper-header-panel/paper-header-panel.html">
 <link rel="import" href="../tf-globals/tf-globals.html">
 <link rel="import" href="../tf-event-dashboard/tf-event-dashboard.html">
@@ -33,6 +34,7 @@ limitations under the License.
 <link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 <link rel="import" href="../tf-backend/tf-backend.html">
 <link rel="import" href="../tf-storage/tf-storage.html">
+<link rel="import" href="../vz-projector/vz-projector.html">
 
 <!--
 tf-tensorboard is the frontend entry point for TensorBoard.
@@ -121,6 +123,13 @@ allows the user to toggle between various dashboards.
             id="histograms"
             backend="[[_backend]]"
           ></tf-histogram-dashboard>
+        </template>
+
+        <template is="dom-if" if="[[_modeIsProjections(mode)]]">
+          <vz-projector
+            id="projector"
+            route-prefix="/data/plugin/projector"
+          ></vz-projector>
         </template>
       </div>
     </paper-header-panel>
@@ -253,6 +262,9 @@ allows the user to toggle between various dashboards.
       _modeIsGraphs: function(mode) {
         return mode === "graphs";
       },
+      _modeIsProjections: function(mode) {
+        return mode === "projections";
+      },
       _modeIsDistributions: function(mode) {
         return mode === "distributions";
       },
@@ -286,7 +298,7 @@ allows the user to toggle between various dashboards.
         }
       },
       reload: function() {
-        if (this.mode === "graphs") {
+        if (this.mode === "graphs" || this.mode === "projections") {
           return;
         }
         this.selectedDashboard().reload();

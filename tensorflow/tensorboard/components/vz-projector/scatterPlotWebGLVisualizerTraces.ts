@@ -126,13 +126,15 @@ export class ScatterPlotWebGLVisualizerTraces implements
 
   onDataSet(dataSet: DataSet, spriteImage: HTMLImageElement) {
     this.dataSet = dataSet;
-    // Set up the position buffer arrays for each trace.
-    for (let i = 0; i < this.dataSet.traces.length; i++) {
-      let dataTrace = this.dataSet.traces[i];
-      let traces = new Float32Array(
-          2 * (dataTrace.pointIndices.length - 1) * XYZ_NUM_BYTES);
-      this.tracePositionBuffer[i] =
-          new THREE.BufferAttribute(traces, XYZ_NUM_BYTES);
+    if (dataSet) {
+      // Set up the position buffer arrays for each trace.
+      for (let i = 0; i < this.dataSet.traces.length; i++) {
+        let dataTrace = this.dataSet.traces[i];
+        let traces = new Float32Array(
+            2 * (dataTrace.pointIndices.length - 1) * XYZ_NUM_BYTES);
+        this.tracePositionBuffer[i] =
+            new THREE.BufferAttribute(traces, XYZ_NUM_BYTES);
+      }
     }
   }
 
@@ -160,6 +162,9 @@ export class ScatterPlotWebGLVisualizerTraces implements
   }
 
   onUpdate() {
+    if (!this.dataSet) {
+      return;
+    }
     for (let i = 0; i < this.dataSet.traces.length; i++) {
       let dataTrace = this.dataSet.traces[i];
 
@@ -186,5 +191,5 @@ export class ScatterPlotWebGLVisualizerTraces implements
   onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {}
   onRender(renderContext: RenderContext) {}
   onResize(newWidth: number, newHeight: number) {}
-  onSetDayNightMode(isNight: boolean) {}
+  onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }

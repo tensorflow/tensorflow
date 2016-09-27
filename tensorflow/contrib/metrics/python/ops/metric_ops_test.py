@@ -23,6 +23,7 @@ import math
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
+from tensorflow.contrib.metrics.python.ops import metric_ops
 
 NAN = float('nan')
 
@@ -82,10 +83,7 @@ def _binary_2d_label_to_sparse(labels):
     `SparseTensor` whose values are indices along the last dimension of
     `labels`.
   """
-  v = _binary_2d_label_to_sparse_value(labels)
-  return tf.SparseTensor(tf.constant(v.indices, tf.int64),
-                         tf.constant(v.values, tf.int64),
-                         tf.constant(v.shape, tf.int64))
+  return tf.SparseTensor.from_value(_binary_2d_label_to_sparse_value(labels))
 
 
 def _binary_3d_label_to_sparse_value(labels):
@@ -131,10 +129,7 @@ def _binary_3d_label_to_sparse(labels):
     `SparseTensor` whose values are indices along the last dimension of
     `labels`.
   """
-  v = _binary_3d_label_to_sparse_value(labels)
-  return tf.SparseTensor(tf.constant(v.indices, tf.int64),
-                         tf.constant(v.values, tf.int64),
-                         tf.constant(v.shape, tf.int64))
+  return tf.SparseTensor.from_value(_binary_3d_label_to_sparse_value(labels))
 
 
 class StreamingMeanTest(tf.test.TestCase):
@@ -192,7 +187,58 @@ class StreamingMeanTest(tf.test.TestCase):
 
       self.assertAlmostEqual(1.65, sess.run(mean), 5)
 
-  def testWeightedValues(self):
+  def test1dWeightedValues(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      values_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      # Create the queue that populates the weighted labels.
+      weights_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 1))
+      _enqueue_vector(sess, weights_queue, [1])
+      _enqueue_vector(sess, weights_queue, [0])
+      _enqueue_vector(sess, weights_queue, [0])
+      _enqueue_vector(sess, weights_queue, [1])
+      weights = weights_queue.dequeue()
+
+      mean, update_op = metrics.streaming_mean(values, weights)
+
+      tf.initialize_local_variables().run()
+      for _ in range(4):
+        update_op.eval()
+      self.assertAlmostEqual((0 + 1 - 3.2 + 4.0) / 4.0, mean.eval(), 5)
+
+  def test1dWeightedValues_placeholders(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      feed_values = (
+          (0, 1),
+          (-4.2, 9.1),
+          (6.5, 0),
+          (-3.2, 4.0)
+      )
+      values = tf.placeholder(dtype=tf.float32)
+
+      # Create the queue that populates the weighted labels.
+      weights_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 1))
+      _enqueue_vector(sess, weights_queue, [1])
+      _enqueue_vector(sess, weights_queue, [0])
+      _enqueue_vector(sess, weights_queue, [0])
+      _enqueue_vector(sess, weights_queue, [1])
+      weights = weights_queue.dequeue()
+
+      mean, update_op = metrics.streaming_mean(values, weights)
+
+      tf.initialize_local_variables().run()
+      for i in range(4):
+        update_op.eval(feed_dict={values: feed_values[i]})
+      self.assertAlmostEqual((0 + 1 - 3.2 + 4.0) / 4.0, mean.eval(), 5)
+
+  def test2dWeightedValues(self):
     with self.test_session() as sess:
       # Create the queue that populates the values.
       values_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
@@ -212,10 +258,36 @@ class StreamingMeanTest(tf.test.TestCase):
 
       mean, update_op = metrics.streaming_mean(values, weights)
 
-      sess.run(tf.initialize_local_variables())
+      tf.initialize_local_variables().run()
       for _ in range(4):
-        sess.run(update_op)
-      self.assertAlmostEqual(-0.8, sess.run(mean), 5)
+        update_op.eval()
+      self.assertAlmostEqual((0 + 1 - 4.2 + 0) / 4.0, mean.eval(), 5)
+
+  def test2dWeightedValues_placeholders(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      feed_values = (
+          (0, 1),
+          (-4.2, 9.1),
+          (6.5, 0),
+          (-3.2, 4.0)
+      )
+      values = tf.placeholder(dtype=tf.float32)
+
+      # Create the queue that populates the weighted labels.
+      weights_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
+      _enqueue_vector(sess, weights_queue, [1, 1])
+      _enqueue_vector(sess, weights_queue, [1, 0])
+      _enqueue_vector(sess, weights_queue, [0, 1])
+      _enqueue_vector(sess, weights_queue, [0, 0])
+      weights = weights_queue.dequeue()
+
+      mean, update_op = metrics.streaming_mean(values, weights)
+
+      tf.initialize_local_variables().run()
+      for i in range(4):
+        update_op.eval(feed_dict={values: feed_values[i]})
+      self.assertAlmostEqual((0 + 1 - 4.2 + 0) / 4.0, mean.eval(), 5)
 
 
 class StreamingMeanTensorTest(tf.test.TestCase):
@@ -294,7 +366,32 @@ class StreamingMeanTensorTest(tf.test.TestCase):
 
       self.assertAllClose([[-0.9/4., 3.525]], sess.run(mean), 5)
 
-  def testWeighted1(self):
+  def testWeighted1d(self):
+    with self.test_session() as sess:
+      # Create the queue that populates the values.
+      values_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
+      _enqueue_vector(sess, values_queue, [0, 1])
+      _enqueue_vector(sess, values_queue, [-4.2, 9.1])
+      _enqueue_vector(sess, values_queue, [6.5, 0])
+      _enqueue_vector(sess, values_queue, [-3.2, 4.0])
+      values = values_queue.dequeue()
+
+      # Create the queue that populates the weights.
+      weights_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 1))
+      _enqueue_vector(sess, weights_queue, [[1]])
+      _enqueue_vector(sess, weights_queue, [[0]])
+      _enqueue_vector(sess, weights_queue, [[1]])
+      _enqueue_vector(sess, weights_queue, [[0]])
+      weights = weights_queue.dequeue()
+
+      mean, update_op = metrics.streaming_mean_tensor(values, weights)
+
+      sess.run(tf.initialize_local_variables())
+      for _ in range(4):
+        sess.run(update_op)
+      self.assertAllClose([[3.25, 0.5]], sess.run(mean), 5)
+
+  def testWeighted2d_1(self):
     with self.test_session() as sess:
       # Create the queue that populates the values.
       values_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
@@ -319,7 +416,7 @@ class StreamingMeanTensorTest(tf.test.TestCase):
         sess.run(update_op)
       self.assertAllClose([[-2.1, 0.5]], sess.run(mean), 5)
 
-  def testWeightedValues2(self):
+  def testWeighted2d_2(self):
     with self.test_session() as sess:
       # Create the queue that populates the values.
       values_queue = tf.FIFOQueue(4, dtypes=tf.float32, shapes=(1, 2))
@@ -547,17 +644,73 @@ class StreamingPrecisionTest(tf.test.TestCase):
       self.assertAlmostEqual(0.5, update_op.eval())
       self.assertAlmostEqual(0.5, precision.eval())
 
-  def testWeighted(self):
-    predictions = tf.constant([1, 0, 1, 0], shape=(1, 4))
-    labels = tf.constant([0, 1, 1, 0], shape=(1, 4))
-    weights = tf.constant([1, 2, 3, 4], shape=(1, 4))
+  def testWeighted1d(self):
+    predictions = tf.constant([[1, 0, 1, 0], [1, 0, 1, 0]])
+    labels = tf.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
     precision, update_op = metrics.streaming_precision(
-        predictions, labels, weights=weights)
+        predictions, labels, weights=tf.constant([[2], [5]]))
 
-    with self.test_session() as sess:
-      sess.run(tf.initialize_local_variables())
-      self.assertAlmostEqual(0.75, update_op.eval())
-      self.assertAlmostEqual(0.75, precision.eval())
+    with self.test_session():
+      tf.initialize_local_variables().run()
+      weighted_tp = 2.0 + 5.0
+      weighted_positives = (2.0 + 2.0) + (5.0 + 5.0)
+      expected_precision = weighted_tp / weighted_positives
+      self.assertAlmostEqual(expected_precision, update_op.eval())
+      self.assertAlmostEqual(expected_precision, precision.eval())
+
+  def testWeighted1d_placeholders(self):
+    predictions = tf.placeholder(dtype=tf.float32)
+    labels = tf.placeholder(dtype=tf.float32)
+    feed_dict = {
+        predictions: ((1, 0, 1, 0), (1, 0, 1, 0)),
+        labels: ((0, 1, 1, 0), (1, 0, 0, 1))
+    }
+    precision, update_op = metrics.streaming_precision(
+        predictions, labels, weights=tf.constant([[2], [5]]))
+
+    with self.test_session():
+      tf.initialize_local_variables().run()
+      weighted_tp = 2.0 + 5.0
+      weighted_positives = (2.0 + 2.0) + (5.0 + 5.0)
+      expected_precision = weighted_tp / weighted_positives
+      self.assertAlmostEqual(
+          expected_precision, update_op.eval(feed_dict=feed_dict))
+      self.assertAlmostEqual(
+          expected_precision, precision.eval(feed_dict=feed_dict))
+
+  def testWeighted2d(self):
+    predictions = tf.constant([[1, 0, 1, 0], [1, 0, 1, 0]])
+    labels = tf.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
+    precision, update_op = metrics.streaming_precision(
+        predictions, labels, weights=tf.constant([[1, 2, 3, 4], [4, 3, 2, 1]]))
+
+    with self.test_session():
+      tf.initialize_local_variables().run()
+      weighted_tp = 3.0 + 4.0
+      weighted_positives = (1.0 + 3.0) + (4.0 + 2.0)
+      expected_precision = weighted_tp / weighted_positives
+      self.assertAlmostEqual(expected_precision, update_op.eval())
+      self.assertAlmostEqual(expected_precision, precision.eval())
+
+  def testWeighted2d_placeholders(self):
+    predictions = tf.placeholder(dtype=tf.float32)
+    labels = tf.placeholder(dtype=tf.float32)
+    feed_dict = {
+        predictions: ((1, 0, 1, 0), (1, 0, 1, 0)),
+        labels: ((0, 1, 1, 0), (1, 0, 0, 1))
+    }
+    precision, update_op = metrics.streaming_precision(
+        predictions, labels, weights=tf.constant([[1, 2, 3, 4], [4, 3, 2, 1]]))
+
+    with self.test_session():
+      tf.initialize_local_variables().run()
+      weighted_tp = 3.0 + 4.0
+      weighted_positives = (1.0 + 3.0) + (4.0 + 2.0)
+      expected_precision = weighted_tp / weighted_positives
+      self.assertAlmostEqual(
+          expected_precision, update_op.eval(feed_dict=feed_dict))
+      self.assertAlmostEqual(
+          expected_precision, precision.eval(feed_dict=feed_dict))
 
   def testAllIncorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
@@ -658,17 +811,35 @@ class StreamingRecallTest(tf.test.TestCase):
       self.assertAlmostEqual(0.5, update_op.eval())
       self.assertAlmostEqual(0.5, recall.eval())
 
-  def testWeighted(self):
-    predictions = tf.constant([1, 0, 1, 0], shape=(1, 4))
-    labels = tf.constant([0, 1, 1, 0], shape=(1, 4))
-    weights = tf.constant([1, 2, 3, 4], shape=(1, 4))
+  def testWeighted1d(self):
+    predictions = tf.constant([[1, 0, 1, 0], [0, 1, 0, 1]])
+    labels = tf.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
+    weights = tf.constant([[2], [5]])
     recall, update_op = metrics.streaming_recall(
         predictions, labels, weights=weights)
 
     with self.test_session() as sess:
       sess.run(tf.initialize_local_variables())
-      self.assertAlmostEqual(0.6, update_op.eval())
-      self.assertAlmostEqual(0.6, recall.eval())
+      weighted_tp = 2.0 + 5.0
+      weighted_t = (2.0 + 2.0) + (5.0 + 5.0)
+      expected_precision = weighted_tp / weighted_t
+      self.assertAlmostEqual(expected_precision, update_op.eval())
+      self.assertAlmostEqual(expected_precision, recall.eval())
+
+  def testWeighted2d(self):
+    predictions = tf.constant([[1, 0, 1, 0], [0, 1, 0, 1]])
+    labels = tf.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
+    weights = tf.constant([[1, 2, 3, 4], [4, 3, 2, 1]])
+    recall, update_op = metrics.streaming_recall(
+        predictions, labels, weights=weights)
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_local_variables())
+      weighted_tp = 3.0 + 1.0
+      weighted_t = (2.0 + 3.0) + (4.0 + 1.0)
+      expected_precision = weighted_tp / weighted_t
+      self.assertAlmostEqual(expected_precision, update_op.eval())
+      self.assertAlmostEqual(expected_precision, recall.eval())
 
   def testAllIncorrect(self):
     np_inputs = np.random.randint(0, 2, size=(100, 1))
@@ -760,7 +931,20 @@ class StreamingAUCTest(tf.test.TestCase):
 
       self.assertAlmostEqual(0.5, auc.eval())
 
-  def testWeighted(self):
+  def testWeighted1d(self):
+    with self.test_session() as sess:
+      predictions = tf.constant([1, 0, 1, 0], shape=(1, 4), dtype=tf.float32)
+      labels = tf.constant([0, 1, 1, 0], shape=(1, 4))
+      weights = tf.constant([2], shape=(1, 1))
+      auc, update_op = metrics.streaming_auc(predictions, labels,
+                                             weights=weights)
+
+      sess.run(tf.initialize_local_variables())
+      self.assertAlmostEqual(0.5, sess.run(update_op), 5)
+
+      self.assertAlmostEqual(0.5, auc.eval(), 5)
+
+  def testWeighted2d(self):
     with self.test_session() as sess:
       predictions = tf.constant([1, 0, 1, 0], shape=(1, 4), dtype=tf.float32)
       labels = tf.constant([0, 1, 1, 0], shape=(1, 4))
@@ -1008,7 +1192,25 @@ class StreamingSpecificityAtSensitivityTest(tf.test.TestCase):
       self.assertAlmostEqual(0.6, sess.run(update_op))
       self.assertAlmostEqual(0.6, specificity.eval())
 
-  def testWeighted(self):
+  def testWeighted1d(self):
+    predictions_values = [0.1, 0.2, 0.4, 0.3, 0.0,
+                          0.1, 0.2, 0.2, 0.26, 0.26]
+    labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+    weights_values = [3]
+
+    predictions = tf.constant(predictions_values, dtype=tf.float32)
+    labels = tf.constant(labels_values)
+    weights = tf.constant(weights_values)
+    specificity, update_op = metrics.streaming_specificity_at_sensitivity(
+        predictions, labels, weights=weights, sensitivity=0.4)
+
+    with self.test_session() as sess:
+      sess.run(tf.initialize_local_variables())
+
+      self.assertAlmostEqual(0.6, sess.run(update_op))
+      self.assertAlmostEqual(0.6, specificity.eval())
+
+  def testWeighted2d(self):
     predictions_values = [0.1, 0.2, 0.4, 0.3, 0.0,
                           0.1, 0.2, 0.2, 0.26, 0.26]
     labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
@@ -1240,7 +1442,34 @@ class StreamingPrecisionRecallThresholdsTest(tf.test.TestCase):
       self.assertAlmostEqual(0, prec.eval())
       self.assertAlmostEqual(0, rec.eval())
 
-  def testWeights(self):
+  def testWeights1d(self):
+    with self.test_session() as sess:
+      predictions = tf.constant([[1, 0], [1, 0]], shape=(2, 2),
+                                dtype=tf.float32)
+      labels = tf.constant([[0, 1], [1, 0]], shape=(2, 2))
+      weights = tf.constant([[0], [1]], shape=(2, 1), dtype=tf.float32)
+      thresholds = [0.5, 1.1]
+      prec, prec_op = metrics.streaming_precision_at_thresholds(
+          predictions, labels, thresholds, weights=weights)
+      rec, rec_op = metrics.streaming_recall_at_thresholds(
+          predictions, labels, thresholds, weights=weights)
+
+      [prec_low, prec_high] = tf.split(0, 2, prec)
+      prec_low = tf.reshape(prec_low, shape=())
+      prec_high = tf.reshape(prec_high, shape=())
+      [rec_low, rec_high] = tf.split(0, 2, rec)
+      rec_low = tf.reshape(rec_low, shape=())
+      rec_high = tf.reshape(rec_high, shape=())
+
+      sess.run(tf.initialize_local_variables())
+      sess.run([prec_op, rec_op])
+
+      self.assertAlmostEqual(1.0, prec_low.eval(), places=5)
+      self.assertAlmostEqual(0.0, prec_high.eval(), places=5)
+      self.assertAlmostEqual(1.0, rec_low.eval(), places=5)
+      self.assertAlmostEqual(0.0, rec_high.eval(), places=5)
+
+  def testWeights2d(self):
     with self.test_session() as sess:
       predictions = tf.constant([[1, 0], [1, 0]], shape=(2, 2),
                                 dtype=tf.float32)
@@ -1465,61 +1694,183 @@ class StreamingRecallAtKTest(tf.test.TestCase):
 
 class StreamingSparsePrecisionTest(tf.test.TestCase):
 
-  def _assert_precision_at_k(self,
-                             predictions,
-                             labels,
-                             k,
-                             expected,
-                             class_id=None,
-                             ignore_mask=None,
-                             weights=None):
-    if ignore_mask is not None:
-      ignore_mask = tf.constant(ignore_mask, tf.bool)
-    if weights is not None:
-      weights = tf.constant(weights, tf.float32)
-    loss, loss_update = metrics.streaming_sparse_precision_at_k(
-        predictions=tf.constant(predictions, tf.float32), labels=labels,
-        k=k, class_id=class_id, ignore_mask=ignore_mask, weights=weights)
+  def _test_streaming_sparse_precision_at_k(self,
+                                            predictions,
+                                            labels,
+                                            k,
+                                            expected,
+                                            class_id=None,
+                                            ignore_mask=None,
+                                            weights=None):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      if ignore_mask is not None:
+        ignore_mask = tf.constant(ignore_mask, tf.bool)
+      if weights is not None:
+        weights = tf.constant(weights, tf.float32)
+      metric, update = metrics.streaming_sparse_precision_at_k(
+          predictions=tf.constant(predictions, tf.float32), labels=labels,
+          k=k, class_id=class_id, ignore_mask=ignore_mask, weights=weights)
 
-    # Fails without initialized vars.
-    self.assertRaises(tf.OpError, loss.eval)
-    self.assertRaises(tf.OpError, loss_update.eval)
-    tf.initialize_variables(tf.local_variables()).run()
+      # Fails without initialized vars.
+      self.assertRaises(tf.OpError, metric.eval)
+      self.assertRaises(tf.OpError, update.eval)
+      tf.initialize_variables(tf.local_variables()).run()
 
-    # Run per-step op and assert expected values.
-    if math.isnan(expected):
-      self.assertTrue(math.isnan(loss_update.eval()))
-      self.assertTrue(math.isnan(loss.eval()))
-    else:
-      self.assertEqual(expected, loss_update.eval())
-      self.assertEqual(expected, loss.eval())
+      # Run per-step op and assert expected values.
+      if math.isnan(expected):
+        self.assertTrue(math.isnan(update.eval()))
+        self.assertTrue(math.isnan(metric.eval()))
+      else:
+        self.assertEqual(expected, update.eval())
+        self.assertEqual(expected, metric.eval())
+
+  def _test_sparse_average_precision_at_k(self,
+                                          predictions,
+                                          labels,
+                                          k,
+                                          expected,
+                                          ignore_mask=None):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      if ignore_mask is not None:
+        ignore_mask = tf.constant(ignore_mask, tf.bool)
+      predictions = tf.constant(predictions, tf.float32)
+      metric = metric_ops.sparse_average_precision_at_k(
+          predictions=predictions, labels=labels, k=k)
+      self.assertAllEqual(expected, metric.eval())
+
+  def _test_streaming_sparse_average_precision_at_k(
+      self, predictions, labels, k, expected, weights=None):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      if weights is not None:
+        weights = tf.constant(weights, tf.float32)
+      predictions = tf.constant(predictions, tf.float32)
+      metric, update = metrics.streaming_sparse_average_precision_at_k(
+          predictions=predictions, labels=labels, k=k, weights=weights)
+
+      # Fails without initialized vars.
+      self.assertRaises(tf.OpError, metric.eval)
+      self.assertRaises(tf.OpError, update.eval)
+      local_variables = tf.local_variables()
+      tf.initialize_variables(local_variables).run()
+
+      # Run per-step op and assert expected values.
+      if math.isnan(expected):
+        self.assertTrue(math.isnan(update.eval()))
+        self.assertTrue(math.isnan(metric.eval()))
+      else:
+        self.assertAlmostEqual(expected, update.eval())
+        self.assertAlmostEqual(expected, metric.eval())
+
+  def test_average_precision(self):
+    # Example 1.
+    # Matches example here:
+    # fastml.com/what-you-wanted-to-know-about-mean-average-precision
+    labels_ex1 = (0, 1, 2, 3, 4)
+    labels = np.array([labels_ex1], dtype=np.int64)
+    predictions_ex1 = (0.2, 0.1, 0.0, 0.4, 0.0, 0.5, 0.3)  # [5, 3, 6, 1, 2]
+    predictions = (predictions_ex1,)
+    precision_ex1 = (
+        0.0 / 1,
+        1.0 / 2,
+        1.0 / 3,
+        2.0 / 4
+    )
+    avg_precision_ex1 = (
+        0.0 / 1,
+        precision_ex1[1] / 2,
+        precision_ex1[1] / 3,
+        (precision_ex1[1] + precision_ex1[3]) / 4
+    )
+    for i in xrange(4):
+      k = i + 1
+      self._test_streaming_sparse_precision_at_k(
+          predictions, labels, k, expected=precision_ex1[i])
+      self._test_sparse_average_precision_at_k(
+          predictions, labels, k, expected=[avg_precision_ex1[i]])
+      self._test_streaming_sparse_average_precision_at_k(
+          predictions, labels, k, expected=avg_precision_ex1[i])
+
+    # Example 2.
+    labels_ex2 = (0, 2, 4, 5, 6)
+    labels = np.array([labels_ex2], dtype=np.int64)
+    predictions_ex2 = (0.3, 0.5, 0.0, 0.4, 0.0, 0.1, 0.2)  # [1, 3, 0, 6, 5]
+    predictions = (predictions_ex2,)
+    precision_ex2 = (
+        0.0 / 1,
+        0.0 / 2,
+        1.0 / 3,
+        2.0 / 4
+    )
+    avg_precision_ex2 = (
+        0.0 / 1,
+        0.0 / 2,
+        precision_ex2[2] / 3,
+        (precision_ex2[2] + precision_ex2[3]) / 4
+    )
+    for i in xrange(4):
+      k = i + 1
+      self._test_streaming_sparse_precision_at_k(
+          predictions, labels, k, expected=precision_ex2[i])
+      self._test_sparse_average_precision_at_k(
+          predictions, labels, k, expected=[avg_precision_ex2[i]])
+      self._test_streaming_sparse_average_precision_at_k(
+          predictions, labels, k, expected=avg_precision_ex2[i])
+
+    # Both examples, we expect both precision and average precision to be the
+    # average of the 2 examples.
+    labels = np.array([labels_ex1, labels_ex2], dtype=np.int64)
+    predictions = (predictions_ex1, predictions_ex2)
+    average_precision = [
+        (ex1, ex2) for ex1, ex2 in zip(avg_precision_ex1, avg_precision_ex2)]
+    streaming_precision = [
+        (ex1 + ex2) / 2
+        for ex1, ex2 in zip(precision_ex1, precision_ex2)]
+    streaming_average_precision = [
+        (ex1 + ex2) / 2
+        for ex1, ex2 in zip(avg_precision_ex1, avg_precision_ex2)]
+    for i in xrange(4):
+      k = i + 1
+      self._test_streaming_sparse_precision_at_k(
+          predictions, labels, k, expected=streaming_precision[i])
+      self._test_sparse_average_precision_at_k(
+          predictions, labels, k, expected=average_precision[i])
+      self._test_streaming_sparse_average_precision_at_k(
+          predictions, labels, k, expected=streaming_average_precision[i])
+
+    # Weighted examples, we expect streaming average precision to be the
+    # weighted average of the 2 examples.
+    weights = (0.3, 0.6)
+    streaming_average_precision = [
+        (weights[0] * ex1 + weights[1] * ex2) / (weights[0] + weights[1])
+        for ex1, ex2 in zip(avg_precision_ex1, avg_precision_ex2)]
+    for i in xrange(4):
+      k = i + 1
+      self._test_streaming_sparse_average_precision_at_k(
+          predictions, labels, k, expected=streaming_average_precision[i],
+          weights=weights)
 
   def test_one_label_at_k1_no_predictions(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
     labels = [[0, 0, 0, 1], [0, 0, 1, 0]]
+    sp_labels = _binary_2d_label_to_sparse_value(labels)
 
     # Classes 0,1,2 have 0 predictions, class 4 is out of range.
     for class_id in [0, 1, 2, 4]:
-      with self.test_session():
-        self._assert_precision_at_k(
-            predictions, _binary_2d_label_to_sparse(labels), k=1, expected=NAN,
-            class_id=class_id)
+      self._test_streaming_sparse_precision_at_k(
+          predictions, sp_labels, k=1, expected=NAN, class_id=class_id)
 
   def test_one_label_at_k1(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
     labels = [[0, 0, 0, 1], [0, 0, 1, 0]]
+    sp_labels = _binary_2d_label_to_sparse_value(labels)
 
     # Class 3: 1 label, 2 predictions, 1 correct.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_2d_label_to_sparse(labels), k=1,
-          expected=1.0 / 2.0, class_id=3)
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=1, expected=1.0 / 2, class_id=3)
 
     # All classes: 2 labels, 2 predictions, 1 correct.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_2d_label_to_sparse(labels), k=1,
-          expected=1.0 / 2.0)
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=1, expected=1.0 / 2)
 
   def test_three_labels_at_k5_no_predictions(self):
     predictions = [
@@ -1530,13 +1881,12 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
         [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
         [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
     ]
+    sp_labels = _binary_2d_label_to_sparse_value(labels)
 
     # Classes 1,3,8 have 0 predictions, class 10 is out of range.
     for class_id in [1, 3, 8, 10]:
-      with self.test_session():
-        self._assert_precision_at_k(
-            predictions, _binary_2d_label_to_sparse(labels), k=5, expected=NAN,
-            class_id=class_id)
+      self._test_streaming_sparse_precision_at_k(
+          predictions, sp_labels, k=5, expected=NAN, class_id=class_id)
 
   def test_three_labels_at_k5_no_labels(self):
     predictions = [
@@ -1547,13 +1897,12 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
         [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
         [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
     ]
+    sp_labels = _binary_2d_label_to_sparse_value(labels)
 
     # Classes 0,4,6,9: 0 labels, >=1 prediction.
     for class_id in [0, 4, 6, 9]:
-      with self.test_session():
-        self._assert_precision_at_k(
-            predictions, _binary_2d_label_to_sparse(labels), k=5, expected=0.0,
-            class_id=class_id)
+      self._test_streaming_sparse_precision_at_k(
+          predictions, sp_labels, k=5, expected=0.0, class_id=class_id)
 
   def test_three_labels_at_k5(self):
     predictions = [
@@ -1564,30 +1913,23 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
         [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
         [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]
     ]
+    sp_labels = _binary_2d_label_to_sparse_value(labels)
 
     # Class 2: 2 labels, 2 correct predictions.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_2d_label_to_sparse(labels), k=5,
-          expected=2.0 / 2.0, class_id=2)
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=2.0 / 2, class_id=2)
 
     # Class 5: 1 label, 1 correct prediction.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_2d_label_to_sparse(labels), k=5,
-          expected=1.0 / 1.0, class_id=5)
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=1.0 / 1, class_id=5)
 
     # Class 7: 1 label, 1 incorrect prediction.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_2d_label_to_sparse(labels), k=5,
-          expected=0.0 / 1.0, class_id=7)
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=0.0 / 1, class_id=7)
 
     # All classes: 10 predictions, 3 correct.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_2d_label_to_sparse(labels), k=5,
-          expected=3.0 / 10.0)
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=3.0 / 10)
 
   def test_3d_no_predictions(self):
     predictions = [[
@@ -1604,13 +1946,12 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
         [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
         [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
     ]]
+    sp_labels = _binary_3d_label_to_sparse_value(labels)
 
     # Classes 1,3,8 have 0 predictions, class 10 is out of range.
     for class_id in [1, 3, 8, 10]:
-      with self.test_session():
-        self._assert_precision_at_k(
-            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
-            class_id=class_id)
+      self._test_streaming_sparse_precision_at_k(
+          predictions, sp_labels, k=5, expected=NAN, class_id=class_id)
 
   def test_3d_no_labels(self):
     predictions = [[
@@ -1627,13 +1968,12 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
         [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
         [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
     ]]
+    sp_labels = _binary_3d_label_to_sparse_value(labels)
 
     # Classes 0,4,6,9: 0 labels, >=1 prediction.
     for class_id in [0, 4, 6, 9]:
-      with self.test_session():
-        self._assert_precision_at_k(
-            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=0.0,
-            class_id=class_id)
+      self._test_streaming_sparse_precision_at_k(
+          predictions, sp_labels, k=5, expected=0.0, class_id=class_id)
 
   def test_3d(self):
     predictions = [[
@@ -1650,30 +1990,23 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
         [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
         [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
     ]]
+    sp_labels = _binary_3d_label_to_sparse_value(labels)
 
     # Class 2: 4 predictions, all correct.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=4.0 / 4.0, class_id=2)
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=4.0 / 4, class_id=2)
 
     # Class 5: 2 predictions, both correct.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=2.0 / 2.0, class_id=5)
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=2.0 / 2, class_id=5)
 
     # Class 7: 2 predictions, 1 correct.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=1.0 / 2.0, class_id=7)
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=1.0 / 2, class_id=7)
 
     # All classes: 20 predictions, 7 correct.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=7.0 / 20.0)
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=7.0 / 20)
 
   def test_3d_ignore_all(self):
     predictions = [[
@@ -1690,24 +2023,21 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
         [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
         [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
     ]]
+    sp_labels = _binary_3d_label_to_sparse_value(labels)
 
     for class_id in xrange(10):
-      with self.test_session():
-        self._assert_precision_at_k(
-            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
-            class_id=class_id, weights=[[0], [0]])
-      with self.test_session():
-        self._assert_precision_at_k(
-            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
-            class_id=class_id, weights=[[0, 0], [0, 0]])
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
-          ignore_mask=[[False], [True]], weights=[[0], [1]])
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
+      self._test_streaming_sparse_precision_at_k(
+          predictions, sp_labels, k=5, expected=NAN, class_id=class_id,
+          weights=[[0], [0]])
+      self._test_streaming_sparse_precision_at_k(
+          predictions, sp_labels, k=5, expected=NAN, class_id=class_id,
           weights=[[0, 0], [0, 0]])
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=NAN,
+        ignore_mask=[[False], [True]], weights=[[0], [1]])
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=NAN,
+        weights=[[0, 0], [0, 0]])
 
   def test_3d_ignore_some(self):
     predictions = [[
@@ -1724,46 +2054,37 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
         [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
         [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
     ]]
+    sp_labels = _binary_3d_label_to_sparse_value(labels)
 
     # Class 2: 2 predictions, both correct.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=2.0 / 2.0, class_id=2, ignore_mask=[[False], [False]],
-          weights=[[1], [0]])
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=2.0 / 2.0, class_id=2,
+        ignore_mask=[[False], [False]], weights=[[1], [0]])
 
     # Class 2: 2 predictions, both correct.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=2.0 / 2.0, class_id=2, ignore_mask=[[False], [False]],
-          weights=[[0], [1]])
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=2.0 / 2.0, class_id=2,
+        ignore_mask=[[False], [False]], weights=[[0], [1]])
 
     # Class 7: 1 incorrect prediction.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=0.0 / 1.0, class_id=7, ignore_mask=[[False], [True]],
-          weights=[[1], [1]])
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=0.0 / 1.0, class_id=7,
+        ignore_mask=[[False], [True]], weights=[[1], [1]])
 
     # Class 7: 1 correct prediction.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=1.0 / 1.0, class_id=7, ignore_mask=[[True], [False]],
-          weights=[[1], [1]])
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=1.0 / 1.0, class_id=7,
+        ignore_mask=[[True], [False]], weights=[[1], [1]])
 
     # Class 7: no predictions.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=NAN, class_id=7, weights=[[1, 0], [0, 1]])
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=NAN, class_id=7,
+        weights=[[1, 0], [0, 1]])
 
     # Class 7: 2 predictions, 1 correct.
-    with self.test_session():
-      self._assert_precision_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=1.0 / 2.0, class_id=7, weights=[[0, 1], [1, 0]])
+    self._test_streaming_sparse_precision_at_k(
+        predictions, sp_labels, k=5, expected=1.0 / 2.0, class_id=7,
+        weights=[[0, 1], [1, 0]])
 
   def test_sparse_tensor_value(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
@@ -1781,72 +2102,143 @@ class StreamingSparsePrecisionTest(tf.test.TestCase):
 
 class StreamingSparseRecallTest(tf.test.TestCase):
 
-  def _assert_recall_at_k(self,
-                          predictions,
-                          labels,
-                          k,
-                          expected,
-                          class_id=None,
-                          ignore_mask=None,
-                          weights=None):
-    if ignore_mask is not None:
-      ignore_mask = tf.constant(ignore_mask, tf.bool)
-    if weights is not None:
-      weights = tf.constant(weights, tf.float32)
-    loss, loss_update = metrics.streaming_sparse_recall_at_k(
-        predictions=tf.constant(predictions, tf.float32),
-        labels=labels, k=k, class_id=class_id, ignore_mask=ignore_mask,
-        weights=weights)
+  def _test_streaming_sparse_recall_at_k(self,
+                                         predictions,
+                                         labels,
+                                         k,
+                                         expected,
+                                         class_id=None,
+                                         ignore_mask=None,
+                                         weights=None):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      if ignore_mask is not None:
+        ignore_mask = tf.constant(ignore_mask, tf.bool)
+      if weights is not None:
+        weights = tf.constant(weights, tf.float32)
+      metric, update = metrics.streaming_sparse_recall_at_k(
+          predictions=tf.constant(predictions, tf.float32),
+          labels=labels, k=k, class_id=class_id, ignore_mask=ignore_mask,
+          weights=weights)
 
-    # Fails without initialized vars.
-    self.assertRaises(tf.OpError, loss.eval)
-    self.assertRaises(tf.OpError, loss_update.eval)
-    tf.initialize_variables(tf.local_variables()).run()
+      # Fails without initialized vars.
+      self.assertRaises(tf.OpError, metric.eval)
+      self.assertRaises(tf.OpError, update.eval)
+      tf.initialize_variables(tf.local_variables()).run()
 
-    # Run per-step op and assert expected values.
-    if math.isnan(expected):
-      self.assertTrue(math.isnan(loss_update.eval()))
-      self.assertTrue(math.isnan(loss.eval()))
-    else:
-      self.assertEqual(expected, loss_update.eval())
-      self.assertEqual(expected, loss.eval())
+      # Run per-step op and assert expected values.
+      if math.isnan(expected):
+        self.assertTrue(math.isnan(update.eval()))
+        self.assertTrue(math.isnan(metric.eval()))
+      else:
+        self.assertEqual(expected, update.eval())
+        self.assertEqual(expected, metric.eval())
 
   def test_one_label_at_k1_empty_classes(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
     labels = [[0, 0, 0, 1], [0, 0, 1, 0]]
+    sp_labels = _binary_2d_label_to_sparse_value(labels)
 
     # Classes 0,1 have 0 labels, 0 predictions, class 4 is out of range.
     for class_id in [0, 1, 4]:
-      with self.test_session():
-        self._assert_recall_at_k(
-            predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
-            k=1, expected=NAN, class_id=class_id)
+      self._test_streaming_sparse_recall_at_k(
+          predictions=predictions, labels=sp_labels, k=1, expected=NAN,
+          class_id=class_id)
 
   def test_one_label_at_k1_no_predictions(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
     labels = [[0, 0, 0, 1], [0, 0, 1, 0]]
+    sp_labels = _binary_2d_label_to_sparse_value(labels)
 
     # Class 2: 0 predictions.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
-          k=1, expected=0.0, class_id=2)
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=0.0,
+        class_id=2)
 
   def test_one_label_at_k1(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
     labels = [[0, 0, 0, 1], [0, 0, 1, 0]]
+    sp_labels = _binary_2d_label_to_sparse_value(labels)
 
     # Class 3: 1 label, 2 predictions, 1 correct.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
-          k=1, expected=1.0 / 1.0, class_id=3)
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=1.0 / 1,
+        class_id=3)
 
     # All classes: 2 labels, 2 predictions, 1 correct.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
-          k=1, expected=1.0 / 2.0)
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=1.0 / 2)
+
+  def test_one_label_at_k1_weighted(self):
+    predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
+    labels = [[0, 0, 0, 1], [0, 0, 1, 0]]
+    sp_labels = _binary_2d_label_to_sparse_value(labels)
+
+    # Class 3: 1 label, 2 predictions, 1 correct.
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=NAN,
+        class_id=3, weights=(0.0,))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=1.0 / 1,
+        class_id=3, weights=(1.0,))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=1.0 / 1,
+        class_id=3, weights=(2.0,))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=NAN,
+        class_id=3, weights=(0.0, 0.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=NAN,
+        class_id=3, weights=(0.0, 1.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=1.0 / 1,
+        class_id=3, weights=(1.0, 0.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=1.0 / 1,
+        class_id=3, weights=(1.0, 1.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=2.0 / 2,
+        class_id=3, weights=(2.0, 3.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=3.0 / 3,
+        class_id=3, weights=(3.0, 2.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=0.3 / 0.3,
+        class_id=3, weights=(0.3, 0.6))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=0.6 / 0.6,
+        class_id=3, weights=(0.6, 0.3))
+
+    # All classes: 2 labels, 2 predictions, 1 correct.
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=NAN,
+        weights=(0.0,))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=1.0 / 2,
+        weights=(1.0,))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=1.0 / 2,
+        weights=(2.0,))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=1.0 / 1,
+        weights=(1.0, 0.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=0.0 / 1,
+        weights=(0.0, 1.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=1.0 / 2,
+        weights=(1.0, 1.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=2.0 / 5,
+        weights=(2.0, 3.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=3.0 / 5,
+        weights=(3.0, 2.0))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=0.3 / 0.9,
+        weights=(0.3, 0.6))
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=1, expected=0.6 / 0.9,
+        weights=(0.6, 0.3))
 
   def test_three_labels_at_k5_no_labels(self):
     predictions = [
@@ -1855,13 +2247,13 @@ class StreamingSparseRecallTest(tf.test.TestCase):
     labels = [
         [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
         [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]]
+    sp_labels = _binary_2d_label_to_sparse_value(labels)
 
     # Classes 0,3,4,6,9 have 0 labels, class 10 is out of range.
     for class_id in [0, 3, 4, 6, 9, 10]:
-      with self.test_session():
-        self._assert_recall_at_k(
-            predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
-            k=5, expected=NAN, class_id=class_id)
+      self._test_streaming_sparse_recall_at_k(
+          predictions=predictions, labels=sp_labels, k=5, expected=NAN,
+          class_id=class_id)
 
   def test_three_labels_at_k5_no_predictions(self):
     predictions = [
@@ -1870,12 +2262,12 @@ class StreamingSparseRecallTest(tf.test.TestCase):
     labels = [
         [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
         [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]]
+    sp_labels = _binary_2d_label_to_sparse_value(labels)
 
     # Class 8: 1 label, no predictions.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
-          k=5, expected=0.0 / 1.0, class_id=8)
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=5, expected=0.0 / 1,
+        class_id=8)
 
   def test_three_labels_at_k5(self):
     predictions = [
@@ -1884,30 +2276,26 @@ class StreamingSparseRecallTest(tf.test.TestCase):
     labels = [
         [0, 0, 1, 0, 0, 0, 0, 1, 1, 0],
         [0, 1, 1, 0, 0, 1, 0, 0, 0, 0]]
+    sp_labels = _binary_2d_label_to_sparse_value(labels)
 
     # Class 2: 2 labels, both correct.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
-          k=5, expected=2.0 / 2.0, class_id=2)
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=5, expected=2.0 / 2,
+        class_id=2)
 
     # Class 5: 1 label, incorrect.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
-          k=5, expected=1.0 / 1.0, class_id=5)
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=5, expected=1.0 / 1,
+        class_id=5)
 
     # Class 7: 1 label, incorrect.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
-          k=5, expected=0.0 / 1.0, class_id=7)
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=5, expected=0.0 / 1,
+        class_id=7)
 
     # All classes: 6 labels, 3 correct.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions=predictions, labels=_binary_2d_label_to_sparse(labels),
-          k=5, expected=3.0 / 6.0)
+    self._test_streaming_sparse_recall_at_k(
+        predictions=predictions, labels=sp_labels, k=5, expected=3.0 / 6)
 
   def test_3d_no_labels(self):
     predictions = [[
@@ -1924,13 +2312,12 @@ class StreamingSparseRecallTest(tf.test.TestCase):
         [0, 1, 1, 0, 0, 1, 0, 0, 0, 0],
         [0, 0, 1, 0, 0, 0, 0, 1, 1, 0]
     ]]
+    sp_labels = _binary_3d_label_to_sparse_value(labels)
 
     # Classes 0,3,4,6,9 have 0 labels, class 10 is out of range.
     for class_id in [0, 3, 4, 6, 9, 10]:
-      with self.test_session():
-        self._assert_recall_at_k(
-            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
-            class_id=class_id)
+      self._test_streaming_sparse_recall_at_k(
+          predictions, sp_labels, k=5, expected=NAN, class_id=class_id)
 
   def test_3d_no_predictions(self):
     predictions = [[
@@ -1947,13 +2334,12 @@ class StreamingSparseRecallTest(tf.test.TestCase):
         [0, 1, 1, 0, 0, 1, 0, 0, 0, 0],
         [0, 0, 1, 0, 0, 0, 0, 1, 1, 0]
     ]]
+    sp_labels = _binary_3d_label_to_sparse_value(labels)
 
     # Classes 1,8 have 0 predictions, >=1 label.
     for class_id in [1, 8]:
-      with self.test_session():
-        self._assert_recall_at_k(
-            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=0.0,
-            class_id=class_id)
+      self._test_streaming_sparse_recall_at_k(
+          predictions, sp_labels, k=5, expected=0.0, class_id=class_id)
 
   def test_3d(self):
     predictions = [[
@@ -1970,30 +2356,23 @@ class StreamingSparseRecallTest(tf.test.TestCase):
         [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
         [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
     ]]
+    sp_labels = _binary_3d_label_to_sparse_value(labels)
 
     # Class 2: 4 labels, all correct.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=4.0 / 4.0, class_id=2)
+    self._test_streaming_sparse_recall_at_k(
+        predictions, sp_labels, k=5, expected=4.0 / 4, class_id=2)
 
     # Class 5: 2 labels, both correct.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=2.0 / 2.0, class_id=5)
+    self._test_streaming_sparse_recall_at_k(
+        predictions, sp_labels, k=5, expected=2.0 / 2, class_id=5)
 
     # Class 7: 2 labels, 1 incorrect.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=1.0 / 2.0, class_id=7)
+    self._test_streaming_sparse_recall_at_k(
+        predictions, sp_labels, k=5, expected=1.0 / 2, class_id=7)
 
     # All classes: 12 labels, 7 correct.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=7.0 / 12.0)
+    self._test_streaming_sparse_recall_at_k(
+        predictions, sp_labels, k=5, expected=7.0 / 12)
 
   def test_3d_ignore_all(self):
     predictions = [[
@@ -2010,24 +2389,20 @@ class StreamingSparseRecallTest(tf.test.TestCase):
         [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
         [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
     ]]
+    sp_labels = _binary_3d_label_to_sparse_value(labels)
 
     for class_id in xrange(10):
-      with self.test_session():
-        self._assert_recall_at_k(
-            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
-            class_id=class_id, weights=[[0], [0]])
-      with self.test_session():
-        self._assert_recall_at_k(
-            predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
-            class_id=class_id, weights=[[0, 0], [0, 0]])
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
-          ignore_mask=[[False], [True]], weights=[[0], [1]])
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5, expected=NAN,
+      self._test_streaming_sparse_recall_at_k(
+          predictions, sp_labels, k=5, expected=NAN, class_id=class_id,
+          weights=[[0], [0]])
+      self._test_streaming_sparse_recall_at_k(
+          predictions, sp_labels, k=5, expected=NAN, class_id=class_id,
           weights=[[0, 0], [0, 0]])
+    self._test_streaming_sparse_recall_at_k(
+        predictions, sp_labels, k=5, expected=NAN,
+        ignore_mask=[[False], [True]], weights=[[0], [1]])
+    self._test_streaming_sparse_recall_at_k(
+        predictions, sp_labels, k=5, expected=NAN, weights=[[0, 0], [0, 0]])
 
   def test_3d_ignore_some(self):
     predictions = [[
@@ -2044,46 +2419,37 @@ class StreamingSparseRecallTest(tf.test.TestCase):
         [0, 1, 1, 0, 0, 1, 0, 1, 0, 0],
         [0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
     ]]
+    sp_labels = _binary_3d_label_to_sparse_value(labels)
 
     # Class 2: 2 labels, both correct.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=2.0 / 2.0, class_id=2, ignore_mask=[[False], [False]],
-          weights=[[1], [0]])
+    self._test_streaming_sparse_recall_at_k(
+        predictions, sp_labels, k=5, expected=2.0 / 2.0, class_id=2,
+        ignore_mask=[[False], [False]], weights=[[1], [0]])
 
     # Class 2: 2 labels, both correct.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=2.0 / 2.0, class_id=2, ignore_mask=[[False], [False]],
-          weights=[[0], [1]])
+    self._test_streaming_sparse_recall_at_k(
+        predictions, sp_labels, k=5, expected=2.0 / 2.0, class_id=2,
+        ignore_mask=[[False], [False]], weights=[[0], [1]])
 
     # Class 7: 1 label, correct.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=1.0 / 1.0, class_id=7, ignore_mask=[[True], [False]],
-          weights=[[1], [1]])
+    self._test_streaming_sparse_recall_at_k(
+        predictions, sp_labels, k=5, expected=1.0 / 1.0, class_id=7,
+        ignore_mask=[[True], [False]], weights=[[1], [1]])
 
     # Class 7: 1 label, incorrect.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=0.0 / 1.0, class_id=7, ignore_mask=[[False], [True]],
-          weights=[[1], [1]])
+    self._test_streaming_sparse_recall_at_k(
+        predictions, sp_labels, k=5, expected=0.0 / 1.0, class_id=7,
+        ignore_mask=[[False], [True]], weights=[[1], [1]])
 
     # Class 7: 2 labels, 1 correct.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=1.0 / 2.0, class_id=7, weights=[[1, 0], [1, 0]])
+    self._test_streaming_sparse_recall_at_k(
+        predictions, sp_labels, k=5, expected=1.0 / 2.0, class_id=7,
+        weights=[[1, 0], [1, 0]])
 
     # Class 7: No labels.
-    with self.test_session():
-      self._assert_recall_at_k(
-          predictions, _binary_3d_label_to_sparse(labels), k=5,
-          expected=NAN, class_id=7, weights=[[0, 1], [0, 1]])
+    self._test_streaming_sparse_recall_at_k(
+        predictions, sp_labels, k=5, expected=NAN, class_id=7,
+        weights=[[0, 1], [0, 1]])
 
   def test_sparse_tensor_value(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
@@ -2323,9 +2689,9 @@ class StreamingMeanSquaredErrorTest(tf.test.TestCase):
 
       sess.run(tf.initialize_local_variables())
       sess.run(update_op)
-      self.assertAlmostEqual(208 / 6.0, sess.run(update_op), 5)
+      self.assertAlmostEqual(208.0 / 6, sess.run(update_op), 5)
 
-      self.assertAlmostEqual(208 / 6.0, error.eval(), 5)
+      self.assertAlmostEqual(208.0 / 6, error.eval(), 5)
 
   def testMetricsComputedConcurrently(self):
     with self.test_session() as sess:
@@ -2363,8 +2729,8 @@ class StreamingMeanSquaredErrorTest(tf.test.TestCase):
       sess.run([update_op0, update_op1])
 
       mse0, mse1 = sess.run([mse0, mse1])
-      self.assertAlmostEqual(208 / 6.0, mse0, 5)
-      self.assertAlmostEqual(79 / 6.0, mse1, 5)
+      self.assertAlmostEqual(208.0 / 6, mse0, 5)
+      self.assertAlmostEqual(79.0 / 6, mse1, 5)
 
   def testMultipleMetricsOnMultipleBatchesOfSizeOne(self):
     with self.test_session() as sess:
@@ -2389,8 +2755,8 @@ class StreamingMeanSquaredErrorTest(tf.test.TestCase):
       sess.run([ma_update_op, ms_update_op])
       sess.run([ma_update_op, ms_update_op])
 
-      self.assertAlmostEqual(32 / 6.0, mae.eval(), 5)
-      self.assertAlmostEqual(208 / 6.0, mse.eval(), 5)
+      self.assertAlmostEqual(32.0 / 6, mae.eval(), 5)
+      self.assertAlmostEqual(208.0 / 6, mse.eval(), 5)
 
 
 class StreamingRootMeanSquaredErrorTest(tf.test.TestCase):
@@ -3227,6 +3593,92 @@ class StreamingMeanIOUTest(tf.test.TestCase):
       self.assertAlmostEqual(desired_miou, miou.eval())
 
 
+class StreamingConcatTest(tf.test.TestCase):
+
+  def setUp(self):
+    tf.reset_default_graph()
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    value, _ = metrics.streaming_concat(
+        values=tf.ones((10,)),
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(tf.get_collection(my_collection_name), [value])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metrics.streaming_concat(
+        values=tf.ones((10,)),
+        updates_collections=[my_collection_name])
+    self.assertListEqual(tf.get_collection(my_collection_name), [update_op])
+
+  def testNextArraySize(self):
+    next_array_size = metrics.python.ops.metric_ops._next_array_size
+    with self.test_session():
+      self.assertEqual(next_array_size(2, growth_factor=2).eval(), 2)
+      self.assertEqual(next_array_size(3, growth_factor=2).eval(), 4)
+      self.assertEqual(next_array_size(4, growth_factor=2).eval(), 4)
+      self.assertEqual(next_array_size(5, growth_factor=2).eval(), 8)
+      self.assertEqual(next_array_size(6, growth_factor=2).eval(), 8)
+
+  def testStreamingConcat(self):
+    with self.test_session() as sess:
+      values = tf.placeholder(tf.int32, [None])
+      concatenated, update_op = metrics.streaming_concat(values)
+      sess.run(tf.initialize_local_variables())
+
+      self.assertAllEqual([], concatenated.eval())
+
+      sess.run([update_op], feed_dict={values: [0, 1, 2]})
+      self.assertAllEqual([0, 1, 2], concatenated.eval())
+
+      sess.run([update_op], feed_dict={values: [3, 4]})
+      self.assertAllEqual([0, 1, 2, 3, 4], concatenated.eval())
+
+      sess.run([update_op], feed_dict={values: [5, 6, 7, 8, 9]})
+      self.assertAllEqual(np.arange(10), concatenated.eval())
+
+  def testStreamingConcatMaxSize(self):
+    with self.test_session() as sess:
+      values = tf.range(3)
+      concatenated, update_op = metrics.streaming_concat(values, max_size=5)
+      sess.run(tf.initialize_local_variables())
+
+      self.assertAllEqual([], concatenated.eval())
+
+      sess.run([update_op])
+      self.assertAllEqual([0, 1, 2], concatenated.eval())
+
+      sess.run([update_op])
+      self.assertAllEqual([0, 1, 2, 0, 1], concatenated.eval())
+
+      sess.run([update_op])
+      self.assertAllEqual([0, 1, 2, 0, 1], concatenated.eval())
+
+  def testStreamingConcat2D(self):
+    with self.test_session() as sess:
+      values = tf.reshape(tf.range(3), (3, 1))
+      concatenated, update_op = metrics.streaming_concat(values, axis=-1)
+      sess.run(tf.initialize_local_variables())
+      for _ in range(10):
+        sess.run([update_op])
+      self.assertAllEqual([[0] * 10, [1] * 10, [2] * 10],
+                          concatenated.eval())
+
+  def testStreamingConcatErrors(self):
+    with self.assertRaises(ValueError):
+      metrics.streaming_concat(tf.placeholder(tf.float32))
+
+    values = tf.zeros((2, 3))
+    with self.assertRaises(ValueError):
+      metrics.streaming_concat(values, axis=-3, max_size=3)
+    with self.assertRaises(ValueError):
+      metrics.streaming_concat(values, axis=2, max_size=3)
+
+    with self.assertRaises(ValueError):
+      metrics.streaming_concat(tf.placeholder(tf.float32, [None, None]))
+
+
 class AggregateMetricsTest(tf.test.TestCase):
 
   def testAggregateNoMetricsRaisesValueError(self):
@@ -3284,6 +3736,265 @@ class AggregateMetricMapTest(tf.test.TestCase):
       self.assertEqual(4, names_to_updates['m2'].eval())
       self.assertEqual(2, names_to_values['m1'].eval())
       self.assertEqual(4, names_to_values['m2'].eval())
+
+
+class NumRelevantTest(tf.test.TestCase):
+
+  def testNumRelevantInvalidArgs(self):
+    labels = tf.random_uniform(
+        shape=(3, 3, 3), minval=0, maxval=100, dtype=tf.int32)
+    with self.assertRaisesRegexp(ValueError, 'nvalid k'):
+      metric_ops.num_relevant(labels, k=0)
+    with self.assertRaisesRegexp(ValueError, 'nvalid k'):
+      metric_ops.num_relevant(labels, k=-1)
+
+  def testNumRelevantDense(self):
+    with self.test_session():
+      labels = tf.random_uniform(
+          shape=(3, 3, 3), minval=0, maxval=100, dtype=tf.int32)
+      ones = np.ones(shape=(3, 3))
+      self.assertAllEqual(ones, metric_ops.num_relevant(labels, k=1).eval())
+      twos = ones * 2
+      self.assertAllEqual(twos, metric_ops.num_relevant(labels, k=2).eval())
+      threes = ones * 3
+      self.assertAllEqual(threes, metric_ops.num_relevant(labels, k=3).eval())
+      self.assertAllEqual(threes, metric_ops.num_relevant(labels, k=4).eval())
+      self.assertAllEqual(threes, metric_ops.num_relevant(labels, k=999).eval())
+
+  def testNumRelevantSparse(self):
+    with self.test_session():
+      labels = tf.SparseTensorValue(
+          indices=(
+              (0, 0, 0), (0, 0, 1),
+              (0, 1, 0), (0, 1, 1), (0, 1, 2),
+              # (0, 2) missing
+              (1, 0, 0), (1, 0, 1), (1, 0, 2),
+              (1, 1, 0),
+              (1, 2, 0),
+              # (2, 0) missing
+              (2, 1, 0), (2, 1, 1),
+              (2, 2, 0)),
+          values=(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13),
+          shape=(3, 3, 3))
+      self.assertAllEqual(
+          ((1, 1, 0), (1, 1, 1), (0, 1, 1)),
+          metric_ops.num_relevant(labels, k=1).eval())
+      self.assertAllEqual(
+          ((2, 2, 0), (2, 1, 1), (0, 2, 1)),
+          metric_ops.num_relevant(labels, k=2).eval())
+      label_lengths = ((2, 3, 0), (3, 1, 1), (0, 2, 1))
+      self.assertAllEqual(
+          label_lengths, metric_ops.num_relevant(labels, k=3).eval())
+      self.assertAllEqual(
+          label_lengths, metric_ops.num_relevant(labels, k=999).eval())
+
+
+class ExpandAndTileTest(tf.test.TestCase):
+
+  def testExpandAndTileInvalidArgs(self):
+    x = tf.ones(shape=(3, 3, 3))
+    with self.assertRaisesRegexp(ValueError, 'nvalid multiple'):
+      metric_ops.expand_and_tile(x, multiple=0)
+    with self.test_session():
+      with self.assertRaises(ValueError):
+        metric_ops.expand_and_tile(x, multiple=1, dim=-4).eval()
+      with self.assertRaises(ValueError):
+        metric_ops.expand_and_tile(x, multiple=1, dim=4).eval()
+
+  def testSparseExpandAndTileInvalidArgs(self):
+    x = tf.SparseTensorValue(
+        indices=[
+            (i, j, k) for i in range(3) for j in range(3) for k in range(3)],
+        values=[1] * 27,
+        shape=[3, 3, 3])
+    with self.assertRaisesRegexp(ValueError, 'nvalid multiple'):
+      metric_ops.expand_and_tile(x, multiple=0)
+    with self.test_session():
+      with self.assertRaises(tf.OpError):
+        metric_ops.expand_and_tile(x, multiple=1, dim=-4).eval()
+      with self.assertRaises(ValueError):
+        metric_ops.expand_and_tile(x, multiple=1, dim=4).eval()
+
+  def _test_expand_and_tile(
+      self, expected_shape, expected_value, tensor, multiple, dim=None):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      if dim is None:
+        op = metric_ops.expand_and_tile(tensor=tensor, multiple=multiple)
+      else:
+        op = metric_ops.expand_and_tile(
+            tensor=tensor, multiple=multiple, dim=dim)
+      self.assertAllEqual(expected_shape, tf.shape(op).eval())
+      self.assertAllEqual(expected_value, op.eval())
+
+  # TODO(ptucker): Use @parameterized when it's available in tf.
+  def testExpandAndTile1x(self):
+    # Shape (3,3,3).
+    x = ((
+        (1, 2, 3),
+        (4, 5, 6),
+        (7, 8, 9)
+    ), (
+        (10, 11, 12),
+        (13, 14, 15),
+        (16, 17, 18)
+    ), (
+        (19, 20, 21),
+        (22, 23, 24),
+        (25, 26, 26)
+    ))
+    for dim in (None, -3, 0):
+      self._test_expand_and_tile(
+          expected_shape=(1, 3, 3, 3),
+          expected_value=[x],
+          tensor=x, multiple=1, dim=dim)
+
+    for dim in (-2, 1):
+      self._test_expand_and_tile(
+          expected_shape=(3, 1, 3, 3),
+          expected_value=[[x1] for x1 in x],
+          tensor=x, multiple=1, dim=dim)
+
+    for dim in (-1, 2):
+      self._test_expand_and_tile(
+          expected_shape=(3, 3, 1, 3),
+          expected_value=[[[x2] for x2 in x1] for x1 in x],
+          tensor=x, multiple=1, dim=dim)
+
+    self._test_expand_and_tile(
+        expected_shape=(3, 3, 3, 1),
+        expected_value=[[[[x3] for x3 in x2] for x2 in x1] for x1 in x],
+        tensor=x, multiple=1, dim=3)
+
+  # TODO(ptucker): Use @parameterized when it's available in tf.
+  def testExpandAndTile5x(self):
+    # Shape (3,3,3).
+    x = ((
+        (1, 2, 3),
+        (4, 5, 6),
+        (7, 8, 9)
+    ), (
+        (10, 11, 12),
+        (13, 14, 15),
+        (16, 17, 18)
+    ), (
+        (19, 20, 21),
+        (22, 23, 24),
+        (25, 26, 26)
+    ))
+    with self.test_session():
+      for dim in (None, -3, 0):
+        self._test_expand_and_tile(
+            expected_shape=(5, 3, 3, 3),
+            expected_value=[x] * 5,
+            tensor=x, multiple=5, dim=dim)
+
+      for dim in (-2, 1):
+        self._test_expand_and_tile(
+            expected_shape=(3, 5, 3, 3),
+            expected_value=[[x1] * 5 for x1 in x],
+            tensor=x, multiple=5, dim=dim)
+
+      for dim in (-1, 2):
+        self._test_expand_and_tile(
+            expected_shape=(3, 3, 5, 3),
+            expected_value=[[[x2] * 5 for x2 in x1] for x1 in x],
+            tensor=x, multiple=5, dim=dim)
+
+    self._test_expand_and_tile(
+        expected_shape=(3, 3, 3, 5),
+        expected_value=[[[[x3] * 5 for x3 in x2] for x2 in x1] for x1 in x],
+        tensor=x, multiple=5, dim=3)
+
+  def _assert_sparse_tensors_equal(self, expected, actual):
+    self.assertAllEqual(expected.indices, actual.indices)
+    self.assertAllEqual(expected.values, actual.values)
+    self.assertAllEqual(expected.shape, actual.shape)
+
+  # TODO(ptucker): Use @parameterized when it's available in tf.
+  def testSparseExpandAndTile1x(self):
+    # Shape (3,3).
+    x = tf.SparseTensorValue(
+        indices=[
+            [0, 0], [0, 1],
+            [1, 0], [1, 1], [1, 2],
+            [2, 0]],
+        values=[
+            1, 2,
+            3, 4, 5,
+            6],
+        shape=[3, 3])
+    with self.test_session():
+      expected_result_dim0 = tf.SparseTensorValue(
+          indices=[[0, i[0], i[1]] for i in x.indices], values=x.values,
+          shape=[1, 3, 3])
+      self._assert_sparse_tensors_equal(
+          expected_result_dim0, metric_ops.expand_and_tile(x, multiple=1).eval())
+      for dim in (-2, 0):
+        self._assert_sparse_tensors_equal(
+            expected_result_dim0,
+            metric_ops.expand_and_tile(x, multiple=1, dim=dim).eval())
+
+      expected_result_dim1 = tf.SparseTensorValue(
+          indices=[[i[0], 0, i[1]] for i in x.indices], values=x.values,
+          shape=[3, 1, 3])
+      for dim in (-1, 1):
+        self._assert_sparse_tensors_equal(
+            expected_result_dim1,
+            metric_ops.expand_and_tile(x, multiple=1, dim=dim).eval())
+
+      expected_result_dim2 = tf.SparseTensorValue(
+          indices=[[i[0], i[1], 0] for i in x.indices], values=x.values,
+          shape=[3, 3, 1])
+      self._assert_sparse_tensors_equal(
+          expected_result_dim2,
+          metric_ops.expand_and_tile(x, multiple=1, dim=2).eval())
+
+  # TODO(ptucker): Use @parameterized when it's available in tf.
+  def testSparseExpandAndTile5x(self):
+    # Shape (3,3).
+    x = tf.SparseTensorValue(
+        indices=(
+            (0, 0), (0, 1),
+            (1, 0), (1, 1), (1, 2),
+            (2, 0)),
+        values=(
+            1, 2,
+            3, 4, 5,
+            6),
+        shape=(3, 3))
+    with self.test_session():
+      expected_result_dim0 = tf.SparseTensorValue(
+          indices=[(d0, i[0], i[1]) for d0 in range(5) for i in x.indices],
+          values=[v for _ in range(5) for v in x.values],
+          shape=(5, 3, 3))
+      self._assert_sparse_tensors_equal(
+          expected_result_dim0,
+          metric_ops.expand_and_tile(x, multiple=5).eval())
+      for dim in (-2, 0):
+        self._assert_sparse_tensors_equal(
+            expected_result_dim0,
+            metric_ops.expand_and_tile(x, multiple=5, dim=dim).eval())
+
+      expected_result_dim1 = tf.SparseTensorValue(
+          indices=[
+              (d0, d1, i[1])
+              for d0 in range(3)
+              for d1 in range(5)
+              for i in x.indices if i[0] == d0],
+          values=x.values[0:2] * 5 + x.values[2:5] * 5 + x.values[5:] * 5,
+          shape=(3, 5, 3))
+      for dim in (-1, 1):
+        self._assert_sparse_tensors_equal(
+            expected_result_dim1,
+            metric_ops.expand_and_tile(x, multiple=5, dim=dim).eval())
+
+      expected_result_dim2 = tf.SparseTensorValue(
+          indices=[(i[0], i[1], d2) for i in x.indices for d2 in range(5)],
+          values=[v for v in x.values for _ in range(5)],
+          shape=(3, 3, 5))
+      self._assert_sparse_tensors_equal(
+          expected_result_dim2,
+          metric_ops.expand_and_tile(x, multiple=5, dim=2).eval())
 
 
 if __name__ == '__main__':

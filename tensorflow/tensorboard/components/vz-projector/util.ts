@@ -37,9 +37,9 @@ export function shuffle<T>(array: T[]): T[] {
 /** Retrieves a projected point from the data set as a THREE.js vector */
 export function getProjectedPointFromIndex(
     dataSet: DataSet, i: number): THREE.Vector3 {
-  return new THREE.Vector3(
-      dataSet.points[i].projectedPoint[0], dataSet.points[i].projectedPoint[1],
-      dataSet.points[i].projectedPoint[2]);
+  let pp = dataSet.points[i].projectedPoint;
+  let v = new THREE.Vector3(pp[0], pp[1], pp[2]);
+  return v;
 }
 
 /** Projects a 3d point into screen space */
@@ -77,6 +77,20 @@ export function getNearFarPoints(
   furthestDist = Math.sqrt(furthestDist);
   shortestDist = Math.sqrt(shortestDist);
   return [shortestDist, furthestDist];
+}
+
+/**
+ * Generate a texture for the points/images and sets some initial params
+ */
+export function createTexture(image: HTMLImageElement|
+                              HTMLCanvasElement): THREE.Texture {
+  let tex = new THREE.Texture(image);
+  tex.needsUpdate = true;
+  // Used if the texture isn't a power of 2.
+  tex.minFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  tex.flipY = false;
+  return tex;
 }
 
 /**

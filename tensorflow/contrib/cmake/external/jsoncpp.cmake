@@ -6,8 +6,13 @@ set(jsoncpp_URL https://github.com/open-source-parsers/jsoncpp.git)
 set(jsoncpp_TAG 4356d9b)
 set(jsoncpp_BUILD ${CMAKE_BINARY_DIR}/jsoncpp/src/jsoncpp/src/lib_json)
 set(jsoncpp_LIBRARIES ${jsoncpp_BUILD}/obj/so/libjsoncpp.so)
-get_filename_component(jsoncpp_STATIC_LIBRARIES ${jsoncpp_BUILD}/libjsoncpp.a ABSOLUTE)
 set(jsoncpp_INCLUDES ${jsoncpp_BUILD})
+
+if(WIN32)
+  set(jsoncpp_STATIC_LIBRARIES ${jsoncpp_BUILD}/${CMAKE_BUILD_TYPE}/jsoncpp.lib)
+else()
+  set(jsoncpp_STATIC_LIBRARIES ${jsoncpp_BUILD}/libjsoncpp.a)
+endif()
 
 # We only need jsoncpp.h in external/jsoncpp/jsoncpp/jsoncpp.h
 # For the rest, we'll just add the build dir as an include dir.

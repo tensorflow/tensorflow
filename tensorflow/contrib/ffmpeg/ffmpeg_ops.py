@@ -35,11 +35,14 @@ def decode_audio(contents, file_format=None, samples_per_second=None,
                  channel_count=None):
   """Create an op that decodes the contents of an audio file.
 
+  Note that ffmpeg is free to select the "best" audio track from an mp4.
+  https://trac.ffmpeg.org/wiki/Map
+
   Args:
     contents: The binary contents of the audio file to decode. This is a
         scalar.
     file_format: A string specifying which format the contents will conform
-        to. This can be mp3, ogg, or wav.
+        to. This can be mp3, mp4, ogg, or wav.
     samples_per_second: The number of samples per second that is assumed.
         In some cases, resampling will occur to generate the correct sample
         rate.

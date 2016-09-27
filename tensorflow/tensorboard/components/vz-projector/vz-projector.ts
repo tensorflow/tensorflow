@@ -13,15 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataPoint, DataSet, DataSource, PCA_SAMPLE_DIM, SAMPLE_SIZE} from './data';
+import {DataPoint, DataSet, DataSource, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
 import {DataProvider, getDataProvider} from './data-loader';
 import * as knn from './knn';
 import {Mode, ScatterPlot} from './scatterPlot';
 import {ScatterPlotWebGL} from './scatterPlotWebGL';
+import {ScatterPlotWebGLVisualizer3DLabels} from './scatterPlotWebGLVisualizer3DLabels';
 import {ScatterPlotWebGLVisualizerCanvasLabels} from './scatterPlotWebGLVisualizerCanvasLabels';
 import {ScatterPlotWebGLVisualizerSprites} from './scatterPlotWebGLVisualizerSprites';
 import {ScatterPlotWebGLVisualizerTraces} from './scatterPlotWebGLVisualizerTraces';
 import * as vector from './vector';
+import {BookmarkPanel} from './vz-projector-bookmark-panel';
 import {ColorOption, DataPanel} from './vz-projector-data-panel';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
@@ -37,12 +39,11 @@ let dimension = 3;
 let numNN = 100;
 
 /** Highlight stroke color for the nearest neighbors. */
-const NN_HIGHLIGHT_COLOR = '#6666FA';
+const NN_HIGHLIGHT_COLOR = '#FA6666';
 /** Color to denote a missing value. */
 const MISSING_VALUE_COLOR = 'black';
 /** Highlight stroke color for the selected point */
-const POINT_HIGHLIGHT_COLOR_DAY = 'black';
-const POINT_HIGHLIGHT_COLOR_NIGHT = new THREE.Color(0xFFE11F).getStyle();
+const POINT_HIGHLIGHT_COLOR = '#760B4F';
 
 /** Color scale for nearest neighbors. */
 const NN_COLOR_SCALE =
@@ -79,6 +80,7 @@ export let ProjectorPolymer = PolymerElement({
       value: 2,
       notify: true,
     },
+    routePrefix: String,
     hasPcaZ: {type: Boolean, value: true, notify: true},
     labelOption: {type: String, observer: 'labelOptionChanged'},
     colorOption: {type: Object, observer: 'colorOptionChanged'}
@@ -96,11 +98,10 @@ export class Projector extends ProjectorPolymer {
   // The working subset of the data source's original data set.
   private currentDataSet: DataSet;
   private scatterPlot: ScatterPlot;
+  private labels3D: boolean = false;
   private dim: number;
   private selectedDistance: (a: number[], b: number[]) => number;
   private highlightedPoints: {index: number, color: string}[];
-  // The index of a point that has been individually clicked.
-  private clickedPoint: number;
   // The index of all selected points.
   private selectedPoints: number[];
   private centroidValues: any;
@@ -109,23 +110,27 @@ export class Projector extends ProjectorPolymer {
   private allCentroid: number[];
   private dataProvider: DataProvider;
   private dataPanel: DataPanel;
+  private bookmarkPanel: BookmarkPanel;
   private colorOption: ColorOption;
   private labelOption: string;
+  private routePrefix: string;
+  private selectedProjection: Projection = 'pca';
 
   ready() {
-    this.dataPanel = this.$['data-panel'];
+    this.dataPanel = this.$['data-panel'] as DataPanel;
     // Get the data loader and initialize the data panel with it.
-    getDataProvider(dp => {
-      this.dataProvider = dp;
-      dp.getCheckpointInfo(
-          dataInfo => { this.dataPanel.initialize(this, dp, dataInfo); });
+    getDataProvider(this.routePrefix, dataProvider => {
+      this.dataProvider = dataProvider;
+      this.dataPanel.initialize(this, dataProvider);
     });
+
+    this.bookmarkPanel = this.$['bookmark-panel'] as BookmarkPanel;
+    this.bookmarkPanel.initialize(this);
 
     // And select a default dataset.
     this.hasPcaZ = true;
     this.selectedDistance = vector.cosDistNorm;
     this.highlightedPoints = [];
-    this.clickedPoint = null;
     this.selectedPoints = [];
     this.centroidValues = {xLeft: null, xRight: null, yUp: null, yDown: null};
     this.centroids = {xLeft: null, xRight: null, yUp: null, yDown: null};
@@ -201,7 +206,7 @@ export class Projector extends ProjectorPolymer {
     this.dim = this.currentDataSet.dim[1];
     this.dom.select('span.numDataPoints').text(this.currentDataSet.dim[0]);
     this.dom.select('span.dim').text(this.currentDataSet.dim[1]);
-    this.showTab('pca');
+    this.showTab('pca', true /* recreateScene */);
   }
 
   private setupInput(name: string) {
@@ -242,7 +247,7 @@ export class Projector extends ProjectorPolymer {
   private setupUIControls() {
     let self = this;
     // Global tabs
-    d3.selectAll('.ink-tab').on('click', function() {
+    this.dom.selectAll('.ink-tab').on('click', function() {
       let id = this.getAttribute('data-tab');
       self.showTab(id);
     });
@@ -362,12 +367,8 @@ export class Projector extends ProjectorPolymer {
           searchBoxInfo.style('color', null).text(`${indices.length} matches.`);
           this.showTab('inspector');
           let neighbors = this.findNeighbors(indices[0]);
-          if (indices.length === 1) {
-            this.clickedPoint = indices[0];
-            this.scatterPlot.clickOnPoint(this.clickedPoint);
-          }
           this.selectedPoints = indices;
-          this.updateNNList(neighbors);
+          this.updateInspectorPane(neighbors);
         }
         this.selectionWasUpdated();
       }
@@ -392,27 +393,26 @@ export class Projector extends ProjectorPolymer {
     searchInputChanged('');
 
     this.dom.select('.distance a.euclidean').on('click', function() {
-      d3.selectAll('.distance a').classed('selected', false);
+      this.dom.selectAll('.distance a').classed('selected', false);
       d3.select(this).classed('selected', true);
       self.selectedDistance = vector.dist;
       if (self.selectedPoints.length > 0) {
         let neighbors = self.findNeighbors(self.selectedPoints[0]);
-        self.updateNNList(neighbors);
+        self.updateInspectorPane(neighbors);
       }
     });
 
     this.dom.select('.distance a.cosine').on('click', function() {
-      d3.selectAll('.distance a').classed('selected', false);
+      this.dom.selectAll('.distance a').classed('selected', false);
       d3.select(this).classed('selected', true);
       self.selectedDistance = vector.cosDistNorm;
       if (self.selectedPoints.length > 0) {
         let neighbors = self.findNeighbors(self.selectedPoints[0]);
-        self.updateNNList(neighbors);
+        self.updateInspectorPane(neighbors);
       }
     });
 
     let selectModeButton = this.dom.select('.selectMode');
-
     selectModeButton.on('click', () => {
       let mode = this.scatterPlot.getMode();
       this.scatterPlot.setMode(mode === Mode.SELECT ? Mode.HOVER : Mode.SELECT);
@@ -423,9 +423,17 @@ export class Projector extends ProjectorPolymer {
     let modeIsNight = dayNightModeButton.classed('selected');
     dayNightModeButton.on('click', () => {
       modeIsNight = !modeIsNight;
-      this.scatterPlot.setDayNightMode(modeIsNight);
-      this.scatterPlot.update();
       dayNightModeButton.classed('selected', modeIsNight);
+      this.scatterPlot.setDayNightMode(modeIsNight);
+    });
+
+    let labels3DModeButton = this.dom.select('.labels3DMode');
+    labels3DModeButton.on('click', () => {
+      this.labels3D = !this.labels3D;
+      this.createVisualizers();
+      this.scatterPlot.recreateScene();
+      this.scatterPlot.update();
+      this.updateMenuButtons();
     });
 
     // Resize
@@ -435,21 +443,10 @@ export class Projector extends ProjectorPolymer {
 
     // Canvas
     {
-      let container = this.dom.select('#scatter');
-      let scatterPlotWebGL = new ScatterPlotWebGL(
-          container, i => '' + this.points[i].metadata['label']);
-
-      scatterPlotWebGL.addVisualizer(
-          new ScatterPlotWebGLVisualizerSprites(scatterPlotWebGL));
-
-      scatterPlotWebGL.addVisualizer(
-          new ScatterPlotWebGLVisualizerTraces(scatterPlotWebGL));
-
-      scatterPlotWebGL.addVisualizer(
-          new ScatterPlotWebGLVisualizerCanvasLabels(container));
-
-      this.scatterPlot = scatterPlotWebGL;
-      this.scatterPlot.setDayNightMode(modeIsNight);
+      this.scatterPlot = new ScatterPlotWebGL(
+          this.getScatterContainer(),
+          i => '' + this.points[i].metadata['label']);
+      this.createVisualizers();
     }
 
     this.scatterPlot.onHover(hoveredIndex => {
@@ -458,17 +455,18 @@ export class Projector extends ProjectorPolymer {
       } else {
         let point = this.points[hoveredIndex];
         this.dom.select('#hoverInfo').text(point.metadata['label']);
-        this.highlightedPoints = [{
-          index: hoveredIndex,
-          color: modeIsNight ? POINT_HIGHLIGHT_COLOR_NIGHT :
-                               POINT_HIGHLIGHT_COLOR_DAY,
-        }];
+        this.highlightedPoints =
+            [{index: hoveredIndex, color: POINT_HIGHLIGHT_COLOR}];
       }
       this.selectionWasUpdated();
     });
 
     this.scatterPlot.onSelection(
         selectedPoints => this.updateSelection(selectedPoints));
+
+    this.scatterPlot.onCameraMove(
+        (cameraPosition: THREE.Vector3, cameraTarget: THREE.Vector3) =>
+            this.bookmarkPanel.clearStateSelection());
 
     // Selection controls
     this.dom.select('.set-filter').on('click', () => {
@@ -499,33 +497,47 @@ export class Projector extends ProjectorPolymer {
     });
   }
 
-  private updateSelection(selectedPoints: number[]) {
-    // If no points are selected, unselect everything.
-    if (!selectedPoints.length) {
-      this.clickedPoint = null;
-      this.selectedPoints = [];
-      this.updateNNList([]);
-    } else if (selectedPoints.length === 1) {
-      // If only one point is selected, we want to get its nearest neighbors
-      // and change the UI accordingly.
-      this.clickedPoint = selectedPoints[0];
-      this.showTab('inspector');
-      let neighbors = this.findNeighbors(this.clickedPoint);
-      this.selectedPoints =
-          [this.clickedPoint].concat(neighbors.map(n => n.index));
-      this.updateNNList(neighbors);
+  private getScatterContainer(): d3.Selection<any> {
+    return this.dom.select('#scatter');
+  }
+
+  private createVisualizers() {
+    let scatterPlotWebGL = this.scatterPlot as ScatterPlotWebGL;
+    scatterPlotWebGL.removeAllVisualizers();
+
+    if (this.labels3D) {
+      scatterPlotWebGL.addVisualizer(
+          new ScatterPlotWebGLVisualizer3DLabels(scatterPlotWebGL));
     } else {
-      this.clickedPoint = null;
-      // Otherwise, select all points and hide nearest neighbors list.
-      this.selectedPoints = selectedPoints as number[];
-      this.highlightedPoints = [];
-      this.updateNNList([]);
+      scatterPlotWebGL.addVisualizer(
+          new ScatterPlotWebGLVisualizerSprites(scatterPlotWebGL));
+
+      scatterPlotWebGL.addVisualizer(
+          new ScatterPlotWebGLVisualizerTraces(scatterPlotWebGL));
+
+      scatterPlotWebGL.addVisualizer(new ScatterPlotWebGLVisualizerCanvasLabels(
+          this.getScatterContainer()));
     }
-    this.updateMetadata();
+  }
+
+  private updateSelection(points: number[]) {
+    // If no points are selected, unselect everything.
+    if (!points.length) {
+      this.selectedPoints = [];
+      this.updateInspectorPane([]);
+    } else {
+      // Get the nearest neighbors of the first selected point and update the
+      // UI accordingly.
+      this.showTab('inspector');
+      let neighbors = this.findNeighbors(points[0]);
+      this.selectedPoints = [points[0]].concat(neighbors.map(n => n.index));
+      this.updateInspectorPane(neighbors);
+    }
     this.selectionWasUpdated();
   }
 
   private showPCA(callback?: () => void) {
+    this.selectedProjection = 'pca';
     this.currentDataSet.projectPCA().then(() => {
       this.scatterPlot.showTickLabels(false);
       let x = this.pcaX;
@@ -546,7 +558,7 @@ export class Projector extends ProjectorPolymer {
     });
   }
 
-  private showTab(id: string) {
+  private showTab(id: string, recreateScene = false) {
     let tab = this.dom.select('.ink-tab[data-tab="' + id + '"]');
     let pane =
         d3.select((tab.node() as HTMLElement).parentNode.parentNode.parentNode);
@@ -556,7 +568,11 @@ export class Projector extends ProjectorPolymer {
     pane.select('.ink-panel-content[data-panel="' + id + '"]')
         .classed('active', true);
     if (id === 'pca') {
-      this.showPCA(() => this.scatterPlot.recreateScene());
+      this.showPCA(() => {
+        if (recreateScene) {
+          this.scatterPlot.recreateScene();
+        }
+      });
     } else if (id === 'tsne') {
       this.showTSNE();
     } else if (id === 'custom') {
@@ -565,6 +581,7 @@ export class Projector extends ProjectorPolymer {
   }
 
   private showCustom() {
+    this.selectedProjection = 'custom';
     this.scatterPlot.showTickLabels(true);
     let xDir = vector.sub(this.centroids.xRight, this.centroids.xLeft);
     this.currentDataSet.projectLinear(xDir, 'linear-x');
@@ -587,6 +604,7 @@ export class Projector extends ProjectorPolymer {
   private get points() { return this.currentDataSet.points; }
 
   private showTSNE() {
+    this.selectedProjection = 'tsne';
     this.scatterPlot.showTickLabels(false);
     this.scatterPlot.setXAccessor(i => this.points[i].projections['tsne-0']);
     this.scatterPlot.setYAccessor(i => this.points[i].projections['tsne-1']);
@@ -615,38 +633,36 @@ export class Projector extends ProjectorPolymer {
     let metadataContainerElement = this.dom.select('.ink-panel-metadata');
     metadataContainerElement.selectAll('*').remove();
 
-    let display = false;
-    if (this.clickedPoint != null) {
-      let selectedPoint = this.points[this.clickedPoint];
+    let point = this.points[this.selectedPoints[0]];
+    this.dom.select('.ink-panel-metadata-container')
+        .style('display', point != null ? '' : 'none');
 
-      for (let metadataKey in selectedPoint.metadata) {
-        if (!selectedPoint.metadata.hasOwnProperty(metadataKey)) {
-          continue;
-        }
-        let rowElement = document.createElement('div');
-        rowElement.className = 'ink-panel-metadata-row vz-projector';
-
-        let keyElement = document.createElement('div');
-        keyElement.className = 'ink-panel-metadata-key vz-projector';
-        keyElement.textContent = metadataKey;
-
-        let valueElement = document.createElement('div');
-        valueElement.className = 'ink-panel-metadata-value vz-projector';
-        valueElement.textContent = '' + selectedPoint.metadata[metadataKey];
-
-        rowElement.appendChild(keyElement);
-        rowElement.appendChild(valueElement);
-
-        metadataContainerElement.append(function() {
-          return this.appendChild(rowElement);
-        });
-      }
-
-      display = true;
+    if (point == null) {
+      return;
     }
 
-    this.dom.select('.ink-panel-metadata-container')
-        .style('display', display ? '' : 'none');
+    for (let metadataKey in point.metadata) {
+      if (!point.metadata.hasOwnProperty(metadataKey)) {
+        continue;
+      }
+      let rowElement = document.createElement('div');
+      rowElement.className = 'ink-panel-metadata-row vz-projector';
+
+      let keyElement = document.createElement('div');
+      keyElement.className = 'ink-panel-metadata-key vz-projector';
+      keyElement.textContent = metadataKey;
+
+      let valueElement = document.createElement('div');
+      valueElement.className = 'ink-panel-metadata-value vz-projector';
+      valueElement.textContent = '' + point.metadata[metadataKey];
+
+      rowElement.appendChild(keyElement);
+      rowElement.appendChild(valueElement);
+
+      metadataContainerElement.append(function() {
+        return this.appendChild(rowElement);
+      });
+    }
   }
 
   private selectionWasUpdated() {
@@ -677,6 +693,7 @@ export class Projector extends ProjectorPolymer {
     (searchBox.select('input').node() as HTMLInputElement).focus();
     this.dom.select('.selectMode')
         .classed('selected', this.scatterPlot.getMode() === Mode.SELECT);
+    this.dom.select('.labels3DMode').classed('selected', this.labels3D);
   }
 
   /**
@@ -692,18 +709,14 @@ export class Projector extends ProjectorPolymer {
   }
 
   /** Updates the nearest neighbors list in the inspector. */
-  private updateNNList(neighbors: knn.NearestEntry[]) {
+  private updateInspectorPane(neighbors: knn.NearestEntry[]) {
+    this.updateMetadata();
     let nnlist = this.dom.select('.nn-list');
     nnlist.html('');
 
     if (neighbors.length === 0) {
-      this.dom.select('#nn-title').text('');
       return;
     }
-
-    let selectedPoint = this.points[this.clickedPoint];
-    this.dom.select('#nn-title')
-        .text(selectedPoint != null ? selectedPoint.metadata['label'] : '');
 
     let minDist = neighbors.length > 0 ? neighbors[0].dist : 0;
     let n = nnlist.selectAll('.neighbor')
@@ -786,6 +799,58 @@ export class Projector extends ProjectorPolymer {
       predicate = (a: DataPoint) => { return a.metadata['label'] === pattern; };
     }
     return vector.centroid(this.points, predicate, accessor);
+  }
+
+  /**
+   * Gets the current view of the embedding and saves it as a State object.
+   */
+  getCurrentState(): State {
+    let state: State = {};
+
+    // Save the individual datapoint projections.
+    state.projections = [];
+    for (let i = 0; i < this.currentDataSet.points.length; i++) {
+      state.projections.push(this.currentDataSet.points[i].projections);
+    }
+
+    // Save the type of projection.
+    state.selectedProjection = this.selectedProjection;
+
+    // Save the selected points.
+    state.selectedPoints = this.selectedPoints;
+
+    // Save the camera position and target.
+    state.cameraPosition = this.scatterPlot.getCameraPosition();
+    state.cameraTarget = this.scatterPlot.getCameraTarget();
+
+    return state;
+  }
+
+  /** Loads a State object into the world. */
+  loadState(state: State) {
+    // Load the individual datapoint projections.
+    for (let i = 0; i < state.projections.length; i++) {
+      this.currentDataSet.points[i].projections = state.projections[i];
+    }
+
+    // Select the type of projection.
+    if (state.selectedProjection === 'pca') {
+      this.showPCA();
+    } else if (state.selectedProjection === 'tsne') {
+      this.currentDataSet.hasTSNERun = true;
+      this.showTSNE();
+    } else if (state.selectedProjection === 'custom') {
+      this.showCustom();
+    }
+    this.showTab(state.selectedProjection);
+
+    // Load the selected points.
+    this.selectedPoints = state.selectedPoints;
+    this.updateSelection(state.selectedPoints);
+
+    // Load the camera position and target.
+    this.scatterPlot.setCameraPositionAndTarget(
+        state.cameraPosition, state.cameraTarget);
   }
 }
 

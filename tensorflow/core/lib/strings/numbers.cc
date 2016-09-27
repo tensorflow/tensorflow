@@ -20,6 +20,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <algorithm>
 #include <cmath>
+#include <locale>
 #include <unordered_map>
 
 #include "tensorflow/core/lib/strings/stringprintf.h"

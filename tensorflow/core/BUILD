@@ -47,7 +47,10 @@
 #   supporting SELECTIVE_REGISTRATION feature.
 # portable_proto_library ":android_proto_lib" (Google-internal)
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = [
+    "//tensorflow:internal",
+    "//tensorflow_models:__subpackages__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -77,6 +80,7 @@ load(
     "tf_proto_library_cc",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
+    "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
     "tf_additional_lib_deps",
     "tf_additional_stream_executor_srcs",
@@ -98,6 +102,7 @@ tf_proto_library(
     srcs = glob(
         ["**/*.proto"],
         exclude = [
+            "debug/debug_service.proto",
             "protobuf/worker.proto",
             "protobuf/worker_service.proto",
             "protobuf/master.proto",
@@ -127,7 +132,7 @@ cc_library(
         "platform/platform.h",
         "platform/protobuf.h",
         "platform/types.h",
-    ],
+    ] + glob(tf_additional_proto_hdrs()),
     deps = [
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:proto_parsing",
@@ -139,6 +144,7 @@ cc_library(
     hdrs = [
         # TODO(josh11b): Make many of these internal.
         "lib/core/arena.h",
+        "lib/core/bitmap.h",
         "lib/core/bits.h",
         "lib/core/casts.h",
         "lib/core/coding.h",
@@ -155,7 +161,6 @@ cc_library(
         "lib/hash/crc32c.h",  # TODO(josh11b): make internal
         "lib/histogram/histogram.h",
         "lib/io/inputbuffer.h",  # TODO(josh11b): make internal
-        "lib/io/match.h",  # TODO(vrv,jeff): remove once Env->Match change is in
         "lib/io/path.h",
         "lib/io/proto_encode_helper.h",
         "lib/io/record_reader.h",
@@ -190,7 +195,6 @@ cc_library(
         "platform/notification.h",
         "platform/profile_utils/cpu_utils.h",
         "platform/protobuf.h",  # TODO(josh11b): make internal
-        "platform/regexp.h",
         "platform/stacktrace.h",
         "platform/strong_hash.h",
         "platform/thread_annotations.h",
@@ -596,6 +600,7 @@ filegroup(
         "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
+        "//tensorflow/core/util/tensor_bundle:android_srcs",
         "common_runtime/gpu/gpu_tracer.cc",
         "common_runtime/gpu/gpu_tracer.h",
     ] + glob(
@@ -911,11 +916,15 @@ cc_library(
             "platform/profile_utils/**/*.h",
             "platform/profile_utils/**/*.cc",
         ] + tf_additional_lib_srcs(),
-        exclude = [
-            "**/*test*",
-            "platform/**/cuda.h",
-            "platform/**/stream_executor.h",
-        ],
+        exclude =
+            [
+                "**/*test*",
+                "platform/**/cuda.h",
+                "platform/**/stream_executor.h",
+            ] +
+            # Protobuf deps already included through the ":lib_proto_parsing"
+            # dependency.
+            tf_additional_proto_srcs(),
     ),
     hdrs = glob(tf_additional_lib_hdrs()) + [
         "lib/core/blocking_counter.h",
@@ -932,7 +941,6 @@ cc_library(
         "lib/io/buffered_inputstream.h",
         "lib/io/inputstream_interface.h",
         "lib/io/iterator.h",
-        "lib/io/match.h",
         "lib/io/random_inputstream.h",
         "lib/io/snappy/snappy_inputbuffer.h",
         "lib/io/snappy/snappy_outputbuffer.h",
@@ -947,7 +955,6 @@ cc_library(
         "lib/strings/base64.h",
         "lib/strings/ordered_code.h",
         "lib/strings/proto_text_util.h",
-        "lib/strings/regexp.h",
         "lib/strings/scanner.h",
         "lib/wav/wav_io.h",
         "platform/demangle.h",
@@ -960,6 +967,7 @@ cc_library(
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
+        ":lib_proto_parsing",
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//third_party/eigen3",
@@ -1199,6 +1207,19 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
+# This library is deprecated and no longer publicly available.
+# Do not add more uses of it.
+cc_library(
+    name = "regexp_internal",
+    hdrs = [
+        "platform/regexp.h",
+    ],
+    visibility = [
+        "//tensorflow/contrib/tfprof:__subpackages__",
+    ],
+    deps = [":lib_internal"],
+)
+
 tf_cuda_library(
     name = "direct_session_internal",
     srcs = ["common_runtime/direct_session.cc"],
@@ -1362,6 +1383,7 @@ tf_cc_tests(
     srcs = [
         "lib/core/arena_test.cc",
         "lib/core/bit_cast_test.cc",
+        "lib/core/bitmap_test.cc",
         "lib/core/blocking_counter_test.cc",
         "lib/core/coding_test.cc",
         "lib/core/notification_test.cc",
@@ -1384,7 +1406,6 @@ tf_cc_tests(
         "lib/io/buffered_inputstream_test.cc",
         "lib/io/inputbuffer_test.cc",
         "lib/io/inputstream_interface_test.cc",
-        "lib/io/match_test.cc",
         "lib/io/path_test.cc",
         "lib/io/random_inputstream_test.cc",
         "lib/io/record_reader_writer_test.cc",
@@ -1408,7 +1429,6 @@ tf_cc_tests(
         "lib/strings/strcat_test.cc",
         "lib/strings/stringprintf_test.cc",
         "lib/wav/wav_io_test.cc",
-        "platform/file_system_test.cc",
         "platform/fingerprint_test.cc",
         "platform/integral_types_test.cc",
         "platform/logging_test.cc",
@@ -1439,6 +1459,19 @@ tf_cc_tests(
         ":test",
         ":test_main",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_tests(
+    size = "small",
+    srcs = ["platform/file_system_test.cc"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
     ],
 )
 
@@ -1727,6 +1760,7 @@ tf_cc_test(
     name = "common_runtime_direct_session_with_tracking_alloc_test",
     size = "small",
     srcs = ["common_runtime/direct_session_with_tracking_alloc_test.cc"],
+    args = ["--heap_check=local"],  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":core",

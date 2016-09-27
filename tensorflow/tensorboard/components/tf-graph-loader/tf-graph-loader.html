@@ -111,6 +111,11 @@ Polymer({
     var dataTracker = tf.graph.util.getSubtaskTracker(tracker, 30, 'Data');
     tf.graph.parser.fetchAndParseGraphData(path, pbTxtFile, dataTracker)
     .then(function(graph) {
+      if (!graph) {
+        throw 'The graph is empty. Make sure that the graph is passed to the ' +
+            'SummaryWriter after the graph is defined.';
+      }
+
       // Build the flat graph (consists only of Op nodes).
 
       // This is the whitelist of inputs on op types that are considered

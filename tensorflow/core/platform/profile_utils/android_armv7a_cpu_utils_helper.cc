@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
+
 #if defined(__ANDROID__) && defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
+
 #include <asm/unistd.h>
 #include <linux/perf_event.h>
 #include <stdio.h>
@@ -25,7 +28,6 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 
 namespace tensorflow {
 namespace profile_utils {
@@ -62,9 +64,7 @@ void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling(const bool enable) {
                    << "be scaled. (max = " << cpu0_scaling_max << ", min "
                    << cpu0_scaling_min << ")";
     }
-    return;
-  }
-  if (enable) {
+    ResetClockCycle();
     ioctl(fd_, PERF_EVENT_IOC_ENABLE, 0);
   } else {
     ioctl(fd_, PERF_EVENT_IOC_DISABLE, 0);
@@ -76,11 +76,11 @@ int64 AndroidArmV7ACpuUtilsHelper::CalculateCpuFrequency() {
 }
 
 void AndroidArmV7ACpuUtilsHelper::InitializeInternal() {
-  struct perf_event_attr pe;
+  perf_event_attr pe;
 
-  memset(&pe, 0, sizeof(struct perf_event_attr));
+  memset(&pe, 0, sizeof(perf_event_attr));
   pe.type = PERF_TYPE_HARDWARE;
-  pe.size = sizeof(struct perf_event_attr);
+  pe.size = sizeof(perf_event_attr);
   pe.config = PERF_COUNT_HW_CPU_CYCLES;
   pe.disabled = 1;
   pe.exclude_kernel = 1;
@@ -95,9 +95,10 @@ void AndroidArmV7ACpuUtilsHelper::InitializeInternal() {
   }
 }
 
-int AndroidArmV7ACpuUtilsHelper::OpenPerfEvent(
-    struct perf_event_attr *const hw_event, const pid_t pid, const int cpu,
-    const int group_fd, const unsigned long flags) {
+int AndroidArmV7ACpuUtilsHelper::OpenPerfEvent(perf_event_attr *const hw_event,
+                                               const pid_t pid, const int cpu,
+                                               const int group_fd,
+                                               const unsigned long flags) {
   const int ret =
       syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
   return ret;
@@ -128,7 +129,6 @@ int64 AndroidArmV7ACpuUtilsHelper::ReadCpuFrequencyFile(
 #else
 
 // Dummy implementations to avoid link error.
-#include "tensorflow/core/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 
 namespace tensorflow {
 namespace profile_utils {
@@ -136,7 +136,7 @@ namespace profile_utils {
 void AndroidArmV7ACpuUtilsHelper::ResetClockCycle() {}
 uint64 AndroidArmV7ACpuUtilsHelper::GetCurrentClockCycle() { return 1; }
 void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling(bool) {}
-int AndroidArmV7ACpuUtilsHelper::OpenPerfEvent(struct perf_event_attr *const,
+int AndroidArmV7ACpuUtilsHelper::OpenPerfEvent(perf_event_attr *const,
                                                const pid_t, const int,
                                                const int, const unsigned long) {
   return 0;

@@ -549,6 +549,16 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
         with self.assertRaisesRegexp(ValueError, "out of bounds"):
           _ = grad[:, 200, :]
 
+  def testGradientZero(self):
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu) as sess:
+        var = tf.Variable(8)
+        init = tf.initialize_all_variables()
+        sess.run(init)
+        grad = GradSliceChecker(self, sess, var,
+                                np.array(8))
+        _ = grad[tuple()]
+
 
 class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
   """Test varied index types and host located memory."""
@@ -743,6 +753,30 @@ class ShapeSizeRankTest(test_util.TensorFlowTestCase):
       self.assertEqual(4, tf.size(sp).eval())
       self.assertEqual(2, tf.rank(sp).eval())
 
+
+class SequenceMaskTest(test_util.TensorFlowTestCase):
+
+  def testExceptions(self):
+    with self.test_session():
+      with self.assertRaisesRegexp(ValueError, "lengths must be 1D"):
+        tf.sequence_mask([[10, 20]], [10, 20])
+      with self.assertRaisesRegexp(ValueError, "maxlen must be scalar"):
+        tf.sequence_mask([10, 20], [10, 20])
+
+  def testNormal(self):
+    with self.test_session():
+      res = tf.sequence_mask(tf.constant([1, 3, 2]), 5)
+      self.assertAllEqual(res.get_shape(), [3, 5])
+      self.assertAllEqual(res.eval(), [[True, False, False, False, False],
+                                       [True, True, True, False, False],
+                                       [True, True, False, False, False]])
+
+      # test dtype and default maxlen:
+      res = tf.sequence_mask(tf.constant([0, 1, 4]), dtype=tf.float32)
+      self.assertAllEqual(res.get_shape().as_list(), [3, None])
+      self.assertAllEqual(res.eval(), [[0.0, 0.0, 0.0, 0.0],
+                                       [1.0, 0.0, 0.0, 0.0],
+                                       [1.0, 1.0, 1.0, 1.0]])
 
 if __name__ == "__main__":
   tf.test.main()

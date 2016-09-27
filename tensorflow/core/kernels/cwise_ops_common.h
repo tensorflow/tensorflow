@@ -201,8 +201,8 @@ class UnaryOp : public OpKernel {
 
 namespace functor {
 
-template <typename D, typename OUT, typename RHS>
-void Assign(const D& d, OUT out, RHS rhs) {
+template <typename D, typename Out, typename Rhs>
+void Assign(const D& d, Out out, Rhs rhs) {
   out.device(d) = rhs;
 }
 

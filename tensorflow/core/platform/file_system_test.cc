@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,17 +15,56 @@ limitations under the License.
 
 #include "tensorflow/core/platform/file_system.h"
 
+#include <sys/stat.h>
+
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-namespace {
 
-TEST(FileSystemTest, GetNameFromURI) {
-  EXPECT_EQ("foo", GetNameFromURI("file://foo"));
-  EXPECT_EQ("file:/", GetNameFromURI("file:/"));
-  EXPECT_EQ("file:", GetNameFromURI("file:"));
-  EXPECT_EQ("bar", GetNameFromURI("bar"));
+class InterPlanetaryFileSystem : public NullFileSystem {
+ public:
+  Status IsDirectory(const string& dirname) override {
+    if (dirname == "ipfs://solarsystem" ||
+        dirname == "ipfs://solarsystem/Earth" ||
+        dirname == "ipfs://solarsystem/Jupiter") {
+      return Status::OK();
+    }
+    return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
+  }
+
+  Status GetChildren(const string& dir, std::vector<string>* result) override {
+    std::vector<string> celestial_bodies;
+    if (dir == "ipfs://solarsystem") {
+      celestial_bodies = {"Mercury",  "Venus",   "Earth",  "Mars",
+                          "Jupiter",  "Saturn",  "Uranus", "Neptune",
+                          ".PlanetX", "Planet0", "Planet1"};
+
+    } else if (dir == "ipfs://solarsystem/Earth") {
+      celestial_bodies = {"Moon"};
+    } else if (dir == "ipfs://solarsystem/Jupiter") {
+      celestial_bodies = {"Europa", "Io", "Ganymede"};
+    }
+    result->insert(result->end(), celestial_bodies.begin(),
+                   celestial_bodies.end());
+    return Status::OK();
+  }
+};
+
+TEST(TestFileSystem, GetChildrenRecursively) {
+  InterPlanetaryFileSystem fs;
+  std::vector<string> matched_planets;
+  TF_EXPECT_OK(
+      fs.GetChildrenRecursively("ipfs://solarsystem", &matched_planets));
+  std::vector<string> expected_planets = {
+      "Mercury",        "Venus",      "Earth",           "Mars",
+      "Jupiter",        "Saturn",     "Uranus",          "Neptune",
+      ".PlanetX",       "Planet0",    "Planet1",         "Earth/Moon",
+      "Jupiter/Europa", "Jupiter/Io", "Jupiter/Ganymede"};
+  EXPECT_EQ(expected_planets, matched_planets);
 }
 
-}  // namespace
 }  // namespace tensorflow

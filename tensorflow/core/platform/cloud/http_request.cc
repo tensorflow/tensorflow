@@ -215,6 +215,8 @@ Status HttpRequest::Init() {
   libcurl_->curl_easy_setopt(curl_, CURLOPT_TIMEOUT, kRequestTimeoutSeconds);
   libcurl_->curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT,
                              kConnectTimeoutSeconds);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION,
+                             CURL_HTTP_VERSION_2_0);
 
   // If response buffer is not set, libcurl will print results to stdout,
   // so we always set it.
@@ -448,7 +450,10 @@ Status HttpRequest::Send() {
     case 204:  // No Content
     case 206:  // Partial Content
       if (curl_result != CURLE_OK) {
-        return errors::Internal(string("curl error: ") + error_buffer);
+        // UNAVAILABLE can be retried by the caller, e.g by RetryingFileSystem.
+        return errors::Unavailable(
+            strings::StrCat("libcurl failed with error code ", curl_result,
+                            ": ", error_buffer));
       }
       if (response_buffer_ && response_string_piece_) {
         *response_string_piece_ = StringPiece(response_buffer_, written_size);
@@ -465,6 +470,7 @@ Status HttpRequest::Send() {
       }
       return Status::OK();
     default:
+      // UNAVAILABLE can be retried by the caller, e.g by RetryingFileSystem.
       return errors::Unavailable(
           strings::StrCat("Unexpected response code ", response_code_));
   }

@@ -523,8 +523,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
       lr = SdcaModel(examples, variables, options)
       tf.initialize_all_variables().run()
       train_op = lr.minimize()
-      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
-                                   'Found sparse feature indices out.*'):
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError, 'indices.*'):
         train_op.run()
 
   def testOutOfRangeDenseFeatures(self):

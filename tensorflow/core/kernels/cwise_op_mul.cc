@@ -19,8 +19,8 @@ namespace tensorflow {
 REGISTER11(BinaryOp, CPU, "Mul", functor::mul, float, Eigen::half, double, uint8,
            int8, uint16, int16, int32, int64, complex64, complex128);
 #if GOOGLE_CUDA
-REGISTER8(BinaryOp, GPU, "Mul", functor::mul, float, Eigen::half, double, uint8,
-          int8, uint16, int16, int64);
+REGISTER10(BinaryOp, GPU, "Mul", functor::mul, float, Eigen::half, double,
+           uint8, int8, uint16, int16, int64, complex64, complex128);
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.

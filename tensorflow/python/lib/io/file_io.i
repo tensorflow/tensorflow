@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputstream_interface.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
-#include "tensorflow/core/lib/io/match.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_statistics.h"
@@ -70,9 +69,8 @@ void WriteStringToFile(const string& filename, const string& file_content,
 std::vector<string> GetMatchingFiles(const string& filename,
                                      TF_Status* out_status) {
   std::vector<string> results;
-  tensorflow::Status status =
-      tensorflow::io::GetMatchingFiles(tensorflow::Env::Default(), filename,
-          &results);
+  tensorflow::Status status = tensorflow::Env::Default()->GetMatchingPaths(
+      filename, &results);
   if (!status.ok()) {
     Set_TF_Status_from_Status(out_status, status);
   }
@@ -211,6 +209,19 @@ void FlushWritableFile(tensorflow::WritableFile* file, TF_Status* out_status) {
     Set_TF_Status_from_Status(out_status, status);
   }
 }
+
+string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
+                      size_t bytes,
+                      TF_Status* out_status) {
+  string result;
+  tensorflow::Status status = stream->ReadNBytes(bytes, &result);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+    result.clear();
+  }
+  return result;
+}
+
 %}
 
 // Ensure that the returned object is destroyed when its wrapper is
@@ -243,11 +254,15 @@ tensorflow::WritableFile* CreateWritableFile(const string& filename,
 void AppendToFile(const string& file_content, tensorflow::WritableFile* file,
                   TF_Status* out_status);
 void FlushWritableFile(tensorflow::WritableFile* file, TF_Status* out_status);
+string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
+                      size_t bytes,
+                      TF_Status* out_status);
 
 %ignoreall
 %unignore tensorflow::io::BufferedInputStream;
 %unignore tensorflow::io::BufferedInputStream::~BufferedInputStream;
 %unignore tensorflow::io::BufferedInputStream::ReadLineAsString;
+%unignore tensorflow::io::BufferedInputStream::Tell;
 %unignore tensorflow::WritableFile;
 %unignore tensorflow::WritableFile::~WritableFile;
 %include "tensorflow/core/platform/file_system.h"

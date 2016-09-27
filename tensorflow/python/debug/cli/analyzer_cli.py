@@ -24,9 +24,27 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import copy
 import re
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
+
 from tensorflow.python.debug.cli import debugger_cli_common
+
+
+# String constants for the depth-dependent hanging indent at the beginning
+# of each line.
+HANG_UNFINISHED = "|  "  # Used for unfinished recursion depths.
+HANG_FINISHED = "   "
+HANG_SUFFIX = "|- "
+
+# String constant for displaying depth and op type.
+DEPTH_TEMPLATE = "(%d) "
+OP_TYPE_TEMPLATE = "[%s] "
+
+# String consntats for control inputs/outputs, etc.
+CTRL_LABEL = "(Ctrl) "
+ELLIPSIS = "..."
 
 
 class DebugAnalyzer(object):
@@ -92,14 +110,74 @@ class DebugAnalyzer(object):
         help="Also list dumps available from the node.")
     self._arg_parsers["node_info"] = ap
 
+    # Parser for list_inputs.
+    ap = argparse.ArgumentParser(
+        description="Show inputs to a node.", usage=argparse.SUPPRESS)
+    ap.add_argument(
+        "node_name",
+        type=str,
+        help="Name of the node or an output tensor from the node, e.g., "
+        "hidden1/Wx_plus_b/MatMul, hidden1/Wx_plus_b/MatMul:0")
+    ap.add_argument(
+        "-c", "--control", action="store_true", help="Include control inputs.")
+    ap.add_argument(
+        "-d",
+        "--depth",
+        dest="depth",
+        type=int,
+        default=20,
+        help="Maximum depth of recursion used when showing the input tree.")
+    ap.add_argument(
+        "-r",
+        "--recursive",
+        dest="recursive",
+        action="store_true",
+        help="Show inputs to the node recursively, i.e., the input tree.")
+    ap.add_argument(
+        "-t",
+        "--op_type",
+        action="store_true",
+        help="Show op types of input nodes.")
+    self._arg_parsers["list_inputs"] = ap
+
+    # Parser for list_outputs.
+    ap = argparse.ArgumentParser(
+        description="Show the nodes that receive the outputs of given node.",
+        usage=argparse.SUPPRESS)
+    ap.add_argument(
+        "node_name",
+        type=str,
+        help="Name of the node or an output tensor from the node, e.g., "
+        "hidden1/Wx_plus_b/MatMul, hidden1/Wx_plus_b/MatMul:0")
+    ap.add_argument(
+        "-c", "--control", action="store_true", help="Include control inputs.")
+    ap.add_argument(
+        "-d",
+        "--depth",
+        dest="depth",
+        type=int,
+        default=20,
+        help="Maximum depth of recursion used when showing the output tree.")
+    ap.add_argument(
+        "-r",
+        "--recursive",
+        dest="recursive",
+        action="store_true",
+        help="Show recipients of the node recursively, i.e., the output "
+        "tree.")
+    ap.add_argument(
+        "-t",
+        "--op_type",
+        action="store_true",
+        help="Show op types of recipient nodes.")
+    self._arg_parsers["list_outputs"] = ap
+
     # TODO(cais): Implement list_nodes.
     # TODO(cais): Implement print_tensor.
-    # TODO(cais): Implement inputs (including recursive).
-    # TODO(cais): Implement outputs (including recursive).
 
   def _error(self, msg):
     return debugger_cli_common.RichTextLines(
-        [msg], font_attr_segs={0: [(0, len(msg), "red")]})
+        ["ERROR: " + msg], font_attr_segs={0: [(0, len(msg), "red")]})
 
   def get_help(self, handler_name):
     return self._arg_parsers[handler_name].format_help()
@@ -113,7 +191,7 @@ class DebugAnalyzer(object):
       args: Command-line arguments, excluding the command prefix, as a list of
         str.
       screen_info: Optional dict input containing screen information such as
-      cols.
+        cols.
 
     Returns:
       Output text lines as a RichTextLines object.
@@ -174,7 +252,7 @@ class DebugAnalyzer(object):
       args: Command-line arguments, excluding the command prefix, as a list of
         str.
       screen_info: Optional dict input containing screen information such as
-      cols.
+        cols.
 
     Returns:
       Output text lines as a RichTextLines object.
@@ -191,10 +269,18 @@ class DebugAnalyzer(object):
     else:
       node_name = parsed.node_name
 
-    if node_name not in self._debug_dump.nodes():
+    if not self._debug_dump.node_exists(node_name):
       return self._error(
-          "Error: There is no node named \"%s\" in the partition graphs" %
-          node_name)
+          "There is no node named \"%s\" in the partition graphs" % node_name)
+
+    # TODO(cais): Provide UI glossary feature to explain to users what the
+    # term "partition graph" means and how it is related to TF graph objects
+    # in Python. The information can be along the line of:
+    # "A tensorflow graph defined in Python is stripped of unused ops
+    # according to the feeds and fetches and divided into a number of
+    # partition graphs that may be distributed among multiple devices and
+    # hosts. The partition graphs are what's actually executed by the C++
+    # runtime during a run() call."
 
     lines = ["Node %s" % node_name]
     lines.append("")
@@ -205,14 +291,14 @@ class DebugAnalyzer(object):
     inputs = self._debug_dump.node_inputs(node_name)
     ctrl_inputs = self._debug_dump.node_inputs(node_name, is_control=True)
 
-    input_lines = self._list_neighbors("input", inputs, ctrl_inputs)
+    input_lines = self._format_neighbors("input", inputs, ctrl_inputs)
     lines.extend(input_lines)
 
     # List node output recipients (non-control and control).
     recs = self._debug_dump.node_recipients(node_name)
     ctrl_recs = self._debug_dump.node_recipients(node_name, is_control=True)
 
-    rec_lines = self._list_neighbors("recipient", recs, ctrl_recs)
+    rec_lines = self._format_neighbors("recipient", recs, ctrl_recs)
     lines.extend(rec_lines)
 
     # Optional: List attributes of the node.
@@ -225,7 +311,237 @@ class DebugAnalyzer(object):
 
     return debugger_cli_common.RichTextLines(lines)
 
-  def _list_neighbors(self, neighbor_type, non_ctrls, ctrls):
+  def list_inputs(self, args, screen_info=None):
+    """Command handler for inputs.
+
+    Show inputs to a given node.
+
+    Args:
+      args: Command-line arguments, excluding the command prefix, as a list of
+        str.
+      screen_info: Optional dict input containing screen information such as
+        cols.
+
+    Returns:
+      Output text lines as a RichTextLines object.
+    """
+
+    # Screen info not currently used by this handler. Include this line to
+    # mute pylint.
+    _ = screen_info
+    # TOOD(cais): Use screen info to format the output lines more prettily,
+    # e.g., hanging indent of long node names.
+
+    parsed = self._arg_parsers["list_inputs"].parse_args(args)
+
+    return self._list_inputs_or_outputs(
+        parsed.recursive,
+        parsed.node_name,
+        parsed.depth,
+        parsed.control,
+        parsed.op_type,
+        do_outputs=False)
+
+  def list_outputs(self, args, screen_info=None):
+    """Command handler for inputs.
+
+    Show inputs to a given node.
+
+    Args:
+      args: Command-line arguments, excluding the command prefix, as a list of
+        str.
+      screen_info: Optional dict input containing screen information such as
+        cols.
+
+    Returns:
+      Output text lines as a RichTextLines object.
+    """
+
+    # Screen info not currently used by this handler. Include this line to
+    # mute pylint.
+    _ = screen_info
+    # TOOD(cais): Use screen info to format the output lines more prettily,
+    # e.g., hanging indent of long node names.
+
+    parsed = self._arg_parsers["list_outputs"].parse_args(args)
+
+    return self._list_inputs_or_outputs(
+        parsed.recursive,
+        parsed.node_name,
+        parsed.depth,
+        parsed.control,
+        parsed.op_type,
+        do_outputs=True)
+
+  def _list_inputs_or_outputs(self,
+                              recursive,
+                              node_name,
+                              depth,
+                              control,
+                              op_type,
+                              do_outputs=False):
+    """Helper function used by list_inputs and list_outputs.
+
+    Format a list of lines to display the inputs or output recipients of a
+    given node.
+
+    Args:
+      recursive: Whether the listing is to be done recursively, as a boolean.
+      node_name: The name of the node in question, as a str.
+      depth: Maximum recursion depth, applies only if recursive == True, as an
+        int.
+      control: Whether control inputs or control recipients are included, as a
+        boolean.
+      op_type: Whether the op types of the nodes are to be included, as a
+        boolean.
+      do_outputs: Whether recipients, instead of input nodes are to be
+        listed, as a boolean.
+
+    Returns:
+      Input or recipient tree formatted as a RichTextLines object.
+    """
+
+    if do_outputs:
+      tracker = self._debug_dump.node_recipients
+      type_str = "Recipients of"
+      short_type_str = "recipients"
+    else:
+      tracker = self._debug_dump.node_inputs
+      type_str = "Inputs to"
+      short_type_str = "inputs"
+
+    lines = []
+
+    # Check if this is a tensor name, instead of a node name.
+    if ":" in node_name:
+      node_name = node_name[:node_name.rfind(":")]
+
+    # Check if node exists.
+    if not self._debug_dump.node_exists(node_name):
+      return self._error(
+          "There is no node named \"%s\" in the partition graphs" % node_name)
+
+    if recursive:
+      max_depth = depth
+    else:
+      max_depth = 1
+
+    if control:
+      include_ctrls_str = ", control %s included" % short_type_str
+    else:
+      include_ctrls_str = ""
+
+    lines.append("%s node \"%s\" (Depth limit = %d%s):" %
+                 (type_str, node_name, max_depth, include_ctrls_str))
+
+    self._dfs_from_node(lines, node_name, tracker, max_depth, 1, [], control,
+                        op_type)
+
+    # Include legend.
+    lines.append("")
+    lines.append("Legend:")
+    lines.append("  (d): recursion depth = d.")
+
+    if control:
+      lines.append("  (Ctrl): Control input.")
+    if op_type:
+      lines.append("  [Op]: Input node has op type Op.")
+
+    return debugger_cli_common.RichTextLines(lines)
+
+  def _dfs_from_node(self,
+                     lines,
+                     node_name,
+                     tracker,
+                     max_depth,
+                     depth,
+                     unfinished,
+                     include_control=False,
+                     show_op_type=False):
+    """Perform depth-first search (DFS) traversal of a node's input tree.
+
+    Args:
+      lines: Text lines to append to, as a list of str.
+      node_name: Name of the node, as a str. This arg is updated during the
+        recursion.
+      tracker: A callable that takes one str as the node name input and
+        returns a list of str as the inputs/outputs.
+        This makes it this function general enough to be used with both
+        node-input and node-output tracking.
+      max_depth: Maximum recursion depth, as an int.
+      depth: Current recursion depth. This arg is updated during the
+        recursion.
+      unfinished: A stack of unfinished recursion depths, as a list of int.
+      include_control: Whether control dependencies are to be included as
+        inputs (and marked as such).
+      show_op_type: Whether op type of the input nodes are to be displayed
+        alongside the the nodes' names.
+    """
+
+    # Make a shallow copy of the list because it may be extended later.
+    all_inputs = copy.copy(tracker(node_name, is_control=False))
+    is_ctrl = [False] * len(all_inputs)
+    if include_control:
+      # Sort control inputs or recipients in in alphabetical order of the node
+      # names.
+      ctrl_inputs = sorted(tracker(node_name, is_control=True))
+      all_inputs.extend(ctrl_inputs)
+      is_ctrl.extend([True] * len(ctrl_inputs))
+
+    if not all_inputs:
+      if depth == 1:
+        lines.append("  [None]")
+
+      return
+
+    unfinished.append(depth)
+
+    # Create depth-dependent hanging indent for the line.
+    hang = ""
+    for k in xrange(depth):
+      if k < depth - 1:
+        if k + 1 in unfinished:
+          hang += HANG_UNFINISHED
+        else:
+          hang += HANG_FINISHED
+      else:
+        hang += HANG_SUFFIX
+
+    if all_inputs and depth > max_depth:
+      lines.append(hang + ELLIPSIS)
+      unfinished.pop()
+      return
+
+    hang += DEPTH_TEMPLATE % depth
+
+    for i in xrange(len(all_inputs)):
+      inp = all_inputs[i]
+      if is_ctrl[i]:
+        ctrl_str = CTRL_LABEL
+      else:
+        ctrl_str = ""
+
+      op_type_str = ""
+      if show_op_type:
+        op_type_str = OP_TYPE_TEMPLATE % self._debug_dump.node_op_type(inp)
+
+      if i == len(all_inputs) - 1:
+        unfinished.pop()
+
+      lines.append(hang + ctrl_str + op_type_str + inp)
+
+      # Recursive call.
+      self._dfs_from_node(
+          lines,
+          inp,
+          tracker,
+          max_depth,
+          depth + 1,
+          unfinished,
+          include_control=include_control,
+          show_op_type=show_op_type)
+
+  def _format_neighbors(self, neighbor_type, non_ctrls, ctrls):
     """List neighbors (inputs or recipients) of a node.
 
     Args:

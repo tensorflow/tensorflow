@@ -725,7 +725,7 @@ class OpDefLibrary(object):
         elif arg.type_list_attr:
           t = _AttrValue(attr_protos, arg.type_list_attr)
           types = t.list.type
-          output_structure.append(len(t.list.type))
+          output_structure.append(len(types))
         else:
           types = [arg.type]
           output_structure.append(None)
@@ -743,14 +743,15 @@ class OpDefLibrary(object):
                               if arg.is_ref]
       with _MaybeColocateWith(must_colocate_inputs):
         # Add Op to graph
+        op = g.create_op(op_type_name, inputs, output_types, name=scope,
+                         input_types=input_types, attrs=attr_protos,
+                         op_def=op_def)
         if output_structure:
-          op = g.create_op(op_type_name, inputs, output_types, name=scope,
-                           input_types=input_types, attrs=attr_protos,
-                           op_def=op_def)
           outputs = op.outputs
-          return _Restructure(ops.convert_n_to_tensor(outputs),
-                              output_structure)
+          res = _Restructure(ops.convert_n_to_tensor(outputs), output_structure)
+          if isinstance(res, list) and not res and op_def.is_stateful:
+            return op
+          else:
+            return res
         else:
-          return g.create_op(op_type_name, inputs, output_types, name=scope,
-                             input_types=input_types, attrs=attr_protos,
-                             op_def=op_def)
+          return op

@@ -41,6 +41,8 @@ export interface DataTrace {
 
 export type OnHoverListener = (index: number) => void;
 export type OnSelectionListener = (indexes: number[]) => void;
+export type OnCameraMoveListener =
+    (cameraPosition: THREE.Vector3, cameraTarget: THREE.Vector3) => void;
 
 /** Supported modes of interaction. */
 export enum Mode {
@@ -117,9 +119,21 @@ export interface ScatterPlot {
    */
   onHover(listener: OnHoverListener): void;
   /**
+   * Registers a listener that will be called when the user moves the camera.
+   */
+  onCameraMove(listener: OnCameraMoveListener): void;
+  /**
    * Should emulate the same behavior as if the user clicked on the point.
    * This is used to trigger a click from an external event, such as
    * a search query.
    */
   clickOnPoint(pointIndex: number): void;
+  /**
+   * Sets the camera position and target.
+   */
+  setCameraPositionAndTarget(position: Point3D, target: Point3D): void;
+  /** Gets the camera position. */
+  getCameraPosition(): Point3D;
+  /** Gets the camera target. */
+  getCameraTarget(): Point3D;
 }

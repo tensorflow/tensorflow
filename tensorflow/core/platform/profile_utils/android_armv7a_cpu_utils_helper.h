@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/platform/profile_utils/i_cpu_utils_helper.h"
 #include "tensorflow/core/platform/types.h"
 
+struct perf_event_attr;
+
 namespace tensorflow {
 namespace profile_utils {
 
@@ -39,7 +41,7 @@ class AndroidArmV7ACpuUtilsHelper : public ICpuUtilsHelper {
   void InitializeInternal();
 
   // syscall __NR_perf_event_open with arguments
-  int OpenPerfEvent(struct perf_event_attr *const hw_event, const pid_t pid,
+  int OpenPerfEvent(perf_event_attr *const hw_event, const pid_t pid,
                     const int cpu, const int group_fd,
                     const unsigned long flags);
 

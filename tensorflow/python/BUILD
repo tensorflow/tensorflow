@@ -1,7 +1,10 @@
 # Description:
 # Python support for TensorFlow.
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = [
+    "//tensorflow:internal",
+    "//tensorflow_models:__subpackages__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -80,10 +83,6 @@ tf_py_test(
     additional_deps = [
         ":platform",
         ":platform_test",
-    ],
-    tags = [
-        "manual",
-        "notap",
     ],
 )
 
@@ -1566,7 +1565,10 @@ py_library(
     name = "util",
     srcs = glob(
         ["util/**/*.py"],
-        exclude = ["util/example_parser*"],
+        exclude = [
+            "util/example_parser*",
+            "util/**/*_test.py",
+        ],
     ),
     srcs_version = "PY2AND3",
     deps = ["@protobuf//:protobuf_python"],
@@ -1577,6 +1579,19 @@ py_test(
     size = "small",
     srcs = ["util/nest_test.py"],
     main = "util/nest_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "future_api_test",
+    size = "small",
+    srcs = [
+        "util/future_api_test.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":util",

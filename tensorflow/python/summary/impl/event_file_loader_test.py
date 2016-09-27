@@ -41,13 +41,13 @@ class EventFileLoaderTest(test_util.TensorFlowTestCase):
         os.path.join(self.get_temp_dir(), filename))
 
   def testEmptyEventFile(self):
-    filename = tempfile.NamedTemporaryFile().name
+    filename = tempfile.NamedTemporaryFile(dir=self.get_temp_dir()).name
     self._WriteToFile(filename, b'')
     loader = self._LoaderForTestFile(filename)
     self.assertEqual(len(list(loader.Load())), 0)
 
   def testSingleWrite(self):
-    filename = tempfile.NamedTemporaryFile().name
+    filename = tempfile.NamedTemporaryFile(dir=self.get_temp_dir()).name
     self._WriteToFile(filename, EventFileLoaderTest.RECORD)
     loader = self._LoaderForTestFile(filename)
     events = list(loader.Load())
@@ -56,7 +56,7 @@ class EventFileLoaderTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(list(loader.Load())), 0)
 
   def testMultipleWrites(self):
-    filename = tempfile.NamedTemporaryFile().name
+    filename = tempfile.NamedTemporaryFile(dir=self.get_temp_dir()).name
     self._WriteToFile(filename, EventFileLoaderTest.RECORD)
     loader = self._LoaderForTestFile(filename)
     self.assertEqual(len(list(loader.Load())), 1)
@@ -64,7 +64,7 @@ class EventFileLoaderTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(list(loader.Load())), 1)
 
   def testMultipleLoads(self):
-    filename = tempfile.NamedTemporaryFile().name
+    filename = tempfile.NamedTemporaryFile(dir=self.get_temp_dir()).name
     self._WriteToFile(filename, EventFileLoaderTest.RECORD)
     loader = self._LoaderForTestFile(filename)
     loader.Load()
@@ -72,7 +72,7 @@ class EventFileLoaderTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(list(loader.Load())), 1)
 
   def testMultipleWritesAtOnce(self):
-    filename = tempfile.NamedTemporaryFile().name
+    filename = tempfile.NamedTemporaryFile(dir=self.get_temp_dir()).name
     self._WriteToFile(filename, EventFileLoaderTest.RECORD)
     self._WriteToFile(filename, EventFileLoaderTest.RECORD)
     loader = self._LoaderForTestFile(filename)
