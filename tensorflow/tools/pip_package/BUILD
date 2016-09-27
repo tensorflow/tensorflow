@@ -9,6 +9,7 @@ transitive_hdrs(
     name = "other_headers",
     deps = [
         "//tensorflow/core:protos_all_cc",
+	"//tensorflow/core:proto_text",
         "//third_party/eigen3",
     ],
 )
