@@ -31,7 +31,7 @@ _VERSION = '0.10.0'
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
     'six >= 1.10.0',
-    'protobuf == 3.0.0',
+    'protobuf == 3.1.0',
 ]
 
 # python3 requires wheel 0.26
