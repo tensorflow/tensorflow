@@ -582,9 +582,9 @@ typedef struct {
 } TF_AttrMetadata;
 
 // Returns metadata about the value of the attribute `attr_name` of `oper`.
-TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
-                                            const char* attr_name,
-                                            TF_Status* status);
+extern TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
+                                                   const char* attr_name,
+                                                   TF_Status* status);
 
 // Fills in `value` with the value of the attribute `attr_name`.  `value` must
 // point to an array of length at least `max_length` (ideally set to
