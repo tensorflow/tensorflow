@@ -251,6 +251,32 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(None, res['b'])
       self.assertEqual(44.0, res['c'])
 
+  def testFetchNestingEmptyOneLevel(self):
+    with session.Session() as sess:
+      a_val = 11.0
+      a = constant_op.constant(a_val)
+
+      res = sess.run([[], tuple(), {}])
+      self.assertTrue(isinstance(res, list))
+      self.assertEquals(3, len(res))
+      self.assertTrue(isinstance(res[0], list))
+      self.assertEqual(0, len(res[0]))
+      self.assertTrue(isinstance(res[1], tuple))
+      self.assertEqual(0, len(res[1]))
+      self.assertTrue(isinstance(res[2], dict))
+      self.assertEqual(0, len(res[2]))
+
+      res = sess.run([[], tuple(), {}, a])
+      self.assertTrue(isinstance(res, list))
+      self.assertEquals(4, len(res))
+      self.assertTrue(isinstance(res[0], list))
+      self.assertEqual(0, len(res[0]))
+      self.assertTrue(isinstance(res[1], tuple))
+      self.assertEqual(0, len(res[1]))
+      self.assertTrue(isinstance(res[2], dict))
+      self.assertEqual(0, len(res[2]))
+      self.assertEqual(a_val, res[3])
+
   def testFetchNestingOneLevel(self):
     with session.Session() as sess:
       # pylint: disable=invalid-name
@@ -267,11 +293,14 @@ class SessionTest(test_util.TensorFlowTestCase):
       res = sess.run([[a, b, c], (a, b, c), ABC(a=a, b=b, c=c),
                       {'a': a.name, 'c': c, 'b': b}])
       self.assertTrue(isinstance(res, list))
+      self.assertEqual(4, len(res))
       self.assertTrue(isinstance(res[0], list))
+      self.assertEqual(3, len(res[0]))
       self.assertEqual(a_val, res[0][0])
       self.assertEqual(b_val, res[0][1])
       self.assertEqual(c_val, res[0][2])
       self.assertTrue(isinstance(res[1], tuple))
+      self.assertEqual(3, len(res[1]))
       self.assertEqual(a_val, res[1][0])
       self.assertEqual(b_val, res[1][1])
       self.assertEqual(c_val, res[1][2])
@@ -280,6 +309,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(b_val, res[2].b)
       self.assertEqual(c_val, res[2].c)
       self.assertTrue(isinstance(res[3], dict))
+      self.assertEqual(3, len(res[3]))
       self.assertEqual(a_val, res[3]['a'])
       self.assertEqual(b_val, res[3]['b'])
       self.assertEqual(c_val, res[3]['c'])
@@ -287,11 +317,14 @@ class SessionTest(test_util.TensorFlowTestCase):
       res = sess.run(([a, b, c], (a.name, b, c), ABC(a=a, b=b, c=c),
                       {'a': a, 'c': c, 'b': b}))
       self.assertTrue(isinstance(res, tuple))
+      self.assertEqual(4, len(res))
       self.assertTrue(isinstance(res[0], list))
+      self.assertEqual(3, len(res[0]))
       self.assertEqual(a_val, res[0][0])
       self.assertEqual(b_val, res[0][1])
       self.assertEqual(c_val, res[0][2])
       self.assertTrue(isinstance(res[1], tuple))
+      self.assertEqual(3, len(res[1]))
       self.assertEqual(a_val, res[1][0])
       self.assertEqual(b_val, res[1][1])
       self.assertEqual(c_val, res[1][2])
@@ -300,6 +333,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(b_val, res[2].b)
       self.assertEqual(c_val, res[2].c)
       self.assertTrue(isinstance(res[3], dict))
+      self.assertEqual(3, len(res[3]))
       self.assertEqual(a_val, res[3]['a'])
       self.assertEqual(b_val, res[3]['b'])
       self.assertEqual(c_val, res[3]['c'])
@@ -310,10 +344,12 @@ class SessionTest(test_util.TensorFlowTestCase):
                           g={'a': a, 'c': c, 'b': b}))
       self.assertTrue(isinstance(res, DEFG))
       self.assertTrue(isinstance(res.d, list))
+      self.assertEqual(3, len(res.d))
       self.assertEqual(a_val, res.d[0])
       self.assertEqual(b_val, res.d[1])
       self.assertEqual(c_val, res.d[2])
       self.assertTrue(isinstance(res.e, tuple))
+      self.assertEqual(3, len(res.e))
       self.assertEqual(a_val, res.e[0])
       self.assertEqual(b_val, res.e[1])
       self.assertEqual(c_val, res.e[2])
@@ -322,6 +358,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(b_val, res.f.b)
       self.assertEqual(c_val, res.f.c)
       self.assertTrue(isinstance(res.g, dict))
+      self.assertEqual(3, len(res.g))
       self.assertEqual(a_val, res.g['a'])
       self.assertEqual(b_val, res.g['b'])
       self.assertEqual(c_val, res.g['c'])
@@ -331,11 +368,14 @@ class SessionTest(test_util.TensorFlowTestCase):
                       'f': ABC(a=a, b=b, c=c),
                       'g': {'a': a.name, 'c': c, 'b': b}})
       self.assertTrue(isinstance(res, dict))
+      self.assertEqual(4, len(res))
       self.assertTrue(isinstance(res['d'], list))
+      self.assertEqual(3, len(res['d']))
       self.assertEqual(a_val, res['d'][0])
       self.assertEqual(b_val, res['d'][1])
       self.assertEqual(c_val, res['d'][2])
       self.assertTrue(isinstance(res['e'], tuple))
+      self.assertEqual(3, len(res['e']))
       self.assertEqual(a_val, res['e'][0])
       self.assertEqual(b_val, res['e'][1])
       self.assertEqual(c_val, res['e'][2])
@@ -344,6 +384,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(b_val, res['f'].b)
       self.assertEqual(c_val, res['f'].c)
       self.assertTrue(isinstance(res['g'], dict))
+      self.assertEqual(3, len(res['g']))
       self.assertEqual(a_val, res['g']['a'])
       self.assertEqual(b_val, res['g']['b'])
       self.assertEqual(c_val, res['g']['c'])
@@ -954,9 +995,12 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testUseEmptyGraph(self):
     with session.Session() as sess:
-      with self.assertRaisesWithPredicateMatch(
-          RuntimeError, lambda e: 'The Session graph is empty.' in str(e)):
+      with self.assertRaisesRegexp(RuntimeError, 'The Session graph is empty.'):
         sess.run([])
+      with self.assertRaisesRegexp(RuntimeError, 'The Session graph is empty.'):
+        sess.run(())
+      with self.assertRaisesRegexp(RuntimeError, 'The Session graph is empty.'):
+        sess.run({})
 
   def testNotEntered(self):
     # pylint: disable=protected-access
