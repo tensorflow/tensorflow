@@ -720,7 +720,7 @@ def dropout(inputs,
   with ops.name_scope(scope, 'Dropout', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
     dropout_fn = lambda: nn.dropout(inputs, keep_prob, noise_shape)
-    id_fn = lambda: inputs
+    id_fn = lambda: array_ops.identity(inputs)
     outputs = utils.smart_cond(is_training, dropout_fn, id_fn)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 

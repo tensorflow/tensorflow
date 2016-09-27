@@ -848,7 +848,7 @@ class DropoutTest(tf.test.TestCase):
       is_training = tf.constant(False)
       images = tf.random_uniform((5, height, width, 3), seed=1)
       output = tf.contrib.layers.dropout(images, is_training=is_training)
-      self.assertEquals(output, images)
+      self.assertEquals(output.op.name, 'Dropout/Identity')
       output.get_shape().assert_is_compatible_with(images.get_shape())
 
   def testCreateDropoutWithPlaceholder(self):
