@@ -745,7 +745,9 @@ export class Projector extends ProjectorPolymer {
         .attr('class', 'tick')
         .style('left', d => d * 100 / 4 + '%');
 
-    n.on('click', d => { this.updateSelection([d.index]); });
+    n.on('click', d => {
+      this.scatterPlot.clickOnPoint(d.index);
+    });
   }
 
   private updateIsolateButton() {
@@ -843,7 +845,7 @@ export class Projector extends ProjectorPolymer {
 
     // Load the selected points.
     this.selectedPoints = state.selectedPoints;
-    this.updateSelection(state.selectedPoints);
+    this.scatterPlot.clickOnPoint(this.selectedPoints[0]);
 
     // Load the camera position and target.
     this.scatterPlot.setCameraPositionAndTarget(

@@ -239,7 +239,7 @@ export class ScatterPlotWebGL implements ScatterPlot {
         this.highlightedPoints.filter((id, i) => this.favorLabels(i));
     let selection = this.nearestPoint || null;
     // Only call event handlers if the click originated from the scatter plot.
-    if (e && !this.isDragSequence) {
+    if (!this.isDragSequence) {
       this.onSelectionListeners.forEach(l => l(selection ? [selection] : []));
     }
     this.isDragSequence = false;
