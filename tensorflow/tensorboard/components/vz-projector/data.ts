@@ -324,6 +324,13 @@ export interface DatasetMetadata {
 
 export type Projection = 'tsne' | 'pca' | 'custom';
 
+export interface ColorOption {
+  name: string;
+  desc?: string;
+  map?: (value: string|number) => string;
+  isSeparator?: boolean;
+}
+
 /**
  * An interface that holds all the data for serializing the current state of
  * the world.
@@ -349,4 +356,10 @@ export interface State {
 
   /** Camera target (x, y, z). */
   cameraTarget?: vector.Point3D;
+
+  /** Color by option. */
+  colorOption?: ColorOption;
+
+  /** Label by option. */
+  labelOption?: string;
 }

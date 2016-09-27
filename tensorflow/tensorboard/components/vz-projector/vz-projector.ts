@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataPoint, DataSet, DataSource, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
+import {ColorOption, DataPoint, DataSet, DataSource, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
 import {DataProvider, getDataProvider} from './data-loader';
 import * as knn from './knn';
 import {Mode, ScatterPlot} from './scatterPlot';
@@ -24,7 +24,7 @@ import {ScatterPlotWebGLVisualizerSprites} from './scatterPlotWebGLVisualizerSpr
 import {ScatterPlotWebGLVisualizerTraces} from './scatterPlotWebGLVisualizerTraces';
 import * as vector from './vector';
 import {BookmarkPanel} from './vz-projector-bookmark-panel';
-import {ColorOption, DataPanel} from './vz-projector-data-panel';
+import {DataPanel} from './vz-projector-data-panel';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
 
@@ -822,6 +822,10 @@ export class Projector extends ProjectorPolymer {
     state.cameraPosition = this.scatterPlot.getCameraPosition();
     state.cameraTarget = this.scatterPlot.getCameraTarget();
 
+    // Save the color and label by options.
+    state.colorOption = this.colorOption;
+    state.labelOption = this.labelOption;
+
     return state;
   }
 
@@ -831,6 +835,12 @@ export class Projector extends ProjectorPolymer {
     for (let i = 0; i < state.projections.length; i++) {
       this.currentDataSet.points[i].projections = state.projections[i];
     }
+
+    // Load the color and label by options.
+    this.colorOption = state.colorOption;
+    this.labelOption = state.labelOption;
+    this.set('colorOption', this.colorOption);
+    this.set('labelOption', this.labelOption);
 
     // Select the type of projection.
     if (state.selectedProjection === 'pca') {

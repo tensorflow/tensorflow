@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {ColorOption} from './data';
 import {CheckpointInfo, ColumnStats, DataProvider, parseRawMetadata, parseRawTensors} from './data-loader';
 import {Projector} from './vz-projector';
 // tslint:disable-next-line:no-unused-variable
@@ -27,13 +28,6 @@ export let DataPanelPolymer = PolymerElement({
     labelOption: {type: String, notify: true}
   }
 });
-
-export interface ColorOption {
-  name: string;
-  desc?: string;
-  map?: (value: string|number) => string;
-  isSeparator?: boolean;
-};
 
 export class DataPanel extends DataPanelPolymer {
   labelOption: string;
