@@ -25,6 +25,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import rnn_cell
+
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.contrib import layers
 
 
@@ -76,6 +78,10 @@ class GridRNNCell(rnn_cell.RNNCell):
               group of recurrent and non-recurrent dimensions.
       cell_fn: function, a function which returns the recurrent cell object. Has
         to be in the following signature:
+              def cell_fun(num_units):
+                # ...
+
+              or (but this is deprecated):
               def cell_func(num_units, input_size):
                 # ...
 
@@ -92,21 +98,22 @@ class GridRNNCell(rnn_cell.RNNCell):
                                      non_recurrent_fn or nn.relu, tied,
                                      num_units)
 
-    cell_input_size = (self._config.num_dims - 1) * num_units
     if cell_fn is None:
       self._cell = rnn_cell.LSTMCell(
-          num_units=num_units, input_size=cell_input_size, state_is_tuple=False)
+          num_units=num_units, state_is_tuple=False)
     else:
-      self._cell = cell_fn(num_units, cell_input_size)
+      try:
+        self._cell = cell_fn(num_units)
+      except TypeError as ex:
+        if 'takes exactly 2 arguments' in ex.message:
+          logging.warn("%s: Using cell_fn with 2 arguments is "
+                       "deprecated.  Use cell_fn(num_units) instead.", self)
+          cell_input_size = (self._config.num_dims - 1) * num_units
+          self._cell = cell_fn(num_units, cell_input_size)
+        else:
+          raise
       if not isinstance(self._cell, rnn_cell.RNNCell):
         raise ValueError('cell_fn must return an object of type RNNCell')
-
-  @property
-  def input_size(self):
-    # temporarily using num_units as the input_size of each dimension.
-    # The actual input size only determined when this cell get invoked,
-    # so this information can be considered unreliable.
-    return self._config.num_units * len(self._config.inputs)
 
   @property
   def output_size(self):
@@ -168,7 +175,7 @@ class GridRNNCell(rnn_cell.RNNCell):
     with vs.variable_scope(scope or type(self).__name__):  # GridRNNCell
 
       # project input
-      if inputs is not None and sum(inputs.get_shape().as_list()) > 0 and len(
+      if inputs is not None and inputs.get_shape().with_rank(2)[1] > 0 and len(
           conf.inputs) > 0:
         input_splits = array_ops.split(1, len(conf.inputs), inputs)
         input_sz = input_splits[0].get_shape().as_list()[1]
@@ -213,7 +220,7 @@ class Grid1BasicRNNCell(GridRNNCell):
     super(Grid1BasicRNNCell, self).__init__(
         num_units=num_units, num_dims=1,
         input_dims=0, output_dims=0, priority_dims=0, tied=False,
-        cell_fn=lambda n, i: rnn_cell.BasicRNNCell(num_units=n, input_size=i))
+        cell_fn=lambda n: rnn_cell.BasicRNNCell(num_units=n))
 
 
 class Grid2BasicRNNCell(GridRNNCell):
@@ -231,7 +238,7 @@ class Grid2BasicRNNCell(GridRNNCell):
         num_units=num_units, num_dims=2,
         input_dims=0, output_dims=0, priority_dims=0, tied=tied,
         non_recurrent_dims=None if non_recurrent_fn is None else 0,
-        cell_fn=lambda n, i: rnn_cell.BasicRNNCell(num_units=n, input_size=i),
+        cell_fn=lambda n: rnn_cell.BasicRNNCell(num_units=n),
         non_recurrent_fn=non_recurrent_fn)
 
 
@@ -242,9 +249,9 @@ class Grid1BasicLSTMCell(GridRNNCell):
     super(Grid1BasicLSTMCell, self).__init__(
         num_units=num_units, num_dims=1,
         input_dims=0, output_dims=0, priority_dims=0, tied=False,
-        cell_fn=lambda n, i: rnn_cell.BasicLSTMCell(
+        cell_fn=lambda n: rnn_cell.BasicLSTMCell(
             num_units=n,
-            forget_bias=forget_bias, input_size=i,
+            forget_bias=forget_bias,
             state_is_tuple=False))
 
 
@@ -267,8 +274,8 @@ class Grid2BasicLSTMCell(GridRNNCell):
         num_units=num_units, num_dims=2,
         input_dims=0, output_dims=0, priority_dims=0, tied=tied,
         non_recurrent_dims=None if non_recurrent_fn is None else 0,
-        cell_fn=lambda n, i: rnn_cell.BasicLSTMCell(
-            num_units=n, forget_bias=forget_bias, input_size=i,
+        cell_fn=lambda n: rnn_cell.BasicLSTMCell(
+            num_units=n, forget_bias=forget_bias,
             state_is_tuple=False),
         non_recurrent_fn=non_recurrent_fn)
 
@@ -284,8 +291,8 @@ class Grid1LSTMCell(GridRNNCell):
     super(Grid1LSTMCell, self).__init__(
         num_units=num_units, num_dims=1,
         input_dims=0, output_dims=0, priority_dims=0,
-        cell_fn=lambda n, i: rnn_cell.LSTMCell(
-            num_units=n, input_size=i, use_peepholes=use_peepholes,
+        cell_fn=lambda n: rnn_cell.LSTMCell(
+            num_units=n, use_peepholes=use_peepholes,
             forget_bias=forget_bias, state_is_tuple=False))
 
 
@@ -308,8 +315,8 @@ class Grid2LSTMCell(GridRNNCell):
         num_units=num_units, num_dims=2,
         input_dims=0, output_dims=0, priority_dims=0, tied=tied,
         non_recurrent_dims=None if non_recurrent_fn is None else 0,
-        cell_fn=lambda n, i: rnn_cell.LSTMCell(
-            num_units=n, input_size=i, forget_bias=forget_bias,
+        cell_fn=lambda n: rnn_cell.LSTMCell(
+            num_units=n, forget_bias=forget_bias,
             use_peepholes=use_peepholes, state_is_tuple=False),
         non_recurrent_fn=non_recurrent_fn)
 
@@ -334,8 +341,8 @@ class Grid3LSTMCell(GridRNNCell):
         num_units=num_units, num_dims=3,
         input_dims=0, output_dims=0, priority_dims=0, tied=tied,
         non_recurrent_dims=None if non_recurrent_fn is None else 0,
-        cell_fn=lambda n, i: rnn_cell.LSTMCell(
-            num_units=n, input_size=i, forget_bias=forget_bias,
+        cell_fn=lambda n: rnn_cell.LSTMCell(
+            num_units=n, forget_bias=forget_bias,
             use_peepholes=use_peepholes, state_is_tuple=False),
         non_recurrent_fn=non_recurrent_fn)
 
@@ -354,7 +361,7 @@ class Grid2GRUCell(GridRNNCell):
         num_units=num_units, num_dims=2,
         input_dims=0, output_dims=0, priority_dims=0, tied=tied,
         non_recurrent_dims=None if non_recurrent_fn is None else 0,
-        cell_fn=lambda n, i: rnn_cell.GRUCell(num_units=n, input_size=i),
+        cell_fn=lambda n: rnn_cell.GRUCell(num_units=n),
         non_recurrent_fn=non_recurrent_fn)
 
 
