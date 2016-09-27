@@ -440,7 +440,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
   def testNodeInfoNonexistentNodeName(self):
     out = self._registry.dispatch_command("node_info", ["bar"])
     self.assertEqual(
-        ["Error: There is no node named \"bar\" in the partition graphs"],
+        ["ERROR: There is no node named \"bar\" in the partition graphs"],
         out.lines)
 
 
@@ -463,7 +463,12 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
 
       y = math_ops.add(x, x, name="control_deps/y")
       y = control_flow_ops.with_dependencies(
-          [x], y, name="control_deps/ctrl_dep")
+          [x], y, name="control_deps/ctrl_dep_y")
+
+      z = math_ops.mul(x, y, name="control_deps/z")
+
+      z = control_flow_ops.with_dependencies(
+          [x, y], z, name="control_deps/ctrl_dep_z")
 
       x.initializer.run()
 
@@ -476,7 +481,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
 
       # Invoke Session.run().
       run_metadata = config_pb2.RunMetadata()
-      sess.run(y, options=run_options, run_metadata=run_metadata)
+      sess.run(z, options=run_options, run_metadata=run_metadata)
 
     debug_dump = debug_data.DebugDumpDir(
         cls._dump_root, partition_graphs=run_metadata.partition_graphs)
@@ -493,6 +498,16 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
         analyzer.node_info,
         analyzer.get_help("node_info"),
         prefix_aliases=["ni"])
+    cls._registry.register_command_handler(
+        "list_inputs",
+        analyzer.list_inputs,
+        analyzer.get_help("list_inputs"),
+        prefix_aliases=["li"])
+    cls._registry.register_command_handler(
+        "list_outputs",
+        analyzer.list_outputs,
+        analyzer.get_help("list_outputs"),
+        prefix_aliases=["lo"])
 
   @classmethod
   def tearDownClass(cls):
@@ -502,11 +517,14 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
   def testNodeInfoWithControlDependencies(self):
     # Call node_info on a node with control inputs.
     out = self._registry.dispatch_command("node_info",
-                                          ["control_deps/ctrl_dep"])
+                                          ["control_deps/ctrl_dep_y"])
 
-    assert_node_attribute_lines(self, out, "control_deps/ctrl_dep", "Identity",
-                                self._main_device, [("Add", "control_deps/y")],
-                                [("Variable", "control_deps/x")], [], [])
+    assert_node_attribute_lines(
+        self, out, "control_deps/ctrl_dep_y", "Identity",
+        self._main_device, [("Add", "control_deps/y")],
+        [("Variable", "control_deps/x")],
+        [("Mul", "control_deps/z")],
+        [("Identity", "control_deps/ctrl_dep_z")])
 
     # Call node info on a node with control recipients.
     out = self._registry.dispatch_command("ni", ["control_deps/x"])
@@ -514,7 +532,159 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
     assert_node_attribute_lines(self, out, "control_deps/x", "Variable",
                                 self._main_device, [], [],
                                 [("Identity", "control_deps/x/read")],
-                                [("Identity", "control_deps/ctrl_dep")])
+                                [("Identity", "control_deps/ctrl_dep_y"),
+                                 ("Identity", "control_deps/ctrl_dep_z")])
+
+  def testListInputsNonRecursiveNoControl(self):
+    """List inputs non-recursively, without any control inputs."""
+
+    # Do not include node op types.
+    out = self._registry.dispatch_command("list_inputs", ["control_deps/z"])
+
+    self.assertEqual([
+        "Inputs to node \"control_deps/z\" (Depth limit = 1):",
+        "|- (1) control_deps/x/read",
+        "|  |- ...",
+        "|- (1) control_deps/ctrl_dep_y",
+        "   |- ...",
+        "", "Legend:", "  (d): recursion depth = d."], out.lines)
+
+    # Include node op types.
+    out = self._registry.dispatch_command("li", ["-t", "control_deps/z"])
+
+    self.assertEqual([
+        "Inputs to node \"control_deps/z\" (Depth limit = 1):",
+        "|- (1) [Identity] control_deps/x/read",
+        "|  |- ...",
+        "|- (1) [Identity] control_deps/ctrl_dep_y",
+        "   |- ...",
+        "", "Legend:", "  (d): recursion depth = d.",
+        "  [Op]: Input node has op type Op."], out.lines)
+
+  def testListInputsNonRecursiveNoControlUsingTensorName(self):
+    """List inputs using the name of an output tensor of the node."""
+
+    # Do not include node op types.
+    out = self._registry.dispatch_command("list_inputs", ["control_deps/z:0"])
+
+    self.assertEqual([
+        "Inputs to node \"control_deps/z\" (Depth limit = 1):",
+        "|- (1) control_deps/x/read",
+        "|  |- ...",
+        "|- (1) control_deps/ctrl_dep_y",
+        "   |- ...",
+        "", "Legend:", "  (d): recursion depth = d."], out.lines)
+
+  def testListInputsNonRecursiveWithControls(self):
+    """List inputs non-recursively, with control inputs."""
+
+    out = self._registry.dispatch_command(
+        "li", ["-t", "control_deps/ctrl_dep_z", "-c"])
+
+    self.assertEqual([
+        "Inputs to node \"control_deps/ctrl_dep_z\" (Depth limit = 1, "
+        "control inputs included):",
+        "|- (1) [Mul] control_deps/z",
+        "|  |- ...",
+        "|- (1) (Ctrl) [Identity] control_deps/ctrl_dep_y",
+        "|  |- ...",
+        "|- (1) (Ctrl) [Variable] control_deps/x",
+        "", "Legend:", "  (d): recursion depth = d.",
+        "  (Ctrl): Control input.",
+        "  [Op]: Input node has op type Op."], out.lines)
+
+  def testListInputsRecursiveWithControls(self):
+    """List inputs recursively, with control inputs."""
+
+    out = self._registry.dispatch_command(
+        "li", ["-c", "-r", "-t", "control_deps/ctrl_dep_z"])
+
+    self.assertEqual([
+        "Inputs to node \"control_deps/ctrl_dep_z\" (Depth limit = 20, "
+        "control inputs included):",
+        "|- (1) [Mul] control_deps/z",
+        "|  |- (2) [Identity] control_deps/x/read",
+        "|  |  |- (3) [Variable] control_deps/x",
+        "|  |- (2) [Identity] control_deps/ctrl_dep_y",
+        "|     |- (3) [Add] control_deps/y",
+        "|     |  |- (4) [Identity] control_deps/x/read",
+        "|     |  |  |- (5) [Variable] control_deps/x",
+        "|     |  |- (4) [Identity] control_deps/x/read",
+        "|     |     |- (5) [Variable] control_deps/x",
+        "|     |- (3) (Ctrl) [Variable] control_deps/x",
+        "|- (1) (Ctrl) [Identity] control_deps/ctrl_dep_y",
+        "|  |- (2) [Add] control_deps/y",
+        "|  |  |- (3) [Identity] control_deps/x/read",
+        "|  |  |  |- (4) [Variable] control_deps/x",
+        "|  |  |- (3) [Identity] control_deps/x/read",
+        "|  |     |- (4) [Variable] control_deps/x",
+        "|  |- (2) (Ctrl) [Variable] control_deps/x",
+        "|- (1) (Ctrl) [Variable] control_deps/x",
+        "", "Legend:", "  (d): recursion depth = d.",
+        "  (Ctrl): Control input.",
+        "  [Op]: Input node has op type Op."], out.lines)
+
+  def testListInputsRecursiveWithControlsWithDepthLimit(self):
+    """List inputs recursively, with control inputs and a depth limit."""
+
+    out = self._registry.dispatch_command(
+        "li", ["-c", "-r", "-t", "-d", "2", "control_deps/ctrl_dep_z"])
+
+    self.assertEqual([
+        "Inputs to node \"control_deps/ctrl_dep_z\" (Depth limit = 2, "
+        "control inputs included):",
+        "|- (1) [Mul] control_deps/z",
+        "|  |- (2) [Identity] control_deps/x/read",
+        "|  |  |- ...",
+        "|  |- (2) [Identity] control_deps/ctrl_dep_y",
+        "|     |- ...",
+        "|- (1) (Ctrl) [Identity] control_deps/ctrl_dep_y",
+        "|  |- (2) [Add] control_deps/y",
+        "|  |  |- ...",
+        "|  |- (2) (Ctrl) [Variable] control_deps/x",
+        "|- (1) (Ctrl) [Variable] control_deps/x",
+        "", "Legend:", "  (d): recursion depth = d.",
+        "  (Ctrl): Control input.",
+        "  [Op]: Input node has op type Op."], out.lines)
+
+  def testListInputsNodeWithoutInputs(self):
+    """List the inputs to a node without any input."""
+    out = self._registry.dispatch_command(
+        "li", ["-c", "-r", "-t", "control_deps/x"])
+
+    self.assertEqual([
+        "Inputs to node \"control_deps/x\" (Depth limit = 20, control inputs "
+        "included):",
+        "  [None]",
+        "", "Legend:", "  (d): recursion depth = d.",
+        "  (Ctrl): Control input.",
+        "  [Op]: Input node has op type Op."], out.lines)
+
+  def testListInputsNonexistentNode(self):
+    out = self._registry.dispatch_command(
+        "list_inputs", ["control_deps/z/foo"])
+
+    self.assertEqual([
+        "ERROR: There is no node named \"control_deps/z/foo\" in the "
+        "partition graphs"], out.lines)
+
+  def testListRecipientsRecursiveWithControlsWithDepthLimit(self):
+    """List recipients recursively, with control inputs and a depth limit."""
+
+    out = self._registry.dispatch_command(
+        "lo", ["-c", "-r", "-t", "-d", "1", "control_deps/x"])
+
+    self.assertEqual([
+        "Recipients of node \"control_deps/x\" (Depth limit = 1, control "
+        "recipients included):",
+        "|- (1) [Identity] control_deps/x/read",
+        "|  |- ...",
+        "|- (1) (Ctrl) [Identity] control_deps/ctrl_dep_y",
+        "|  |- ...",
+        "|- (1) (Ctrl) [Identity] control_deps/ctrl_dep_z",
+        "", "Legend:", "  (d): recursion depth = d.",
+        "  (Ctrl): Control input.",
+        "  [Op]: Input node has op type Op."], out.lines)
 
 
 if __name__ == "__main__":

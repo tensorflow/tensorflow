@@ -108,7 +108,9 @@ class FileIoTest(tf.test.TestCase):
     copy_path = os.path.join(self._base_dir, "copy_file")
     file_io.copy(file_path, copy_path)
     self.assertTrue(file_io.file_exists(copy_path))
-    self.assertEqual(b"testing", file_io.FileIO(file_path, mode="r").read())
+    f = file_io.FileIO(file_path, mode="r")
+    self.assertEqual(b"testing", f.read())
+    self.assertEqual(7, f.tell())
 
   def testCopyOverwrite(self):
     file_path = os.path.join(self._base_dir, "temp_file")
@@ -295,6 +297,23 @@ class FileIoTest(tf.test.TestCase):
     self.assertEqual("\n", f.readline())
     self.assertEqual("testing5", f.readline())
     self.assertEqual("", f.readline())
+
+  def testTell(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="r+") as f:
+      f.write("testing1\ntesting2\ntesting3\n\ntesting5")
+    self.assertEqual("testing1\n", f.readline())
+    self.assertEqual(9, f.tell())
+    self.assertEqual("testing2\n", f.readline())
+    self.assertEqual(18, f.tell())
+    self.assertEqual("testing3\n", f.readline())
+    self.assertEqual(27, f.tell())
+    self.assertEqual("\n", f.readline())
+    self.assertEqual(28, f.tell())
+    self.assertEqual("testing5", f.readline())
+    self.assertEqual(36, f.tell())
+    self.assertEqual("", f.readline())
+    self.assertEqual(36, f.tell())
 
   def testReadingIterator(self):
     file_path = os.path.join(self._base_dir, "temp_file")

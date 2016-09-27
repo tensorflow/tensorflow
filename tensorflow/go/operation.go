@@ -22,6 +22,19 @@ import "unsafe"
 // Operation that has been added to the graph.
 type Operation struct {
 	c *C.TF_Operation
+	// A reference to the Graph to prevent it from
+	// being GCed while the Operation is still alive.
+	g *Graph
+}
+
+// Name returns the name of the operation.
+func (op *Operation) Name() string {
+	return C.GoString(C.TF_OperationName(op.c))
+}
+
+// Type returns the name of the operator used by this operation.
+func (op *Operation) Type() string {
+	return C.GoString(C.TF_OperationOpType(op.c))
 }
 
 // Output represents one of the outputs of an operation in the graph. Has a
@@ -44,12 +57,15 @@ func (p *Output) c() C.TF_Port {
 // Build() must be called for any in-progress Operation, or else we leak.
 type opBuilder struct {
 	c *C.TF_OperationDescription
+	// A reference to the Graph to prevent it from being GCed while
+	// the opBuilder is still alive.
+	g *Graph
 }
 
 func newOpBuilder(g *Graph, typ string, name string) *opBuilder {
 	opType := C.CString(typ)
 	opName := C.CString(name)
-	b := &opBuilder{c: C.TF_NewOperation(g.c, opType, opName)}
+	b := &opBuilder{c: C.TF_NewOperation(g.c, opType, opName), g: g}
 	C.free(unsafe.Pointer(opType))
 	C.free(unsafe.Pointer(opName))
 	return b
@@ -75,7 +91,7 @@ func (b *opBuilder) AddInput(port Output) {
 
 func (b *opBuilder) Build() (*Operation, error) {
 	status := newStatus()
-	op := &Operation{c: C.TF_FinishOperation(b.c, status.c)}
+	op := &Operation{c: C.TF_FinishOperation(b.c, status.c), g: b.g}
 	if err := status.Err(); err != nil {
 		return nil, err
 	}

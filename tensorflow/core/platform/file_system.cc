@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <sys/stat.h>
+#include <deque>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -21,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -79,6 +82,40 @@ void ParseURI(StringPiece remaining, StringPiece* scheme, StringPiece* host,
 
   // 2. The rest is the path
   *path = remaining;
+}
+
+string CreateURI(StringPiece scheme, StringPiece host, StringPiece path) {
+  if (scheme.empty()) {
+    return path.ToString();
+  }
+  return strings::StrCat(scheme, "://", host, path);
+}
+
+// The default implementation uses a combination of GetChildren and IsDirectory
+// to recursively list the files in each subfolder.
+Status FileSystem::GetChildrenRecursively(const string& dir,
+                                          std::vector<string>* results) {
+  results->clear();
+
+  // Setup a BFS to explore everything under dir.
+  std::deque<string> subdir_q;
+  subdir_q.push_back("");
+  while (!subdir_q.empty()) {
+    const string current_subdir = subdir_q.front();
+    subdir_q.pop_front();
+    const string& current_dir = io::JoinPath(dir, current_subdir);
+    std::vector<string> children;
+    TF_RETURN_IF_ERROR(GetChildren(current_dir, &children));
+    for (const string& child : children) {
+      const string& full_path = io::JoinPath(current_dir, child);
+      const string& relative_path = io::JoinPath(current_subdir, child);
+      if (IsDirectory(full_path).ok()) {
+        subdir_q.push_back(relative_path);
+      }
+      results->push_back(relative_path);
+    }
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorflow

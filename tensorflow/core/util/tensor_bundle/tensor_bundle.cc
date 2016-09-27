@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb_text.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/lib/core/coding.h"
@@ -581,7 +582,7 @@ Status BundleReader::GetBundleEntryProto(const string& key,
       ParseEntryProto(iter_->key(), iter_->value(), &entry_copy));
   if (!TensorShape::IsValid(entry_copy.shape())) {
     return errors::DataLoss("Invaid tensor shape: ", key, " ",
-                            entry_copy.shape().ShortDebugString());
+                            ProtoShortDebugString(entry_copy.shape()));
   }
 
   *entry = entry_copy;

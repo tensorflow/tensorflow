@@ -13,15 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_STATS_PUBLISHER_INTERFACE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_STATS_PUBLISHER_INTERFACE_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_STATS_PUBLISHER_INTERFACE_H_
+#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_STATS_PUBLISHER_INTERFACE_H_
 
+#include "tensorflow/core/common_runtime/build_graph_options.h"
+#include "tensorflow/core/common_runtime/profile_handler.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
 // StatsPublisherInterface describes objects that publish information exported
 // by Sessions.
+// NOTE: This interface is experimental and subject to change.
 // Implementations must be thread-safe.
 class StatsPublisherInterface {
  public:
@@ -34,13 +38,19 @@ class StatsPublisherInterface {
   // in the session.
   // When PublishGraphProto is called multiple times, only the graph_defs
   // corresponding to the latest call will be published.
-  virtual void PublishGraphProto(const vector<const GraphDef*>& graph_defs) = 0;
+  virtual void PublishGraphProto(
+      const std::vector<const GraphDef*>& graph_defs) = 0;
 
-  // TODO(suharshs): Publish timeline.
+  // Returns a profile handler for the given step based on the execution_count
+  // and RunOptions.
+  //
+  // This method may return a null pointer, if no handler was created.
+  virtual std::unique_ptr<ProfileHandler> GetProfileHandler(
+      uint64 step, int64 execution_count, const RunOptions& ropts) = 0;
 
   virtual ~StatsPublisherInterface() {}
 };
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_STATS_PUBLISHER_INTERFACE_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_STATS_PUBLISHER_INTERFACE_H_

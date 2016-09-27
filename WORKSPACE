@@ -236,7 +236,7 @@ new_http_archive(
 
 http_file(
   name = "numericjs_numeric_1_2_6_min_js",
-  url = "http://www.numericjs.com/lib/numeric-1.2.6.min.js",
+  url = "https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js",
 )
 
 new_http_archive(

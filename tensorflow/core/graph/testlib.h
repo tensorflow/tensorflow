@@ -77,6 +77,9 @@ Node* Reduce(Graph* g, const string& reduce, Node* data, Node* axes,
 Node* Matmul(Graph* g, Node* in0, Node* in1, bool transpose_a,
              bool transpose_b);
 
+// Adds a Matmul node in g doing in0.contract(in1).
+Node* BatchMatmul(Graph* g, Node* in0, Node* in1, bool adj_x, bool adj_y);
+
 // Adds a Quantize node into g that quantize floats into QUINT8. The range of
 // the input float tensor is assumed to be [-1, 1].
 Node* QuantizeToUINT8(Graph* g, Node* data);
