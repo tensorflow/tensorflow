@@ -544,11 +544,9 @@ export class Projector extends ProjectorPolymer {
       let y = this.pcaY;
       let z = this.pcaZ;
       let hasZ = dimension === 3;
-      this.scatterPlot.setXAccessor(
-          i => this.points[i].projections['pca-' + x]);
-      this.scatterPlot.setYAccessor(
-          i => this.points[i].projections['pca-' + y]);
-      this.scatterPlot.setZAccessor(
+      this.scatterPlot.setPointAccessors(
+          i => this.points[i].projections['pca-' + x],
+          i => this.points[i].projections['pca-' + y],
           hasZ ? (i => this.points[i].projections['pca-' + z]) : null);
       this.scatterPlot.setAxisLabels('pca-' + x, 'pca-' + y);
       this.scatterPlot.update();
@@ -585,14 +583,13 @@ export class Projector extends ProjectorPolymer {
     this.scatterPlot.showTickLabels(true);
     let xDir = vector.sub(this.centroids.xRight, this.centroids.xLeft);
     this.currentDataSet.projectLinear(xDir, 'linear-x');
-    this.scatterPlot.setXAccessor(i => this.points[i].projections['linear-x']);
 
     let yDir = vector.sub(this.centroids.yUp, this.centroids.yDown);
     this.currentDataSet.projectLinear(yDir, 'linear-y');
-    this.scatterPlot.setYAccessor(i => this.points[i].projections['linear-y']);
 
-    // Scatter is only in 2D in projection mode.
-    this.scatterPlot.setZAccessor(null);
+    this.scatterPlot.setPointAccessors(
+        i => this.points[i].projections['linear-x'],
+        i => this.points[i].projections['linear-y'], null);
 
     let xLabel = this.centroidValues.xLeft + ' → ' + this.centroidValues.xRight;
     let yLabel = this.centroidValues.yUp + ' → ' + this.centroidValues.yDown;
@@ -606,9 +603,9 @@ export class Projector extends ProjectorPolymer {
   private showTSNE() {
     this.selectedProjection = 'tsne';
     this.scatterPlot.showTickLabels(false);
-    this.scatterPlot.setXAccessor(i => this.points[i].projections['tsne-0']);
-    this.scatterPlot.setYAccessor(i => this.points[i].projections['tsne-1']);
-    this.scatterPlot.setZAccessor(
+    this.scatterPlot.setPointAccessors(
+        i => this.points[i].projections['tsne-0'],
+        i => this.points[i].projections['tsne-1'],
         dimension === 3 ? (i => this.points[i].projections['tsne-2']) : null);
     this.scatterPlot.setAxisLabels('tsne-0', 'tsne-1');
     if (!this.currentDataSet.hasTSNERun) {

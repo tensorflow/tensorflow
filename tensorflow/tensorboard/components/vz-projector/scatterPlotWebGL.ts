@@ -620,15 +620,12 @@ export class ScatterPlotWebGL implements ScatterPlot {
     this.render();
   }
 
-  setXAccessor(xAccessor: (index: number) => number) {
+  setPointAccessors(
+      xAccessor: (index: number) => number,
+      yAccessor: (index: number) => number,
+      zAccessor: (index: number) => number) {
     this.xAccessor = xAccessor;
-  }
-
-  setYAccessor(yAccessor: (index: number) => number) {
     this.yAccessor = yAccessor;
-  }
-
-  setZAccessor(zAccessor: (index: number) => number) {
     this.zAccessor = zAccessor;
   }
 

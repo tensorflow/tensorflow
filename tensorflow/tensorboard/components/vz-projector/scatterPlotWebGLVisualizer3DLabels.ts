@@ -20,6 +20,7 @@ import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
 import {createTexture} from './util';
 
 const FONT_SIZE = 80;
+const ONE_OVER_FONT_SIZE = 1 / FONT_SIZE;
 const LABEL_COLOR = 'black';
 const LABEL_BACKGROUND = 'white';
 const MAX_CANVAS_DIMENSION = 8192;
@@ -57,8 +58,7 @@ const VERTEX_SHADER = `
       vec4 posCamSpace = modelViewMatrix * vec4(position, 1.0);
       float distToCam = length(posCamSpace.z);
       float scale = max(min(distToCam * 10.0, normalScale), distToCam * 2.0);
-      return scale * ${1 /
-    FONT_SIZE};
+      return scale * ${ONE_OVER_FONT_SIZE};
     }
 
     void main() {

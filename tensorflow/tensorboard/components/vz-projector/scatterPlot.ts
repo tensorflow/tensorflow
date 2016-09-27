@@ -58,12 +58,11 @@ export interface ScatterPlot {
   setColorAccessor(colorAccessor: ((index: number) => string)): void;
   /** Called with each data point in order to get its label. */
   setLabelAccessor(labelAccessor: ((index: number) => string)): void;
-  /** Called with each data point in order to get its x coordinate. */
-  setXAccessor(xAccessor: ((index: number) => number)): void;
-  /** Called with each data point in order to get its y coordinate. */
-  setYAccessor(yAccessor: ((index: number) => number)): void;
-  /** Called with each data point in order to get its z coordinate. */
-  setZAccessor(zAccessor: ((index: number) => number)): void;
+  /** Functors for accessing the components of a point */
+  setPointAccessors(
+      xAccessor: (index: number) => number,
+      yAccessor: (index: number) => number,
+      zAccessor: (index: number) => number);
   /** Sets the interaction mode (search, select or hover). */
   setMode(mode: Mode): void;
   /** Returns the interaction mode. */
