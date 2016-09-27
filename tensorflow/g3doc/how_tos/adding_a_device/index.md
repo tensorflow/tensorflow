@@ -198,4 +198,9 @@ To write kernels for this device, please follow [Adding a New Op](../adding_an_o
 
 ## Compilation
 
-TODO(vrv)
+``
+TF_INC=$(shell python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
+
+all:
+	g++ -std=c++11 -shared fpu_device.cc -o fpu.so -fPIC -I $(TF_INC)
+```
