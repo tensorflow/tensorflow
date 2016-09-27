@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet, Mode, OnCameraMoveListener, OnHoverListener, OnSelectionListener, ScatterPlot} from './scatterPlot';
 import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
 import {ScatterPlotWebGLVisualizerAxes} from './scatterPlotWebGLVisualizerAxes';
 import {getNearFarPoints, getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
@@ -62,13 +61,49 @@ const TAR_2D = {
   z: 0
 };
 
+/** The spacial data of points and lines that will be shown in the projector. */
+export interface DataSet {
+  points: DataPoint[];
+  traces: DataTrace[];
+}
+
+/**
+ * Points in 3D space that will be used in the projector. If the projector is
+ * in 2D mode, the Z coordinate of the point will be 0.
+ */
+export interface DataPoint {
+  projectedPoint: Point3D;
+  /** index of the trace, used for highlighting on click */
+  traceIndex?: number;
+  /** index in the original data source */
+  index: number;
+}
+
+/** A single collection of points which make up a trace through space. */
+export interface DataTrace {
+  /** Indices into the DataPoints array in the Data object. */
+  pointIndices: number[];
+}
+
+export type OnHoverListener = (index: number) => void;
+export type OnSelectionListener = (indexes: number[]) => void;
+export type OnCameraMoveListener =
+    (cameraPosition: THREE.Vector3, cameraTarget: THREE.Vector3) => void;
+
+/** Supported modes of interaction. */
+export enum Mode {
+  SELECT,
+  SEARCH,
+  HOVER
+}
+
 /**
  * Maintains a three.js instantiation and context,
  * animation state, and all other logic that's
  * independent of how a 3D scatter plot is actually rendered. Also holds an
  * array of visualizers and dispatches application events to them.
  */
-export class ScatterPlotWebGL implements ScatterPlot {
+export class ScatterPlotWebGL {
   private dataSet: DataSet;
   private spriteImage: HTMLImageElement;
   private containerNode: HTMLElement;

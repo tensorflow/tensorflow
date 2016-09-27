@@ -16,7 +16,7 @@ limitations under the License.
 import {runAsyncTask} from './async';
 import {TSNE} from './bh_tsne';
 import * as knn from './knn';
-import * as scatterPlot from './scatterPlot';
+import * as scatterPlot from './scatterPlotWebGL';
 import {shuffle} from './util';
 import * as vector from './vector';
 

@@ -16,8 +16,7 @@ limitations under the License.
 import {ColorOption, DataPoint, DataSet, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
 import {DataProvider, getDataProvider} from './data-loader';
 import * as knn from './knn';
-import {Mode, ScatterPlot} from './scatterPlot';
-import {ScatterPlotWebGL} from './scatterPlotWebGL';
+import {Mode, ScatterPlotWebGL} from './scatterPlotWebGL';
 import {ScatterPlotWebGLVisualizer3DLabels} from './scatterPlotWebGLVisualizer3DLabels';
 import {ScatterPlotWebGLVisualizerCanvasLabels} from './scatterPlotWebGLVisualizerCanvasLabels';
 import {ScatterPlotWebGLVisualizerSprites} from './scatterPlotWebGLVisualizerSprites';
@@ -91,7 +90,7 @@ export class Projector extends ProjectorPolymer {
   private hasPcaZ: boolean;
   // The working subset of the data source's original data set.
   private currentDataSet: DataSet;
-  private scatterPlot: ScatterPlot;
+  private scatterPlot: ScatterPlotWebGL;
   private labels3D: boolean = false;
   private dim: number;
   private selectedDistance: (a: number[], b: number[]) => number;
@@ -508,7 +507,7 @@ export class Projector extends ProjectorPolymer {
   }
 
   private createVisualizers() {
-    let scatterPlotWebGL = this.scatterPlot as ScatterPlotWebGL;
+    let scatterPlotWebGL = this.scatterPlot;
     scatterPlotWebGL.removeAllVisualizers();
 
     if (this.labels3D) {

@@ -14,8 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet} from './scatterPlot';
-import {ScatterPlotWebGL} from './scatterPlotWebGL';
+import {DataSet, ScatterPlotWebGL} from './scatterPlotWebGL';
 import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
 import {createTexture} from './util';
 

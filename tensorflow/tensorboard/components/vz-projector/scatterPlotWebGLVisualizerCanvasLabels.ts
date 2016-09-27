@@ -15,7 +15,7 @@ limitations under the License.
 
 import {BoundingBox, CollisionGrid} from './label';
 import {RenderContext} from './renderContext';
-import {DataSet} from './scatterPlot';
+import {DataSet} from './scatterPlotWebGL';
 import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
 import {getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
 import {Point2D} from './vector';

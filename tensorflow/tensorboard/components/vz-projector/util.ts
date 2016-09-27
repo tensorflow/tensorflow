@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DataSet} from './scatterPlot';
+import {DataSet} from './scatterPlotWebGL';
 import {Point2D} from './vector';
 
 /** Shuffles the array in-place in O(n) time using Fisher-Yates algorithm. */
