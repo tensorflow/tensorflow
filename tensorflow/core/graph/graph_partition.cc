@@ -119,8 +119,7 @@ bool NeedSameDeviceSendRecv(const Edge* edge, const GraphInfo& info) {
   if (src->assigned_device_name() == dst->assigned_device_name()) {
     int src_port = edge->src_output();
     int dst_port = edge->dst_input();
-    // TODO(vrv): Shouldn't this be != DEVICE_CPU?
-    if (info.device_types[src->id()] == DEVICE_GPU) {
+    if (info.device_types[src->id()] != DEVICE_CPU) {
       auto src_it = info.output_types.find({src->id(), src_port});
       DCHECK(src_it != info.output_types.end());
       auto dst_it = info.input_types.find({dst->id(), dst_port});
@@ -135,7 +134,7 @@ bool NeedSameDeviceSendRecv(const Edge* edge, const GraphInfo& info) {
 bool IsDstInputOnHost(const Edge* edge, const GraphInfo& info) {
   Node* dst = edge->dst();
   int dst_port = edge->dst_input();
-  if (info.device_types[dst->id()] == DEVICE_GPU) {
+  if (info.device_types[dst->id()] != DEVICE_CPU) {
     if (edge->IsControlEdge()) return false;
     auto dst_it = info.input_types.find({dst->id(), dst_port});
     DCHECK(dst_it != info.input_types.end());

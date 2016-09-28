@@ -9,6 +9,8 @@ node_modules
 /bazel-testlogs
 /bazel-tf
 /tensorflow/contrib/cmake/build
+/tensorflow/core/util/version_info.cc
+/tensorflow/tools/git/gen
 /third_party/py/numpy/numpy_include
 /tools/bazel.rc
 /tools/python_bin_path.sh

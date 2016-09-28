@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
@@ -35,6 +36,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import compat
 
 
 class TensorTest(test_util.TensorFlowTestCase):
@@ -1239,6 +1241,51 @@ class GraphTest(test_util.TensorFlowTestCase):
     self.assertEqual(a, g.as_graph_element(ConvertibleObj()))
     with self.assertRaises(TypeError):
       g.as_graph_element(NonConvertibleObj())
+
+
+class AttrScopeTest(test_util.TensorFlowTestCase):
+
+  def _get_test_attrs(self):
+    x = control_flow_ops.no_op()
+    try:
+      a = compat.as_text(x.get_attr("_A"))
+    except ValueError:
+      a = None
+    try:
+      b = compat.as_text(x.get_attr("_B"))
+    except ValueError:
+      b = None
+    print(a, b)
+    return (a, b)
+
+  def testNoLabel(self):
+    with self.test_session():
+      self.assertAllEqual((None, None), self._get_test_attrs())
+
+  def testLabelMap(self):
+    with self.test_session() as sess:
+      a1 = self._get_test_attrs()
+      with sess.graph._attr_scope(
+          {"_A": attr_value_pb2.AttrValue(s=compat.as_bytes("foo"))}):
+        a2 = self._get_test_attrs()
+        with sess.graph._attr_scope(
+            {"_A": None,
+             "_B": attr_value_pb2.AttrValue(s=compat.as_bytes("bar"))}):
+          a3 = self._get_test_attrs()
+          with sess.graph._attr_scope(
+              {"_A": attr_value_pb2.AttrValue(s=compat.as_bytes("baz"))}):
+            a4 = self._get_test_attrs()
+          a5 = self._get_test_attrs()
+        a6 = self._get_test_attrs()
+      a7 = self._get_test_attrs()
+
+      self.assertAllEqual((None, None), a1)
+      self.assertAllEqual(("foo", None), a2)
+      self.assertAllEqual((None, "bar"), a3)
+      self.assertAllEqual(("baz", "bar"), a4)
+      self.assertAllEqual((None, "bar"), a5)
+      self.assertAllEqual(("foo", None), a6)
+      self.assertAllEqual((None, None), a7)
 
 ops.RegisterShape("KernelLabel")(common_shapes.scalar_shape)
 

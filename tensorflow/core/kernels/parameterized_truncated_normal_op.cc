@@ -162,7 +162,7 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
               z[i] = rand[i] * diff + normMin;
             }
             for (int i = 0; i < size; i++) {
-              g[i] = (plusFactor - z[i] * z[i]) / 2.0;
+              g[i] = (plusFactor - z[i] * z[i]) / T(2.0);
             }
 
             const auto u = dist(&gen_copy);
@@ -202,7 +202,7 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
               const T z = -Eigen::numext::log(rand[i]) / alpha + normMin;
               i++;
               const T x = normMin < alpha ? alpha - z : normMin - alpha;
-              const T g = Eigen::numext::exp(-x * x / 2.0);
+              const T g = Eigen::numext::exp(-x * x / T(2.0));
               const T u = rand[i];
               i++;
               if ((u <= g && z < normMax) ||

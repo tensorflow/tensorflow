@@ -17,9 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -33,17 +33,7 @@ _gru_ops_so = load_library.load_op_library(
 assert _gru_ops_so, "Could not load _gru_ops.so."
 
 
-@ops.RegisterShape("GRUBlockCellGrad")
-def _GRUBlockCellGradShape(op):
-  batch_size = op.inputs[0].get_shape().with_rank(2)[0]
-  input_size = op.inputs[0].get_shape().with_rank(2)[1]
-  cell_size = op.inputs[1].get_shape().with_rank(2)[1]
-  twice_cell_size = op.inputs[2].get_shape().with_rank(2)[1]
-
-  return [tensor_shape.TensorShape([batch_size, input_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, twice_cell_size])]
+ops.RegisterShape("GRUBlockCellGrad")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterGradient("GRUBlockCell")
@@ -108,15 +98,7 @@ def _GRUBlockCellGrad(op, *grad):
   return d_x, d_h_prev, d_w_ru, d_w_c, d_b_ru, d_b_c
 
 
-@ops.RegisterShape("GRUBlockCell")
-def _GRUBlockCellShape(op):
-  batch_size = op.inputs[0].get_shape().with_rank(2)[0]
-  cell_size = op.inputs[1].get_shape().with_rank(2)[1]
-
-  return (tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]),
-          tensor_shape.TensorShape([batch_size, cell_size]))
+ops.RegisterShape("GRUBlockCell")(common_shapes.call_cpp_shape_fn)
 
 
 class GRUBlockCell(rnn_cell.RNNCell):

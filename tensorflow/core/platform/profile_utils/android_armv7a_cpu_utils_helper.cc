@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
+
 #if defined(__ANDROID__) && defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
+
 #include <asm/unistd.h>
 #include <linux/perf_event.h>
 #include <stdio.h>
@@ -23,33 +26,14 @@ limitations under the License.
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 
 namespace tensorflow {
 namespace profile_utils {
 
 /* static */ constexpr int AndroidArmV7ACpuUtilsHelper::INVALID_FD;
-
-void AndroidArmV7ACpuUtilsHelper::Initialize() {
-  struct perf_event_attr pe;
-
-  memset(&pe, 0, sizeof(struct perf_event_attr));
-  pe.type = PERF_TYPE_HARDWARE;
-  pe.size = sizeof(struct perf_event_attr);
-  pe.config = PERF_COUNT_HW_CPU_CYCLES;
-  pe.disabled = 1;
-  pe.exclude_kernel = 1;
-  pe.exclude_hv = 1;
-
-  fd_ = OpenPerfEvent(&pe, 0, -1, -1, 0);
-  if (fd_ == INVALID_FD) {
-    LOG(WARNING) << "Error opening perf event";
-    is_initialized_ = false;
-  } else {
-    is_initialized_ = true;
-  }
-}
+/* static */ constexpr int64 AndroidArmV7ACpuUtilsHelper::INVALID_CPU_FREQUENCY;
 
 void AndroidArmV7ACpuUtilsHelper::ResetClockCycle() {
   if (!is_initialized_) {
@@ -69,21 +53,73 @@ uint64 AndroidArmV7ACpuUtilsHelper::GetCurrentClockCycle() {
 
 void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling(const bool enable) {
   if (!is_initialized_) {
-    return;
+    // Initialize here to avoid unnecessary initialization
+    InitializeInternal();
   }
   if (enable) {
+    const int64 cpu0_scaling_min = ReadCpuFrequencyFile(0, "scaling_min");
+    const int64 cpu0_scaling_max = ReadCpuFrequencyFile(0, "scaling_max");
+    if (cpu0_scaling_max != cpu0_scaling_min) {
+      LOG(WARNING) << "You enabled clock cycle profile but frequency may "
+                   << "be scaled. (max = " << cpu0_scaling_max << ", min "
+                   << cpu0_scaling_min << ")";
+    }
+    ResetClockCycle();
     ioctl(fd_, PERF_EVENT_IOC_ENABLE, 0);
   } else {
     ioctl(fd_, PERF_EVENT_IOC_DISABLE, 0);
   }
 }
 
-int AndroidArmV7ACpuUtilsHelper::OpenPerfEvent(
-    struct perf_event_attr *const hw_event, const pid_t pid, const int cpu,
-    const int group_fd, const unsigned long flags) {
+int64 AndroidArmV7ACpuUtilsHelper::CalculateCpuFrequency() {
+  return ReadCpuFrequencyFile(0, "scaling_cur");
+}
+
+void AndroidArmV7ACpuUtilsHelper::InitializeInternal() {
+  perf_event_attr pe;
+
+  memset(&pe, 0, sizeof(perf_event_attr));
+  pe.type = PERF_TYPE_HARDWARE;
+  pe.size = sizeof(perf_event_attr);
+  pe.config = PERF_COUNT_HW_CPU_CYCLES;
+  pe.disabled = 1;
+  pe.exclude_kernel = 1;
+  pe.exclude_hv = 1;
+
+  fd_ = OpenPerfEvent(&pe, 0, -1, -1, 0);
+  if (fd_ == INVALID_FD) {
+    LOG(WARNING) << "Error opening perf event";
+    is_initialized_ = false;
+  } else {
+    is_initialized_ = true;
+  }
+}
+
+int AndroidArmV7ACpuUtilsHelper::OpenPerfEvent(perf_event_attr *const hw_event,
+                                               const pid_t pid, const int cpu,
+                                               const int group_fd,
+                                               const unsigned long flags) {
   const int ret =
       syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
   return ret;
+}
+
+int64 AndroidArmV7ACpuUtilsHelper::ReadCpuFrequencyFile(
+    const int cpu_id, const char *const type) {
+  const string file_path = strings::Printf(
+      "/sys/devices/system/cpu/cpu%d/cpufreq/%s_freq", cpu_id, type);
+  FILE *fp = fopen(file_path.c_str(), "r");
+  if (fp == nullptr) {
+    return INVALID_CPU_FREQUENCY;
+  }
+  int64 freq = INVALID_CPU_FREQUENCY;
+  const int retval = fscanf(fp, "%lld", &freq);
+  if (retval < 0) {
+    LOG(WARNING) << "Failed to \"" << file_path << "\"";
+    return INVALID_CPU_FREQUENCY;
+  }
+  pclose(fp);
+  return freq;
 }
 
 }  // namespace profile_utils
@@ -93,20 +129,19 @@ int AndroidArmV7ACpuUtilsHelper::OpenPerfEvent(
 #else
 
 // Dummy implementations to avoid link error.
-#include "tensorflow/core/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 
 namespace tensorflow {
 namespace profile_utils {
 
-void AndroidArmV7ACpuUtilsHelper::Initialize() {}
 void AndroidArmV7ACpuUtilsHelper::ResetClockCycle() {}
 uint64 AndroidArmV7ACpuUtilsHelper::GetCurrentClockCycle() { return 1; }
 void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling(bool) {}
-int AndroidArmV7ACpuUtilsHelper::OpenPerfEvent(struct perf_event_attr *const,
+int AndroidArmV7ACpuUtilsHelper::OpenPerfEvent(perf_event_attr *const,
                                                const pid_t, const int,
                                                const int, const unsigned long) {
   return 0;
 }
+int64 AndroidArmV7ACpuUtilsHelper::CalculateCpuFrequency() { return 0; }
 
 }  // namespace profile_utils
 }  // namespace tensorflow

@@ -88,7 +88,7 @@ See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
 ##### Args:
 
 
-*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+*  <b>`features`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`, `int8`, `uint16`, `half`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1572,16 +1572,16 @@ output of `softmax`, as it will produce incorrect results.
 A common use case is to have logits of shape `[batch_size, num_classes]` and
 labels of shape `[batch_size]`. But higher dimensions are supported.
 
-##### Args:
+Args:
 
-
-*  <b>`logits`</b>: Unscaled log probabilities of rank `r` and shape
+  logits: Unscaled log probabilities of rank `r` and shape
     `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
-*  <b>`labels`</b>: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
+  labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
     `int64`. Each entry in `labels` must be an index in `[0, num_classes)`.
-    Other values will result in a loss of 0, but incorrect gradient
-    computations.
-*  <b>`name`</b>: A name for the operation (optional).
+    Other values will raise an exception when this op is run on CPU, and
+    return `NaN` for corresponding corresponding loss and gradient rows
+    on GPU.
+  name: A name for the operation (optional).
 
 ##### Returns:
 
@@ -1711,7 +1711,7 @@ tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
 
 - - -
 
-### `tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, partition_strategy='mod', name=None, combiner='mean')` {#embedding_lookup_sparse}
+### `tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, partition_strategy='mod', name=None, combiner=None)` {#embedding_lookup_sparse}
 
 Computes embeddings for the given ids and weights.
 
@@ -1897,7 +1897,7 @@ for correctness than performance, unlike in rnn().
 Creates a recurrent neural network specified by RNNCell `cell`.
 
 The simplest form of RNN network generated is:
-```py
+```python
   state = cell.zero_state(...)
   outputs = []
   for input_ in inputs:
@@ -1914,11 +1914,13 @@ sequence length of the minibatch (thus saving computational time),
 and properly propagates the state at an example's sequence length
 to the final state output.
 
-The dynamic calculation performed is, at time t for batch row b,
+The dynamic calculation performed is, at time `t` for batch row `b`,
+```python
   (output, state)(b, t) =
     (t >= sequence_length(b))
       ? (zeros(cell.output_size), states(b, sequence_length(b) - 1))
       : cell(input(b, t), state(b, t - 1))
+```
 
 ##### Args:
 
@@ -2306,7 +2308,7 @@ outputs = outputs_ta.pack()
 
 - - -
 
-### `tf.nn.ctc_loss(inputs, labels, sequence_length, preprocess_collapse_repeated=False, ctc_merge_repeated=True)` {#ctc_loss}
+### `tf.nn.ctc_loss(inputs, labels, sequence_length, preprocess_collapse_repeated=False, ctc_merge_repeated=True, time_major=True)` {#ctc_loss}
 
 Computes the CTC (Connectionist Temporal Classification) Loss.
 
@@ -2376,8 +2378,12 @@ Here is a table of the (roughly) expected first order behavior:
 ##### Args:
 
 
-*  <b>`inputs`</b>: 3-D `float` `Tensor` sized
-    `[max_time x batch_size x num_classes]`. The logits.
+*  <b>`inputs`</b>: 3-D `float` `Tensor`.
+    If time_major == False, this will be a `Tensor` shaped:
+      `[batch_size x max_time x num_classes]`.
+    If time_major == True (default), this will be a `Tensor` shaped:
+      `[max_time x batch_size x num_classes]`.
+    The logits.
 *  <b>`labels`</b>: An `int32` `SparseTensor`.
     `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
     the id for (batch b, time t).
@@ -2388,6 +2394,13 @@ Here is a table of the (roughly) expected first order behavior:
 *  <b>`preprocess_collapse_repeated`</b>: Boolean.  Default: False.
     If True, repeated labels are collapsed prior to the CTC calculation.
 *  <b>`ctc_merge_repeated`</b>: Boolean.  Default: True.
+*  <b>`time_major`</b>: The shape format of the `inputs` Tensors.
+    If True, these `Tensors` must be shaped `[max_time, batch_size, num_classes]`.
+    If False, these `Tensors` must be shaped `[batch_size, max_time, num_classes]`.
+    Using `time_major = True` (default) is a bit more efficient because it avoids
+    transposes at the beginning of the ctc_loss calculation.  However, most
+    TensorFlow data is batch-major, so by this function also accepts inputs
+    in batch-major form.
 
 ##### Returns:
 
@@ -2592,6 +2605,11 @@ unnormalized statistical models]
 (http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
 Also see our [Candidate Sampling Algorithms Reference]
 (../../extras/candidate_sampling.pdf)
+
+Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
+so your labels must be sorted in order of decreasing frequency to achieve
+good results.  For more details, see
+[log_uniform_candidate_sampler](#log_uniform_candidate_sampler).
 
 Note: In the case where `num_true` > 1, we assign to each target class
 the target probability 1 / `num_true` so that the target probabilities

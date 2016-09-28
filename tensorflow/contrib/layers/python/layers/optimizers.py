@@ -30,7 +30,6 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as vars_
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as optimizer_
 from tensorflow.python.training import training as train
 
@@ -58,13 +57,28 @@ def optimize_loss(loss,
                   gradient_noise_scale=None,
                   gradient_multipliers=None,
                   clip_gradients=None,
-                  moving_average_decay=None,
                   learning_rate_decay_fn=None,
                   update_ops=None,
                   variables=None,
                   name=None,
-                  summaries=None):
+                  summaries=None,
+                  colocate_gradients_with_ops=False):
   """Given loss and parameters for optimizer, returns a training op.
+
+  Various ways of passing optimizers, include:
+    - string, name of the optimizer like 'SGD', 'Adam', see OPTIMIZER_CLS_NAMES
+        for full list. E.g. `optimize_loss(..., optimizer='Adam')`.
+    - function, takes learning rate `Tensor` as argument and must return
+        `Optimizer` instance. E.g. `optimize_loss(...,
+        optimizer=lambda lr: tf.train.MomentumOptimizer(lr, momentum=0.5))`.
+      Alternatively, if `learning_rate` is `None`, the function takes no
+      arguments. E.g. `optimize_loss(..., learning_rate=None,
+        optimizer=lambda: tf.train.MomentumOptimizer(0.5, momentum=0.5))`.
+    - class, subclass of `Optimizer` that takes only one required argument -
+        learning rate, such as AdamOptimizer, AdagradOptimizer.
+        E.g. `optimize_loss(..., optimizer=tf.train.AdagradOptimizer)`.
+    - object, instance of subclass of `Optimizer`.
+        E.g., `optimizer_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
 
   Args:
     loss: Tensor, 0 dimensional.
@@ -75,29 +89,31 @@ def optimize_loss(loss,
                  'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
                class should be sub-class of tf.Optimizer that implements
                  `compute_gradients` and `apply_gradients` functions.
-               optimizer instance should be instantion of tf.Optimizer sub-class
-                 and have `compute_gradients` and `apply_gradients` functions.
+               optimizer instance should be instantion of `tf.Optimizer`
+                 sub-class and have `compute_gradients` and `apply_gradients`
+                 functions.
     gradient_noise_scale: float or None, adds 0-mean normal noise scaled by this
                           value.
     gradient_multipliers: dict of variables or variable names to floats.
                           If present, gradients for specified
                           variables will be multiplied by given constant.
     clip_gradients: float or `None`, clips gradients by this value.
-    moving_average_decay: Deprecated. float or None, takes into account previous
-                          loss to make learning smoother due to outliers.
     learning_rate_decay_fn: function, takes `learning_rate` and `global_step`
                             `Tensor`s, returns `Tensor`.
                             Can be used to implement any learning rate decay
                             functions.
                             For example: tf.train.exponential_decay.
     update_ops: list of update `Operation`s to execute at each step. If `None`,
-                uses elements of UPDATE_OPS collection.
+                uses elements of UPDATE_OPS collection. The order of execution
+                between `update_ops` and `loss` is non-deterministic.
     variables: list of variables to optimize or
                `None` to use all trainable variables.
     name: The name for this operation is used to scope operations and summaries.
     summaries: List of internal quantities to visualize on tensorboard. If not
                set only the loss and the learning rate will be reported. The
                complete list is in OPTIMIZER_SUMMARIES.
+    colocate_gradients_with_ops: If True, try colocating gradients with the 
+                                 corresponding op.
 
   Returns:
     Training op.
@@ -111,64 +127,68 @@ def optimize_loss(loss,
       update_ops = set(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
     # Make sure update ops are ran before computing loss.
     if update_ops:
-      with ops.control_dependencies(update_ops):
-        barrier = control_flow_ops.no_op(name="update_barrier")
-      loss = control_flow_ops.with_dependencies([barrier], loss)
-
-    # Moving average of the loss with decay.
-    # TODO(b/30439864): moving_average_decay should be removed.
-    if moving_average_decay is not None:
-      logging.warn("'moving_average_decay' is deprecated. Please use "
-                   "tensorboard's builtin averaging instead.")
-      # Generate moving averages of the loss.
-      loss_averages = train.ExponentialMovingAverage(moving_average_decay,
-                                                     name="avg")
-      loss_averages_op = loss_averages.apply([loss])
-      logging_ops.scalar_summary("loss/mean", loss_averages.average(loss))
-      loss = control_flow_ops.with_dependencies([loss_averages_op], loss)
+      loss = control_flow_ops.with_dependencies(list(update_ops), loss)
 
     # Learning rate variable, with possible decay.
-    if (isinstance(learning_rate, ops.Tensor)
-        and learning_rate.get_shape().ndims == 0):
-      lr = learning_rate
-    elif isinstance(learning_rate, float):
-      lr = vs.get_variable(
-          "learning_rate", [], trainable=False,
-          initializer=init_ops.constant_initializer(learning_rate))
-    else:
-      raise ValueError("Learning rate should be 0d Tensor or float. "
-                       "Got %s of type %s" % (
-                           str(learning_rate), str(type(learning_rate))))
+    lr = None
+    if learning_rate is not None:
+      if (isinstance(learning_rate, ops.Tensor)
+          and learning_rate.get_shape().ndims == 0):
+        lr = learning_rate
+      elif isinstance(learning_rate, float):
+        lr = vs.get_variable(
+            "learning_rate", [], trainable=False,
+            initializer=init_ops.constant_initializer(learning_rate))
+      else:
+        raise ValueError("Learning rate should be 0d Tensor or float. "
+                         "Got %s of type %s" % (
+                             str(learning_rate), str(type(learning_rate))))
     if summaries is None:
       summaries = ["loss", "learning_rate"]
-    if learning_rate_decay_fn is not None:
+    if learning_rate is not None and learning_rate_decay_fn is not None:
       lr = learning_rate_decay_fn(lr, global_step)
       if "learning_rate" in summaries:
         logging_ops.scalar_summary("learning_rate", lr)
 
     # Create optimizer, given specified parameters.
     if isinstance(optimizer, six.string_types):
+      if lr is None:
+        raise ValueError("Learning rate is None, but should be specified if "
+                         "optimizer is string (%s)." % optimizer)
       if optimizer not in OPTIMIZER_CLS_NAMES:
         raise ValueError(
             "Optimizer name should be one of [%s], you provided %s."
             % (", ".join(OPTIMIZER_CLS_NAMES), optimizer))
       opt = OPTIMIZER_CLS_NAMES[optimizer](learning_rate=lr)
-    elif isinstance(optimizer, type) and issubclass(optimizer,
-                                                    optimizer_.Optimizer):
+    elif (isinstance(optimizer, type)
+          and issubclass(optimizer, optimizer_.Optimizer)):
+      if lr is None:
+        raise ValueError("Learning rate is None, but should be specified if "
+                         "optimizer is class (%s)." % optimizer)
       opt = optimizer(learning_rate=lr)
     elif isinstance(optimizer, optimizer_.Optimizer):
       opt = optimizer
+    elif callable(optimizer):
+      if learning_rate is not None:
+        opt = optimizer(lr)
+      else:
+        opt = optimizer()
+      if not isinstance(opt, optimizer_.Optimizer):
+        raise ValueError("Unrecognized optimizer: function should return "
+                         "subclass of Optimizer. Got %s." % str(opt))
     else:
       raise ValueError("Unrecognized optimizer: should be string, "
-                       "subclass of Optimizer or instance of "
-                       "subclass of Optimizer. Got %s." % str(optimizer))
+                       "subclass of Optimizer, instance of "
+                       "subclass of Optimizer or function with one argument. "
+                       "Got %s." % str(optimizer))
 
     # All trainable variables, if specific variables are not specified.
     if variables is None:
       variables = vars_.trainable_variables()
 
     # Compute gradients.
-    gradients = opt.compute_gradients(loss, variables)
+    gradients = opt.compute_gradients(loss, variables,
+                                      colocate_gradients_with_ops=colocate_gradients_with_ops)
 
     # Optionally add gradient noise.
     if gradient_noise_scale is not None:

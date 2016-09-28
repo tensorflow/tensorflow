@@ -69,13 +69,39 @@ Returns x * y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor`. Has the same type as `x`.
+
+
+- - -
+
+### `tf.scalar_mul(scalar, x)` {#scalar_mul}
+
+Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
+
+Intended for use in gradient code which might deal with `IndexedSlices`
+objects, which are easy to multiply by a scalar but more expensive to
+multiply with arbitrary tensors.
+
+##### Args:
+
+
+*  <b>`scalar`</b>: A 0-D scalar `Tensor`. Must have known shape.
+*  <b>`x`</b>: A `Tensor` or `IndexedSlices` to be scaled.
+
+##### Returns:
+
+  `scalar * x` of the same type (`Tensor` or `IndexedSlices`) as `x`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if scalar is not a 0-D `scalar`.
 
 
 - - -
@@ -90,7 +116,7 @@ Returns x / y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -962,7 +988,7 @@ tf.diag(diagonal) ==> [[1, 0, 0, 0]
 ##### Args:
 
 
-*  <b>`diagonal`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`.
+*  <b>`diagonal`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
     Rank k tensor where k is at most 3.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -999,7 +1025,7 @@ tf.diag_part(input) ==> [1, 2, 3, 4]
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`.
+*  <b>`input`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
     Rank k tensor where k is 2, 4, or 6.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1669,12 +1695,13 @@ Computes the eigen decomposition of a batch of self-adjoint matrices.
 
 Computes the eigenvalues and eigenvectors of the innermost N-by-N matrices
 in `tensor` such that
-`tensor[...,:,:] * v[..., :,i] = e(..., i) * v[...,:,i]`, for i=0...N-1.
+`tensor[...,:,:] * v[..., :,i] = e[..., i] * v[...,:,i]`, for i=0...N-1.
 
 ##### Args:
 
 
-*  <b>`tensor`</b>: `Tensor` of shape `[..., N, N]`.
+*  <b>`tensor`</b>: `Tensor` of shape `[..., N, N]`. Only the lower triangular part of
+    each inner inner matrix is referenced.
 *  <b>`name`</b>: string, optional name of the operation.
 
 ##### Returns:
@@ -1682,8 +1709,7 @@ in `tensor` such that
 
 *  <b>`e`</b>: Eigenvalues. Shape is `[..., N]`.
 *  <b>`v`</b>: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
-  matrices
-    contain eigenvectors of the corresponding matrices in `tensor`
+    matrices contain eigenvectors of the corresponding matrices in `tensor`
 
 
 - - -
@@ -1925,113 +1951,6 @@ Fourier transform functions to your graph.
 
 ### `tf.fft(input, name=None)` {#fft}
 
-Compute the 1-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 vector.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`. The 1D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.ifft(input, name=None)` {#ifft}
-
-.Doc(R"doc(
-
-Compute the inverse 1-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 vector.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`.
-  The inverse 1D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.fft2d(input, name=None)` {#fft2d}
-
-Compute the 2-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`. The 2D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.ifft2d(input, name=None)` {#ifft2d}
-
-Compute the inverse 2-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 matrix.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`.
-  The inverse 2D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.fft3d(input, name=None)` {#fft3d}
-
-Compute the 3-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 3-D tensor.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`. The 3D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.ifft3d(input, name=None)` {#ifft3d}
-
-Compute the inverse 3-dimensional discrete Fourier Transform.
-
-##### Args:
-
-
-*  <b>`input`</b>: A `Tensor` of type `complex64`. A complex64 3-D tensor.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor` of type `complex64`.
-  The inverse 3D Fourier Transform of `input`.
-
-
-- - -
-
-### `tf.batch_fft(input, name=None)` {#batch_fft}
-
 Compute the 1-dimensional discrete Fourier Transform over the inner-most
 
 dimension of `input`.
@@ -2051,7 +1970,7 @@ dimension of `input`.
 
 - - -
 
-### `tf.batch_ifft(input, name=None)` {#batch_ifft}
+### `tf.ifft(input, name=None)` {#ifft}
 
 Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most
 
@@ -2072,7 +1991,7 @@ dimension of `input`.
 
 - - -
 
-### `tf.batch_fft2d(input, name=None)` {#batch_fft2d}
+### `tf.fft2d(input, name=None)` {#fft2d}
 
 Compute the 2-dimensional discrete Fourier Transform over the inner-most
 
@@ -2093,7 +2012,7 @@ Compute the 2-dimensional discrete Fourier Transform over the inner-most
 
 - - -
 
-### `tf.batch_ifft2d(input, name=None)` {#batch_ifft2d}
+### `tf.ifft2d(input, name=None)` {#ifft2d}
 
 Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
 
@@ -2114,7 +2033,7 @@ Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
 
 - - -
 
-### `tf.batch_fft3d(input, name=None)` {#batch_fft3d}
+### `tf.fft3d(input, name=None)` {#fft3d}
 
 Compute the 3-dimensional discrete Fourier Transform over the inner-most 3
 
@@ -2135,7 +2054,7 @@ dimensions of `input`.
 
 - - -
 
-### `tf.batch_ifft3d(input, name=None)` {#batch_ifft3d}
+### `tf.ifft3d(input, name=None)` {#ifft3d}
 
 Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
 
@@ -2452,6 +2371,9 @@ Returns the element-wise sum of a list of tensors.
 Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
 otherwise, these are inferred.
 
+NOTE: This operation is not differentiable and cannot be used if inputs depend
+on trainable variables. Please use tf.add_n for such cases.
+
 For example:
 
 ```python
@@ -2481,6 +2403,16 @@ tf.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
 
 *  <b>`ValueError`</b>: If `inputs` don't all have same shape and dtype or the shape
   cannot be inferred.
+
+
+
+- - -
+
+### `tf.einsum(axes, *inputs)` {#einsum}
+
+A generalized contraction between tensors of arbitrary dimension.
+
+Like numpy.einsum.
 
 
 
@@ -3208,60 +3140,5 @@ invert_permutation(x) ==> [2, 4, 3, 0, 1]
 ##### Returns:
 
   A `Tensor`. Has the same type as `x`. 1-D.
-
-
-
-## Other Functions and Classes
-- - -
-
-### `tf.scalar_mul(scalar, x)` {#scalar_mul}
-
-Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
-
-Intended for use in gradient code which might deal with `IndexedSlices`
-objects, which are easy to multiply by a scalar but more expensive to
-multiply with arbitrary tensors.
-
-##### Args:
-
-
-*  <b>`scalar`</b>: A 0-D scalar `Tensor`. Must have known shape.
-*  <b>`x`</b>: A `Tensor` or `IndexedSlices` to be scaled.
-
-##### Returns:
-
-  `scalar * x` of the same type (`Tensor` or `IndexedSlices`) as `x`.
-
-##### Raises:
-
-
-*  <b>`ValueError`</b>: if scalar is not a 0-D `scalar`.
-
-
-- - -
-
-### `tf.sparse_segment_sqrt_n_grad(grad, indices, segment_ids, output_dim0, name=None)` {#sparse_segment_sqrt_n_grad}
-
-Computes gradients for SparseSegmentSqrtN.
-
-Returns tensor "output" with same shape as grad, except for dimension 0 whose
-value is output_dim0.
-
-##### Args:
-
-
-*  <b>`grad`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-    gradient propagated to the SparseSegmentSqrtN op.
-*  <b>`indices`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
-    indices passed to the corresponding SparseSegmentSqrtN op.
-*  <b>`segment_ids`</b>: A `Tensor` of type `int32`.
-    segment_ids passed to the corresponding SparseSegmentSqrtN op.
-*  <b>`output_dim0`</b>: A `Tensor` of type `int32`.
-    dimension 0 of "data" passed to SparseSegmentSqrtN op.
-*  <b>`name`</b>: A name for the operation (optional).
-
-##### Returns:
-
-  A `Tensor`. Has the same type as `grad`.
 
 

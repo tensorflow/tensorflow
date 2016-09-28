@@ -473,7 +473,7 @@ Returns x / y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -836,7 +836,7 @@ Returns x / y element-wise.
 ##### Args:
 
 
-*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
+*  <b>`x`</b>: A `Tensor`. Must be one of the following types: `half`, `float32`, `float64`, `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `complex64`, `complex128`.
 *  <b>`y`</b>: A `Tensor`. Must have the same type as `x`.
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1210,6 +1210,17 @@ Returns all variables created with collection=[LOCAL_VARIABLES].
 
 - - -
 
+### `tf.model_variables()` {#model_variables}
+
+Returns all variables in the MODEL_VARIABLES collection.
+
+##### Returns:
+
+  A list of local Variable objects.
+
+
+- - -
+
 ### `tf.moving_average_variables()` {#moving_average_variables}
 
 Returns all variables that maintain their moving averages.
@@ -1345,6 +1356,92 @@ logged by the C++ runtime. This is expected.
 
 
 
+- - -
+
+### `tf.assign(ref, value, validate_shape=None, use_locking=None, name=None)` {#assign}
+
+Update 'ref' by assigning 'value' to it.
+
+This operation outputs "ref" after the assignment is done.
+This makes it easier to chain operations that need to use the reset value.
+
+##### Args:
+
+
+*  <b>`ref`</b>: A mutable `Tensor`.
+    Should be from a `Variable` node. May be uninitialized.
+*  <b>`value`</b>: A `Tensor`. Must have the same type as `ref`.
+    The value to be assigned to the variable.
+*  <b>`validate_shape`</b>: An optional `bool`. Defaults to `True`.
+    If true, the operation will validate that the shape
+    of 'value' matches the shape of the Tensor being assigned to.  If false,
+    'ref' will take on the shape of 'value'.
+*  <b>`use_locking`</b>: An optional `bool`. Defaults to `True`.
+    If True, the assignment will be protected by a lock;
+    otherwise the behavior is undefined, but may exhibit less contention.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  Same as "ref".  Returned as a convenience for operations that want
+  to use the new value after the variable has been reset.
+
+
+- - -
+
+### `tf.assign_add(ref, value, use_locking=None, name=None)` {#assign_add}
+
+Update 'ref' by adding 'value' to it.
+
+This operation outputs "ref" after the update is done.
+This makes it easier to chain operations that need to use the reset value.
+
+##### Args:
+
+
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+    Should be from a `Variable` node.
+*  <b>`value`</b>: A `Tensor`. Must have the same type as `ref`.
+    The value to be added to the variable.
+*  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
+    If True, the addition will be protected by a lock;
+    otherwise the behavior is undefined, but may exhibit less contention.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  Same as "ref".  Returned as a convenience for operations that want
+  to use the new value after the variable has been updated.
+
+
+- - -
+
+### `tf.assign_sub(ref, value, use_locking=None, name=None)` {#assign_sub}
+
+Update 'ref' by subtracting 'value' from it.
+
+This operation outputs "ref" after the update is done.
+This makes it easier to chain operations that need to use the reset value.
+
+##### Args:
+
+
+*  <b>`ref`</b>: A mutable `Tensor`. Must be one of the following types: `float32`, `float64`, `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`, `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+    Should be from a `Variable` node.
+*  <b>`value`</b>: A `Tensor`. Must have the same type as `ref`.
+    The value to be subtracted to the variable.
+*  <b>`use_locking`</b>: An optional `bool`. Defaults to `False`.
+    If True, the subtraction will be protected by a lock;
+    otherwise the behavior is undefined, but may exhibit less contention.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  Same as "ref".  Returned as a convenience for operations that want
+  to use the new value after the variable has been updated.
+
+
+
 ## Saving and Restoring Variables
 
 - - -
@@ -1425,7 +1522,7 @@ protocol buffer file in the call to `save()`.
 
 - - -
 
-#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False, allow_empty=False)` {#Saver.__init__}
+#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False, allow_empty=False, write_version=1)` {#Saver.__init__}
 
 Creates a `Saver`.
 
@@ -1493,6 +1590,11 @@ checkpoints per device.
 *  <b>`allow_empty`</b>: If `False` (default) raise an error if there are no
     variables in the graph. Otherwise, construct the saver anyway and make
     it a no-op.
+*  <b>`write_version`</b>: controls what format to use when saving checkpoints.  It
+    also affects certain filepath matching logic.  Defaults to V1
+    currently, and will be switched to the more memory-efficient V2 format
+    in the future.  If set to V2, the Saver is still able to restore from
+    old V1 checkpoints.
 
 ##### Raises:
 

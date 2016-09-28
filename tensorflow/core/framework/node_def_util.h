@@ -29,6 +29,16 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Name of the attribute used to encode node colocation constraints.
+//
+// Nodes can be co-located on the same device. Desire for explicit co-location
+// is described by list(string) attribute containing the name of colocation
+// groups.
+extern const char* const kColocationAttrName;
+
+// String prefix applied to the operation name for colocation constraints.
+extern const char* const kColocationGroupPrefix;
+
 // Produce a human-readable version of a NodeDef that is more concise
 // than a text-format proto.
 string SummarizeNodeDef(const NodeDef& node_def);

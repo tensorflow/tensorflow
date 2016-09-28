@@ -5,14 +5,6 @@ package(
     default_visibility = ["//tensorflow:internal"],
 )
 
-package_group(
-    name = "friends",
-    packages = [
-        "//learning/serving/...",
-        "//platforms/techila/...",
-    ],
-)
-
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])

@@ -35,6 +35,8 @@ from tensorflow.contrib import layers
 from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
+from tensorflow.contrib.framework import list_variables
+from tensorflow.contrib.framework import load_variable
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import graph_actions
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -46,7 +48,6 @@ from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import tensor_signature
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import NotFittedError
 from tensorflow.contrib.learn.python.learn.learn_io import data_feeder
-from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.contrib.learn.python.learn.utils import export
 
 from tensorflow.python.framework import errors
@@ -446,9 +447,7 @@ class BaseEstimator(
     Returns:
       Numpy array - value of the tensor.
     """
-    if name.endswith(':0'):
-      name = name[:-2]
-    return checkpoints.load_variable(self.model_dir, name)
+    return load_variable(self.model_dir, name)
 
   def get_variable_names(self):
     """Returns list of all variable names in this model.
@@ -456,7 +455,7 @@ class BaseEstimator(
     Returns:
       List of names.
     """
-    return [name for name, _ in checkpoints.list_variables(self.model_dir)]
+    return [name for name, _ in list_variables(self.model_dir)]
 
   @property
   def model_dir(self):
@@ -474,10 +473,11 @@ class BaseEstimator(
       input_feature_key=None)
   def export(self,
              export_dir,
-             input_fn=export._default_input_fn,
+             input_fn=export._default_input_fn,  # pylint: disable=protected-access
              input_feature_key=None,
              use_deprecated_input_fn=True,
              signature_fn=None,
+             prediction_key=None,
              default_batch_size=1,
              exports_to_keep=None):
     """Exports inference graph into given dir.
@@ -492,25 +492,37 @@ class BaseEstimator(
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa 
         the raw `Example` strings `Tensor` that the exported model will take as
         input.
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
         for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      prediction_key: The key for a tensor in the `predictions` dict (output
+        from the `model_fn`) to use as the `predictions` input to the
+        `signature_fn`. Optional. If `None`, predictions will pass to
+        `signature_fn` without filtering.
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
+
+    Returns:
+      The string path to the exported directory. NB: this functionality was
+      added ca. 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because subclasses
+      are not returning a value.
     """
     # pylint: disable=protected-access
-    export._export_estimator(estimator=self,
-                             export_dir=export_dir,
-                             signature_fn=signature_fn,
-                             input_fn=input_fn,
-                             input_feature_key=input_feature_key,
-                             use_deprecated_input_fn=use_deprecated_input_fn,
-                             default_batch_size=default_batch_size,
-                             exports_to_keep=exports_to_keep)
+    return export._export_estimator(
+        estimator=self,
+        export_dir=export_dir,
+        signature_fn=signature_fn,
+        prediction_key=prediction_key,
+        input_fn=input_fn,
+        input_feature_key=input_feature_key,
+        use_deprecated_input_fn=use_deprecated_input_fn,
+        default_batch_size=default_batch_size,
+        exports_to_keep=exports_to_keep)
     # pylint: enable=protected-access
 
   @abc.abstractproperty
@@ -598,7 +610,7 @@ class BaseEstimator(
                          (str(features), str(self._features_info)))
     else:
       self._features_info = tensor_signature.create_signatures(features)
-      logging.warning('Setting feature info to %s', str(self._features_info))
+      logging.info('Setting feature info to %s', str(self._features_info))
     if targets is not None:
       if self._targets_info is not None:
         logging.warning('Given targets: %s, required signatures: %s.',
@@ -609,7 +621,7 @@ class BaseEstimator(
                            (str(targets), str(self._targets_info)))
       else:
         self._targets_info = tensor_signature.create_signatures(targets)
-        logging.warning('Setting targets info to %s', str(self._targets_info))
+        logging.info('Setting targets info to %s', str(self._targets_info))
 
   def _train_model(self,
                    input_fn,

@@ -61,18 +61,27 @@ class StochasticGradientEstimatorsTest(tf.test.TestCase):
 
   def testScoreFunctionWithMeanBaseline(self):
     ema_decay = 0.8
+    num_steps = 6
     x = st.BernoulliTensor(
         p=self._p,
         loss_fn=sge.get_score_function_with_baseline(
             sge.get_mean_baseline(ema_decay)))
     sf = x.loss(self._final_loss)
 
-    expected = tf.log(self._p) * (self._final_loss -
-                                  (1. - ema_decay) * self._final_loss)
+    # Expected EMA value
+    ema = 0.
+    for _ in range(num_steps):
+      ema -= (1. - ema_decay) * (ema - self._final_loss)
+
+    # Baseline is EMA with bias correction
+    bias_correction = 1. - ema_decay**num_steps
+    baseline = ema / bias_correction
+    expected = tf.log(self._p) * (self._final_loss - baseline)
 
     with self.test_session() as sess:
       sess.run(tf.initialize_all_variables())
-      sess.run(sf)  # run to update EMA
+      for _ in range(num_steps - 1):
+        sess.run(sf)  # run to update EMA
       self.assertAllClose(*sess.run([expected, sf]))
 
   def testScoreFunctionWithAdvantageFn(self):
@@ -86,6 +95,23 @@ class StochasticGradientEstimatorsTest(tf.test.TestCase):
     expected = tf.log(self._p) * (self._final_loss - b)
     self._testScoreFunction(
         sge.get_score_function_with_advantage(advantage_fn), expected)
+
+  def testScoreFunctionWithMeanBaselineHasUniqueVarScope(self):
+    ema_decay = 0.8
+    x = st.BernoulliTensor(
+        p=self._p,
+        loss_fn=sge.get_score_function_with_baseline(
+            sge.get_mean_baseline(ema_decay)))
+    y = st.BernoulliTensor(
+        p=self._p,
+        loss_fn=sge.get_score_function_with_baseline(
+            sge.get_mean_baseline(ema_decay)))
+    sf_x = x.loss(self._final_loss)
+    sf_y = y.loss(self._final_loss)
+    with self.test_session() as sess:
+      # Smoke test
+      sess.run(tf.initialize_all_variables())
+      sess.run([sf_x, sf_y])
 
 
 if __name__ == "__main__":

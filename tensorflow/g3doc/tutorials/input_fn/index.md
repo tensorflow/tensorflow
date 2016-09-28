@@ -209,8 +209,8 @@ Download the following data sets: [boston_train.csv]
 
 The following sections provide a step-by-step walkthrough of how to create an
 input function, feed these data sets into a neural network regressor, train and
-evaluate the model, and make house value predictions. Final code is [available
-here](../../../examples/tutorials/input_fn/boston.py).
+evaluate the model, and make house value predictions. The full, final code is [available
+here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/input_fn/boston.py).
 
 ### Importing the Housing Data
 

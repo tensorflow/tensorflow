@@ -57,7 +57,7 @@ they need to be added as a dependency to the train_op, example:
 
   update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
   if update_ops:
-    updates = tf.group(update_ops)
+    updates = tf.group(*update_ops)
     total_loss = control_flow_ops.with_dependencies([updates], total_loss)
 
 One can set update_collections=None to force the updates in place, but that
@@ -74,7 +74,8 @@ can have speed penalty, specially in distributed settings.
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
     disabled since the scaling can be done by the next layer.
 *  <b>`epsilon`</b>: small float added to variance to avoid dividing by zero.
-*  <b>`activation_fn`</b>: Optional activation function.
+*  <b>`activation_fn`</b>: activation function, default set to None to skip it and
+    maintain a linear activation.
 *  <b>`updates_collections`</b>: collections to collect the update ops for computation.
     The updates_ops need to be excuted with the train_op.
     If None, a control dependency would be added to make sure the updates are
@@ -133,10 +134,12 @@ greater than one.
 *  <b>`rate`</b>: integer. If less than or equal to 1, a standard convolution is used.
     If greater than 1, than the a'trous convolution is applied and `stride`
     must be set to 1.
-*  <b>`activation_fn`</b>: activation function.
+*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
+    a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
-    `normalize_fn` is provided then `biases_initializer` and
+    `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
+    default set to None for no normalizer function
 *  <b>`normalizer_params`</b>: normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
@@ -188,10 +191,12 @@ operations such as image gradients:
     Can be an int if both strides are the same. Note that presently
     both strides must have the same value.
 *  <b>`padding`</b>: the padding type to use, either 'SAME' or 'VALID'.
-*  <b>`activation_fn`</b>: activation function.
+*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
+    a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
-    `normalize_fn` is provided then `biases_initializer` and
+    `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
+    default set to None for no normalizer function
 *  <b>`normalizer_params`</b>: normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
@@ -232,10 +237,12 @@ second variable called 'biases' is added to the result of the operation.
     Can be an int if both strides are the same.  Note that presently
     both strides must have the same value.
 *  <b>`padding`</b>: one of 'VALID' or 'SAME'.
-*  <b>`activation_fn`</b>: activation function.
+*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
+    a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
-    `normalize_fn` is provided then `biases_initializer` and
+    `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
+    default set to None for no normalizer function
 *  <b>`normalizer_params`</b>: normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
@@ -307,10 +314,12 @@ prior to the initial matrix multiply by `weights`.
 *  <b>`inputs`</b>: A tensor of with at least rank 2 and value for the last dimension,
     i.e. `[batch_size, depth]`, `[None, None, None, channels]`.
 *  <b>`num_outputs`</b>: Integer or long, the number of output units in the layer.
-*  <b>`activation_fn`</b>: activation function.
+*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
+    a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
-    `normalize_fn` is provided then `biases_initializer` and
+    `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
+    default set to None for no normalizer function
 *  <b>`normalizer_params`</b>: normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
@@ -356,7 +365,8 @@ Can be used as a normalizer function for conv2d and fully_connected.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
     disabled since the scaling can be done by the next layer.
-*  <b>`activation_fn`</b>: Optional activation function.
+*  <b>`activation_fn`</b>: activation function, default set to None to skip it and
+    maintain a linear activation.
 *  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
 *  <b>`variables_collections`</b>: optional collections for the variables.
@@ -469,6 +479,54 @@ layers are called with `scope='stack'`.
 
 - - -
 
+### `tf.contrib.layers.safe_embedding_lookup_sparse(embedding_weights, sparse_ids, sparse_weights=None, combiner=None, default_id=None, name=None, partition_strategy='div')` {#safe_embedding_lookup_sparse}
+
+Lookup embedding results, accounting for invalid IDs and empty features.
+
+The partitioned embedding in `embedding_weights` must all be the same shape
+except for the first dimension. The first dimension is allowed to vary as the
+vocabulary size is not necessarily a multiple of `P`.
+
+Invalid IDs (< 0) are pruned from input IDs and weights, as well as any IDs
+with non-positive weight. For an entry with no features, the embedding vector
+for `default_id` is returned, or the 0-vector if `default_id` is not supplied.
+
+The ids and weights may be multi-dimensional. Embeddings are always aggregated
+along the last dimension.
+
+##### Args:
+
+
+*  <b>`embedding_weights`</b>: A list of `P` float tensors or values representing
+      partitioned embedding tensors.  The total unpartitioned shape should be
+      `[e_0, e_1, ..., e_m]`, where `e_0` represents the vocab size and
+      `e_1, ..., e_m` are the embedding dimensions.
+*  <b>`sparse_ids`</b>: `SparseTensor` of shape `[d_0, d_1, ..., d_n]` containing the
+      ids. `d_0` is typically batch size.
+*  <b>`sparse_weights`</b>: `SparseTensor` of same shape as `sparse_ids`, containing
+      float weights corresponding to `sparse_ids`, or `None` if all weights
+      are be assumed to be 1.0.
+*  <b>`combiner`</b>: A string specifying how to combine embedding results for each
+      entry. Currently "mean", "sqrtn" and "sum" are supported, with "mean"
+      the default.
+*  <b>`default_id`</b>: The id to use for an entry with no features.
+*  <b>`name`</b>: A name for this operation (optional).
+*  <b>`partition_strategy`</b>: A string specifying the partitioning strategy.
+      Currently `"div"` and `"mod"` are supported. Default is `"div"`.
+
+
+##### Returns:
+
+  Dense tensor of shape `[d_0, d_1, ..., d_{n-1}, e_1, ..., e_m]`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `embedding_weights` is empty.
+
+
+- - -
+
 ### `tf.contrib.layers.separable_convolution2d(*args, **kwargs)` {#separable_convolution2d}
 
 Adds a depth-separable 2D convolution with optional batch_norm layer.
@@ -495,10 +553,12 @@ to produce the end result.
 *  <b>`stride`</b>: a list of length 2: [stride_height, stride_width], specifying the
     depthwise convolution stride. Can be an int if both strides are the same.
 *  <b>`padding`</b>: one of 'VALID' or 'SAME'.
-*  <b>`activation_fn`</b>: activation function.
+*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
+    a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
-    `normalize_fn` is provided then `biases_initializer` and
+    `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
+    default set to None for no normalizer function
 *  <b>`normalizer_params`</b>: normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
@@ -818,9 +878,24 @@ Optimize weights given a loss.
 
 - - -
 
-### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, moving_average_decay=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None)` {#optimize_loss}
+### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None)` {#optimize_loss}
 
 Given loss and parameters for optimizer, returns a training op.
+
+Various ways of passing optimizers, include:
+  - string, name of the optimizer like 'SGD', 'Adam', see OPTIMIZER_CLS_NAMES
+      for full list. E.g. `optimize_loss(..., optimizer='Adam')`.
+  - function, takes learning rate `Tensor` as argument and must return
+      `Optimizer` instance. E.g. `optimize_loss(...,
+      optimizer=lambda lr: tf.train.MomentumOptimizer(lr, momentum=0.5))`.
+    Alternatively, if `learning_rate` is `None`, the function takes no
+    arguments. E.g. `optimize_loss(..., learning_rate=None,
+      optimizer=lambda: tf.train.MomentumOptimizer(0.5, momentum=0.5))`.
+  - class, subclass of `Optimizer` that takes only one required argument -
+      learning rate, such as AdamOptimizer, AdagradOptimizer.
+      E.g. `optimize_loss(..., optimizer=tf.train.AdagradOptimizer)`.
+  - object, instance of subclass of `Optimizer`.
+      E.g., `optimizer_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
 
 ##### Args:
 
@@ -833,23 +908,23 @@ Given loss and parameters for optimizer, returns a training op.
                'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
              class should be sub-class of tf.Optimizer that implements
                `compute_gradients` and `apply_gradients` functions.
-             optimizer instance should be instantion of tf.Optimizer sub-class
-               and have `compute_gradients` and `apply_gradients` functions.
+             optimizer instance should be instantion of `tf.Optimizer`
+               sub-class and have `compute_gradients` and `apply_gradients`
+               functions.
 *  <b>`gradient_noise_scale`</b>: float or None, adds 0-mean normal noise scaled by this
                         value.
 *  <b>`gradient_multipliers`</b>: dict of variables or variable names to floats.
                         If present, gradients for specified
                         variables will be multiplied by given constant.
 *  <b>`clip_gradients`</b>: float or `None`, clips gradients by this value.
-*  <b>`moving_average_decay`</b>: Deprecated. float or None, takes into account previous
-                        loss to make learning smoother due to outliers.
 *  <b>`learning_rate_decay_fn`</b>: function, takes `learning_rate` and `global_step`
                           `Tensor`s, returns `Tensor`.
                           Can be used to implement any learning rate decay
                           functions.
                           For example: tf.train.exponential_decay.
 *  <b>`update_ops`</b>: list of update `Operation`s to execute at each step. If `None`,
-              uses elements of UPDATE_OPS collection.
+              uses elements of UPDATE_OPS collection. The order of execution
+              between `update_ops` and `loss` is non-deterministic.
 *  <b>`variables`</b>: list of variables to optimize or
              `None` to use all trainable variables.
 *  <b>`name`</b>: The name for this operation is used to scope operations and summaries.

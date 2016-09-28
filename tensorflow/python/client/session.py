@@ -48,7 +48,7 @@ class SessionInterface(object):
     raise NotImplementedError('sess_str')
 
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
-    """Runs operations in the session. See `Session.run()` for details."""
+    """Runs operations in the session. See `BaseSession.run()` for details."""
     raise NotImplementedError('run')
 
   def partial_run_setup(self, fetches, feeds=None):

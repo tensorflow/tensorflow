@@ -61,8 +61,9 @@ def _assert_float_dtype(dtype):
   return dtype
 
 
-# TODO(irving) Move array_ops.zeros_initializer here.
-zeros_initializer = array_ops.zeros_initializer
+def zeros_initializer(shape, dtype=dtypes.float32, partition_info=None):
+  """An adaptor for zeros() to match the Initializer spec."""
+  return array_ops.zeros(shape, dtype)
 
 
 def ones_initializer(shape, dtype=dtypes.float32, partition_info=None):
@@ -272,6 +273,8 @@ def uniform_unit_scaling_initializer(factor=1.0,
     # is the right thing for matrix multiply and convolutions (see above).
     for dim in scale_shape[:-1]:
       input_size *= float(dim)
+    # Avoid errors when initializing zero-size tensors.
+    input_size = max(input_size, 1.0)
     max_val = math.sqrt(3 / input_size) * factor
     return random_ops.random_uniform(shape, -max_val, max_val,
                                      dtype, seed=seed)

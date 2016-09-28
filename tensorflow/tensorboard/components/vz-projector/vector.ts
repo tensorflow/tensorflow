@@ -241,6 +241,13 @@ export function cosDistNorm(a: Vector, b: Vector): number {
   return 1 - dot(a, b);
 }
 
+/**
+ * Returns the cosine distance ([0, 2]) between two vectors.
+ */
+export function cosDist(a: Vector, b: Vector): number {
+  return 1 - cosSim(a, b);
+}
+
 /** Returns the cosine similarity ([-1, 1]) between two vectors. */
 export function cosSim(a: Vector, b: Vector): number {
   return dot(a, b) / Math.sqrt(norm2(a) * norm2(b));

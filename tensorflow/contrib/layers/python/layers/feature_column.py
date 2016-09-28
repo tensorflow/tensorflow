@@ -264,7 +264,7 @@ class _SparseColumn(_FeatureColumn,
               is_integerized=False,
               bucket_size=None,
               lookup_config=None,
-              combiner="sum",
+              combiner="sqrtn",
               dtype=dtypes.string):
     if is_integerized and bucket_size is None:
       raise ValueError("bucket_size must be set if is_integerized is True. "
@@ -381,7 +381,7 @@ class _SparseColumn(_FeatureColumn,
 class _SparseColumnIntegerized(_SparseColumn):
   """See `sparse_column_with_integerized_feature`."""
 
-  def __new__(cls, column_name, bucket_size, combiner="sum",
+  def __new__(cls, column_name, bucket_size, combiner="sqrtn",
               dtype=dtypes.int64):
     if not dtype.is_integer:
       raise ValueError("dtype must be an integer. "
@@ -407,7 +407,7 @@ class _SparseColumnIntegerized(_SparseColumn):
 
 def sparse_column_with_integerized_feature(column_name,
                                            bucket_size,
-                                           combiner="sum",
+                                           combiner=None,
                                            dtype=dtypes.int64):
   """Creates an integerized _SparseColumn.
 
@@ -436,6 +436,10 @@ def sparse_column_with_integerized_feature(column_name,
     ValueError: bucket_size is not greater than 1.
     ValueError: dtype is not integer.
   """
+  if combiner is None:
+    logging.warn("The default value of combiner will change from \"sum\" "
+                 "to \"sqrtn\" after 2016/11/01.")
+    combiner = "sum"
   return _SparseColumnIntegerized(
       column_name, bucket_size, combiner=combiner, dtype=dtype)
 
@@ -476,7 +480,7 @@ class _SparseColumnHashed(_SparseColumn):
 
 def sparse_column_with_hash_bucket(column_name,
                                    hash_bucket_size,
-                                   combiner="sum",
+                                   combiner=None,
                                    dtype=dtypes.string):
   """Creates a _SparseColumn with hashed bucket configuration.
 
@@ -503,6 +507,10 @@ def sparse_column_with_hash_bucket(column_name,
     ValueError: hash_bucket_size is not greater than 2.
     ValueError: dtype is neither string nor integer.
   """
+  if combiner is None:
+    logging.warn("The default value of combiner will change from \"sum\" "
+                 "to \"sqrtn\" after 2016/11/01.")
+    combiner = "sum"
   return _SparseColumnHashed(column_name, hash_bucket_size, combiner, dtype)
 
 
@@ -528,7 +536,7 @@ class _SparseColumnKeys(_SparseColumn):
 
 
 def sparse_column_with_keys(column_name, keys, default_value=-1,
-                            combiner="sum"):
+                            combiner=None):
   """Creates a _SparseColumn with keys.
 
   Look up logic is as follows:
@@ -550,6 +558,10 @@ def sparse_column_with_keys(column_name, keys, default_value=-1,
   Returns:
     A _SparseColumnKeys with keys configuration.
   """
+  if combiner is None:
+    logging.warn("The default value of combiner will change from \"sum\" "
+                 "to \"sqrtn\" after 2016/11/01.")
+    combiner = "sum"
   return _SparseColumnKeys(
       column_name, tuple(keys), default_value=default_value, combiner=combiner)
 
@@ -801,7 +813,7 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
   def __new__(cls,
               sparse_id_column,
               dimension,
-              combiner="mean",
+              combiner="sqrtn",
               initializer=None,
               ckpt_to_load_from=None,
               tensor_name_in_ckpt=None,
@@ -919,7 +931,7 @@ def one_hot_column(sparse_id_column):
 
 def embedding_column(sparse_id_column,
                      dimension,
-                     combiner="mean",
+                     combiner=None,
                      initializer=None,
                      ckpt_to_load_from=None,
                      tensor_name_in_ckpt=None):
@@ -951,13 +963,17 @@ def embedding_column(sparse_id_column,
   Returns:
     An `_EmbeddingColumn`.
   """
+  if combiner is None:
+    logging.warn("The default value of combiner will change from \"mean\" "
+                 "to \"sqrtn\" after 2016/11/01.")
+    combiner = "mean"
   return _EmbeddingColumn(sparse_id_column, dimension, combiner, initializer,
                           ckpt_to_load_from, tensor_name_in_ckpt)
 
 
 def shared_embedding_columns(sparse_id_columns,
                              dimension,
-                             combiner="mean",
+                             combiner=None,
                              shared_embedding_name=None,
                              initializer=None,
                              ckpt_to_load_from=None,
@@ -999,6 +1015,10 @@ def shared_embedding_columns(sparse_id_columns,
     TypeError: if at least one element of sparse_id_columns is not a
       `SparseTensor`.
   """
+  if combiner is None:
+    logging.warn("The default value of combiner will change from \"mean\" "
+                 "to \"sqrtn\" after 2016/11/01.")
+    combiner = "mean"
   if len(sparse_id_columns) < 1:
     raise ValueError("The input sparse_id_columns should have at least one "
                      "element.")
@@ -1052,7 +1072,7 @@ class _HashedEmbeddingColumn(collections.namedtuple(
               column_name,
               size,
               dimension,
-              combiner="mean",
+              combiner="sqrtn",
               initializer=None):
     if initializer is not None and not callable(initializer):
       raise ValueError("initializer must be callable if specified. "
@@ -1096,7 +1116,7 @@ class _HashedEmbeddingColumn(collections.namedtuple(
 def hashed_embedding_column(column_name,
                             size,
                             dimension,
-                            combiner="mean",
+                            combiner=None,
                             initializer=None):
   """Creates an embedding column of a sparse feature using parameter hashing.
 
@@ -1126,6 +1146,10 @@ def hashed_embedding_column(column_name,
       is not supported.
 
   """
+  if combiner is None:
+    logging.warn("The default value of combiner will change from \"mean\" "
+                 "to \"sqrtn\" after 2016/11/01.")
+    combiner = "mean"
   if (dimension < 1) or (size < 1):
     raise ValueError("Dimension and size must be greater than 0. "
                      "dimension: {}, size: {}, column_name: {}".format(
@@ -1220,7 +1244,7 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
       return variable_scope.get_variable(
           name,
           shape=[self.dimension, num_outputs],
-          initializer=array_ops.zeros_initializer,
+          initializer=init_ops.zeros_initializer,
           collections=_add_variable_collection(weight_collections))
 
     if self.name:
@@ -1552,8 +1576,7 @@ class _CrossedColumn(_FeatureColumn,
 
   Raises:
     TypeError: if all items in columns are not an instance of _SparseColumn,
-      _CrossedColumn, or _BucketizedColumn or
-      hash_bucket_size is not an int.
+      _CrossedColumn, or _BucketizedColumn.
     ValueError: if hash_bucket_size is not > 1 or len(columns) is not > 1. Also,
       if only one of `ckpt_to_load_from` and `tensor_name_in_ckpt` is specified.
   """
@@ -1566,7 +1589,7 @@ class _CrossedColumn(_FeatureColumn,
   def __new__(cls,
               columns,
               hash_bucket_size,
-              combiner="sum",
+              combiner="sqrtn",
               ckpt_to_load_from=None,
               tensor_name_in_ckpt=None):
     for column in columns:
@@ -1578,10 +1601,6 @@ class _CrossedColumn(_FeatureColumn,
     if len(columns) < 2:
       raise ValueError("columns must contain at least 2 elements. "
                        "columns: {}".format(columns))
-
-    if not isinstance(hash_bucket_size, int):
-      raise TypeError("hash_bucket_size must be an int. "
-                      "hash_bucket_size: {}".format(hash_bucket_size))
 
     if hash_bucket_size < 2:
       raise ValueError("hash_bucket_size must be at least 2. "
@@ -1704,7 +1723,7 @@ class _CrossedColumn(_FeatureColumn,
         combiner=self.combiner)
 
 
-def crossed_column(columns, hash_bucket_size, combiner="sum",
+def crossed_column(columns, hash_bucket_size, combiner=None,
                    ckpt_to_load_from=None,
                    tensor_name_in_ckpt=None):
   """Creates a _CrossedColumn.
@@ -1731,6 +1750,10 @@ def crossed_column(columns, hash_bucket_size, combiner="sum",
     ValueError: if hash_bucket_size is not > 1 or
       len(columns) is not > 1.
   """
+  if combiner is None:
+    logging.warn("The default value of combiner will change from \"sum\" "
+                 "to \"sqrtn\" after 2016/11/01.")
+    combiner = "sum"
   return _CrossedColumn(
       columns,
       hash_bucket_size,
@@ -1811,7 +1834,7 @@ class DataFrameColumn(_FeatureColumn,
       return variable_scope.get_variable(
           name,
           shape=[self.dimension, num_outputs],
-          initializer=array_ops.zeros_initializer,
+          initializer=init_ops.zeros_initializer,
           collections=_add_variable_collection(weight_collections))
 
     if self.name:

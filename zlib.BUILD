@@ -2,11 +2,35 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # BSD/MIT-like license (for zlib)
 
-prefix_dir = "zlib-1.2.8"
-
 cc_library(
     name = "zlib",
-    srcs = glob([prefix_dir + "/*.c"]),
-    hdrs = glob([prefix_dir + "/*.h"]),
-    includes = [prefix_dir],
+    srcs = [
+        "adler32.c",
+        "compress.c",
+        "crc32.c",
+        "crc32.h",
+        "deflate.c",
+        "deflate.h",
+        "gzclose.c",
+        "gzguts.h",
+        "gzlib.c",
+        "gzread.c",
+        "gzwrite.c",
+        "infback.c",
+        "inffast.c",
+        "inffast.h",
+        "inffixed.h",
+        "inflate.c",
+        "inflate.h",
+        "inftrees.c",
+        "inftrees.h",
+        "trees.c",
+        "trees.h",
+        "uncompr.c",
+        "zconf.h",
+        "zutil.c",
+        "zutil.h",
+    ],
+    hdrs = ["zlib.h"],
+    includes = ["."],
 )

@@ -96,6 +96,7 @@ def logistic_model_no_mode_fn(features, target):
 class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
 
   def __init__(self, expect_calls):
+    super(CheckCallsMonitor, self).__init__()
     self.begin_calls = None
     self.end_calls = None
     self.expect_calls = expect_calls
@@ -351,6 +352,16 @@ class EstimatorTest(tf.test.TestCase):
     loss_summary = tf.contrib.testing.simple_values_from_events(
         tf.contrib.testing.latest_events(est.model_dir), ['loss'])
     self.assertEqual(len(loss_summary), 1)
+
+  def test_export_returns_exported_dirname(self):
+    expected = '/path/to/some_dir'
+    with tf.test.mock.patch.object(estimator, 'export') as mock_export_module:
+      mock_export_module._export_estimator.return_value = expected
+
+      est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+      actual = est.export('/path/to')
+
+    self.assertEquals(actual, expected)
 
 
 class InferRealValuedColumnsTest(tf.test.TestCase):

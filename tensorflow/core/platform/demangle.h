@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_DEMANGLE_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_DEMANGLE_H_
 
+#include "tensorflow/core/platform/types.h"
+
 namespace tensorflow {
 namespace port {
 

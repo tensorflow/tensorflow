@@ -1,4 +1,4 @@
-### `tf.nn.ctc_loss(inputs, labels, sequence_length, preprocess_collapse_repeated=False, ctc_merge_repeated=True)` {#ctc_loss}
+### `tf.nn.ctc_loss(inputs, labels, sequence_length, preprocess_collapse_repeated=False, ctc_merge_repeated=True, time_major=True)` {#ctc_loss}
 
 Computes the CTC (Connectionist Temporal Classification) Loss.
 
@@ -68,8 +68,12 @@ Here is a table of the (roughly) expected first order behavior:
 ##### Args:
 
 
-*  <b>`inputs`</b>: 3-D `float` `Tensor` sized
-    `[max_time x batch_size x num_classes]`. The logits.
+*  <b>`inputs`</b>: 3-D `float` `Tensor`.
+    If time_major == False, this will be a `Tensor` shaped:
+      `[batch_size x max_time x num_classes]`.
+    If time_major == True (default), this will be a `Tensor` shaped:
+      `[max_time x batch_size x num_classes]`.
+    The logits.
 *  <b>`labels`</b>: An `int32` `SparseTensor`.
     `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
     the id for (batch b, time t).
@@ -80,6 +84,13 @@ Here is a table of the (roughly) expected first order behavior:
 *  <b>`preprocess_collapse_repeated`</b>: Boolean.  Default: False.
     If True, repeated labels are collapsed prior to the CTC calculation.
 *  <b>`ctc_merge_repeated`</b>: Boolean.  Default: True.
+*  <b>`time_major`</b>: The shape format of the `inputs` Tensors.
+    If True, these `Tensors` must be shaped `[max_time, batch_size, num_classes]`.
+    If False, these `Tensors` must be shaped `[batch_size, max_time, num_classes]`.
+    Using `time_major = True` (default) is a bit more efficient because it avoids
+    transposes at the beginning of the ctc_loss calculation.  However, most
+    TensorFlow data is batch-major, so by this function also accepts inputs
+    in batch-major form.
 
 ##### Returns:
 

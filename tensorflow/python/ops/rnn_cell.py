@@ -495,7 +495,7 @@ class LSTMCell(RNNCell):
 
       b = vs.get_variable(
           "B", shape=[4 * self._num_units],
-          initializer=array_ops.zeros_initializer, dtype=dtype)
+          initializer=init_ops.zeros_initializer, dtype=dtype)
 
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
       cell_inputs = array_ops.concat(1, [inputs, m_prev])

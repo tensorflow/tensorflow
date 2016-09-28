@@ -187,6 +187,14 @@ class SaverTest(tf.test.TestCase):
       self.assertEqual(b"k1", v2_2.keys().eval())
       self.assertEqual(30.0, v2_2.values().eval())
 
+  def testInvalidPath(self):
+    v0 = tf.Variable(0, name="v0")
+    with self.test_session() as sess:
+      save = tf.train.Saver({"v0": v0})
+      with self.assertRaisesRegexp(ValueError,
+                                   "^Restore called with invalid save path.*"):
+        save.restore(sess, "invalid path")
+
   def testInt64(self):
     save_path = os.path.join(self.get_temp_dir(), "int64")
 
@@ -1541,7 +1549,7 @@ class MetaGraphTest(tf.test.TestCase):
       v0 = tf.Variable(0.0)
       var = tf.Variable(10.0)
       tf.add(v0, var)
-      @function.Defun(x=tf.float32)
+      @function.Defun(tf.float32)
       def minus_one(x):
         return x - 1
       minus_one(tf.identity(v0))
@@ -1552,7 +1560,7 @@ class MetaGraphTest(tf.test.TestCase):
       meta_graph_def = save.export_meta_graph()
       ops = [o.name for o in meta_graph_def.meta_info_def.stripped_op_list.op]
       self.assertEqual(ops, ["Add", "Assign", "Const", "Identity", "NoOp",
-                             "RestoreSlice", "SaveSlices", "Sub", "Variable"])
+                             "RestoreV2", "SaveSlices", "Sub", "Variable"])
 
       # Test calling stripped_op_list_for_graph directly
       op_list = tf.contrib.util.stripped_op_list_for_graph(

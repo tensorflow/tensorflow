@@ -88,7 +88,7 @@ class SparseTensor {
 
   // Returns the tensor shape (the dimensions of the "densified"
   // tensor this tensor represents).
-  const TensorShape shape() const { return shape_; }
+  const TensorShape& shape() const { return shape_; }
 
   const VarDimArray order() const { return order_; }
 
@@ -271,13 +271,29 @@ void SparseTensor::Reorder(const VarDimArray& order) {
   auto ix_t = ix_.matrix<int64>();
   auto vals_t = vals_.vec<T>();
 
-  DimComparator sorter(ix_t, order, dims_);
-
   std::vector<int64> reorder(num_entries());
   std::iota(reorder.begin(), reorder.end(), 0);
 
   // Sort to get order of indices
-  std::sort(reorder.begin(), reorder.end(), sorter);
+  switch (order.size()) {
+#define CASE_SORT(ORDER_SIZE)                                    \
+  case ORDER_SIZE: {                                             \
+    FixedDimComparator<ORDER_SIZE> sorter(ix_t, order, shape()); \
+    std::sort(reorder.begin(), reorder.end(), sorter);           \
+    break;                                                       \
+  }
+    CASE_SORT(0);
+    CASE_SORT(1);
+    CASE_SORT(2);
+    CASE_SORT(3);
+    CASE_SORT(4);
+    CASE_SORT(5);
+#undef CASE_SORT
+    default: {
+      DimComparator sorter(ix_t, order, shape());
+      std::sort(reorder.begin(), reorder.end(), sorter);
+    }
+  }
 
   // We have a forward reordering, but what we'll need is a
   // permutation (the inverse).  This can be calculated with O(1)

@@ -73,6 +73,7 @@ def tf_android_core_proto_sources_relative():
         "framework/versions.proto",
         "lib/core/error_codes.proto",
         "protobuf/config.proto",
+        "protobuf/tensor_bundle.proto",
         "protobuf/saver.proto",
         "util/memmapped_file_system.proto",
         "util/saved_tensor_slice.proto",
@@ -245,7 +246,8 @@ def tf_gen_op_wrappers_cc(name,
 
 # Invoke this rule in .../tensorflow/python to build the wrapper library.
 def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],
-                         require_shape_functions=False, hidden_file=None):
+                         require_shape_functions=False, hidden_file=None,
+                         generated_target_name=None):
   # Construct a cc_binary containing the specified ops.
   tool_name = "gen_" + name + "_py_wrappers_cc"
   if not deps:
@@ -293,7 +295,9 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],
              + ("1" if require_shape_functions else "0") + " > $@"))
 
   # Make a py_library out of the generated python file.
-  native.py_library(name=name,
+  if not generated_target_name:
+    generated_target_name = name
+  native.py_library(name=generated_target_name,
                     srcs=[out],
                     srcs_version="PY2AND3",
                     visibility=visibility,
@@ -394,10 +398,6 @@ def _cuda_copts():
                 "-nvcc_options=relaxed-constexpr",
                 "-nvcc_options=ftz=true",
             ]
-        ),
-        "@local_config_cuda//cuda:using_gcudacc": (
-            common_cuda_opts +
-            ["--gcudacc_flag=-ftz=true"]
         ),
         "@local_config_cuda//cuda:using_clang": (
             common_cuda_opts +
@@ -768,7 +768,7 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
                     data=[":" + cc_library_name])
 
 def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
-               tags=[], shard_count=1, additional_deps=[]):
+               tags=[], shard_count=1, additional_deps=[], flaky=0):
   native.py_test(
       name=name,
       size=size,
@@ -783,10 +783,11 @@ def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
           "//tensorflow/python:extra_py_tests_deps",
           "//tensorflow/python:gradient_checker",
       ] + additional_deps,
+      flaky=flaky,
       srcs_version="PY2AND3")
 
 def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
-                 shard_count=1, additional_deps=[], tags=[]):
+                 shard_count=1, additional_deps=[], tags=[], flaky=0):
   test_tags = tags + tf_cuda_tests_tags()
   tf_py_test(name=name,
              size=size,
@@ -796,7 +797,8 @@ def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
              args=args,
              tags=test_tags,
              shard_count=shard_count,
-             additional_deps=additional_deps)
+             additional_deps=additional_deps,
+             flaky=flaky)
 
 def py_tests(name,
              srcs,

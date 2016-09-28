@@ -118,6 +118,7 @@ class BaseMonitor(object):
     self._current_step = None
     self._max_steps = None
     self._estimator = None
+    self._estimator_locked = False
 
   @property
   def run_on_all_workers(self):
@@ -126,16 +127,28 @@ class BaseMonitor(object):
   def set_estimator(self, estimator):
     """A setter called automatically by the target estimator.
 
+    If the estimator is locked, this method does nothing.
+
     Args:
       estimator: the estimator that this monitor monitors.
 
     Raises:
       ValueError: if the estimator is None.
     """
+    if self._estimator_locked:
+      return
     if estimator is None:
       raise ValueError("Missing estimator.")
     # TODO(mdan): This should fail if called twice with the same estimator.
     self._estimator = estimator
+
+  def _lock_estimator(self):
+    """Locks the estimator until _unlock_estimator is called."""
+    self._estimator_locked = True
+
+  def _unlock_estimator(self):
+    """Unlocks the estimator."""
+    self._estimator_locked = False
 
   def begin(self, max_steps=None):
     """Called at the beginning of training.
@@ -275,7 +288,7 @@ class EveryN(BaseMonitor):
   This class adds three new callbacks:
     - every_n_step_begin
     - every_n_step_end
-    - every_n_pos_step
+    - every_n_post_step
 
   The callbacks are executed every n steps, or optionally every step for the
   first m steps, where m and n can both be user-specified.
@@ -376,8 +389,7 @@ class EveryN(BaseMonitor):
         step == self._max_steps):  # Note: max_steps can be None here.
       self._every_n_step_begin_called = True
       return self.every_n_step_begin(step)
-    else:
-      self._every_n_step_begin_called = False
+    self._every_n_step_begin_called = False
     return []
 
   def step_end(self, step, output):
@@ -683,28 +695,32 @@ class ValidationMonitor(EveryN):
     # Check that we are not running evaluation on the same checkpoint.
     latest_path = saver_lib.latest_checkpoint(self._estimator.model_dir)
     if latest_path is None:
-      logging.info("Skipping evaluation since model has not been saved yet "
-                   "at step %d.", step)
+      logging.debug("Skipping evaluation since model has not been saved yet "
+                    "at step %d.", step)
       return False
     if latest_path is not None and latest_path == self._latest_path:
-      logging.info("Skipping evaluation due to same checkpoint %s for step %d "
-                   "as for step %d.", latest_path, step, self._latest_path_step)
+      logging.debug("Skipping evaluation due to same checkpoint %s for step %d "
+                    "as for step %d.", latest_path, step,
+                    self._latest_path_step)
       return False
     self._latest_path = latest_path
     self._latest_path_step = step
 
     # Run evaluation and log it.
-    outputs = self._estimator.evaluate(
+    validation_outputs = self._estimator.evaluate(
         x=self.x, y=self.y, input_fn=self.input_fn, batch_size=self.batch_size,
         steps=self.eval_steps, metrics=self.metrics, name=self.name)
     stats = []
-    for name in outputs:
-      stats.append("%s = %s" % (name, str(outputs[name])))
+    for name in validation_outputs:
+      stats.append("%s = %s" % (name, str(validation_outputs[name])))
     logging.info("Validation (step %d): %s", step, ", ".join(stats))
 
     # Early stopping logic.
     if self.early_stopping_rounds is not None:
-      current_value = outputs[self.early_stopping_metric]
+      if self.early_stopping_metric not in validation_outputs:
+        raise ValueError("Metric %s missing from outputs %s." % (
+            self.early_stopping_metric, set(validation_outputs.keys())))
+      current_value = validation_outputs[self.early_stopping_metric]
       if (self._best_value is None or (self.early_stopping_metric_minimize and
                                        (current_value < self._best_value)) or
           (not self.early_stopping_metric_minimize and
@@ -935,6 +951,7 @@ class ExportMonitor(EveryN):
     self._exports_to_keep = exports_to_keep
     self._signature_fn = signature_fn
     self._default_batch_size = default_batch_size
+    self._last_export_dir = None
 
   @property
   def export_dir(self):
@@ -948,10 +965,22 @@ class ExportMonitor(EveryN):
   def signature_fn(self):
     return self._signature_fn
 
+  @property
+  def last_export_dir(self):
+    """Returns the directory containing the last completed export.
+
+    Returns:
+      The string path to the exported directory. NB: this functionality was
+      added on 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because the
+      estimator being fitted does not yet return a value during export.
+    """
+    return self._last_export_dir
+
   def every_n_step_end(self, step, outputs):
     super(ExportMonitor, self).every_n_step_end(step, outputs)
     try:
-      self._estimator.export(
+      self._last_export_dir = self._estimator.export(
           self.export_dir,
           exports_to_keep=self.exports_to_keep,
           signature_fn=self.signature_fn,
@@ -959,15 +988,16 @@ class ExportMonitor(EveryN):
           default_batch_size=self._default_batch_size,
           input_feature_key=self._input_feature_key,
           use_deprecated_input_fn=self._use_deprecated_input_fn)
-    except (RuntimeError, TypeError):
+    except RuntimeError:
       # Currently we are not syncronized with saving checkpoints, which leads to
       # runtime errors when we are calling export on the same global step.
       # Exports depend on saved checkpoints for constructing the graph and
       # getting the global step from the graph instance saved in the checkpoint.
       # If the checkpoint is stale with respect to current step, the global step
-      # is taken to be the last saved checkpoints global step and exporter
+      # is taken to be the last saved checkpoint's global step and exporter
       # doesn't export the same checkpoint again with the following error.
-      logging.info("Skipping exporting for the same step. "
+      logging.info("Skipping exporting because the existing checkpoint has "
+                   "already been exported. "
                    "Consider exporting less frequently.")
 
   def end(self, session=None):
@@ -978,7 +1008,7 @@ class ExportMonitor(EveryN):
                    "yet.")
       return
     try:
-      self._estimator.export(
+      self._last_export_dir = self._estimator.export(
           self.export_dir,
           exports_to_keep=self.exports_to_keep,
           signature_fn=self.signature_fn,
@@ -986,7 +1016,7 @@ class ExportMonitor(EveryN):
           default_batch_size=self._default_batch_size,
           input_feature_key=self._input_feature_key,
           use_deprecated_input_fn=self._use_deprecated_input_fn)
-    except (RuntimeError, TypeError):
+    except RuntimeError:
       logging.info("Skipping exporting for the same step.")
 
 
@@ -1014,7 +1044,7 @@ class CheckpointSaver(BaseMonitor):
       ValueError: If both `save_steps` and `save_secs` are not `None`.
       ValueError: If both `save_steps` and `save_secs` are `None`.
     """
-    logging.info("Create CheckpointSaver")
+    logging.info("Create CheckpointSaver.")
     super(CheckpointSaver, self).__init__()
     self._saver = saver
     self._summary_writer = SummaryWriterCache.get(checkpoint_dir)

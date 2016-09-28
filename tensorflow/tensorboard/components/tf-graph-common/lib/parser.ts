@@ -65,14 +65,17 @@ export function fetchAndParseMetadata(path: string, tracker: ProgressTracker) {
           },
           tracker)
       .then((arrayBuffer: ArrayBuffer) => {
-        return tf.graph.util.runTask('Parsing metadata.pbtxt', 60, () => {
-          return arrayBuffer != null ? parseStatsPbTxt(arrayBuffer) : null;
-        }, tracker);
+        return tf.graph.util.runAsyncPromiseTask(
+            'Parsing metadata.pbtxt', 60, () => {
+              return arrayBuffer != null ? parseStatsPbTxt(arrayBuffer) :
+                                           Promise.resolve(null);
+            }, tracker);
       });
 }
 
 /**
- * Fetches the graph file, parses it and returns a promise of the result.
+ * Fetches the graph file, parses it and returns a promise of the result. The
+ * result will be undefined if the graph is empty.
  */
 export function fetchAndParseGraphData(path: string, pbTxtFile: Blob,
     tracker: ProgressTracker) {

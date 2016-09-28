@@ -14,64 +14,64 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
+
+#include <limits>
+#include <mutex>
+
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 
 namespace tensorflow {
 namespace profile_utils {
 
-namespace {
-
-const class StaticVariableInitializer {
- public:
-  StaticVariableInitializer() { CpuUtils::Initialize(); }
-} STATIC_VARIABLE_INITIALIZER;
-
-}  // anonymous namespace for initializer
-
 /* static */ constexpr int64 CpuUtils::INVALID_FREQUENCY;
 
-/* static */ int64 CpuUtils::GetCpuFrequency() {
-  static const int64 cpu_frequency = GetCpuFrequencyImpl();
-  return cpu_frequency;
-}
+static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
 
-/* static */ int CpuUtils::GetClockPerMicroSec() {
-  static const int clock_per_micro_sec =
-      static_cast<int>(GetCpuFrequency() / (1000LL * 1000LL));
-  return clock_per_micro_sec;
+/* static */ int64 CpuUtils::GetCycleCounterFrequency() {
+  static const int64 cpu_frequency = GetCycleCounterFrequencyImpl();
+  return cpu_frequency;
 }
 
 /* static */ double CpuUtils::GetMicroSecPerClock() {
   static const double micro_sec_per_clock =
-      (1000.0 * 1000.0) / static_cast<double>(GetCpuFrequency());
+      (1000.0 * 1000.0) / static_cast<double>(GetCycleCounterFrequency());
   return micro_sec_per_clock;
 }
 
-/* static */ void CpuUtils::Initialize() {
-  CpuUtils::GetCpuFrequency();
-  CpuUtils::GetClockPerMicroSec();
-  CpuUtils::GetMicroSecPerClock();
-  GetCpuUtilsHelper().Initialize();
-}
-
 /* static */ void CpuUtils::ResetClockCycle() {
-  GetCpuUtilsHelper().ResetClockCycle();
+  GetCpuUtilsHelperSingletonInstance().ResetClockCycle();
 }
 
 /* static */ void CpuUtils::EnableClockCycleProfiling(const bool enable) {
-  GetCpuUtilsHelper().EnableClockCycleProfiling(enable);
+  GetCpuUtilsHelperSingletonInstance().EnableClockCycleProfiling(enable);
 }
 
-/* static */ int64 CpuUtils::GetCpuFrequencyImpl() {
+/* static */ std::chrono::duration<double> CpuUtils::ConvertClockCycleToTime(
+    const int64 clock_cycle) {
+  return std::chrono::duration<double>(static_cast<double>(clock_cycle) /
+                                       GetCycleCounterFrequency());
+}
+
+/* static */ int64 CpuUtils::GetCycleCounterFrequencyImpl() {
 // TODO(satok): do not switch by macro here
 #if defined(__ANDROID__)
-  // TODO:(satok): Support Android
+#if defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
+  // This profiling tool only supports Ver 21 or upper on Android
+  return GetCpuUtilsHelperSingletonInstance().CalculateCpuFrequency();
+#else  // defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
   return INVALID_FREQUENCY;
+#endif
 #elif defined(__linux__)
   double bogomips;
   FILE* fp = popen("grep '^bogomips' /proc/cpuinfo | head -1", "r");
+  if (fp == nullptr) {
+    return INVALID_FREQUENCY;
+  }
   const int retval_of_bogomips = fscanf(fp, "bogomips : %lf", &bogomips);
+  if (retval_of_bogomips <= 0) {
+    return INVALID_FREQUENCY;
+  }
   pclose(fp);
   const double freq_ghz = bogomips / 1000.0 / 2.0;
   if (retval_of_bogomips != 1 || freq_ghz < 0.01) {
@@ -83,7 +83,12 @@ const class StaticVariableInitializer {
   int64 freq_hz;
   FILE* fp =
       popen("sysctl hw | grep hw.cpufrequency_max: | cut -d' ' -f 2", "r");
-  fscanf(fp, "%lld", &freq_hz);
+  if (fp == nullptr) {
+    return INVALID_FREQUENCY;
+  }
+  if (fscanf(fp, "%lld", &freq_hz) != 1) {
+    return INVALID_FREQUENCY;
+  }
   pclose(fp);
   if (freq_hz < 1e6) {
     LOG(WARNING) << "Failed to get CPU frequency: " << freq_hz << " Hz";
@@ -97,14 +102,19 @@ const class StaticVariableInitializer {
 #endif
 }
 
-/* static */ ICpuUtilsHelper& CpuUtils::GetCpuUtilsHelper() {
+/* static */ ICpuUtilsHelper& CpuUtils::GetCpuUtilsHelperSingletonInstance() {
+  static std::once_flag flag;
+  std::call_once(flag, []() {
+    if (cpu_utils_helper_instance_ != nullptr) {
+      LOG(FATAL) << "cpu_utils_helper_instance_ is already instantiated.";
+    }
 #if defined(__ANDROID__) && defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
-  static AndroidArmV7ACpuUtilsHelper cpu_utils_helper;
+    cpu_utils_helper_instance_ = new AndroidArmV7ACpuUtilsHelper();
 #else
-  // TODO(satok): Change CpuUtilsHelper by cpu architecture
-  static DefaultCpuUtilsHelper cpu_utils_helper;
+      cpu_utils_helper_instance_ = new DefaultCpuUtilsHelper();
 #endif
-  return cpu_utils_helper;
+  });
+  return *cpu_utils_helper_instance_;
 }
 
 }  // namespace profile_utils

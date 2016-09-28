@@ -20,6 +20,7 @@ from __future__ import print_function
 import math
 import threading
 
+from tensorflow.contrib.learn.python.learn.learn_io import graph_io
 from tensorflow.contrib.tensor_forest.python import constants
 
 from tensorflow.python.framework import common_shapes
@@ -104,8 +105,11 @@ def _ParseSparse(data):
   offset = 0
 
   sparse_tensors = []
+  keys = None
   for k in sorted(data.keys()):
-    if isinstance(data[k], ops.SparseTensor):
+    if k == graph_io.KEY_FEATURE_NAME:
+      keys = data[k]
+    elif isinstance(data[k], ops.SparseTensor):
       sparse_indices = data[k].indices
       sparse_values = data[k].values
       new_shape = array_ops.concat(
@@ -123,19 +127,33 @@ def _ParseSparse(data):
                                            values=new_values,
                                            shape=new_shape))
 
-  return (sparse_ops.sparse_concat(1, sparse_tensors),
+  return (sparse_ops.sparse_concat(1, sparse_tensors), keys,
           [constants.DATA_CATEGORICAL])
 
 
 def _ParseDense(data):
+  """Return a single flat tensor, keys, and a data spec list.
+
+  Args:
+    data: A dict mapping feature names to Tensors.
+
+  Returns:
+    A tuple of (single dense float Tensor, keys tensor (if exists), data spec).
+  """
   convert_ops = Load()
   data_spec = [constants.DATA_CATEGORICAL if data[k].dtype == dtypes.string else
                constants.DATA_FLOAT for k in sorted(data.keys())]
   data_spec = [constants.DATA_FLOAT] + data_spec
-  return array_ops.concat(1, [
-      convert_ops.string_to_float(data[k]) if data[k].dtype == dtypes.string
-      else data[k] for k in sorted(data.keys())
-  ]), data_spec
+  keys = None
+  features = []
+  for k in sorted(data.keys()):
+    if k == graph_io.KEY_FEATURE_NAME:
+      keys = data[k]
+    else:
+      features.append(
+          convert_ops.string_to_float(data[k]) if data[k].dtype == dtypes.string
+          else data[k])
+  return array_ops.concat(1, features), keys, data_spec
 
 
 def ParseDataTensorOrDict(data):
@@ -148,8 +166,9 @@ def ParseDataTensorOrDict(data):
     data: `Tensor` or `dict` of `Tensor` objects.
 
   Returns:
-    A 2-D tensor for input to tensor_forest and a 1-D tensor of the
-      type of each column (e.g. continuous float, categorical).
+    A 2-D tensor for input to tensor_forest, a keys tensor for the
+    tf.Examples if they exist, and a list of the type of each column
+    (e.g. continuous float, categorical).
   """
   if isinstance(data, dict):
     # If there's at least one sparse tensor, everything has to be sparse.
@@ -163,7 +182,7 @@ def ParseDataTensorOrDict(data):
     else:
       return _ParseDense(data)
   else:
-    return data, [constants.DATA_FLOAT] * data.get_shape().as_list()[1]
+    return data, None, [constants.DATA_FLOAT] * data.get_shape().as_list()[1]
 
 
 def ParseLabelTensorOrDict(labels):

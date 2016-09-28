@@ -107,7 +107,7 @@ void ZlibOutputBuffer::AddToInputBuffer(StringPiece data) {
 }
 
 Status ZlibOutputBuffer::DeflateBuffered(bool last) {
-  bool flush_mode = last ? Z_FINISH : zlib_options_.flush_mode;
+  int flush_mode = last ? Z_FINISH : zlib_options_.flush_mode;
   do {
     // From zlib manual (http://www.zlib.net/manual.html):
     //
@@ -130,7 +130,7 @@ Status ZlibOutputBuffer::DeflateBuffered(bool last) {
 }
 
 Status ZlibOutputBuffer::FlushOutputBufferToFile() {
-  uint bytes_to_write = output_buffer_capacity_ - z_stream_->avail_out;
+  uint32 bytes_to_write = output_buffer_capacity_ - z_stream_->avail_out;
   if (bytes_to_write > 0) {
     Status s = file_->Append(StringPiece(
         reinterpret_cast<char*>(z_stream_output_.get()), bytes_to_write));
@@ -187,7 +187,6 @@ Status ZlibOutputBuffer::Write(StringPiece data) {
 
   // Restore z_stream input pointers.
   z_stream_->next_in = z_stream_input_.get();
-  z_stream_->avail_in = 0;
 
   return Status::OK();
 }

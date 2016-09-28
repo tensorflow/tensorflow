@@ -18,6 +18,10 @@ Useful reference for derivative formulas is
 An extended collection of matrix derivative results for forward and reverse
 mode algorithmic differentiation by Mike Giles:
 http://eprints.maths.ox.ac.uk/1079/1/NA-08-01.pdf
+
+A detailed derivation of formulas for backpropagating through spectral layers
+(SVD and Eig) by Ionescu, Vantzos & Sminchisescu:
+https://arxiv.org/pdf/1509.07838v4.pdf
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -88,3 +92,43 @@ def _MatrixTriangularSolveGrad(op, grad):
   else:
     grad_a = array_ops.matrix_band_part(grad_a, 0, -1)
   return (grad_a, grad_b)
+
+
+@ops.RegisterGradient("SelfAdjointEigV2")
+def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
+  """Gradient for SelfAdjointEigV2."""
+  e = op.outputs[0]
+  v = op.outputs[1]
+  # a = op.inputs[0], which satisfies
+  # a[...,:,:] * v[...,:,i] = e[...,i] * v[...,i]
+  with ops.control_dependencies([grad_e.op, grad_v.op]):
+    if grad_v is not None:
+      # Construct the matrix f(i,j) = (i != j ? 1 / (e_i - e_j) : 0).
+      # Notice that because of the term involving f, the gradient becomes
+      # infinite (or NaN in practice) when eigenvalues are not unique.
+      # Mathematically this should not be surprising, since for (k-fold)
+      # degenerate eigenvalues, the corresponding eigenvectors are only defined
+      # up to arbitrary rotation in a (k-dimensional) subspace.
+      f = array_ops.matrix_set_diag(
+          math_ops.inv(
+              array_ops.expand_dims(e, -2) - array_ops.expand_dims(e, -1)),
+          array_ops.zeros_like(e))
+      grad_a = math_ops.batch_matmul(
+          v,
+          math_ops.batch_matmul(
+              array_ops.matrix_diag(grad_e) + f * math_ops.batch_matmul(
+                  v, grad_v, adj_x=True),
+              v,
+              adj_y=True))
+    else:
+      grad_a = math_ops.batch_matmul(
+          v,
+          math_ops.batch_matmul(
+              array_ops.matrix_diag(grad_e), v, adj_y=True))
+    # The forward op only depends on the lower triangular part of a, so here we
+    # symmetrize and take the lower triangle
+    grad_a = array_ops.matrix_band_part(
+        grad_a + array_ops.matrix_transpose(grad_a), -1, 0)
+    grad_a = array_ops.matrix_set_diag(grad_a, 0.5 *
+                                       array_ops.matrix_diag_part(grad_a))
+    return grad_a

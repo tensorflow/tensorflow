@@ -16,11 +16,15 @@ limitations under the License.
 -->
 
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../iron-collapse/iron-collapse.html">
 <link rel="import" href="../paper-toggle-button/paper-toggle-button.html">
 <link rel="import" href="../paper-listbox/paper-listbox.html">
 <link rel="import" href="../paper-item/paper-item.html">
 <link rel="import" href="../paper-checkbox/paper-checkbox.html">
 <link rel="import" href="vz-projector-data-panel.html">
+<link rel="import" href="vz-projector-bookmark-panel.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
+<link rel="import" href="../paper-tooltip/paper-tooltip.html">
 
 <dom-module id='vz-projector'>
 <template>
@@ -120,6 +124,10 @@ limitations under the License.
 .slider span {
   width: 35px;
   text-align: right;
+}
+
+.slider label {
+  width: 100%;
 }
 
 .control input[type=text]:focus {
@@ -410,7 +418,7 @@ limitations under the License.
   z-index: 1;
 }
 
-.ink-panel-menubar .ink-fabs .ink-fab {
+.ink-fab, vz-projector-bookmark-panel::shadow .ink-fab {
   position: relative;
   top: -20px;
   width: 40px;
@@ -424,7 +432,7 @@ limitations under the License.
   cursor: pointer;
 }
 
-.ink-panel-menubar .ink-fabs .ink-fab .material-icons {
+.ink-fab .material-icons {
   margin: 0;
   display: block;
   line-height: 24px;
@@ -461,6 +469,26 @@ paper-listbox .pca-item {
   border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
+#bookmark-panel {
+  bottom: 0;
+  position: absolute;
+  width: 300px;
+}
+#bookmark-panel-container {
+  bottom: 60px;
+  position: absolute;
+}
+
+.help-icon {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+}
+
+.tooltip {
+  max-width: 200px;
+}
 </style>
 <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500|Material+Icons" rel="stylesheet" type="text/css">
 <div id="wrapper-notify-msg">
@@ -482,17 +510,31 @@ paper-listbox .pca-item {
       <p style="color: #880E4F; font-weight: bold;">For fast results, your data will be sampled down to [[getTsneSampleSize()]] points.</p>
       <div class="slider"><label>Dimension</label><div class="two-way-toggle"><span>2D</span><paper-toggle-button id="tsne-toggle" noink checked>3D</paper-toggle-button></div></div>
       <div class="slider tsne-perplexity">
-        <label>Perplexity</label>
+        <label>
+          Perplexity
+          <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+          <paper-tooltip class="tooltip" position="right" animation-delay="0">
+            The most appropriate perplexity value depends on the density of your
+            data. Loosely speaking, one could say that a larger / denser dataset
+            requires a larger perplexity. Typical values for the perplexity range
+            between 5 and 50.
+          </paper-tooltip>
+        </label>
         <input type="range" min="2" max="100"></input>
         <span></span>
       </div>
       <div class="slider tsne-learning-rate">
-        <label>Learning rate</label>
+        <label>
+          Learning rate
+          <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+          <paper-tooltip class="tooltip" position="right" animation-delay="0">
+            The most appropriate learning rate depends on the size of your data,
+            with smaller datasets requiring smaller learning rates.
+          </paper-tooltip>
+        </label>
         <input type="range" min="-3" max="2"></input>
         <span></span>
       </div>
-      <p>The most appropriate perplexity value depends on the density of your data. Loosely speaking, one could say that a larger / denser dataset requires a larger perplexity. Typical values for the perplexity range between 5 and 50.</p>
-      <p>The most appropriate learning rate depends on the size of your data, with smaller datasets requiring smaller learning rates.</p>
       <p>
         <button class="run-tsne ink-button" title="Re-run t-SNE">Re-run</button>
         <button class="stop-tsne ink-button" title="Stop t-SNE">Stop</button>
@@ -569,6 +611,10 @@ paper-listbox .pca-item {
         <i class="material-icons">brightness_2</i>
         Night Mode
       </button>
+      <button class="menu-button labels3DMode" title="3D Labels">
+        <i class="material-icons">flip_to_front</i>
+        3D Labels
+      </button>
       <div class="ink-fabs">
         <div class="ink-fab reset-zoom" title="Zoom to fit all">
           <i class="material-icons resetZoom">home</i>
@@ -624,7 +670,7 @@ paper-listbox .pca-item {
           <a class="euclidean" href="javascript:void(0);">euclidean</a>
         </div>
       </div>
-      <p>Nearest points to <b id="nn-title"></b></p>
+      <p>Nearest points:
       <div class="nn-list"></div>
     </div>
 
@@ -632,7 +678,11 @@ paper-listbox .pca-item {
     <div data-panel="data" class="active ink-panel-content">
       <vz-projector-data-panel id="data-panel" label-option="{{labelOption}}" color-option="{{colorOption}}"></vz-projector-data-panel>
     </div>
-  </div>
+
+    <div id="bookmark-panel-container">
+      <vz-projector-bookmark-panel id="bookmark-panel"></vz-projector-bookmark-panel>
+    </div>
 </div>
 </template>
 </dom-module>
+

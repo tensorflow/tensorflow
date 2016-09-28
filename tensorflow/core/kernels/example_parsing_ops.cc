@@ -15,8 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/parsing_ops.cc.
 
+#include <numeric>
 #include <unordered_set>
-
 #include <vector>
 
 #include "tensorflow/core/example/example.pb.h"

@@ -122,6 +122,20 @@ class BinaryOp : public BinaryOpShared {
           BCast::ToIndexArray<3>(bcast->x_bcast()),
           in1.shaped<Tin, 3>(bcast->y_reshape()),
           BCast::ToIndexArray<3>(bcast->y_bcast()), error_ptr);
+    } else if (ndims == 4) {
+      functor::BinaryFunctor<Device, Functor, 4>().BCast(
+          eigen_device, out->shaped<Tout, 4>(bcast->result_shape()),
+          in0.shaped<Tin, 4>(bcast->x_reshape()),
+          BCast::ToIndexArray<4>(bcast->x_bcast()),
+          in1.shaped<Tin, 4>(bcast->y_reshape()),
+          BCast::ToIndexArray<4>(bcast->y_bcast()), error_ptr);
+    } else if (ndims == 5) {
+      functor::BinaryFunctor<Device, Functor, 5>().BCast(
+          eigen_device, out->shaped<Tout, 5>(bcast->result_shape()),
+          in0.shaped<Tin, 5>(bcast->x_reshape()),
+          BCast::ToIndexArray<5>(bcast->x_bcast()),
+          in1.shaped<Tin, 5>(bcast->y_reshape()),
+          BCast::ToIndexArray<5>(bcast->y_bcast()), error_ptr);
     } else {
       SetUnimplementedError(ctx);
     }
@@ -187,8 +201,8 @@ class UnaryOp : public OpKernel {
 
 namespace functor {
 
-template <typename D, typename OUT, typename RHS>
-void Assign(const D& d, OUT out, RHS rhs) {
+template <typename D, typename Out, typename Rhs>
+void Assign(const D& d, Out out, Rhs rhs) {
   out.device(d) = rhs;
 }
 

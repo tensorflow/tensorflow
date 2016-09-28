@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import hashlib
 import re
 
 import six
@@ -603,11 +604,16 @@ class RandomShuffleQueue(QueueBase):
     dtypes = _as_type_list(dtypes)
     shapes = _as_shape_list(shapes, dtypes)
     names = _as_name_list(names, dtypes)
-    # If shared_name is provided and an op seed was not provided, we must ensure
-    # that we use the same seed for all queues with the same shared_name.
-    if shared_name is not None and seed is None:
-      seed = hash(shared_name)
     seed1, seed2 = random_seed.get_seed(seed)
+    if seed1 is None and seed2 is None:
+      seed1, seed2 = 0, 0
+    elif seed is None and shared_name is not None:
+      # This means that graph seed is provided but op seed is not provided.
+      # If shared_name is also provided, make seed2 depend only on the graph
+      # seed and shared_name. (seed2 from get_seed() is generally dependent on
+      # the id of the last op created.)
+      string = (str(seed1) + shared_name).encode("utf-8")
+      seed2 = int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
     queue_ref = gen_data_flow_ops._random_shuffle_queue(
         component_types=dtypes, shapes=shapes, capacity=capacity,
         min_after_dequeue=min_after_dequeue, seed=seed1, seed2=seed2,
@@ -1055,56 +1061,40 @@ ops.NotDifferentiable("MutableHashTable")
 ops.NotDifferentiable("MutableHashTableOfTensors")
 
 
-ops.RegisterShape("QueueSize")(common_shapes.scalar_shape)
-ops.RegisterShape("Queue")(common_shapes.scalar_shape)
-ops.RegisterShape("FIFOQueue")(common_shapes.scalar_shape)
-ops.RegisterShape("PaddingFIFOQueue")(common_shapes.scalar_shape)
-ops.RegisterShape("RandomShuffleQueue")(common_shapes.scalar_shape)
-ops.RegisterShape("PriorityQueue")(common_shapes.scalar_shape)
+ops.RegisterShape("QueueSize")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Queue")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FIFOQueue")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("PaddingFIFOQueue")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RandomShuffleQueue")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("PriorityQueue")(common_shapes.call_cpp_shape_fn)
 
-
-def _ScalarToVoidShape(op):
-  """Shape function for ops that take a scalar and produce no outputs."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return []
 
 # NOTE(mrry): The following ops use higher-level information in the
 # Queue class to provide shape information.
-ops.RegisterShape("QueueDequeue")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueDequeueMany")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueDequeueUpTo")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueEnqueue")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueEnqueueMany")(common_shapes.unknown_shape)
-ops.RegisterShape("QueueClose")(_ScalarToVoidShape)
+ops.RegisterShape("QueueDequeue")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QueueDequeueMany")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QueueDequeueUpTo")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QueueEnqueue")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QueueEnqueueMany")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("QueueClose")(common_shapes.call_cpp_shape_fn)
 
-ops.RegisterShape("Stack")(common_shapes.scalar_shape)
-ops.RegisterShape("StackPush")(common_shapes.unknown_shape)
-ops.RegisterShape("StackPop")(common_shapes.unknown_shape)
-ops.RegisterShape("StackClose")(_ScalarToVoidShape)
+ops.RegisterShape("Stack")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("StackPush")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("StackPop")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("StackClose")(common_shapes.call_cpp_shape_fn)
 
 # NOTE(mrry): Uses higher-level information in the Barrier class to
 # provide shape information.
-ops.RegisterShape("BarrierReadySize")(common_shapes.scalar_shape)
-ops.RegisterShape("BarrierIncompleteSize")(common_shapes.scalar_shape)
-ops.RegisterShape("Barrier")(common_shapes.scalar_shape)
-ops.RegisterShape("BarrierTakeMany")(common_shapes.unknown_shape)
-ops.RegisterShape("BarrierClose")(_ScalarToVoidShape)
+ops.RegisterShape("BarrierReadySize")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BarrierIncompleteSize")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Barrier")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BarrierTakeMany")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BarrierClose")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("BarrierInsertMany")(common_shapes.call_cpp_shape_fn)
 
-
-@ops.RegisterShape("BarrierInsertMany")
-def _BarrierInsertManyShape(op):
-  unused_handle_shape = op.inputs[0].get_shape().merge_with(
-      tensor_shape.scalar())
-  keys_shape = op.inputs[1].get_shape().with_rank(1)
-  values_shape = op.inputs[2].get_shape().with_rank_at_least(1)
-  keys_shape.assert_is_compatible_with(values_shape[0])
-  return []
-
-
-# NOTE(yuanbyu): We probably can do better here.
-ops.RegisterShape("GetSessionHandle")(common_shapes.scalar_shape)
-ops.RegisterShape("GetSessionTensor")(common_shapes.unknown_shape)
-ops.RegisterShape("DeleteSessionTensor")(_ScalarToVoidShape)
+ops.RegisterShape("GetSessionHandle")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("GetSessionTensor")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("DeleteSessionTensor")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("DynamicPartition")
@@ -1144,58 +1134,14 @@ def _DynamicStitchShape(op):
   return [tensor_shape.TensorShape([None]).concatenate(extra_shape)]
 
 
-@ops.RegisterShape("LookupTableFind")
-def _LookupTableFindShape(op):
-  """Shape function for data_flow_ops._lookup_table_find."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return [tensor_shape.unknown_shape()]
-
-
-@ops.RegisterShape("LookupTableInsert")
-@ops.RegisterShape("LookupTableImport")
-def _LookupTableInsertShape(op):
-  """Shape function for data_flow_ops._lookup_table_insert."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return []
-
-
-@ops.RegisterShape("LookupTableSize")
-def _LookupTableSizeShape(op):
-  """Shape function for data_flow_ops._lookup_table_find."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  return [tensor_shape.scalar()]
-
-
-@ops.RegisterShape("LookupTableExport")
-def _LookupTableExportShape(op):
-  """Shape function for data_flow_ops._lookup_table_export_values."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  keys_shape = tensor_shape.vector(None)
-  values_shape = tensor_shape.unknown_shape()
-  return [keys_shape, values_shape]
-
-
-@ops.RegisterShape("HashTable")
-@ops.RegisterShape("MutableHashTable")
-@ops.RegisterShape("MutableHashTableOfTensors")
-def _HashTableShape(_):
-  """Shape function for data_flow_ops._hash_table."""
-  return [tensor_shape.scalar()]
-
-
-@ops.RegisterShape("InitializeTable")
-def _InitializeLookupTableShape(op):
-  """Shape function for data_flow_ops._initialize_table."""
-  op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  keys_shape = op.inputs[1].get_shape().with_rank(1)
-  op.inputs[2].get_shape().merge_with(keys_shape)
-  return []
-
-
-@ops.RegisterShape("InitializeTableFromTextFile")
-def _InitializeTableFromTextFileShape(op):
-  """Shape function for lookup_ops._initialize_table_from_text_file."""
-  unused_table_shape = op.inputs[0].get_shape().merge_with(tensor_shape.scalar(
-  ))
-  unused_filename = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
-  return []
+ops.RegisterShape("LookupTableFind")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LookupTableInsert")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LookupTableImport")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LookupTableSize")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LookupTableExport")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("HashTable")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MutableHashTable")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MutableHashTableOfTensors")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("InitializeTable")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("InitializeTableFromTextFile")(
+    common_shapes.call_cpp_shape_fn)

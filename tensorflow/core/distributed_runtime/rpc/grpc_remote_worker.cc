@@ -250,7 +250,6 @@ class GrpcRemoteWorker : public WorkerInterface {
 
   // Support for logging.
   WorkerCacheLogger* logger_;
-  bool retry_unavailable_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcRemoteWorker);
 };

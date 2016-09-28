@@ -2057,91 +2057,91 @@ op {
   name: "BatchFFT"
   input_arg {
     name: "input"
-    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most\ndimension of `input` is replaced with its 1D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the 1-dimensional discrete Fourier Transform over the inner-most"
-  description: "dimension of `input`."
+  deprecation {
+    version: 15
+    explanation: "Use FFT"
+  }
 }
 op {
   name: "BatchFFT2D"
   input_arg {
     name: "input"
-    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their 2D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the 2-dimensional discrete Fourier Transform over the inner-most"
-  description: "2 dimensions of `input`."
+  deprecation {
+    version: 15
+    explanation: "Use FFT2D"
+  }
 }
 op {
   name: "BatchFFT3D"
   input_arg {
     name: "input"
-    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their 3D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the 3-dimensional discrete Fourier Transform over the inner-most 3"
-  description: "dimensions of `input`."
+  deprecation {
+    version: 15
+    explanation: "Use FFT3D"
+  }
 }
 op {
   name: "BatchIFFT"
   input_arg {
     name: "input"
-    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most\ndimension of `input` is replaced with its inverse 1D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most"
-  description: "dimension of `input`."
+  deprecation {
+    version: 15
+    explanation: "Use IFFT"
+  }
 }
 op {
   name: "BatchIFFT2D"
   input_arg {
     name: "input"
-    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their inverse 2D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most"
-  description: "2 dimensions of `input`."
+  deprecation {
+    version: 15
+    explanation: "Use IFFT2D"
+  }
 }
 op {
   name: "BatchIFFT3D"
   input_arg {
     name: "input"
-    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their inverse 3D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most"
-  description: "3 dimensions of `input`."
+  deprecation {
+    version: 15
+    explanation: "Use IFFT3D"
+  }
 }
 op {
   name: "BatchMatMul"
@@ -2769,7 +2769,61 @@ op {
     }
   }
   summary: "BatchToSpace for 4-D tensors of type T."
-  description: "Rearranges (permutes) data from batch into blocks of spatial data, followed by\ncropping. This is the reverse transformation of SpaceToBatch. More specifically,\nthis op outputs a copy of the input tensor where values from the `batch`\ndimension are moved in spatial blocks to the `height` and `width` dimensions,\nfollowed by cropping along the `height` and `width` dimensions."
+  description: "This is a legacy version of the more general BatchToSpaceND.\n\nRearranges (permutes) data from batch into blocks of spatial data, followed by\ncropping. This is the reverse transformation of SpaceToBatch. More specifically,\nthis op outputs a copy of the input tensor where values from the `batch`\ndimension are moved in spatial blocks to the `height` and `width` dimensions,\nfollowed by cropping along the `height` and `width` dimensions."
+}
+op {
+  name: "BatchToSpaceND"
+  input_arg {
+    name: "input"
+    description: "N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,\nwhere spatial_shape has M dimensions."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "block_shape"
+    description: "1-D with shape `[M]`, all values must be >= 1."
+    type_attr: "Tblock_shape"
+  }
+  input_arg {
+    name: "crops"
+    description: "2-D with shape `[M, 2]`, all values must be >= 0.\n  `crops[i] = [crop_start, crop_end]` specifies the amount to crop from input\n  dimension `i + 1`, which corresponds to spatial dimension `i`.  It is\n  required that\n  `crop_start[i] + crop_end[i] <= block_shape[i] * input_shape[i + 1]`.\n\nThis operation is equivalent to the following steps:\n\n1. Reshape `input` to `reshaped` of shape:\n     [block_shape[0], ..., block_shape[M-1],\n      batch / prod(block_shape),\n      input_shape[1], ..., input_shape[N-1]]\n\n2. Permute dimensions of `reshaped` to produce `permuted` of shape\n     [batch / prod(block_shape),\n\n      input_shape[1], block_shape[0],\n      ...,\n      input_shape[M], block_shape[M-1],\n\n      input_shape[M+1], ..., input_shape[N-1]]\n\n3. Reshape `permuted` to produce `reshaped_permuted` of shape\n     [batch / prod(block_shape),\n\n      input_shape[1] * block_shape[0],\n      ...,\n      input_shape[M] * block_shape[M-1],\n\n      input_shape[M+1],\n      ...,\n      input_shape[N-1]]\n\n4. Crop the start and end of dimensions `[1, ..., M]` of\n   `reshaped_permuted` according to `crops` to produce the output of shape:\n     [batch / prod(block_shape),\n\n      input_shape[1] * block_shape[0] - crops[0,0] - crops[0,1],\n      ...,\n      input_shape[M] * block_shape[M-1] - crops[M-1,0] - crops[M-1,1],\n\n      input_shape[M+1], ..., input_shape[N-1]]\n\nSome examples:\n\n(1) For the following input of shape `[4, 1, 1, 1]`, `block_shape = [2, 2]`, and\n    `crops = [[0, 0], [0, 0]]`:\n\n```prettyprint\n[[[[1]]], [[[2]]], [[[3]]], [[[4]]]]\n```\n\nThe output tensor has shape `[1, 2, 2, 1]` and value:\n\n```prettyprint\nx = [[[[1], [2]], [[3], [4]]]]\n```\n\n(2) For the following input of shape `[4, 1, 1, 3]`, `block_shape = [2, 2]`, and\n    `crops = [[0, 0], [0, 0]]`:\n\n```prettyprint\n[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]\n```\n\nThe output tensor has shape `[1, 2, 2, 3]` and value:\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\n(3) For the following input of shape `[4, 2, 2, 1]`, `block_shape = [2, 2]`, and\n    `crops = [[0, 0], [0, 0]]`:\n\n```prettyprint\nx = [[[[1], [3]], [[5], [7]]],\n     [[[2], [4]], [[10], [12]]],\n     [[[5], [7]], [[13], [15]]],\n     [[[6], [8]], [[14], [16]]]]\n```\n\nThe output tensor has shape `[1, 4, 4, 1]` and value:\n\n```prettyprint\nx = [[[1],   [2],  [3],  [4]],\n     [[5],   [6],  [7],  [8]],\n     [[9],  [10], [11],  [12]],\n     [[13], [14], [15],  [16]]]\n```\n\n(4) For the following input of shape `[8, 1, 3, 1]`, `block_shape = [2, 2]`, and\n    `crops = [[0, 0], [2, 0]]`:\n\n```prettyprint\nx = [[[[0], [1], [3]]], [[[0], [9], [11]]],\n     [[[0], [2], [4]]], [[[0], [10], [12]]],\n     [[[0], [5], [7]]], [[[0], [13], [15]]],\n     [[[0], [6], [8]]], [[[0], [14], [16]]]]\n```\n\nThe output tensor has shape `[2, 2, 4, 1]` and value:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]]],\n     [[[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```"
+    type_attr: "Tcrops"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tblock_shape"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tcrops"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "BatchToSpace for N-D tensors of type T."
+  description: "This operation reshapes the \"batch\" dimension 0 into `M + 1` dimensions of shape\n`block_shape + [batch]`, interleaves these blocks back into the grid defined by\nthe spatial dimensions `[1, ..., M]`, to obtain a result with the same rank as\nthe input.  The spatial dimensions of this intermediate result are then\noptionally cropped according to `crops` to produce the output.  This is the\nreverse of SpaceToBatch.  See below for a precise description."
 }
 op {
   name: "Betainc"
@@ -4200,7 +4254,6 @@ op {
     }
   }
   summary: "Increments \'ref\' until it reaches \'limit\'."
-  description: "This operation outputs \"ref\" after the update is done.  This makes it\neasier to chain operations that need to use the updated value."
 }
 op {
   name: "CropAndResize"
@@ -5086,6 +5139,7 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -5114,6 +5168,7 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -5362,6 +5417,7 @@ op {
         type: DT_DOUBLE
         type: DT_UINT8
         type: DT_INT8
+        type: DT_UINT16
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
@@ -5404,7 +5460,7 @@ op {
     }
   }
   summary: "Draw bounding boxes on a batch of images."
-  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels and the bounding box is\n`[0.1, 0.5, 0.2, 0.9]`, the bottom-left and upper-right coordinates of the\nbounding box will be `(10, 40)` to `(50, 180)`.\n\nParts of the bounding box may fall outside the image."
+  description: "Outputs a copy of `images` but draws on top of the pixels zero or more bounding\nboxes specified by the locations in `boxes`. The coordinates of the each\nbounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example, if an image is 100 x 200 pixels and the bounding box is\n`[0.1, 0.2, 0.5, 0.9]`, the bottom-left and upper-right coordinates of the\nbounding box will be `(10, 40)` to `(50, 180)`.\n\nParts of the bounding box may fall outside the image."
 }
 op {
   name: "DynamicPartition"
@@ -5534,6 +5590,13 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
       }
     }
   }
@@ -5564,6 +5627,13 @@ op {
       list {
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_UINT16
+        type: DT_HALF
       }
     }
   }
@@ -6051,43 +6121,46 @@ op {
   name: "FFT"
   input_arg {
     name: "input"
-    description: "A complex64 vector."
+    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "The 1D Fourier Transform of `input`."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most\ndimension of `input` is replaced with its 1D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the 1-dimensional discrete Fourier Transform."
+  summary: "Compute the 1-dimensional discrete Fourier Transform over the inner-most"
+  description: "dimension of `input`."
 }
 op {
   name: "FFT2D"
   input_arg {
     name: "input"
-    description: "A complex64 matrix."
+    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "The 2D Fourier Transform of `input`."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their 2D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the 2-dimensional discrete Fourier Transform."
+  summary: "Compute the 2-dimensional discrete Fourier Transform over the inner-most"
+  description: "2 dimensions of `input`."
 }
 op {
   name: "FFT3D"
   input_arg {
     name: "input"
-    description: "A complex64 3-D tensor."
+    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "The 3D Fourier Transform of `input`."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their 3D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the 3-dimensional discrete Fourier Transform."
+  summary: "Compute the 3-dimensional discrete Fourier Transform over the inner-most 3"
+  description: "dimensions of `input`."
 }
 op {
   name: "FIFOQueue"
@@ -7000,44 +7073,46 @@ op {
   name: "IFFT"
   input_arg {
     name: "input"
-    description: "A complex64 vector."
+    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "The inverse 1D Fourier Transform of `input`."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most\ndimension of `input` is replaced with its inverse 1D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "    .Doc(R\"doc("
-  description: "Compute the inverse 1-dimensional discrete Fourier Transform."
+  summary: "Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most"
+  description: "dimension of `input`."
 }
 op {
   name: "IFFT2D"
   input_arg {
     name: "input"
-    description: "A complex64 matrix."
+    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "The inverse 2D Fourier Transform of `input`."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 2\ndimensions of `input` are replaced with their inverse 2D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the inverse 2-dimensional discrete Fourier Transform."
+  summary: "Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most"
+  description: "2 dimensions of `input`."
 }
 op {
   name: "IFFT3D"
   input_arg {
     name: "input"
-    description: "A complex64 3-D tensor."
+    description: "A complex64 tensor."
     type: DT_COMPLEX64
   }
   output_arg {
     name: "output"
-    description: "The inverse 3D Fourier Transform of `input`."
+    description: "A complex64 tensor of the same shape as `input`. The inner-most 3\ndimensions of `input` are replaced with their inverse 3D Fourier Transform."
     type: DT_COMPLEX64
   }
-  summary: "Compute the inverse 3-dimensional discrete Fourier Transform."
+  summary: "Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most"
+  description: "3 dimensions of `input`."
 }
 op {
   name: "Identity"
@@ -7316,7 +7391,7 @@ op {
   }
   input_arg {
     name: "values"
-    description: "Values of type Tval. Same shape as `keys`."
+    description: "Values of type Tval."
     type_attr: "Tval"
   }
   attr {
@@ -8209,7 +8284,7 @@ op {
   }
   input_arg {
     name: "values"
-    description: "Same shape as `keys`.  Values to associate with keys."
+    description: "Values to associate with keys."
     type_attr: "Tout"
   }
   attr {
@@ -8238,7 +8313,7 @@ op {
   }
   input_arg {
     name: "values"
-    description: "Same shape as `keys`.  Values to associate with keys."
+    description: "Values to associate with keys."
     type_attr: "Tout"
   }
   attr {
@@ -9245,6 +9320,29 @@ op {
   description: "This op creates a\n[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)\nprotocol buffer that contains the union of all the values in the input\nsummaries.\n\nWhen the Op is run, it reports an `InvalidArgument` error if multiple values\nin the summaries to merge use the same tag."
 }
 op {
+  name: "MergeV2Checkpoints"
+  input_arg {
+    name: "checkpoint_prefixes"
+    description: "prefixes of V2 checkpoints to merge."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "destination_prefix"
+    description: "scalar.  The desired final prefix.  Allowed to be the same\nas one of the checkpoint_prefixes."
+    type: DT_STRING
+  }
+  attr {
+    name: "delete_old_dirs"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "see above."
+  }
+  summary: "V2 format specific: merges the metadata files of sharded checkpoints.  The"
+  description: "result is one logical checkpoint, with one physical metadata file and renamed\ndata files.\n\nIntended for \"grouping\" multiple checkpoints in a sharded checkpoint setup.\n\nIf delete_old_dirs is true, attempts to delete recursively the dirname of each\npath in the input checkpoint_prefixes.  This is useful when those paths are non\nuser-facing temporary locations."
+}
+op {
   name: "Min"
   input_arg {
     name: "input"
@@ -9487,6 +9585,7 @@ op {
         type: DT_DOUBLE
         type: DT_UINT8
         type: DT_INT8
+        type: DT_UINT16
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
@@ -12363,6 +12462,38 @@ op {
   description: "This is like `Restore` except that restored tensor can be listed as filling\nonly a slice of a larger tensor.  `shape_and_slice` specifies the shape of the\nlarger tensor and the slice that the restored tensor covers.\n\nThe `shape_and_slice` input has the same format as the\nelements of the `shapes_and_slices` input of the `SaveSlices` op."
 }
 op {
+  name: "RestoreV2"
+  input_arg {
+    name: "prefix"
+    description: "Must have a single element.  The prefix of a V2 checkpoint."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_names"
+    description: "shape {N}.  The names of the tensors to be restored."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "shape_and_slices"
+    description: "shape {N}.  The slice specs of the tensors to be restored.\nEmpty strings indicate that they are non-partitioned tensors."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "tensors"
+    description: "shape {N}.  The restored tensors, whose shapes are read from the\ncheckpoint directly."
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    description: "shape {N}.  The list of expected dtype for the tensors.  Must match\nthose stored in the checkpoint."
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Restores tensors from a V2 checkpoint."
+  description: "For backward compatibility with the V1 format, this Op currently allows\nrestoring from a V1 checkpoint as well:\n  - This Op first attempts to find the V2 index file pointed to by \"prefix\", and\n    if found proceed to read it as a V2 checkpoint;\n  - Otherwise the V1 read path is invoked.\nRelying on this behavior is not recommended, as the ability to fall back to read\nV1 might be deprecated and eventually removed.\n\nBy default, restores the named tensors in full.  If the caller wishes to restore\nspecific slices of stored tensors, \"shape_and_slices\" should be non-empty\nstrings and correspondingly well-formed.\n\nCallers must ensure all the named tensors are indeed stored in the checkpoint."
+}
+op {
   name: "Reverse"
   input_arg {
     name: "tensor"
@@ -12668,6 +12799,37 @@ op {
   }
   summary: "Saves input tensors slices to disk."
   description: "This is like `Save` except that tensors can be listed in the saved file as being\na slice of a larger tensor.  `shapes_and_slices` specifies the shape of the\nlarger tensor and the slice that this tensor covers. `shapes_and_slices` must\nhave as many elements as `tensor_names`.\n\nElements of the `shapes_and_slices` input must either be:\n\n*  The empty string, in which case the corresponding tensor is\n   saved normally.\n*  A string of the form `dim0 dim1 ... dimN-1 slice-spec` where the\n   `dimI` are the dimensions of the larger tensor and `slice-spec`\n   specifies what part is covered by the tensor to save.\n\n`slice-spec` itself is a `:`-separated list: `slice0:slice1:...:sliceN-1`\nwhere each `sliceI` is either:\n\n*  The string `-` meaning that the slice covers all indices of this dimension\n*  `start,length` where `start` and `length` are integers.  In that\n   case the slice covers `length` indices starting at `start`.\n\nSee also `Save`."
+}
+op {
+  name: "SaveV2"
+  input_arg {
+    name: "prefix"
+    description: "Must have a single element. The prefix of the V2 checkpoint to which we\nwrite the tensors."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_names"
+    description: "shape {N}. The names of the tensors to be saved."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "shape_and_slices"
+    description: "shape {N}.  The slice specs of the tensors to be saved.\nEmpty strings indicate that they are non-partitioned tensors."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensors"
+    description: "`N` tensors to save."
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Saves tensors in V2 checkpoint format."
+  description: "By default, saves the named tensors in full.  If the caller wishes to save\nspecific slices of full tensors, \"shape_and_slices\" should be non-empty strings\nand correspondingly well-formed."
 }
 op {
   name: "ScalarSummary"
@@ -13022,6 +13184,189 @@ op {
   }
   summary: "Applies sparse updates to a variable reference."
   description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nIf values in `ref` is to be updated more than once, because there are\nduplicate entires in `indices`, the order at which the updates happen\nfor each value is undefined.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterUpdate.png\" alt>\n</div>"
+}
+op {
+  name: "SdcaFprint"
+  input_arg {
+    name: "input"
+    description: "vector of strings to compute fingerprints on."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    description: "vector containing the computed fingerprints."
+    type: DT_STRING
+  }
+  summary: "Computes fingerprints of the input strings."
+}
+op {
+  name: "SdcaOptimizer"
+  input_arg {
+    name: "sparse_example_indices"
+    description: "a list of vectors which contain example indices."
+    type: DT_INT64
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "sparse_feature_indices"
+    description: "a list of vectors which contain feature indices."
+    type: DT_INT64
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "sparse_feature_values"
+    description: "a list of vectors which contains feature value\nassociated with each feature group."
+    type: DT_FLOAT
+    number_attr: "num_sparse_features_with_values"
+  }
+  input_arg {
+    name: "dense_features"
+    description: "a list of matrices which contains the dense feature values."
+    type: DT_FLOAT
+    number_attr: "num_dense_features"
+  }
+  input_arg {
+    name: "example_weights"
+    description: "a vector which contains the weight associated with each\nexample."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "example_labels"
+    description: "a vector which contains the label/target associated with each\nexample."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "sparse_indices"
+    description: "a list of vectors where each value is the indices which has\ncorresponding weights in sparse_weights. This field maybe ommitted for the\ndense approach."
+    type: DT_INT64
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "sparse_weights"
+    description: "a list of vectors where each value is the weight associated with\na sparse feature group."
+    type: DT_FLOAT
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "dense_weights"
+    description: "a list of vectors where the values are the weights associated\nwith a dense feature group."
+    type: DT_FLOAT
+    number_attr: "num_dense_features"
+  }
+  input_arg {
+    name: "example_state_data"
+    description: "a list of vectors containing the example state data."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "out_example_state_data"
+    description: "a list of vectors containing the updated example state\ndata."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "out_delta_sparse_weights"
+    description: "a list of vectors where each value is the delta\nweights associated with a sparse feature group."
+    type: DT_FLOAT
+    number_attr: "num_sparse_features"
+  }
+  output_arg {
+    name: "out_delta_dense_weights"
+    description: "a list of vectors where the values are the delta\nweights associated with a dense feature group."
+    type: DT_FLOAT
+    number_attr: "num_dense_features"
+  }
+  attr {
+    name: "loss_type"
+    type: "string"
+    description: "Type of the primal loss. Currently SdcaSolver supports logistic,\nsquared and hinge losses."
+    allowed_values {
+      list {
+        s: "logistic_loss"
+        s: "squared_loss"
+        s: "hinge_loss"
+        s: "smooth_hinge_loss"
+      }
+    }
+  }
+  attr {
+    name: "adaptative"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Whether to use Adapative SDCA for the inner loop."
+  }
+  attr {
+    name: "num_sparse_features"
+    type: "int"
+    description: "Number of sparse feature groups to train on."
+    has_minimum: true
+  }
+  attr {
+    name: "num_sparse_features_with_values"
+    type: "int"
+    description: "Number of sparse feature groups with values\nassociated with it, otherwise implicitly treats values as 1.0."
+    has_minimum: true
+  }
+  attr {
+    name: "num_dense_features"
+    type: "int"
+    description: "Number of dense feature groups to train on."
+    has_minimum: true
+  }
+  attr {
+    name: "l1"
+    type: "float"
+    description: "Symmetric l1 regularization strength."
+  }
+  attr {
+    name: "l2"
+    type: "float"
+    description: "Symmetric l2 regularization strength."
+  }
+  attr {
+    name: "num_loss_partitions"
+    type: "int"
+    description: "Number of partitions of the global loss function."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_inner_iterations"
+    type: "int"
+    description: "Number of iterations per mini-batch."
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Distributed version of Stochastic Dual Coordinate Ascent (SDCA) optimizer for"
+  description: "linear models with L1 + L2 regularization. As global optimization objective is\nstrongly-convex, the optimizer optimizes the dual objective at each step. The\noptimizer applies each update one example at a time. Examples are sampled\nuniformly, and the optimizer is learning rate free and enjoys linear convergence\nrate.\n\nProximal Stochastic Dual Coordinate Ascent, Shalev-Shwartz, Shai; Zhang, Tong.\n2012 arXiv1211.2717S: http://arxiv.org/pdf/1211.2717v1.pdf\n\n  Loss objective = \\sum f_{i}(wx_{i}) + (l2 / 2) * |w|^2 + l1 * |w|\n\nAdding vs. Averaging in Distributed Primal-Dual Optimization.\nChenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan, Peter Richtarik,\nMartin Takac http://arxiv.org/abs/1502.03508\n\nStochastic Dual Coordinate Ascent with Adaptive Probabilities\nDominik Csiba, Zheng Qu, Peter Richtarik https://arxiv.org/abs/1502.08053"
+}
+op {
+  name: "SdcaShrinkL1"
+  input_arg {
+    name: "weights"
+    description: "a list of vectors where each value is the weight associated with a\nfeature group."
+    type: DT_FLOAT
+    number_attr: "num_features"
+    is_ref: true
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    description: "Number of feature groups to apply shrinking step."
+    has_minimum: true
+  }
+  attr {
+    name: "l1"
+    type: "float"
+    description: "Symmetric l1 regularization strength."
+  }
+  attr {
+    name: "l2"
+    type: "float"
+    description: "Symmetric l2 regularization strength. Should be a positive float."
+  }
+  summary: "Applies L1 regularization shrink step on the parameters."
 }
 op {
   name: "SegmentMax"
@@ -14000,7 +14345,61 @@ op {
     minimum: 2
   }
   summary: "SpaceToBatch for 4-D tensors of type T."
-  description: "Zero-pads and then rearranges (permutes) blocks of spatial data into batch.\nMore specifically, this op outputs a copy of the input tensor where values from\nthe `height` and `width` dimensions are moved to the `batch` dimension. After\nthe zero-padding, both `height` and `width` of the input must be divisible by the\nblock size."
+  description: "This is a legacy version of the more general SpaceToBatchND.\n\nZero-pads and then rearranges (permutes) blocks of spatial data into batch.\nMore specifically, this op outputs a copy of the input tensor where values from\nthe `height` and `width` dimensions are moved to the `batch` dimension. After\nthe zero-padding, both `height` and `width` of the input must be divisible by the\nblock size."
+}
+op {
+  name: "SpaceToBatchND"
+  input_arg {
+    name: "input"
+    description: "N-D with shape `input_shape = [batch] + spatial_shape + remaining_shape`,\nwhere spatial_shape has `M` dimensions."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "block_shape"
+    description: "1-D with shape `[M]`, all values must be >= 1."
+    type_attr: "Tblock_shape"
+  }
+  input_arg {
+    name: "paddings"
+    description: "2-D with shape `[M, 2]`, all values must be >= 0.\n  `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension\n  `i + 1`, which corresponds to spatial dimension `i`.  It is required that\n  `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.\n\nThis operation is equivalent to the following steps:\n\n1. Zero-pad the start and end of dimensions `[1, ..., M]` of the\n   input according to `paddings` to produce `padded` of shape `padded_shape`.\n\n2. Reshape `padded` to `reshaped_padded` of shape:\n     [batch] +\n     [padded_shape[1] / block_shape[0],\n       block_shape[0],\n      ...,\n      padded_shape[M] / block_shape[M-1],\n      block_shape[M-1]] +\n     remaining_shape\n\n3. Permute dimensions of `reshaped_padded` to produce\n   `permuted_reshaped_padded` of shape:\n     block_shape +\n     [batch] +\n     [padded_shape[1] / block_shape[0],\n      ...,\n      padded_shape[M] / block_shape[M-1]] +\n     remaining_shape\n\n4. Reshape `permuted_reshaped_padded` to flatten `block_shape` into the batch\n   dimension, producing an output tensor of shape:\n     [batch * prod(block_shape)] +\n     [padded_shape[1] / block_shape[0],\n      ...,\n      padded_shape[M] / block_shape[M-1]] +\n     remaining_shape\n\nSome examples:\n\n(1) For the following input of shape `[1, 2, 2, 1]`, `block_shape = [2, 2]`, and\n    `paddings = [[0, 0], [0, 0]]`:\n\n```prettyprint\nx = [[[[1], [2]], [[3], [4]]]]\n```\n\nThe output tensor has shape `[4, 1, 1, 1]` and value:\n\n```prettyprint\n[[[[1]]], [[[2]]], [[[3]]], [[[4]]]]\n```\n\n(2) For the following input of shape `[1, 2, 2, 3]`, `block_shape = [2, 2]`, and\n    `paddings = [[0, 0], [0, 0]]`:\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThe output tensor has shape `[4, 1, 1, 3]` and value:\n\n```prettyprint\n[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]\n```\n\n(3) For the following input of shape `[1, 4, 4, 1]`, `block_shape = [2, 2]`, and\n    `paddings = [[0, 0], [0, 0]]`:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]],\n      [[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```\n\nThe output tensor has shape `[4, 2, 2, 1]` and value:\n\n```prettyprint\nx = [[[[1], [3]], [[5], [7]]],\n     [[[2], [4]], [[10], [12]]],\n     [[[5], [7]], [[13], [15]]],\n     [[[6], [8]], [[14], [16]]]]\n```\n\n(4) For the following input of shape `[2, 2, 4, 1]`, block_shape = `[2, 2]`, and\n    paddings = `[[0, 0], [2, 0]]`:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]]],\n     [[[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```\n\nThe output tensor has shape `[8, 1, 3, 1]` and value:\n\n```prettyprint\nx = [[[[0], [1], [3]]], [[[0], [9], [11]]],\n     [[[0], [2], [4]]], [[[0], [10], [12]]],\n     [[[0], [5], [7]]], [[[0], [13], [15]]],\n     [[[0], [6], [8]]], [[[0], [14], [16]]]]\n```\n\nAmong others, this operation is useful for reducing atrous convolution into\nregular convolution."
+    type_attr: "Tpaddings"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tblock_shape"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tpaddings"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  summary: "SpaceToBatch for N-D tensors of type T."
+  description: "This operation divides \"spatial\" dimensions `[1, ..., M]` of the input into a\ngrid of blocks of shape `block_shape`, and interleaves these blocks with the\n\"batch\" dimension (0) such that in the output, the spatial dimensions\n`[1, ..., M]` correspond to the position within the grid, and the batch\ndimension combines both the position within a spatial block and the original\nbatch position.  Prior to division into blocks, the spatial dimensions of the\ninput are optionally zero padded according to `paddings`.  See below for a\nprecise description."
 }
 op {
   name: "SpaceToDepth"
@@ -14938,8 +15337,7 @@ op {
   attr {
     name: "concat_dim"
     type: "int"
-    description: "Dimension to concatenate along."
-    has_minimum: true
+    description: "Dimension to concatenate along. Must be in range [-rank, rank),\nwhere rank is the number of dimensions in each input `SparseTensor`."
   }
   attr {
     name: "N"
@@ -16340,17 +16738,17 @@ op {
   }
   input_arg {
     name: "begin"
-    description: "`begin[i]` specifies the offset into the `i`th dimension of\n`input` to slice from."
+    description: "`begin[k]` specifies the offset into the `k`th range specification.\nThe exact dimension this corresponds to will be determined by context.\nOut-of-bounds values will be silently clamped. If the `k`th bit of\n`begin_mask` then `begin[k]` is ignored and the full range of the\nappropriate dimension is used instead. Negative values causes indexing\nto start from the highest element e.g. If `foo==[1,2,3]` then `foo[-1]==3`."
     type_attr: "Index"
   }
   input_arg {
     name: "end"
-    description: "`end[i]` specifies the first offset into the `i`th dimension of\n`input` that will not be extracted. Out or range values are\nclamped to `[0,dim[i]) if slice[i] > 0` or `[-1,dim[i]-1]`\n`if slice[i] < 0`"
+    description: "`end[i]` is like `begin` with the exception that `end_mask` is\nused to determine full ranges."
     type_attr: "Index"
   }
   input_arg {
     name: "strides"
-    description: "`strides[i]` specifies the increment in the `i`th dimension\nafter extracting a given element. Negative indices will reverse\nthe original order. Out or range values are\nclamped to `[0,dim[i]) if slice[i]>0` or `[-1,dim[i]-1] if slice[i] < 0`"
+    description: "`strides[i]` specifies the increment in the `i`th specification\nafter extracting a given element. Negative indices will reverse\nthe original order. Out or range values are\nclamped to `[0,dim[i]) if slice[i]>0` or `[-1,dim[i]-1] if slice[i] < 0`"
     type_attr: "Index"
   }
   output_arg {
@@ -16393,7 +16791,7 @@ op {
     default_value {
       i: 0
     }
-    description: "a bitmask where bit `i` being 1 means the `i`th\nposition is actually an ellipsis. One bit at most can be 1."
+    description: "a bitmask where bit `i` being 1 means the `i`th\nposition is actually an ellipsis. One bit at most can be 1.\nIf `ellipsis_mask == 0`, then an implicit ellipsis mask of `1 << (m+1)`\nis provided. This means that `foo[3:5] == foo[3:5, ...]`. An ellipsis\nimplicitly creates as many range specifications as necessary to fully\nspecify the sliced range for every dimension. For example for a 4-dimensional\ntensor `foo` the slice `foo[2, ..., 5:8]` implies `foo[2, :, :, 5:8]`."
   }
   attr {
     name: "new_axis_mask"
@@ -16401,7 +16799,7 @@ op {
     default_value {
       i: 0
     }
-    description: "a bitmask where bit `i` being 1 means the `i`th\nposition creates a dimension in the tensor of length 1. Thus\nthe total number of elements remain unchanged but the shape\ngets a 1 in the appropriate position."
+    description: "a bitmask where bit `i` being 1 means the `i`th\nspecification creates a new shape 1 dimension. For example\n`foo[:4, tf.newaxis, :2]` would produce a shape `(4, 1, 2)` tensor."
   }
   attr {
     name: "shrink_axis_mask"
@@ -16409,10 +16807,10 @@ op {
     default_value {
       i: 0
     }
-    description: "a bitmask where bit `i` implies that the `i`th\nposition should shrink the dimensionality. begin and end\nmust imply a slice of size 1 in the dimension. For example in\npython one might do `foo[:,3,:]` which would result in\n`shrink_axis_mask` being 2."
+    description: "a bitmask where bit `i` implies that the `i`th\nspecification should shrink the dimensionality. begin and end\nmust imply a slice of size 1 in the dimension. For example in\npython one might do `foo[:, 3, :]` which would result in\n`shrink_axis_mask` being 2."
   }
   summary: "Return a strided slice from `input`."
-  description: "The output tensor is a tensor with dimensions implied by `begin`,\n`end`, and `strides`, whose values are extracted from `begin`.\n\nSpecifically, the result tensor at index `(i[0], i[1], ..., i[n-1])`\nwill obtain the value `input[begin[0] + i[0] * stride[0], ..., `\n                            `begin[n-1] + i[n-1] * stride[n-1])]`.\n\n*Requirements*:\n  `0 != strides[i] for i in [0, n)`"
+  description: "Note, most python users will want to use the Python `Tensor.__getitem__`\nor `Variable.__getitem__` rather than this op directly.\n\nThe goal of this op is to produce a new tensor with a subset of\nthe elements from the `n` dimensional `input` tensor. The subset is chosen using\na sequence of `m` sparse range specifications encoded into the arguments\nof this function. Note, in some cases\n`m` could be equal to `n`, but this need not be the case. Each\nrange specification entry can be one of the following:\n\n- An ellipsis (...). Ellipses are used to imply zero or more\n  dimensions of full-dimension selection and are produced using\n  `ellipsis_mask`. For example, `foo[...]` is the identity slice.\n\n- A new axis. This is used to insert a new shape=1 dimension and is\n  produced using `new_axis_mask`. For example, `foo[:, ...]` where\n  `foo` is shape `(3, 4)` produces a `(1, 3, 4)` tensor.\n\n\n- A range `begin:end:stride`. This is used to specify how much to choose from\n  a given dimension. `stride` can be any integer but 0.  `begin` is an integer\n  which represents the index of the first value to select while `end` represents\n  the index of the last value to select. The number of values selected in each\n  dimension is `end - begin` if `stride > 0` and `begin - end` if `stride < 0`.\n  `begin` and `end` can be negative where `-1` is the last element, `-2` is\n  the second to last. `begin_mask` controls whether to replace the explicitly\n  given `begin` with an implicit effective value of `0` if `stride > 0` and\n  `-1` if `stride < 0`. `end_mask` is analogous but produces the number\n  required to create the largest open interval. For example, given a shape\n  `(3,)` tensor `foo[:]`, the effective `begin` and `end` are `0` and `3`. Do\n  not assume this is equivalent to `foo[0:-1]` which has an effective `begin`\n  and `end` of `0` and `2`. Another example is `foo[-2::-1]` which reverses the\n  first dimension of a tensor while dropping the last two (in the original\n  order elements). For example `foo = [1,2,3,4]; foo[-2::-1]` is `[4,3]`.\n\n- A single index. This is used to keep only elements that have a given\n  index. For example (`foo[2, :]` on a shape `(5,6)` tensor produces a\n  shape `(6,)` tensor. This is encoded in `begin` and `end` and\n  `shrink_axis_mask`.\n\nEach conceptual range specification is encoded in the op\'s argument. This\nencoding is best understand by considering a non-trivial example. In\nparticular,\n`foo[1, 2:4, None, ..., :-3:-1, :]` will be encoded as\n\n```prettyprint\nbegin = [1, 2, x, x, 0, x] # x denotes don\'t care (usually 0)\nend = [2, 4, x, x, -3, x]\nstrides = [1, 1, x, x, -1, 1]\nbegin_mask = 1<<4 | 1 << 5 = 48\nend_mask = 1<<5 = 32\nellipsis_mask = 1<<3 = 8\nnew_axis_mask = 1<<2 4\nshrink_axis_mask = 1<<0\n```\n\nIn this case if `foo.shape` is (5, 5, 5, 5, 5, 5) the final shape of\nthe slice becomes (2, 1, 5, 5, 2, 5).\nLet us walk step by step through each argument specification.\n\n1.  The first argument in the example slice is turned into `begin = 1` and\n`end = begin + 1 = 2`. To disambiguate from the original spec `2:4` we\nalso set the appropriate bit in `shrink_axis_mask`.\n\n2. `2:4` is contributes 2, 4, 1 to begin, end, and stride. All masks have\nzero bits contributed.\n\n3. None is a synonym for `tf.newaxis`. This means insert a dimension of size 1\ndimension in the final shape. Dummy values are contributed to begin,\nend and stride, while the new_axis_mask bit is set.\n\n4. `...` grab the full ranges from as many dimensions as needed to\nfully specify a slice for every dimension of the input shape.\n\n5. `:-3:-1` shows the use of negative indices. A negative index `i` associated\nwith a dimension that has shape `s` is converted to a positive index\n`s + i`. So `-1` becomes `s-1` (i.e. the last element). This conversion\nis done internally so begin, end and strides receive x, -3, and -1.\nThe appropriate begin_mask bit is set to indicate the start range is the\nfull range (ignoring the x).\n\n6. `:` indicates that the entire contents of the corresponding dimension\nis selected. This is equivalent to `::` or `0::1`. begin, end, and strides\nreceive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and\n`end_mask` are also set.\n\n*Requirements*:\n  `0 != strides[i] for i in [0, m)`\n  `ellipsis_mask must be a power of two (only one ellipsis)`"
 }
 op {
   name: "StridedSliceAssign"
