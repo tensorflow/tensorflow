@@ -19,7 +19,7 @@ set -e
 # Install protobuf3.
 
 # Select protobuf version.
-PROTOBUF_VERSION="3.0.0"
+PROTOBUF_VERSION="3.1.0"
 
 PROTOBUF_URL="https://github.com/google/protobuf/releases/download/v${PROTOBUF_VERSION}/protoc-${PROTOBUF_VERSION}-linux-x86_64.zip"
 PROTOBUF_ZIP=$(basename "${PROTOBUF_URL}")
