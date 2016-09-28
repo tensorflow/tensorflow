@@ -235,7 +235,7 @@ class GridRNNCell(rnn_cell.RNNCell):
         if cell_output_size > 0:
           c_prev[recurrent_dim], m_prev[recurrent_dim] = recurrent_state
         else:
-          m_prev[recurrent_state] = recurrent_state
+          m_prev[recurrent_dim] = recurrent_state
     else:
       for recurrent_dim, start_idx in zip(conf.recurrents, range(
           0, self.state_size, total_cell_state_size)):
