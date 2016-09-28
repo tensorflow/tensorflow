@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/platform/profile_utils/i_cpu_utils_helper.h"
 #include "tensorflow/core/platform/types.h"
 
+struct perf_event_attr;
+
 namespace tensorflow {
 namespace profile_utils {
 
@@ -27,18 +29,23 @@ namespace profile_utils {
 class AndroidArmV7ACpuUtilsHelper : public ICpuUtilsHelper {
  public:
   AndroidArmV7ACpuUtilsHelper() = default;
-  void Initialize() final;
   void ResetClockCycle() final;
   uint64 GetCurrentClockCycle() final;
   void EnableClockCycleProfiling(bool enable) final;
+  int64 CalculateCpuFrequency() final;
 
  private:
   static constexpr int INVALID_FD = -1;
+  static constexpr int64 INVALID_CPU_FREQUENCY = -1;
+
+  void InitializeInternal();
 
   // syscall __NR_perf_event_open with arguments
-  int OpenPerfEvent(struct perf_event_attr *const hw_event, const pid_t pid,
+  int OpenPerfEvent(perf_event_attr *const hw_event, const pid_t pid,
                     const int cpu, const int group_fd,
                     const unsigned long flags);
+
+  int64 ReadCpuFrequencyFile(const int cpu_id, const char *const type);
 
   bool is_initialized_{false};
   int fd_{INVALID_FD};

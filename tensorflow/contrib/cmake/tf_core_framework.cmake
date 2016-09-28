@@ -104,6 +104,7 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/versions.proto"
     "tensorflow/core/lib/core/error_codes.proto"
     "tensorflow/core/protobuf/config.proto"
+    "tensorflow/core/protobuf/tensor_bundle.proto"
     "tensorflow/core/protobuf/saver.proto"
     "tensorflow/core/util/memmapped_file_system.proto"
     "tensorflow/core/util/saved_tensor_slice.proto"
@@ -145,6 +146,14 @@ file(GLOB_RECURSE tf_core_lib_test_srcs
 
 list(REMOVE_ITEM tf_core_lib_srcs ${tf_core_lib_test_srcs}) 
 
+if(NOT tensorflow_ENABLE_SSL_SUPPORT)
+  file(GLOB_RECURSE tf_core_lib_cloud_srcs
+      "${tensorflow_source_dir}/tensorflow/core/platform/cloud/*.h"
+      "${tensorflow_source_dir}/tensorflow/core/platform/cloud/*.cc"
+  )
+  list(REMOVE_ITEM tf_core_lib_srcs ${tf_core_lib_cloud_srcs})
+endif()
+
 add_library(tf_core_lib OBJECT ${tf_core_lib_srcs})
 target_include_directories(tf_core_lib PUBLIC
     ${tensorflow_source_dir}
@@ -154,7 +163,6 @@ target_include_directories(tf_core_lib PUBLIC
     ${eigen_INCLUDE_DIRS}
     ${re2_EXTRA_INCLUDE_DIR}
     ${jsoncpp_INCLUDE_DIR}
-    ${boringssl_INCLUDE_DIR}
 )
 target_compile_options(tf_core_lib PRIVATE
     -fno-exceptions
@@ -174,8 +182,13 @@ add_dependencies(tf_core_lib
     eigen
     tf_protos_cc
     jsoncpp
-    boringssl
-)
+    )
+
+if(tensorflow_ENABLE_SSL_SUPPORT)
+  target_include_directories(tf_core_lib PUBLIC ${boringssl_INCLUDE_DIR})
+  add_dependencies(tf_core_lib boringssl)
+endif()
+
 
 # Tricky setup to force always rebuilding
 # force_rebuild always runs forcing ${VERSION_INFO_CC} target to run
@@ -231,16 +244,6 @@ target_include_directories(tf_core_framework PUBLIC
     ${eigen_INCLUDE_DIRS}
     ${re2_INCLUDES}
 )
-#target_link_libraries(tf_core_framework
-#    ${CMAKE_THREAD_LIBS_INIT}
-#    ${PROTOBUF_LIBRARIES}
-#    #${re2_STATIC_LIBRARIES}
-#    re2_lib
-#    ${jpeg_STATIC_LIBRARIES}
-#    ${png_STATIC_LIBRARIES}
-#    tf_protos_cc
-#    tf_core_lib
-#)
 add_dependencies(tf_core_framework
     tf_core_lib
     proto_text

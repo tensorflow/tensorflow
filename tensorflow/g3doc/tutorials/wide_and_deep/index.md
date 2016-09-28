@@ -86,10 +86,7 @@ import tensorflow as tf
 
 # Categorical base columns.
 gender = tf.contrib.layers.sparse_column_with_keys(column_name="gender", keys=["female", "male"])
-race = tf.contrib.layers.sparse_column_with_keys(column_name="race", keys=[
-  "Amer-Indian-Eskimo", "Asian-Pac-Islander", "Black", "Other", "White"])
 education = tf.contrib.layers.sparse_column_with_hash_bucket("education", hash_bucket_size=1000)
-marital_status = tf.contrib.layers.sparse_column_with_hash_bucket("marital_status", hash_bucket_size=100)
 relationship = tf.contrib.layers.sparse_column_with_hash_bucket("relationship", hash_bucket_size=100)
 workclass = tf.contrib.layers.sparse_column_with_hash_bucket("workclass", hash_bucket_size=100)
 occupation = tf.contrib.layers.sparse_column_with_hash_bucket("occupation", hash_bucket_size=1000)
@@ -114,7 +111,7 @@ wide_columns = [
   gender, native_country, education, occupation, workclass, marital_status, relationship, age_buckets,
   tf.contrib.layers.crossed_column([education, occupation], hash_bucket_size=int(1e4)),
   tf.contrib.layers.crossed_column([native_country, occupation], hash_bucket_size=int(1e4)),
-  tf.contrib.layers.crossed_column([age_buckets, race, occupation], hash_bucket_size=int(1e6))]
+  tf.contrib.layers.crossed_column([age_buckets, education, occupation], hash_bucket_size=int(1e6))]
 ```
 
 Wide models with crossed feature columns can memorize sparse interactions
@@ -144,10 +141,8 @@ We'll configure the embeddings for the categorical columns using
 deep_columns = [
   tf.contrib.layers.embedding_column(workclass, dimension=8),
   tf.contrib.layers.embedding_column(education, dimension=8),
-  tf.contrib.layers.embedding_column(marital_status, dimension=8),
   tf.contrib.layers.embedding_column(gender, dimension=8),
   tf.contrib.layers.embedding_column(relationship, dimension=8),
-  tf.contrib.layers.embedding_column(race, dimension=8),
   tf.contrib.layers.embedding_column(native_country, dimension=8),
   tf.contrib.layers.embedding_column(occupation, dimension=8),
   age, education_num, capital_gain, capital_loss, hours_per_week]

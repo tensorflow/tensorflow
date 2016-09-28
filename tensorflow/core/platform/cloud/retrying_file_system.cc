@@ -142,6 +142,12 @@ Status RetryingFileSystem::GetChildren(const string& dir,
                                    base_file_system_.get(), dir, result));
 }
 
+Status RetryingFileSystem::GetMatchingPaths(const string& pattern,
+                                            std::vector<string>* result) {
+  return CallWithRetries(std::bind(&FileSystem::GetMatchingPaths,
+                                   base_file_system_.get(), pattern, result));
+}
+
 Status RetryingFileSystem::DeleteFile(const string& fname) {
   return CallWithRetries(
       std::bind(&FileSystem::DeleteFile, base_file_system_.get(), fname));

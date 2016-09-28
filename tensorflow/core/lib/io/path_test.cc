@@ -77,5 +77,25 @@ TEST(PathTest, Extension) {
   EXPECT_EQ("baz", Extension("/a/path.bar/to/foo.bar.baz"));
 }
 
+TEST(PathTest, CleanPath) {
+  EXPECT_EQ(".", CleanPath(""));
+  EXPECT_EQ("x", CleanPath("x"));
+  EXPECT_EQ("/a/b/c/d", CleanPath("/a/b/c/d"));
+  EXPECT_EQ("/a/b/c/d/*", CleanPath("/a/b/c/d/*"));
+  EXPECT_EQ("/a/b/c/d", CleanPath("/a/b/c/d/"));
+  EXPECT_EQ("/a/b", CleanPath("/a//b"));
+  EXPECT_EQ("/a/b", CleanPath("//a//b/"));
+  EXPECT_EQ("/", CleanPath("/.."));
+  EXPECT_EQ("/", CleanPath("/././././"));
+  EXPECT_EQ("/a", CleanPath("/a/b/.."));
+  EXPECT_EQ("/", CleanPath("/a/b/../../.."));
+  EXPECT_EQ("/", CleanPath("//a//b/..////../..//"));
+  EXPECT_EQ("/x", CleanPath("//a//../x//"));
+  EXPECT_EQ("x", CleanPath("x"));
+  EXPECT_EQ("../../a/c", CleanPath("../../a/b/../c"));
+  EXPECT_EQ("../..", CleanPath("../../a/b/../c/../.."));
+  EXPECT_EQ("../../bar", CleanPath("foo/../../../bar"));
+}
+
 }  // namespace io
 }  // namespace tensorflow

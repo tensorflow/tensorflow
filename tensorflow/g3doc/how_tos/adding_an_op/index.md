@@ -532,7 +532,7 @@ Your Op registration now specifies that the input's type must be `float`, or
 > REGISTER_OP("StringToNumber")
 >     .Input("string_tensor: string")
 >     .Output("output: out_type")
->     .Attr("out_type: {float, int32}");
+>     .Attr("out_type: {float, int32} = DT_FLOAT");
 >     .Doc(R"doc(
 > Converts each string in the input Tensor to the specified numeric type.
 > )doc");
@@ -999,6 +999,11 @@ cuda_op_kernel.cu.o -I $TF_INC -fPIC -lcudart
 
 `cuda_op_kernel.so` produced above can be loaded as usual in Python, using the
 `tf.load_op_library` function.
+
+Note that if your CUDA libraries are not installed in `/usr/local/lib64`,
+you'll need to specify the path explicitly in the second (g++) command above.
+For example, add `-L /usr/local/cuda-8.0/lib64/` if your CUDA is installed in 
+`/usr/local/cuda-8.0`.
 
 ## Implement the gradient in Python
 

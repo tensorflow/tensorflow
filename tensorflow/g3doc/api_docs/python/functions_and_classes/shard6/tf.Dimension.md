@@ -233,7 +233,7 @@ Dimensions are summed as follows:
 
 ##### Returns:
 
-  A Dimension whose value is the sum of `self` and `other`.
+  A Dimension whose value is the product of `self` and `other`.
 
 
 - - -

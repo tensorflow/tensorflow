@@ -65,6 +65,15 @@ StringPiece Basename(StringPiece path);
 // there is no "." in the basename, the result is empty.
 StringPiece Extension(StringPiece path);
 
+// Collapse duplicate "/"s, resolve ".." and "." path elements, remove
+// trailing "/".
+//
+// NOTE: This respects relative vs. absolute paths, but does not
+// invoke any system calls (getcwd(2)) in order to resolve relative
+// paths with respect to the actual working directory.  That is, this is purely
+// string manipulation, completely independent of process state.
+string CleanPath(StringPiece path);
+
 }  // namespace io
 }  // namespace tensorflow
 

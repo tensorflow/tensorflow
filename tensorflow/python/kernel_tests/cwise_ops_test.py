@@ -669,6 +669,16 @@ class BinaryOpTest(tf.test.TestCase):
     self._compareBoth(x, y, np.multiply, tf.mul)
     self._compareBoth(x, y, np.multiply, _MUL)
 
+  def testUint16Basic(self):
+    x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.uint16)
+    y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.uint16)
+    self._compareBoth(x, y, np.multiply, tf.mul)
+    self._compareBoth(x, y, np.multiply, _MUL)
+    self._compareBoth(x, y, np.true_divide, tf.truediv)
+    self._compareBoth(x, y, np.floor_divide, tf.floordiv)
+    self._compareBoth(x, y, np.true_divide, _TRUEDIV)
+    self._compareBoth(x, y, np.floor_divide, _FLOORDIV)
+
   def testInt32Basic(self):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.int32)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int32)
@@ -707,28 +717,28 @@ class BinaryOpTest(tf.test.TestCase):
         np.complex64)
     y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(1, 3, 2).astype(
         np.complex64)
-    self._compareCpu(x, y, np.add, tf.add)
-    self._compareCpu(x, y, np.subtract, tf.sub)
-    self._compareCpu(x, y, np.multiply, tf.mul)
-    self._compareCpu(x, y + 0.1, np.true_divide, tf.truediv)
-    self._compareCpu(x, y, np.add, _ADD)
-    self._compareCpu(x, y, np.subtract, _SUB)
-    self._compareCpu(x, y, np.multiply, _MUL)
-    self._compareCpu(x, y + 0.1, np.true_divide, _TRUEDIV)
+    self._compareBoth(x, y, np.add, tf.add)
+    self._compareBoth(x, y, np.subtract, tf.sub)
+    self._compareBoth(x, y, np.multiply, tf.mul)
+    self._compareBoth(x, y + 0.1, np.true_divide, tf.truediv)
+    self._compareBoth(x, y, np.add, _ADD)
+    self._compareBoth(x, y, np.subtract, _SUB)
+    self._compareBoth(x, y, np.multiply, _MUL)
+    self._compareBoth(x, y + 0.1, np.true_divide, _TRUEDIV)
 
   def testComplex128Basic(self):
     x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(1, 3, 2).astype(
         np.complex128)
     y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(1, 3, 2).astype(
         np.complex128)
-    self._compareCpu(x, y, np.add, tf.add)
-    self._compareCpu(x, y, np.subtract, tf.sub)
-    self._compareCpu(x, y, np.multiply, tf.mul)
-    self._compareCpu(x, y + 0.1, np.true_divide, tf.truediv)
-    self._compareCpu(x, y, np.add, _ADD)
-    self._compareCpu(x, y, np.subtract, _SUB)
-    self._compareCpu(x, y, np.multiply, _MUL)
-    self._compareCpu(x, y + 0.1, np.true_divide, _TRUEDIV)
+    self._compareBoth(x, y, np.add, tf.add)
+    self._compareBoth(x, y, np.subtract, tf.sub)
+    self._compareBoth(x, y, np.multiply, tf.mul)
+    self._compareBoth(x, y + 0.1, np.true_divide, tf.truediv)
+    self._compareBoth(x, y, np.add, _ADD)
+    self._compareBoth(x, y, np.subtract, _SUB)
+    self._compareBoth(x, y, np.multiply, _MUL)
+    self._compareBoth(x, y + 0.1, np.true_divide, _TRUEDIV)
 
   def testStringComparison(self):
     x = np.array([["abc", "bh"], ["c", ""]])

@@ -384,18 +384,22 @@ class FunctionLibraryRuntime {
   // returned "*kernel". Otherwise, returns an error.
   virtual Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) = 0;
 
-  // Return true iff 'function' is stateful.
+  // Returns true iff 'function' is stateful.
   virtual bool IsStateful(const string& function_name) = 0;
 
-  // Return the device on which the function executes.
+  // Returns the device on which the function executes.
   virtual Device* device() = 0;
 
   // Returns the function library definition that backs this runtime.
   virtual const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
       const = 0;
 
-  // Return the environment on which the function executes.
+  // Returns the environment on which the function executes.
   virtual Env* env() = 0;
+
+  // Returns a debug string showing the definition of the function of
+  // 'handle'.
+  virtual string DebugString(Handle handle) = 0;
 };
 
 // To register a gradient function for a builtin op, one should use

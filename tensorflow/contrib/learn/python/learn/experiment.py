@@ -19,8 +19,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import time
 
+from tensorflow.contrib.framework import deprecated
+from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import trainable
@@ -40,6 +43,16 @@ class Experiment(object):
   and eval loops in a sensible fashion for distributed training.
   """
 
+  @deprecated_arg_values(
+      "2016-10-23",
+      "local_eval_frequency is deprecated as local_run will be renamed to "
+      "train_and_evaluate. Use min_eval_frequency and call train_and_evaluate "
+      "instead. Note, however, that the default for min_eval_frequency is 1, "
+      "meaning models will be evaluated every time a new checkpoint is "
+      "available. In contrast, the default for local_eval_frequency is None, "
+      "resulting in evaluation occurring only after training has completed. "
+      "min_eval_frequency is ignored when calling the deprecated local_run.",
+      local_eval_frequency=None)
   def __init__(self,
                estimator,
                train_input_fn,
@@ -50,7 +63,8 @@ class Experiment(object):
                train_monitors=None,
                local_eval_frequency=None,
                eval_delay_secs=120,
-               continuous_eval_throttle_secs=60):
+               continuous_eval_throttle_secs=60,
+               min_eval_frequency=1):
     """Constructor for `Experiment`.
 
     Creates an Experiment instance. None of the functions passed to this
@@ -78,6 +92,9 @@ class Experiment(object):
       continuous_eval_throttle_secs: Do not re-evaluate unless the last
         evaluation was started at least this many seconds ago for
         continuous_eval().
+      min_eval_frequency: (applies only to train_and_evaluate). the minimum
+        number of steps between evaluations. Of course, evaluation does not
+        occur if no new snapshot is available, hence, this is the minimum.
 
     Raises:
       ValueError: if `estimator` does not implement `Evaluable` and `Trainable`.
@@ -97,6 +114,7 @@ class Experiment(object):
     self._local_eval_frequency = local_eval_frequency
     self._eval_delay_secs = eval_delay_secs
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
+    self._min_eval_frequency = min_eval_frequency
 
   @property
   def estimator(self):
@@ -120,7 +138,7 @@ class Experiment(object):
     # we (optionally) sleep for the case where no device_filters are set.
     # Otherwise, the servers will wait to connect to each other before starting
     # to train. We might as well start as soon as we can.
-    if self._estimator.config.cluster_spec:
+    if self._estimator.config.cluster_spec and self._estimator.config.master:
       self._start_server()
 
     if delay_secs is None:
@@ -165,20 +183,15 @@ class Experiment(object):
                                     metrics=self._eval_metrics,
                                     name="one_pass")
 
+  @deprecated(
+      "2016-10-23",
+      "local_run will be renamed to train_and_evaluate and the new default "
+      "behavior will be to run evaluation every time there is a new "
+      "checkpoint.")
   def local_run(self):
-    """Run when called on local machine.
-
-    Returns:
-      The result of the `evaluate` call to the `Estimator`.
-    """
-    self._train_monitors = self._train_monitors or []
-    if self._local_eval_frequency:
-      self._train_monitors += [monitors.ValidationMonitor(
-          input_fn=self._eval_input_fn, eval_steps=self._eval_steps,
-          metrics=self._eval_metrics, every_n_steps=self._local_eval_frequency
-      )]
-    self.train(delay_secs=0)
-    return self.evaluate(delay_secs=0)
+    with _new_attr_context(self, "_min_eval_frequency"):
+      self._min_eval_frequency = self._local_eval_frequency
+      return self.train_and_evaluate()
 
   def _continuous_eval(self,
                        input_fn,
@@ -240,6 +253,53 @@ class Experiment(object):
                           delay_secs=delay_secs,
                           throttle_delay_secs=throttle_delay_secs)
 
+  def train_and_evaluate(self):
+    """Interleaves training and evaluation.
+
+    The frequency of evaluation is controlled by the contructor arg
+    `min_eval_frequency`. When this parameter is None or 0, evaluation happens
+    only after training has completed. Note that evaluation cannot happen
+    more frequently than checkpoints are taken. If no new snapshots are
+    available when evaluation is supposed to occur, then evaluation doesn't
+    happen for another `min_eval_frequency` steps (assuming a checkpoint is
+    available at that point). Thus, settings `min_eval_frequency` to 1 means
+    that the model will be evaluated everytime there is a new checkpoint.
+
+    This is particular useful for a "Master" task in the cloud, whose
+    responsibility it is to take checkpoints, evaluate those checkpoints,
+    and write out summaries. Participating in training as the supervisor
+    allows such a task to accomplish the first and last items, while
+    performing evaluation allows for the second.
+
+    Returns:
+      The result of the `evaluate` call to the `Estimator`.
+    """
+    # The directory to which evaluation summaries are written are determined
+    # by adding a suffix to 'eval'; that suffix is the 'name' parameter to
+    # the various evaluate(...) methods. By setting it to None, we force
+    # the directory name to simply be 'eval'.
+    eval_dir_suffix = None
+
+    # We set every_n_steps to 1, but evaluation only occurs when a new
+    # snapshot is available. If, by the time we finish evaluation
+    # there is a new snapshot, then we just evaluate again. Otherwise,
+    # we keep training until one becomes available.
+    with _new_attr_context(self, "_train_monitors"):
+      self._train_monitors = self._train_monitors or []
+      if self._min_eval_frequency:
+        self._train_monitors += [monitors.ValidationMonitor(
+            input_fn=self._eval_input_fn, eval_steps=self._eval_steps,
+            metrics=self._eval_metrics, every_n_steps=self._min_eval_frequency,
+            name=eval_dir_suffix,
+        )]
+      self.train(delay_secs=0)
+
+    return self._estimator.evaluate(input_fn=self._eval_input_fn,
+                                    steps=self._eval_steps,
+                                    metrics=self._eval_metrics,
+                                    name=eval_dir_suffix)
+
+
   def run_std_server(self):
     """Starts a TensorFlow server and joins the serving thread.
 
@@ -282,3 +342,24 @@ class Experiment(object):
         start=False)
     server.start()
     return server
+
+
+@contextlib.contextmanager
+def _new_attr_context(obj, attr):
+  """Creates a new context in which an object's attribute can be changed.
+
+  This creates a context in which an object's attribute can be changed.
+  Once the context is exited, the attribute reverts to its original value.
+
+  Example usage:
+    my_obj.x = 1
+    with _new_attr_context(my_obj, "x"):
+      my_obj.x = 2
+      print(my_obj.x)
+    print(my_obj.x)
+  """
+  saved = getattr(obj, attr)
+  try:
+    yield
+  finally:
+    setattr(obj, attr, saved)

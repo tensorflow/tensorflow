@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -70,8 +69,9 @@ Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
 Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 
 Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
-  string scheme = GetSchemeFromURI(fname);
-  FileSystem* file_system = file_system_registry_->Lookup(scheme);
+  StringPiece scheme, host, path;
+  ParseURI(fname, &scheme, &host, &path);
+  FileSystem* file_system = file_system_registry_->Lookup(scheme.ToString());
   if (!file_system) {
     return errors::Unimplemented("File system scheme ", scheme,
                                  " not implemented");
@@ -131,6 +131,13 @@ Status Env::GetChildren(const string& dir, std::vector<string>* result) {
   return fs->GetChildren(dir, result);
 }
 
+Status Env::GetMatchingPaths(const string& pattern,
+                             std::vector<string>* results) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(pattern, &fs));
+  return fs->GetMatchingPaths(pattern, results);
+}
+
 Status Env::DeleteFile(const string& fname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
@@ -140,9 +147,11 @@ Status Env::DeleteFile(const string& fname) {
 Status Env::RecursivelyCreateDir(const string& dirname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  StringPiece scheme, host, remaining_dir;
+  ParseURI(dirname, &scheme, &host, &remaining_dir);
   std::vector<StringPiece> sub_dirs;
-  StringPiece remaining_dir(dirname);
-  while (!fs->FileExists(remaining_dir.ToString())) {
+  while (!fs->FileExists(CreateURI(scheme, host, remaining_dir)) &&
+         !remaining_dir.empty()) {
     // Basename returns "" for / ending dirs.
     if (!remaining_dir.ends_with("/")) {
       sub_dirs.push_back(io::Basename(remaining_dir));
@@ -157,7 +166,7 @@ Status Env::RecursivelyCreateDir(const string& dirname) {
   string built_path = remaining_dir.ToString();
   for (const StringPiece sub_dir : sub_dirs) {
     built_path = io::JoinPath(built_path, sub_dir);
-    TF_RETURN_IF_ERROR(fs->CreateDir(built_path));
+    TF_RETURN_IF_ERROR(fs->CreateDir(CreateURI(scheme, host, built_path)));
   }
   return Status::OK();
 }
@@ -352,6 +361,13 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
 };
 
 }  // namespace
+
+Status WriteBinaryProto(Env* env, const string& fname,
+                        const ::tensorflow::protobuf::MessageLite& proto) {
+  string serialized;
+  proto.AppendToString(&serialized);
+  return WriteStringToFile(env, fname, serialized);
+}
 
 Status ReadBinaryProto(Env* env, const string& fname,
                        ::tensorflow::protobuf::MessageLite* proto) {

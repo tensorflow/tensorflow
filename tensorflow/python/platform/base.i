@@ -154,15 +154,6 @@ std::vector<type>* OUTPUT (std::vector<type> temp),
    set<type>* OUTPUT (set<type> temp) {
   $1 = &temp;
 }
-%typemap(argout) std::vector<type>* OUTPUT, set<type>* OUTPUT, hash_set<type>* OUTPUT {
-  %append_output(list_output_helper($1, &py_converter));
-}
-%typemap(out) std::vector<type> {
-  $result = vector_output_helper(&$1, &py_converter);
-}
-%typemap(out) std::vector<type>*, const std::vector<type>& {
-  $result = vector_output_helper($1, &py_converter);
-}
 %enddef
 
 _LIST_OUTPUT_TYPEMAP(string, _SwigBytes_FromString);

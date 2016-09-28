@@ -28,7 +28,7 @@ limitations under the License.
 // refer to all protobuf APIs.
 
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/build_config/protobuf.h"
+#include "tensorflow/core/platform/google/protobuf.h"
 #else
 #include "tensorflow/core/platform/default/protobuf.h"
 #endif

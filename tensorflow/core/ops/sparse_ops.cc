@@ -358,7 +358,7 @@ REGISTER_OP("SparseConcat")
     .Output("output_indices: int64")
     .Output("output_values: T")
     .Output("output_shape: int64")
-    .Attr("concat_dim: int >= 0")
+    .Attr("concat_dim: int")
     .Attr("N: int >= 2")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
@@ -446,7 +446,8 @@ shapes: 1-D.  Shapes of each `SparseTensor`.
 output_indices: 2-D.  Indices of the concatenated `SparseTensor`.
 output_values: 1-D.  Non-empty values of the concatenated `SparseTensor`.
 output_shape: 1-D.  Shape of the concatenated `SparseTensor`.
-concat_dim: Dimension to concatenate along.
+concat_dim: Dimension to concatenate along. Must be in range [-rank, rank),
+    where rank is the number of dimensions in each input `SparseTensor`.
 )doc");
 
 REGISTER_OP("SparseSplit")

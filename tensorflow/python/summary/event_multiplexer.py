@@ -70,6 +70,7 @@ class EventMultiplexer(object):
   @@AddRunsFromDirectory
   @@Reload
   @@Runs
+  @@RunPaths
   @@Scalars
   @@Graph
   @@Histograms
@@ -356,6 +357,10 @@ class EventMultiplexer(object):
       # To avoid nested locks, we construct a copy of the run-accumulator map
       items = list(six.iteritems(self._accumulators))
     return {run_name: accumulator.Tags() for run_name, accumulator in items}
+
+  def RunPaths(self):
+    """Returns a dict mapping run names to event file paths."""
+    return self._paths
 
   def _GetAccumulator(self, run):
     with self._accumulators_mutex:

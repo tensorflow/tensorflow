@@ -142,6 +142,20 @@ Callback before every n'th step begins.
 
 - - -
 
+#### `tf.contrib.learn.monitors.ExportMonitor.last_export_dir` {#ExportMonitor.last_export_dir}
+
+Returns the directory containing the last completed export.
+
+##### Returns:
+
+  The string path to the exported directory. NB: this functionality was
+  added on 2016/09/25; clients that depend on the return value may need
+  to handle the case where this function returns None because the
+  estimator being fitted does not yet return a value during export.
+
+
+- - -
+
 #### `tf.contrib.learn.monitors.ExportMonitor.post_step(step, session)` {#ExportMonitor.post_step}
 
 
@@ -159,6 +173,8 @@ Callback before every n'th step begins.
 #### `tf.contrib.learn.monitors.ExportMonitor.set_estimator(estimator)` {#ExportMonitor.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 

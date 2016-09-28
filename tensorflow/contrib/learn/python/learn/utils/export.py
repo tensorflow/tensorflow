@@ -77,8 +77,8 @@ def _export_graph(graph, saver, checkpoint_path, export_dir,
                   named_graph_signatures=named_graph_signatures,
                   assets_collection=ops.get_collection(
                       ops.GraphKeys.ASSET_FILEPATHS))
-      export.export(export_dir, contrib_variables.get_global_step(), session,
-                    exports_to_keep=exports_to_keep)
+      return export.export(export_dir, contrib_variables.get_global_step(),
+                           session, exports_to_keep=exports_to_keep)
 
 
 def generic_signature_fn(examples, unused_features, predictions):
@@ -109,13 +109,40 @@ def classification_signature_fn(examples, unused_features, predictions):
   Args:
     examples: `Tensor`.
     unused_features: `dict` of `Tensor`s.
-    predictions: `Tensor`.
+    predictions: `Tensor` or dict of tensors that contains the classes tensor
+      as in {'classes': `Tensor`}.
 
   Returns:
     Tuple of default classification signature and empty named signatures.
   """
-  default_signature = exporter.classification_signature(
-      examples, classes_tensor=predictions)
+  if isinstance(predictions, dict):
+    default_signature = exporter.classification_signature(
+        examples, classes_tensor=predictions['classes'])
+  else:
+    default_signature = exporter.classification_signature(
+        examples, classes_tensor=predictions)
+  return default_signature, {}
+
+
+def classification_signature_fn_with_prob(
+    examples, unused_features, predictions):
+  """Classification signature from given examples and predicted probabilities.
+
+  Args:
+    examples: `Tensor`.
+    unused_features: `dict` of `Tensor`s.
+    predictions: `Tensor` of predicted probabilities or dict that contains the
+      probabilities tensor as in {'probabilities', `Tensor`}.
+
+  Returns:
+    Tuple of default classification signature and empty named signatures.
+  """
+  if isinstance(predictions, dict):
+    default_signature = exporter.classification_signature(
+        examples, scores_tensor=predictions['probabilities'])
+  else:
+    default_signature = exporter.classification_signature(
+        examples, scores_tensor=predictions)
   return default_signature, {}
 
 
@@ -141,15 +168,21 @@ def logistic_regression_signature_fn(examples, unused_features, predictions):
   Args:
     examples: `Tensor`.
     unused_features: `dict` of `Tensor`s.
-    predictions: `Tensor` of shape [batch_size, 2]
+    predictions: `Tensor` of shape [batch_size, 2] of predicted probabilities or
+      dict that contains the probabilities tensor as in
+      {'probabilities', `Tensor`}.
 
   Returns:
     Tuple of default regression signature and named signature.
   """
+  if isinstance(predictions, dict):
+    predictions_tensor = predictions['probabilities']
+  else:
+    predictions_tensor = predictions
   # predictions should have shape [batch_size, 2] where first column is P(Y=0|x)
   # while second column is P(Y=1|x). We are only interested in the second
   # column for inference.
-  predictions_shape = predictions.get_shape()
+  predictions_shape = predictions_tensor.get_shape()
   predictions_rank = len(predictions_shape)
   if predictions_rank != 2:
     logging.fatal(
@@ -159,10 +192,10 @@ def logistic_regression_signature_fn(examples, unused_features, predictions):
     logging.fatal(
         'Expected predictions to have 2nd dimension: 2, but received '
         'predictions with 2nd dimension: {} and shape: {}. Did you mean to use '
-        'regression_signature_fn instead?'.format(predictions_shape[1],
-                                                  predictions_shape))
+        'regression_signature_fn or classification_signature_fn_with_prob '
+        'instead?'.format(predictions_shape[1], predictions_shape))
 
-  positive_predictions = predictions[:, 1]
+  positive_predictions = predictions_tensor[:, 1]
   default_signature = exporter.regression_signature(
       input_tensor=examples, output_tensor=positive_predictions)
   return default_signature, {}
@@ -214,7 +247,8 @@ def _export_estimator(estimator,
                       default_batch_size,
                       exports_to_keep,
                       input_feature_key=None,
-                      use_deprecated_input_fn=True):
+                      use_deprecated_input_fn=True,
+                      prediction_key=None):
   if use_deprecated_input_fn:
     input_fn = input_fn or _default_input_fn
   elif input_fn is None or input_feature_key is None:
@@ -234,6 +268,8 @@ def _export_estimator(estimator,
       examples = features[input_feature_key]
 
     predictions = estimator._get_predict_ops(features)
+    if prediction_key is not None:
+      predictions = predictions[prediction_key]
 
     # Explicit signature_fn takes priority
     if signature_fn:
@@ -273,8 +309,12 @@ def _export_estimator(estimator,
             examples, features, predictions)
     if exports_to_keep is not None:
       exports_to_keep = gc.largest_export_versions(exports_to_keep)
-    _export_graph(g, _get_saver(), checkpoint_path, export_dir,
-                  default_graph_signature=default_signature,
-                  named_graph_signatures=named_graph_signatures,
-                  exports_to_keep=exports_to_keep)
+    return _export_graph(
+        g,
+        _get_saver(),
+        checkpoint_path,
+        export_dir,
+        default_graph_signature=default_signature,
+        named_graph_signatures=named_graph_signatures,
+        exports_to_keep=exports_to_keep)
 # pylint: enable=protected-access

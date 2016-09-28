@@ -18,10 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import sys
+import unittest
 
-from tensorflow.python.platform import googletest
-
+from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 
 
@@ -39,7 +40,7 @@ flags.DEFINE_bool("bool_e", True, "HelpString")
 
 FLAGS = flags.FLAGS
 
-class FlagsTest(googletest.TestCase):
+class FlagsTest(unittest.TestCase):
 
   def testString(self):
     res = FLAGS.string_foo
@@ -65,15 +66,8 @@ class FlagsTest(googletest.TestCase):
     # --bool_flag=True sets to True
     self.assertEqual(True, FLAGS.bool_c)
 
-    # --no before the flag mirrors argparse's behavior with
-    # regard to dashes in flag names
-    self.assertEqual(False, FLAGS.bool_dash_negation)
-
     # --bool_flag=False sets to False
     self.assertEqual(False, FLAGS.bool_d)
-
-    # --bool_flag=gibberish sets to False
-    self.assertEqual(False, FLAGS.bool_e)
 
   def testInt(self):
     res = FLAGS.int_foo
@@ -88,14 +82,29 @@ class FlagsTest(googletest.TestCase):
     self.assertEqual(-1.0, FLAGS.float_foo)
 
 
+def main(argv):
+  # Test that argparse can parse flags that aren't registered
+  # with tf.flags.
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--argparse_val", type=int, default=1000,
+                      help="Test flag")
+  argparse_flags, _ = parser.parse_known_args(argv)
+  if argparse_flags.argparse_val != 10:
+    raise ValueError("argparse flag was not parsed: got %d",
+                     argparse_flags.argparse_val)
+
+  # unittest.main() tries to interpret the unknown flags, so use the
+  # direct functions instead.
+  runner = unittest.TextTestRunner()
+  itersuite = unittest.TestLoader().loadTestsFromTestCase(FlagsTest)
+  runner.run(itersuite)
+
+
 if __name__ == "__main__":
   # Test command lines
-  sys.argv.extend(["--bool_a", "--nobool_negation", "--nobool-dash-negation",
-                   "--bool_c=True", "--bool_d=False", "--bool_e=gibberish",
-                   "--unknown_flag", "and_argument"])
+  sys.argv.extend(["--bool_a", "--nobool_negation",
+                   "--bool_c=True", "--bool_d=False",
+                   "--unknown_flag", "--argparse_val=10",
+                   "and_argument"])
 
-  # googletest.main() tries to interpret the above flags, so use the
-  # direct functions instead.
-  runner = googletest.TextTestRunner()
-  itersuite = googletest.TestLoader().loadTestsFromTestCase(FlagsTest)
-  runner.run(itersuite)
+  app.run()

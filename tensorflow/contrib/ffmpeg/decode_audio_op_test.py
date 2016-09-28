@@ -61,9 +61,29 @@ class DecodeAudioOpTest(tf.test.TestCase):
     self._loadFileAndTest('mono_16khz.mp3', 'mp3', 0.57, 20000, 1)
     self._loadFileAndTest('mono_16khz.mp3', 'mp3', 0.57, 20000, 2)
 
+  def testMonoMp4Mp3Codec(self):
+    # mp3 compressed audio streams in mp4 container.
+    self._loadFileAndTest('mono_16khz_mp3.mp4', 'mp4', 2.77, 20000, 1)
+    self._loadFileAndTest('mono_16khz_mp3.mp4', 'mp4', 2.77, 20000, 2)
+
+  def testMonoMp4AacCodec(self):
+    # aac compressed audio streams in mp4 container.
+    self._loadFileAndTest('mono_32khz_aac.mp4', 'mp4', 2.77, 20000, 1)
+    self._loadFileAndTest('mono_32khz_aac.mp4', 'mp4', 2.77, 20000, 2)
+
   def testStereoMp3(self):
     self._loadFileAndTest('stereo_48khz.mp3', 'mp3', 0.79, 50000, 1)
     self._loadFileAndTest('stereo_48khz.mp3', 'mp3', 0.79, 20000, 2)
+
+  def testStereoMp4Mp3Codec(self):
+    # mp3 compressed audio streams in mp4 container.
+    self._loadFileAndTest('stereo_48khz_mp3.mp4', 'mp4', 0.79, 50000, 1)
+    self._loadFileAndTest('stereo_48khz_mp3.mp4', 'mp4', 0.79, 20000, 2)
+
+  def testStereoMp4AacCodec(self):
+    # aac compressed audio streams in mp4 container.
+    self._loadFileAndTest('stereo_48khz_aac.mp4', 'mp4', 0.79, 50000, 1)
+    self._loadFileAndTest('stereo_48khz_aac.mp4', 'mp4', 0.79, 20000, 2)
 
   def testMonoWav(self):
     self._loadFileAndTest('mono_10khz.wav', 'wav', 0.57, 5000, 1)

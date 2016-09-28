@@ -262,14 +262,16 @@ class Im2ColConvFunctor {
                 errors::InvalidArgument("Im2Col patch too large for buffer"));
     const size_t patches_per_chunk =
         max_chunk_size / (filter_value_count * sizeof(T1));
+    const size_t chunk_value_count =
+      (max_chunk_size + (sizeof(T1) - 1)) / sizeof(T1);
     // Because memory allocation is very expensive on mobile platforms, try to
     // allocate a persistent buffer that will be kept around between calls. We
     // use TensorFlow's resource management to ensure that the memory will be
     // released when the session is over.
-    Im2ColBufferResource<T1, max_chunk_size>* im2col_buffer_resource;
-    std::function<Status(Im2ColBufferResource<T1, max_chunk_size>**)> creator =
-        [](Im2ColBufferResource<T1, max_chunk_size>** resource) {
-          *resource = new Im2ColBufferResource<T1, max_chunk_size>();
+    Im2ColBufferResource<T1, chunk_value_count>* im2col_buffer_resource;
+    std::function<Status(Im2ColBufferResource<T1, chunk_value_count>**)> creator =
+        [](Im2ColBufferResource<T1, chunk_value_count>** resource) {
+          *resource = new Im2ColBufferResource<T1, chunk_value_count>();
           return Status::OK();
         };
     OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(

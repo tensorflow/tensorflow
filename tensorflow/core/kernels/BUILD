@@ -15,11 +15,20 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
+package_group(
+    name = "friends",
+    packages = [
+        "//learning/deepmind/tensorflow/...",
+        "//tensorflow/...",
+    ],
+)
+
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
+    "tf_cuda_library",
     "tf_opts_nortti_if_android",
     "tf_kernel_libraries",
     "tf_kernel_library",
@@ -406,15 +415,15 @@ tf_kernel_libraries(
         "where_op",
     ],
     deps = [
-        ":batchtospace_op",
+        ":batch_space_ops",
         ":bounds_check",
         ":concat_lib",
         ":cuda_device_array",
         ":depth_space_ops",
         ":extract_image_patches_op",
         ":fill_functor",
+        ":gather_functor",
         ":ops_util",
-        ":spacetobatch_op",
         ":split_lib",
         ":strided_slice_op",
         ":transpose_functor",
@@ -534,6 +543,21 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_library(
+    name = "gather_functor",
+    hdrs = [
+        "gather_functor.h",
+        "gather_functor_gpu.cu.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        ":bounds_check",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
     ],
 )
 
@@ -1039,11 +1063,13 @@ tf_kernel_libraries(
         "reader_ops",
         "restore_op",
         "save_op",
+        "save_restore_v2_ops",
         "text_line_reader_op",
         "tf_record_reader_op",
         "whole_file_read_ops",
     ],
     deps = [
+        ":bounds_check_lib",
         ":ops_util",
         ":reader_base",
         ":save_restore_tensor",
@@ -1051,14 +1077,18 @@ tf_kernel_libraries(
         "//tensorflow/core:io_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 
 tf_cc_tests(
     size = "small",
     srcs = [
+        "merge_v2_checkpoints_op_test.cc",
         "restore_op_test.cc",
+        "restore_v2_op_test.cc",
         "save_op_test.cc",
+        "save_v2_op_test.cc",
     ],
     deps = [
         ":io",
@@ -1073,6 +1103,7 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 
@@ -1281,6 +1312,24 @@ tf_cuda_cc_test(
 )
 
 tf_cuda_cc_test(
+    name = "batch_matmul_op_test",
+    size = "small",
+    srcs = ["batch_matmul_op_test.cc"],
+    deps = [
+        ":batch_matmul_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
     name = "reduction_ops_test",
     size = "small",
     srcs = ["reduction_ops_test.cc"],
@@ -1321,25 +1370,7 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
-    name = "sparse_matmul_op_test",
-    size = "small",
-    srcs = ["sparse_matmul_op_test.cc"],
-    deps = [
-        ":ops_testutil",
-        ":ops_util",
-        ":sparse_matmul_op",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cuda_cc_test(
+tf_cc_test(
     name = "immutable_constant_op_test",
     srcs = ["immutable_constant_op_test.cc"],
     deps = [
@@ -1355,6 +1386,24 @@ tf_cuda_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "sparse_matmul_op_test",
+    size = "small",
+    srcs = ["sparse_matmul_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":sparse_matmul_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -1582,22 +1631,39 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "batchtospace_op",
-    prefix = "batchtospace_op",
+    name = "batch_space_ops",
+    srcs = [
+        "batchtospace_op.cc",
+        "spacetobatch_functor.cc",
+        "spacetobatch_functor.h",
+        "spacetobatch_op.cc",
+    ],
+    gpu_srcs = [
+        "spacetobatch_functor.h",
+        "spacetobatch_functor_gpu.cu.cc",
+    ],
+    visibility = ["//visibility:private"],
     deps = [
+        ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
 )
 
-tf_kernel_library(
-    name = "spacetobatch_op",
-    prefix = "spacetobatch_op",
+tf_cuda_cc_test(
+    name = "spacetobatch_benchmark_test",
+    srcs = ["spacetobatch_benchmark_test.cc"],
     deps = [
+        ":batch_space_ops",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//third_party/eigen3",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -1740,6 +1806,62 @@ tf_cuda_cc_tests(
     ],
 )
 
+cc_library(
+    name = "loss_updaters",
+    hdrs = [
+        "hinge-loss.h",
+        "logistic-loss.h",
+        "loss.h",
+        "smooth-hinge-loss.h",
+        "squared-loss.h",
+    ],
+    deps = ["//tensorflow/core:framework_headers_lib"],
+)
+
+cc_test(
+    name = "loss_test",
+    size = "small",
+    srcs = ["loss_test.cc"],
+    deps = [
+        ":loss_updaters",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "sdca_ops_test",
+    size = "small",
+    srcs = ["sdca_ops_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
+    deps = [
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_kernel_library(
+    name = "sdca_ops",
+    prefix = "sdca_ops",
+    deps = [
+        ":loss_updaters",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:sdca_ops_op_lib",
+        "//third_party/eigen3",
+        "@farmhash_archive//:farmhash",
+    ],
+    alwayslink = 1,
+)
+
 tf_kernel_libraries(
     name = "state",
     prefixes = [
@@ -1875,6 +1997,9 @@ tf_cuda_cc_test(
 
 # Android libraries -----------------------------------------------------------
 
+# Changes to the Android srcs here should be replicated in
+# tensorflow/contrib/makefile/tf_op_files.txt
+# LINT.IfChange
 filegroup(
     name = "android_srcs",
     srcs = [
@@ -1941,6 +2066,7 @@ filegroup(
         "fill_functor.cc",
         "fill_functor.h",
         "function_ops.cc",
+        "gather_functor.h",
         "gather_op.cc",
         "gather_op.h",
         "identity_op.cc",
@@ -2158,6 +2284,7 @@ filegroup(
             # unless we add the additional deps they need.
             "tf_record_reader_op.*",
             "string_to_hash_bucket_op.*",
+            "sdca_ops.*",
             "text_line_reader_op.*",
             "summary_image_op.*",
             "encode_png_op.*",
@@ -2180,6 +2307,7 @@ filegroup(
     ),
     visibility = ["//visibility:public"],
 )
+# LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
 
 cc_library(
     name = "android_tensorflow_kernels",
@@ -2199,30 +2327,6 @@ cc_library(
     deps = [
         "//tensorflow/core:android_tensorflow_lib_lite",
         "//tensorflow/core:protos_cc",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "android_tensorflow_kernels_no_rtti_lite_runtime",
-    srcs = select({
-        "//tensorflow:android": [
-            "//tensorflow/core/kernels:android_core_ops",
-            "//tensorflow/core/kernels:android_extended_ops",
-        ],
-        "//conditions:default": [],
-    }),
-    copts = tf_copts() + tf_opts_nortti_if_android(),
-    tags = [
-        "manual",
-        "notap",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//base",
-        "//tensorflow/core:android_proto_lib_no_rtti_lite_runtime",
-        "//tensorflow/core:android_tensorflow_lib_lite_no_rtti_lite_runtime",
         "//third_party/eigen3",
     ],
     alwayslink = 1,

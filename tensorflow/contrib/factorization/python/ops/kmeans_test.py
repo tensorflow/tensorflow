@@ -27,9 +27,6 @@ import numpy as np
 from sklearn.cluster import KMeans as SklearnKMeans
 import tensorflow as tf
 
-from tensorflow.contrib.factorization.python.ops import kmeans as kmeans_ops
-from tensorflow.contrib.factorization.python.ops.kmeans import KMeansClustering as KMeans
-from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.python.platform import benchmark
 
 FLAGS = tf.app.flags.FLAGS
@@ -70,15 +67,16 @@ class KMeansTest(tf.test.TestCase):
                                                      self.num_points)
     self.true_score = np.add.reduce(self.scores)
 
-    self.kmeans = KMeans(self.num_centers,
-                         initial_clusters=kmeans_ops.RANDOM_INIT,
-                         use_mini_batch=self.use_mini_batch,
-                         config=self.config(14),
-                         random_seed=12)
+    self.kmeans = tf.contrib.factorization.KMeansClustering(
+        self.num_centers,
+        initial_clusters=tf.contrib.factorization.RANDOM_INIT,
+        use_mini_batch=self.use_mini_batch,
+        config=self.config(14),
+        random_seed=12)
 
   @staticmethod
   def config(tf_random_seed):
-    return run_config.RunConfig(tf_random_seed=tf_random_seed)
+    return tf.contrib.learn.RunConfig(tf_random_seed=tf_random_seed)
 
   @property
   def batch_size(self):
@@ -114,11 +112,12 @@ class KMeansTest(tf.test.TestCase):
     if self.batch_size != self.num_points:
       # TODO(agarwal): Doesn't work with mini-batch.
       return
-    kmeans = KMeans(self.num_centers,
-                    initial_clusters=kmeans_ops.RANDOM_INIT,
-                    use_mini_batch=self.use_mini_batch,
-                    config=run_config.RunConfig(tf_random_seed=14),
-                    random_seed=12)
+    kmeans = tf.contrib.factorization.KMeansClustering(
+        self.num_centers,
+        initial_clusters=tf.contrib.factorization.RANDOM_INIT,
+        use_mini_batch=self.use_mini_batch,
+        config=tf.contrib.learn.RunConfig(tf_random_seed=14),
+        random_seed=12)
 
     kmeans.fit(x=self.points,
                # Force it to train forever until the monitor stops it.
@@ -160,12 +159,13 @@ class KMeansTest(tf.test.TestCase):
     # true centers are the unit vectors on lines y=x and y=1.5x
     true_centers = np.array(
         [[0.70710678, 0.70710678], [0.5547002, 0.83205029]], dtype=np.float32)
-    kmeans = KMeans(2,
-                    initial_clusters=kmeans_ops.RANDOM_INIT,
-                    distance_metric=kmeans_ops.COSINE_DISTANCE,
-                    use_mini_batch=self.use_mini_batch,
-                    config=self.config(2),
-                    random_seed=12)
+    kmeans = tf.contrib.factorization.KMeansClustering(
+        2,
+        initial_clusters=tf.contrib.factorization.RANDOM_INIT,
+        distance_metric=tf.contrib.factorization.COSINE_DISTANCE,
+        use_mini_batch=self.use_mini_batch,
+        config=self.config(2),
+        random_seed=12)
     kmeans.fit(x=points, steps=10, batch_size=4)
     centers = normalize(kmeans.clusters())
     self.assertAllClose(np.sort(centers, axis=0),
@@ -181,11 +181,12 @@ class KMeansTest(tf.test.TestCase):
                     normalize(np.mean(normalize(points)[0:4, :], axis=0,
                                       keepdims=True))[0]]
 
-    kmeans = KMeans(2,
-                    initial_clusters=kmeans_ops.RANDOM_INIT,
-                    distance_metric=kmeans_ops.COSINE_DISTANCE,
-                    use_mini_batch=self.use_mini_batch,
-                    config=self.config(5))
+    kmeans = tf.contrib.factorization.KMeansClustering(
+        2,
+        initial_clusters=tf.contrib.factorization.RANDOM_INIT,
+        distance_metric=tf.contrib.factorization.COSINE_DISTANCE,
+        use_mini_batch=self.use_mini_batch,
+        config=self.config(5))
     kmeans.fit(x=points, steps=50, batch_size=8)
 
     centers = normalize(kmeans.clusters())
@@ -212,11 +213,12 @@ class KMeansTest(tf.test.TestCase):
     true_score = len(points) - np.tensordot(normalize(points),
                                             true_centers[true_assignments])
 
-    kmeans = KMeans(2,
-                    initial_clusters=kmeans_ops.RANDOM_INIT,
-                    distance_metric=kmeans_ops.COSINE_DISTANCE,
-                    use_mini_batch=self.use_mini_batch,
-                    config=self.config(3))
+    kmeans = tf.contrib.factorization.KMeansClustering(
+        2,
+        initial_clusters=tf.contrib.factorization.RANDOM_INIT,
+        distance_metric=tf.contrib.factorization.COSINE_DISTANCE,
+        use_mini_batch=self.use_mini_batch,
+        config=self.config(3))
     kmeans.fit(x=points, steps=30, batch_size=8)
 
     centers = normalize(kmeans.clusters())
@@ -247,11 +249,12 @@ class KMeansTest(tf.test.TestCase):
     true_score = len(points) - np.tensordot(normalize(points),
                                             true_centers[true_assignments])
 
-    kmeans = KMeans(3,
-                    initial_clusters=kmeans_ops.KMEANS_PLUS_PLUS_INIT,
-                    distance_metric=kmeans_ops.COSINE_DISTANCE,
-                    use_mini_batch=self.use_mini_batch,
-                    config=self.config(3))
+    kmeans = tf.contrib.factorization.KMeansClustering(
+        3,
+        initial_clusters=tf.contrib.factorization.KMEANS_PLUS_PLUS_INIT,
+        distance_metric=tf.contrib.factorization.COSINE_DISTANCE,
+        use_mini_batch=self.use_mini_batch,
+        config=self.config(3))
     kmeans.fit(x=points, steps=30, batch_size=12)
 
     centers = normalize(kmeans.clusters())
@@ -270,7 +273,8 @@ class KMeansTest(tf.test.TestCase):
     points = np.array([[2.0, 3.0], [1.6, 8.2]], dtype=np.float32)
 
     with self.assertRaisesOpError('less'):
-      kmeans = KMeans(num_clusters=3, initial_clusters=kmeans_ops.RANDOM_INIT)
+      kmeans = tf.contrib.factorization.KMeansClustering(
+          num_clusters=3, initial_clusters=tf.contrib.factorization.RANDOM_INIT)
       kmeans.fit(x=points, steps=10, batch_size=8)
 
   def test_fit_raise_if_num_clusters_larger_than_num_points_kmeans_plus_plus(
@@ -278,8 +282,9 @@ class KMeansTest(tf.test.TestCase):
     points = np.array([[2.0, 3.0], [1.6, 8.2]], dtype=np.float32)
 
     with self.assertRaisesOpError(AssertionError):
-      kmeans = KMeans(num_clusters=3,
-                      initial_clusters=kmeans_ops.KMEANS_PLUS_PLUS_INIT)
+      kmeans = tf.contrib.factorization.KMeansClustering(
+          num_clusters=3,
+          initial_clusters=tf.contrib.factorization.KMEANS_PLUS_PLUS_INIT)
       kmeans.fit(x=points, steps=10, batch_size=8)
 
 
@@ -351,12 +356,12 @@ class TensorflowKMeansBenchmark(KMeansBenchmark):
     start = time.time()
     for i in range(num_iters):
       print('Starting tensorflow KMeans: %d' % i)
-      tf_kmeans = KMeans(self.num_clusters,
-                         initial_clusters=kmeans_ops.KMEANS_PLUS_PLUS_INIT,
-                         kmeans_plus_plus_num_retries=int(
-                             math.log(self.num_clusters) + 2),
-                         random_seed=i * 42,
-                         config=run_config.RunConfig(tf_random_seed=3))
+      tf_kmeans = tf.contrib.factorization.KMeansClustering(
+          self.num_clusters,
+          initial_clusters=tf.contrib.factorization.KMEANS_PLUS_PLUS_INIT,
+          kmeans_plus_plus_num_retries=int(math.log(self.num_clusters) + 2),
+          random_seed=i * 42,
+          config=tf.contrib.learn.RunConfig(tf_random_seed=3))
       tf_kmeans.fit(x=self.points, batch_size=self.num_points, steps=50,
                     relative_tolerance=1e-6)
       _ = tf_kmeans.clusters()

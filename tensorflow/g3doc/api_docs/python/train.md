@@ -3520,6 +3520,13 @@ Adds a metadata information for a single session.run() call.
 *  <b>`ValueError`</b>: If the provided tag was already used for this type of event.
 
 
+- - -
+
+#### `tf.train.SummaryWriter.get_logdir()` {#SummaryWriter.get_logdir}
+
+Returns the directory where event file will be written.
+
+
 
 - - -
 

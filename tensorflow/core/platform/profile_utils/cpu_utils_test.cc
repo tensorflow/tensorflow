@@ -23,7 +23,16 @@ namespace profile_utils {
 
 static constexpr bool DBG = false;
 
-TEST(CpuUtils, CheckGetCurrentClockCycle) {
+class CpuUtilsTest : public ::testing::Test {
+ protected:
+  void SetUp() { CpuUtils::EnableClockCycleProfiling(true); }
+};
+
+TEST_F(CpuUtilsTest, SetUpTestCase) {}
+
+TEST_F(CpuUtilsTest, TearDownTestCase) {}
+
+TEST_F(CpuUtilsTest, CheckGetCurrentClockCycle) {
   static constexpr int LOOP_COUNT = 10;
   const uint64 start_clock_count = CpuUtils::GetCurrentClockCycle();
   CHECK_GT(start_clock_count, 0);
@@ -42,8 +51,8 @@ TEST(CpuUtils, CheckGetCurrentClockCycle) {
   }
 }
 
-TEST(CpuUtils, CheckCpuFrequency) {
-  const int64 cpu_frequency = CpuUtils::GetCpuFrequency();
+TEST_F(CpuUtilsTest, CheckCycleCounterFrequency) {
+  const int64 cpu_frequency = CpuUtils::GetCycleCounterFrequency();
   CHECK_GT(cpu_frequency, 0);
   CHECK_NE(cpu_frequency, CpuUtils::INVALID_FREQUENCY);
   if (DBG) {
@@ -51,15 +60,7 @@ TEST(CpuUtils, CheckCpuFrequency) {
   }
 }
 
-TEST(CpuUtils, CheckClockPerMicroSec) {
-  const int clock_per_micro_sec = CpuUtils::GetClockPerMicroSec();
-  CHECK_GT(clock_per_micro_sec, 0);
-  if (DBG) {
-    LOG(INFO) << "Clock per micro sec = " << clock_per_micro_sec;
-  }
-}
-
-TEST(CpuUtils, CheckMicroSecPerClock) {
+TEST_F(CpuUtilsTest, CheckMicroSecPerClock) {
   const double micro_sec_per_clock = CpuUtils::GetMicroSecPerClock();
   CHECK_GT(micro_sec_per_clock, 0.0);
   if (DBG) {

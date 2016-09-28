@@ -24,6 +24,7 @@ operators to your graph.
 @@add
 @@sub
 @@mul
+@@scalar_mul
 @@div
 @@truediv
 @@floordiv
@@ -121,12 +122,6 @@ Fourier transform functions to your graph.
 @@ifft2d
 @@fft3d
 @@ifft3d
-@@batch_fft
-@@batch_ifft
-@@batch_fft2d
-@@batch_ifft2d
-@@batch_fft3d
-@@batch_ifft3d
 
 ## Reduction
 
@@ -143,6 +138,8 @@ common math computations that reduce various dimensions of a tensor.
 @@reduce_logsumexp
 
 @@accumulate_n
+
+@@einsum
 
 ## Scan
 
@@ -789,6 +786,7 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
 _TRUEDIV_TABLE = {
     dtypes.uint8: dtypes.float32,
     dtypes.int8: dtypes.float32,
+    dtypes.uint16: dtypes.float32,
     dtypes.int16: dtypes.float32,
     dtypes.int32: dtypes.float64,
     dtypes.int64: dtypes.float64,
@@ -1528,6 +1526,9 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
   otherwise, these are inferred.
 
+  NOTE: This operation is not differentiable and cannot be used if inputs depend
+  on trainable variables. Please use tf.add_n for such cases.
+
   For example:
 
   ```python
@@ -1796,12 +1797,6 @@ ops.RegisterShape("FFT2D")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("IFFT2D")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("FFT3D")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("IFFT3D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchFFT")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchIFFT")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchFFT2D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchIFFT2D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchFFT3D")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("BatchIFFT3D")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("TanhGrad")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("SigmoidGrad")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("InvGrad")(common_shapes.call_cpp_shape_fn)

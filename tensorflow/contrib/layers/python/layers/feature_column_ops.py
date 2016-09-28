@@ -375,7 +375,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
           variable = [contrib_variables.model_variable(
               name='weight',
               shape=[tensor.get_shape()[1], num_outputs],
-              initializer=array_ops.zeros_initializer,
+              initializer=init_ops.zeros_initializer,
               collections=weight_collections)]
           predictions = math_ops.matmul(tensor, variable[0], name='matmul')
       except ValueError as ee:

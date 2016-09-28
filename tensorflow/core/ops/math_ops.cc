@@ -503,7 +503,7 @@ Returns element-wise smallest integer in not less than x.
 
 #define BINARY_MORE()                              \
   Input("x: T").Input("y: T").Output("z: T").Attr( \
-      "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, complex128}")
+      "T: {half, float, double, uint8, int8, uint16, int16, int32, int64, complex64, complex128}")
 
 #define BINARY_FEWER()                             \
   Input("x: T").Input("y: T").Output("z: T").Attr( \
@@ -1910,85 +1910,6 @@ REGISTER_OP("FFT")
     .Input("input: complex64")
     .Output("output: complex64")
     .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRank(c, 1);
-    })
-    .Doc(R"doc(
-Compute the 1-dimensional discrete Fourier Transform.
-
-input: A complex64 vector.
-output: The 1D Fourier Transform of `input`.
-)doc");
-
-REGISTER_OP("IFFT")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRank(c, 1);
-    })
-    .Doc(R"doc(
-    .Doc(R"doc(
-Compute the inverse 1-dimensional discrete Fourier Transform.
-
-input: A complex64 vector.
-output: The inverse 1D Fourier Transform of `input`.
-)doc");
-
-REGISTER_OP("FFT2D")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRank(c, 2);
-    })
-    .Doc(R"doc(
-Compute the 2-dimensional discrete Fourier Transform.
-
-input: A complex64 matrix.
-output: The 2D Fourier Transform of `input`.
-)doc");
-
-REGISTER_OP("IFFT2D")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRank(c, 2);
-    })
-    .Doc(R"doc(
-Compute the inverse 2-dimensional discrete Fourier Transform.
-
-input: A complex64 matrix.
-output: The inverse 2D Fourier Transform of `input`.
-)doc");
-
-REGISTER_OP("FFT3D")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRank(c, 3);
-    })
-    .Doc(R"doc(
-Compute the 3-dimensional discrete Fourier Transform.
-
-input: A complex64 3-D tensor.
-output: The 3D Fourier Transform of `input`.
-)doc");
-
-REGISTER_OP("IFFT3D")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRank(c, 3);
-    })
-    .Doc(R"doc(
-Compute the inverse 3-dimensional discrete Fourier Transform.
-
-input: A complex64 3-D tensor.
-output: The inverse 3D Fourier Transform of `input`.
-)doc");
-
-REGISTER_OP("BatchFFT")
-    .Input("input: complex64")
-    .Output("output: complex64")
-    .SetShapeFn([](InferenceContext* c) {
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
     })
     .Doc(R"doc(
@@ -2000,7 +1921,7 @@ output: A complex64 tensor of the same shape as `input`. The inner-most
   dimension of `input` is replaced with its 1D Fourier Transform.
 )doc");
 
-REGISTER_OP("BatchIFFT")
+REGISTER_OP("IFFT")
     .Input("input: complex64")
     .Output("output: complex64")
     .SetShapeFn([](InferenceContext* c) {
@@ -2015,7 +1936,7 @@ output: A complex64 tensor of the same shape as `input`. The inner-most
   dimension of `input` is replaced with its inverse 1D Fourier Transform.
 )doc");
 
-REGISTER_OP("BatchFFT2D")
+REGISTER_OP("FFT2D")
     .Input("input: complex64")
     .Output("output: complex64")
     .SetShapeFn([](InferenceContext* c) {
@@ -2030,7 +1951,7 @@ output: A complex64 tensor of the same shape as `input`. The inner-most 2
   dimensions of `input` are replaced with their 2D Fourier Transform.
 )doc");
 
-REGISTER_OP("BatchIFFT2D")
+REGISTER_OP("IFFT2D")
     .Input("input: complex64")
     .Output("output: complex64")
     .SetShapeFn([](InferenceContext* c) {
@@ -2045,7 +1966,7 @@ output: A complex64 tensor of the same shape as `input`. The inner-most 2
   dimensions of `input` are replaced with their inverse 2D Fourier Transform.
 )doc");
 
-REGISTER_OP("BatchFFT3D")
+REGISTER_OP("FFT3D")
     .Input("input: complex64")
     .Output("output: complex64")
     .SetShapeFn([](InferenceContext* c) {
@@ -2060,7 +1981,7 @@ output: A complex64 tensor of the same shape as `input`. The inner-most 3
   dimensions of `input` are replaced with their 3D Fourier Transform.
 )doc");
 
-REGISTER_OP("BatchIFFT3D")
+REGISTER_OP("IFFT3D")
     .Input("input: complex64")
     .Output("output: complex64")
     .SetShapeFn([](InferenceContext* c) {
@@ -2174,5 +2095,31 @@ The `reverse` and `exclusive` kwargs can also be combined:
 tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 0]
 ```
 )doc");
+
+// Deprecated ops:
+REGISTER_OP("BatchFFT")
+    .Input("input: complex64")
+    .Output("output: complex64")
+    .Deprecated(15, "Use FFT");
+REGISTER_OP("BatchIFFT")
+    .Input("input: complex64")
+    .Output("output: complex64")
+    .Deprecated(15, "Use IFFT");
+REGISTER_OP("BatchFFT2D")
+    .Input("input: complex64")
+    .Output("output: complex64")
+    .Deprecated(15, "Use FFT2D");
+REGISTER_OP("BatchIFFT2D")
+    .Input("input: complex64")
+    .Output("output: complex64")
+    .Deprecated(15, "Use IFFT2D");
+REGISTER_OP("BatchFFT3D")
+    .Input("input: complex64")
+    .Output("output: complex64")
+    .Deprecated(15, "Use FFT3D");
+REGISTER_OP("BatchIFFT3D")
+    .Input("input: complex64")
+    .Output("output: complex64")
+    .Deprecated(15, "Use IFFT3D");
 
 }  // namespace tensorflow

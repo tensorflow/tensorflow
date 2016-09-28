@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/node_def.pb_text.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -44,7 +45,7 @@ TF_Tensor* TF_Tensor_EncodeStrings(const Tensor& src);
 
 namespace {
 
-TEST(CApi, Status) {
+TEST(CAPI, Status) {
   TF_Status* s = TF_NewStatus();
   EXPECT_EQ(TF_OK, TF_GetCode(s));
   EXPECT_EQ(string(), TF_Message(s));
@@ -59,7 +60,7 @@ static void Deallocator(void* data, size_t, void* arg) {
   *reinterpret_cast<bool*>(arg) = true;
 }
 
-TEST(CApi, Tensor) {
+TEST(CAPI, Tensor) {
   const int num_bytes = 6 * sizeof(float);
   float* values =
       reinterpret_cast<float*>(tensorflow::cpu_allocator()->AllocateRaw(
@@ -79,7 +80,7 @@ TEST(CApi, Tensor) {
   EXPECT_TRUE(deallocator_called);
 }
 
-TEST(CApi, AllocateTensor) {
+TEST(CAPI, AllocateTensor) {
   const int num_bytes = 6 * sizeof(float);
   int64_t dims[] = {2, 3};
   TF_Tensor* t = TF_AllocateTensor(TF_FLOAT, dims, 2, num_bytes);
@@ -91,7 +92,7 @@ TEST(CApi, AllocateTensor) {
   TF_DeleteTensor(t);
 }
 
-TEST(CApi, LibraryLoadFunctions) {
+TEST(CAPI, LibraryLoadFunctions) {
   // Load the library.
   TF_Status* status = TF_NewStatus();
   TF_Library* lib =
@@ -138,7 +139,7 @@ static void TestEncodeDecode(int line, const std::vector<string>& data) {
   }
 }
 
-TEST(CApi, TensorEncodeDecodeStrings) {
+TEST(CAPI, TensorEncodeDecodeStrings) {
   TestEncodeDecode(__LINE__, {});
   TestEncodeDecode(__LINE__, {"hello"});
   TestEncodeDecode(__LINE__,
@@ -148,12 +149,12 @@ TEST(CApi, TensorEncodeDecodeStrings) {
   TestEncodeDecode(__LINE__, {"small", big, "small2"});
 }
 
-TEST(CApi, SessionOptions) {
+TEST(CAPI, SessionOptions) {
   TF_SessionOptions* opt = TF_NewSessionOptions();
   TF_DeleteSessionOptions(opt);
 }
 
-TEST(CApi, SessionWithRunMetadata) {
+TEST(CAPI, SessionWithRunMetadata) {
   TF_Status* s = TF_NewStatus();
   TF_SessionOptions* opt = TF_NewSessionOptions();
   TF_Session* session = TF_NewSession(opt, s);
@@ -229,7 +230,7 @@ TEST(CAPI, StatusEnum) {
   EXPECT_EQ(TF_DATA_LOSS, static_cast<TF_Code>(tensorflow::error::DATA_LOSS));
 }
 
-TEST(CApi, GetAllOpList) {
+TEST(CAPI, GetAllOpList) {
   TF_Buffer* buf = TF_GetAllOpList();
   tensorflow::OpList op_list;
   EXPECT_TRUE(op_list.ParseFromArray(buf->data, buf->length));
@@ -645,6 +646,47 @@ TEST(CAPI, Graph) {
   TF_DeleteStatus(s);
 }
 
+TEST(CAPI, ImportGraphDef) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Create a graph with two nodes: x and 3
+  Placeholder(graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  ASSERT_TRUE(TF_GraphOperationByName(graph, "feed") != nullptr);
+  ScalarConst(3, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  ASSERT_TRUE(TF_GraphOperationByName(graph, "scalar") != nullptr);
+
+  // Export to a GraphDef
+  TF_Buffer* graph_def = TF_NewBuffer();
+  TF_GraphToGraphDef(graph, graph_def, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Import it again, with a prefix, in a fresh graph.
+  TF_DeleteGraph(graph);
+  graph = TF_NewGraph();
+  TF_ImportGraphDefOptions* opts = TF_NewImportGraphDefOptions();
+  TF_ImportGraphDefOptionsSetPrefix(opts, "imported");
+  TF_GraphImportGraphDef(graph, graph_def, opts, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_DeleteImportGraphDefOptions(opts);
+  TF_DeleteBuffer(graph_def);
+
+  TF_Operation* scalar = TF_GraphOperationByName(graph, "imported/scalar");
+  TF_Operation* feed = TF_GraphOperationByName(graph, "imported/feed");
+  ASSERT_TRUE(scalar != nullptr);
+  ASSERT_TRUE(feed != nullptr);
+
+  // Can add nodes to the imported graph without trouble.
+  Add(feed, scalar, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
 class CSessionWithGraph {
  public:
   CSessionWithGraph(TF_Graph* graph, TF_Status* s) {
@@ -801,6 +843,41 @@ TEST(CAPI, SessionWithGraph) {
   // Clean up
   csession.CloseAndDelete(s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
+TEST(CAPI, ColocateWith) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  TF_Operation* feed = Placeholder(graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* constant = ScalarConst(10, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_OperationDescription* desc = TF_NewOperation(graph, "AddN", "add");
+  TF_Port inputs[] = {{feed, 0}, {constant, 0}};
+  TF_AddInputList(desc, inputs, TF_ARRAYSIZE(inputs));
+  TF_ColocateWith(desc, feed);
+  TF_Operation* add = TF_FinishOperation(desc, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_AttrMetadata m =
+      TF_OperationGetAttrMetadata(add, tensorflow::kColocationAttrName, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ(1, m.is_list);
+  EXPECT_EQ(1, m.list_size);
+  EXPECT_EQ(TF_ATTR_STRING, m.type);
+  void* values[1];
+  int lens[1];
+  std::unique_ptr<char[]> storage(new char[m.total_size]);
+  TF_OperationGetAttrStringList(add, tensorflow::kColocationAttrName, values,
+                                lens, 1, storage.get(), m.total_size, s);
+  EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  EXPECT_EQ("loc:@feed", string(static_cast<const char*>(values[0]), lens[0]));
+
   TF_DeleteGraph(graph);
   TF_DeleteStatus(s);
 }

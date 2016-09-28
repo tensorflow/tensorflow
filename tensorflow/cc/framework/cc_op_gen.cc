@@ -793,6 +793,11 @@ namespace ops {
   TF_CHECK_OK(cc->Append(cc_header));
 
   for (const auto& op_def : ops.op()) {
+    if (op_def.name() == "Const") {
+      // We use a hand-written wrapper for "Const", since the
+      // generated code depends on it.
+      continue;
+    }
     WriteCCOp(op_def, h.get(), cc.get());
   }
 

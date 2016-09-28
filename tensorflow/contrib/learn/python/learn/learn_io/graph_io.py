@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
@@ -377,8 +378,10 @@ def queue_parsed_features(parsed_features,
     # than two queue-runners may hog the cpu on the worker to fill up the queue.
     for _ in range(num_queue_runners):
       queue_runner.add_queue_runner(
-          queue_runner.QueueRunner(input_queue, [input_queue.enqueue(
-              tensors_to_enqueue)]))
+          queue_runner.QueueRunner(
+              input_queue, [input_queue.enqueue(tensors_to_enqueue)],
+              queue_closed_exception_types=(errors.OutOfRangeError,
+                                            errors.CancelledError)))
 
     dequeued_tensors = input_queue.dequeue()
 

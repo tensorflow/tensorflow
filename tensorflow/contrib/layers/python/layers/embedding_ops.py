@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.platform import tf_logging as logging
 
 __all__ = ["safe_embedding_lookup_sparse", "hashed_embedding_lookup",
            "hashed_embedding_lookup_sparse"]
@@ -35,7 +36,7 @@ __all__ = ["safe_embedding_lookup_sparse", "hashed_embedding_lookup",
 def safe_embedding_lookup_sparse(embedding_weights,
                                  sparse_ids,
                                  sparse_weights=None,
-                                 combiner="mean",
+                                 combiner=None,
                                  default_id=None,
                                  name=None,
                                  partition_strategy="div"):
@@ -77,6 +78,10 @@ def safe_embedding_lookup_sparse(embedding_weights,
   Raises:
     ValueError: if `embedding_weights` is empty.
   """
+  if combiner is None:
+    logging.warn("The default value of combiner will change from \"mean\" "
+                 "to \"sqrtn\" after 2016/11/01.")
+    combiner = "mean"
   if embedding_weights is None or len(embedding_weights) < 1:
     raise ValueError("Missing embedding_weights %s." % embedding_weights)
 
@@ -245,7 +250,7 @@ def hashed_embedding_lookup(params, values, dimension, name=None):
 def hashed_embedding_lookup_sparse(params,
                                    sparse_values,
                                    dimension,
-                                   combiner="mean",
+                                   combiner=None,
                                    default_value=None,
                                    name=None):
   """Looks up embeddings of a sparse feature using parameter hashing.
@@ -272,7 +277,10 @@ def hashed_embedding_lookup_sparse(params,
     TypeError: If sparse_values is not a SparseTensor.
     ValueError: If combiner is not one of {"mean", "sqrtn", "sum"}.
   """
-
+  if combiner is None:
+    logging.warn("The default value of combiner will change from \"mean\" "
+                 "to \"sqrtn\" after 2016/11/01.")
+    combiner = "mean"
   if not isinstance(params, list):
     params = [params]
   if not isinstance(sparse_values, ops.SparseTensor):
