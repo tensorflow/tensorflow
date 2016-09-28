@@ -878,6 +878,8 @@ ops.RegisterShape("BatchNormWithGlobalNormalization")(
     common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("BatchNormWithGlobalNormalizationGrad")(
     common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FusedBatchNorm")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FusedBatchNormGrad")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Conv2D")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("DepthwiseConv2dNative")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("AvgPool")(common_shapes.call_cpp_shape_fn)

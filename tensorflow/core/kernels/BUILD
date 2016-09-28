@@ -561,6 +561,24 @@ tf_cuda_library(
     ],
 )
 
+tf_cc_test(
+    name = "fused_batch_norm_op_test",
+    size = "small",
+    srcs = ["fused_batch_norm_op_test.cc"],
+    deps = [
+        ":fused_batch_norm_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "gather_op_test",
     size = "small",
@@ -1473,6 +1491,7 @@ tf_kernel_libraries(
     prefixes = [
         "batch_norm_op",
         "bias_op",
+        "fused_batch_norm_op",
         "in_topk_op",
         "l2loss_op",
         "lrn_op",
@@ -1490,6 +1509,7 @@ tf_kernel_libraries(
         ":depthwise_conv_grad_op",
         ":depthwise_conv_op",
         ":dilation_ops",
+        ":fused_batch_norm_util_gpu",
         ":ops_util",
         ":pooling_ops",
         "//tensorflow/core:framework",
@@ -1600,6 +1620,18 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "fused_batch_norm_util",
+    gpu_srcs = [
+        "fused_batch_norm_op.h",
+        "fused_batch_norm_op.cu.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -2207,6 +2239,7 @@ filegroup(
         "deep_conv2d.h",
         "depthwise_conv_op.cc",
         "dynamic_partition_op.cc",
+        "fused_batch_norm_op.cc",
         "winograd_transform.h",
         ":android_extended_ops_headers",
     ],
