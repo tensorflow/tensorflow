@@ -1,7 +1,39 @@
-# Changes since last release
+# Release 0.11.0
 
-## Breaking Changes to the API
+## Major Features and Improvements
 
+* HDFS Support
+* Improved support for NumPy style basic slicing including non-1 strides,
+  ellipses, newaxis, and negative indices. For example complicated expressions
+  like `foo[1, 2:4, tf.newaxis, ..., :-3:-1, :]` are now supported. In addition
+  we have preliminary (non-broadcasting) support for sliced assignment to
+  variables. In particular one can write `var[1:3].assign([1,11,111])`.
+* Introducing `core/util/tensor_bundle` module: a module to efficiently
+  serialize/deserialize tensors to disk.  Will be used in TF's new checkpoint
+  format.
+* Added tf.svd for computing the singular value decomposition (SVD) of dense
+  matrices or batches of matrices (CPU only).
+* Added gradients for eigenvalues and eigenvectors computed using
+  `self_adjoint_eig` or `self_adjoint_eigvals`.
+* Eliminated `batch_*` methods for most linear algebra and FFT ops and promoted
+  the non-batch version of the ops to handle batches of matrices.
+* Tracing/timeline support for distributed runtime (no GPU profiler yet).
+* C API gives access to inferred shapes with `TF_GraphGetTensorNumDims` and
+  `TF_GraphGetTensorShape`.
+* Shape functions for core ops have moved to C++ via
+  `REGISTER_OP(...).SetShapeFn(...)`.  Python shape inference RegisterShape calls
+  use the C++ shape functions with `common_shapes.call_cpp_shape_fn`.  A future
+  release will remove `RegisterShape` from python.
+
+
+## Bug Fixes and Other Changes
+
+* Documentation now includes operator overloads on Tensor and Variable.
+* `tensorflow.__git_version__` now allows users to identify the version of the
+  code that TensorFlow was compiled with. We also have
+  `tensorflow.__git_compiler__` which identifies the compiler used to compile
+  TensorFlow's core.
+* Improved multi-threaded performance of `batch_matmul`.
 * LSTMCell, BasicLSTMCell, and MultiRNNCell constructors now default to
   `state_is_tuple=True`.  For a quick fix while transitioning to the new
   default, simply pass the argument `state_is_tuple=False`.
@@ -10,16 +42,41 @@
 * Int32 elements of list(type) arguments are no longer placed in host memory by
   default. If necessary, a list(type) argument to a kernel can be placed in host
   memory using a HostMemory annotation.
-* uniform_unit_scaling_initializer() no longer takes a full_shape arg, instead
-  relying on the partition info passed to the initializer function when it's
-  called.
-* The NodeDef protocol message is now defined in its own file node_def.proto
-  instead of graph.proto.
-* ops.NoGradient was renamed ops.NotDifferentiable. ops.NoGradient will
+* `uniform_unit_scaling_initializer()` no longer takes a `full_shape` arg,
+  instead relying on the partition info passed to the initializer function when
+  it's called.
+* The NodeDef protocol message is now defined in its own file `node_def.proto`
+  `instead of graph.proto`.
+* `ops.NoGradient` was renamed `ops.NotDifferentiable`. `ops.NoGradient` will
   be removed soon.
-* dot.h / DotGraph was removed (it was an early analysis tool prior
+* `dot.h` / DotGraph was removed (it was an early analysis tool prior
   to TensorBoard, no longer that useful).  It remains in history
   should someone find the code useful.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Abid K, @afshinrahimi, @AidanGG, Ajay Rao, Aki Sukegawa, Alex Rothberg,
+Alexander Rosenberg Johansen, Andrew Gibiansky, Andrew Thomas, @Appleholic,
+Bastiaan Quast, Ben Dilday, Bofu Chen, Brandon Amos, Bryon Gloden, Cissp®,
+@chanis, Chenyang Liu, Corey Wharton, Daeyun Shin, Daniel Julius Lasiman, Daniel
+Waterworth, Danijar Hafner, Darren Garvey, Denis Gorbachev, @DjangoPeng,
+Egor-Krivov, Elia Palme, Eric Platon, Fabrizio Milo, Gaetan Semet,
+Georg Nebehay, Gu Wang, Gustav Larsson, @haosdent, Harold Cooper, Hw-Zz,
+@ichuang, Igor Babuschkin, Igor Macedo Quintanilha, Ilya Edrenkin, @ironhead,
+Jakub Kolodziejczyk, Jennifer Guo, Jihun Choi, Jonas Rauber, Josh Bleecher
+Snyder, @jpangburn, Jules Gagnon-Marchand, Karen Brems, @kborer, Kirill Bobyrev,
+Laurent Mazare, Longqi Yang, Malith Yapa, Maniteja Nandana, Martin Englund,
+Matthias Winkelmann, @mecab, Mu-Ik Jeon, Nand Dalal, Niels Ole Salscheider,
+Nikhil Mishra, Park Jiin, Pieter De Rijk, @raix852, Ritwik Gupta, Sahil Sharma,
+@Sangheum, @SergejsRk, Shinichiro Hamaji, Simon Denel, @Steve, @suiyuan2009,
+Tiago Jorge, Tijmen Tieleman, @tvn, @tyfkda, Wang Yang, Wei-Ting Kuo, Wenjian
+Huang, Yan Chen, @YenChenLin, Yuan (Terry) Tang, Yuncheng Li, Yunfeng Wang, Zack
+Polizzi, @zhongzyd, Ziming Dong, @郑泽宇
+
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
 
 # Release 0.10.0
 
@@ -33,7 +90,7 @@
 * Full version of TF-Slim available as `tf.contrib.slim`
 * Added k-Means clustering and WALS matrix factorization
 
-## Big Fixes and Other Changes
+## Bug Fixes and Other Changes
 
 * Allow gradient computation for scalar values.
 * Performance improvements for gRPC
@@ -74,7 +131,7 @@ answered questions, and were part of inspiring discussions.
   `tf.nn.rnn`, and the classes in `tf.nn.rnn_cell`).
 * TensorBoard now has an Audio Dashboard, with associated audio summaries.
 
-## Big Fixes and Other Changes
+## Bug Fixes and Other Changes
 
 * Turned on CuDNN Autotune.
 * Added support for using third-party Python optimization algorithms (contrib.opt).
@@ -121,7 +178,7 @@ answered questions, and were part of inspiring discussions.
 * Add an extension mechanism for adding network file system support
 * TensorBoard displays metadata stats (running time, memory usage and device used) and tensor shapes
 
-## Big Fixes and Other Changes
+## Bug Fixes and Other Changes
 
 * Utility for inspecting checkpoints
 * Basic tracing and timeline support
