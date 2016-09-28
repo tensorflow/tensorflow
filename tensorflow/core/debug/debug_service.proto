@@ -29,7 +29,11 @@ message EventReply {
 // runtime(s).
 service EventListener {
   // Client(s) can use this RPC method to send the EventListener Event protos.
-  // The Event protos can hold information such as intermediate tensors from
-  // a debugged graph being executed.
+  // The Event protos can hold information such as:
+  //   1) intermediate tensors from a debugged graph being executed, which can
+  //      be sent from DebugIdentity ops configured with grpc URLs.
+  //   2) GraphDefs of partition graphs, which can be sent from special debug
+  //      ops that get executed immediately after the beginning of the graph
+  //      execution.
   rpc SendEvents(stream Event) returns (stream EventReply);
 }

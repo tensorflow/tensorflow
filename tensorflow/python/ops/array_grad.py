@@ -423,12 +423,26 @@ def _SpaceToBatchGrad(op, grad):
           None]
 
 
+@ops.RegisterGradient("SpaceToBatchND")
+def _SpaceToBatchNDGrad(op, grad):
+  # Its gradient is the opposite op: BatchToSpaceND.
+  return [array_ops.batch_to_space_nd(grad, op.inputs[1], op.inputs[2]),
+          None, None]
+
+
 @ops.RegisterGradient("BatchToSpace")
 def _BatchToSpaceGrad(op, grad):
   # Its gradient is the opposite op: SpaceToBatch.
   block_size = op.get_attr("block_size")
   return [array_ops.space_to_batch(grad, op.inputs[1], block_size=block_size),
           None]
+
+
+@ops.RegisterGradient("BatchToSpaceND")
+def _BatchToSpaceNDGrad(op, grad):
+  # Its gradient is the opposite op: SpaceToBatchND.
+  return [array_ops.space_to_batch_nd(grad, op.inputs[1], op.inputs[2]),
+          None, None]
 
 
 @ops.RegisterGradient("SpaceToDepth")

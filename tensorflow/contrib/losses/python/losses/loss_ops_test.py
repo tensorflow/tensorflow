@@ -459,6 +459,34 @@ class SigmoidCrossEntropyLossTest(tf.test.TestCase):
       self.assertEquals(loss.op.name, 'sigmoid_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 0.0, 3)
 
+  def testLossWithSingleDimPlaceholderForLogitsAndWeights1(self):
+    logits = tf.placeholder(tf.float32, shape=(None, 1))
+    labels = tf.placeholder(tf.float32, shape=(None, 1))
+    weight = tf.ones_like(logits, dtype=tf.float32)
+
+    loss = tf.contrib.losses.sigmoid_cross_entropy(logits, labels, weight)
+
+    with self.test_session() as sess:
+      loss = sess.run(loss, feed_dict={
+          logits: np.ones((32, 1)),
+          labels: np.ones((32, 1)),
+      })
+      self.assertAlmostEqual(loss, 0.313, 3)
+
+  def testLossWithSingleDimPlaceholderForLogitsAndWeights2(self):
+    logits = tf.placeholder(tf.float32, shape=(None, 2))
+    labels = tf.placeholder(tf.float32, shape=(None, 2))
+    weight = tf.ones_like(logits, dtype=tf.float32)
+
+    loss = tf.contrib.losses.sigmoid_cross_entropy(logits, labels, weight)
+
+    with self.test_session() as sess:
+      loss = sess.run(loss, feed_dict={
+          logits: np.ones((32, 2)),
+          labels: np.ones((32, 2)),
+      })
+      self.assertAlmostEqual(loss, 0.313, 3)
+
   def testAllWrongSigmoid(self):
     with self.test_session():
       logits = tf.constant([[100.0, -100.0, -100.0],
@@ -1110,6 +1138,57 @@ class CosineDistanceLossTest(tf.test.TestCase):
     with self.test_session():
       self.assertEqual(0, loss.eval())
 
+
+class ComputeWeightedLossTest(tf.test.TestCase):
+
+  def testHingeLoss(self):
+    logits = tf.constant([1.2, 0.4, -1.0, -1.1])
+    target = tf.constant([1.0, 0.0, 0.0, 1.0])
+    losses = tf.contrib.losses.hinge_loss(logits, target)
+    self.assertFalse(tf.contrib.losses.get_losses())
+    loss = tf.contrib.losses.compute_weighted_loss(losses)
+    self.assertTrue(tf.contrib.losses.get_losses())
+    with self.test_session():
+      self.assertAllClose(losses.eval(), [0.0, 1.4, 0.0, 2.1], atol=1e-3)
+      self.assertAllClose(loss.eval(), 3.5/4.0, atol=1e-3)
+
+
+class AddLossTest(tf.test.TestCase):
+
+  def testAddExternalLoss(self):
+    logits = tf.constant([1.2, 0.4, -1.0, -1.1])
+    target = tf.constant([1.0, 0.0, 0.0, 1.0])
+    losses = tf.contrib.losses.hinge_loss(logits, target)
+    self.assertFalse(tf.contrib.losses.get_losses())
+    tf.contrib.losses.add_loss(tf.reduce_mean(losses))
+    self.assertTrue(tf.contrib.losses.get_losses())
+    total_loss = tf.contrib.losses.get_total_loss()
+    with self.test_session():
+      self.assertAllClose(losses.eval(), [0.0, 1.4, 0.0, 2.1], atol=1e-3)
+      self.assertAllClose(total_loss.eval(), 3.5/4.0, atol=1e-3)
+
+  def testNoneLossCollection(self):
+    logits = tf.constant([1.2, 0.4, -1.0, -1.1])
+    target = tf.constant([1.0, 0.0, 0.0, 1.0])
+    losses = tf.contrib.losses.hinge_loss(logits, target)
+    self.assertFalse(tf.contrib.losses.get_losses())
+    tf.contrib.losses.add_loss(tf.reduce_mean(losses), loss_collection=None)
+    self.assertFalse(tf.contrib.losses.get_losses())
+    with self.test_session():
+      self.assertAllClose(losses.eval(), [0.0, 1.4, 0.0, 2.1], atol=1e-3)
+
+  def testNoCollectLosses(self):
+    logits = tf.constant([1.2, 0.4, -1.0, -1.1])
+    target = tf.constant([1.0, 0.0, 0.0, 1.0])
+    self.assertFalse(tf.contrib.losses.get_losses())
+    with tf.contrib.framework.arg_scope([tf.contrib.losses.add_loss],
+                                        loss_collection=None):
+      tf.contrib.losses.absolute_difference(logits, target)
+      tf.contrib.losses.log_loss(logits, target)
+      tf.contrib.losses.mean_squared_error(logits, target)
+      tf.contrib.losses.sigmoid_cross_entropy(logits, target)
+      tf.contrib.losses.softmax_cross_entropy(logits, target)
+    self.assertFalse(tf.contrib.losses.get_losses())
 
 if __name__ == '__main__':
   tf.test.main()

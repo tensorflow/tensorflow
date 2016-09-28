@@ -17,7 +17,8 @@ Can be used as a normalizer function for conv2d and fully_connected.
 *  <b>`scale`</b>: If True, multiply by `gamma`. If False, `gamma` is
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
     disabled since the scaling can be done by the next layer.
-*  <b>`activation_fn`</b>: Optional activation function.
+*  <b>`activation_fn`</b>: activation function, default set to None to skip it and
+    maintain a linear activation.
 *  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
 *  <b>`variables_collections`</b>: optional collections for the variables.

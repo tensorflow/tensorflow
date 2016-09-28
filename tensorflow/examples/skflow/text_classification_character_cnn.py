@@ -54,7 +54,7 @@ def char_cnn_model(x, y):
                          [-1, MAX_DOCUMENT_LENGTH, 256, 1])
   with tf.variable_scope('CNN_Layer1'):
     # Apply Convolution filtering on input sequence.
-    conv1 = learn.ops.conv2d(byte_list, N_FILTERS,
+    conv1 = tf.contrib.layers.convolution2d(byte_list, N_FILTERS,
                              FILTER_SHAPE1, padding='VALID')
     # Add a RELU for non linearity.
     conv1 = tf.nn.relu(conv1)
@@ -65,8 +65,9 @@ def char_cnn_model(x, y):
     pool1 = tf.transpose(pool1, [0, 1, 3, 2])
   with tf.variable_scope('CNN_Layer2'):
     # Second level of convolution filtering.
-    conv2 = learn.ops.conv2d(pool1, N_FILTERS, FILTER_SHAPE2,
-        padding='VALID')
+    conv2 = tf.contrib.layers.convolution2d(pool1, N_FILTERS,
+                                            FILTER_SHAPE2,
+                                            padding='VALID')
     # Max across each filter to get useful features for classification.
     pool2 = tf.squeeze(tf.reduce_max(conv2, 1), squeeze_dims=[1])
 

@@ -296,8 +296,9 @@ such as different X scales (linear and temporal), tooltips and smoothing.
         this.scopeSubtree(this.$.chartsvg, true);
       },
       _makeChart: function(xType, yScaleType, colorScale, _attached) {
-        if (this._makeChartAsyncCallbackId === null) {
+        if (this._makeChartAsyncCallbackId !== null) {
           this.cancelAsync(this._makeChartAsyncCallbackId);
+          this._makeChartAsyncCallbackId = null;
         }
 
         this._makeChartAsyncCallbackId = this.async(function() {

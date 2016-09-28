@@ -441,7 +441,7 @@ class InlinedVector {
     DiscardStorage();
 
     u_.data[kSize - 1] = kSentinel;
-    u_.data[kSize - 2] = target_lg;
+    u_.data[kSize - 2] = static_cast<unsigned char>(target_lg);
     set_size_internal(s);
     DCHECK_EQ(capacity(), target);
     set_outofline_pointer(dst);

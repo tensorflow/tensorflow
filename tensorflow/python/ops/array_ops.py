@@ -25,6 +25,7 @@ types in your graph.
 @@to_int32
 @@to_int64
 @@cast
+@@bitcast
 @@saturate_cast
 
 ## Shapes and Shaping
@@ -33,6 +34,7 @@ TensorFlow provides several operations that you can use to determine the shape
 of a tensor and change the shape of a tensor.
 
 @@shape
+@@shape_n
 @@size
 @@rank
 @@reshape
@@ -57,16 +59,21 @@ or join multiple tensors together.
 @@reverse
 @@transpose
 @@extract_image_patches
+@@space_to_batch_nd
 @@space_to_batch
+@@required_space_to_batch_paddings
+@@batch_to_space_nd
 @@batch_to_space
 @@space_to_depth
 @@depth_to_space
 @@gather
 @@gather_nd
+@@unique_with_counts
 @@dynamic_partition
 @@dynamic_stitch
 @@boolean_mask
 @@one_hot
+@@sequence_mask
 
 """
 from __future__ import absolute_import
@@ -257,13 +264,6 @@ def rank_internal(input, name=None, optimize=True):
       if optimize and input_shape.ndims is not None:
         return constant(input_shape.ndims, dtypes.int32, name=name)
       return gen_array_ops.rank(input, name=name)
-
-
-# DEPRECATED use init_ops.zeros_initializer
-# TODO(irving) Move it to init_ops.py
-def zeros_initializer(shape, dtype=dtypes.float32, partition_info=None):
-  """An adaptor for zeros() to match the Initializer spec."""
-  return zeros(shape, dtype)
 
 
 def _SliceHelper(tensor, slice_spec, var=None):
@@ -1163,7 +1163,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   For example:
 
   ```python
-  tf.zeros([3, 4], int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+  tf.zeros([3, 4], tf.int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
   ```
 
   Args:
@@ -1267,7 +1267,7 @@ def ones(shape, dtype=dtypes.float32, name=None):
   For example:
 
   ```python
-  tf.ones([2, 3], int32) ==> [[1, 1, 1], [1, 1, 1]]
+  tf.ones([2, 3], tf.int32) ==> [[1, 1, 1], [1, 1, 1]]
   ```
 
   Args:
@@ -1641,99 +1641,8 @@ ops.RegisterShape("StridedSliceAssign")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("StridedSlice")
-def _StridedSliceShape(op):
-  """Shape function for array_ops.slice."""
-
-  input_shape = op.inputs[0].get_shape()
-  if input_shape.ndims is None:
-    return [tensor_shape.unknown_shape()]
-
-  ndims = len(input_shape)
-  begin_shape = op.inputs[1].get_shape().with_rank(1)
-  end_shape = op.inputs[2].get_shape().with_rank(1)
-  strides_shape = op.inputs[3].get_shape().with_rank(1)
-  # get constant values if available
-  begin_value = tensor_util.constant_value(op.inputs[1])
-  end_value = tensor_util.constant_value(op.inputs[2])
-  strides_value = tensor_util.constant_value(op.inputs[3])
-
-  sparse_dims = begin_shape.merge_with(end_shape).merge_with(strides_shape)[
-      0].value
-  if (sparse_dims is None or begin_value is None or end_value is None or
-      strides_value is None):
-    return [tensor_shape.unknown_shape()]
-
-  begin_mask = op.get_attr("begin_mask")
-  end_mask = op.get_attr("end_mask")
-  ellipsis_mask = op.get_attr("ellipsis_mask")
-  new_axis_mask = op.get_attr("new_axis_mask")
-  shrink_axis_mask = op.get_attr("shrink_axis_mask")
-  # find the ellipsis
-  ellipsis_index = -1
-
-  # look for ellipses
-  num_add_axis_after_ellipsis = 0
-  for i in range(sparse_dims):
-    if ellipsis_index != -1 and ((1 << i) & new_axis_mask) != 0:
-      num_add_axis_after_ellipsis += 1
-    if (1 << i) & ellipsis_mask:
-      if ellipsis_index != -1:
-        raise ValueError("Multiple ellipses not allowed")
-      ellipsis_index = i
-  # insert a virtual ellipsis if not seen
-  if ellipsis_index == -1:
-    ellipsis_mask |= (1 << sparse_dims)
-    sparse_dims += 1
-
-  # build the dense specification
-  dense_dims = ndims  # not accounting for newaxis and shrink
-  final_shape_gather = []
-  full_index = 0
-  dense_shrink_axis = 0
-  dense_specs = []
-  for dim in range(sparse_dims):
-    bit = 1 << dim
-    if bit & ellipsis_mask:
-      next_index = min(dense_dims -
-                       (sparse_dims - dim) + 1 + num_add_axis_after_ellipsis,
-                       dense_dims)
-      while full_index < next_index:
-        dense_specs.append(_baseslice(None, None, 1))
-        final_shape_gather.append(full_index)
-        full_index += 1
-    elif bit & new_axis_mask:
-      final_shape_gather.append(NEW_AXIS)
-    else:
-      dense_specs.append(_baseslice(
-          None if (begin_mask & bit) else begin_value[dim], None if (
-              end_mask & bit) else end_value[dim], strides_value[dim]))
-      if shrink_axis_mask & bit:
-        dense_shrink_axis |= (1 << full_index)
-        final_shape_gather.append(SHRINK_AXIS)
-      else:
-        final_shape_gather.append(full_index)
-
-      full_index += 1
-
-  # Compute each dimensions contribution to the "processing" shape
-  final_dims = []
-  for dim in range(dense_dims):
-    shrink = (dense_shrink_axis & (1 << dim)) != 0
-    final_dims.append(
-        _compute_size_of_strided_dim(shrink, dense_specs[dim], input_shape.dims[
-            dim]))
-
-  # Gather the final shape from the processing shape
-  final_shape = []
-  for index in final_shape_gather:
-    if index == NEW_AXIS:
-      final_shape.append(1)
-    elif index == SHRINK_AXIS:
-      pass
-    else:
-      final_shape.append(final_dims[index])
-
-  return [tensor_shape.TensorShape(final_shape)]
+def _DelegateStridedSliceShape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1, 2, 3])
 
 
 ops.RegisterShape("Gather")(common_shapes.call_cpp_shape_fn)
@@ -2007,14 +1916,131 @@ def _QuantizeDequantizeShape(op):
 ops.RegisterShape("ExtractImagePatches")(common_shapes.call_cpp_shape_fn)
 
 
+def required_space_to_batch_paddings(input_shape,
+                                     block_shape,
+                                     base_paddings=None,
+                                     name=None):
+  """Calculate padding required to make block_shape divide input_shape.
+
+  This function can be used to calculate a suitable paddings argument for use
+  with space_to_batch_nd and batch_to_space_nd.
+
+  Args:
+    input_shape: int32 Tensor of shape [N].
+    block_shape: int32 Tensor of shape [N].
+    base_paddings: Optional int32 Tensor of shape [N, 2].  Specifies the minimum
+      amount of padding to use.  All elements must be >= 0.  If not specified,
+      defaults to 0.
+    name: string.  Optional name prefix.
+
+  Returns:
+    (paddings, crops), where:
+
+    `paddings` and `crops` are int32 Tensors of rank 2 and shape [N, 2]
+    satisfying:
+
+        paddings[i, 0] = base_paddings[i, 0].
+        0 <= paddings[i, 1] - base_paddings[i, 1] < block_shape[i]
+        (input_shape[i] + paddings[i, 0] + paddings[i, 1]) % block_shape[i] == 0
+
+        crops[i, 0] = 0
+        crops[i, 1] = paddings[i, 1] - base_paddings[i, 1]
+
+  Raises: ValueError if called with incompatible shapes.
+  """
+  with ops.name_scope(name, "required_space_to_batch_paddings",
+                      [input_shape, block_shape]):
+    input_shape = ops.convert_to_tensor(input_shape,
+                                        dtype=dtypes.int32,
+                                        name="input_shape")
+    block_shape = ops.convert_to_tensor(block_shape,
+                                        dtype=dtypes.int32,
+                                        name="block_shape")
+
+    block_shape.get_shape().assert_is_fully_defined()
+    block_shape.get_shape().assert_has_rank(1)
+    num_block_dims = block_shape.get_shape()[0].value
+    if num_block_dims == 0:
+      return zeros([0, 2], dtypes.int32), zeros([0, 2], dtypes.int32)
+
+    input_shape.get_shape().assert_is_compatible_with([num_block_dims])
+
+    if base_paddings is not None:
+      base_paddings = ops.convert_to_tensor(base_paddings,
+                                            dtype=dtypes.int32,
+                                            name="base_paddings")
+      base_paddings.get_shape().assert_is_compatible_with([num_block_dims, 2])
+    else:
+      base_paddings = zeros([num_block_dims, 2], dtypes.int32)
+
+    const_block_shape = tensor_util.constant_value(block_shape)
+    const_input_shape = tensor_util.constant_value(input_shape)
+    const_base_paddings = tensor_util.constant_value(base_paddings)
+    if (const_block_shape is not None and const_input_shape is not None and
+        const_base_paddings is not None):
+      block_shape = const_block_shape
+      input_shape = const_input_shape
+      base_paddings = const_base_paddings
+
+    # Use same expression for both constant and non-constant case.
+    pad_start = base_paddings[:, 0]
+    orig_pad_end = base_paddings[:, 1]
+    full_input_shape = input_shape + pad_start + orig_pad_end
+    pad_end_extra = (block_shape - full_input_shape % block_shape) % block_shape
+    pad_end = orig_pad_end + pad_end_extra
+
+    result_paddings = pack(
+        [[pad_start[i], pad_end[i]] for i in range(num_block_dims)],
+        name="paddings")
+    result_crops = pack(
+        [[0, pad_end_extra[i]] for i in range(num_block_dims)], name="crops")
+    return result_paddings, result_crops
+
+
+def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=redefined-builtin
+  result = space_to_batch_nd(input,
+                             paddings=paddings,
+                             block_shape=np.array([block_size, block_size],
+                                                  dtype=np.int64),
+                             name=name)
+  result.set_shape(result.get_shape().with_rank(4))
+  return result
+
+
+space_to_batch.__doc__ = gen_array_ops._space_to_batch.__doc__
+
+
+def batch_to_space(input, crops, block_size, name=None):  # pylint: disable=redefined-builtin
+  result = batch_to_space_nd(input,
+                             crops=crops,
+                             block_shape=np.array([block_size, block_size],
+                                                  dtype=np.int64),
+                             name=name)
+  result.set_shape(result.get_shape().with_rank(4))
+  return result
+
+
+batch_to_space.__doc__ = gen_array_ops._batch_to_space.__doc__
+
+
 @ops.RegisterShape("SpaceToBatch")
 def _SpaceToBatchShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
+@ops.RegisterShape("SpaceToBatchND")
+def _SpaceToBatchNDShape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1, 2])
+
+
 @ops.RegisterShape("BatchToSpace")
 def _BatchToSpaceShape(op):
   return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
+
+
+@ops.RegisterShape("BatchToSpaceND")
+def _BatchToSpaceNDShape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1, 2])
 
 
 ops.RegisterShape("SpaceToDepth")(common_shapes.call_cpp_shape_fn)
@@ -2212,3 +2238,50 @@ def _PlaceholderWithDefaultShape(op):
   # may be *less* precise than `input_shape`.
   input_shape.assert_is_compatible_with(output_shape)
   return [output_shape]
+
+
+def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
+  """Return a mask tensor representing the first N positions of each row.
+
+  Example:
+  ```python
+  tf.sequence_mask([1, 3, 2], 5) =
+    [[True, False, False, False, False],
+     [True, True, True, False, False],
+     [True, True, False, False, False]]
+  ```
+
+  Args:
+    lengths: 1D integer tensor, all its values < maxlen.
+    maxlen: scalar integer tensor, maximum length of each row. Default: use
+            maximum over lengths.
+    dtype: output type of the resulting tensor.
+    name: name of the op.
+  Returns:
+    A 2D mask tensor, as shown in the example above, cast to specified dtype.
+
+  Raises:
+    ValueError: if the arguments have invalid rank.
+  """
+  with ops.name_scope(name, "SequenceMask", [lengths, maxlen]):
+    lengths = ops.convert_to_tensor(lengths)
+    if lengths.get_shape().ndims != 1:
+      raise ValueError("lengths must be 1D for sequence_mask")
+
+    if maxlen is None:
+      maxlen = gen_math_ops._max(lengths, [0])
+    else:
+      maxlen = ops.convert_to_tensor(maxlen)
+    if maxlen.get_shape().ndims != 0:
+      raise ValueError("maxlen must be scalar for sequence_mask")
+
+    # The basic idea is to compare a range row vector of size maxlen:
+    # [0, 1, 2, 3, 4]
+    # to length as a matrix with 1 column: [[1], [3], [2]].
+    # Because of broadcasting on both arguments this comparison results
+    # in a matrix of size (len(lengths), maxlen)
+    result = gen_math_ops._range(0, maxlen, 1) < expand_dims(lengths, 1)
+    if dtype is None or result.dtype.base_dtype == dtype.base_dtype:
+      return result
+    else:
+      return gen_math_ops.cast(result, dtype)

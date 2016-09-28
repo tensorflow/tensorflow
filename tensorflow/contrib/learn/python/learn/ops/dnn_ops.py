@@ -21,7 +21,6 @@ from __future__ import print_function
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework.python.framework.deprecation import deprecated
-from tensorflow.contrib.learn.python.learn.ops import dropout_ops
 
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging

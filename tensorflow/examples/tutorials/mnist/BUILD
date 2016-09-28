@@ -63,6 +63,18 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "mnist_softmax",
+    srcs = [
+        "mnist_softmax.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":input_data",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_test(
     name = "fully_connected_feed_test",
     size = "small",

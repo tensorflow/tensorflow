@@ -54,7 +54,7 @@ tf-run-selector.
     <div class="sidebar-section">
       <tf-categorizer
         id="categorizer"
-        tags="[[_visibleTags]]"
+        tags="[[tags]]"
         categories="{{categories}}"
         ></tf-categorizer>
       <content select=".extend-first-section"></content>
@@ -62,7 +62,7 @@ tf-run-selector.
     <content></content>
     <div class="sidebar-section">
       <tf-run-selector
-        id="runSelector"
+        id="runSelector"g4
         runs="[[runs]]"
         color-scale="[[colorScale]]"
         out-selected="{{selectedRuns}}"
@@ -144,15 +144,13 @@ tf-run-selector.
           notify: true,
         },
 
-        _visibleTags: {
+        tags: {
           type: Array,
-          computed: "_getVisibleTags(selectedRuns.*, run2tag.*)"
+          computed: "_getTags(run2tag.*)"
         },
       },
-      _getVisibleTags: function() {
-        var keys = this.selectedRuns;
-        var dict = this.run2tag;
-        return _.union.apply(null, keys.map(function(k) {return dict[k]}));
+      _getTags: function() {
+        return _.union.apply(null, _.values(this.run2tag));
       },
     })
   </script>

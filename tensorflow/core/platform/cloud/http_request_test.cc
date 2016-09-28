@@ -32,7 +32,6 @@ class FakeLibCurl : public LibCurl {
       : response_content(response_content),
         response_code(response_code),
         response_headers(response_headers) {}
-  Status MaybeLoadDll() override { return Status::OK(); }
   CURL* curl_easy_init() override {
     is_initialized = true;
     // The reuslt just needs to be non-null.
@@ -211,8 +210,8 @@ class FakeLibCurl : public LibCurl {
 };
 
 TEST(HttpRequestTest, GetRequest) {
-  FakeLibCurl* libcurl = new FakeLibCurl("get response", 200);
-  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  FakeLibCurl libcurl("get response", 200);
+  HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
   char scratch[100] = "random original scratch content";
@@ -227,20 +226,20 @@ TEST(HttpRequestTest, GetRequest) {
   EXPECT_EQ("get response", result);
 
   // Check interactions with libcurl.
-  EXPECT_TRUE(libcurl->is_initialized);
-  EXPECT_EQ("http://www.testuri.com", libcurl->url);
-  EXPECT_EQ("100-199", libcurl->range);
-  EXPECT_EQ("", libcurl->custom_request);
-  EXPECT_EQ(1, libcurl->headers->size());
-  EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl->headers)[0]);
-  EXPECT_FALSE(libcurl->is_post);
+  EXPECT_TRUE(libcurl.is_initialized);
+  EXPECT_EQ("http://www.testuri.com", libcurl.url);
+  EXPECT_EQ("100-199", libcurl.range);
+  EXPECT_EQ("", libcurl.custom_request);
+  EXPECT_EQ(1, libcurl.headers->size());
+  EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl.headers)[0]);
+  EXPECT_FALSE(libcurl.is_post);
   EXPECT_EQ(200, http_request.GetResponseCode());
 }
 
 TEST(HttpRequestTest, GetRequest_RangeOutOfBound) {
-  FakeLibCurl* libcurl = new FakeLibCurl("get response", 416);
-  libcurl->curl_easy_perform_result = CURLE_WRITE_ERROR;
-  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  FakeLibCurl libcurl("get response", 416);
+  libcurl.curl_easy_perform_result = CURLE_WRITE_ERROR;
+  HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
   char scratch[100] = "random original scratch content";
@@ -257,9 +256,9 @@ TEST(HttpRequestTest, GetRequest_RangeOutOfBound) {
 }
 
 TEST(HttpRequestTest, GetRequest_503) {
-  FakeLibCurl* libcurl = new FakeLibCurl("get response", 503);
-  libcurl->curl_easy_perform_result = CURLE_WRITE_ERROR;
-  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  FakeLibCurl libcurl("get response", 503);
+  libcurl.curl_easy_perform_result = CURLE_WRITE_ERROR;
+  HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
   char scratch[100] = "random original scratch content";
@@ -274,10 +273,10 @@ TEST(HttpRequestTest, GetRequest_503) {
 }
 
 TEST(HttpRequestTest, ResponseHeaders) {
-  FakeLibCurl* libcurl = new FakeLibCurl(
+  FakeLibCurl libcurl(
       "get response", 200,
       {"Location: abcd", "Content-Type: text", "unparsable header"});
-  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
   TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
@@ -289,8 +288,8 @@ TEST(HttpRequestTest, ResponseHeaders) {
 }
 
 TEST(HttpRequestTest, PutRequest_WithBody_FromFile) {
-  FakeLibCurl* libcurl = new FakeLibCurl("", 200);
-  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  FakeLibCurl libcurl("", 200);
+  HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
   auto content_filename = io::JoinPath(testing::TmpDir(), "content");
@@ -304,21 +303,21 @@ TEST(HttpRequestTest, PutRequest_WithBody_FromFile) {
   TF_EXPECT_OK(http_request.Send());
 
   // Check interactions with libcurl.
-  EXPECT_TRUE(libcurl->is_initialized);
-  EXPECT_EQ("http://www.testuri.com", libcurl->url);
-  EXPECT_EQ("", libcurl->custom_request);
-  EXPECT_EQ(2, libcurl->headers->size());
-  EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl->headers)[0]);
-  EXPECT_EQ("Content-Length: 17", (*libcurl->headers)[1]);
-  EXPECT_TRUE(libcurl->is_put);
-  EXPECT_EQ("post body content", libcurl->posted_content);
+  EXPECT_TRUE(libcurl.is_initialized);
+  EXPECT_EQ("http://www.testuri.com", libcurl.url);
+  EXPECT_EQ("", libcurl.custom_request);
+  EXPECT_EQ(2, libcurl.headers->size());
+  EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl.headers)[0]);
+  EXPECT_EQ("Content-Length: 17", (*libcurl.headers)[1]);
+  EXPECT_TRUE(libcurl.is_put);
+  EXPECT_EQ("post body content", libcurl.posted_content);
 
   std::remove(content_filename.c_str());
 }
 
 TEST(HttpRequestTest, PutRequest_WithBody_FromFile_NonZeroOffset) {
-  FakeLibCurl* libcurl = new FakeLibCurl("", 200);
-  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  FakeLibCurl libcurl("", 200);
+  HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
   auto content_filename = io::JoinPath(testing::TmpDir(), "content");
@@ -332,14 +331,14 @@ TEST(HttpRequestTest, PutRequest_WithBody_FromFile_NonZeroOffset) {
   TF_EXPECT_OK(http_request.Send());
 
   // Check interactions with libcurl.
-  EXPECT_EQ("dy content", libcurl->posted_content);
+  EXPECT_EQ("dy content", libcurl.posted_content);
 
   std::remove(content_filename.c_str());
 }
 
 TEST(HttpRequestTest, PostRequest_WithBody_FromMemory) {
-  FakeLibCurl* libcurl = new FakeLibCurl("", 200);
-  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  FakeLibCurl libcurl("", 200);
+  HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
   string content = "post body content";
@@ -350,19 +349,19 @@ TEST(HttpRequestTest, PostRequest_WithBody_FromMemory) {
   TF_EXPECT_OK(http_request.Send());
 
   // Check interactions with libcurl.
-  EXPECT_TRUE(libcurl->is_initialized);
-  EXPECT_EQ("http://www.testuri.com", libcurl->url);
-  EXPECT_EQ("", libcurl->custom_request);
-  EXPECT_EQ(2, libcurl->headers->size());
-  EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl->headers)[0]);
-  EXPECT_EQ("Content-Length: 17", (*libcurl->headers)[1]);
-  EXPECT_TRUE(libcurl->is_post);
-  EXPECT_EQ("post body content", libcurl->posted_content);
+  EXPECT_TRUE(libcurl.is_initialized);
+  EXPECT_EQ("http://www.testuri.com", libcurl.url);
+  EXPECT_EQ("", libcurl.custom_request);
+  EXPECT_EQ(2, libcurl.headers->size());
+  EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl.headers)[0]);
+  EXPECT_EQ("Content-Length: 17", (*libcurl.headers)[1]);
+  EXPECT_TRUE(libcurl.is_post);
+  EXPECT_EQ("post body content", libcurl.posted_content);
 }
 
 TEST(HttpRequestTest, PostRequest_WithoutBody) {
-  FakeLibCurl* libcurl = new FakeLibCurl("", 200);
-  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  FakeLibCurl libcurl("", 200);
+  HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
   TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
@@ -371,19 +370,19 @@ TEST(HttpRequestTest, PostRequest_WithoutBody) {
   TF_EXPECT_OK(http_request.Send());
 
   // Check interactions with libcurl.
-  EXPECT_TRUE(libcurl->is_initialized);
-  EXPECT_EQ("http://www.testuri.com", libcurl->url);
-  EXPECT_EQ("", libcurl->custom_request);
-  EXPECT_EQ(2, libcurl->headers->size());
-  EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl->headers)[0]);
-  EXPECT_EQ("Content-Length: 0", (*libcurl->headers)[1]);
-  EXPECT_TRUE(libcurl->is_post);
-  EXPECT_EQ("", libcurl->posted_content);
+  EXPECT_TRUE(libcurl.is_initialized);
+  EXPECT_EQ("http://www.testuri.com", libcurl.url);
+  EXPECT_EQ("", libcurl.custom_request);
+  EXPECT_EQ(2, libcurl.headers->size());
+  EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl.headers)[0]);
+  EXPECT_EQ("Content-Length: 0", (*libcurl.headers)[1]);
+  EXPECT_TRUE(libcurl.is_post);
+  EXPECT_EQ("", libcurl.posted_content);
 }
 
 TEST(HttpRequestTest, DeleteRequest) {
-  FakeLibCurl* libcurl = new FakeLibCurl("", 200);
-  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  FakeLibCurl libcurl("", 200);
+  HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
   TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
@@ -392,17 +391,17 @@ TEST(HttpRequestTest, DeleteRequest) {
   TF_EXPECT_OK(http_request.Send());
 
   // Check interactions with libcurl.
-  EXPECT_TRUE(libcurl->is_initialized);
-  EXPECT_EQ("http://www.testuri.com", libcurl->url);
-  EXPECT_EQ("DELETE", libcurl->custom_request);
-  EXPECT_EQ(1, libcurl->headers->size());
-  EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl->headers)[0]);
-  EXPECT_FALSE(libcurl->is_post);
+  EXPECT_TRUE(libcurl.is_initialized);
+  EXPECT_EQ("http://www.testuri.com", libcurl.url);
+  EXPECT_EQ("DELETE", libcurl.custom_request);
+  EXPECT_EQ(1, libcurl.headers->size());
+  EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl.headers)[0]);
+  EXPECT_FALSE(libcurl.is_post);
 }
 
 TEST(HttpRequestTest, WrongSequenceOfCalls_NoUri) {
-  FakeLibCurl* libcurl = new FakeLibCurl("", 200);
-  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  FakeLibCurl libcurl("", 200);
+  HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
   auto s = http_request.Send();
@@ -411,8 +410,8 @@ TEST(HttpRequestTest, WrongSequenceOfCalls_NoUri) {
 }
 
 TEST(HttpRequestTest, WrongSequenceOfCalls_TwoSends) {
-  FakeLibCurl* libcurl = new FakeLibCurl("", 200);
-  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  FakeLibCurl libcurl("", 200);
+  HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
   http_request.SetUri("http://www.google.com");
@@ -424,8 +423,8 @@ TEST(HttpRequestTest, WrongSequenceOfCalls_TwoSends) {
 }
 
 TEST(HttpRequestTest, WrongSequenceOfCalls_ReusingAfterSend) {
-  FakeLibCurl* libcurl = new FakeLibCurl("", 200);
-  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  FakeLibCurl libcurl("", 200);
+  HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
   http_request.SetUri("http://www.google.com");
@@ -437,8 +436,8 @@ TEST(HttpRequestTest, WrongSequenceOfCalls_ReusingAfterSend) {
 }
 
 TEST(HttpRequestTest, WrongSequenceOfCalls_SettingMethodTwice) {
-  FakeLibCurl* libcurl = new FakeLibCurl("", 200);
-  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  FakeLibCurl libcurl("", 200);
+  HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
 
   http_request.SetDeleteRequest();
@@ -449,8 +448,8 @@ TEST(HttpRequestTest, WrongSequenceOfCalls_SettingMethodTwice) {
 }
 
 TEST(HttpRequestTest, WrongSequenceOfCalls_NotInitialized) {
-  FakeLibCurl* libcurl = new FakeLibCurl("", 200);
-  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  FakeLibCurl libcurl("", 200);
+  HttpRequest http_request(&libcurl);
 
   auto s = http_request.SetPostEmptyBody();
   ASSERT_TRUE(errors::IsFailedPrecondition(s));
@@ -459,8 +458,8 @@ TEST(HttpRequestTest, WrongSequenceOfCalls_NotInitialized) {
 }
 
 TEST(HttpRequestTest, EscapeString) {
-  FakeLibCurl* libcurl = new FakeLibCurl("get response", 200);
-  HttpRequest http_request((std::unique_ptr<LibCurl>(libcurl)));
+  FakeLibCurl libcurl("get response", 200);
+  HttpRequest http_request(&libcurl);
   TF_EXPECT_OK(http_request.Init());
   const string test_string = "a/b/c";
   EXPECT_EQ("a%2Fb%2Fc", http_request.EscapeString(test_string));

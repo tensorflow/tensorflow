@@ -68,7 +68,11 @@ class FeatureEngineeringFunctionTest(tf.test.TestCase):
 
     def feature_engineering_fn(features, targets):
       _, _ = features, targets
-      return {"x": tf.constant([9.])}, {"y": tf.constant([99.])}
+      return {
+          "transformed_x": tf.constant([9.])
+      }, {
+          "transformed_y": tf.constant([99.])
+      }
 
     def model_fn(features, targets):
       # dummy variable:
@@ -83,8 +87,8 @@ class FeatureEngineeringFunctionTest(tf.test.TestCase):
         feature_engineering_fn=feature_engineering_fn)
     estimator.fit(input_fn=input_fn, steps=1)
     prediction = next(estimator.predict(input_fn=input_fn, as_iterable=True))
-    # predictions = transformed_x (99)
-    self.assertEqual(99., prediction)
+    # predictions = transformed_x (9)
+    self.assertEqual(9., prediction)
 
   def testNoneFeatureEngineeringFn(self):
 

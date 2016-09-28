@@ -1,12 +1,14 @@
 tensorflow/tools/proto_text/gen_proto_text_functions_lib.cc
 tensorflow/tools/proto_text/gen_proto_text_functions.cc
+tensorflow/core/platform/default/protobuf.cc
 tensorflow/core/platform/tracing.cc
 tensorflow/core/platform/tensor_coding.cc
 tensorflow/core/platform/protobuf_util.cc
 tensorflow/core/platform/posix/posix_file_system.cc
 tensorflow/core/platform/posix/port.cc
+tensorflow/core/platform/posix/error.cc
 tensorflow/core/platform/posix/env.cc
-tensorflow/core/platform/load_library.cc
+tensorflow/core/platform/posix/load_library.cc
 tensorflow/core/platform/file_system.cc
 tensorflow/core/platform/env.cc
 tensorflow/core/platform/denormal.cc
@@ -33,7 +35,6 @@ tensorflow/core/lib/io/record_writer.cc
 tensorflow/core/lib/io/record_reader.cc
 tensorflow/core/lib/io/random_inputstream.cc
 tensorflow/core/lib/io/path.cc
-tensorflow/core/lib/io/match.cc
 tensorflow/core/lib/io/iterator.cc
 tensorflow/core/lib/io/inputstream_interface.cc
 tensorflow/core/lib/io/inputbuffer.cc

@@ -647,6 +647,8 @@ def softmax_cross_entropy_with_logits(logits, labels, dim=-1, name=None):
   labels = ops.convert_to_tensor(labels)
   precise_logits = math_ops.cast(logits, dtypes.float32) if (
       logits.dtype == dtypes.float16) else logits
+  # Labels and logits must be of the same type
+  labels = math_ops.cast(labels, precise_logits.dtype)
   input_rank = array_ops.rank(precise_logits)
   # For shape inference.
   shape = logits.get_shape()
@@ -714,12 +716,14 @@ def sparse_softmax_cross_entropy_with_logits(logits, labels, name=None):
   labels of shape `[batch_size]`. But higher dimensions are supported.
 
   Args:
+
     logits: Unscaled log probabilities of rank `r` and shape
       `[d_0, d_1, ..., d_{r-2}, num_classes]` and dtype `float32` or `float64`.
     labels: `Tensor` of shape `[d_0, d_1, ..., d_{r-2}]` and dtype `int32` or
       `int64`. Each entry in `labels` must be an index in `[0, num_classes)`.
-      Other values will result in a loss of 0, but incorrect gradient
-      computations.
+      Other values will raise an exception when this op is run on CPU, and
+      return `NaN` for corresponding corresponding loss and gradient rows
+      on GPU.
     name: A name for the operation (optional).
 
   Returns:

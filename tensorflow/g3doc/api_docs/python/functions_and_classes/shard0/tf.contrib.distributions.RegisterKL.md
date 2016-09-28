@@ -40,10 +40,4 @@ Initialize the KL registrar.
 *  <b>`dist_cls_a`</b>: the class of the first argument of the KL divergence.
 *  <b>`dist_cls_b`</b>: the class of the second argument of the KL divergence.
 
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if dist_cls_a or dist_cls_b are not subclasses of
-    Distribution.
-
 

@@ -2036,6 +2036,8 @@ class Graph(object):
     self._collections = {}
     # The graph-level random seed
     self._seed = None
+    # A dictionary of attributes that should be applied to all ops.
+    self._attr_scope_map = {}
     # A map from op type to the kernel label that should be used.
     self._op_to_kernel_label_map = {}
     # A map from op type to an alternative op type that should be used when
@@ -2050,6 +2052,7 @@ class Graph(object):
     self._graph_def_versions = versions_pb2.VersionDef(
         producer=versions.GRAPH_DEF_VERSION,
         min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER)
+    self._building_function = False
     # Stack of colocate_with ops
     self._colocation_stack = []
     # Set of tensors that are dangerous to feed!
@@ -2292,6 +2295,11 @@ class Graph(object):
       raise ValueError("Gradient defined twice for function %s" % name)
     self._functions[name] = function
 
+  @property
+  def building_function(self):
+    """Returns True iff this graph represents a function."""
+    return self._building_function
+
   # Helper functions to create operations.
   def create_op(self, op_type, inputs, dtypes,
                 input_types=None, name=None, attrs=None, op_def=None,
@@ -2348,6 +2356,12 @@ class Graph(object):
       name = self.unique_name(name)
 
     node_def = _NodeDef(op_type, name, device=None, attrs=attrs)
+
+    # Apply any additional attributes requested. Do not overwrite any existing
+    # attributes.
+    for key, value in self._attr_scope_map.items():
+      if key not in node_def.attr:
+        node_def.attr[key].CopyFrom(value)
 
     # Apply a kernel label if one has been specified for this op_type.
     try:
@@ -3347,6 +3361,69 @@ class Graph(object):
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
+  def _attr_scope(self, attr_map):
+    """EXPERIMENTAL: A context manager for setting attributes on operators.
+
+    This context manager can be used to add additional
+    attributes to operators within the scope of the context.
+
+    For example:
+
+       with ops.Graph().as_default() as g:
+         f_1 = Foo()  # No extra attributes
+         with g._attr_scope({"_a": tf.attr_value_pb2.AttrValue(b=False)}):
+           f_2 = Foo()  # Additional attribute _a=False
+           with g._attr_scope({"_a": tf.attr_value_pb2.AttrValue(b=True)}):
+             f_3 = Foo()  # Additional attribute _a=False
+             with g._attr_scope({"_a": None}):
+               f_4 = Foo()  # No additional attributes.
+
+    Args:
+      attr_map: A dictionary mapping attr name strings to
+        AttrValue protocol buffers or None.
+
+    Returns:
+      A context manager that sets the kernel label to be used for one or more
+      ops created in that context.
+
+    Raises:
+      TypeError: If attr_map is not a dictionary mapping
+        strings to AttrValue protobufs.
+    """
+    if not isinstance(attr_map, dict):
+      raise TypeError("attr_map must be a dictionary mapping "
+                      "strings to AttrValue protocol buffers")
+    # The saved_attrs dictionary stores any currently-set labels that
+    # will be overridden by this context manager.
+    saved_attrs = {}
+    # Install the given attribute
+    for name, attr in attr_map.items():
+      if not (isinstance(name, six.string_types)
+              and isinstance(attr, (type(None), attr_value_pb2.AttrValue))):
+        raise TypeError("attr_map must be a dictionary mapping "
+                        "strings to AttrValue protocol buffers")
+      try:
+        saved_attrs[name] = self._attr_scope_map[name]
+      except KeyError:
+        pass
+      if attr is None:
+        del self._attr_scope_map[name]
+      else:
+        self._attr_scope_map[name] = attr
+    try:
+      yield  # The code within the context runs here.
+    finally:
+      # Remove the attributes set for this context, and restore any saved
+      # attributes.
+      for name, attr in attr_map.items():
+        try:
+          self._attr_scope_map[name] = saved_attrs[name]
+        except KeyError:
+          del self._attr_scope_map[name]
+  # pylint: enable=g-doc-return-or-yield
+
+  # pylint: disable=g-doc-return-or-yield
+  @contextlib.contextmanager
   def _kernel_label_map(self, op_to_kernel_label_map):
     """EXPERIMENTAL: A context manager for setting kernel labels.
 
@@ -3806,12 +3883,14 @@ def _get_graph_from_inputs(op_input_list, graph=None):
   This library method provides a consistent algorithm for choosing the graph
   in which an Operation should be constructed:
 
-  1. If the "graph" is specified explicitly, we validate that all of the inputs
+  1. If the default graph is being used to construct a function, we
+     use the default graph.
+  2. If the "graph" is specified explicitly, we validate that all of the inputs
      in "op_input_list" are compatible with that graph.
-  2. Otherwise, we attempt to select a graph from the first Operation-
+  3. Otherwise, we attempt to select a graph from the first Operation-
      or Tensor-valued input in "op_input_list", and validate that all other
      such inputs are in the same graph.
-  3. If the graph was not specified and it could not be inferred from
+  4. If the graph was not specified and it could not be inferred from
      "op_input_list", we attempt to use the default graph.
 
   Args:
@@ -3828,7 +3907,11 @@ def _get_graph_from_inputs(op_input_list, graph=None):
 
   Returns:
     The appropriate graph to use for the given inputs.
+
   """
+  if get_default_graph().building_function:
+    return get_default_graph()
+
   op_input_list = tuple(op_input_list)  # Handle generators correctly
   if graph and not isinstance(graph, Graph):
     raise TypeError("Input graph needs to be a Graph: %s" % graph)

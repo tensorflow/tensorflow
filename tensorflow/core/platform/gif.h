@@ -21,7 +21,7 @@ limitations under the License.
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/platform/google/build_config/gif.h"
 #elif defined(PLATFORM_POSIX) && !defined(IS_MOBILE_PLATFORM)
-#include "giflib-5.1.4/lib/gif_lib.h"
+#include <gif_lib.h>
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif

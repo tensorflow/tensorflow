@@ -82,7 +82,7 @@ tf_cuda_library(
     copts = tf_copts(),
     linkstatic = 1,
     deps = [
-        ":debug_service_proto_cc",
+        ":debug_service_proto_cc",  # TODO(cais): Confirm safe.
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

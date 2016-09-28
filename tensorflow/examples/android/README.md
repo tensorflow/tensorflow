@@ -30,7 +30,7 @@ is not packaged in the repo because of its size. Instead, you must
 first download the file to the `assets` directory in the source tree:
 
 ```bash
-$ wget https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip -O /tmp/inception5h.zip
+$ curl -L https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip -o /tmp/inception5h.zip
 
 $ unzip /tmp/inception5h.zip -d tensorflow/examples/android/assets/
 ```

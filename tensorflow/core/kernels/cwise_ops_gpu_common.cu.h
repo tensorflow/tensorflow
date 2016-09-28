@@ -128,7 +128,9 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS, has_errors> {
 #define DEFINE_BINARY1(F, T)                         \
   template struct BinaryFunctor<GPUDevice, F<T>, 1>; \
   template struct BinaryFunctor<GPUDevice, F<T>, 2>; \
-  template struct BinaryFunctor<GPUDevice, F<T>, 3>
+  template struct BinaryFunctor<GPUDevice, F<T>, 3>; \
+  template struct BinaryFunctor<GPUDevice, F<T>, 4>; \
+  template struct BinaryFunctor<GPUDevice, F<T>, 5>
 #define DEFINE_BINARY2(F, T0, T1) \
   DEFINE_BINARY1(F, T0);          \
   DEFINE_BINARY1(F, T1)
@@ -156,6 +158,9 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS, has_errors> {
 #define DEFINE_BINARY10(F, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9) \
   DEFINE_BINARY5(F, T0, T1, T2, T3, T4);                           \
   DEFINE_BINARY5(F, T5, T6, T7, T8, T9)
+#define DEFINE_BINARY11(F, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10) \
+  DEFINE_BINARY5(F, T0, T1, T2, T3, T4);                                \
+  DEFINE_BINARY6(F, T5, T6, T7, T8, T9, T10)
 
 }  // end namespace functor
 }  // end namespace tensorflow

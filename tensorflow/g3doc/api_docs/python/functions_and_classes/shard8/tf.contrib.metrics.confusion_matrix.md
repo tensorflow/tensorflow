@@ -1,4 +1,4 @@
-### `tf.contrib.metrics.confusion_matrix(predictions, labels, num_classes=None, dtype=tf.int32, name=None)` {#confusion_matrix}
+### `tf.contrib.metrics.confusion_matrix(predictions, labels, num_classes=None, dtype=tf.int32, name=None, weights=None)` {#confusion_matrix}
 
 Computes the confusion matrix from predictions and labels.
 
@@ -14,6 +14,9 @@ And a label array such as: `[2, 2, 3]`
      [0, 1, 0]
      [0, 1, 0]
      [0, 0, 1]]
+
+If `weights` is not None, then the confusion matrix elements are the
+corresponding `weights` elements.
 
 Where the matrix rows represent the prediction labels and the columns
 represents the real labels. The confusion matrix is always a 2-D array
@@ -32,6 +35,7 @@ the same shape in order for this function to work.
                using both predictions and labels array.
 *  <b>`dtype`</b>: Data type of the confusion matrix.
 *  <b>`name`</b>: Scope name.
+*  <b>`weights`</b>: An optional `Tensor` whose shape matches `predictions`.
 
 ##### Returns:
 
@@ -41,6 +45,7 @@ the same shape in order for this function to work.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If both predictions and labels are not 1-D vectors and do not
-              have the same size.
+*  <b>`ValueError`</b>: If both predictions and labels are not 1-D vectors and have
+    mismatched shapes, or if `weights` is not `None` and its shape doesn't
+    match `predictions`.
 

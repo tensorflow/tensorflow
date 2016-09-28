@@ -58,13 +58,6 @@ class KLTest(tf.test.TestCase):
       self.assertAllEqual([float("nan")], kl_ok.eval())
 
   def testRegistrationFailures(self):
-    with self.assertRaisesRegexp(TypeError, "is not a subclass of"):
-      tf.contrib.distributions.RegisterKL(
-          tf.contrib.distributions.Normal, object)(lambda x: x)
-    with self.assertRaisesRegexp(TypeError, "is not a subclass of"):
-      tf.contrib.distributions.RegisterKL(
-          object, tf.contrib.distributions.Normal)(lambda x: x)
-
     class MyDist(tf.contrib.distributions.Normal):
       pass
 

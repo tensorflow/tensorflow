@@ -187,6 +187,7 @@ See also:  `is_non_decreasing`
 ### `tf.contrib.framework.is_tensor(x)` {#is_tensor}
 
 Check for tensor types.
+
 Check whether an object is a tensor. Equivalent to
 `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
 
@@ -701,7 +702,7 @@ Gets the list of model variables, filtered by scope and/or suffix.
 
 ##### Returns:
 
-  a list of variables in colelction with scope and suffix.
+  a list of variables in collection with scope and suffix.
 
 
 - - -
@@ -718,7 +719,7 @@ Gets the list of model variables, filtered by scope and/or suffix.
 
 ##### Returns:
 
-  a list of variables in colelction with scope and suffix.
+  a list of variables in collection with scope and suffix.
 
 
 - - -
@@ -817,7 +818,7 @@ Gets the list of variables, filtered by scope and/or suffix.
 
 ##### Returns:
 
-  a list of variables in colelction with scope and suffix.
+  a list of variables in collection with scope and suffix.
 
 
 - - -

@@ -86,8 +86,8 @@ class OpError(Exception):
 
   def __str__(self):
     if self._op is not None:
-      output = ["%s\nCaused by op %r, defined at:\n"
-                % (self.message, self._op.name,)]
+      output = ["%s\n\nCaused by op %r, defined at:\n" % (self.message,
+                                                          self._op.name,)]
       curr_traceback_list = traceback.format_list(self._op.traceback)
       output.extend(curr_traceback_list)
       original_op = self._op._original_op
@@ -124,6 +124,8 @@ class OpError(Exception):
             output.extend(line)
 
         original_op = original_op._original_op
+      output.append("\n%s (see above for traceback): %s\n" %
+                    (type(self).__name__, self.message))
       return ''.join(output)
     else:
       return self.message

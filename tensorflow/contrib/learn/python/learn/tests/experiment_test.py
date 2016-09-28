@@ -19,7 +19,9 @@ from __future__ import print_function
 import time
 
 import tensorflow as tf
+
 from tensorflow.contrib.learn.python.learn import run_config
+from tensorflow.python.util.all_util import reveal_undocumented
 
 
 class TestEstimator(tf.contrib.learn.Evaluable, tf.contrib.learn.Trainable):
@@ -51,6 +53,10 @@ class TestEstimator(tf.contrib.learn.Evaluable, tf.contrib.learn.Trainable):
 
 
 class ExperimentTest(tf.test.TestCase):
+
+  def setUp(self):
+    # The official name is tf.train, so tf.training was obliterated.
+    reveal_undocumented('tensorflow.python.training')
 
   def test_train(self):
     est = TestEstimator()
@@ -142,13 +148,30 @@ class ExperimentTest(tf.test.TestCase):
     # The server should not have started because there was no ClusterSpec.
     self.assertFalse(mock_server.called)
 
-  def test_train_raises_if_job_name_is_missing(self):
-    no_job_name = tf.contrib.learn.RunConfig(
+  @tf.test.mock.patch('tensorflow.python.training.server_lib.Server')  # pylint: disable=line-too-long
+  def test_train_server_does_not_start_with_empty_master(self, mock_server):
+    config = tf.contrib.learn.RunConfig(
         cluster_spec=tf.train.ClusterSpec(
             {'ps': ['host1:2222', 'host2:2222'],
              'worker': ['host3:2222', 'host4:2222', 'host5:2222']}
         ),
+        master='',)
+    ex = tf.contrib.learn.Experiment(TestEstimator(config),
+                                     train_input_fn='train_input',
+                                     eval_input_fn='eval_input')
+    ex.train()
+
+    # The server should not have started because master was the empty string.
+    self.assertFalse(mock_server.called)
+
+  def test_train_raises_if_job_name_is_missing(self):
+    no_job_name = tf.contrib.learn.RunConfig(
+        cluster_spec=tf.train.ClusterSpec(
+            {'ps': ['host1:2222', 'host2:2222'],
+             'worker': ['host3:2222', 'host4:2222', 'host5:2222']},
+        ),
         task=1,
+        master='host3:2222',  # Normally selected by job_name
     )
     with self.assertRaises(ValueError):
       ex = tf.contrib.learn.Experiment(TestEstimator(no_job_name),
@@ -220,6 +243,21 @@ class ExperimentTest(tf.test.TestCase):
                                      eval_steps=100,
                                      local_eval_frequency=10)
     ex.local_run()
+    self.assertEquals(1, est.fit_count)
+    self.assertEquals(1, est.eval_count)
+    self.assertEquals(1, len(est.monitors))
+    self.assertTrue(isinstance(est.monitors[0],
+                               tf.contrib.learn.monitors.ValidationMonitor))
+
+  def test_train_and_evaluate(self):
+    est = TestEstimator()
+    ex = tf.contrib.learn.Experiment(est,
+                                     train_input_fn='train_input',
+                                     eval_input_fn='eval_input',
+                                     eval_metrics='eval_metrics',
+                                     train_steps=100,
+                                     eval_steps=100)
+    ex.train_and_evaluate()
     self.assertEquals(1, est.fit_count)
     self.assertEquals(1, est.eval_count)
     self.assertEquals(1, len(est.monitors))

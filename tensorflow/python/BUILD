@@ -1,7 +1,10 @@
 # Description:
 # Python support for TensorFlow.
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = [
+    "//tensorflow:internal",
+    "//tensorflow_models:__subpackages__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -81,10 +84,6 @@ tf_py_test(
         ":platform",
         ":platform_test",
     ],
-    tags = [
-        "manual",
-        "notap",
-    ],
 )
 
 tf_py_test(
@@ -140,6 +139,8 @@ cc_library(
         "lib/io/py_record_reader.h",
     ],
     deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
     ],
 )
@@ -153,6 +154,8 @@ cc_library(
         "lib/io/py_record_writer.h",
     ],
     deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
     ],
 )
@@ -630,6 +633,11 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "sdca_ops_gen",
+    require_shape_functions = True,
+)
+
+tf_gen_op_wrapper_private_py(
     name = "state_ops_gen",
     require_shape_functions = True,
 )
@@ -1080,6 +1088,16 @@ py_library(
 )
 
 py_library(
+    name = "sdca_ops",
+    srcs = ["ops/sdca_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":sdca_ops_gen",
+    ],
+)
+
+py_library(
     name = "seq2seq",
     srcs = ["ops/seq2seq.py"],
     srcs_version = "PY2AND3",
@@ -1173,6 +1191,7 @@ py_library(
         ":partitioned_variables",
         ":random_ops",
         ":script_ops",
+        ":sdca_ops",
         ":sparse_grad",
         ":sparse_ops",
         ":special_math_ops",
@@ -1537,6 +1556,7 @@ py_library(
         ":random_ops",
         ":sparse_ops",
         ":state_ops",
+        ":string_ops",
         ":training_ops_gen",
         ":variable_scope",
         ":variables",
@@ -1562,7 +1582,10 @@ py_library(
     name = "util",
     srcs = glob(
         ["util/**/*.py"],
-        exclude = ["util/example_parser*"],
+        exclude = [
+            "util/example_parser*",
+            "util/**/*_test.py",
+        ],
     ),
     srcs_version = "PY2AND3",
     deps = ["@protobuf//:protobuf_python"],
@@ -1573,6 +1596,19 @@ py_test(
     size = "small",
     srcs = ["util/nest_test.py"],
     main = "util/nest_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "future_api_test",
+    size = "small",
+    srcs = [
+        "util/future_api_test.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":util",
@@ -1746,7 +1782,6 @@ tf_py_wrap_cc(
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
         "platform/base.i",
-        "platform/numpy.i",
         "training/server_lib.i",
         "util/port.i",
         "util/py_checkpoint_reader.i",

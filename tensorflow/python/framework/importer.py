@@ -231,8 +231,14 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
   else:
     producer_op_dict = {op.name: op for op in producer_op_list.op}
 
+  # LINT.IfChange
   with ops.name_scope(name, 'import', input_map.values()) as scope:
     g = ops.get_default_graph()
+    # TODO(ashankar): Should this just copy over or should it do some
+    # more nuanced merging? For example, the graph may already have some
+    # marked "bad versions" and we don't want to lose those because of
+    # what's in graph_def.versions? The C++ ImporGraphDef does something
+    # more nuanced.
     g.graph_def_versions.CopyFrom(graph_def.versions)
 
     if input_map:
@@ -444,3 +450,4 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             raise ValueError(
                 'Requested return_element %r not found in graph_def.' % name)
       return ret
+  # LINT.ThenChange(//tensorflow/core/graph/graph_constructor.cc)

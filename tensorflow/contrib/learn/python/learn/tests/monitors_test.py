@@ -31,6 +31,7 @@ from tensorflow.contrib import testing
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn import monitored_session
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import saver
 
 
 class _MyEveryN(learn.monitors.EveryN):
@@ -78,7 +79,7 @@ class MonitorsTest(tf.test.TestCase):
     # monitored.
     self._actual_log = logging.info
 
-    def mockLog(*args, **kwargs):
+    def mockLog(*args, **kwargs):  # pylint: disable=invalid-name
       self.logged_message = args
       self._actual_log(*args, **kwargs)
 
@@ -115,7 +116,34 @@ class MonitorsTest(tf.test.TestCase):
     with tf.Graph().as_default() as g, self.test_session(g):
       self._run_monitor(learn.monitors.BaseMonitor())
 
-  def test_every_n(self):
+  def test_every_0(self):
+    monitor = _MyEveryN(every_n_steps=0, first_n_steps=-1)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      self._run_monitor(monitor, num_epochs=3, num_steps_per_epoch=10)
+      expected_steps = list(range(30))
+      self.assertAllEqual(expected_steps, monitor.steps_begun)
+      self.assertAllEqual(expected_steps, monitor.steps_ended)
+      self.assertAllEqual(expected_steps, monitor.post_steps)
+
+  def test_every_1(self):
+    monitor = _MyEveryN(every_n_steps=1, first_n_steps=-1)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      self._run_monitor(monitor, num_epochs=3, num_steps_per_epoch=10)
+      expected_steps = list(range(1, 30))
+      self.assertEqual(expected_steps, monitor.steps_begun)
+      self.assertEqual(expected_steps, monitor.steps_ended)
+      self.assertEqual(expected_steps, monitor.post_steps)
+
+  def test_every_2(self):
+    monitor = _MyEveryN(every_n_steps=2, first_n_steps=-1)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      self._run_monitor(monitor, num_epochs=3, num_steps_per_epoch=10)
+      expected_steps = list(range(2, 29, 2)) + [29]
+      self.assertEqual(expected_steps, monitor.steps_begun)
+      self.assertEqual(expected_steps, monitor.steps_ended)
+      self.assertEqual(expected_steps, monitor.post_steps)
+
+  def test_every_8(self):
     monitor = _MyEveryN(every_n_steps=8, first_n_steps=2)
     with tf.Graph().as_default() as g, self.test_session(g):
       self._run_monitor(monitor, num_epochs=3, num_steps_per_epoch=10)
@@ -124,7 +152,7 @@ class MonitorsTest(tf.test.TestCase):
       self.assertEqual(expected_steps, monitor.steps_ended)
       self.assertEqual(expected_steps, monitor.post_steps)
 
-  def test_every_n_no_max_steps(self):
+  def test_every_8_no_max_steps(self):
     monitor = _MyEveryN(every_n_steps=8, first_n_steps=2)
     with tf.Graph().as_default() as g, self.test_session(g):
       self._run_monitor(monitor, num_epochs=3, num_steps_per_epoch=10,
@@ -135,7 +163,7 @@ class MonitorsTest(tf.test.TestCase):
       self.assertEqual(begin_end_steps, monitor.steps_ended)
       self.assertEqual(post_steps, monitor.post_steps)
 
-  def test_every_n_recovered_after_step_begin(self):
+  def test_every_8_recovered_after_step_begin(self):
     monitor = _MyEveryN(every_n_steps=8)
     with tf.Graph().as_default() as g, self.test_session(g):
       for step in [8, 16]:
@@ -148,7 +176,7 @@ class MonitorsTest(tf.test.TestCase):
       self.assertEqual([8, 16], monitor.steps_ended)
       self.assertEqual([8, 16], monitor.post_steps)
 
-  def test_every_n_recovered_after_step_end(self):
+  def test_every_8_recovered_after_step_end(self):
     monitor = _MyEveryN(every_n_steps=8)
     with tf.Graph().as_default() as g, self.test_session(g):
       for step in [8, 16]:
@@ -163,7 +191,7 @@ class MonitorsTest(tf.test.TestCase):
       self.assertEqual([8, 16], monitor.steps_ended)
       self.assertEqual([8, 16], monitor.post_steps)
 
-  def test_every_n_call_post_step_at_the_end(self):
+  def test_every_8_call_post_step_at_the_end(self):
     monitor = _MyEveryN(every_n_steps=8)
     with tf.Graph().as_default() as g, self.test_session(g):
       monitor.begin()
@@ -180,7 +208,7 @@ class MonitorsTest(tf.test.TestCase):
       self.assertEqual([8, 16], monitor.steps_ended)
       self.assertEqual([8, 16, 19], monitor.post_steps)
 
-  def test_every_n_call_post_step_should_not_be_called_twice(self):
+  def test_every_8_call_post_step_should_not_be_called_twice(self):
     monitor = _MyEveryN(every_n_steps=8)
     with tf.Graph().as_default() as g, self.test_session(g):
       monitor.begin()
@@ -238,12 +266,153 @@ class MonitorsTest(tf.test.TestCase):
               29: {'my_summary': 6.0},
           })
 
-  # TODO(b/29293803): Add better tests with a mocked estimator.
-  def test_validation_monitor(self):
-    monitor = learn.monitors.ValidationMonitor(x=tf.constant(2.0))
+  def _assert_validation_monitor(
+      self, monitor, expected_early_stopped=False, expected_best_step=None,
+      expected_best_value=None):
+    self.assertEqual(expected_early_stopped, monitor.early_stopped)
+    self.assertEqual(expected_best_step, monitor.best_step)
+    self.assertEqual(expected_best_value, monitor.best_value)
+
+  def test_validation_monitor_no_estimator(self):
+    monitor = learn.monitors.ValidationMonitor(
+        x=tf.constant(2.0), every_n_steps=0)
+    self._assert_validation_monitor(monitor)
     with tf.Graph().as_default() as g, self.test_session(g):
       with self.assertRaisesRegexp(ValueError, 'set_estimator'):
         self._run_monitor(monitor)
+
+  @tf.test.mock.patch('tensorflow.contrib.learn.python.learn.estimators.Estimator', autospec=True)  # pylint: disable=line-too-long
+  @tf.test.mock.patch.object(saver, 'latest_checkpoint')
+  def test_validation_monitor_no_ckpt(
+      self, mock_latest_checkpoint, mock_estimator_class):
+    estimator = mock_estimator_class()
+    model_dir = 'model/dir'
+    estimator.model_dir = model_dir
+    mock_latest_checkpoint.return_value = None
+
+    # Do nothing with no checkpoint.
+    monitor = learn.monitors.ValidationMonitor(
+        x=tf.constant(2.0), every_n_steps=0)
+    self._assert_validation_monitor(monitor)
+    monitor.set_estimator(estimator)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      self._run_monitor(monitor)
+      self._assert_validation_monitor(monitor)
+      mock_latest_checkpoint.assert_called_with(model_dir)
+
+  @tf.test.mock.patch('tensorflow.contrib.learn.python.learn.estimators.Estimator', autospec=True)  # pylint: disable=line-too-long
+  @tf.test.mock.patch.object(saver, 'latest_checkpoint')
+  def test_validation_monitor_no_early_stopping_rounds(
+      self, mock_latest_checkpoint, mock_estimator_class):
+    estimator = mock_estimator_class()
+    model_dir = 'model/dir'
+    estimator.model_dir = model_dir
+    estimator.evaluate.return_value = {}
+    mock_latest_checkpoint.return_value = '%s/ckpt' % model_dir
+
+    # Do nothing with early_stopping_rounds=None.
+    monitor = learn.monitors.ValidationMonitor(
+        x=tf.constant(2.0), every_n_steps=0)
+    self._assert_validation_monitor(monitor)
+    monitor.set_estimator(estimator)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      self._run_monitor(monitor)
+      self._assert_validation_monitor(monitor)
+
+  @tf.test.mock.patch('tensorflow.contrib.learn.python.learn.estimators.Estimator', autospec=True)  # pylint: disable=line-too-long
+  @tf.test.mock.patch.object(saver, 'latest_checkpoint')
+  def test_validation_monitor_invalid_metric(
+      self, mock_latest_checkpoint, mock_estimator_class):
+    estimator = mock_estimator_class()
+    model_dir = 'model/dir'
+    estimator.model_dir = model_dir
+    estimator.evaluate.return_value = {}
+    mock_latest_checkpoint.return_value = '%s/ckpt' % model_dir
+
+    # Fail for missing metric.
+    monitor = learn.monitors.ValidationMonitor(
+        x=tf.constant(2.0), every_n_steps=0, early_stopping_rounds=1)
+    self._assert_validation_monitor(monitor)
+    monitor.set_estimator(estimator)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      with self.assertRaisesRegexp(ValueError, 'missing from outputs'):
+        self._run_monitor(monitor, num_epochs=1, num_steps_per_epoch=1)
+
+  @tf.test.mock.patch('tensorflow.contrib.learn.python.learn.estimators.Estimator', autospec=True)  # pylint: disable=line-too-long
+  @tf.test.mock.patch.object(saver, 'latest_checkpoint')
+  def test_validation_monitor(
+      self, mock_latest_checkpoint, mock_estimator_class):
+    estimator = mock_estimator_class()
+    model_dir = 'model/dir'
+    estimator.model_dir = model_dir
+    validation_outputs = {'loss': None}
+    estimator.evaluate.return_value = validation_outputs
+
+    monitor = learn.monitors.ValidationMonitor(
+        x=tf.constant(2.0), every_n_steps=0, early_stopping_rounds=2)
+    self._assert_validation_monitor(monitor)
+    monitor.set_estimator(estimator)
+    with tf.Graph().as_default() as g, self.test_session(g):
+      monitor.begin(max_steps=100)
+      monitor.epoch_begin(epoch=0)
+      self.assertEqual(0, estimator.evaluate.call_count)
+
+      # Step 0, initial loss.
+      step = 0
+      mock_latest_checkpoint.return_value = '%s/ckpt.%s' % (model_dir, step)
+      validation_outputs['loss'] = 42.0
+      self.assertEqual(0, len(monitor.step_begin(step=step)))
+      self.assertFalse(monitor.step_end(step=step, output={}))
+      self.assertEqual(1, estimator.evaluate.call_count)
+      self._assert_validation_monitor(
+          monitor, expected_best_step=0, expected_best_value=42.0)
+      monitor.post_step(step=step, session=None)
+
+      # Step 1, same checkpoint, no eval.
+      step = 1
+      self.assertEqual(0, len(monitor.step_begin(step=step)))
+      self.assertFalse(monitor.step_end(step=step, output={}))
+      self.assertEqual(1, estimator.evaluate.call_count)
+      self._assert_validation_monitor(
+          monitor, expected_best_step=0, expected_best_value=42.0)
+      monitor.post_step(step=step, session=None)
+
+      # Step 2, lower loss.
+      step = 2
+      mock_latest_checkpoint.return_value = '%s/ckpt.%s' % (model_dir, step)
+      validation_outputs['loss'] = 40.0
+      self.assertEqual(0, len(monitor.step_begin(step=step)))
+      self.assertFalse(monitor.step_end(step=step, output={}))
+      self.assertEqual(2, estimator.evaluate.call_count)
+      self._assert_validation_monitor(
+          monitor, expected_best_step=2, expected_best_value=40.0)
+      monitor.post_step(step=step, session=None)
+
+      # Step 3, higher loss.
+      step = 3
+      mock_latest_checkpoint.return_value = '%s/ckpt.%s' % (model_dir, step)
+      validation_outputs['loss'] = 44.0
+      self.assertEqual(0, len(monitor.step_begin(step=step)))
+      self.assertFalse(monitor.step_end(step=step, output={}))
+      self.assertEqual(3, estimator.evaluate.call_count)
+      self._assert_validation_monitor(
+          monitor, expected_best_step=2, expected_best_value=40.0)
+      monitor.post_step(step=step, session=None)
+
+      # Step 4, higher loss for 2 steps, early stopping.
+      step = 4
+      mock_latest_checkpoint.return_value = '%s/ckpt.%s' % (model_dir, step)
+      validation_outputs['loss'] = 43.0
+      self.assertEqual(0, len(monitor.step_begin(step=step)))
+      self.assertTrue(monitor.step_end(step=step, output={}))
+      self.assertEqual(4, estimator.evaluate.call_count)
+      self._assert_validation_monitor(
+          monitor, expected_early_stopped=True, expected_best_step=2,
+          expected_best_value=40.0)
+      monitor.post_step(step=step, session=None)
+
+      monitor.epoch_end(epoch=0)
+      monitor.end()
 
   def test_graph_dump(self):
     monitor0 = learn.monitors.GraphDump()

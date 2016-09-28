@@ -33,6 +33,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+const char* const kColocationAttrName = "_class";
+const char* const kColocationGroupPrefix = "loc:@";
+
 AttrSlice::AttrSlice(const NodeDef& node_def)
     : ndef_(&node_def), attrs_(&ndef_->attr()) {}
 

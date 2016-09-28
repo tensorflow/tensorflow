@@ -15,7 +15,7 @@ they need to be added as a dependency to the train_op, example:
 
   update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
   if update_ops:
-    updates = tf.group(update_ops)
+    updates = tf.group(*update_ops)
     total_loss = control_flow_ops.with_dependencies([updates], total_loss)
 
 One can set update_collections=None to force the updates in place, but that
@@ -32,7 +32,8 @@ can have speed penalty, specially in distributed settings.
     not used. When the next layer is linear (also e.g. `nn.relu`), this can be
     disabled since the scaling can be done by the next layer.
 *  <b>`epsilon`</b>: small float added to variance to avoid dividing by zero.
-*  <b>`activation_fn`</b>: Optional activation function.
+*  <b>`activation_fn`</b>: activation function, default set to None to skip it and
+    maintain a linear activation.
 *  <b>`updates_collections`</b>: collections to collect the update ops for computation.
     The updates_ops need to be excuted with the train_op.
     If None, a control dependency would be added to make sure the updates are

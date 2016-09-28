@@ -120,13 +120,31 @@ def _enable_cuda(repository_ctx):
   return False
 
 
-def _cuda_toolkit_path(repository_ctx):
-  """Finds the cuda toolkit directory."""
+def _cuda_toolkit_path(repository_ctx, cuda_version):
+  """Finds the cuda toolkit directory.
+
+  Args:
+    repository_ctx: The repository context.
+    cuda_version: The cuda toolkit version.
+
+  Returns:
+    A speculative real path of the cuda toolkit install directory.
+  """
   cuda_toolkit_path = _DEFAULT_CUDA_TOOLKIT_PATH
   if _CUDA_TOOLKIT_PATH in repository_ctx.os.environ:
     cuda_toolkit_path = repository_ctx.os.environ[_CUDA_TOOLKIT_PATH].strip()
   if not repository_ctx.path(cuda_toolkit_path).exists:
     auto_configure_fail("Cannot find cuda toolkit path.")
+
+  if cuda_version:
+    # Handle typical configuration where the real path is
+    # <basedir>/cuda-<version> and the provided path is <basedir>/cuda.
+    version_suffixed = "%s-%s" % (cuda_toolkit_path, cuda_version)
+    if repository_ctx.path(version_suffixed).exists:
+      return version_suffixed
+  # Returns the non-versioned path if cuda version is not provided or if the
+  # installation does not use a cuda- directory, such as on ArchLinux where
+  # CUDA installs directly to /opt/cuda.
   return cuda_toolkit_path
 
 
@@ -173,6 +191,11 @@ def _compute_capabilities(repository_ctx):
 
 
 def _cpu_value(repository_ctx):
+  os_name = repository_ctx.os.name.lower()
+  if os_name.startswith("mac os"):
+    return "Darwin"
+  if os_name.find("windows") != -1:
+    return "Windows"
   result = repository_ctx.execute(["uname", "-s"])
   return result.stdout.strip()
 
@@ -209,6 +232,17 @@ def _cuda_symlink_files(cpu_value, cuda_version, cudnn_version):
         cuda_rand_lib = "lib/libcurand%s.dylib" % cuda_ext,
         cuda_fft_lib = "lib/libcufft%s.dylib" % cuda_ext,
         cuda_cupti_lib = "extras/CUPTI/lib/libcupti%s.dylib" % cuda_ext)
+  elif cpu_value == "Windows":
+    return struct(
+        cuda_lib_path = "lib",
+        cuda_rt_lib = "lib/cudart%s.dll" % cuda_ext,
+        cuda_rt_lib_static = "lib/cudart_static.lib",
+        cuda_blas_lib = "lib/cublas%s.dll" % cuda_ext,
+        cuda_dnn_lib = "lib/cudnn%s.dll" % cudnn_ext,
+        cuda_dnn_lib_alt = "cudnn%s.dll" % cudnn_ext,
+        cuda_rand_lib = "lib/curand%s.dll" % cuda_ext,
+        cuda_fft_lib = "lib/cufft%s.dll" % cuda_ext,
+        cuda_cupti_lib = "extras/CUPTI/lib/cupti%s.dll" % cuda_ext)
   else:
     auto_configure_fail("Not supported CPU value %s" % cpu_value)
 
@@ -297,6 +331,33 @@ def _file(repository_ctx, label):
       {})
 
 
+_DUMMY_CROSSTOOL_BZL_FILE = """
+def error_gpu_disabled():
+  fail("ERROR: Building with --config=cuda but TensorFlow is not configured " +
+       "to build with GPU support. Please re-run ./configure and enter 'Y' " +
+       "at the prompt to build with GPU support.")
+
+  native.genrule(
+      name = "error_gen_crosstool",
+      outs = ["CROSSTOOL"],
+      cmd = "echo 'Should not be run.' && exit 1",
+  )
+
+  native.filegroup(
+      name = "crosstool",
+      srcs = [":CROSSTOOL"],
+      output_licenses = ["unencumbered"],
+  )
+"""
+
+
+_DUMMY_CROSSTOOL_BUILD_FILE = """
+load("//crosstool:error_gpu_disabled.bzl", "error_gpu_disabled")
+
+error_gpu_disabled()
+"""
+
+
 def _create_dummy_repository(repository_ctx):
   cpu_value = _cpu_value(repository_ctx)
   symlink_files = _cuda_symlink_files(cpu_value, _DEFAULT_CUDA_VERSION,
@@ -337,6 +398,12 @@ def _create_dummy_repository(repository_ctx):
                for c in _DEFAULT_CUDA_COMPUTE_CAPABILITIES]),
        })
 
+  # If cuda_configure is not configured to build with GPU support, and the user
+  # attempts to build with --config=cuda, add a dummy build rule to intercept
+  # this and fail with an actionable error message.
+  repository_ctx.file("crosstool/error_gpu_disabled.bzl",
+                      _DUMMY_CROSSTOOL_BZL_FILE)
+  repository_ctx.file("crosstool/BUILD", _DUMMY_CROSSTOOL_BUILD_FILE)
 
 def _symlink_dir(repository_ctx, src_dir, dest_dir):
   """Symlinks all the files in a directory.
@@ -353,8 +420,8 @@ def _symlink_dir(repository_ctx, src_dir, dest_dir):
 
 def _create_cuda_repository(repository_ctx):
   """Creates the repository containing files set up to build with CUDA."""
-  cuda_toolkit_path = _cuda_toolkit_path(repository_ctx)
   cuda_version = _cuda_version(repository_ctx)
+  cuda_toolkit_path = _cuda_toolkit_path(repository_ctx, cuda_version)
   cudnn_install_basedir = _cudnn_install_basedir(repository_ctx)
   cudnn_version = _cudnn_version(repository_ctx)
   compute_capabilities = _compute_capabilities(repository_ctx)
@@ -408,7 +475,7 @@ def _create_cuda_repository(repository_ctx):
   gcc_host_compiler_includes = _gcc_host_compiler_includes(repository_ctx, cc)
   _tpl(repository_ctx, "crosstool:CROSSTOOL",
        {
-           "%{cuda_version}": ("-%s" % cuda_version) if cuda_version else "",
+           "%{cuda_include_path}": cuda_toolkit_path + '/include',
            "%{gcc_host_compiler_includes}": gcc_host_compiler_includes,
        })
   _tpl(repository_ctx,

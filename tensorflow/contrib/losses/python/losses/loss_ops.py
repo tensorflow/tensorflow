@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework import deprecated
+from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -32,6 +33,7 @@ from tensorflow.python.ops import nn_ops
 __all__ = ["absolute_difference",
            "add_loss",
            "cosine_distance",
+           "compute_weighted_loss",
            "get_losses",
            "get_regularization_losses",
            "get_total_loss",
@@ -112,7 +114,7 @@ def _safe_mean(losses, num_present):
   return _safe_div(total_loss, num_present)
 
 
-def _compute_weighted_loss(losses, weight):
+def compute_weighted_loss(losses, weight=1.0):
   """Computes the weighted loss.
 
   Args:
@@ -123,9 +125,12 @@ def _compute_weighted_loss(losses, weight):
     A scalar `Tensor` that returns the weighted loss.
 
   Raises:
-    ValueError: If the weight shape is not compatible with the losses shape or
-      if the number of dimensions (rank) of either losses or weight is missing.
+    ValueError: If the weight is None or the shape is not compatible with the
+      losses shape or if the number of dimensions (rank) of either losses or
+      weight is missing.
   """
+  if weight is None:
+    raise ValueError("`weight` cannot be None")
   input_dtype = losses.dtype
   losses = math_ops.to_float(losses)
   weight = math_ops.to_float(ops.convert_to_tensor(weight))
@@ -134,6 +139,10 @@ def _compute_weighted_loss(losses, weight):
     raise ValueError("losses.get_shape().ndims cannot be None")
   if weight.get_shape().ndims is None:
     raise ValueError("weight.get_shape().ndims cannot be None")
+
+  weight_shape = weight.get_shape()
+  if weight_shape.ndims > 1 and weight_shape.dims[-1].is_compatible_with(1):
+    weight = array_ops.squeeze(weight, [-1])
 
   total_loss = _scale_losses(losses, weight)
   num_present = _num_present(losses, weight)
@@ -165,9 +174,6 @@ def _num_present(losses, weight, per_batch=False):
       `per_batch` is True, the value is returned as a tensor of size
       [batch_size]. Otherwise, a single scalar tensor is returned.
   """
-  # To ensure that dims of [2, 1] gets mapped to [2,]
-  weight = array_ops.squeeze(weight)
-
   # If the weight is a scalar, its easy to compute:
   if weight.get_shape().ndims == 0:
     batch_size = array_ops.reshape(array_ops.slice(array_ops.shape(losses),
@@ -196,25 +202,29 @@ def _num_present(losses, weight, per_batch=False):
   return num_per_batch if per_batch else math_ops.reduce_sum(num_per_batch)
 
 
-def add_loss(loss):
-  """Adds a externally defined loss to collection of losses.
+@add_arg_scope
+def add_loss(loss, loss_collection=ops.GraphKeys.LOSSES):
+  """Adds a externally defined loss to the collection of losses.
 
   Args:
     loss: A loss `Tensor`.
+    loss_collection: Optional collection to add the loss to.
   """
-  ops.add_to_collection(ops.GraphKeys.LOSSES, loss)
+  if loss_collection:
+    ops.add_to_collection(loss_collection, loss)
 
 
-def get_losses(scope=None):
-  """Gets the list of loss variables.
+def get_losses(scope=None, loss_collection=ops.GraphKeys.LOSSES):
+  """Gets the list of losses from the loss_collection.
 
   Args:
     scope: an optional scope for filtering the losses to return.
+    loss_collection: Optional losses collection.
 
   Returns:
-    a list of loss variables.
+    a list of loss tensors.
   """
-  return ops.get_collection(ops.GraphKeys.LOSSES, scope)
+  return ops.get_collection(loss_collection, scope)
 
 
 def get_regularization_losses(scope=None):
@@ -284,7 +294,7 @@ def absolute_difference(predictions, targets, weight=1.0, scope=None):
     predictions = math_ops.to_float(predictions)
     targets = math_ops.to_float(targets)
     losses = math_ops.abs(math_ops.sub(predictions, targets))
-    return _compute_weighted_loss(losses, weight)
+    return compute_weighted_loss(losses, weight)
 
 
 def sigmoid_cross_entropy(logits, multi_class_labels, weight=1.0,
@@ -327,7 +337,7 @@ def sigmoid_cross_entropy(logits, multi_class_labels, weight=1.0,
 
     losses = nn.sigmoid_cross_entropy_with_logits(logits, multi_class_labels,
                                                   name="xentropy")
-    return _compute_weighted_loss(losses, weight)
+    return compute_weighted_loss(losses, weight)
 
 
 def softmax_cross_entropy(logits, onehot_labels, weight=1.0,
@@ -373,7 +383,7 @@ def softmax_cross_entropy(logits, onehot_labels, weight=1.0,
 
     losses = nn.softmax_cross_entropy_with_logits(logits, onehot_labels,
                                                   name="xentropy")
-    return _compute_weighted_loss(losses, weight)
+    return compute_weighted_loss(losses, weight)
 
 
 def sparse_softmax_cross_entropy(logits, labels, weight=1.0, scope=None):
@@ -406,7 +416,7 @@ def sparse_softmax_cross_entropy(logits, labels, weight=1.0, scope=None):
 
     losses = nn.sparse_softmax_cross_entropy_with_logits(logits, labels,
                                                          name="xentropy")
-    return _compute_weighted_loss(losses, weight)
+    return compute_weighted_loss(losses, weight)
 
 
 def log_loss(predictions, targets, weight=1.0, epsilon=1e-7, scope=None):
@@ -446,7 +456,7 @@ def log_loss(predictions, targets, weight=1.0, epsilon=1e-7, scope=None):
         targets,
         math_ops.log(predictions + epsilon)) - math_ops.mul(
             (1 - targets), math_ops.log(1 - predictions + epsilon))
-    return _compute_weighted_loss(losses, weight)
+    return compute_weighted_loss(losses, weight)
 
 
 def hinge_loss(logits, target, scope=None):
@@ -471,7 +481,8 @@ def hinge_loss(logits, target, scope=None):
     target = math_ops.to_float(target)
     all_ones = array_ops.ones_like(target)
     labels = math_ops.sub(2 * target, all_ones)
-    return nn_ops.relu(math_ops.sub(all_ones, math_ops.mul(labels, logits)))
+    losses = nn_ops.relu(math_ops.sub(all_ones, math_ops.mul(labels, logits)))
+    return losses
 
 
 @deprecated("2016-10-01", "Use mean_squared_error.")
@@ -508,7 +519,7 @@ def sum_of_squares(predictions, targets, weight=1.0, scope=None):
     predictions = math_ops.to_float(predictions)
     targets = math_ops.to_float(targets)
     losses = math_ops.square(math_ops.sub(predictions, targets))
-    return _compute_weighted_loss(losses, weight)
+    return compute_weighted_loss(losses, weight)
 
 
 mean_squared_error = sum_of_squares
@@ -565,7 +576,7 @@ def sum_of_pairwise_squares(predictions, targets, weight=1.0, scope=None):
 
     diffs = math_ops.sub(predictions, targets)
 
-    # Need to verify here since the function doesn't use _compute_weighted_loss
+    # Need to verify here since the function doesn't use compute_weighted_loss
     if diffs.get_shape().ndims is None:
       raise ValueError("diffs.get_shape().ndims cannot be None")
     if weight.get_shape().ndims is None:
@@ -631,4 +642,4 @@ def cosine_distance(predictions, targets, dim, weight=1.0, scope=None):
 
     radial_diffs = math_ops.mul(predictions, targets)
     losses = 1 - math_ops.reduce_sum(radial_diffs, reduction_indices=[dim,])
-    return _compute_weighted_loss(losses, weight)
+    return compute_weighted_loss(losses, weight)

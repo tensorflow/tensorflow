@@ -159,6 +159,7 @@ def wait_for_new_checkpoint(checkpoint_dir,
   Returns:
     a new checkpoint path, or None if the timeout was reached.
   """
+  logging.info('Waiting for new checkpoint at %s', checkpoint_dir)
   stop_time = time.time() + timeout if timeout is not None else None
   while True:
     checkpoint_path = tf_saver.latest_checkpoint(checkpoint_dir)
@@ -167,6 +168,7 @@ def wait_for_new_checkpoint(checkpoint_dir,
         return None
       time.sleep(seconds_to_sleep)
     else:
+      logging.info('Found new checkpoint at %s', checkpoint_path)
       return checkpoint_path
 
 

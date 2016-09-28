@@ -272,7 +272,7 @@ def get_ops_ios(ops, control_inputs=False, control_outputs=None,
   return res
 
 
-def compute_boundary_ts(ops, ambiguous_are_outputs=True):
+def compute_boundary_ts(ops, ambiguous_ts_are_outputs=True):
   """Compute the tensors at the boundary of a set of ops.
 
   This function looks at all the tensors connected to the given ops (in/out)
@@ -283,9 +283,10 @@ def compute_boundary_ts(ops, ambiguous_are_outputs=True):
 
   Args:
     ops: an object convertible to a list of tf.Operation.
-    ambiguous_are_outputs: a tensor can have consumers both inside and outside
-      ops. Such tensors are treated as outside tensor if inside_output_as_output
-      is True, otherwise they are treated as inside tensor.
+    ambiguous_ts_are_outputs: a tensor can have consumers both inside and
+      outside ops. Such tensors are treated as outside tensor if
+      ambiguous_ts_are_outputs is True, otherwise they are treated as
+      inside tensor.
   Returns:
     A tuple `(outside_input_ts, outside_output_ts, inside_ts)` where:
       `outside_input_ts` is a Python list of input tensors;
@@ -298,6 +299,7 @@ def compute_boundary_ts(ops, ambiguous_are_outputs=True):
   input_ts = _get_input_ts(ops)
   output_ts = _get_output_ts(ops)
   output_ts_set = frozenset(output_ts)
+  ops_set = frozenset(ops)
 
   # fill in inside
   inside_ts = []
@@ -305,15 +307,16 @@ def compute_boundary_ts(ops, ambiguous_are_outputs=True):
     # is also output?
     if t not in output_ts_set:
       continue
-    # is ambiguous?
-    if ambiguous_are_outputs:
-      not_in_ops = [op for op in t.consumers() if op not in ops]
-      if not_in_ops:
+    # is ambiguous_ts_are_outputs is True, don't add to inside if ambiguous
+    if ambiguous_ts_are_outputs:
+      consumers = frozenset(t.consumers())
+      if consumers - ops_set:
         continue
     inside_ts.append(t)
 
-  outside_input_ts = [t for t in input_ts if t not in inside_ts]
-  outside_output_ts = [t for t in output_ts if t not in inside_ts]
+  inside_ts_set = frozenset(inside_ts)
+  outside_input_ts = [t for t in input_ts if t not in inside_ts_set]
+  outside_output_ts = [t for t in output_ts if t not in inside_ts_set]
   return outside_input_ts, outside_output_ts, inside_ts
 
 

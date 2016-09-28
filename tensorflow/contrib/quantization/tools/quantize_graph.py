@@ -981,7 +981,7 @@ def main(unused_args):
     return -1
 
   tf_graph = tf.GraphDef()
-  with tf.gfile.Open(FLAGS.input, "r") as f:
+  with tf.gfile.Open(FLAGS.input, "rb") as f:
     data = f.read()
     tf_graph.ParseFromString(data)
 
@@ -993,7 +993,7 @@ def main(unused_args):
 
   output_graph = rewriter.rewrite(FLAGS.output_node_names.split(","))
 
-  f = tf.gfile.FastGFile(FLAGS.output, "w")
+  f = tf.gfile.FastGFile(FLAGS.output, "wb")
   f.write(output_graph.SerializeToString())
 
   return 0

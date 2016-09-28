@@ -45,6 +45,8 @@ class QuantizedMatMulOpForHexagonTest : public OpsTestBase {
               << hexagon_gemm_wrapper_GetWrapperVersion()
               << ", hexagon binary version = "
               << hexagon_gemm_wrapper_GetHexagonBinaryVersion() << ")";
+    LOG(INFO) << "Cpu frequency = "
+              << profile_utils::CpuUtils::GetCycleCounterFrequency();
 #else
     LOG(WARNING) << "Hexagon libs are not linked.";
 #endif
@@ -59,19 +61,31 @@ TEST_F(QuantizedMatMulOpForHexagonTest, EvaluateSharedLibOverhead) {
   const int wrapper_version = hexagon_gemm_wrapper_GetWrapperVersion();
   const uint64 overhead_shared_lib_end =
       profile_utils::CpuUtils::GetCurrentClockCycle();
+  const uint64 overhead_shared_lib_diff =
+      (overhead_shared_lib_end - overhead_shared_lib_start);
   const uint64 overhead_hexagon_rpc_start =
       profile_utils::CpuUtils::GetCurrentClockCycle();
   const int hexagon_binary_version =
       hexagon_gemm_wrapper_GetHexagonBinaryVersion();
   const uint64 overhead_hexagon_rpc_end =
       profile_utils::CpuUtils::GetCurrentClockCycle();
+  const uint64 overhead_hexagon_rpc_diff =
+      (overhead_hexagon_rpc_end - overhead_hexagon_rpc_start);
   LOG(INFO) << "Shared lib (ver = " << wrapper_version << ") overhead is "
-            << (overhead_shared_lib_end - overhead_shared_lib_start)
-            << " cycles";
+            << overhead_shared_lib_diff << " cycles, time = "
+            << std::chrono::duration_cast<std::chrono::microseconds>(
+                   profile_utils::CpuUtils::ConvertClockCycleToTime(
+                       overhead_shared_lib_diff))
+                   .count()
+            << " usec";
   LOG(INFO) << "hexagon rpc (ver = " << hexagon_binary_version
-            << ") overhead is "
-            << (overhead_hexagon_rpc_end - overhead_hexagon_rpc_start)
-            << " cycles";
+            << ") overhead is " << overhead_hexagon_rpc_diff
+            << " cycles, time = "
+            << std::chrono::duration_cast<std::chrono::microseconds>(
+                   profile_utils::CpuUtils::ConvertClockCycleToTime(
+                       overhead_hexagon_rpc_diff))
+                   .count()
+            << " usec";
 }
 #endif
 
