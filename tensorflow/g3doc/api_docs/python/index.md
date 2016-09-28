@@ -128,7 +128,6 @@
   * [`cast`](../../api_docs/python/array_ops.md#cast)
   * [`concat`](../../api_docs/python/array_ops.md#concat)
   * [`depth_to_space`](../../api_docs/python/array_ops.md#depth_to_space)
-  * [`dequantize`](../../api_docs/python/array_ops.md#dequantize)
   * [`dynamic_partition`](../../api_docs/python/array_ops.md#dynamic_partition)
   * [`dynamic_stitch`](../../api_docs/python/array_ops.md#dynamic_stitch)
   * [`expand_dims`](../../api_docs/python/array_ops.md#expand_dims)
@@ -139,8 +138,6 @@
   * [`one_hot`](../../api_docs/python/array_ops.md#one_hot)
   * [`pack`](../../api_docs/python/array_ops.md#pack)
   * [`pad`](../../api_docs/python/array_ops.md#pad)
-  * [`quantize_v2`](../../api_docs/python/array_ops.md#quantize_v2)
-  * [`quantized_concat`](../../api_docs/python/array_ops.md#quantized_concat)
   * [`rank`](../../api_docs/python/array_ops.md#rank)
   * [`required_space_to_batch_paddings`](../../api_docs/python/array_ops.md#required_space_to_batch_paddings)
   * [`reshape`](../../api_docs/python/array_ops.md#reshape)
@@ -971,9 +968,11 @@
   * [`bucket`](../../api_docs/python/contrib.training.md#bucket)
   * [`bucket_by_sequence_length`](../../api_docs/python/contrib.training.md#bucket_by_sequence_length)
   * [`NextQueuedSequenceBatch`](../../api_docs/python/contrib.training.md#NextQueuedSequenceBatch)
+  * [`resample_at_rate`](../../api_docs/python/contrib.training.md#resample_at_rate)
   * [`SequenceQueueingStateSaver`](../../api_docs/python/contrib.training.md#SequenceQueueingStateSaver)
   * [`stratified_sample`](../../api_docs/python/contrib.training.md#stratified_sample)
   * [`stratified_sample_unknown_dist`](../../api_docs/python/contrib.training.md#stratified_sample_unknown_dist)
+  * [`weighted_resample`](../../api_docs/python/contrib.training.md#weighted_resample)
 
 * **[Utilities (contrib)](../../api_docs/python/contrib.util.md)**:
   * [`constant_value`](../../api_docs/python/contrib.util.md#constant_value)
