@@ -27,7 +27,7 @@ namespace {
 
 // In case of failure, every call will be retried kMaxRetries times.
 constexpr int kMaxRetries = 3;
-// Maximum backoff time in seconds.
+// Maximum backoff time in milliseconds.
 constexpr int kMaximumBackoffMilliSeconds = 32000;
 
 bool IsRetriable(Status status) {
