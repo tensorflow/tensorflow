@@ -161,7 +161,6 @@ target_include_directories(tf_core_lib PUBLIC
     ${jpeg_INCLUDE_DIR}
     ${png_INCLUDE_DIR}
     ${eigen_INCLUDE_DIRS}
-    ${re2_EXTRA_INCLUDE_DIR}
     ${jsoncpp_INCLUDE_DIR}
 )
 target_compile_options(tf_core_lib PRIVATE
@@ -178,7 +177,6 @@ add_dependencies(tf_core_lib
     gif_copy_headers_to_destination
     jpeg_copy_headers_to_destination
     png_copy_headers_to_destination
-    re2_copy_headers_to_destination
     eigen
     tf_protos_cc
     jsoncpp
@@ -242,7 +240,6 @@ add_library(tf_core_framework OBJECT
 target_include_directories(tf_core_framework PUBLIC
     ${tensorflow_source_dir}
     ${eigen_INCLUDE_DIRS}
-    ${re2_INCLUDES}
 )
 add_dependencies(tf_core_framework
     tf_core_lib
