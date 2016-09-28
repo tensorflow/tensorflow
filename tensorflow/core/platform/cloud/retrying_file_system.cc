@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/retrying_file_system.h"
+#include <chrono>
 #include <functional>
+#include <random>
+#include <thread>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/file_system.h"
 
@@ -25,7 +28,7 @@ namespace {
 // In case of failure, every call will be retried kMaxRetries times.
 constexpr int kMaxRetries = 3;
 // Maximum backoff time in seconds.
-constexpr int kMaximumBackoffSeconds = 32;
+constexpr int kMaximumBackoffMilliSeconds = 32000;
 
 bool IsRetriable(Status status) {
   switch (status.code()) {
@@ -39,6 +42,19 @@ bool IsRetriable(Status status) {
   }
 }
 
+void WaitBeforeRetry(const int delay_seconds) {
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<> dist(0, 999);
+
+  const int delay_milliseconds = delay_seconds * 1000;
+  const int random_milliseconds = dist(gen);
+  const int delay = std::min(delay_milliseconds + random_milliseconds,
+                             kMaximumBackoffMilliSeconds);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+}
+
 Status CallWithRetries(const std::function<Status()>& f,
                        const int initial_delay_seconds) {
   int retries = 0;
@@ -49,9 +65,7 @@ Status CallWithRetries(const std::function<Status()>& f,
     }
     LOG(ERROR) << "The operation resulted in an error and will be retried: "
                << status.ToString();
-    const int delay = std::min(initial_delay_seconds << retries,
-                               kMaximumBackoffSeconds);
-    sleep(delay);
+    WaitBeforeRetry(initial_delay_seconds << retries);
     retries++;
   }
 }
@@ -168,7 +182,8 @@ Status RetryingFileSystem::GetChildren(const string& dir,
 Status RetryingFileSystem::GetChildrenRecursively(const string& dir,
                                                   std::vector<string>* result) {
   return CallWithRetries(std::bind(&FileSystem::GetChildrenRecursively,
-                                   base_file_system_.get(), dir, result));
+                                   base_file_system_.get(), dir, result),
+                         initial_delay_seconds_);
 }
 
 Status RetryingFileSystem::DeleteFile(const string& fname) {
