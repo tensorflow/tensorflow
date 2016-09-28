@@ -54,7 +54,8 @@ enum SamplingMode {
 
 // Combines bilinear resizing and mirror padding into the im2col transformation
 // stage of convolution.
-template <class T1, class T2, class T3, class TGemmFunctor, int SampleMode>
+template <class T1, class T2, class T3, class TGemmFunctor,
+	  SamplingMode SampleMode>
 class FusedResizeAndPadConvFunctor {
  public:
   void operator()(OpKernelContext* context, const Tensor& input,

@@ -514,11 +514,11 @@ Performs a padding as a preprocess during a convolution.
 Similar to FusedResizeAndPadConv2d, this op allows for an optimized
 implementation where the spatial padding transformation stage is fused with the
 im2col lookup, but in this case without the bilinear filtering required for
-resizing. This prevents the need to write out the intermediate results as whole
-tensors, reducing memory pressure, and we can get some latency gains by merging
-the transformation calculations.
-The data_format attribute for Conv2D isn't supported by this op, and defaults to
-'NHWC' order.
+resizing. Fusing the padding prevents the need to write out the intermediate
+results as whole tensors, reducing memory pressure, and we can get some latency
+gains by merging the transformation calculations.
+The data_format attribute for Conv2D isn't supported by this op, and 'NHWC'
+order is used instead.
 Internally this op uses a single per-graph scratch buffer, which means that it
 will block if multiple versions are being run in parallel. This is because this
 operator is primarily an optimization to minimize memory usage.

@@ -124,9 +124,7 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     const size_t input_data_size = input_height * input_width * input_depth;
     Tensor input_data(DT_FLOAT,
                       TensorShape({1, input_height, input_width, input_depth}));
-    for (int i = 0; i < input_data_size; ++i) {
-      input_data.flat<float>()(i) = i + 1.0f;
-    }
+    test::FillIota<float>(&input_data, 1.0f);
     Output input =
         Const(root.WithOpName("input"), Input::Initializer(input_data));
 
@@ -134,9 +132,7 @@ class FusedResizePadConvOpTest : public OpsTestBase {
         filter_size * filter_size * filter_count * input_depth;
     Tensor filter_data(DT_FLOAT, TensorShape({filter_size, filter_size,
                                               input_depth, filter_count}));
-    for (int i = 0; i < filter_data_size; ++i) {
-      filter_data.flat<float>()(i) = i + 1.0f;
-    }
+    test::FillIota<float>(&filter_data, 1.0f);
     Output filter =
         Const(root.WithOpName("filter"), Input::Initializer(filter_data));
 
@@ -185,9 +181,7 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     const size_t input_data_size = input_height * input_width * input_depth;
     Tensor input_data(DT_FLOAT,
                       TensorShape({1, input_height, input_width, input_depth}));
-    for (int i = 0; i < input_data_size; ++i) {
-      input_data.flat<float>()(i) = i + 1.0f;
-    }
+    test::FillIota<float>(&input_data, 1.0f);
     Output input =
         Const(root.WithOpName("input"), Input::Initializer(input_data));
 
@@ -195,9 +189,7 @@ class FusedResizePadConvOpTest : public OpsTestBase {
         filter_size * filter_size * filter_count * input_depth;
     Tensor filter_data(DT_FLOAT, TensorShape({filter_size, filter_size,
                                               input_depth, filter_count}));
-    for (int i = 0; i < filter_data_size; ++i) {
-      filter_data.flat<float>()(i) = i + 1.0f;
-    }
+    test::FillIota<float>(&filter_data, 1.0f);
     Output filter =
         Const(root.WithOpName("filter"), Input::Initializer(filter_data));
 

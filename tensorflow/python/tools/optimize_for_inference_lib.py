@@ -48,6 +48,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import math
 import re
 import numpy as np
@@ -361,14 +362,11 @@ def fuse_resize_and_conv(input_graph_def):
     else:
       raise ValueError("Duplicate node names detected for ", node.name)
 
-  node_reference_count = {}
+  node_reference_count = collections.defaultdict()
   for node in input_graph_def.node:
     for input_name in node.input:
       stripped_name = node_name_from_input(input_name)
-      if stripped_name not in node_reference_count.keys():
-        node_reference_count[stripped_name] = 1
-      else:
-        node_reference_count[stripped_name] += 1
+      node_reference_count[stripped_name] += 1
 
   new_ops = []
   for node in input_graph_def.node:
@@ -440,8 +438,7 @@ def fuse_resize_and_conv(input_graph_def):
 
   result_graph_def = tf.GraphDef()
   for node in input_graph_def.node:
-    if (node.name in node_reference_count.keys() and
-        node_reference_count[node.name] < 1):
+    if node_reference_count[node.name] < 1:
       continue
     new_node = tf.NodeDef()
     new_node.CopyFrom(node)
