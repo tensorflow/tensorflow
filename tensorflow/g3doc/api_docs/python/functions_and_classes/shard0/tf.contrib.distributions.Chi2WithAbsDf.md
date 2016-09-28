@@ -106,6 +106,17 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 Shanon entropy in nats.
 
+Additional documentation from `Gamma`:
+
+This is defined to be
+
+```
+entropy = alpha - log(beta) + log(Gamma(alpha))
++ (1-alpha)digamma(alpha)
+```
+
+where digamma(alpha) is the digamma function.
+
 
 - - -
 
@@ -216,7 +227,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -240,7 +251,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -303,6 +314,12 @@ Mean.
 #### `tf.contrib.distributions.Chi2WithAbsDf.mode(name='mode')` {#Chi2WithAbsDf.mode}
 
 Mode.
+
+Additional documentation from `Gamma`:
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when
+`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+an exception will be raised rather than returning `NaN`.
 
 
 - - -
@@ -382,7 +399,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -406,7 +423,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -455,6 +472,11 @@ sample.
 #### `tf.contrib.distributions.Chi2WithAbsDf.sample_n(n, seed=None, name='sample_n')` {#Chi2WithAbsDf.sample_n}
 
 Generate `n` samples.
+
+
+Additional documentation from `Gamma`:
+
+See the documentation for tf.random_gamma for more details.
 
 ##### Args:
 

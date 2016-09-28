@@ -28,6 +28,21 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
 
 
+_dirichlet_multinomial_prob_note = """
+For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
+that after sampling `n` draws from this Dirichlet Multinomial
+distribution, the number of draws falling in class `j` is `n_j`.  Note that
+different sequences of draws can result in the same counts, thus the
+probability includes a combinatorial coefficient.
+
+Note that input, "counts", must be a non-negative tensor with dtype `dtype`
+and whose shape can be broadcast with `self.alpha`.  For fixed leading
+dimensions, the last dimension represents counts for the corresponding
+Dirichlet Multinomial distribution in `self.alpha`. `counts` is only legal if
+it sums up to `n` and its components are equal to integer values.
+"""
+
+
 class DirichletMultinomial(distribution.Distribution):
   """DirichletMultinomial mixture distribution.
 
@@ -192,6 +207,7 @@ class DirichletMultinomial(distribution.Distribution):
     # Event shape depends only on alpha, not "n".
     return self.alpha.get_shape().with_rank_at_least(1)[-1:]
 
+  @distribution_util.AppendDocstring(_dirichlet_multinomial_prob_note)
   def _log_prob(self, counts):
     counts = self._assert_valid_counts(counts)
     ordered_prob = (special_math_ops.lbeta(self.alpha + counts) -
@@ -200,6 +216,7 @@ class DirichletMultinomial(distribution.Distribution):
         self.n, counts)
     return log_prob
 
+  @distribution_util.AppendDocstring(_dirichlet_multinomial_prob_note)
   def _prob(self, counts):
     return math_ops.exp(self._log_prob(counts))
 
@@ -207,6 +224,23 @@ class DirichletMultinomial(distribution.Distribution):
     normalized_alpha = self.alpha / array_ops.expand_dims(self.alpha_sum, -1)
     return array_ops.expand_dims(self.n, -1) * normalized_alpha
 
+  @distribution_util.AppendDocstring(
+      """The variance for each batch member is defined as the following:
+
+      ```
+      Var(X_j) = n * alpha_j / alpha_0 * (1 - alpha_j / alpha_0) *
+      (n + alpha_0) / (1 + alpha_0)
+      ```
+
+      where `alpha_0 = sum_j alpha_j`.
+
+      The covariance between elements in a batch is defined as:
+
+      ```
+      Cov(X_i, X_j) = -n * alpha_i * alpha_j / alpha_0 ** 2 *
+      (n + alpha_0) / (1 + alpha_0)
+      ```
+      """)
   def _variance(self):
     alpha_sum = array_ops.expand_dims(self.alpha_sum, -1)
     normalized_alpha = self.alpha / alpha_sum
@@ -248,44 +282,3 @@ class DirichletMultinomial(distribution.Distribution):
     return control_flow_ops.with_dependencies(
         [check_ops.assert_non_negative(n),
          distribution_util.assert_integer_form(n)], n)
-
-
-_prob_note = """
-
-  For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
-  that after sampling `n` draws from this Dirichlet Multinomial
-  distribution, the number of draws falling in class `j` is `n_j`.  Note that
-  different sequences of draws can result in the same counts, thus the
-  probability includes a combinatorial coefficient.
-
-  Note that input, "counts", must be a non-negative tensor with dtype `dtype`
-  and whose shape can be broadcast with `self.alpha`.  For fixed leading
-  dimensions, the last dimension represents counts for the corresponding
-  Dirichlet Multinomial distribution in `self.alpha`. `counts` is only legal if
-  it sums up to `n` and its components are equal to integer values.
-"""
-distribution_util.append_class_fun_doc(DirichletMultinomial.log_prob,
-                                       doc_str=_prob_note)
-distribution_util.append_class_fun_doc(DirichletMultinomial.prob,
-                                       doc_str=_prob_note)
-
-distribution_util.append_class_fun_doc(DirichletMultinomial.variance,
-                                       doc_str="""
-
-  The variance for each batch member is defined as the following:
-
-  ```
-  Var(X_j) = n * alpha_j / alpha_0 * (1 - alpha_j / alpha_0) *
-    (n + alpha_0) / (1 + alpha_0)
-  ```
-
-  where `alpha_0 = sum_j alpha_j`.
-
-  The covariance between elements in a batch is defined as:
-
-  ```
-  Cov(X_i, X_j) = -n * alpha_i * alpha_j / alpha_0 ** 2 *
-    (n + alpha_0) / (1 + alpha_0)
-  ```
-
-""")

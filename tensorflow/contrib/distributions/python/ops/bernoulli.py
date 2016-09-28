@@ -153,14 +153,8 @@ class Bernoulli(distribution.Distribution):
     return math_ops.sqrt(self._variance())
 
   def _mode(self):
+    """Returns `1` if `p > 1-p` and `0` otherwise."""
     return math_ops.cast(self.p > self.q, self.dtype)
-
-
-distribution_util.append_class_fun_doc(Bernoulli.mode, doc_str="""
-
-  Specific notes:
-    1 if p > 1-p. 0 otherwise.
-""")
 
 
 class BernoulliWithSigmoidP(Bernoulli):

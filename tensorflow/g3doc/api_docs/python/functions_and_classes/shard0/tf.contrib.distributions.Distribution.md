@@ -10,13 +10,19 @@ same-named function.  The argument signature should be identical except for
 the omission of `name="..."`.  For example, to enable `log_prob(value,
 name="log_prob")` a subclass should implement `_log_prob(value)`.
 
-Subclasses can rewrite/append to public-level docstrings. For example,
+Subclasses can append to public-level docstrings by providing
+docstrings for their method specializations. For example:
 
 ```python
-Subclass.prob.__func__.__doc__ += "Some other details."
+@distribution_util.AppendDocstring("Some other details.")
+def _log_prob(self, value):
+  ...
 ```
 
-would add the string "Some other details." to the `prob` function docstring.
+would add the string "Some other details." to the `log_prob` function
+docstring.  This is implemented as a simple decorator to avoid python
+linter complaining about missing Args/Returns/Raises sections in the
+partial docstrings.
 
 ### Broadcasting, batching, and shapes
 
@@ -321,7 +327,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -345,7 +351,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -487,7 +493,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -511,7 +517,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -

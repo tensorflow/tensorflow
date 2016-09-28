@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import sys
 import numpy as np
 
@@ -376,8 +377,8 @@ def pick_vector(cond,
                            [math_ops.select(cond, n, -1)])
 
 
-def append_class_fun_doc(fn, doc_str):
-  """Appends the `doc_str` argument to `fn.__doc__`.
+def override_docstring_if_empty(fn, doc_str):
+  """Override the `doc_str` argument to `fn.__doc__`.
 
   This function is primarily needed because Python 3 changes how docstrings are
   programmatically set.
@@ -386,15 +387,25 @@ def append_class_fun_doc(fn, doc_str):
     fn: Class function.
     doc_str: String
   """
-  # TODO(b/31100586): Figure out why appending accumulates rather than resets
-  # for each subclass.
   if sys.version_info.major < 3:
     if fn.__func__.__doc__ is None:
       fn.__func__.__doc__ = doc_str
-    # else:
-    #   fn.__func__.__doc__ += doc_str
   else:
     if fn.__doc__ is None:
       fn.__doc__ = doc_str
-    # else:
-    #   fn.__doc__ += doc_str
+
+
+class AppendDocstring(object):
+
+  def __init__(self, string):
+    self._string = string
+
+  def __call__(self, fn):
+    @functools.wraps(fn)
+    def _fn(*args, **kwargs):
+      return fn(*args, **kwargs)
+    if _fn.__doc__ is None:
+      _fn.__doc__ = self._string
+    else:
+      _fn.__doc__ += "\n%s" % self._string
+    return _fn
