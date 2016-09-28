@@ -23,9 +23,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework import deprecated_args
+from tensorflow.contrib.framework import tensor_util
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.metrics.python.ops import confusion_matrix_ops
-from tensorflow.contrib.metrics.python.ops import metric_ops_util
 from tensorflow.contrib.metrics.python.ops import set_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -502,7 +502,7 @@ def streaming_accuracy(predictions, labels, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+  predictions, labels = tensor_util.remove_squeezable_dimensions(
       predictions, labels)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   if labels.dtype != predictions.dtype:
@@ -562,7 +562,7 @@ def streaming_precision(predictions, labels, ignore_mask=None, weights=None,
   with variable_scope.variable_scope(
       name, 'precision', [predictions, labels]):
 
-    predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+    predictions, labels = tensor_util.remove_squeezable_dimensions(
         predictions, labels)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
@@ -641,7 +641,7 @@ def streaming_recall(predictions, labels, ignore_mask=None, weights=None,
       tuple.
   """
   with variable_scope.variable_scope(name, 'recall', [predictions, labels]):
-    predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+    predictions, labels = tensor_util.remove_squeezable_dimensions(
         predictions, labels)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
@@ -717,7 +717,7 @@ def _tp_fn_tn_fp(predictions, labels, thresholds, weights=None):
     ValueError: If `predictions` and `labels` have mismatched shapes, or if
       `weights` is not `None` and its shape doesn't match `predictions`.
   """
-  predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+  predictions, labels = tensor_util.remove_squeezable_dimensions(
       predictions, labels)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
@@ -2125,7 +2125,7 @@ def streaming_mean_absolute_error(predictions, labels, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+  predictions, labels = tensor_util.remove_squeezable_dimensions(
       predictions, labels)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   absolute_errors = math_ops.abs(predictions - labels)
@@ -2178,11 +2178,11 @@ def streaming_mean_relative_error(predictions, labels, normalizer, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+  predictions, labels = tensor_util.remove_squeezable_dimensions(
       predictions, labels)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
-  predictions, normalizer = metric_ops_util.remove_squeezable_dimensions(
+  predictions, normalizer = tensor_util.remove_squeezable_dimensions(
       predictions, normalizer)
   predictions.get_shape().assert_is_compatible_with(normalizer.get_shape())
   relative_errors = math_ops.select(
@@ -2237,7 +2237,7 @@ def streaming_mean_squared_error(predictions, labels, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+  predictions, labels = tensor_util.remove_squeezable_dimensions(
       predictions, labels)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   squared_error = math_ops.square(labels - predictions)
@@ -2289,7 +2289,7 @@ def streaming_root_mean_squared_error(predictions, labels, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+  predictions, labels = tensor_util.remove_squeezable_dimensions(
       predictions, labels)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   value_tensor, update_op = streaming_mean_squared_error(
@@ -2361,7 +2361,7 @@ def streaming_covariance(predictions,
       `metrics_collections` or `updates_collections` are not a list or tuple.
   """
   with variable_scope.variable_scope(name, 'covariance', [predictions, labels]):
-    predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+    predictions, labels = tensor_util.remove_squeezable_dimensions(
         predictions, labels)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     count = _create_local('count', [])
@@ -2483,7 +2483,7 @@ def streaming_pearson_correlation(predictions,
       `updates_collections` are not a `list` or `tuple`.
   """
   with variable_scope.variable_scope(name, 'pearson_r', [predictions, labels]):
-    predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+    predictions, labels = tensor_util.remove_squeezable_dimensions(
         predictions, labels)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     cov, update_cov = streaming_covariance(
@@ -2556,7 +2556,7 @@ def streaming_mean_cosine_distance(predictions, labels, dim, weights=None,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+  predictions, labels = tensor_util.remove_squeezable_dimensions(
       predictions, labels)
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   radial_diffs = math_ops.mul(predictions, labels)

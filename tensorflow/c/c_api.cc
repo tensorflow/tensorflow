@@ -1228,10 +1228,10 @@ int TF_OperationGetControlOutputs(TF_Operation* oper,
   return count;
 }
 
-TF_Attr_Metadata TF_OperationGetAttrMetadata(TF_Operation* oper,
-                                             const char* attr_name,
-                                             TF_Status* status) {
-  TF_Attr_Metadata metadata;
+TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
+                                            const char* attr_name,
+                                            TF_Status* status) {
+  TF_AttrMetadata metadata;
   const auto* attr = GetAttrValue(oper, attr_name, status);
   if (!status->status.ok()) return metadata;
   switch (attr->value_case()) {

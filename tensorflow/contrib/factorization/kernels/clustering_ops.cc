@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <numeric>
 #include <tuple>
 #include <unordered_set>
 #include <vector>

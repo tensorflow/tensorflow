@@ -450,4 +450,4 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
             raise ValueError(
                 'Requested return_element %r not found in graph_def.' % name)
       return ret
-  # LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/core/graph/graph_constructor.cc)
+  # LINT.ThenChange(//tensorflow/core/graph/graph_constructor.cc)

@@ -45,6 +45,17 @@ const char kGraphKey[] = "serving_graph";
 struct SessionBundle {
   std::unique_ptr<Session> session;
   MetaGraphDef meta_graph_def;
+
+  // A TensorFlow Session does not Close itself on destruction. To avoid
+  // resource leaks, we explicitly call Close on Sessions that we create.
+  ~SessionBundle() {
+    if (session) {
+      session->Close();
+    }
+  }
+
+  SessionBundle(SessionBundle&&) = default;
+  SessionBundle() = default;
 };
 
 // Loads a manifest and initialized session using the output of an Exporter.

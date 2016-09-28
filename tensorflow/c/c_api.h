@@ -537,7 +537,7 @@ extern int TF_OperationGetControlOutputs(TF_Operation* oper,
                                          TF_Operation** control_outputs,
                                          int max_control_outputs);
 
-// TF_Attr_Type describes the type of the value of an attribute on an operation.
+// TF_AttrType describes the type of the value of an attribute on an operation.
 typedef enum {
   TF_ATTR_STRING = 0,
   TF_ATTR_INT = 1,
@@ -548,9 +548,9 @@ typedef enum {
   TF_ATTR_TENSOR = 6,
   TF_ATTR_PLACEHOLDER = 7,
   TF_ATTR_FUNC = 8,
-} TF_Attr_Type;
+} TF_AttrType;
 
-// TF_Attr_Metadata describes the value of an attribute on an operation.
+// TF_AttrMetadata describes the value of an attribute on an operation.
 typedef struct {
   // A boolean: 1 if the attribute value is a list, 0 otherwise.
   unsigned char is_list;
@@ -560,7 +560,7 @@ typedef struct {
 
   // Type of elements of the list if is_list != 0.
   // Type of the single value stored in the attribute if is_list == 0.
-  TF_Attr_Type type;
+  TF_AttrType type;
 
   // Total size the attribute value.
   // The units of total_size depend on is_list and type.
@@ -579,16 +579,16 @@ typedef struct {
   //     of dimensions of all shapes in the list.
   // (5) Otherwise, total_size is undefined.
   int64_t total_size;
-} TF_Attr_Metadata;
+} TF_AttrMetadata;
 
 // Returns metadata about the value of the attribute `attr_name` of `oper`.
-TF_Attr_Metadata TF_OperationGetAttrMetadata(TF_Operation* oper,
-                                             const char* attr_name,
-                                             TF_Status* status);
+TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
+                                            const char* attr_name,
+                                            TF_Status* status);
 
 // Fills in `value` with the value of the attribute `attr_name`.  `value` must
 // point to an array of length at least `max_length` (ideally set to
-// TF_Attr_Metadata.total_size from TF_OperationGetAttrMetadata(oper,
+// TF_AttrMetadata.total_size from TF_OperationGetAttrMetadata(oper,
 // attr_name)).
 extern void TF_OperationGetAttrString(TF_Operation* oper, const char* attr_name,
                                       void* value, int max_length,
@@ -600,8 +600,8 @@ extern void TF_OperationGetAttrString(TF_Operation* oper, const char* attr_name,
 //
 // The elements of values will point to addresses in `storage` which must be at
 // least `storage_size` bytes large.  Ideally, max_values would be set to
-// TF_Attr_Metadata.list_size and `storage` would be at least
-// TF_Attr_Metadata.total_size, obtained from TF_OperationGetAttrMetadata(oper,
+// TF_AttrMetadata.list_size and `storage` would be at least
+// TF_AttrMetadata.total_size, obtained from TF_OperationGetAttrMetadata(oper,
 // attr_name).
 //
 // Fails if storage_size is too small to hold the requested number of strings.
@@ -616,7 +616,7 @@ extern void TF_OperationGetAttrInt(TF_Operation* oper, const char* attr_name,
 
 // Fills in `values` with the value of the attribute `attr_name` of `oper`.
 // `values` must point to an array of length at least `max_values` (ideally set
-// TF_Attr_Metadata.list_size from TF_OperationGetAttrMetadata(oper,
+// TF_AttrMetadata.list_size from TF_OperationGetAttrMetadata(oper,
 // attr_name)).
 extern void TF_OperationGetAttrIntList(TF_Operation* oper,
                                        const char* attr_name, int64_t* values,
@@ -627,7 +627,7 @@ extern void TF_OperationGetAttrFloat(TF_Operation* oper, const char* attr_name,
 
 // Fills in `values` with the value of the attribute `attr_name` of `oper`.
 // `values` must point to an array of length at least `max_values` (ideally set
-// to TF_Attr_Metadata.list_size from TF_OperationGetAttrMetadata(oper,
+// to TF_AttrMetadata.list_size from TF_OperationGetAttrMetadata(oper,
 // attr_name)).
 extern void TF_OperationGetAttrFloatList(TF_Operation* oper,
                                          const char* attr_name, float* values,
@@ -638,7 +638,7 @@ extern void TF_OperationGetAttrBool(TF_Operation* oper, const char* attr_name,
 
 // Fills in `values` with the value of the attribute `attr_name` of `oper`.
 // `values` must point to an array of length at least `max_values` (ideally set
-// to TF_Attr_Metadata.list_size from TF_OperationGetAttrMetadata(oper,
+// to TF_AttrMetadata.list_size from TF_OperationGetAttrMetadata(oper,
 // attr_name)).
 extern void TF_OperationGetAttrBoolList(TF_Operation* oper,
                                         const char* attr_name,
@@ -650,7 +650,7 @@ extern void TF_OperationGetAttrType(TF_Operation* oper, const char* attr_name,
 
 // Fills in `values` with the value of the attribute `attr_name` of `oper`.
 // `values` must point to an array of length at least `max_values` (ideally set
-// to TF_Attr_Metadata.list_size from TF_OperationGetAttrMetadata(oper,
+// to TF_AttrMetadata.list_size from TF_OperationGetAttrMetadata(oper,
 // attr_name)).
 extern void TF_OperationGetAttrTypeList(TF_Operation* oper,
                                         const char* attr_name,
@@ -672,8 +672,8 @@ extern void TF_OperationGetAttrShape(TF_Operation* oper, const char* attr_name,
 //
 // The elements of `dims` will point to addresses in `storage` which must be
 // large enough to hold at least `storage_size` int64_ts.  Ideally, `num_shapes`
-// would be set to TF_Attr_Metadata.list_size and `storage_size` would be set to
-// TF_Attr_Metadata.total_size from TF_OperationGetAttrMetadata(oper,
+// would be set to TF_AttrMetadata.list_size and `storage_size` would be set to
+// TF_AttrMetadata.total_size from TF_OperationGetAttrMetadata(oper,
 // attr_name).
 //
 // Fails if storage_size is insufficient to hold the requested shapes.
@@ -692,7 +692,7 @@ extern void TF_OperationGetAttrTensorShapeProto(TF_Operation* oper,
 
 // Fills in `values` with binary-serialized TensorShapeProto values of the
 // attribute `attr_name` of `oper`. `values` must point to an array of length at
-// least `num_values` (ideally set to TF_Attr_Metadata.list_size from
+// least `num_values` (ideally set to TF_AttrMetadata.list_size from
 // TF_OperationGetAttrMetadata(oper, attr_name)).
 extern void TF_OperationGetAttrTensorShapeProtoList(TF_Operation* oper,
                                                     const char* attr_name,
@@ -709,7 +709,7 @@ extern void TF_OperationGetAttrTensor(TF_Operation* oper, const char* attr_name,
 
 // Fills in `values` with the TF_Tensor values of the attribute `attr_name` of
 // `oper`. `values` must point to an array of TF_Tensor* of length at least
-// `max_values` (ideally set to TF_Attr_Metadata.list_size from
+// `max_values` (ideally set to TF_AttrMetadata.list_size from
 // TF_OperationGetAttrMetadata(oper, attr_name)).
 //
 // The caller takes ownership of all the non-null TF_Tensor* entries in `values`

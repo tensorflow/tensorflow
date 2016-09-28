@@ -32,7 +32,7 @@ function makePointsWithTraces(traces: number[]) {
       metadata: metadata,
       projections: {},
       projectedPoint: null,
-      dataSourceIndex: i
+      index: i
     });
   });
   return points;

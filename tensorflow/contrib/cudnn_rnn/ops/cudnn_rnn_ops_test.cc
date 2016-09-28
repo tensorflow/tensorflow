@@ -26,7 +26,7 @@ namespace tensorflow {
 
 TEST(CudnnRNNOpsTest, ParamsSize_ShapeFn) {
   ShapeInferenceTestOp op("CudnnRNNParamsSize");
-  INFER_OK(op, "[1];[1];[1]", "[]");
+  INFER_OK(op, "[1];[1];[1]", "[1]");
 }
 
 TEST(CudnnRNNOpsTest, ForwardLstm_ShapeFn) {

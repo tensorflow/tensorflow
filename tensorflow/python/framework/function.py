@@ -287,6 +287,39 @@ def _get_func_name(func):
     raise ValueError("Argument must be callable")
 
 
+class _FuncGraph(ops.Graph):
+  """A helper for construction a function.
+
+  _FuncGraph overrides ops.Graph's create_op() so that we can keep
+  track of every inputs into every op created inside the function.  If
+  any input is from other graphs, we keep track of it in self.capture
+  and substitue the input with a place holder.
+
+  Each captured input's corresponding place holder is converted into a
+  function argument and the caller passes in the captured tensor.
+
+  """
+
+  def __init__(self, *args, **kwargs):
+    super(_FuncGraph, self).__init__(*args, **kwargs)
+    self._building_function = True
+    self.captured = {}
+
+  def create_op(self, op_type, inputs, data_types, **kwargs):
+    for i, x in enumerate(inputs):
+      if x.graph is not self:
+        # Referring to a tensor from other graph.
+        if x in self.captured:
+          # Captured already.
+          inputs[i] = self.captured[x]
+        else:
+          # Substitute with a placeholder.
+          inputs[i] = array_ops.placeholder(x.dtype)
+          self.captured[x] = inputs[i]
+    return super(_FuncGraph, self).create_op(op_type, inputs, data_types,
+                                             **kwargs)
+
+
 class _DefinedFunction(object):
   """_DefinedFunction encapsulates a function definition and its properties.
 
@@ -387,7 +420,7 @@ class _DefinedFunction(object):
       return
 
     # Create the func_def object.
-    temp_graph = ops.Graph()
+    temp_graph = _FuncGraph()
     with temp_graph.as_default():
       # List of placeholders for the function_def.
       inputs = []
@@ -401,6 +434,9 @@ class _DefinedFunction(object):
       # Convenience: if func only returned one value, make it a tuple.
       if not isinstance(outputs, (list, tuple)):
         outputs = (outputs,)
+
+    self._extra_args = list(temp_graph.captured.keys())
+    inputs.extend([temp_graph.captured[arg] for arg in self._extra_args])
 
     # Build the FunctionDef
     self._definition = _graph_to_function_def(temp_graph, self._func_name,
@@ -440,6 +476,7 @@ class _DefinedFunction(object):
 
   def __call__(self, *args, **kwargs):
     self.add_to_graph(ops.get_default_graph())
+    args = list(args) + self._extra_args
     if self._extra_kwargs:
       for k in self._extra_kwargs:
         if k not in kwargs:

@@ -121,6 +121,18 @@ void BasicTest(const string& export_path) {
   CheckSessionBundle(export_path, bundle);
 }
 
+// Test for resource leaks when loading and unloading large numbers of
+// SessionBundles. Concurrent with adding this test, we had a leak where the
+// TensorFlow Session was not being closed, which leaked memory.
+// TODO(b/31711147): Increase the SessionBundle ResourceLeakTest iterations and
+// move outside of the test suite.
+TEST(LoadSessionBundleFromPath, ResourceLeakTest) {
+  const string export_path = test_util::TestSrcDirPath(kExportPath);
+  for (int i = 0; i < 100; i++) {
+    BasicTest(export_path);
+  }
+}
+
 TEST(LoadSessionBundleFromPath, BasicTensorFlowContrib) {
   const string export_path = test_util::TestSrcDirPath(kExportPath);
   BasicTest(export_path);

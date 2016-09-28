@@ -389,10 +389,11 @@ def create_train_op(
     optimizer: A tf.Optimizer to use for computing the gradients.
     global_step: A `Tensor` representing the global step variable. If left as
       `None`, then slim.variables.global_step() is used.
-    update_ops: an optional list of updates to execute. Note that the update_ops
-      that are used are the union of those update_ops passed to the function and
-      the value of slim.ops.GetUpdateOps(). Therefore, if `update_ops` is None,
-      then the value of slim.ops.GetUpdateOps() is still used.
+    update_ops: An optional list of updates to execute. If `update_ops` is
+      `None`, then the update ops are set to the contents of the
+      `tf.GraphKeys.UPDATE_OPS` collection. If `update_ops` is not `None`, but
+      it doesn't contain all of the update ops in `tf.GraphKeys.UPDATE_OPS`,
+      a warning will be displayed.
     variables_to_train: an optional list of variables to train. If None, it will
       default to all tf.trainable_variables().
     clip_gradient_norm: If greater than 0 then the gradients would be clipped

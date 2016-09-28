@@ -682,118 +682,95 @@ TEST(GcsFileSystemTest, GetChildren_Pagination) {
             children);
 }
 
-TEST(GcsFileSystemTest, GetChildrenRecursively_ThreeFiles) {
+TEST(GcsFileSystemTest, GetMatchingPaths_NoWildcard) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
-      "fields=items%2Fname%2CnextPageToken&prefix=path%2F\n"
+      "fields=items%2Fname%2CnextPageToken&prefix=path%2Fsubpath%2F\n"
       "Auth Token: fake_token\n",
       "{\"items\": [ "
-      "  { \"name\": \"path/file1.txt\" },"
-      "  { \"name\": \"path/subpath/file2.txt\" },"
-      "  { \"name\": \"path/file3.txt\" }]}")});
+      "  { \"name\": \"path/subpath/file2.txt\" }]}")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)),
                    0 /* read ahead bytes */, 5 /* max upload attempts */);
 
-  std::vector<string> children;
-  TF_EXPECT_OK(fs.GetChildrenRecursively("gs://bucket/path/", &children));
-
-  EXPECT_EQ(
-      std::vector<string>({"file1.txt", "subpath/file2.txt", "file3.txt"}),
-      children);
+  std::vector<string> result;
+  TF_EXPECT_OK(
+      fs.GetMatchingPaths("gs://bucket/path/subpath/file2.txt", &result));
+  EXPECT_EQ(std::vector<string>({"gs://bucket/path/subpath/file2.txt"}),
+            result);
 }
 
-TEST(GcsFileSystemTest, GetChildrenRecursively_ThreeFiles_NoSlash) {
+TEST(GcsFileSystemTest, GetMatchingPaths_BucketAndWildcard) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
-      "fields=items%2Fname%2CnextPageToken&prefix=path%2F\n"
-      "Auth Token: fake_token\n",
-      "{\"items\": [ "
-      "  { \"name\": \"path/file1.txt\" },"
-      "  { \"name\": \"path/subpath/file2.txt\" },"
-      "  { \"name\": \"path/file3.txt\" }]}")});
-  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
-                   std::unique_ptr<HttpRequest::Factory>(
-                       new FakeHttpRequestFactory(&requests)),
-                   0 /* read ahead bytes */, 5 /* max upload attempts */);
-
-  std::vector<string> children;
-  TF_EXPECT_OK(fs.GetChildrenRecursively("gs://bucket/path", &children));
-
-  EXPECT_EQ(
-      std::vector<string>({"file1.txt", "subpath/file2.txt", "file3.txt"}),
-      children);
-}
-
-TEST(GcsFileSystemTest, GetChildrenRecursively_Root) {
-  std::vector<HttpRequest*> requests({new FakeHttpRequest(
-      "Uri: https://www.googleapis.com/storage/v1/b/bucket-a-b-c/o?"
       "fields=items%2Fname%2CnextPageToken\n"
       "Auth Token: fake_token\n",
-      "{}")});
+      "{\"items\": [ "
+      "  { \"name\": \"path/file1.txt\" },"
+      "  { \"name\": \"path/subpath/file2.txt\" },"
+      "  { \"name\": \"path/file3.txt\" }]}")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)),
                    0 /* read ahead bytes */, 5 /* max upload attempts */);
 
-  std::vector<string> children;
-  TF_EXPECT_OK(fs.GetChildrenRecursively("gs://bucket-a-b-c", &children));
-
-  EXPECT_EQ(0, children.size());
+  std::vector<string> result;
+  TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/*/*", &result));
+  EXPECT_EQ(std::vector<string>(
+                {"gs://bucket/path/file1.txt", "gs://bucket/path/file3.txt"}),
+            result);
 }
 
-TEST(GcsFileSystemTest, GetChildrenRecursively_Empty) {
+TEST(GcsFileSystemTest, GetMatchingPaths_FolderAndWildcard_Matches) {
   std::vector<HttpRequest*> requests({new FakeHttpRequest(
       "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
       "fields=items%2Fname%2CnextPageToken&prefix=path%2F\n"
       "Auth Token: fake_token\n",
-      "{}")});
+      "{\"items\": [ "
+      "  { \"name\": \"path/file1.txt\" },"
+      "  { \"name\": \"path/subpath/file2.txt\" },"
+      "  { \"name\": \"path/file3.txt\" }]}")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)),
                    0 /* read ahead bytes */, 5 /* max upload attempts */);
 
-  std::vector<string> children;
-  TF_EXPECT_OK(fs.GetChildrenRecursively("gs://bucket/path/", &children));
-
-  EXPECT_EQ(0, children.size());
+  std::vector<string> result;
+  TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/*/file2.txt", &result));
+  EXPECT_EQ(std::vector<string>({"gs://bucket/path/subpath/file2.txt"}),
+            result);
 }
 
-TEST(GcsFileSystemTest, GetChildrenRecursively_Pagination) {
-  std::vector<HttpRequest*> requests(
-      {new FakeHttpRequest(
-           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
-           "fields=items%2Fname%2CnextPageToken&prefix=path%2F\n"
-           "Auth Token: fake_token\n",
-           "{\"nextPageToken\": \"ABCD==\", "
-           " \"items\": [ "
-           "  { \"name\": \"path/file1.txt\" },"
-           "  { \"name\": \"path/subpath/file2.txt\" },"
-           "  { \"name\": \"path/file3.txt\" }]}"),
-       new FakeHttpRequest(
-           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
-           "fields=items%2Fname%2CnextPageToken&prefix=path%2F"
-           "&pageToken=ABCD==\n"
-           "Auth Token: fake_token\n",
-           "{\"items\": [ "
-           "  { \"name\": \"path/file4.txt\" },"
-           "  { \"name\": \"path/file5.txt\" }]}")});
-
+TEST(GcsFileSystemTest, GetMatchingPaths_FolderAndWildcard_NoMatches) {
+  std::vector<HttpRequest*> requests({new FakeHttpRequest(
+      "Uri: https://www.googleapis.com/storage/v1/b/bucket/o?"
+      "fields=items%2Fname%2CnextPageToken&prefix=path%2F\n"
+      "Auth Token: fake_token\n",
+      "{\"items\": [ "
+      "  { \"name\": \"path/file1.txt\" },"
+      "  { \"name\": \"path/subpath/file2.txt\" },"
+      "  { \"name\": \"path/file3.txt\" }]}")});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)),
                    0 /* read ahead bytes */, 5 /* max upload attempts */);
 
-  std::vector<string> children;
-  TF_EXPECT_OK(fs.GetChildrenRecursively("gs://bucket/path", &children));
+  std::vector<string> result;
+  TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/*/file3.txt", &result));
+  EXPECT_EQ(std::vector<string>(), result);
+}
 
-  EXPECT_EQ(5, children.size());
-  EXPECT_EQ("file1.txt", children[0]);
-  EXPECT_EQ("subpath/file2.txt", children[1]);
-  EXPECT_EQ("file3.txt", children[2]);
-  EXPECT_EQ("file4.txt", children[3]);
-  EXPECT_EQ("file5.txt", children[4]);
+TEST(GcsFileSystemTest, GetMatchingPaths_OnlyWildcard) {
+  std::vector<HttpRequest*> requests;
+  GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+                   std::unique_ptr<HttpRequest::Factory>(
+                       new FakeHttpRequestFactory(&requests)),
+                   0 /* read ahead bytes */, 5 /* max upload attempts */);
+
+  std::vector<string> result;
+  EXPECT_EQ(errors::Code::INVALID_ARGUMENT,
+            fs.GetMatchingPaths("gs://*", &result).code());
 }
 
 TEST(GcsFileSystemTest, DeleteFile) {

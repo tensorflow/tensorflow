@@ -15,10 +15,10 @@ limitations under the License.
 
 #include <limits>
 
-#include "tensorflow/contrib/linear_optimizer/kernels/hinge-loss.h"
-#include "tensorflow/contrib/linear_optimizer/kernels/logistic-loss.h"
-#include "tensorflow/contrib/linear_optimizer/kernels/smooth-hinge-loss.h"
-#include "tensorflow/contrib/linear_optimizer/kernels/squared-loss.h"
+#include "tensorflow/core/kernels/hinge-loss.h"
+#include "tensorflow/core/kernels/logistic-loss.h"
+#include "tensorflow/core/kernels/smooth-hinge-loss.h"
+#include "tensorflow/core/kernels/squared-loss.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"

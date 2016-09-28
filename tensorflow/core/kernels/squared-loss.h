@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LINEAR_OPTIMIZER_KERNELS_SQUARED_LOSS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LINEAR_OPTIMIZER_KERNELS_SQUARED_LOSS_H_
+#ifndef TENSORFLOW_KERNELS_SQUARED_LOSS_H_
+#define TENSORFLOW_KERNELS_SQUARED_LOSS_H_
 
 #include <algorithm>
 #include <cmath>
 
-#include "tensorflow/contrib/linear_optimizer/kernels/loss.h"
+#include "tensorflow/core/kernels/loss.h"
 
 namespace tensorflow {
 
@@ -73,4 +73,4 @@ class SquaredLossUpdater : public DualLossUpdater {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LINEAR_OPTIMIZER_KERNELS_SQUARED_LOSS_H_
+#endif  // TENSORFLOW_KERNELS_SQUARED_LOSS_H_

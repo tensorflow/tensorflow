@@ -21,7 +21,8 @@ limitations under the License.
 <link rel="import" href="../paper-item/paper-item.html">
 <link rel="import" href="../paper-listbox/paper-listbox.html">
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
-
+<link rel="import" href="../paper-checkbox/paper-checkbox.html">
+<link rel="import" href="../paper-tooltip/paper-tooltip.html">
 
 <dom-module id='vz-projector-data-panel'>
 <template>
@@ -95,6 +96,13 @@ paper-button {
   vertical-align: middle;
   top: 14px;
 }
+
+.help-icon {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+}
 </style>
 
 <div>
@@ -118,8 +126,17 @@ paper-button {
     <div class="dir">Metadata: <span id="metadata-file"></span></div>
   </div>
 
+  <paper-checkbox id="normalize-data-checkbox" noink checked="{{normalizeData}}">
+    Normalize data
+    <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+    <paper-tooltip position="bottom" animation-delay="0">
+      The data is normalized by shifting each point by the centroid and making
+      it unit norm.
+    </paper-tooltip>
+  </paper-checkbox>
+
   <!-- List of runs -->
-  <paper-dropdown-menu noink no-animations label="[[getNumRunsLabel(runNames)]] found">
+  <paper-dropdown-menu noink no-animations label="[[_getNumRunsLabel(runNames)]] found">
     <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedRun}}">
       <template is="dom-repeat" items="[[runNames]]">
         <paper-item style="justify-content: space-between;" value="[[item]]" label="[[item]]">
@@ -131,7 +148,7 @@ paper-button {
 
   <template is="dom-if" if="[[tensorNames]]">
     <!-- List of tensors in checkpoint -->
-    <paper-dropdown-menu noink no-animations label="[[getNumTensorsLabel(tensorNames)]] found">
+    <paper-dropdown-menu noink no-animations label="[[_getNumTensorsLabel(tensorNames)]] found">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedTensor}}">
         <template is="dom-repeat" items="[[tensorNames]]">
           <paper-item style="justify-content: space-between;" value="[[item.name]]" label="[[item.name]]">

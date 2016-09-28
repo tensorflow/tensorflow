@@ -86,14 +86,18 @@ Status Restore(const RunOptions& run_options, const string& export_dir,
                const StringPiece restore_op_name,
                const StringPiece variable_filename_const_op_name,
                Session* session) {
-  const string variables_path = io::JoinPath(
-      export_dir, kSavedModelVariablesDirectory, kSavedModelVariablesFilename);
-  if (!Env::Default()->FileExists(variables_path)) {
-    return Status(
-        error::Code::NOT_FOUND,
-        "Could not find checkpointed variables at: " + variables_path);
+  // Find path to variables to be restored in export directory.
+  string variables_path =
+      io::JoinPath(export_dir, kSavedModelVariablesDirectory);
+  const string unsharded_variables_path =
+      io::JoinPath(variables_path, kSavedModelVariablesFilename);
+  if (Env::Default()->FileExists(unsharded_variables_path)) {
+    variables_path = unsharded_variables_path;
+  } else {
+    const string sharded_variables_path =
+        io::JoinPath(variables_path, kSavedModelVariablesShardedFilename);
+    variables_path = sharded_variables_path;
   }
-
   // Add variables to the graph.
   Tensor variables_path_tensor(DT_STRING, TensorShape({}));
   variables_path_tensor.scalar<string>()() = variables_path;

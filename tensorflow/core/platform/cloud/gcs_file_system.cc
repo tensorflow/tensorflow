@@ -723,9 +723,28 @@ Status GcsFileSystem::GetChildren(const string& dirname,
   return GetChildrenBounded(dirname, UINT64_MAX, result, false);
 }
 
-Status GcsFileSystem::GetChildrenRecursively(const string& dirname,
-                                             std::vector<string>* result) {
-  return GetChildrenBounded(dirname, UINT64_MAX, result, true);
+Status GcsFileSystem::GetMatchingPaths(const string& pattern,
+                                       std::vector<string>* results) {
+  results->clear();
+  // Find the fixed prefix by looking for the first wildcard.
+  const string& fixed_prefix =
+      pattern.substr(0, pattern.find_first_of("*?[\\"));
+  const string& dir = io::Dirname(fixed_prefix).ToString();
+  if (dir.empty()) {
+    return errors::InvalidArgument(
+        strings::StrCat("A GCS pattern doesn't have a bucket name: ", pattern));
+  }
+  std::vector<string> all_files;
+  TF_RETURN_IF_ERROR(GetChildrenBounded(dir, UINT64_MAX, &all_files, true));
+
+  // Match all obtained files to the input pattern.
+  for (const auto& f : all_files) {
+    const string& full_path = io::JoinPath(dir, f);
+    if (Env::Default()->MatchPath(full_path, pattern)) {
+      results->push_back(full_path);
+    }
+  }
+  return Status::OK();
 }
 
 Status GcsFileSystem::GetChildrenBounded(const string& dirname,
@@ -943,7 +962,7 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
   }
   // Rename all individual objects in the directory one by one.
   std::vector<string> children;
-  TF_RETURN_IF_ERROR(GetChildrenRecursively(src, &children));
+  TF_RETURN_IF_ERROR(GetChildrenBounded(src, UINT64_MAX, &children, true));
   for (const string& subpath : children) {
     // io::JoinPath() wouldn't work here, because we want an empty subpath
     // to result in an appended slash in order for directory markers

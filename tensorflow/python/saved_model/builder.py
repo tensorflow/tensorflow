@@ -252,7 +252,7 @@ class SavedModelBuilder(object):
     # Save asset files, if any.
     self._save_assets(assets_collection)
 
-    saver = tf_saver.Saver(variables.all_variables())
+    saver = tf_saver.Saver(variables.all_variables(), sharded=True)
     meta_graph_def = saver.export_meta_graph()
 
     # Tag the meta graph def and add it to the SavedModel.
@@ -298,7 +298,7 @@ class SavedModelBuilder(object):
         compat.as_text(constants.VARIABLES_FILENAME))
 
     # Save the variables and export meta graph def.
-    saver = tf_saver.Saver(variables.all_variables())
+    saver = tf_saver.Saver(variables.all_variables(), sharded=True)
     saver.save(sess, variables_path, write_meta_graph=False)
     meta_graph_def = saver.export_meta_graph()
 
