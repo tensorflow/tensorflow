@@ -16,6 +16,7 @@ limitations under the License.
 import {RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import {ScatterPlotVisualizerAxes} from './scatterPlotVisualizerAxes';
+import {SelectionContext} from './selectionContext';
 import {getNearFarPoints, getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
 import {dist_2D, Point3D} from './vector';
 
@@ -86,7 +87,6 @@ export interface DataTrace {
 }
 
 export type OnHoverListener = (index: number) => void;
-export type OnSelectionListener = (indexes: number[]) => void;
 export type OnCameraMoveListener =
     (cameraPosition: THREE.Vector3, cameraTarget: THREE.Vector3) => void;
 
@@ -105,6 +105,8 @@ export enum Mode {
  */
 export class ScatterPlot {
   private dataSet: DataSet;
+  private selectionContext: SelectionContext;
+
   private spriteImage: HTMLImageElement;
   private containerNode: HTMLElement;
   private visualizers: ScatterPlotVisualizer[] = [];
@@ -116,7 +118,6 @@ export class ScatterPlot {
   private labelAccessor: (index: number) => string;
   private colorAccessor: (index: number) => string;
   private onHoverListeners: OnHoverListener[] = [];
-  private onSelectionListeners: OnSelectionListener[] = [];
   private onCameraMoveListeners: OnCameraMoveListener[] = [];
   private lazySusanAnimation: number;
 
@@ -153,8 +154,10 @@ export class ScatterPlot {
   private animationID: number;
 
   constructor(
-      container: d3.Selection<any>, labelAccessor: (index: number) => string) {
+      container: d3.Selection<any>, labelAccessor: (index: number) => string,
+      selectionContext: SelectionContext) {
     this.containerNode = container.node() as HTMLElement;
+    this.selectionContext = selectionContext;
     this.getLayoutValues();
 
     this.labelAccessor = labelAccessor;
@@ -272,10 +275,10 @@ export class ScatterPlot {
     }
     this.labeledPoints =
         this.highlightedPoints.filter((id, i) => this.favorLabels(i));
-    let selection = this.nearestPoint || null;
     // Only call event handlers if the click originated from the scatter plot.
     if (!this.isDragSequence) {
-      this.onSelectionListeners.forEach(l => l(selection ? [selection] : []));
+      const selection = this.nearestPoint ? [this.nearestPoint] : [];
+      this.selectionContext.notifySelectionChanged(selection);
     }
     this.isDragSequence = false;
     this.render();
@@ -417,23 +420,22 @@ export class ScatterPlot {
   }
 
   private adjustSelectionSphere(e: MouseEvent) {
-    let dist = this.getDist2ToMouse(this.nearestPoint, e) / 100;
+    const dist = this.getDist2ToMouse(this.nearestPoint, e) / 100;
     this.selectionSphere.scale.set(dist, dist, dist);
-    let selectedPoints: number[] = [];
+    const selectedPoints: number[] = [];
     this.dataSet.points.forEach(point => {
-      let pt = point.projectedPoint;
-      let pointVect = new THREE.Vector3(pt[0], pt[1], pt[2]);
-      let distPointToSphereOrigin = new THREE.Vector3()
-                                        .copy(this.selectionSphere.position)
-                                        .sub(pointVect)
-                                        .length();
+      const pt = point.projectedPoint;
+      const pointVect = new THREE.Vector3(pt[0], pt[1], pt[2]);
+      const distPointToSphereOrigin = new THREE.Vector3()
+                                          .copy(this.selectionSphere.position)
+                                          .sub(pointVect)
+                                          .length();
       if (distPointToSphereOrigin < dist) {
         selectedPoints.push(this.dataSet.points.indexOf(point));
       }
     });
     this.labeledPoints = selectedPoints;
-    // Whenever anything is selected, we want to set the corect point color.
-    this.onSelectionListeners.forEach(l => l(selectedPoints));
+    this.selectionContext.notifySelectionChanged(selectedPoints);
   }
 
   /** Cancels current animation */
@@ -756,10 +758,6 @@ export class ScatterPlot {
     if (render) {
       this.render();
     };
-  }
-
-  onSelection(listener: OnSelectionListener) {
-    this.onSelectionListeners.push(listener);
   }
 
   onHover(listener: OnHoverListener) { this.onHoverListeners.push(listener); }
