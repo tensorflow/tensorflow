@@ -133,5 +133,16 @@ class RNNTest(tf.test.TestCase):
     predictions = classifier.predict(data[:2])
     self.assertAllClose(predictions, labels[:2])
 
+def testNoInputFnRNN(self):
+    # Classification
+    classifier = tf.contrib.learn.TensorFlowRNNClassifier(rnn_size=2,
+                                                          cell_type="lstm",
+                                                          n_classes=2,
+                                                          steps=100)
+    classifier.fit(data, labels)
+    predictions = classifier.predict(data[:2])
+    self.assertAllClose(predictions, labels[:2])
+
+    
 if __name__ == "__main__":
   tf.test.main()
