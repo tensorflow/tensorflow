@@ -19,9 +19,9 @@ from __future__ import print_function
 
 import collections
 
-from six.moves import range  # pylint: disable=redefined-builtin
 
-from tensorflow.contrib.linear_optimizer.ops import gen_sdca_ops
+from six.moves import range
+
 from tensorflow.contrib.lookup import lookup_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -38,14 +38,11 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables as var_ops
 from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
-from tensorflow.python.platform import resource_loader
+from tensorflow.python.ops.sdca_ops import sdca_fprint
+from tensorflow.python.ops.sdca_ops import sdca_optimizer
+from tensorflow.python.ops.sdca_ops import sdca_shrink_l1
 
 __all__ = ['SdcaModel']
-
-_sdca_ops = load_op_library(resource_loader.get_path_to_datafile(
-    '_sdca_ops.so'))
-assert _sdca_ops, 'Could not load _sdca_ops.so'
-
 
 class _ShardedMutableHashTable(lookup_ops.LookupInterface):
   """A sharded version of MutableHashTable.
@@ -521,8 +518,8 @@ class SdcaModel(object):
         if sf.feature_values is not None:
           sparse_features_values.append(sf.feature_values)
 
-      example_ids_hashed = _sdca_ops.sdca_fprint(convert_to_tensor(
-          self._examples['example_ids']))
+      example_ids_hashed = sdca_fprint(
+          convert_to_tensor(self._examples['example_ids']))
       example_state_data = self._hashtable.lookup(example_ids_hashed)
       # Solver returns example_state_update, new delta sparse_feature_weights
       # and delta dense_feature_weights.
@@ -540,7 +537,7 @@ class SdcaModel(object):
                   dtypes.int64))
           sparse_weights.append(array_ops.gather(w, sparse_indices[-1]))
 
-      esu, sfw, dfw = _sdca_ops.sdca_optimizer(
+      esu, sfw, dfw = sdca_optimizer(
           sparse_example_indices,
           sparse_feature_indices,
           sparse_features_values,
@@ -556,13 +553,7 @@ class SdcaModel(object):
           l1=self._options['symmetric_l1_regularization'],
           l2=self._symmetric_l2_regularization(),
           num_loss_partitions=self._num_loss_partitions(),
-          # TODO(sibyl-Aix6ihai): Provide empirical evidence for this. It is better
-          # to run more than one iteration on single mini-batch as we want to
-          # spend more time in compute. SDCA works better with larger
-          # mini-batches and there is also recent work that shows its better to
-          # reuse old samples than train on new samples.
-          # See: http://arxiv.org/abs/1602.02136.
-          num_inner_iterations=2)
+          num_inner_iterations=1)
 
       with ops.control_dependencies([esu]):
         update_ops = [self._hashtable.insert(example_ids_hashed, esu)]
@@ -591,7 +582,7 @@ class SdcaModel(object):
               for var in self._variables[name]:
                 with ops.device(var.device):
                   shrink_ops.append(
-                      _sdca_ops.sdca_shrink_l1(
+                      sdca_shrink_l1(
                           self._convert_n_to_tensor(
                               [var], as_ref=True),
                           l1=self._symmetric_l1_regularization(),

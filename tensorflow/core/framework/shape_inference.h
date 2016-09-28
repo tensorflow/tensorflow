@@ -174,6 +174,7 @@ class InferenceContext {
   ~InferenceContext();
 
   ShapeHandle input(int idx) const { return inputs_[idx]; }
+  Status input(StringPiece input_name, std::vector<ShapeHandle>* output) const;
   int num_inputs() const { return inputs_.size(); }
 
   // Returns the input tensor at index <idx>, or nullptr if the input tensor is
@@ -194,8 +195,13 @@ class InferenceContext {
   }
 
   void set_output(int idx, ShapeHandle shape) { outputs_[idx] = shape; }
+  Status set_output(StringPiece output_name,
+                    const std::vector<ShapeHandle>& shapes);
+
   int num_outputs() const { return outputs_.size(); }
-  ShapeHandle output(int idx) { return outputs_[idx]; }
+  ShapeHandle output(int idx) const { return outputs_[idx]; }
+  Status output(StringPiece output_name,
+                std::vector<ShapeHandle>* output) const;
 
   // idx can be negative for an offset from end of dimensions.
   // idx must be in the range [-1 * s.rank, s.rank).

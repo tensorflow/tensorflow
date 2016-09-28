@@ -16,7 +16,7 @@ limitations under the License.
 import {BoundingBox, CollisionGrid} from './label';
 import {RenderContext} from './renderContext';
 import {DataSet} from './scatterPlot';
-import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
+import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import {getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
 import {Point2D} from './vector';
 
@@ -32,8 +32,8 @@ const FONT_SIZE = 10;
  * Creates and maintains a 2d canvas on top of the GL canvas. All labels, when
  * active, are rendered to the 2d canvas as part of the visible render pass.
  */
-export class ScatterPlotWebGLVisualizerCanvasLabels implements
-    ScatterPlotWebGLVisualizer {
+export class ScatterPlotVisualizerCanvasLabels implements
+    ScatterPlotVisualizer {
   private dataSet: DataSet;
   private gc: CanvasRenderingContext2D;
   private canvas: HTMLCanvasElement;

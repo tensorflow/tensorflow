@@ -91,31 +91,43 @@ string CreateURI(StringPiece scheme, StringPiece host, StringPiece path) {
   return strings::StrCat(scheme, "://", host, path);
 }
 
-// The default implementation uses a combination of GetChildren and IsDirectory
-// to recursively list the files in each subfolder.
-Status FileSystem::GetChildrenRecursively(const string& dir,
-                                          std::vector<string>* results) {
+Status FileSystem::GetMatchingPaths(const string& pattern,
+                                    std::vector<string>* results) {
   results->clear();
+  // Find the fixed prefix by looking for the first wildcard.
+  const string& fixed_prefix =
+      pattern.substr(0, pattern.find_first_of("*?[\\"));
+  std::vector<string> all_files;
+  string dir = io::Dirname(fixed_prefix).ToString();
+  if (dir.empty()) dir = ".";
 
   // Setup a BFS to explore everything under dir.
-  std::deque<string> subdir_q;
-  subdir_q.push_back("");
-  while (!subdir_q.empty()) {
-    const string current_subdir = subdir_q.front();
-    subdir_q.pop_front();
-    const string& current_dir = io::JoinPath(dir, current_subdir);
+  std::deque<string> dir_q;
+  dir_q.push_back(dir);
+  Status ret;  // Status to return.
+  while (!dir_q.empty()) {
+    string current_dir = dir_q.front();
+    dir_q.pop_front();
     std::vector<string> children;
-    TF_RETURN_IF_ERROR(GetChildren(current_dir, &children));
+    Status s = GetChildren(current_dir, &children);
+    ret.Update(s);
     for (const string& child : children) {
-      const string& full_path = io::JoinPath(current_dir, child);
-      const string& relative_path = io::JoinPath(current_subdir, child);
-      if (IsDirectory(full_path).ok()) {
-        subdir_q.push_back(relative_path);
+      const string child_path = io::JoinPath(current_dir, child);
+      // If the child is a directory add it to the queue.
+      if (IsDirectory(child_path).ok()) {
+        dir_q.push_back(child_path);
       }
-      results->push_back(relative_path);
+      all_files.push_back(child_path);
     }
   }
-  return Status::OK();
+
+  // Match all obtained files to the input pattern.
+  for (const auto& f : all_files) {
+    if (Env::Default()->MatchPath(f, pattern)) {
+      results->push_back(f);
+    }
+  }
+  return ret;
 }
 
 }  // namespace tensorflow

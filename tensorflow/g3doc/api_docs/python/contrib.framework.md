@@ -187,6 +187,7 @@ See also:  `is_non_decreasing`
 ### `tf.contrib.framework.is_tensor(x)` {#is_tensor}
 
 Check for tensor types.
+
 Check whether an object is a tensor. Equivalent to
 `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
 

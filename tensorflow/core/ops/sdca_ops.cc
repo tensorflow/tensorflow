@@ -13,10 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
+
 namespace tensorflow {
 
+using shape_inference::ShapeHandle;
+using shape_inference::InferenceContext;
+
 // --------------------------------------------------------------------------
+static Status ApplySdcaOptimizerShapeFn(InferenceContext* c) {
+  std::vector<ShapeHandle> sparse_handles;
+  if (c->input("sparse_weights", &sparse_handles).ok()) {
+    c->set_output("out_delta_sparse_weights", sparse_handles);
+  }
+  std::vector<ShapeHandle> dense_handles;
+  if (c->input("dense_weights", &dense_handles).ok()) {
+    c->set_output("out_delta_dense_weights", dense_handles);
+  }
+  return c->set_output(
+      "out_example_state_data",
+      {c->Matrix(InferenceContext::kUnknownDim, c->MakeDim(4))});
+}
 
 REGISTER_OP("SdcaOptimizer")
     .Attr(
@@ -43,6 +62,7 @@ REGISTER_OP("SdcaOptimizer")
     .Output("out_example_state_data: float")
     .Output("out_delta_sparse_weights: num_sparse_features * float")
     .Output("out_delta_dense_weights: num_dense_features * float")
+    .SetShapeFn(ApplySdcaOptimizerShapeFn)
     .Doc(R"doc(
 Distributed version of Stochastic Dual Coordinate Ascent (SDCA) optimizer for
 linear models with L1 + L2 regularization. As global optimization objective is
@@ -104,6 +124,7 @@ REGISTER_OP("SdcaShrinkL1")
     .Attr("l1: float")
     .Attr("l2: float")
     .Input("weights: Ref(num_features * float)")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Applies L1 regularization shrink step on the parameters.
 
@@ -117,6 +138,7 @@ weights: a list of vectors where each value is the weight associated with a
 REGISTER_OP("SdcaFprint")
     .Input("input: string")
     .Output("output: string")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Computes fingerprints of the input strings.
 

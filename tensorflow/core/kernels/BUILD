@@ -17,7 +17,10 @@ licenses(["notice"])  # Apache 2.0
 
 package_group(
     name = "friends",
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//learning/deepmind/tensorflow/...",
+        "//tensorflow/...",
+    ],
 )
 
 load(
@@ -25,6 +28,7 @@ load(
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
+    "tf_cuda_library",
     "tf_opts_nortti_if_android",
     "tf_kernel_libraries",
     "tf_kernel_library",
@@ -418,7 +422,7 @@ tf_kernel_libraries(
         ":depth_space_ops",
         ":extract_image_patches_op",
         ":fill_functor",
-        ":gather_op_cpu_impl",
+        ":gather_functor",
         ":ops_util",
         ":split_lib",
         ":strided_slice_op",
@@ -433,18 +437,6 @@ tf_kernel_libraries(
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_io_utils",
-        "//third_party/eigen3",
-    ],
-)
-
-cc_library(
-    name = "gather_op_cpu_impl",
-    hdrs = ["gather_op_cpu_impl.h"],
-    visibility = [":friends"],
-    deps = [
-        ":bounds_check",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
 )
@@ -551,6 +543,21 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_library(
+    name = "gather_functor",
+    hdrs = [
+        "gather_functor.h",
+        "gather_functor_gpu.cu.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        ":bounds_check",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
     ],
 )
 
@@ -1363,25 +1370,7 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
-    name = "sparse_matmul_op_test",
-    size = "small",
-    srcs = ["sparse_matmul_op_test.cc"],
-    deps = [
-        ":ops_testutil",
-        ":ops_util",
-        ":sparse_matmul_op",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cuda_cc_test(
+tf_cc_test(
     name = "immutable_constant_op_test",
     srcs = ["immutable_constant_op_test.cc"],
     deps = [
@@ -1397,6 +1386,24 @@ tf_cuda_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "sparse_matmul_op_test",
+    size = "small",
+    srcs = ["sparse_matmul_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":sparse_matmul_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -1799,6 +1806,62 @@ tf_cuda_cc_tests(
     ],
 )
 
+cc_library(
+    name = "loss_updaters",
+    hdrs = [
+        "hinge-loss.h",
+        "logistic-loss.h",
+        "loss.h",
+        "smooth-hinge-loss.h",
+        "squared-loss.h",
+    ],
+    deps = ["//tensorflow/core:framework_headers_lib"],
+)
+
+cc_test(
+    name = "loss_test",
+    size = "small",
+    srcs = ["loss_test.cc"],
+    deps = [
+        ":loss_updaters",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "sdca_ops_test",
+    size = "small",
+    srcs = ["sdca_ops_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
+    deps = [
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_kernel_library(
+    name = "sdca_ops",
+    prefix = "sdca_ops",
+    deps = [
+        ":loss_updaters",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:sdca_ops_op_lib",
+        "//third_party/eigen3",
+        "@farmhash_archive//:farmhash",
+    ],
+    alwayslink = 1,
+)
+
 tf_kernel_libraries(
     name = "state",
     prefixes = [
@@ -2003,9 +2066,9 @@ filegroup(
         "fill_functor.cc",
         "fill_functor.h",
         "function_ops.cc",
+        "gather_functor.h",
         "gather_op.cc",
         "gather_op.h",
-        "gather_op_cpu_impl.h",
         "identity_op.cc",
         "identity_op.h",
         "immutable_constant_op.cc",
@@ -2221,6 +2284,7 @@ filegroup(
             # unless we add the additional deps they need.
             "tf_record_reader_op.*",
             "string_to_hash_bucket_op.*",
+            "sdca_ops.*",
             "text_line_reader_op.*",
             "summary_image_op.*",
             "encode_png_op.*",
@@ -2243,7 +2307,7 @@ filegroup(
     ),
     visibility = ["//visibility:public"],
 )
-# LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/contrib/makefile/tf_op_files.txt)
+# LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
 
 cc_library(
     name = "android_tensorflow_kernels",

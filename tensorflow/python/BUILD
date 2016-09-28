@@ -633,6 +633,11 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "sdca_ops_gen",
+    require_shape_functions = True,
+)
+
+tf_gen_op_wrapper_private_py(
     name = "state_ops_gen",
     require_shape_functions = True,
 )
@@ -1083,6 +1088,16 @@ py_library(
 )
 
 py_library(
+    name = "sdca_ops",
+    srcs = ["ops/sdca_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":sdca_ops_gen",
+    ],
+)
+
+py_library(
     name = "seq2seq",
     srcs = ["ops/seq2seq.py"],
     srcs_version = "PY2AND3",
@@ -1176,6 +1191,7 @@ py_library(
         ":partitioned_variables",
         ":random_ops",
         ":script_ops",
+        ":sdca_ops",
         ":sparse_grad",
         ":sparse_ops",
         ":special_math_ops",
@@ -1540,6 +1556,7 @@ py_library(
         ":random_ops",
         ":sparse_ops",
         ":state_ops",
+        ":string_ops",
         ":training_ops_gen",
         ":variable_scope",
         ":variables",

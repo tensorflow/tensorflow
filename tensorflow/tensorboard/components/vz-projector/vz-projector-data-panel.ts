@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {ColorOption} from './data';
 import {CheckpointInfo, ColumnStats, DataProvider, parseRawMetadata, parseRawTensors} from './data-loader';
 import {Projector} from './vz-projector';
 // tslint:disable-next-line:no-unused-variable
@@ -21,24 +22,19 @@ import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
 export let DataPanelPolymer = PolymerElement({
   is: 'vz-projector-data-panel',
   properties: {
-    selectedTensor: {type: String, observer: 'selectedTensorChanged'},
-    selectedRun: {type: String, observer: 'selectedRunChanged'},
+    selectedTensor: {type: String, observer: '_selectedTensorChanged'},
+    selectedRun: {type: String, observer: '_selectedRunChanged'},
     colorOption: {type: Object, notify: true},
-    labelOption: {type: String, notify: true}
+    labelOption: {type: String, notify: true},
+    normalizeData: Boolean
   }
 });
-
-export interface ColorOption {
-  name: string;
-  desc?: string;
-  map?: (value: string|number) => string;
-  isSeparator?: boolean;
-};
 
 export class DataPanel extends DataPanelPolymer {
   labelOption: string;
   colorOption: ColorOption;
 
+  private normalizeData: boolean;
   private labelOptions: string[];
   private colorOptions: ColorOption[];
   private dom: d3.Selection<any>;
@@ -53,12 +49,22 @@ export class DataPanel extends DataPanelPolymer {
 
   ready() {
     this.dom = d3.select(this);
+    this.normalizeData = true;
   }
 
   initialize(projector: Projector, dp: DataProvider) {
     this.projector = projector;
     this.dataProvider = dp;
     this.setupUploadButtons();
+
+    // Tell the projector whenever the data normalization changes.
+    // Unknown why, but the polymer checkbox button stops working as soon as
+    // you do d3.select() on it.
+    this.querySelector('#normalize-data-checkbox')
+        .addEventListener('change', () => {
+          this.projector.setNormalizeData(this.normalizeData);
+        });
+
     // Get all the runs.
     this.dataProvider.getRuns(runs => {
       this.runNames = runs;
@@ -135,8 +141,11 @@ export class DataPanel extends DataPanelPolymer {
     this.colorOption = this.colorOptions[0];
   }
 
-  // tslint:disable-next-line:no-unused-variable
-  private selectedTensorChanged() {
+  setNormalizeData(normalizeData: boolean) {
+    this.normalizeData = normalizeData;
+  }
+
+  _selectedTensorChanged() {
     if (this.selectedTensor == null) {
       return;
     }
@@ -146,17 +155,16 @@ export class DataPanel extends DataPanelPolymer {
       if (metadataFile) {
         this.dataProvider.getMetadata(
             this.selectedRun, ds, this.selectedTensor, stats => {
-              this.projector.updateDataSource(ds);
+              this.projector.updateDataSet(ds);
               this.updateMetadataUI(stats, metadataFile);
             });
       } else {
-        this.projector.updateDataSource(ds);
+        this.projector.updateDataSet(ds);
       }
     });
   }
 
-  // tslint:disable-next-line:no-unused-variable
-  private selectedRunChanged() {
+  _selectedRunChanged() {
     this.dataProvider.getCheckpointInfo(this.selectedRun, info => {
       this.checkpointInfo = info;
       let names =
@@ -193,13 +201,13 @@ export class DataPanel extends DataPanelPolymer {
       this.dom.select('#checkpoint-file')
           .text(fileName)
           .attr('title', fileName);
-      this.projector.updateDataSource(ds);
+      this.projector.updateDataSet(ds);
     });
   }
 
   private metadataWasReadFromFile(rawContents: string, fileName: string) {
-    parseRawMetadata(rawContents, this.projector.dataSource, stats => {
-      this.projector.updateDataSource(this.projector.dataSource);
+    parseRawMetadata(rawContents, this.projector.dataSet, stats => {
+      this.projector.updateDataSet(this.projector.dataSet);
       this.updateMetadataUI(stats, fileName);
     });
   }
@@ -245,14 +253,12 @@ export class DataPanel extends DataPanelPolymer {
     });
   }
 
-  // tslint:disable-next-line:no-unused-variable
-  private getNumTensorsLabel() {
+  _getNumTensorsLabel() {
     return this.tensorNames.length === 1 ? '1 tensor' :
                                            this.tensorNames.length + ' tensors';
   }
 
-  // tslint:disable-next-line:no-unused-variable
-  private getNumRunsLabel() {
+  _getNumRunsLabel() {
     return this.runNames.length === 1 ? '1 run' :
                                         this.runNames.length + ' runs';
   }

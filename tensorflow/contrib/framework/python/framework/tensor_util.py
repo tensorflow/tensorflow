@@ -25,12 +25,14 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 
+
 __all__ = [
     'assert_same_float_dtype',
     'assert_scalar_int',
     'convert_to_tensor_or_sparse_tensor',
     'is_tensor',
     'reduce_sum_n',
+    'remove_squeezable_dimensions',
     'with_shape',
     'with_same_shape']
 
@@ -44,6 +46,7 @@ def _assert_same_base_type(items, expected_type=None):
         will be ignored.
     expected_type: Expected type. If not specified, assert all items are
         of the same base type.
+
   Returns:
     Validated type, or none if neither expected_type nor items provided.
 
@@ -137,6 +140,51 @@ def reduce_sum_n(tensors, name=None):
     return math_ops.add_n(tensors, name=scope)
 
 
+def remove_squeezable_dimensions(predictions, labels):
+  """Squeeze last dim if ranks of `predictions` and `labels` differ by 1.
+
+  This will use static shape if available. Otherwise, it will add graph
+  operations, which could result in a performance hit.
+
+  Args:
+    predictions: Predicted values, a `Tensor` of arbitrary dimensions.
+    labels: Label values, a `Tensor` whose dimensions match `predictions`.
+
+  Returns:
+    Tuple of `predictions` and `labels`, possibly with last dim squeezed.
+  """
+  predictions = ops.convert_to_tensor(predictions)
+  labels = ops.convert_to_tensor(labels)
+  predictions_shape = predictions.get_shape()
+  predictions_rank = predictions_shape.ndims
+  labels_shape = labels.get_shape()
+  labels_rank = labels_shape.ndims
+  if (labels_rank is not None) and (predictions_rank is not None):
+    # Use static rank.
+    rank_diff = predictions_rank - labels_rank
+    if rank_diff == -1:
+      labels = array_ops.squeeze(labels, [-1])
+    elif rank_diff == 1:
+      predictions = array_ops.squeeze(predictions, [-1])
+    return predictions, labels
+
+  # Use dynamic rank.
+  rank_diff = array_ops.rank(predictions) - array_ops.rank(labels)
+  if (predictions_rank is None) or (
+      predictions_shape.dims[-1].is_compatible_with(1)):
+    predictions = control_flow_ops.cond(
+        math_ops.equal(1, rank_diff),
+        lambda: array_ops.squeeze(predictions, [-1]),
+        lambda: predictions)
+  if (labels_rank is None) or (
+      labels_shape.dims[-1].is_compatible_with(1)):
+    labels = control_flow_ops.cond(
+        math_ops.equal(-1, rank_diff),
+        lambda: array_ops.squeeze(labels, [-1]),
+        lambda: labels)
+  return predictions, labels
+
+
 def _all_equal(tensor0, tensor1):
   with ops.name_scope('all_equal', values=[tensor0, tensor1]) as scope:
     return math_ops.reduce_all(
@@ -218,6 +266,7 @@ def with_same_shape(expected_tensor, tensor):
 
 def is_tensor(x):
   """Check for tensor types.
+
   Check whether an object is a tensor. Equivalent to
   `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
 

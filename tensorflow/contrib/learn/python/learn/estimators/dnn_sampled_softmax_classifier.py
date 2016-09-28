@@ -391,31 +391,41 @@ class _DNNSampledSoftmaxClassifier(trainable.Trainable, evaluable.Evaluable):
     # pylint: disable=g-doc-args,g-doc-return-or-yield
     """See evaluable.Evaluable for a description of the Args.
 
+    Calculates the following metrics by default:
+      loss
+      average_precision@top_k: see
+        https://en.wikipedia.org/wiki/Information_retrieval#Average_precision
+      for k in range_k:
+        precision@k and recall@k
+
     range_k: A list of numbers where precision and recall have to be obtained.
       For eg. range_k=[1,5] will calculate precision@1, precision@5,
-      recall@1 and recall@5.
+      recall@1 and recall@5. If None, defaults to [1, top_k].
     """
-    # Setup the default metrics if metrics are not specified - precision@1,
-    # recall@1 and precision@top_k and recall@top_k if top_k is
-    # greater than 1.
     if not metrics:
       metrics = {}
-      if range_k is None:
-        if self._top_k > 1:
-          range_k = [1, self._top_k]
-        else:
-          range_k = [1]
-      for k in range_k:
-        metrics.update({
-            "precision_at_%d" % k: metric_spec.MetricSpec(
-                metric_fn=functools.partial(
-                    metric_ops.streaming_sparse_precision_at_k, k=k),
-                prediction_key=_PROBABILITIES,)})
-        metrics.update({
-            "recall_at_%d" % k: metric_spec.MetricSpec(
-                metric_fn=functools.partial(
-                    metric_ops.streaming_sparse_recall_at_k, k=k),
-                prediction_key=_PROBABILITIES,)})
+    metrics.update({
+        "average_precision_at_%d" % self._top_k: metric_spec.MetricSpec(
+            metric_fn=functools.partial(
+                metric_ops.streaming_sparse_average_precision_at_k,
+                k=self._top_k),
+            prediction_key=_PROBABILITIES)})
+    if range_k is None:
+      if self._top_k > 1:
+        range_k = [1, self._top_k]
+      else:
+        range_k = [1]
+    for k in range_k:
+      metrics.update({
+          "precision_at_%d" % k: metric_spec.MetricSpec(
+              metric_fn=functools.partial(
+                  metric_ops.streaming_sparse_precision_at_k, k=k),
+              prediction_key=_PROBABILITIES,)})
+      metrics.update({
+          "recall_at_%d" % k: metric_spec.MetricSpec(
+              metric_fn=functools.partial(
+                  metric_ops.streaming_sparse_recall_at_k, k=k),
+              prediction_key=_PROBABILITIES,)})
 
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
                                     feed_fn=feed_fn, batch_size=batch_size,
