@@ -34,7 +34,6 @@ add_library(tf_core_cpu OBJECT ${tf_core_cpu_srcs})
 target_include_directories(tf_core_cpu PRIVATE
     ${tensorflow_source_dir}
     ${eigen_INCLUDE_DIRS}
-    ${re2_INCLUDES}
 )
 
 add_dependencies(tf_core_cpu
