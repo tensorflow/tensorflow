@@ -132,6 +132,15 @@ class RNNTest(tf.test.TestCase):
     self._seed = 23489
     np.random.seed(self._seed)
 
+  def testInvalidSequenceLengthShape(self):
+    cell = Plus1RNNCell()
+    inputs = [tf.placeholder(tf.float32, shape=(3, 4))]
+    with self.assertRaisesRegexp(ValueError, "must be a vector"):
+      tf.nn.rnn(cell, inputs, dtype=tf.float32, sequence_length=4)
+    with self.assertRaisesRegexp(ValueError, "must be a vector"):
+      tf.nn.dynamic_rnn(
+          cell, tf.pack(inputs), dtype=tf.float32, sequence_length=[[4]])
+
   def testRNN(self):
     cell = Plus1RNNCell()
     batch_size = 2
