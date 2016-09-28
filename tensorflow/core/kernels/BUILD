@@ -2268,6 +2268,7 @@ filegroup(
         "reverse_op.cc",
         "save_op.cc",
         "save_restore_tensor.cc",
+        "save_restore_v2_ops.cc",
         "session_ops.cc",
         "softplus_op.cc",
         "softsign_op.cc",
