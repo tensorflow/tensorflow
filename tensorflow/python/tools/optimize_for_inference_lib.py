@@ -85,7 +85,8 @@ def optimize_for_inference(input_graph_def, input_node_names,
                                                       placeholder_type_enum)
   optimized_graph_def = graph_util.remove_training_nodes(optimized_graph_def)
   optimized_graph_def = fold_batch_norms(optimized_graph_def)
-  optimized_graph_def = fuse_resize_and_conv(optimized_graph_def)
+  optimized_graph_def = fuse_resize_and_conv(optimized_graph_def,
+                                             output_node_names)
   ensure_graph_is_valid(optimized_graph_def)
   return optimized_graph_def
 
@@ -337,7 +338,7 @@ def fold_batch_norms(input_graph_def):
   return result_graph_def
 
 
-def fuse_resize_and_conv(input_graph_def):
+def fuse_resize_and_conv(input_graph_def, output_node_names):
   """Merges preceding resize and mirror pad ops into a specialized convolution.
 
   There's a common pattern of enlarging the input to a convolution using a
@@ -362,11 +363,13 @@ def fuse_resize_and_conv(input_graph_def):
     else:
       raise ValueError("Duplicate node names detected for ", node.name)
 
-  node_reference_count = collections.defaultdict()
+  node_reference_count = collections.defaultdict(int)
   for node in input_graph_def.node:
     for input_name in node.input:
       stripped_name = node_name_from_input(input_name)
       node_reference_count[stripped_name] += 1
+  for output_name in output_node_names:
+    node_reference_count[output_name] += 1
 
   new_ops = []
   for node in input_graph_def.node:

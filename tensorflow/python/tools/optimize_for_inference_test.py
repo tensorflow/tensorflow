@@ -54,6 +54,7 @@ class OptimizeForInferenceTest(tf.test.TestCase):
                                              shape=shape)))
 
   def testOptimizeForInference(self):
+    self.maxDiff = 1000
     unused_constant_name = "unused_constant"
     unconnected_add_name = "unconnected_add"
     a_constant_name = "a_constant"
@@ -183,7 +184,7 @@ class OptimizeForInferenceTest(tf.test.TestCase):
       original_graph_def = sess.graph_def
       original_result = sess.run(["output:0"])
     optimized_graph_def = optimize_for_inference_lib.fuse_resize_and_conv(
-        original_graph_def)
+        original_graph_def, ["output"])
 
     with self.test_session() as sess:
       _ = tf.import_graph_def(optimized_graph_def, input_map={},
@@ -212,7 +213,7 @@ class OptimizeForInferenceTest(tf.test.TestCase):
       original_graph_def = sess.graph_def
       original_result = sess.run(["output:0"])
     optimized_graph_def = optimize_for_inference_lib.fuse_resize_and_conv(
-        original_graph_def)
+        original_graph_def, ["output"])
 
     with self.test_session() as sess:
       _ = tf.import_graph_def(optimized_graph_def, input_map={},
@@ -240,7 +241,7 @@ class OptimizeForInferenceTest(tf.test.TestCase):
       original_graph_def = sess.graph_def
       original_result = sess.run(["output:0"])
     optimized_graph_def = optimize_for_inference_lib.fuse_resize_and_conv(
-        original_graph_def)
+        original_graph_def, ["output"])
 
     with self.test_session() as sess:
       _ = tf.import_graph_def(optimized_graph_def, input_map={},
