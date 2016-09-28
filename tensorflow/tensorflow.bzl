@@ -136,7 +136,8 @@ def if_not_mobile(a):
   })
 
 def tf_copts():
-  return (["-fno-exceptions", "-DEIGEN_AVOID_STL_ARRAY"] +
+  return (["-fno-exceptions",
+           "-DEIGEN_AVOID_STL_ARRAY"] +
           if_cuda(["-DGOOGLE_CUDA=1"]) +
           if_android_arm(["-mfpu=neon"]) +
           select({"//tensorflow:android": [
@@ -144,6 +145,7 @@ def tf_copts():
                     "-DMIN_LOG_LEVEL=0",
                     "-DTF_LEAN_BINARY",
                     "-O2",
+                    "-Iexternal/gemmlowp",
                   ],
                   "//tensorflow:darwin": [],
                   "//tensorflow:ios": ["-std=c++11",],

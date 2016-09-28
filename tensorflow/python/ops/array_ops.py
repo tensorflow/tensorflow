@@ -74,6 +74,9 @@ or join multiple tensors together.
 @@boolean_mask
 @@one_hot
 @@sequence_mask
+@@dequantize
+@@quantize_v2
+@@quantized_concat
 
 """
 from __future__ import absolute_import
@@ -2285,3 +2288,9 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
       return result
     else:
       return gen_math_ops.cast(result, dtype)
+
+
+# TODO(cwhipkey): Verify and enable shape functions for these.
+ops.RegisterShape("QuantizeV2")(None)
+ops.RegisterShape("QuantizedBatchNormWithGlobalNormalization")(None)
+ops.RegisterShape("QuantizedConcat")(None)

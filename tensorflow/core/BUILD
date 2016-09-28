@@ -487,6 +487,7 @@ cc_library(
         "//tensorflow/core/kernels:nn",
         "//tensorflow/core/kernels:parameterized_truncated_normal_op",
         "//tensorflow/core/kernels:parsing",
+        "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:required",
         "//tensorflow/core/kernels:sdca_ops",
