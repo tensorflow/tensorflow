@@ -130,17 +130,6 @@ tensorflow/core/kernels/batch_norm_op.cc
 tensorflow/core/kernels/avgpooling_op.cc
 tensorflow/core/kernels/argmax_op.cc
 tensorflow/core/kernels/aggregate_ops.cc
-tensorflow/core/kernels/dequantize_op.cc
-tensorflow/core/kernels/quantization_utils.cc
-tensorflow/core/kernels/quantize_down_and_shrink_range.cc
-tensorflow/core/kernels/quantize_op.cc
-tensorflow/core/kernels/quantized_activation_ops.cc
-tensorflow/core/kernels/quantized_batch_norm_op.cc
-tensorflow/core/kernels/quantized_bias_add_op.cc
-tensorflow/core/kernels/quantized_concat_op.cc
-tensorflow/core/kernels/quantized_conv_ops.cc
-tensorflow/core/kernels/quantized_matmul_op.cc
-tensorflow/core/kernels/quantized_pooling_ops.cc
 tensorflow/core/ops/training_ops.cc
 tensorflow/core/ops/string_ops.cc
 tensorflow/core/ops/state_ops.cc

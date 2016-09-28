@@ -1910,6 +1910,3 @@ def reduced_shape(input_shape, axes):
        axes],                               # [1, 2]
       [input_shape,                         # [2, 3, 5, 7]
        array_ops.fill(axes_shape, 1)])      # [1, 1]
-
-
-ops.RegisterShape("QuantizedMatMul")(common_shapes.call_cpp_shape_fn)
