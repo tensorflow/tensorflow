@@ -50,7 +50,6 @@ cc_library(
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/layers:bucketization_op_kernel",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
-        "//tensorflow/contrib/linear_optimizer:sdca_op_kernels",
         "//tensorflow/contrib/metrics:set_ops_kernels",
     ],
 )
@@ -62,7 +61,6 @@ cc_library(
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/layers:bucketization_op_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
-        "//tensorflow/contrib/linear_optimizer:sdca_ops_op_lib",
         "//tensorflow/contrib/metrics:set_ops_op_lib",
     ],
 )

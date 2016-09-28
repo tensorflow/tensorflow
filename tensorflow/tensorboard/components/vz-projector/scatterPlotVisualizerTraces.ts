@@ -15,8 +15,8 @@ limitations under the License.
 
 import {RenderContext} from './renderContext';
 import {DataSet} from './scatterPlot';
-import {ScatterPlotWebGL} from './scatterPlotWebGL';
-import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
+import {ScatterPlot} from './scatterPlot';
+import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 
 const TRACE_START_HUE = 60;
 const TRACE_END_HUE = 360;
@@ -34,14 +34,13 @@ const XYZ_NUM_BYTES = 3;
 /**
  * Renders 'traces' (polylines) that connect multiple points in the dataset
  */
-export class ScatterPlotWebGLVisualizerTraces implements
-    ScatterPlotWebGLVisualizer {
+export class ScatterPlotVisualizerTraces implements ScatterPlotVisualizer {
   private dataSet: DataSet;
   private traces: THREE.Line[];
   private tracePositionBuffer: {[trace: number]: THREE.BufferAttribute} = {};
 
-  constructor(scatterPlotWebGL: ScatterPlotWebGL) {
-    scatterPlotWebGL.onSelection((s: number[]) => this.onSelectionChanged(s));
+  constructor(scatterPlot: ScatterPlot) {
+    scatterPlot.onSelection((s: number[]) => this.onSelectionChanged(s));
   }
 
   /**

@@ -76,17 +76,16 @@ class SvdOp : public LinearAlgebraOp<Scalar> {
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
-    Eigen::BDCSVD<Matrix> svd;
+    int options = 0;  // Don't compute singular vectors;
     if (compute_uv_) {
-      svd.compute(inputs[0],
-                  (full_matrices_ ? Eigen::ComputeFullU | Eigen::ComputeFullV
-                                  : Eigen::ComputeThinU | Eigen::ComputeThinV));
-      outputs->at(0) = svd.singularValues().template cast<Scalar>();
+      options = full_matrices_ ? Eigen::ComputeFullU | Eigen::ComputeFullV
+                               : Eigen::ComputeThinU | Eigen::ComputeThinV;
+    }
+    Eigen::BDCSVD<Matrix> svd(inputs[0], options);
+    outputs->at(0) = svd.singularValues().template cast<Scalar>();
+    if (compute_uv_) {
       outputs->at(1) = svd.matrixU();
       outputs->at(2) = svd.matrixV();
-    } else {
-      svd.compute(inputs[0]);
-      outputs->at(0) = svd.singularValues().template cast<Scalar>();
     }
   }
 

@@ -23,6 +23,8 @@ limitations under the License.
 <link rel="import" href="../paper-checkbox/paper-checkbox.html">
 <link rel="import" href="vz-projector-data-panel.html">
 <link rel="import" href="vz-projector-bookmark-panel.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
+<link rel="import" href="../paper-tooltip/paper-tooltip.html">
 
 <dom-module id='vz-projector'>
 <template>
@@ -122,6 +124,10 @@ limitations under the License.
 .slider span {
   width: 35px;
   text-align: right;
+}
+
+.slider label {
+  width: 100%;
 }
 
 .control input[type=text]:focus {
@@ -473,6 +479,16 @@ paper-listbox .pca-item {
   position: absolute;
 }
 
+.help-icon {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+}
+
+.tooltip {
+  max-width: 200px;
+}
 </style>
 <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500|Material+Icons" rel="stylesheet" type="text/css">
 <div id="wrapper-notify-msg">
@@ -494,17 +510,31 @@ paper-listbox .pca-item {
       <p style="color: #880E4F; font-weight: bold;">For fast results, your data will be sampled down to [[getTsneSampleSize()]] points.</p>
       <div class="slider"><label>Dimension</label><div class="two-way-toggle"><span>2D</span><paper-toggle-button id="tsne-toggle" noink checked>3D</paper-toggle-button></div></div>
       <div class="slider tsne-perplexity">
-        <label>Perplexity</label>
+        <label>
+          Perplexity
+          <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+          <paper-tooltip class="tooltip" position="right" animation-delay="0">
+            The most appropriate perplexity value depends on the density of your
+            data. Loosely speaking, one could say that a larger / denser dataset
+            requires a larger perplexity. Typical values for the perplexity range
+            between 5 and 50.
+          </paper-tooltip>
+        </label>
         <input type="range" min="2" max="100"></input>
         <span></span>
       </div>
       <div class="slider tsne-learning-rate">
-        <label>Learning rate</label>
+        <label>
+          Learning rate
+          <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+          <paper-tooltip class="tooltip" position="right" animation-delay="0">
+            The most appropriate learning rate depends on the size of your data,
+            with smaller datasets requiring smaller learning rates.
+          </paper-tooltip>
+        </label>
         <input type="range" min="-3" max="2"></input>
         <span></span>
       </div>
-      <p>The most appropriate perplexity value depends on the density of your data. Loosely speaking, one could say that a larger / denser dataset requires a larger perplexity. Typical values for the perplexity range between 5 and 50.</p>
-      <p>The most appropriate learning rate depends on the size of your data, with smaller datasets requiring smaller learning rates.</p>
       <p>
         <button class="run-tsne ink-button" title="Re-run t-SNE">Re-run</button>
         <button class="stop-tsne ink-button" title="Stop t-SNE">Stop</button>

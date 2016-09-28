@@ -14,15 +14,29 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/shape_inference.h"
 
+#include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace shape_inference {
+namespace {
+
+OpDef MakeOpDefWithLists() {
+  OpRegistrationData op_reg_data;
+  OpDefBuilder b("dummy");
+  b.Input(strings::StrCat("input: N * float"));
+  b.Output(strings::StrCat("output: N * float"));
+  CHECK(b.Attr("N:int >= 1").Finalize(&op_reg_data).ok());
+  return op_reg_data.op_def;
+}
+
+}  // namespace
 
 class ShapeInferenceTest : public ::testing::Test {
  protected:
@@ -34,6 +48,35 @@ class ShapeInferenceTest : public ::testing::Test {
   bool IsSet(DimensionHandle d) { return d.IsSet(); }
   bool IsSet(ShapeHandle s) { return s.IsSet(); }
 };
+
+TEST_F(ShapeInferenceTest, InputOutputByName) {
+  // Setup test to contain an input tensor list of size 3.
+  OpDef op_def = MakeOpDefWithLists();
+  NodeDef def;
+  auto s = NodeDefBuilder("dummy", &op_def)
+               .Attr("N", 3)
+               .Input(FakeInput(DT_FLOAT))
+               .Finalize(&def);
+  InferenceContext c(&def, op_def, {"[1,5]", "[2,5]", "[1,3]"}, {});
+
+  EXPECT_EQ("5", c.DebugString(c.NumElements(c.input(0))));
+  EXPECT_EQ("10", c.DebugString(c.NumElements(c.input(1))));
+  EXPECT_EQ("3", c.DebugString(c.NumElements(c.input(2))));
+  // Test getters.
+  std::vector<ShapeHandle> shapes;
+  EXPECT_FALSE(c.input("nonexistent", &shapes).ok());
+  TF_EXPECT_OK(c.input("input", &shapes));
+  EXPECT_EQ("[1,5]", c.DebugString(shapes[0]));
+  EXPECT_EQ("[2,5]", c.DebugString(shapes[1]));
+  EXPECT_EQ("[1,3]", c.DebugString(shapes[2]));
+
+  // Test setters.
+  EXPECT_FALSE(c.set_output("nonexistent", shapes).ok());
+  TF_EXPECT_OK(c.set_output("output", shapes));
+  EXPECT_EQ("5", c.DebugString(c.NumElements(c.output(0))));
+  EXPECT_EQ("10", c.DebugString(c.NumElements(c.output(1))));
+  EXPECT_EQ("3", c.DebugString(c.NumElements(c.output(2))));
+}
 
 static OpDef MakeOpDef(int num_inputs, int num_outputs) {
   OpRegistrationData op_reg_data;

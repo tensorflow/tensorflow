@@ -797,7 +797,8 @@ export class Annotation {
   width: number;
   height: number;
   /**
-   * The names of nodes on either side of this edge.
+   * The names of nodes on either side of the metaedge for this annotation.
+   * Empty strings if the annotation is not associated with a metaedge.
    */
   v: string;
   w: string;
@@ -841,9 +842,11 @@ export class Annotation {
     this.dy = 0;
     this.width = 0;
     this.height = 0;
-    // Properties needed for generating an ID for the edge's path element.
-    this.v = renderMetaedgeInfo.metaedge.v;
-    this.w = renderMetaedgeInfo.metaedge.w;
+    // Properties needed for generating an ID for the edge's path element if
+    // this annotation is associated with a metaedge.
+    let metaedgeIfItExists = renderMetaedgeInfo && renderMetaedgeInfo.metaedge;
+    this.v = metaedgeIfItExists ? metaedgeIfItExists.v : '';
+    this.w = metaedgeIfItExists ? metaedgeIfItExists.w : '';
 
     this.isIn = isIn;
     this.points = [];

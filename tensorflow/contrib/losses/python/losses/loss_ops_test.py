@@ -459,6 +459,34 @@ class SigmoidCrossEntropyLossTest(tf.test.TestCase):
       self.assertEquals(loss.op.name, 'sigmoid_cross_entropy_loss/value')
       self.assertAlmostEqual(loss.eval(), 0.0, 3)
 
+  def testLossWithSingleDimPlaceholderForLogitsAndWeights1(self):
+    logits = tf.placeholder(tf.float32, shape=(None, 1))
+    labels = tf.placeholder(tf.float32, shape=(None, 1))
+    weight = tf.ones_like(logits, dtype=tf.float32)
+
+    loss = tf.contrib.losses.sigmoid_cross_entropy(logits, labels, weight)
+
+    with self.test_session() as sess:
+      loss = sess.run(loss, feed_dict={
+          logits: np.ones((32, 1)),
+          labels: np.ones((32, 1)),
+      })
+      self.assertAlmostEqual(loss, 0.313, 3)
+
+  def testLossWithSingleDimPlaceholderForLogitsAndWeights2(self):
+    logits = tf.placeholder(tf.float32, shape=(None, 2))
+    labels = tf.placeholder(tf.float32, shape=(None, 2))
+    weight = tf.ones_like(logits, dtype=tf.float32)
+
+    loss = tf.contrib.losses.sigmoid_cross_entropy(logits, labels, weight)
+
+    with self.test_session() as sess:
+      loss = sess.run(loss, feed_dict={
+          logits: np.ones((32, 2)),
+          labels: np.ones((32, 2)),
+      })
+      self.assertAlmostEqual(loss, 0.313, 3)
+
   def testAllWrongSigmoid(self):
     with self.test_session():
       logits = tf.constant([[100.0, -100.0, -100.0],

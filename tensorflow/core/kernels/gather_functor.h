@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_GATHER_OP_CPU_IMPL_H_
-#define TENSORFLOW_KERNELS_GATHER_OP_CPU_IMPL_H_
+#ifndef TENSORFLOW_KERNELS_GATHER_FUNCTOR_H_
+#define TENSORFLOW_KERNELS_GATHER_FUNCTOR_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -73,7 +73,7 @@ SliceIndex HandleCopies(typename TTypes<T>::ConstMatrix params,
 }
 
 template <typename T, typename Index>
-struct GatherCpu {
+struct GatherFunctorCPU {
   int64 operator()(typename TTypes<T>::ConstMatrix params,
                    typename TTypes<Index>::ConstFlat indices,
                    typename TTypes<T>::Matrix out) {
@@ -108,7 +108,23 @@ struct GatherCpu {
   }
 };
 
+template <typename Device, typename T, typename Index>
+struct GatherFunctor {
+  int64 operator()(const Device& d, typename TTypes<T>::ConstMatrix params,
+                   typename TTypes<Index>::ConstFlat indices,
+                   typename TTypes<T>::Matrix out);
+};
+
+template <typename T, typename Index>
+struct GatherFunctor<CPUDevice, T, Index> {
+  int64 operator()(const CPUDevice& d, typename TTypes<T>::ConstMatrix params,
+                   typename TTypes<Index>::ConstFlat indices,
+                   typename TTypes<T>::Matrix out) {
+    return GatherFunctorCPU<T, Index>()(params, indices, out);
+  }
+};
+
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_GATHER_OP_CPU_IMPL_H_
+#endif  // TENSORFLOW_KERNELS_GATHER_FUNCTOR_H_

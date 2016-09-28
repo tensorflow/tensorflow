@@ -986,9 +986,10 @@ class ExportMonitor(EveryN):
       # Exports depend on saved checkpoints for constructing the graph and
       # getting the global step from the graph instance saved in the checkpoint.
       # If the checkpoint is stale with respect to current step, the global step
-      # is taken to be the last saved checkpoints global step and exporter
+      # is taken to be the last saved checkpoint's global step and exporter
       # doesn't export the same checkpoint again with the following error.
-      logging.info("Skipping exporting for the same step. "
+      logging.info("Skipping exporting because the existing checkpoint has "
+                   "already been exported. "
                    "Consider exporting less frequently.")
 
   def end(self, session=None):

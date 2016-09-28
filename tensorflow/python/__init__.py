@@ -77,6 +77,7 @@ from tensorflow.python.ops.standard_ops import *
 
 # Bring in subpackages.
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import sdca_ops as sdca
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
@@ -227,6 +228,7 @@ _allowed_symbols.extend([
     'nn',
     'python_io',
     'resource_loader',
+    'sdca',
     'summary',
     'sysconfig',
     'test',

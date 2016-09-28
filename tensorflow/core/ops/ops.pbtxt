@@ -10782,6 +10782,7 @@ op {
     type: "list(type)"
     description: "Data types of the outputs from the op.\nThe length of the list specifies the number of outputs."
     has_minimum: true
+    minimum: 1
   }
   summary: "Invokes a python function to compute func(input)->output."
   description: "This operation is considered stateful. For a stateless version, see\nPyFuncStateless."
@@ -10810,6 +10811,7 @@ op {
     name: "Tout"
     type: "list(type)"
     has_minimum: true
+    minimum: 1
   }
   summary: "A stateless version of PyFunc."
 }
@@ -13182,6 +13184,189 @@ op {
   }
   summary: "Applies sparse updates to a variable reference."
   description: "This operation computes\n\n    # Scalar indices\n    ref[indices, ...] = updates[...]\n\n    # Vector indices (for each i)\n    ref[indices[i], ...] = updates[i, ...]\n\n    # High rank indices (for each i, ..., j)\n    ref[indices[i, ..., j], ...] = updates[i, ..., j, ...]\n\nThis operation outputs `ref` after the update is done.\nThis makes it easier to chain operations that need to use the reset value.\n\nIf values in `ref` is to be updated more than once, because there are\nduplicate entires in `indices`, the order at which the updates happen\nfor each value is undefined.\n\nRequires `updates.shape = indices.shape + ref.shape[1:]`.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/ScatterUpdate.png\" alt>\n</div>"
+}
+op {
+  name: "SdcaFprint"
+  input_arg {
+    name: "input"
+    description: "vector of strings to compute fingerprints on."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    description: "vector containing the computed fingerprints."
+    type: DT_STRING
+  }
+  summary: "Computes fingerprints of the input strings."
+}
+op {
+  name: "SdcaOptimizer"
+  input_arg {
+    name: "sparse_example_indices"
+    description: "a list of vectors which contain example indices."
+    type: DT_INT64
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "sparse_feature_indices"
+    description: "a list of vectors which contain feature indices."
+    type: DT_INT64
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "sparse_feature_values"
+    description: "a list of vectors which contains feature value\nassociated with each feature group."
+    type: DT_FLOAT
+    number_attr: "num_sparse_features_with_values"
+  }
+  input_arg {
+    name: "dense_features"
+    description: "a list of matrices which contains the dense feature values."
+    type: DT_FLOAT
+    number_attr: "num_dense_features"
+  }
+  input_arg {
+    name: "example_weights"
+    description: "a vector which contains the weight associated with each\nexample."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "example_labels"
+    description: "a vector which contains the label/target associated with each\nexample."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "sparse_indices"
+    description: "a list of vectors where each value is the indices which has\ncorresponding weights in sparse_weights. This field maybe ommitted for the\ndense approach."
+    type: DT_INT64
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "sparse_weights"
+    description: "a list of vectors where each value is the weight associated with\na sparse feature group."
+    type: DT_FLOAT
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "dense_weights"
+    description: "a list of vectors where the values are the weights associated\nwith a dense feature group."
+    type: DT_FLOAT
+    number_attr: "num_dense_features"
+  }
+  input_arg {
+    name: "example_state_data"
+    description: "a list of vectors containing the example state data."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "out_example_state_data"
+    description: "a list of vectors containing the updated example state\ndata."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "out_delta_sparse_weights"
+    description: "a list of vectors where each value is the delta\nweights associated with a sparse feature group."
+    type: DT_FLOAT
+    number_attr: "num_sparse_features"
+  }
+  output_arg {
+    name: "out_delta_dense_weights"
+    description: "a list of vectors where the values are the delta\nweights associated with a dense feature group."
+    type: DT_FLOAT
+    number_attr: "num_dense_features"
+  }
+  attr {
+    name: "loss_type"
+    type: "string"
+    description: "Type of the primal loss. Currently SdcaSolver supports logistic,\nsquared and hinge losses."
+    allowed_values {
+      list {
+        s: "logistic_loss"
+        s: "squared_loss"
+        s: "hinge_loss"
+        s: "smooth_hinge_loss"
+      }
+    }
+  }
+  attr {
+    name: "adaptative"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Whether to use Adapative SDCA for the inner loop."
+  }
+  attr {
+    name: "num_sparse_features"
+    type: "int"
+    description: "Number of sparse feature groups to train on."
+    has_minimum: true
+  }
+  attr {
+    name: "num_sparse_features_with_values"
+    type: "int"
+    description: "Number of sparse feature groups with values\nassociated with it, otherwise implicitly treats values as 1.0."
+    has_minimum: true
+  }
+  attr {
+    name: "num_dense_features"
+    type: "int"
+    description: "Number of dense feature groups to train on."
+    has_minimum: true
+  }
+  attr {
+    name: "l1"
+    type: "float"
+    description: "Symmetric l1 regularization strength."
+  }
+  attr {
+    name: "l2"
+    type: "float"
+    description: "Symmetric l2 regularization strength."
+  }
+  attr {
+    name: "num_loss_partitions"
+    type: "int"
+    description: "Number of partitions of the global loss function."
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_inner_iterations"
+    type: "int"
+    description: "Number of iterations per mini-batch."
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Distributed version of Stochastic Dual Coordinate Ascent (SDCA) optimizer for"
+  description: "linear models with L1 + L2 regularization. As global optimization objective is\nstrongly-convex, the optimizer optimizes the dual objective at each step. The\noptimizer applies each update one example at a time. Examples are sampled\nuniformly, and the optimizer is learning rate free and enjoys linear convergence\nrate.\n\nProximal Stochastic Dual Coordinate Ascent, Shalev-Shwartz, Shai; Zhang, Tong.\n2012 arXiv1211.2717S: http://arxiv.org/pdf/1211.2717v1.pdf\n\n  Loss objective = \\sum f_{i}(wx_{i}) + (l2 / 2) * |w|^2 + l1 * |w|\n\nAdding vs. Averaging in Distributed Primal-Dual Optimization.\nChenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan, Peter Richtarik,\nMartin Takac http://arxiv.org/abs/1502.03508\n\nStochastic Dual Coordinate Ascent with Adaptive Probabilities\nDominik Csiba, Zheng Qu, Peter Richtarik https://arxiv.org/abs/1502.08053"
+}
+op {
+  name: "SdcaShrinkL1"
+  input_arg {
+    name: "weights"
+    description: "a list of vectors where each value is the weight associated with a\nfeature group."
+    type: DT_FLOAT
+    number_attr: "num_features"
+    is_ref: true
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    description: "Number of feature groups to apply shrinking step."
+    has_minimum: true
+  }
+  attr {
+    name: "l1"
+    type: "float"
+    description: "Symmetric l1 regularization strength."
+  }
+  attr {
+    name: "l2"
+    type: "float"
+    description: "Symmetric l2 regularization strength. Should be a positive float."
+  }
+  summary: "Applies L1 regularization shrink step on the parameters."
 }
 op {
   name: "SegmentMax"

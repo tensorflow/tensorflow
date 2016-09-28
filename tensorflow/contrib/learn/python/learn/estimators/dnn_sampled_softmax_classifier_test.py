@@ -366,6 +366,7 @@ class DNNSampledSoftmaxClassifierTest(tf.test.TestCase):
     self.assertGreater(evaluate_output['recall_at_1'], 0.4)
     self.assertGreater(evaluate_output['precision_at_2'], 0.4)
     self.assertGreater(evaluate_output['recall_at_2'], 0.4)
+    self.assertGreater(evaluate_output['average_precision_at_2'], 0.4)
 
     # evaluate() with custom metrics.
     metrics = {('my_metric', 'top_k'): _my_metric_op}

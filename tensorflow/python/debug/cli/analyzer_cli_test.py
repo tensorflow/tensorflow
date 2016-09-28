@@ -323,6 +323,11 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         analyzer.node_info,
         analyzer.get_help("node_info"),
         prefix_aliases=["ni"])
+    cls._registry.register_command_handler(
+        "print_tensor",
+        analyzer.print_tensor,
+        analyzer.get_help("print_tensor"),
+        prefix_aliases=["pt"])
 
   @classmethod
   def tearDownClass(cls):
@@ -442,6 +447,40 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     self.assertEqual(
         ["ERROR: There is no node named \"bar\" in the partition graphs"],
         out.lines)
+
+  def testPrintTensor(self):
+    out = self._registry.dispatch_command(
+        "print_tensor", ["simple_mul_add/matmul:0"], screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"simple_mul_add/matmul:0:DebugIdentity\":",
+        "  dtype: float64",
+        "  shape: (2, 1)",
+        "",
+        "array([[ 7.],",
+        "       [-2.]])",
+    ], out.lines)
+
+    self.assertIn("tensor_metadata", out.annotations)
+    self.assertIn(4, out.annotations)
+    self.assertIn(5, out.annotations)
+
+  def testPrintTensorMissingOutputSlot(self):
+    out = self._registry.dispatch_command(
+        "print_tensor", ["simple_mul_add/matmul"])
+
+    self.assertEqual([
+        "ERROR: \"simple_mul_add/matmul\" is not a valid tensor name"
+    ], out.lines)
+
+  def testPrintTensorNonexistentNodeName(self):
+    out = self._registry.dispatch_command(
+        "print_tensor", ["simple_mul_add/matmul/foo:0"])
+
+    self.assertEqual([
+        "ERROR: Node \"simple_mul_add/matmul/foo\" does not exist in partition "
+        "graphs"
+    ], out.lines)
 
 
 class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):

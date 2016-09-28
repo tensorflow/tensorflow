@@ -106,9 +106,9 @@ class MockFileSystem : public FileSystem {
     return calls_.ConsumeNextCall("GetChildren");
   }
 
-  Status GetChildrenRecursively(const string& dir,
-                                std::vector<string>* result) override {
-    return calls_.ConsumeNextCall("GetChildrenRecursively");
+  Status GetMatchingPaths(const string& dir,
+                          std::vector<string>* result) override {
+    return calls_.ConsumeNextCall("GetMatchingPaths");
   }
 
   Status Stat(const string& fname, FileStatistics* stat) override {
@@ -415,36 +415,34 @@ TEST(RetryingFileSystemTest, GetChildren_AllRetriesFailed) {
   EXPECT_EQ("Last error", fs.GetChildren("gs://path", &result).error_message());
 }
 
-TEST(RetryingFileSystemTest, GetChildrenRecursively_SuccessWith2ndTry) {
+TEST(RetryingFileSystemTest, GetMatchingPaths_SuccessWith2ndTry) {
   ExpectedCalls expected_fs_calls(
-      {std::make_tuple("GetChildrenRecursively",
+      {std::make_tuple("GetMatchingPaths",
                        errors::Unavailable("Something is wrong")),
-       std::make_tuple("GetChildrenRecursively", Status::OK())});
+       std::make_tuple("GetMatchingPaths", Status::OK())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem fs(std::move(base_fs));
 
   std::vector<string> result;
-  TF_EXPECT_OK(fs.GetChildrenRecursively("gs://path", &result));
+  TF_EXPECT_OK(fs.GetMatchingPaths("gs://path/dir", &result));
 }
 
-TEST(RetryingFileSystemTest, GetChildrenRecursively_AllRetriesFailed) {
+TEST(RetryingFileSystemTest, GetMatchingPaths_AllRetriesFailed) {
   ExpectedCalls expected_fs_calls(
-      {std::make_tuple("GetChildrenRecursively",
+      {std::make_tuple("GetMatchingPaths",
                        errors::Unavailable("Something is wrong")),
-       std::make_tuple("GetChildrenRecursively",
+       std::make_tuple("GetMatchingPaths",
                        errors::Unavailable("Something is wrong again")),
-       std::make_tuple("GetChildrenRecursively",
-                       errors::Unavailable("And again")),
-       std::make_tuple("GetChildrenRecursively",
-                       errors::Unavailable("Last error"))});
+       std::make_tuple("GetMatchingPaths", errors::Unavailable("And again")),
+       std::make_tuple("GetMatchingPaths", errors::Unavailable("Last error"))});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   RetryingFileSystem fs(std::move(base_fs));
 
   std::vector<string> result;
   EXPECT_EQ("Last error",
-            fs.GetChildrenRecursively("gs://path", &result).error_message());
+            fs.GetMatchingPaths("gs://path/dir", &result).error_message());
 }
 
 TEST(RetryingFileSystemTest, DeleteFile_SuccessWith2ndTry) {
