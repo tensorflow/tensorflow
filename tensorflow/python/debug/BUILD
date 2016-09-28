@@ -32,6 +32,16 @@ py_library(
 )
 
 py_library(
+    name = "framework",
+    srcs = ["framework.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_utils",
+        "//tensorflow/python:session",
+    ],
+)
+
+py_library(
     name = "debugger_cli_common",
     srcs = ["cli/debugger_cli_common.py"],
     srcs_version = "PY2AND3",
@@ -77,6 +87,24 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":debug_utils",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:variables",
+    ],
+)
+
+py_test(
+    name = "framework_test",
+    size = "small",
+    srcs = [
+        "framework_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_data",
+        ":framework",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
