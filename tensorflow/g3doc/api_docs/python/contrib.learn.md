@@ -85,7 +85,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa
         the raw `Example` strings `Tensor` that the exported model will take as
         input.
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
@@ -100,7 +100,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       exports_to_keep: Number of exports to keep.
 
     Returns:
-      The string path to the exported directory.
+      The string path to the exported directory. NB: this functionality was
+      added ca. 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because subclasses
+      are not returning a value.
 
 
 - - -
@@ -380,7 +383,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa
         the raw `Example` strings `Tensor` that the exported model will take as
         input.
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
@@ -395,7 +398,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       exports_to_keep: Number of exports to keep.
 
     Returns:
-      The string path to the exported directory.
+      The string path to the exported directory. NB: this functionality was
+      added ca. 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because subclasses
+      are not returning a value.
 
 
 - - -
@@ -716,7 +722,7 @@ See evaluable.Evaluable.
 
 #### `tf.contrib.learn.DNNClassifier.export(export_dir, input_fn=None, input_feature_key=None, use_deprecated_input_fn=True, signature_fn=None, default_batch_size=1, exports_to_keep=None)` {#DNNClassifier.export}
 
-See BasEstimator.export.
+See BaseEstimator.export.
 
 
 - - -
@@ -990,7 +996,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa
         the raw `Example` strings `Tensor` that the exported model will take as
         input.
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
@@ -1005,7 +1011,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       exports_to_keep: Number of exports to keep.
 
     Returns:
-      The string path to the exported directory.
+      The string path to the exported directory. NB: this functionality was
+      added ca. 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because subclasses
+      are not returning a value.
 
 
 - - -
@@ -1311,7 +1320,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa
         the raw `Example` strings `Tensor` that the exported model will take as
         input.
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
@@ -1326,7 +1335,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       exports_to_keep: Number of exports to keep.
 
     Returns:
-      The string path to the exported directory.
+      The string path to the exported directory. NB: this functionality was
+      added ca. 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because subclasses
+      are not returning a value.
 
 
 - - -
@@ -1707,7 +1719,7 @@ See evaluable.Evaluable.
 
 #### `tf.contrib.learn.LinearClassifier.export(export_dir, input_fn=None, input_feature_key=None, use_deprecated_input_fn=True, signature_fn=None, default_batch_size=1, exports_to_keep=None)` {#LinearClassifier.export}
 
-See BasEstimator.export.
+See BaseEstimator.export.
 
 
 - - -
@@ -1920,7 +1932,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa
         the raw `Example` strings `Tensor` that the exported model will take as
         input.
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
@@ -1935,7 +1947,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       exports_to_keep: Number of exports to keep.
 
     Returns:
-      The string path to the exported directory.
+      The string path to the exported directory. NB: this functionality was
+      added ca. 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because subclasses
+      are not returning a value.
 
 
 - - -
@@ -2255,7 +2270,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa
         the raw `Example` strings `Tensor` that the exported model will take as
         input.
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
@@ -2270,7 +2285,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       exports_to_keep: Number of exports to keep.
 
     Returns:
-      The string path to the exported directory.
+      The string path to the exported directory. NB: this functionality was
+      added ca. 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because subclasses
+      are not returning a value.
 
 
 - - -
@@ -2648,7 +2666,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa
         the raw `Example` strings `Tensor` that the exported model will take as
         input.
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
@@ -2663,7 +2681,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
       exports_to_keep: Number of exports to keep.
 
     Returns:
-      The string path to the exported directory.
+      The string path to the exported directory. NB: this functionality was
+      added ca. 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because subclasses
+      are not returning a value.
 
 
 - - -

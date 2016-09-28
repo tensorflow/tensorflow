@@ -288,7 +288,7 @@ class EveryN(BaseMonitor):
   This class adds three new callbacks:
     - every_n_step_begin
     - every_n_step_end
-    - every_n_pos_step
+    - every_n_post_step
 
   The callbacks are executed every n steps, or optionally every step for the
   first m steps, where m and n can both be user-specified.
@@ -967,6 +967,14 @@ class ExportMonitor(EveryN):
 
   @property
   def last_export_dir(self):
+    """Returns the directory containing the last completed export.
+
+    Returns:
+      The string path to the exported directory. NB: this functionality was
+      added on 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because the
+      estimator being fitted does not yet return a value during export.
+    """
     return self._last_export_dir
 
   def every_n_step_end(self, step, outputs):
@@ -986,9 +994,10 @@ class ExportMonitor(EveryN):
       # Exports depend on saved checkpoints for constructing the graph and
       # getting the global step from the graph instance saved in the checkpoint.
       # If the checkpoint is stale with respect to current step, the global step
-      # is taken to be the last saved checkpoints global step and exporter
+      # is taken to be the last saved checkpoint's global step and exporter
       # doesn't export the same checkpoint again with the following error.
-      logging.info("Skipping exporting for the same step. "
+      logging.info("Skipping exporting because the existing checkpoint has "
+                   "already been exported. "
                    "Consider exporting less frequently.")
 
   def end(self, session=None):

@@ -26,10 +26,6 @@ limitations under the License.
 #include <unordered_set>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/contrib/linear_optimizer/kernels/hinge-loss.h"
-#include "tensorflow/contrib/linear_optimizer/kernels/logistic-loss.h"
-#include "tensorflow/contrib/linear_optimizer/kernels/smooth-hinge-loss.h"
-#include "tensorflow/contrib/linear_optimizer/kernels/squared-loss.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
@@ -39,7 +35,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/kernels/hinge-loss.h"
+#include "tensorflow/core/kernels/logistic-loss.h"
+#include "tensorflow/core/kernels/smooth-hinge-loss.h"
+#include "tensorflow/core/kernels/squared-loss.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -177,7 +176,7 @@ class Example {
 // delta weight which the optimizer learns in each call to the optimizer.
 class FeatureWeightsDenseStorage {
  public:
-  FeatureWeightsDenseStorage(TTypes<const float>::Vec nominals,
+  FeatureWeightsDenseStorage(const TTypes<const float>::Vec nominals,
                              TTypes<float>::Vec deltas)
       : nominals_(nominals), deltas_(deltas) {}
 
@@ -198,20 +197,6 @@ class FeatureWeightsDenseStorage {
   // Delta value at a particular feature index.
   float deltas(const int64 index) const { return deltas_(index); }
 
-  // Updates delta weights based on active sparse features in the example and
-  // the corresponding dual residual.
-  void UpdateSparseDeltaWeights(const Eigen::ThreadPoolDevice& device,
-                                const Example::SparseFeatures& sparse_features,
-                                const double normalized_bounded_dual_delta) {
-    for (int64 k = 0; k < sparse_features.indices->size(); ++k) {
-      const double feature_value = sparse_features.values == nullptr
-                                       ? 1.0
-                                       : (*sparse_features.values)(k);
-      deltas_((*sparse_features.indices)(k)) +=
-          feature_value * normalized_bounded_dual_delta;
-    }
-  }
-
   // Updates delta weights based on active dense features in the example and
   // the corresponding dual residual.
   void UpdateDenseDeltaWeights(const Eigen::ThreadPoolDevice& device,
@@ -224,7 +209,7 @@ class FeatureWeightsDenseStorage {
 
  private:
   // The nominal value of the weight for a feature (indexed by its id).
-  TTypes<const float>::Vec nominals_;
+  const TTypes<const float>::Vec nominals_;
   // The accumulated delta weight for a feature (indexed by its id).
   TTypes<float>::Vec deltas_;
 };
@@ -233,8 +218,8 @@ class FeatureWeightsDenseStorage {
 // a hash map.
 class FeatureWeightsSparseStorage {
  public:
-  FeatureWeightsSparseStorage(TTypes<const int64>::Vec indices,
-                              TTypes<const float>::Vec nominals,
+  FeatureWeightsSparseStorage(const TTypes<const int64>::Vec indices,
+                              const TTypes<const float>::Vec nominals,
                               TTypes<float>::Vec deltas)
       : nominals_(nominals), deltas_(deltas) {
     // Create a map from sparse index to the dense index of the underlying
@@ -277,9 +262,10 @@ class FeatureWeightsSparseStorage {
 
  private:
   // The nominal value of the weight for a feature (indexed by its id).
-  TTypes<const float>::Vec nominals_;
+  const TTypes<const float>::Vec nominals_;
   // The accumulated delta weight for a feature (indexed by its id).
   TTypes<float>::Vec deltas_;
+  // Map from feature index to an index to the dense vector.
   std::unordered_map<int64, int64> indices_to_id_;
 };
 
@@ -395,7 +381,8 @@ const ExampleStatistics Example::ComputeWxAndWeightedExampleNorm(
   // Sparse features contribution.
   for (size_t j = 0; j < sparse_features_.size(); ++j) {
     const Example::SparseFeatures& sparse_features = sparse_features_[j];
-    const auto& sparse_weights = model_weights.sparse_weights()[j];
+    const FeatureWeightsSparseStorage& sparse_weights =
+        model_weights.sparse_weights()[j];
 
     for (int64 k = 0; k < sparse_features.indices->size(); ++k) {
       const int64 feature_index = (*sparse_features.indices)(k);

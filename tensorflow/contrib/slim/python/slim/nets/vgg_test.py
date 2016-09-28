@@ -52,27 +52,28 @@ class VGGATest(tf.test.TestCase):
     batch_size = 5
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
-      inputs = tf.random_uniform((batch_size, height, width, 3))
-      _, end_points = vgg.vgg_a(inputs, num_classes)
-      expected_names = ['vgg_a/conv1/conv1_1',
-                        'vgg_a/pool1',
-                        'vgg_a/conv2/conv2_1',
-                        'vgg_a/pool2',
-                        'vgg_a/conv3/conv3_1',
-                        'vgg_a/conv3/conv3_2',
-                        'vgg_a/pool3',
-                        'vgg_a/conv4/conv4_1',
-                        'vgg_a/conv4/conv4_2',
-                        'vgg_a/pool4',
-                        'vgg_a/conv5/conv5_1',
-                        'vgg_a/conv5/conv5_2',
-                        'vgg_a/pool5',
-                        'vgg_a/fc6',
-                        'vgg_a/fc7',
-                        'vgg_a/fc8'
-                       ]
-      self.assertSetEqual(set(end_points.keys()), set(expected_names))
+    for is_training in [True, False]:
+      with tf.Graph().as_default():
+        inputs = tf.random_uniform((batch_size, height, width, 3))
+        _, end_points = vgg.vgg_a(inputs, num_classes, is_training=is_training)
+        expected_names = ['vgg_a/conv1/conv1_1',
+                          'vgg_a/pool1',
+                          'vgg_a/conv2/conv2_1',
+                          'vgg_a/pool2',
+                          'vgg_a/conv3/conv3_1',
+                          'vgg_a/conv3/conv3_2',
+                          'vgg_a/pool3',
+                          'vgg_a/conv4/conv4_1',
+                          'vgg_a/conv4/conv4_2',
+                          'vgg_a/pool4',
+                          'vgg_a/conv5/conv5_1',
+                          'vgg_a/conv5/conv5_2',
+                          'vgg_a/pool5',
+                          'vgg_a/fc6',
+                          'vgg_a/fc7',
+                          'vgg_a/fc8'
+                         ]
+        self.assertSetEqual(set(end_points.keys()), set(expected_names))
 
   def testModelVariables(self):
     batch_size = 5
@@ -181,32 +182,33 @@ class VGG16Test(tf.test.TestCase):
     batch_size = 5
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
-      inputs = tf.random_uniform((batch_size, height, width, 3))
-      _, end_points = vgg.vgg_16(inputs, num_classes)
-      expected_names = ['vgg_16/conv1/conv1_1',
-                        'vgg_16/conv1/conv1_2',
-                        'vgg_16/pool1',
-                        'vgg_16/conv2/conv2_1',
-                        'vgg_16/conv2/conv2_2',
-                        'vgg_16/pool2',
-                        'vgg_16/conv3/conv3_1',
-                        'vgg_16/conv3/conv3_2',
-                        'vgg_16/conv3/conv3_3',
-                        'vgg_16/pool3',
-                        'vgg_16/conv4/conv4_1',
-                        'vgg_16/conv4/conv4_2',
-                        'vgg_16/conv4/conv4_3',
-                        'vgg_16/pool4',
-                        'vgg_16/conv5/conv5_1',
-                        'vgg_16/conv5/conv5_2',
-                        'vgg_16/conv5/conv5_3',
-                        'vgg_16/pool5',
-                        'vgg_16/fc6',
-                        'vgg_16/fc7',
-                        'vgg_16/fc8'
-                       ]
-      self.assertSetEqual(set(end_points.keys()), set(expected_names))
+    for is_training in [True, False]:
+      with tf.Graph().as_default():
+        inputs = tf.random_uniform((batch_size, height, width, 3))
+        _, end_points = vgg.vgg_16(inputs, num_classes, is_training=is_training)
+        expected_names = ['vgg_16/conv1/conv1_1',
+                          'vgg_16/conv1/conv1_2',
+                          'vgg_16/pool1',
+                          'vgg_16/conv2/conv2_1',
+                          'vgg_16/conv2/conv2_2',
+                          'vgg_16/pool2',
+                          'vgg_16/conv3/conv3_1',
+                          'vgg_16/conv3/conv3_2',
+                          'vgg_16/conv3/conv3_3',
+                          'vgg_16/pool3',
+                          'vgg_16/conv4/conv4_1',
+                          'vgg_16/conv4/conv4_2',
+                          'vgg_16/conv4/conv4_3',
+                          'vgg_16/pool4',
+                          'vgg_16/conv5/conv5_1',
+                          'vgg_16/conv5/conv5_2',
+                          'vgg_16/conv5/conv5_3',
+                          'vgg_16/pool5',
+                          'vgg_16/fc6',
+                          'vgg_16/fc7',
+                          'vgg_16/fc8'
+                         ]
+        self.assertSetEqual(set(end_points.keys()), set(expected_names))
 
   def testModelVariables(self):
     batch_size = 5
@@ -325,36 +327,37 @@ class VGG19Test(tf.test.TestCase):
     batch_size = 5
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
-      inputs = tf.random_uniform((batch_size, height, width, 3))
-      _, end_points = vgg.vgg_19(inputs, num_classes)
-      expected_names = [
-          'vgg_19/conv1/conv1_1',
-          'vgg_19/conv1/conv1_2',
-          'vgg_19/pool1',
-          'vgg_19/conv2/conv2_1',
-          'vgg_19/conv2/conv2_2',
-          'vgg_19/pool2',
-          'vgg_19/conv3/conv3_1',
-          'vgg_19/conv3/conv3_2',
-          'vgg_19/conv3/conv3_3',
-          'vgg_19/conv3/conv3_4',
-          'vgg_19/pool3',
-          'vgg_19/conv4/conv4_1',
-          'vgg_19/conv4/conv4_2',
-          'vgg_19/conv4/conv4_3',
-          'vgg_19/conv4/conv4_4',
-          'vgg_19/pool4',
-          'vgg_19/conv5/conv5_1',
-          'vgg_19/conv5/conv5_2',
-          'vgg_19/conv5/conv5_3',
-          'vgg_19/conv5/conv5_4',
-          'vgg_19/pool5',
-          'vgg_19/fc6',
-          'vgg_19/fc7',
-          'vgg_19/fc8'
-      ]
-      self.assertSetEqual(set(end_points.keys()), set(expected_names))
+    for is_training in [True, False]:
+      with tf.Graph().as_default():
+        inputs = tf.random_uniform((batch_size, height, width, 3))
+        _, end_points = vgg.vgg_19(inputs, num_classes, is_training=is_training)
+        expected_names = [
+            'vgg_19/conv1/conv1_1',
+            'vgg_19/conv1/conv1_2',
+            'vgg_19/pool1',
+            'vgg_19/conv2/conv2_1',
+            'vgg_19/conv2/conv2_2',
+            'vgg_19/pool2',
+            'vgg_19/conv3/conv3_1',
+            'vgg_19/conv3/conv3_2',
+            'vgg_19/conv3/conv3_3',
+            'vgg_19/conv3/conv3_4',
+            'vgg_19/pool3',
+            'vgg_19/conv4/conv4_1',
+            'vgg_19/conv4/conv4_2',
+            'vgg_19/conv4/conv4_3',
+            'vgg_19/conv4/conv4_4',
+            'vgg_19/pool4',
+            'vgg_19/conv5/conv5_1',
+            'vgg_19/conv5/conv5_2',
+            'vgg_19/conv5/conv5_3',
+            'vgg_19/conv5/conv5_4',
+            'vgg_19/pool5',
+            'vgg_19/fc6',
+            'vgg_19/fc7',
+            'vgg_19/fc8'
+        ]
+        self.assertSetEqual(set(end_points.keys()), set(expected_names))
 
   def testModelVariables(self):
     batch_size = 5

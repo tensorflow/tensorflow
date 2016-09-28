@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet} from './scatterPlot';
-import {ScatterPlotWebGL} from './scatterPlotWebGL';
-import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
+import {DataSet, ScatterPlot} from './scatterPlot';
+import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import {createTexture} from './util';
 
 const FONT_SIZE = 80;
+const ONE_OVER_FONT_SIZE = 1 / FONT_SIZE;
 const LABEL_COLOR = 'black';
 const LABEL_BACKGROUND = 'white';
 const MAX_CANVAS_DIMENSION = 8192;
@@ -57,8 +57,7 @@ const VERTEX_SHADER = `
       vec4 posCamSpace = modelViewMatrix * vec4(position, 1.0);
       float distToCam = length(posCamSpace.z);
       float scale = max(min(distToCam * 10.0, normalScale), distToCam * 2.0);
-      return scale * ${1 /
-    FONT_SIZE};
+      return scale * ${ONE_OVER_FONT_SIZE};
     }
 
     void main() {
@@ -107,8 +106,7 @@ type GlyphTexture = {
 /**
  * Renders the text labels as 3d geometry in the world.
  */
-export class ScatterPlotWebGLVisualizer3DLabels implements
-    ScatterPlotWebGLVisualizer {
+export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   private dataSet: DataSet;
   private scene: THREE.Scene;
   private labelAccessor: (index: number) => string;
@@ -124,8 +122,8 @@ export class ScatterPlotWebGLVisualizer3DLabels implements
   private labelVertexMap: number[][];
   private glyphTexture: GlyphTexture;
 
-  constructor(scatterPlotWebGL: ScatterPlotWebGL) {
-    scatterPlotWebGL.onSelection((s: number[]) => this.onSelectionChanged(s));
+  constructor(scatterPlot: ScatterPlot) {
+    scatterPlot.onSelection((s: number[]) => this.onSelectionChanged(s));
     this.createGlyphTexture();
 
     this.uniforms = {
