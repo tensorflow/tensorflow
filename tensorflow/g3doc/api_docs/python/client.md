@@ -134,7 +134,7 @@ Example:
    # v is the numpy array [10, 20]
    # 'fetches' can be a list.
    v = session.run([a, b])
-   # v is a Python list with 2 numpy arrays: the numpy array [10, 20] and the
+   # v a Python list with 2 numpy arrays: the numpy array [10, 20] and the
    # 1-D array [1.0, 2.0]
    # 'fetches' can be arbitrary lists, tuples, namedtuple, dicts:
    MyData = collections.namedtuple('MyData', ['a', 'b'])

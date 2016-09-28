@@ -8,7 +8,7 @@ elements set to 1.
 For example:
 
 ```python
-tf.ones([2, 3], int32) ==> [[1, 1, 1], [1, 1, 1]]
+tf.ones([2, 3], tf.int32) ==> [[1, 1, 1], [1, 1, 1]]
 ```
 
 ##### Args:
