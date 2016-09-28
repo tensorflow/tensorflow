@@ -253,14 +253,18 @@ export class DataPanel extends DataPanelPolymer {
     });
   }
 
-  _getNumTensorsLabel() {
+  _getNumTensorsLabel(): string {
     return this.tensorNames.length === 1 ? '1 tensor' :
                                            this.tensorNames.length + ' tensors';
   }
 
-  _getNumRunsLabel() {
+  _getNumRunsLabel(): string {
     return this.runNames.length === 1 ? '1 run' :
                                         this.runNames.length + ' runs';
+  }
+
+  _hasChoices(choices: any[]): boolean {
+    return choices.length > 1;
   }
 }
 
