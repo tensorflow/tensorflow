@@ -28,7 +28,7 @@ namespace {
 // In case of failure, every call will be retried kMaxRetries times.
 constexpr int kMaxRetries = 3;
 // Maximum backoff time in milliseconds.
-constexpr int kMaximumBackoffMilliSeconds = 32000;
+constexpr int64 kMaximumBackoffMilliseconds = 32000;
 
 bool IsRetriable(Status status) {
   switch (status.code()) {
@@ -47,12 +47,11 @@ void WaitBeforeRetry(const int delay_seconds) {
   std::mt19937 gen(rd());
   std::uniform_int_distribution<> dist(0, 999);
 
-  const int delay_milliseconds = delay_seconds * 1000;
-  const int random_milliseconds = dist(gen);
-  const int delay = std::min(delay_milliseconds + random_milliseconds,
-                             kMaximumBackoffMilliSeconds);
+  const int64 random_ms = dist(gen);
+  const int64 delay_ms = std::min(delay_seconds * 1000 + random_ms,
+                                  kMaximumBackoffMilliseconds);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+  std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
 }
 
 Status CallWithRetries(const std::function<Status()>& f,
@@ -63,9 +62,10 @@ Status CallWithRetries(const std::function<Status()>& f,
     if (!IsRetriable(status) || retries >= kMaxRetries) {
       return status;
     }
-    LOG(ERROR) << "The operation resulted in an error and will be retried: "
-               << status.ToString();
-    WaitBeforeRetry(initial_delay_seconds << retries);
+    const int delay_seconds = initial_delay_seconds << retries;
+    LOG(ERROR) << "The operation resulted in an error: " << status.ToString()
+               << " and will be retried after " << delay_seconds << " seconds";
+    WaitBeforeRetry(delay_seconds);
     retries++;
   }
 }
