@@ -30,6 +30,7 @@ import re
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.debug.cli import debugger_cli_common
+from tensorflow.python.debug.cli import tensor_format
 
 
 # String constants for the depth-dependent hanging indent at the beginning
@@ -172,8 +173,17 @@ class DebugAnalyzer(object):
         help="Show op types of recipient nodes.")
     self._arg_parsers["list_outputs"] = ap
 
+    # Parser for print_tensor.
+    ap = argparse.ArgumentParser(
+        description="Print the value of a dumped tensor.",
+        usage=argparse.SUPPRESS)
+    ap.add_argument(
+        "tensor_name",
+        type=str,
+        help="Name of the tensor, e.g., hidden1/Wx_plus_b/MatMul:0")
+    self._arg_parsers["print_tensor"] = ap
+
     # TODO(cais): Implement list_nodes.
-    # TODO(cais): Implement print_tensor.
 
   def _error(self, msg):
     return debugger_cli_common.RichTextLines(
@@ -264,10 +274,9 @@ class DebugAnalyzer(object):
 
     parsed = self._arg_parsers["node_info"].parse_args(args)
 
-    if ":" in parsed.node_name:
-      node_name = parsed.node_name[:parsed.node_name.rfind(":")]
-    else:
-      node_name = parsed.node_name
+    # Get a node name, regardless of whether the input is a node name (without
+    # output slot attached) or a tensor name (with output slot attached).
+    node_name, unused_slot = self._parse_node_or_tensor_name(parsed.node_name)
 
     if not self._debug_dump.node_exists(node_name):
       return self._error(
@@ -329,7 +338,7 @@ class DebugAnalyzer(object):
     # Screen info not currently used by this handler. Include this line to
     # mute pylint.
     _ = screen_info
-    # TOOD(cais): Use screen info to format the output lines more prettily,
+    # TODO(cais): Use screen info to format the output lines more prettily,
     # e.g., hanging indent of long node names.
 
     parsed = self._arg_parsers["list_inputs"].parse_args(args)
@@ -341,6 +350,66 @@ class DebugAnalyzer(object):
         parsed.control,
         parsed.op_type,
         do_outputs=False)
+
+  def print_tensor(self, args, screen_info=None):
+    """Command handler for print_tensor.
+
+    Print value of a given dumped tensor.
+
+    Args:
+      args: Command-line arguments, excluding the command prefix, as a list of
+        str.
+      screen_info: Optional dict input containing screen information such as
+        cols.
+
+    Returns:
+      Output text lines as a RichTextLines object.
+    """
+
+    if screen_info and "cols" in screen_info:
+      np_printoptions = {"linewidth": screen_info["cols"]}
+    else:
+      np_printoptions = {}
+
+    parsed = self._arg_parsers["print_tensor"].parse_args(args)
+
+    node_name, output_slot = self._parse_node_or_tensor_name(
+        parsed.tensor_name)
+    if output_slot is None:
+      return self._error("\"%s\" is not a valid tensor name" %
+                         parsed.tensor_name)
+
+    if not self._debug_dump.node_exists(node_name):
+      return self._error(
+          "Node \"%s\" does not exist in partition graphs" % node_name)
+
+    watch_keys = self._debug_dump.debug_watch_keys(node_name)
+
+    # Find debug dump data that match the tensor name (node name + output
+    # slot).
+    matching_data = []
+    for watch_key in watch_keys:
+      debug_tensor_data = self._debug_dump.watch_key_to_data(watch_key)
+      for datum in debug_tensor_data:
+        if datum.output_slot == output_slot:
+          matching_data.append(datum)
+
+    if not matching_data:
+      return self._error(
+          "Tensor \"%s\" did not generate any dumps." % parsed.tensor_name)
+
+    # TODO(cais): In the case of multiple dumps from the same tensor, require
+    #   explicit specification of the DebugOp and the temporal order.
+    if len(matching_data) > 1:
+      return self._error(
+          "print_tensor logic for multiple dumped records has not been "
+          "implemented.")
+
+    return tensor_format.format_tensor(
+        matching_data[0].get_tensor(),
+        matching_data[0].watch_key,
+        include_metadata=True,
+        np_printoptions=np_printoptions)
 
   def list_outputs(self, args, screen_info=None):
     """Command handler for inputs.
@@ -360,7 +429,7 @@ class DebugAnalyzer(object):
     # Screen info not currently used by this handler. Include this line to
     # mute pylint.
     _ = screen_info
-    # TOOD(cais): Use screen info to format the output lines more prettily,
+    # TODO(cais): Use screen info to format the output lines more prettily,
     # e.g., hanging indent of long node names.
 
     parsed = self._arg_parsers["list_outputs"].parse_args(args)
@@ -413,8 +482,7 @@ class DebugAnalyzer(object):
     lines = []
 
     # Check if this is a tensor name, instead of a node name.
-    if ":" in node_name:
-      node_name = node_name[:node_name.rfind(":")]
+    node_name, _ = self._parse_node_or_tensor_name(node_name)
 
     # Check if node exists.
     if not self._debug_dump.node_exists(node_name):
@@ -623,3 +691,26 @@ class DebugAnalyzer(object):
     lines.insert(1, "%d dumped tensor(s):" % dump_count)
 
     return lines
+
+  def _parse_node_or_tensor_name(self, name):
+    """Get the node name from a string that can be node or tensor name.
+
+    Args:
+      name: An input node name (e.g., "node_a") or tensor name (e.g.,
+        "node_a:0"), as a str.
+
+    Returns:
+      1) The node name, as a str. If the input name is a tensor name, i.e.,
+        consists of a colon, the final colon and the following output slot
+        will be stripped.
+      2) If the input name is a tensor name, the output slot, as an int. If
+        the input name is not a tensor name, None.
+    """
+
+    if ":" in name and not name.endswith(":"):
+      node_name = name[:name.rfind(":")]
+      output_slot = int(name[name.rfind(":") + 1:])
+
+      return node_name, output_slot
+    else:
+      return name, None

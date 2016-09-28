@@ -15,7 +15,7 @@ limitations under the License.
 
 /**
  * RenderContext contains all of the state required to color and render the data
- * set. ScatterPlotWebGL passes this to every attached visualizer as part of the
+ * set. ScatterPlot passes this to every attached visualizer as part of the
  * render callback.
  */
 export class RenderContext {

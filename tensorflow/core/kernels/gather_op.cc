@@ -20,8 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/gather_op_cpu_impl.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/kernels/gather_functor.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
@@ -93,13 +92,12 @@ class GatherOp : public OpKernel {
 
 namespace functor {
 
-// Specialization gather functor for CPU.
 template <typename T, typename Index>
 struct Gather<CPUDevice, T, Index> {
   int64 operator()(const CPUDevice& d, typename TTypes<T>::ConstMatrix params,
                    typename TTypes<Index>::ConstFlat indices,
                    typename TTypes<T>::Matrix out) {
-    return GatherCpu<T, Index>()(params, indices, out);
+    return GatherFunctor<CPUDevice, T, Index>()(d, params, indices, out);
   }
 };
 }  // namespace functor

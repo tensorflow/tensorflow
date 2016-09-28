@@ -144,7 +144,14 @@ Callback before every n'th step begins.
 
 #### `tf.contrib.learn.monitors.ExportMonitor.last_export_dir` {#ExportMonitor.last_export_dir}
 
+Returns the directory containing the last completed export.
 
+##### Returns:
+
+  The string path to the exported directory. NB: this functionality was
+  added on 2016/09/25; clients that depend on the return value may need
+  to handle the case where this function returns None because the
+  estimator being fitted does not yet return a value during export.
 
 
 - - -

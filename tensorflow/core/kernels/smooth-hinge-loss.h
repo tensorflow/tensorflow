@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LINEAR_OPTIMIZER_KERNELS_SMOOTH_HINGE_LOSS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LINEAR_OPTIMIZER_KERNELS_SMOOTH_HINGE_LOSS_H_
+#ifndef TENSORFLOW_KERNELS_SMOOTH_HINGE_LOSS_H_
+#define TENSORFLOW_KERNELS_SMOOTH_HINGE_LOSS_H_
 
 #include <algorithm>
 #include <limits>
 
-#include "tensorflow/contrib/linear_optimizer/kernels/loss.h"
+#include "tensorflow/core/kernels/loss.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -112,4 +112,4 @@ class SmoothHingeLossUpdater : public DualLossUpdater {
 }  // namespace tensorflow
 
 #endif
-// THIRD_PARTY_TENSORFLOW_CONTRIB_LINEAR_OPTIMIZER_KERNELS_SMOOTH_HINGE_LOSS_H_
+// TENSORFLOW_KERNELS_SMOOTH_HINGE_LOSS_H_

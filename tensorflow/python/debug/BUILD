@@ -38,10 +38,20 @@ py_library(
 )
 
 py_library(
+    name = "tensor_format",
+    srcs = ["cli/tensor_format.py"],
+    srcs_version = "PY2AND3",
+    deps = [":debugger_cli_common"],
+)
+
+py_library(
     name = "analyzer_cli",
     srcs = ["cli/analyzer_cli.py"],
     srcs_version = "PY2AND3",
-    deps = [":debugger_cli_common"],
+    deps = [
+        ":debugger_cli_common",
+        ":tensor_format",
+    ],
 )
 
 py_test(
@@ -100,6 +110,19 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":debugger_cli_common",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "tensor_format_test",
+    size = "small",
+    srcs = [
+        "cli/tensor_format_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tensor_format",
         "//tensorflow/python:framework_test_lib",
     ],
 )

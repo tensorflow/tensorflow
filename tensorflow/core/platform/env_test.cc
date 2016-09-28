@@ -349,20 +349,6 @@ TEST_F(TestEnvTest, IPFS) {
   }
 }
 
-TEST_F(TestEnvTest, IPFSMatch) {
-  // Make sure we only get the 11 planets and not all their children.
-  EXPECT_EQ(Match("ipfs://solarsystem", "*"),
-            ".PlanetX,Earth,Jupiter,Mars,Mercury,Neptune,Planet0,Planet1,"
-            "Saturn,Uranus,Venus");
-  // Returns Jupiter's moons.
-  EXPECT_EQ(Match("ipfs://solarsystem", "Jupiter/*"),
-            "Jupiter/Europa,Jupiter/Ganymede,Jupiter/Io");
-  // Returns Jupiter's and Earth's moons.
-  EXPECT_EQ(Match("ipfs://solarsystem", "*/*"),
-            "Earth/Moon,Jupiter/Europa,Jupiter/Ganymede,Jupiter/Io");
-  EXPECT_EQ(Match("ipfs://solarsystem", "Planet[0-1]"), "Planet0,Planet1");
-}
-
 TEST_F(TestEnvTest, MatchNonExistentFile) {
   EXPECT_EQ(Match(BaseDir(), "thereisnosuchfile"), "");
 }

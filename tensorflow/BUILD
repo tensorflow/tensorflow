@@ -113,7 +113,6 @@ filegroup(
         "//tensorflow/contrib/learn:all_files",
         "//tensorflow/contrib/learn/python/learn/datasets:all_files",
         "//tensorflow/contrib/linear_optimizer:all_files",
-        "//tensorflow/contrib/linear_optimizer/kernels:all_files",
         "//tensorflow/contrib/lookup:all_files",
         "//tensorflow/contrib/losses:all_files",
         "//tensorflow/contrib/metrics:all_files",

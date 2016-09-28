@@ -14,9 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet} from './scatterPlot';
-import {ScatterPlotWebGL} from './scatterPlotWebGL';
-import {ScatterPlotWebGLVisualizer} from './scatterPlotWebGLVisualizer';
+import {DataSet, ScatterPlot} from './scatterPlot';
+import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import {createTexture} from './util';
 
 const NUM_POINTS_FOG_THRESHOLD = 5000;
@@ -117,8 +116,7 @@ const FRAGMENT_SHADER = `
 /**
  * Uses GL point sprites to render the dataset.
  */
-export class ScatterPlotWebGLVisualizerSprites implements
-    ScatterPlotWebGLVisualizer {
+export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
   private dataSet: DataSet;
 
   private image: HTMLImageElement;
@@ -138,8 +136,8 @@ export class ScatterPlotWebGLVisualizerSprites implements
   private pickingColors: Float32Array;
   private renderColors: Float32Array;
 
-  constructor(scatterPlotWebGL: ScatterPlotWebGL) {
-    scatterPlotWebGL.onSelection((s: number[]) => this.onSelectionChanged(s));
+  constructor(scatterPlot: ScatterPlot) {
+    scatterPlot.onSelection((s: number[]) => this.onSelectionChanged(s));
   }
 
   /**
@@ -256,7 +254,7 @@ export class ScatterPlotWebGLVisualizerSprites implements
 
     // Create the array of indices.
     for (let i = 0; i < numPoints; i++) {
-      indicesShader.setX(i, this.dataSet.points[i].dataSourceIndex);
+      indicesShader.setX(i, this.dataSet.points[i].index);
     }
 
     // Finally, add all attributes to the geometry.

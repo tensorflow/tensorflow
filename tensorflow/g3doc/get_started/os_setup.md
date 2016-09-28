@@ -859,7 +859,7 @@ and you left the Cuda or cuDNN version empty, try specifying them explicitly.
 ### Protobuf library related issues
 
 TensorFlow pip package depends on protobuf pip package version
-3.0.0b2. Protobuf's pip package downloaded from [PyPI](https://pypi.python.org)
+3.1.0. Protobuf's pip package downloaded from [PyPI](https://pypi.python.org)
 (when running `pip install protobuf`) is a Python only library, that has
 Python implementations of proto serialization/deserialization which can be
 10x-50x slower than the C++ implementation. Protobuf also supports a binary

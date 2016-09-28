@@ -864,7 +864,7 @@ TEST(CAPI, ColocateWith) {
   TF_Operation* add = TF_FinishOperation(desc, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
-  TF_Attr_Metadata m =
+  TF_AttrMetadata m =
       TF_OperationGetAttrMetadata(add, tensorflow::kColocationAttrName, s);
   EXPECT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   EXPECT_EQ(1, m.is_list);
