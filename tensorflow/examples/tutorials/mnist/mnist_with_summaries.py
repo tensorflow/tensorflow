@@ -13,11 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """A simple MNIST classifier which displays summaries in TensorBoard.
-
  This is an unimpressive MNIST model, but it is a good example of using
 tf.name_scope to make a graph legible in the TensorBoard graph explorer, and of
 naming summary tags so that they are grouped meaningfully in TensorBoard.
-
 It demonstrates the functionality of every TensorBoard dashboard.
 """
 from __future__ import absolute_import
@@ -81,9 +79,8 @@ def train():
       tf.scalar_summary('min/' + name, tf.reduce_min(var))
       tf.histogram_summary(name, var)
 
-  def nn_layer(input_tensor, input_dim, output_dim, layer_name, act=tf.nn.relu):
+  def nn_layer(input_tensor, input_dim, output_dim, layer_name):
     """Reusable code for making a simple neural net layer.
-
     It does a matrix multiply, bias add, and then uses relu to nonlinearize.
     It also sets up name scoping so that the resultant graph is easy to read,
     and adds a number of summary ops.
@@ -100,23 +97,22 @@ def train():
       with tf.name_scope('Wx_plus_b'):
         preactivate = tf.matmul(input_tensor, weights) + biases
         tf.histogram_summary(layer_name + '/pre_activations', preactivate)
-      activations = act(preactivate, 'activation')
-      tf.histogram_summary(layer_name + '/activations', activations)
-      return activations
+      tf.histogram_summary(layer_name + '/activations', preactivate)
+      return preactivate
 
-  hidden1 = nn_layer(x, 784, 500, 'layer1')
+  hidden1 = tf.nn.relu(nn_layer(x, 784, 500, 'layer1'))
 
   with tf.name_scope('dropout'):
     keep_prob = tf.placeholder(tf.float32)
     tf.scalar_summary('dropout_keep_probability', keep_prob)
     dropped = tf.nn.dropout(hidden1, keep_prob)
 
-  y = nn_layer(dropped, 500, 10, 'layer2', act=tf.nn.softmax)
+  y = tf.nn.softmax(nn_layer(dropped, 500, 10, 'layer2'))
 
   with tf.name_scope('cross_entropy'):
-    diff = y_ * tf.log(y)
     with tf.name_scope('total'):
-      cross_entropy = -tf.reduce_mean(diff)
+      cross_entropy = tf.reduce_mean(
+              -tf.reduce_sum(y_ * tf.log(y), reduction_indices=[1]))
     tf.scalar_summary('cross entropy', cross_entropy)
 
   with tf.name_scope('train'):
