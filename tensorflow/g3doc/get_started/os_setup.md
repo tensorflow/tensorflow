@@ -901,8 +901,8 @@ $ CXXFLAGS="-fPIC -g -O2" ./configure
 $ make -j12
 $ export PROTOC=$PWD/src/protoc
 $ cd python
-$ python3.4 setup.py bdist_wheel --cpp_implementation --compile_static_extension
-$ cd dist
+$ python setup.py bdist_wheel --cpp_implementation --compile_static_extension
+$ pip install dist/<wheel file name>
 ```
 
 Install the above package _after_ you have installed TensorFlow via pip, as the
