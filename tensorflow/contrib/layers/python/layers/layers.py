@@ -123,6 +123,7 @@ def batch_norm(inputs,
                variables_collections=None,
                outputs_collections=None,
                trainable=True,
+               batch_weights=None,
                scope=None):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
@@ -171,6 +172,11 @@ def batch_norm(inputs,
     outputs_collections: collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    batch_weights: An optional tensor of shape `[batch_size]`,
+      containing a frequency weight for each batch item. If present,
+      then the batch normalization uses weighted mean and
+      variance. (This can be used to correct for bias in training
+      example selection.)
     scope: Optional scope for `variable_scope`.
 
   Returns:
@@ -187,6 +193,14 @@ def batch_norm(inputs,
     if inputs_rank is None:
       raise ValueError('Inputs %s has undefined rank.' % inputs.name)
     dtype = inputs.dtype.base_dtype
+    if batch_weights is not None:
+      batch_weights = ops.convert_to_tensor(batch_weights)
+      inputs_shape[0:1].assert_is_compatible_with(batch_weights.get_shape())
+
+      # Reshape batch weight values so they broadcast across inputs.
+      nshape = [-1] + [1 for _ in range(inputs_rank - 1)]
+      batch_weights = array_ops.reshape(batch_weights, nshape)
+
     axis = list(range(inputs_rank - 1))
     params_shape = inputs_shape[-1:]
     if not params_shape.is_fully_defined():
@@ -240,9 +254,13 @@ def batch_norm(inputs,
     need_moments = is_training_value is None or is_training_value
     if need_moments:
       # Calculate the moments based on the individual batch.
-      # Use a copy of moving_mean as a shift to compute more reliable moments.
-      shift = math_ops.add(moving_mean, 0)
-      mean, variance = nn.moments(inputs, axis, shift=shift)
+      if batch_weights is None:
+        # Use a copy of moving_mean as a shift to compute more reliable moments.
+        shift = math_ops.add(moving_mean, 0)
+        mean, variance = nn.moments(inputs, axis, shift=shift)
+      else:
+        mean, variance = nn.weighted_moments(inputs, axis, batch_weights)
+
       moving_vars_fn = lambda: (moving_mean, moving_variance)
       if updates_collections is None:
         def _force_updates():
