@@ -654,6 +654,40 @@ strides: 1-D of length 4.  The stride of the sliding window for each dimension
 padding: The type of padding algorithm to use.
  )doc");
 
+REGISTER_OP("FusedPadConv2D")
+    .Input("input: T")
+    .Input("paddings: int32")
+    .Input("filter: T")
+    .Output("output: T")
+    .Attr("T: {half, float, double}")
+    .Attr(GetMirrorPadModeAttrString())
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Doc(R"doc(
+Performs a padding as a preprocess during a convolution.
+
+Similar to FusedResizeAndPadConv2d, this op allows for an optimized
+implementation where the spatial padding transformation stage is fused with the
+im2col lookup, but in this case without the bilinear filtering required for
+resizing. Fusing the padding prevents the need to write out the intermediate
+results as whole tensors, reducing memory pressure, and we can get some latency
+gains by merging the transformation calculations.
+The data_format attribute for Conv2D isn't supported by this op, and 'NHWC'
+order is used instead.
+Internally this op uses a single per-graph scratch buffer, which means that it
+will block if multiple versions are being run in parallel. This is because this
+operator is primarily an optimization to minimize memory usage.
+
+input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+paddings: A two-column matrix specifying the padding sizes. The number of
+  rows must be the same as the rank of `input`.
+filter: 4-D with shape
+  `[filter_height, filter_width, in_channels, out_channels]`.
+strides: 1-D of length 4.  The stride of the sliding window for each dimension
+   of `input`. Must be in the same order as the dimension specified with format.
+padding: The type of padding algorithm to use.
+ )doc");
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("DepthwiseConv2dNative")
