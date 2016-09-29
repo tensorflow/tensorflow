@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tensorflow
+package tensorflow_test
 
 import (
 	"bufio"
@@ -22,6 +22,8 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+
+	tf "github.com/tensorflow/tensorflow/tensorflow/go"
 )
 
 func Example() {
@@ -69,13 +71,13 @@ func Example() {
 	}
 
 	// Construct an in-memory graph from the serialized form.
-	graph := NewGraph()
+	graph := tf.NewGraph()
 	if err := graph.Import(model, ""); err != nil {
 		log.Fatal(err)
 	}
 
 	// Create a session for inference over graph.
-	session, err := NewSession(graph, nil)
+	session, err := tf.NewSession(graph, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -90,10 +92,10 @@ func Example() {
 		log.Fatal(err)
 	}
 	output, err := session.Run(
-		map[Output]*Tensor{
+		map[tf.Output]*tf.Tensor{
 			graph.Operation("input").Output(0): tensor,
 		},
-		[]Output{
+		[]tf.Output{
 			graph.Operation("output").Output(0),
 		},
 		nil)
@@ -134,7 +136,7 @@ func printBestLabel(probabilities []float32, labelsFile string) {
 
 // Given an image stored in filename, returns a Tensor which is suitable for
 // providing the image data to the pre-defined model.
-func makeTensorFromImageForInception(filename string) (*Tensor, error) {
+func makeTensorFromImageForInception(filename string) (*tf.Tensor, error) {
 	const (
 		// Some constants specific to the pre-trained model at:
 		// https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip
@@ -179,5 +181,5 @@ func makeTensorFromImageForInception(filename string) (*Tensor, error) {
 			ret[0][y][x][2] = float32((int(r>>8) - Mean)) / Std
 		}
 	}
-	return NewTensor(ret)
+	return tf.NewTensor(ret)
 }
