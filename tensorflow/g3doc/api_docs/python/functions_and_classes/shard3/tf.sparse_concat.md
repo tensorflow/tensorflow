@@ -8,7 +8,7 @@ along increasing dimension number.
 
 If expand_nonconcat_dim is False, all inputs' shapes must match, except for
 the concat dimension. If expand_nonconcat_dim is True, then inputs' shapes are
-allowd to vary among all inputs.
+allowed to vary among all inputs.
 
 The `indices`, `values`, and `shapes` lists must have the same length.
 

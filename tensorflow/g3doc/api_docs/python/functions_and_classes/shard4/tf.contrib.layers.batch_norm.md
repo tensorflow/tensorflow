@@ -35,7 +35,7 @@ can have speed penalty, specially in distributed settings.
 *  <b>`activation_fn`</b>: activation function, default set to None to skip it and
     maintain a linear activation.
 *  <b>`updates_collections`</b>: collections to collect the update ops for computation.
-    The updates_ops need to be excuted with the train_op.
+    The updates_ops need to be executed with the train_op.
     If None, a control dependency would be added to make sure the updates are
     computed in place.
 *  <b>`is_training`</b>: whether or not the layer is in training mode. In training mode

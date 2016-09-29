@@ -12,7 +12,7 @@ localization of an object, i.e. bounding box, given an `image_size`,
 The output of this Op is a single bounding box that may be used to crop the
 original image. The output is returned as 3 tensors: `begin`, `size` and
 `bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
-image. The latter may be supplied to `tf.image.draw_bounding_box` to visualize
+image. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize
 what the bounding box looks like.
 
 Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The

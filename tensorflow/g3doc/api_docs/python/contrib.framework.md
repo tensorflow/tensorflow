@@ -400,9 +400,9 @@ For usage, please see examples at top of the file.
 
 
 *  <b>`list_ops_or_scope`</b>: List or tuple of operations to set argument scope for or
-    a dictionary containg the current scope. When list_ops_or_scope is a dict,
-    kwargs must be empty. When list_ops_or_scope is a list or tuple, then
-    every op in it need to be decorated with @add_arg_scope to work.
+    a dictionary containing the current scope. When list_ops_or_scope is a
+    dict, kwargs must be empty. When list_ops_or_scope is a list or tuple,
+    then every op in it need to be decorated with @add_arg_scope to work.
 *  <b>`**kwargs`</b>: keyword=value that will define the defaults for each op in
             list_ops. All the ops need to accept the given set of arguments.
 
@@ -526,8 +526,8 @@ Creates an operation to assign specific variables from a checkpoint.
 *  <b>`model_path`</b>: The full path to the model checkpoint. To get latest checkpoint
       use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
 *  <b>`var_list`</b>: A list of `Variable` objects or a dictionary mapping names in the
-      checkpoint to the correspoing variables to initialize. If empty or None,
-      it would return  no_op(), None.
+      checkpoint to the corresponding variables to initialize. If empty or
+      None, it would return  no_op(), None.
 
 ##### Returns:
 

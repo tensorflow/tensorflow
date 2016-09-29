@@ -82,7 +82,7 @@ my_sgv = ge.sgv("foo/.*/.*read$", graph=tf.get_default_graph())
 Note that the Graph Editor is meant to manipulate several graphs at the same
 time, typically during transform or copy operation. For that reason,
 to avoid any confusion, the default graph is never used and the graph on
-which to operate must always be explicitely given. This is the reason why
+which to operate must always be given explicitly. This is the reason why
 *graph=tf.get_default_graph()* is used in the code snippets above.
 
 ## Modules overview
@@ -276,14 +276,14 @@ Update the control outputs if the graph has changed.
 
 ### `tf.contrib.graph_editor.placeholder_name(t=None, scope=None)` {#placeholder_name}
 
-Create placeholder name for tjhe graph editor.
+Create placeholder name for the graph editor.
 
 ##### Args:
 
 
 *  <b>`t`</b>: optional tensor on which the placeholder operation's name will be based
     on
-*  <b>`scope`</b>: absolute scope with which to predix the placeholder's name. None
+*  <b>`scope`</b>: absolute scope with which to prefix the placeholder's name. None
     means that the scope of t is preserved. "" means the root scope.
 
 ##### Returns:
@@ -606,7 +606,7 @@ Do a forward graph walk and return all the visited ops.
     walk starts. If a list of tensors is given instead, the seed_ops are set
     to be the consumers of those tensors.
 *  <b>`inclusive`</b>: if True the given seed_ops are also part of the resulting set.
-*  <b>`within_ops`</b>: an iterable of tf.Operation whithin which the search is
+*  <b>`within_ops`</b>: an iterable of tf.Operation within which the search is
     restricted. If within_ops is None, the search is performed within
     the whole graph.
 *  <b>`stop_at_ts`</b>: an iterable of tensors at which the graph walk stops.
@@ -637,7 +637,7 @@ Do a backward graph walk and return all the visited ops.
     walk starts. If a list of tensors is given instead, the seed_ops are set
     to be the generators of those tensors.
 *  <b>`inclusive`</b>: if True the given seed_ops are also part of the resulting set.
-*  <b>`within_ops`</b>: an iterable of tf.Operation whithin which the search is
+*  <b>`within_ops`</b>: an iterable of tf.Operation within which the search is
     restricted. If within_ops is None, the search is performed within
     the whole graph.
 *  <b>`stop_at_ts`</b>: an iterable of tensors at which the graph walk stops.
@@ -658,7 +658,7 @@ Do a backward graph walk and return all the visited ops.
 
 ### `tf.contrib.graph_editor.get_walks_intersection_ops(forward_seed_ops, backward_seed_ops, forward_inclusive=True, backward_inclusive=True, within_ops=None, control_inputs=False, control_outputs=None, control_ios=None)` {#get_walks_intersection_ops}
 
-Return the intersection of a foward and a backward walk.
+Return the intersection of a forward and a backward walk.
 
 ##### Args:
 
@@ -673,7 +673,7 @@ Return the intersection of a foward and a backward walk.
     resulting set.
 *  <b>`backward_inclusive`</b>: if True the given backward_seed_ops are also part of the
     resulting set.
-*  <b>`within_ops`</b>: an iterable of tf.Operation whithin which the search is
+*  <b>`within_ops`</b>: an iterable of tf.Operation within which the search is
     restricted. If within_ops is None, the search is performed within
     the whole graph.
 *  <b>`control_inputs`</b>: A boolean indicating whether control inputs are enabled.
@@ -686,7 +686,7 @@ Return the intersection of a foward and a backward walk.
 
 ##### Returns:
 
-  A Python set of all the tf.Operation in the intersection of a foward and a
+  A Python set of all the tf.Operation in the intersection of a forward and a
     backward walk.
 
 ##### Raises:
@@ -700,7 +700,7 @@ Return the intersection of a foward and a backward walk.
 
 ### `tf.contrib.graph_editor.get_walks_union_ops(forward_seed_ops, backward_seed_ops, forward_inclusive=True, backward_inclusive=True, within_ops=None, control_inputs=False, control_outputs=None, control_ios=None)` {#get_walks_union_ops}
 
-Return the union of a foward and a backward walk.
+Return the union of a forward and a backward walk.
 
 ##### Args:
 
@@ -727,7 +727,7 @@ Return the union of a foward and a backward walk.
 
 ##### Returns:
 
-  A Python set of all the tf.Operation in the union of a foward and a
+  A Python set of all the tf.Operation in the union of a forward and a
     backward walk.
 
 ##### Raises:
@@ -873,7 +873,7 @@ present both in the input and output tensors of the subgraph. It can however
 be remapped to only appear as an input (or output) only.
 
 The input and output tensors can be remapped. For instance, some input tensor
-can be ommited. For instance, a subgraph representing an operation with two
+can be omitted. For instance, a subgraph representing an operation with two
 inputs can be remapped to only take one input. Note that this does not change
 at all the underlying tf.Graph (remember, it is a view). It means that
 the other input is being ignored, or is being treated as "given".
@@ -882,7 +882,7 @@ function. Remapping the inputs from [x, y] to just [x] means that the subgraph
 now represent the function F_y(x) (y is "given").
 
 The output tensors can also be remapped. For instance, some output tensor can
-be ommited. Other output tensor can be duplicated as well. As mentioned
+be omitted. Other output tensor can be duplicated as well. As mentioned
 before, this does not change at all the underlying tf.Graph.
 The analogy with functions can be extended like this: F(...)->x,y is the
 original function. Remapping the outputs from [x, y] to just [y,y] means that
@@ -907,7 +907,7 @@ It is useful to describe three other kind of tensors:
   not listed as an output and one of whose generating operations belongs to
   the subgraph.
 
-Here are some usefull guarantees about an instance of a SubGraphView:
+Here are some useful guarantees about an instance of a SubGraphView:
 * the input (or output) tensors are not internal.
 * the input (or output) tensors are either "connected" or "passthrough".
 * the passthrough tensors are not connected to any of the operation of
@@ -926,10 +926,10 @@ instances of a given subgraph. In that sense, the class SubGraphView is meant
 to be used like an immutable python object.
 
 A common problem when using views is that they can get out-of-sync with the
-data they observe (in this case, a tf.Graph). This is up to the user to insure
-that this doesn't happen. To keep on the safe sife, it is recommended that
-the life time of subgraph views are kept very short. One way to achieve this
-is to use subgraphs within a "with make_sgv(...) as sgv:" Python context.
+data they observe (in this case, a `tf.Graph`). This is up to the user to
+ensure that this doesn't happen. To keep on the safe side, it is recommended
+that the life time of subgraph views are kept very short. One way to achieve
+this is to use subgraphs within a "with make_sgv(...) as sgv:" Python context.
 
 To alleviate the out-of-sync problem, some functions are granted the right to
 modified subgraph in place. This is typically the case of graph manipulation
@@ -964,7 +964,7 @@ does not copy the underlying part of the tf.Graph.
 
 #### `tf.contrib.graph_editor.SubGraphView.__enter__()` {#SubGraphView.__enter__}
 
-Allow Python context to minize the life time of a subgraph view.
+Allow Python context to minimize the life time of a subgraph view.
 
 A subgraph view is meant to be a lightweight and transient object. A short
 lifetime will alleviate the "out-of-sync" issue mentioned earlier. For that
@@ -1613,7 +1613,7 @@ Detach the inputs of a subgraph view.
 
 ### `tf.contrib.graph_editor.detach_outputs(sgv, control_outputs=None)` {#detach_outputs}
 
-Detach the outputa of a subgraph view.
+Detach the output of a subgraph view.
 
 ##### Args:
 

@@ -5,7 +5,7 @@ Computes the LSTM cell forward propagation for 1 time step.
 
 This kernel op implements the following mathematical equations:
 
-Baises are initialized with :
+Biases are initialized with :
 `b_ru` - constant_initializer(1.0)
 `b_c` - constant_initializer(0.0)
 ```

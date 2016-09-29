@@ -307,7 +307,7 @@ computed using the height of the precision values by the recall.
 
 This value is ultimately returned as `auc`, an idempotent operation that
 computes the area under a discretized curve of precision versus recall values
-(computed using the afformentioned variables). The `num_thresholds` variable
+(computed using the aforementioned variables). The `num_thresholds` variable
 controls the degree of discretization with larger numbers of thresholds more
 closely approximating the true AUC.
 
@@ -724,7 +724,7 @@ variables and returns the updated covariance.
 
 ### `tf.contrib.metrics.streaming_pearson_correlation(predictions, labels, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_pearson_correlation}
 
-Computes pearson correlation coefficient between `predictions`, `labels`.
+Computes Pearson correlation coefficient between `predictions`, `labels`.
 
 The `streaming_pearson_correlation` function delegates to
 `streaming_covariance` the tracking of three [co]variances:
@@ -759,7 +759,7 @@ https://wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
 ##### Returns:
 
 
-*  <b>`pearson_r`</b>: A tensor representing the current pearson product-moment
+*  <b>`pearson_r`</b>: A tensor representing the current Pearson product-moment
     correlation coefficient, the value of
     `cov(predictions, labels) / sqrt(var(predictions) * var(labels))`.
 *  <b>`update_op`</b>: An operation that updates the underlying variables appropriately.
@@ -973,7 +973,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that updates should
     be added to.
-*  <b>`name`</b>: Name of new update operation, and namespace for other dependant ops.
+*  <b>`name`</b>: Name of new update operation, and namespace for other dependent ops.
 
 ##### Returns:
 
@@ -1044,7 +1044,7 @@ Instructions for updating:
       be added to.
     updates_collections: An optional list of collections that updates should
       be added to.
-    name: Name of new update operation, and namespace for other dependant ops.
+    name: Name of new update operation, and namespace for other dependent ops.
 
   Returns:
     precision: Scalar `float64` `Tensor` with the value of `true_positives`
@@ -1118,7 +1118,7 @@ Instructions for updating:
       be added to.
     updates_collections: An optional list of collections that updates should
       be added to.
-    name: Name of new update operation, and namespace for other dependant ops.
+    name: Name of new update operation, and namespace for other dependent ops.
 
   Returns:
     recall: Scalar `float64` `Tensor` with the value of `true_positives` divided
@@ -1338,9 +1338,9 @@ the same shape in order for this function to work.
 ##### Args:
 
 
-*  <b>`predictions`</b>: A 1-D array represeting the predictions for a given
+*  <b>`predictions`</b>: A 1-D array representing the predictions for a given
                classification.
-*  <b>`labels`</b>: A 1-D represeting the real labels for the classification task.
+*  <b>`labels`</b>: A 1-D representing the real labels for the classification task.
 *  <b>`num_classes`</b>: The possible number of labels the classification task can
                have. If this value is not provided, it will be calculated
                using both predictions and labels array.
@@ -1350,7 +1350,7 @@ the same shape in order for this function to work.
 
 ##### Returns:
 
-  A k X k matrix represeting the confusion matrix, where k is the number of
+  A k X k matrix representing the confusion matrix, where k is the number of
   possible labels in the classification task.
 
 ##### Raises:

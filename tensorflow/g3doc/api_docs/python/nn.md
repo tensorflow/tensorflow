@@ -1348,17 +1348,17 @@ Computes half the L2 norm of a tensor without the `sqrt`:
 
 ### `tf.nn.log_poisson_loss(log_input, targets, compute_full_loss=False, name=None)` {#log_poisson_loss}
 
-Computes log poisson loss given `log_input`.
+Computes log Poisson loss given `log_input`.
 
 Gives the log-likelihood loss between the prediction and the target under the
-assumption that the target has a poisson distribution.
+assumption that the target has a Poisson distribution.
 Caveat: By default, this is not the exact loss, but the loss minus a
   constant term [log(z!)]. That has no effect for optimization, but
   does not play well with relative loss comparisons. To compute an
   approximation of the log factorial term, specify
   compute_full_loss=True to enable Stirling's Approximation.
 
-For brevity, let `c = log(x) = log_input`, `z = targets`.  The log poisson
+For brevity, let `c = log(x) = log_input`, `z = targets`.  The log Poisson
 loss is
 
       -log(exp(-x) * (x^z) / z!)
@@ -1642,7 +1642,7 @@ the implementation uses
 ##### Returns:
 
   A `Tensor` of the same shape as `logits` with the componentwise
-  weightedlogistic losses.
+  weighted logistic losses.
 
 ##### Raises:
 
@@ -2304,7 +2304,7 @@ outputs = outputs_ta.pack()
 
 
 
-## Conectionist Temporal Classification (CTC)
+## Connectionist Temporal Classification (CTC)
 
 - - -
 
@@ -2504,7 +2504,7 @@ is `A B B B B`, the return value is:
 ## Evaluation
 
 The evaluation ops are useful for measuring the performance of a network.
-Since they are nondifferentiable, they are typically used at evaluation time.
+Since they are non-differentiable, they are typically used at evaluation time.
 
 - - -
 

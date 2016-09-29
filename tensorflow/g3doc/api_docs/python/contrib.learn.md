@@ -1254,7 +1254,7 @@ Initializes a TensorFlowEstimator instance.
     classes for loss computation. If not given, all classes are supposed to
     have weight one.
 *  <b>`continue_training`</b>: when continue_training is True, once initialized
-    model will be continuely trained on every call of fit.
+    model will be continually trained on every call of fit.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the
     session, e.g. num_cores, gpu_memory_fraction, etc.
 *  <b>`verbose`</b>: Controls the verbosity, possible values:
@@ -1352,7 +1352,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
 Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
-variables. Consecutives times it will continue training the same model.
+variables. Subsequently, it will continue training the same model.
 This logic follows partial_fit() interface in scikit-learn.
 To restart learning, create new estimator.
 
@@ -2204,7 +2204,7 @@ Initializes a TensorFlowRNNClassifier instance.
     classes for loss computation. If not given, all classes are
     supposed to have weight one.
 *  <b>`continue_training`</b>: when continue_training is True, once initialized
-    model will be continuely trained on every call of fit.
+    model will be continually trained on every call of fit.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the session,
     e.g. num_cores, gpu_memory_fraction, etc.
 
@@ -2304,7 +2304,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
 Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
-variables. Consecutives times it will continue training the same model.
+variables. Subsequently, it will continue training the same model.
 This logic follows partial_fit() interface in scikit-learn.
 To restart learning, create new estimator.
 
@@ -2596,7 +2596,7 @@ Initializes a TensorFlowRNNRegressor instance.
 
 
 *  <b>`continue_training`</b>: when continue_training is True, once initialized
-    model will be continuely trained on every call of fit.
+    model will be continually trained on every call of fit.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the
     session, e.g. num_cores, gpu_memory_fraction, etc.
 *  <b>`verbose`</b>: Controls the verbosity, possible values:
@@ -2701,7 +2701,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
 Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
-variables. Consecutives times it will continue training the same model.
+variables. Subsequently, it will continue training the same model.
 This logic follows partial_fit() interface in scikit-learn.
 To restart learning, create new estimator.
 
@@ -3050,7 +3050,7 @@ Example:
 
 
 *  <b>`ValueError`</b>: if num_ps_replicas and cluster_spec are set (cluster_spec
-    may fome from the TF_CONFIG environment variable).
+    may come from the TF_CONFIG environment variable).
 
 
 - - -
@@ -3097,7 +3097,7 @@ and written to `output_dir`.
     evaluated in every logging step. The result of the final evaluation is
     returned. If `update_op` is None, then it's evaluated in every step. If
     `max_steps` is `None`, this should depend on a reader that will raise an
-    end-of-inupt exception when the inputs are exhausted.
+    end-of-input exception when the inputs are exhausted.
 *  <b>`update_op`</b>: A `Tensor` which is run in every step.
 *  <b>`global_step_tensor`</b>: A `Variable` containing the global step. If `None`,
     one is extracted from the graph using the same logic as in `Supervisor`.

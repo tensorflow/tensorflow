@@ -28,7 +28,7 @@ present both in the input and output tensors of the subgraph. It can however
 be remapped to only appear as an input (or output) only.
 
 The input and output tensors can be remapped. For instance, some input tensor
-can be ommited. For instance, a subgraph representing an operation with two
+can be omitted. For instance, a subgraph representing an operation with two
 inputs can be remapped to only take one input. Note that this does not change
 at all the underlying tf.Graph (remember, it is a view). It means that
 the other input is being ignored, or is being treated as "given".
@@ -37,7 +37,7 @@ function. Remapping the inputs from [x, y] to just [x] means that the subgraph
 now represent the function F_y(x) (y is "given").
 
 The output tensors can also be remapped. For instance, some output tensor can
-be ommited. Other output tensor can be duplicated as well. As mentioned
+be omitted. Other output tensor can be duplicated as well. As mentioned
 before, this does not change at all the underlying tf.Graph.
 The analogy with functions can be extended like this: F(...)->x,y is the
 original function. Remapping the outputs from [x, y] to just [y,y] means that
@@ -62,7 +62,7 @@ It is useful to describe three other kind of tensors:
   not listed as an output and one of whose generating operations belongs to
   the subgraph.
 
-Here are some usefull guarantees about an instance of a SubGraphView:
+Here are some useful guarantees about an instance of a SubGraphView:
 * the input (or output) tensors are not internal.
 * the input (or output) tensors are either "connected" or "passthrough".
 * the passthrough tensors are not connected to any of the operation of
@@ -81,10 +81,10 @@ instances of a given subgraph. In that sense, the class SubGraphView is meant
 to be used like an immutable python object.
 
 A common problem when using views is that they can get out-of-sync with the
-data they observe (in this case, a tf.Graph). This is up to the user to insure
-that this doesn't happen. To keep on the safe sife, it is recommended that
-the life time of subgraph views are kept very short. One way to achieve this
-is to use subgraphs within a "with make_sgv(...) as sgv:" Python context.
+data they observe (in this case, a `tf.Graph`). This is up to the user to
+ensure that this doesn't happen. To keep on the safe side, it is recommended
+that the life time of subgraph views are kept very short. One way to achieve
+this is to use subgraphs within a "with make_sgv(...) as sgv:" Python context.
 
 To alleviate the out-of-sync problem, some functions are granted the right to
 modified subgraph in place. This is typically the case of graph manipulation
@@ -119,7 +119,7 @@ does not copy the underlying part of the tf.Graph.
 
 #### `tf.contrib.graph_editor.SubGraphView.__enter__()` {#SubGraphView.__enter__}
 
-Allow Python context to minize the life time of a subgraph view.
+Allow Python context to minimize the life time of a subgraph view.
 
 A subgraph view is meant to be a lightweight and transient object. A short
 lifetime will alleviate the "out-of-sync" issue mentioned earlier. For that

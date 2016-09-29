@@ -46,7 +46,7 @@ Initializes a TensorFlowRNNClassifier instance.
     classes for loss computation. If not given, all classes are
     supposed to have weight one.
 *  <b>`continue_training`</b>: when continue_training is True, once initialized
-    model will be continuely trained on every call of fit.
+    model will be continually trained on every call of fit.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the session,
     e.g. num_cores, gpu_memory_fraction, etc.
 
@@ -146,7 +146,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
 Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
-variables. Consecutives times it will continue training the same model.
+variables. Subsequently, it will continue training the same model.
 This logic follows partial_fit() interface in scikit-learn.
 To restart learning, create new estimator.
 

@@ -77,7 +77,7 @@ can have speed penalty, specially in distributed settings.
 *  <b>`activation_fn`</b>: activation function, default set to None to skip it and
     maintain a linear activation.
 *  <b>`updates_collections`</b>: collections to collect the update ops for computation.
-    The updates_ops need to be excuted with the train_op.
+    The updates_ops need to be executed with the train_op.
     If None, a control dependency would be added to make sure the updates are
     computed in place.
 *  <b>`is_training`</b>: whether or not the layer is in training mode. In training mode
@@ -148,7 +148,7 @@ greater than one.
 *  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
 *  <b>`variables_collections`</b>: optional list of collections for all the variables or
-    a dictionay containing a different list of collection per variable.
+    a dictionary containing a different list of collection per variable.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
@@ -205,7 +205,7 @@ operations such as image gradients:
 *  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
 *  <b>`variables_collections`</b>: optional list of collections for all the variables or
-    a dictionay containing a different list of collection per variable.
+    a dictionary containing a different list of collection per variable.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
@@ -251,7 +251,7 @@ second variable called 'biases' is added to the result of the operation.
 *  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
 *  <b>`variables_collections`</b>: optional list of collections for all the variables or
-    a dictionay containing a different list of collection per variable.
+    a dictionary containing a different list of collection per variable.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: whether or not the variables should be trainable or not.
 *  <b>`scope`</b>: Optional scope for variable_scope.
@@ -652,7 +652,8 @@ available: `relu`, `relu6` and `linear`.
 ## Regularizers
 
 Regularization can help prevent overfitting. These have the signature
-`fn(weights)`. The loss is typically added to `tf.GraphKeys.REGULARIZATION_LOSS`
+`fn(weights)`. The loss is typically added to
+`tf.GraphKeys.REGULARIZATION_LOSSES`.
 
 - - -
 
@@ -908,7 +909,7 @@ Various ways of passing optimizers, include:
                'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
              class should be sub-class of tf.Optimizer that implements
                `compute_gradients` and `apply_gradients` functions.
-             optimizer instance should be instantion of `tf.Optimizer`
+             optimizer instance should be instantiation of `tf.Optimizer`
                sub-class and have `compute_gradients` and `apply_gradients`
                functions.
 *  <b>`gradient_noise_scale`</b>: float or None, adds 0-mean normal noise scaled by this

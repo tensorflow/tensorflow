@@ -43,7 +43,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that updates should
     be added to.
-*  <b>`name`</b>: Name of new update operation, and namespace for other dependant ops.
+*  <b>`name`</b>: Name of new update operation, and namespace for other dependent ops.
 
 ##### Returns:
 

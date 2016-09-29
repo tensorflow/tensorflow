@@ -77,7 +77,7 @@ tf.slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
 *  <b>`ellipsis_mask`</b>: An `int32` mask.
 *  <b>`new_axis_mask`</b>: An `int32` mask.
 *  <b>`shrink_axis_mask`</b>: An `int32` mask.
-*  <b>`var`</b>: The variable coresponding to `input_` or None
+*  <b>`var`</b>: The variable corresponding to `input_` or None
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

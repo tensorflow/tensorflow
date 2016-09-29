@@ -20,7 +20,7 @@ We add forget_bias (default: 1) to the biases of the forget gate in order to
 reduce the scale of forgetting in the beginning of the training.
 
 Unlike BasicLSTMCell, this is a monolithic op and should be much faster. The
-weight and bias matrixes should be compatible as long as the variabel scope
+weight and bias matrices should be compatible as long as the variable scope
 matches.
 - - -
 
@@ -91,7 +91,7 @@ Computes the LSTM cell forward propagation for 1 time step.
 
 This kernel op implements the following mathematical equations:
 
-Baises are initialized with :
+Biases are initialized with :
 `b_ru` - constant_initializer(1.0)
 `b_c` - constant_initializer(0.0)
 ```
