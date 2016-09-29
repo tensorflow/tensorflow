@@ -39,10 +39,15 @@ is the sum of the size of params along dimension 0.
   corresponding weight, and combines these embeddings as specified.
 
   In other words, if
+
     shape(combined params) = [p0, p1, ..., pm]
+
   and
+
     shape(sp_ids) = shape(sp_weights) = [d0, d1, ..., dn]
+
   then
+
     shape(output) = [d0, d1, ..., dn-1, p1, ..., pm].
 
   For instance, if params is a 10x20 matrix, and sp_ids / sp_weights are
@@ -52,7 +57,8 @@ is the sum of the size of params along dimension 0.
     [1, 0]: id 0, weight 1.0
     [2, 3]: id 1, weight 3.0
 
-  with combiner="mean", then the output will be a 3x20 matrix where
+  with `combiner`="mean", then the output will be a 3x20 matrix where
+
     output[0, :] = (params[1, :] * 2.0 + params[3, :] * 0.5) / (2.0 + 0.5)
     output[1, :] = params[0, :] * 1.0
     output[2, :] = params[1, :] * 3.0

@@ -845,13 +845,14 @@ Helper to select operations and tensors.
 
 A subgraph view on an existing tf.Graph.
 
-An instance of this class is a subgraph view on an existing tf.Graph.
-"subgraph" means that it can represent part of the whole tf.Graph.
+An instance of this class is a subgraph view on an existing `tf.Graph`.
+"subgraph" means that it can represent part of the whole `tf.Graph`.
 "view" means that it only provides a passive observation and do not to act
-on the tf.Graph. Note that in this documentation, the term "subgraph" is often
-used as substitute to "subgraph view".
+on the `tf.Graph`. Note that in this documentation, the term "subgraph" is
+often used as substitute to "subgraph view".
 
 A subgraph contains:
+
 * a list of input tensors, accessible via the "inputs" property.
 * a list of output tensors, accessible via the "outputs" property.
 * and the operations in between, accessible via the "ops" property.
@@ -862,6 +863,7 @@ output tensors. The computation that the function performs is encoded in the
 operations of the subgraph.
 
 The tensors (input or output) can be of two kinds:
+
 - connected: a connected tensor connects to at least one operation contained
 in the subgraph. One example is a subgraph representing a single operation
 and its inputs and outputs: all the input and output tensors of the op
@@ -875,7 +877,7 @@ be remapped to only appear as an input (or output) only.
 The input and output tensors can be remapped. For instance, some input tensor
 can be omitted. For instance, a subgraph representing an operation with two
 inputs can be remapped to only take one input. Note that this does not change
-at all the underlying tf.Graph (remember, it is a view). It means that
+at all the underlying `tf.Graph` (remember, it is a view). It means that
 the other input is being ignored, or is being treated as "given".
 The analogy with functions can be extended like this: F(x,y) is the original
 function. Remapping the inputs from [x, y] to just [x] means that the subgraph
@@ -883,13 +885,14 @@ now represent the function F_y(x) (y is "given").
 
 The output tensors can also be remapped. For instance, some output tensor can
 be omitted. Other output tensor can be duplicated as well. As mentioned
-before, this does not change at all the underlying tf.Graph.
+before, this does not change at all the underlying `tf.Graph`.
 The analogy with functions can be extended like this: F(...)->x,y is the
 original function. Remapping the outputs from [x, y] to just [y,y] means that
 the subgraph now represent the function M(F(...)) where M is the function
 M(a,b)->b,b.
 
 It is useful to describe three other kind of tensors:
+
 * internal: an internal tensor is a tensor connecting operations contained
   in the subgraph. One example in the subgraph representing the two
   operations A and B connected sequentially: -> A -> B ->. The middle arrow
@@ -908,6 +911,7 @@ It is useful to describe three other kind of tensors:
   the subgraph.
 
 Here are some useful guarantees about an instance of a SubGraphView:
+
 * the input (or output) tensors are not internal.
 * the input (or output) tensors are either "connected" or "passthrough".
 * the passthrough tensors are not connected to any of the operation of
@@ -934,7 +938,7 @@ this is to use subgraphs within a "with make_sgv(...) as sgv:" Python context.
 To alleviate the out-of-sync problem, some functions are granted the right to
 modified subgraph in place. This is typically the case of graph manipulation
 functions which, given some subgraphs as arguments, can modify the underlying
-tf.Graph. Since this modification is likely to render the subgraph view
+`tf.Graph`. Since this modification is likely to render the subgraph view
 invalid, those functions can modify the argument in place to reflect the
 change. For instance, calling the function swap_inputs(svg0, svg1) will modify
 svg0 and svg1 in place to reflect the fact that their inputs have now being

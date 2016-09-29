@@ -31,6 +31,7 @@ precise description.
        input according to `paddings` to produce `padded` of shape `padded_shape`.
 
     2. Reshape `padded` to `reshaped_padded` of shape:
+
          [batch] +
          [padded_shape[1] / block_shape[0],
            block_shape[0],
@@ -41,6 +42,7 @@ precise description.
 
     3. Permute dimensions of `reshaped_padded` to produce
        `permuted_reshaped_padded` of shape:
+
          block_shape +
          [batch] +
          [padded_shape[1] / block_shape[0],
@@ -50,6 +52,7 @@ precise description.
 
     4. Reshape `permuted_reshaped_padded` to flatten `block_shape` into the batch
        dimension, producing an output tensor of shape:
+
          [batch * prod(block_shape)] +
          [padded_shape[1] / block_shape[0],
           ...,

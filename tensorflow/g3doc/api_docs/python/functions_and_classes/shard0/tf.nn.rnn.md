@@ -49,9 +49,10 @@ The dynamic calculation performed is, at time `t` for batch row `b`,
 ##### Returns:
 
   A pair (outputs, state) where:
-    - outputs is a length T list of outputs (one for each input), or a nested
-      tuple of such elements.
-    - state is the final state
+
+  - outputs is a length T list of outputs (one for each input), or a nested
+    tuple of such elements.
+  - state is the final state
 
 ##### Raises:
 

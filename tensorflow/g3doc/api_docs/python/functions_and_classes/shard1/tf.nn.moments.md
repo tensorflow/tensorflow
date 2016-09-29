@@ -8,9 +8,10 @@ and variance of a vector.
 
 When using these moments for batch normalization (see
 `tf.nn.batch_normalization`):
-  * for so-called "global normalization", used with convolutional filters with
-    shape `[batch, height, width, depth]`, pass `axes=[0, 1, 2]`.
-  * for simple batch normalization pass `axes=[0]` (batch only).
+
+ * for so-called "global normalization", used with convolutional filters with
+   shape `[batch, height, width, depth]`, pass `axes=[0, 1, 2]`.
+ * for simple batch normalization pass `axes=[0]` (batch only).
 
 ##### Args:
 

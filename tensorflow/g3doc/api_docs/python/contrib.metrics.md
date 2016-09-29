@@ -728,9 +728,10 @@ Computes Pearson correlation coefficient between `predictions`, `labels`.
 
 The `streaming_pearson_correlation` function delegates to
 `streaming_covariance` the tracking of three [co]variances:
-- streaming_covariance(predictions, labels), i.e. covariance
-- streaming_covariance(predictions, predictions), i.e. variance
-- streaming_covariance(labels, labels), i.e. variance
+
+- `streaming_covariance(predictions, labels)`, i.e. covariance
+- `streaming_covariance(predictions, predictions)`, i.e. variance
+- `streaming_covariance(labels, labels)`, i.e. variance
 
 The product-moment correlation ultimately returned is an idempotent operation
 `cov(predictions, labels) / sqrt(var(predictions) * var(labels))`. To

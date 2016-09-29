@@ -1418,6 +1418,7 @@ https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shif
 ##### Returns:
 
   Four `Tensor` objects of the same type as `x`:
+
   * the count (number of elements to average over).
   * the (possibly shifted) sum of the elements in the array.
   * the (possibly shifted) sum of squares of the elements in the array.
@@ -1459,9 +1460,10 @@ and variance of a vector.
 
 When using these moments for batch normalization (see
 `tf.nn.batch_normalization`):
-  * for so-called "global normalization", used with convolutional filters with
-    shape `[batch, height, width, depth]`, pass `axes=[0, 1, 2]`.
-  * for simple batch normalization pass `axes=[0]` (batch only).
+
+ * for so-called "global normalization", used with convolutional filters with
+   shape `[batch, height, width, depth]`, pass `axes=[0, 1, 2]`.
+ * for simple batch normalization pass `axes=[0]` (batch only).
 
 ##### Args:
 
@@ -1917,10 +1919,15 @@ is the sum of the size of params along dimension 0.
   corresponding weight, and combines these embeddings as specified.
 
   In other words, if
+
     shape(combined params) = [p0, p1, ..., pm]
+
   and
+
     shape(sp_ids) = shape(sp_weights) = [d0, d1, ..., dn]
+
   then
+
     shape(output) = [d0, d1, ..., dn-1, p1, ..., pm].
 
   For instance, if params is a 10x20 matrix, and sp_ids / sp_weights are
@@ -1930,7 +1937,8 @@ is the sum of the size of params along dimension 0.
     [1, 0]: id 0, weight 1.0
     [2, 3]: id 1, weight 3.0
 
-  with combiner="mean", then the output will be a 3x20 matrix where
+  with `combiner`="mean", then the output will be a 3x20 matrix where
+
     output[0, :] = (params[1, :] * 2.0 + params[3, :] * 0.5) / (2.0 + 0.5)
     output[1, :] = params[0, :] * 1.0
     output[2, :] = params[1, :] * 3.0
@@ -2108,9 +2116,10 @@ The dynamic calculation performed is, at time `t` for batch row `b`,
 ##### Returns:
 
   A pair (outputs, state) where:
-    - outputs is a length T list of outputs (one for each input), or a nested
-      tuple of such elements.
-    - state is the final state
+
+  - outputs is a length T list of outputs (one for each input), or a nested
+    tuple of such elements.
+  - state is the final state
 
 ##### Raises:
 
@@ -3190,6 +3199,7 @@ Normalizes a tensor by `mean` and `variance`, and applies (optionally) a
 
 `mean`, `variance`, `offset` and `scale` are all expected to be of one of two
 shapes:
+
   * In all generality, they can have the same number of dimensions as the
     input `x`, with identical sizes as `x` for the dimensions that are not
     normalized over (the 'depth' dimension(s)), and dimension 1 for the

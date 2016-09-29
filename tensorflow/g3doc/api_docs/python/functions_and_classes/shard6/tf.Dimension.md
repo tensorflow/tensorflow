@@ -221,10 +221,12 @@ Returns the product of `self` and `other`.
 
 Dimensions are summed as follows:
 
+```
   Dimension(m)    * Dimension(n)    == Dimension(m * n)
   Dimension(m)    * Dimension(None) == Dimension(None)
   Dimension(None) * Dimension(n)    == Dimension(None)
   Dimension(None) * Dimension(None) == Dimension(None)
+```
 
 ##### Args:
 
