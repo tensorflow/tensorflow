@@ -29,6 +29,18 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
+_binomial_prob_note = """
+For each batch member of counts `value`, `P[counts]` is the probability that
+after sampling `n` draws from this Binomial distribution, the number of
+successes is `k`.  Note that different sequences of draws can result in the
+same counts, thus the probability includes a combinatorial coefficient.
+
+`value` must be a non-negative tensor with dtype `dtype` and whose shape
+can be broadcast with `self.p` and `self.n`. `counts` is only legal if it is
+less than or equal to `n` and its components are equal to integer
+values.
+"""
+
 
 class Binomial(distribution.Distribution):
   """Binomial distribution.
@@ -172,6 +184,7 @@ class Binomial(distribution.Distribution):
   def _get_event_shape(self):
     return tensor_shape.scalar()
 
+  @distribution_util.AppendDocstring(_binomial_prob_note)
   def _log_prob(self, counts):
     counts = self._check_counts(counts)
     prob_prob = (counts * math_ops.log(self.p) +
@@ -182,6 +195,7 @@ class Binomial(distribution.Distribution):
     log_prob = prob_prob + combinations
     return log_prob
 
+  @distribution_util.AppendDocstring(_binomial_prob_note)
   def _prob(self, counts):
     return math_ops.exp(self._log_prob(counts))
 
@@ -194,11 +208,16 @@ class Binomial(distribution.Distribution):
   def _std(self):
     return math_ops.sqrt(self._variance())
 
+  @distribution_util.AppendDocstring(
+      """Note that when `(n + 1) * p` is an integer, there are actually two
+      modes.  Namely, `(n + 1) * p` and `(n + 1) * p - 1` are both modes. Here
+      we return only the larger of the two modes.""")
   def _mode(self):
     return math_ops.floor((self._n + 1) * self._p)
 
+  @distribution_util.AppendDocstring(
+      """Check counts for proper shape, values, then return tensor version.""")
   def _check_counts(self, counts):
-    """Check counts for proper shape, values, then return tensor version."""
     counts = ops.convert_to_tensor(counts, name="counts_before_deps")
     if not self.validate_args:
       return counts
@@ -209,26 +228,3 @@ class Binomial(distribution.Distribution):
             counts, self._n, message="counts are not less than or equal to n."),
         distribution_util.assert_integer_form(
             counts, message="counts have non-integer components.")], counts)
-
-
-_prob_note = """
-
-    For each batch member of counts `k`, `P[counts]` is the probability that
-    after sampling `n` draws from this Binomial distribution, the number of
-    successes is `k`.  Note that different sequences of draws can result in the
-    same counts, thus the probability includes a combinatorial coefficient.
-
-    counts:  Non-negative tensor with dtype `dtype` and whose shape can be
-      broadcast with `self.p` and `self.n`. `counts` is only legal if it is
-      less than or equal to `n` and its components are equal to integer
-      values.
-"""
-distribution_util.append_class_fun_doc(Binomial.log_prob, doc_str=_prob_note)
-distribution_util.append_class_fun_doc(Binomial.prob, doc_str=_prob_note)
-
-distribution_util.append_class_fun_doc(Binomial.mode, doc_str="""
-
-    Note that when `(n + 1) * p` is an integer, there are actually two modes.
-    Namely, `(n + 1) * p` and `(n + 1) * p - 1` are both modes. Here we return
-    only the larger of the two modes.
-""")

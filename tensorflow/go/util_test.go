@@ -18,18 +18,20 @@ func Placeholder(g *Graph, name string, dt DataType) (Output, error) {
 	b := newOpBuilder(g, "Placeholder", name)
 	b.SetAttrType("dtype", dt)
 	op, err := b.Build()
-	if err != nil {
-		return Output{}, err
-	}
-	return Output{op, 0}, nil
+	return Output{op, 0}, err
+}
+
+func Const(g *Graph, name string, t *Tensor) (Output, error) {
+	b := newOpBuilder(g, "Const", name)
+	b.SetAttrType("dtype", t.DataType())
+	b.SetAttrTensor("value", t)
+	op, err := b.Build()
+	return Output{op, 0}, err
 }
 
 func Neg(g *Graph, name string, port Output) (Output, error) {
 	b := newOpBuilder(g, "Neg", name)
 	b.AddInput(port)
 	op, err := b.Build()
-	if err != nil {
-		return Output{}, err
-	}
-	return Output{op, 0}, nil
+	return Output{op, 0}, err
 }

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import sys
 import numpy as np
 
@@ -51,18 +52,19 @@ def assert_close(
   x = ops.convert_to_tensor(x, name="x")
   y = ops.convert_to_tensor(y, name="y")
 
+  if data is None:
+    data = [
+        message,
+        "Condition x ~= y did not hold element-wise: x = ", x.name, x, "y = ",
+        y.name, y
+    ]
+
   if x.dtype.is_integer:
     return check_ops.assert_equal(
         x, y, data=data, summarize=summarize, message=message, name=name)
 
   with ops.name_scope(name, "assert_close", [x, y, data]):
-    tol = np.finfo(x.dtype.as_numpy_dtype).resolution
-    if data is None:
-      data = [
-          message,
-          "Condition x ~= y did not hold element-wise: x = ", x.name, x, "y = ",
-          y.name, y
-      ]
+    tol = np.finfo(x.dtype.as_numpy_dtype).eps
     condition = math_ops.reduce_all(math_ops.less_equal(math_ops.abs(x-y), tol))
     return control_flow_ops.Assert(
         condition, data, summarize=summarize)
@@ -178,6 +180,8 @@ def log_combinations(n, counts, name="log_combinations"):
   # The sum should be along the last dimension of counts.  This is the
   # "distribution" dimension. Here n a priori represents the sum of counts.
   with ops.name_scope(name, values=[n, counts]):
+    n = array_ops.identity(n, name="n")
+    counts = array_ops.identity(counts, name="counts")
     total_permutations = math_ops.lgamma(n + 1)
     counts_factorial = math_ops.lgamma(counts + 1)
     redundant_permutations = math_ops.reduce_sum(counts_factorial,
@@ -376,8 +380,8 @@ def pick_vector(cond,
                            [math_ops.select(cond, n, -1)])
 
 
-def append_class_fun_doc(fn, doc_str):
-  """Appends the `doc_str` argument to `fn.__doc__`.
+def override_docstring_if_empty(fn, doc_str):
+  """Override the `doc_str` argument to `fn.__doc__`.
 
   This function is primarily needed because Python 3 changes how docstrings are
   programmatically set.
@@ -386,15 +390,25 @@ def append_class_fun_doc(fn, doc_str):
     fn: Class function.
     doc_str: String
   """
-  # TODO(b/31100586): Figure out why appending accumulates rather than resets
-  # for each subclass.
   if sys.version_info.major < 3:
     if fn.__func__.__doc__ is None:
       fn.__func__.__doc__ = doc_str
-    # else:
-    #   fn.__func__.__doc__ += doc_str
   else:
     if fn.__doc__ is None:
       fn.__doc__ = doc_str
-    # else:
-    #   fn.__doc__ += doc_str
+
+
+class AppendDocstring(object):
+
+  def __init__(self, string):
+    self._string = string
+
+  def __call__(self, fn):
+    @functools.wraps(fn)
+    def _fn(*args, **kwargs):
+      return fn(*args, **kwargs)
+    if _fn.__doc__ is None:
+      _fn.__doc__ = self._string
+    else:
+      _fn.__doc__ += "\n%s" % self._string
+    return _fn

@@ -178,7 +178,6 @@ class DebugTensorDatum(object):
           the value of the debug_dump_rel_path should be
           "ns_1/node_a_0_DebugIdenity_1234456789".
     """
-
     base = os.path.basename(debug_dump_rel_path)
 
     # TODO(cais): Add hostname and pid to support dumps from distributed
@@ -188,9 +187,12 @@ class DebugTensorDatum(object):
     self._debug_op = base.split("_")[-2]
     self._output_slot = int(base.split("_")[-3])
 
+    namespace = os.path.dirname(debug_dump_rel_path)
     node_base_name = "_".join(base.split("_")[:-3])
-    self._node_name = os.path.dirname(
-        debug_dump_rel_path) + "/" + node_base_name
+    if not namespace or namespace == ".":
+      self._node_name = node_base_name
+    else:
+      self._node_name = namespace + "/" + node_base_name
 
     self._file_path = os.path.join(dump_root, debug_dump_rel_path)
 

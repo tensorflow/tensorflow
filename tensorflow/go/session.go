@@ -180,6 +180,9 @@ type SessionOptions struct {
 // deallocate by calling C.TF_DeleteSessionOptions().
 func (o *SessionOptions) c() *C.TF_SessionOptions {
 	opt := C.TF_NewSessionOptions()
+	if o == nil {
+		return opt
+	}
 	t := C.CString(o.Target)
 	C.TF_SetTarget(opt, t)
 	C.free(unsafe.Pointer(t))

@@ -30,6 +30,13 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
 
+_poisson_prob_note = """
+Note thet the input value must be a non-negative floating point tensor with
+dtype `dtype` and whose shape can be broadcast with `self.lam`. `x` is only
+legal if it is non-negative and its components are equal to integer values.
+"""
+
+
 class Poisson(distribution.Distribution):
   """Poisson distribution.
 
@@ -94,10 +101,12 @@ class Poisson(distribution.Distribution):
   def _get_event_shape(self):
     return tensor_shape.scalar()
 
+  @distribution_util.AppendDocstring(_poisson_prob_note)
   def _log_prob(self, x):
     x = self._assert_valid_sample(x, check_integer=True)
     return x * math_ops.log(self.lam) - self.lam - math_ops.lgamma(x + 1)
 
+  @distribution_util.AppendDocstring(_poisson_prob_note)
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))
 
@@ -117,6 +126,10 @@ class Poisson(distribution.Distribution):
   def _std(self):
     return math_ops.sqrt(self.variance())
 
+  @distribution_util.AppendDocstring(
+      """Note that when `lam` is an integer, there are actually two modes.
+      Namely, `lam` and `lam - 1` are both modes. Here we return
+      only the larger of the two modes.""")
   def _mode(self):
     return math_ops.floor(self.lam)
 
@@ -128,20 +141,3 @@ class Poisson(distribution.Distribution):
         dependencies += [distribution_util.assert_integer_form(
             x, message="x has non-integer components.")]
       return control_flow_ops.with_dependencies(dependencies, x)
-
-
-_prob_note = """
-
-    Note thet the input value must be a non-negative floating point tensor with
-    dtype `dtype` and whose shape can be broadcast with `self.lam`. `x` is only
-    legal if it is non-negative and its components are equal to integer values.
-"""
-distribution_util.append_class_fun_doc(Poisson.log_prob, doc_str=_prob_note)
-distribution_util.append_class_fun_doc(Poisson.prob, doc_str=_prob_note)
-
-distribution_util.append_class_fun_doc(Poisson.mode, doc_str="""
-
-    Note that when `lam` is an integer, there are actually two modes.
-    Namely, `lam` and `lam - 1` are both modes. Here we return
-    only the larger of the two modes.
-""")

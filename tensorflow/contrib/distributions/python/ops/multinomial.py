@@ -26,6 +26,21 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
 
+_multinomial_prob_note = """
+For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
+that after sampling `n` draws from this Multinomial distribution, the
+number of draws falling in class `j` is `n_j`.  Note that different
+sequences of draws can result in the same counts, thus the probability
+includes a combinatorial coefficient.
+
+Note that input "counts" must be a non-negative tensor with dtype `dtype`
+and whose shape can be broadcast with `self.p` and `self.n`.  For fixed
+leading dimensions, the last dimension represents counts for the
+corresponding Multinomial distribution in `self.p`. `counts` is only legal
+if it sums up to `n` and its components are equal to integer values.
+"""
+
+
 class Multinomial(distribution.Distribution):
   """Multinomial distribution.
 
@@ -188,6 +203,7 @@ class Multinomial(distribution.Distribution):
   def _get_event_shape(self):
     return self._mean_val.get_shape().with_rank_at_least(1)[-1:]
 
+  @distribution_util.AppendDocstring(_multinomial_prob_note)
   def _log_prob(self, counts):
     counts = self._assert_valid_sample(counts)
     log_unnormalized_prob = math_ops.reduce_sum(
@@ -196,6 +212,7 @@ class Multinomial(distribution.Distribution):
     log_normalizer = -distribution_util.log_combinations(self.n, counts)
     return log_unnormalized_prob - log_normalizer
 
+  @distribution_util.AppendDocstring(_multinomial_prob_note)
   def _prob(self, counts):
     return math_ops.exp(self._log_prob(counts))
 
@@ -222,20 +239,3 @@ class Multinomial(distribution.Distribution):
         distribution_util.assert_integer_form(
             counts, message="counts have non-integer components.")
     ], counts)
-
-_prob_note = """
-
-    For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
-    that after sampling `n` draws from this Multinomial distribution, the
-    number of draws falling in class `j` is `n_j`.  Note that different
-    sequences of draws can result in the same counts, thus the probability
-    includes a combinatorial coefficient.
-
-    Note that input "counts" must be a non-negative tensor with dtype `dtype`
-    and whose shape can be broadcast with `self.p` and `self.n`.  For fixed
-    leading dimensions, the last dimension represents counts for the
-    corresponding Multinomial distribution in `self.p`. `counts` is only legal
-    if it sums up to `n` and its components are equal to integer values.
-"""
-distribution_util.append_class_fun_doc(Multinomial.log_prob, doc_str=_prob_note)
-distribution_util.append_class_fun_doc(Multinomial.prob, doc_str=_prob_note)

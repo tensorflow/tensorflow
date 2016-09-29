@@ -82,7 +82,7 @@ In particular, `validate_args` and `allow_nan_stats` are determined for this
 
 *  <b>`TypeError`</b>: If `base_dist_cls` is not a subclass of
       `Distribution` or continuous.
-*  <b>`AttributeError`</b>: If the base distribution does not implement `cdf`.
+*  <b>`NotImplementedError`</b>: If the base distribution does not implement `cdf`.
 
 
 - - -
@@ -144,6 +144,24 @@ Given random variable `X`, the cumulative distribution function `cdf` is:
 ```
 cdf(x) := P[X <= x]
 ```
+
+
+Additional documentation from `QuantizedDistribution`:
+
+For whole numbers `y`,
+
+```
+cdf(y) := P[Y <= y]
+        = 1, if y >= upper_cutoff,
+        = 0, if y < lower_cutoff,
+        = P[X <= y], otherwise.
+```
+
+Since `Y` only has mass at whole numbers, `P[Y <= y] = P[Y <= floor(y)]`.
+This dictates that fractional `y` are first floored to a whole number, and
+then above definition applies.
+
+The base distribution's `cdf` method must be defined on `y - 1`.
 
 ##### Args:
 
@@ -247,6 +265,24 @@ Often, a numerical approximation can be used for `log_cdf(x)` that yields
 a more accurate answer than simply taking the logarithm of the `cdf` when
 `x << -1`.
 
+
+Additional documentation from `QuantizedDistribution`:
+
+For whole numbers `y`,
+
+```
+cdf(y) := P[Y <= y]
+        = 1, if y >= upper_cutoff,
+        = 0, if y < lower_cutoff,
+        = P[X <= y], otherwise.
+```
+
+Since `Y` only has mass at whole numbers, `P[Y <= y] = P[Y <= floor(y)]`.
+This dictates that fractional `y` are first floored to a whole number, and
+then above definition applies.
+
+The base distribution's `log_cdf` method must be defined on `y - 1`.
+
 ##### Args:
 
 
@@ -281,7 +317,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -305,7 +341,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -313,6 +349,24 @@ Log probability mass function.
 #### `tf.contrib.distributions.QuantizedDistribution.log_prob(value, name='log_prob')` {#QuantizedDistribution.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `QuantizedDistribution`:
+
+For whole numbers `y`,
+
+```
+P[Y = y] := P[X <= lower_cutoff],  if y == lower_cutoff,
+         := P[X > upper_cutoff - 1],  y == upper_cutoff,
+         := 0, if j < lower_cutoff or y > upper_cutoff,
+         := P[y - 1 < X <= y],  all other y.
+```
+
+
+The base distribution's `log_cdf` method must be defined on `y - 1`.  If the
+base distribution has a `log_survival_function` method results will be more
+accurate for large values of `y`, and in this case the `log_survival_function`
+must also be defined on `y - 1`.
 
 ##### Args:
 
@@ -343,6 +397,24 @@ log_survival_function(x) = Log[ P[X > x] ]
 
 Typically, different numerical approximations can be used for the log
 survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+
+Additional documentation from `QuantizedDistribution`:
+
+For whole numbers `y`,
+
+```
+survival_function(y) := P[Y > y]
+                      = 0, if y >= upper_cutoff,
+                      = 1, if y < lower_cutoff,
+                      = P[X <= y], otherwise.
+```
+
+Since `Y` only has mass at whole numbers, `P[Y <= y] = P[Y <= floor(y)]`.
+This dictates that fractional `y` are first floored to a whole number, and
+then above definition applies.
+
+The base distribution's `log_cdf` method must be defined on `y - 1`.
 
 ##### Args:
 
@@ -447,7 +519,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -471,7 +543,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -479,6 +551,24 @@ Probability mass function.
 #### `tf.contrib.distributions.QuantizedDistribution.prob(value, name='prob')` {#QuantizedDistribution.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `QuantizedDistribution`:
+
+For whole numbers `y`,
+
+```
+P[Y = y] := P[X <= lower_cutoff],  if y == lower_cutoff,
+         := P[X > upper_cutoff - 1],  y == upper_cutoff,
+         := 0, if j < lower_cutoff or y > upper_cutoff,
+         := P[y - 1 < X <= y],  all other y.
+```
+
+
+The base distribution's `cdf` method must be defined on `y - 1`.  If the
+base distribution has a `survival_function` method, results will be more
+accurate for large values of `y`, and in this case the `survival_function` must
+also be defined on `y - 1`.
 
 ##### Args:
 
@@ -560,6 +650,24 @@ survival_function(x) = P[X > x]
                      = 1 - P[X <= x]
                      = 1 - cdf(x).
 ```
+
+
+Additional documentation from `QuantizedDistribution`:
+
+For whole numbers `y`,
+
+```
+survival_function(y) := P[Y > y]
+                      = 0, if y >= upper_cutoff,
+                      = 1, if y < lower_cutoff,
+                      = P[X <= y], otherwise.
+```
+
+Since `Y` only has mass at whole numbers, `P[Y <= y] = P[Y <= floor(y)]`.
+This dictates that fractional `y` are first floored to a whole number, and
+then above definition applies.
+
+The base distribution's `cdf` method must be defined on `y - 1`.
 
 ##### Args:
 

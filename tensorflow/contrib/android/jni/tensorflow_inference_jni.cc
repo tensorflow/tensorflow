@@ -205,7 +205,6 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(runInference)(
 }
 
 JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
-  mutex_lock l(mutex_);
   SessionVariables* vars = GetSessionVars(env, thiz);
 
   tensorflow::Status s = vars->session->Close();
@@ -213,6 +212,7 @@ JNIEXPORT jint JNICALL TENSORFLOW_METHOD(close)(JNIEnv* env, jobject thiz) {
     LOG(ERROR) << "Error closing session: " << s;
   }
 
+  mutex_lock l(mutex_);
   std::map<int64, SessionVariables*>& sessions = *GetSessionsSingleton();
   sessions.erase(vars->id);
   delete vars;

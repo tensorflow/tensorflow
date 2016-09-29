@@ -216,7 +216,7 @@ export interface ColumnStats {
   name: string;
   isNumeric: boolean;
   tooManyUniqueValues: boolean;
-  uniqueValues?: string[];
+  uniqueEntries?: {label: string, count: number}[];
   min: number;
   max: number;
 }
@@ -251,13 +251,13 @@ function parseAndMergeMetadata(
         max: Number.NEGATIVE_INFINITY
       };
     });
-    let setOfValues = columnNames.map(() => d3.set());
+    let mapOfValues = columnNames.map(() => d3.map<number>());
     lines.forEach((line: string, i: number) => {
       let rowValues = line.split('\t');
       data[i].metadata = {};
       columnNames.forEach((name: string, colIndex: number) => {
         let value = rowValues[colIndex];
-        let set = setOfValues[colIndex];
+        let map = mapOfValues[colIndex];
         let stats = columnStats[colIndex];
         // Normalize missing values.
         value = (value === '' ? null : value);
@@ -270,8 +270,12 @@ function parseAndMergeMetadata(
 
         // Update stats.
         if (!stats.tooManyUniqueValues) {
-          set.add(value);
-          if (set.size() > NUM_COLORS_COLOR_MAP) {
+          if (map.has(value)) {
+            map.set(value, map.get(value) + 1);
+          } else {
+            map.set(value, 1);
+          }
+          if (map.size() > NUM_COLORS_COLOR_MAP) {
             stats.tooManyUniqueValues = true;
           }
         }
@@ -286,9 +290,11 @@ function parseAndMergeMetadata(
       });
     });
     columnStats.forEach((stats, colIndex) => {
-      let set = setOfValues[colIndex];
+      let map = mapOfValues[colIndex];
       if (!stats.tooManyUniqueValues) {
-        stats.uniqueValues = set.values();
+        stats.uniqueEntries = map.entries().map(e => {
+          return {label: e.key, count: e.value};
+        });
       }
     });
     return columnStats;
