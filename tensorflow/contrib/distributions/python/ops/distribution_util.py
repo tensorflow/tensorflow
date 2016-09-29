@@ -52,18 +52,19 @@ def assert_close(
   x = ops.convert_to_tensor(x, name="x")
   y = ops.convert_to_tensor(y, name="y")
 
+  if data is None:
+    data = [
+        message,
+        "Condition x ~= y did not hold element-wise: x = ", x.name, x, "y = ",
+        y.name, y
+    ]
+
   if x.dtype.is_integer:
     return check_ops.assert_equal(
         x, y, data=data, summarize=summarize, message=message, name=name)
 
   with ops.name_scope(name, "assert_close", [x, y, data]):
-    tol = np.finfo(x.dtype.as_numpy_dtype).resolution
-    if data is None:
-      data = [
-          message,
-          "Condition x ~= y did not hold element-wise: x = ", x.name, x, "y = ",
-          y.name, y
-      ]
+    tol = np.finfo(x.dtype.as_numpy_dtype).eps
     condition = math_ops.reduce_all(math_ops.less_equal(math_ops.abs(x-y), tol))
     return control_flow_ops.Assert(
         condition, data, summarize=summarize)
@@ -179,6 +180,8 @@ def log_combinations(n, counts, name="log_combinations"):
   # The sum should be along the last dimension of counts.  This is the
   # "distribution" dimension. Here n a priori represents the sum of counts.
   with ops.name_scope(name, values=[n, counts]):
+    n = array_ops.identity(n, name="n")
+    counts = array_ops.identity(counts, name="counts")
     total_permutations = math_ops.lgamma(n + 1)
     counts_factorial = math_ops.lgamma(counts + 1)
     redundant_permutations = math_ops.reduce_sum(counts_factorial,
