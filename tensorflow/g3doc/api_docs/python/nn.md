@@ -309,6 +309,102 @@ concatenated.
 
 - - -
 
+### `tf.nn.convolution(input, filter, padding, strides=None, dilation_rate=None, name=None)` {#convolution}
+
+Computes sums of N-D convolutions (actually cross-correlation).
+
+This also supports either output striding via the optional `strides` parameter
+or atrous convolution (also known as convolution with holes or dilated
+convolution, based on the French word "trous" meaning holes in English) via
+the optional `dilation_rate` parameter.  Currently, however, output striding
+is not supported for atrous convolutions.
+
+Specifically, given rank (N+2) `input` Tensor of shape
+
+  [num_batches,
+   input_spatial_shape[0],
+   ...,
+   input_spatial_shape[N-1],
+   num_input_channels],
+
+a rank (N+2) `filter` Tensor of shape
+
+  [spatial_filter_shape[0],
+   ...,
+   spatial_filter_shape[N-1],
+   num_input_channels,
+   num_output_channels],
+
+an optional `dilation_rate` tensor of shape [N] (defaulting to [1]*N)
+specifying the filter upsampling/input downsampling rate, and an optional list
+of N `strides` (defaulting [1]*N), this computes for each N-D spatial output
+position (x[0], ..., x[N-1]):
+
+  output[b, x[0], ..., x[N-1], k] =
+
+      sum_{z[0], ..., z[N-1], q}
+
+          filters[z[0], ..., z[N-1], q, k] *
+          padded_input[b,
+                       x[0]*strides[0] + dilation_rate[0]*z[0],
+                       ...,
+                       x[N-1]*strides[N-1] + dilation_rate[N-1]*z[N-1],
+                       q],
+
+where `padded_input` is obtained by zero padding the input using an effective
+spatial filter shape of `(spatial_filter_shape-1) * dilation_rate + 1` and
+output striding `strides` as described in the
+[comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution).
+
+It is required that 1 <= N <= 3.
+
+##### Args:
+
+
+*  <b>`input`</b>: An N-D `Tensor` of type `T`, of shape
+    `[batch_size] + input_spatial_shape + [in_channels]`.
+*  <b>`filter`</b>: An N-D `Tensor` with the same type as `input` and shape
+    `spatial_filter_shape + [in_channels, out_channels]`.
+*  <b>`padding`</b>: A string, either `"VALID"` or `"SAME"`. The padding algorithm.
+*  <b>`strides`</b>: Optional.  Sequence of N ints >= 1.  Specifies the output stride.
+    Defaults to [1]*N.  If any value of strides is > 1, then all values of
+    dilation_rate must be 1.
+*  <b>`dilation_rate`</b>: Optional.  Sequence of N ints >= 1.  Specifies the filter
+    upsampling/input downsampling rate.  In the literature, the same parameter
+    is sometimes called `input stride` or `dilation`.  The effective filter
+    size used for the convolution will be `spatial_filter_shape +
+    (spatial_filter_shape - 1) * (rate - 1)`, obtained by inserting
+    (dilation_rate[i]-1) zeros between consecutive elements of the original
+    filter in each spatial dimension i.  If any value of dilation_rate is > 1,
+    then all values of strides must be 1.
+*  <b>`name`</b>: Optional name for the returned tensor.
+
+##### Returns:
+
+  A `Tensor` with the same type as `value` of shape
+
+      `[batch_size] + output_spatial_shape + [out_channels]`,
+
+  where `output_spatial_shape` depends on the value of `padding`.
+
+  If padding == "SAME":
+    output_spatial_shape[i] = ceil(input_spatial_shape[i] / strides[i])
+
+  If padding == "VALID":
+    output_spatial_shape[i] =
+      ceil((input_spatial_shape[i] -
+            (spatial_filter_shape[i]-1) * dilation_rate[i])
+           / strides[i]).
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If input/output depth does not match `filter` shape, or if
+    padding is other than `"VALID"` or `"SAME"`.
+
+
+- - -
+
 ### `tf.nn.conv2d(input, filter, strides, padding, use_cudnn_on_gpu=None, data_format=None, name=None)` {#conv2d}
 
 Computes a 2-D convolution given 4-D `input` and `filter` tensors.
@@ -1009,6 +1105,67 @@ For more details on fractional max pooling, see this paper:
 *  <b>`output`</b>: A `Tensor`. Has the same type as `value`. output tensor after fractional max pooling.
 *  <b>`row_pooling_sequence`</b>: A `Tensor` of type `int64`. row pooling sequence, needed to calculate gradient.
 *  <b>`col_pooling_sequence`</b>: A `Tensor` of type `int64`. column pooling sequence, needed to calculate gradient.
+
+
+- - -
+
+### `tf.nn.pool(input, window_shape, pooling_type, padding, dilation_rate=None, strides=None, name=None)` {#pool}
+
+Performs an N-D pooling operation.
+
+Computes for
+    0 <= b < batch_size,
+    0 <= x[i] < output_spatial_shape[i],
+    0 <= c < num_channels:
+
+  output[b, x[0], ..., x[N-1], c] =
+    REDUCE_{z[0], ..., z[N-1]}
+      input[b,
+            x[0] * strides[0] - pad_before[0] + dilation_rate[0]*z[0],
+            ...
+            x[N-1]*strides[N-1] - pad_before[N-1] + dilation_rate[N-1]*z[N-1],
+            c],
+
+where the reduction function REDUCE depends on the value of `pooling_type`,
+and pad_before is defined based on the value of `padding` as described in the
+[comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution).
+The reduction never includes out-of-bounds positions.
+
+##### Args:
+
+
+*  <b>`input`</b>: Tensor of rank N+2, of shape
+    [batch_size] + input_spatial_shape + [num_channels].
+    Pooling happens over the spatial dimensions only.
+*  <b>`window_shape`</b>: Sequence of N ints >= 1.
+*  <b>`pooling_type`</b>: Specifies pooling operation, must be "AVG" or "MAX".
+*  <b>`padding`</b>: The padding algorithm, must be "SAME" or "VALID".
+    See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+*  <b>`dilation_rate`</b>: Optional.  Dilation rate.  List of N ints >= 1.
+    Defaults to [1]*N.  If any value of dilation_rate is > 1, then all values
+    of strides must be 1.
+*  <b>`strides`</b>: Optional.  Sequence of N ints >= 1.  Defaults to [1]*N.
+    If any value of strides is > 1, then all values of dilation_rate must be
+    1.
+*  <b>`name`</b>: Optional. Name of the op.
+
+##### Returns:
+
+  Tensor of rank N+2, of shape
+    [batch_size] + output_spatial_shape + [num_channels],
+  where `output_spatial_shape` depends on the value of padding:
+
+  If padding = "SAME":
+    output_spatial_shape[i] = ceil(input_spatial_shape[i] / strides[i])
+  If padding = "VALID":
+    output_spatial_shape[i] =
+      ceil((input_spatial_shape[i] - (window_shape[i] - 1) * dilation_rate[i])
+           / strides[i]).
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if arguments are invalid.
 
 
 

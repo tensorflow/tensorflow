@@ -15473,7 +15473,7 @@ will broadcast in the case of multidimensional sets of parameters.
 
 - - -
 
-### `tf.contrib.distributions.normal_congugates_known_sigma_predictive(prior, sigma, s, n)` {#normal_congugates_known_sigma_predictive}
+### `tf.contrib.distributions.normal_conjugates_known_sigma_predictive(prior, sigma, s, n)` {#normal_conjugates_known_sigma_predictive}
 
 Posterior predictive Normal distribution w. conjugate prior on the mean.
 

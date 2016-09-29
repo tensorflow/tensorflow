@@ -34,7 +34,7 @@ Execute the transformation.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if the argumens are invalid.
+*  <b>`ValueError`</b>: if the arguments are invalid.
 
 
 - - -
@@ -57,7 +57,7 @@ transform_external_hidden_input_handler: handle the transform of the
   in sgv.inputs. This handler defaults to a transform which keep the same
   input if the source and destination graphs are the same, otherwise
   use placeholders.
-transform_original_op_hanlder: handle the transform of original_op. This
+transform_original_op_handler: handle the transform of original_op. This
   handler defaults to transforming original_op only if they are in the
   subgraph, otherwise they are ignored.
 

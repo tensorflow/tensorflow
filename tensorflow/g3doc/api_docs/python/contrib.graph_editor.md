@@ -1887,7 +1887,7 @@ Execute the transformation.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if the argumens are invalid.
+*  <b>`ValueError`</b>: if the arguments are invalid.
 
 
 - - -
@@ -1910,7 +1910,7 @@ transform_external_hidden_input_handler: handle the transform of the
   in sgv.inputs. This handler defaults to a transform which keep the same
   input if the source and destination graphs are the same, otherwise
   use placeholders.
-transform_original_op_hanlder: handle the transform of original_op. This
+transform_original_op_handler: handle the transform of original_op. This
   handler defaults to transforming original_op only if they are in the
   subgraph, otherwise they are ignored.
 
@@ -2021,7 +2021,7 @@ Create a new graph which compute the targets from the replaced Tensors.
 ##### Args:
 
 
-*  <b>`target_ts`</b>: a single tf.Tensor or an iterabble of tf.Tensor.
+*  <b>`target_ts`</b>: a single tf.Tensor or an iterable of tf.Tensor.
 *  <b>`replacement_ts`</b>: dictionary mapping from original tensors to replaced tensors
 *  <b>`dst_scope`</b>: the destination scope.
 *  <b>`src_scope`</b>: the source scope.
