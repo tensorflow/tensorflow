@@ -1299,23 +1299,35 @@ def reduce_logsumexp(input_tensor, reduction_indices=None, keep_dims=False,
 def trace(x, name=None):
   """ Compute the trace of a tensor `x`.
 
-  `trace(x)` returns the sum of along the diagonal.
+  `trace(x)` returns the sum along the main diagonal of each inner-most matrix
+  in x. If x is of rank `k` with shape `[I, J, K, ..., L, M, N]`, then output
+  is a tensor of rank `k-2` with dimensions `[I, J, K, ..., L]` where
+
+  `output[i, j, k, ..., l] = trace(x[i, j, i, ..., l, :, :])`
 
   For example:
 
   ```python
-  # 'x' is [[1, 1],
-  #         [1, 1]]
-  tf.trace(x) ==> 2
+  # 'x' is [[1, 2],
+  #         [3, 4]]
+  tf.trace(x) ==> 5
 
   # 'x' is [[1,2,3],
   #         [4,5,6],
   #         [7,8,9]]
   tf.trace(x) ==> 15
+
+  # 'x' is [[[1,2,3],
+  #          [4,5,6],
+  #          [7,8,9]],
+  #         [[-1,-2,-3],
+  #          [-4,-5,-6],
+  #          [-7,-8,-9]]]
+  tf.trace(x) ==> [15,-15]
   ```
 
   Args:
-    x: 2-D tensor.
+    x: tensor.
     name: A name for the operation (optional).
 
   Returns:
@@ -1323,10 +1335,7 @@ def trace(x, name=None):
   """
   with ops.name_scope(name, "Trace", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    if len(x.get_shape()) != 2:
-      raise ValueError("Expected a tensor with rank 2, rank %d tensor received"
-                       % len(x.get_shape()))
-    return reduce_sum(array_ops.diag_part(x), name=name)
+    return reduce_sum(array_ops.matrix_diag_part(x), [-1], name=name)
 
 
 def matmul(a, b,
