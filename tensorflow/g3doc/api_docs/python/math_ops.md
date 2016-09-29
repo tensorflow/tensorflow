@@ -1040,25 +1040,37 @@ tf.diag_part(input) ==> [1, 2, 3, 4]
 
 Compute the trace of a tensor `x`.
 
-`trace(x)` returns the sum of along the diagonal.
+`trace(x)` returns the sum along the main diagonal of each inner-most matrix
+in x. If x is of rank `k` with shape `[I, J, K, ..., L, M, N]`, then output
+is a tensor of rank `k-2` with dimensions `[I, J, K, ..., L]` where
+
+`output[i, j, k, ..., l] = trace(x[i, j, i, ..., l, :, :])`
 
 For example:
 
 ```python
-# 'x' is [[1, 1],
-#         [1, 1]]
-tf.trace(x) ==> 2
+# 'x' is [[1, 2],
+#         [3, 4]]
+tf.trace(x) ==> 5
 
 # 'x' is [[1,2,3],
 #         [4,5,6],
 #         [7,8,9]]
 tf.trace(x) ==> 15
+
+# 'x' is [[[1,2,3],
+#          [4,5,6],
+#          [7,8,9]],
+#         [[-1,-2,-3],
+#          [-4,-5,-6],
+#          [-7,-8,-9]]]
+tf.trace(x) ==> [15,-15]
 ```
 
 ##### Args:
 
 
-*  <b>`x`</b>: 2-D tensor.
+*  <b>`x`</b>: tensor.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1173,8 +1185,8 @@ Returns the batched diagonal part of a batched tensor.
 This operation returns a tensor with the `diagonal` part
 of the batched `input`. The `diagonal` part is computed as follows:
 
-Assume `input` has `k` dimensions `[I, J, K, ..., N, N]`, then the output is a
-tensor of rank `k - 1` with dimensions `[I, J, K, ..., N]` where:
+Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
+tensor of rank `k - 1` with dimensions `[I, J, K, ..., min(M, N)]` where:
 
 `diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.
 
@@ -1202,15 +1214,14 @@ which has shape (2, 4)
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`.
-    Rank `k` tensor where `k >= 2` and the last two dimensions are equal.
+*  <b>`input`</b>: A `Tensor`. Rank `k` tensor where `k >= 2`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor`. Has the same type as `input`.
   The extracted diagonal(s) having shape
-  `diagonal.shape = input.shape[:-1]`.
+  `diagonal.shape = input.shape[:-2] + [min(input.shape[-2:])]`.
 
 
 - - -
@@ -1227,9 +1238,10 @@ tensor with the same shape where
 
 `band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.
 
-The indicator function 'in_band(m, n)` is one if
-`(num_lower < 0 || (m-n) <= num_lower)) &&
-(num_upper < 0 || (n-m) <= num_upper)`, and zero otherwise.
+The indicator function
+
+`in_band(m, n) = (num_lower < 0 || (m-n) <= num_lower)) &&
+                 (num_upper < 0 || (n-m) <= num_upper)`.
 
 For example:
 
@@ -1240,14 +1252,14 @@ For example:
                  [-3, -2, -1, 0]],
 
 tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
-                                             [-1,  0,  1, 2]
-                                             [ 0, -1,  0, 1]
-                                             [ 0,  0, -1, 0]],
+                                       [-1,  0,  1, 2]
+                                       [ 0, -1,  0, 1]
+                                       [ 0,  0, -1, 0]],
 
 tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
-                                            [-1,  0,  1, 0]
-                                            [-2, -1,  0, 1]
-                                            [ 0, -2, -1, 0]]
+                                      [-1,  0,  1, 0]
+                                      [-2, -1,  0, 1]
+                                      [ 0, -2, -1, 0]]
 ```
 
 Useful special cases:
@@ -1283,15 +1295,14 @@ Useful special cases:
 Returns a batched matrix tensor with new batched diagonal values.
 
 Given `input` and `diagonal`, this operation returns a tensor with the
-same shape and values as `input`, except for the diagonals of the innermost
-matrices.  These will be overwritten by the values in `diagonal`.
-The batched matrices must be square.
+same shape and values as `input`, except for the main diagonal of the
+innermost matrices.  These will be overwritten by the values in `diagonal`.
 
 The output is computed as follows:
 
-Assume `input` has `k+1` dimensions `[I, J, K, ..., N, N]` and `diagonal` has
-`k` dimensions `[I, J, K, ..., N]`.  Then the output is a
-tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+Assume `input` has `k+1` dimensions `[I, J, K, ..., M, N]` and `diagonal` has
+`k` dimensions `[I, J, K, ..., min(M, N)]`.  Then the output is a
+tensor of rank `k+1` with dimensions `[I, J, K, ..., M, N]` where:
 
   * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
   * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
