@@ -29,6 +29,8 @@ RUN pip --no-cache-dir install \
         matplotlib \
         numpy \
         scipy \
+        scikit-learn \
+        pyreadline \
         && \
     python -m ipykernel.kernelspec
 
