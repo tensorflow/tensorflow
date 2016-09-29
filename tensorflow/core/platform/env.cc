@@ -372,10 +372,7 @@ Status WriteBinaryProto(Env* env, const string& fname,
 Status ReadBinaryProto(Env* env, const string& fname,
                        ::tensorflow::protobuf::MessageLite* proto) {
   std::unique_ptr<RandomAccessFile> file;
-  auto s = env->NewRandomAccessFile(fname, &file);
-  if (!s.ok()) {
-    return s;
-  }
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
   std::unique_ptr<FileStream> stream(new FileStream(file.get()));
 
   // TODO(jiayq): the following coded stream is for debugging purposes to allow
@@ -388,12 +385,23 @@ Status ReadBinaryProto(Env* env, const string& fname,
   coded_stream.SetTotalBytesLimit(1024LL << 20, 512LL << 20);
 
   if (!proto->ParseFromCodedStream(&coded_stream)) {
-    s = stream->status();
-    if (s.ok()) {
-      s = Status(error::DATA_LOSS, "Parse error");
-    }
+    TF_RETURN_IF_ERROR(stream->status());
+    return errors::DataLoss("Can't parse ", fname, " as binary proto");
   }
-  return s;
+  return Status::OK();
+}
+
+Status ReadTextProto(Env* env, const string& fname,
+                     ::tensorflow::protobuf::Message* proto) {
+  std::unique_ptr<RandomAccessFile> file;
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
+  std::unique_ptr<FileStream> stream(new FileStream(file.get()));
+
+  if (!::tensorflow::protobuf::TextFormat::Parse(stream.get(), proto)) {
+    TF_RETURN_IF_ERROR(stream->status());
+    return errors::DataLoss("Can't parse ", fname, " as text proto");
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorflow
