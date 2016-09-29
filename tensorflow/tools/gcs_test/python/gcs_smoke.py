@@ -107,6 +107,6 @@ if __name__ == "__main__":
         print("FAIL: Failed to catch the expected OutOfRangeError while "
               "reading one more record than is available")
         sys.exit(1)
-      except tf.python.framework.errors.OutOfRangeError:
+      except tf.errors.OutOfRangeError:
         print("Successfully caught the expected OutOfRangeError while "
               "reading one more record than is available")
