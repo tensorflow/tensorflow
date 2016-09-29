@@ -57,11 +57,14 @@ cuda_py_tests(
 tf_custom_op_library(
     name = "python/ops/_lstm_ops.so",
     srcs = [
+        "kernels/blas_gemm.cc",
+        "kernels/blas_gemm.h",
         "kernels/lstm_ops.cc",
         "kernels/lstm_ops.h",
         "ops/lstm_ops.cc",
     ],
     gpu_srcs = [
+        "kernels/blas_gemm.h",
         "kernels/lstm_ops_gpu.cu.cc",
         "kernels/lstm_ops.h",
     ],
@@ -73,11 +76,14 @@ tf_custom_op_library(
 tf_custom_op_library(
     name = "python/ops/_gru_ops.so",
     srcs = [
+        "kernels/blas_gemm.cc",
+        "kernels/blas_gemm.h",
         "kernels/gru_ops.cc",
         "kernels/gru_ops.h",
         "ops/gru_ops.cc",
     ],
     gpu_srcs = [
+        "kernels/blas_gemm.h",
         "kernels/gru_ops_gpu.cu.cc",
         "kernels/gru_ops.h",
     ],
