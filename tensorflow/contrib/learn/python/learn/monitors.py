@@ -18,28 +18,32 @@
 Monitors are useful to track training, report progress, request early
 stopping and more. Monitors use the observer pattern and notify at the following
 points:
- - when training begins
- - before a training step
- - after a training step
- - when training ends
+
+ * when training begins
+ * before a training step
+ * after a training step
+ * when training ends
 
 Monitors are not intended to be reusable.
 
 There are a few pre-defined monitors:
- - CaptureVariable: saves a variable's values
- - GraphDump: intended for debug only - saves all tensor values
- - PrintTensor: outputs one or more tensor values to log
- - SummarySaver: saves summaries to a summary writer
- - ValidationMonitor: runs model validation, by periodically calculating eval
+
+ * CaptureVariable: saves a variable's values
+ * GraphDump: intended for debug only - saves all tensor values
+ * PrintTensor: outputs one or more tensor values to log
+ * SummarySaver: saves summaries to a summary writer
+ * ValidationMonitor: runs model validation, by periodically calculating eval
      metrics on a separate data set; supports optional early stopping
 
 For more specific needs, you can create custom monitors by extending one of the
 following classes:
- - BaseMonitor: the base class for all monitors
- - EveryN: triggers a callback every N training steps
+
+ * BaseMonitor: the base class for all monitors
+ * EveryN: triggers a callback every N training steps
 
 Example:
 
+```python
   class ExampleMonitor(monitors.BaseMonitor):
     def __init__(self):
       print 'Init'
@@ -62,6 +66,7 @@ Example:
   example_monitor = ExampleMonitor()
   linear_regressor.fit(
     x, y, steps=2, batch_size=1, monitors=[example_monitor])
+```
 
 @@get_default_monitors
 @@BaseMonitor

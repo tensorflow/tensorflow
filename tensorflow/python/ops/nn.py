@@ -579,8 +579,10 @@ def zero_fraction(value, name=None):
 
   This is useful in summaries to measure and report sparsity.  For example,
 
+  ```python
       z = tf.Relu(...)
       summ = tf.scalar_summary('sparsity', tf.nn.zero_fraction(z))
+  ```
 
   Args:
     value: A tensor of numeric type.

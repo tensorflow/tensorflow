@@ -634,6 +634,7 @@ height of the underlying image.
 
 For example,
 
+```python
     # Generate a single distorted bounding box.
     begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
         tf.shape(image),
@@ -646,6 +647,7 @@ For example,
 
     # Employ the bounding box to distort the image.
     distorted_image = tf.slice(image, begin, size)
+```
 
 Note that if no bounding box information is available, setting
 `use_image_if_no_bounding_boxes = true` will assume there is a single implicit

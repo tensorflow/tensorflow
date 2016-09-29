@@ -220,7 +220,7 @@ class DType(object):
 
     The conversion rules are as follows:
 
-    ```
+    ```python
     DType(T)       .is_compatible_with(DType(T))        == True
     DType(T)       .is_compatible_with(DType(T).as_ref) == True
     DType(T).as_ref.is_compatible_with(DType(T))        == False

@@ -962,7 +962,7 @@ def range(start, limit=None, delta=1, name="range"):
 
   For example:
 
-  ```
+  ```python
   # 'start' is 3
   # 'limit' is 18
   # 'delta' is 3

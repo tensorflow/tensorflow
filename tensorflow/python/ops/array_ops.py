@@ -276,7 +276,7 @@ def _SliceHelper(tensor, slice_spec, var=None):
 
   Some useful examples:
 
-  ```
+  ```python
   # strip leading and trailing 2 elements
   foo = tf.constant([1,2,3,4,5,6])
   print(foo[2:-2].eval()) # => [3,4]
@@ -407,7 +407,7 @@ def slice(input_, begin, size, name=None):
 
   For example:
 
-  ```
+  ```python
   # 'input' is [[[1, 1, 1], [2, 2, 2]],
   #             [[3, 3, 3], [4, 4, 4]],
   #             [[5, 5, 5], [6, 6, 6]]]
@@ -496,7 +496,7 @@ def strided_slice(input_,
   `strides` entries must be non-zero.
 
 
-  ```
+  ```python
   # 'input' is [[[1, 1, 1], [2, 2, 2]],
   #             [[3, 3, 3], [4, 4, 4]],
   #             [[5, 5, 5], [6, 6, 6]]]
@@ -2095,7 +2095,7 @@ def one_hot(indices, depth, on_value=None, off_value=None,
 
   Suppose that
 
-  ```
+  ```python
     indices = [0, 2, -1, 1]
     depth = 3
     on_value = 5.0
@@ -2105,7 +2105,7 @@ def one_hot(indices, depth, on_value=None, off_value=None,
 
   Then output is `[4 x 3]`:
 
-  ```
+  ```python
     output =
     [5.0 0.0 0.0]  // one_hot(0)
     [0.0 0.0 5.0]  // one_hot(2)
@@ -2115,7 +2115,7 @@ def one_hot(indices, depth, on_value=None, off_value=None,
 
   Suppose that
 
-  ```
+  ```python
     indices = [[0, 2], [1, -1]]
     depth = 3
     on_value = 1.0
@@ -2125,7 +2125,7 @@ def one_hot(indices, depth, on_value=None, off_value=None,
 
   Then output is `[2 x 2 x 3]`:
 
-  ```
+  ```python
     output =
     [
       [1.0, 0.0, 0.0]  // one_hot(0)
@@ -2138,14 +2138,14 @@ def one_hot(indices, depth, on_value=None, off_value=None,
 
   Using default values for `on_value` and `off_value`:
 
-  ```
+  ```python
     indices = [0, 1, 2]
     depth = 3
   ```
 
   The output will be
 
-  ```
+  ```python
     output =
     [[1., 0., 0.],
      [0., 1., 0.],
