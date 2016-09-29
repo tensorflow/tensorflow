@@ -208,9 +208,9 @@ def variable(name, shape=None, dtype=None, initializer=None,
         applying it on a newly created variable will be added to the collection
         GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
     trainable: If `True` also add the variable to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     collections: A list of collection names to which the Variable will be added.
-      If None it would default to tf.GraphKeys.VARIABLES.
+      If None it would default to `tf.GraphKeys.VARIABLES`.
     caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.
@@ -248,7 +248,7 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
         applying it on a newly created variable will be added to the collection
         GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
     trainable: If `True` also add the variable to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     collections: A list of collection names to which the Variable will be added.
       Note that the variable is always also added to the `GraphKeys.VARIABLES`
       and `GraphKeys.MODEL_VARIABLES` collections.
@@ -285,7 +285,8 @@ def get_variables(scope=None, suffix=None, collection=ops.GraphKeys.VARIABLES):
   Args:
     scope: an optional scope for filtering the variables to return.
     suffix: an optional suffix for filtering the variables to return.
-    collection: in which collection search for. Defaults to GraphKeys.VARIABLES.
+    collection: in which collection search for. Defaults to
+      `GraphKeys.VARIABLES`.
 
   Returns:
     a list of variables in collection with scope and suffix.

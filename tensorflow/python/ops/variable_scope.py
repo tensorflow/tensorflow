@@ -234,13 +234,13 @@ class _VariableStore(object):
         GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
       reuse: a Boolean or `None`. Controls reuse or creation of variables.
       trainable: If `True` also add the variable to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-      collections: List of graph collections keys to add the Variable to.
-        Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
+        `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+      collections: List of graph collections keys to add the `Variable` to.
+        Defaults to `[GraphKeys.VARIABLES]` (see `tf.Variable`).
       caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.  If not `None`, caches on another device.  Typical use is to
-        cache on the device where the Ops using the Variable reside, to
+        cache on the device where the Ops using the `Variable` reside, to
         deduplicate copying through `Switch` and other conditional statements.
       partitioner: Optional callable that accepts a fully defined `TensorShape`
         and dtype of the `Variable` to be created, and returns a list of
@@ -392,9 +392,9 @@ class _VariableStore(object):
         GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
       reuse: a Boolean or `None`. Controls reuse or creation of variables.
       trainable: If `True` also add the variable to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+        `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
       collections: List of graph collections keys to add the Variable to.
-        Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
+        Defaults to `[GraphKeys.VARIABLES]` (see `tf.Variable`).
       caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.  If not `None`, caches on another device.  Typical use is to
@@ -979,9 +979,9 @@ def get_variable(name,
       applying it on a newly created variable will be added to the collection
       GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
     trainable: If `True` also add the variable to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     collections: List of graph collections keys to add the Variable to.
-      Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
+      Defaults to `[GraphKeys.VARIABLES]` (see `tf.Variable`).
     caching_device: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
       device.  If not `None`, caches on another device.  Typical use is to
@@ -1083,9 +1083,9 @@ def _get_partitioned_variable(name,
       applying it on a newly created variable will be added to the collection
       GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
     trainable: If `True` also add the variable to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     collections: List of graph collections keys to add the Variable to.
-      Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
+      Defaults to `[GraphKeys.VARIABLES]` (see `tf.Variable`).
     caching_device: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
       device.  If not `None`, caches on another device.  Typical use is to

@@ -89,7 +89,7 @@ def assign_renamed_collections_handler(info, elem, elem_):
 
   Args:
     info: Transform._Info instance.
-    elem: the original element (tf.Tensor or tf.Operation)
+    elem: the original element (`tf.Tensor` or `tf.Operation`)
     elem_: the transformed element
   """
   # TODO(fkp): handle known special cases
@@ -128,11 +128,11 @@ def transform_op_if_inside_handler(info, op, keep_if_possible=True):
 
 
 def copy_op_handler(info, op, copy_shape=True):
-  """Copy a tf.Operation.
+  """Copy a `tf.Operation`.
 
   Args:
     info: Transform._Info instance.
-    op: the tf.Operation to be copied.
+    op: the `tf.Operation` to be copied.
     copy_shape: also copy the shape of the tensor
   Returns:
     A copy of op.
@@ -367,7 +367,7 @@ class Transformer(object):
     """Transformer constructor.
 
     The following members can be modified:
-    transform_op_handler: handle the transformation of a tf.Operation.
+    transform_op_handler: handle the transformation of a `tf.Operation`.
       This handler defaults to a simple copy.
     assign_collections_handler: handle the assignment of collections.
       This handler defaults to assigning new collections created under the
@@ -605,7 +605,7 @@ def copy(sgv, dst_graph=None, dst_scope="", src_scope="",
       information about the transform, including mapping between
       original and transformed tensors and operations.
   Raises:
-    TypeError: if dst_graph is not a tf.Graph.
+    TypeError: if `dst_graph` is not a `tf.Graph`.
     StandardError: if sgv cannot be converted to a SubGraphView using
       the same rules than the function subgraph.make_view.
   """

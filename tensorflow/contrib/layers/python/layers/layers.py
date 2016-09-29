@@ -134,8 +134,8 @@ def batch_norm(inputs,
   Can be used as a normalizer function for conv2d and fully_connected.
 
   Note: When is_training is True the moving_mean and moving_variance need to be
-  updated, by default the update_ops are placed in tf.GraphKeys.UPDATE_OPS so
-  they need to be added as a dependency to the train_op, example:
+  updated, by default the update_ops are placed in `tf.GraphKeys.UPDATE_OPS` so
+  they need to be added as a dependency to the `train_op`, example:
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     if update_ops:
@@ -170,7 +170,7 @@ def batch_norm(inputs,
     variables_collections: optional collections for the variables.
     outputs_collections: collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     scope: Optional scope for `variable_scope`.
 
   Returns:
@@ -1075,7 +1075,7 @@ def one_hot_encoding(labels,
                      off_value=0.0,
                      outputs_collections=None,
                      scope=None):
-  """Transform numeric labels into onehot_labels using tf.one_hot.
+  """Transform numeric labels into onehot_labels using `tf.one_hot`.
 
   Args:
     labels: [batch_size] target labels.

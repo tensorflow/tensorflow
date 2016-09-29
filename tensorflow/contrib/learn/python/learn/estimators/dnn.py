@@ -374,7 +374,7 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
         coordinate.
       gradient_clip_norm: A float > 0. If provided, gradients are
         clipped to their global norm with this clipping ratio. See
-        tf.clip_by_global_norm for more details.
+        `tf.clip_by_global_norm` for more details.
       enable_centered_bias: A bool. If True, estimator will learn a centered
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.

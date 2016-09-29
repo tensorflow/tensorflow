@@ -129,7 +129,7 @@ def shape(input, name=None, out_type=dtypes.int32):
     input: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
     out_type: (Optional) The specified output type of the operation
-      (`int32` or `int64`). Defaults to tf.int32.
+      (`int32` or `int64`). Defaults to `tf.int32`.
 
   Returns:
     A `Tensor` of type `out_type`.
@@ -2085,10 +2085,10 @@ def one_hot(indices, depth, on_value=None, off_value=None,
   If `dtype` is not provided, it will attempt to assume the data type of
   `on_value` or `off_value`, if one or both are passed in. If none of
   `on_value`, `off_value`, or `dtype` are provided, `dtype` will default to the
-  value `tf.float32`
+  value `tf.float32`.
 
-  Note: If a non-numeric data type output is desired (tf.string, tf.bool, etc.),
-  both `on_value` and `off_value` _must_ be provided to `one_hot`
+  Note: If a non-numeric data type output is desired (`tf.string`, `tf.bool`,
+  etc.), both `on_value` and `off_value` _must_ be provided to `one_hot`.
 
   Examples
   =========

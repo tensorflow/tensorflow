@@ -1230,7 +1230,8 @@ def sparse_tensor_dense_matmul(sp_a, b, adjoint_a=False, adjoint_b=False,
   * Is the density of A larger than approximately 15%?
 
   If the answer to several of these questions is yes, consider
-  converting the SparseTensor to a dense one and using tf.matmul with sp_a=True.
+  converting the `SparseTensor` to a dense one and using `tf.matmul` with
+  `sp_a=True`.
 
   This operation tends to perform well when A is more sparse, if the column size
   of the product is small (e.g. matrix-vector multiplication), if sp_a.shape

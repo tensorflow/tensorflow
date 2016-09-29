@@ -1527,7 +1527,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   otherwise, these are inferred.
 
   NOTE: This operation is not differentiable and cannot be used if inputs depend
-  on trainable variables. Please use tf.add_n for such cases.
+  on trainable variables. Please use `tf.add_n` for such cases.
 
   For example:
 
