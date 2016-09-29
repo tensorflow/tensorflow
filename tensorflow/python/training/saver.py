@@ -38,6 +38,7 @@ from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
@@ -870,7 +871,7 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
         p = ckpt.all_model_checkpoint_paths[i]
         if not os.path.isabs(p):
           ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
-  except IOError as e:
+  except errors.OpError as e:
     # It's ok if the file cannot be read
     logging.warning(str(e))
     logging.warning("%s: Checkpoint ignored", coord_checkpoint_filename)
