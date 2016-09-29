@@ -6901,6 +6901,67 @@ op {
   description: "Note that the size of 4D Tensors are defined by either \"NHWC\" or \"NCHW\".\nThe size of 1D Tensors matches the dimension C of the 4D Tensors."
 }
 op {
+  name: "FusedPadConv2D"
+  input_arg {
+    name: "input"
+    description: "4-D with shape `[batch, in_height, in_width, in_channels]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "paddings"
+    description: "A two-column matrix specifying the padding sizes. The number of\nrows must be the same as the rank of `input`."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "filter"
+    description: "4-D with shape\n`[filter_height, filter_width, in_channels, out_channels]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "mode"
+    type: "string"
+    allowed_values {
+      list {
+        s: "REFLECT"
+        s: "SYMMETRIC"
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D of length 4.  The stride of the sliding window for each dimension\nof `input`. Must be in the same order as the dimension specified with format."
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Performs a padding as a preprocess during a convolution."
+  description: "Similar to FusedResizeAndPadConv2d, this op allows for an optimized\nimplementation where the spatial padding transformation stage is fused with the\nim2col lookup, but in this case without the bilinear filtering required for\nresizing. Fusing the padding prevents the need to write out the intermediate\nresults as whole tensors, reducing memory pressure, and we can get some latency\ngains by merging the transformation calculations.\nThe data_format attribute for Conv2D isn\'t supported by this op, and \'NHWC\'\norder is used instead.\nInternally this op uses a single per-graph scratch buffer, which means that it\nwill block if multiple versions are being run in parallel. This is because this\noperator is primarily an optimization to minimize memory usage."
+}
+op {
   name: "FusedResizeAndPadConv2D"
   input_arg {
     name: "input"
