@@ -225,7 +225,7 @@ class InceptionV3Test(tf.test.TestCase):
       pre_pool_out = sess.run(pre_pool, feed_dict=feed_dict)
       self.assertListEqual(list(pre_pool_out.shape), [batch_size, 8, 8, 2048])
 
-  def testUnknowBatchSize(self):
+  def testUnknownBatchSize(self):
     batch_size = 1
     height, width = 299, 299
     num_classes = 1000

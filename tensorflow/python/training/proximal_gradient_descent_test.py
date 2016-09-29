@@ -142,7 +142,7 @@ class ProximalGradientDescentOptimizerTest(tf.test.TestCase):
     v0_val, v1_val = sess.run([var0, var1])
     return v0_val, v1_val
 
-  def testEquivSparseGradientDescentwithoutRegularizaion(self):
+  def testEquivSparseGradientDescentwithoutRegularization(self):
     with self.test_session():
       val0, val1 = self.applyOptimizer(
           tf.train.ProximalGradientDescentOptimizer(
@@ -158,7 +158,7 @@ class ProximalGradientDescentOptimizerTest(tf.test.TestCase):
     self.assertAllClose(val0, val2)
     self.assertAllClose(val1, val3)
 
-  def testEquivGradientDescentwithoutRegularizaion(self):
+  def testEquivGradientDescentwithoutRegularization(self):
     with self.test_session():
       val0, val1 = self.applyOptimizer(
           tf.train.ProximalGradientDescentOptimizer(
