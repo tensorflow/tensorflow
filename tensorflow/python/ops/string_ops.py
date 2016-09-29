@@ -137,5 +137,4 @@ def _ReduceJoinShape(op):
 
 ops.RegisterShape("StringJoin")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("StringSplit")(common_shapes.call_cpp_shape_fn)
-
 ops.RegisterShape("Substr")(common_shapes.call_cpp_shape_fn)
