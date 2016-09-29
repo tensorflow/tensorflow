@@ -930,11 +930,16 @@
 * **[RNN (contrib)](../../api_docs/python/contrib.rnn.md)**:
   * [`AttentionCellWrapper`](../../api_docs/python/contrib.rnn.md#AttentionCellWrapper)
   * [`CoupledInputForgetGateLSTMCell`](../../api_docs/python/contrib.rnn.md#CoupledInputForgetGateLSTMCell)
+  * [`FusedRNNCell`](../../api_docs/python/contrib.rnn.md#FusedRNNCell)
+  * [`FusedRNNCellAdaptor`](../../api_docs/python/contrib.rnn.md#FusedRNNCellAdaptor)
   * [`GridLSTMCell`](../../api_docs/python/contrib.rnn.md#GridLSTMCell)
   * [`GRUBlockCell`](../../api_docs/python/contrib.rnn.md#GRUBlockCell)
   * [`LayerNormBasicLSTMCell`](../../api_docs/python/contrib.rnn.md#LayerNormBasicLSTMCell)
   * [`LSTMBlockCell`](../../api_docs/python/contrib.rnn.md#LSTMBlockCell)
+  * [`LSTMBlockFusedCell`](../../api_docs/python/contrib.rnn.md#LSTMBlockFusedCell)
+  * [`LSTMBlockWrapper`](../../api_docs/python/contrib.rnn.md#LSTMBlockWrapper)
   * [`TimeFreqLSTMCell`](../../api_docs/python/contrib.rnn.md#TimeFreqLSTMCell)
+  * [`TimeReversedFusedRNN`](../../api_docs/python/contrib.rnn.md#TimeReversedFusedRNN)
 
 * **[Metrics (contrib)](../../api_docs/python/contrib.metrics.md)**:
   * [`accuracy`](../../api_docs/python/contrib.metrics.md#accuracy)
