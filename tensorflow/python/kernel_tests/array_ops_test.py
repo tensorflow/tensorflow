@@ -549,6 +549,16 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
         with self.assertRaisesRegexp(ValueError, "out of bounds"):
           _ = grad[:, 200, :]
 
+  def testGradientZero(self):
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu) as sess:
+        var = tf.Variable(8)
+        init = tf.initialize_all_variables()
+        sess.run(init)
+        grad = GradSliceChecker(self, sess, var,
+                                np.array(8))
+        _ = grad[tuple()]
+
 
 class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
   """Test varied index types and host located memory."""

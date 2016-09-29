@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
@@ -69,19 +70,30 @@ Status GetTmpFilename(string* filename) {
 ///
 /// For example, "gs://bucket-name/path/to/file.txt" gets split into
 /// "bucket-name" and "path/to/file.txt".
-/// If fname only contains the bucket, the returned object is empty.
-Status ParseGcsPath(StringPiece fname, string* bucket, string* object) {
+/// If fname only contains the bucket and empty_object_ok = true, the returned
+/// object is empty.
+Status ParseGcsPath(StringPiece fname, bool empty_object_ok, string* bucket,
+                    string* object) {
   if (!bucket || !object) {
     return errors::Internal("bucket and object cannot be null.");
   }
   StringPiece scheme, bucketp, objectp;
   ParseURI(fname, &scheme, &bucketp, &objectp);
   if (scheme != "gs") {
-    return errors::InvalidArgument("GCS path must start with gs://");
+    return errors::InvalidArgument(
+        strings::StrCat("GCS path doesn't start with 'gs://': ", fname));
   }
   *bucket = bucketp.ToString();
+  if (bucket->empty() || *bucket == ".") {
+    return errors::InvalidArgument(
+        strings::StrCat("GCS path doesn't contain a bucket name: ", fname));
+  }
   objectp.Consume("/");
   *object = objectp.ToString();
+  if (!empty_object_ok && object->empty()) {
+    return errors::InvalidArgument(
+        strings::StrCat("GCS path doesn't contain an object name: ", fname));
+  }
   return Status::OK();
 }
 
@@ -555,7 +567,7 @@ GcsFileSystem::GcsFileSystem(
 Status GcsFileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
   string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
+  TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   result->reset(new GcsRandomAccessFile(bucket, object, auth_provider_.get(),
                                         http_request_factory_.get(),
                                         read_ahead_bytes_));
@@ -565,7 +577,7 @@ Status GcsFileSystem::NewRandomAccessFile(
 Status GcsFileSystem::NewWritableFile(const string& fname,
                                       std::unique_ptr<WritableFile>* result) {
   string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
+  TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   result->reset(new GcsWritableFile(bucket, object, auth_provider_.get(),
                                     http_request_factory_.get(),
                                     max_upload_attempts_));
@@ -604,7 +616,7 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
 
   // Create a writable file and pass the old content to it.
   string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
+  TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   result->reset(new GcsWritableFile(
       bucket, object, auth_provider_.get(), old_content_filename,
       http_request_factory_.get(), max_upload_attempts_));
@@ -629,7 +641,7 @@ Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
 
 bool GcsFileSystem::FileExists(const string& fname) {
   string bucket, object;
-  if (!ParseGcsPath(fname, &bucket, &object).ok()) {
+  if (!ParseGcsPath(fname, true, &bucket, &object).ok()) {
     LOG(ERROR) << "Could not parse GCS file name " << fname;
     return false;
   }
@@ -699,7 +711,7 @@ Status GcsFileSystem::BucketExists(const string& bucket) {
 
 Status GcsFileSystem::FolderExists(const string& dirname) {
   std::vector<string> children;
-  TF_RETURN_IF_ERROR(GetChildrenBounded(dirname, 1, &children));
+  TF_RETURN_IF_ERROR(GetChildrenBounded(dirname, 1, &children, true));
   if (children.empty()) {
     return errors::NotFound("Folder does not exist.");
   }
@@ -708,18 +720,43 @@ Status GcsFileSystem::FolderExists(const string& dirname) {
 
 Status GcsFileSystem::GetChildren(const string& dirname,
                                   std::vector<string>* result) {
-  return GetChildrenBounded(dirname, UINT64_MAX, result);
+  return GetChildrenBounded(dirname, UINT64_MAX, result, false);
+}
+
+Status GcsFileSystem::GetMatchingPaths(const string& pattern,
+                                       std::vector<string>* results) {
+  results->clear();
+  // Find the fixed prefix by looking for the first wildcard.
+  const string& fixed_prefix =
+      pattern.substr(0, pattern.find_first_of("*?[\\"));
+  const string& dir = io::Dirname(fixed_prefix).ToString();
+  if (dir.empty()) {
+    return errors::InvalidArgument(
+        strings::StrCat("A GCS pattern doesn't have a bucket name: ", pattern));
+  }
+  std::vector<string> all_files;
+  TF_RETURN_IF_ERROR(GetChildrenBounded(dir, UINT64_MAX, &all_files, true));
+
+  // Match all obtained files to the input pattern.
+  for (const auto& f : all_files) {
+    const string& full_path = io::JoinPath(dir, f);
+    if (Env::Default()->MatchPath(full_path, pattern)) {
+      results->push_back(full_path);
+    }
+  }
+  return Status::OK();
 }
 
 Status GcsFileSystem::GetChildrenBounded(const string& dirname,
                                          uint64 max_results,
-                                         std::vector<string>* result) {
+                                         std::vector<string>* result,
+                                         bool recursive) {
   if (!result) {
     return errors::InvalidArgument("'result' cannot be null");
   }
   string bucket, object_prefix;
   TF_RETURN_IF_ERROR(
-      ParseGcsPath(MaybeAppendSlash(dirname), &bucket, &object_prefix));
+      ParseGcsPath(MaybeAppendSlash(dirname), true, &bucket, &object_prefix));
 
   string nextPageToken;
   uint64 retrieved_results = 0;
@@ -732,8 +769,16 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
     StringPiece response_piece;
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
     TF_RETURN_IF_ERROR(request->Init());
-    auto uri = strings::StrCat(kGcsUriBase, "b/", bucket,
-                               "/o?fields=items%2Fname%2CnextPageToken");
+    auto uri = strings::StrCat(kGcsUriBase, "b/", bucket, "/o");
+    if (recursive) {
+      uri = strings::StrCat(uri, "?fields=items%2Fname%2CnextPageToken");
+    } else {
+      // Set "/" as a delimiter to ask GCS to treat subfolders as children
+      // and return them in "prefixes".
+      uri = strings::StrCat(uri,
+                            "?fields=items%2Fname%2Cprefixes%2CnextPageToken");
+      uri = strings::StrCat(uri, "&delimiter=%2F");
+    }
     if (!object_prefix.empty()) {
       uri = strings::StrCat(uri, "&prefix=",
                             request->EscapeString(object_prefix));
@@ -783,6 +828,33 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
         return Status::OK();
       }
     }
+    const auto prefixes = root.get("prefixes", Json::Value::null);
+    if (prefixes != Json::Value::null) {
+      // Subfolders are returned for the non-recursive mode.
+      if (!prefixes.isArray()) {
+        return errors::Internal(
+            "'prefixes' was expected to be an array in the GCS response.");
+      }
+      for (size_t i = 0; i < prefixes.size(); i++) {
+        const auto prefix = prefixes.get(i, Json::Value::null);
+        if (prefix == Json::Value::null || !prefix.isString()) {
+          return errors::Internal(
+              "'prefixes' was expected to be an array of strings in the GCS "
+              "response.");
+        }
+        const string& prefix_str = prefix.asString();
+        StringPiece relative_path(prefix_str);
+        if (!relative_path.Consume(object_prefix)) {
+          return errors::Internal(strings::StrCat(
+              "Unexpected response: the returned folder name ", prefix_str,
+              " doesn't match the prefix ", object_prefix));
+        }
+        result->emplace_back(relative_path.ToString());
+        if (++retrieved_results >= max_results) {
+          return Status::OK();
+        }
+      }
+    }
     const auto token = root.get("nextPageToken", Json::Value::null);
     if (token == Json::Value::null) {
       return Status::OK();
@@ -800,7 +872,7 @@ Status GcsFileSystem::Stat(const string& fname, FileStatistics* stat) {
     return errors::Internal("'stat' cannot be nullptr.");
   }
   string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
+  TF_RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
   if (StatForObject(bucket, object, stat).ok()) {
     return Status::OK();
   }
@@ -817,7 +889,7 @@ Status GcsFileSystem::Stat(const string& fname, FileStatistics* stat) {
 
 Status GcsFileSystem::DeleteFile(const string& fname) {
   string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
+  TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
 
   string auth_token;
   TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
@@ -834,7 +906,7 @@ Status GcsFileSystem::DeleteFile(const string& fname) {
 
 Status GcsFileSystem::CreateDir(const string& dirname) {
   string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(dirname, &bucket, &object));
+  TF_RETURN_IF_ERROR(ParseGcsPath(dirname, true, &bucket, &object));
   if (object.empty()) {
     if (BucketExists(bucket).ok()) {
       return Status::OK();
@@ -857,7 +929,7 @@ Status GcsFileSystem::DeleteDir(const string& dirname) {
   // with the corresponding name prefix or if there is exactly one matching
   // object and it is the directory marker. Therefore we need to retrieve
   // at most two children for the prefix to detect if a directory is empty.
-  TF_RETURN_IF_ERROR(GetChildrenBounded(dirname, 2, &children));
+  TF_RETURN_IF_ERROR(GetChildrenBounded(dirname, 2, &children, true));
 
   if (children.size() > 1 || (children.size() == 1 && !children[0].empty())) {
     return errors::FailedPrecondition("Cannot delete a non-empty directory.");
@@ -873,6 +945,11 @@ Status GcsFileSystem::GetFileSize(const string& fname, uint64* file_size) {
   if (!file_size) {
     return errors::Internal("'file_size' cannot be nullptr.");
   }
+
+  // Only validate the name.
+  string bucket, object;
+  TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
+
   FileStatistics stat;
   TF_RETURN_IF_ERROR(Stat(fname, &stat));
   *file_size = stat.length;
@@ -885,7 +962,7 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
   }
   // Rename all individual objects in the directory one by one.
   std::vector<string> children;
-  TF_RETURN_IF_ERROR(GetChildren(src, &children));
+  TF_RETURN_IF_ERROR(GetChildrenBounded(src, UINT64_MAX, &children, true));
   for (const string& subpath : children) {
     // io::JoinPath() wouldn't work here, because we want an empty subpath
     // to result in an appended slash in order for directory markers
@@ -900,8 +977,9 @@ Status GcsFileSystem::RenameFile(const string& src, const string& target) {
 // Uses a GCS API command to copy the object and then deletes the old one.
 Status GcsFileSystem::RenameObject(const string& src, const string& target) {
   string src_bucket, src_object, target_bucket, target_object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(src, &src_bucket, &src_object));
-  TF_RETURN_IF_ERROR(ParseGcsPath(target, &target_bucket, &target_object));
+  TF_RETURN_IF_ERROR(ParseGcsPath(src, false, &src_bucket, &src_object));
+  TF_RETURN_IF_ERROR(
+      ParseGcsPath(target, false, &target_bucket, &target_object));
 
   string auth_token;
   TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
@@ -942,7 +1020,7 @@ Status GcsFileSystem::RenameObject(const string& src, const string& target) {
 
 Status GcsFileSystem::IsDirectory(const string& fname) {
   string bucket, object;
-  TF_RETURN_IF_ERROR(ParseGcsPath(fname, &bucket, &object));
+  TF_RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
   if (object.empty()) {
     if (BucketExists(bucket).ok()) {
       return Status::OK();

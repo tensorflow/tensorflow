@@ -11667,6 +11667,171 @@ op {
   }
 }
 op {
+  name: "FusedBatchNorm"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "scale"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "offset"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "mean"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "variance"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "batch_mean"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "batch_variance"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "reserve_space_1"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "reserve_space_2"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "epsilon"
+    type: "float"
+    default_value {
+      f: 0.0001
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+  }
+  attr {
+    name: "is_training"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}
+op {
+  name: "FusedBatchNormGrad"
+  input_arg {
+    name: "y_backprop"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "scale"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "reserve_space_1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "reserve_space_2"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "x_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "scale_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "offset_backprop"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "reserve_space_3"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "reserve_space_4"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "epsilon"
+    type: "float"
+    default_value {
+      f: 0.0001
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "NHWC"
+    }
+  }
+}
+op {
   name: "FusedResizeAndPadConv2D"
   input_arg {
     name: "input"
@@ -16180,6 +16345,24 @@ op {
     type: "int"
     has_minimum: true
     minimum: 1
+  }
+}
+op {
+  name: "MergeV2Checkpoints"
+  input_arg {
+    name: "checkpoint_prefixes"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "destination_prefix"
+    type: DT_STRING
+  }
+  attr {
+    name: "delete_old_dirs"
+    type: "bool"
+    default_value {
+      b: true
+    }
   }
 }
 op {
@@ -21226,6 +21409,31 @@ op {
   }
 }
 op {
+  name: "RestoreV2"
+  input_arg {
+    name: "prefix"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_names"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "shape_and_slices"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "tensors"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "Reverse"
   input_arg {
     name: "tensor"
@@ -21813,6 +22021,31 @@ op {
   }
   attr {
     name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
+  name: "SaveV2"
+  input_arg {
+    name: "prefix"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_names"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "shape_and_slices"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensors"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
     type: "list(type)"
     has_minimum: true
     minimum: 1
@@ -22564,6 +22797,157 @@ op {
     default_value {
       b: true
     }
+  }
+}
+op {
+  name: "SdcaFprint"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+}
+op {
+  name: "SdcaOptimizer"
+  input_arg {
+    name: "sparse_example_indices"
+    type: DT_INT64
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "sparse_feature_indices"
+    type: DT_INT64
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "sparse_feature_values"
+    type: DT_FLOAT
+    number_attr: "num_sparse_features_with_values"
+  }
+  input_arg {
+    name: "dense_features"
+    type: DT_FLOAT
+    number_attr: "num_dense_features"
+  }
+  input_arg {
+    name: "example_weights"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "example_labels"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "sparse_weights"
+    type: DT_FLOAT
+    number_attr: "num_sparse_features"
+  }
+  input_arg {
+    name: "dense_weights"
+    type: DT_FLOAT
+    number_attr: "num_dense_features"
+  }
+  input_arg {
+    name: "example_state_data"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "out_example_state_data"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "out_delta_sparse_weights"
+    type: DT_FLOAT
+    number_attr: "num_sparse_features"
+  }
+  output_arg {
+    name: "out_delta_dense_weights"
+    type: DT_FLOAT
+    number_attr: "num_dense_features"
+  }
+  attr {
+    name: "loss_type"
+    type: "string"
+    allowed_values {
+      list {
+        s: "logistic_loss"
+        s: "squared_loss"
+        s: "hinge_loss"
+        s: "smooth_hinge_loss"
+      }
+    }
+  }
+  attr {
+    name: "adaptative"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "num_sparse_features"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_sparse_features_with_values"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_dense_features"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "l1"
+    type: "float"
+  }
+  attr {
+    name: "l2"
+    type: "float"
+  }
+  attr {
+    name: "num_loss_partitions"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_inner_iterations"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
+  name: "SdcaShrinkL1"
+  input_arg {
+    name: "weights"
+    type: DT_FLOAT
+    number_attr: "num_features"
+    is_ref: true
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "l1"
+    type: "float"
+  }
+  attr {
+    name: "l2"
+    type: "float"
   }
 }
 op {

@@ -20,33 +20,6 @@ import * as scatterPlot from './scatterPlot';
 import {shuffle} from './util';
 import * as vector from './vector';
 
-/**
- * A DataSource is our ground truth data. The original parsed data should never
- * be modified, only copied out.
- */
-export class DataSource {
-  originalDataSet: DataSet;
-  spriteImage: HTMLImageElement;
-  metadata: DatasetMetadata;
-
-  /** A shallow-copy constructor. */
-  makeShallowCopy(): DataSource {
-    let copy = new DataSource();
-    copy.originalDataSet = this.originalDataSet;
-    copy.spriteImage = this.spriteImage;
-    copy.metadata = this.metadata;
-    return copy;
-  }
-
-  /** Returns a new dataset. */
-  getDataSet(subset?: number[]): DataSet {
-    let pointsSubset = subset ?
-        subset.map(i => this.originalDataSet.points[i]) :
-        this.originalDataSet.points;
-    return new DataSet(pointsSubset);
-  }
-}
-
 export interface DataPoint extends scatterPlot.DataPoint {
   /** The point in the original space. */
   vector: number[];
@@ -73,6 +46,10 @@ function hasWebGLSupport(): boolean {
 }
 
 const WEBGL_SUPPORT = hasWebGLSupport();
+const IS_FIREFOX = navigator.userAgent.toLowerCase().indexOf('firefox') >= 0;
+/** Controls whether nearest neighbors computation is done on the GPU or CPU. */
+const KNN_GPU_ENABLED = WEBGL_SUPPORT && !IS_FIREFOX;
+
 /** Sampling is used when computing expensive operations such as T-SNE. */
 export const SAMPLE_SIZE = 10000;
 /** Number of dimensions to sample when doing approximate PCA. */
@@ -105,6 +82,8 @@ export class DataSet implements scatterPlot.DataSet {
   tSNEShouldStop = true;
   dim = [0, 0];
   hasTSNERun: boolean = false;
+  spriteImage: HTMLImageElement;
+  metadata: DatasetMetadata;
 
   private tsne: TSNE;
 
@@ -116,24 +95,14 @@ export class DataSet implements scatterPlot.DataSet {
     // Keep a list of indices seen so we don't compute traces for a given
     // point twice.
     let indicesSeen: boolean[] = [];
-
-    this.points = [];
-    points.forEach(dp => {
-      this.points.push({
-        metadata: dp.metadata,
-        dataSourceIndex: dp.dataSourceIndex,
-        vector: dp.vector.slice(),
-        projectedPoint: [0, 0, 0],
-        projections: {}
-      });
+    this.points = points;
+    this.points.forEach(dp => {
       indicesSeen.push(false);
     });
 
     this.sampledDataIndices =
         shuffle(d3.range(this.points.length)).slice(0, SAMPLE_SIZE);
     this.traces = this.computeTraces(points, indicesSeen);
-
-    this.normalize();
     this.dim = [this.points.length, this.points[0].vector.length];
   }
 
@@ -179,10 +148,33 @@ export class DataSet implements scatterPlot.DataSet {
   }
 
   /**
+   * Returns a new subset dataset by copying out data. We make a copy because
+   * we have to modify the vectors by normalizing them.
+   *
+   * @param subset Array of indices of points that we want in the subset.
+   *
+   * @return A subset of the original dataset.
+   */
+  getSubset(subset?: number[]): DataSet {
+    let pointsSubset = subset ? subset.map(i => this.points[i]) : this.points;
+    let points = pointsSubset.map(dp => {
+      return {
+        metadata: dp.metadata,
+        index: dp.index,
+        vector: dp.vector.slice(),
+        projectedPoint: [0, 0, 0] as [number, number, number],
+        projections: {}
+      };
+    });
+
+    return new DataSet(points);
+  }
+
+  /**
    * Computes the centroid, shifts all points to that centroid,
    * then makes them all unit norm.
    */
-  private normalize() {
+  normalize() {
     // Compute the centroid of all data points.
     let centroid =
         vector.centroid(this.points, () => true, a => a.vector).centroid;
@@ -283,7 +275,7 @@ export class DataSet implements scatterPlot.DataSet {
     } else {
       let sampledData = this.sampledDataIndices.map(i => this.points[i]);
       this.nearestK = k;
-      knnComputation = WEBGL_SUPPORT ?
+      knnComputation = KNN_GPU_ENABLED ?
           knn.findKNNGPUCosine(sampledData, k, (d => d.vector)) :
           knn.findKNN(
               sampledData, k, (d => d.vector),
@@ -316,4 +308,50 @@ export interface DatasetMetadata {
     /** The dimensions of the image for a single data point. */
     single_image_dim: [number, number];
   };
+}
+
+export type Projection = 'tsne' | 'pca' | 'custom';
+
+export interface ColorOption {
+  name: string;
+  desc?: string;
+  map?: (value: string|number) => string;
+  /** List of items for the color map. Defined only for categorical map. */
+  items?: {label: string, count: number}[];
+  /** Threshold values and their colors. Defined for gradient color map. */
+  thresholds?: {value: number, color: string}[];
+  isSeparator?: boolean;
+}
+
+/**
+ * An interface that holds all the data for serializing the current state of
+ * the world.
+ */
+export interface State {
+  /** A label identifying this state. */
+  label?: string;
+
+  /** Whether this State is selected in the bookmarks pane. */
+  isSelected?: boolean;
+
+  /** The selected projection tab. */
+  selectedProjection?: Projection;
+
+  /** The computed projections of the tensors. */
+  projections?: {[key: string]: number}[];
+
+  /** The indices of selected points. */
+  selectedPoints?: number[];
+
+  /** Camera positioning (x, y, z). */
+  cameraPosition?: vector.Point3D;
+
+  /** Camera target (x, y, z). */
+  cameraTarget?: vector.Point3D;
+
+  /** Color by option. */
+  colorOption?: ColorOption;
+
+  /** Label by option. */
+  labelOption?: string;
 }

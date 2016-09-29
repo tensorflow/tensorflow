@@ -224,6 +224,10 @@ class StudentT(distribution.Distribution):
             special_math_ops.lbeta(beta_arg) +
             math_ops.log(self.sigma))
 
+  @distribution_util.AppendDocstring(
+      """The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.
+      If `self.allow_nan_stats=True`, then an exception will be raised rather
+      than returning `NaN`.""")
   def _mean(self):
     mean = self.mu * self._ones()
     if self.allow_nan_stats:
@@ -238,6 +242,16 @@ class StudentT(distribution.Distribution):
               message="mean not defined for components of df <= 1"),
       ], mean)
 
+  @distribution_util.AppendDocstring(
+      """
+      The variance for Student's T equals
+
+      ```
+      df / (df - 2), when df > 2
+      infinity, when 1 < df <= 2
+      NaN, when df <= 1
+      ```
+      """)
   def _variance(self):
     var = (self._ones() *
            math_ops.square(self.sigma) * self.df / (self.df - 2))
@@ -269,26 +283,6 @@ class StudentT(distribution.Distribution):
 
   def _ones(self):
     return array_ops.ones(self.batch_shape(), dtype=self.dtype)
-
-
-distribution_util.append_class_fun_doc(StudentT.mean, doc_str="""
-
-    The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.  If
-    `self.allow_nan_stats=True`, then an exception will be raised rather than
-    returning `NaN`.
-""")
-
-distribution_util.append_class_fun_doc(StudentT.variance, doc_str="""
-
-    Variance for Student's T equals
-
-    ```
-    df / (df - 2), when df > 2
-    infinity, when 1 < df <= 2
-    NaN, when df <= 1
-    ```
-
-""")
 
 
 class StudentTWithAbsDfSoftplusSigma(StudentT):

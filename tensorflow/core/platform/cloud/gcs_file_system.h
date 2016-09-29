@@ -57,6 +57,9 @@ class GcsFileSystem : public FileSystem {
 
   Status GetChildren(const string& dir, std::vector<string>* result) override;
 
+  Status GetMatchingPaths(const string& pattern,
+                          std::vector<string>* results) override;
+
   Status DeleteFile(const string& fname) override;
 
   Status CreateDir(const string& dirname) override;
@@ -74,7 +77,7 @@ class GcsFileSystem : public FileSystem {
   Status ObjectExists(const string& bucket, const string& object);
   Status FolderExists(const string& dirname);
   Status GetChildrenBounded(const string& dir, uint64 max_results,
-                            std::vector<string>* result);
+                            std::vector<string>* result, bool recursively);
   /// Retrieves file statistics assuming fname points to a GCS object.
   Status StatForObject(const string& bucket, const string& object,
                        FileStatistics* stat);

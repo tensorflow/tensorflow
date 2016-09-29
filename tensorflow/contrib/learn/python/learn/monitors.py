@@ -288,7 +288,7 @@ class EveryN(BaseMonitor):
   This class adds three new callbacks:
     - every_n_step_begin
     - every_n_step_end
-    - every_n_pos_step
+    - every_n_post_step
 
   The callbacks are executed every n steps, or optionally every step for the
   first m steps, where m and n can both be user-specified.
@@ -695,12 +695,13 @@ class ValidationMonitor(EveryN):
     # Check that we are not running evaluation on the same checkpoint.
     latest_path = saver_lib.latest_checkpoint(self._estimator.model_dir)
     if latest_path is None:
-      logging.info("Skipping evaluation since model has not been saved yet "
-                   "at step %d.", step)
+      logging.debug("Skipping evaluation since model has not been saved yet "
+                    "at step %d.", step)
       return False
     if latest_path is not None and latest_path == self._latest_path:
-      logging.info("Skipping evaluation due to same checkpoint %s for step %d "
-                   "as for step %d.", latest_path, step, self._latest_path_step)
+      logging.debug("Skipping evaluation due to same checkpoint %s for step %d "
+                    "as for step %d.", latest_path, step,
+                    self._latest_path_step)
       return False
     self._latest_path = latest_path
     self._latest_path_step = step
@@ -903,9 +904,9 @@ class ExportMonitor(EveryN):
       "2016-09-23",
       "The signature of the input_fn accepted by export is changing to be "
       "consistent with what's used by tf.Learn Estimator's train/evaluate. "
-      "input_fn and input_feature_key will both become required args.",
-      input_fn=None,
-      input_feature_key=None)
+      "input_fn (and in most cases, input_feature_key) will both become "
+      "required args.",
+      input_fn=None)
   def __init__(self,
                every_n_steps,
                export_dir,
@@ -925,7 +926,9 @@ class ExportMonitor(EveryN):
         `None`).
       input_feature_key: String key into the features dict returned by
         `input_fn` that corresponds to the raw `Example` strings `Tensor` that
-        the exported model will take as input.
+        the exported model will take as input. Can only be `None` if you're
+        using a custom `signature_fn` that does not use the first arg
+        (examples).
       exports_to_keep: int, number of exports to keep.
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
@@ -936,12 +939,6 @@ class ExportMonitor(EveryN):
       ValueError: If `input_fn` and `input_feature_key` are not both defined or
         are not both `None`.
     """
-    if (input_fn is None) != (input_feature_key is None):
-      raise ValueError(
-          "input_fn and input_feature_key must both be defined or both be "
-          "None. Not passing in input_fn and input_feature_key is also "
-          "deprecated, so you should go with the former.")
-
     super(ExportMonitor, self).__init__(every_n_steps=every_n_steps)
     self._export_dir = export_dir
     self._input_fn = input_fn
@@ -950,6 +947,7 @@ class ExportMonitor(EveryN):
     self._exports_to_keep = exports_to_keep
     self._signature_fn = signature_fn
     self._default_batch_size = default_batch_size
+    self._last_export_dir = None
 
   @property
   def export_dir(self):
@@ -963,10 +961,22 @@ class ExportMonitor(EveryN):
   def signature_fn(self):
     return self._signature_fn
 
+  @property
+  def last_export_dir(self):
+    """Returns the directory containing the last completed export.
+
+    Returns:
+      The string path to the exported directory. NB: this functionality was
+      added on 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because the
+      estimator being fitted does not yet return a value during export.
+    """
+    return self._last_export_dir
+
   def every_n_step_end(self, step, outputs):
     super(ExportMonitor, self).every_n_step_end(step, outputs)
     try:
-      self._estimator.export(
+      self._last_export_dir = self._estimator.export(
           self.export_dir,
           exports_to_keep=self.exports_to_keep,
           signature_fn=self.signature_fn,
@@ -980,9 +990,10 @@ class ExportMonitor(EveryN):
       # Exports depend on saved checkpoints for constructing the graph and
       # getting the global step from the graph instance saved in the checkpoint.
       # If the checkpoint is stale with respect to current step, the global step
-      # is taken to be the last saved checkpoints global step and exporter
+      # is taken to be the last saved checkpoint's global step and exporter
       # doesn't export the same checkpoint again with the following error.
-      logging.info("Skipping exporting for the same step. "
+      logging.info("Skipping exporting because the existing checkpoint has "
+                   "already been exported. "
                    "Consider exporting less frequently.")
 
   def end(self, session=None):
@@ -993,7 +1004,7 @@ class ExportMonitor(EveryN):
                    "yet.")
       return
     try:
-      self._estimator.export(
+      self._last_export_dir = self._estimator.export(
           self.export_dir,
           exports_to_keep=self.exports_to_keep,
           signature_fn=self.signature_fn,

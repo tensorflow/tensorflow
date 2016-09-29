@@ -141,6 +141,7 @@ class Gamma(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
+    """See the documentation for tf.random_gamma for more details."""
     return random_ops.random_gamma([n],
                                    self.alpha,
                                    beta=self.beta,
@@ -171,6 +172,16 @@ class Gamma(distribution.Distribution):
   def _cdf(self, x):
     return math_ops.igamma(self.alpha, self.beta * x)
 
+  @distribution_util.AppendDocstring(
+      """This is defined to be
+
+      ```
+      entropy = alpha - log(beta) + log(Gamma(alpha))
+      + (1-alpha)digamma(alpha)
+      ```
+
+      where digamma(alpha) is the digamma function.
+      """)
   def _entropy(self):
     return (self.alpha -
             math_ops.log(self.beta) +
@@ -186,6 +197,10 @@ class Gamma(distribution.Distribution):
   def _std(self):
     return math_ops.sqrt(self.alpha) / self.beta
 
+  @distribution_util.AppendDocstring(
+      """The mode of a gamma distribution is `(alpha - 1) / beta` when
+      `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+      an exception will be raised rather than returning `NaN`.""")
   def _mode(self):
     mode = (self.alpha - 1.) / self.beta
     if self.allow_nan_stats:
@@ -201,31 +216,6 @@ class Gamma(distribution.Distribution):
               self.alpha,
               message="mode not defined for components of alpha <= 1"),
           ], mode)
-
-
-distribution_util.append_class_fun_doc(Gamma.sample_n, doc_str="""
-
-    See the documentation for tf.random_gamma for more details.
-""")
-
-distribution_util.append_class_fun_doc(Gamma.entropy, doc_str="""
-
-    This is defined to be
-
-    ```
-    entropy = alpha - log(beta) + log(Gamma(alpha))
-                 + (1-alpha)digamma(alpha)
-    ```
-
-    where digamma(alpha) is the digamma function.
-""")
-
-distribution_util.append_class_fun_doc(Gamma.mode, doc_str="""
-
-    The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
-    and `NaN` otherwise.  If `self.allow_nan_stats` is `False`, an exception
-    will be raised rather than returning `NaN`.
-""")
 
 
 class GammaWithSoftplusAlphaBeta(Gamma):

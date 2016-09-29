@@ -308,6 +308,20 @@ class ControlFlowTest(tf.test.TestCase):
     self.assertAllEqual(11, val)
     self.assertAllEqual(0, ind)
 
+  def testCondSparseTensor(self):
+    with self.test_session():
+      values = tf.constant([2.0, 4.0], name="values")
+      indices = tf.constant([[0], [3]], dtype=tf.int64, name="indices")
+      shape = tf.constant([10], dtype=tf.int64, name="dense_shape")
+      x = tf.SparseTensor(indices, values, shape=shape)
+      pred = tf.less(1, 2)
+      fn1 = lambda: tf.SparseTensor(indices + 1, x.values + 1, shape=shape)
+      fn2 = lambda: tf.SparseTensor(indices, x.values - 1, shape=shape)
+      r = tf.cond(pred, fn1, fn2)
+      self.assertAllEqual([3.0, 5.0], r.values.eval())
+      self.assertAllEqual([[1], [4]], r.indices.eval())
+      self.assertAllEqual(r.values.get_shape(), (2,))
+
   def testCondIndexedSlicesDifferentTypes(self):
     with self.test_session():
       values = tf.constant(10)

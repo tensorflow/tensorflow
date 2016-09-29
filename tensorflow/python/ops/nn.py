@@ -292,6 +292,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad
@@ -895,6 +896,62 @@ def batch_normalization(x,
       inv *= scale
     return x * inv + (offset - mean * inv
                       if offset is not None else -mean * inv)
+
+
+def fused_batch_norm(x, scale, offset,  # pylint: disable=invalid-name
+                     mean=None,
+                     variance=None,
+                     epsilon=0.001,
+                     data_format="NHWC",
+                     is_training=True,
+                     name=None):
+  r"""Batch normalization.
+
+  As described in http://arxiv.org/abs/1502.03167.
+
+  Args:
+    x: Input `Tensor` of 4 dimensions.
+    scale: A `Tensor` of 1 dimension for scaling.
+    offset: A `Tensor` of 1 dimension for bias.
+    mean: A `Tensor` of 1 dimension for population mean used for inference.
+    variance: A `Tensor` of 1 dimension for population variance
+              used for inference.
+    epsilon: A small float number added to the variance of x.
+    data_format: The data format for x. Either "NHWC" (default) or "NCHW".
+    is_training: A bool value to specify if the operation is used for
+                 training or inference.
+    name: A name for this operation (optional).
+
+  Returns:
+    y: A 4D Tensor for the normalized, scaled, offsetted x.
+    batch_mean: A 1D Tensor for the mean of x.
+    batch_var: A 1D Tensor for the variance of x.
+
+  Raises:
+    ValueError: If mean or variance is not None when is_training is True.
+  """
+  x = ops.convert_to_tensor(x, name="input")
+  scale = ops.convert_to_tensor(scale, name="scale")
+  offset = ops.convert_to_tensor(offset, name="offset")
+  if is_training:
+    if (mean is not None) or (variance is not None):
+      raise ValueError("Both 'mean' and 'variance' must be None "
+                       "if is_training is True.")
+  if mean is None:
+    mean = constant_op.constant([])
+  if variance is None:
+    variance = constant_op.constant([])
+  y, batch_mean, batch_var, _, _ = gen_nn_ops.fused_batch_norm(
+      x,
+      scale,
+      offset,
+      mean,
+      variance,
+      epsilon=epsilon,
+      data_format=data_format,
+      is_training=is_training,
+      name=name)
+  return y, batch_mean, batch_var
 
 
 def batch_norm_with_global_normalization(t,

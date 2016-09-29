@@ -46,9 +46,10 @@ describe('tf-tensorboard tests', () => {
       assert.isNotNull(injected);
     });
 
-    describe('non-graph tabs: reloading the selected dashboard', function() {
+    describe('reloading the selected dashboard', function() {
       TF.Globals.TABS.forEach((name, tabIndex) => {
-        if (name === 'graphs') {
+        // These tabs do not support reload mode.
+        if (name === 'graphs' || name === 'projections') {
           return;
         }
         it(`${name}: calling reload reloads dashboard`, function(done) {

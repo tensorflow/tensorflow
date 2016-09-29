@@ -391,31 +391,41 @@ class _DNNSampledSoftmaxClassifier(trainable.Trainable, evaluable.Evaluable):
     # pylint: disable=g-doc-args,g-doc-return-or-yield
     """See evaluable.Evaluable for a description of the Args.
 
+    Calculates the following metrics by default:
+      loss
+      average_precision@top_k: see
+        https://en.wikipedia.org/wiki/Information_retrieval#Average_precision
+      for k in range_k:
+        precision@k and recall@k
+
     range_k: A list of numbers where precision and recall have to be obtained.
       For eg. range_k=[1,5] will calculate precision@1, precision@5,
-      recall@1 and recall@5.
+      recall@1 and recall@5. If None, defaults to [1, top_k].
     """
-    # Setup the default metrics if metrics are not specified - precision@1,
-    # recall@1 and precision@top_k and recall@top_k if top_k is
-    # greater than 1.
     if not metrics:
       metrics = {}
-      if range_k is None:
-        if self._top_k > 1:
-          range_k = [1, self._top_k]
-        else:
-          range_k = [1]
-      for k in range_k:
-        metrics.update({
-            "precision_at_%d" % k: metric_spec.MetricSpec(
-                metric_fn=functools.partial(
-                    metric_ops.streaming_sparse_precision_at_k, k=k),
-                prediction_key=_PROBABILITIES,)})
-        metrics.update({
-            "recall_at_%d" % k: metric_spec.MetricSpec(
-                metric_fn=functools.partial(
-                    metric_ops.streaming_sparse_recall_at_k, k=k),
-                prediction_key=_PROBABILITIES,)})
+    metrics.update({
+        "average_precision_at_%d" % self._top_k: metric_spec.MetricSpec(
+            metric_fn=functools.partial(
+                metric_ops.streaming_sparse_average_precision_at_k,
+                k=self._top_k),
+            prediction_key=_PROBABILITIES)})
+    if range_k is None:
+      if self._top_k > 1:
+        range_k = [1, self._top_k]
+      else:
+        range_k = [1]
+    for k in range_k:
+      metrics.update({
+          "precision_at_%d" % k: metric_spec.MetricSpec(
+              metric_fn=functools.partial(
+                  metric_ops.streaming_sparse_precision_at_k, k=k),
+              prediction_key=_PROBABILITIES,)})
+      metrics.update({
+          "recall_at_%d" % k: metric_spec.MetricSpec(
+              metric_fn=functools.partial(
+                  metric_ops.streaming_sparse_recall_at_k, k=k),
+              prediction_key=_PROBABILITIES,)})
 
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
                                     feed_fn=feed_fn, batch_size=batch_size,
@@ -495,15 +505,21 @@ class _DNNSampledSoftmaxClassifier(trainable.Trainable, evaluable.Evaluable):
         used (and so can be `None`).
       default_batch_size: Default batch size of the `Example` placeholder.
       exports_to_keep: Number of exports to keep.
+
+    Returns:
+      The string path to the exported directory. NB: this functionality was
+      added ca. 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because subclasses
+      are not returning a value.
     """
     def default_input_fn(unused_estimator, examples):
       return layers.parse_feature_columns_from_examples(
           examples, self._feature_columns)
-    self._estimator.export(export_dir=export_dir,
-                           signature_fn=signature_fn,
-                           input_fn=input_fn or default_input_fn,
-                           default_batch_size=default_batch_size,
-                           exports_to_keep=exports_to_keep)
+    return self._estimator.export(export_dir=export_dir,
+                                  signature_fn=signature_fn,
+                                  input_fn=input_fn or default_input_fn,
+                                  default_batch_size=default_batch_size,
+                                  exports_to_keep=exports_to_keep)
 
   def get_variable_names(self):
     return self._estimator.get_variable_names()

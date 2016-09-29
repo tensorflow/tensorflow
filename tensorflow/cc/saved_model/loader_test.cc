@@ -1,6 +1,7 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/*Copyright 2016 Google Inc.All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
+ Licensed under the Apache License,
+    Version 2.0(the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
@@ -25,7 +26,10 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-constexpr char kTestData[] = "cc/saved_model/testdata/half_plus_two";
+constexpr char kTestDataPb[] = "cc/saved_model/testdata/half_plus_two";
+constexpr char kTestDataPbTxt[] = "cc/saved_model/testdata/half_plus_two_pbtxt";
+constexpr char kTestDataSharded[] =
+    "cc/saved_model/testdata/half_plus_two_sharded";
 
 class LoaderTest : public ::testing::Test {
  protected:
@@ -58,7 +62,7 @@ TEST_F(LoaderTest, TagMatch) {
   RunOptions run_options;
 
   const string export_dir =
-      io::JoinPath(testing::TensorFlowSrcRoot(), kTestData);
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPb);
   TF_ASSERT_OK(LoadSavedModel(export_dir, {kSavedModelTagServe},
                               session_options, run_options, &bundle));
   CheckSavedModelBundle(bundle);
@@ -70,7 +74,7 @@ TEST_F(LoaderTest, NoTagMatch) {
   SessionOptions session_options;
 
   const string export_dir =
-      io::JoinPath(testing::TensorFlowSrcRoot(), kTestData);
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPb);
   Status st = LoadSavedModel(export_dir, {"missing-tag"}, session_options,
                              run_options, &bundle);
   EXPECT_FALSE(st.ok());
@@ -86,7 +90,7 @@ TEST_F(LoaderTest, NoTagMatchMultiple) {
   SessionOptions session_options;
 
   const string export_dir =
-      io::JoinPath(testing::TensorFlowSrcRoot(), kTestData);
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPb);
   Status st = LoadSavedModel(export_dir, {kSavedModelTagServe, "missing-tag"},
                              session_options, run_options, &bundle);
   EXPECT_FALSE(st.ok());
@@ -94,6 +98,30 @@ TEST_F(LoaderTest, NoTagMatchMultiple) {
       StringPiece(st.error_message())
           .contains("Could not find meta graph def matching supplied tags."))
       << st.error_message();
+}
+
+TEST_F(LoaderTest, PbtxtFormat) {
+  SavedModelBundle bundle;
+  SessionOptions session_options;
+  RunOptions run_options;
+
+  const string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPbTxt);
+  TF_ASSERT_OK(LoadSavedModel(export_dir, {kSavedModelTagServe},
+                              session_options, run_options, &bundle));
+  CheckSavedModelBundle(bundle);
+}
+
+TEST_F(LoaderTest, ShardedVariables) {
+  SavedModelBundle bundle;
+  SessionOptions session_options;
+  RunOptions run_options;
+
+  const string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
+  TF_ASSERT_OK(LoadSavedModel(export_dir, {kSavedModelTagServe},
+                              session_options, run_options, &bundle));
+  CheckSavedModelBundle(bundle);
 }
 
 TEST_F(LoaderTest, InvalidExportPath) {
@@ -111,7 +139,7 @@ TEST_F(LoaderTest, InvalidExportPath) {
 TEST_F(LoaderTest, MaybeSavedModelDirectory) {
   // Valid SavedModel directory.
   const string export_dir =
-      io::JoinPath(testing::TensorFlowSrcRoot(), kTestData);
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPb);
   EXPECT_TRUE(MaybeSavedModelDirectory(export_dir));
 
   // Directory that does not exist.

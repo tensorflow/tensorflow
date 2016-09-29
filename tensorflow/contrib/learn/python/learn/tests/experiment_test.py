@@ -249,6 +249,21 @@ class ExperimentTest(tf.test.TestCase):
     self.assertTrue(isinstance(est.monitors[0],
                                tf.contrib.learn.monitors.ValidationMonitor))
 
+  def test_train_and_evaluate(self):
+    est = TestEstimator()
+    ex = tf.contrib.learn.Experiment(est,
+                                     train_input_fn='train_input',
+                                     eval_input_fn='eval_input',
+                                     eval_metrics='eval_metrics',
+                                     train_steps=100,
+                                     eval_steps=100)
+    ex.train_and_evaluate()
+    self.assertEquals(1, est.fit_count)
+    self.assertEquals(1, est.eval_count)
+    self.assertEquals(1, len(est.monitors))
+    self.assertTrue(isinstance(est.monitors[0],
+                               tf.contrib.learn.monitors.ValidationMonitor))
+
   @tf.test.mock.patch('tensorflow.python.training.server_lib.Server')  # pylint: disable=line-too-long
   def test_run_std_server(self, mock_server):
     # Arrange.

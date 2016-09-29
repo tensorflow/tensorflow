@@ -140,6 +140,10 @@ def compute_weighted_loss(losses, weight=1.0):
   if weight.get_shape().ndims is None:
     raise ValueError("weight.get_shape().ndims cannot be None")
 
+  weight_shape = weight.get_shape()
+  if weight_shape.ndims > 1 and weight_shape.dims[-1].is_compatible_with(1):
+    weight = array_ops.squeeze(weight, [-1])
+
   total_loss = _scale_losses(losses, weight)
   num_present = _num_present(losses, weight)
   mean_loss = _safe_mean(total_loss, num_present)
@@ -170,9 +174,6 @@ def _num_present(losses, weight, per_batch=False):
       `per_batch` is True, the value is returned as a tensor of size
       [batch_size]. Otherwise, a single scalar tensor is returned.
   """
-  # To ensure that dims of [2, 1] gets mapped to [2,]
-  weight = array_ops.squeeze(weight)
-
   # If the weight is a scalar, its easy to compute:
   if weight.get_shape().ndims == 0:
     batch_size = array_ops.reshape(array_ops.slice(array_ops.shape(losses),

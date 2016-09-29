@@ -211,6 +211,10 @@ ops.RegisterShape("SaveSlices")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ShardedFilename")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ShardedFilespec")(common_shapes.call_cpp_shape_fn)
 
+ops.RegisterShape("SaveV2")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RestoreV2")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("MergeV2Checkpoints")(common_shapes.call_cpp_shape_fn)
+
 
 class ReaderBase(object):
   """Base class for different Reader types, that produce a record every step.

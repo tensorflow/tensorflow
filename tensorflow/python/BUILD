@@ -1,7 +1,10 @@
 # Description:
 # Python support for TensorFlow.
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = [
+    "//tensorflow:internal",
+    "//tensorflow_models:__subpackages__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -630,6 +633,11 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "sdca_ops_gen",
+    require_shape_functions = True,
+)
+
+tf_gen_op_wrapper_private_py(
     name = "state_ops_gen",
     require_shape_functions = True,
 )
@@ -1080,6 +1088,16 @@ py_library(
 )
 
 py_library(
+    name = "sdca_ops",
+    srcs = ["ops/sdca_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":sdca_ops_gen",
+    ],
+)
+
+py_library(
     name = "seq2seq",
     srcs = ["ops/seq2seq.py"],
     srcs_version = "PY2AND3",
@@ -1173,6 +1191,7 @@ py_library(
         ":partitioned_variables",
         ":random_ops",
         ":script_ops",
+        ":sdca_ops",
         ":sparse_grad",
         ":sparse_ops",
         ":special_math_ops",
@@ -1479,6 +1498,17 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "nn_fused_batchnorm_test",
+    size = "large",
+    srcs = ["ops/nn_fused_batchnorm_test.py"],
+    additional_deps = [
+        ":framework_test_lib",
+        ":lib",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+cuda_py_test(
     name = "nn_test",
     size = "medium",
     srcs = ["ops/nn_test.py"],
@@ -1537,6 +1567,7 @@ py_library(
         ":random_ops",
         ":sparse_ops",
         ":state_ops",
+        ":string_ops",
         ":training_ops_gen",
         ":variable_scope",
         ":variables",

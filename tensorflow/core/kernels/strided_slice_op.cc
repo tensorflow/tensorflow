@@ -214,6 +214,12 @@ class StridedSliceGradOp : public OpKernel {
     Tensor* result = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, input_shape, &result));
 
+    if (processing_shape.dims() == 0) {
+      auto in = context->input(4);
+      CHECK(result->CopyFrom(in, processing_shape));
+      return;
+    }
+
 #define HANDLE_DIM(NDIM)                                                      \
   if (processing_dims == NDIM) {                                              \
     HandleStridedSliceGradCase<Device, T, NDIM>(context, begin, end, strides, \

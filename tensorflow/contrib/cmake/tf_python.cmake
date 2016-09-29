@@ -226,7 +226,6 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
         ${CMAKE_THREAD_LIBS_INIT}
         ${PROTOBUF_LIBRARIES}
         tf_protos_cc
-        re2_lib
         ${gif_STATIC_LIBRARIES}
 	${jpeg_STATIC_LIBRARIES}
         ${png_STATIC_LIBRARIES}
@@ -349,7 +348,6 @@ target_link_libraries(pywrap_tensorflow
     tf_protos_cc
     ${GRPC_LIBRARIES}
     ${PROTOBUF_LIBRARY}
-    re2_lib
     ${farmhash_STATIC_LIBRARIES}
     ${gif_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}

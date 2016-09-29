@@ -943,6 +943,7 @@
   * [`set_union`](../../api_docs/python/contrib.metrics.md#set_union)
   * [`streaming_accuracy`](../../api_docs/python/contrib.metrics.md#streaming_accuracy)
   * [`streaming_auc`](../../api_docs/python/contrib.metrics.md#streaming_auc)
+  * [`streaming_concat`](../../api_docs/python/contrib.metrics.md#streaming_concat)
   * [`streaming_covariance`](../../api_docs/python/contrib.metrics.md#streaming_covariance)
   * [`streaming_mean`](../../api_docs/python/contrib.metrics.md#streaming_mean)
   * [`streaming_mean_absolute_error`](../../api_docs/python/contrib.metrics.md#streaming_mean_absolute_error)
@@ -967,9 +968,11 @@
   * [`bucket`](../../api_docs/python/contrib.training.md#bucket)
   * [`bucket_by_sequence_length`](../../api_docs/python/contrib.training.md#bucket_by_sequence_length)
   * [`NextQueuedSequenceBatch`](../../api_docs/python/contrib.training.md#NextQueuedSequenceBatch)
+  * [`resample_at_rate`](../../api_docs/python/contrib.training.md#resample_at_rate)
   * [`SequenceQueueingStateSaver`](../../api_docs/python/contrib.training.md#SequenceQueueingStateSaver)
   * [`stratified_sample`](../../api_docs/python/contrib.training.md#stratified_sample)
   * [`stratified_sample_unknown_dist`](../../api_docs/python/contrib.training.md#stratified_sample_unknown_dist)
+  * [`weighted_resample`](../../api_docs/python/contrib.training.md#weighted_resample)
 
 * **[Utilities (contrib)](../../api_docs/python/contrib.util.md)**:
   * [`constant_value`](../../api_docs/python/contrib.util.md#constant_value)

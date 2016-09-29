@@ -37,9 +37,9 @@ export function shuffle<T>(array: T[]): T[] {
 /** Retrieves a projected point from the data set as a THREE.js vector */
 export function getProjectedPointFromIndex(
     dataSet: DataSet, i: number): THREE.Vector3 {
-  return new THREE.Vector3(
-      dataSet.points[i].projectedPoint[0], dataSet.points[i].projectedPoint[1],
-      dataSet.points[i].projectedPoint[2]);
+  let pp = dataSet.points[i].projectedPoint;
+  let v = new THREE.Vector3(pp[0], pp[1], pp[2]);
+  return v;
 }
 
 /** Projects a 3d point into screen space */

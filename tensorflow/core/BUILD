@@ -47,7 +47,10 @@
 #   supporting SELECTIVE_REGISTRATION feature.
 # portable_proto_library ":android_proto_lib" (Google-internal)
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = [
+    "//tensorflow:internal",
+    "//tensorflow_models:__subpackages__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -99,6 +102,7 @@ tf_proto_library(
     srcs = glob(
         ["**/*.proto"],
         exclude = [
+            "debug/debug_service.proto",
             "protobuf/worker.proto",
             "protobuf/worker_service.proto",
             "protobuf/master.proto",
@@ -140,6 +144,7 @@ cc_library(
     hdrs = [
         # TODO(josh11b): Make many of these internal.
         "lib/core/arena.h",
+        "lib/core/bitmap.h",
         "lib/core/bits.h",
         "lib/core/casts.h",
         "lib/core/coding.h",
@@ -190,7 +195,6 @@ cc_library(
         "platform/notification.h",
         "platform/profile_utils/cpu_utils.h",
         "platform/protobuf.h",  # TODO(josh11b): make internal
-        "platform/regexp.h",
         "platform/stacktrace.h",
         "platform/strong_hash.h",
         "platform/thread_annotations.h",
@@ -322,6 +326,7 @@ tf_gen_op_libs(
         "no_op",
         "parsing_ops",
         "random_ops",
+        "sdca_ops",
         "script_ops",
         "sendrecv_ops",
         "sparse_ops",
@@ -363,6 +368,7 @@ cc_library(
         ":parsing_ops_op_lib",
         ":random_ops_op_lib",
         ":script_ops_op_lib",
+        ":sdca_ops_op_lib",
         ":sendrecv_ops_op_lib",
         ":sparse_ops_op_lib",
         ":state_ops_op_lib",
@@ -483,6 +489,7 @@ cc_library(
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:required",
+        "//tensorflow/core/kernels:sdca_ops",
         "//tensorflow/core/kernels:sparse",
         "//tensorflow/core/kernels:state",
         "//tensorflow/core/kernels:string",
@@ -596,6 +603,7 @@ filegroup(
         "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
+        "//tensorflow/core/util/tensor_bundle:android_srcs",
         "common_runtime/gpu/gpu_tracer.cc",
         "common_runtime/gpu/gpu_tracer.h",
     ] + glob(
@@ -950,7 +958,6 @@ cc_library(
         "lib/strings/base64.h",
         "lib/strings/ordered_code.h",
         "lib/strings/proto_text_util.h",
-        "lib/strings/regexp.h",
         "lib/strings/scanner.h",
         "lib/wav/wav_io.h",
         "platform/demangle.h",
@@ -1203,6 +1210,19 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
+# This library is deprecated and no longer publicly available.
+# Do not add more uses of it.
+cc_library(
+    name = "regexp_internal",
+    hdrs = [
+        "platform/regexp.h",
+    ],
+    visibility = [
+        "//tensorflow/contrib/tfprof:__subpackages__",
+    ],
+    deps = [":lib_internal"],
+)
+
 tf_cuda_library(
     name = "direct_session_internal",
     srcs = ["common_runtime/direct_session.cc"],
@@ -1366,6 +1386,7 @@ tf_cc_tests(
     srcs = [
         "lib/core/arena_test.cc",
         "lib/core/bit_cast_test.cc",
+        "lib/core/bitmap_test.cc",
         "lib/core/blocking_counter_test.cc",
         "lib/core/coding_test.cc",
         "lib/core/notification_test.cc",
@@ -1441,6 +1462,19 @@ tf_cc_tests(
         ":test",
         ":test_main",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_tests(
+    size = "small",
+    srcs = ["platform/file_system_test.cc"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+        ":lib_test_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
     ],
 )
 

@@ -100,6 +100,12 @@ class LoggingTensorHookTest(tf.test.TestCase):
   def tearDown(self):
     tf.logging.info = self._actual_log
 
+  def test_illegal_args(self):
+    with self.assertRaisesRegexp(ValueError, 'nvalid every_n_iter'):
+      basic_session_run_hooks.LoggingTensorHook(tensors=['t'], every_n_iter=0)
+    with self.assertRaisesRegexp(ValueError, 'nvalid every_n_iter'):
+      basic_session_run_hooks.LoggingTensorHook(tensors=['t'], every_n_iter=-10)
+
   def test_print(self):
     with tf.Graph().as_default(), tf.Session() as sess:
       t = tf.constant(42.0, name='foo')

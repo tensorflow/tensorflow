@@ -7,7 +7,7 @@ Initializes ExportMonitor. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will both become required args.
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn (and in most cases, input_feature_key) will both become required args.
 
     Args:
       every_n_steps: Run monitor every N steps.
@@ -18,7 +18,9 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         `None`).
       input_feature_key: String key into the features dict returned by
         `input_fn` that corresponds to the raw `Example` strings `Tensor` that
-        the exported model will take as input.
+        the exported model will take as input. Can only be `None` if you're
+        using a custom `signature_fn` that does not use the first arg
+        (examples).
       exports_to_keep: int, number of exports to keep.
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
@@ -138,6 +140,20 @@ Callback before every n'th step begins.
 #### `tf.contrib.learn.monitors.ExportMonitor.exports_to_keep` {#ExportMonitor.exports_to_keep}
 
 
+
+
+- - -
+
+#### `tf.contrib.learn.monitors.ExportMonitor.last_export_dir` {#ExportMonitor.last_export_dir}
+
+Returns the directory containing the last completed export.
+
+##### Returns:
+
+  The string path to the exported directory. NB: this functionality was
+  added on 2016/09/25; clients that depend on the return value may need
+  to handle the case where this function returns None because the
+  estimator being fitted does not yet return a value during export.
 
 
 - - -

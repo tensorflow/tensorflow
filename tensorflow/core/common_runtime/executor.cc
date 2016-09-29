@@ -1046,8 +1046,6 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
   params.step_id = step_id_;
   Device* device = impl_->params_.device;
   params.device = device;
-  // track allocations if and only if we are collecting statistics
-  params.track_allocations = (stats_collector_ != nullptr);
   params.log_memory = log_memory_;
   params.record_tensor_accesses = impl_->device_record_tensor_accesses_;
   params.rendezvous = rendezvous_;
@@ -1082,7 +1080,6 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
     // add better optional debugging support.
     if (vlog_ && VLOG_IS_ON(1)) {
       mutex_lock l(mu_);
-
       IterationState* iter_state = input_frame->GetIteration(input_iter);
       iter_state->mark_started(id);
     }
@@ -1092,7 +1089,11 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       params.op_device_context = device_context_map_[node->id()];
     }
 
-    if (stats_collector_) {
+    params.track_allocations = false;
+    stats = nullptr;
+    if (stats_collector_ && !tagged_node.is_dead) {
+      // track allocations if and only if we are collecting statistics
+      params.track_allocations = true;
       stats = new NodeExecStats;
       stats->set_node_name(node->name());
       nodestats::SetScheduled(stats, scheduled_usec);
@@ -1156,7 +1157,6 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
             new AsyncState(params, tagged_node, item, first_input, stats);
 
         auto done = [this, state]() {
-
           Device* device = impl_->params_.device;
           NodeExecStats* stats = state->stats;      // Shorthand
           Entry* first_input = state->first_input;  // Shorthand
@@ -1165,10 +1165,10 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
             VLOG(2) << this << " Async kernel done: "
                     << SummarizeNodeDef(state->item.node->def());
           }
-          if (stats_collector_) nodestats::SetOpEnd(stats);
+          if (stats) nodestats::SetOpEnd(stats);
           EntryVector outputs;
           Status s = ProcessOutputs(state->item, &state->ctx, &outputs, stats);
-          if (stats_collector_) nodestats::SetMemory(stats, &state->ctx);
+          if (stats) nodestats::SetMemory(stats, &state->ctx);
           // Clears inputs.
           const int num_inputs = state->item.num_inputs;
           for (int i = 0; i < num_inputs; ++i) {
@@ -1191,8 +1191,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
             // Get the list of all tensors accessed during the execution
             TensorReferenceVector accessed;
             state->ctx.retrieve_accessed_tensors(&accessed);
-            if (stats_collector_)
-              nodestats::SetReferencedTensors(stats, accessed);
+            if (stats) nodestats::SetReferencedTensors(stats, accessed);
             // callee takes ownership of the vector
             device->ConsumeListOfAccessedTensors(state->ctx.op_device_context(),
                                                  accessed);
@@ -1201,12 +1200,12 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
           delete state;
           if (completed) Finish();
         };
-        if (stats_collector_) nodestats::SetOpStart(stats);
+        if (stats) nodestats::SetOpStart(stats);
         device->ComputeAsync(async, &state->ctx, done);
       } else {
         // Synchronous computes.
         OpKernelContext ctx(&params, item.num_outputs);
-        if (stats_collector_) nodestats::SetOpStart(stats);
+        if (stats) nodestats::SetOpStart(stats);
         device->Compute(CHECK_NOTNULL(op_kernel), &ctx);
         // The final node in the step is always a Sink node. Block
         // this Op from completing until the device has finished all
@@ -1217,7 +1216,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         if (node->IsSink() && ctx.status().ok()) {
           ctx.SetStatus(device->Sync());
         }
-        if (stats_collector_) nodestats::SetOpEnd(stats);
+        if (stats) nodestats::SetOpEnd(stats);
 
         s = ProcessOutputs(item, &ctx, &outputs, stats);
         if (s.ok() && impl_->device_record_tensor_accesses_) {
@@ -1225,7 +1224,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
           ctx.retrieve_accessed_tensors(&accessed_tensors);
           device_context = ctx.op_device_context();
         }
-        if (stats_collector_) nodestats::SetMemory(stats, &ctx);
+        if (stats) nodestats::SetMemory(stats, &ctx);
       }
     }
 
@@ -1248,12 +1247,11 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
       }
       outputs.clear();
       if (!accessed_tensors.empty()) {
-        if (stats_collector_)
-          nodestats::SetReferencedTensors(stats, accessed_tensors);
+        if (stats) nodestats::SetReferencedTensors(stats, accessed_tensors);
         // device_context is set above in synchronous computes
         device->ConsumeListOfAccessedTensors(device_context, accessed_tensors);
       }
-      if (stats_collector_) {
+      if (stats) {
         scheduled_usec = nodestats::NowInUsec();
       }
       // Postprocess.
@@ -1395,7 +1393,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       DataType dtype = val->dtype();
       if (val.is_ref()) dtype = MakeRefType(dtype);
       if (dtype == item.output_type(i)) {
-        if (stats_collector_ && val.tensor->IsInitialized()) {
+        if (stats && val.tensor->IsInitialized()) {
           nodestats::SetOutput(stats, i, val.tensor);
         }
         if (val.is_ref()) {
@@ -1609,7 +1607,7 @@ void ExecutorState::AddLoopInv(FrameState* frame, const Node* node,
 bool ExecutorState::NodeDone(const Status& s, const Node* node,
                              const TaggedNodeSeq& ready, NodeExecStats* stats,
                              TaggedNodeReadyQueue* inline_ready) {
-  if (stats_collector_) {
+  if (stats) {
     nodestats::SetAllEnd(stats);
     if (!SetTimelineLabel(node, stats)) {
       // Only record non-transfer nodes.

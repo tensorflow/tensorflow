@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <sys/stat.h>
+#include <deque>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -21,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -79,6 +82,52 @@ void ParseURI(StringPiece remaining, StringPiece* scheme, StringPiece* host,
 
   // 2. The rest is the path
   *path = remaining;
+}
+
+string CreateURI(StringPiece scheme, StringPiece host, StringPiece path) {
+  if (scheme.empty()) {
+    return path.ToString();
+  }
+  return strings::StrCat(scheme, "://", host, path);
+}
+
+Status FileSystem::GetMatchingPaths(const string& pattern,
+                                    std::vector<string>* results) {
+  results->clear();
+  // Find the fixed prefix by looking for the first wildcard.
+  const string& fixed_prefix =
+      pattern.substr(0, pattern.find_first_of("*?[\\"));
+  std::vector<string> all_files;
+  string dir = io::Dirname(fixed_prefix).ToString();
+  if (dir.empty()) dir = ".";
+
+  // Setup a BFS to explore everything under dir.
+  std::deque<string> dir_q;
+  dir_q.push_back(dir);
+  Status ret;  // Status to return.
+  while (!dir_q.empty()) {
+    string current_dir = dir_q.front();
+    dir_q.pop_front();
+    std::vector<string> children;
+    Status s = GetChildren(current_dir, &children);
+    ret.Update(s);
+    for (const string& child : children) {
+      const string child_path = io::JoinPath(current_dir, child);
+      // If the child is a directory add it to the queue.
+      if (IsDirectory(child_path).ok()) {
+        dir_q.push_back(child_path);
+      }
+      all_files.push_back(child_path);
+    }
+  }
+
+  // Match all obtained files to the input pattern.
+  for (const auto& f : all_files) {
+    if (Env::Default()->MatchPath(f, pattern)) {
+      results->push_back(f);
+    }
+  }
+  return ret;
 }
 
 }  // namespace tensorflow

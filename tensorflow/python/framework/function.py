@@ -127,24 +127,27 @@ def _add_op_node(op, func):
     op_def = op_def_registry.get_registered_ops()[op.type]
   # pylint: enable=protected-access
   attrs = _get_node_def_attr(op)
-  out_index = 0
-  for arg_def in op_def.output_arg:
-    if arg_def.number_attr:
-      dtype = arg_def.type or attrs[arg_def.type_attr].type
-      num = attrs[arg_def.number_attr].i
-      node.ret.append(
-          _add_output_array(op, out_index, out_index + num, dtype, func))
-      out_index += num
-    elif arg_def.type_list_attr:
-      dtype_lst = attrs[arg_def.type_list_attr].list.type
-      num = len(dtype_lst)
-      node.ret.append(
-          _add_output_list(op, out_index, out_index + num, dtype_lst, func))
-      out_index += num
-    else:
-      node.ret.append(
-          _make_argname_from_tensor_name(op.outputs[out_index].name))
-      out_index += 1
+  if not op_def.output_arg:
+    node.ret.append(_make_argname_from_tensor_name(op.name))
+  else:
+    out_index = 0
+    for arg_def in op_def.output_arg:
+      if arg_def.number_attr:
+        dtype = arg_def.type or attrs[arg_def.type_attr].type
+        num = attrs[arg_def.number_attr].i
+        node.ret.append(
+            _add_output_array(op, out_index, out_index + num, dtype, func))
+        out_index += num
+      elif arg_def.type_list_attr:
+        dtype_lst = attrs[arg_def.type_list_attr].list.type
+        num = len(dtype_lst)
+        node.ret.append(
+            _add_output_list(op, out_index, out_index + num, dtype_lst, func))
+        out_index += num
+      else:
+        node.ret.append(
+            _make_argname_from_tensor_name(op.outputs[out_index].name))
+        out_index += 1
   inp_index = 0
   for arg_def in op_def.input_arg:
     if arg_def.number_attr:
@@ -195,9 +198,9 @@ def _graph_to_function_def(graph, name, inputs, outputs):
   func.signature.output_arg.extend([_tensor_to_argdef(o) for o in outputs])
   func_arg_placeholders = set([i.name for i in inputs])
   for op in graph.get_operations():
-    tensor_name = op.values()[0].name
-    if tensor_name not in func_arg_placeholders:
-      _add_op_node(op, func)
+    if op.values() and (op.values()[0].name in func_arg_placeholders):
+      continue
+    _add_op_node(op, func)
   return func
 
 
@@ -250,11 +253,12 @@ def _call(sig, *inputs, **kwargs):
   attrs = _parse_kwargs_as_attrs(**kwargs)
   g = ops.get_default_graph()
   func_name = sig.name
+  inputs = [ops.convert_to_tensor(_) for _ in inputs]
   output_types = [dtypes.DType(x.type) for x in sig.output_arg]
   with ops.name_scope(name, func_name, inputs) as name:
     op = g.create_op(
         func_name,
-        list(inputs),
+        inputs,
         output_types,
         name=name,
         attrs=attrs,
@@ -281,6 +285,39 @@ def _get_func_name(func):
       return type(func)
   else:
     raise ValueError("Argument must be callable")
+
+
+class _FuncGraph(ops.Graph):
+  """A helper for construction a function.
+
+  _FuncGraph overrides ops.Graph's create_op() so that we can keep
+  track of every inputs into every op created inside the function.  If
+  any input is from other graphs, we keep track of it in self.capture
+  and substitue the input with a place holder.
+
+  Each captured input's corresponding place holder is converted into a
+  function argument and the caller passes in the captured tensor.
+
+  """
+
+  def __init__(self, *args, **kwargs):
+    super(_FuncGraph, self).__init__(*args, **kwargs)
+    self._building_function = True
+    self.captured = {}
+
+  def create_op(self, op_type, inputs, data_types, **kwargs):
+    for i, x in enumerate(inputs):
+      if x.graph is not self:
+        # Referring to a tensor from other graph.
+        if x in self.captured:
+          # Captured already.
+          inputs[i] = self.captured[x]
+        else:
+          # Substitute with a placeholder.
+          inputs[i] = array_ops.placeholder(x.dtype)
+          self.captured[x] = inputs[i]
+    return super(_FuncGraph, self).create_op(op_type, inputs, data_types,
+                                             **kwargs)
 
 
 class _DefinedFunction(object):
@@ -383,7 +420,7 @@ class _DefinedFunction(object):
       return
 
     # Create the func_def object.
-    temp_graph = ops.Graph()
+    temp_graph = _FuncGraph()
     with temp_graph.as_default():
       # List of placeholders for the function_def.
       inputs = []
@@ -397,6 +434,9 @@ class _DefinedFunction(object):
       # Convenience: if func only returned one value, make it a tuple.
       if not isinstance(outputs, (list, tuple)):
         outputs = (outputs,)
+
+    self._extra_args = list(temp_graph.captured.keys())
+    inputs.extend([temp_graph.captured[arg] for arg in self._extra_args])
 
     # Build the FunctionDef
     self._definition = _graph_to_function_def(temp_graph, self._func_name,
@@ -436,6 +476,7 @@ class _DefinedFunction(object):
 
   def __call__(self, *args, **kwargs):
     self.add_to_graph(ops.get_default_graph())
+    args = list(args) + self._extra_args
     if self._extra_kwargs:
       for k in self._extra_kwargs:
         if k not in kwargs:

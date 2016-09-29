@@ -1,0 +1,2 @@
+model_checkpoint_path: "/tmp/saved_model/half_plus_two/variables/saved_model_variables-?????-of-00001"
+all_model_checkpoint_paths: "/tmp/saved_model/half_plus_two/variables/saved_model_variables-?????-of-00001"

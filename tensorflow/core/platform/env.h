@@ -142,33 +142,13 @@ class Env {
   Status GetChildren(const string& dir, std::vector<string>* result);
 
   /// \brief Returns true if the path matches the given pattern. The wildcards
-  /// allowed in pattern are described below (GetMatchingPaths).
+  /// allowed in pattern are described in FileSystem::GetMatchingPaths.
   virtual bool MatchPath(const string& path, const string& pattern) = 0;
 
   /// \brief Given a pattern, stores in *results the set of paths that matches
   /// that pattern. *results is cleared.
   ///
-  /// pattern must match all of a name, not just a substring.
-  //
-  /// pattern: { term }
-  /// term:
-  ///   '*': matches any sequence of non-'/' characters
-  ///   '?': matches a single non-'/' character
-  ///   '[' [ '^' ] { match-list } ']':
-  ///        matches any single character (not) on the list
-  ///   c: matches character c (c != '*', '?', '\\', '[')
-  ///   '\\' c: matches character c
-  /// character-range:
-  ///   c: matches character c (c != '\\', '-', ']')
-  ///   '\\' c: matches character c
-  ///   lo '-' hi: matches character c for lo <= c <= hi
-  ///
-  /// Typical return codes
-  ///  * OK - no errors
-  ///  * UNIMPLEMENTED - Some underlying functions (like GetChildren) are not
-  ///                    implemented
-  /// The default implementation uses a combination of GetChildren, MatchPath
-  /// and IsDirectory.
+  /// More details about `pattern` in FileSystem::GetMatchingPaths.
   virtual Status GetMatchingPaths(const string& pattern,
                                   std::vector<string>* results);
 
@@ -372,6 +352,10 @@ Status ReadFileToString(Env* env, const string& fname, string* data);
 /// (overwriting existing contents, if any).
 Status WriteStringToFile(Env* env, const string& fname,
                          const StringPiece& data);
+
+/// Write binary representation of "proto" to the named file.
+Status WriteBinaryProto(Env* env, const string& fname,
+                        const ::tensorflow::protobuf::MessageLite& proto);
 
 /// Reads contents of named file and parse as binary encoded proto data
 /// and store into `*proto`.

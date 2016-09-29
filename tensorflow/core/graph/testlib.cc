@@ -175,6 +175,17 @@ Node* Matmul(Graph* g, Node* in0, Node* in1, bool transpose_a,
   return ret;
 }
 
+Node* BatchMatmul(Graph* g, Node* in0, Node* in1, bool adj_x, bool adj_y) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BatchMatMul")
+                  .Input(in0)
+                  .Input(in1)
+                  .Attr("adj_x", adj_x)
+                  .Attr("adj_y", adj_y)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* RandomNumberGenerator(const string& op, Graph* g, Node* input,
                             DataType dtype) {
   Node* ret;

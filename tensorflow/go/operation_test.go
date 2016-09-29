@@ -1,0 +1,131 @@
+// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package tensorflow
+
+import (
+	"fmt"
+	"runtime"
+	"runtime/debug"
+	"testing"
+)
+
+// createGraphAndOp creates an Operation but loses the reference to the Graph.
+func createGraphAndOp() (*Operation, error) {
+	t, err := NewTensor(int64(1))
+	if err != nil {
+		return nil, err
+	}
+	g := NewGraph()
+	output, err := Placeholder(g, "my_placeholder", t.DataType())
+	if err != nil {
+		return nil, err
+	}
+	return output.Op, nil
+}
+
+func TestOperationLifetime(t *testing.T) {
+	// Ensure that the Graph is not garbage collected while the program
+	// still has access to the Operation.
+	op, err := createGraphAndOp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	forceGC()
+	if got, want := op.Name(), "my_placeholder"; got != want {
+		t.Errorf("Got '%s', want '%s'", got, want)
+	}
+	if got, want := op.Type(), "Placeholder"; got != want {
+		t.Errorf("Got '%s', want '%s'", got, want)
+	}
+}
+
+func TestOutputShape(t *testing.T) {
+	graph := NewGraph()
+	testdata := []struct {
+		Value interface{}
+		Shape []int64
+	}{
+		{ // Scalar
+			int64(0),
+			[]int64{},
+		},
+		{ // Vector
+			[]int64{1, 2, 3},
+			[]int64{3},
+		},
+		{ // Matrix
+			[][]float64{
+				{1, 2, 3},
+				{4, 5, 6},
+			},
+			[]int64{2, 3},
+		},
+	}
+	for idx, test := range testdata {
+		tensor, err := NewTensor(test.Value)
+		if err != nil {
+			t.Errorf("#%d: NewTensor(%T) failed: %v", idx, test.Value, err)
+			continue
+		}
+		c, err := Const(graph, fmt.Sprintf("test%d", idx), tensor)
+		if err != nil {
+			t.Errorf("#%d: Const(%T) failed: %v", idx, test.Value, err)
+			continue
+		}
+		shape, err := c.Shape()
+		if err != nil {
+			t.Errorf("#%d: Shape() failed for %T: %v", idx, test.Value, err)
+			continue
+		}
+		if got, want := len(shape), len(test.Shape); got != want {
+			t.Errorf("#%d: %T: Got a shape with %d dimensions, want %d", idx, test.Value, got, want)
+			continue
+		}
+		for i := 0; i < len(shape); i++ {
+			if got, want := shape[i], test.Shape[i]; got != want {
+				t.Errorf("#%d: %T: Got %d, want %d for dimension #%d/%d", idx, test.Value, got, want, i, len(shape))
+			}
+		}
+	}
+	// Unknown number of dimensions
+	dummyTensor, err := NewTensor(float64(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	placeholder, err := Placeholder(graph, "placeholder", dummyTensor.DataType())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shape, err := placeholder.Shape(); err == nil {
+		t.Errorf("Got shape %v, wanted error", shape)
+	}
+}
+
+func forceGC() {
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+	// It was empirically observed that without this extra allocation
+	// TestOperationLifetime would fail only 50% of the time if
+	// Operation did not hold on to a reference to Graph. With this
+	// additional allocation, and with the bug where Operation does
+	// not hold onto a Graph, the test failed 90+% of the time.
+	//
+	// The author is aware that this technique is potentially fragile
+	// and fishy. Suggestions for alternatives are welcome.
+	bytesTillGC := mem.NextGC - mem.HeapAlloc + 1
+	_ = make([]byte, bytesTillGC)
+	runtime.GC()
+	debug.FreeOSMemory()
+}

@@ -38,7 +38,6 @@ target_link_libraries(tf_tutorials_example_trainer PUBLIC
     ${CMAKE_THREAD_LIBS_INIT}
     ${PROTOBUF_STATIC_LIBRARIES}
     tf_protos_cc
-    re2_lib
     ${boringssl_STATIC_LIBRARIES}
     ${farmhash_STATIC_LIBRARIES}
     ${gif_STATIC_LIBRARIES}

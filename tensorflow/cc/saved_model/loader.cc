@@ -28,9 +28,32 @@ namespace tensorflow {
 namespace {
 
 Status ReadSavedModel(const string& export_dir, SavedModel* saved_model_proto) {
-  const string saved_model_path =
+  const string saved_model_pb_path =
       io::JoinPath(export_dir, kSavedModelFilenamePb);
-  return ReadBinaryProto(Env::Default(), saved_model_path, saved_model_proto);
+  if (Env::Default()->FileExists(saved_model_pb_path)) {
+    return ReadBinaryProto(Env::Default(), saved_model_pb_path,
+                           saved_model_proto);
+  }
+  const string saved_model_pbtxt_path =
+      io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
+  if (Env::Default()->FileExists(saved_model_pbtxt_path)) {
+    string pbtxt_data;
+    Status status =
+        ReadFileToString(Env::Default(), saved_model_pbtxt_path, &pbtxt_data);
+    if (status != Status::OK()) {
+      return status;
+    }
+    if (!protobuf::TextFormat::ParseFromString(pbtxt_data, saved_model_proto)) {
+      return Status(error::Code::UNKNOWN,
+                    "Could not parse SavedModel proto from .pbtxt format: " +
+                        saved_model_pbtxt_path);
+    }
+    return Status::OK();
+  }
+  return Status(error::Code::NOT_FOUND,
+                "Could not find SavedModel .pb or .pbtxt at supplied export "
+                "directory path: " +
+                    export_dir);
 }
 
 Status FindMetaGraphDefToLoad(const SavedModel& saved_model_proto,
@@ -63,13 +86,18 @@ Status Restore(const RunOptions& run_options, const string& export_dir,
                const StringPiece restore_op_name,
                const StringPiece variable_filename_const_op_name,
                Session* session) {
-  const string variables_path =
-      io::JoinPath(export_dir, kSavedModelVariablesFilename);
-  if (!Env::Default()->FileExists(variables_path)) {
-    return Status(error::Code::NOT_FOUND,
-                  "Could not find checkpointed variables.");
+  // Find path to variables to be restored in export directory.
+  string variables_path =
+      io::JoinPath(export_dir, kSavedModelVariablesDirectory);
+  const string unsharded_variables_path =
+      io::JoinPath(variables_path, kSavedModelVariablesFilename);
+  if (Env::Default()->FileExists(unsharded_variables_path)) {
+    variables_path = unsharded_variables_path;
+  } else {
+    const string sharded_variables_path =
+        io::JoinPath(variables_path, kSavedModelVariablesShardedFilename);
+    variables_path = sharded_variables_path;
   }
-
   // Add variables to the graph.
   Tensor variables_path_tensor(DT_STRING, TensorShape({}));
   variables_path_tensor.scalar<string>()() = variables_path;

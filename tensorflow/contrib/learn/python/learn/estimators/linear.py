@@ -561,12 +561,12 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
              signature_fn=None,
              default_batch_size=1,
              exports_to_keep=None):
-    """See BasEstimator.export."""
+    """See BaseEstimator.export."""
     def default_input_fn(unused_estimator, examples):
       return layers.parse_feature_columns_from_examples(
           examples, self._feature_columns)
 
-    self._estimator.export(
+    return self._estimator.export(
         export_dir=export_dir,
         input_fn=input_fn or default_input_fn,
         input_feature_key=input_feature_key,

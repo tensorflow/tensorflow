@@ -21,7 +21,9 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb_text.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -581,7 +583,7 @@ Status BundleReader::GetBundleEntryProto(const string& key,
       ParseEntryProto(iter_->key(), iter_->value(), &entry_copy));
   if (!TensorShape::IsValid(entry_copy.shape())) {
     return errors::DataLoss("Invaid tensor shape: ", key, " ",
-                            entry_copy.shape().ShortDebugString());
+                            ProtoShortDebugString(entry_copy.shape()));
   }
 
   *entry = entry_copy;
@@ -786,12 +788,34 @@ Status BundleReader::GetSliceValue(const string& full_tensor_key,
   return Status::OK();
 }
 
+bool BundleReader::Contains(StringPiece key) {
+  Seek(key.ToString());
+  return Valid() && (this->key() == key);
+}
+
 Status BundleReader::LookupTensorShape(const string& key, TensorShape* shape) {
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
 
   *shape = TensorShape(entry.shape());
   return Status::OK();
+}
+
+string BundleReader::DebugString() {
+  // Format used below emulates that of TensorSliceReader::DebugString().
+  string shape_str;
+  BundleEntryProto entry;
+  Seek(kHeaderEntryKey);
+  for (Next(); Valid(); Next()) {
+    CHECK(entry.ParseFromArray(value().data(), value().size()));
+    if (entry.slices_size() > 0) continue;  // Slice of some partitioned var.
+
+    strings::StrAppend(&shape_str, key(), " (",
+                       EnumName_DataType(entry.dtype()), ") ",
+                       TensorShape(entry.shape()).DebugString());
+    strings::StrAppend(&shape_str, "\n");
+  }
+  return shape_str;
 }
 
 FileOutputBuffer::~FileOutputBuffer() { delete file_; }
