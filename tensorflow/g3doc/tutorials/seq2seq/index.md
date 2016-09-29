@@ -25,20 +25,14 @@ prepare it for training and train. It takes about 20GB of disk space,
 and a while to download and prepare (see [later](#lets-run-it) for details),
 so you can start and leave it running while reading this tutorial.
 
-This tutorial references the following files from `python/ops/`.
+This tutorial references the following files.
 
 File | What's in it?
 --- | ---
 `python/ops/seq2seq.py` | Library for building sequence-to-sequence models.
-
-
-This tutorial references the following files from `models/rnn`.
-
-File | What's in it?
---- | ---
-`translate/seq2seq_model.py` | Neural translation sequence-to-sequence model.
-`translate/data_utils.py` | Helper functions for preparing translation data.
-`translate/translate.py` | Binary that trains and runs the translation model.
+`models/rnn/translate/seq2seq_model.py` | Neural translation sequence-to-sequence model.
+`models/rnn/translate/data_utils.py` | Helper functions for preparing translation data.
+`models/rnn/translate/translate.py` | Binary that trains and runs the translation model.
 
 
 ## Sequence-to-Sequence Basics
