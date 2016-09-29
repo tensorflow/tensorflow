@@ -21,6 +21,7 @@ at the end).
 If `indices` is a scalar the output shape will be a vector of length `depth`
 
 If `indices` is a vector of length `features`, the output shape will be:
+
 ```
   features x depth if axis == -1
   depth x features if axis == 0
@@ -28,6 +29,7 @@ If `indices` is a vector of length `features`, the output shape will be:
 
 If `indices` is a matrix (batch) with shape `[batch, features]`, the output
 shape will be:
+
 ```
   batch x features x depth if axis == -1
   batch x depth x features if axis == 1

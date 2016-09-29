@@ -2070,6 +2070,7 @@ for correctness than performance, unlike in rnn().
 Creates a recurrent neural network specified by RNNCell `cell`.
 
 The simplest form of RNN network generated is:
+
 ```python
   state = cell.zero_state(...)
   outputs = []
@@ -2088,6 +2089,7 @@ and properly propagates the state at an example's sequence length
 to the final state output.
 
 The dynamic calculation performed is, at time `t` for batch row `b`,
+
 ```python
   (output, state)(b, t) =
     (t >= sequence_length(b))
