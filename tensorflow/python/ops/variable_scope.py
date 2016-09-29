@@ -217,9 +217,9 @@ class _VariableStore(object):
     `uniform_unit_scaling_initializer`. If initializer is a Tensor, we use
     it as a value and derive the shape from the initializer.
 
-    If a partitioner is provided, first a sharded `Variable` is created
-    via `_get_partitioned_variable`, and the return value is a
-    `Tensor` composed of the shards concatenated along the partition axis.
+    If a partitioner is provided, a `PartitionedVariable` is returned.
+    Accessing this object as a `Tensor` returns the shards concatenated along
+    the partition axis.
 
     Some useful partitioners are available.  See, e.g.,
     `variable_axis_size_partitioner` and `min_max_variable_partitioner`.
@@ -262,7 +262,8 @@ class _VariableStore(object):
         ```
 
     Returns:
-      The created or existing variable.
+      The created or existing `Variable` (or `PartitionedVariable`, if a
+      partitioner was used).
 
     Raises:
       ValueError: when creating a new variable and shape is not declared,
@@ -405,9 +406,7 @@ class _VariableStore(object):
         must be known.
 
     Returns:
-      A tuple `(shards, partitions)` where `shards` is the list of `Variable`
-      shards and `partitions` is the output of the partitioner on the input
-      shape.
+      A `PartitionedVariable` object.
 
     Raises:
       ValueError: when creating a new variable and shape is not declared,
@@ -963,9 +962,9 @@ def get_variable(name,
   passed in the variable scope will be used (if that is `None` too,
   then by default no regularization is performed).
 
-  If a partitioner is provided, first a sharded `Variable` is created
-  via `_get_partitioned_variable`, and the return value is a
-  `Tensor` composed of the shards concatenated along the partition axis.
+  If a partitioner is provided, a `PartitionedVariable` is returned.
+  Accessing this object as a `Tensor` returns the shards concatenated along
+  the partition axis.
 
   Some useful partitioners are available.  See, e.g.,
   `variable_axis_size_partitioner` and `min_max_variable_partitioner`.
@@ -1007,7 +1006,8 @@ def get_variable(name,
       ```
 
   Returns:
-    The created or existing variable.
+    The created or existing `Variable` (or `PartitionedVariable`, if a
+    partitioner was used).
 
   Raises:
     ValueError: when creating a new variable and shape is not declared,
