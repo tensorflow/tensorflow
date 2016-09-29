@@ -226,13 +226,11 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
         ${CMAKE_THREAD_LIBS_INIT}
         ${PROTOBUF_LIBRARIES}
         tf_protos_cc
-        re2_lib
         ${gif_STATIC_LIBRARIES}
 	${jpeg_STATIC_LIBRARIES}
         ${png_STATIC_LIBRARIES}
         ${ZLIB_LIBRARIES}
         ${jsoncpp_STATIC_LIBRARIES}
-        ${boringssl_STATIC_LIBRARIES}
         ${CMAKE_DL_LIBS}
     )
     target_compile_options(${tf_python_op_lib_name}_gen_python PRIVATE
@@ -244,7 +242,11 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
     target_compile_features(${tf_python_op_lib_name}_gen_python PRIVATE
         cxx_rvalue_references
     )
-
+    if(tensorflow_ENABLE_SSL_SUPPORT)
+      target_link_libraries(${tf_python_op_lib_name}_gen_python PRIVATE
+          ${boringssl_STATIC_LIBRARIES})
+    endif()
+  
     # Use the generated C++ executable to create a Python file
     # containing the wrappers.
     add_custom_command(
@@ -346,8 +348,6 @@ target_link_libraries(pywrap_tensorflow
     tf_protos_cc
     ${GRPC_LIBRARIES}
     ${PROTOBUF_LIBRARY}
-    re2_lib
-    ${boringssl_STATIC_LIBRARIES}
     ${farmhash_STATIC_LIBRARIES}
     ${gif_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}
@@ -367,29 +367,33 @@ target_include_directories(pywrap_tensorflow PUBLIC
 target_compile_features(pywrap_tensorflow PRIVATE
     cxx_rvalue_references
 )
+if(tensorflow_ENABLE_SSL_SUPPORT)
+  target_link_libraries(pywrap_tensorflow ${boringssl_STATIC_LIBRARIES})
+endif()
+
 
 
 ############################################################
 # Build a PIP package containing the TensorFlow runtime.
 ############################################################
-add_custom_target(tf_python_copy_pip_files)
-add_dependencies(tf_python_copy_pip_files
+add_custom_target(tf_python_build_pip_package)
+add_dependencies(tf_python_build_pip_package
     pywrap_tensorflow
     tf_python_copy_scripts_to_destination
     tf_python_touchup_modules
     tf_python_ops)
-add_custom_command(TARGET tf_python_copy_pip_files POST_BUILD
+add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/contrib/cmake/setup.py
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/)
-add_custom_command(TARGET tf_python_copy_pip_files POST_BUILD
+add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/libpywrap_tensorflow.so
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow.so)
-add_custom_command(TARGET tf_python_copy_pip_files POST_BUILD
+add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tools/pip_package/README
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/)
-add_custom_command(TARGET tf_python_copy_pip_files POST_BUILD
+add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tools/pip_package/MANIFEST.in
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/)
-add_custom_command(TARGET tf_python_copy_pip_files POST_BUILD
+add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/setup.py bdist_wheel
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tf_python)

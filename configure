@@ -5,6 +5,11 @@ pushd `dirname $0` #> /dev/null
 SOURCE_BASE_DIR=`pwd -P`
 popd > /dev/null
 
+function bazel_clean_and_fetch() {
+  bazel clean --expunge
+  bazel fetch //tensorflow/...
+}
+
 ## Set up python-related environment settings
 while true; do
   fromuser=""
@@ -114,6 +119,7 @@ done
 export TF_NEED_CUDA
 if [ "$TF_NEED_CUDA" == "0" ]; then
   echo "Configuration finished"
+  bazel_clean_and_fetch
   exit
 fi
 
@@ -300,7 +306,6 @@ EOF
   TF_CUDA_COMPUTE_CAPABILITIES=""
 done
 
-bazel clean --expunge
-bazel fetch //...
+bazel_clean_and_fetch
 
 echo "Configuration finished"

@@ -67,7 +67,6 @@ if [ "$#" -lt 1 ] || [ ! -e "${SCRIPT_DIR}/Dockerfile.${CONTAINER_TYPE}" ]; then
   exit 1
 fi
 
-
 # Optional arguments - environment variables. For example:
 # CI_DOCKER_EXTRA_PARAMS='-it --rm' CI_COMMAND_PREFIX='' tensorflow/tools/ci_build/ci_build.sh CPU /bin/bash
 CI_TENSORFLOW_SUBMODULE_PATH="${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
@@ -77,6 +76,11 @@ CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-${CI_TENSORFLOW_SUBMODULE_PATH}/tens
 if [[ ! -z "${TF_BUILD_DISABLE_GCP}" ]] &&
    [[ "${TF_BUILD_DISABLE_GCP}" != "0" ]]; then
   CI_COMMAND_PREFIX+=("--disable-gcp")
+fi
+
+# cmake (CPU) builds do not require configuration.
+if [[ "${CONTAINER_TYPE}" == "cmake" ]]; then
+  CI_COMMAND_PREFIX=""
 fi
 
 # Helper function to traverse directories up until given file is found.

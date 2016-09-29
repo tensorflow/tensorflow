@@ -1348,7 +1348,7 @@ def variable_scope(name_or_scope,
       a reuse scope, or if reuse is not `None` or `True`.
     TypeError: when the types of some arguments are not appropriate.
   """
-  if default_name is None and not name_or_scope:
+  if default_name is None and name_or_scope is None:
     raise TypeError("If default_name is None then name_or_scope is required")
   if values is None:
     values = []

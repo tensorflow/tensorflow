@@ -17,30 +17,25 @@ target_include_directories(${proto_text} PUBLIC
     ${tensorflow_source_dir}
 )
 
+# TODO(mrry): Cut down the dependencies of this tool.
 target_link_libraries(${proto_text} PUBLIC
     ${CMAKE_THREAD_LIBS_INIT}
     ${PROTOBUF_LIBRARIES}
-    # tf_protos_cc
-    # re2_lib
     ${gif_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}
     ${png_STATIC_LIBRARIES}
     ${ZLIB_LIBRARIES}
     ${jsoncpp_STATIC_LIBRARIES}
-    ${boringssl_STATIC_LIBRARIES}
     ${CMAKE_DL_LIBS}
-)
+    )
+if(tensorflow_ENABLE_SSL_SUPPORT)
+  target_link_libraries(${proto_text} PUBLIC ${boringssl_STATIC_LIBRARIES})
+endif()
+
 
 add_dependencies(${proto_text}
     tf_core_lib
     protobuf
-    # jpeg_copy_headers_to_destination
-    # png_copy_headers_to_destination
-    # re2_copy_headers_to_destination
-    # eigen
-    # tf_protos_cc
-    # jsoncpp
-    # boringssl
 )
 
 target_compile_options(${proto_text} PRIVATE
