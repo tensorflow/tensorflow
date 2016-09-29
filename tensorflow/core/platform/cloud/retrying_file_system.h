@@ -29,9 +29,9 @@ namespace tensorflow {
 class RetryingFileSystem : public FileSystem {
  public:
   RetryingFileSystem(std::unique_ptr<FileSystem> base_file_system,
-                     int delay_seconds = 1)
+                     int64 delay_microseconds = 1000000L)
       : base_file_system_(std::move(base_file_system)),
-        initial_delay_seconds_(delay_seconds) {}
+        initial_delay_microseconds_(delay_microseconds) {}
 
   Status NewRandomAccessFile(
       const string& filename,
@@ -70,7 +70,7 @@ class RetryingFileSystem : public FileSystem {
 
  private:
   std::unique_ptr<FileSystem> base_file_system_;
-  const int initial_delay_seconds_;
+  const int64 initial_delay_microseconds_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RetryingFileSystem);
 };
