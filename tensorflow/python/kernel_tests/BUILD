@@ -1061,6 +1061,24 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "atrous_convolution_test",
+    size = "medium",
+    srcs = ["atrous_convolution_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+cuda_py_test(
+    name = "pool_test",
+    size = "medium",
+    srcs = ["pool_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+cuda_py_test(
     name = "conv2d_backprop_filter_grad_test",
     size = "medium",
     srcs = ["conv2d_backprop_filter_grad_test.py"],

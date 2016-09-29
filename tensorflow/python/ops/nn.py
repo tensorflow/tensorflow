@@ -104,6 +104,7 @@ vectors.  For `depthwise_conv_2d`, each scalar component `input[b, i, j, k]`
 is multiplied by a vector `filter[di, dj, k]`, and all the vectors are
 concatenated.
 
+@@convolution
 @@conv2d
 @@depthwise_conv2d
 @@separable_conv2d
@@ -135,6 +136,7 @@ to the `Convolution` section for details about the padding calculation.
 @@max_pool3d
 @@fractional_avg_pool
 @@fractional_max_pool
+@@pool
 
 ## Morphological filtering
 
