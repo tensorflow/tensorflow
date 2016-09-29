@@ -350,6 +350,13 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "substr_op_test",
+    size = "small",
+    srcs = ["substr_op_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
     name = "summary_ops_test",
     size = "small",
     srcs = ["summary_ops_test.py"],
@@ -406,71 +413,6 @@ tf_py_test(
 )
 
 cuda_py_test(
-py_tests(
-    name = "cpu_only_kernel_tests",
-    size = "small",
-    srcs = [
-        "as_string_op_test.py",
-        "attention_ops_test.py",
-        "barrier_ops_test.py",
-        "base64_ops_test.py",
-        "bcast_ops_test.py",
-        "benchmark_test.py",
-        "candidate_sampler_ops_test.py",
-        "cholesky_op_test.py",
-        "clip_ops_test.py",
-        "ctc_decoder_ops_test.py",
-        "ctc_loss_op_test.py",
-        "decode_csv_op_test.py",
-        "decode_png_op_test.py",
-        "decode_raw_op_test.py",
-        "determinant_op_test.py",
-        "edit_distance_op_test.py",
-        "fifo_queue_test.py",
-        "fractional_avg_pool_op_test.py",
-        "fractional_max_pool_op_test.py",
-        "identity_op_py_test.py",
-        "in_topk_op_test.py",
-        "io_ops_test.py",
-        "listdiff_op_test.py",
-        "logging_ops_test.py",
-        "matrix_inverse_op_test.py",
-        "matrix_solve_ls_op_test.py",
-        "matrix_solve_op_test.py",
-        "matrix_triangular_solve_op_test.py",
-        "parameterized_truncated_normal_op_test.py",
-        "parsing_ops_test.py",
-        "partitioned_variables_test.py",
-        "priority_queue_test.py",
-        "random_shuffle_queue_test.py",
-        "save_restore_ops_test.py",
-        "segment_reduction_ops_test.py",
-        "self_adjoint_eig_op_test.py",
-        "sparse_add_op_test.py",
-        "sparse_concat_op_test.py",
-        "sparse_reorder_op_test.py",
-        "sparse_reshape_op_test.py",
-        "sparse_split_op_test.py",
-        "sparse_to_dense_op_py_test.py",
-        "sparsemask_op_test.py",
-        "string_join_op_test.py",
-        "string_split_op_test.py",
-        "substr_op_test.py",
-        "summary_ops_test.py",
-        "summary_tensor_op_test.py",
-        "template_test.py",
-        "topk_op_test.py",
-        "unique_op_test.py",
-        "variable_scope_test.py",
-        "variables_test.py",
-        "where_op_test.py",
-    ],
-    additional_deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-cuda_py_tests(
     name = "cast_op_test",
     size = "small",
     srcs = ["cast_op_test.py"],

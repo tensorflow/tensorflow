@@ -61,6 +61,49 @@ class SubstrOpTest(tf.test.TestCase):
       substr = substr_op.eval()
       self.assertAllEqual(substr, expected_value)
 
+  def _testElementWisePosLen(self, dtype):
+    test_string = [[b"ten", b"eleven", b"twelve"],
+                   [b"thirteen", b"fourteen", b"fifteen"],
+                   [b"sixteen", b"seventeen", b"eighteen"]]
+    position = np.array([[1, 2, 3],
+                         [1, 2, 3],
+                         [1, 2, 3]], dtype)
+    length = np.array([[2, 3, 4],
+                       [4, 3, 2],
+                       [5, 5, 5]], dtype)
+    expected_value = [[b"en", b"eve", b"lve"],
+                      [b"hirt", b"urt", b"te"],
+                      [b"ixtee", b"vente", b"hteen"]]
+
+    substr_op = tf.substr(test_string, position, length)
+    with self.test_session():
+      substr = substr_op.eval()
+      self.assertAllEqual(substr, expected_value)
+
+  def _testBroadcast(self, dtype):
+    test_string = [[b"ten", b"eleven", b"twelve"],
+                   [b"thirteen", b"fourteen", b"fifteen"],
+                   [b"sixteen", b"seventeen", b"eighteen"]]
+    position = np.array([1, 2, 3], dtype)
+    length = np.array([1, 2, 3], dtype)
+    substr_op = tf.substr(test_string, position, length)
+    with self.test_session():
+      substr = substr_op.eval()
+
+  def _testBadBroadcast(self, dtype):
+    test_string = [[b"ten", b"eleven", b"twelve"],
+                   [b"thirteen", b"fourteen", b"fifteen"],
+                   [b"sixteen", b"seventeen", b"eighteen"]]
+    position = np.array([1, 2, 3, 4], dtype)
+    length = np.array([1, 2, 3, 4], dtype)
+    expected_value = [[b"e", b"ev", b"lve"],
+                      [b"h", b"ur", b"tee"],
+                      [b"i", b"ve", b"hte"]]
+    substr_op = tf.substr(test_string, position, length)
+    with self.test_session():
+      with self.assertRaises(tf.errors.InvalidArgumentError):
+        substr = substr_op.eval()
+
   def _testOutOfRangeError(self, dtype):
     test_string = b"Hello"
     position = np.array(7, dtype)
@@ -90,6 +133,9 @@ class SubstrOpTest(tf.test.TestCase):
     self._testScalarString(dtype)
     self._testVectorStrings(dtype)
     self._testMatrixStrings(dtype)
+    self._testElementWisePosLen(dtype)
+    # self._testBroadcast(dtype)
+    # self._testBadBroadcast(dtype)
     self._testOutOfRangeError(dtype)
 
   def testInt32(self):
@@ -104,8 +150,6 @@ class SubstrOpTest(tf.test.TestCase):
         tf.substr(b"test", 3.0, 1)
       with self.assertRaises(TypeError):
         tf.substr(b"test", 3, 1.0)
-
-      
 
       
 if __name__ == "__main__":
