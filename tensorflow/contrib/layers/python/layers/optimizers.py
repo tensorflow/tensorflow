@@ -88,7 +88,7 @@ def optimize_loss(loss,
                  'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
                class should be sub-class of tf.Optimizer that implements
                  `compute_gradients` and `apply_gradients` functions.
-               optimizer instance should be instantion of `tf.Optimizer`
+               optimizer instance should be instantiation of `tf.Optimizer`
                  sub-class and have `compute_gradients` and `apply_gradients`
                  functions.
     gradient_noise_scale: float or None, adds 0-mean normal noise scaled by this

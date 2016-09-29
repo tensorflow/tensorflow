@@ -52,9 +52,9 @@ def confusion_matrix(predictions, labels, num_classes=None, dtype=dtypes.int32,
   the same shape in order for this function to work.
 
   Args:
-    predictions: A 1-D array represeting the predictions for a given
+    predictions: A 1-D array representing the predictions for a given
                  classification.
-    labels: A 1-D represeting the real labels for the classification task.
+    labels: A 1-D representing the real labels for the classification task.
     num_classes: The possible number of labels the classification task can
                  have. If this value is not provided, it will be calculated
                  using both predictions and labels array.
@@ -63,7 +63,7 @@ def confusion_matrix(predictions, labels, num_classes=None, dtype=dtypes.int32,
     weights: An optional `Tensor` whose shape matches `predictions`.
 
   Returns:
-    A k X k matrix represeting the confusion matrix, where k is the number of
+    A k X k matrix representing the confusion matrix, where k is the number of
     possible labels in the classification task.
 
   Raises:

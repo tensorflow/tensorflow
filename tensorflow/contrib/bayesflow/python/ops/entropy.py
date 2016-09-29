@@ -384,7 +384,7 @@ def renyi_alpha(step,
   Args:
     step:  Non-negative scalar `Tensor`.  Typically the global step or an
       offset version thereof.
-    decay_time:  Postive scalar `Tensor`.
+    decay_time:  Positive scalar `Tensor`.
     alpha_min:  `float` or `double` `Tensor`.
       The minimal, final value of `alpha`, achieved when `step >= decay_time`
     alpha_max:  `Tensor` of same `dtype` as `alpha_min`.

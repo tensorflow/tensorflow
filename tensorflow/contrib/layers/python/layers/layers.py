@@ -157,7 +157,7 @@ def batch_norm(inputs,
     activation_fn: activation function, default set to None to skip it and
       maintain a linear activation.
     updates_collections: collections to collect the update ops for computation.
-      The updates_ops need to be excuted with the train_op.
+      The updates_ops need to be executed with the train_op.
       If None, a control dependency would be added to make sure the updates are
       computed in place.
     is_training: whether or not the layer is in training mode. In training mode
@@ -398,7 +398,7 @@ def convolution2d(inputs,
     reuse: whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
     variables_collections: optional list of collections for all the variables or
-      a dictionay containing a different list of collection per variable.
+      a dictionary containing a different list of collection per variable.
     outputs_collections: collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
@@ -509,7 +509,7 @@ def convolution2d_in_plane(
     reuse: whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
     variables_collections: optional list of collections for all the variables or
-      a dictionay containing a different list of collection per variable.
+      a dictionary containing a different list of collection per variable.
     outputs_collections: collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
@@ -607,7 +607,7 @@ def convolution2d_transpose(
     reuse: whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
     variables_collections: optional list of collections for all the variables or
-      a dictionay containing a different list of collection per variable.
+      a dictionary containing a different list of collection per variable.
     outputs_collections: collection to add the outputs.
     trainable: whether or not the variables should be trainable or not.
     scope: Optional scope for variable_scope.

@@ -386,7 +386,7 @@ def get_forward_walk_ops(seed_ops,
       walk starts. If a list of tensors is given instead, the seed_ops are set
       to be the consumers of those tensors.
     inclusive: if True the given seed_ops are also part of the resulting set.
-    within_ops: an iterable of tf.Operation whithin which the search is
+    within_ops: an iterable of tf.Operation within which the search is
       restricted. If within_ops is None, the search is performed within
       the whole graph.
     stop_at_ts: an iterable of tensors at which the graph walk stops.
@@ -453,7 +453,7 @@ def get_backward_walk_ops(seed_ops,
       walk starts. If a list of tensors is given instead, the seed_ops are set
       to be the generators of those tensors.
     inclusive: if True the given seed_ops are also part of the resulting set.
-    within_ops: an iterable of tf.Operation whithin which the search is
+    within_ops: an iterable of tf.Operation within which the search is
       restricted. If within_ops is None, the search is performed within
       the whole graph.
     stop_at_ts: an iterable of tensors at which the graph walk stops.
@@ -513,7 +513,7 @@ def get_walks_intersection_ops(forward_seed_ops,
                                control_inputs=False,
                                control_outputs=None,
                                control_ios=None):
-  """Return the intersection of a foward and a backward walk.
+  """Return the intersection of a forward and a backward walk.
 
   Args:
     forward_seed_ops: an iterable of operations from which the forward graph
@@ -526,7 +526,7 @@ def get_walks_intersection_ops(forward_seed_ops,
       resulting set.
     backward_inclusive: if True the given backward_seed_ops are also part of the
       resulting set.
-    within_ops: an iterable of tf.Operation whithin which the search is
+    within_ops: an iterable of tf.Operation within which the search is
       restricted. If within_ops is None, the search is performed within
       the whole graph.
     control_inputs: A boolean indicating whether control inputs are enabled.
@@ -537,7 +537,7 @@ def get_walks_intersection_ops(forward_seed_ops,
       control_inputs to True and control_outputs to the util.ControlOutputs
       instance.
   Returns:
-    A Python set of all the tf.Operation in the intersection of a foward and a
+    A Python set of all the tf.Operation in the intersection of a forward and a
       backward walk.
   Raises:
     TypeError: if forward_seed_ops or backward_seed_ops or within_ops cannot be
@@ -566,7 +566,7 @@ def get_walks_union_ops(forward_seed_ops,
                         control_inputs=False,
                         control_outputs=None,
                         control_ios=None):
-  """Return the union of a foward and a backward walk.
+  """Return the union of a forward and a backward walk.
 
   Args:
     forward_seed_ops: an iterable of operations from which the forward graph
@@ -589,7 +589,7 @@ def get_walks_union_ops(forward_seed_ops,
       control_inputs to True and control_outputs to the util.ControlOutputs
       instance.
   Returns:
-    A Python set of all the tf.Operation in the union of a foward and a
+    A Python set of all the tf.Operation in the union of a forward and a
       backward walk.
   Raises:
     TypeError: if forward_seed_ops or backward_seed_ops or within_ops cannot be

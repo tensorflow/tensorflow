@@ -300,7 +300,7 @@ class EveryN(BaseMonitor):
       super(ExampleMonitor, self).step_begin(step)
       return []
 
-  Failing to call the super implementation will cause unpredictible behavior.
+  Failing to call the super implementation will cause unpredictable behavior.
 
   The `every_n_post_step()` callback is also called after the last step if it
   was not already called through the regular conditions.  Note that

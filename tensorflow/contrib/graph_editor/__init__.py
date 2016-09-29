@@ -91,7 +91,7 @@ my_sgv = ge.sgv("foo/.*/.*read$", graph=tf.get_default_graph())
 Note that the Graph Editor is meant to manipulate several graphs at the same
 time, typically during transform or copy operation. For that reason,
 to avoid any confusion, the default graph is never used and the graph on
-which to operate must always be explicitely given. This is the reason why
+which to operate must always be given explicitly. This is the reason why
 *graph=tf.get_default_graph()* is used in the code snippets above.
 
 ## Modules overview

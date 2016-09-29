@@ -802,7 +802,7 @@ def streaming_auc(predictions, labels, weights=None, num_thresholds=200,
 
   This value is ultimately returned as `auc`, an idempotent operation that
   computes the area under a discretized curve of precision versus recall values
-  (computed using the afformentioned variables). The `num_thresholds` variable
+  (computed using the aforementioned variables). The `num_thresholds` variable
   controls the degree of discretization with larger numbers of thresholds more
   closely approximating the true AUC.
 
@@ -1343,7 +1343,7 @@ def streaming_sparse_recall_at_k(predictions,
       be added to.
     updates_collections: An optional list of collections that updates should
       be added to.
-    name: Name of new update operation, and namespace for other dependant ops.
+    name: Name of new update operation, and namespace for other dependent ops.
 
   Returns:
     recall: Scalar `float64` `Tensor` with the value of `true_positives` divided
@@ -1443,7 +1443,7 @@ def streaming_sparse_precision_at_k(predictions,
       be added to.
     updates_collections: An optional list of collections that updates should
       be added to.
-    name: Name of new update operation, and namespace for other dependant ops.
+    name: Name of new update operation, and namespace for other dependent ops.
 
   Returns:
     precision: Scalar `float64` `Tensor` with the value of `true_positives`
@@ -1708,7 +1708,7 @@ def streaming_sparse_average_precision_at_k(predictions,
       be added to.
     updates_collections: An optional list of collections that updates should
       be added to.
-    name: Name of new update operation, and namespace for other dependant ops.
+    name: Name of new update operation, and namespace for other dependent ops.
 
   Returns:
     mean_average_precision: Scalar `float64` `Tensor` with the mean average
@@ -1884,7 +1884,7 @@ def _streaming_sparse_true_positive_at_k(predictions_idx,
     class_id: Class for which we want binary metrics.
     weights: `Tensor` whose shape is broadcastable to the the first [D1, ... DN]
       dimensions of `predictions_idx` and `labels`.
-    name: Name of new variable, and namespace for other dependant ops.
+    name: Name of new variable, and namespace for other dependent ops.
 
   Returns:
     A tuple of `Variable` and update `Operation`.
@@ -1972,7 +1972,7 @@ def _streaming_sparse_false_positive_at_k(predictions_idx,
     class_id: Class for which we want binary metrics.
     weights: `Tensor` whose shape is broadcastable to the the first [D1, ... DN]
       dimensions of `predictions_idx` and `labels`.
-    name: Name of new variable, and namespace for other dependant ops.
+    name: Name of new variable, and namespace for other dependent ops.
 
   Returns:
     A tuple of `Variable` and update `Operation`.
@@ -2061,7 +2061,7 @@ def _streaming_sparse_false_negative_at_k(predictions_idx,
     class_id: Class for which we want binary metrics.
     weights: `Tensor` whose shape is broadcastable to the the first [D1, ... DN]
       dimensions of `predictions_idx` and `labels`.
-    name: Name of new variable, and namespace for other dependant ops.
+    name: Name of new variable, and namespace for other dependent ops.
 
   Returns:
     A tuple of `Variable` and update `Operation`.
@@ -2441,7 +2441,7 @@ def streaming_pearson_correlation(predictions,
                                   metrics_collections=None,
                                   updates_collections=None,
                                   name=None):
-  """Computes pearson correlation coefficient between `predictions`, `labels`.
+  """Computes Pearson correlation coefficient between `predictions`, `labels`.
 
   The `streaming_pearson_correlation` function delegates to
   `streaming_covariance` the tracking of three [co]variances:
@@ -2472,7 +2472,7 @@ def streaming_pearson_correlation(predictions,
     name: An optional variable_scope name.
 
   Returns:
-    pearson_r: A tensor representing the current pearson product-moment
+    pearson_r: A tensor representing the current Pearson product-moment
       correlation coefficient, the value of
       `cov(predictions, labels) / sqrt(var(predictions) * var(labels))`.
     update_op: An operation that updates the underlying variables appropriately.

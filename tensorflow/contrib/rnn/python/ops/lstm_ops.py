@@ -344,7 +344,7 @@ class LSTMBlockCell(rnn_cell.RNNCell):
   reduce the scale of forgetting in the beginning of the training.
 
   Unlike BasicLSTMCell, this is a monolithic op and should be much faster. The
-  weight and bias matrixes should be compatible as long as the variabel scope
+  weight and bias matrices should be compatible as long as the variable scope
   matches.
   """
 

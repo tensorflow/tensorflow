@@ -541,7 +541,7 @@ def sum_of_pairwise_squares(predictions, targets, weight=1.0, scope=None):
   Note that since the inputs are of size [batch_size, d0, ... dN], the
   corresponding pairs are computed within each batch sample but not across
   samples within a batch. For example, if `predictions` represents a batch of
-  16 grayscale images of dimenion [batch_size, 100, 200], then the set of pairs
+  16 grayscale images of dimension [batch_size, 100, 200], then the set of pairs
   is drawn from each image, but not across images.
 
   `weight` acts as a coefficient for the loss. If a scalar is provided, then the

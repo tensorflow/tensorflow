@@ -228,7 +228,7 @@ Neural Networks.  Most accept an `RNNCell`-subclassed object
 @@bidirectional_rnn
 @@raw_rnn
 
-## Conectionist Temporal Classification (CTC)
+## Connectionist Temporal Classification (CTC)
 
 @@ctc_loss
 @@ctc_greedy_decoder
@@ -237,7 +237,7 @@ Neural Networks.  Most accept an `RNNCell`-subclassed object
 ## Evaluation
 
 The evaluation ops are useful for measuring the performance of a network.
-Since they are nondifferentiable, they are typically used at evaluation time.
+Since they are non-differentiable, they are typically used at evaluation time.
 
 @@top_k
 @@in_top_k
@@ -320,17 +320,17 @@ from tensorflow.python.ops.rnn import *
 
 
 def log_poisson_loss(log_input, targets, compute_full_loss=False, name=None):
-  """Computes log poisson loss given `log_input`.
+  """Computes log Poisson loss given `log_input`.
 
   Gives the log-likelihood loss between the prediction and the target under the
-  assumption that the target has a poisson distribution.
+  assumption that the target has a Poisson distribution.
   Caveat: By default, this is not the exact loss, but the loss minus a
     constant term [log(z!)]. That has no effect for optimization, but
     does not play well with relative loss comparisons. To compute an
     approximation of the log factorial term, specify
     compute_full_loss=True to enable Stirling's Approximation.
 
-  For brevity, let `c = log(x) = log_input`, `z = targets`.  The log poisson
+  For brevity, let `c = log(x) = log_input`, `z = targets`.  The log Poisson
   loss is
 
         -log(exp(-x) * (x^z) / z!)
@@ -492,7 +492,7 @@ def weighted_cross_entropy_with_logits(logits, targets, pos_weight, name=None):
 
   Returns:
     A `Tensor` of the same shape as `logits` with the componentwise
-    weightedlogistic losses.
+    weighted logistic losses.
 
   Raises:
     ValueError: If `logits` and `targets` do not have the same shape.

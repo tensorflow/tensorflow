@@ -749,7 +749,7 @@ centered: indicates if the offset coordinates are centered relative to
   upper left corner of the input images.
 normalized: indicates if the offset coordinates are normalized.
 uniform_noise: indicates if the noise should be generated using a
-  uniform distribution or a gaussian distribution.
+  uniform distribution or a Gaussian distribution.
 )doc");
 
 // --------------------------------------------------------------------------

@@ -494,8 +494,8 @@ def assign_from_checkpoint(model_path, var_list):
     model_path: The full path to the model checkpoint. To get latest checkpoint
         use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
     var_list: A list of `Variable` objects or a dictionary mapping names in the
-        checkpoint to the correspoing variables to initialize. If empty or None,
-        it would return  no_op(), None.
+        checkpoint to the corresponding variables to initialize. If empty or
+        None, it would return  no_op(), None.
 
   Returns:
     the restore_op and the feed_dict that need to be run to restore var_list.

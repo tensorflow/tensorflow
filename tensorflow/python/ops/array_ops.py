@@ -517,7 +517,7 @@ def strided_slice(input_,
     ellipsis_mask: An `int32` mask.
     new_axis_mask: An `int32` mask.
     shrink_axis_mask: An `int32` mask.
-    var: The variable coresponding to `input_` or None
+    var: The variable corresponding to `input_` or None
     name: A name for the operation (optional).
 
   Returns:

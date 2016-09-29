@@ -1258,7 +1258,7 @@ def reduce_logsumexp(input_tensor, reduction_indices=None, keep_dims=False,
   If `reduction_indices` has no entries, all dimensions are reduced, and a
   tensor with a single element is returned.
 
-  This funciton is more numerically stable than log(sum(exp(input))). It avoids
+  This function is more numerically stable than log(sum(exp(input))). It avoids
   overflows caused by taking the exp of large inputs and underflows caused by
   taking the log of small inputs.
 
@@ -1276,7 +1276,7 @@ def reduce_logsumexp(input_tensor, reduction_indices=None, keep_dims=False,
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
-    reduction_indices: The dimensions to reduce. If `None` (the defaut),
+    reduction_indices: The dimensions to reduce. If `None` (the default),
       reduces all dimensions.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
