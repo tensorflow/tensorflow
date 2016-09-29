@@ -101,6 +101,7 @@ class FileSystem {
 
   virtual Status GetFileSize(const string& fname, uint64* file_size) = 0;
 
+  // Overwrites the target if it exists.
   virtual Status RenameFile(const string& src, const string& target) = 0;
 
   // Translate an URI to a filename usable by the FileSystem implementation. The
