@@ -148,7 +148,6 @@ foreach(tf_cc_op_lib_name ${tf_cc_op_lib_names})
         ${CMAKE_THREAD_LIBS_INIT}
         ${PROTOBUF_LIBRARIES}
         tf_protos_cc
-        re2_lib
         ${gif_STATIC_LIBRARIES}
         ${jpeg_STATIC_LIBRARIES}
         ${png_STATIC_LIBRARIES}

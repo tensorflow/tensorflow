@@ -18,14 +18,12 @@ add_library(tf_core_distributed_runtime OBJECT ${tf_core_distributed_runtime_src
 
 add_dependencies(tf_core_distributed_runtime
     tf_core_cpu grpc
-    re2_copy_headers_to_destination
 )
 
 target_include_directories(tf_core_distributed_runtime PRIVATE
    ${tensorflow_source_dir}
    ${eigen_INCLUDE_DIRS}
    ${GRPC_INCLUDE_DIRS}
-   ${re2_INCLUDE_DIR}
 )
 
 target_compile_options(tf_core_distributed_runtime PRIVATE
@@ -60,7 +58,6 @@ add_executable(grpc_tensorflow_server
 
 add_dependencies(tf_core_distributed_runtime
     grpc
-    re2_copy_headers_to_destination
 )
 
 target_include_directories(grpc_tensorflow_server PUBLIC
@@ -76,7 +73,6 @@ target_link_libraries(grpc_tensorflow_server PUBLIC
     ${PROTOBUF_LIBRARIES}
     ${GRPC_LIBRARIES}
     tf_protos_cc
-    re2_lib
     ${farmhash_STATIC_LIBRARIES}
     ${gif_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}
