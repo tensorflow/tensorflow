@@ -87,6 +87,7 @@
   * [`get_variable_scope`](../../api_docs/python/state_ops.md#get_variable_scope)
   * [`import_meta_graph`](../../api_docs/python/state_ops.md#import_meta_graph)
   * [`IndexedSlices`](../../api_docs/python/state_ops.md#IndexedSlices)
+  * [`initialize_all_tables`](../../api_docs/python/state_ops.md#initialize_all_tables)
   * [`initialize_all_variables`](../../api_docs/python/state_ops.md#initialize_all_variables)
   * [`initialize_local_variables`](../../api_docs/python/state_ops.md#initialize_local_variables)
   * [`initialize_variables`](../../api_docs/python/state_ops.md#initialize_variables)
