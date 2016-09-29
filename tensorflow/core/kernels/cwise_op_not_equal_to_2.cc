@@ -16,11 +16,19 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER12(BinaryOp, CPU, "NotEqual", functor::not_equal_to, float, Eigen::half,
-           double, uint8, int8, int16, int32, int64, complex64, complex128,
-           string, bool);
+
+// REGISTER# macros ignore all but first type (assumed to be float) when
+// __ANDROID_TYPES_SLIM__ is defined.  Since this file is the second of two
+// sharded files, only make its register calls when not __ANDROID_TYPES_SLIM__.
+#if !defined(__ANDROID_TYPES_SLIM__)
+
+REGISTER6(BinaryOp, CPU, "NotEqual", functor::not_equal_to, int32, int64,
+          complex64, complex128, string, bool);
 #if GOOGLE_CUDA
-REGISTER8(BinaryOp, GPU, "NotEqual", functor::not_equal_to, float, Eigen::half,
-          double, uint8, int8, int16, int64, bool);
-#endif
+REGISTER4(BinaryOp, GPU, "NotEqual", functor::not_equal_to, int8, int16, int64,
+          bool);
+
+#endif  // GOOGLE_CUDA
+
+#endif   // !defined(__ANDROID_TYPES_SLIM__)
 }  // namespace tensorflow

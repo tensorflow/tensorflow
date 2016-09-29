@@ -16,22 +16,18 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER10(BinaryOp, CPU, "Add", functor::add, float, Eigen::half, double, int32,
-          int64, int8, int16, complex64, complex128, string);
-#if GOOGLE_CUDA
-REGISTER6(BinaryOp, GPU, "Add", functor::add, float, Eigen::half, double, int64,
-          complex64, complex128);
 
-// A special GPU kernel for int32.
-// TODO(b/25387198): Also enable int32 in device memory. This kernel
-// registration requires all int32 inputs and outputs to be in host memory.
-REGISTER_KERNEL_BUILDER(Name("Add")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::add<int32>>);
-#endif
+// REGISTER# macros ignore all but first type (assumed to be float) when
+// __ANDROID_TYPES_SLIM__ is defined.  Since this file is the second of two
+// sharded files, only make its register calls when not __ANDROID_TYPES_SLIM__.
+#if !defined(__ANDROID_TYPES_SLIM__)
+
+REGISTER5(BinaryOp, CPU, "Add", functor::add, int8, int16, complex64,
+          complex128, string);
+#if GOOGLE_CUDA
+REGISTER3(BinaryOp, GPU, "Add", functor::add, int64, complex64, complex128);
+#endif  // GOOGLE_CUDA
+
+#endif  // !defined(__ANDROID_TYPES_SLIM__)
 
 }  // namespace tensorflow
