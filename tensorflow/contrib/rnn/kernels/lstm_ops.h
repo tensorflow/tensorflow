@@ -41,9 +41,32 @@ struct TensorZero {
 };
 
 template <typename Device, typename T>
+struct TensorUnalignedZero {
+  void operator()(const Device& d, typename TTypes<T>::UnalignedFlat t) {
+    t.device(d) = t.constant(T(0));
+  }
+};
+
+template <typename Device, typename T>
 struct TensorCopy {
   void operator()(const Device& d, typename TTypes<T>::ConstFlat src,
                   typename TTypes<T>::Flat dst) {
+    dst.device(d) = src;
+  }
+};
+
+template <typename Device, typename T>
+struct TensorCopyUnaligned {
+  void operator()(const Device& d, typename TTypes<T>::UnalignedConstFlat src,
+                  typename TTypes<T>::Flat dst) {
+    dst.device(d) = src;
+  }
+};
+
+template <typename Device, typename T>
+struct TensorCopyToUnaligned {
+  void operator()(const Device& d, typename TTypes<T>::ConstFlat src,
+                  typename TTypes<T>::UnalignedFlat dst) {
     dst.device(d) = src;
   }
 };
