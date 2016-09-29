@@ -17,6 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
+
+from tensorflow.contrib.rnn.python.ops import fused_rnn_cell
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library
@@ -340,22 +343,46 @@ class LSTMBlockCell(rnn_cell.RNNCell):
   We add forget_bias (default: 1) to the biases of the forget gate in order to
   reduce the scale of forgetting in the beginning of the training.
 
-  Unlike BasicLSTMCell, this is a monolithic op and should be much faster. The
-  weight and bias matrices should be compatible as long as the variable scope
-  matches.
+  Unlike rnn_cell.LSTMCell, this is a monolithic op and should be much faster.
+  The weight and bias matrixes should be compatible as long as the variable
+  scope matches, and you use `use_compatible_names=True`.
   """
 
-  def __init__(self, num_units, forget_bias=1.0, use_peephole=False):
+  def __init__(self,
+               num_units,
+               forget_bias=1.0,
+               use_peephole=False,
+               use_compatible_names=False):
     """Initialize the basic LSTM cell.
 
     Args:
       num_units: int, The number of units in the LSTM cell.
       forget_bias: float, The bias added to forget gates (see above).
       use_peephole: Whether to use peephole connections or not.
+      use_compatible_names: If True, use the same variable naming as
+        rnn_cell.LSTMCell
     """
     self._num_units = num_units
     self._forget_bias = forget_bias
     self._use_peephole = use_peephole
+    if use_compatible_names:
+      self._names = {
+          "W": "W_0",
+          "b": "B",
+          "wci": "W_I_diag",
+          "wco": "W_O_diag",
+          "wcf": "W_F_diag",
+          "scope": "LSTMCell"
+      }
+    else:
+      self._names = {
+          "W": "W",
+          "b": "b",
+          "wci": "wci",
+          "wco": "wco",
+          "wcf": "wcf",
+          "scope": "LSTMBlockCell"
+      }
 
   @property
   def state_size(self):
@@ -367,21 +394,24 @@ class LSTMBlockCell(rnn_cell.RNNCell):
 
   def __call__(self, x, states_prev, scope=None):
     """Long short-term memory cell (LSTM)."""
-    with vs.variable_scope(scope or type(self).__name__):
+    with vs.variable_scope(scope or self._names["scope"]):
       x_shape = x.get_shape().with_rank(2)
       if not x_shape[1]:
         raise ValueError("Expecting x_shape[1] to be sets: %s" % str(x_shape))
       if len(states_prev) != 2:
         raise ValueError("Expecting states_prev to be a tuple with length 2.")
       input_size = x_shape[1]
-      w = vs.get_variable("W", [input_size + self._num_units,
-                                self._num_units * 4])
+      w = vs.get_variable(self._names["W"], [input_size + self._num_units,
+                                             self._num_units * 4])
       b = vs.get_variable(
-          "b", [w.get_shape().with_rank(2)[1]],
+          self._names["b"], [w.get_shape().with_rank(2)[1]],
           initializer=init_ops.constant_initializer(0.0))
-      wci = vs.get_variable("wci", [self._num_units])
-      wco = vs.get_variable("wco", [self._num_units])
-      wcf = vs.get_variable("wcf", [self._num_units])
+      if self._use_peephole:
+        wci = vs.get_variable(self._names["wci"], [self._num_units])
+        wco = vs.get_variable(self._names["wco"], [self._num_units])
+        wcf = vs.get_variable(self._names["wcf"], [self._num_units])
+      else:
+        wci = wco = wcf = array_ops.zeros([self._num_units])
       (cs_prev, h_prev) = states_prev
       (_, cs, _, _, _, _, h) = _lstm_block_cell(
           x,
@@ -396,3 +426,251 @@ class LSTMBlockCell(rnn_cell.RNNCell):
           use_peephole=self._use_peephole)
 
       return (h, (cs, h))
+
+
+class LSTMBlockWrapper(fused_rnn_cell.FusedRNNCell):
+  """This is a helper class that provides housekeeping for LSTM cells.
+
+  This may be useful for alternative LSTM and similar type of cells.
+  The subclasses must implement `_call_cell` method and `num_units` property.
+  """
+
+  @abc.abstractproperty
+  def num_units(self):
+    """Number of units in this cell (output dimension)."""
+    pass
+
+  @abc.abstractmethod
+  def _call_cell(self, inputs, initial_cell_state, initial_output, dtype,
+                 sequence_length):
+    """Run this LSTM on inputs, starting from the given state.
+
+    This method must be implemented by subclasses and does the actual work
+    of calling the cell.
+
+    Args:
+      inputs: `3-D` tensor with shape `[time_len x batch_size x input_size]`
+      initial_cell_state: initial value for cell state, shape `[batch_size,
+        self._num_units]`
+      initial_output: initial value of cell output, shape `[batch_size,
+        self._num_units]`
+      dtype: The data type for the initial state and expected output.
+      sequence_length: Specifies the length of each sequence in inputs. An int32
+        or int64 vector (tensor) size [batch_size], values in [0, time_len) or
+          None.
+
+    Returns:
+      A pair containing:
+      - State: A `3-D` tensor of shape `[time_len x batch_size x
+                    output_size]`
+      - Output: A `3-D` tensor of shape `[time_len x batch_size x
+                    output_size]`
+    """
+    pass
+
+  def __call__(self,
+               inputs,
+               initial_state=None,
+               dtype=None,
+               sequence_length=None,
+               scope=None):
+    """Run this LSTM on inputs, starting from the given state.
+
+    Args:
+      inputs: `3-D` tensor with shape `[time_len x batch_size x input_size]`
+        or a list of `time_len` tensors of shape `[batch_size x input_size]`.
+      initial_state: a tuple `(initial_cell_state, initial_output)` with tensors
+        of shape `[batch_size, self._num_units]`. If this is not provided, the
+        cell is expected to create a zero initial state of type `dtype`.
+      dtype: The data type for the initial state and expected output. Required
+        if `initial_state` is not provided or RNN state has a heterogeneous
+        dtype.
+      sequence_length: Specifies the length of each sequence in inputs. An int32
+        or int64 vector (tensor) size [batch_size], values in [0, time_len).
+        Defaults to `time_len` for each element.
+      scope: VariableScope for the created subgraph; defaults to class name.
+
+    Returns:
+      A pair containing:
+      - Output: A `3-D` tensor of shape `[time_len x batch_size x output_size]`
+        or a list of time_len tensors of shape `[batch_size x output_size]`, to
+        match the type of the `inputs`.
+      - Final state: a tuple `(cell_state, output)` matching initial_state.
+
+    Raises:
+      ValueError: in case of shape mismatches
+    """
+    with vs.variable_scope(scope or type(self).__name__):
+      is_list = isinstance(inputs, list)
+      if is_list:
+        inputs = array_ops.pack(inputs)
+      inputs_shape = inputs.get_shape().with_rank(3)
+      if not inputs_shape[2]:
+        raise ValueError("Expecting inputs_shape[2] to be set: %s" %
+                         inputs_shape)
+      batch_size = inputs_shape[1].value
+      if batch_size is None:
+        batch_size = array_ops.shape(inputs)[1]
+      time_len = inputs_shape[0].value
+      if time_len is None:
+        time_len = array_ops.shape(inputs)[0]
+
+      # Provide default values for initial_state and dtype
+      if initial_state is None:
+        if dtype is None:
+          raise ValueError(
+              "Either initial_state or dtype needs to be specified")
+        z = array_ops.zeros(
+            array_ops.pack([batch_size, self.num_units]), dtype=dtype)
+        initial_state = z, z
+      else:
+        if len(initial_state) != 2:
+          raise ValueError(
+              "Expecting initial_state to be a tuple with length 2 or None")
+        if dtype is None:
+          dtype = initial_state[0].dtype
+
+      # create the actual cell
+      if sequence_length:
+        sequence_length = ops.convert_to_tensor(sequence_length)
+      initial_cell_state, initial_output = initial_state  # pylint: disable=unpacking-non-sequence
+      cell_states, outputs = self._call_cell(inputs, initial_cell_state,
+                                             initial_output, dtype,
+                                             sequence_length)
+
+      if sequence_length is not None:
+        # Mask out the part beyond sequence_length
+        mask = array_ops.transpose(
+            array_ops.sequence_mask(
+                sequence_length, time_len, dtype=dtype), [1, 0])
+        mask = array_ops.tile(
+            array_ops.expand_dims(mask, [-1]), [1, 1, self.num_units])
+        outputs *= mask
+        # Prepend initial states to cell_states and outputs for indexing to work
+        # correctly,since we want to access the last valid state at
+        # sequence_length - 1, which can even be -1, corresponding to the
+        # initial state.
+        mod_cell_states = array_ops.concat(
+            0, [array_ops.expand_dims(initial_cell_state, [0]), cell_states])
+        mod_outputs = array_ops.concat(
+            0, [array_ops.expand_dims(initial_output, [0]), outputs])
+        final_cell_state = self._gather_states(mod_cell_states, sequence_length,
+                                               batch_size)
+        final_output = self._gather_states(mod_outputs, sequence_length,
+                                           batch_size)
+      else:
+        # No sequence_lengths used: final state is the last state
+        final_cell_state = cell_states[-1]
+        final_output = outputs[-1]
+
+      if is_list:
+        # Input was a list, so return a list
+        outputs = array_ops.unpack(outputs)
+
+      return outputs, (final_cell_state, final_output)
+
+  def _gather_states(self, data, indices, batch_size):
+    """Produce `out`, s.t. out(i, j) = data(indices(i), i, j)."""
+    mod_indices = indices * batch_size + math_ops.range(batch_size)
+    return array_ops.gather(
+        array_ops.reshape(data, [-1, self.num_units]), mod_indices)
+
+
+class LSTMBlockFusedCell(LSTMBlockWrapper):
+  """FusedRNNCell implementation of LSTM.
+
+  This is an extremely efficient LSTM implementation, that uses a single TF op
+  for the entire LSTM. It should be both faster and more memory-efficient than
+  LSTMBlockCell defined above.
+
+  The implementation is based on: http://arxiv.org/abs/1409.2329.
+
+  We add forget_bias (default: 1) to the biases of the forget gate in order to
+  reduce the scale of forgetting in the beginning of the training.
+
+  The variable naming is consistent with rnn_cell.LSTMCell.
+  """
+
+  def __init__(self,
+               num_units,
+               forget_bias=1.0,
+               cell_clip=None,
+               use_peephole=False):
+    """Initialize the LSTM cell.
+
+    Args:
+      num_units: int, The number of units in the LSTM cell.
+      forget_bias: float, The bias added to forget gates (see above).
+      cell_clip: clip the cell to this value. Defaults to `3`.
+      use_peephole: Whether to use peephole connections or not.
+    """
+    self._num_units = num_units
+    self._forget_bias = forget_bias
+    self._cell_clip = cell_clip
+    self._use_peephole = use_peephole
+
+  @property
+  def num_units(self):
+    """Number of units in this cell (output dimension)."""
+    return self._num_units
+
+  def _call_cell(self, inputs, initial_cell_state, initial_output, dtype,
+                 sequence_length):
+    """Run this LSTM on inputs, starting from the given state.
+
+    Args:
+      inputs: `3-D` tensor with shape `[time_len x batch_size x input_size]`
+      initial_cell_state: initial value for cell state, shape `[batch_size,
+        self._num_units]`
+      initial_output: initial value of cell output, shape `[batch_size,
+        self._num_units]`
+      dtype: The data type for the initial state and expected output.
+      sequence_length: Specifies the length of each sequence in inputs. An int32
+        or int64 vector (tensor) size [batch_size], values in [0, time_len) or
+          None.
+
+    Returns:
+      A pair containing:
+      - Cell state (cs): A `3-D` tensor of shape `[time_len x batch_size x
+                         output_size]`
+      - Output (h): A `3-D` tensor of shape `[time_len x batch_size x
+                    output_size]`
+    """
+
+    inputs_shape = inputs.get_shape().with_rank(3)
+    time_len = inputs_shape[0].value
+    if time_len is None:
+      time_len = array_ops.shape(inputs)[0]
+    input_size = inputs_shape[2].value
+    w = vs.get_variable(
+        "W_0", [input_size + self._num_units, self._num_units * 4], dtype=dtype)
+    b = vs.get_variable(
+        "B", [w.get_shape().with_rank(2)[1]],
+        initializer=init_ops.constant_initializer(0.0),
+        dtype=dtype)
+    if self._use_peephole:
+      wci = vs.get_variable("W_I_diag", [self._num_units], dtype=dtype)
+      wco = vs.get_variable("W_O_diag", [self._num_units], dtype=dtype)
+      wcf = vs.get_variable("W_F_diag", [self._num_units], dtype=dtype)
+    else:
+      wci = wco = wcf = array_ops.zeros([self._num_units], dtype=dtype)
+
+    if sequence_length is None:
+      max_seq_len = time_len
+    else:
+      max_seq_len = math_ops.to_int64(math_ops.reduce_max(sequence_length))
+
+    _, cs, _, _, _, _, h = _lstm_ops_so.block_lstm(
+        seq_len_max=max_seq_len,
+        x=inputs,
+        cs_prev=initial_cell_state,
+        h_prev=initial_output,
+        w=w,
+        wci=wci,
+        wco=wco,
+        wcf=wcf,
+        b=b,
+        forget_bias=self._forget_bias,
+        cell_clip=self._cell_clip,
+        use_peephole=self._use_peephole)
+    return cs, h
