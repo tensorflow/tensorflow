@@ -8,6 +8,9 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 
 py_library(
     name = "framework_py",
@@ -23,7 +26,41 @@ py_library(
         "python/ops/prettyprint_ops.py",
         "python/ops/variables.py",
     ],
+    data = [
+        ":python/ops/_variable_ops.so",
+    ],
     srcs_version = "PY2AND3",
+    deps = [
+        ":gen_variable_ops",
+    ],
+)
+
+tf_custom_op_library(
+    name = "python/ops/_variable_ops.so",
+    srcs = [
+        "kernels/zero_initializer_op.cc",
+        "kernels/zero_initializer_op.h",
+        "ops/variable_ops.cc",
+    ],
+)
+
+tf_gen_op_libs(
+    op_lib_names = ["variable_ops"],
+)
+
+cc_library(
+    name = "all_ops",
+    deps = [
+        ":variable_ops_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "gen_variable_ops",
+    out = "python/ops/gen_variable_ops.py",
+    deps = [
+        ":variable_ops_op_lib",
+    ],
 )
 
 py_test(
