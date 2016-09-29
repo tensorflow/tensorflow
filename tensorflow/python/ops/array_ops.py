@@ -2069,6 +2069,7 @@ def one_hot(indices, depth, on_value=None, off_value=None,
   If `indices` is a scalar the output shape will be a vector of length `depth`
 
   If `indices` is a vector of length `features`, the output shape will be:
+
   ```
     features x depth if axis == -1
     depth x features if axis == 0
@@ -2076,6 +2077,7 @@ def one_hot(indices, depth, on_value=None, off_value=None,
 
   If `indices` is a matrix (batch) with shape `[batch, features]`, the output
   shape will be:
+
   ```
     batch x features x depth if axis == -1
     batch x depth x features if axis == 1
@@ -2243,6 +2245,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
   """Return a mask tensor representing the first N positions of each row.
 
   Example:
+
   ```python
   tf.sequence_mask([1, 3, 2], 5) =
     [[True, False, False, False, False],

@@ -72,6 +72,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
   """Creates a recurrent neural network specified by RNNCell `cell`.
 
   The simplest form of RNN network generated is:
+
   ```python
     state = cell.zero_state(...)
     outputs = []
@@ -90,6 +91,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
   to the final state output.
 
   The dynamic calculation performed is, at time `t` for batch row `b`,
+
   ```python
     (output, state)(b, t) =
       (t >= sequence_length(b))
