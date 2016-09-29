@@ -143,7 +143,6 @@ _allowed_symbols = [
     'RunMetadata',
     'SessionLog',
     'Summary',
-    'initialize_all_tables',
 ]
 
 # The following symbols are kept for compatibility. It is our plan
