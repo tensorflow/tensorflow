@@ -34,6 +34,6 @@ Return the intersection of a forward and a backward walk.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if forward_seed_ops or backward_seed_ops or within_ops cannot be
-    converted to a list of tf.Operation.
+*  <b>`TypeError`</b>: if `forward_seed_ops` or `backward_seed_ops` or `within_ops`
+    cannot be converted to a list of `tf.Operation`.
 

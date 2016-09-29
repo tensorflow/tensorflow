@@ -10,8 +10,8 @@ Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 Can be used as a normalizer function for conv2d and fully_connected.
 
 Note: When is_training is True the moving_mean and moving_variance need to be
-updated, by default the update_ops are placed in tf.GraphKeys.UPDATE_OPS so
-they need to be added as a dependency to the train_op, example:
+updated, by default the update_ops are placed in `tf.GraphKeys.UPDATE_OPS` so
+they need to be added as a dependency to the `train_op`, example:
 
   update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
   if update_ops:
@@ -48,7 +48,7 @@ can have speed penalty, specially in distributed settings.
 *  <b>`variables_collections`</b>: optional collections for the variables.
 *  <b>`outputs_collections`</b>: collections to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
-    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:

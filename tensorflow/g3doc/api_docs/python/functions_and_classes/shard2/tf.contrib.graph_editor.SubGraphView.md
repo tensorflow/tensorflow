@@ -1,4 +1,4 @@
-A subgraph view on an existing tf.Graph.
+A subgraph view on an existing `tf.Graph`.
 
 An instance of this class is a subgraph view on an existing `tf.Graph`.
 "subgraph" means that it can represent part of the whole `tf.Graph`.
@@ -8,8 +8,8 @@ often used as substitute to "subgraph view".
 
 A subgraph contains:
 
-* a list of input tensors, accessible via the "inputs" property.
-* a list of output tensors, accessible via the "outputs" property.
+* a list of input tensors, accessible via the `inputs` property.
+* a list of output tensors, accessible via the `outputs` property.
 * and the operations in between, accessible via the "ops" property.
 
 An subgraph can be seen as a function F(i0, i1, ...) -> o0, o1, ... It is a
@@ -112,7 +112,7 @@ Allows for implicit boolean conversion.
 Create a copy of this subgraph.
 
 Note that this class is a "view", copying it only create another view and
-does not copy the underlying part of the tf.Graph.
+does not copy the underlying part of the `tf.Graph`.
 
 ##### Returns:
 
@@ -155,9 +155,9 @@ Create a subgraph containing the given ops and the "passthrough" tensors.
 ##### Args:
 
 
-*  <b>`inside_ops`</b>: an object convertible to a list of tf.Operation. This list
+*  <b>`inside_ops`</b>: an object convertible to a list of `tf.Operation`. This list
     defines all the operations in the subgraph.
-*  <b>`passthrough_ts`</b>: an object convertible to a list of tf.Tensor. This list
+*  <b>`passthrough_ts`</b>: an object convertible to a list of `tf.Tensor`. This list
     define all the "passthrough" tensors. A passthrough tensor is a tensor
     which goes directly from the input of the subgraph to it output, without
     any intermediate operations. All the non passthrough tensors are
@@ -166,8 +166,8 @@ Create a subgraph containing the given ops and the "passthrough" tensors.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if inside_ops cannot be converted to a list of tf.Operation or
-    if passthrough_ts cannot be converted to a list of tf.Tensor.
+*  <b>`TypeError`</b>: if inside_ops cannot be converted to a list of `tf.Operation`
+    or if `passthrough_ts` cannot be converted to a list of `tf.Tensor`.
 
 
 - - -
@@ -245,7 +245,7 @@ Return the op named op_name.
 
 #### `tf.contrib.graph_editor.SubGraphView.graph` {#SubGraphView.graph}
 
-The underlying tf.Graph.
+The underlying `tf.Graph`.
 
 
 - - -
@@ -384,7 +384,7 @@ Remap the inputs of the subgraph.
 If the inputs of the original subgraph are [t0, t1, t2], remapping to [2,0]
 will create a new instance whose inputs is [t2, t0].
 
-Note that this is only modifying the view: the underlying tf.Graph is not
+Note that this is only modifying the view: the underlying `tf.Graph` is not
 affected.
 
 ##### Args:

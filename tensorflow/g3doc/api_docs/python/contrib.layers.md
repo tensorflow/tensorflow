@@ -52,8 +52,8 @@ Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 Can be used as a normalizer function for conv2d and fully_connected.
 
 Note: When is_training is True the moving_mean and moving_variance need to be
-updated, by default the update_ops are placed in tf.GraphKeys.UPDATE_OPS so
-they need to be added as a dependency to the train_op, example:
+updated, by default the update_ops are placed in `tf.GraphKeys.UPDATE_OPS` so
+they need to be added as a dependency to the `train_op`, example:
 
   update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
   if update_ops:
@@ -90,7 +90,7 @@ can have speed penalty, specially in distributed settings.
 *  <b>`variables_collections`</b>: optional collections for the variables.
 *  <b>`outputs_collections`</b>: collections to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
-    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
@@ -421,7 +421,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
 
 ### `tf.contrib.layers.one_hot_encoding(*args, **kwargs)` {#one_hot_encoding}
 
-Transform numeric labels into onehot_labels using tf.one_hot.
+Transform numeric labels into onehot_labels using `tf.one_hot`.
 
 ##### Args:
 
@@ -915,7 +915,7 @@ Various ways of passing optimizers, include:
 *  <b>`optimizer`</b>: string, class or optimizer instance, used as trainer.
              string should be name of optimizer, like 'SGD',
                'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
-             class should be sub-class of tf.Optimizer that implements
+             class should be sub-class of `tf.Optimizer` that implements
                `compute_gradients` and `apply_gradients` functions.
              optimizer instance should be instantiation of `tf.Optimizer`
                sub-class and have `compute_gradients` and `apply_gradients`
@@ -930,7 +930,7 @@ Various ways of passing optimizers, include:
                           `Tensor`s, returns `Tensor`.
                           Can be used to implement any learning rate decay
                           functions.
-                          For example: tf.train.exponential_decay.
+                          For example: `tf.train.exponential_decay`.
 *  <b>`update_ops`</b>: list of update `Operation`s to execute at each step. If `None`,
               uses elements of UPDATE_OPS collection. The order of execution
               between `update_ops` and `loss` is non-deterministic.

@@ -258,7 +258,7 @@ shape(t) ==> [2, 2, 3]
 *  <b>`input`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 *  <b>`out_type`</b>: (Optional) The specified output type of the operation
-    (`int32` or `int64`). Defaults to tf.int32.
+    (`int32` or `int64`). Defaults to `tf.int32`.
 
 ##### Returns:
 
@@ -2348,10 +2348,10 @@ shape will be:
 If `dtype` is not provided, it will attempt to assume the data type of
 `on_value` or `off_value`, if one or both are passed in. If none of
 `on_value`, `off_value`, or `dtype` are provided, `dtype` will default to the
-value `tf.float32`
+value `tf.float32`.
 
-Note: If a non-numeric data type output is desired (tf.string, tf.bool, etc.),
-both `on_value` and `off_value` _must_ be provided to `one_hot`
+Note: If a non-numeric data type output is desired (`tf.string`, `tf.bool`,
+etc.), both `on_value` and `off_value` _must_ be provided to `one_hot`.
 
 Examples
 =========

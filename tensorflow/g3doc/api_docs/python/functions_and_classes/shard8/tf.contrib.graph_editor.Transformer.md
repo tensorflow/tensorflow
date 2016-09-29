@@ -44,7 +44,7 @@ Execute the transformation.
 Transformer constructor.
 
 The following members can be modified:
-transform_op_handler: handle the transformation of a tf.Operation.
+transform_op_handler: handle the transformation of a `tf.Operation`.
   This handler defaults to a simple copy.
 assign_collections_handler: handle the assignment of collections.
   This handler defaults to assigning new collections created under the

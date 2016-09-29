@@ -679,7 +679,7 @@ Initializes a DNNClassifier instance.
     coordinate.
 *  <b>`gradient_clip_norm`</b>: A float > 0. If provided, gradients are
     clipped to their global norm with this clipping ratio. See
-    tf.clip_by_global_norm for more details.
+    `tf.clip_by_global_norm` for more details.
 *  <b>`enable_centered_bias`</b>: A bool. If True, estimator will learn a centered
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.

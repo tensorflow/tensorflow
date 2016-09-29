@@ -814,7 +814,8 @@ Gets the list of variables, filtered by scope and/or suffix.
 
 *  <b>`scope`</b>: an optional scope for filtering the variables to return.
 *  <b>`suffix`</b>: an optional suffix for filtering the variables to return.
-*  <b>`collection`</b>: in which collection search for. Defaults to GraphKeys.VARIABLES.
+*  <b>`collection`</b>: in which collection search for. Defaults to
+    `GraphKeys.VARIABLES`.
 
 ##### Returns:
 
@@ -856,7 +857,7 @@ Gets an existing model variable with these parameters or creates a new one.
       applying it on a newly created variable will be added to the collection
       GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
-    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`collections`</b>: A list of collection names to which the Variable will be added.
     Note that the variable is always also added to the `GraphKeys.VARIABLES`
     and `GraphKeys.MODEL_VARIABLES` collections.
@@ -888,9 +889,9 @@ Gets an existing variable with these parameters or creates a new one.
       applying it on a newly created variable will be added to the collection
       GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
-    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`collections`</b>: A list of collection names to which the Variable will be added.
-    If None it would default to tf.GraphKeys.VARIABLES.
+    If None it would default to `tf.GraphKeys.VARIABLES`.
 *  <b>`caching_device`</b>: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
       device.
