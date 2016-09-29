@@ -902,6 +902,7 @@ $ make -j12
 $ export PROTOC=$PWD/src/protoc
 $ cd python
 $ python setup.py bdist_wheel --cpp_implementation --compile_static_extension
+$ pip uninstall protobuf
 $ pip install dist/<wheel file name>
 ```
 
