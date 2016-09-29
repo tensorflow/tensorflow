@@ -1,4 +1,4 @@
-### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None)` {#optimize_loss}
+### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None, colocate_gradients_with_ops=False)` {#optimize_loss}
 
 Given loss and parameters for optimizer, returns a training op.
 
@@ -52,6 +52,8 @@ Various ways of passing optimizers, include:
 *  <b>`summaries`</b>: List of internal quantities to visualize on tensorboard. If not
              set only the loss and the learning rate will be reported. The
              complete list is in OPTIMIZER_SUMMARIES.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with the
+                               corresponding op.
 
 ##### Returns:
 

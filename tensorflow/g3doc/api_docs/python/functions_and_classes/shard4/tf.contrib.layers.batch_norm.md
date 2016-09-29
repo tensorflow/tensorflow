@@ -49,6 +49,11 @@ can have speed penalty, specially in distributed settings.
 *  <b>`outputs_collections`</b>: collections to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+*  <b>`batch_weights`</b>: An optional tensor of shape `[batch_size]`,
+    containing a frequency weight for each batch item. If present,
+    then the batch normalization uses weighted mean and
+    variance. (This can be used to correct for bias in training
+    example selection.)
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:

@@ -505,6 +505,7 @@
   * [`top_k`](../../api_docs/python/nn.md#top_k)
   * [`uniform_candidate_sampler`](../../api_docs/python/nn.md#uniform_candidate_sampler)
   * [`weighted_cross_entropy_with_logits`](../../api_docs/python/nn.md#weighted_cross_entropy_with_logits)
+  * [`weighted_moments`](../../api_docs/python/nn.md#weighted_moments)
 
 * **[Neural Network RNN Cells](../../api_docs/python/rnn_cell.md)**:
   * [`BasicLSTMCell`](../../api_docs/python/rnn_cell.md#BasicLSTMCell)
@@ -762,6 +763,7 @@
   * [`VariableDeviceChooser`](../../api_docs/python/contrib.framework.md#VariableDeviceChooser)
   * [`with_same_shape`](../../api_docs/python/contrib.framework.md#with_same_shape)
   * [`with_shape`](../../api_docs/python/contrib.framework.md#with_shape)
+  * [`zero_initializer`](../../api_docs/python/contrib.framework.md#zero_initializer)
 
 * **[Graph Editor (contrib)](../../api_docs/python/contrib.graph_editor.md)**:
   * [`add_control_inputs`](../../api_docs/python/contrib.graph_editor.md#add_control_inputs)

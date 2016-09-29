@@ -17,7 +17,7 @@ When using these moments for batch normalization (see
 
 
 *  <b>`x`</b>: A `Tensor`.
-*  <b>`axes`</b>: array of ints.  Axes along which to compute mean and
+*  <b>`axes`</b>: Array of ints.  Axes along which to compute mean and
     variance.
 *  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
     numerical stability, or `None` if no shift is to be performed. A shift

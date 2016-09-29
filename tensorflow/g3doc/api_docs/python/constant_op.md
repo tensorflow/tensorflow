@@ -23,7 +23,7 @@ all elements set to zero.
 For example:
 
 ```python
-tf.zeros([3, 4], int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+tf.zeros([3, 4], tf.int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
 ```
 
 ##### Args:
@@ -84,7 +84,7 @@ elements set to 1.
 For example:
 
 ```python
-tf.ones([2, 3], int32) ==> [[1, 1, 1], [1, 1, 1]]
+tf.ones([2, 3], tf.int32) ==> [[1, 1, 1], [1, 1, 1]]
 ```
 
 ##### Args:

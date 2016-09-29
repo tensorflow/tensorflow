@@ -91,6 +91,11 @@ can have speed penalty, specially in distributed settings.
 *  <b>`outputs_collections`</b>: collections to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+*  <b>`batch_weights`</b>: An optional tensor of shape `[batch_size]`,
+    containing a frequency weight for each batch item. If present,
+    then the batch normalization uses weighted mean and
+    variance. (This can be used to correct for bias in training
+    example selection.)
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
@@ -886,7 +891,7 @@ Optimize weights given a loss.
 
 - - -
 
-### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None)` {#optimize_loss}
+### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None, colocate_gradients_with_ops=False)` {#optimize_loss}
 
 Given loss and parameters for optimizer, returns a training op.
 
@@ -940,6 +945,8 @@ Various ways of passing optimizers, include:
 *  <b>`summaries`</b>: List of internal quantities to visualize on tensorboard. If not
              set only the loss and the learning rate will be reported. The
              complete list is in OPTIMIZER_SUMMARIES.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with the
+                               corresponding op.
 
 ##### Returns:
 
