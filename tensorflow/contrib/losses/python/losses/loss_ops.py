@@ -307,6 +307,7 @@ def sigmoid_cross_entropy(logits, multi_class_labels, weight=1.0,
   corresponding sample.
 
   If `label_smoothing` is nonzero, smooth the labels towards 1/2:
+
       new_multiclass_labels = multiclass_labels * (1 - label_smoothing)
                               + 0.5 * label_smoothing
 

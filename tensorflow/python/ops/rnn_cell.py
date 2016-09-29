@@ -121,6 +121,7 @@ class RNNCell(object):
 
     Returns:
       A pair containing:
+
       - Output: A `2-D` tensor with shape `[batch_size x self.output_size]`.
       - New state: Either a single `2-D` tensor, or a tuple of tensors matching
         the arity and shapes of `state`.
@@ -463,6 +464,7 @@ class LSTMCell(RNNCell):
 
     Returns:
       A tuple containing:
+
       - A `2-D, [batch x output_dim]`, Tensor representing the output of the
         LSTM after reading `inputs` when previous state was `state`.
         Here output_dim is:

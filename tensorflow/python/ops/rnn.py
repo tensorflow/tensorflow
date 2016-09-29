@@ -115,9 +115,10 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
 
   Returns:
     A pair (outputs, state) where:
-      - outputs is a length T list of outputs (one for each input), or a nested
-        tuple of such elements.
-      - state is the final state
+
+    - outputs is a length T list of outputs (one for each input), or a nested
+      tuple of such elements.
+    - state is the final state
 
   Raises:
     TypeError: If `cell` is not an instance of RNNCell.

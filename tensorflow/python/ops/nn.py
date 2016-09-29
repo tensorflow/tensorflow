@@ -742,6 +742,7 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
 
   Returns:
     Four `Tensor` objects of the same type as `x`:
+
     * the count (number of elements to average over).
     * the (possibly shifted) sum of the elements in the array.
     * the (possibly shifted) sum of squares of the elements in the array.
@@ -811,9 +812,10 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
 
   When using these moments for batch normalization (see
   `tf.nn.batch_normalization`):
-    * for so-called "global normalization", used with convolutional filters with
-      shape `[batch, height, width, depth]`, pass `axes=[0, 1, 2]`.
-    * for simple batch normalization pass `axes=[0]` (batch only).
+
+   * for so-called "global normalization", used with convolutional filters with
+     shape `[batch, height, width, depth]`, pass `axes=[0, 1, 2]`.
+   * for simple batch normalization pass `axes=[0]` (batch only).
 
   Args:
     x: A `Tensor`.
@@ -863,6 +865,7 @@ def batch_normalization(x,
 
   `mean`, `variance`, `offset` and `scale` are all expected to be of one of two
   shapes:
+
     * In all generality, they can have the same number of dimensions as the
       input `x`, with identical sizes as `x` for the dimensions that are not
       normalized over (the 'depth' dimension(s)), and dimension 1 for the
