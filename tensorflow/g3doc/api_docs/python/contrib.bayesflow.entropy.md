@@ -16,7 +16,7 @@ estimating them, e.g. using Monte Carlo expectations.
 
 Example of fitting a variational posterior with the ELBO.
 
-```
+```python
 # We start by assuming knowledge of the log of a joint density p(z, x) over
 # latent variable z and fixed measurement x.  Since x is fixed, the Python
 # function does not take x as an argument.

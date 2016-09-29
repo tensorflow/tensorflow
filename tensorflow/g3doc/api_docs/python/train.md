@@ -2874,7 +2874,7 @@ To create a cluster with two jobs and five tasks, you specify the
 mapping from job names to lists of network addresses (typically
 hostname-port pairs).
 
-```
+```python
 cluster = tf.train.ClusterSpec({"worker": ["worker0.example.com:2222",
                                            "worker1.example.com:2222",
                                            "worker2.example.com:2222"],
@@ -2887,7 +2887,7 @@ to network addresses. This enables a server to be configured without
 needing to know the identity of (for example) all other worker
 tasks:
 
-```
+```python
 cluster = tf.train.ClusterSpec({"worker": {1: "worker1.example.com:2222"},
                                 "ps": ["ps0.example.com:2222",
                                        "ps1.example.com:2222"]})
@@ -3296,8 +3296,10 @@ If `value` is empty, the result is `nan`.
 
 This is useful in summaries to measure and report sparsity.  For example,
 
+```python
     z = tf.Relu(...)
     summ = tf.scalar_summary('sparsity', tf.nn.zero_fraction(z))
+```
 
 ##### Args:
 

@@ -13497,7 +13497,7 @@ A Transformed Distribution exposes `sample` and `pdf`:
 A simple example constructing a Log-Normal distribution from a Normal
 distribution:
 
-```
+```python
 logit_normal = TransformedDistribution(
   base_dist_cls=tf.contrib.distributions.Normal,
   mu=mu,

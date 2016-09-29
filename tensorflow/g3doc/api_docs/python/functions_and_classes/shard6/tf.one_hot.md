@@ -47,7 +47,7 @@ Examples
 
 Suppose that
 
-```
+```python
   indices = [0, 2, -1, 1]
   depth = 3
   on_value = 5.0
@@ -57,7 +57,7 @@ Suppose that
 
 Then output is `[4 x 3]`:
 
-```
+```python
   output =
   [5.0 0.0 0.0]  // one_hot(0)
   [0.0 0.0 5.0]  // one_hot(2)
@@ -67,7 +67,7 @@ Then output is `[4 x 3]`:
 
 Suppose that
 
-```
+```python
   indices = [[0, 2], [1, -1]]
   depth = 3
   on_value = 1.0
@@ -77,7 +77,7 @@ Suppose that
 
 Then output is `[2 x 2 x 3]`:
 
-```
+```python
   output =
   [
     [1.0, 0.0, 0.0]  // one_hot(0)
@@ -90,14 +90,14 @@ Then output is `[2 x 2 x 3]`:
 
 Using default values for `on_value` and `off_value`:
 
-```
+```python
   indices = [0, 1, 2]
   depth = 3
 ```
 
 The output will be
 
-```
+```python
   output =
   [[1., 0., 0.],
    [0., 1., 0.],

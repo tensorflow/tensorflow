@@ -593,27 +593,34 @@ to the so-called noble identities in multi-rate signal processing.
 There are many different ways to implement atrous convolution (see the refs
 above). The implementation here reduces
 
+```python
     atrous_conv2d(value, filters, rate, padding=padding)
+```
 
 to the following three operations:
 
+```python
     paddings = ...
     net = space_to_batch(value, paddings, block_size=rate)
     net = conv2d(net, filters, strides=[1, 1, 1, 1], padding="VALID")
     crops = ...
     net = batch_to_space(net, crops, block_size=rate)
+```
 
 Advanced usage. Note the following optimization: A sequence of `atrous_conv2d`
 operations with identical `rate` parameters, 'SAME' `padding`, and filters
 with odd heights/ widths:
 
+```python
     net = atrous_conv2d(net, filters1, rate, padding="SAME")
     net = atrous_conv2d(net, filters2, rate, padding="SAME")
     ...
     net = atrous_conv2d(net, filtersK, rate, padding="SAME")
+```
 
 can be equivalently performed cheaper in terms of computation and memory as:
 
+```python
     pad = ...  # padding so that the input dims are multiples of rate
     net = space_to_batch(net, paddings=pad, block_size=rate)
     net = conv2d(net, filters1, strides=[1, 1, 1, 1], padding="SAME")
@@ -621,6 +628,7 @@ can be equivalently performed cheaper in terms of computation and memory as:
     ...
     net = conv2d(net, filtersK, strides=[1, 1, 1, 1], padding="SAME")
     net = batch_to_space(net, crops=pad, block_size=rate)
+```
 
 because a pair of consecutive `space_to_batch` and `batch_to_space` ops with
 the same `block_size` cancel out when their respective `paddings` and `crops`
@@ -2308,7 +2316,7 @@ Instead of working with `Tensor` objects, most operations work with
 
 The operation of `raw_rnn`, in pseudo-code, is basically the following:
 
-```
+```python
 time = tf.constant(0, dtype=tf.int32)
 (finished, next_input, initial_state, _, loop_state) = loop_fn(
     time=time, cell_output=None, cell_state=None, loop_state=None)
@@ -2323,7 +2331,7 @@ while not all(finished):
   state = tf.select(finished, state, next_state)
   emit = tf.select(finished, tf.zeros_like(emit), emit)
   emit_ta = emit_ta.write(time, emit)
-  # If any new minibatch entries are marked as finished, mark these
+  # If any new minibatch entries are marked as finished, mark these.
   finished = tf.logical_or(finished, next_finished)
   time += 1
 return (emit_ta, state, loop_state)

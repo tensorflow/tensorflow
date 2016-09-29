@@ -24,7 +24,7 @@ A default `Graph` is always registered, and accessible by calling
 To add an operation to the default graph, simply call one of the functions
 that defines a new `Operation`:
 
-```
+```python
 c = tf.constant(4.0)
 assert c.graph is tf.get_default_graph()
 ```
@@ -1512,7 +1512,7 @@ using a tensor as input is not currently allowed
 
 Some useful examples:
 
-```
+```python
 # strip leading and trailing 2 elements
 foo = tf.constant([1,2,3,4,5,6])
 print(foo[2:-2].eval()) # => [3,4]
@@ -2160,7 +2160,7 @@ Returns True if the `other` DType will be converted to this DType.
 
 The conversion rules are as follows:
 
-```
+```python
 DType(T)       .is_compatible_with(DType(T))        == True
 DType(T)       .is_compatible_with(DType(T).as_ref) == True
 DType(T).as_ref.is_compatible_with(DType(T))        == False
@@ -3730,11 +3730,13 @@ Returns a Dimension that combines the information in `self` and `other`.
 
 Dimensions are combined as follows:
 
+```python
     Dimension(n)   .merge_with(Dimension(n))    == Dimension(n)
     Dimension(n)   .merge_with(Dimension(None)) == Dimension(n)
     Dimension(None).merge_with(Dimension(n))    == Dimension(n)
     Dimension(None).merge_with(Dimension(None)) == Dimension(None)
     Dimension(n)   .merge_with(Dimension(m)) raises ValueError for n != m
+```
 
 ##### Args:
 
@@ -3804,8 +3806,10 @@ Registers a function for converting objects of `base_type` to `Tensor`.
 
 The conversion function must have the following signature:
 
+```python
     def conversion_func(value, dtype=None, name=None, as_ref=False):
       # ...
+```
 
 It must return a `Tensor` with the given `dtype` if specified. If the
 conversion function creates a new `Tensor`, it should use the given
