@@ -16,6 +16,7 @@ limitations under the License.
 import {ColorOption} from './data';
 import {CheckpointInfo, ColumnStats, DataProvider, parseRawMetadata, parseRawTensors} from './data-loader';
 import {Projector} from './vz-projector';
+import {ColorLegendRenderInfo, ColorLegendThreshold} from './vz-projector-legend';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
 
@@ -24,7 +25,7 @@ export let DataPanelPolymer = PolymerElement({
   properties: {
     selectedTensor: {type: String, observer: '_selectedTensorChanged'},
     selectedRun: {type: String, observer: '_selectedRunChanged'},
-    colorOption: {type: Object, notify: true},
+    colorOption: {type: Object, notify: true, observer: '_colorOptionChanged'},
     labelOption: {type: String, notify: true},
     normalizeData: Boolean
   }
@@ -46,6 +47,7 @@ export class DataPanel extends DataPanelPolymer {
   private runNames: string[];
   private projector: Projector;
   private checkpointInfo: CheckpointInfo;
+  private colorLegendRenderInfo: ColorLegendRenderInfo;
 
   ready() {
     this.dom = d3.select(this);
@@ -109,6 +111,8 @@ export class DataPanel extends DataPanelPolymer {
             })
             .map(stats => {
               let map: (v: string|number) => string;
+              let items: {label: string, count: number}[];
+              let thresholds: ColorLegendThreshold[];
               if (!stats.tooManyUniqueValues) {
                 let scale = d3.scale.category20();
                 let range = scale.range();
@@ -120,17 +124,22 @@ export class DataPanel extends DataPanelPolymer {
                   }
                   return range[index];
                 });
-                scale.range(newRange).domain(stats.uniqueValues);
+                items = stats.uniqueEntries;
+                scale.range(newRange).domain(items.map(x => x.label));
                 map = scale;
               } else {
+                thresholds = [
+                  {color: '#ffffdd', value: stats.min},
+                  {color: '#1f2d86', value: stats.max}
+                ];
                 map = d3.scale.linear<string>()
-                          .domain([stats.min, stats.max])
-                          .range(['white', 'black']);
+                          .domain(thresholds.map(t => t.value))
+                          .range(thresholds.map(t => t.color));
               }
               let desc = stats.tooManyUniqueValues ?
                   'gradient' :
-                  stats.uniqueValues.length + ' colors';
-              return {name: stats.name, desc: desc, map: map};
+                  stats.uniqueEntries.length + ' colors';
+              return {name: stats.name, desc, map, items, thresholds};
             });
     if (metadataColorOption.length > 0) {
       // Add a separator line between built-in color maps
@@ -194,6 +203,26 @@ export class DataPanel extends DataPanelPolymer {
         this.selectedTensor = defaultTensor;
       });
     });
+  }
+
+  _colorOptionChanged() {
+    if (this.colorOption.map == null) {
+      this.colorLegendRenderInfo = null;
+    } else if (this.colorOption.items) {
+      let items = this.colorOption.items.map(item => {
+        return {
+          color: this.colorOption.map(item.label),
+          label: item.label,
+          count: item.count
+        };
+      });
+      this.colorLegendRenderInfo = {items, thresholds: null};
+    } else {
+      this.colorLegendRenderInfo = {
+        items: null,
+        thresholds: this.colorOption.thresholds
+      };
+    }
   }
 
   private tensorWasReadFromFile(rawContents: string, fileName: string) {
