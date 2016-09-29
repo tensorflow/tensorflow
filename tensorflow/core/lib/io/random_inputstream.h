@@ -33,6 +33,13 @@ class RandomAccessInputStream : public InputStreamInterface {
 
   int64 Tell() const override;
 
+  Status Seek(int64 position) {
+    pos_ = position;
+    return Status::OK();
+  }
+
+  Status Reset() override { return Seek(0); }
+
  private:
   RandomAccessFile* file_;  // Not owned.
   int64 pos_ = 0;           // Tracks where we are in the file.

@@ -178,6 +178,11 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
       state = cell.zero_state(batch_size, dtype)
 
     if sequence_length is not None:  # Prepare variables
+      sequence_length = ops.convert_to_tensor(
+          sequence_length, name="sequence_length")
+      if sequence_length.get_shape().ndims not in (None, 1):
+        raise ValueError(
+            "sequence_length must be a vector of length batch_size")
       def _create_zero_output(output_size):
         # convert int to TensorShape if necessary
         size = _state_size_with_prefix(output_size, prefix=[batch_size])
@@ -786,6 +791,10 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
   parallel_iterations = parallel_iterations or 32
   if sequence_length is not None:
     sequence_length = math_ops.to_int32(sequence_length)
+    if sequence_length.get_shape().ndims not in (None, 1):
+      raise ValueError(
+          "sequence_length must be a vector of length batch_size, "
+          "but saw shape: %s" % sequence_length.get_shape())
     sequence_length = array_ops.identity(  # Just to find it in the graph.
         sequence_length, name="sequence_length")
 

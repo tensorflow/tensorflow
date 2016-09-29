@@ -28,13 +28,19 @@ same-named function.  The argument signature should be identical except for
 the omission of `name="..."`.  For example, to enable `log_prob(value,
 name="log_prob")` a subclass should implement `_log_prob(value)`.
 
-Subclasses can rewrite/append to public-level docstrings. For example,
+Subclasses can append to public-level docstrings by providing
+docstrings for their method specializations. For example:
 
 ```python
-Subclass.prob.__func__.__doc__ += "Some other details."
+@distribution_util.AppendDocstring("Some other details.")
+def _log_prob(self, value):
+  ...
 ```
 
-would add the string "Some other details." to the `prob` function docstring.
+would add the string "Some other details." to the `log_prob` function
+docstring.  This is implemented as a simple decorator to avoid python
+linter complaining about missing Args/Returns/Raises sections in the
+partial docstrings.
 
 ### Broadcasting, batching, and shapes
 
@@ -339,7 +345,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -363,7 +369,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -505,7 +511,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -529,7 +535,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -934,7 +940,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -958,7 +964,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -966,6 +972,19 @@ Log probability mass function.
 #### `tf.contrib.distributions.Binomial.log_prob(value, name='log_prob')` {#Binomial.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Binomial`:
+
+For each batch member of counts `value`, `P[counts]` is the probability that
+after sampling `n` draws from this Binomial distribution, the number of
+successes is `k`.  Note that different sequences of draws can result in the
+same counts, thus the probability includes a combinatorial coefficient.
+
+`value` must be a non-negative tensor with dtype `dtype` and whose shape
+can be broadcast with `self.p` and `self.n`. `counts` is only legal if it is
+less than or equal to `n` and its components are equal to integer
+values.
 
 ##### Args:
 
@@ -1028,6 +1047,12 @@ Mean.
 #### `tf.contrib.distributions.Binomial.mode(name='mode')` {#Binomial.mode}
 
 Mode.
+
+Additional documentation from `Binomial`:
+
+Note that when `(n + 1) * p` is an integer, there are actually two
+modes.  Namely, `(n + 1) * p` and `(n + 1) * p - 1` are both modes. Here
+we return only the larger of the two modes.
 
 
 - - -
@@ -1121,7 +1146,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -1145,7 +1170,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -1153,6 +1178,19 @@ Probability mass function.
 #### `tf.contrib.distributions.Binomial.prob(value, name='prob')` {#Binomial.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Binomial`:
+
+For each batch member of counts `value`, `P[counts]` is the probability that
+after sampling `n` draws from this Binomial distribution, the number of
+successes is `k`.  Note that different sequences of draws can result in the
+same counts, thus the probability includes a combinatorial coefficient.
+
+`value` must be a non-negative tensor with dtype `dtype` and whose shape
+can be broadcast with `self.p` and `self.n`. `counts` is only legal if it is
+less than or equal to `n` and its components are equal to integer
+values.
 
 ##### Args:
 
@@ -1491,7 +1529,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -1515,7 +1553,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -1585,6 +1623,10 @@ Mean.
 #### `tf.contrib.distributions.Bernoulli.mode(name='mode')` {#Bernoulli.mode}
 
 Mode.
+
+Additional documentation from `Bernoulli`:
+
+Returns `1` if `p > 1-p` and `0` otherwise.
 
 
 - - -
@@ -1671,7 +1713,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -1695,7 +1737,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -2096,6 +2138,14 @@ Often, a numerical approximation can be used for `log_cdf(x)` that yields
 a more accurate answer than simply taking the logarithm of the `cdf` when
 `x << -1`.
 
+
+Additional documentation from `Beta`:
+
+Note that the argument `x` must be a non-negative floating point tensor
+whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
+dimensions, the last dimension represents counts for the corresponding Beta
+distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
+
 ##### Args:
 
 
@@ -2130,7 +2180,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -2154,7 +2204,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -2217,6 +2267,13 @@ Mean.
 #### `tf.contrib.distributions.Beta.mode(name='mode')` {#Beta.mode}
 
 Mode.
+
+Additional documentation from `Beta`:
+
+Note that the mode for the Beta distribution is only defined
+when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
+and `NaN` otherwise. If `self.allow_nan_stats` is `False`, an exception
+will be raised rather than returning `NaN`.
 
 
 - - -
@@ -2296,7 +2353,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -2320,7 +2377,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -2328,6 +2385,14 @@ Probability mass function.
 #### `tf.contrib.distributions.Beta.prob(value, name='prob')` {#Beta.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Beta`:
+
+Note that the argument `x` must be a non-negative floating point tensor
+whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
+dimensions, the last dimension represents counts for the corresponding Beta
+distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 
 ##### Args:
 
@@ -2656,7 +2721,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -2680,7 +2745,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -2836,7 +2901,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -2860,7 +2925,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -3111,6 +3176,17 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 Shanon entropy in nats.
 
+Additional documentation from `Gamma`:
+
+This is defined to be
+
+```
+entropy = alpha - log(beta) + log(Gamma(alpha))
++ (1-alpha)digamma(alpha)
+```
+
+where digamma(alpha) is the digamma function.
+
 
 - - -
 
@@ -3221,7 +3297,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -3245,7 +3321,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -3308,6 +3384,12 @@ Mean.
 #### `tf.contrib.distributions.Chi2.mode(name='mode')` {#Chi2.mode}
 
 Mode.
+
+Additional documentation from `Gamma`:
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when
+`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+an exception will be raised rather than returning `NaN`.
 
 
 - - -
@@ -3387,7 +3469,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -3411,7 +3493,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -3460,6 +3542,11 @@ sample.
 #### `tf.contrib.distributions.Chi2.sample_n(n, seed=None, name='sample_n')` {#Chi2.sample_n}
 
 Generate `n` samples.
+
+
+Additional documentation from `Gamma`:
+
+See the documentation for tf.random_gamma for more details.
 
 ##### Args:
 
@@ -3655,6 +3742,17 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 Shanon entropy in nats.
 
+Additional documentation from `Gamma`:
+
+This is defined to be
+
+```
+entropy = alpha - log(beta) + log(Gamma(alpha))
++ (1-alpha)digamma(alpha)
+```
+
+where digamma(alpha) is the digamma function.
+
 
 - - -
 
@@ -3772,7 +3870,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -3796,7 +3894,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -3859,6 +3957,12 @@ Mean.
 #### `tf.contrib.distributions.Exponential.mode(name='mode')` {#Exponential.mode}
 
 Mode.
+
+Additional documentation from `Gamma`:
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when
+`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+an exception will be raised rather than returning `NaN`.
 
 
 - - -
@@ -3938,7 +4042,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -3962,7 +4066,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -4011,6 +4115,11 @@ sample.
 #### `tf.contrib.distributions.Exponential.sample_n(n, seed=None, name='sample_n')` {#Exponential.sample_n}
 
 Generate `n` samples.
+
+
+Additional documentation from `Gamma`:
+
+See the documentation for tf.random_gamma for more details.
 
 ##### Args:
 
@@ -4233,6 +4342,17 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 Shanon entropy in nats.
 
+Additional documentation from `Gamma`:
+
+This is defined to be
+
+```
+entropy = alpha - log(beta) + log(Gamma(alpha))
++ (1-alpha)digamma(alpha)
+```
+
+where digamma(alpha) is the digamma function.
+
 
 - - -
 
@@ -4343,7 +4463,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -4367,7 +4487,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -4430,6 +4550,12 @@ Mean.
 #### `tf.contrib.distributions.Gamma.mode(name='mode')` {#Gamma.mode}
 
 Mode.
+
+Additional documentation from `Gamma`:
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when
+`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+an exception will be raised rather than returning `NaN`.
 
 
 - - -
@@ -4509,7 +4635,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -4533,7 +4659,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -4582,6 +4708,11 @@ sample.
 #### `tf.contrib.distributions.Gamma.sample_n(n, seed=None, name='sample_n')` {#Gamma.sample_n}
 
 Generate `n` samples.
+
+
+Additional documentation from `Gamma`:
+
+See the documentation for tf.random_gamma for more details.
 
 ##### Args:
 
@@ -4800,6 +4931,17 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 Shanon entropy in nats.
 
+Additional documentation from `InverseGamma`:
+
+This is defined to be
+
+```
+entropy = alpha - log(beta) + log(Gamma(alpha))
++ (1-alpha)digamma(alpha)
+```
+
+where digamma(alpha) is the digamma function.
+
 
 - - -
 
@@ -4910,7 +5052,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -4934,7 +5076,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -4991,12 +5133,22 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 Mean.
 
+Additional documentation from `InverseGamma`:
+
+The mean of an inverse gamma distribution is `beta / (alpha - 1)`,
+when `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is
+`False`, an exception will be raised rather than returning `NaN`
+
 
 - - -
 
 #### `tf.contrib.distributions.InverseGamma.mode(name='mode')` {#InverseGamma.mode}
 
 Mode.
+
+Additional documentation from `InverseGamma`:
+
+The mode of an inverse gamma distribution is `beta / (alpha + 1)`.
 
 
 - - -
@@ -5076,7 +5228,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -5100,7 +5252,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -5149,6 +5301,11 @@ sample.
 #### `tf.contrib.distributions.InverseGamma.sample_n(n, seed=None, name='sample_n')` {#InverseGamma.sample_n}
 
 Generate `n` samples.
+
+
+Additional documentation from `InverseGamma`:
+
+See the documentation for tf.random_gamma for more details.
 
 ##### Args:
 
@@ -5214,6 +5371,12 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.InverseGamma.variance(name='variance')` {#InverseGamma.variance}
 
 Variance.
+
+Additional documentation from `InverseGamma`:
+
+Variance for inverse gamma is defined only for `alpha > 2`. If
+`self.allow_nan_stats` is `False`, an exception will be raised rather
+than returning `NaN`.
 
 
 
@@ -5458,7 +5621,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -5482,7 +5645,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -5624,7 +5787,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -5648,7 +5811,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -6037,7 +6200,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -6061,7 +6224,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -6210,7 +6373,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -6234,7 +6397,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -6590,7 +6753,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -6614,7 +6777,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -6622,6 +6785,13 @@ Log probability mass function.
 #### `tf.contrib.distributions.Poisson.log_prob(value, name='log_prob')` {#Poisson.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Poisson`:
+
+Note thet the input value must be a non-negative floating point tensor with
+dtype `dtype` and whose shape can be broadcast with `self.lam`. `x` is only
+legal if it is non-negative and its components are equal to integer values.
 
 ##### Args:
 
@@ -6677,6 +6847,12 @@ Mean.
 #### `tf.contrib.distributions.Poisson.mode(name='mode')` {#Poisson.mode}
 
 Mode.
+
+Additional documentation from `Poisson`:
+
+Note that when `lam` is an integer, there are actually two modes.
+Namely, `lam` and `lam - 1` are both modes. Here we return
+only the larger of the two modes.
 
 
 - - -
@@ -6756,7 +6932,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -6780,7 +6956,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -6788,6 +6964,13 @@ Probability mass function.
 #### `tf.contrib.distributions.Poisson.prob(value, name='prob')` {#Poisson.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Poisson`:
+
+Note thet the input value must be a non-negative floating point tensor with
+dtype `dtype` and whose shape can be broadcast with `self.lam`. `x` is only
+legal if it is non-negative and its components are equal to integer values.
 
 ##### Args:
 
@@ -7177,7 +7360,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -7201,7 +7384,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -7257,6 +7440,12 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 #### `tf.contrib.distributions.StudentT.mean(name='mean')` {#StudentT.mean}
 
 Mean.
+
+Additional documentation from `StudentT`:
+
+The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.
+If `self.allow_nan_stats=True`, then an exception will be raised rather
+than returning `NaN`.
 
 
 - - -
@@ -7350,7 +7539,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -7374,7 +7563,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -7495,6 +7684,16 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.StudentT.variance(name='variance')` {#StudentT.variance}
 
 Variance.
+
+Additional documentation from `StudentT`:
+
+The variance for Student's T equals
+
+```
+df / (df - 2), when df > 2
+infinity, when 1 < df <= 2
+NaN, when df <= 1
+```
 
 
 
@@ -7755,7 +7954,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -7779,7 +7978,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -7921,7 +8120,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -7945,7 +8144,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -8344,7 +8543,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -8368,7 +8567,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -8376,6 +8575,22 @@ Log probability mass function.
 #### `tf.contrib.distributions.MultivariateNormalDiag.log_prob(value, name='log_prob')` {#MultivariateNormalDiag.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `_MultivariateNormalOperatorPD`:
+
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+```
+self.batch_shape + self.event_shape
+```
+
+or
+
+```
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
 
 ##### Args:
 
@@ -8524,7 +8739,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -8548,7 +8763,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -8556,6 +8771,22 @@ Probability mass function.
 #### `tf.contrib.distributions.MultivariateNormalDiag.prob(value, name='prob')` {#MultivariateNormalDiag.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `_MultivariateNormalOperatorPD`:
+
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+```
+self.batch_shape + self.event_shape
+```
+
+or
+
+```
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
 
 ##### Args:
 
@@ -8941,7 +9172,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -8965,7 +9196,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -8973,6 +9204,22 @@ Log probability mass function.
 #### `tf.contrib.distributions.MultivariateNormalFull.log_prob(value, name='log_prob')` {#MultivariateNormalFull.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `_MultivariateNormalOperatorPD`:
+
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+```
+self.batch_shape + self.event_shape
+```
+
+or
+
+```
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
 
 ##### Args:
 
@@ -9121,7 +9368,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -9145,7 +9392,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -9153,6 +9400,22 @@ Probability mass function.
 #### `tf.contrib.distributions.MultivariateNormalFull.prob(value, name='prob')` {#MultivariateNormalFull.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `_MultivariateNormalOperatorPD`:
+
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+```
+self.batch_shape + self.event_shape
+```
+
+or
+
+```
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
 
 ##### Args:
 
@@ -9547,7 +9810,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -9571,7 +9834,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -9579,6 +9842,22 @@ Log probability mass function.
 #### `tf.contrib.distributions.MultivariateNormalCholesky.log_prob(value, name='log_prob')` {#MultivariateNormalCholesky.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `_MultivariateNormalOperatorPD`:
+
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+```
+self.batch_shape + self.event_shape
+```
+
+or
+
+```
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
 
 ##### Args:
 
@@ -9727,7 +10006,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -9751,7 +10030,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -9759,6 +10038,22 @@ Probability mass function.
 #### `tf.contrib.distributions.MultivariateNormalCholesky.prob(value, name='prob')` {#MultivariateNormalCholesky.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `_MultivariateNormalOperatorPD`:
+
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+```
+self.batch_shape + self.event_shape
+```
+
+or
+
+```
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
 
 ##### Args:
 
@@ -10243,7 +10538,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -10267,7 +10562,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -10275,6 +10570,14 @@ Log probability mass function.
 #### `tf.contrib.distributions.Dirichlet.log_prob(value, name='log_prob')` {#Dirichlet.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Dirichlet`:
+
+Note that the input must be a non-negative tensor with dtype `dtype` and whose
+shape can be broadcast with `self.alpha`.  For fixed leading dimensions, the
+last dimension represents counts for the corresponding Dirichlet distribution
+in `self.alpha`. `x` is only legal if it sums up to one.
 
 ##### Args:
 
@@ -10330,6 +10633,13 @@ Mean.
 #### `tf.contrib.distributions.Dirichlet.mode(name='mode')` {#Dirichlet.mode}
 
 Mode.
+
+Additional documentation from `Dirichlet`:
+
+Note that the mode for the Dirichlet distribution is only defined
+when `alpha > 1`. This returns the mode when `alpha > 1`,
+and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
+will be raised rather than returning `NaN`.
 
 
 - - -
@@ -10409,7 +10719,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -10433,7 +10743,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -10441,6 +10751,14 @@ Probability mass function.
 #### `tf.contrib.distributions.Dirichlet.prob(value, name='prob')` {#Dirichlet.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Dirichlet`:
+
+Note that the input must be a non-negative tensor with dtype `dtype` and whose
+shape can be broadcast with `self.alpha`.  For fixed leading dimensions, the
+last dimension represents counts for the corresponding Dirichlet distribution
+in `self.alpha`. `x` is only legal if it sums up to one.
 
 ##### Args:
 
@@ -10864,7 +11182,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -10888,7 +11206,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -10896,6 +11214,21 @@ Log probability mass function.
 #### `tf.contrib.distributions.DirichletMultinomial.log_prob(value, name='log_prob')` {#DirichletMultinomial.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `DirichletMultinomial`:
+
+For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
+that after sampling `n` draws from this Dirichlet Multinomial
+distribution, the number of draws falling in class `j` is `n_j`.  Note that
+different sequences of draws can result in the same counts, thus the
+probability includes a combinatorial coefficient.
+
+Note that input, "counts", must be a non-negative tensor with dtype `dtype`
+and whose shape can be broadcast with `self.alpha`.  For fixed leading
+dimensions, the last dimension represents counts for the corresponding
+Dirichlet Multinomial distribution in `self.alpha`. `counts` is only legal if
+it sums up to `n` and its components are equal to integer values.
 
 ##### Args:
 
@@ -11037,7 +11370,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -11061,7 +11394,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -11069,6 +11402,21 @@ Probability mass function.
 #### `tf.contrib.distributions.DirichletMultinomial.prob(value, name='prob')` {#DirichletMultinomial.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `DirichletMultinomial`:
+
+For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
+that after sampling `n` draws from this Dirichlet Multinomial
+distribution, the number of draws falling in class `j` is `n_j`.  Note that
+different sequences of draws can result in the same counts, thus the
+probability includes a combinatorial coefficient.
+
+Note that input, "counts", must be a non-negative tensor with dtype `dtype`
+and whose shape can be broadcast with `self.alpha`.  For fixed leading
+dimensions, the last dimension represents counts for the corresponding
+Dirichlet Multinomial distribution in `self.alpha`. `counts` is only legal if
+it sums up to `n` and its components are equal to integer values.
 
 ##### Args:
 
@@ -11175,6 +11523,24 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.DirichletMultinomial.variance(name='variance')` {#DirichletMultinomial.variance}
 
 Variance.
+
+Additional documentation from `DirichletMultinomial`:
+
+The variance for each batch member is defined as the following:
+
+```
+Var(X_j) = n * alpha_j / alpha_0 * (1 - alpha_j / alpha_0) *
+(n + alpha_0) / (1 + alpha_0)
+```
+
+where `alpha_0 = sum_j alpha_j`.
+
+The covariance between elements in a batch is defined as:
+
+```
+Cov(X_i, X_j) = -n * alpha_i * alpha_j / alpha_0 ** 2 *
+(n + alpha_0) / (1 + alpha_0)
+```
 
 
 
@@ -11474,7 +11840,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -11498,7 +11864,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -11506,6 +11872,21 @@ Log probability mass function.
 #### `tf.contrib.distributions.Multinomial.log_prob(value, name='log_prob')` {#Multinomial.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Multinomial`:
+
+For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
+that after sampling `n` draws from this Multinomial distribution, the
+number of draws falling in class `j` is `n_j`.  Note that different
+sequences of draws can result in the same counts, thus the probability
+includes a combinatorial coefficient.
+
+Note that input "counts" must be a non-negative tensor with dtype `dtype`
+and whose shape can be broadcast with `self.p` and `self.n`.  For fixed
+leading dimensions, the last dimension represents counts for the
+corresponding Multinomial distribution in `self.p`. `counts` is only legal
+if it sums up to `n` and its components are equal to integer values.
 
 ##### Args:
 
@@ -11661,7 +12042,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -11685,7 +12066,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -11693,6 +12074,21 @@ Probability mass function.
 #### `tf.contrib.distributions.Multinomial.prob(value, name='prob')` {#Multinomial.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Multinomial`:
+
+For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
+that after sampling `n` draws from this Multinomial distribution, the
+number of draws falling in class `j` is `n_j`.  Note that different
+sequences of draws can result in the same counts, thus the probability
+includes a combinatorial coefficient.
+
+Note that input "counts" must be a non-negative tensor with dtype `dtype`
+and whose shape can be broadcast with `self.p` and `self.n`.  For fixed
+leading dimensions, the last dimension represents counts for the
+corresponding Multinomial distribution in `self.p`. `counts` is only legal
+if it sums up to `n` and its components are equal to integer values.
 
 ##### Args:
 
@@ -12110,7 +12506,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -12134,7 +12530,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -12283,7 +12679,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -12307,7 +12703,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -12742,7 +13138,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -12766,7 +13162,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -12915,7 +13311,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -12939,7 +13335,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -13351,7 +13747,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -13375,7 +13771,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -13383,6 +13779,15 @@ Log probability mass function.
 #### `tf.contrib.distributions.TransformedDistribution.log_prob(value, name='log_prob')` {#TransformedDistribution.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `TransformedDistribution`:
+
+Implements `(log o p o g)(y) - (log o det o J o g)(y)`,
+where `g` is the inverse of `transform`.
+
+Also raises a `ValueError` if `inverse` was not provided to the
+distribution and `y` was not returned from `sample`.
 
 ##### Args:
 
@@ -13517,7 +13922,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -13541,7 +13946,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -13549,6 +13954,15 @@ Probability mass function.
 #### `tf.contrib.distributions.TransformedDistribution.prob(value, name='prob')` {#TransformedDistribution.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `TransformedDistribution`:
+
+Implements `p(g(y)) / det|J(g(y))|`, where `g` is the inverse of
+`transform`.
+
+Also raises a `ValueError` if `inverse` was not provided to the
+distribution and `y` was not returned from `sample`.
 
 ##### Args:
 
@@ -13590,6 +14004,12 @@ sample.
 #### `tf.contrib.distributions.TransformedDistribution.sample_n(n, seed=None, name='sample_n')` {#TransformedDistribution.sample_n}
 
 Generate `n` samples.
+
+
+Additional documentation from `TransformedDistribution`:
+
+Samples from the base distribution and then passes through
+the transform.
 
 ##### Args:
 
@@ -13753,7 +14173,7 @@ In particular, `validate_args` and `allow_nan_stats` are determined for this
 
 *  <b>`TypeError`</b>: If `base_dist_cls` is not a subclass of
       `Distribution` or continuous.
-*  <b>`AttributeError`</b>: If the base distribution does not implement `cdf`.
+*  <b>`NotImplementedError`</b>: If the base distribution does not implement `cdf`.
 
 
 - - -
@@ -13815,6 +14235,24 @@ Given random variable `X`, the cumulative distribution function `cdf` is:
 ```
 cdf(x) := P[X <= x]
 ```
+
+
+Additional documentation from `QuantizedDistribution`:
+
+For whole numbers `y`,
+
+```
+cdf(y) := P[Y <= y]
+        = 1, if y >= upper_cutoff,
+        = 0, if y < lower_cutoff,
+        = P[X <= y], otherwise.
+```
+
+Since `Y` only has mass at whole numbers, `P[Y <= y] = P[Y <= floor(y)]`.
+This dictates that fractional `y` are first floored to a whole number, and
+then above definition applies.
+
+The base distribution's `cdf` method must be defined on `y - 1`.
 
 ##### Args:
 
@@ -13918,6 +14356,24 @@ Often, a numerical approximation can be used for `log_cdf(x)` that yields
 a more accurate answer than simply taking the logarithm of the `cdf` when
 `x << -1`.
 
+
+Additional documentation from `QuantizedDistribution`:
+
+For whole numbers `y`,
+
+```
+cdf(y) := P[Y <= y]
+        = 1, if y >= upper_cutoff,
+        = 0, if y < lower_cutoff,
+        = P[X <= y], otherwise.
+```
+
+Since `Y` only has mass at whole numbers, `P[Y <= y] = P[Y <= floor(y)]`.
+This dictates that fractional `y` are first floored to a whole number, and
+then above definition applies.
+
+The base distribution's `log_cdf` method must be defined on `y - 1`.
+
 ##### Args:
 
 
@@ -13952,7 +14408,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -13976,7 +14432,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -13984,6 +14440,24 @@ Log probability mass function.
 #### `tf.contrib.distributions.QuantizedDistribution.log_prob(value, name='log_prob')` {#QuantizedDistribution.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `QuantizedDistribution`:
+
+For whole numbers `y`,
+
+```
+P[Y = y] := P[X <= lower_cutoff],  if y == lower_cutoff,
+         := P[X > upper_cutoff - 1],  y == upper_cutoff,
+         := 0, if j < lower_cutoff or y > upper_cutoff,
+         := P[y - 1 < X <= y],  all other y.
+```
+
+
+The base distribution's `log_cdf` method must be defined on `y - 1`.  If the
+base distribution has a `log_survival_function` method results will be more
+accurate for large values of `y`, and in this case the `log_survival_function`
+must also be defined on `y - 1`.
 
 ##### Args:
 
@@ -14014,6 +14488,24 @@ log_survival_function(x) = Log[ P[X > x] ]
 
 Typically, different numerical approximations can be used for the log
 survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
+
+
+Additional documentation from `QuantizedDistribution`:
+
+For whole numbers `y`,
+
+```
+survival_function(y) := P[Y > y]
+                      = 0, if y >= upper_cutoff,
+                      = 1, if y < lower_cutoff,
+                      = P[X <= y], otherwise.
+```
+
+Since `Y` only has mass at whole numbers, `P[Y <= y] = P[Y <= floor(y)]`.
+This dictates that fractional `y` are first floored to a whole number, and
+then above definition applies.
+
+The base distribution's `log_cdf` method must be defined on `y - 1`.
 
 ##### Args:
 
@@ -14118,7 +14610,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -14142,7 +14634,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -14150,6 +14642,24 @@ Probability mass function.
 #### `tf.contrib.distributions.QuantizedDistribution.prob(value, name='prob')` {#QuantizedDistribution.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `QuantizedDistribution`:
+
+For whole numbers `y`,
+
+```
+P[Y = y] := P[X <= lower_cutoff],  if y == lower_cutoff,
+         := P[X > upper_cutoff - 1],  y == upper_cutoff,
+         := 0, if j < lower_cutoff or y > upper_cutoff,
+         := P[y - 1 < X <= y],  all other y.
+```
+
+
+The base distribution's `cdf` method must be defined on `y - 1`.  If the
+base distribution has a `survival_function` method, results will be more
+accurate for large values of `y`, and in this case the `survival_function` must
+also be defined on `y - 1`.
 
 ##### Args:
 
@@ -14231,6 +14741,24 @@ survival_function(x) = P[X > x]
                      = 1 - P[X <= x]
                      = 1 - cdf(x).
 ```
+
+
+Additional documentation from `QuantizedDistribution`:
+
+For whole numbers `y`,
+
+```
+survival_function(y) := P[Y > y]
+                      = 0, if y >= upper_cutoff,
+                      = 1, if y < lower_cutoff,
+                      = P[X <= y], otherwise.
+```
+
+Since `Y` only has mass at whole numbers, `P[Y <= y] = P[Y <= floor(y)]`.
+This dictates that fractional `y` are first floored to a whole number, and
+then above definition applies.
+
+The base distribution's `cdf` method must be defined on `y - 1`.
 
 ##### Args:
 
@@ -14570,7 +15098,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -14594,7 +15122,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -14743,7 +15271,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -14767,7 +15295,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -15336,7 +15864,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -15360,7 +15888,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -15430,6 +15958,10 @@ Mean.
 #### `tf.contrib.distributions.BernoulliWithSigmoidP.mode(name='mode')` {#BernoulliWithSigmoidP.mode}
 
 Mode.
+
+Additional documentation from `Bernoulli`:
+
+Returns `1` if `p > 1-p` and `0` otherwise.
 
 
 - - -
@@ -15516,7 +16048,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -15540,7 +16072,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -15852,6 +16384,14 @@ Often, a numerical approximation can be used for `log_cdf(x)` that yields
 a more accurate answer than simply taking the logarithm of the `cdf` when
 `x << -1`.
 
+
+Additional documentation from `Beta`:
+
+Note that the argument `x` must be a non-negative floating point tensor
+whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
+dimensions, the last dimension represents counts for the corresponding Beta
+distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
+
 ##### Args:
 
 
@@ -15886,7 +16426,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -15910,7 +16450,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -15973,6 +16513,13 @@ Mean.
 #### `tf.contrib.distributions.BetaWithSoftplusAB.mode(name='mode')` {#BetaWithSoftplusAB.mode}
 
 Mode.
+
+Additional documentation from `Beta`:
+
+Note that the mode for the Beta distribution is only defined
+when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
+and `NaN` otherwise. If `self.allow_nan_stats` is `False`, an exception
+will be raised rather than returning `NaN`.
 
 
 - - -
@@ -16052,7 +16599,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -16076,7 +16623,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -16084,6 +16631,14 @@ Probability mass function.
 #### `tf.contrib.distributions.BetaWithSoftplusAB.prob(value, name='prob')` {#BetaWithSoftplusAB.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Beta`:
+
+Note that the argument `x` must be a non-negative floating point tensor
+whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
+dimensions, the last dimension represents counts for the corresponding Beta
+distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 
 ##### Args:
 
@@ -16305,6 +16860,17 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 Shanon entropy in nats.
 
+Additional documentation from `Gamma`:
+
+This is defined to be
+
+```
+entropy = alpha - log(beta) + log(Gamma(alpha))
++ (1-alpha)digamma(alpha)
+```
+
+where digamma(alpha) is the digamma function.
+
 
 - - -
 
@@ -16415,7 +16981,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -16439,7 +17005,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -16502,6 +17068,12 @@ Mean.
 #### `tf.contrib.distributions.Chi2WithAbsDf.mode(name='mode')` {#Chi2WithAbsDf.mode}
 
 Mode.
+
+Additional documentation from `Gamma`:
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when
+`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+an exception will be raised rather than returning `NaN`.
 
 
 - - -
@@ -16581,7 +17153,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -16605,7 +17177,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -16654,6 +17226,11 @@ sample.
 #### `tf.contrib.distributions.Chi2WithAbsDf.sample_n(n, seed=None, name='sample_n')` {#Chi2WithAbsDf.sample_n}
 
 Generate `n` samples.
+
+
+Additional documentation from `Gamma`:
+
+See the documentation for tf.random_gamma for more details.
 
 ##### Args:
 
@@ -16827,6 +17404,17 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 Shanon entropy in nats.
 
+Additional documentation from `Gamma`:
+
+This is defined to be
+
+```
+entropy = alpha - log(beta) + log(Gamma(alpha))
++ (1-alpha)digamma(alpha)
+```
+
+where digamma(alpha) is the digamma function.
+
 
 - - -
 
@@ -16944,7 +17532,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -16968,7 +17556,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -17031,6 +17619,12 @@ Mean.
 #### `tf.contrib.distributions.ExponentialWithSoftplusLam.mode(name='mode')` {#ExponentialWithSoftplusLam.mode}
 
 Mode.
+
+Additional documentation from `Gamma`:
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when
+`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+an exception will be raised rather than returning `NaN`.
 
 
 - - -
@@ -17110,7 +17704,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -17134,7 +17728,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -17183,6 +17777,11 @@ sample.
 #### `tf.contrib.distributions.ExponentialWithSoftplusLam.sample_n(n, seed=None, name='sample_n')` {#ExponentialWithSoftplusLam.sample_n}
 
 Generate `n` samples.
+
+
+Additional documentation from `Gamma`:
+
+See the documentation for tf.random_gamma for more details.
 
 ##### Args:
 
@@ -17356,6 +17955,17 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 Shanon entropy in nats.
 
+Additional documentation from `Gamma`:
+
+This is defined to be
+
+```
+entropy = alpha - log(beta) + log(Gamma(alpha))
++ (1-alpha)digamma(alpha)
+```
+
+where digamma(alpha) is the digamma function.
+
 
 - - -
 
@@ -17466,7 +18076,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -17490,7 +18100,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -17553,6 +18163,12 @@ Mean.
 #### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.mode(name='mode')` {#GammaWithSoftplusAlphaBeta.mode}
 
 Mode.
+
+Additional documentation from `Gamma`:
+
+The mode of a gamma distribution is `(alpha - 1) / beta` when
+`alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+an exception will be raised rather than returning `NaN`.
 
 
 - - -
@@ -17632,7 +18248,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -17656,7 +18272,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -17705,6 +18321,11 @@ sample.
 #### `tf.contrib.distributions.GammaWithSoftplusAlphaBeta.sample_n(n, seed=None, name='sample_n')` {#GammaWithSoftplusAlphaBeta.sample_n}
 
 Generate `n` samples.
+
+
+Additional documentation from `Gamma`:
+
+See the documentation for tf.random_gamma for more details.
 
 ##### Args:
 
@@ -17878,6 +18499,17 @@ The `DType` of `Tensor`s handled by this `Distribution`.
 
 Shanon entropy in nats.
 
+Additional documentation from `InverseGamma`:
+
+This is defined to be
+
+```
+entropy = alpha - log(beta) + log(Gamma(alpha))
++ (1-alpha)digamma(alpha)
+```
+
+where digamma(alpha) is the digamma function.
+
 
 - - -
 
@@ -17988,7 +18620,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -18012,7 +18644,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -18069,12 +18701,22 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 Mean.
 
+Additional documentation from `InverseGamma`:
+
+The mean of an inverse gamma distribution is `beta / (alpha - 1)`,
+when `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is
+`False`, an exception will be raised rather than returning `NaN`
+
 
 - - -
 
 #### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.mode(name='mode')` {#InverseGammaWithSoftplusAlphaBeta.mode}
 
 Mode.
+
+Additional documentation from `InverseGamma`:
+
+The mode of an inverse gamma distribution is `beta / (alpha + 1)`.
 
 
 - - -
@@ -18154,7 +18796,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -18178,7 +18820,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -18227,6 +18869,11 @@ sample.
 #### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.sample_n(n, seed=None, name='sample_n')` {#InverseGammaWithSoftplusAlphaBeta.sample_n}
 
 Generate `n` samples.
+
+
+Additional documentation from `InverseGamma`:
+
+See the documentation for tf.random_gamma for more details.
 
 ##### Args:
 
@@ -18292,6 +18939,12 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.InverseGammaWithSoftplusAlphaBeta.variance(name='variance')` {#InverseGammaWithSoftplusAlphaBeta.variance}
 
 Variance.
+
+Additional documentation from `InverseGamma`:
+
+Variance for inverse gamma is defined only for `alpha > 2`. If
+`self.allow_nan_stats` is `False`, an exception will be raised rather
+than returning `NaN`.
 
 
 
@@ -18503,7 +19156,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -18527,7 +19180,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -18669,7 +19322,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -18693,7 +19346,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -19114,7 +19767,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -19138,7 +19791,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -19146,6 +19799,22 @@ Log probability mass function.
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.log_prob(value, name='log_prob')` {#MultivariateNormalDiagPlusVDVT.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `_MultivariateNormalOperatorPD`:
+
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+```
+self.batch_shape + self.event_shape
+```
+
+or
+
+```
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
 
 ##### Args:
 
@@ -19294,7 +19963,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -19318,7 +19987,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -19326,6 +19995,22 @@ Probability mass function.
 #### `tf.contrib.distributions.MultivariateNormalDiagPlusVDVT.prob(value, name='prob')` {#MultivariateNormalDiagPlusVDVT.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `_MultivariateNormalOperatorPD`:
+
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+```
+self.batch_shape + self.event_shape
+```
+
+or
+
+```
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
 
 ##### Args:
 
@@ -19650,7 +20335,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -19674,7 +20359,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -19682,6 +20367,22 @@ Log probability mass function.
 #### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.log_prob(value, name='log_prob')` {#MultivariateNormalDiagWithSoftplusStDev.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `_MultivariateNormalOperatorPD`:
+
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+```
+self.batch_shape + self.event_shape
+```
+
+or
+
+```
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
 
 ##### Args:
 
@@ -19830,7 +20531,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -19854,7 +20555,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -19862,6 +20563,22 @@ Probability mass function.
 #### `tf.contrib.distributions.MultivariateNormalDiagWithSoftplusStDev.prob(value, name='prob')` {#MultivariateNormalDiagWithSoftplusStDev.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `_MultivariateNormalOperatorPD`:
+
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+```
+self.batch_shape + self.event_shape
+```
+
+or
+
+```
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
 
 ##### Args:
 
@@ -20186,7 +20903,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -20210,7 +20927,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -20359,7 +21076,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -20383,7 +21100,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -20715,7 +21432,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -20739,7 +21456,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -20795,6 +21512,12 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 #### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.mean(name='mean')` {#StudentTWithAbsDfSoftplusSigma.mean}
 
 Mean.
+
+Additional documentation from `StudentT`:
+
+The mean of Student's T equals `mu` if `df > 1`, otherwise it is `NaN`.
+If `self.allow_nan_stats=True`, then an exception will be raised rather
+than returning `NaN`.
 
 
 - - -
@@ -20888,7 +21611,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -20912,7 +21635,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -21033,6 +21756,16 @@ Python boolean indicated possibly expensive checks are enabled.
 #### `tf.contrib.distributions.StudentTWithAbsDfSoftplusSigma.variance(name='variance')` {#StudentTWithAbsDfSoftplusSigma.variance}
 
 Variance.
+
+Additional documentation from `StudentT`:
+
+The variance for Student's T equals
+
+```
+df / (df - 2), when df > 2
+infinity, when 1 < df <= 2
+NaN, when df <= 1
+```
 
 
 

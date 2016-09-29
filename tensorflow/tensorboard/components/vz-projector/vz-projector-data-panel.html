@@ -23,6 +23,7 @@ limitations under the License.
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
 <link rel="import" href="../paper-checkbox/paper-checkbox.html">
 <link rel="import" href="../paper-tooltip/paper-tooltip.html">
+<link rel="import" href="vz-projector-legend.html">
 
 <dom-module id='vz-projector-data-panel'>
 <template>
@@ -136,15 +137,17 @@ paper-button {
   </paper-checkbox>
 
   <!-- List of runs -->
-  <paper-dropdown-menu noink no-animations label="[[_getNumRunsLabel(runNames)]] found">
-    <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedRun}}">
-      <template is="dom-repeat" items="[[runNames]]">
-        <paper-item style="justify-content: space-between;" value="[[item]]" label="[[item]]">
-          [[item]]
-        </paper-item>
-      </template>
-    </paper-listbox>
-  </paper-dropdown-menu>
+  <template is="dom-if" if="[[_hasChoices(runNames)]]">
+    <paper-dropdown-menu noink no-animations label="[[_getNumRunsLabel(runNames)]] found">
+      <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedRun}}">
+        <template is="dom-repeat" items="[[runNames]]">
+          <paper-item style="justify-content: space-between;" value="[[item]]" label="[[item]]">
+            [[item]]
+          </paper-item>
+        </template>
+      </paper-listbox>
+    </paper-dropdown-menu>
+  </template>
 
   <template is="dom-if" if="[[tensorNames]]">
     <!-- List of tensors in checkpoint -->
@@ -164,7 +167,7 @@ paper-button {
 </div>
 
 <!-- Label by -->
-<template is="dom-if" if="[[labelOptions.length]]">
+<template is="dom-if" if="[[_hasChoices(labelOptions)]]">
   <paper-dropdown-menu style="width: 100%" noink no-animations label="Label by">
     <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{labelOption}}">
       <template is="dom-repeat" items="[[labelOptions]]">
@@ -177,7 +180,7 @@ paper-button {
 </template>
 
 <!-- Color by -->
-<template is="dom-if" if="[[colorOptions.length]]">
+<template is="dom-if" if="[[_hasChoices(colorOptions)]]">
   <paper-dropdown-menu id="colorby" style="width: 100%" noink no-animations label="Color by">
     <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{colorOption}}">
       <template is="dom-repeat" items="[[colorOptions]]">
@@ -188,6 +191,7 @@ paper-button {
       </template>
     </paper-listbox>
   </paper-dropdown-menu>
+  <vz-projector-legend render-info="[[colorLegendRenderInfo]]"></vz-projector-legend>
 </template>
 
 <!-- Saving state section -->

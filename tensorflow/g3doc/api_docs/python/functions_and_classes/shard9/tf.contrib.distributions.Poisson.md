@@ -226,7 +226,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -250,7 +250,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -258,6 +258,13 @@ Log probability mass function.
 #### `tf.contrib.distributions.Poisson.log_prob(value, name='log_prob')` {#Poisson.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Poisson`:
+
+Note thet the input value must be a non-negative floating point tensor with
+dtype `dtype` and whose shape can be broadcast with `self.lam`. `x` is only
+legal if it is non-negative and its components are equal to integer values.
 
 ##### Args:
 
@@ -313,6 +320,12 @@ Mean.
 #### `tf.contrib.distributions.Poisson.mode(name='mode')` {#Poisson.mode}
 
 Mode.
+
+Additional documentation from `Poisson`:
+
+Note that when `lam` is an integer, there are actually two modes.
+Namely, `lam` and `lam - 1` are both modes. Here we return
+only the larger of the two modes.
 
 
 - - -
@@ -392,7 +405,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -416,7 +429,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -424,6 +437,13 @@ Probability mass function.
 #### `tf.contrib.distributions.Poisson.prob(value, name='prob')` {#Poisson.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Poisson`:
+
+Note thet the input value must be a non-negative floating point tensor with
+dtype `dtype` and whose shape can be broadcast with `self.lam`. `x` is only
+legal if it is non-negative and its components are equal to integer values.
 
 ##### Args:
 

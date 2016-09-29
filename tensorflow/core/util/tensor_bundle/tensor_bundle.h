@@ -174,6 +174,11 @@ class BundleReader {
   // the metadata).
   Status status() const { return status_; }
 
+  // Queries whether the bundle contains an entry keyed by "key".  Calls Seek()
+  // internally, so this call invalidates the reader's current position.
+  // REQUIRES: status().ok()
+  bool Contains(StringPiece key);
+
   // Looks up the shape of the tensor keyed by "key".
   // Clears "shape" if not found.
   // REQUIRES: status().ok()
@@ -223,6 +228,8 @@ class BundleReader {
   // Returns the raw value at the current position.
   // REQUIRES: status().ok() && Valid()
   StringPiece value() const { return iter_->value(); }
+
+  string DebugString();
 
  private:
   // Seeks for "key" and reads the metadata proto.

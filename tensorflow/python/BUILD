@@ -1498,6 +1498,17 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "nn_fused_batchnorm_test",
+    size = "large",
+    srcs = ["ops/nn_fused_batchnorm_test.py"],
+    additional_deps = [
+        ":framework_test_lib",
+        ":lib",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+cuda_py_test(
     name = "nn_test",
     size = "medium",
     srcs = ["ops/nn_test.py"],

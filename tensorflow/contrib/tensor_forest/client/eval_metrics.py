@@ -56,11 +56,18 @@ def _predictions(probabilities, unused_targets):
   return math_ops.argmax(probabilities, 1)
 
 
+def _log_loss(probabilities, targets):
+  # targets doesn't have a shape coming in, log_loss isn't too happy about it.
+  targets = array_ops.reshape(targets, array_ops.shape(probabilities))
+  return metric_ops.streaming_mean(losses.log_loss(probabilities, targets))
+
+
 _EVAL_METRICS = {'sigmoid_entropy': _sigmoid_entropy,
                  'softmax_entropy': _softmax_entropy,
                  'accuracy': _accuracy,
                  'r2': _r2,
-                 'predictions': _predictions}
+                 'predictions': _predictions,
+                 'log_loss': _log_loss}
 
 
 def get_metric(metric_name):
