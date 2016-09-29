@@ -118,9 +118,9 @@ class SubstrOp : public OpKernel {
         //     typename TTypes<T, 2>::Tensor pos = pos_reshaped.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()));
         //     typename TTypes<T, 2>::Tensor len = len_reshaped.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()));
             
-        //     for (int i = 0; i < ndims; ++i) {
+        //     for (size_t i = 0; i < ndims; ++i) {
         //       size_t dim_size = output_shape.dim_size(i);
-        //       for (int j = 0; j < dim_size; ++j) {
+        //       for (size_t j = 0; j < dim_size; ++j) {
         //         output(i, j) = input(i, j).substr(pos(i, j), len(i, j));
         //       }
         //     }
