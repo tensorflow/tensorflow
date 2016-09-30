@@ -4,6 +4,7 @@
 
 * cuDNN 5 support.
 * HDFS Support.
+* Adds Fused LSTM support via cuDNN 5 in `tensorflow/contrib/cudnn_rnn`.
 * Improved support for NumPy style basic slicing including non-1 strides,
   ellipses, newaxis, and negative indices. For example complicated expressions
   like `foo[1, 2:4, tf.newaxis, ..., :-3:-1, :]` are now supported. In addition
