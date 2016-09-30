@@ -25,6 +25,7 @@ import {SelectionChangedListener, SelectionContext} from './selectionContext';
 import * as vector from './vector';
 import {BookmarkPanel} from './vz-projector-bookmark-panel';
 import {DataPanel} from './vz-projector-data-panel';
+import {ProjectorInput} from './vz-projector-input';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
 
@@ -52,9 +53,6 @@ const NN_COLOR_SCALE =
         .domain([1, 0.7, 0.4])
         .range(['hsl(285, 80%, 40%)', 'hsl(0, 80%, 65%)', 'hsl(40, 70%, 60%)'])
         .clamp(true);
-
-/** Text color used for error/important messages. */
-const CALLOUT_COLOR = '#880E4F';
 
 /**
  * The minimum number of dimensions the data should have to automatically
@@ -96,7 +94,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
   // The working subset of the data source's original data set.
   private currentDataSet: DataSet;
   private scatterPlot: ScatterPlot;
-  private labels3D: boolean = false;
   private dim: number;
   private selectedDistance: (a: number[], b: number[]) => number;
   private highlightedPoints: {index: number, color: string}[];
@@ -252,7 +249,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
       this.currentDataSet.normalize();
     }
     this.scatterPlot.setDataSet(this.currentDataSet, this.dataSet.spriteImage);
-    this.updateMenuButtons();
     this.dim = this.currentDataSet.dim[1];
     this.dom.select('span.numDataPoints').text(this.currentDataSet.dim[0]);
     this.dom.select('span.dim').text(this.currentDataSet.dim[1]);
@@ -260,29 +256,25 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
   }
 
   private setupInputUIInCustomTab(name: string) {
-    let control = this.dom.select('.control.' + name);
-    let info = control.select('.info');
+    let input = this.querySelector('#' + name) as ProjectorInput;
 
     let updateInput = (value: string, inRegexMode: boolean) => {
       if (value == null) {
-        info.text('');
         return;
       }
       let result = this.getCentroid(value, inRegexMode);
       if (result.numMatches === 0) {
-        info.style('color', CALLOUT_COLOR)
-            .text('0 matches. Using a random vector.');
+        input.message = '0 matches. Using a random vector.';
         result.centroid = vector.rn(this.dim);
       } else {
-        info.style('color', null).text(`${result.numMatches} matches.`);
+        input.message = `${result.numMatches} matches.`;
       }
       this.centroids[name] = result.centroid;
       this.centroidValues[name] = value;
     };
 
     // Setup the input text.
-    let controlNode = control.node() as HTMLDivElement;
-    this.setupInputUIControl(controlNode, (input, inRegexMode) => {
+    input.onInputChanged((input, inRegexMode) => {
       updateInput(input, inRegexMode);
       this.showCustom();
     });
@@ -355,19 +347,19 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     updateNumNN();
 
     // View controls
-    this.dom.select('.reset-zoom').on('click', () => {
+    this.querySelector('#reset-zoom').addEventListener('click', () => {
       this.scatterPlot.resetZoom();
     });
-    this.dom.select('.zoom-in').on('click', () => {
+    this.querySelector('#zoom-in').addEventListener('click', () => {
       this.scatterPlot.zoomStep(2);
     });
-    this.dom.select('.zoom-out').on('click', () => {
+    this.querySelector('#zoom-out').addEventListener('click', () => {
       this.scatterPlot.zoomStep(0.5);
     });
 
     // Toolbar controls
-    let searchBox = this.dom.select('.search-box');
-    let info = searchBox.select('.info');
+    let searchBox = this.querySelector('#search-box') as ProjectorInput;
+
 
     let gatherPointsByRegex =
         (pattern: string, inRegexMode: boolean): number[] => {
@@ -384,24 +376,23 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     // Called whenever the search text input changes.
     let updateInput = (value: string, inRegexMode: boolean) => {
       if (value == null || value.trim() === '') {
-        info.text('');
+        searchBox.message = '';
         this.clearSelection();
         return;
       }
       let indices = gatherPointsByRegex(value, inRegexMode);
       if (indices) {
         if (indices.length === 0) {
-          info.style('color', CALLOUT_COLOR).text(`0 matches.`);
+          searchBox.message = '0 matches.';
         } else {
-          info.style('color', null).text(`${indices.length} matches.`);
+          searchBox.message = `${indices.length} matches.`;
           this.showTab('inspector');
         }
         this.notifySelectionChanged(indices);
       }
     };
-
-    this.setupInputUIControl(searchBox.node() as any, (input, inRegexMode) => {
-      updateInput(input, inRegexMode);
+    searchBox.onInputChanged((value, inRegexMode) => {
+      updateInput(value, inRegexMode);
     });
 
     this.dom.select('.distance a.euclidean').on('click', function() {
@@ -425,28 +416,21 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
       }
     });
 
-    let selectModeButton = this.dom.select('.selectMode');
-    selectModeButton.on('click', () => {
-      let mode = this.scatterPlot.getMode();
-      this.scatterPlot.setMode(mode === Mode.SELECT ? Mode.HOVER : Mode.SELECT);
-      this.updateMenuButtons();
+    let selectModeButton = this.querySelector('#selectMode');
+    selectModeButton.addEventListener('click', (event) => {
+      this.scatterPlot.setMode(
+          (selectModeButton as any).active ? Mode.SELECT : Mode.HOVER);
+    });
+    let nightModeButton = this.querySelector('#nightDayMode');
+    nightModeButton.addEventListener('click', () => {
+      this.scatterPlot.setDayNightMode((nightModeButton as any).active);
     });
 
-    let dayNightModeButton = this.dom.select('.nightDayMode');
-    let modeIsNight = dayNightModeButton.classed('selected');
-    dayNightModeButton.on('click', () => {
-      modeIsNight = !modeIsNight;
-      dayNightModeButton.classed('selected', modeIsNight);
-      this.scatterPlot.setDayNightMode(modeIsNight);
-    });
-
-    let labels3DModeButton = this.dom.select('.labels3DMode');
-    labels3DModeButton.on('click', () => {
-      this.labels3D = !this.labels3D;
-      this.createVisualizers();
+    let labels3DModeButton = this.querySelector('#labels3DMode');
+    labels3DModeButton.addEventListener('click', () => {
+      this.createVisualizers((labels3DModeButton as any).active);
       this.scatterPlot.recreateScene();
       this.scatterPlot.update();
-      this.updateMenuButtons();
     });
 
     // Resize
@@ -459,7 +443,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
       this.scatterPlot = new ScatterPlot(
           this.getScatterContainer(),
           i => '' + this.currentDataSet.points[i].metadata['label'], this);
-      this.createVisualizers();
+      this.createVisualizers(false);
     }
 
     this.scatterPlot.onHover(hoveredIndex => {
@@ -500,7 +484,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
       this.clearSelection();
       this.scatterPlot.setMode(Mode.HOVER);
       this.scatterPlot.clickOnPoint(null);
-      this.updateMenuButtons();
     });
 
     this.registerSelectionChangedListener(
@@ -514,12 +497,12 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     return this.dom.select('#scatter');
   }
 
-  private createVisualizers() {
+  private createVisualizers(inLabels3DMode: boolean) {
     const scatterPlot = this.scatterPlot;
     const selectionContext = this;
     scatterPlot.removeAllVisualizers();
 
-    if (this.labels3D) {
+    if (inLabels3DMode) {
       scatterPlot.addVisualizer(
           new ScatterPlotVisualizer3DLabels(selectionContext));
     } else {
@@ -635,50 +618,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     }
   }
 
-  private setupInputUIControl(
-      container: Element,
-      inputChangedListener: (input: string, inRegexMode: boolean) => void) {
-    let inRegexMode = false;
-    let paperInput = container.querySelector('paper-input') as HTMLInputElement;
-    let paperButton = container.querySelector('paper-button');
-    paperInput.setAttribute('error-message', 'Invalid regex');
-
-    let inputChanged = (input: string, inRegexMode: boolean) => {
-      try {
-        if (inRegexMode) {
-          new RegExp(input);
-        }
-        paperInput.removeAttribute('invalid');
-        inputChangedListener(input, inRegexMode);
-      } catch (invalidRegexException) {
-        paperInput.setAttribute('invalid', 'true');
-        inputChangedListener(null, true);
-      }
-    };
-
-    paperInput.addEventListener('input', function() {
-      inputChanged(this.value, inRegexMode);
-    });
-
-    paperInput.addEventListener('keydown', function(event) {
-      event.stopPropagation();
-    });
-
-    // Setup the regex mode button.
-    let showHideSlashes = () => {
-      d3.select(paperInput)
-          .selectAll('.slash')
-          .style('display', inRegexMode ? null : 'none');
-    };
-    paperButton.addEventListener('click', function() {
-      inRegexMode = this.active;
-      showHideSlashes();
-      inputChanged(paperInput.value, inRegexMode);
-    });
-    showHideSlashes();
-    inputChanged(paperInput.value, inRegexMode);
-  }
-
   private runTSNE() {
     this.currentDataSet.projectTSNE(
         perplexity, learningRate, dimension, (iteration: number) => {
@@ -742,12 +681,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     };
     this.scatterPlot.highlightPoints(
         selectedAndHighlightedPoints, stroke, favor);
-  }
-
-  private updateMenuButtons() {
-    this.dom.select('.selectMode')
-        .classed('selected', this.scatterPlot.getMode() === Mode.SELECT);
-    this.dom.select('.labels3DMode').classed('selected', this.labels3D);
   }
 
   /**

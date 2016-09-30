@@ -105,7 +105,7 @@ paper-button {
   padding: 0;
 }
 
-.tooltip {
+paper-tooltip {
   max-width: 200px;
   --paper-tooltip: {
     font-size: 12px;
@@ -138,10 +138,10 @@ paper-checkbox {
     <div class="dir">Metadata: <span id="metadata-file"></span></div>
   </div>
 
-  <paper-checkbox id="normalize-data-checkbox" noink checked="{{normalizeData}}">
+  <paper-checkbox id="normalize-data-checkbox" checked="{{normalizeData}}">
     Normalize data
     <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
-    <paper-tooltip class="tooltip" position="bottom" animation-delay="0" fit-to-visible-bounds>
+    <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
       The data is normalized by shifting each point by the centroid and making
       it unit norm.
     </paper-tooltip>
@@ -149,7 +149,7 @@ paper-checkbox {
 
   <!-- List of runs -->
   <template is="dom-if" if="[[_hasChoices(runNames)]]">
-    <paper-dropdown-menu noink no-animations label="[[_getNumRunsLabel(runNames)]] found">
+    <paper-dropdown-menu no-animations label="[[_getNumRunsLabel(runNames)]] found">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedRun}}">
         <template is="dom-repeat" items="[[runNames]]">
           <paper-item style="justify-content: space-between;" value="[[item]]" label="[[item]]">
@@ -162,7 +162,7 @@ paper-checkbox {
 
   <template is="dom-if" if="[[tensorNames]]">
     <!-- List of tensors in checkpoint -->
-    <paper-dropdown-menu noink no-animations label="[[_getNumTensorsLabel(tensorNames)]] found">
+    <paper-dropdown-menu no-animations label="[[_getNumTensorsLabel(tensorNames)]] found">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedTensor}}">
         <template is="dom-repeat" items="[[tensorNames]]">
           <paper-item style="justify-content: space-between;" value="[[item.name]]" label="[[item.name]]">
@@ -179,7 +179,7 @@ paper-checkbox {
 
 <!-- Label by -->
 <template is="dom-if" if="[[_hasChoices(labelOptions)]]">
-  <paper-dropdown-menu style="width: 100%" noink no-animations label="Label by">
+  <paper-dropdown-menu style="width: 100%" no-animations label="Label by">
     <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{labelOption}}">
       <template is="dom-repeat" items="[[labelOptions]]">
         <paper-item style="justify-content: space-between;" value="[[item]]" label="[[item]]">
@@ -192,7 +192,7 @@ paper-checkbox {
 
 <!-- Color by -->
 <template is="dom-if" if="[[_hasChoices(colorOptions)]]">
-  <paper-dropdown-menu id="colorby" style="width: 100%" noink no-animations label="Color by">
+  <paper-dropdown-menu id="colorby" style="width: 100%" no-animations label="Color by">
     <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{colorOption}}">
       <template is="dom-repeat" items="[[colorOptions]]">
         <paper-item style="justify-content: space-between;" class$="[[getSeparatorClass(item.isSeparator)]]" value="[[item]]" label="[[item.name]]" disabled="[[item.isSeparator]]">
