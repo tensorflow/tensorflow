@@ -1419,10 +1419,6 @@ def dynamic_raw_rnn(cell, inputs, sequence_length=None, initial_state=None,
     if sequence_length is None:
       max_len = array_ops.shape(inputs)[0]
       sequence_length = array_ops.ones([batch_size], dtype=tf.int32) * max_len
-    # Setup input as TensorArray
-    inputs_ta = tensor_array_ops.TensorArray(dtype, size=0, dynamic_size=True)
-    inputs_ta = inputs_ta.unpack(inputs)
-
     # Setup initial state
     if initial_state is not None:
       state = initial_state
@@ -1432,6 +1428,9 @@ def dynamic_raw_rnn(cell, inputs, sequence_length=None, initial_state=None,
         raise ValueError("If no initial_state is provided, "
                          "dtype must be specified")
       state = cell.zero_state(batch_size, dtype)
+    # Setup input as TensorArray
+    inputs_ta = tensor_array_ops.TensorArray(dtype, size=0, dynamic_size=True)
+    inputs_ta = inputs_ta.unpack(inputs)
 
     # Define RNN: loop function (will run in the while_loop of 'raw_rnn')
     def loop_fn(time, cell_output, cell_state, loop_state):
