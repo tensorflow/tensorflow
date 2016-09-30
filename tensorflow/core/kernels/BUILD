@@ -28,7 +28,6 @@ load(
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",
-    "tf_cuda_library",
     "tf_opts_nortti_if_android",
     "tf_kernel_libraries",
     "tf_kernel_library",
@@ -546,32 +545,6 @@ tf_cc_test(
     ],
 )
 
-cc_library(
-    name = "gather_functor_cpu_header",
-    hdrs = ["gather_functor.h"],
-    visibility = [":friends"],
-    deps = [
-        ":bounds_check",
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_cuda_library(
-    name = "gather_functor",
-    hdrs = [
-        "gather_functor.h",
-        "gather_functor_gpu.cu.h",
-    ],
-    visibility = [":friends"],
-    deps = [
-        ":bounds_check",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//third_party/eigen3",
-    ],
-)
-
 tf_cc_test(
     name = "fused_batch_norm_op_test",
     size = "small",
@@ -587,6 +560,17 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "gather_functor",
+    prefix = "gather_functor",
+    visibility = [":friends"],
+    deps = [
+        ":bounds_check",
+        "//tensorflow/core:framework_lite",
+        "//third_party/eigen3",
     ],
 )
 
@@ -696,6 +680,18 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_kernel_library(
+    name = "scatter_functor",
+    prefix = "scatter_functor",
+    visibility = [":friends"],
+    deps = [
+        ":bounds_check",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
     ],
 )
 
@@ -1820,7 +1816,7 @@ tf_kernel_libraries(
         ":bounds_check",
         ":cwise_op",
         ":fill_functor",
-        ":scatter_op",
+        ":scatter_functor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:sparse_ops_op_lib",
@@ -1917,6 +1913,7 @@ tf_kernel_libraries(
     deps = [
         ":assign_op",
         ":bounds_check",
+        ":scatter_functor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:state_ops_op_lib",
@@ -2112,7 +2109,6 @@ filegroup(
         "function_ops.cc",
         "gather_functor.h",
         "gather_op.cc",
-        "gather_op.h",
         "identity_op.cc",
         "identity_op.h",
         "immutable_constant_op.cc",
