@@ -16,13 +16,12 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_GPU_CU_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_GPU_CU_H_
 
-#include "tensorflow/core/kernels/gather_functor.h"
-
 #if GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/gather_functor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 

@@ -13,25 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/cwise_ops_common.h"
+#ifndef TENSORFLOW_PLATFORM_DYNAMIC_ANNOTATIONS_H_
+#define TENSORFLOW_PLATFORM_DYNAMIC_ANNOTATIONS_H_
 
-#include "tensorflow/core/platform/dynamic_annotations.h"
+#include "tensorflow/core/platform/platform.h"
 
-namespace tensorflow {
-
-template <typename Device, typename Functor>
-class LgammaOp : public UnaryOp<Device, Functor> {
- public:
-  explicit LgammaOp(OpKernelConstruction* ctx) : UnaryOp<Device, Functor>(ctx) {
-    TF_ANNOTATE_BENIGN_RACE(&signgam, "signgam output from lgamma is unused");
-  }
-};
-
-#if EIGEN_HAS_C99_MATH
-REGISTER3(LgammaOp, CPU, "Lgamma", functor::lgamma, float, Eigen::half, double);
-#if GOOGLE_CUDA
-REGISTER3(LgammaOp, GPU, "Lgamma", functor::lgamma, float, Eigen::half, double);
+// Include appropriate platform-dependent implementation.
+#if defined(PLATFORM_GOOGLE)
+#include "tensorflow/core/platform/google/build_config/dynamic_annotations.h"
+#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
+    defined(PLATFORM_GOOGLE_ANDROID)
+#include "tensorflow/core/platform/default/dynamic_annotations.h"
+#else
+#error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif
-#endif  // EIGEN_HAS_C99_MATH
 
-}  // namespace tensorflow
+#endif  // TENSORFLOW_PLATFORM_DYNAMIC_ANNOTATIONS_H_

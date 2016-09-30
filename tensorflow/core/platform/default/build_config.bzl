@@ -102,6 +102,12 @@ def tf_additional_lib_srcs():
       "platform/posix/*.cc",
   ]
 
+def tf_additional_minimal_lib_srcs():
+  return [
+      "platform/default/integral_types.h",
+      "platform/default/mutex.h",
+  ]
+
 def tf_additional_proto_hdrs():
   return [
       "platform/default/integral_types.h",

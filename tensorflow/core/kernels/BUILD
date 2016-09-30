@@ -322,7 +322,7 @@ cc_library(
     hdrs = ["bounds_check.h"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
 )
@@ -543,6 +543,17 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "gather_functor_cpu_header",
+    hdrs = ["gather_functor.h"],
+    visibility = [":friends"],
+    deps = [
+        ":bounds_check",
+        "//tensorflow/core:framework_lite",
+        "//third_party/eigen3",
     ],
 )
 
@@ -1095,6 +1106,7 @@ tf_kernel_libraries(
         "//tensorflow/core:io_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle",
     ],
 )

@@ -34,6 +34,12 @@
 #      kernels.
 # ":direct_session" - An implementation of the Session interface that
 #      directly runs Graphs via the internal TensorFlow executor.
+#  "framework_lite" - Intended to be used by operator implementations
+#      (kernels) that can also be run outside the tensorflow runtime. This
+#      contains a small set of headers and utilities that can be used for core
+#      kernels, without bringing in libraries that can bloat code size (e.g.,
+#      logging is not included because using it will bring in a large amount of
+#      ostream code).
 #
 # ":example_parser_configuration" -- A library for extracting the
 #      tensorflow.Example proto configuration from a Graph.
@@ -80,6 +86,7 @@ load(
     "tf_proto_library_cc",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
+    "tf_additional_minimal_lib_srcs",
     "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
     "tf_additional_lib_deps",
@@ -183,6 +190,7 @@ cc_library(
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
         "platform/cpu_info.h",
+        "platform/dynamic_annotations.h",
         "platform/env.h",
         "platform/file_system.h",
         "platform/fingerprint.h",
@@ -193,6 +201,7 @@ cc_library(
         "platform/net.h",
         "platform/mutex.h",
         "platform/notification.h",
+        "platform/prefetch.h",
         "platform/profile_utils/cpu_utils.h",
         "platform/protobuf.h",  # TODO(josh11b): make internal
         "platform/stacktrace.h",
@@ -305,6 +314,29 @@ tf_cuda_library(
     ],
     visibility = ["//visibility:public"],
     deps = [":framework_internal"],
+)
+
+cc_library(
+    name = "framework_lite",
+    srcs = tf_additional_minimal_lib_srcs(),
+    hdrs = [
+        "framework/numeric_types.h",
+        "framework/tensor_types.h",
+        "framework/type_traits.h",
+        "platform/dynamic_annotations.h",
+        "platform/macros.h",
+        "platform/mutex.h",
+        "platform/platform.h",
+        "platform/prefetch.h",
+        "platform/thread_annotations.h",
+        "platform/types.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps =
+        [
+            "//tensorflow/core/platform/default/build_config:minimal",
+            "//third_party/eigen3",
+        ],
 )
 
 # Generates library per group of ops.
@@ -1120,6 +1152,7 @@ filegroup(
         "platform/default/notification.h",
         "platform/default/protobuf.h",
         "platform/default/thread_annotations.h",
+        "platform/dynamic_annotations.h",
         "platform/env.h",
         "platform/file_statistics.h",
         "platform/file_system.h",
@@ -1131,6 +1164,7 @@ filegroup(
         "platform/net.h",
         "platform/notification.h",
         "platform/platform.h",
+        "platform/prefetch.h",
         "platform/protobuf.h",
         "platform/strong_hash.h",
         "platform/thread_annotations.h",
