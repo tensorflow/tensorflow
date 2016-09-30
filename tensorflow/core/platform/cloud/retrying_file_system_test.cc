@@ -422,7 +422,7 @@ TEST(RetryingFileSystemTest, GetMatchingPaths_SuccessWith2ndTry) {
        std::make_tuple("GetMatchingPaths", Status::OK())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
   TF_EXPECT_OK(fs.GetMatchingPaths("gs://path/dir", &result));
@@ -438,7 +438,7 @@ TEST(RetryingFileSystemTest, GetMatchingPaths_AllRetriesFailed) {
        std::make_tuple("GetMatchingPaths", errors::Unavailable("Last error"))});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
   EXPECT_EQ("Last error",
@@ -617,7 +617,7 @@ TEST(RetryingFileSystemTest, IsDirectory_SuccessWith2ndTry) {
        std::make_tuple("IsDirectory", Status::OK())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   TF_EXPECT_OK(fs.IsDirectory("gs://path/dir"));
 }
@@ -632,7 +632,7 @@ TEST(RetryingFileSystemTest, IsDirectory_AllRetriesFailed) {
        std::make_tuple("IsDirectory", errors::Unavailable("Last error"))});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   EXPECT_EQ("Last error", fs.IsDirectory("gs://path/dir").error_message());
 }
