@@ -67,6 +67,18 @@ cuda_py_tests(
     ],
 )
 
+cuda_py_tests(
+    name = "rnn_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/rnn_test.py"],
+    additional_deps = [
+        ":rnn_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
 tf_custom_op_library(
     name = "python/ops/_lstm_ops.so",
     srcs = [
