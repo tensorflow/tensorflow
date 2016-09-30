@@ -42,105 +42,147 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace {
 
-// Inner kernel for multiplying a batch of matrices.
-template <typename In, typename Out, bool IsComplex = true>
-struct InnerBatchMatMulKernel {
-  template <typename Device, typename Tx, typename Ty, typename Tz>
-  static void Contract(const Device& d, Tx x, Ty y, Tz z,
-                       const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>,
-                                          1>& contract_pairs) {
-    z.device(d) = x.contract(y, contract_pairs);
+Eigen::IndexPair<Eigen::DenseIndex> ContractionDims(bool adj_x, bool adj_y) {
+  if (!adj_x) {
+    if (!adj_y) {
+      return Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
+    } else {
+      return Eigen::IndexPair<Eigen::DenseIndex>(1, 1);
+    }
+  } else {
+    if (!adj_y) {
+      return Eigen::IndexPair<Eigen::DenseIndex>(0, 0);
+    } else {
+      return Eigen::IndexPair<Eigen::DenseIndex>(0, 1);
+    }
   }
+}
 
-  template <typename Device, typename Tz>
-  static void Conjugate(const Device& d, Tz z) {
+// Parallel batch matmul kernel based on the multi-threaded tensor contraction
+// in Eigen.
+template <typename Scalar, bool IsComplex = true>
+struct ParallelMatMulKernel {
+  static void Conjugate(const OpKernelContext* context, Tensor* out) {
+    const Eigen::ThreadPoolDevice d = context->eigen_cpu_device();
+    auto z = out->tensor<Scalar, 3>();
     z.device(d) = z.conjugate();
   }
 
-  static void Run(const OpKernelContext* context, bool parallelize_inner, In Tx,
-                  In Ty, bool adj_x, bool adj_y, Out Tz, int start, int limit) {
+  static void Run(const OpKernelContext* context, const Tensor& in_x,
+                  const Tensor in_y, bool adj_x, bool adj_y, Tensor* out,
+                  int start, int limit) {
     static_assert(IsComplex, "Complex type expected.");
-    Eigen::DefaultDevice default_device;
-    const Eigen::ThreadPoolDevice thread_pool_device =
-        context->eigen_cpu_device();
-
+    auto Tx = in_x.tensor<Scalar, 3>();
+    auto Ty = in_y.tensor<Scalar, 3>();
+    auto Tz = out->tensor<Scalar, 3>();
     // We use the identities
     //   conj(a) * conj(b) = conj(a * b)
     //   conj(a) * b = conj(a * conj(b))
     // to halve the number of cases. The final conjugation of the result is
     // done at the end of LaunchBatchMatMul<CPUDevice, Scalar>::Launch().
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_pairs;
-    if (!adj_x && !adj_y) {
-      contract_pairs[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
-    } else if (adj_x && adj_y) {
-      contract_pairs[0] = Eigen::IndexPair<Eigen::DenseIndex>(0, 1);
-    } else if (!adj_x && adj_y) {
-      contract_pairs[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 1);
-    } else {
-      contract_pairs[0] = Eigen::IndexPair<Eigen::DenseIndex>(0, 0);
-    }
-
+    contract_pairs[0] = ContractionDims(adj_x, adj_y);
+    const Eigen::ThreadPoolDevice d = context->eigen_cpu_device();
     for (int i = start; i < limit; ++i) {
       auto x = Tx.template chip<0>(i);
       auto z = Tz.template chip<0>(i);
       if (adj_x != adj_y) {
         auto y = Ty.template chip<0>(i).conjugate();
-        if (parallelize_inner) {
-          Contract(thread_pool_device, x, y, z, contract_pairs);
-        } else {
-          Contract(default_device, x, y, z, contract_pairs);
-        }
+        z.device(d) = x.contract(y, contract_pairs);
       } else {
         auto y = Ty.template chip<0>(i);
-        if (parallelize_inner) {
-          Contract(thread_pool_device, x, y, z, contract_pairs);
-        } else {
-          Contract(default_device, x, y, z, contract_pairs);
-        }
+        z.device(d) = x.contract(y, contract_pairs);
       }
     }
   }
 };
 
 // The Eigen contraction kernel used here is very large and slow to compile,
-// so we specialize InnerBatchMatMulKernel for real types to avoid all but
-// one of the instantiations.
-template <typename In, typename Out>
-struct InnerBatchMatMulKernel<In, Out, false> {
-  template <typename Device, typename Txy, typename Tz>
-  static void Contract(const Device& d, Txy x, Txy y, Tz z,
-                       const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>,
-                                          1>& contract_pairs) {
-    z.device(d) = x.contract(y, contract_pairs);
-  }
+// so we partially specialize ParallelMatMulKernel for real types to avoid all
+// but one of the instantiations.
+template <typename Scalar>
+struct ParallelMatMulKernel<Scalar, false> {
+  static void Conjugate(const OpKernelContext* context, Tensor* out) {}
 
-  template <typename Device, typename Tz>
-  static void Conjugate(const Device& d, Tz z) {}
-
-  static void Run(const OpKernelContext* context, bool parallelize_inner, In Tx,
-                  In Ty, bool adj_x, bool adj_y, Out Tz, int start, int limit) {
-    Eigen::DefaultDevice default_device;
-    const Eigen::ThreadPoolDevice thread_pool_device =
-        context->eigen_cpu_device();
+  static void Run(const OpKernelContext* context, const Tensor& in_x,
+                  const Tensor& in_y, bool adj_x, bool adj_y, Tensor* out,
+                  int start, int limit) {
+    auto Tx = in_x.tensor<Scalar, 3>();
+    auto Ty = in_y.tensor<Scalar, 3>();
+    auto Tz = out->tensor<Scalar, 3>();
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_pairs;
-    if (!adj_x && !adj_y) {
-      contract_pairs[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
-    } else if (adj_x && adj_y) {
-      contract_pairs[0] = Eigen::IndexPair<Eigen::DenseIndex>(0, 1);
-    } else if (!adj_x && adj_y) {
-      contract_pairs[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 1);
-    } else {
-      contract_pairs[0] = Eigen::IndexPair<Eigen::DenseIndex>(0, 0);
-    }
-
+    contract_pairs[0] = ContractionDims(adj_x, adj_y);
+    const Eigen::ThreadPoolDevice d = context->eigen_cpu_device();
     for (int i = start; i < limit; ++i) {
       auto x = Tx.template chip<0>(i);
       auto y = Ty.template chip<0>(i);
       auto z = Tz.template chip<0>(i);
-      if (parallelize_inner) {
-        Contract(thread_pool_device, x, y, z, contract_pairs);
+      z.device(d) = x.contract(y, contract_pairs);
+    }
+  }
+};
+
+// TODO(rmlarsen): Get rid of this when we have upstreamed improvements
+// for matrix*vector and vector*matrix to Eigen's general matrix product.
+template <typename Tx, typename Ty, typename Tz>
+static void Multiply(bool adj_x, bool adj_y, Tx x, Ty y, Tz z) {
+  if (!adj_x) {
+    if (!adj_y) {
+      z.noalias() = x * y;
+    } else {
+      z.noalias() = x * y.adjoint();
+    }
+  } else {
+    if (!adj_y) {
+      z.noalias() = x.adjoint() * y;
+    } else {
+      z.noalias() = x.adjoint() * y.adjoint();
+    }
+  }
+}
+
+// Sequential batch matmul kernel that calls the regular Eigen matmul.
+// We prefer this over the tensor contraction because it performs
+// better on vector-matrix and matrix-vector products.
+template <typename Scalar>
+struct SequentialMatMulKernel {
+  using Matrix =
+      Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+  using ConstMatrixMap = Eigen::Map<const Matrix>;
+  using MatrixMap = Eigen::Map<Matrix>;
+
+  static ConstMatrixMap ConstTensorSliceToEigenMatrix(const Tensor& t,
+                                                      int slice) {
+    return ConstMatrixMap(
+        t.flat<Scalar>().data() + slice * t.dim_size(1) * t.dim_size(2),
+        t.dim_size(1), t.dim_size(2));
+  }
+
+  static MatrixMap TensorSliceToEigenMatrix(Tensor* t, int slice) {
+    return MatrixMap(
+        t->flat<Scalar>().data() + slice * t->dim_size(1) * t->dim_size(2),
+        t->dim_size(1), t->dim_size(2));
+  }
+
+  static void Run(const Tensor& in_x, const Tensor& in_y, bool adj_x,
+                  bool adj_y, Tensor* out, int start, int limit) {
+    for (int i = start; i < limit; ++i) {
+      auto x = ConstTensorSliceToEigenMatrix(in_x, i);
+      auto y = ConstTensorSliceToEigenMatrix(in_y, i);
+      auto z = TensorSliceToEigenMatrix(out, i);
+      // TODO(rmlarsen): Get rid of the special casing here when we have
+      // upstreamed improvements for matrix*vector and vector*matrix to
+      // Eigen's general matrix product.
+      if (!adj_x && x.rows() == 1) {
+        Multiply(adj_x, adj_y, x.row(0), y, z);
+      } else if (adj_x && x.cols() == 1) {
+        Multiply(adj_x, adj_y, x.col(0), y, z);
+      } else if (!adj_y && y.cols() == 1) {
+        Multiply(adj_x, adj_y, x, y.col(0), z);
+      } else if (adj_y && y.rows() == 1) {
+        Multiply(adj_x, adj_y, x, y.row(0), z);
       } else {
-        Contract(default_device, x, y, z, contract_pairs);
+        Multiply(adj_x, adj_y, x, y, z);
       }
     }
   }
@@ -155,59 +197,55 @@ template <typename Scalar>
 struct LaunchBatchMatMul<CPUDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, Tensor* out) {
-    typedef typename TTypes<Scalar, 3>::ConstTensor In;
-    typedef typename TTypes<Scalar, 3>::Tensor Out;
-    typedef InnerBatchMatMulKernel<In, Out, Eigen::NumTraits<Scalar>::IsComplex>
-        Kernel;
-
-    In Tx = in_x.tensor<Scalar, 3>();
-    In Ty = in_y.tensor<Scalar, 3>();
-    Out Tz = out->tensor<Scalar, 3>();
+    typedef ParallelMatMulKernel<Scalar, Eigen::NumTraits<Scalar>::IsComplex>
+        ParallelMatMulKernel;
+    bool conjugate_result = false;
 
     // Number of matrix multiplies i.e. size of the batch.
     const int64 num_units = in_x.dim_size(0);
     const int64 cost_per_unit =
         in_x.dim_size(1) * in_x.dim_size(2) * out->dim_size(2);
-
-    // For large matrix products it is counter-productive to parallelize
-    // over the batch dimension.
+    const int64 min_dim = std::min(std::min(in_x.dim_size(1), in_x.dim_size(2)),
+                                   out->dim_size(2));
     const int64 kMaxCostOuterParallelism = 128 * 256 * 256;  // heuristic.
-    bool parallelize_inner = true;
-    if (num_units == 1 ||
-        (cost_per_unit > kMaxCostOuterParallelism && out->dim_size(2) > 1)) {
-      Kernel::Run(context, parallelize_inner, Tx, Ty, adj_x, adj_y, Tz, 0,
-                  num_units);
+    auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+    if (min_dim > 1 &&
+        (num_units == 1 || cost_per_unit > kMaxCostOuterParallelism)) {
+      // Parallelize over inner dims.
+      // For large matrix products it is counter-productive to parallelize
+      // over the batch dimension.
+      ParallelMatMulKernel::Run(context, in_x, in_y, adj_x, adj_y, out, 0,
+                                num_units);
+      conjugate_result = adj_x;
+    } else if (min_dim > 1 && worker_threads.num_threads > num_units) {
+      // Parallelize over both outer and inner dims.
+      // TODO(rmlarsen): The parallelized contraction in Eigen can deadlock
+      // when running num_threads or more contractions in parallel. Launch on
+      // all worker_threads.num_threads threads here once that is fixed.
+      Shard(std::max(1, worker_threads.num_threads - 1), worker_threads.workers,
+            num_units, cost_per_unit,
+            [context, &in_x, &in_y, adj_x, adj_y, out](int start, int limit) {
+              ParallelMatMulKernel::Run(context, in_x, in_y, adj_x, adj_y, out,
+                                        start, limit);
+            });
+      conjugate_result = adj_x;
     } else {
-      auto worker_threads =
-          *(context->device()->tensorflow_cpu_worker_threads());
-      int num_threads = worker_threads.num_threads;
-      // For small matrices and large batches, it is counter-productive
-      // to parallelize the inner matrix multiplies.
-      parallelize_inner =
-          num_threads > num_units && out->dim_size(2) > 1;  // heuristic.
-
-      // TODO(rmlarsen): The parallelized contraction in Eigen can deadlock when
-      // running num_threads or more contractions in parallel. Launch on all
-      // worker_threads.num_threads threads here once that is fixed.
-      const int num_outer_threads =
-          parallelize_inner ? std::max(1, num_threads - 1) : num_threads;
-
-      Shard(num_outer_threads, worker_threads.workers, num_units, cost_per_unit,
-            [context, parallelize_inner, &Tx, &Ty, adj_x, adj_y, &Tz](
-                int start, int limit) {
-              Kernel::Run(context, parallelize_inner, Tx, Ty, adj_x, adj_y, Tz,
-                          start, limit);
+      // Parallelize over outer dims. For small matrices and large batches, it
+      // is counter-productive to parallelize the inner matrix multiplies.
+      Shard(worker_threads.num_threads, worker_threads.workers, num_units,
+            cost_per_unit,
+            [&in_x, &in_y, adj_x, adj_y, out](int start, int limit) {
+              SequentialMatMulKernel<Scalar>::Run(in_x, in_y, adj_x, adj_y, out,
+                                                  start, limit);
             });
     }
-
-    // We used the identities
-    //   conj(a) * conj(b) = conj(a * b)
-    //   conj(a) * b = conj(a * conj(b))
-    // to reduce code size of InnerBatchMatMulKernel, so for some cases
-    // we need to conjugate the final output. This is a no-op for non-complex
-    // types.
-    if (adj_x) {
-      Kernel::Conjugate(context->eigen_cpu_device(), Tz);
+    if (conjugate_result) {
+      // We used one of the identities
+      //   conj(a) * conj(b) = conj(a * b)
+      //   conj(a) * b = conj(a * conj(b))
+      // above, we need to conjugate the final output. This is a
+      // no-op for non-complex types.
+      ParallelMatMulKernel::Conjugate(context, out);
     }
   }
 };
