@@ -22,7 +22,7 @@ import numpy as np
 import tensorflow as tf
 
 
-def np_split_sqeeze(array, axis):
+def np_split_squeeze(array, axis):
   axis_len = array.shape[axis]
   return [
       np.squeeze(arr, axis=(axis,))
@@ -116,7 +116,7 @@ class PackOpTest(tf.test.TestCase):
 
       # For all the possible axis to split it, including negative indices.
       for j in range(-i, i):
-        test_arrays = np_split_sqeeze(expected, j)
+        test_arrays = np_split_squeeze(expected, j)
 
         with self.test_session(use_gpu=True):
           actual = tf.pack(test_arrays, axis=j)

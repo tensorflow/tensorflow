@@ -144,11 +144,11 @@ class Tensor {
 
   /// Returns true iff this tensor is aligned.
   bool IsAligned() const {
-#if EIGEN_ALIGN == 1
+#if EIGEN_MAX_ALIGN_BYTES == 0
+    return true;
+#else
     void* ptr = base<void>();
     return reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0;
-#else
-    return true;
 #endif
   }
 

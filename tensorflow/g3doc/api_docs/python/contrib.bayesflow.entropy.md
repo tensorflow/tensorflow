@@ -16,7 +16,7 @@ estimating them, e.g. using Monte Carlo expectations.
 
 Example of fitting a variational posterior with the ELBO.
 
-```
+```python
 # We start by assuming knowledge of the log of a joint density p(z, x) over
 # latent variable z and fixed measurement x.  Since x is fixed, the Python
 # function does not take x as an argument.
@@ -289,7 +289,7 @@ alpha(t) = (1 - t) alpha_min + t alpha_max
 
 *  <b>`step`</b>: Non-negative scalar `Tensor`.  Typically the global step or an
     offset version thereof.
-*  <b>`decay_time`</b>: Postive scalar `Tensor`.
+*  <b>`decay_time`</b>: Positive scalar `Tensor`.
 *  <b>`alpha_min`</b>: `float` or `double` `Tensor`.
     The minimal, final value of `alpha`, achieved when `step >= decay_time`
 *  <b>`alpha_max`</b>: `Tensor` of same `dtype` as `alpha_min`.

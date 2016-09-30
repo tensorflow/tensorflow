@@ -740,7 +740,7 @@ extern TF_Operation* TF_GraphOperationByName(TF_Graph* graph,
 extern TF_Operation* TF_GraphNextOperation(TF_Graph* graph, size_t* pos);
 
 // Write out a serialized representation of `graph` (as a GraphDef protocol
-// message) to `output_graph_def`.
+// message) to `output_graph_def` (allocated by TF_NewBuffer()).
 //
 // May fail on very large graphs in the future.
 extern void TF_GraphToGraphDef(TF_Graph* graph, TF_Buffer* output_graph_def,

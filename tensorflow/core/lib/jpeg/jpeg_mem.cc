@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/lib/jpeg/jpeg_handle.h"
+#include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"

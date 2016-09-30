@@ -21,7 +21,7 @@ If `E_p[|f(Z)|] < infinity`, then `S_n --> E_p[f(Z)]` by the strong law of large
 numbers.  If `E_p[f(Z)^2] < infinity`, then `S_n` is asymptotically normal with
 variance `Var[f(Z)] / n`.
 
-Practicioners of Bayesian statistics often find themselves wanting to estimate
+Practitioners of Bayesian statistics often find themselves wanting to estimate
 `E_p[f(Z)]` when the distribution `p` is known only up to a constant.  For
 example, the joint distribution `p(z, x)` may be known, but the evidence
 `p(x) = \int p(z, x) dz` may be intractable.  In that case, a parameterized

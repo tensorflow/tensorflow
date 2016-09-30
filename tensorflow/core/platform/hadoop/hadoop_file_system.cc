@@ -393,6 +393,12 @@ Status HadoopFileSystem::RenameFile(const string& src, const string& target) {
   hdfsFS fs = nullptr;
   TF_RETURN_IF_ERROR(Connect(src, &fs));
 
+  if (hdfs_->hdfsExists(fs, TranslateName(target).c_str()) == 0 &&
+      hdfs_->hdfsDelete(fs, TranslateName(target).c_str(),
+                        /*recursive=*/0) != 0) {
+    return IOError(target, errno);
+  }
+
   if (hdfs_->hdfsRename(fs, TranslateName(src).c_str(),
                         TranslateName(target).c_str()) != 0) {
     return IOError(src, errno);

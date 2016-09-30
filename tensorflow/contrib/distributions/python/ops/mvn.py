@@ -572,7 +572,7 @@ class MultivariateNormalCholesky(_MultivariateNormalOperatorPD):
   dist.pdf(x)
   ```
 
-  Trainable (batch) Choesky matrices can be created with
+  Trainable (batch) Cholesky matrices can be created with
   `tf.contrib.distributions.matrix_diag_transform()`
 
   """

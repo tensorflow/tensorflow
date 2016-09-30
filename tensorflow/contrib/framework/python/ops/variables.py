@@ -236,9 +236,9 @@ def variable(name, shape=None, dtype=None, initializer=None,
         applying it on a newly created variable will be added to the collection
         GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
     trainable: If `True` also add the variable to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     collections: A list of collection names to which the Variable will be added.
-      If None it would default to tf.GraphKeys.VARIABLES.
+      If None it would default to `tf.GraphKeys.VARIABLES`.
     caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.
@@ -276,7 +276,7 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
         applying it on a newly created variable will be added to the collection
         GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
     trainable: If `True` also add the variable to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     collections: A list of collection names to which the Variable will be added.
       Note that the variable is always also added to the `GraphKeys.VARIABLES`
       and `GraphKeys.MODEL_VARIABLES` collections.
@@ -313,7 +313,8 @@ def get_variables(scope=None, suffix=None, collection=ops.GraphKeys.VARIABLES):
   Args:
     scope: an optional scope for filtering the variables to return.
     suffix: an optional suffix for filtering the variables to return.
-    collection: in which collection search for. Defaults to GraphKeys.VARIABLES.
+    collection: in which collection search for. Defaults to
+      `GraphKeys.VARIABLES`.
 
   Returns:
     a list of variables in collection with scope and suffix.
@@ -522,8 +523,8 @@ def assign_from_checkpoint(model_path, var_list):
     model_path: The full path to the model checkpoint. To get latest checkpoint
         use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
     var_list: A list of `Variable` objects or a dictionary mapping names in the
-        checkpoint to the correspoing variables to initialize. If empty or None,
-        it would return  no_op(), None.
+        checkpoint to the corresponding variables to initialize. If empty or
+        None, it would return  no_op(), None.
 
   Returns:
     the restore_op and the feed_dict that need to be run to restore var_list.

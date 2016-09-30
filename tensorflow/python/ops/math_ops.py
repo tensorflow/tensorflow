@@ -962,7 +962,7 @@ def range(start, limit=None, delta=1, name="range"):
 
   For example:
 
-  ```
+  ```python
   # 'start' is 3
   # 'limit' is 18
   # 'delta' is 3
@@ -1258,7 +1258,7 @@ def reduce_logsumexp(input_tensor, reduction_indices=None, keep_dims=False,
   If `reduction_indices` has no entries, all dimensions are reduced, and a
   tensor with a single element is returned.
 
-  This funciton is more numerically stable than log(sum(exp(input))). It avoids
+  This function is more numerically stable than log(sum(exp(input))). It avoids
   overflows caused by taking the exp of large inputs and underflows caused by
   taking the log of small inputs.
 
@@ -1276,7 +1276,7 @@ def reduce_logsumexp(input_tensor, reduction_indices=None, keep_dims=False,
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
-    reduction_indices: The dimensions to reduce. If `None` (the defaut),
+    reduction_indices: The dimensions to reduce. If `None` (the default),
       reduces all dimensions.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
@@ -1299,23 +1299,35 @@ def reduce_logsumexp(input_tensor, reduction_indices=None, keep_dims=False,
 def trace(x, name=None):
   """ Compute the trace of a tensor `x`.
 
-  `trace(x)` returns the sum of along the diagonal.
+  `trace(x)` returns the sum along the main diagonal of each inner-most matrix
+  in x. If x is of rank `k` with shape `[I, J, K, ..., L, M, N]`, then output
+  is a tensor of rank `k-2` with dimensions `[I, J, K, ..., L]` where
+
+  `output[i, j, k, ..., l] = trace(x[i, j, i, ..., l, :, :])`
 
   For example:
 
   ```python
-  # 'x' is [[1, 1],
-  #         [1, 1]]
-  tf.trace(x) ==> 2
+  # 'x' is [[1, 2],
+  #         [3, 4]]
+  tf.trace(x) ==> 5
 
   # 'x' is [[1,2,3],
   #         [4,5,6],
   #         [7,8,9]]
   tf.trace(x) ==> 15
+
+  # 'x' is [[[1,2,3],
+  #          [4,5,6],
+  #          [7,8,9]],
+  #         [[-1,-2,-3],
+  #          [-4,-5,-6],
+  #          [-7,-8,-9]]]
+  tf.trace(x) ==> [15,-15]
   ```
 
   Args:
-    x: 2-D tensor.
+    x: tensor.
     name: A name for the operation (optional).
 
   Returns:
@@ -1323,10 +1335,7 @@ def trace(x, name=None):
   """
   with ops.name_scope(name, "Trace", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    if len(x.get_shape()) != 2:
-      raise ValueError("Expected a tensor with rank 2, rank %d tensor received"
-                       % len(x.get_shape()))
-    return reduce_sum(array_ops.diag_part(x), name=name)
+    return reduce_sum(array_ops.matrix_diag_part(x), [-1], name=name)
 
 
 def matmul(a, b,
@@ -1527,7 +1536,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   otherwise, these are inferred.
 
   NOTE: This operation is not differentiable and cannot be used if inputs depend
-  on trainable variables. Please use tf.add_n for such cases.
+  on trainable variables. Please use `tf.add_n` for such cases.
 
   For example:
 

@@ -322,7 +322,7 @@ cc_library(
     hdrs = ["bounds_check.h"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
 )
@@ -543,6 +543,17 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "gather_functor_cpu_header",
+    hdrs = ["gather_functor.h"],
+    visibility = [":friends"],
+    deps = [
+        ":bounds_check",
+        "//tensorflow/core:framework_lite",
+        "//third_party/eigen3",
     ],
 )
 
@@ -1095,6 +1106,7 @@ tf_kernel_libraries(
         "//tensorflow/core:io_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle",
     ],
 )
@@ -2213,9 +2225,11 @@ filegroup(
         "conv_grad_ops.h",
         "conv_ops.cc",
         "cwise_op_abs.cc",
-        "cwise_op_add.cc",
+        "cwise_op_add_1.cc",
+        "cwise_op_add_2.cc",
         "cwise_op_div.cc",
-        "cwise_op_equal_to.cc",
+        "cwise_op_equal_to_1.cc",
+        "cwise_op_equal_to_2.cc",
         "cwise_op_exp.cc",
         "cwise_op_floor.cc",
         "cwise_op_greater.cc",
@@ -2225,7 +2239,8 @@ filegroup(
         "cwise_op_log.cc",
         "cwise_op_maximum.cc",
         "cwise_op_minimum.cc",
-        "cwise_op_mul.cc",
+        "cwise_op_mul_1.cc",
+        "cwise_op_mul_2.cc",
         "cwise_op_neg.cc",
         "cwise_op_rsqrt.cc",
         "cwise_op_select.cc",

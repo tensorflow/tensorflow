@@ -115,6 +115,17 @@ cc_library(
 )
 
 cc_library(
+    name = "kernel_registry",
+    srcs = ["util/kernel_registry.cc"],
+    hdrs = ["util/kernel_registry.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+cc_library(
     name = "py_func_lib",
     srcs = ["lib/core/py_func.cc"],
     hdrs = [
@@ -1794,15 +1805,17 @@ tf_py_wrap_cc(
         "lib/io/py_record_writer.i",
         "platform/base.i",
         "training/server_lib.i",
+        "util/kernel_registry.i",
         "util/port.i",
         "util/py_checkpoint_reader.i",
     ],
     deps = [
+        ":cpp_shape_inference",
+        ":kernel_registry",
         ":numpy_lib",
         ":py_func_lib",
         ":py_record_reader_lib",
         ":py_record_writer_lib",
-        ":cpp_shape_inference",
         ":python_op_gen",
         ":tf_session_helper",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",

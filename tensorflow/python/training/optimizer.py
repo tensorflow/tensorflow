@@ -212,7 +212,7 @@ class Optimizer(object):
 
     Args:
       loss: A Tensor containing the value to minimize.
-      var_list: Optional list of tf.Variable to update to minimize
+      var_list: Optional list of `tf.Variable` to update to minimize
         `loss`.  Defaults to the list of variables collected in the graph
         under the key `GraphKey.TRAINABLE_VARIABLES`.
       gate_gradients: How to gate the computation of gradients.  Can be
@@ -292,7 +292,7 @@ class Optimizer(object):
           g = ops.convert_to_tensor_or_indexed_slices(g)
         except TypeError:
           raise TypeError(
-              "Gradient must be convertible to a Tensor or IndexedSlices, or None: %s" %g)  
+              "Gradient must be convertible to a Tensor or IndexedSlices, or None: %s" %g)
       if not isinstance(g, (ops.Tensor, ops.IndexedSlices, type(None))):
         raise TypeError(
             "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
@@ -301,7 +301,7 @@ class Optimizer(object):
             "Variable must be a tf.Variable: %s" % v)
 
       converted_grads_and_vars.append((g,v))
-    
+
     converted_grads_and_vars = tuple(converted_grads_and_vars)
     var_list = [v for g, v in converted_grads_and_vars if g is not None]
     if not var_list:

@@ -226,7 +226,7 @@ class OperatorPDCholeskyTest(tf.test.TestCase):
     # should raise.
     with self.test_session():
       batch_vec = [[1.0], [2.0]]  # shape 2 x 1
-      with self.assertRaisesRegexp(ValueError, ".*Dimensions.*"):
+      with self.assertRaisesOpError("x == y did not hold"):
         operator = operator_pd_cholesky.OperatorPDCholesky(batch_vec)
         operator.to_dense().eval()
 

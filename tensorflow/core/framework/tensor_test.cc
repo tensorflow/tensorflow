@@ -774,7 +774,7 @@ TEST(Tensor, Slice_Basic) {
 
     // Take an unaligned slice.
     Tensor y = x.Slice(1, 13);
-#if EIGEN_ALIGN == 1
+#if EIGEN_MAX_ALIGN_BYTES > 0
     EXPECT_FALSE(y.IsAligned());
 #endif
     y.unaligned_flat<float>().setConstant(1.0);

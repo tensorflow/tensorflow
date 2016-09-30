@@ -4,7 +4,9 @@ Lookup embedding results, accounting for invalid IDs and empty features.
 
 The partitioned embedding in `embedding_weights` must all be the same shape
 except for the first dimension. The first dimension is allowed to vary as the
-vocabulary size is not necessarily a multiple of `P`.
+vocabulary size is not necessarily a multiple of `P`.  `embedding_weights`
+may be a `PartitionedVariable` as returned by using `tf.get_variable()` with a
+partitioner.
 
 Invalid IDs (< 0) are pruned from input IDs and weights, as well as any IDs
 with non-positive weight. For an entry with no features, the embedding vector
@@ -17,9 +19,10 @@ along the last dimension.
 
 
 *  <b>`embedding_weights`</b>: A list of `P` float tensors or values representing
-      partitioned embedding tensors.  The total unpartitioned shape should be
-      `[e_0, e_1, ..., e_m]`, where `e_0` represents the vocab size and
-      `e_1, ..., e_m` are the embedding dimensions.
+      partitioned embedding tensors.  Alternatively, a `PartitionedVariable`,
+      created by partitioning along dimension 0.  The total unpartitioned
+      shape should be `[e_0, e_1, ..., e_m]`, where `e_0` represents the
+      vocab size and `e_1, ..., e_m` are the embedding dimensions.
 *  <b>`sparse_ids`</b>: `SparseTensor` of shape `[d_0, d_1, ..., d_n]` containing the
       ids. `d_0` is typically batch size.
 *  <b>`sparse_weights`</b>: `SparseTensor` of same shape as `sparse_ids`, containing

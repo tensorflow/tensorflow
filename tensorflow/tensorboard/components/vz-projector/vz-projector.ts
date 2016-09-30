@@ -67,6 +67,8 @@ type Centroids = {
   yDown: number[];
 };
 
+type SearchPredicate = (p: DataPoint) => boolean;
+
 export let ProjectorPolymer = PolymerElement({
   is: 'vz-projector',
   properties: {
@@ -132,7 +134,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     this.highlightedPoints = [];
     this.selectedPoints = [];
     this.centroidValues = {xLeft: null, xRight: null, yUp: null, yDown: null};
-    this.centroids = {xLeft: null, xRight: null, yUp: null, yDown: null};
+    this.clearCentroids();
     // Dynamically creating elements inside .nn-list.
     this.scopeSubtree(this.$$('.nn-list'), true);
     this.dom = d3.select(this);
@@ -163,6 +165,11 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     this.scatterPlot.setColorAccessor(colors);
   }
 
+  clearCentroids(): void {
+    this.centroids = {xLeft: null, xRight: null, yUp: null, yDown: null};
+    this.allCentroid = null;
+  }
+
   setNormalizeData(normalizeData: boolean) {
     this.normalizeData = normalizeData;
     // Assign the proper distance metric depending on whether the data was
@@ -184,11 +191,11 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     this.dataPanel.setNormalizeData(this.normalizeData);
     this.setCurrentDataSet(this.dataSet.getSubset());
     this.dom.select('.reset-filter').style('display', 'none');
-    // Regexp inputs.
-    this.setupInput('xLeft');
-    this.setupInput('xRight');
-    this.setupInput('yUp');
-    this.setupInput('yDown');
+    this.clearCentroids();
+    this.setupInputUIInCustomTab('xLeft');
+    this.setupInputUIInCustomTab('xRight');
+    this.setupInputUIInCustomTab('yUp');
+    this.setupInputUIInCustomTab('yDown');
 
     // Set the container to a fixed height, otherwise in Colab the
     // height can grow indefinitely.
@@ -234,7 +241,12 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     return NN_COLOR_SCALE(this.normalizeDist(d, minDist));
   }
 
+  private clearSelection() {
+    this.notifySelectionChanged([]);
+  }
+
   private setCurrentDataSet(ds: DataSet) {
+    this.clearSelection();
     this.currentDataSet = ds;
     if (this.normalizeData) {
       this.currentDataSet.normalize();
@@ -247,21 +259,17 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     this.showTab('pca', true /* recreateScene */);
   }
 
-  private setupInput(name: string) {
+  private setupInputUIInCustomTab(name: string) {
     let control = this.dom.select('.control.' + name);
     let info = control.select('.info');
 
-    let updateInput = (value: string) => {
-      if (value.trim() === '') {
-        info.style('color', CALLOUT_COLOR).text('Enter a regex.');
+    let updateInput = (value: string, inRegexMode: boolean) => {
+      if (value == null) {
+        info.text('');
         return;
       }
-      let result = this.getCentroid(value);
-      if (result.error) {
-        info.style('color', CALLOUT_COLOR)
-            .text('Invalid regex. Using a random vector.');
-        result.centroid = vector.rn(this.dim);
-      } else if (result.numMatches === 0) {
+      let result = this.getCentroid(value, inRegexMode);
+      if (result.numMatches === 0) {
         info.style('color', CALLOUT_COLOR)
             .text('0 matches. Using a random vector.');
         result.centroid = vector.rn(this.dim);
@@ -271,19 +279,18 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
       this.centroids[name] = result.centroid;
       this.centroidValues[name] = value;
     };
-    let self = this;
 
-    let input = control.select('input').on('input', function() {
-      updateInput(this.value);
-      self.showCustom();
+    // Setup the input text.
+    let controlNode = control.node() as HTMLDivElement;
+    this.setupInputUIControl(controlNode, (input, inRegexMode) => {
+      updateInput(input, inRegexMode);
+      this.showCustom();
     });
-    this.allCentroid = null;
-    // Init the control with the current input.
-    updateInput((input.node() as HTMLInputElement).value);
   }
 
   private setupUIControls() {
     let self = this;
+
     // Global tabs
     this.dom.selectAll('.ink-tab').on('click', function() {
       let id = this.getAttribute('data-tab');
@@ -359,68 +366,43 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     });
 
     // Toolbar controls
-    let searchBox = this.dom.select('.control.search-box');
-    let searchBoxInfo = searchBox.select('.info');
+    let searchBox = this.dom.select('.search-box');
+    let info = searchBox.select('.info');
 
-    let searchByRegEx =
-        (pattern: string): {error?: Error, indices: number[]} => {
-          let regEx: RegExp;
-          try {
-            regEx = new RegExp(pattern, 'i');
-          } catch (e) {
-            return {error: e.message, indices: null};
-          }
+    let gatherPointsByRegex =
+        (pattern: string, inRegexMode: boolean): number[] => {
+          let predicate = this.getSearchPredicate(pattern, inRegexMode);
           let indices: number[] = [];
-          for (let id = 0; id < this.currentDataSet.points.length; ++id) {
-            if (regEx.test(
-                    '' + this.currentDataSet.points[id].metadata['label'])) {
+          this.currentDataSet.points.forEach((point, id) => {
+            if (predicate(point)) {
               indices.push(id);
             }
-          }
-          return {indices: indices};
+          });
+          return indices;
         };
 
     // Called whenever the search text input changes.
-    let searchInputChanged = (value: string) => {
-      if (value.trim() === '') {
-        searchBoxInfo.style('color', CALLOUT_COLOR).text('Enter a regex.');
-        if (this.scatterPlot != null) {
-          this.notifySelectionChanged([]);
-        }
+    let updateInput = (value: string, inRegexMode: boolean) => {
+      if (value == null || value.trim() === '') {
+        info.text('');
+        this.clearSelection();
         return;
       }
-      let result = searchByRegEx(value);
-      let indices = result.indices;
-      if (result.error) {
-        searchBoxInfo.style('color', CALLOUT_COLOR).text('Invalid regex.');
-      }
+      let indices = gatherPointsByRegex(value, inRegexMode);
       if (indices) {
         if (indices.length === 0) {
-          searchBoxInfo.style('color', CALLOUT_COLOR).text(`0 matches.`);
+          info.style('color', CALLOUT_COLOR).text(`0 matches.`);
         } else {
-          searchBoxInfo.style('color', null).text(`${indices.length} matches.`);
+          info.style('color', null).text(`${indices.length} matches.`);
           this.showTab('inspector');
         }
         this.notifySelectionChanged(indices);
       }
     };
 
-    searchBox.select('input').on(
-        'input', function() { searchInputChanged(this.value); });
-    let searchButton = this.dom.select('.search');
-
-    searchButton.on('click', () => {
-      let mode = this.scatterPlot.getMode();
-      this.scatterPlot.setMode(mode === Mode.SEARCH ? Mode.HOVER : Mode.SEARCH);
-      if (this.scatterPlot.getMode() === Mode.HOVER) {
-        this.notifySelectionChanged([]);
-      } else {
-        searchInputChanged(searchBox.select('input').property('value'));
-      }
-      this.updateMenuButtons();
+    this.setupInputUIControl(searchBox.node() as any, (input, inRegexMode) => {
+      updateInput(input, inRegexMode);
     });
-    // Init the control with an empty input.
-    searchInputChanged('');
 
     this.dom.select('.distance a.euclidean').on('click', function() {
       self.dom.selectAll('.distance a').classed('selected', false);
@@ -504,7 +486,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
       });
       this.setCurrentDataSet(this.dataSet.getSubset(highlightedOrig));
       this.dom.select('.reset-filter').style('display', null);
-      this.notifySelectionChanged([]);
+      this.clearSelection();
       this.scatterPlot.recreateScene();
       this.updateIsolateButton();
     });
@@ -515,7 +497,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     });
 
     this.dom.select('.clear-selection').on('click', () => {
-      this.notifySelectionChanged([]);
+      this.clearSelection();
       this.scatterPlot.setMode(Mode.HOVER);
       this.scatterPlot.clickOnPoint(null);
       this.updateMenuButtons();
@@ -614,6 +596,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
   private showCustom() {
     this.selectedProjection = 'custom';
     this.scatterPlot.showTickLabels(true);
+    if (this.centroids.xLeft == null || this.centroids.xRight == null ||
+        this.centroids.yUp == null || this.centroids.yDown == null) {
+      return;
+    }
     let xDir = vector.sub(this.centroids.xRight, this.centroids.xLeft);
     this.currentDataSet.projectLinear(xDir, 'linear-x');
 
@@ -649,6 +635,50 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     }
   }
 
+  private setupInputUIControl(
+      container: Element,
+      inputChangedListener: (input: string, inRegexMode: boolean) => void) {
+    let inRegexMode = false;
+    let paperInput = container.querySelector('paper-input') as HTMLInputElement;
+    let paperButton = container.querySelector('paper-button');
+    paperInput.setAttribute('error-message', 'Invalid regex');
+
+    let inputChanged = (input: string, inRegexMode: boolean) => {
+      try {
+        if (inRegexMode) {
+          new RegExp(input);
+        }
+        paperInput.removeAttribute('invalid');
+        inputChangedListener(input, inRegexMode);
+      } catch (invalidRegexException) {
+        paperInput.setAttribute('invalid', 'true');
+        inputChangedListener(null, true);
+      }
+    };
+
+    paperInput.addEventListener('input', function() {
+      inputChanged(this.value, inRegexMode);
+    });
+
+    paperInput.addEventListener('keydown', function(event) {
+      event.stopPropagation();
+    });
+
+    // Setup the regex mode button.
+    let showHideSlashes = () => {
+      d3.select(paperInput)
+          .selectAll('.slash')
+          .style('display', inRegexMode ? null : 'none');
+    };
+    paperButton.addEventListener('click', function() {
+      inRegexMode = this.active;
+      showHideSlashes();
+      inputChanged(paperInput.value, inRegexMode);
+    });
+    showHideSlashes();
+    inputChanged(paperInput.value, inRegexMode);
+  }
+
   private runTSNE() {
     this.currentDataSet.projectTSNE(
         perplexity, learningRate, dimension, (iteration: number) => {
@@ -661,6 +691,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
 
   // Updates the displayed metadata for the selected point.
   private updateMetadata() {
+    if (this.currentDataSet == null) {
+      return;
+    }
     let metadataContainerElement = this.dom.select('.ink-panel-metadata');
     metadataContainerElement.selectAll('*').remove();
 
@@ -712,14 +745,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
   }
 
   private updateMenuButtons() {
-    let searchBox = this.dom.select('.control.search-box');
-    this.dom.select('.search').classed(
-        'selected', this.scatterPlot.getMode() === Mode.SEARCH);
-    let searchMode = this.scatterPlot.getMode() === Mode.SEARCH;
-    this.dom.select('.control.search-box')
-        .style('width', searchMode ? '110px' : null)
-        .style('margin-right', searchMode ? '10px' : null);
-    (searchBox.select('input').node() as HTMLInputElement).focus();
     this.dom.select('.selectMode')
         .classed('selected', this.scatterPlot.getMode() === Mode.SELECT);
     this.dom.select('.labels3DMode').classed('selected', this.labels3D);
@@ -743,6 +768,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     this.updateMetadata();
     let nnlist = this.dom.select('.nn-list');
     nnlist.html('');
+    this.dom.select('.nn').style('display', neighbors.length ? null : 'none');
 
     if (neighbors.length === 0) {
       return;
@@ -800,40 +826,29 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
 
   getTsneSampleSize() { return SAMPLE_SIZE.toLocaleString(); }
 
-  private getCentroid(pattern: string): CentroidResult {
-    let accessor = (a: DataPoint) => a.vector;
-    if (pattern == null) {
-      return {numMatches: 0};
-    }
-    if (pattern === '') {
-      if (this.allCentroid == null) {
-        this.allCentroid =
-            vector.centroid(this.currentDataSet.points, () => true, accessor)
-                .centroid;
-      }
-      return {
-        centroid: this.allCentroid,
-        numMatches: this.currentDataSet.points.length
+  private getSearchPredicate(pattern: string, inRegexMode: boolean):
+      SearchPredicate {
+    let predicate: SearchPredicate;
+    if (inRegexMode) {
+      let regExp = new RegExp(pattern, 'i');
+      predicate = p => regExp.test(p.metadata['label'].toString());
+    } else {
+      // Doing a case insensitive substring match.
+      pattern = pattern.toLowerCase();
+      predicate = p => {
+        let label = p.metadata['label'].toString().toLowerCase();
+        return label.indexOf(pattern) >= 0;
       };
     }
+    return predicate;
+  }
 
-    let regExp: RegExp;
-    let predicate: (a: DataPoint) => boolean;
-    // Check for a regex.
-    if (pattern.charAt(0) === '/' &&
-        pattern.charAt(pattern.length - 1) === '/') {
-      pattern = pattern.slice(1, pattern.length - 1);
-      try {
-        regExp = new RegExp(pattern, 'i');
-      } catch (e) {
-        return {error: e.message};
-      }
-      predicate =
-          (a: DataPoint) => { return regExp.test('' + a.metadata['label']); };
-      // else does an exact match
-    } else {
-      predicate = (a: DataPoint) => { return a.metadata['label'] === pattern; };
+  private getCentroid(pattern: string, inRegexMode: boolean): CentroidResult {
+    if (pattern == null || pattern === '') {
+      return {numMatches: 0};
     }
+    let accessor = (a: DataPoint) => a.vector;
+    let predicate = this.getSearchPredicate(pattern, inRegexMode);
     return vector.centroid(this.currentDataSet.points, predicate, accessor);
   }
 
@@ -891,7 +906,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
 }
 
 type CentroidResult = {
-  centroid?: number[]; numMatches?: number; error?: string
+  centroid?: number[]; numMatches?: number;
 };
 
 document.registerElement(Projector.prototype.is, Projector);

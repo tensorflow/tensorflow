@@ -185,7 +185,8 @@ TEST(ArrayOpsTest, MatrixDiagPart_ShapeFn) {
   INFER_OK(op, "?", "?");
   INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[?]");
   INFER_OK(op, "[?,1,2,2]", "[d0_0,d0_1,d0_2|d0_3]");
-  INFER_ERROR("Dimensions must be equal, but are 3 and 2", op, "[1,2,3]");
+  INFER_OK(op, "[?,1,2,3]", "[d0_0,d0_1,d0_2]");
+  INFER_OK(op, "[?,1,3,2]", "[d0_0,d0_1,d0_3]");
 }
 
 TEST(ArrayOpsTest, Reverse_ShapeFn) {
@@ -364,19 +365,25 @@ TEST(ArrayOpsTest, MatrixSetDiag_ShapeFn) {
   // Rank checks.
   INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1];?");
   INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "?;[]");
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[2,2];[]");
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[2,2];[2,2]");
 
-  // Output matches input, and also matches diagonal + diagonal.dim(-1).
+  // diagonal[-1] must match smallest matrix dimension.
+  INFER_ERROR("Dimensions must be equal, but are 2 and 3", op, "[2,3];[3]");
+
+  // Output matches input.
   INFER_OK(op, "?;?", "?");
-  INFER_OK(op, "?;[1,2]", "[d1_0,d1_1,d1_1]");
-  INFER_OK(op, "[1,2,2];?", "in0");
+  INFER_OK(op, "[1,2,2];[1,2]", "in0");
+  INFER_OK(op, "[1,2,3];?", "in0");
+  INFER_OK(op, "[1,3,2];?", "in0");
   INFER_OK(op, "[1,?,2];[?,?]", "in0");
-  INFER_OK(op, "[1,?,?];[?,2]", "[d0_0,d1_1,d1_1]");
+  INFER_OK(op, "[1,?,?];[?,2]", "in0");
 
-  // Last 2 dims of input must match.
-  INFER_ERROR("Dimensions must be equal, but are 2 and 3", op, "[1,2,3];?");
-
-  // Dims matches prefix of input.
-  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,?];[2]");
+  // Infer batch shape from diag when input is not fully specified.
+  INFER_OK(op, "?;[1,2]", "[d1_0,?,?]");
+  INFER_OK(op, "[?,?,3];[1,2]", "[d1_0,d0_1,d0_2]");
+  INFER_OK(op, "[?,3,?];[1,2]", "[d1_0,d0_1,d0_2]");
+  INFER_OK(op, "[?,3,2];[1,2]", "[d1_0,d0_1,d0_2]");
 }
 
 TEST(ArrayOpsTest, ExpandDims_ShapeFn) {

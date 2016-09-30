@@ -129,7 +129,7 @@ def shape(input, name=None, out_type=dtypes.int32):
     input: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
     out_type: (Optional) The specified output type of the operation
-      (`int32` or `int64`). Defaults to tf.int32.
+      (`int32` or `int64`). Defaults to `tf.int32`.
 
   Returns:
     A `Tensor` of type `out_type`.
@@ -276,7 +276,7 @@ def _SliceHelper(tensor, slice_spec, var=None):
 
   Some useful examples:
 
-  ```
+  ```python
   # strip leading and trailing 2 elements
   foo = tf.constant([1,2,3,4,5,6])
   print(foo[2:-2].eval()) # => [3,4]
@@ -359,8 +359,7 @@ def _SliceHelper(tensor, slice_spec, var=None):
       shrink_axis_mask |= (1 << index)
     index += 1
 
-  # pack possibly involves often involves no tensors, so we must use op_scope
-  # correct graph
+  # pack possibly involves no tensors, so we must use op_scope correct graph.
   with ops.name_scope(None, "strided_slice",
                       [tensor] + begin + end + strides) as name:
     if begin:
@@ -408,7 +407,7 @@ def slice(input_, begin, size, name=None):
 
   For example:
 
-  ```
+  ```python
   # 'input' is [[[1, 1, 1], [2, 2, 2]],
   #             [[3, 3, 3], [4, 4, 4]],
   #             [[5, 5, 5], [6, 6, 6]]]
@@ -497,7 +496,7 @@ def strided_slice(input_,
   `strides` entries must be non-zero.
 
 
-  ```
+  ```python
   # 'input' is [[[1, 1, 1], [2, 2, 2]],
   #             [[3, 3, 3], [4, 4, 4]],
   #             [[5, 5, 5], [6, 6, 6]]]
@@ -518,7 +517,7 @@ def strided_slice(input_,
     ellipsis_mask: An `int32` mask.
     new_axis_mask: An `int32` mask.
     shrink_axis_mask: An `int32` mask.
-    var: The variable coresponding to `input_` or None
+    var: The variable corresponding to `input_` or None
     name: A name for the operation (optional).
 
   Returns:
@@ -2070,6 +2069,7 @@ def one_hot(indices, depth, on_value=None, off_value=None,
   If `indices` is a scalar the output shape will be a vector of length `depth`
 
   If `indices` is a vector of length `features`, the output shape will be:
+
   ```
     features x depth if axis == -1
     depth x features if axis == 0
@@ -2077,6 +2077,7 @@ def one_hot(indices, depth, on_value=None, off_value=None,
 
   If `indices` is a matrix (batch) with shape `[batch, features]`, the output
   shape will be:
+
   ```
     batch x features x depth if axis == -1
     batch x depth x features if axis == 1
@@ -2086,17 +2087,17 @@ def one_hot(indices, depth, on_value=None, off_value=None,
   If `dtype` is not provided, it will attempt to assume the data type of
   `on_value` or `off_value`, if one or both are passed in. If none of
   `on_value`, `off_value`, or `dtype` are provided, `dtype` will default to the
-  value `tf.float32`
+  value `tf.float32`.
 
-  Note: If a non-numeric data type output is desired (tf.string, tf.bool, etc.),
-  both `on_value` and `off_value` _must_ be provided to `one_hot`
+  Note: If a non-numeric data type output is desired (`tf.string`, `tf.bool`,
+  etc.), both `on_value` and `off_value` _must_ be provided to `one_hot`.
 
   Examples
   =========
 
   Suppose that
 
-  ```
+  ```python
     indices = [0, 2, -1, 1]
     depth = 3
     on_value = 5.0
@@ -2106,7 +2107,7 @@ def one_hot(indices, depth, on_value=None, off_value=None,
 
   Then output is `[4 x 3]`:
 
-  ```
+  ```python
     output =
     [5.0 0.0 0.0]  // one_hot(0)
     [0.0 0.0 5.0]  // one_hot(2)
@@ -2116,7 +2117,7 @@ def one_hot(indices, depth, on_value=None, off_value=None,
 
   Suppose that
 
-  ```
+  ```python
     indices = [[0, 2], [1, -1]]
     depth = 3
     on_value = 1.0
@@ -2126,7 +2127,7 @@ def one_hot(indices, depth, on_value=None, off_value=None,
 
   Then output is `[2 x 2 x 3]`:
 
-  ```
+  ```python
     output =
     [
       [1.0, 0.0, 0.0]  // one_hot(0)
@@ -2139,14 +2140,14 @@ def one_hot(indices, depth, on_value=None, off_value=None,
 
   Using default values for `on_value` and `off_value`:
 
-  ```
+  ```python
     indices = [0, 1, 2]
     depth = 3
   ```
 
   The output will be
 
-  ```
+  ```python
     output =
     [[1., 0., 0.],
      [0., 1., 0.],
@@ -2244,6 +2245,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
   """Return a mask tensor representing the first N positions of each row.
 
   Example:
+
   ```python
   tf.sequence_mask([1, 3, 2], 5) =
     [[True, False, False, False, False],
