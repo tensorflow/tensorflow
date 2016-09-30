@@ -74,7 +74,7 @@ Nikhil Mishra, Park Jiin, Pieter De Rijk, @raix852, Ritwik Gupta, Sahil Sharma,
 @Sangheum, @SergejsRk, Shinichiro Hamaji, Simon Denel, @Steve, @suiyuan2009,
 Tiago Jorge, Tijmen Tieleman, @tvn, @tyfkda, Wang Yang, Wei-Ting Kuo, Wenjian
 Huang, Yan Chen, @YenChenLin, Yuan (Terry) Tang, Yuncheng Li, Yunfeng Wang, Zack
-Polizzi, @zhongzyd, Ziming Dong, @郑泽宇
+Polizzi, @zhongzyd, Ziming Dong, @perhapszzy
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.
@@ -113,8 +113,8 @@ This release contains contributions from many people at Google, as well as:
 
 Alex Rothberg, Andrew Royer, Austin Marshall, @BlackCoal, Bob Adolf, Brian Diesel, Charles-Emmanuel Dias, @chemelnucfin, Chris Lesniewski, Daeyun Shin, Daniel Rodriguez, Danijar Hafner, Darcy Liu, Kristinn R. Thórisson, Daniel Castro, Dmitry Savintsev, Kashif Rasul, Dylan Paiton, Emmanuel T. Odeke, Ernest Grzybowski, Gavin Sherry, Gideon Dresdner, Gregory King, Harold Cooper, @heinzbeinz, Henry Saputra, Huarong Huo, Huazuo Gao, Igor Babuschkin, Igor Macedo Quintanilha, Ivan Ukhov, James Fysh, Jan Wilken Dörrie, Jihun Choi, Johnny Lim, Jonathan Raiman, Justin Francis, @lilac, Li Yi, Marc Khoury, Marco Marchesi, Max Melnick, Micael Carvalho, @mikowals, Mostafa Gazar, Nico Galoppo, Nishant Agrawal, Petr Janda, Yuncheng Li, @raix852, Robert Rose, @Robin-des-Bois, Rohit Girdhar, Sam Abrahams, satok16, Sergey Kishchenko, Sharkd Tu, @shotat, Siddharth Agrawal, Simon Denel, @sono-bfio, SunYeop Lee, Thijs Vogels, @tobegit3hub, @Undo1, Wang Yang, Wenjian Huang, Yaroslav Bulatov, Yuan Tang, Yunfeng Wang, Ziming Dong
 
-We are also grateful to all who filed issues or helped resolve them, asked and 
-answered questions, and were part of inspiring discussions. 
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
 
 # Release 0.9.0
 
@@ -148,8 +148,8 @@ answered questions, and were part of inspiring discussions.
 * Performance improvements
 * Many bugfixes
 * Many documentation fixes
-* TensorBoard fixes: graphs with only one data point, Nan values, 
-  reload button and auto-reload, tooltips in scalar charts, run 
+* TensorBoard fixes: graphs with only one data point, Nan values,
+  reload button and auto-reload, tooltips in scalar charts, run
   filtering, stable colors
 * Tensorboard graph visualizer now supports run metadata. Clicking on nodes
   while viewing a stats for a particular run will show runtime statistics, such
@@ -161,8 +161,8 @@ This release contains contributions from many people at Google, as well as:
 
 Aaron Schumacher, Aidan Dang, Akihiko ITOH, Aki Sukegawa, Arbit Chen, Aziz Alto, Danijar Hafner, Erik Erwitt, Fabrizio Milo, Felix Maximilian Möller, Henry Saputra, Sung Kim, Igor Babuschkin, Jan Zikes, Jeremy Barnes, Jesper Steen Møller, Johannes Mayer, Justin Harris, Kashif Rasul, Kevin Robinson, Loo Rong Jie, Lucas Moura, Łukasz Bieniasz-Krzywiec, Mario Cho, Maxim Grechkin, Michael Heilman, Mostafa Rahmani, Mourad Mourafiq, @ninotoshi, Orion Reblitz-Richardson, Yuncheng Li, @raoqiyu, Robert DiPietro, Sam Abrahams, Sebastian Raschka, Siddharth Agrawal, @snakecharmer1024, Stephen Roller, Sung Kim, SunYeop Lee, Thijs Vogels, Till Hoffmann, Victor Melo, Ville Kallioniemi, Waleed Abdulla, Wenjian Huang, Yaroslav Bulatov, Yeison Rodriguez, Yuan Tang, Yuxin Wu, @zhongzyd, Ziming Dong, Zohar Jackson
 
-We are also grateful to all who filed issues or helped resolve them, asked and 
-answered questions, and were part of inspiring discussions. 
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
 
 # Release 0.8.0
 
@@ -183,7 +183,7 @@ answered questions, and were part of inspiring discussions.
 
 * Utility for inspecting checkpoints
 * Basic tracing and timeline support
-* Allow building against cuDNN 5 (not incl. RNN/LSTM support) 
+* Allow building against cuDNN 5 (not incl. RNN/LSTM support)
 * Added instructions and binaries for ProtoBuf library with fast serialization and without 64MB limit
 * Added special functions
 * `bool`-strictness: Tensors have to be explicitly compared to `None`
@@ -203,8 +203,8 @@ This release contains contributions from many people at Google, as well as:
 
 Abhinav Upadhyay, Aggelos Avgerinos, Alan Wu, Alexander G. de G. Matthews, Aleksandr Yahnev, @amchercashin, Andy Kitchen, Aurelien Geron, Awni Hannun, @BanditCat, Bas Veeling, Cameron Chen, @cg31, Cheng-Lung Sung, Christopher Bonnett, Dan Becker, Dan Van Boxel, Daniel Golden, Danijar Hafner, Danny Goodman, Dave Decker, David Dao, David Kretch, Dongjoon Hyun, Dustin Dorroh, @e-lin, Eurico Doirado, Erik Erwitt, Fabrizio Milo, @gaohuazuo, Iblis Lin, Igor Babuschkin, Isaac Hodes, Isaac Turner, Iván Vallés, J Yegerlehner, Jack Zhang, James Wexler, Jan Zikes, Jay Young, Jeff Hodges, @jmtatsch, Johnny Lim, Jonas Meinertz Hansen, Kanit Wongsuphasawat, Kashif Rasul, Ken Shirriff, Kenneth Mitchner, Kenta Yonekura, Konrad Magnusson, Konstantin Lopuhin, @lahwran, @lekaha, @liyongsea, Lucas Adams, @makseq, Mandeep Singh, @manipopopo, Mark Amery, Memo Akten, Michael Heilman, Michael Peteuil, Nathan Daly, Nicolas Fauchereau, @ninotoshi, Olav Nymoen, @panmari, @papelita1234, Pedro Lopes, Pranav Sailesh Mani, RJ Ryan, Rob Culliton, Robert DiPietro, @ronrest, Sam Abrahams, Sarath Shekkizhar, Scott Graham, Sebastian Raschka, Sung Kim, Surya Bhupatiraju, Syed Ahmed, Till Hoffmann, @timsl, @urimend, @vesnica, Vlad Frolov, Vlad Zagorodniy, Wei-Ting Kuo, Wenjian Huang, William Dmitri Breaden Madden, Wladimir Schmidt, Yuan Tang, Yuwen Yan, Yuxin Wu, Yuya Kusakabe, @zhongzyd, @znah.
 
-We are also grateful to all who filed issues or helped resolve them, asked and 
-answered questions, and were part of inspiring discussions. 
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
 
 
 # Release 0.7.1
@@ -230,12 +230,12 @@ answered questions, and were part of inspiring discussions.
 
 * Allow using any installed Cuda >= 7.0 and cuDNN >= R2, and add support
   for cuDNN R4
-* Added a `contrib/` directory for unsupported or experimental features, 
+* Added a `contrib/` directory for unsupported or experimental features,
   including higher level `layers` module
 * Added an easy way to add and dynamically load user-defined ops
 * Built out a good suite of tests, things should break less!
 * Added `MetaGraphDef` which makes it easier to save graphs with metadata
-* Added assignments for "Deep Learning with TensorFlow" udacity course 
+* Added assignments for "Deep Learning with TensorFlow" udacity course
 
 
 ## Bug Fixes and Other Changes
@@ -325,8 +325,8 @@ Vlad Zavidovych, Yangqing Jia, Yi-Lin Juang, Yuxin Wu, Zachary Lipton,
 Zero Chen, Alan Wu, @brchiu, @emmjaykay, @jalammar, @Mandar-Shinde,
 @nsipplswezey, @ninotoshi, @panmari, @prolearner and @rizzomichaelg.
 
-We are also grateful to all who filed issues or helped resolve them, asked and 
-answered questions, and were part of inspiring discussions. 
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
 
 
 # Release 0.6.0
