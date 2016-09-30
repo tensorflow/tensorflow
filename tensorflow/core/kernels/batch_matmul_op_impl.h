@@ -433,33 +433,14 @@ class BatchMatMul : public OpKernel {
   bool adj_y_;
 };
 
-#define REGISTER_CPU(TYPE)                                              \
+#define REGISTER_BATCH_MATMUL_CPU(TYPE)                                              \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("BatchMatMul").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"), \
       BatchMatMul<CPUDevice, TYPE>)
 
-#define REGISTER_GPU(TYPE)                                              \
+#define REGISTER_BATCH_MATMUL_GPU(TYPE)                                              \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("BatchMatMul").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
       BatchMatMul<GPUDevice, TYPE>)
 
-TF_CALL_float(REGISTER_CPU);
-TF_CALL_double(REGISTER_CPU);
-TF_CALL_half(REGISTER_CPU);
-TF_CALL_int32(REGISTER_CPU);
-TF_CALL_complex64(REGISTER_CPU);
-TF_CALL_complex128(REGISTER_CPU);
-
-#if GOOGLE_CUDA
-TF_CALL_float(REGISTER_GPU);
-TF_CALL_double(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
-#if CUDA_VERSION >= 7050
-TF_CALL_half(REGISTER_GPU);
-#endif
-#endif  // GOOGLE_CUDA
-
-#undef REGISTER_CPU
-#undef REGISTER_GPU
 }  // end namespace tensorflow
