@@ -2,7 +2,7 @@
 
 ## Major Features and Improvements
 
-* cuDNN 5.0 support.
+* cuDNN 5 support.
 * HDFS Support.
 * Improved support for NumPy style basic slicing including non-1 strides,
   ellipses, newaxis, and negative indices. For example complicated expressions
