@@ -311,8 +311,8 @@ class BaseEstimator(
     # TODO(wicke): make RunConfig immutable, and then return it without a copy.
     return copy.deepcopy(self._config)
 
-  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
+  def fit(self, x=None, y=None, input_fn=None, feed_fn=None, steps=None,
+          batch_size=None, monitors=None, max_steps=None):
     # pylint: disable=g-doc-args,g-doc-return-or-yield
     """See `Trainable`.
 
@@ -323,7 +323,7 @@ class BaseEstimator(
     if (steps is not None) and (max_steps is not None):
       raise ValueError('Can not provide both steps and max_steps.')
 
-    input_fn, feed_fn = _get_input_fn(x, y, input_fn, feed_fn=None,
+    input_fn, feed_fn = _get_input_fn(x, y, input_fn, feed_fn=feed_fn,
                                       batch_size=batch_size, shuffle=True,
                                       epochs=None)
     loss = self._train_model(input_fn=input_fn,

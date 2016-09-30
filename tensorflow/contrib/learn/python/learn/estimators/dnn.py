@@ -423,8 +423,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
         },
         feature_engineering_fn=feature_engineering_fn)
 
-  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
+  def fit(self, x=None, y=None, input_fn=None, feed_fn=None, steps=None,
+          batch_size=None, monitors=None, max_steps=None):
     """See trainable.Trainable."""
     # TODO(roumposg): Remove when deprecated monitors are removed.
     if monitors is not None:
@@ -436,9 +436,9 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
         monitor.set_estimator(self)
         monitor._lock_estimator()  # pylint: disable=protected-access
 
-    result = self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
-                                 batch_size=batch_size, monitors=monitors,
-                                 max_steps=max_steps)
+    result = self._estimator.fit(x=x, y=y, input_fn=input_fn, feed_fn=feed_fn,
+                                 steps=steps, batch_size=batch_size,
+                                 monitors=monitors, max_steps=max_steps)
 
     if monitors is not None:
       for monitor in deprecated_monitors:

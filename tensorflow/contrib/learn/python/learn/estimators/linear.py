@@ -464,8 +464,8 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
   def get_estimator(self):
     return self._estimator
 
-  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
+  def fit(self, x=None, y=None, input_fn=None, feed_fn=feed_fn, steps=None,
+          batch_size=None, monitors=None, max_steps=None):
     """See trainable.Trainable."""
     # TODO(roumposg): Remove when deprecated monitors are removed.
     if monitors is not None:
