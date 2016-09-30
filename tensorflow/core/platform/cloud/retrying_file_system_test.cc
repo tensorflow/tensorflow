@@ -158,7 +158,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_ImmediateSuccess) {
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   base_fs->random_access_file_to_return = std::move(base_file);
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   // Retrieve the wrapped random access file.
   std::unique_ptr<RandomAccessFile> random_access_file;
@@ -185,7 +185,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_SuccessWith3rdTry) {
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   base_fs->random_access_file_to_return = std::move(base_file);
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   // Retrieve the wrapped random access file.
   std::unique_ptr<RandomAccessFile> random_access_file;
@@ -213,7 +213,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_AllRetriesFailed) {
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   base_fs->random_access_file_to_return = std::move(base_file);
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   // Retrieve the wrapped random access file.
   std::unique_ptr<RandomAccessFile> random_access_file;
@@ -241,7 +241,7 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_NoRetriesForSomeErrors) {
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   base_fs->random_access_file_to_return = std::move(base_file);
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   // Retrieve the wrapped random access file.
   std::unique_ptr<RandomAccessFile> random_access_file;
@@ -266,7 +266,7 @@ TEST(RetryingFileSystemTest, NewWritableFile_ImmediateSuccess) {
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   base_fs->writable_file_to_return = std::move(base_file);
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   // Retrieve the wrapped writable file.
   std::unique_ptr<WritableFile> writable_file;
@@ -291,7 +291,7 @@ TEST(RetryingFileSystemTest, NewWritableFile_SuccessWith3rdTry) {
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   base_fs->writable_file_to_return = std::move(base_file);
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   // Retrieve the wrapped writable file.
   std::unique_ptr<WritableFile> writable_file;
@@ -316,7 +316,7 @@ TEST(RetryingFileSystemTest, NewAppendableFile_SuccessWith3rdTry) {
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   base_fs->writable_file_to_return = std::move(base_file);
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   // Retrieve the wrapped appendable file.
   std::unique_ptr<WritableFile> writable_file;
@@ -342,7 +342,7 @@ TEST(RetryingFileSystemTest, NewWritableFile_AllRetriesFailed) {
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
   base_fs->writable_file_to_return = std::move(base_file);
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   // Retrieve the wrapped writable file.
   std::unique_ptr<WritableFile> writable_file;
@@ -360,7 +360,7 @@ TEST(RetryingFileSystemTest,
        std::make_tuple("NewReadOnlyMemoryRegionFromFile", Status::OK())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::unique_ptr<ReadOnlyMemoryRegion> result;
   TF_EXPECT_OK(fs.NewReadOnlyMemoryRegionFromFile("filename.txt", &result));
@@ -378,7 +378,7 @@ TEST(RetryingFileSystemTest, NewReadOnlyMemoryRegionFromFile_AllRetriesFailed) {
                        errors::Unavailable("Last error"))});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::unique_ptr<ReadOnlyMemoryRegion> result;
   EXPECT_EQ("Last error",
@@ -393,7 +393,7 @@ TEST(RetryingFileSystemTest, GetChildren_SuccessWith2ndTry) {
        std::make_tuple("GetChildren", Status::OK())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
   TF_EXPECT_OK(fs.GetChildren("gs://path", &result));
@@ -409,7 +409,7 @@ TEST(RetryingFileSystemTest, GetChildren_AllRetriesFailed) {
        std::make_tuple("GetChildren", errors::Unavailable("Last error"))});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
   EXPECT_EQ("Last error", fs.GetChildren("gs://path", &result).error_message());
@@ -422,7 +422,7 @@ TEST(RetryingFileSystemTest, GetMatchingPaths_SuccessWith2ndTry) {
        std::make_tuple("GetMatchingPaths", Status::OK())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
   TF_EXPECT_OK(fs.GetMatchingPaths("gs://path/dir", &result));
@@ -438,7 +438,7 @@ TEST(RetryingFileSystemTest, GetMatchingPaths_AllRetriesFailed) {
        std::make_tuple("GetMatchingPaths", errors::Unavailable("Last error"))});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
   EXPECT_EQ("Last error",
@@ -451,7 +451,7 @@ TEST(RetryingFileSystemTest, DeleteFile_SuccessWith2ndTry) {
        std::make_tuple("DeleteFile", Status::OK())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
   TF_EXPECT_OK(fs.DeleteFile("gs://path/file.txt"));
@@ -466,7 +466,7 @@ TEST(RetryingFileSystemTest, DeleteFile_AllRetriesFailed) {
        std::make_tuple("DeleteFile", errors::Unavailable("Last error"))});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
   EXPECT_EQ("Last error", fs.DeleteFile("gs://path/file.txt").error_message());
@@ -478,7 +478,7 @@ TEST(RetryingFileSystemTest, CreateDir_SuccessWith2ndTry) {
        std::make_tuple("CreateDir", Status::OK())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
   TF_EXPECT_OK(fs.CreateDir("gs://path/newdir"));
@@ -493,7 +493,7 @@ TEST(RetryingFileSystemTest, CreateDir_AllRetriesFailed) {
        std::make_tuple("CreateDir", errors::Unavailable("Last error"))});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
   EXPECT_EQ("Last error", fs.CreateDir("gs://path/newdir").error_message());
@@ -505,7 +505,7 @@ TEST(RetryingFileSystemTest, DeleteDir_SuccessWith2ndTry) {
        std::make_tuple("DeleteDir", Status::OK())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
   TF_EXPECT_OK(fs.DeleteDir("gs://path/dir"));
@@ -520,7 +520,7 @@ TEST(RetryingFileSystemTest, DeleteDir_AllRetriesFailed) {
        std::make_tuple("DeleteDir", errors::Unavailable("Last error"))});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   std::vector<string> result;
   EXPECT_EQ("Last error", fs.DeleteDir("gs://path/dir").error_message());
@@ -533,7 +533,7 @@ TEST(RetryingFileSystemTest, GetFileSize_SuccessWith2ndTry) {
        std::make_tuple("GetFileSize", Status::OK())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   uint64 size;
   TF_EXPECT_OK(fs.GetFileSize("gs://path/file.txt", &size));
@@ -549,7 +549,7 @@ TEST(RetryingFileSystemTest, GetFileSize_AllRetriesFailed) {
        std::make_tuple("GetFileSize", errors::Unavailable("Last error"))});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   uint64 size;
   EXPECT_EQ("Last error",
@@ -562,7 +562,7 @@ TEST(RetryingFileSystemTest, RenameFile_SuccessWith2ndTry) {
        std::make_tuple("RenameFile", Status::OK())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   TF_EXPECT_OK(fs.RenameFile("old_name", "new_name"));
 }
@@ -577,7 +577,7 @@ TEST(RetryingFileSystemTest, RenameFile_AllRetriesFailed) {
   });
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   EXPECT_EQ("Last error",
             fs.RenameFile("old_name", "new_name").error_message());
@@ -589,7 +589,7 @@ TEST(RetryingFileSystemTest, Stat_SuccessWith2ndTry) {
        std::make_tuple("Stat", Status::OK())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   FileStatistics stat;
   TF_EXPECT_OK(fs.Stat("file_name", &stat));
@@ -604,7 +604,7 @@ TEST(RetryingFileSystemTest, Stat_AllRetriesFailed) {
   });
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   FileStatistics stat;
   EXPECT_EQ("Last error", fs.Stat("file_name", &stat).error_message());
@@ -617,7 +617,7 @@ TEST(RetryingFileSystemTest, IsDirectory_SuccessWith2ndTry) {
        std::make_tuple("IsDirectory", Status::OK())});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   TF_EXPECT_OK(fs.IsDirectory("gs://path/dir"));
 }
@@ -632,7 +632,7 @@ TEST(RetryingFileSystemTest, IsDirectory_AllRetriesFailed) {
        std::make_tuple("IsDirectory", errors::Unavailable("Last error"))});
   std::unique_ptr<MockFileSystem> base_fs(
       new MockFileSystem(expected_fs_calls));
-  RetryingFileSystem fs(std::move(base_fs));
+  RetryingFileSystem fs(std::move(base_fs), 0);
 
   EXPECT_EQ("Last error", fs.IsDirectory("gs://path/dir").error_message());
 }
