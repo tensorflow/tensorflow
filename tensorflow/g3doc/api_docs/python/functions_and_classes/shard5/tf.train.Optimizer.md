@@ -128,7 +128,7 @@ given variable.
 
 
 *  <b>`loss`</b>: A Tensor containing the value to minimize.
-*  <b>`var_list`</b>: Optional list of tf.Variable to update to minimize
+*  <b>`var_list`</b>: Optional list of `tf.Variable` to update to minimize
     `loss`.  Defaults to the list of variables collected in the graph
     under the key `GraphKey.TRAINABLE_VARIABLES`.
 *  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be

@@ -8,6 +8,7 @@ tensor of size [`batch_size`], then the loss weights apply to each
 corresponding sample.
 
 If `label_smoothing` is nonzero, smooth the labels towards 1/2:
+
     new_multiclass_labels = multiclass_labels * (1 - label_smoothing)
                             + 0.5 * label_smoothing
 

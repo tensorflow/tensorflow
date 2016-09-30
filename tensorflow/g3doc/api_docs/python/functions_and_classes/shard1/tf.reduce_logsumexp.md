@@ -10,7 +10,7 @@ are retained with length 1.
 If `reduction_indices` has no entries, all dimensions are reduced, and a
 tensor with a single element is returned.
 
-This funciton is more numerically stable than log(sum(exp(input))). It avoids
+This function is more numerically stable than log(sum(exp(input))). It avoids
 overflows caused by taking the exp of large inputs and underflows caused by
 taking the log of small inputs.
 
@@ -30,7 +30,7 @@ tf.reduce_logsumexp(x, [0, 1]) ==> log(6)
 
 
 *  <b>`input_tensor`</b>: The tensor to reduce. Should have numeric type.
-*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the defaut),
+*  <b>`reduction_indices`</b>: The dimensions to reduce. If `None` (the default),
     reduces all dimensions.
 *  <b>`keep_dims`</b>: If true, retains reduced dimensions with length 1.
 *  <b>`name`</b>: A name for the operation (optional).

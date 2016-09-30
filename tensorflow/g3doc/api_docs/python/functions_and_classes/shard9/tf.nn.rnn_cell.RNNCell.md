@@ -38,6 +38,7 @@ Run this RNN cell on inputs, starting from the given state.
 ##### Returns:
 
   A pair containing:
+
   - Output: A `2-D` tensor with shape `[batch_size x self.output_size]`.
   - New state: Either a single `2-D` tensor, or a tuple of tensors matching
     the arity and shapes of `state`.

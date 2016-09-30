@@ -223,7 +223,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -247,7 +247,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -317,6 +317,10 @@ Mean.
 #### `tf.contrib.distributions.Bernoulli.mode(name='mode')` {#Bernoulli.mode}
 
 Mode.
+
+Additional documentation from `Bernoulli`:
+
+Returns `1` if `p > 1-p` and `0` otherwise.
 
 
 - - -
@@ -403,7 +407,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -427,7 +431,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -

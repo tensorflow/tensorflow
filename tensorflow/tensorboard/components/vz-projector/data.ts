@@ -316,6 +316,10 @@ export interface ColorOption {
   name: string;
   desc?: string;
   map?: (value: string|number) => string;
+  /** List of items for the color map. Defined only for categorical map. */
+  items?: {label: string, count: number}[];
+  /** Threshold values and their colors. Defined for gradient color map. */
+  thresholds?: {value: number, color: string}[];
   isSeparator?: boolean;
 }
 

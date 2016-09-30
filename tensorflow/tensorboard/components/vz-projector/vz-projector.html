@@ -25,6 +25,8 @@ limitations under the License.
 <link rel="import" href="vz-projector-bookmark-panel.html">
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
 <link rel="import" href="../paper-tooltip/paper-tooltip.html">
+<link rel="import" href="../paper-input/paper-input.html">
+<link rel="import" href="../paper-button/paper-button.html">
 
 <dom-module id='vz-projector'>
 <template>
@@ -96,9 +98,8 @@ limitations under the License.
 .control .info {
   display: block;
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.2);
+  color: rgba(0, 0, 0, 0.5);
   margin-bottom: 18px;
-  white-space: nowrap;
 }
 
 .control input[type=text] {
@@ -181,14 +182,6 @@ limitations under the License.
   stroke: #fff;
   fill-opacity: .125;
   shape-rendering: crispEdges;
-}
-
-.ink-panel-content {
-  display: none;
-}
-
-.ink-panel-content.active {
-  display: block;
 }
 
 .nn-list .neighbor {
@@ -285,7 +278,6 @@ limitations under the License.
   display: flex;
   flex-direction: column;
   font-size: 14px;
-  line-height: 1.45em;
 }
 
 .ink-panel h4 {
@@ -300,6 +292,10 @@ limitations under the License.
 .ink-panel-header {
   height: 60px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.ink-panel-metadata-container {
+  margin-top: 15px;
 }
 
 .ink-panel-metadata-container span {
@@ -334,6 +330,12 @@ limitations under the License.
 .ink-panel-content {
   padding: 24px;
   overflow-y: auto;
+  display: none;
+  height: 100%;
+}
+
+.ink-panel-content.active {
+  display: block;
 }
 
 .ink-panel-content .distance a {
@@ -441,14 +443,6 @@ limitations under the License.
   left: calc(50% - 12px);
 }
 
-.ink-panel-menubar .search-box {
-  transition: width .2s;
-  margin-left: -65px;
-  width: 0;
-  margin-right: 65px;
-  background: white;
-}
-
 .two-way-toggle {
   display: flex;
   flex-direction: row;
@@ -488,7 +482,37 @@ paper-listbox .pca-item {
 
 .tooltip {
   max-width: 200px;
+  --paper-tooltip: {
+    font-size: 12px;
+  };
 }
+
+.toggle {
+  min-width: 0px;
+  font-size: 14px;
+  width: 22px;
+  min-height: 0px;
+  height: 21px;
+  padding: 0;
+  margin: 0 0 0 3px;
+  background-color: #e3e3e3;
+}
+
+.toggle[active] {
+  background-color: #880E4F;
+  color: white;
+}
+
+paper-checkbox {
+  --paper-checkbox-checked-color: #880E4F;
+}
+
+paper-toggle-button {
+  --paper-toggle-button-checked-bar-color:  #880E4F;
+  --paper-toggle-button-checked-button-color:  #880E4F;
+  --paper-toggle-button-checked-ink-color: #880E4F;
+}
+
 </style>
 <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500|Material+Icons" rel="stylesheet" type="text/css">
 <div id="wrapper-notify-msg">
@@ -513,7 +537,7 @@ paper-listbox .pca-item {
         <label>
           Perplexity
           <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
-          <paper-tooltip class="tooltip" position="right" animation-delay="0">
+          <paper-tooltip class="tooltip" position="right" animation-delay="0" fit-to-visible-bounds>
             The most appropriate perplexity value depends on the density of your
             data. Loosely speaking, one could say that a larger / denser dataset
             requires a larger perplexity. Typical values for the perplexity range
@@ -527,7 +551,7 @@ paper-listbox .pca-item {
         <label>
           Learning rate
           <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
-          <paper-tooltip class="tooltip" position="right" animation-delay="0">
+          <paper-tooltip class="tooltip" position="right" animation-delay="0" fit-to-visible-bounds>
             The most appropriate learning rate depends on the size of your data,
             with smaller datasets requiring smaller learning rates.
           </paper-tooltip>
@@ -568,41 +592,57 @@ paper-listbox .pca-item {
     </div>
     <!-- Custom Controls -->
     <div data-panel="custom" class="ink-panel-content">
-      <p>Search for two vectors upon which to project all points. Use <code>/regex/</code> to signal a regular expression, otherwise does an exact match.<p>
+      <p>
+        Search for two vectors upon which to project all points. Click the
+        <code class="toggle" style="padding: 2px;">.*</code> button to enable
+        regex mode. The search is case insensitive.
+      <p>
       <h3>Horizontal</h3>
       <div class="control xLeft">
-        <label>Left</label>
-        <input type="text" value="/\./"></input>
+        <paper-input label="Left">
+          <div class="slash" prefix>/</div>
+          <div class="slash" suffix>/</div>
+          <div suffix>
+            <paper-button toggles class="toggle">.*</paper-button>
+          </div>
+        </paper-input>
         <span class="info"></span>
       </div>
       <div class="control xRight last">
-        <label>Right</label>
-        <input type="text" value="/!/"></input>
+        <paper-input label="Right">
+          <div class="slash" prefix>/</div>
+          <div class="slash" suffix>/</div>
+          <div suffix>
+            <paper-button toggles class="toggle">.*</paper-button>
+          </div>
+        </paper-input>
         <span class="info"> </span>
       </div>
       <h3>Vertical</h3>
       <div class="control yUp">
-        <label>Up</label>
-        <input type="text" value="/./"></input>
+        <paper-input label="Up">
+          <div class="slash" prefix>/</div>
+          <div class="slash" suffix>/</div>
+          <div suffix>
+            <paper-button toggles class="toggle">.*</paper-button>
+          </div>
+        </paper-input>
         <span class="info"> </span>
       </div>
       <div class="control yDown last">
-        <label>Down</label>
-        <input type="text" value="/\?/"></input>
+        <paper-input label="Down">
+          <div class="slash" prefix>/</div>
+          <div class="slash" suffix>/</div>
+          <div suffix>
+            <paper-button toggles class="toggle">.*</paper-button>
+          </div>
+        </paper-input>
         <span class="info"> </span>
       </div>
     </div>
   </div>
   <div id="main" class="ink-panel">
     <div class="ink-panel-menubar">
-      <button class="menu-button search" title="Search">
-        <i class="material-icons">search</i>
-        <span class="button-label">Search</span>
-      </button>
-      <div class="control search-box">
-          <input type="text" value="">
-          <span class="info"></span>
-      </div>
       <button class="menu-button selectMode" title="Bounding box selection">
         <i class="material-icons">photo_size_select_small</i>
         Select
@@ -647,6 +687,21 @@ paper-listbox .pca-item {
 
     <!-- Inspector UI controls -->
     <div data-panel="inspector" class="ink-panel-content">
+      <div class="slider num-nn">
+        <label>Number of neighbors</label>
+        <input type="range" min="5" max="1000"></input>
+        <span></span>
+      </div>
+      <div class="search-box">
+        <paper-input label="Search by label">
+          <div class="slash" prefix>/</div>
+          <div class="slash" suffix>/</div>
+          <div suffix>
+            <paper-button toggles class="toggle">.*</paper-button>
+          </div>
+        </paper-input>
+        <span class="info"></span>
+      </div>
       <div class="ink-panel-metadata-container" style="display: none">
         <span>Metadata</span>
         <div class="ink-panel-metadata"></div>
@@ -658,20 +713,17 @@ paper-listbox .pca-item {
         <button style="display: none;" class="ink-button set-filter">Isolate selection</button>
         <button class="ink-button clear-selection" style="display: none;">Clear selection</button>
       </div>
-      <div class="slider num-nn">
-        <label>Number of neighbors</label>
-        <input type="range" min="5" max="1000"></input>
-        <span></span>
-      </div>
-      <div class="distance">
-        Distance:
-        <div style="float:right">
-          <a class="selected cosine" href="javascript:void(0);">cosine</a> |
-          <a class="euclidean" href="javascript:void(0);">euclidean</a>
+      <div class="nn">
+        <div class="distance">
+          Distance:
+          <div style="float:right">
+            <a class="selected cosine" href="javascript:void(0);">cosine</a> |
+            <a class="euclidean" href="javascript:void(0);">euclidean</a>
+          </div>
         </div>
+        <p>Nearest points:
+        <div class="nn-list"></div>
       </div>
-      <p>Nearest points:
-      <div class="nn-list"></div>
     </div>
 
     <!-- Data UI controls -->

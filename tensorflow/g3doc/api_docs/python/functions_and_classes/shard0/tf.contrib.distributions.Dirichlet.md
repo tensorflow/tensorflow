@@ -296,7 +296,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -320,7 +320,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -328,6 +328,14 @@ Log probability mass function.
 #### `tf.contrib.distributions.Dirichlet.log_prob(value, name='log_prob')` {#Dirichlet.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Dirichlet`:
+
+Note that the input must be a non-negative tensor with dtype `dtype` and whose
+shape can be broadcast with `self.alpha`.  For fixed leading dimensions, the
+last dimension represents counts for the corresponding Dirichlet distribution
+in `self.alpha`. `x` is only legal if it sums up to one.
 
 ##### Args:
 
@@ -383,6 +391,13 @@ Mean.
 #### `tf.contrib.distributions.Dirichlet.mode(name='mode')` {#Dirichlet.mode}
 
 Mode.
+
+Additional documentation from `Dirichlet`:
+
+Note that the mode for the Dirichlet distribution is only defined
+when `alpha > 1`. This returns the mode when `alpha > 1`,
+and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
+will be raised rather than returning `NaN`.
 
 
 - - -
@@ -462,7 +477,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -486,7 +501,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -494,6 +509,14 @@ Probability mass function.
 #### `tf.contrib.distributions.Dirichlet.prob(value, name='prob')` {#Dirichlet.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Dirichlet`:
+
+Note that the input must be a non-negative tensor with dtype `dtype` and whose
+shape can be broadcast with `self.alpha`.  For fixed leading dimensions, the
+last dimension represents counts for the corresponding Dirichlet distribution
+in `self.alpha`. `x` is only legal if it sums up to one.
 
 ##### Args:
 

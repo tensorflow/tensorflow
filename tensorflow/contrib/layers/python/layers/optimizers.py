@@ -66,19 +66,20 @@ def optimize_loss(loss,
   """Given loss and parameters for optimizer, returns a training op.
 
   Various ways of passing optimizers, include:
-    - string, name of the optimizer like 'SGD', 'Adam', see OPTIMIZER_CLS_NAMES
-        for full list. E.g. `optimize_loss(..., optimizer='Adam')`.
-    - function, takes learning rate `Tensor` as argument and must return
-        `Optimizer` instance. E.g. `optimize_loss(...,
-        optimizer=lambda lr: tf.train.MomentumOptimizer(lr, momentum=0.5))`.
-      Alternatively, if `learning_rate` is `None`, the function takes no
-      arguments. E.g. `optimize_loss(..., learning_rate=None,
-        optimizer=lambda: tf.train.MomentumOptimizer(0.5, momentum=0.5))`.
-    - class, subclass of `Optimizer` that takes only one required argument -
-        learning rate, such as AdamOptimizer, AdagradOptimizer.
-        E.g. `optimize_loss(..., optimizer=tf.train.AdagradOptimizer)`.
-    - object, instance of subclass of `Optimizer`.
-        E.g., `optimizer_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
+
+  - string, name of the optimizer like 'SGD', 'Adam', see OPTIMIZER_CLS_NAMES
+      for full list. E.g. `optimize_loss(..., optimizer='Adam')`.
+  - function, takes learning rate `Tensor` as argument and must return
+      `Optimizer` instance. E.g. `optimize_loss(...,
+      optimizer=lambda lr: tf.train.MomentumOptimizer(lr, momentum=0.5))`.
+    Alternatively, if `learning_rate` is `None`, the function takes no
+    arguments. E.g. `optimize_loss(..., learning_rate=None,
+      optimizer=lambda: tf.train.MomentumOptimizer(0.5, momentum=0.5))`.
+  - class, subclass of `Optimizer` that takes only one required argument -
+      learning rate, such as AdamOptimizer, AdagradOptimizer.
+      E.g. `optimize_loss(..., optimizer=tf.train.AdagradOptimizer)`.
+  - object, instance of subclass of `Optimizer`.
+      E.g., `optimizer_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
 
   Args:
     loss: Tensor, 0 dimensional.
@@ -87,9 +88,9 @@ def optimize_loss(loss,
     optimizer: string, class or optimizer instance, used as trainer.
                string should be name of optimizer, like 'SGD',
                  'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
-               class should be sub-class of tf.Optimizer that implements
+               class should be sub-class of `tf.Optimizer` that implements
                  `compute_gradients` and `apply_gradients` functions.
-               optimizer instance should be instantion of `tf.Optimizer`
+               optimizer instance should be instantiation of `tf.Optimizer`
                  sub-class and have `compute_gradients` and `apply_gradients`
                  functions.
     gradient_noise_scale: float or None, adds 0-mean normal noise scaled by this
@@ -102,7 +103,7 @@ def optimize_loss(loss,
                             `Tensor`s, returns `Tensor`.
                             Can be used to implement any learning rate decay
                             functions.
-                            For example: tf.train.exponential_decay.
+                            For example: `tf.train.exponential_decay`.
     update_ops: list of update `Operation`s to execute at each step. If `None`,
                 uses elements of UPDATE_OPS collection. The order of execution
                 between `update_ops` and `loss` is non-deterministic.

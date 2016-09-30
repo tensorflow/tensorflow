@@ -138,6 +138,20 @@ def _EmbeddingParams(num_shards, vocab_size,
   return p, params, feed_dict
 
 
+def _EmbeddingParamsAsPartitionedVariable(num_shards, vocab_size,
+                                          dtype=tf.float32, shape=None):
+  p, params, feed_dict = _EmbeddingParams(
+      num_shards, vocab_size, dtype=dtype, shape=shape)
+  shape = shape or [10]
+  partitioned_variable = tf.get_variable(
+      "p",
+      shape=[vocab_size] + shape,
+      initializer=tf.concat(0, [params[p_i.name] for p_i in p]),
+      partitioner=tf.min_max_variable_partitioner(
+          max_partitions=num_shards, min_slice_size=1))
+  return p, partitioned_variable, params, feed_dict
+
+
 def _EmbeddingResult(params, id_vals, num_shards, vocab_size,
                      partition_strategy="mod",
                      weight_vals=None):
@@ -214,6 +228,28 @@ class EmbeddingLookupTest(tf.test.TestCase):
     self.assertAllEqual(np_result, tf_result)
     self.assertShapeEqual(np_result, embedding)
 
+  def testSimpleShardedPartitionedVariable(self):
+    with self.test_session() as sess:
+      num_shards = 2
+      vocab_size = 4
+      p, p_variable, params, feed_dict = _EmbeddingParamsAsPartitionedVariable(
+          num_shards, vocab_size)
+
+      id_vals = np.array([0, 0])
+      ids = tf.constant(list(id_vals), dtype=tf.int32)
+      print("Construct ids", ids.get_shape())
+      embedding = tf.nn.embedding_lookup(p_variable, ids)
+      tf.initialize_all_variables().run()
+      params_values = [params[p_i.name] for p_i in p]
+      # Test that the PartitionedVariable components equal the list in p
+      p_var_val = sess.run(list(p_variable))
+      # Actual test
+      tf_result = embedding.eval(feed_dict=feed_dict)
+    np_result, _, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
+    self.assertAllEqual(params_values, p_var_val)
+    self.assertAllEqual(np_result, tf_result)
+    self.assertShapeEqual(np_result, embedding)
+
   def testShardedModPartitioningInt32Ids(self):
     with self.test_session():
       num_shards = 5
@@ -275,6 +311,31 @@ class EmbeddingLookupTest(tf.test.TestCase):
       ids = tf.constant(list(id_vals), dtype=tf.int32)
 
       embedding = tf.nn.embedding_lookup(p, ids, partition_strategy="div")
+      tf_result = embedding.eval(feed_dict=feed_dict)
+    np_result, _, _ = _EmbeddingResult(
+        params, id_vals, num_shards, vocab_size, partition_strategy="div")
+    self.assertAllEqual(np_result, tf_result)
+    self.assertShapeEqual(np_result, embedding)
+
+  def testShardedDivPartitioningInt32IdsPartitionedVariable(self):
+    with self.test_session():
+      num_shards = 5
+      vocab_size = 13
+      # Embedding dimensions is 10. The vocab_size x 10 embedding
+      # parameters are spread in num_shards matrices, so the first
+      # 3 shards are 3 x 10 and the last 2 shards are 2 x 10.
+      _, p_variable, params, feed_dict = _EmbeddingParamsAsPartitionedVariable(
+          num_shards, vocab_size)
+
+      num_vals = 30
+      # Fetch num_vals embeddings for random word ids. Since
+      # num_vals > vocab_size, this ought to have repetitions, so
+      # will test that aspect.
+      id_vals = np.random.randint(vocab_size, size=num_vals)
+      ids = tf.constant(list(id_vals), dtype=tf.int32)
+      tf.initialize_all_variables().run()
+      embedding = tf.nn.embedding_lookup(
+          p_variable, ids, partition_strategy="div")
       tf_result = embedding.eval(feed_dict=feed_dict)
     np_result, _, _ = _EmbeddingResult(
         params, id_vals, num_shards, vocab_size, partition_strategy="div")

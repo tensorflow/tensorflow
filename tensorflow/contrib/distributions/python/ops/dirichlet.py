@@ -30,6 +30,14 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 
 
+_dirichlet_prob_note = """
+Note that the input must be a non-negative tensor with dtype `dtype` and whose
+shape can be broadcast with `self.alpha`.  For fixed leading dimensions, the
+last dimension represents counts for the corresponding Dirichlet distribution
+in `self.alpha`. `x` is only legal if it sums up to one.
+"""
+
+
 class Dirichlet(distribution.Distribution):
   """Dirichlet distribution.
 
@@ -175,6 +183,7 @@ class Dirichlet(distribution.Distribution):
     return gamma_sample / math_ops.reduce_sum(
         gamma_sample, reduction_indices=[-1], keep_dims=True)
 
+  @distribution_util.AppendDocstring(_dirichlet_prob_note)
   def _log_prob(self, x):
     x = ops.convert_to_tensor(x, name="x")
     x = self._assert_valid_sample(x)
@@ -184,6 +193,7 @@ class Dirichlet(distribution.Distribution):
         keep_dims=False) - special_math_ops.lbeta(self.alpha)
     return log_prob
 
+  @distribution_util.AppendDocstring(_dirichlet_prob_note)
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))
 
@@ -212,6 +222,11 @@ class Dirichlet(distribution.Distribution):
   def _std(self):
     return math_ops.sqrt(self._variance())
 
+  @distribution_util.AppendDocstring(
+      """Note that the mode for the Dirichlet distribution is only defined
+      when `alpha > 1`. This returns the mode when `alpha > 1`,
+      and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
+      will be raised rather than returning `NaN`.""")
   def _mode(self):
     mode = ((self.alpha - 1.) /
             (array_ops.expand_dims(self.alpha_sum, dim=-1) -
@@ -238,22 +253,3 @@ class Dirichlet(distribution.Distribution):
             array_ops.ones((), dtype=self.dtype),
             math_ops.reduce_sum(x, reduction_indices=[-1])),
     ], x)
-
-
-_prob_note = """
-
-  Note that the input must be a non-negative tensor with dtype `dtype` and whose
-  shape can be broadcast with `self.alpha`.  For fixed leading dimensions, the
-  last dimension represents counts for the corresponding Dirichlet distribution
-  in `self.alpha`. `x` is only legal if it sums up to one.
-"""
-distribution_util.append_class_fun_doc(Dirichlet.log_prob, doc_str=_prob_note)
-distribution_util.append_class_fun_doc(Dirichlet.prob, doc_str=_prob_note)
-
-distribution_util.append_class_fun_doc(Dirichlet.mode, doc_str="""
-
-  Note that the mode for the Dirichlet distribution is only defined
-  when `alpha > 1`. This returns the mode when `alpha > 1`,
-  and NaN otherwise. If `self.allow_nan_stats` is `False`, an exception
-  will be raised rather than returning `NaN`.
-""")

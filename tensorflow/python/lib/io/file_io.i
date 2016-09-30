@@ -222,6 +222,14 @@ string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
   return result;
 }
 
+void SeekInStream(tensorflow::io::BufferedInputStream* stream, int64 position,
+                  TF_Status* out_status) {
+  tensorflow::Status status = stream->Seek(position);
+  if (!status.ok()) {
+    Set_TF_Status_from_Status(out_status, status);
+  }
+}
+
 %}
 
 // Ensure that the returned object is destroyed when its wrapper is
@@ -257,6 +265,8 @@ void FlushWritableFile(tensorflow::WritableFile* file, TF_Status* out_status);
 string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
                       size_t bytes,
                       TF_Status* out_status);
+void SeekInStream(tensorflow::io::BufferedInputStream* stream, int64 position,
+                  TF_Status* out_status);
 
 %ignoreall
 %unignore tensorflow::io::BufferedInputStream;

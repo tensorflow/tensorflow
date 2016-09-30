@@ -279,7 +279,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -303,7 +303,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -311,6 +311,19 @@ Log probability mass function.
 #### `tf.contrib.distributions.Binomial.log_prob(value, name='log_prob')` {#Binomial.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Binomial`:
+
+For each batch member of counts `value`, `P[counts]` is the probability that
+after sampling `n` draws from this Binomial distribution, the number of
+successes is `k`.  Note that different sequences of draws can result in the
+same counts, thus the probability includes a combinatorial coefficient.
+
+`value` must be a non-negative tensor with dtype `dtype` and whose shape
+can be broadcast with `self.p` and `self.n`. `counts` is only legal if it is
+less than or equal to `n` and its components are equal to integer
+values.
 
 ##### Args:
 
@@ -373,6 +386,12 @@ Mean.
 #### `tf.contrib.distributions.Binomial.mode(name='mode')` {#Binomial.mode}
 
 Mode.
+
+Additional documentation from `Binomial`:
+
+Note that when `(n + 1) * p` is an integer, there are actually two
+modes.  Namely, `(n + 1) * p` and `(n + 1) * p - 1` are both modes. Here
+we return only the larger of the two modes.
 
 
 - - -
@@ -466,7 +485,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -490,7 +509,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -498,6 +517,19 @@ Probability mass function.
 #### `tf.contrib.distributions.Binomial.prob(value, name='prob')` {#Binomial.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Binomial`:
+
+For each batch member of counts `value`, `P[counts]` is the probability that
+after sampling `n` draws from this Binomial distribution, the number of
+successes is `k`.  Note that different sequences of draws can result in the
+same counts, thus the probability includes a combinatorial coefficient.
+
+`value` must be a non-negative tensor with dtype `dtype` and whose shape
+can be broadcast with `self.p` and `self.n`. `counts` is only legal if it is
+less than or equal to `n` and its components are equal to integer
+values.
 
 ##### Args:
 

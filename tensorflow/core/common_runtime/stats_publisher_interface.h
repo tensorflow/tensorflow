@@ -51,6 +51,14 @@ class StatsPublisherInterface {
   virtual ~StatsPublisherInterface() {}
 };
 
+typedef std::function<std::unique_ptr<StatsPublisherInterface>(
+    const string&, const BuildGraphOptions&, const SessionOptions&)>
+    StatsPublisherFactory;
+
+std::unique_ptr<StatsPublisherInterface> CreateNoOpStatsPublisher(
+    const string& session, const BuildGraphOptions& bopts,
+    const SessionOptions& sopts);
+
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_STATS_PUBLISHER_INTERFACE_H_

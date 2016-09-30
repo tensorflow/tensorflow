@@ -22,7 +22,7 @@ A Transformed Distribution exposes `sample` and `pdf`:
 A simple example constructing a Log-Normal distribution from a Normal
 distribution:
 
-```
+```python
 logit_normal = TransformedDistribution(
   base_dist_cls=tf.contrib.distributions.Normal,
   mu=mu,
@@ -272,7 +272,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -296,7 +296,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -304,6 +304,15 @@ Log probability mass function.
 #### `tf.contrib.distributions.TransformedDistribution.log_prob(value, name='log_prob')` {#TransformedDistribution.log_prob}
 
 Log probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `TransformedDistribution`:
+
+Implements `(log o p o g)(y) - (log o det o J o g)(y)`,
+where `g` is the inverse of `transform`.
+
+Also raises a `ValueError` if `inverse` was not provided to the
+distribution and `y` was not returned from `sample`.
 
 ##### Args:
 
@@ -438,7 +447,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -462,7 +471,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -470,6 +479,15 @@ Probability mass function.
 #### `tf.contrib.distributions.TransformedDistribution.prob(value, name='prob')` {#TransformedDistribution.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `TransformedDistribution`:
+
+Implements `p(g(y)) / det|J(g(y))|`, where `g` is the inverse of
+`transform`.
+
+Also raises a `ValueError` if `inverse` was not provided to the
+distribution and `y` was not returned from `sample`.
 
 ##### Args:
 
@@ -511,6 +529,12 @@ sample.
 #### `tf.contrib.distributions.TransformedDistribution.sample_n(n, seed=None, name='sample_n')` {#TransformedDistribution.sample_n}
 
 Generate `n` samples.
+
+
+Additional documentation from `TransformedDistribution`:
+
+Samples from the base distribution and then passes through
+the transform.
 
 ##### Args:
 

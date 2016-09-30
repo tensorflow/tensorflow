@@ -127,6 +127,7 @@ class GridRNNCell(rnn_cell.RNNCell):
 
     Returns:
       A tuple containing:
+
       - A 2D, batch x output_size, Tensor representing the output of the cell
         after reading "inputs" when previous state was "state".
       - A 2D, batch x state_size, Tensor representing the new state of the cell

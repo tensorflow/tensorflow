@@ -97,7 +97,7 @@ module TF.Backend {
         assert.isNumber(image.width);
         assert.isNumber(image.height);
         let nonDemoQuery = 'index=0&tag=im1&run=run1';
-        let expectedUrl = demoRouter.individualImage(nonDemoQuery);
+        let expectedUrl = demoRouter.individualImage(nonDemoQuery, 10.0);
         assert.equal(image.url, expectedUrl);
         done();
       });

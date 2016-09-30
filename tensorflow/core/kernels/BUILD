@@ -322,7 +322,7 @@ cc_library(
     hdrs = ["bounds_check.h"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
 )
@@ -546,6 +546,17 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "gather_functor_cpu_header",
+    hdrs = ["gather_functor.h"],
+    visibility = [":friends"],
+    deps = [
+        ":bounds_check",
+        "//tensorflow/core:framework_lite",
+        "//third_party/eigen3",
+    ],
+)
+
 tf_cuda_library(
     name = "gather_functor",
     hdrs = [
@@ -558,6 +569,24 @@ tf_cuda_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "fused_batch_norm_op_test",
+    size = "small",
+    srcs = ["fused_batch_norm_op_test.cc"],
+    deps = [
+        ":fused_batch_norm_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -1077,6 +1106,7 @@ tf_kernel_libraries(
         "//tensorflow/core:io_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle",
     ],
 )
@@ -1473,6 +1503,7 @@ tf_kernel_libraries(
     prefixes = [
         "batch_norm_op",
         "bias_op",
+        "fused_batch_norm_op",
         "in_topk_op",
         "l2loss_op",
         "lrn_op",
@@ -1490,6 +1521,7 @@ tf_kernel_libraries(
         ":depthwise_conv_grad_op",
         ":depthwise_conv_op",
         ":dilation_ops",
+        ":fused_batch_norm_util_gpu",
         ":ops_util",
         ":pooling_ops",
         "//tensorflow/core:framework",
@@ -1600,6 +1632,18 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "fused_batch_norm_util",
+    gpu_srcs = [
+        "fused_batch_norm_op.h",
+        "fused_batch_norm_op.cu.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -2181,9 +2225,11 @@ filegroup(
         "conv_grad_ops.h",
         "conv_ops.cc",
         "cwise_op_abs.cc",
-        "cwise_op_add.cc",
+        "cwise_op_add_1.cc",
+        "cwise_op_add_2.cc",
         "cwise_op_div.cc",
-        "cwise_op_equal_to.cc",
+        "cwise_op_equal_to_1.cc",
+        "cwise_op_equal_to_2.cc",
         "cwise_op_exp.cc",
         "cwise_op_floor.cc",
         "cwise_op_greater.cc",
@@ -2193,7 +2239,8 @@ filegroup(
         "cwise_op_log.cc",
         "cwise_op_maximum.cc",
         "cwise_op_minimum.cc",
-        "cwise_op_mul.cc",
+        "cwise_op_mul_1.cc",
+        "cwise_op_mul_2.cc",
         "cwise_op_neg.cc",
         "cwise_op_rsqrt.cc",
         "cwise_op_select.cc",
@@ -2207,6 +2254,7 @@ filegroup(
         "deep_conv2d.h",
         "depthwise_conv_op.cc",
         "dynamic_partition_op.cc",
+        "fused_batch_norm_op.cc",
         "winograd_transform.h",
         ":android_extended_ops_headers",
     ],
@@ -2235,6 +2283,7 @@ filegroup(
         "reverse_op.cc",
         "save_op.cc",
         "save_restore_tensor.cc",
+        "save_restore_v2_ops.cc",
         "session_ops.cc",
         "softplus_op.cc",
         "softsign_op.cc",

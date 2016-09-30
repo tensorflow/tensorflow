@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,14 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/cwise_ops_common.h"
+#include "tensorflow/core/kernels/svd_op_impl.h"
 
 namespace tensorflow {
-REGISTER12(BinaryOp, CPU, "NotEqual", functor::not_equal_to, float, Eigen::half,
-           double, uint8, int8, int16, int32, int64, complex64, complex128,
-           string, bool);
-#if GOOGLE_CUDA
-REGISTER8(BinaryOp, GPU, "NotEqual", functor::not_equal_to, float, Eigen::half,
-          double, uint8, int8, int16, int64, bool);
-#endif
+
+REGISTER_LINALG_OP("Svd", (SvdOp<float>), float);
+REGISTER_LINALG_OP("BatchSvd", (SvdOp<float>), float);
+
 }  // namespace tensorflow

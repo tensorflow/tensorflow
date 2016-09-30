@@ -17,7 +17,7 @@ Instead of working with `Tensor` objects, most operations work with
 
 The operation of `raw_rnn`, in pseudo-code, is basically the following:
 
-```
+```python
 time = tf.constant(0, dtype=tf.int32)
 (finished, next_input, initial_state, _, loop_state) = loop_fn(
     time=time, cell_output=None, cell_state=None, loop_state=None)
@@ -32,7 +32,7 @@ while not all(finished):
   state = tf.select(finished, state, next_state)
   emit = tf.select(finished, tf.zeros_like(emit), emit)
   emit_ta = emit_ta.write(time, emit)
-  # If any new minibatch entries are marked as finished, mark these
+  # If any new minibatch entries are marked as finished, mark these.
   finished = tf.logical_or(finished, next_finished)
   time += 1
 return (emit_ta, state, loop_state)

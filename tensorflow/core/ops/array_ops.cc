@@ -554,16 +554,24 @@ REGISTER_OP("MatrixSetDiag")
       ShapeHandle diag;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &diag));
-
-      DimensionHandle square_dim;
+      if (c->RankKnown(input)) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(1), c->Rank(input) - 1, &diag));
+      }
+      DimensionHandle smallest_dim;
       TF_RETURN_IF_ERROR(
-          c->Merge(c->Dim(input, -2), c->Dim(input, -1), &square_dim));
-      TF_RETURN_IF_ERROR(c->Merge(square_dim, c->Dim(diag, -1), &square_dim));
+          c->Min(c->Dim(input, -2), c->Dim(input, -1), &smallest_dim));
+      TF_RETURN_IF_ERROR(
+          c->Merge(smallest_dim, c->Dim(diag, -1), &smallest_dim));
 
-      ShapeHandle output;
-      TF_RETURN_IF_ERROR(c->Concatenate(diag, c->Vector(square_dim), &output));
-      TF_RETURN_IF_ERROR(c->Merge(input, output, &output));
-
+      ShapeHandle output = input;
+      if (c->RankKnown(diag) && !c->FullyDefined(input)) {
+        // Try to infer parts of shape from diag.
+        ShapeHandle diag_prefix;
+        TF_RETURN_IF_ERROR(c->Subshape(diag, 0, -1, &diag_prefix));
+        TF_RETURN_IF_ERROR(
+            c->Concatenate(diag_prefix, c->UnknownShapeOfRank(2), &diag));
+        TF_RETURN_IF_ERROR(c->Merge(input, diag, &output));
+      }
       c->set_output(0, output);
       return Status::OK();
     })
@@ -571,15 +579,14 @@ REGISTER_OP("MatrixSetDiag")
 Returns a batched matrix tensor with new batched diagonal values.
 
 Given `input` and `diagonal`, this operation returns a tensor with the
-same shape and values as `input`, except for the diagonals of the innermost
-matrices.  These will be overwritten by the values in `diagonal`.
-The batched matrices must be square.
+same shape and values as `input`, except for the main diagonal of the
+innermost matrices.  These will be overwritten by the values in `diagonal`.
 
 The output is computed as follows:
 
-Assume `input` has `k+1` dimensions `[I, J, K, ..., N, N]` and `diagonal` has
-`k` dimensions `[I, J, K, ..., N]`.  Then the output is a
-tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+Assume `input` has `k+1` dimensions `[I, J, K, ..., M, N]` and `diagonal` has
+`k` dimensions `[I, J, K, ..., min(M, N)]`.  Then the output is a
+tensor of rank `k+1` with dimensions `[I, J, K, ..., M, N]` where:
 
   * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
   * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
@@ -602,14 +609,13 @@ REGISTER_OP("MatrixDiagPart")
         return Status::OK();
       }
       const int32 rank = c->Rank(in);
-      // Last two dims must match.
-      DimensionHandle unused;
-      TF_RETURN_IF_ERROR(
-          c->Merge(c->Dim(in, rank - 1), c->Dim(in, rank - 2), &unused));
-
-      // Output shape has all dims but last of input.
       std::vector<DimensionHandle> dims;
-      for (int i = 0; i < rank - 1; ++i) dims.push_back(c->Dim(in, i));
+      for (int i = 0; i < rank - 2; ++i) dims.push_back(c->Dim(in, i));
+
+      DimensionHandle min_dim;
+      TF_RETURN_IF_ERROR(
+          c->Min(c->Dim(in, rank - 2), c->Dim(in, rank - 1), &min_dim));
+      dims.push_back(min_dim);
       c->set_output(0, c->MakeShape(dims));
       return Status::OK();
     })
@@ -619,8 +625,8 @@ Returns the batched diagonal part of a batched tensor.
 This operation returns a tensor with the `diagonal` part
 of the batched `input`. The `diagonal` part is computed as follows:
 
-Assume `input` has `k` dimensions `[I, J, K, ..., N, N]`, then the output is a
-tensor of rank `k - 1` with dimensions `[I, J, K, ..., N]` where:
+Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
+tensor of rank `k - 1` with dimensions `[I, J, K, ..., min(M, N)]` where:
 
 `diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.
 
@@ -645,9 +651,9 @@ tf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
 which has shape (2, 4)
 ```
 
-input: Rank `k` tensor where `k >= 2` and the last two dimensions are equal.
+input: Rank `k` tensor where `k >= 2`.
 diagonal: The extracted diagonal(s) having shape
-  `diagonal.shape = input.shape[:-1]`.
+  `diagonal.shape = input.shape[:-2] + [min(input.shape[-2:])]`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -668,9 +674,10 @@ tensor with the same shape where
 
 `band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.
 
-The indicator function 'in_band(m, n)` is one if
-`(num_lower < 0 || (m-n) <= num_lower)) &&
-(num_upper < 0 || (n-m) <= num_upper)`, and zero otherwise.
+The indicator function
+
+`in_band(m, n) = (num_lower < 0 || (m-n) <= num_lower)) &&
+                 (num_upper < 0 || (n-m) <= num_upper)`.
 
 For example:
 
@@ -681,14 +688,14 @@ For example:
                  [-3, -2, -1, 0]],
 
 tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
-                                             [-1,  0,  1, 2]
-                                             [ 0, -1,  0, 1]
-                                             [ 0,  0, -1, 0]],
+                                       [-1,  0,  1, 2]
+                                       [ 0, -1,  0, 1]
+                                       [ 0,  0, -1, 0]],
 
 tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
-                                            [-1,  0,  1, 0]
-                                            [-2, -1,  0, 1]
-                                            [ 0, -2, -1, 0]]
+                                      [-1,  0,  1, 0]
+                                      [-2, -1,  0, 1]
+                                      [ 0, -2, -1, 0]]
 ```
 
 Useful special cases:
@@ -938,6 +945,7 @@ Gather slices from `params` according to `indices`.
 `indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
 Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
 
+```python
     # Scalar indices
     output[:, ..., :] = params[indices, :, ... :]
 
@@ -946,6 +954,7 @@ Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
 
     # Higher rank indices
     output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]
+```
 
 If `indices` is a permutation and `len(indices) == params.shape[0]` then
 this operation will permute `params` accordingly.
@@ -1010,18 +1019,23 @@ Some examples below.
 
 Simple indexing into a matrix:
 
+```python
     indices = [[0, 0], [1, 1]]
     params = [['a', 'b'], ['c', 'd']]
     output = ['a', 'd']
+```
 
 Slice indexing into a matrix:
 
+```python
     indices = [[1], [0]]
     params = [['a', 'b'], ['c', 'd']]
     output = [['c', 'd'], ['a', 'b']]
+```
 
 Indexing into a 3-tensor:
 
+```python
     indices = [[1]]
     params = [[['a0', 'b0'], ['c0', 'd0']],
               [['a1', 'b1'], ['c1', 'd1']]]
@@ -1038,27 +1052,32 @@ Indexing into a 3-tensor:
     params = [[['a0', 'b0'], ['c0', 'd0']],
               [['a1', 'b1'], ['c1', 'd1']]]
     output = ['b0', 'b1']
+```
 
 Batched indexing into a matrix:
 
+```python
     indices = [[[0, 0]], [[0, 1]]]
     params = [['a', 'b'], ['c', 'd']]
     output = [['a'], ['b']]
+```
 
 Batched slice indexing into a matrix:
 
+```python
     indices = [[[1]], [[0]]]
     params = [['a', 'b'], ['c', 'd']]
     output = [[['c', 'd']], [['a', 'b']]]
+```
 
 Batched indexing into a 3-tensor:
 
+```python
     indices = [[[1]], [[0]]]
     params = [[['a0', 'b0'], ['c0', 'd0']],
               [['a1', 'b1'], ['c1', 'd1']]]
     output = [[[['a1', 'b1'], ['c1', 'd1']]],
               [[['a0', 'b0'], ['c0', 'd0']]]]
-
 
     indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]
     params = [[['a0', 'b0'], ['c0', 'd0']],
@@ -1071,7 +1090,7 @@ Batched indexing into a 3-tensor:
     params = [[['a0', 'b0'], ['c0', 'd0']],
               [['a1', 'b1'], ['c1', 'd1']]]
     output = [['b0', 'b1'], ['d0', 'c1']]
-
+```
 
 params: `M-D`.  The tensor from which to gather values.
 indices: `(N+1)-D`.  Index tensor having shape `[d_0, ..., d_N, R]`.
@@ -2868,6 +2887,7 @@ This operation is equivalent to the following steps:
    input according to `paddings` to produce `padded` of shape `padded_shape`.
 
 2. Reshape `padded` to `reshaped_padded` of shape:
+
      [batch] +
      [padded_shape[1] / block_shape[0],
        block_shape[0],
@@ -2878,6 +2898,7 @@ This operation is equivalent to the following steps:
 
 3. Permute dimensions of `reshaped_padded` to produce
    `permuted_reshaped_padded` of shape:
+
      block_shape +
      [batch] +
      [padded_shape[1] / block_shape[0],
@@ -2887,6 +2908,7 @@ This operation is equivalent to the following steps:
 
 4. Reshape `permuted_reshaped_padded` to flatten `block_shape` into the batch
    dimension, producing an output tensor of shape:
+
      [batch * prod(block_shape)] +
      [padded_shape[1] / block_shape[0],
       ...,
@@ -3668,9 +3690,11 @@ padding: The type of padding algorithm to use.
 
 We specify the size-related attributes as:
 
+```python
       ksizes = [1, ksize_rows, ksize_cols, 1]
       strides = [1, strides_rows, strides_cols, 1]
       rates = [1, rates_rows, rates_cols, 1]
+```
 )doc");
 
 // --------------------------------------------------------------------------
