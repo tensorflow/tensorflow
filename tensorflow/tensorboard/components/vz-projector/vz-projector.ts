@@ -67,6 +67,8 @@ type Centroids = {
   yDown: number[];
 };
 
+type SearchPredicate = (p: DataPoint) => boolean;
+
 export let ProjectorPolymer = PolymerElement({
   is: 'vz-projector',
   properties: {
@@ -262,12 +264,12 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     let info = control.select('.info');
 
     let updateInput = (value: string, inRegexMode: boolean) => {
+      if (value == null) {
+        info.text('');
+        return;
+      }
       let result = this.getCentroid(value, inRegexMode);
-      if (result.error) {
-        info.style('color', CALLOUT_COLOR)
-            .text('Invalid regex. Using a random vector.');
-        result.centroid = vector.rn(this.dim);
-      } else if (result.numMatches === 0) {
+      if (result.numMatches === 0) {
         info.style('color', CALLOUT_COLOR)
             .text('0 matches. Using a random vector.');
         result.centroid = vector.rn(this.dim);
@@ -364,38 +366,29 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     });
 
     // Toolbar controls
-    let searchBox = this.querySelector('.search-box');
-    let info = d3.select(searchBox.querySelector('.info'));
+    let searchBox = this.dom.select('.search-box');
+    let info = searchBox.select('.info');
 
-    let search = (pattern: string, inRegexMode: boolean):
-        {error?: string, indices: number[]} => {
-          let result = this.getSearchPredicate(pattern, inRegexMode);
-          if (result.error) {
-            return {error: result.error, indices: null};
-          }
+    let gatherPointsByRegex =
+        (pattern: string, inRegexMode: boolean): number[] => {
+          let predicate = this.getSearchPredicate(pattern, inRegexMode);
           let indices: number[] = [];
           this.currentDataSet.points.forEach((point, id) => {
-            if (result.predicate(point)) {
+            if (predicate(point)) {
               indices.push(id);
             }
           });
-          return {indices: indices};
+          return indices;
         };
 
     // Called whenever the search text input changes.
     let updateInput = (value: string, inRegexMode: boolean) => {
-      if (value.trim() === '') {
+      if (value == null || value.trim() === '') {
         info.text('');
-        if (this.scatterPlot != null) {
-          this.clearSelection();
-        }
+        this.clearSelection();
         return;
       }
-      let result = search(value, inRegexMode);
-      let indices = result.indices;
-      if (result.error) {
-        info.style('color', CALLOUT_COLOR).text('Invalid regex.');
-      }
+      let indices = gatherPointsByRegex(value, inRegexMode);
       if (indices) {
         if (indices.length === 0) {
           info.style('color', CALLOUT_COLOR).text(`0 matches.`);
@@ -407,7 +400,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
       }
     };
 
-    this.setupInputUIControl(searchBox, (input, inRegexMode) => {
+    this.setupInputUIControl(searchBox.node() as any, (input, inRegexMode) => {
       updateInput(input, inRegexMode);
     });
 
@@ -648,9 +641,23 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     let inRegexMode = false;
     let paperInput = container.querySelector('paper-input') as HTMLInputElement;
     let paperButton = container.querySelector('paper-button');
+    paperInput.setAttribute('error-message', 'Invalid regex');
+
+    let inputChanged = (input: string, inRegexMode: boolean) => {
+      try {
+        if (inRegexMode) {
+          new RegExp(input);
+        }
+        paperInput.removeAttribute('invalid');
+        inputChangedListener(input, inRegexMode);
+      } catch (invalidRegexException) {
+        paperInput.setAttribute('invalid', 'true');
+        inputChangedListener(null, true);
+      }
+    };
 
     paperInput.addEventListener('input', function() {
-      inputChangedListener(this.value, inRegexMode);
+      inputChanged(this.value, inRegexMode);
     });
 
     paperInput.addEventListener('keydown', function(event) {
@@ -666,10 +673,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     paperButton.addEventListener('click', function() {
       inRegexMode = this.active;
       showHideSlashes();
-      inputChangedListener(paperInput.value, inRegexMode);
+      inputChanged(paperInput.value, inRegexMode);
     });
     showHideSlashes();
-    inputChangedListener(paperInput.value, inRegexMode);
+    inputChanged(paperInput.value, inRegexMode);
   }
 
   private runTSNE() {
@@ -820,25 +827,20 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
   getTsneSampleSize() { return SAMPLE_SIZE.toLocaleString(); }
 
   private getSearchPredicate(pattern: string, inRegexMode: boolean):
-      {predicate: (a: DataPoint) => boolean; error: string;} {
-    let predicate: (a: DataPoint) => boolean;
+      SearchPredicate {
+    let predicate: SearchPredicate;
     if (inRegexMode) {
-      try {
-        let regExp = new RegExp(pattern, 'i');
-        predicate = (a: DataPoint) =>
-            regExp.test(a.metadata['label'].toString());
-      } catch (e) {
-        return {error: e.message as string, predicate: null};
-      }
+      let regExp = new RegExp(pattern, 'i');
+      predicate = p => regExp.test(p.metadata['label'].toString());
     } else {
       // Doing a case insensitive substring match.
       pattern = pattern.toLowerCase();
-      predicate = (a: DataPoint) => {
-        let label = a.metadata['label'].toString().toLowerCase();
+      predicate = p => {
+        let label = p.metadata['label'].toString().toLowerCase();
         return label.indexOf(pattern) >= 0;
       };
     }
-    return {error: null, predicate: predicate};
+    return predicate;
   }
 
   private getCentroid(pattern: string, inRegexMode: boolean): CentroidResult {
@@ -846,12 +848,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
       return {numMatches: 0};
     }
     let accessor = (a: DataPoint) => a.vector;
-    let result = this.getSearchPredicate(pattern, inRegexMode);
-    if (result.error) {
-      return {error: result.error};
-    }
-    return vector.centroid(
-        this.currentDataSet.points, result.predicate, accessor);
+    let predicate = this.getSearchPredicate(pattern, inRegexMode);
+    return vector.centroid(this.currentDataSet.points, predicate, accessor);
   }
 
   /**
@@ -908,7 +906,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
 }
 
 type CentroidResult = {
-  centroid?: number[]; numMatches?: number; error?: string
+  centroid?: number[]; numMatches?: number;
 };
 
 document.registerElement(Projector.prototype.is, Projector);
