@@ -111,7 +111,11 @@ Construct a `LinearClassifier` estimator object.
 
 #### `tf.contrib.learn.LinearClassifier.bias_` {#LinearClassifier.bias_}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
@@ -188,6 +192,10 @@ Runs inference to determine the class probability predictions.
 
 #### `tf.contrib.learn.LinearClassifier.weights_` {#LinearClassifier.weights_}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 

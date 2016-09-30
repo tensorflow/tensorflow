@@ -108,9 +108,9 @@ Initializes a DNNClassifier instance.
 
 DEPRECATED FUNCTION
 
-THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-13.
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
 Instructions for updating:
-This method inspects the private state of the object, and should not be used
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
@@ -233,8 +233,8 @@ altogether. The behavior of this flag is described below.
 
 DEPRECATED FUNCTION
 
-THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-13.
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
 Instructions for updating:
-This method inspects the private state of the object, and should not be used
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
