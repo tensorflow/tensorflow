@@ -675,7 +675,7 @@ TEST(GcsFileSystemTest, GetChildren_Pagination) {
                    0 /* read ahead bytes */, 5 /* max upload attempts */);
 
   std::vector<string> children;
-  TF_EXPECT_OK(fs.GetChildrenRecursively("gs://bucket/path", &children));
+  TF_EXPECT_OK(fs.GetChildren("gs://bucket/path", &children));
 
   EXPECT_EQ(std::vector<string>({"file1.txt", "file3.txt", "subpath/",
                                  "file4.txt", "file5.txt"}),
