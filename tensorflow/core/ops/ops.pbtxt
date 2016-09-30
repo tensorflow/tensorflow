@@ -11787,13 +11787,15 @@ op {
     }
     allowed_values {
       list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
       }
     }
   }
-  summary: "Creates a sequence of integers."
-  description: "This operation creates a sequence of integers that begins at `start` and\nextends by increments of `delta` up to but not including `limit`.\n\nFor example:\n\n```\n# \'start\' is 3\n# \'limit\' is 18\n# \'delta\' is 3\ntf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]\n```"
+  summary: "Creates a sequence of numbers."
+  description: "This operation creates a sequence of numbers that begins at `start` and\nextends by increments of `delta` up to but not including `limit`.\n\nFor example:\n\n```\n# \'start\' is 3\n# \'limit\' is 18\n# \'delta\' is 3\ntf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]\n```"
 }
 op {
   name: "Rank"
