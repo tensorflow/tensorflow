@@ -1335,3 +1335,130 @@ def raw_rnn(cell, loop_fn,
       final_loop_state = None
 
     return (emit_ta, final_state, final_loop_state)
+
+
+def dynamic_raw_rnn(cell, inputs, sequence_length=None, initial_state=None,
+                    dtype=None, parallel_iterations=None, swap_memory=False,
+                    time_major=False, scope=None):
+  """Creates a recurrent neural network specified by RNNCell `cell`.
+
+  This function is functionally identical to the function `dynamic_rnn` without
+  tuple support, but uses the 'raw_rnn' interface to implement a dynamic RNN.
+  The purpose of this function is not to replace 'dynamic_rnn',
+  but to show case how raw_rnn makes building RNNs easy and give a working
+  code base for creating custom RNNs.
+
+  Below is equivalent to 'dynamic_rnn' (without tuple support)
+  Args:
+    cell: An instance of RNNCell.
+    inputs: The RNN inputs.
+
+      If `time_major == False` (default), this must be a `Tensor` of shape:
+        `[batch_size, max_time, ...]`, or a nested tuple of such
+        elements.
+
+      If `time_major == True`, this must be a `Tensor` of shape:
+        `[max_time, batch_size, ...]`, or a nested tuple of such
+        elements.
+
+      The input to `cell` at each time step will be a `Tensor` with dimensions
+      `[batch_size, ...]`.
+    sequence_length: (optional) An int32/int64 vector sized `[batch_size]`.
+    initial_state: (optional) An initial state for the RNN.
+      If `cell.state_size` is an integer, this must be
+      a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
+    dtype: (optional) The data type for the initial state and expected output.
+      Required if initial_state is not provided or RNN state has a heterogeneous
+      dtype.
+    parallel_iterations: (Default: 32).  The number of iterations to run in
+      parallel.  Those operations which do not have any temporal dependency
+      and can be run in parallel, will be.  This parameter trades off
+      time for space.  Values >> 1 use more memory but take less time,
+      while smaller values use less memory but computations take longer.
+    swap_memory: Transparently swap the tensors produced in forward inference
+      but needed for back prop from GPU to CPU.  This allows training RNNs
+      which would typically not fit on a single GPU, with very minimal (or no)
+      performance penalty.
+    time_major: The shape format of the `inputs` and `outputs` Tensors.
+      If true, these `Tensors` must be shaped `[max_time, batch_size, depth]`.
+      If false, these `Tensors` must be shaped `[batch_size, max_time, depth]`.
+      Using `time_major = True` is a bit more efficient because it avoids
+      transposes at the beginning and end of the RNN calculation.  However,
+      most TensorFlow data is batch-major, so by default this function
+      accepts input and emits output in batch-major form.
+    scope: VariableScope for the created subgraph; defaults to "RNN".
+
+  Returns:
+    A pair (outputs, state) where:
+
+      outputs: The RNN output `Tensor`.
+
+        If time_major == False (default), this will be a `Tensor` shaped:
+          `[batch_size, max_time, cell.output_size]`.
+
+        If time_major == True, this will be a `Tensor` shaped:
+          `[max_time, batch_size, cell.output_size]`.
+
+      state: The final state.  If `cell.state_size` is an int, this
+        will be shaped `[batch_size, cell.state_size]`.  If it is a
+        `TensorShape`, this will be shaped `[batch_size] + cell.state_size`.
+
+  Raises:
+    TypeError: If `cell` is not an instance of RNNCell.
+    ValueError: If inputs is None or an empty list.
+  """
+  with vs.variable_scope(scope or "RAW_RNN") as varscope:
+    # Setup of RNN (dimensions, sizes, length, initial state, dtype)
+    if not time_major:
+      # [batch, seq, features] -> [seq, batch, features]
+      inputs = array_ops.transpose(inputs, perm=[1, 0, 2])
+    # Get data input information
+    batch_size = array_ops.shape(inputs)[1]
+    input_depth = int(inputs.get_shape()[2])
+    # Handle sequence length
+    if sequence_length is None:
+      max_len = array_ops.shape(inputs)[0]
+      sequence_length = array_ops.ones([batch_size], dtype=tf.int32) * max_len
+    # Setup input as TensorArray
+    inputs_ta = tensor_array_ops.TensorArray(dtype, size=0, dynamic_size=True)
+    inputs_ta = inputs_ta.unpack(inputs)
+
+    # Setup initial state
+    if initial_state is not None:
+      state = initial_state
+      dtype = state.dtype
+    else:
+      if not dtype:
+        raise ValueError("If no initial_state is provided, "
+                         "dtype must be specified")
+      state = cell.zero_state(batch_size, dtype)
+
+    # Define RNN: loop function (will run in the while_loop of 'raw_rnn')
+    def loop_fn(time, cell_output, cell_state, loop_state):
+      emit_output = cell_output # == None for time == 0
+      if cell_output is None: # time == 0
+        next_cell_state = state
+      else:
+        next_cell_state = cell_state
+      elements_finished = (time >= sequence_length)
+      finished = math_ops.reduce_all(elements_finished)
+      # Next input must return zero state for last element explanation below
+      # https://github.com/tensorflow/tensorflow/issues/4519
+      next_input = control_flow_ops.cond(
+        finished,
+        lambda: array_ops.zeros([batch_size, input_depth], dtype=dtype),
+        lambda: inputs_ta.read(time))
+      next_loop_state = None
+      return (elements_finished, next_input, next_cell_state,
+              emit_output, next_loop_state)
+
+    # Run raw_rnn function
+    outputs_ta, final_state, _ = \
+      raw_rnn(cell=cell, loop_fn=loop_fn,
+              parallel_iterations=parallel_iterations,
+              swap_memory=swap_memory, scope=scope)
+    outputs = outputs_ta.pack()
+    if not time_major:
+      # [seq, batch, features] -> [batch, seq, features]
+      outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
+    return outputs, final_state
