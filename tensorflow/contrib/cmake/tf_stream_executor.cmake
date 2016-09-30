@@ -56,10 +56,6 @@ file(GLOB tf_stream_executor_srcs
 
 add_library(tf_stream_executor OBJECT ${tf_stream_executor_srcs})
 
-target_include_directories(tf_stream_executor PRIVATE
-    ${tensorflow_source_dir}
-    ${eigen_INCLUDE_DIRS}
-)
 add_dependencies(tf_stream_executor
     tf_core_lib
 )
@@ -69,14 +65,3 @@ add_dependencies(tf_stream_executor
 #    tf_protos_cc
 #    tf_core_lib
 #)
-
-target_compile_options(tf_stream_executor PRIVATE
-    -fno-exceptions
-    -DEIGEN_AVOID_STL_ARRAY
-)
-
-# C++11
-target_compile_features(tf_stream_executor PRIVATE
-    cxx_rvalue_references
-)
-

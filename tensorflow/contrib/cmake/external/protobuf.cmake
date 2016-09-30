@@ -5,16 +5,17 @@ set(PROTOBUF_URL https://github.com/google/protobuf/releases/download/v3.1.0/pro
 set(PROTOBUF_HASH SHA256=0c18ccc99e921c407f359047f9b56cca196c3ab36eed79e5979df6c1f9e623b7)
 
 if(WIN32)
-  set(PROTOBUF_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/${CMAKE_BUILD_TYPE}/libprotobuf.lib)
+  set(protobuf_STATIC_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/${CMAKE_BUILD_TYPE}/libprotobuf.lib)
   set(PROTOBUF_PROTOC_EXECUTABLE ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/${CMAKE_BUILD_TYPE}/protoc.exe)
 else()
-  set(PROTOBUF_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/libprotobuf.a)
+  set(protobuf_STATIC_LIBRARIES ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/libprotobuf.a)
   set(PROTOBUF_PROTOC_EXECUTABLE ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/protoc)
 endif()
 
 ExternalProject_Add(protobuf
     PREFIX protobuf
     URL ${PROTOBUF_URL}
+    URL_HASH ${PROTOBUF_HASH}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
     SOURCE_DIR ${CMAKE_BINARY_DIR}/protobuf/src/protobuf

@@ -6,12 +6,12 @@ set(GRPC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc)
 set(GRPC_TAG 3bc78cd0b5bd784a235c01612d634b1ec5f8fb97)
 
 if(WIN32)
-  set(GRPC_LIBRARIES
+  set(grpc_STATIC_LIBRARIES
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/${CMAKE_BUILD_TYPE}/grpc++_unsecure.lib
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/${CMAKE_BUILD_TYPE}/grpc_unsecure.lib
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/${CMAKE_BUILD_TYPE}/gpr.lib)
 else()
-  set(GRPC_LIBRARIES
+  set(grpc_STATIC_LIBRARIES
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc++_unsecure.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgrpc_unsecure.a
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a)
@@ -30,6 +30,6 @@ ExternalProject_Add(grpc
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DPROTOBUF_INCLUDE_DIRS:STRING=${PROTOBUF_INCLUDE_DIRS}
-	-DPROTOBUF_LIBRARIES:STRING=${PROTOBUF_LIBRARIES}
+	-DPROTOBUF_LIBRARIES:STRING=${protobuf_STATIC_LIBRARIES}
 )
 
