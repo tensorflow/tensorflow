@@ -24,7 +24,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
+
 import tempfile
 
 from tensorflow.contrib import framework as contrib_framework
@@ -37,7 +37,9 @@ from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.metrics.python.ops import metric_ops
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -70,13 +72,18 @@ def _get_default_optimizer():
   return train.AdagradOptimizer(_DEFAULT_LEARNING_RATE)
 
 
-def dnn_sampled_softmax_classifier_model_fn(features, target_indices,
-                                            mode, params):
+def _get_feature_dict(features):
+  if isinstance(features, dict):
+    return features
+  return {"": features}
+
+
+def _dnn_sampled_softmax_classifier_model_fn(features, targets, mode, params):
   """model_fn that uses candidate sampling.
 
   Args:
     features: Single Tensor or dict of Tensor (depends on data passed to `fit`)
-    target_indices: A single Tensor of shape [batch_size, n_labels] containing
+    targets: A single Tensor of shape [batch_size, n_labels] containing
       the target indices.
     mode: Represents if this training, evaluation or prediction. See `ModeKeys`.
     params: A dict of hyperparameters that are listed below.
@@ -118,6 +125,9 @@ def dnn_sampled_softmax_classifier_model_fn(features, target_indices,
   num_ps_replicas = params["num_ps_replicas"]
 
   parent_scope = "dnn_ss"
+
+  features = _get_feature_dict(features)
+  targets = _reshape_targets(targets)
 
   # Setup the input layer partitioner.
   input_layer_partitioner = (
@@ -180,7 +190,7 @@ def dnn_sampled_softmax_classifier_model_fn(features, target_indices,
   if mode == estimator.ModeKeys.TRAIN:
     # Call the candidate sampling APIs and calculate the loss.
     sampled_values = nn.learned_unigram_candidate_sampler(
-        true_classes=math_ops.to_int64(target_indices),
+        true_classes=math_ops.to_int64(targets),
         num_true=n_labels,
         num_sampled=n_samples,
         unique=True,
@@ -190,7 +200,7 @@ def dnn_sampled_softmax_classifier_model_fn(features, target_indices,
         weights=weights,
         biases=biases,
         inputs=net,
-        labels=math_ops.to_int64(target_indices),
+        labels=math_ops.to_int64(targets),
         num_sampled=n_samples,
         num_classes=n_classes,
         num_true=n_labels,
@@ -216,9 +226,7 @@ def dnn_sampled_softmax_classifier_model_fn(features, target_indices,
     # Since the targets have multiple labels, setup the target probabilities
     # as 1.0/n_labels for each of the labels.
     target_one_hot = array_ops.one_hot(
-        indices=target_indices,
-        depth=n_classes,
-        on_value=1.0 / n_labels)
+        indices=targets, depth=n_classes, on_value=1.0 / n_labels)
     target_one_hot = math_ops.reduce_sum(
         input_tensor=target_one_hot,
         reduction_indices=[1])
@@ -237,6 +245,27 @@ def dnn_sampled_softmax_classifier_model_fn(features, target_indices,
     _, predictions[_TOP_K] = nn.top_k(logits, top_k)
 
     return predictions, None, None
+
+
+def _reshape_targets(targets):
+  if targets is None:
+    return None
+  check_shape_op = control_flow_ops.Assert(
+      math_ops.less_equal(array_ops.rank(targets), 2),
+      ["target's should be either [batch_size, n_labels] or [batch_size]"])
+  with ops.control_dependencies([check_shape_op]):
+    targets = array_ops.reshape(
+        targets, shape=[array_ops.shape(targets)[0], -1])
+  return targets
+
+
+def _top_k_fn_wrapper(metric_fn, k):
+
+  def wrap_func(predictions, labels):
+    return metric_fn(predictions, _reshape_targets(labels), k=k)
+
+  wrap_func.__name__ = metric_fn.__name__
+  return wrap_func
 
 
 class _DNNSampledSoftmaxClassifier(trainable.Trainable, evaluable.Evaluable):
@@ -363,9 +392,9 @@ class _DNNSampledSoftmaxClassifier(trainable.Trainable, evaluable.Evaluable):
     assert self._feature_columns
     self._model_dir = model_dir or tempfile.mkdtemp()
 
-    # Build the estimator with dnn_sampled_softmax_classifier_model_fn.
+    # Build the estimator with _dnn_sampled_softmax_classifier_model_fn.
     self._estimator = estimator.Estimator(
-        model_fn=dnn_sampled_softmax_classifier_model_fn,
+        model_fn=_dnn_sampled_softmax_classifier_model_fn,
         model_dir=self._model_dir,
         config=config,
         params={
@@ -378,7 +407,8 @@ class _DNNSampledSoftmaxClassifier(trainable.Trainable, evaluable.Evaluable):
             "optimizer": optimizer or _get_default_optimizer(),
             "dropout": dropout,
             "gradient_clip_norm": gradient_clip_norm,
-            "num_ps_replicas": config.num_ps_replicas if config else 0},
+            "num_ps_replicas": config.num_ps_replicas if config else 0
+        },
         feature_engineering_fn=feature_engineering_fn)
 
   def get_estimator(self):
@@ -412,10 +442,11 @@ class _DNNSampledSoftmaxClassifier(trainable.Trainable, evaluable.Evaluable):
       metrics = {}
     metrics.update({
         "average_precision_at_%d" % self._top_k: metric_spec.MetricSpec(
-            metric_fn=functools.partial(
+            metric_fn=_top_k_fn_wrapper(
                 metric_ops.streaming_sparse_average_precision_at_k,
                 k=self._top_k),
-            prediction_key=_PROBABILITIES)})
+            prediction_key=_PROBABILITIES)
+    })
     if range_k is None:
       if self._top_k > 1:
         range_k = [1, self._top_k]
@@ -424,14 +455,16 @@ class _DNNSampledSoftmaxClassifier(trainable.Trainable, evaluable.Evaluable):
     for k in range_k:
       metrics.update({
           "precision_at_%d" % k: metric_spec.MetricSpec(
-              metric_fn=functools.partial(
+              metric_fn=_top_k_fn_wrapper(
                   metric_ops.streaming_sparse_precision_at_k, k=k),
-              prediction_key=_PROBABILITIES,)})
+              prediction_key=_PROBABILITIES,)
+      })
       metrics.update({
           "recall_at_%d" % k: metric_spec.MetricSpec(
-              metric_fn=functools.partial(
+              metric_fn=_top_k_fn_wrapper(
                   metric_ops.streaming_sparse_recall_at_k, k=k),
-              prediction_key=_PROBABILITIES,)})
+              prediction_key=_PROBABILITIES,)
+      })
 
     return self._estimator.evaluate(x=x, y=y, input_fn=input_fn,
                                     feed_fn=feed_fn, batch_size=batch_size,
