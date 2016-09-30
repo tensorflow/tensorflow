@@ -31,7 +31,7 @@ second variable called 'biases' is added to the result of the operation.
 *  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
 *  <b>`variables_collections`</b>: optional list of collections for all the variables or
-    a dictionay containing a different list of collection per variable.
+    a dictionary containing a different list of collection per variable.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: whether or not the variables should be trainable or not.
 *  <b>`scope`</b>: Optional scope for variable_scope.

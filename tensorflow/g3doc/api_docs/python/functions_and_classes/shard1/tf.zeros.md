@@ -8,7 +8,7 @@ all elements set to zero.
 For example:
 
 ```python
-tf.zeros([3, 4], int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+tf.zeros([3, 4], tf.int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
 ```
 
 ##### Args:

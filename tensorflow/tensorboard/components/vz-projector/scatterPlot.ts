@@ -93,7 +93,6 @@ export type OnCameraMoveListener =
 /** Supported modes of interaction. */
 export enum Mode {
   SELECT,
-  SEARCH,
   HOVER
 }
 

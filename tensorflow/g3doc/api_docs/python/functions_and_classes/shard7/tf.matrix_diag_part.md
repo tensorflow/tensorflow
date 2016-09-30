@@ -5,8 +5,8 @@ Returns the batched diagonal part of a batched tensor.
 This operation returns a tensor with the `diagonal` part
 of the batched `input`. The `diagonal` part is computed as follows:
 
-Assume `input` has `k` dimensions `[I, J, K, ..., N, N]`, then the output is a
-tensor of rank `k - 1` with dimensions `[I, J, K, ..., N]` where:
+Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
+tensor of rank `k - 1` with dimensions `[I, J, K, ..., min(M, N)]` where:
 
 `diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.
 
@@ -34,13 +34,12 @@ which has shape (2, 4)
 ##### Args:
 
 
-*  <b>`input`</b>: A `Tensor`.
-    Rank `k` tensor where `k >= 2` and the last two dimensions are equal.
+*  <b>`input`</b>: A `Tensor`. Rank `k` tensor where `k >= 2`.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor`. Has the same type as `input`.
   The extracted diagonal(s) having shape
-  `diagonal.shape = input.shape[:-1]`.
+  `diagonal.shape = input.shape[:-2] + [min(input.shape[-2:])]`.
 

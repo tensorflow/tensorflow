@@ -221,6 +221,11 @@ class FeatureColumnTest(tf.test.TestCase):
     h1 = tf.contrib.layers.real_valued_column("h1", normalizer=normalizer)
     self.assertEqual(normalizer(10), h1.normalizer_fn(10))
 
+    # Test that normalizer is not stored within key
+    self.assertFalse("normalizer" in g1.key)
+    self.assertFalse("normalizer" in g2.key)
+    self.assertFalse("normalizer" in h1.key)
+
   def testBucketizedColumnNameEndsWithUnderscoreBucketized(self):
     a = tf.contrib.layers.bucketized_column(
         tf.contrib.layers.real_valued_column("aaa"), [0, 4])

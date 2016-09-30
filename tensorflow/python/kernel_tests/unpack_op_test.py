@@ -23,7 +23,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 
-def np_split_sqeeze(array, axis):
+def np_split_squeeze(array, axis):
   axis_len = array.shape[axis]
   return [
       np.squeeze(arr, axis=(axis,))
@@ -101,7 +101,7 @@ class UnpackOpTest(tf.test.TestCase):
 
       # For all the possible axis to split it, including negative indices.
       for j in range(-i, i):
-        expected = np_split_sqeeze(a, j)
+        expected = np_split_squeeze(a, j)
 
         with self.test_session() as sess:
           actual = sess.run(tf.unpack(a, axis=j))

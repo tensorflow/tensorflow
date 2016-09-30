@@ -31,7 +31,8 @@ limitations under the License.
 //    functions should be defined as valid constexpr functions, so that they are
 //    evaluated at compile time: this is needed to make symbols referenced by
 //    un-registered objects unused, and therefore allow the linker to strip them
-//    out.
+//    out.  See tools/print_required_ops/print_selective_registration_header.py
+//    for a tool that can be used to generate ops_to_register.h.
 #include "ops_to_register.h"
 
 // Op kernel classes for which ShouldRegisterOpKernel returns false will not be

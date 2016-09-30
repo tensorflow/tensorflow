@@ -265,6 +265,7 @@ class SdcaModel(object):
     implementation. We expect the weights and duals to fit in a single machine.
 
     Loss functions supported:
+
      * Binary logistic loss
      * Squared loss
      * Hinge loss

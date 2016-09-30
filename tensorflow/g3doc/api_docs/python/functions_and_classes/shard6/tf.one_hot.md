@@ -21,6 +21,7 @@ at the end).
 If `indices` is a scalar the output shape will be a vector of length `depth`
 
 If `indices` is a vector of length `features`, the output shape will be:
+
 ```
   features x depth if axis == -1
   depth x features if axis == 0
@@ -28,6 +29,7 @@ If `indices` is a vector of length `features`, the output shape will be:
 
 If `indices` is a matrix (batch) with shape `[batch, features]`, the output
 shape will be:
+
 ```
   batch x features x depth if axis == -1
   batch x depth x features if axis == 1
@@ -37,17 +39,17 @@ shape will be:
 If `dtype` is not provided, it will attempt to assume the data type of
 `on_value` or `off_value`, if one or both are passed in. If none of
 `on_value`, `off_value`, or `dtype` are provided, `dtype` will default to the
-value `tf.float32`
+value `tf.float32`.
 
-Note: If a non-numeric data type output is desired (tf.string, tf.bool, etc.),
-both `on_value` and `off_value` _must_ be provided to `one_hot`
+Note: If a non-numeric data type output is desired (`tf.string`, `tf.bool`,
+etc.), both `on_value` and `off_value` _must_ be provided to `one_hot`.
 
 Examples
 =========
 
 Suppose that
 
-```
+```python
   indices = [0, 2, -1, 1]
   depth = 3
   on_value = 5.0
@@ -57,7 +59,7 @@ Suppose that
 
 Then output is `[4 x 3]`:
 
-```
+```python
   output =
   [5.0 0.0 0.0]  // one_hot(0)
   [0.0 0.0 5.0]  // one_hot(2)
@@ -67,7 +69,7 @@ Then output is `[4 x 3]`:
 
 Suppose that
 
-```
+```python
   indices = [[0, 2], [1, -1]]
   depth = 3
   on_value = 1.0
@@ -77,7 +79,7 @@ Suppose that
 
 Then output is `[2 x 2 x 3]`:
 
-```
+```python
   output =
   [
     [1.0, 0.0, 0.0]  // one_hot(0)
@@ -90,14 +92,14 @@ Then output is `[2 x 2 x 3]`:
 
 Using default values for `on_value` and `off_value`:
 
-```
+```python
   indices = [0, 1, 2]
   depth = 3
 ```
 
 The output will be
 
-```
+```python
   output =
   [[1., 0., 0.],
    [0., 1., 0.],

@@ -121,15 +121,12 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     auto root = tensorflow::Scope::NewRootScope();
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
-    const size_t input_data_size = input_height * input_width * input_depth;
     Tensor input_data(DT_FLOAT,
                       TensorShape({1, input_height, input_width, input_depth}));
     test::FillIota<float>(&input_data, 1.0f);
     Output input =
         Const(root.WithOpName("input"), Input::Initializer(input_data));
 
-    const size_t filter_data_size =
-        filter_size * filter_size * filter_count * input_depth;
     Tensor filter_data(DT_FLOAT, TensorShape({filter_size, filter_size,
                                               input_depth, filter_count}));
     test::FillIota<float>(&filter_data, 1.0f);
@@ -178,15 +175,12 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     auto root = tensorflow::Scope::NewRootScope();
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
-    const size_t input_data_size = input_height * input_width * input_depth;
     Tensor input_data(DT_FLOAT,
                       TensorShape({1, input_height, input_width, input_depth}));
     test::FillIota<float>(&input_data, 1.0f);
     Output input =
         Const(root.WithOpName("input"), Input::Initializer(input_data));
 
-    const size_t filter_data_size =
-        filter_size * filter_size * filter_count * input_depth;
     Tensor filter_data(DT_FLOAT, TensorShape({filter_size, filter_size,
                                               input_depth, filter_count}));
     test::FillIota<float>(&filter_data, 1.0f);

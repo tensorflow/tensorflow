@@ -42,7 +42,7 @@ x = [[-1, 0, 1], [-11, 0, 11]]  # Shape 2 x 3.
 dist.pdf(x)
 ```
 
-Trainable (batch) Choesky matrices can be created with
+Trainable (batch) Cholesky matrices can be created with
 `tf.contrib.distributions.matrix_diag_transform()`
 - - -
 

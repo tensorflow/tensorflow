@@ -89,7 +89,8 @@ tensorflow/core/kernels/cwise_op_sigmoid.cc
 tensorflow/core/kernels/cwise_op_select.cc
 tensorflow/core/kernels/cwise_op_rsqrt.cc
 tensorflow/core/kernels/cwise_op_neg.cc
-tensorflow/core/kernels/cwise_op_mul.cc
+tensorflow/core/kernels/cwise_op_mul_2.cc
+tensorflow/core/kernels/cwise_op_mul_1.cc
 tensorflow/core/kernels/cwise_op_minimum.cc
 tensorflow/core/kernels/cwise_op_maximum.cc
 tensorflow/core/kernels/cwise_op_log.cc
@@ -98,9 +99,11 @@ tensorflow/core/kernels/cwise_op_isfinite.cc
 tensorflow/core/kernels/cwise_op_inverse.cc
 tensorflow/core/kernels/cwise_op_greater.cc
 tensorflow/core/kernels/cwise_op_exp.cc
-tensorflow/core/kernels/cwise_op_equal_to.cc
+tensorflow/core/kernels/cwise_op_equal_to_2.cc
+tensorflow/core/kernels/cwise_op_equal_to_1.cc
 tensorflow/core/kernels/cwise_op_div.cc
-tensorflow/core/kernels/cwise_op_add.cc
+tensorflow/core/kernels/cwise_op_add_2.cc
+tensorflow/core/kernels/cwise_op_add_1.cc
 tensorflow/core/kernels/ctc_decoder_ops.cc
 tensorflow/core/kernels/conv_ops_using_gemm.cc
 tensorflow/core/kernels/conv_ops_fused.cc

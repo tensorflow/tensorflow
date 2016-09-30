@@ -565,7 +565,7 @@ along increasing dimension number.
 
 If expand_nonconcat_dim is False, all inputs' shapes must match, except for
 the concat dimension. If expand_nonconcat_dim is True, then inputs' shapes are
-allowd to vary among all inputs.
+allowed to vary among all inputs.
 
 The `indices`, `values`, and `shapes` lists must have the same length.
 
@@ -1110,10 +1110,10 @@ For example, suppose the logical sum of two sparse operands is (densified):
 
 Then,
 
-    - thresh == 0 (the default): all 5 index/value pairs will be returned.
-    - thresh == 0.11: only .1 and 0  will vanish, and the remaining three
+    * `thresh == 0` (the default): all 5 index/value pairs will be returned.
+    * `thresh == 0.11`: only .1 and 0  will vanish, and the remaining three
         index/value pairs will be returned.
-    - thresh == 0.21: .1, 0, and -.2 will vanish.
+    * `thresh == 0.21`: .1, 0, and -.2 will vanish.
 
 ##### Args:
 
@@ -1216,7 +1216,8 @@ There are a number of questions to ask in the decision process, including:
 * Is the density of A larger than approximately 15%?
 
 If the answer to several of these questions is yes, consider
-converting the SparseTensor to a dense one and using tf.matmul with sp_a=True.
+converting the `SparseTensor` to a dense one and using `tf.matmul` with
+`sp_a=True`.
 
 This operation tends to perform well when A is more sparse, if the column size
 of the product is small (e.g. matrix-vector multiplication), if sp_a.shape

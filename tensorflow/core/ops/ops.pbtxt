@@ -5490,7 +5490,7 @@ op {
     type: "type"
   }
   summary: "Partitions `data` into `num_partitions` tensors using indices from `partitions`."
-  description: "For each index tuple `js` of size `partitions.ndim`, the slice `data[js, ...]`\nbecomes part of `outputs[partitions[js]]`.  The slices with `partitions[js] = i`\nare placed in `outputs[i]` in lexicographic order of `js`, and the first\ndimension of `outputs[i]` is the number of entries in `partitions` equal to `i`.\nIn detail,\n\n    outputs[i].shape = [sum(partitions == i)] + data.shape[partitions.ndim:]\n\n    outputs[i] = pack([data[js, ...] for js if partitions[js] == i])\n\n`data.shape` must start with `partitions.shape`.\n\nFor example:\n\n    # Scalar partitions\n    partitions = 1\n    num_partitions = 2\n    data = [10, 20]\n    outputs[0] = []  # Empty with shape [0, 2]\n    outputs[1] = [[10, 20]]\n\n    # Vector partitions\n    partitions = [0, 0, 1, 1, 0]\n    num_partitions = 2\n    data = [10, 20, 30, 40, 50]\n    outputs[0] = [10, 20, 50]\n    outputs[1] = [30, 40]\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/DynamicPartition.png\" alt>\n</div>"
+  description: "For each index tuple `js` of size `partitions.ndim`, the slice `data[js, ...]`\nbecomes part of `outputs[partitions[js]]`.  The slices with `partitions[js] = i`\nare placed in `outputs[i]` in lexicographic order of `js`, and the first\ndimension of `outputs[i]` is the number of entries in `partitions` equal to `i`.\nIn detail,\n\n```python\n    outputs[i].shape = [sum(partitions == i)] + data.shape[partitions.ndim:]\n\n    outputs[i] = pack([data[js, ...] for js if partitions[js] == i])\n```\n\n`data.shape` must start with `partitions.shape`.\n\nFor example:\n\n```python\n    # Scalar partitions.\n    partitions = 1\n    num_partitions = 2\n    data = [10, 20]\n    outputs[0] = []  # Empty with shape [0, 2]\n    outputs[1] = [[10, 20]]\n\n    # Vector partitions.\n    partitions = [0, 0, 1, 1, 0]\n    num_partitions = 2\n    data = [10, 20, 30, 40, 50]\n    outputs[0] = [10, 20, 50]\n    outputs[1] = [30, 40]\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/DynamicPartition.png\" alt>\n</div>"
 }
 op {
   name: "DynamicStitch"
@@ -5519,7 +5519,7 @@ op {
     type: "type"
   }
   summary: "Interleave the values from the `data` tensors into a single tensor."
-  description: "Builds a merged tensor such that\n\n    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]\n\nFor example, if each `indices[m]` is scalar or vector, we have\n\n    # Scalar indices\n    merged[indices[m], ...] = data[m][...]\n\n    # Vector indices\n    merged[indices[m][i], ...] = data[m][i, ...]\n\nEach `data[i].shape` must start with the corresponding `indices[i].shape`,\nand the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we\nmust have `data[i].shape = indices[i].shape + constant`.  In terms of this\n`constant`, the output shape is\n\n    merged.shape = [max(indices)] + constant\n\nValues are merged in order, so if an index appears in both `indices[m][i]` and\n`indices[n][j]` for `(m,i) < (n,j)` the slice `data[n][j]` will appear in the\nmerged result.\n\nFor example:\n\n    indices[0] = 6\n    indices[1] = [4, 1]\n    indices[2] = [[5, 2], [0, 3]]\n    data[0] = [61, 62]\n    data[1] = [[41, 42], [11, 12]]\n    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]\n    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],\n              [51, 52], [61, 62]]\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/DynamicStitch.png\" alt>\n</div>"
+  description: "Builds a merged tensor such that\n\n```python\n    merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]\n```\n\nFor example, if each `indices[m]` is scalar or vector, we have\n\n```python\n    # Scalar indices:\n    merged[indices[m], ...] = data[m][...]\n\n    # Vector indices:\n    merged[indices[m][i], ...] = data[m][i, ...]\n```\n\nEach `data[i].shape` must start with the corresponding `indices[i].shape`,\nand the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we\nmust have `data[i].shape = indices[i].shape + constant`.  In terms of this\n`constant`, the output shape is\n\n    merged.shape = [max(indices)] + constant\n\nValues are merged in order, so if an index appears in both `indices[m][i]` and\n`indices[n][j]` for `(m,i) < (n,j)` the slice `data[n][j]` will appear in the\nmerged result.\n\nFor example:\n\n```python\n    indices[0] = 6\n    indices[1] = [4, 1]\n    indices[2] = [[5, 2], [0, 3]]\n    data[0] = [61, 62]\n    data[1] = [[41, 42], [11, 12]]\n    data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]\n    merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],\n              [51, 52], [61, 62]]\n```\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/DynamicStitch.png\" alt>\n</div>"
 }
 op {
   name: "EditDistance"
@@ -6049,7 +6049,7 @@ op {
     default_value {
       b: true
     }
-    description: "indicates if the noise should be generated using a\nuniform distribution or a gaussian distribution."
+    description: "indicates if the noise should be generated using a\nuniform distribution or a Gaussian distribution."
   }
   summary: "Extracts a glimpse from the input tensor."
   description: "Returns a set of windows called glimpses extracted at location\n`offsets` from the input tensor. If the windows only partially\noverlaps the inputs, the non overlapping areas will be filled with\nrandom noise.\n\nThe result is a 4-D tensor of shape `[batch_size, glimpse_height,\nglimpse_width, channels]`. The channels and batch dimensions are the\nsame as that of the input tensor. The height and width of the output\nwindows are specified in the `size` parameter.\n\nThe argument `normalized` and `centered` controls how the windows are built:\n\n* If the coordinates are normalized but not centered, 0.0 and 1.0\n  correspond to the minimum and maximum of each height and width\n  dimension.\n* If the coordinates are both normalized and centered, they range from\n  -1.0 to 1.0. The coordinates (-1.0, -1.0) correspond to the upper\n  left corner, the lower right corner is located at (1.0, 1.0) and the\n  center is at (0, 0).\n* If the coordinates are not normalized they are interpreted as\n  numbers of pixels."
@@ -6107,7 +6107,7 @@ op {
   attr {
     name: "padding"
     type: "string"
-    description: "The type of padding algorithm to use.\n\nWe specify the size-related attributes as:\n\n      ksizes = [1, ksize_rows, ksize_cols, 1]\n      strides = [1, strides_rows, strides_cols, 1]\n      rates = [1, rates_rows, rates_cols, 1]"
+    description: "The type of padding algorithm to use.\n\nWe specify the size-related attributes as:\n\n```python\n      ksizes = [1, ksize_rows, ksize_cols, 1]\n      strides = [1, strides_rows, strides_cols, 1]\n      rates = [1, rates_rows, rates_cols, 1]\n```"
     allowed_values {
       list {
         s: "SAME"
@@ -6901,6 +6901,67 @@ op {
   description: "Note that the size of 4D Tensors are defined by either \"NHWC\" or \"NCHW\".\nThe size of 1D Tensors matches the dimension C of the 4D Tensors."
 }
 op {
+  name: "FusedPadConv2D"
+  input_arg {
+    name: "input"
+    description: "4-D with shape `[batch, in_height, in_width, in_channels]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "paddings"
+    description: "A two-column matrix specifying the padding sizes. The number of\nrows must be the same as the rank of `input`."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "filter"
+    description: "4-D with shape\n`[filter_height, filter_width, in_channels, out_channels]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "mode"
+    type: "string"
+    allowed_values {
+      list {
+        s: "REFLECT"
+        s: "SYMMETRIC"
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    description: "1-D of length 4.  The stride of the sliding window for each dimension\nof `input`. Must be in the same order as the dimension specified with format."
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    description: "The type of padding algorithm to use."
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+  summary: "Performs a padding as a preprocess during a convolution."
+  description: "Similar to FusedResizeAndPadConv2d, this op allows for an optimized\nimplementation where the spatial padding transformation stage is fused with the\nim2col lookup, but in this case without the bilinear filtering required for\nresizing. Fusing the padding prevents the need to write out the intermediate\nresults as whole tensors, reducing memory pressure, and we can get some latency\ngains by merging the transformation calculations.\nThe data_format attribute for Conv2D isn\'t supported by this op, and \'NHWC\'\norder is used instead.\nInternally this op uses a single per-graph scratch buffer, which means that it\nwill block if multiple versions are being run in parallel. This is because this\noperator is primarily an optimization to minimize memory usage."
+}
+op {
   name: "FusedResizeAndPadConv2D"
   input_arg {
     name: "input"
@@ -7010,7 +7071,7 @@ op {
     }
   }
   summary: "Gather slices from `params` according to `indices`."
-  description: "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `indices.shape + params.shape[1:]` where:\n\n    # Scalar indices\n    output[:, ..., :] = params[indices, :, ... :]\n\n    # Vector indices\n    output[i, :, ..., :] = params[indices[i], :, ... :]\n\n    # Higher rank indices\n    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]\n\nIf `indices` is a permutation and `len(indices) == params.shape[0]` then\nthis operation will permute `params` accordingly.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/Gather.png\" alt>\n</div>"
+  description: "`indices` must be an integer tensor of any dimension (usually 0-D or 1-D).\nProduces an output tensor with shape `indices.shape + params.shape[1:]` where:\n\n```python\n    # Scalar indices\n    output[:, ..., :] = params[indices, :, ... :]\n\n    # Vector indices\n    output[i, :, ..., :] = params[indices[i], :, ... :]\n\n    # Higher rank indices\n    output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]\n```\n\nIf `indices` is a permutation and `len(indices) == params.shape[0]` then\nthis operation will permute `params` accordingly.\n\n<div style=\"width:70%; margin:auto; margin-bottom:10px; margin-top:20px;\">\n<img style=\"width:100%\" src=\"../../images/Gather.png\" alt>\n</div>"
 }
 op {
   name: "GatherNd"
@@ -7044,7 +7105,7 @@ op {
     }
   }
   summary: "Gather values or slices from `params` according to `indices`."
-  description: "`params` is a Tensor of rank `R` and `indices` is a Tensor of rank `M`.\n\n`indices` must be integer tensor, containing indices into `params`.\nIt must be shape `[d_0, ..., d_N, R]` where `0 < R <= M`.\n\nThe innermost dimension of `indices` (with length `R`) corresponds to\nindices into elements (if `R = M`) or slices (if `R < M`) along the `N`th\ndimension of `params`.\n\nProduces an output tensor with shape\n\n    [d_0, ..., d_{n-1}, params.shape[R], ..., params.shape[M-1]].\n\nSome examples below.\n\nSimple indexing into a matrix:\n\n    indices = [[0, 0], [1, 1]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [\'a\', \'d\']\n\nSlice indexing into a matrix:\n\n    indices = [[1], [0]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'c\', \'d\'], [\'a\', \'b\']]\n\nIndexing into a 3-tensor:\n\n    indices = [[1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[0, 1], [1, 0]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'c0\', \'d0\'], [\'a1\', \'b1\']]\n\n\n    indices = [[0, 0, 1], [1, 0, 1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [\'b0\', \'b1\']\n\nBatched indexing into a matrix:\n\n    indices = [[[0, 0]], [[0, 1]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'a\'], [\'b\']]\n\nBatched slice indexing into a matrix:\n\n    indices = [[[1]], [[0]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[[\'c\', \'d\']], [[\'a\', \'b\']]]\n\nBatched indexing into a 3-tensor:\n\n    indices = [[[1]], [[0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[[\'a1\', \'b1\'], [\'c1\', \'d1\']]],\n              [[[\'a0\', \'b0\'], [\'c0\', \'d0\']]]]\n\n\n    indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'c0\', \'d0\'], [\'a1\', \'b1\']],\n              [[\'a0\', \'b0\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'b0\', \'b1\'], [\'d0\', \'c1\']]"
+  description: "`params` is a Tensor of rank `R` and `indices` is a Tensor of rank `M`.\n\n`indices` must be integer tensor, containing indices into `params`.\nIt must be shape `[d_0, ..., d_N, R]` where `0 < R <= M`.\n\nThe innermost dimension of `indices` (with length `R`) corresponds to\nindices into elements (if `R = M`) or slices (if `R < M`) along the `N`th\ndimension of `params`.\n\nProduces an output tensor with shape\n\n    [d_0, ..., d_{n-1}, params.shape[R], ..., params.shape[M-1]].\n\nSome examples below.\n\nSimple indexing into a matrix:\n\n```python\n    indices = [[0, 0], [1, 1]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [\'a\', \'d\']\n```\n\nSlice indexing into a matrix:\n\n```python\n    indices = [[1], [0]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'c\', \'d\'], [\'a\', \'b\']]\n```\n\nIndexing into a 3-tensor:\n\n```python\n    indices = [[1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[0, 1], [1, 0]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'c0\', \'d0\'], [\'a1\', \'b1\']]\n\n\n    indices = [[0, 0, 1], [1, 0, 1]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [\'b0\', \'b1\']\n```\n\nBatched indexing into a matrix:\n\n```python\n    indices = [[[0, 0]], [[0, 1]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[\'a\'], [\'b\']]\n```\n\nBatched slice indexing into a matrix:\n\n```python\n    indices = [[[1]], [[0]]]\n    params = [[\'a\', \'b\'], [\'c\', \'d\']]\n    output = [[[\'c\', \'d\']], [[\'a\', \'b\']]]\n```\n\nBatched indexing into a 3-tensor:\n\n```python\n    indices = [[[1]], [[0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[[\'a1\', \'b1\'], [\'c1\', \'d1\']]],\n              [[[\'a0\', \'b0\'], [\'c0\', \'d0\']]]]\n\n    indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[[\'c0\', \'d0\'], [\'a1\', \'b1\']],\n              [[\'a0\', \'b0\'], [\'c1\', \'d1\']]]\n\n\n    indices = [[[0, 0, 1], [1, 0, 1]], [[0, 1, 1], [1, 1, 0]]]\n    params = [[[\'a0\', \'b0\'], [\'c0\', \'d0\']],\n              [[\'a1\', \'b1\'], [\'c1\', \'d1\']]]\n    output = [[\'b0\', \'b1\'], [\'d0\', \'c1\']]\n```"
 }
 op {
   name: "GetSessionHandle"
@@ -8642,7 +8703,7 @@ op {
     type: "type"
   }
   summary: "Copy a tensor setting everything outside a central band in each innermost matrix"
-  description: "to zero.\n\nThe `band` part is computed as follows:\nAssume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a\ntensor with the same shape where\n\n`band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.\n\nThe indicator function \'in_band(m, n)` is one if\n`(num_lower < 0 || (m-n) <= num_lower)) &&\n(num_upper < 0 || (n-m) <= num_upper)`, and zero otherwise.\n\nFor example:\n\n```prettyprint\n# if \'input\' is [[ 0,  1,  2, 3]\n                 [-1,  0,  1, 2]\n                 [-2, -1,  0, 1]\n                 [-3, -2, -1, 0]],\n\ntf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]\n                                             [-1,  0,  1, 2]\n                                             [ 0, -1,  0, 1]\n                                             [ 0,  0, -1, 0]],\n\ntf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]\n                                            [-1,  0,  1, 0]\n                                            [-2, -1,  0, 1]\n                                            [ 0, -2, -1, 0]]\n```\n\nUseful special cases:\n\n```prettyprint\n tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.\n tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.\n tf.matrix_band_part(input, 0, 0) ==> Diagonal.\n```"
+  description: "to zero.\n\nThe `band` part is computed as follows:\nAssume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a\ntensor with the same shape where\n\n`band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.\n\nThe indicator function\n\n`in_band(m, n) = (num_lower < 0 || (m-n) <= num_lower)) &&\n                 (num_upper < 0 || (n-m) <= num_upper)`.\n\nFor example:\n\n```prettyprint\n# if \'input\' is [[ 0,  1,  2, 3]\n                 [-1,  0,  1, 2]\n                 [-2, -1,  0, 1]\n                 [-3, -2, -1, 0]],\n\ntf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]\n                                       [-1,  0,  1, 2]\n                                       [ 0, -1,  0, 1]\n                                       [ 0,  0, -1, 0]],\n\ntf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]\n                                      [-1,  0,  1, 0]\n                                      [-2, -1,  0, 1]\n                                      [ 0, -2, -1, 0]]\n```\n\nUseful special cases:\n\n```prettyprint\n tf.matrix_band_part(input, 0, -1) ==> Upper triangular part.\n tf.matrix_band_part(input, -1, 0) ==> Lower triangular part.\n tf.matrix_band_part(input, 0, 0) ==> Diagonal.\n```"
 }
 op {
   name: "MatrixDeterminant"
@@ -8692,12 +8753,12 @@ op {
   name: "MatrixDiagPart"
   input_arg {
     name: "input"
-    description: "Rank `k` tensor where `k >= 2` and the last two dimensions are equal."
+    description: "Rank `k` tensor where `k >= 2`."
     type_attr: "T"
   }
   output_arg {
     name: "diagonal"
-    description: "The extracted diagonal(s) having shape\n`diagonal.shape = input.shape[:-1]`."
+    description: "The extracted diagonal(s) having shape\n`diagonal.shape = input.shape[:-2] + [min(input.shape[-2:])]`."
     type_attr: "T"
   }
   attr {
@@ -8705,7 +8766,7 @@ op {
     type: "type"
   }
   summary: "Returns the batched diagonal part of a batched tensor."
-  description: "This operation returns a tensor with the `diagonal` part\nof the batched `input`. The `diagonal` part is computed as follows:\n\nAssume `input` has `k` dimensions `[I, J, K, ..., N, N]`, then the output is a\ntensor of rank `k - 1` with dimensions `[I, J, K, ..., N]` where:\n\n`diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.\n\nThe input must be at least a matrix.\n\nFor example:\n\n```prettyprint\n# \'input\' is [[[1, 0, 0, 0]\n               [0, 2, 0, 0]\n               [0, 0, 3, 0]\n               [0, 0, 0, 4]],\n              [[5, 0, 0, 0]\n               [0, 6, 0, 0]\n               [0, 0, 7, 0]\n               [0, 0, 0, 8]]]\n\nand input.shape = (2, 4, 4)\n\ntf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]\n\nwhich has shape (2, 4)\n```"
+  description: "This operation returns a tensor with the `diagonal` part\nof the batched `input`. The `diagonal` part is computed as follows:\n\nAssume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a\ntensor of rank `k - 1` with dimensions `[I, J, K, ..., min(M, N)]` where:\n\n`diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.\n\nThe input must be at least a matrix.\n\nFor example:\n\n```prettyprint\n# \'input\' is [[[1, 0, 0, 0]\n               [0, 2, 0, 0]\n               [0, 0, 3, 0]\n               [0, 0, 0, 4]],\n              [[5, 0, 0, 0]\n               [0, 6, 0, 0]\n               [0, 0, 7, 0]\n               [0, 0, 0, 8]]]\n\nand input.shape = (2, 4, 4)\n\ntf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]\n\nwhich has shape (2, 4)\n```"
 }
 op {
   name: "MatrixInverse"
@@ -8761,7 +8822,7 @@ op {
     type: "type"
   }
   summary: "Returns a batched matrix tensor with new batched diagonal values."
-  description: "Given `input` and `diagonal`, this operation returns a tensor with the\nsame shape and values as `input`, except for the diagonals of the innermost\nmatrices.  These will be overwritten by the values in `diagonal`.\nThe batched matrices must be square.\n\nThe output is computed as follows:\n\nAssume `input` has `k+1` dimensions `[I, J, K, ..., N, N]` and `diagonal` has\n`k` dimensions `[I, J, K, ..., N]`.  Then the output is a\ntensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:\n\n  * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.\n  * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`."
+  description: "Given `input` and `diagonal`, this operation returns a tensor with the\nsame shape and values as `input`, except for the main diagonal of the\ninnermost matrices.  These will be overwritten by the values in `diagonal`.\n\nThe output is computed as follows:\n\nAssume `input` has `k+1` dimensions `[I, J, K, ..., M, N]` and `diagonal` has\n`k` dimensions `[I, J, K, ..., min(M, N)]`.  Then the output is a\ntensor of rank `k+1` with dimensions `[I, J, K, ..., M, N]` where:\n\n  * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.\n  * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`."
 }
 op {
   name: "MatrixSolve"
@@ -10068,7 +10129,7 @@ op {
     description: "A float representing the threshold for deciding whether boxes\noverlap too much with respect to IOU."
   }
   summary: "Greedily selects a subset of bounding boxes in descending order of score,"
-  description: "pruning away boxes that have high intersection-over-union (IOU) overlap\nwith previously selected boxes.  Bounding boxes are supplied as\n[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any\ndiagonal pair of box corners and the coordinates can be provided as normalized\n(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm\nis agnostic to where the origin is in the coordinate system.  Note that this\nalgorithm is invariant to orthogonal transformations and translations\nof the coordinate system; thus translating or reflections of the coordinate\nsystem result in the same boxes being selected by the algorithm.\n\nThe output of this operation is a set of integers indexing into the input\ncollection of bounding boxes representing the selected boxes.  The bounding\nbox coordinates corresponding to the selected indices can then be obtained\nusing the tf.gather operation.  For example:\n\n  selected_indices = tf.image.non_max_suppression(\n      boxes, scores, max_output_size, iou_threshold)\n  selected_boxes = tf.gather(boxes, selected_indices)"
+  description: "pruning away boxes that have high intersection-over-union (IOU) overlap\nwith previously selected boxes.  Bounding boxes are supplied as\n[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any\ndiagonal pair of box corners and the coordinates can be provided as normalized\n(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm\nis agnostic to where the origin is in the coordinate system.  Note that this\nalgorithm is invariant to orthogonal transformations and translations\nof the coordinate system; thus translating or reflections of the coordinate\nsystem result in the same boxes being selected by the algorithm.\n\nThe output of this operation is a set of integers indexing into the input\ncollection of bounding boxes representing the selected boxes.  The bounding\nbox coordinates corresponding to the selected indices can then be obtained\nusing the `tf.gather operation`.  For example:\n\n  selected_indices = tf.image.non_max_suppression(\n      boxes, scores, max_output_size, iou_threshold)\n  selected_boxes = tf.gather(boxes, selected_indices)"
 }
 op {
   name: "NotEqual"
@@ -12936,7 +12997,7 @@ op {
     description: "Controls behavior if no bounding boxes supplied.\nIf true, assume an implicit bounding box covering the whole input. If false,\nraise an error."
   }
   summary: "Generate a single randomly distorted bounding box for an image."
-  description: "Bounding box annotations are often supplied in addition to ground-truth labels\nin image recognition or object localization tasks. A common technique for\ntraining such a system is to randomly distort an image while preserving\nits content, i.e. *data augmentation*. This Op outputs a randomly distorted\nlocalization of an object, i.e. bounding box, given an `image_size`,\n`bounding_boxes` and a series of constraints.\n\nThe output of this Op is a single bounding box that may be used to crop the\noriginal image. The output is returned as 3 tensors: `begin`, `size` and\n`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the\nimage. The latter may be supplied to `tf.image.draw_bounding_box` to visualize\nwhat the bounding box looks like.\n\nBounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example,\n\n    # Generate a single distorted bounding box.\n    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(\n        tf.shape(image),\n        bounding_boxes=bounding_boxes)\n\n    # Draw the bounding box in an image summary.\n    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),\n                                                  bbox_for_draw)\n    tf.image_summary(\'images_with_box\', image_with_box)\n\n    # Employ the bounding box to distort the image.\n    distorted_image = tf.slice(image, begin, size)\n\nNote that if no bounding box information is available, setting\n`use_image_if_no_bounding_boxes = true` will assume there is a single implicit\nbounding box covering the whole image. If `use_image_if_no_bounding_boxes` is\nfalse and no bounding boxes are supplied, an error is raised."
+  description: "Bounding box annotations are often supplied in addition to ground-truth labels\nin image recognition or object localization tasks. A common technique for\ntraining such a system is to randomly distort an image while preserving\nits content, i.e. *data augmentation*. This Op outputs a randomly distorted\nlocalization of an object, i.e. bounding box, given an `image_size`,\n`bounding_boxes` and a series of constraints.\n\nThe output of this Op is a single bounding box that may be used to crop the\noriginal image. The output is returned as 3 tensors: `begin`, `size` and\n`bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the\nimage. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize\nwhat the bounding box looks like.\n\nBounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The\nbounding box coordinates are floats in `[0.0, 1.0]` relative to the width and\nheight of the underlying image.\n\nFor example,\n\n```python\n    # Generate a single distorted bounding box.\n    begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(\n        tf.shape(image),\n        bounding_boxes=bounding_boxes)\n\n    # Draw the bounding box in an image summary.\n    image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),\n                                                  bbox_for_draw)\n    tf.image_summary(\'images_with_box\', image_with_box)\n\n    # Employ the bounding box to distort the image.\n    distorted_image = tf.slice(image, begin, size)\n```\n\nNote that if no bounding box information is available, setting\n`use_image_if_no_bounding_boxes = true` will assume there is a single implicit\nbounding box covering the whole image. If `use_image_if_no_bounding_boxes` is\nfalse and no bounding boxes are supplied, an error is raised."
   is_stateful: true
 }
 op {
@@ -14557,7 +14618,7 @@ op {
   }
   input_arg {
     name: "paddings"
-    description: "2-D with shape `[M, 2]`, all values must be >= 0.\n  `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension\n  `i + 1`, which corresponds to spatial dimension `i`.  It is required that\n  `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.\n\nThis operation is equivalent to the following steps:\n\n1. Zero-pad the start and end of dimensions `[1, ..., M]` of the\n   input according to `paddings` to produce `padded` of shape `padded_shape`.\n\n2. Reshape `padded` to `reshaped_padded` of shape:\n     [batch] +\n     [padded_shape[1] / block_shape[0],\n       block_shape[0],\n      ...,\n      padded_shape[M] / block_shape[M-1],\n      block_shape[M-1]] +\n     remaining_shape\n\n3. Permute dimensions of `reshaped_padded` to produce\n   `permuted_reshaped_padded` of shape:\n     block_shape +\n     [batch] +\n     [padded_shape[1] / block_shape[0],\n      ...,\n      padded_shape[M] / block_shape[M-1]] +\n     remaining_shape\n\n4. Reshape `permuted_reshaped_padded` to flatten `block_shape` into the batch\n   dimension, producing an output tensor of shape:\n     [batch * prod(block_shape)] +\n     [padded_shape[1] / block_shape[0],\n      ...,\n      padded_shape[M] / block_shape[M-1]] +\n     remaining_shape\n\nSome examples:\n\n(1) For the following input of shape `[1, 2, 2, 1]`, `block_shape = [2, 2]`, and\n    `paddings = [[0, 0], [0, 0]]`:\n\n```prettyprint\nx = [[[[1], [2]], [[3], [4]]]]\n```\n\nThe output tensor has shape `[4, 1, 1, 1]` and value:\n\n```prettyprint\n[[[[1]]], [[[2]]], [[[3]]], [[[4]]]]\n```\n\n(2) For the following input of shape `[1, 2, 2, 3]`, `block_shape = [2, 2]`, and\n    `paddings = [[0, 0], [0, 0]]`:\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThe output tensor has shape `[4, 1, 1, 3]` and value:\n\n```prettyprint\n[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]\n```\n\n(3) For the following input of shape `[1, 4, 4, 1]`, `block_shape = [2, 2]`, and\n    `paddings = [[0, 0], [0, 0]]`:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]],\n      [[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```\n\nThe output tensor has shape `[4, 2, 2, 1]` and value:\n\n```prettyprint\nx = [[[[1], [3]], [[5], [7]]],\n     [[[2], [4]], [[10], [12]]],\n     [[[5], [7]], [[13], [15]]],\n     [[[6], [8]], [[14], [16]]]]\n```\n\n(4) For the following input of shape `[2, 2, 4, 1]`, block_shape = `[2, 2]`, and\n    paddings = `[[0, 0], [2, 0]]`:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]]],\n     [[[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```\n\nThe output tensor has shape `[8, 1, 3, 1]` and value:\n\n```prettyprint\nx = [[[[0], [1], [3]]], [[[0], [9], [11]]],\n     [[[0], [2], [4]]], [[[0], [10], [12]]],\n     [[[0], [5], [7]]], [[[0], [13], [15]]],\n     [[[0], [6], [8]]], [[[0], [14], [16]]]]\n```\n\nAmong others, this operation is useful for reducing atrous convolution into\nregular convolution."
+    description: "2-D with shape `[M, 2]`, all values must be >= 0.\n  `paddings[i] = [pad_start, pad_end]` specifies the padding for input dimension\n  `i + 1`, which corresponds to spatial dimension `i`.  It is required that\n  `block_shape[i]` divides `input_shape[i + 1] + pad_start + pad_end`.\n\nThis operation is equivalent to the following steps:\n\n1. Zero-pad the start and end of dimensions `[1, ..., M]` of the\n   input according to `paddings` to produce `padded` of shape `padded_shape`.\n\n2. Reshape `padded` to `reshaped_padded` of shape:\n\n     [batch] +\n     [padded_shape[1] / block_shape[0],\n       block_shape[0],\n      ...,\n      padded_shape[M] / block_shape[M-1],\n      block_shape[M-1]] +\n     remaining_shape\n\n3. Permute dimensions of `reshaped_padded` to produce\n   `permuted_reshaped_padded` of shape:\n\n     block_shape +\n     [batch] +\n     [padded_shape[1] / block_shape[0],\n      ...,\n      padded_shape[M] / block_shape[M-1]] +\n     remaining_shape\n\n4. Reshape `permuted_reshaped_padded` to flatten `block_shape` into the batch\n   dimension, producing an output tensor of shape:\n\n     [batch * prod(block_shape)] +\n     [padded_shape[1] / block_shape[0],\n      ...,\n      padded_shape[M] / block_shape[M-1]] +\n     remaining_shape\n\nSome examples:\n\n(1) For the following input of shape `[1, 2, 2, 1]`, `block_shape = [2, 2]`, and\n    `paddings = [[0, 0], [0, 0]]`:\n\n```prettyprint\nx = [[[[1], [2]], [[3], [4]]]]\n```\n\nThe output tensor has shape `[4, 1, 1, 1]` and value:\n\n```prettyprint\n[[[[1]]], [[[2]]], [[[3]]], [[[4]]]]\n```\n\n(2) For the following input of shape `[1, 2, 2, 3]`, `block_shape = [2, 2]`, and\n    `paddings = [[0, 0], [0, 0]]`:\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThe output tensor has shape `[4, 1, 1, 3]` and value:\n\n```prettyprint\n[[[1, 2, 3]], [[4, 5, 6]], [[7, 8, 9]], [[10, 11, 12]]]\n```\n\n(3) For the following input of shape `[1, 4, 4, 1]`, `block_shape = [2, 2]`, and\n    `paddings = [[0, 0], [0, 0]]`:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]],\n      [[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```\n\nThe output tensor has shape `[4, 2, 2, 1]` and value:\n\n```prettyprint\nx = [[[[1], [3]], [[5], [7]]],\n     [[[2], [4]], [[10], [12]]],\n     [[[5], [7]], [[13], [15]]],\n     [[[6], [8]], [[14], [16]]]]\n```\n\n(4) For the following input of shape `[2, 2, 4, 1]`, block_shape = `[2, 2]`, and\n    paddings = `[[0, 0], [2, 0]]`:\n\n```prettyprint\nx = [[[[1],   [2],  [3],  [4]],\n      [[5],   [6],  [7],  [8]]],\n     [[[9],  [10], [11],  [12]],\n      [[13], [14], [15],  [16]]]]\n```\n\nThe output tensor has shape `[8, 1, 3, 1]` and value:\n\n```prettyprint\nx = [[[[0], [1], [3]]], [[[0], [9], [11]]],\n     [[[0], [2], [4]]], [[[0], [10], [12]]],\n     [[[0], [5], [7]]], [[[0], [13], [15]]],\n     [[[0], [6], [8]]], [[[0], [14], [16]]]]\n```\n\nAmong others, this operation is useful for reducing atrous convolution into\nregular convolution."
     type_attr: "Tpaddings"
   }
   output_arg {
@@ -17293,7 +17354,7 @@ op {
     description: "The key for the keyed hash function passed as a list of two uint64\nelements."
   }
   summary: "Converts each string in the input Tensor to its hash mod by a number of buckets."
-  description: "The hash function is deterministic on the content of the string within the\nprocess. The hash function is a keyed hash function, where attribute `key`\ndefines the key of the hash function. `key` is an array of 2 elements.\n\nA strong hash is important when inputs may be malicious, e.g. URLs with\nadditional components. Adversaries could try to make their inputs hash to the\nsame bucket for a denial-of-service attack or to skew the results. A strong\nhash prevents this by making it dificult, if not infeasible, to compute inputs\nthat hash to the same bucket. This comes at a cost of roughly 4x higher compute\ntime than tf.string_to_hash_bucket_fast."
+  description: "The hash function is deterministic on the content of the string within the\nprocess. The hash function is a keyed hash function, where attribute `key`\ndefines the key of the hash function. `key` is an array of 2 elements.\n\nA strong hash is important when inputs may be malicious, e.g. URLs with\nadditional components. Adversaries could try to make their inputs hash to the\nsame bucket for a denial-of-service attack or to skew the results. A strong\nhash prevents this by making it dificult, if not infeasible, to compute inputs\nthat hash to the same bucket. This comes at a cost of roughly 4x higher compute\ntime than `tf.string_to_hash_bucket_fast`."
 }
 op {
   name: "StringToNumber"
@@ -17312,7 +17373,7 @@ op {
     default_value {
       type: DT_FLOAT
     }
-    description: "The numeric type to interpret each string in string_tensor as."
+    description: "The numeric type to interpret each string in `string_tensor` as."
     allowed_values {
       list {
         type: DT_FLOAT

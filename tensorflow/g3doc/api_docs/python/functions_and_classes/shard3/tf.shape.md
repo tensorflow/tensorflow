@@ -17,7 +17,7 @@ shape(t) ==> [2, 2, 3]
 *  <b>`input`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 *  <b>`out_type`</b>: (Optional) The specified output type of the operation
-    (`int32` or `int64`). Defaults to tf.int32.
+    (`int32` or `int64`). Defaults to `tf.int32`.
 
 ##### Returns:
 
