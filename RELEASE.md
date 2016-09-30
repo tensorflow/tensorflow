@@ -2,7 +2,8 @@
 
 ## Major Features and Improvements
 
-* HDFS Support
+* cuDNN 5.0 support.
+* HDFS Support.
 * Improved support for NumPy style basic slicing including non-1 strides,
   ellipses, newaxis, and negative indices. For example complicated expressions
   like `foo[1, 2:4, tf.newaxis, ..., :-3:-1, :]` are now supported. In addition
