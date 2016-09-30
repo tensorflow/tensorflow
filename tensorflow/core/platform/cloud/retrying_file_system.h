@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_RETRYING_FILE_SYSTEM_H_
 #define TENSORFLOW_CORE_PLATFORM_RETRYING_FILE_SYSTEM_H_
 
-#include <unistd.h>
-
 #include <string>
 #include <vector>
 #include "tensorflow/core/lib/core/status.h"
@@ -29,7 +27,7 @@ namespace tensorflow {
 class RetryingFileSystem : public FileSystem {
  public:
   RetryingFileSystem(std::unique_ptr<FileSystem> base_file_system,
-                     int64 delay_microseconds = 1000000L)
+                     int64 delay_microseconds = 1000000)
       : base_file_system_(std::move(base_file_system)),
         initial_delay_microseconds_(delay_microseconds) {}
 

@@ -26,8 +26,8 @@ namespace {
 
 // In case of failure, every call will be retried kMaxRetries times.
 constexpr int kMaxRetries = 3;
-// Maximum backoff time in milliseconds.
-constexpr int64 kMaximumBackoffMicroseconds = 32000000L;
+// Maximum backoff time in microseconds.
+constexpr int64 kMaximumBackoffMicroseconds = 32000000;
 
 bool IsRetriable(Status status) {
   switch (status.code()) {
@@ -42,7 +42,7 @@ bool IsRetriable(Status status) {
 }
 
 void WaitBeforeRetry(const int64 delay_micros) {
-  const int64 random_micros = random::New64() % 1000000L;
+  const int64 random_micros = random::New64() % 1000000;
 
   Env::Default()->SleepForMicroseconds(std::min(delay_micros + random_micros,
                                                 kMaximumBackoffMicroseconds));
@@ -67,7 +67,7 @@ Status CallWithRetries(const std::function<Status()>& f,
 class RetryingRandomAccessFile : public RandomAccessFile {
  public:
   RetryingRandomAccessFile(std::unique_ptr<RandomAccessFile> base_file,
-                           int64 delay_microseconds = 1000000L)
+                           int64 delay_microseconds = 1000000)
       : base_file_(std::move(base_file)),
         initial_delay_microseconds_(delay_microseconds) {}
 
@@ -86,7 +86,7 @@ class RetryingRandomAccessFile : public RandomAccessFile {
 class RetryingWritableFile : public WritableFile {
  public:
   RetryingWritableFile(std::unique_ptr<WritableFile> base_file,
-                       int64 delay_microseconds = 1000000L)
+                       int64 delay_microseconds = 1000000)
       : base_file_(std::move(base_file)),
         initial_delay_microseconds_(delay_microseconds) {}
 
