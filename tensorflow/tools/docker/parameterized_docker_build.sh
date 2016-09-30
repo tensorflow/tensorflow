@@ -58,6 +58,14 @@
 #     If set to a valid binary/script path, will call the script with the final
 #     tagged image name with an argument, to push the image to a central repo
 #     such as gcr.io or Docker Hub.
+#
+#   TF_DOCKER_BUILD_PYTHON_VERSION
+#     (Optional)
+#     Specifies the desired Python version. Defaults to PYTHON2.
+#
+#   TF_DOCKER_BUILD_OPTIONS
+#     (Optional)
+#     Specifices the desired build options. Defaults to OPT.
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -176,7 +184,6 @@ if [[ "${DO_PIP_BUILD}" == "1" ]]; then
   # Perform local build of the required PIP whl file
   export TF_BUILD_CONTAINER_TYPE=${TF_DOCKER_BUILD_TYPE}
   export TF_BUILD_PYTHON_VERSION=${TF_DOCKER_BUILD_PYTHON_VERSION}
-  export TF_BUILD_MAVX=${TF_DOCKER_BUILD_MAVX}
   export TF_BUILD_OPTIONS=${TF_DOCKER_BUILD_OPTIONS}
   export TF_BUILD_IS_PIP="PIP"
 
