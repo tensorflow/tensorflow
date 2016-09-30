@@ -157,22 +157,38 @@ class _DNNLinearCombinedBaseEstimator(estimator.BaseEstimator):
         (lambda features, targets: (features, targets)))
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def linear_weights_(self):
     """Returns weights per feature of the linear part."""
     return self._linear_model.get_weights(model_dir=self._model_dir)
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def linear_bias_(self):
     """Returns bias of the linear part."""
     return (self._linear_model.get_bias(model_dir=self._model_dir) +
             self.get_variable_value("centered_bias_weight"))
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def dnn_weights_(self):
     """Returns weights of deep neural network part."""
     return self._dnn_model.get_weights(model_dir=self._model_dir)
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def dnn_bias_(self):
     """Returns bias of deep neural network part."""
     return (self._dnn_model.get_bias(model_dir=self._model_dir) +

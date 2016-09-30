@@ -567,8 +567,10 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
     return self._model_dir
 
   @property
-  @deprecated("2016-10-13", "This method inspects the private state of the "
-              "object, and should not be used")
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def weights_(self):
     hiddenlayer_weights = [checkpoints.load_variable(
         self._model_dir, name=("dnn/hiddenlayer_%d/weights" % i))
@@ -578,8 +580,10 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
     return hiddenlayer_weights + logits_weights
 
   @property
-  @deprecated("2016-10-13", "This method inspects the private state of the "
-              "object, and should not be used")
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def bias_(self):
     hiddenlayer_bias = [checkpoints.load_variable(
         self._model_dir, name=("dnn/hiddenlayer_%d/biases" % i))
@@ -722,9 +726,17 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     self._feature_columns_inferred = False
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def weights_(self):
     return self.dnn_weights_
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def bias_(self):
     return self.dnn_bias_

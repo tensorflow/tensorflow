@@ -29,6 +29,7 @@ import six
 from tensorflow.contrib import layers
 from tensorflow.contrib import losses
 from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import target_column
 from tensorflow.contrib.learn.python.learn import evaluable
@@ -584,6 +585,10 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
         exports_to_keep=exports_to_keep)
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def weights_(self):
     values = {}
     optimizer_regex = r".*/"+self._optimizer.get_name() + r"(_\d)?$"
@@ -597,6 +602,10 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
     return values
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def bias_(self):
     return checkpoints.load_variable(self._model_dir,
                                      name="linear/bias_weight")
@@ -747,9 +756,17 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     return "squared_loss"
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def weights_(self):
     return self.linear_weights_
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def bias_(self):
     return self.linear_bias_
