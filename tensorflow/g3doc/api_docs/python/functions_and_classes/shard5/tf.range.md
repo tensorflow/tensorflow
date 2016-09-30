@@ -10,7 +10,7 @@ Like the Python builtin `range`, `start` defaults to 0, so that
 
 For example:
 
-```
+```python
 # 'start' is 3
 # 'limit' is 18
 # 'delta' is 3

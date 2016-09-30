@@ -122,8 +122,10 @@ class Categorical(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
-    logits_2d = array_ops.reshape(
-        self.logits, array_ops.pack([-1, self.num_classes]))
+    if self.logits.get_shape().ndims == 2:
+      logits_2d = self.logits
+    else:
+      logits_2d = array_ops.reshape(self.logits, [-1, self.num_classes])
     samples = random_ops.multinomial(logits_2d, n, seed=seed)
     samples = math_ops.cast(samples, self.dtype)
     ret = array_ops.reshape(
@@ -133,21 +135,24 @@ class Categorical(distribution.Distribution):
 
   def _log_prob(self, k):
     k = ops.convert_to_tensor(k, name="k")
-    logits = self.logits * array_ops.ones_like(
-        array_ops.expand_dims(k, -1),
-        dtype=self.logits.dtype)
-    shape = array_ops.slice(array_ops.shape(logits), [0],
-                            [array_ops.rank(logits) - 1])
-    k *= array_ops.ones(shape, dtype=k.dtype)
-    k.set_shape(tensor_shape.TensorShape(logits.get_shape()[:-1]))
+    if self.logits.get_shape()[:-1] == k.get_shape():
+      logits = self.logits
+    else:
+      logits = self.logits * array_ops.ones_like(
+          array_ops.expand_dims(k, -1), dtype=self.logits.dtype)
+      logits_shape = array_ops.shape(logits)[:-1]
+      k *= array_ops.ones(logits_shape, dtype=k.dtype)
+      k.set_shape(tensor_shape.TensorShape(logits.get_shape()[:-1]))
     return -nn_ops.sparse_softmax_cross_entropy_with_logits(logits, k)
 
   def _prob(self, k):
     return math_ops.exp(self._log_prob(k))
 
   def _entropy(self):
-    logits_2d = array_ops.reshape(
-        self.logits, array_ops.pack([-1, self.num_classes]))
+    if self.logits.get_shape().ndims == 2:
+      logits_2d = self.logits
+    else:
+      logits_2d = array_ops.reshape(self.logits, [-1, self.num_classes])
     histogram_2d = nn_ops.softmax(logits_2d)
     ret = array_ops.reshape(
         nn_ops.softmax_cross_entropy_with_logits(logits_2d, histogram_2d),

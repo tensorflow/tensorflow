@@ -130,4 +130,92 @@ Status FileSystem::GetMatchingPaths(const string& pattern,
   return ret;
 }
 
+Status FileSystem::DeleteRecursively(const string& dirname,
+                                     int64* undeleted_files,
+                                     int64* undeleted_dirs) {
+  CHECK_NOTNULL(undeleted_files);
+  CHECK_NOTNULL(undeleted_dirs);
+
+  *undeleted_files = 0;
+  *undeleted_dirs = 0;
+  // Make sure that dirname exists;
+  if (!FileExists(dirname)) {
+    (*undeleted_dirs)++;
+    return Status(error::NOT_FOUND, "Directory doesn't exist");
+  }
+  std::deque<string> dir_q;      // Queue for the BFS
+  std::vector<string> dir_list;  // List of all dirs discovered
+  dir_q.push_back(dirname);
+  Status ret;  // Status to be returned.
+  // Do a BFS on the directory to discover all the sub-directories. Remove all
+  // children that are files along the way. Then cleanup and remove the
+  // directories in reverse order.;
+  while (!dir_q.empty()) {
+    string dir = dir_q.front();
+    dir_q.pop_front();
+    dir_list.push_back(dir);
+    std::vector<string> children;
+    // GetChildren might fail if we don't have appropriate permissions.
+    Status s = GetChildren(dir, &children);
+    ret.Update(s);
+    if (!s.ok()) {
+      (*undeleted_dirs)++;
+      continue;
+    }
+    for (const string& child : children) {
+      const string child_path = io::JoinPath(dir, child);
+      // If the child is a directory add it to the queue, otherwise delete it.
+      if (IsDirectory(child_path).ok()) {
+        dir_q.push_back(child_path);
+      } else {
+        // Delete file might fail because of permissions issues or might be
+        // unimplemented.
+        Status del_status = DeleteFile(child_path);
+        ret.Update(del_status);
+        if (!del_status.ok()) {
+          (*undeleted_files)++;
+        }
+      }
+    }
+  }
+  // Now reverse the list of directories and delete them. The BFS ensures that
+  // we can delete the directories in this order.
+  std::reverse(dir_list.begin(), dir_list.end());
+  for (const string& dir : dir_list) {
+    // Delete dir might fail because of permissions issues or might be
+    // unimplemented.
+    Status s = DeleteDir(dir);
+    ret.Update(s);
+    if (!s.ok()) {
+      (*undeleted_dirs)++;
+    }
+  }
+  return ret;
+}
+
+Status FileSystem::RecursivelyCreateDir(const string& dirname) {
+  StringPiece scheme, host, remaining_dir;
+  ParseURI(dirname, &scheme, &host, &remaining_dir);
+  std::vector<StringPiece> sub_dirs;
+  while (!FileExists(CreateURI(scheme, host, remaining_dir)) &&
+         !remaining_dir.empty()) {
+    // Basename returns "" for / ending dirs.
+    if (!remaining_dir.ends_with("/")) {
+      sub_dirs.push_back(io::Basename(remaining_dir));
+    }
+    remaining_dir = io::Dirname(remaining_dir);
+  }
+
+  // sub_dirs contains all the dirs to be created but in reverse order.
+  std::reverse(sub_dirs.begin(), sub_dirs.end());
+
+  // Now create the directories.
+  string built_path = remaining_dir.ToString();
+  for (const StringPiece sub_dir : sub_dirs) {
+    built_path = io::JoinPath(built_path, sub_dir);
+    TF_RETURN_IF_ERROR(CreateDir(CreateURI(scheme, host, built_path)));
+  }
+  return Status::OK();
+}
+
 }  // namespace tensorflow

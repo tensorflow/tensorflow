@@ -15,8 +15,8 @@ limitations under the License.
 
 import {RenderContext} from './renderContext';
 import {DataSet} from './scatterPlot';
-import {ScatterPlot} from './scatterPlot';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
+import {SelectionContext} from './selectionContext';
 
 const TRACE_START_HUE = 60;
 const TRACE_END_HUE = 360;
@@ -39,8 +39,9 @@ export class ScatterPlotVisualizerTraces implements ScatterPlotVisualizer {
   private traces: THREE.Line[];
   private tracePositionBuffer: {[trace: number]: THREE.BufferAttribute} = {};
 
-  constructor(scatterPlot: ScatterPlot) {
-    scatterPlot.onSelection((s: number[]) => this.onSelectionChanged(s));
+  constructor(selectionContext: SelectionContext) {
+    selectionContext.registerSelectionChangedListener(
+        (s: number[]) => this.onSelectionChanged(s));
   }
 
   /**

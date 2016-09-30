@@ -42,6 +42,541 @@ from tensorflow.python.ops.gen_nn_ops import *
 local_response_normalization = gen_nn_ops.lrn
 
 
+def _non_atrous_convolution(input, filter, padding, strides=None, name=None):  # pylint: disable=redefined-builtin
+  """Computes sums of N-D convolutions (actually cross correlation).
+
+  It is required that 1 <= N <= 3.
+
+  This is used to implement the more generic `convolution` function, which
+  extends the interface of this function with a `dilation_rate` parameter.
+
+  Args:
+    input: Rank N+2 tensor of type T of shape
+      `[batch_size] + input_spatial_shape + [in_channels]`.
+    filter: Rank N+2 tensor of type T of shape
+      `filter_spatial_shape + [in_channels, out_channels]`.  Rank of either
+      `input` or `filter` must be known.
+    padding: Padding method to use, must be either "VALID" or "SAME".
+    strides: Sequence of N positive integers, defaults to `[1] * N`.
+    name: Name prefix to use.
+
+  Returns:
+    Rank N+2 tensor of type T of shape
+    `[batch_size] + output_spatial_shape + [out_channels]`, where
+    if padding == "SAME":
+      output_spatial_shape = input_spatial_shape
+    if padding == "VALID":
+      output_spatial_shape = input_spatial_shape - filter_spatial_shape + 1.
+
+  Raises:
+    ValueError: if ranks are incompatible.
+
+  """
+  with ops.name_scope(name, "non_atrous_convolution", [input, filter]) as scope:
+    input = ops.convert_to_tensor(input, name="input")
+    filter = ops.convert_to_tensor(filter, name="filter")
+    filter_shape = filter.get_shape().with_rank(input.get_shape().ndims)
+    input_shape = input.get_shape().with_rank(filter_shape.ndims)
+    if input_shape.ndims is None:
+      raise ValueError("Rank of convolution must be known")
+    if input_shape.ndims < 3 or input_shape.ndims > 5:
+      raise ValueError(
+          "`input` and `filter` must have rank at least 3 and at most 5")
+    conv_dims = input_shape.ndims - 2
+    if strides is None:
+      strides = [1] * conv_dims
+    elif len(strides) != conv_dims:
+      raise ValueError("len(strides)=%d, but should be %d" %
+                       (len(strides), conv_dims))
+    if conv_dims == 1:
+      return conv1d(value=input,
+                    filters=filter,
+                    stride=strides[0],
+                    padding=padding,
+                    name=scope)
+    elif conv_dims == 2:
+      return gen_nn_ops.conv2d(input=input,
+                               filter=filter,
+                               strides=[1] + list(strides) + [1],
+                               padding=padding,
+                               name=name)
+    elif conv_dims == 3:
+      return gen_nn_ops.conv3d(input=input,
+                               filter=filter,
+                               strides=[1] + list(strides) + [1],
+                               padding=padding,
+                               name=name)
+
+
+def with_space_to_batch(input, dilation_rate, padding, op, filter_shape=None):  # pylint: disable=redefined-builtin
+  """Performs `op` on the space-to-batch representation of `input`.
+
+  This has the effect of transforming sliding window operations into the
+  corresponding "atrous" operation in which the input is sampled at the
+  specified `dilation_rate`.
+
+  In the special case that `dilation_rate` is uniformly 1, this simply returns:
+
+    op(input, num_spatial_dims, padding)
+
+  Otherwise, it returns:
+
+    batch_to_space_nd(
+      op(space_to_batch_nd(input, dilation_rate, paddings),
+         num_spatial_dims,
+         "VALID")
+      dilation_rate,
+      crops),
+
+  where `paddings` and `crops` are int32 [num_spatial_dims, 2] tensors that
+  depend on the value of `padding`:
+
+  If `padding = "VALID"`, then:
+
+    paddings, crops = required_space_to_batch_paddings(
+      input_shape[1:num_spatial_dims+1],
+      dilation_rate)
+
+  If `padding = "SAME"`, then:
+
+    dilated_filter_shape =
+      filter_shape + (filter_shape - 1) * (dilation_rate - 1)
+
+    paddings, crops = required_space_to_batch_paddings(
+      input_shape[1:num_spatial_dims+1],
+      [(dilated_filter_shape - 1) // 2,
+       dilated_filter_shape - 1 - (dilated_filter_shape - 1) // 2])
+
+  Note in the case that `dilation_rate` is not uniformly 1, specifying "VALID"
+  padding is equivalent to specifying `padding = "SAME"` with a filter_shape of
+  `[1]*N`.
+
+  Advanced usage. Note the following optimization: A sequence of
+  `with_space_to_batch` operations with identical (not uniformly 1)
+  `dilation_rate` parameters and "VALID" padding
+
+    net = with_space_to_batch(net, dilation_rate, "VALID", op_1)
+    ...
+    net = with_space_to_batch(net, dilation_rate, "VALID", op_k)
+
+  can be combined into a single `with_space_to_batch` operation as follows:
+
+    def combined_op(converted_input, num_spatial_dims, _):
+      result = op_1(converted_input, num_spatial_dims, "VALID")
+      ...
+      result = op_k(result, num_spatial_dims, "VALID")
+
+    net = with_space_to_batch(net, dilation_rate, "VALID", combined_op)
+
+  This eliminates the overhead of `k-1` calls to `space_to_batch_nd` and
+  `batch_to_space_nd`.
+
+  Similarly, a sequence of `with_space_to_batch` operations with identical (not
+  uniformly 1) `dilation_rate` parameters, "SAME" padding, and odd filter
+  dimensions
+
+    net = with_space_to_batch(net, dilation_rate, "SAME", op_1, filter_shape_1)
+    ...
+    net = with_space_to_batch(net, dilation_rate, "SAME", op_k, filter_shape_k)
+
+  can be combined into a single `with_space_to_batch` operation as follows:
+
+    def combined_op(converted_input, num_spatial_dims, _):
+      result = op_1(converted_input, num_spatial_dims, "SAME")
+      ...
+      result = op_k(result, num_spatial_dims, "SAME")
+
+    net = with_space_to_batch(net, dilation_rate, "VALID", combined_op)
+
+  Args:
+    input: Tensor of rank >= 1 + num_spatial_dims.
+    dilation_rate: int32 Tensor of *known* shape [num_spatial_dims].
+    padding: str constant equal to "VALID" or "SAME"
+    op: Function that maps (input, num_spatial_dims, padding) -> output
+    filter_shape: If padding = "SAME", specifies the shape of the convolution
+      kernel/pooling window as an integer Tensor of shape [>=num_spatial_dims].
+      If padding = "VALID", filter_shape is ignored and need not be specified.
+
+  Returns:
+    The output Tensor as described above.
+
+  Raises:
+    ValueError: if padding is invalid or the arguments are incompatible.
+
+  """
+  input = ops.convert_to_tensor(input, name="input")
+  dilation_rate = ops.convert_to_tensor(dilation_rate,
+                                        dtypes.int32,
+                                        name="dilation_rate")
+  try:
+    rate_shape = dilation_rate.get_shape().with_rank(1)
+  except ValueError:
+    raise ValueError("rate must be rank 1")
+
+  if not dilation_rate.get_shape().is_fully_defined():
+    raise ValueError("rate must have known shape")
+
+  num_spatial_dims = rate_shape[0].value
+
+  try:
+    input.get_shape().with_rank_at_least(num_spatial_dims + 1)
+  except ValueError:
+    ValueError("input tensor must have rank %d at least" %
+               (num_spatial_dims + 1))
+
+  const_rate = tensor_util.constant_value(dilation_rate)
+  rate_or_const_rate = dilation_rate
+  if const_rate is not None:
+    rate_or_const_rate = const_rate
+    if np.any(const_rate < 1):
+      raise ValueError("rate must be positive")
+    if np.all(const_rate == 1):
+      return op(input, num_spatial_dims, padding)
+
+  # We have two padding contributions. The first is used for converting "SAME"
+  # to "VALID". The second is required so that the height and width of the
+  # zero-padded value tensor are multiples of rate.
+
+  # Padding required to reduce to "VALID" convolution
+  if padding == "SAME":
+    if filter_shape is None:
+      raise ValueError("filter_shape must be specified for SAME padding")
+    filter_shape = ops.convert_to_tensor(filter_shape, name="filter_shape")
+    const_filter_shape = tensor_util.constant_value(filter_shape)
+    if const_filter_shape is not None:
+      filter_shape = const_filter_shape
+
+    # Spatial dimensions of the filters and the upsampled filters in which we
+    # introduce (rate - 1) zeros between consecutive filter values.
+    filter_spatial_shape = filter_shape[:num_spatial_dims]
+    dilated_filter_spatial_shape = (filter_spatial_shape +
+                                    (filter_spatial_shape - 1) *
+                                    (rate_or_const_rate - 1))
+    pad_extra_shape = dilated_filter_spatial_shape - 1
+
+    # When full_padding_shape is odd, we pad more at end, following the same
+    # convention as conv2d.
+    pad_extra_start = pad_extra_shape // 2
+    pad_extra_end = pad_extra_shape - pad_extra_start
+    base_paddings = array_ops.pack([[pad_extra_start[i], pad_extra_end[i]]
+                                    for i in range(num_spatial_dims)])
+  elif padding == "VALID":
+    base_paddings = np.zeros([num_spatial_dims, 2], np.int32)
+  else:
+    raise ValueError("Invalid padding method %r" % padding)
+
+  # Handle input whose shape is unknown during graph creation.
+  if input.get_shape().is_fully_defined():
+    input_shape = np.array(input.get_shape().as_list())
+  else:
+    input_shape = array_ops.shape(input)
+
+  input_spatial_shape = input_shape[1:num_spatial_dims+1]
+  paddings, crops = array_ops.required_space_to_batch_paddings(
+      input_shape=input_spatial_shape,
+      base_paddings=base_paddings,
+      block_shape=dilation_rate)
+
+  input_converted = array_ops.space_to_batch_nd(input=input,
+                                                block_shape=dilation_rate,
+                                                paddings=paddings)
+
+  result = op(input_converted, num_spatial_dims, "VALID")
+
+  result_converted = array_ops.batch_to_space_nd(input=result,
+                                                 block_shape=dilation_rate,
+                                                 crops=crops)
+  return result_converted
+
+
+def _get_strides_and_dilation_rate(num_spatial_dims, strides, dilation_rate):
+  """Helper function for verifying strides and dilation_rate arguments.
+
+  This is used by `convolution` and `pool`.
+
+  Args:
+    num_spatial_dims: int
+    strides: Optional.  List of N ints >= 1.  Defaults to [1]*N.  If any value
+      of strides is > 1, then all values of dilation_rate must be 1.
+    dilation_rate: Optional.  List of N ints >= 1.  Defaults to [1]*N.  If any
+      value of dilation_rate is > 1, then all values of strides must be 1.
+
+  Returns:
+    Normalized (strides, dilation_rate) as int32 numpy arrays of shape
+    [num_spatial_dims].
+
+  Raises:
+    ValueError: if the parameters are invalid.
+  """
+  if dilation_rate is None:
+    dilation_rate = [1] * num_spatial_dims
+  elif len(dilation_rate) != num_spatial_dims:
+    raise ValueError("len(dilation_rate)=%d but should be %d" %
+                     (len(dilation_rate), num_spatial_dims))
+  dilation_rate = np.array(dilation_rate, dtype=np.int32)
+  if np.any(dilation_rate < 1):
+    raise ValueError("all values of dilation_rate must be positive")
+
+  if strides is None:
+    strides = [1] * num_spatial_dims
+  elif len(strides) != num_spatial_dims:
+    raise ValueError("len(strides)=%d but should be %d" %
+                     (len(strides), num_spatial_dims))
+  strides = np.array(strides, dtype=np.int32)
+  if np.any(strides < 1):
+    raise ValueError("all values of strides must be positive")
+
+  if np.any(strides > 1) and np.any(dilation_rate > 1):
+    raise ValueError(
+        "strides > 1 not supported in conjunction with dilation_rate > 1")
+  return strides, dilation_rate
+
+
+def convolution(input, filter,  # pylint: disable=redefined-builtin
+                padding, strides=None, dilation_rate=None, name=None):
+  # pylint: disable=line-too-long
+  """Computes sums of N-D convolutions (actually cross-correlation).
+
+  This also supports either output striding via the optional `strides` parameter
+  or atrous convolution (also known as convolution with holes or dilated
+  convolution, based on the French word "trous" meaning holes in English) via
+  the optional `dilation_rate` parameter.  Currently, however, output striding
+  is not supported for atrous convolutions.
+
+  Specifically, given rank (N+2) `input` Tensor of shape
+
+    [num_batches,
+     input_spatial_shape[0],
+     ...,
+     input_spatial_shape[N-1],
+     num_input_channels],
+
+  a rank (N+2) `filter` Tensor of shape
+
+    [spatial_filter_shape[0],
+     ...,
+     spatial_filter_shape[N-1],
+     num_input_channels,
+     num_output_channels],
+
+  an optional `dilation_rate` tensor of shape [N] (defaulting to [1]*N)
+  specifying the filter upsampling/input downsampling rate, and an optional list
+  of N `strides` (defaulting [1]*N), this computes for each N-D spatial output
+  position (x[0], ..., x[N-1]):
+
+    output[b, x[0], ..., x[N-1], k] =
+
+        sum_{z[0], ..., z[N-1], q}
+
+            filters[z[0], ..., z[N-1], q, k] *
+            padded_input[b,
+                         x[0]*strides[0] + dilation_rate[0]*z[0],
+                         ...,
+                         x[N-1]*strides[N-1] + dilation_rate[N-1]*z[N-1],
+                         q],
+
+  where `padded_input` is obtained by zero padding the input using an effective
+  spatial filter shape of `(spatial_filter_shape-1) * dilation_rate + 1` and
+  output striding `strides` as described in the
+  [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution).
+
+  It is required that 1 <= N <= 3.
+
+  Args:
+    input: An N-D `Tensor` of type `T`, of shape
+      `[batch_size] + input_spatial_shape + [in_channels]`.
+    filter: An N-D `Tensor` with the same type as `input` and shape
+      `spatial_filter_shape + [in_channels, out_channels]`.
+    padding: A string, either `"VALID"` or `"SAME"`. The padding algorithm.
+    strides: Optional.  Sequence of N ints >= 1.  Specifies the output stride.
+      Defaults to [1]*N.  If any value of strides is > 1, then all values of
+      dilation_rate must be 1.
+    dilation_rate: Optional.  Sequence of N ints >= 1.  Specifies the filter
+      upsampling/input downsampling rate.  In the literature, the same parameter
+      is sometimes called `input stride` or `dilation`.  The effective filter
+      size used for the convolution will be `spatial_filter_shape +
+      (spatial_filter_shape - 1) * (rate - 1)`, obtained by inserting
+      (dilation_rate[i]-1) zeros between consecutive elements of the original
+      filter in each spatial dimension i.  If any value of dilation_rate is > 1,
+      then all values of strides must be 1.
+    name: Optional name for the returned tensor.
+
+  Returns:
+    A `Tensor` with the same type as `value` of shape
+
+        `[batch_size] + output_spatial_shape + [out_channels]`,
+
+    where `output_spatial_shape` depends on the value of `padding`.
+
+    If padding == "SAME":
+      output_spatial_shape[i] = ceil(input_spatial_shape[i] / strides[i])
+
+    If padding == "VALID":
+      output_spatial_shape[i] =
+        ceil((input_spatial_shape[i] -
+              (spatial_filter_shape[i]-1) * dilation_rate[i])
+             / strides[i]).
+
+  Raises:
+    ValueError: If input/output depth does not match `filter` shape, or if
+      padding is other than `"VALID"` or `"SAME"`.
+
+  """
+  # pylint: enable=line-too-long
+  with ops.name_scope(name, "convolution", [input, filter]) as name:
+    input = ops.convert_to_tensor(input, name="input")
+    filter = ops.convert_to_tensor(filter, name="filter")
+    num_total_dims = filter.get_shape().ndims
+    if num_total_dims is None:
+      num_total_dims = input.get_shape().ndims
+    if num_total_dims is None:
+      raise ValueError("rank of input or filter must be known")
+
+    num_spatial_dims = num_total_dims - 2
+
+    try:
+      input.get_shape().with_rank(num_spatial_dims + 2)
+    except ValueError:
+      ValueError("input tensor must have rank %d" % (num_spatial_dims + 2))
+
+    try:
+      filter.get_shape().with_rank(num_spatial_dims + 2)
+    except ValueError:
+      ValueError("filter tensor must have rank %d" % (num_spatial_dims + 2))
+
+    if not input.get_shape()[num_spatial_dims + 1].is_compatible_with(
+        filter.get_shape()[num_spatial_dims]):
+      raise ValueError(
+          "number of input channels does not match corresponding dimension of filter, "
+          "{} != {}".format(input.get_shape()[num_spatial_dims + 1],
+                            filter.get_shape()[num_spatial_dims]))
+
+    strides, dilation_rate = _get_strides_and_dilation_rate(
+        num_spatial_dims, strides, dilation_rate)
+
+    def op(input_converted, _, padding):
+      return _non_atrous_convolution(
+          input=input_converted,
+          filter=filter,
+          padding=padding,
+          strides=strides,
+          name=name)
+
+    return with_space_to_batch(
+        input=input,
+        filter_shape=array_ops.shape(filter),
+        dilation_rate=dilation_rate,
+        padding=padding,
+        op=op)
+
+
+def pool(input,  # pylint: disable=redefined-builtin
+         window_shape,
+         pooling_type,
+         padding,
+         dilation_rate=None,
+         strides=None,
+         name=None):
+  # pylint: disable=line-too-long
+  """Performs an N-D pooling operation.
+
+  Computes for
+      0 <= b < batch_size,
+      0 <= x[i] < output_spatial_shape[i],
+      0 <= c < num_channels:
+
+    output[b, x[0], ..., x[N-1], c] =
+      REDUCE_{z[0], ..., z[N-1]}
+        input[b,
+              x[0] * strides[0] - pad_before[0] + dilation_rate[0]*z[0],
+              ...
+              x[N-1]*strides[N-1] - pad_before[N-1] + dilation_rate[N-1]*z[N-1],
+              c],
+
+  where the reduction function REDUCE depends on the value of `pooling_type`,
+  and pad_before is defined based on the value of `padding` as described in the
+  [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution).
+  The reduction never includes out-of-bounds positions.
+
+  Args:
+    input: Tensor of rank N+2, of shape
+      [batch_size] + input_spatial_shape + [num_channels].
+      Pooling happens over the spatial dimensions only.
+    window_shape: Sequence of N ints >= 1.
+    pooling_type: Specifies pooling operation, must be "AVG" or "MAX".
+    padding: The padding algorithm, must be "SAME" or "VALID".
+      See the [comment here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+    dilation_rate: Optional.  Dilation rate.  List of N ints >= 1.
+      Defaults to [1]*N.  If any value of dilation_rate is > 1, then all values
+      of strides must be 1.
+    strides: Optional.  Sequence of N ints >= 1.  Defaults to [1]*N.
+      If any value of strides is > 1, then all values of dilation_rate must be
+      1.
+    name: Optional. Name of the op.
+
+  Returns:
+    Tensor of rank N+2, of shape
+      [batch_size] + output_spatial_shape + [num_channels],
+    where `output_spatial_shape` depends on the value of padding:
+
+    If padding = "SAME":
+      output_spatial_shape[i] = ceil(input_spatial_shape[i] / strides[i])
+    If padding = "VALID":
+      output_spatial_shape[i] =
+        ceil((input_spatial_shape[i] - (window_shape[i] - 1) * dilation_rate[i])
+             / strides[i]).
+
+  Raises:
+    ValueError: if arguments are invalid.
+
+  """
+  # pylint: enable=line-too-long
+  with ops.name_scope(name, "%s_pool" %
+                      (pooling_type.lower()), [input]) as scope:
+    input = ops.convert_to_tensor(input, name="input")
+
+    num_spatial_dims = len(window_shape)
+    if num_spatial_dims < 2 or num_spatial_dims > 3:
+      raise ValueError("It is required that 2 <= num_spatial_dims <= 3.")
+
+    input.get_shape().with_rank(num_spatial_dims + 2)
+
+    strides, dilation_rate = _get_strides_and_dilation_rate(
+        num_spatial_dims, strides, dilation_rate)
+
+    if padding == "SAME" and np.any(dilation_rate > 1):
+      raise ValueError(
+          "pooling with SAME padding is not implemented for dilation_rate > 1")
+
+    if np.any(strides > window_shape):
+      raise ValueError(
+          "strides > window_shape not supported due to inconsistency between "
+          "CPU and GPU implementations")
+
+    pooling_ops = {("MAX", 2): max_pool,
+                   ("MAX", 3): max_pool3d,  # pylint: disable=undefined-variable
+                   ("AVG", 2): avg_pool,
+                   ("AVG", 3): avg_pool3d,  # pylint: disable=undefined-variable
+                  }
+    op_key = (pooling_type, num_spatial_dims)
+    if op_key not in pooling_ops:
+      raise ValueError("%d-D %s pooling is not supported." %
+                       (op_key[1], op_key[0]))
+
+    def op(converted_input, _, converted_padding):
+      return pooling_ops[op_key](converted_input,
+                                 [1] + list(window_shape) + [1],
+                                 [1] + list(strides) + [1],
+                                 converted_padding,
+                                 name=scope)
+
+    return with_space_to_batch(input=input,
+                               dilation_rate=dilation_rate,
+                               padding=padding,
+                               op=op,
+                               filter_shape=window_shape)
+
+
 def atrous_conv2d(value, filters, rate, padding, name=None):
   """Atrous convolution (a.k.a. convolution with holes or dilated convolution).
 
@@ -84,27 +619,34 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
   There are many different ways to implement atrous convolution (see the refs
   above). The implementation here reduces
 
+  ```python
       atrous_conv2d(value, filters, rate, padding=padding)
+  ```
 
   to the following three operations:
 
+  ```python
       paddings = ...
       net = space_to_batch(value, paddings, block_size=rate)
       net = conv2d(net, filters, strides=[1, 1, 1, 1], padding="VALID")
       crops = ...
       net = batch_to_space(net, crops, block_size=rate)
+  ```
 
   Advanced usage. Note the following optimization: A sequence of `atrous_conv2d`
   operations with identical `rate` parameters, 'SAME' `padding`, and filters
   with odd heights/ widths:
 
+  ```python
       net = atrous_conv2d(net, filters1, rate, padding="SAME")
       net = atrous_conv2d(net, filters2, rate, padding="SAME")
       ...
       net = atrous_conv2d(net, filtersK, rate, padding="SAME")
+  ```
 
   can be equivalently performed cheaper in terms of computation and memory as:
 
+  ```python
       pad = ...  # padding so that the input dims are multiples of rate
       net = space_to_batch(net, paddings=pad, block_size=rate)
       net = conv2d(net, filters1, strides=[1, 1, 1, 1], padding="SAME")
@@ -112,6 +654,7 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
       ...
       net = conv2d(net, filtersK, strides=[1, 1, 1, 1], padding="SAME")
       net = batch_to_space(net, crops=pad, block_size=rate)
+  ```
 
   because a pair of consecutive `space_to_batch` and `batch_to_space` ops with
   the same `block_size` cancel out when their respective `paddings` and `crops`
@@ -878,34 +1421,42 @@ ops.RegisterShape("BatchNormWithGlobalNormalization")(
     common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("BatchNormWithGlobalNormalizationGrad")(
     common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FusedBatchNorm")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FusedBatchNormGrad")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("Conv2D")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("DepthwiseConv2dNative")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("AvgPool")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("MaxPool")(common_shapes.call_cpp_shape_fn)
 
 
-@ops.RegisterShape("FusedResizeAndPadConv2D")
-def _FusedResizeAndPadConv2DShape(op):
-  """Shape function for FusedResizeAndPadConv2D op."""
+def _CommonFusedConvCalculations(op, has_resize):
+  """Shape function for Fused*Conv2D ops."""
   # The bilinear resize shape calculation.
   input_shape = op.inputs[0].get_shape().with_rank(4)
-  unused_size_shape = op.inputs[1].get_shape().merge_with([2])
-  size = tensor_util.constant_value(op.inputs[1])
-  if size is not None:
-    height = size[0]
-    width = size[1]
+  if has_resize:
+    unused_size_shape = op.inputs[1].get_shape().merge_with([2])
+    size = tensor_util.constant_value(op.inputs[1])
+    if size is not None:
+      height = size[0]
+      width = size[1]
+    else:
+      height = None
+      width = None
+    resized_shape = tensor_shape.TensorShape(
+        [input_shape[0], height, width, input_shape[3]])
+    paddings_index = 2
+    filter_index = 3
   else:
-    height = None
-    width = None
-  resized_shape = tensor_shape.TensorShape(
-      [input_shape[0], height, width, input_shape[3]])
+    resized_shape = input_shape
+    paddings_index = 1
+    filter_index = 2
 
   # Calculates the effect of the padding.
-  paddings_shape = op.inputs[2].get_shape().with_rank(2)
+  paddings_shape = op.inputs[paddings_index].get_shape().with_rank(2)
   resized_shape = resized_shape.with_rank(paddings_shape[0].value)
   paddings_shape = paddings_shape.merge_with(
       tensor_shape.matrix(resized_shape.ndims, 2))
-  paddings = tensor_util.constant_value(op.inputs[2])
+  paddings = tensor_util.constant_value(op.inputs[paddings_index])
   if paddings is None:
     padded_shape = tensor_shape.unknown_shape(ndims=resized_shape.ndims)
   else:
@@ -917,7 +1468,7 @@ def _FusedResizeAndPadConv2DShape(op):
     padded_shape = tensor_shape.TensorShape(output_dims)
 
   # Finally work out the convolution's effect.
-  filter_shape = op.inputs[3].get_shape().with_rank(4)
+  filter_shape = op.inputs[filter_index].get_shape().with_rank(4)
 
   batch_size = padded_shape[0]
   in_rows = padded_shape[1]
@@ -947,6 +1498,18 @@ def _FusedResizeAndPadConv2DShape(op):
 
   output_shape = [batch_size, out_rows, out_cols, depth_out]
   return [tensor_shape.TensorShape(output_shape)]
+
+
+@ops.RegisterShape("FusedResizeAndPadConv2D")
+def _FusedResizeAndPadConv2DShape(op):
+  """Shape function for FusedResizeAndPadConv2D op."""
+  return _CommonFusedConvCalculations(op, True)
+
+
+@ops.RegisterShape("FusedPadConv2D")
+def _FusedPadConv2DShape(op):
+  """Shape function for FusedResizeAndPadConv2D op."""
+  return _CommonFusedConvCalculations(op, False)
 
 
 ops.RegisterShape("MaxPoolWithArgmax")(common_shapes.call_cpp_shape_fn)

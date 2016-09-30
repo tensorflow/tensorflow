@@ -182,7 +182,12 @@ Status GrpcServer::Init() {
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_env_.worker_cache;
-  master_env_.master_session_factory = internal::NewMasterSession;
+  master_env_.master_session_factory = [](const SessionOptions& options,
+                                          const MasterEnv* env,
+                                          std::vector<Device*>* remote_devs) {
+    return internal::NewMasterSession(options, env, remote_devs,
+                                      CreateNoOpStatsPublisher);
+  };
 
   // Finish setting up worker environment.
   worker_env_.graph_mgr = new GraphMgr(&worker_env_);

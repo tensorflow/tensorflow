@@ -244,7 +244,7 @@ module TF.Backend {
         height: x.height,
         wall_time: timeToDate(x.wall_time),
         step: x.step,
-        url: this.router.individualImage(x.query),
+        url: this.router.individualImage(x.query, x.wall_time),
       };
     }
 

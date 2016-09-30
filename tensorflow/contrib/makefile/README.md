@@ -58,8 +58,8 @@ tensorflow/contrib/makefile/build_all_linux.sh
 ```
 
 This should compile a static library in 
-`tensorflow/contrib/makefile/gen/lib/tf_lib.a`, and create an example executable
-at `tensorflow/contrib/makefile/gen/bin/benchmark`. 
+`tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a`, 
+and create an example executable at `tensorflow/contrib/makefile/gen/bin/benchmark`. 
 
 Get the graph file, if you have not already:
 

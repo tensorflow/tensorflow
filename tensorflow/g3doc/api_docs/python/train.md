@@ -148,7 +148,7 @@ given variable.
 
 
 *  <b>`loss`</b>: A Tensor containing the value to minimize.
-*  <b>`var_list`</b>: Optional list of tf.Variable to update to minimize
+*  <b>`var_list`</b>: Optional list of `tf.Variable` to update to minimize
     `loss`.  Defaults to the list of variables collected in the graph
     under the key `GraphKey.TRAINABLE_VARIABLES`.
 *  <b>`gate_gradients`</b>: How to gate the computation of gradients.  Can be
@@ -2008,7 +2008,7 @@ Create a `Supervisor`.
 *  <b>`global_step`</b>: An integer Tensor of size 1 that counts steps.  The value
     from 'global_step' is used in summaries and checkpoint filenames.
     Default to the op named 'global_step' in the graph if it exists, is of
-    rank 1, size 1, and of type tf.int32 ot tf.int64.  If `None` the global
+    rank 1, size 1, and of type tf.int32 or tf.int64.  If `None` the global
     step is not recorded in summaries and checkpoint files.  Used by chief
     supervisors if a `logdir` was specified.
 *  <b>`save_summaries_secs`</b>: Number of seconds between the computation of
@@ -2874,7 +2874,7 @@ To create a cluster with two jobs and five tasks, you specify the
 mapping from job names to lists of network addresses (typically
 hostname-port pairs).
 
-```
+```python
 cluster = tf.train.ClusterSpec({"worker": ["worker0.example.com:2222",
                                            "worker1.example.com:2222",
                                            "worker2.example.com:2222"],
@@ -2887,7 +2887,7 @@ to network addresses. This enables a server to be configured without
 needing to know the identity of (for example) all other worker
 tasks:
 
-```
+```python
 cluster = tf.train.ClusterSpec({"worker": {1: "worker1.example.com:2222"},
                                 "ps": ["ps0.example.com:2222",
                                        "ps1.example.com:2222"]})
@@ -3296,8 +3296,10 @@ If `value` is empty, the result is `nan`.
 
 This is useful in summaries to measure and report sparsity.  For example,
 
+```python
     z = tf.Relu(...)
     summ = tf.scalar_summary('sparsity', tf.nn.zero_fraction(z))
+```
 
 ##### Args:
 
@@ -3454,7 +3456,7 @@ commonly done to report evaluation results in event files.
 
 Adds a `SessionLog` protocol buffer to the event file.
 
-This method wraps the provided session in an `Event` procotol buffer
+This method wraps the provided session in an `Event` protocol buffer
 and adds it to the event file.
 
 ##### Args:

@@ -8,6 +8,7 @@
 TensorFlow provides a convenience class inheriting from `unittest.TestCase`
 which adds methods relevant to TensorFlow tests.  Here is an example:
 
+```python
     import tensorflow as tf
 
 
@@ -21,7 +22,7 @@ which adds methods relevant to TensorFlow tests.  Here is an example:
 
     if __name__ == '__main__':
       tf.test.main()
-
+```
 
 `tf.test.TestCase` inherits from `unittest.TestCase` but adds a few additional
 methods.  We will document these methods soon.

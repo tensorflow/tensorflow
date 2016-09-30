@@ -838,6 +838,7 @@ def per_image_whitening(image):
   away from zero to protect against division by 0 when handling uniform images.
 
   Note that this implementation is limited:
+
   *  It only whitens based on the statistics of an individual image.
   *  It does not take into account the covariance structure.
 

@@ -28,10 +28,10 @@ For example, suppose the logical sum of two sparse operands is (densified):
 
 Then,
 
-    - thresh == 0 (the default): all 5 index/value pairs will be returned.
-    - thresh == 0.11: only .1 and 0  will vanish, and the remaining three
+    * `thresh == 0` (the default): all 5 index/value pairs will be returned.
+    * `thresh == 0.11`: only .1 and 0  will vanish, and the remaining three
         index/value pairs will be returned.
-    - thresh == 0.21: .1, 0, and -.2 will vanish.
+    * `thresh == 0.21`: .1, 0, and -.2 will vanish.
 
 ##### Args:
 

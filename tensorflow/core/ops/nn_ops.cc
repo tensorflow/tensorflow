@@ -261,6 +261,161 @@ dg: 1D backprop tensor for gamma.
 
 // --------------------------------------------------------------------------
 
+REGISTER_OP("FusedBatchNorm")
+    .Input("x: T")
+    .Input("scale: T")
+    .Input("offset: T")
+    .Input("mean: T")
+    .Input("variance: T")
+    .Output("y: T")
+    .Output("batch_mean: T")
+    .Output("batch_variance: T")
+    .Output("reserve_space_1: T")
+    .Output("reserve_space_2: T")
+    .Attr("T: numbertype")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("data_format: string = 'NHWC'")
+    .Attr("is_training: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle x;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
+
+      bool is_training;
+      c->GetAttr("is_training", &is_training);
+      int number_inputs = (is_training) ? 3 : 5;
+      string data_format;
+      c->GetAttr("data_format", &data_format);
+      DimensionHandle channel_dim =
+          (data_format == "NHWC") ? c->Dim(x, 3) : c->Dim(x, 1);
+
+      // covers scale, offset, and if is_training is false, mean, variance
+      for (int i = 1; i < number_inputs; ++i) {
+        ShapeHandle vec;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
+      }
+
+      ShapeHandle y;
+      if (data_format == "NHWC") {
+        TF_RETURN_IF_ERROR(c->ReplaceDim(x, 3, channel_dim, &y));
+      } else {
+        TF_RETURN_IF_ERROR(c->ReplaceDim(x, 1, channel_dim, &y));
+      }
+      c->set_output(0, y);
+      ShapeHandle vector_shape = c->Vector(channel_dim);
+      c->set_output(1, vector_shape);
+      c->set_output(2, vector_shape);
+      c->set_output(3, vector_shape);
+      c->set_output(4, vector_shape);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Batch normalization.
+Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
+The size of 1D Tensors matches the dimension C of the 4D Tensors.
+
+x: A 4D Tensor for input data.
+scale: A 1D Tensor for scaling factor, to scale the normalized x.
+offset: A 1D Tensor for offset, to shift to the normalized x.
+mean: A 1D Tensor for population mean. Used for inference only;
+      must be empty for training.
+variance: A 1D Tensor for population variance. Used for inference only;
+          must be empty for training.
+y: A 4D Tensor for output data.
+batch_mean: A 1D Tensor for the computed batch mean, to be used by TensorFlow
+            to compute the running mean.
+batch_variance: A 1D Tensor for the computed batch variance, to be used by
+                TensorFlow to compute the running variance.
+reserve_space_1: A 1D Tensor for the computed batch mean, to be reused
+                 in the gradient computation.
+reserve_space_2: A 1D Tensor for the computed batch variance (inverted variance
+                 in the cuDNN case), to be used in the gradient computation.
+T: The data type for the elements of input and output Tensors.
+epsilon: A small float number added to the variance of x.
+data_format: The data format for x and y. Either "NHWC" (default) or "NCHW".
+is_training: A bool value to indicate the operation is for training (default)
+             or inference.
+)doc");
+
+REGISTER_OP("FusedBatchNormGrad")
+    .Input("y_backprop: T")
+    .Input("x: T")
+    .Input("scale: T")
+    .Input("reserve_space_1: T")
+    .Input("reserve_space_2: T")
+    .Output("x_backprop: T")
+    .Output("scale_backprop: T")
+    .Output("offset_backprop: T")
+    .Output("reserve_space_3: T")
+    .Output("reserve_space_4: T")
+    .Attr("T: numbertype")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("data_format: string = 'NHWC'")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle y_backprop;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &y_backprop));
+      ShapeHandle x;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &x));
+
+      string data_format;
+      c->GetAttr("data_format", &data_format);
+      DimensionHandle channel_dim = (data_format == "NHWC")
+                                        ? c->Dim(y_backprop, 3)
+                                        : c->Dim(y_backprop, 1);
+      if (data_format == "NHWC") {
+        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 3), &channel_dim));
+      } else {
+        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 1), &channel_dim));
+      }
+
+      // covers scale, mean (reserve_space_1), variance (reserve_space_2)
+      for (int i = 2; i < 5; ++i) {
+        ShapeHandle vec;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
+      }
+
+      ShapeHandle x_backprop;
+      if (data_format == "NHWC") {
+        TF_RETURN_IF_ERROR(
+            c->ReplaceDim(y_backprop, 3, channel_dim, &x_backprop));
+      } else {
+        TF_RETURN_IF_ERROR(
+            c->ReplaceDim(y_backprop, 1, channel_dim, &x_backprop));
+      }
+      c->set_output(0, x_backprop);
+      c->set_output(1, c->Vector(channel_dim));
+      c->set_output(2, c->Vector(channel_dim));
+      c->set_output(3, c->Vector(0));
+      c->set_output(4, c->Vector(0));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Gradient for batch normalization.
+Note that the size of 4D Tensors are defined by either "NHWC" or "NCHW".
+The size of 1D Tensors matches the dimension C of the 4D Tensors.
+
+y_backprop: A 4D Tensor for the gradient with respect to y.
+x: A 4D Tensor for input data.
+scale: A 1D Tensor for scaling factor, to scale the normalized x.
+reserve_space_1: A 1D Tensor for the computed batch mean, to be reused
+                 in the gradient computation.
+reserve_space_2: A 1D Tensor for the computed batch variance (inverted variance
+                 in the cuDNN case), to be used in the gradient computation.
+x_backprop: A 4D Tensor for the gradient with respect to x.
+scale_backprop: A 1D Tensor for the gradient with respect to scale.
+offset_backprop: A 1D Tensor for the gradient with respect to offset.
+reserve_space_3: Unused placeholder to match the mean input in FusedBatchNorm.
+reserve_space_4: Unused placeholder to match the variance input
+                 in FusedBatchNorm.
+T: The data type for the elements of input and output Tensors.
+epsilon: A small float number added to the variance of x.
+data_format: The data format for y_backprop, x, x_backprop.
+             Either "NHWC" (default) or "NCHW".
+)doc");
+
+// --------------------------------------------------------------------------
+
 REGISTER_OP("BiasAdd")
     .Attr("T: numbertype")
     .Input("value: T")
@@ -494,6 +649,40 @@ filter: 4-D with shape
 resize_align_corners: If true, rescale input by (new_height - 1) / (height - 1),
   which exactly aligns the 4 corners of images and resized images. If false, rescale
   by new_height / height. Treat similarly the width dimension.
+strides: 1-D of length 4.  The stride of the sliding window for each dimension
+   of `input`. Must be in the same order as the dimension specified with format.
+padding: The type of padding algorithm to use.
+ )doc");
+
+REGISTER_OP("FusedPadConv2D")
+    .Input("input: T")
+    .Input("paddings: int32")
+    .Input("filter: T")
+    .Output("output: T")
+    .Attr("T: {half, float, double}")
+    .Attr(GetMirrorPadModeAttrString())
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Doc(R"doc(
+Performs a padding as a preprocess during a convolution.
+
+Similar to FusedResizeAndPadConv2d, this op allows for an optimized
+implementation where the spatial padding transformation stage is fused with the
+im2col lookup, but in this case without the bilinear filtering required for
+resizing. Fusing the padding prevents the need to write out the intermediate
+results as whole tensors, reducing memory pressure, and we can get some latency
+gains by merging the transformation calculations.
+The data_format attribute for Conv2D isn't supported by this op, and 'NHWC'
+order is used instead.
+Internally this op uses a single per-graph scratch buffer, which means that it
+will block if multiple versions are being run in parallel. This is because this
+operator is primarily an optimization to minimize memory usage.
+
+input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+paddings: A two-column matrix specifying the padding sizes. The number of
+  rows must be the same as the rank of `input`.
+filter: 4-D with shape
+  `[filter_height, filter_width, in_channels, out_channels]`.
 strides: 1-D of length 4.  The stride of the sliding window for each dimension
    of `input`. Must be in the same order as the dimension specified with format.
 padding: The type of padding algorithm to use.

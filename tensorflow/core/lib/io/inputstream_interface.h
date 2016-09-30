@@ -46,6 +46,9 @@ class InputStreamInterface {
   // of the file.
   // If there are any errors, this must return -1.
   virtual int64 Tell() const = 0;
+
+  // Resets the stream to the beginning.
+  virtual Status Reset() = 0;
 };
 
 }  // namespace io

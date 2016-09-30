@@ -52,6 +52,15 @@ int64 SnappyInputBuffer::Tell() const {
   return -1;
 }
 
+Status SnappyInputBuffer::Reset() {
+  file_pos_ = 0;
+  avail_in_ = 0;
+  avail_out_ = 0;
+  next_in_ = input_buffer_.get();
+
+  return Status::OK();
+}
+
 size_t SnappyInputBuffer::ReadBytesFromCache(size_t bytes_to_read,
                                              string* result) {
   size_t can_read_bytes = std::min(bytes_to_read, avail_out_);

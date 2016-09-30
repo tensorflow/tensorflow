@@ -98,6 +98,10 @@ automatically by the optimizers in most cases.
 @@sparse_mask
 @@IndexedSlices
 
+### Read-only Lookup Tables
+
+@@initialize_all_tables
+
 
 ## Exporting and Importing Meta Graphs
 

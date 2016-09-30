@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -142,7 +142,7 @@ class ProximalGradientDescentOptimizerTest(tf.test.TestCase):
     v0_val, v1_val = sess.run([var0, var1])
     return v0_val, v1_val
 
-  def testEquivSparseGradientDescentwithoutRegularizaion(self):
+  def testEquivSparseGradientDescentwithoutRegularization(self):
     with self.test_session():
       val0, val1 = self.applyOptimizer(
           tf.train.ProximalGradientDescentOptimizer(
@@ -158,7 +158,7 @@ class ProximalGradientDescentOptimizerTest(tf.test.TestCase):
     self.assertAllClose(val0, val2)
     self.assertAllClose(val1, val3)
 
-  def testEquivGradientDescentwithoutRegularizaion(self):
+  def testEquivGradientDescentwithoutRegularization(self):
     with self.test_session():
       val0, val1 = self.applyOptimizer(
           tf.train.ProximalGradientDescentOptimizer(
