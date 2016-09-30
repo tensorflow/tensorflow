@@ -31,6 +31,7 @@ import os
 from sklearn import metrics
 import tensorflow as tf
 from tensorflow.contrib import learn
+from tensorflow.contrib.layers import batch_norm, convolution2d
 from tensorflow.examples.tutorials.mnist import input_data
 
 
@@ -69,8 +70,9 @@ def res_net(x, y, activation=tf.nn.relu):
 
   # First convolution expands to 64 channels
   with tf.variable_scope('conv_layer1'):
-    net = learn.ops.conv2d(x, 64, [7, 7], batch_norm=True,
-                           activation=activation, bias=False)
+    net = convolution2d(x, 64, 7,
+                        normalizer_fn=batch_norm,
+                        activation_fn=activation)
 
   # Max pool
   net = tf.nn.max_pool(
@@ -78,9 +80,8 @@ def res_net(x, y, activation=tf.nn.relu):
 
   # First chain of resnets
   with tf.variable_scope('conv_layer2'):
-    net = learn.ops.conv2d(net, groups[0].num_filters,
-                           [1, 1], [1, 1, 1, 1],
-                           padding='VALID', bias=True)
+    net = convolution2d(net, groups[0].num_filters, 1,
+                        padding='VALID')
 
   # Create the bottleneck groups, each of which contains `num_blocks`
   # bottleneck groups.
@@ -90,30 +91,24 @@ def res_net(x, y, activation=tf.nn.relu):
 
       # 1x1 convolution responsible for reducing dimension
       with tf.variable_scope(name + '/conv_in'):
-        conv = learn.ops.conv2d(net, group.bottleneck_size,
-                                [1, 1], [1, 1, 1, 1],
-                                padding='VALID',
-                                activation=activation,
-                                batch_norm=True,
-                                bias=False)
+        conv = convolution2d(net, group.bottleneck_size, 1,
+                             padding='VALID',
+                             activation_fn=activation,
+                             normalizer_fn=batch_norm)
 
       with tf.variable_scope(name + '/conv_bottleneck'):
-        conv = learn.ops.conv2d(conv, group.bottleneck_size,
-                                [3, 3], [1, 1, 1, 1],
-                                padding='SAME',
-                                activation=activation,
-                                batch_norm=True,
-                                bias=False)
+        conv = convolution2d(conv, group.bottleneck_size, 3,
+                             padding='SAME',
+                             activation_fn=activation,
+                             normalizer_fn=batch_norm)
 
       # 1x1 convolution responsible for restoring dimension
       with tf.variable_scope(name + '/conv_out'):
         input_dim = net.get_shape()[-1].value
-        conv = learn.ops.conv2d(conv, input_dim,
-                                [1, 1], [1, 1, 1, 1],
-                                padding='VALID',
-                                activation=activation,
-                                batch_norm=True,
-                                bias=False)
+        conv = convolution2d(conv, input_dim, 1,
+                             padding='VALID',
+                             activation_fn=activation,
+                             normalizer_fn=batch_norm)
 
       # shortcut connections that turn the network into its counterpart
       # residual function (identity shortcut)
@@ -123,10 +118,10 @@ def res_net(x, y, activation=tf.nn.relu):
       # upscale to the next group size
       next_group = groups[group_i + 1]
       with tf.variable_scope('block_%d/conv_upscale' % group_i):
-        net = learn.ops.conv2d(net, next_group.num_filters,
-                               [1, 1], [1, 1, 1, 1],
-                               bias=False,
-                               padding='SAME')
+        net = convolution2d(net, next_group.num_filters, 1,
+                            activation_fn=None,
+                            biases_initializer=None,
+                            padding='SAME')
     except IndexError:
       pass
 
@@ -143,9 +138,10 @@ def res_net(x, y, activation=tf.nn.relu):
 # Download and load MNIST data.
 mnist = input_data.read_data_sets('MNIST_data')
 
-# Restore model if graph is saved into a folder.
-if os.path.exists('models/resnet/graph.pbtxt'):
-  classifier = learn.TensorFlowEstimator.restore('models/resnet/')
+# Create a new resnet classifier.
+classifier = learn.TensorFlowEstimator(
+    model_fn=res_net, n_classes=10, batch_size=100, steps=100,
+    learning_rate=0.001, continue_training=True)
 
 while True:
   # Train model and save summaries into logdir.
