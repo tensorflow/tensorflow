@@ -124,6 +124,7 @@ def batch_norm(inputs,
                variables_collections=None,
                outputs_collections=None,
                trainable=True,
+               batch_weights=None,
                scope=None):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
@@ -135,8 +136,8 @@ def batch_norm(inputs,
   Can be used as a normalizer function for conv2d and fully_connected.
 
   Note: When is_training is True the moving_mean and moving_variance need to be
-  updated, by default the update_ops are placed in tf.GraphKeys.UPDATE_OPS so
-  they need to be added as a dependency to the train_op, example:
+  updated, by default the update_ops are placed in `tf.GraphKeys.UPDATE_OPS` so
+  they need to be added as a dependency to the `train_op`, example:
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     if update_ops:
@@ -158,7 +159,7 @@ def batch_norm(inputs,
     activation_fn: activation function, default set to None to skip it and
       maintain a linear activation.
     updates_collections: collections to collect the update ops for computation.
-      The updates_ops need to be excuted with the train_op.
+      The updates_ops need to be executed with the train_op.
       If None, a control dependency would be added to make sure the updates are
       computed in place.
     is_training: whether or not the layer is in training mode. In training mode
@@ -171,7 +172,12 @@ def batch_norm(inputs,
     variables_collections: optional collections for the variables.
     outputs_collections: collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    batch_weights: An optional tensor of shape `[batch_size]`,
+      containing a frequency weight for each batch item. If present,
+      then the batch normalization uses weighted mean and
+      variance. (This can be used to correct for bias in training
+      example selection.)
     scope: Optional scope for `variable_scope`.
 
   Returns:
@@ -188,6 +194,14 @@ def batch_norm(inputs,
     if inputs_rank is None:
       raise ValueError('Inputs %s has undefined rank.' % inputs.name)
     dtype = inputs.dtype.base_dtype
+    if batch_weights is not None:
+      batch_weights = ops.convert_to_tensor(batch_weights)
+      inputs_shape[0:1].assert_is_compatible_with(batch_weights.get_shape())
+
+      # Reshape batch weight values so they broadcast across inputs.
+      nshape = [-1] + [1 for _ in range(inputs_rank - 1)]
+      batch_weights = array_ops.reshape(batch_weights, nshape)
+
     axis = list(range(inputs_rank - 1))
     params_shape = inputs_shape[-1:]
     if not params_shape.is_fully_defined():
@@ -245,9 +259,13 @@ def batch_norm(inputs,
     need_moments = is_training_value is None or is_training_value
     if need_moments:
       # Calculate the moments based on the individual batch.
-      # Use a copy of moving_mean as a shift to compute more reliable moments.
-      shift = math_ops.add(moving_mean, 0)
-      mean, variance = nn.moments(inputs, axis, shift=shift)
+      if batch_weights is None:
+        # Use a copy of moving_mean as a shift to compute more reliable moments.
+        shift = math_ops.add(moving_mean, 0)
+        mean, variance = nn.moments(inputs, axis, shift=shift)
+      else:
+        mean, variance = nn.weighted_moments(inputs, axis, batch_weights)
+
       moving_vars_fn = lambda: (moving_mean, moving_variance)
       if updates_collections is None:
         def _force_updates():
@@ -403,7 +421,7 @@ def convolution2d(inputs,
     reuse: whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
     variables_collections: optional list of collections for all the variables or
-      a dictionay containing a different list of collection per variable.
+      a dictionary containing a different list of collection per variable.
     outputs_collections: collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
@@ -514,7 +532,7 @@ def convolution2d_in_plane(
     reuse: whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
     variables_collections: optional list of collections for all the variables or
-      a dictionay containing a different list of collection per variable.
+      a dictionary containing a different list of collection per variable.
     outputs_collections: collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
@@ -612,7 +630,7 @@ def convolution2d_transpose(
     reuse: whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
     variables_collections: optional list of collections for all the variables or
-      a dictionay containing a different list of collection per variable.
+      a dictionary containing a different list of collection per variable.
     outputs_collections: collection to add the outputs.
     trainable: whether or not the variables should be trainable or not.
     scope: Optional scope for variable_scope.
@@ -1080,7 +1098,7 @@ def one_hot_encoding(labels,
                      off_value=0.0,
                      outputs_collections=None,
                      scope=None):
-  """Transform numeric labels into onehot_labels using tf.one_hot.
+  """Transform numeric labels into onehot_labels using `tf.one_hot`.
 
   Args:
     labels: [batch_size] target labels.

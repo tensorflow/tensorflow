@@ -324,7 +324,7 @@ class RegexFindTest(test_util.TensorFlowTestCase):
                      new_screen_output.font_attr_segs[0])
 
 
-class WrapScreenOuptutTest(test_util.TensorFlowTestCase):
+class WrapScreenOutputTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     self._orig_screen_output = debugger_cli_common.RichTextLines(

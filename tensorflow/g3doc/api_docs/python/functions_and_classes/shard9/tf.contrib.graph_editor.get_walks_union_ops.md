@@ -1,6 +1,6 @@
 ### `tf.contrib.graph_editor.get_walks_union_ops(forward_seed_ops, backward_seed_ops, forward_inclusive=True, backward_inclusive=True, within_ops=None, control_inputs=False, control_outputs=None, control_ios=None)` {#get_walks_union_ops}
 
-Return the union of a foward and a backward walk.
+Return the union of a forward and a backward walk.
 
 ##### Args:
 
@@ -27,7 +27,7 @@ Return the union of a foward and a backward walk.
 
 ##### Returns:
 
-  A Python set of all the tf.Operation in the union of a foward and a
+  A Python set of all the tf.Operation in the union of a forward and a
     backward walk.
 
 ##### Raises:

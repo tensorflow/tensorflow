@@ -406,7 +406,7 @@ class IsInitializedTest(tf.test.TestCase):
       v.initializer.run()  # not strictly necessary
       self.assertEqual(0, sess.run(uninited).size)
 
-  def testTrainingWIthZeroSizeVar(self):
+  def testTrainingWithZeroSizeVar(self):
     with tf.Graph().as_default(), self.test_session() as sess:
       a = tf.Variable(tf.zeros([0, 2]))
       b = tf.Variable(tf.ones([2, 2]))

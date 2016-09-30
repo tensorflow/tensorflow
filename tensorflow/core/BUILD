@@ -1453,7 +1453,6 @@ tf_cc_tests(
 tf_cc_tests(
     size = "small",
     srcs = ["platform/env_test.cc"],
-    tags = ["manual"],  # http://b/30439755
     deps = [
         ":lib",
         ":lib_internal",

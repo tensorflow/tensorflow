@@ -56,7 +56,7 @@ the shape of the `Tensor` returned from `sample_n`, `n` is the number of
 samples, `batch_shape` defines how many independent distributions there are,
 and `event_shape` defines the shape of samples from each of those independent
 distributions. Samples are independent along the `batch_shape` dimensions, but
-not necessarily so along the `event_shape` dimensions (dependending on the
+not necessarily so along the `event_shape` dimensions (depending on the
 particulars of the underlying distribution).
 
 Using the `Uniform` distribution as an example:
@@ -149,7 +149,7 @@ Constructs the `Distribution`.
 *  <b>`validate_args`</b>: Python boolean.  Whether to validate input with asserts.
     If `validate_args` is `False`, and the inputs are invalid,
     correct behavior is not guaranteed.
-*  <b>`allow_nan_stats`</b>: Pytho nboolean.  If `False`, raise an
+*  <b>`allow_nan_stats`</b>: Python boolean.  If `False`, raise an
     exception if a statistic (e.g., mean, mode) is undefined for any batch
     member. If True, batch members with valid parameters leading to
     undefined statistics will return `NaN` for this statistic.
@@ -1883,7 +1883,7 @@ is the beta function.
 
 
 This class provides methods to create indexed batches of Beta
-distributions. One entry of the broacasted
+distributions. One entry of the broadcasted
 shape represents of `a` and `b` represents one single Beta distribution.
 When calling distribution functions (e.g. `dist.pdf(x)`), `a`, `b`
 and `x` are broadcast to the same shape (if possible).
@@ -9587,7 +9587,7 @@ x = [[-1, 0, 1], [-11, 0, 11]]  # Shape 2 x 3.
 dist.pdf(x)
 ```
 
-Trainable (batch) Choesky matrices can be created with
+Trainable (batch) Cholesky matrices can be created with
 `tf.contrib.distributions.matrix_diag_transform()`
 - - -
 
@@ -13497,7 +13497,7 @@ A Transformed Distribution exposes `sample` and `pdf`:
 A simple example constructing a Log-Normal distribution from a Normal
 distribution:
 
-```
+```python
 logit_normal = TransformedDistribution(
   base_dist_cls=tf.contrib.distributions.Normal,
   mu=mu,
@@ -14959,7 +14959,7 @@ distribution:
 \log p(x) >= ELBO = \int q(z) \log p(x, z) dz + H[q]
 \\)
 
-where \\( p \\) is the prior disribution, \\( q \\) is the variational,
+where \\( p \\) is the prior distribution, \\( q \\) is the variational,
 and \\( H[q] \\) is the entropy of \\( q \\).  If there is a lower bound
 \\( G[q] \\) such that \\( H[q] \geq G[q] \\) then it can be used in
 place of \\( H[q] \\).
@@ -15473,7 +15473,7 @@ will broadcast in the case of multidimensional sets of parameters.
 
 - - -
 
-### `tf.contrib.distributions.normal_congugates_known_sigma_predictive(prior, sigma, s, n)` {#normal_congugates_known_sigma_predictive}
+### `tf.contrib.distributions.normal_conjugates_known_sigma_predictive(prior, sigma, s, n)` {#normal_conjugates_known_sigma_predictive}
 
 Posterior predictive Normal distribution w. conjugate prior on the mean.
 

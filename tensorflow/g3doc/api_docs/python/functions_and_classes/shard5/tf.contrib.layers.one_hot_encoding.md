@@ -1,6 +1,6 @@
 ### `tf.contrib.layers.one_hot_encoding(*args, **kwargs)` {#one_hot_encoding}
 
-Transform numeric labels into onehot_labels using tf.one_hot.
+Transform numeric labels into onehot_labels using `tf.one_hot`.
 
 ##### Args:
 

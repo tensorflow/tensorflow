@@ -168,6 +168,22 @@ TEST_F(HadoopFileSystemTest, RenameFile) {
   EXPECT_EQ("test", content);
 }
 
+TEST_F(HadoopFileSystemTest, RenameFile_Overwrite) {
+  const string fname1 =
+      "file://" + io::JoinPath(testing::TmpDir(), "RenameFile1");
+  const string fname2 =
+      "file://" + io::JoinPath(testing::TmpDir(), "RenameFile2");
+
+  TF_ASSERT_OK(WriteString(fname2, "test"));
+  EXPECT_TRUE(hdfs.FileExists(fname2));
+
+  TF_ASSERT_OK(WriteString(fname1, "test"));
+  TF_EXPECT_OK(hdfs.RenameFile(fname1, fname2));
+  string content;
+  TF_EXPECT_OK(ReadAll(fname2, &content));
+  EXPECT_EQ("test", content);
+}
+
 TEST_F(HadoopFileSystemTest, StatFile) {
   const string fname = "file://" + io::JoinPath(testing::TmpDir(), "StatFile");
   TF_ASSERT_OK(WriteString(fname, "test"));

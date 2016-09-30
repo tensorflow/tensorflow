@@ -16,7 +16,7 @@ is the beta function.
 
 
 This class provides methods to create indexed batches of Beta
-distributions. One entry of the broacasted
+distributions. One entry of the broadcasted
 shape represents of `a` and `b` represents one single Beta distribution.
 When calling distribution functions (e.g. `dist.pdf(x)`), `a`, `b`
 and `x` are broadcast to the same shape (if possible).

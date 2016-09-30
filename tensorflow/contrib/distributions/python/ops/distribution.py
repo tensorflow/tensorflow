@@ -224,7 +224,7 @@ class Distribution(BaseDistribution):
   samples, `batch_shape` defines how many independent distributions there are,
   and `event_shape` defines the shape of samples from each of those independent
   distributions. Samples are independent along the `batch_shape` dimensions, but
-  not necessarily so along the `event_shape` dimensions (dependending on the
+  not necessarily so along the `event_shape` dimensions (depending on the
   particulars of the underlying distribution).
 
   Using the `Uniform` distribution as an example:
@@ -322,7 +322,7 @@ class Distribution(BaseDistribution):
       validate_args: Python boolean.  Whether to validate input with asserts.
         If `validate_args` is `False`, and the inputs are invalid,
         correct behavior is not guaranteed.
-      allow_nan_stats: Pytho nboolean.  If `False`, raise an
+      allow_nan_stats: Python boolean.  If `False`, raise an
         exception if a statistic (e.g., mean, mode) is undefined for any batch
         member. If True, batch members with valid parameters leading to
         undefined statistics will return `NaN` for this statistic.
