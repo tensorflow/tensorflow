@@ -54,10 +54,7 @@ config_setting(
 
 package_group(
     name = "internal",
-    packages = [
-        "//learning/vis/...",
-        "//tensorflow/...",
-    ],
+    packages = ["//tensorflow/..."],
 )
 
 sh_binary(
