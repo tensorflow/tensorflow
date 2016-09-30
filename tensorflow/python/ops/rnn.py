@@ -1354,12 +1354,10 @@ def dynamic_raw_rnn(cell, inputs, sequence_length=None, initial_state=None,
     inputs: The RNN inputs.
 
       If `time_major == False` (default), this must be a `Tensor` of shape:
-        `[batch_size, max_time, ...]`, or a nested tuple of such
-        elements.
+        `[batch_size, max_time, ...]`.
 
       If `time_major == True`, this must be a `Tensor` of shape:
-        `[max_time, batch_size, ...]`, or a nested tuple of such
-        elements.
+        `[max_time, batch_size, ...]`.
 
       The input to `cell` at each time step will be a `Tensor` with dimensions
       `[batch_size, ...]`.
