@@ -373,7 +373,8 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
                gradient_clip_norm=None,
                enable_centered_bias=None,
                _joint_weight=False,
-               config=None):
+               config=None,
+               feature_engineering_fn=None):
     """Construct a `LinearClassifier` estimator object.
 
     Args:
@@ -401,6 +402,10 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
         incompatible with SDCAOptimizer, and requires all feature columns are
         sparse and use the 'sum' combiner.
       config: `RunConfig` object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        targets which are the output of `input_fn` and
+                        returns features and targets which will be fed
+                        into the model.
 
     Returns:
       A `LinearClassifier` estimator.
@@ -452,7 +457,8 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
         model_fn=model_fn,
         model_dir=self._model_dir,
         config=config,
-        params=params)
+        params=params,
+        feature_engineering_fn=feature_engineering_fn)
 
   def get_estimator(self):
     return self._estimator
@@ -659,7 +665,8 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                enable_centered_bias=None,
                target_dimension=1,
                _joint_weights=False,
-               config=None):
+               config=None,
+               feature_engineering_fn=None):
     """Construct a `LinearRegressor` estimator object.
 
     Args:
@@ -685,6 +692,10 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         store the weights. It's faster, but requires all feature columns are
         sparse and have the 'sum' combiner. Incompatible with SDCAOptimizer.
       config: `RunConfig` object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        targets which are the output of `input_fn` and
+                        returns features and targets which will be fed
+                        into the model.
 
     Returns:
       A `LinearRegressor` estimator.
@@ -702,7 +713,8 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         gradient_clip_norm=gradient_clip_norm,
         enable_centered_bias=enable_centered_bias,
         target_dimension=target_dimension,
-        config=config)
+        config=config,
+        feature_engineering_fn=feature_engineering_fn)
 
   def _get_train_ops(self, features, targets):
     """See base class."""

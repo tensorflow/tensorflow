@@ -307,7 +307,8 @@ class _DNNSampledSoftmaxClassifier(trainable.Trainable, evaluable.Evaluable):
                optimizer=None,
                dropout=None,
                gradient_clip_norm=None,
-               config=None):
+               config=None,
+               feature_engineering_fn=None):
     """Initializes a DNNSampledSoftmaxClassifier instance.
 
     Args:
@@ -333,6 +334,10 @@ class _DNNSampledSoftmaxClassifier(trainable.Trainable, evaluable.Evaluable):
         clipped to their global norm with this clipping ratio. See
         tf.clip_by_global_norm for more details.
       config: `RunConfig` object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        targets which are the output of `input_fn` and
+                        returns features and targets which will be fed
+                        into the model.
 
     Returns:
       A `DNNSampledSoftmaxClassifier` estimator.
@@ -373,7 +378,8 @@ class _DNNSampledSoftmaxClassifier(trainable.Trainable, evaluable.Evaluable):
             "optimizer": optimizer or _get_default_optimizer(),
             "dropout": dropout,
             "gradient_clip_norm": gradient_clip_norm,
-            "num_ps_replicas": config.num_ps_replicas if config else 0})
+            "num_ps_replicas": config.num_ps_replicas if config else 0},
+        feature_engineering_fn=feature_engineering_fn)
 
   def get_estimator(self):
     return self._estimator

@@ -103,7 +103,8 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
                l2_regularization=0.0,
                num_loss_partitions=1,
                kernels=None,
-               config=None):
+               config=None,
+               feature_engineering_fn=None):
     """Constructs a `SVM~ estimator object.
 
     Args:
@@ -126,7 +127,11 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
         optimized by the underlying optimizer (SDCAOptimizer).
       kernels: A list of kernels for the SVM. Currently, no kernels are
         supported. Reserved for future use for non-linear SVMs.
-     config: RunConfig object to configure the runtime settings.
+      config: RunConfig object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        targets which are the output of `input_fn` and
+                        returns features and targets which will be fed
+                        into the model.
 
     Raises:
       ValueError: if kernels passed is not None.
@@ -150,7 +155,8 @@ class SVM(trainable.Trainable, evaluable.Evaluable):
             "optimizer": self._optimizer,
             "weight_column_name": weight_column_name,
             "loss_type": "hinge_loss",
-        })
+        },
+        feature_engineering_fn=feature_engineering_fn)
 
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
