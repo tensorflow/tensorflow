@@ -180,6 +180,12 @@ Status RetryingFileSystem::GetMatchingPaths(const string& pattern,
                          initial_delay_microseconds_);
 }
 
+Status RetryingFileSystem::GetChildrenRecursively(const string& dir,
+                                                  std::vector<string>* result) {
+  return CallWithRetries(std::bind(&FileSystem::GetChildrenRecursively,
+                                   base_file_system_.get(), dir, result));
+}
+
 Status RetryingFileSystem::DeleteFile(const string& fname) {
   return CallWithRetries(
       std::bind(&FileSystem::DeleteFile, base_file_system_.get(), fname),

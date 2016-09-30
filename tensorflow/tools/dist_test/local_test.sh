@@ -24,16 +24,20 @@
 # 3) Call a script to launch a k8s TensorFlow GRPC cluster inside the container
 #    and run the distributed test suite.
 #
-# Usage: local_test.sh [--leave_container_running]
+# Usage: local_test.sh <whl_url>
+#                      [--leave_container_running]
 #                      [--model_name <MODEL_NAME>]
 #                      [--num_workers <NUM_WORKERS>]
 #                      [--num_parameter_servers <NUM_PARAMETER_SERVERS>]
 #                      [--sync_replicas]
 #
-# E.g., local_test.sh --model_name CENSUS_WIDENDEEP
-#       local_test.sh --num_workers 3 --num_parameter_servers 3
+# E.g., local_test.sh <whl_url> --model_name CENSUS_WIDENDEEP
+#       local_test.sh <whl_url> --num_workers 3 --num_parameter_servers 3
 #
 # Arguments:
+# <whl_url>
+#   Specify custom TensorFlow whl file URL to install in the test Docker image.
+#
 # --leave_container_running:  Do not stop the docker-in-docker container after
 #                             the termination of the tests, e.g., for debugging
 #
@@ -47,6 +51,7 @@
 #   Use the synchronized-replica mode. The parameter updates from the replicas
 #   (workers) will be aggregated before applied, which avoids stale parameter
 #   updates.
+#
 #
 # In addition, this script obeys the following environment variables:
 # TF_DIST_DOCKER_NO_CACHE:      do not use cache when building docker images
@@ -72,6 +77,11 @@ NUM_WORKERS=2
 NUM_PARAMETER_SERVERS=2
 SYNC_REPLICAS_FLAG=""
 
+WHL_URL=${1}
+if [[ -z "${WHL_URL}" ]]; then
+  die "whl file URL is not specified"
+fi
+
 while true; do
   if [[ $1 == "--leave_container_running" ]]; then
     LEAVE_CONTAINER_RUNNING=1
@@ -84,6 +94,8 @@ while true; do
     NUM_PARAMETER_SERVERS=$2
   elif [[ $1 == "--sync_replicas" ]]; then
     SYNC_REPLICAS_FLAG="--sync_replicas"
+  elif [[ $1 == "--whl_url" ]]; then
+    WHL_URL=$2
   fi
 
   shift
@@ -104,25 +116,35 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Get utility functions
 source ${DIR}/scripts/utils.sh
 
-
-# First, make sure that no docker-in-docker container of the same image
-# is already running
-if [[ ! -z $(get_container_id_by_image_name ${DOCKER_IMG_NAME}) ]]; then
-    die "It appears that there is already at least one Docker container "\
-"of image name ${DOCKER_IMG_NAME} running. Please stop it before trying again"
-fi
-
-# Build docker-in-docker image for local k8s cluster
+# Build docker-in-docker image for local k8s cluster.
 NO_CACHE_FLAG=""
 if [[ ! -z "${TF_DIST_DOCKER_NO_CACHE}" ]] &&
    [[ "${TF_DIST_DOCKER_NO_CACHE}" != "0" ]]; then
   NO_CACHE_FLAG="--no-cache"
 fi
 
+# Create docker build context directory.
+BUILD_DIR=$(mktemp -d)
+echo ""
+echo "Using whl file URL: ${WHL_URL}"
+echo "Building in temporary directory: ${BUILD_DIR}"
+
+cp -r ${DIR}/* "${BUILD_DIR}"/ || \
+  die "Failed to copy files to ${BUILD_DIR}"
+
+# Download whl file into the build context directory.
+wget -P "${BUILD_DIR}" ${WHL_URL} || \
+  die "Failed to download tensorflow whl file from URL: ${WHL_URL}"
+
+# Build docker image for test.
 docker build ${NO_CACHE_FLAG} -t ${DOCKER_IMG_NAME} \
-   -f ${DIR}/Dockerfile.local ${DIR} || \
+   -f "${BUILD_DIR}/Dockerfile.local" "${BUILD_DIR}" || \
    die "Failed to build docker image: ${DOCKER_IMG_NAME}"
 
+# Clean up docker build context directory.
+rm -rf "${BUILD_DIR}"
+
+# Run docker image for test.
 docker run ${DOCKER_IMG_NAME} \
     /var/tf_dist_test/scripts/dist_mnist_test.sh \
     --ps_hosts "localhost:2000,localhost:2001" \
