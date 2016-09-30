@@ -123,7 +123,7 @@ def sparse_concat(concat_dim, sp_inputs, name=None, expand_nonconcat_dim=False):
 
   If expand_nonconcat_dim is False, all inputs' shapes must match, except for
   the concat dimension. If expand_nonconcat_dim is True, then inputs' shapes are
-  allowd to vary among all inputs.
+  allowed to vary among all inputs.
 
   The `indices`, `values`, and `shapes` lists must have the same length.
 
@@ -266,10 +266,10 @@ def sparse_add(a, b, thresh=0):
 
   Then,
 
-      - thresh == 0 (the default): all 5 index/value pairs will be returned.
-      - thresh == 0.11: only .1 and 0  will vanish, and the remaining three
+      * `thresh == 0` (the default): all 5 index/value pairs will be returned.
+      * `thresh == 0.11`: only .1 and 0  will vanish, and the remaining three
           index/value pairs will be returned.
-      - thresh == 0.21: .1, 0, and -.2 will vanish.
+      * `thresh == 0.21`: .1, 0, and -.2 will vanish.
 
   Args:
     a: The first operand; `SparseTensor` or `Tensor`.
@@ -1230,7 +1230,8 @@ def sparse_tensor_dense_matmul(sp_a, b, adjoint_a=False, adjoint_b=False,
   * Is the density of A larger than approximately 15%?
 
   If the answer to several of these questions is yes, consider
-  converting the SparseTensor to a dense one and using tf.matmul with sp_a=True.
+  converting the `SparseTensor` to a dense one and using `tf.matmul` with
+  `sp_a=True`.
 
   This operation tends to perform well when A is more sparse, if the column size
   of the product is small (e.g. matrix-vector multiplication), if sp_a.shape

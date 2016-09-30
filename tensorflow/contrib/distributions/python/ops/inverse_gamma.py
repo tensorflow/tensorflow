@@ -135,6 +135,7 @@ class InverseGamma(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
+    """See the documentation for tf.random_gamma for more details."""
     return 1. / random_ops.random_gamma([n], self.alpha, beta=self.beta,
                                         dtype=self.dtype, seed=seed)
 
@@ -158,12 +159,25 @@ class InverseGamma(distribution.Distribution):
     # function Q(a, x), which is what we want for the CDF.
     return math_ops.igammac(self.alpha, self.beta / x)
 
+  @distribution_util.AppendDocstring(
+      """This is defined to be
+
+      ```
+      entropy = alpha - log(beta) + log(Gamma(alpha))
+      + (1-alpha)digamma(alpha)
+      ```
+
+      where digamma(alpha) is the digamma function.""")
   def _entropy(self):
     return (self.alpha +
             math_ops.log(self.beta) +
             math_ops.lgamma(self.alpha) -
             (1. + self.alpha) * math_ops.digamma(self.alpha))
 
+  @distribution_util.AppendDocstring(
+      """The mean of an inverse gamma distribution is `beta / (alpha - 1)`,
+      when `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is
+      `False`, an exception will be raised rather than returning `NaN`""")
   def _mean(self):
     mean = self.beta / (self.alpha - 1.)
     if self.allow_nan_stats:
@@ -178,6 +192,10 @@ class InverseGamma(distribution.Distribution):
               message="mean not defined for components of self.alpha <= 1"),
       ], mean)
 
+  @distribution_util.AppendDocstring(
+      """Variance for inverse gamma is defined only for `alpha > 2`. If
+      `self.allow_nan_stats` is `False`, an exception will be raised rather
+      than returning `NaN`.""")
   def _variance(self):
     var = (math_ops.square(self.beta) /
            (math_ops.square(self.alpha - 1.) * (self.alpha - 2.)))
@@ -194,44 +212,8 @@ class InverseGamma(distribution.Distribution):
       ], var)
 
   def _mode(self):
+    """The mode of an inverse gamma distribution is `beta / (alpha + 1)`."""
     return self.beta / (self.alpha + 1.)
-
-
-distribution_util.append_class_fun_doc(InverseGamma.sample_n, doc_str="""
-
-    See the documentation for tf.random_gamma for more details.
-""")
-
-distribution_util.append_class_fun_doc(InverseGamma.entropy, doc_str="""
-
-    This is defined to be
-
-    ```
-    entropy = alpha - log(beta) + log(Gamma(alpha))
-                 + (1-alpha)digamma(alpha)
-    ```
-
-    where digamma(alpha) is the digamma function.
-""")
-
-distribution_util.append_class_fun_doc(InverseGamma.mean, doc_str="""
-
-    The mean of an inverse gamma distribution is `beta / (alpha - 1)`,
-    when `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is
-    `False`, an exception will be raised rather than returning `NaN`
-""")
-
-distribution_util.append_class_fun_doc(InverseGamma.variance, doc_str="""
-
-    Variance for inverse gamma is defined only for `alpha > 2`. If
-    `self.allow_nan_stats` is `False`, an exception will be raised rather
-    than returning `NaN`.
-""")
-
-distribution_util.append_class_fun_doc(InverseGamma.mode, doc_str="""
-
-    The mode of an inverse gamma distribution is `beta / (alpha + 1)`.
-""")
 
 
 class InverseGammaWithSoftplusAlphaBeta(InverseGamma):

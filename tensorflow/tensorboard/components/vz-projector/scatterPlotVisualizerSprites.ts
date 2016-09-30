@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {NearestEntry} from './knn';
 import {RenderContext} from './renderContext';
-import {DataSet, ScatterPlot} from './scatterPlot';
+import {DataSet} from './scatterPlot';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
+import {SelectionContext} from './selectionContext';
 import {createTexture} from './util';
 
 const NUM_POINTS_FOG_THRESHOLD = 5000;
@@ -136,8 +138,12 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
   private pickingColors: Float32Array;
   private renderColors: Float32Array;
 
-  constructor(scatterPlot: ScatterPlot) {
-    scatterPlot.onSelection((s: number[]) => this.onSelectionChanged(s));
+  constructor(selectionContext: SelectionContext) {
+    selectionContext.registerSelectionChangedListener(
+        (selectedPointIndices: number[],
+         neighborsOfFirstPoint: NearestEntry[]) =>
+            this.onSelectionChanged(
+                selectedPointIndices, neighborsOfFirstPoint));
   }
 
   /**
@@ -346,9 +352,10 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
     this.positionBuffer = new THREE.BufferAttribute(positions, XYZ_NUM_BYTES);
   }
 
-  onSelectionChanged(selection: number[]) {
+  onSelectionChanged(
+      selectedPointIndices: number[], neighborsOfFirstPoint: NearestEntry[]) {
     this.defaultPointColor =
-        (selection.length > 0) ? POINT_COLOR_GRAYED : POINT_COLOR;
+        (selectedPointIndices.length > 0) ? POINT_COLOR_GRAYED : POINT_COLOR;
   }
 
   onRecreateScene(

@@ -166,6 +166,9 @@ class SessionDebugTest(test_util.TensorFlowTestCase):
       dump = debug_data.DebugDumpDir(
           self._dump_root, partition_graphs=run_metadata.partition_graphs)
 
+      self.assertIn(str1_name, dump.nodes())
+      self.assertIn(str2_name, dump.nodes())
+
       self.assertEqual(2, dump.size)
 
       self.assertEqual([str1_init_val], dump.get_tensors("%s/read" % str1_name,

@@ -18,10 +18,10 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-#include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -43,7 +43,6 @@ SliceIndex HandleCopies(typename TTypes<T>::ConstMatrix params,
   const T* params_base = &params(0, 0);
   if (static_slice_elems >= 0) {
     // Give compiler static knowledge of the number of elements/bytes
-    CHECK_EQ(static_slice_elems, slice_elems);
     slice_elems = static_slice_elems;
   }
   // Compute slice_bytes here so that static knowledge is available
@@ -62,7 +61,7 @@ SliceIndex HandleCopies(typename TTypes<T>::ConstMatrix params,
     // Copy using memcpy if possible, otherwise an Eigen loop
     // TODO(cwhipkey): avoid linking to framework to get Allocator (to improve
     // ahead-of-time compilation binary size).
-    if (Allocator::is_simple<T>::value) {
+    if (is_simple_type<T>::value) {
       memcpy(out_base + i * slice_elems, params_base + index * slice_elems,
              slice_bytes);
     } else {

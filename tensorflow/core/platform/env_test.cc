@@ -17,21 +17,36 @@ limitations under the License.
 
 #include <sys/stat.h>
 
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 
 namespace {
+
 string CreateTestFile(Env* env, const string& filename, int length) {
   string input(length, 0);
   for (int i = 0; i < length; i++) input[i] = i;
   WriteStringToFile(env, filename, input);
   return input;
 }
+
+GraphDef CreateTestProto() {
+  GraphDef g;
+  NodeDef* node = g.add_node();
+  node->set_name("name1");
+  node->set_op("op1");
+  node = g.add_node();
+  node->set_name("name2");
+  node->set_op("op2");
+  return g;
+}
+
 }  // namespace
 
 string BaseDir() { return io::JoinPath(testing::TmpDir(), "base_dir"); }
@@ -68,6 +83,34 @@ TEST_F(DefaultEnvTest, ReadFileToString) {
     EXPECT_EQ(length, stat.length);
     EXPECT_FALSE(stat.is_directory);
   }
+}
+
+TEST_F(DefaultEnvTest, ReadWriteBinaryProto) {
+  const GraphDef proto = CreateTestProto();
+  const string filename = strings::StrCat(BaseDir(), "binary_proto");
+
+  // Write the binary proto
+  TF_EXPECT_OK(WriteBinaryProto(env_, filename, proto));
+
+  // Read the binary proto back in and make sure it's the same.
+  GraphDef result;
+  TF_EXPECT_OK(ReadBinaryProto(env_, filename, &result));
+  EXPECT_EQ(result.DebugString(), proto.DebugString());
+}
+
+TEST_F(DefaultEnvTest, ReadWriteTextProto) {
+  const GraphDef proto = CreateTestProto();
+  const string filename = strings::StrCat(BaseDir(), "text_proto");
+
+  // Write the text proto
+  string as_text;
+  EXPECT_TRUE(protobuf::TextFormat::PrintToString(proto, &as_text));
+  TF_EXPECT_OK(WriteStringToFile(env_, filename, as_text));
+
+  // Read the text proto back in and make sure it's the same.
+  GraphDef result;
+  TF_EXPECT_OK(ReadTextProto(env_, filename, &result));
+  EXPECT_EQ(result.DebugString(), proto.DebugString());
 }
 
 TEST_F(DefaultEnvTest, FileToReadonlyMemoryRegion) {

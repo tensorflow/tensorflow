@@ -248,7 +248,7 @@ Use mean_pairwise_squared_error.
   Note that since the inputs are of size [batch_size, d0, ... dN], the
   corresponding pairs are computed within each batch sample but not across
   samples within a batch. For example, if `predictions` represents a batch of
-  16 grayscale images of dimenion [batch_size, 100, 200], then the set of pairs
+  16 grayscale images of dimension [batch_size, 100, 200], then the set of pairs
   is drawn from each image, but not across images.
 
   `weight` acts as a coefficient for the loss. If a scalar is provided, then the
@@ -318,6 +318,7 @@ tensor of size [`batch_size`], then the loss weights apply to each
 corresponding sample.
 
 If `label_smoothing` is nonzero, smooth the labels towards 1/2:
+
     new_multiclass_labels = multiclass_labels * (1 - label_smoothing)
                             + 0.5 * label_smoothing
 
@@ -432,7 +433,7 @@ Use mean_pairwise_squared_error.
   Note that since the inputs are of size [batch_size, d0, ... dN], the
   corresponding pairs are computed within each batch sample but not across
   samples within a batch. For example, if `predictions` represents a batch of
-  16 grayscale images of dimenion [batch_size, 100, 200], then the set of pairs
+  16 grayscale images of dimension [batch_size, 100, 200], then the set of pairs
   is drawn from each image, but not across images.
 
   `weight` acts as a coefficient for the loss. If a scalar is provided, then the

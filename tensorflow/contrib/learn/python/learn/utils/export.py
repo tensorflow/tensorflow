@@ -94,7 +94,13 @@ def generic_signature_fn(examples, unused_features, predictions):
 
   Returns:
     Tuple of default signature and empty named signatures.
+
+  Raises:
+    ValueError: If examples is `None`.
   """
+  if examples is None:
+    raise ValueError('examples cannot be None when using this signature fn.')
+
   tensors = {'inputs': examples}
   if not isinstance(predictions, dict):
     predictions = {'outputs': predictions}
@@ -114,7 +120,13 @@ def classification_signature_fn(examples, unused_features, predictions):
 
   Returns:
     Tuple of default classification signature and empty named signatures.
+
+  Raises:
+    ValueError: If examples is `None`.
   """
+  if examples is None:
+    raise ValueError('examples cannot be None when using this signature fn.')
+
   if isinstance(predictions, dict):
     default_signature = exporter.classification_signature(
         examples, classes_tensor=predictions['classes'])
@@ -136,7 +148,13 @@ def classification_signature_fn_with_prob(
 
   Returns:
     Tuple of default classification signature and empty named signatures.
+
+  Raises:
+    ValueError: If examples is `None`.
   """
+  if examples is None:
+    raise ValueError('examples cannot be None when using this signature fn.')
+
   if isinstance(predictions, dict):
     default_signature = exporter.classification_signature(
         examples, scores_tensor=predictions['probabilities'])
@@ -156,7 +174,13 @@ def regression_signature_fn(examples, unused_features, predictions):
 
   Returns:
     Tuple of default regression signature and empty named signatures.
+
+  Raises:
+    ValueError: If examples is `None`.
   """
+  if examples is None:
+    raise ValueError('examples cannot be None when using this signature fn.')
+
   default_signature = exporter.regression_signature(
       input_tensor=examples, output_tensor=predictions)
   return default_signature, {}
@@ -174,7 +198,13 @@ def logistic_regression_signature_fn(examples, unused_features, predictions):
 
   Returns:
     Tuple of default regression signature and named signature.
+
+  Raises:
+    ValueError: If examples is `None`.
   """
+  if examples is None:
+    raise ValueError('examples cannot be None when using this signature fn.')
+
   if isinstance(predictions, dict):
     predictions_tensor = predictions['probabilities']
   else:
@@ -233,12 +263,11 @@ def export_estimator(estimator,
     '2016-09-23',
     'The signature of the input_fn accepted by export is changing to be '
     'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate. '
-    'input_fn and input_feature_key will become required args. '
-    'use_deprecated_input_fn will default to False and be removed. '
+    'input_fn and (and in most cases, input_feature_key) will become required '
+    'args. use_deprecated_input_fn will default to False and be removed. '
     'default_batch_size will also be removed since it will now be a part of '
     'the input_fn.',
     use_deprecated_input_fn=True,
-    input_feature_key=None,
     default_batch_size=1)
 def _export_estimator(estimator,
                       export_dir,
@@ -251,8 +280,8 @@ def _export_estimator(estimator,
                       prediction_key=None):
   if use_deprecated_input_fn:
     input_fn = input_fn or _default_input_fn
-  elif input_fn is None or input_feature_key is None:
-    raise ValueError('input_fn and input_feature_key must both be defined.')
+  elif input_fn is None:
+    raise ValueError('input_fn must be defined.')
 
   checkpoint_path = tf_saver.latest_checkpoint(estimator._model_dir)
   with ops.Graph().as_default() as g:
@@ -265,7 +294,12 @@ def _export_estimator(estimator,
       features = input_fn(estimator, examples)
     else:
       features, _ = input_fn()
-      examples = features[input_feature_key]
+      examples = None
+      if input_feature_key is not None:
+        examples = features[input_feature_key]
+
+    if not features and not examples:
+      raise ValueError('Either features or examples must be defined.')
 
     predictions = estimator._get_predict_ops(features)
     if prediction_key is not None:

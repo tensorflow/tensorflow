@@ -182,6 +182,14 @@ Often, a numerical approximation can be used for `log_cdf(x)` that yields
 a more accurate answer than simply taking the logarithm of the `cdf` when
 `x << -1`.
 
+
+Additional documentation from `Beta`:
+
+Note that the argument `x` must be a non-negative floating point tensor
+whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
+dimensions, the last dimension represents counts for the corresponding Beta
+distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
+
 ##### Args:
 
 
@@ -216,7 +224,7 @@ Log probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -240,7 +248,7 @@ Log probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -303,6 +311,13 @@ Mean.
 #### `tf.contrib.distributions.BetaWithSoftplusAB.mode(name='mode')` {#BetaWithSoftplusAB.mode}
 
 Mode.
+
+Additional documentation from `Beta`:
+
+Note that the mode for the Beta distribution is only defined
+when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
+and `NaN` otherwise. If `self.allow_nan_stats` is `False`, an exception
+will be raised rather than returning `NaN`.
 
 
 - - -
@@ -382,7 +397,7 @@ Probability density function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if not `is_continuous`.
+*  <b>`TypeError`</b>: if not `is_continuous`.
 
 
 - - -
@@ -406,7 +421,7 @@ Probability mass function.
 ##### Raises:
 
 
-*  <b>`AttributeError`</b>: if `is_continuous`.
+*  <b>`TypeError`</b>: if `is_continuous`.
 
 
 - - -
@@ -414,6 +429,14 @@ Probability mass function.
 #### `tf.contrib.distributions.BetaWithSoftplusAB.prob(value, name='prob')` {#BetaWithSoftplusAB.prob}
 
 Probability density/mass function (depending on `is_continuous`).
+
+
+Additional documentation from `Beta`:
+
+Note that the argument `x` must be a non-negative floating point tensor
+whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
+dimensions, the last dimension represents counts for the corresponding Beta
+distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
 
 ##### Args:
 

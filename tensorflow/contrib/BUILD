@@ -59,6 +59,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/factorization:all_ops",
+        "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/layers:bucketization_op_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
         "//tensorflow/contrib/metrics:set_ops_op_lib",

@@ -14,8 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet, ScatterPlot} from './scatterPlot';
+import {DataSet} from './scatterPlot';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
+import {SelectionContext} from './selectionContext';
 import {createTexture} from './util';
 
 const FONT_SIZE = 80;
@@ -122,8 +123,9 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   private labelVertexMap: number[][];
   private glyphTexture: GlyphTexture;
 
-  constructor(scatterPlot: ScatterPlot) {
-    scatterPlot.onSelection((s: number[]) => this.onSelectionChanged(s));
+  constructor(selectionContext: SelectionContext) {
+    selectionContext.registerSelectionChangedListener(
+        s => this.onSelectionChanged(s));
     this.createGlyphTexture();
 
     this.uniforms = {

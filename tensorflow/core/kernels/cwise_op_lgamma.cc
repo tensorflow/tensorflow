@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
+#include "tensorflow/core/platform/dynamic_annotations.h"
+
 namespace tensorflow {
 
 template <typename Device, typename Functor>

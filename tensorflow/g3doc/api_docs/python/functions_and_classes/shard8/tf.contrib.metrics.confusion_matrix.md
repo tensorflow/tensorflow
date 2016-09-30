@@ -8,12 +8,14 @@ label 1-D int arrays.
 Considering a prediction array such as: `[1, 2, 3]`
 And a label array such as: `[2, 2, 3]`
 
-##### The confusion matrix returned would be the following one:
+The confusion matrix returned would be the following one:
 
+```python
     [[0, 0, 0]
      [0, 1, 0]
      [0, 1, 0]
      [0, 0, 1]]
+```
 
 If `weights` is not None, then the confusion matrix elements are the
 corresponding `weights` elements.
@@ -27,9 +29,9 @@ the same shape in order for this function to work.
 ##### Args:
 
 
-*  <b>`predictions`</b>: A 1-D array represeting the predictions for a given
+*  <b>`predictions`</b>: A 1-D array representing the predictions for a given
                classification.
-*  <b>`labels`</b>: A 1-D represeting the real labels for the classification task.
+*  <b>`labels`</b>: A 1-D representing the real labels for the classification task.
 *  <b>`num_classes`</b>: The possible number of labels the classification task can
                have. If this value is not provided, it will be calculated
                using both predictions and labels array.
@@ -39,7 +41,7 @@ the same shape in order for this function to work.
 
 ##### Returns:
 
-  A k X k matrix represeting the confusion matrix, where k is the number of
+  A k X k matrix representing the confusion matrix, where k is the number of
   possible labels in the classification task.
 
 ##### Raises:

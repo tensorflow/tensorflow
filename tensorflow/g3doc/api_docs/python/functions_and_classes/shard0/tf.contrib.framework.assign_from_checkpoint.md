@@ -8,8 +8,8 @@ Creates an operation to assign specific variables from a checkpoint.
 *  <b>`model_path`</b>: The full path to the model checkpoint. To get latest checkpoint
       use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
 *  <b>`var_list`</b>: A list of `Variable` objects or a dictionary mapping names in the
-      checkpoint to the correspoing variables to initialize. If empty or None,
-      it would return  no_op(), None.
+      checkpoint to the corresponding variables to initialize. If empty or
+      None, it would return  no_op(), None.
 
 ##### Returns:
 

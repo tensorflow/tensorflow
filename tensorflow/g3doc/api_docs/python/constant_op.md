@@ -23,7 +23,7 @@ all elements set to zero.
 For example:
 
 ```python
-tf.zeros([3, 4], int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+tf.zeros([3, 4], tf.int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
 ```
 
 ##### Args:
@@ -84,7 +84,7 @@ elements set to 1.
 For example:
 
 ```python
-tf.ones([2, 3], int32) ==> [[1, 1, 1], [1, 1, 1]]
+tf.ones([2, 3], tf.int32) ==> [[1, 1, 1], [1, 1, 1]]
 ```
 
 ##### Args:
@@ -266,7 +266,7 @@ Like the Python builtin `range`, `start` defaults to 0, so that
 
 For example:
 
-```
+```python
 # 'start' is 3
 # 'limit' is 18
 # 'delta' is 3

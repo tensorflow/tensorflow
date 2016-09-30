@@ -45,7 +45,7 @@ The argument `normalized` and `centered` controls how the windows are built:
     indicates if the offset coordinates are normalized.
 *  <b>`uniform_noise`</b>: An optional `bool`. Defaults to `True`.
     indicates if the noise should be generated using a
-    uniform distribution or a gaussian distribution.
+    uniform distribution or a Gaussian distribution.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:

@@ -162,7 +162,7 @@ class VariableScopeTest(tf.test.TestCase):
           losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
           self.assertEqual(3, len(losses))  # No new loss added.
 
-  def testIntializeFromValue(self):
+  def testInitializeFromValue(self):
     with self.test_session() as sess:
       init = tf.constant(0.1)
       w = tf.get_variable("v", initializer=init)

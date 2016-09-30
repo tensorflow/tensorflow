@@ -34,7 +34,7 @@ Initializes a TensorFlowEstimator instance.
     classes for loss computation. If not given, all classes are supposed to
     have weight one.
 *  <b>`continue_training`</b>: when continue_training is True, once initialized
-    model will be continuely trained on every call of fit.
+    model will be continually trained on every call of fit.
 *  <b>`config`</b>: RunConfig object that controls the configurations of the
     session, e.g. num_cores, gpu_memory_fraction, etc.
 *  <b>`verbose`</b>: Controls the verbosity, possible values:
@@ -91,7 +91,7 @@ Exports inference graph into given dir. (deprecated arguments)
 
 SOME ARGUMENTS ARE DEPRECATED. They will be removed after 2016-09-23.
 Instructions for updating:
-The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn and input_feature_key will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
+The signature of the input_fn accepted by export is changing to be consistent with what's used by tf.Learn Estimator's train/evaluate. input_fn (and in most cases, input_feature_key) will become required args, and use_deprecated_input_fn will default to False and be removed altogether.
 
     Args:
       export_dir: A string containing a directory to write the exported graph
@@ -103,9 +103,10 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds toa
+        key into the features dict returned by `input_fn` that corresponds to
         the raw `Example` strings `Tensor` that the exported model will take as
-        input.
+        input. Can only be `None` if you're using a custom `signature_fn` that
+        does not use the first arg (examples).
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
@@ -131,7 +132,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
 Neural network model from provided `model_fn` and training data.
 
 Note: called first time constructs the graph and initializers
-variables. Consecutives times it will continue training the same model.
+variables. Subsequently, it will continue training the same model.
 This logic follows partial_fit() interface in scikit-learn.
 To restart learning, create new estimator.
 

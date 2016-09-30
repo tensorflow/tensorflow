@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/prefetch.h"
 
 namespace tensorflow {
 
