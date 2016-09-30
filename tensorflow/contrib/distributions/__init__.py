@@ -73,7 +73,7 @@ representing the posterior or posterior predictive.
 ### Normal likelihood with conjugate prior.
 
 @@normal_conjugates_known_sigma_posterior
-@@normal_congugates_known_sigma_predictive
+@@normal_conjugates_known_sigma_predictive
 
 ## Kullback Leibler Divergence
 

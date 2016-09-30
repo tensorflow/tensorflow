@@ -109,9 +109,11 @@ class GRUBlockCell(rnn_cell.RNNCell):
 
   This kernel op implements the following mathematical equations:
 
-  Baises are initialized with :
-  `b_ru` - constant_initializer(1.0)
-  `b_c` - constant_initializer(0.0)
+  Biases are initialized with:
+
+  * `b_ru` - constant_initializer(1.0)
+  * `b_c` - constant_initializer(0.0)
+
   ```
   x_h_prev = [x, h_prev]
 

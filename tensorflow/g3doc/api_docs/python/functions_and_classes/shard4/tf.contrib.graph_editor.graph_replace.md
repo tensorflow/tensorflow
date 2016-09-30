@@ -5,7 +5,7 @@ Create a new graph which compute the targets from the replaced Tensors.
 ##### Args:
 
 
-*  <b>`target_ts`</b>: a single tf.Tensor or an iterabble of tf.Tensor.
+*  <b>`target_ts`</b>: a single tf.Tensor or an iterable of tf.Tensor.
 *  <b>`replacement_ts`</b>: dictionary mapping from original tensors to replaced tensors
 *  <b>`dst_scope`</b>: the destination scope.
 *  <b>`src_scope`</b>: the source scope.

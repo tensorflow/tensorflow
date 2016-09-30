@@ -36,6 +36,7 @@ Run one step of LSTM.
 ##### Returns:
 
   A tuple containing:
+
   - A `2-D, [batch x output_dim]`, Tensor representing the output of the
     LSTM after reading `inputs` when previous state was `state`.
     Here output_dim is:

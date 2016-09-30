@@ -82,7 +82,7 @@ commonly done to report evaluation results in event files.
 
 Adds a `SessionLog` protocol buffer to the event file.
 
-This method wraps the provided session in an `Event` procotol buffer
+This method wraps the provided session in an `Event` protocol buffer
 and adds it to the event file.
 
 ##### Args:

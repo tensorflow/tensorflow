@@ -75,27 +75,31 @@ are placed in `outputs[i]` in lexicographic order of `js`, and the first
 dimension of `outputs[i]` is the number of entries in `partitions` equal to `i`.
 In detail,
 
+```python
     outputs[i].shape = [sum(partitions == i)] + data.shape[partitions.ndim:]
 
     outputs[i] = pack([data[js, ...] for js if partitions[js] == i])
+```
 
 `data.shape` must start with `partitions.shape`.
 
 For example:
 
-    # Scalar partitions
+```python
+    # Scalar partitions.
     partitions = 1
     num_partitions = 2
     data = [10, 20]
     outputs[0] = []  # Empty with shape [0, 2]
     outputs[1] = [[10, 20]]
 
-    # Vector partitions
+    # Vector partitions.
     partitions = [0, 0, 1, 1, 0]
     num_partitions = 2
     data = [10, 20, 30, 40, 50]
     outputs[0] = [10, 20, 50]
     outputs[1] = [30, 40]
+```
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/DynamicPartition.png" alt>
@@ -147,15 +151,19 @@ Interleave the values from the `data` tensors into a single tensor.
 
 Builds a merged tensor such that
 
+```python
     merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]
+```
 
 For example, if each `indices[m]` is scalar or vector, we have
 
-    # Scalar indices
+```python
+    # Scalar indices:
     merged[indices[m], ...] = data[m][...]
 
-    # Vector indices
+    # Vector indices:
     merged[indices[m][i], ...] = data[m][i, ...]
+```
 
 Each `data[i].shape` must start with the corresponding `indices[i].shape`,
 and the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we
@@ -170,6 +178,7 @@ merged result.
 
 For example:
 
+```python
     indices[0] = 6
     indices[1] = [4, 1]
     indices[2] = [[5, 2], [0, 3]]
@@ -178,6 +187,7 @@ For example:
     data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]
     merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],
               [51, 52], [61, 62]]
+```
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/DynamicStitch.png" alt>

@@ -26,7 +26,7 @@ results in a rounded value.)
 
 *  <b>`string_tensor`</b>: A `Tensor` of type `string`.
 *  <b>`out_type`</b>: An optional `tf.DType` from: `tf.float32, tf.int32`. Defaults to `tf.float32`.
-    The numeric type to interpret each string in string_tensor as.
+    The numeric type to interpret each string in `string_tensor` as.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -258,7 +258,7 @@ shape(t) ==> [2, 2, 3]
 *  <b>`input`</b>: A `Tensor` or `SparseTensor`.
 *  <b>`name`</b>: A name for the operation (optional).
 *  <b>`out_type`</b>: (Optional) The specified output type of the operation
-    (`int32` or `int64`). Defaults to tf.int32.
+    (`int32` or `int64`). Defaults to `tf.int32`.
 
 ##### Returns:
 
@@ -595,7 +595,7 @@ This operation requires that:
 
 For example:
 
-```
+```python
 # 'input' is [[[1, 1, 1], [2, 2, 2]],
 #             [[3, 3, 3], [4, 4, 4]],
 #             [[5, 5, 5], [6, 6, 6]]]
@@ -677,7 +677,7 @@ NOTE: `begin` and `end` are zero-indexed`.
 `strides` entries must be non-zero.
 
 
-```
+```python
 # 'input' is [[[1, 1, 1], [2, 2, 2]],
 #             [[3, 3, 3], [4, 4, 4]],
 #             [[5, 5, 5], [6, 6, 6]]]
@@ -700,7 +700,7 @@ tf.slice(input, [1, 1, 0], [2, -1, 3], [1, -1, 1]) ==>[[[4, 4, 4],
 *  <b>`ellipsis_mask`</b>: An `int32` mask.
 *  <b>`new_axis_mask`</b>: An `int32` mask.
 *  <b>`shrink_axis_mask`</b>: An `int32` mask.
-*  <b>`var`</b>: The variable coresponding to `input_` or None
+*  <b>`var`</b>: The variable corresponding to `input_` or None
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -1214,9 +1214,11 @@ Extract `patches` from `images` and put them in the "depth" output dimension.
 
     We specify the size-related attributes as:
 
+    ```python
           ksizes = [1, ksize_rows, ksize_cols, 1]
           strides = [1, strides_rows, strides_cols, 1]
           rates = [1, rates_rows, rates_cols, 1]
+    ```
 
 *  <b>`name`</b>: A name for the operation (optional).
 
@@ -1263,6 +1265,7 @@ precise description.
        input according to `paddings` to produce `padded` of shape `padded_shape`.
 
     2. Reshape `padded` to `reshaped_padded` of shape:
+
          [batch] +
          [padded_shape[1] / block_shape[0],
            block_shape[0],
@@ -1273,6 +1276,7 @@ precise description.
 
     3. Permute dimensions of `reshaped_padded` to produce
        `permuted_reshaped_padded` of shape:
+
          block_shape +
          [batch] +
          [padded_shape[1] / block_shape[0],
@@ -1282,6 +1286,7 @@ precise description.
 
     4. Reshape `permuted_reshaped_padded` to flatten `block_shape` into the batch
        dimension, producing an output tensor of shape:
+
          [batch * prod(block_shape)] +
          [padded_shape[1] / block_shape[0],
           ...,
@@ -1955,6 +1960,7 @@ Gather slices from `params` according to `indices`.
 `indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
 Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
 
+```python
     # Scalar indices
     output[:, ..., :] = params[indices, :, ... :]
 
@@ -1963,6 +1969,7 @@ Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
 
     # Higher rank indices
     output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]
+```
 
 If `indices` is a permutation and `len(indices) == params.shape[0]` then
 this operation will permute `params` accordingly.
@@ -2007,18 +2014,23 @@ Some examples below.
 
 Simple indexing into a matrix:
 
+```python
     indices = [[0, 0], [1, 1]]
     params = [['a', 'b'], ['c', 'd']]
     output = ['a', 'd']
+```
 
 Slice indexing into a matrix:
 
+```python
     indices = [[1], [0]]
     params = [['a', 'b'], ['c', 'd']]
     output = [['c', 'd'], ['a', 'b']]
+```
 
 Indexing into a 3-tensor:
 
+```python
     indices = [[1]]
     params = [[['a0', 'b0'], ['c0', 'd0']],
               [['a1', 'b1'], ['c1', 'd1']]]
@@ -2035,27 +2047,32 @@ Indexing into a 3-tensor:
     params = [[['a0', 'b0'], ['c0', 'd0']],
               [['a1', 'b1'], ['c1', 'd1']]]
     output = ['b0', 'b1']
+```
 
 Batched indexing into a matrix:
 
+```python
     indices = [[[0, 0]], [[0, 1]]]
     params = [['a', 'b'], ['c', 'd']]
     output = [['a'], ['b']]
+```
 
 Batched slice indexing into a matrix:
 
+```python
     indices = [[[1]], [[0]]]
     params = [['a', 'b'], ['c', 'd']]
     output = [[['c', 'd']], [['a', 'b']]]
+```
 
 Batched indexing into a 3-tensor:
 
+```python
     indices = [[[1]], [[0]]]
     params = [[['a0', 'b0'], ['c0', 'd0']],
               [['a1', 'b1'], ['c1', 'd1']]]
     output = [[[['a1', 'b1'], ['c1', 'd1']]],
               [[['a0', 'b0'], ['c0', 'd0']]]]
-
 
     indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]
     params = [[['a0', 'b0'], ['c0', 'd0']],
@@ -2068,6 +2085,7 @@ Batched indexing into a 3-tensor:
     params = [[['a0', 'b0'], ['c0', 'd0']],
               [['a1', 'b1'], ['c1', 'd1']]]
     output = [['b0', 'b1'], ['d0', 'c1']]
+```
 
 ##### Args:
 
@@ -2136,27 +2154,31 @@ are placed in `outputs[i]` in lexicographic order of `js`, and the first
 dimension of `outputs[i]` is the number of entries in `partitions` equal to `i`.
 In detail,
 
+```python
     outputs[i].shape = [sum(partitions == i)] + data.shape[partitions.ndim:]
 
     outputs[i] = pack([data[js, ...] for js if partitions[js] == i])
+```
 
 `data.shape` must start with `partitions.shape`.
 
 For example:
 
-    # Scalar partitions
+```python
+    # Scalar partitions.
     partitions = 1
     num_partitions = 2
     data = [10, 20]
     outputs[0] = []  # Empty with shape [0, 2]
     outputs[1] = [[10, 20]]
 
-    # Vector partitions
+    # Vector partitions.
     partitions = [0, 0, 1, 1, 0]
     num_partitions = 2
     data = [10, 20, 30, 40, 50]
     outputs[0] = [10, 20, 50]
     outputs[1] = [30, 40]
+```
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/DynamicPartition.png" alt>
@@ -2185,15 +2207,19 @@ Interleave the values from the `data` tensors into a single tensor.
 
 Builds a merged tensor such that
 
+```python
     merged[indices[m][i, ..., j], ...] = data[m][i, ..., j, ...]
+```
 
 For example, if each `indices[m]` is scalar or vector, we have
 
-    # Scalar indices
+```python
+    # Scalar indices:
     merged[indices[m], ...] = data[m][...]
 
-    # Vector indices
+    # Vector indices:
     merged[indices[m][i], ...] = data[m][i, ...]
+```
 
 Each `data[i].shape` must start with the corresponding `indices[i].shape`,
 and the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we
@@ -2208,6 +2234,7 @@ merged result.
 
 For example:
 
+```python
     indices[0] = 6
     indices[1] = [4, 1]
     indices[2] = [[5, 2], [0, 3]]
@@ -2216,6 +2243,7 @@ For example:
     data[2] = [[[51, 52], [21, 22]], [[1, 2], [31, 32]]]
     merged = [[1, 2], [11, 12], [21, 22], [31, 32], [41, 42],
               [51, 52], [61, 62]]
+```
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../../images/DynamicStitch.png" alt>
@@ -2304,6 +2332,7 @@ at the end).
 If `indices` is a scalar the output shape will be a vector of length `depth`
 
 If `indices` is a vector of length `features`, the output shape will be:
+
 ```
   features x depth if axis == -1
   depth x features if axis == 0
@@ -2311,6 +2340,7 @@ If `indices` is a vector of length `features`, the output shape will be:
 
 If `indices` is a matrix (batch) with shape `[batch, features]`, the output
 shape will be:
+
 ```
   batch x features x depth if axis == -1
   batch x depth x features if axis == 1
@@ -2320,17 +2350,17 @@ shape will be:
 If `dtype` is not provided, it will attempt to assume the data type of
 `on_value` or `off_value`, if one or both are passed in. If none of
 `on_value`, `off_value`, or `dtype` are provided, `dtype` will default to the
-value `tf.float32`
+value `tf.float32`.
 
-Note: If a non-numeric data type output is desired (tf.string, tf.bool, etc.),
-both `on_value` and `off_value` _must_ be provided to `one_hot`
+Note: If a non-numeric data type output is desired (`tf.string`, `tf.bool`,
+etc.), both `on_value` and `off_value` _must_ be provided to `one_hot`.
 
 Examples
 =========
 
 Suppose that
 
-```
+```python
   indices = [0, 2, -1, 1]
   depth = 3
   on_value = 5.0
@@ -2340,7 +2370,7 @@ Suppose that
 
 Then output is `[4 x 3]`:
 
-```
+```python
   output =
   [5.0 0.0 0.0]  // one_hot(0)
   [0.0 0.0 5.0]  // one_hot(2)
@@ -2350,7 +2380,7 @@ Then output is `[4 x 3]`:
 
 Suppose that
 
-```
+```python
   indices = [[0, 2], [1, -1]]
   depth = 3
   on_value = 1.0
@@ -2360,7 +2390,7 @@ Suppose that
 
 Then output is `[2 x 2 x 3]`:
 
-```
+```python
   output =
   [
     [1.0, 0.0, 0.0]  // one_hot(0)
@@ -2373,14 +2403,14 @@ Then output is `[2 x 2 x 3]`:
 
 Using default values for `on_value` and `off_value`:
 
-```
+```python
   indices = [0, 1, 2]
   depth = 3
 ```
 
 The output will be
 
-```
+```python
   output =
   [[1., 0., 0.],
    [0., 1., 0.],
@@ -2418,6 +2448,7 @@ The output will be
 Return a mask tensor representing the first N positions of each row.
 
 Example:
+
 ```python
 tf.sequence_mask([1, 3, 2], 5) =
   [[True, False, False, False, False],

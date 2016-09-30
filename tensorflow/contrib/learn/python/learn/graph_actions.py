@@ -171,7 +171,7 @@ def _monitored_train(graph,
     keep_checkpoint_max: The maximum number of recent checkpoint files to
       keep. As new files are created, older files are deleted. If None or 0,
       all checkpoint files are kept. This is simply passed as the max_to_keep
-      arg to tf.Saver constructor.
+      arg to `tf.Saver` constructor.
     supervisor_save_summaries_steps: Save summaries every
       `supervisor_save_summaries_steps` seconds when training.
     feed_fn: A function that is called every iteration to produce a `feed_dict`
@@ -670,7 +670,7 @@ def evaluate(graph,
       evaluated in every logging step. The result of the final evaluation is
       returned. If `update_op` is None, then it's evaluated in every step. If
       `max_steps` is `None`, this should depend on a reader that will raise an
-      end-of-inupt exception when the inputs are exhausted.
+      end-of-input exception when the inputs are exhausted.
     update_op: A `Tensor` which is run in every step.
     global_step_tensor: A `Variable` containing the global step. If `None`,
       one is extracted from the graph using the same logic as in `Supervisor`.

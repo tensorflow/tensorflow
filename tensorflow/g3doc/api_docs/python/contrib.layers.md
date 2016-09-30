@@ -52,8 +52,8 @@ Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 Can be used as a normalizer function for conv2d and fully_connected.
 
 Note: When is_training is True the moving_mean and moving_variance need to be
-updated, by default the update_ops are placed in tf.GraphKeys.UPDATE_OPS so
-they need to be added as a dependency to the train_op, example:
+updated, by default the update_ops are placed in `tf.GraphKeys.UPDATE_OPS` so
+they need to be added as a dependency to the `train_op`, example:
 
   update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
   if update_ops:
@@ -77,7 +77,7 @@ can have speed penalty, specially in distributed settings.
 *  <b>`activation_fn`</b>: activation function, default set to None to skip it and
     maintain a linear activation.
 *  <b>`updates_collections`</b>: collections to collect the update ops for computation.
-    The updates_ops need to be excuted with the train_op.
+    The updates_ops need to be executed with the train_op.
     If None, a control dependency would be added to make sure the updates are
     computed in place.
 *  <b>`is_training`</b>: whether or not the layer is in training mode. In training mode
@@ -90,7 +90,12 @@ can have speed penalty, specially in distributed settings.
 *  <b>`variables_collections`</b>: optional collections for the variables.
 *  <b>`outputs_collections`</b>: collections to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
-    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+*  <b>`batch_weights`</b>: An optional tensor of shape `[batch_size]`,
+    containing a frequency weight for each batch item. If present,
+    then the batch normalization uses weighted mean and
+    variance. (This can be used to correct for bias in training
+    example selection.)
 *  <b>`scope`</b>: Optional scope for `variable_scope`.
 
 ##### Returns:
@@ -148,7 +153,7 @@ greater than one.
 *  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
 *  <b>`variables_collections`</b>: optional list of collections for all the variables or
-    a dictionay containing a different list of collection per variable.
+    a dictionary containing a different list of collection per variable.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
@@ -205,7 +210,7 @@ operations such as image gradients:
 *  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
 *  <b>`variables_collections`</b>: optional list of collections for all the variables or
-    a dictionay containing a different list of collection per variable.
+    a dictionary containing a different list of collection per variable.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
@@ -251,7 +256,7 @@ second variable called 'biases' is added to the result of the operation.
 *  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
 *  <b>`variables_collections`</b>: optional list of collections for all the variables or
-    a dictionay containing a different list of collection per variable.
+    a dictionary containing a different list of collection per variable.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: whether or not the variables should be trainable or not.
 *  <b>`scope`</b>: Optional scope for variable_scope.
@@ -421,7 +426,7 @@ It is assumed that the pooling is done per image but not in batch or channels.
 
 ### `tf.contrib.layers.one_hot_encoding(*args, **kwargs)` {#one_hot_encoding}
 
-Transform numeric labels into onehot_labels using tf.one_hot.
+Transform numeric labels into onehot_labels using `tf.one_hot`.
 
 ##### Args:
 
@@ -485,7 +490,9 @@ Lookup embedding results, accounting for invalid IDs and empty features.
 
 The partitioned embedding in `embedding_weights` must all be the same shape
 except for the first dimension. The first dimension is allowed to vary as the
-vocabulary size is not necessarily a multiple of `P`.
+vocabulary size is not necessarily a multiple of `P`.  `embedding_weights`
+may be a `PartitionedVariable` as returned by using `tf.get_variable()` with a
+partitioner.
 
 Invalid IDs (< 0) are pruned from input IDs and weights, as well as any IDs
 with non-positive weight. For an entry with no features, the embedding vector
@@ -498,9 +505,10 @@ along the last dimension.
 
 
 *  <b>`embedding_weights`</b>: A list of `P` float tensors or values representing
-      partitioned embedding tensors.  The total unpartitioned shape should be
-      `[e_0, e_1, ..., e_m]`, where `e_0` represents the vocab size and
-      `e_1, ..., e_m` are the embedding dimensions.
+      partitioned embedding tensors.  Alternatively, a `PartitionedVariable`,
+      created by partitioning along dimension 0.  The total unpartitioned
+      shape should be `[e_0, e_1, ..., e_m]`, where `e_0` represents the
+      vocab size and `e_1, ..., e_m` are the embedding dimensions.
 *  <b>`sparse_ids`</b>: `SparseTensor` of shape `[d_0, d_1, ..., d_n]` containing the
       ids. `d_0` is typically batch size.
 *  <b>`sparse_weights`</b>: `SparseTensor` of same shape as `sparse_ids`, containing
@@ -652,7 +660,8 @@ available: `relu`, `relu6` and `linear`.
 ## Regularizers
 
 Regularization can help prevent overfitting. These have the signature
-`fn(weights)`. The loss is typically added to `tf.GraphKeys.REGULARIZATION_LOSS`
+`fn(weights)`. The loss is typically added to
+`tf.GraphKeys.REGULARIZATION_LOSSES`.
 
 - - -
 
@@ -830,6 +839,8 @@ Returns an initializer that generates tensors without scaling variance.
 When initializing a deep network, it is in principle advantageous to keep
 the scale of the input variance constant, so it does not explode or diminish
 by reaching the final layer. This initializer use the following formula:
+
+```python
   if mode='FAN_IN': # Count only number of input connections.
     n = fan_in
   elif mode='FAN_OUT': # Count only number of output connections.
@@ -838,16 +849,21 @@ by reaching the final layer. This initializer use the following formula:
     n = (fan_in + fan_out)/2.0
 
     truncated_normal(shape, 0.0, stddev=sqrt(factor / n))
+```
 
-To get http://arxiv.org/pdf/1502.01852v1.pdf use (Default):
-  - factor=2.0 mode='FAN_IN' uniform=False
-To get http://arxiv.org/abs/1408.5093 use:
-  - factor=1.0 mode='FAN_IN' uniform=True
-To get http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf use:
-  - factor=1.0 mode='FAN_AVG' uniform=True.
-To get xavier_initializer use either:
-  - factor=1.0 mode='FAN_AVG' uniform=True.
-  - factor=1.0 mode='FAN_AVG' uniform=False.
+* To get [Delving Deep into Rectifiers](
+   http://arxiv.org/pdf/1502.01852v1.pdf), use (Default):<br/>
+  `factor=2.0 mode='FAN_IN' uniform=False`
+* To get [Convolutional Architecture for Fast Feature Embedding](
+   http://arxiv.org/abs/1408.5093), use:<br/>
+  `factor=1.0 mode='FAN_IN' uniform=True`
+* To get [Understanding the difficulty of training deep feedforward neural
+  networks](http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf),
+  use:<br/>
+  `factor=1.0 mode='FAN_AVG' uniform=True.`
+* To get `xavier_initializer` use either:<br/>
+  `factor=1.0 mode='FAN_AVG' uniform=True`, or<br/>
+  `factor=1.0 mode='FAN_AVG' uniform=False`.
 
 ##### Args:
 
@@ -878,24 +894,25 @@ Optimize weights given a loss.
 
 - - -
 
-### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None)` {#optimize_loss}
+### `tf.contrib.layers.optimize_loss(loss, global_step, learning_rate, optimizer, gradient_noise_scale=None, gradient_multipliers=None, clip_gradients=None, learning_rate_decay_fn=None, update_ops=None, variables=None, name=None, summaries=None, colocate_gradients_with_ops=False)` {#optimize_loss}
 
 Given loss and parameters for optimizer, returns a training op.
 
 Various ways of passing optimizers, include:
-  - string, name of the optimizer like 'SGD', 'Adam', see OPTIMIZER_CLS_NAMES
-      for full list. E.g. `optimize_loss(..., optimizer='Adam')`.
-  - function, takes learning rate `Tensor` as argument and must return
-      `Optimizer` instance. E.g. `optimize_loss(...,
-      optimizer=lambda lr: tf.train.MomentumOptimizer(lr, momentum=0.5))`.
-    Alternatively, if `learning_rate` is `None`, the function takes no
-    arguments. E.g. `optimize_loss(..., learning_rate=None,
-      optimizer=lambda: tf.train.MomentumOptimizer(0.5, momentum=0.5))`.
-  - class, subclass of `Optimizer` that takes only one required argument -
-      learning rate, such as AdamOptimizer, AdagradOptimizer.
-      E.g. `optimize_loss(..., optimizer=tf.train.AdagradOptimizer)`.
-  - object, instance of subclass of `Optimizer`.
-      E.g., `optimizer_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
+
+- string, name of the optimizer like 'SGD', 'Adam', see OPTIMIZER_CLS_NAMES
+    for full list. E.g. `optimize_loss(..., optimizer='Adam')`.
+- function, takes learning rate `Tensor` as argument and must return
+    `Optimizer` instance. E.g. `optimize_loss(...,
+    optimizer=lambda lr: tf.train.MomentumOptimizer(lr, momentum=0.5))`.
+  Alternatively, if `learning_rate` is `None`, the function takes no
+  arguments. E.g. `optimize_loss(..., learning_rate=None,
+    optimizer=lambda: tf.train.MomentumOptimizer(0.5, momentum=0.5))`.
+- class, subclass of `Optimizer` that takes only one required argument -
+    learning rate, such as AdamOptimizer, AdagradOptimizer.
+    E.g. `optimize_loss(..., optimizer=tf.train.AdagradOptimizer)`.
+- object, instance of subclass of `Optimizer`.
+    E.g., `optimizer_loss(..., optimizer=tf.train.AdagradOptimizer(0.5))`.
 
 ##### Args:
 
@@ -906,9 +923,9 @@ Various ways of passing optimizers, include:
 *  <b>`optimizer`</b>: string, class or optimizer instance, used as trainer.
              string should be name of optimizer, like 'SGD',
                'Adam', 'Adagrad'. Full list in OPTIMIZER_CLS_NAMES constant.
-             class should be sub-class of tf.Optimizer that implements
+             class should be sub-class of `tf.Optimizer` that implements
                `compute_gradients` and `apply_gradients` functions.
-             optimizer instance should be instantion of `tf.Optimizer`
+             optimizer instance should be instantiation of `tf.Optimizer`
                sub-class and have `compute_gradients` and `apply_gradients`
                functions.
 *  <b>`gradient_noise_scale`</b>: float or None, adds 0-mean normal noise scaled by this
@@ -921,7 +938,7 @@ Various ways of passing optimizers, include:
                           `Tensor`s, returns `Tensor`.
                           Can be used to implement any learning rate decay
                           functions.
-                          For example: tf.train.exponential_decay.
+                          For example: `tf.train.exponential_decay`.
 *  <b>`update_ops`</b>: list of update `Operation`s to execute at each step. If `None`,
               uses elements of UPDATE_OPS collection. The order of execution
               between `update_ops` and `loss` is non-deterministic.
@@ -931,6 +948,8 @@ Various ways of passing optimizers, include:
 *  <b>`summaries`</b>: List of internal quantities to visualize on tensorboard. If not
              set only the loss and the learning rate will be reported. The
              complete list is in OPTIMIZER_SUMMARIES.
+*  <b>`colocate_gradients_with_ops`</b>: If True, try colocating gradients with the
+                               corresponding op.
 
 ##### Returns:
 

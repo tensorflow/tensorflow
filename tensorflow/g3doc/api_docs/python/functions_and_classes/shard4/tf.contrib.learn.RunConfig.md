@@ -81,7 +81,7 @@ Example:
 
 
 *  <b>`ValueError`</b>: if num_ps_replicas and cluster_spec are set (cluster_spec
-    may fome from the TF_CONFIG environment variable).
+    may come from the TF_CONFIG environment variable).
 
 
 - - -

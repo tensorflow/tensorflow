@@ -42,7 +42,7 @@ input[type=file] {
 .dirs {
   display: flex;
   flex-direction: column;
-  margin-right: 10px;
+  margin: 15px 0;
   line-height: 20px;
 }
 
@@ -104,6 +104,17 @@ paper-button {
   margin: 0;
   padding: 0;
 }
+
+.tooltip {
+  max-width: 200px;
+  --paper-tooltip: {
+    font-size: 12px;
+  };
+}
+
+paper-checkbox {
+  --paper-checkbox-checked-color: #880E4F;
+}
 </style>
 
 <div>
@@ -130,7 +141,7 @@ paper-button {
   <paper-checkbox id="normalize-data-checkbox" noink checked="{{normalizeData}}">
     Normalize data
     <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
-    <paper-tooltip position="bottom" animation-delay="0">
+    <paper-tooltip class="tooltip" position="bottom" animation-delay="0" fit-to-visible-bounds>
       The data is normalized by shifting each point by the centroid and making
       it unit norm.
     </paper-tooltip>

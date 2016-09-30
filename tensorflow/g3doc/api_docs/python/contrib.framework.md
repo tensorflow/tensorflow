@@ -400,9 +400,9 @@ For usage, please see examples at top of the file.
 
 
 *  <b>`list_ops_or_scope`</b>: List or tuple of operations to set argument scope for or
-    a dictionary containg the current scope. When list_ops_or_scope is a dict,
-    kwargs must be empty. When list_ops_or_scope is a list or tuple, then
-    every op in it need to be decorated with @add_arg_scope to work.
+    a dictionary containing the current scope. When list_ops_or_scope is a
+    dict, kwargs must be empty. When list_ops_or_scope is a list or tuple,
+    then every op in it need to be decorated with @add_arg_scope to work.
 *  <b>`**kwargs`</b>: keyword=value that will define the defaults for each op in
             list_ops. All the ops need to accept the given set of arguments.
 
@@ -526,8 +526,8 @@ Creates an operation to assign specific variables from a checkpoint.
 *  <b>`model_path`</b>: The full path to the model checkpoint. To get latest checkpoint
       use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
 *  <b>`var_list`</b>: A list of `Variable` objects or a dictionary mapping names in the
-      checkpoint to the correspoing variables to initialize. If empty or None,
-      it would return  no_op(), None.
+      checkpoint to the corresponding variables to initialize. If empty or
+      None, it would return  no_op(), None.
 
 ##### Returns:
 
@@ -814,7 +814,8 @@ Gets the list of variables, filtered by scope and/or suffix.
 
 *  <b>`scope`</b>: an optional scope for filtering the variables to return.
 *  <b>`suffix`</b>: an optional suffix for filtering the variables to return.
-*  <b>`collection`</b>: in which collection search for. Defaults to GraphKeys.VARIABLES.
+*  <b>`collection`</b>: in which collection search for. Defaults to
+    `GraphKeys.VARIABLES`.
 
 ##### Returns:
 
@@ -856,7 +857,7 @@ Gets an existing model variable with these parameters or creates a new one.
       applying it on a newly created variable will be added to the collection
       GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
-    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`collections`</b>: A list of collection names to which the Variable will be added.
     Note that the variable is always also added to the `GraphKeys.VARIABLES`
     and `GraphKeys.MODEL_VARIABLES` collections.
@@ -888,9 +889,9 @@ Gets an existing variable with these parameters or creates a new one.
       applying it on a newly created variable will be added to the collection
       GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
-    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`collections`</b>: A list of collection names to which the Variable will be added.
-    If None it would default to tf.GraphKeys.VARIABLES.
+    If None it would default to `tf.GraphKeys.VARIABLES`.
 *  <b>`caching_device`</b>: Optional device string or function describing where the
       Variable should be cached for reading.  Defaults to the Variable's
       device.
@@ -941,5 +942,29 @@ Initialize VariableDeviceChooser.
 *  <b>`device_index`</b>: int.  Optional device index.  If left
     unspecified, device represents 'any' device_index.
 
+
+
+- - -
+
+### `tf.contrib.framework.zero_initializer(ref, use_locking=True, name='zero_initializer')` {#zero_initializer}
+
+Initialize 'ref' with all zeros, ref tensor should be uninitialized.
+If already initialized, you will get ValueError. This op is intended to
+save memory during initialization.
+
+##### Args:
+
+
+*  <b>`ref`</b>: ref of the tensor need to be zero initialized.
+*  <b>`name`</b>: optional name for this operation.
+
+##### Returns:
+
+  ref that initialized.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If ref tensor is initialized.
 
 

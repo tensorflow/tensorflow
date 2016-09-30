@@ -163,7 +163,7 @@ distribution:
 \log p(x) >= ELBO = \int q(z) \log p(x, z) dz + H[q]
 \\)
 
-where \\( p \\) is the prior disribution, \\( q \\) is the variational,
+where \\( p \\) is the prior distribution, \\( q \\) is the variational,
 and \\( H[q] \\) is the entropy of \\( q \\).  If there is a lower bound
 \\( G[q] \\) such that \\( H[q] \geq G[q] \\) then it can be used in
 place of \\( H[q] \\).

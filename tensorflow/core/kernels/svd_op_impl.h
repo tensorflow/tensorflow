@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/linalg_ops.cc.
+//
+// This header file is used by the individual svd_*op*.cc files for registering
+// individual kernels. A separate file is used for each instantiated kernel to
+// improve compilation times.
 #include <algorithm>
 
 #include "third_party/eigen3/Eigen/SVD"
@@ -95,14 +99,5 @@ class SvdOp : public LinearAlgebraOp<Scalar> {
 
   TF_DISALLOW_COPY_AND_ASSIGN(SvdOp);
 };
-
-REGISTER_LINALG_OP("Svd", (SvdOp<float>), float);
-REGISTER_LINALG_OP("Svd", (SvdOp<double>), double);
-REGISTER_LINALG_OP("Svd", (SvdOp<complex64>), complex64);
-REGISTER_LINALG_OP("Svd", (SvdOp<complex128>), complex128);
-REGISTER_LINALG_OP("BatchSvd", (SvdOp<float>), float);
-REGISTER_LINALG_OP("BatchSvd", (SvdOp<double>), double);
-REGISTER_LINALG_OP("BatchSvd", (SvdOp<complex64>), complex64);
-REGISTER_LINALG_OP("BatchSvd", (SvdOp<complex128>), complex128);
 
 }  // namespace tensorflow

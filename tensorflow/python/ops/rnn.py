@@ -72,6 +72,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
   """Creates a recurrent neural network specified by RNNCell `cell`.
 
   The simplest form of RNN network generated is:
+
   ```python
     state = cell.zero_state(...)
     outputs = []
@@ -90,6 +91,7 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
   to the final state output.
 
   The dynamic calculation performed is, at time `t` for batch row `b`,
+
   ```python
     (output, state)(b, t) =
       (t >= sequence_length(b))
@@ -115,9 +117,10 @@ def rnn(cell, inputs, initial_state=None, dtype=None,
 
   Returns:
     A pair (outputs, state) where:
-      - outputs is a length T list of outputs (one for each input), or a nested
-        tuple of such elements.
-      - state is the final state
+
+    - outputs is a length T list of outputs (one for each input), or a nested
+      tuple of such elements.
+    - state is the final state
 
   Raises:
     TypeError: If `cell` is not an instance of RNNCell.
@@ -1045,7 +1048,7 @@ def raw_rnn(cell, loop_fn,
 
   The operation of `raw_rnn`, in pseudo-code, is basically the following:
 
-  ```
+  ```python
   time = tf.constant(0, dtype=tf.int32)
   (finished, next_input, initial_state, _, loop_state) = loop_fn(
       time=time, cell_output=None, cell_state=None, loop_state=None)
@@ -1060,7 +1063,7 @@ def raw_rnn(cell, loop_fn,
     state = tf.select(finished, state, next_state)
     emit = tf.select(finished, tf.zeros_like(emit), emit)
     emit_ta = emit_ta.write(time, emit)
-    # If any new minibatch entries are marked as finished, mark these
+    # If any new minibatch entries are marked as finished, mark these.
     finished = tf.logical_or(finished, next_finished)
     time += 1
   return (emit_ta, state, loop_state)
