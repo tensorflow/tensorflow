@@ -14,10 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/retrying_file_system.h"
-#include <chrono>
 #include <functional>
-#include <random>
-#include <thread>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
