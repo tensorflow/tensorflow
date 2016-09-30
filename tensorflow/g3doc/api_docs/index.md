@@ -5,14 +5,16 @@ executing a TensorFlow graph.  The Python API is at present the most complete
 and the easiest to use, but the C++ API may offer some performance advantages
 in graph execution, and supports deployment to small devices such as Android.
 
-Over time, we hope that the TensorFlow community will develop front ends for
-languages like Go, Java, JavaScript, Lua, R, and perhaps others. With
-[SWIG](http://swig.org), it's relatively easy to develop a TensorFlow interface
-for your favorite language.
+Additionally, the TensorFlow maintainers intend to include APIs for
+[Java](https://github.com/tensorflow/tensorflow/issues/5) and
+[Go](https://github.com/tensorflow/tensorflow/issues/10) as well. We hope that
+the TensorFlow community will develop front ends for other languages like
+JavaScript, Lua, R and perhaps others, building on the [approach recommended by
+the TensorFlow maintainers](../how_tos/language_bindings/index.md).
 
-Note: Many practical aspects of usage are covered in the TUTORIALS and 
-HOW TO tab, and some additional documentation not specific to any 
-particular language API is available in the RESOURCES tab.
+Note: Many practical aspects of usage are covered in the TUTORIALS and HOW TO
+tab, and some additional documentation not specific to any particular language
+API is available in the RESOURCES tab.
 
 * [Python API](python/index.md)
 * [C++ API](cc/index.md)
