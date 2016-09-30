@@ -1453,7 +1453,7 @@ def dynamic_raw_rnn(cell, inputs, sequence_length=None, initial_state=None,
     outputs_ta, final_state, _ = \
       raw_rnn(cell=cell, loop_fn=loop_fn,
               parallel_iterations=parallel_iterations,
-              swap_memory=swap_memory, scope=scope)
+              swap_memory=swap_memory, scope=varscope)
     outputs = outputs_ta.pack()
     if not time_major:
       # [seq, batch, features] -> [batch, seq, features]
