@@ -67,9 +67,11 @@ TEST(ArrayOpsTest, Pack_ShapeFn) {
   INFER_ERROR("Invalid axis: 3; must be in [-3,3)", op, "[1,3];[1,3];?");
 
   set_axis(0);
-  INFER_ERROR(("Shapes must be equal rank, but are 3 and 2"
-               "\n\tFrom merging shape 0 with other shapes."),
-              op, "[1,2,3];?;[1,4]");
+
+  // Check that both components of error message are there.
+  INFER_ERROR("Shapes must be equal rank, but are 3 and 2", op,
+              "[1,2,3];?;[1,4]");
+  INFER_ERROR("From merging shape 0 with other shapes.", op, "[1,2,3];?;[1,4]");
 }
 
 TEST(ArrayOpsTest, UnPack_ShapeFn) {

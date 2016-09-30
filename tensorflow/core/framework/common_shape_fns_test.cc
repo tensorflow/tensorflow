@@ -111,8 +111,9 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
     InferenceContext c(&def, op_def, {"[2]", "[3,4]"}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_EQ("Invalid argument: Shape must be rank 2 but is rank 1",
-              s.ToString());
+    EXPECT_TRUE(
+        StringPiece(s.ToString())
+            .contains("Invalid argument: Shape must be rank 2 but is rank 1"));
   }
 
   {
@@ -129,8 +130,10 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
     InferenceContext c(&def, op_def, {"[2,5]", "[3,4]"}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_EQ("Invalid argument: Dimensions must be equal, but are 5 and 3",
-              s.ToString());
+    EXPECT_TRUE(
+        StringPiece(s.ToString())
+            .contains(
+                "Invalid argument: Dimensions must be equal, but are 5 and 3"));
   }
 
   {
@@ -138,8 +141,9 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
     InferenceContext c(&def, op_def, {"[2,5,3]", "[3,5,4]"}, {});
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
-    EXPECT_EQ("Invalid argument: Shape must be rank 2 but is rank 3",
-              s.ToString());
+    EXPECT_TRUE(
+        StringPiece(s.ToString())
+            .contains("Invalid argument: Shape must be rank 2 but is rank 3"));
   }
 
   {

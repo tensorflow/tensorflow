@@ -89,7 +89,8 @@ TEST(ShapeRefinerTest, BadShapes) {
   // an error.
   Status s = m.AddNode(mm.node());
   ASSERT_FALSE(s.ok());
-  ASSERT_EQ("Dimensions must be equal, but are 1 and 2", s.error_message());
+  ASSERT_TRUE(StringPiece(s.error_message())
+                  .contains("Dimensions must be equal, but are 1 and 2"));
 }
 
 TEST(ShapeRefinerTest, SetShape) {
