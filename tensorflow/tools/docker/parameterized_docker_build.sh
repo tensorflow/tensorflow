@@ -59,8 +59,6 @@
 #     tagged image name with an argument, to push the image to a central repo
 #     such as gcr.io or Docker Hub.
 
-# TODO(cais): Add support for TF_DOCKER_BUILD_PYTHON_VERSION (PYTHON2/PYTHON3)
-
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../ci_build/builds/builds_common.sh"
@@ -76,6 +74,8 @@ mark_check_failed() {
 TF_DOCKER_BUILD_TYPE=$(to_lower ${TF_DOCKER_BUILD_TYPE})
 TF_DOCKER_BUILD_IS_DEVEL=$(to_lower ${TF_DOCKER_BUILD_IS_DEVEL})
 TF_DOCKER_BUILD_CENTRAL_PIP=$(to_lower ${TF_DOCKER_BUILD_CENTRAL_PIP})
+TF_DOCKER_BUILD_PYTHON_VERSION=$(to_lower ${TF_DOCKER_BUILD_PYTHON_VERSION:-PYTHON2})
+TF_DOCKER_BUILD_OPTIONS=$(to_lower ${TF_DOCKER_BUILD_OPTIONS:-OPT})
 
 echo "Required build parameters:"
 echo "  TF_DOCKER_BUILD_TYPE=${TF_DOCKER_BUILD_TYPE}"
@@ -175,8 +175,9 @@ if [[ "${DO_PIP_BUILD}" == "1" ]]; then
 
   # Perform local build of the required PIP whl file
   export TF_BUILD_CONTAINER_TYPE=${TF_DOCKER_BUILD_TYPE}
-  export TF_BUILD_PYTHON_VERSION="PYTHON2"
-  export TF_BUILD_IS_OPT="OPT"
+  export TF_BUILD_PYTHON_VERSION=${TF_DOCKER_BUILD_PYTHON_VERSION}
+  export TF_BUILD_MAVX=${TF_DOCKER_BUILD_MAVX}
+  export TF_BUILD_OPTIONS=${TF_DOCKER_BUILD_OPTIONS}
   export TF_BUILD_IS_PIP="PIP"
 
   if [[ "${TF_DOCKER_BUILD_TYPE}" == "gpu" ]]; then
