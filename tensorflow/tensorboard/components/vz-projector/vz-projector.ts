@@ -112,6 +112,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
   private selectedProjection: Projection = 'pca';
   private normalizeData: boolean;
 
+  // t-SNE.
+  private runTsneButton: d3.Selection<HTMLButtonElement>;
+  private stopTsneButton: d3.Selection<HTMLButtonElement>;
+
   ready() {
     this.selectionChangedListeners = [];
     this.dataPanel = this.$['data-panel'] as DataPanel;
@@ -242,8 +246,15 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     this.notifySelectionChanged([]);
   }
 
+  private unsetCurrentDataSet() {
+    this.currentDataSet.stopTSNE();
+  }
+
   private setCurrentDataSet(ds: DataSet) {
     this.clearSelection();
+    if (this.currentDataSet != null) {
+      this.unsetCurrentDataSet();
+    }
     this.currentDataSet = ds;
     if (this.normalizeData) {
       this.currentDataSet.normalize();
@@ -315,8 +326,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
       }
     });
 
-    this.dom.select('.run-tsne').on('click', () => this.runTSNE());
-    this.dom.select('.stop-tsne').on('click', () => {
+    this.runTsneButton = this.dom.select('.run-tsne');
+    this.runTsneButton.on('click', () => this.runTSNE());
+    this.stopTsneButton = this.dom.select('.stop-tsne');
+    this.stopTsneButton.on('click', () => {
       this.currentDataSet.stopTSNE();
     });
 
@@ -619,11 +632,16 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
   }
 
   private runTSNE() {
+    this.runTsneButton.attr('disabled', true);
+    this.stopTsneButton.attr('disabled', null);
     this.currentDataSet.projectTSNE(
         perplexity, learningRate, dimension, (iteration: number) => {
           if (iteration != null) {
             this.dom.select('.run-tsne-iter').text(iteration);
             this.scatterPlot.update();
+          } else {
+            this.runTsneButton.attr('disabled', null);
+            this.stopTsneButton.attr('disabled', true);
           }
         });
   }
