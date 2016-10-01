@@ -295,7 +295,7 @@ class FunctionTest(tf.test.TestCase):
       z = Foo(tf.constant(3.0))
       self.assertAllEqual(z.eval(), 6.0)
 
-  def testAssert(self):
+  def testAssertOp(self):
 
     @function.Defun(tf.float32)
     def Foo(x):
@@ -309,6 +309,17 @@ class FunctionTest(tf.test.TestCase):
       with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
                                    "assertion failed.*-3"):
         self.assertAllEqual(Foo(tf.constant(-3.0)).eval(), 6.0)
+
+  def testAssertWrapper(self):
+    @function.Defun(tf.float32)
+    def MyFn(x):
+      with tf.control_dependencies([tf.Assert(tf.less_equal(x, 10.0), [x])]):
+        return tf.identity(x)
+
+    with self.test_session():
+      self.assertEquals(1.0, MyFn(1.0).eval())
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError, "assertion"):
+        _ = MyFn(100.0).eval()
 
   def testVar(self):
 
