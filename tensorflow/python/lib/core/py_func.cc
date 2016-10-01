@@ -154,6 +154,21 @@ Status NumericNpDTypeToTfDType(const int np, DataType* tf) {
   return Status::OK();
 }
 
+bool IsSingleNone(PyObject* obj) {
+  if (!PyArray_Check(obj)) {
+    return false;
+  }
+  PyArrayObject* array_obj = reinterpret_cast<PyArrayObject*>(obj);
+  if (PyArray_NDIM(array_obj) != 0 || PyArray_SIZE(array_obj) != 1) {
+    return false;
+  }
+  npy_intp indices[] = {};
+  char* item_ptr = static_cast<char*>(PyArray_GetPtr(array_obj, indices));
+  PyObject* item = PyArray_GETITEM(array_obj, item_ptr);
+  CHECK(item);
+  return item == Py_None;
+}
+
 // Calls the registered py function through the trampoline.
 Status DoCallPyFunc(PyCall* call) {
   PyObject* trampoline = GetPyTrampoline();
@@ -193,10 +208,12 @@ Status DoCallPyFunc(PyCall* call) {
     }
   } else if (PyArray_Check(result)) {
     // 'result' is a single ndarray.
-    Tensor t;
-    s = ConvertNdarrayToTensor(result, &t);
-    if (s.ok()) {
-      call->out.push_back(t);
+    if (!IsSingleNone(result)) {
+      Tensor t;
+      s = ConvertNdarrayToTensor(result, &t);
+      if (s.ok()) {
+        call->out.push_back(t);
+      }
     }
   } else {
     s = errors::Internal("Unexpected pyobject is returned: ",
