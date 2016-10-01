@@ -93,6 +93,21 @@ class BatchMatmulOpTest(tf.test.TestCase):
 
   def _testNonEmpty(self, dtype, adj_x, adj_y):
     self._compare(
+        self._rand([1, 1, 3], dtype), self._rand([1, 3, 5], dtype), adj_x,
+        adj_y)
+    self._compare(
+        self._rand([1, 2, 3], dtype), self._rand([1, 3, 1], dtype), adj_x,
+        adj_y)
+    self._compare(
+        self._rand([1, 2, 3], dtype), self._rand([1, 3, 5], dtype), adj_x,
+        adj_y)
+    self._compare(
+        self._rand([7, 1, 3], dtype), self._rand([7, 3, 5], dtype), adj_x,
+        adj_y)
+    self._compare(
+        self._rand([7, 2, 3], dtype), self._rand([7, 3, 1], dtype), adj_x,
+        adj_y)
+    self._compare(
         self._rand([7, 2, 3], dtype), self._rand([7, 3, 5], dtype), adj_x,
         adj_y)
     self._compare(

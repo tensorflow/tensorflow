@@ -348,7 +348,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
                dropout=None,
                gradient_clip_norm=None,
                enable_centered_bias=None,
-               config=None):
+               config=None,
+               feature_engineering_fn=None):
     """Initializes a DNNClassifier instance.
 
     Args:
@@ -379,6 +380,10 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
       config: `RunConfig` object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        targets which are the output of `input_fn` and
+                        returns features and targets which will be fed
+                        into the model.
 
     Returns:
       A `DNNClassifier` estimator.
@@ -415,7 +420,8 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
             "gradient_clip_norm": gradient_clip_norm,
             "enable_centered_bias": enable_centered_bias,
             "num_ps_replicas": num_ps_replicas,
-        })
+        },
+        feature_engineering_fn=feature_engineering_fn)
 
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
           monitors=None, max_steps=None):
@@ -561,8 +567,10 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
     return self._model_dir
 
   @property
-  @deprecated("2016-10-13", "This method inspects the private state of the "
-              "object, and should not be used")
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def weights_(self):
     hiddenlayer_weights = [checkpoints.load_variable(
         self._model_dir, name=("dnn/hiddenlayer_%d/weights" % i))
@@ -572,8 +580,10 @@ class DNNClassifier(evaluable.Evaluable, trainable.Trainable):
     return hiddenlayer_weights + logits_weights
 
   @property
-  @deprecated("2016-10-13", "This method inspects the private state of the "
-              "object, and should not be used")
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def bias_(self):
     hiddenlayer_bias = [checkpoints.load_variable(
         self._model_dir, name=("dnn/hiddenlayer_%d/biases" % i))
@@ -655,7 +665,8 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                dropout=None,
                gradient_clip_norm=None,
                enable_centered_bias=None,
-               config=None):
+               config=None,
+               feature_engineering_fn=None):
     """Initializes a `DNNRegressor` instance.
 
     Args:
@@ -684,6 +695,10 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         bias variable for each class. Rest of the model structure learns the
         residual after centered bias.
       config: `RunConfig` object to configure the runtime settings.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        targets which are the output of `input_fn` and
+                        returns features and targets which will be fed
+                        into the model.
 
     Returns:
       A `DNNRegressor` estimator.
@@ -701,7 +716,8 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         dnn_dropout=dropout,
         gradient_clip_norm=gradient_clip_norm,
         enable_centered_bias=enable_centered_bias,
-        config=config)
+        config=config,
+        feature_engineering_fn=feature_engineering_fn)
     self.feature_columns = feature_columns
     self.optimizer = optimizer
     self.activation_fn = activation_fn
@@ -710,9 +726,17 @@ class DNNRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     self._feature_columns_inferred = False
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def weights_(self):
     return self.dnn_weights_
 
   @property
+  @deprecated("2016-10-30",
+              "This method will be removed after the deprecation date. "
+              "To inspect variables, use get_variable_names() and "
+              "get_variable_value().")
   def bias_(self):
     return self.dnn_bias_

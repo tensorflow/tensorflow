@@ -17,40 +17,35 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/gather_functor_gpu.cu.h"
-#include "tensorflow/core/kernels/gather_op.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/kernels/scatter_functor_gpu.cu.h"
 
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-namespace functor {
+#define DEFINE_GPU_SPECS_OP(T, Index, op) \
+  template struct functor::ScatterFunctor<GPUDevice, T, Index, op>;
 
-template <typename T, typename Index>
-struct Gather<GPUDevice, T, Index> {
-  int64 operator()(const GPUDevice& d, typename TTypes<T>::ConstMatrix params,
-                   typename TTypes<Index>::ConstFlat indices,
-                   typename TTypes<T>::Matrix out) {
-    return GatherFunctor<GPUDevice, T, Index>()(d, params, indices, out);
-  }
-};
-
-}  // namespace functor
-
-#define DEFINE_GPU_SPECS_INDEX(T, Index) \
-  template struct functor::Gather<GPUDevice, T, Index>
+#define DEFINE_GPU_SPECS_INDEX(T, Index)                       \
+  DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::ASSIGN); \
+  DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::ADD);    \
+  DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::SUB);    \
+  DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::MUL);    \
+  DEFINE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::DIV);
 
 #define DEFINE_GPU_SPECS(T)         \
   DEFINE_GPU_SPECS_INDEX(T, int32); \
   DEFINE_GPU_SPECS_INDEX(T, int64);
 
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
+DEFINE_GPU_SPECS(float);
+DEFINE_GPU_SPECS(double);
+// TODO(b/27222123): The following fails to compile due to lack of support for
+// fp16.
+// TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 
 #undef DEFINE_GPU_SPECS
 #undef DEFINE_GPU_SPECS_INDEX
+#undef DEFINE_GPU_SPECS_OP
 
 }  // namespace tensorflow
 

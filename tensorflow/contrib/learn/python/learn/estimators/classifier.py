@@ -62,7 +62,7 @@ class Classifier(estimator.Estimator):
   PROBABILITY_OUTPUT = 'probabilities'
 
   def __init__(self, model_fn, n_classes, model_dir=None, config=None,
-               params=None):
+               params=None, feature_engineering_fn=None):
     """Constructor for Classifier.
 
     Args:
@@ -73,6 +73,10 @@ class Classifier(estimator.Estimator):
         continue training a previously saved model.
       config: Configuration object (optional)
       params: `dict` of hyper parameters that will be passed into `model_fn`.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        targets which are the output of `input_fn` and
+                        returns features and targets which will be fed
+                        into the model.
     """
     self._n_classes = n_classes
     self._logits_fn = model_fn
@@ -80,9 +84,9 @@ class Classifier(estimator.Estimator):
       model_fn = self._classifier_model_with_params
     else:
       model_fn = self._classifier_model
-    super(Classifier, self).__init__(model_fn=model_fn,
-                                     model_dir=model_dir, config=config,
-                                     params=params)
+    super(Classifier, self).__init__(
+        model_fn=model_fn, model_dir=model_dir, config=config, params=params,
+        feature_engineering_fn=feature_engineering_fn)
 
   def evaluate(self,
                x=None,

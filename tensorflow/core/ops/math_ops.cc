@@ -1699,12 +1699,42 @@ output: The reduced tensor.
 
 // --------------------------------------------------------------------------
 
+namespace {
+
+template <typename T>
+Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
+                 const Tensor* delta_t, InferenceContext* const c) {
+  T start = start_t->scalar<T>()();
+  T limit = limit_t->scalar<T>()();
+  T delta = delta_t->scalar<T>()();
+  if (start > limit && delta > 0) {
+    return errors::InvalidArgument("Requires start <= limit when delta > 0: ",
+                                   start, "/", limit);
+  }
+  if (start < limit && delta < 0) {
+    return errors::InvalidArgument("Requires start >= limit when delta < 0: ",
+                                   start, "/", limit);
+  }
+  if (delta == 0) {
+    return errors::InvalidArgument("Requires delta != 0");
+  }
+
+  int64 size =
+      (std::is_integral<T>::value
+           ? ((std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta))
+           : std::ceil(std::abs((limit - start) / delta)));
+  c->set_output(0, c->Vector(size));
+  return Status::OK();
+}
+
+}  // namespace
+
 REGISTER_OP("Range")
     .Input("start: Tidx")
     .Input("limit: Tidx")
     .Input("delta: Tidx")
     .Output("output: Tidx")
-    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("Tidx: {float, double, int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(0), 0, &unused),
@@ -1716,36 +1746,27 @@ REGISTER_OP("Range")
       const Tensor* start_t = c->input_tensor(0);
       const Tensor* limit_t = c->input_tensor(1);
       const Tensor* delta_t = c->input_tensor(2);
+      DataType dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
       if (start_t == nullptr || limit_t == nullptr || delta_t == nullptr) {
         c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
         return Status::OK();
       }
-      // TODO
-      int64 start, limit, delta;
-      if (start_t->dtype() == DT_INT32) {
-        start = start_t->scalar<int32>()();
-        limit = limit_t->scalar<int32>()();
-        delta = delta_t->scalar<int32>()();
+      if (dtype == DT_INT32) {
+        return RangeSize<int32>(start_t, limit_t, delta_t, c);
+      } else if (dtype == DT_INT64) {
+        return RangeSize<int64>(start_t, limit_t, delta_t, c);
+      } else if (dtype == DT_FLOAT) {
+        return RangeSize<float>(start_t, limit_t, delta_t, c);
       } else {
-        start = start_t->scalar<int64>()();
-        limit = limit_t->scalar<int64>()();
-        delta = delta_t->scalar<int64>()();
+        return RangeSize<double>(start_t, limit_t, delta_t, c);
       }
-      if (start > limit) {
-        return errors::InvalidArgument("Requires start <= limit: ", start, "/",
-                                       limit);
-      }
-      if (delta <= 0) {
-        return errors::InvalidArgument("Requires delta > 0: ", delta);
-      }
-      const int64 size = (limit - start + delta - 1) / delta;
-      c->set_output(0, c->Vector(size));
       return Status::OK();
     })
     .Doc(R"doc(
-Creates a sequence of integers.
+Creates a sequence of numbers.
 
-This operation creates a sequence of integers that begins at `start` and
+This operation creates a sequence of numbers that begins at `start` and
 extends by increments of `delta` up to but not including `limit`.
 
 For example:

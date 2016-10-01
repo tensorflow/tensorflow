@@ -265,6 +265,55 @@ cc_library(
 
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 
+cc_library(
+    name = "bundle_shim",
+    srcs = ["bundle_shim.cc"],
+    hdrs = ["bundle_shim.h"],
+    copts = if_ios(["-DGOOGLE_LOGGING"]),
+    visibility = ["//visibility:private"],
+    deps = [
+        ":bundle_shim_constants",
+        ":session_bundle",
+        ":signature",
+        "//tensorflow/cc/saved_model:loader",
+    ] + if_not_mobile([
+        ":manifest_proto_cc",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        # mobile not supported yet
+    ]),
+)
+
+cc_test(
+    name = "bundle_shim_test",
+    size = "small",
+    srcs = ["bundle_shim_test.cc"],
+    data = [
+        "//tensorflow/contrib/session_bundle/example:half_plus_two",
+    ],
+    # Link in all registered kernels.
+    linkstatic = 1,
+    deps = [
+        ":bundle_shim",
+        ":bundle_shim_constants",
+        ":test_util",
+        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "bundle_shim_constants",
+    hdrs = ["bundle_shim_constants.h"],
+)
+
 tf_proto_library(
     name = "manifest_proto",
     srcs = ["manifest.proto"],

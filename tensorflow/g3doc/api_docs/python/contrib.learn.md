@@ -650,7 +650,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=None, config=None)` {#DNNClassifier.__init__}
+#### `tf.contrib.learn.DNNClassifier.__init__(hidden_units, feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=None, config=None, feature_engineering_fn=None)` {#DNNClassifier.__init__}
 
 Initializes a DNNClassifier instance.
 
@@ -684,6 +684,10 @@ Initializes a DNNClassifier instance.
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
+*  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
+                    targets which are the output of `input_fn` and
+                    returns features and targets which will be fed
+                    into the model.
 
 ##### Returns:
 
@@ -701,9 +705,9 @@ Initializes a DNNClassifier instance.
 
 DEPRECATED FUNCTION
 
-THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-13.
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
 Instructions for updating:
-This method inspects the private state of the object, and should not be used
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
@@ -826,9 +830,9 @@ altogether. The behavior of this flag is described below.
 
 DEPRECATED FUNCTION
 
-THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-13.
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
 Instructions for updating:
-This method inspects the private state of the object, and should not be used
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 
@@ -891,7 +895,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=None, config=None)` {#DNNRegressor.__init__}
+#### `tf.contrib.learn.DNNRegressor.__init__(hidden_units, feature_columns, model_dir=None, weight_column_name=None, optimizer=None, activation_fn=relu, dropout=None, gradient_clip_norm=None, enable_centered_bias=None, config=None, feature_engineering_fn=None)` {#DNNRegressor.__init__}
 
 Initializes a `DNNRegressor` instance.
 
@@ -923,6 +927,10 @@ Initializes a `DNNRegressor` instance.
     bias variable for each class. Rest of the model structure learns the
     residual after centered bias.
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
+*  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
+                    targets which are the output of `input_fn` and
+                    returns features and targets which will be fed
+                    into the model.
 
 ##### Returns:
 
@@ -940,7 +948,11 @@ Initializes a `DNNRegressor` instance.
 
 #### `tf.contrib.learn.DNNRegressor.bias_` {#DNNRegressor.bias_}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
@@ -954,14 +966,22 @@ Initializes a `DNNRegressor` instance.
 
 #### `tf.contrib.learn.DNNRegressor.dnn_bias_` {#DNNRegressor.dnn_bias_}
 
-Returns bias of deep neural network part.
+Returns bias of deep neural network part. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
 
 #### `tf.contrib.learn.DNNRegressor.dnn_weights_` {#DNNRegressor.dnn_weights_}
 
-Returns weights of deep neural network part.
+Returns weights of deep neural network part. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
@@ -1084,14 +1104,22 @@ Returns value of the variable given by name.
 
 #### `tf.contrib.learn.DNNRegressor.linear_bias_` {#DNNRegressor.linear_bias_}
 
-Returns bias of the linear part.
+Returns bias of the linear part. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
 
 #### `tf.contrib.learn.DNNRegressor.linear_weights_` {#DNNRegressor.linear_weights_}
 
-Returns weights per feature of the linear part.
+Returns weights per feature of the linear part. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
@@ -1210,7 +1238,11 @@ component of a nested object.
 
 #### `tf.contrib.learn.DNNRegressor.weights_` {#DNNRegressor.weights_}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 
@@ -1655,7 +1687,7 @@ Input of `fit` and `evaluate` should have following features,
     whose `value` is a `Tensor`.
 - - -
 
-#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=None, _joint_weight=False, config=None)` {#LinearClassifier.__init__}
+#### `tf.contrib.learn.LinearClassifier.__init__(feature_columns, model_dir=None, n_classes=2, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=None, _joint_weight=False, config=None, feature_engineering_fn=None)` {#LinearClassifier.__init__}
 
 Construct a `LinearClassifier` estimator object.
 
@@ -1687,6 +1719,10 @@ Construct a `LinearClassifier` estimator object.
     sparse and use the 'sum' combiner.
 
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
+*  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
+                    targets which are the output of `input_fn` and
+                    returns features and targets which will be fed
+                    into the model.
 
 ##### Returns:
 
@@ -1702,7 +1738,11 @@ Construct a `LinearClassifier` estimator object.
 
 #### `tf.contrib.learn.LinearClassifier.bias_` {#LinearClassifier.bias_}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
@@ -1779,7 +1819,11 @@ Runs inference to determine the class probability predictions.
 
 #### `tf.contrib.learn.LinearClassifier.weights_` {#LinearClassifier.weights_}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 
@@ -1831,7 +1875,7 @@ Input of `fit` and `evaluate` should have following features,
       key=column.name, value=a `Tensor`
 - - -
 
-#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=None, target_dimension=1, _joint_weights=False, config=None)` {#LinearRegressor.__init__}
+#### `tf.contrib.learn.LinearRegressor.__init__(feature_columns, model_dir=None, weight_column_name=None, optimizer=None, gradient_clip_norm=None, enable_centered_bias=None, target_dimension=1, _joint_weights=False, config=None, feature_engineering_fn=None)` {#LinearRegressor.__init__}
 
 Construct a `LinearRegressor` estimator object.
 
@@ -1861,6 +1905,10 @@ Construct a `LinearRegressor` estimator object.
     sparse and have the 'sum' combiner. Incompatible with SDCAOptimizer.
 
 *  <b>`config`</b>: `RunConfig` object to configure the runtime settings.
+*  <b>`feature_engineering_fn`</b>: Feature engineering function. Takes features and
+                    targets which are the output of `input_fn` and
+                    returns features and targets which will be fed
+                    into the model.
 
 ##### Returns:
 
@@ -1878,7 +1926,11 @@ Construct a `LinearRegressor` estimator object.
 
 #### `tf.contrib.learn.LinearRegressor.bias_` {#LinearRegressor.bias_}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
@@ -1892,14 +1944,22 @@ Construct a `LinearRegressor` estimator object.
 
 #### `tf.contrib.learn.LinearRegressor.dnn_bias_` {#LinearRegressor.dnn_bias_}
 
-Returns bias of deep neural network part.
+Returns bias of deep neural network part. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
 
 #### `tf.contrib.learn.LinearRegressor.dnn_weights_` {#LinearRegressor.dnn_weights_}
 
-Returns weights of deep neural network part.
+Returns weights of deep neural network part. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
@@ -2022,14 +2082,22 @@ Returns value of the variable given by name.
 
 #### `tf.contrib.learn.LinearRegressor.linear_bias_` {#LinearRegressor.linear_bias_}
 
-Returns bias of the linear part.
+Returns bias of the linear part. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
 
 #### `tf.contrib.learn.LinearRegressor.linear_weights_` {#LinearRegressor.linear_weights_}
 
-Returns weights per feature of the linear part.
+Returns weights per feature of the linear part. (deprecated)
+
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 - - -
@@ -2148,7 +2216,11 @@ component of a nested object.
 
 #### `tf.contrib.learn.LinearRegressor.weights_` {#LinearRegressor.weights_}
 
+DEPRECATED FUNCTION
 
+THIS FUNCTION IS DEPRECATED. It will be removed after 2016-10-30.
+Instructions for updating:
+This method will be removed after the deprecation date. To inspect variables, use get_variable_names() and get_variable_value().
 
 
 

@@ -780,12 +780,6 @@ class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):
 
 class SparseTransposeTest(tf.test.TestCase):
 
-  def _SparseTensorPlaceholder(self):
-    return tf.SparseTensor(
-        tf.placeholder(tf.int64),
-        tf.placeholder(tf.float64),
-        tf.placeholder(tf.int64))
-
   def testTranspose(self):
     with self.test_session(use_gpu=False):
       np.random.seed(1618)

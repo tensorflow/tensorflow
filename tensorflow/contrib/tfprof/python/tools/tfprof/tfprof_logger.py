@@ -21,25 +21,57 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
 
 import tensorflow as tf
-from tensorflow.contrib.tfprof.python.tools.tfprof import tfprof_log_pb2
+from tensorflow.contrib.tfprof.tools.tfprof import tfprof_log_pb2
 from tensorflow.python.framework import ops
 
 TRAINABLE_VARIABLES = '_trainable_variables'
 REGISTERED_FLOP_STATS = 'flops'
 
 
-def _get_logged_ops(graph):
+def _fill_missing_graph_shape(graph, run_meta):
+  """Fill Tensor shapes in 'graph' with run time shape from 'run_meta'."""
+  for dev_stat in run_meta.step_stats.dev_stats:
+    for node_stat in dev_stat.node_stats:
+      if not node_stat.output:
+        continue
+      try:
+        op = graph.get_operation_by_name(node_stat.node_name)
+      except KeyError as e:
+        # Graph doesn't contains the node_stat, usually RecvTensor.
+        continue
+      if len(node_stat.output) != len(op.outputs):
+        # For example, conditional op has only 1 output at run time.
+        continue
+      for (i, node_stat_out) in enumerate(node_stat.output):
+        if op.outputs[i].get_shape().is_fully_defined():
+          continue
+        node_stat_dims = node_stat_out.tensor_description.shape.dim
+        node_stat_shape = tf.TensorShape([d.size for d in node_stat_dims])
+        try:
+          op.outputs[i].set_shape(op.outputs[i].get_shape().merge_with(
+              node_stat_shape))
+        except ValueError as e:
+          sys.stderr.write('Node %s incompatible shapes: %s.\n' %
+                           (node_stat.node_name, e))
+  return graph
+
+
+def _get_logged_ops(graph, run_meta=None):
   """Extract trainable model parameters and FLOPs for ops from a Graph.
 
   Args:
     graph: tf.Graph.
+    run_meta: RunMetadata proto used to complete shape information.
   Returns:
     logged_ops: dict mapping from op_name to OpLogEntry.
   """
-  logged_ops = {}
+  if run_meta:
+    graph = _fill_missing_graph_shape(graph, run_meta)
 
+  logged_ops = {}
   graph_def = graph.as_graph_def()
   for node in graph_def.node:
     try:
@@ -67,17 +99,18 @@ def _get_logged_ops(graph):
   return logged_ops
 
 
-def _merge_default_with_oplog(graph, op_log=None):
+def _merge_default_with_oplog(graph, op_log=None, run_meta=None):
   """Merge the tfprof default extra info with caller's op_log.
 
   Args:
     graph: tf.Graph.
     op_log: OpLog proto.
+    run_meta: RunMetadata proto used to complete shape information.
   Returns:
     tmp_op_log: Merged OpLog proto.
   """
   tmp_op_log = tfprof_log_pb2.OpLog()
-  logged_ops = _get_logged_ops(graph)
+  logged_ops = _get_logged_ops(graph, run_meta)
   if not op_log:
     tmp_op_log.log_entries.extend(logged_ops.values())
   else:
@@ -95,20 +128,25 @@ def _merge_default_with_oplog(graph, op_log=None):
   return tmp_op_log
 
 
-def write_op_log(graph, log_dir, op_log=None):
+def write_op_log(graph, log_dir, op_log=None, run_meta=None):
   """Log provided 'op_log', and add additional model information below.
 
     The API also assigns ops in tf.trainable_variables() an op type called
     '_trainable_variables'.
     The API also logs 'flops' statistics for ops with op.RegisterStatistics()
-    defined.
+    defined. flops calculation depends on Tensor shapes defined in 'graph',
+    which might not be complete, 'run_meta', if provided, completes the shape
+    information with best effort.
 
   Args:
     graph: tf.Graph.
     log_dir: directory to write the log file.
-    op_log: OpLog proto.
+    op_log: (Optional) OpLog proto to be written. If not provided, an new
+        one is created.
+    run_meta: (Optional) RunMetadata proto that helps flops computation using
+        run time shape information.
   """
-  op_log = _merge_default_with_oplog(graph, op_log)
+  op_log = _merge_default_with_oplog(graph, op_log, run_meta)
 
   with tf.gfile.Open(os.path.join(log_dir, 'tfprof_log'), 'w') as log:
     log.write(op_log.SerializeToString())
