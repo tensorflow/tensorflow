@@ -776,6 +776,10 @@ def _SparseMatMulGrad(op, grad):
 def _FloorGrad(_, unused_grad):
   return [None]
 
+@ops.RegisterGradient("Rint")
+def _RintGrad(_, unused_grad):
+  return [None]
+
 
 @ops.RegisterGradient("BatchMatMul")
 def _BatchMatMul(op, grad):

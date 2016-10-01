@@ -521,6 +521,24 @@ struct round : base<T, Eigen::internal::scalar_round_op_google<T>> {};
 template <typename T>
 struct ceil : base<T, Eigen::internal::scalar_ceil_op<T>> {};
 
+/** this should go in Eigen
+  * \brief Template functor to compute the round to int value of a scalar
+  */
+template<typename Scalar> struct scalar_rint_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_rint_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE \
+    const Scalar operator() (const Scalar& a) const {
+    #ifndef __CUDACC__
+        return std::rint(a);
+    #else
+        return ::rint(a);
+    #endif
+  }
+};
+
+template <typename T>
+struct rint : base<T, scalar_rint_op<T>> {};
+
 ////////////////////////////////////////////////////////////////////////////////
 // Binary functors
 ////////////////////////////////////////////////////////////////////////////////
