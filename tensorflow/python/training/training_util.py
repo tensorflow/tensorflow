@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import os.path
 
+from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
 
 
@@ -50,7 +51,7 @@ def global_step(sess, global_step_tensor):
   return int(sess.run(global_step_tensor))
 
 
-def write_graph(graph_def, logdir, name, as_text=True):
+def write_graph(graph_or_graph_def, logdir, name, as_text=True):
   """Writes a graph proto to a file.
 
   The graph is written as a binary proto unless `as_text` is `True`.
@@ -61,13 +62,26 @@ def write_graph(graph_def, logdir, name, as_text=True):
   tf.train.write_graph(sess.graph_def, '/tmp/my-model', 'train.pbtxt')
   ```
 
+  or
+
+  ```python
+  v = tf.Variable(0, name='my_variable')
+  sess = tf.Session()
+  tf.train.write_graph(sess.graph, '/tmp/my-model', 'train.pbtxt')
+  ```
+
   Args:
-    graph_def: A `GraphDef` protocol buffer.
+    graph_or_graph_def: A `Graph` or a `GraphDef` protocol buffer.
     logdir: Directory where to write the graph. This can refer to remote
       filesystems, such as Google Cloud Storage (GCS).
     name: Filename for the graph.
     as_text: If `True`, writes the graph as an ASCII proto.
   """
+  if isinstance(graph_or_graph_def, ops.Graph):
+    graph_def = graph_or_graph_def.as_graph_def()
+  else:
+    graph_def = graph_or_graph_def
+
   # gcs does not have the concept of directory at the moment.
   if not file_io.file_exists(logdir) and not logdir.startswith("gs:"):
     file_io.recursive_create_dir(logdir)
