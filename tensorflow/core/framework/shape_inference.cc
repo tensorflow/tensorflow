@@ -217,6 +217,7 @@ Status InferenceContext::WithRank(ShapeHandle shape, int32 rank,
     return Status::OK();
   }
   *out = nullptr;
+
   return errors::InvalidArgument("Shape must be rank ", rank, " but is rank ",
                                  existing);
 }
@@ -752,6 +753,19 @@ Status InferenceContext::MakeShapeFromString(const string& spec,
   *output = MakeShape(dims);
 
   return Status::OK();
+}
+
+Status InferenceContext::AttachContext(const Status& status) {
+  std::vector<string> input_shapes;
+  for (const ShapeHandle& input_shape : inputs_) {
+    input_shapes.emplace_back(DebugString(input_shape));
+  }
+
+  string error_context = strings::StrCat(
+      " for '", node_def_.name(), "' (op: '", node_def_.op(),
+      "') with input shapes: ", str_util::Join(input_shapes, ", "), ".");
+  return Status(status.code(),
+                strings::StrCat(status.error_message(), error_context));
 }
 
 }  // namespace shape_inference

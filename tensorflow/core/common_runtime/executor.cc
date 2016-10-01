@@ -800,11 +800,12 @@ class ExecutorState {
 
   // Get the output frame/iter of a node. Create new frame/iteration if
   // needed. If there are dead roots for the new iteration, we need to
-  // "execute" them so ad them to the ready queue. Returns true if
+  // "execute" them so add them to the ready queue. Returns true if
   // we need to check for the completion of output frame/iter.
-  bool SetOutputFrameIter(const TaggedNode& tagged_node,
-                          const EntryVector& outputs, FrameState** frame,
-                          int64* iter, TaggedNodeSeq* ready)
+  void FindOrCreateOutputFrameIter(const TaggedNode& tagged_node,
+                                   const EntryVector& outputs,
+                                   FrameState** frame, int64* iter,
+                                   TaggedNodeSeq* ready)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Cleanup frames and iterations
@@ -912,7 +913,7 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
 
   if (vlog_) VLOG(2) << "Create frame: " << root_frame_->frame_name;
 
-  // Initialize the iteration.
+  // Initialize the first iteration.
   IterationState* iter_state = new IterationState(impl);
   root_frame_->iterations[0] = iter_state;
 
@@ -1460,16 +1461,16 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
   // Propagates outputs along out edges, and puts newly ready nodes
   // into the ready queue.
   ready->clear();
+  FrameState* output_frame = input_frame;
+  int64 output_iter = input_iter;
   {
-    FrameState* output_frame = input_frame;
-    int64 output_iter = input_iter;
-
     mutex_lock l(mu_);
     // Sets the output_frame and output_iter of node.
-    bool maybe_completed = SetOutputFrameIter(
-        tagged_node, outputs, &output_frame, &output_iter, ready);
+    FindOrCreateOutputFrameIter(tagged_node, outputs, &output_frame,
+                                &output_iter, ready);
+
+    // Continue to process the out nodes:
     if (output_frame != nullptr) {
-      // Continue to process the out nodes:
       ActivateNode(tagged_node.node, tagged_node.is_dead, output_frame,
                    output_iter, outputs, ready);
     }
@@ -1479,10 +1480,9 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
     CleanupFramesIterations(input_frame, input_iter, ready);
 
     // The execution of a node such as Enter may cause the completion of
-    // output_frame:output_iter, so perform cleanup if
-    // output_frame:output_iter
+    // output_frame:output_iter, so clean up if output_frame:output_iter
     // is indeed completed.
-    if (maybe_completed) {
+    if (IsEnter(tagged_node.node)) {
       CleanupFramesIterations(output_frame, output_iter, ready);
     }
   }
@@ -1878,6 +1878,7 @@ void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,
     CHECK(s.ok()) << s;
     // 'iterations' is a fixed-length circular buffer.
     temp->iterations.resize(temp->max_parallel_iterations + 1);
+    // Initialize the first iteration.
     IterationState* iter_state = new IterationState(impl_);
     temp->iterations[0] = iter_state;
 
@@ -1902,6 +1903,7 @@ void ExecutorState::IncrementIteration(FrameState* frame,
             << "]";
   }
 
+  // Initialize the next iteration.
   IterationState* iter_state = new IterationState(impl_);
   frame->SetIteration(next_iter, iter_state);
   frame->num_outstanding_iterations++;
@@ -1914,42 +1916,19 @@ void ExecutorState::IncrementIteration(FrameState* frame,
   ActivateLoopInvs(frame, next_iter, ready);
 }
 
-bool ExecutorState::SetOutputFrameIter(const TaggedNode& tagged_node,
-                                       const EntryVector& outputs,
-                                       FrameState** output_frame,
-                                       int64* output_iter,
-                                       TaggedNodeSeq* ready) {
+void ExecutorState::FindOrCreateOutputFrameIter(const TaggedNode& tagged_node,
+                                                const EntryVector& outputs,
+                                                FrameState** output_frame,
+                                                int64* output_iter,
+                                                TaggedNodeSeq* ready) {
   const Node* node = tagged_node.node;
   FrameState* input_frame = tagged_node.input_frame;
   int64 input_iter = tagged_node.input_iter;
   bool is_dead = tagged_node.is_dead;
-  bool is_enter = IsEnter(node);
 
-  if (is_enter) {
-    FindOrCreateChildFrame(input_frame, input_iter, node, output_frame);
-    // Propagate if this is a loop invariant.
-    bool is_constant;
-    Status s = GetNodeAttr(node->def(), "is_constant", &is_constant);
-    CHECK(s.ok()) << s;
-    if (is_constant) {
-      AddLoopInv(*output_frame, node, outputs[0], ready);
-    }
-    --(*output_frame)->num_pending_inputs;
-    *output_iter = 0;
-  } else if (IsExit(node)) {
+  if (IsNextIteration(node)) {
     if (is_dead) {
-      // Stop and remember this node if it is a dead exit.
-      if (input_iter == input_frame->iteration_count) {
-        input_frame->dead_exits.push_back(node);
-      }
-      *output_frame = nullptr;
-    } else {
-      *output_frame = input_frame->parent_frame;
-      *output_iter = input_frame->parent_iter;
-    }
-  } else if (IsNextIteration(node)) {
-    if (is_dead) {
-      // Stop the deadness propagation
+      // Stop the deadness propagation.
       *output_frame = nullptr;
     } else {
       if (input_iter == input_frame->iteration_count &&
@@ -1966,8 +1945,29 @@ bool ExecutorState::SetOutputFrameIter(const TaggedNode& tagged_node,
         *output_iter = input_iter + 1;
       }
     }
+  } else if (IsExit(node)) {
+    if (is_dead) {
+      // Stop and remember this node if it is a dead exit.
+      if (input_iter == input_frame->iteration_count) {
+        input_frame->dead_exits.push_back(node);
+      }
+      *output_frame = nullptr;
+    } else {
+      *output_frame = input_frame->parent_frame;
+      *output_iter = input_frame->parent_iter;
+    }
+  } else if (IsEnter(node)) {
+    FindOrCreateChildFrame(input_frame, input_iter, node, output_frame);
+    // Propagate if this is a loop invariant.
+    bool is_constant;
+    Status s = GetNodeAttr(node->def(), "is_constant", &is_constant);
+    CHECK(s.ok()) << s;
+    if (is_constant) {
+      AddLoopInv(*output_frame, node, outputs[0], ready);
+    }
+    --(*output_frame)->num_pending_inputs;
+    *output_iter = 0;
   }
-  return is_enter;
 }
 
 void ExecutorState::CleanupFramesIterations(FrameState* frame, int64 iter,
@@ -1975,7 +1975,7 @@ void ExecutorState::CleanupFramesIterations(FrameState* frame, int64 iter,
   int64 curr_iter = iter;
   while (curr_iter <= frame->iteration_count &&
          IsIterationDone(frame, curr_iter)) {
-    // Delete the iteration curr_iter
+    // Delete the iteration curr_iter.
     if (vlog_) {
       VLOG(2) << "Delete iteration [" << frame->frame_name << ", " << curr_iter
               << "].";
@@ -2006,7 +2006,7 @@ void ExecutorState::CleanupFramesIterations(FrameState* frame, int64 iter,
 
         bool dst_dead = true;
         bool dst_ready = false;
-        // We know this is a dead input to dst
+        // We know this is a dead input to dst.
         if (dst_item->is_merge) {
           if (e->IsControlEdge()) {
             parent_iter_state->decrement_pending(dst_id, 2);

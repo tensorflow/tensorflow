@@ -38,6 +38,8 @@ tensorflow/core/kernels/shape_ops.cc
 tensorflow/core/kernels/session_ops.cc
 tensorflow/core/kernels/sequence_ops.cc
 tensorflow/core/kernels/sendrecv_ops.cc
+tensorflow/core/kernels/scatter_op.cc
+tensorflow/core/kernels/scatter_functor.cc
 tensorflow/core/kernels/save_restore_tensor.cc
 tensorflow/core/kernels/save_restore_v2_ops.cc
 tensorflow/core/kernels/save_op.cc
@@ -72,6 +74,7 @@ tensorflow/core/kernels/in_topk_op.cc
 tensorflow/core/kernels/immutable_constant_op.cc
 tensorflow/core/kernels/identity_op.cc
 tensorflow/core/kernels/gather_op.cc
+tensorflow/core/kernels/gather_functor.cc
 tensorflow/core/kernels/fused_batch_norm_op.cc
 tensorflow/core/kernels/fill_functor.cc
 tensorflow/core/kernels/example_parsing_ops.cc

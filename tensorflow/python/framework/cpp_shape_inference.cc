@@ -77,7 +77,8 @@ Status RunCppShapeInferenceImpl(
                                                   {} /* input_shape_strings */,
                                                   input_shapes, input_tensors);
   TF_RETURN_IF_ERROR(c.construction_status());
-  TF_RETURN_IF_ERROR(op_reg_data->shape_inference_fn(&c));
+
+  TF_RETURN_IF_ERROR(c.Run(op_reg_data->shape_inference_fn));
 
   // Convert output shapes.
   output_tensor_shape_protos->resize(c.num_outputs());

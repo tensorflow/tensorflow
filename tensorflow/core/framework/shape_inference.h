@@ -173,6 +173,19 @@ class InferenceContext {
 
   ~InferenceContext();
 
+  // Runs the shape inference function 'fn' with 'this' as the
+  // argument, returns the status of the inference.
+  //
+  // On error, additional context is provided in the error message.
+  Status Run(
+      const std::function<Status(shape_inference::InferenceContext* c)>& fn) {
+    Status s = fn(this);
+    if (!s.ok()) {
+      return AttachContext(s);
+    }
+    return s;
+  }
+
   ShapeHandle input(int idx) const { return inputs_[idx]; }
   Status input(StringPiece input_name, std::vector<ShapeHandle>* output) const;
   int num_inputs() const { return inputs_.size(); }
@@ -443,6 +456,9 @@ class InferenceContext {
     *out = MakeShape(dims);
     return Status::OK();
   }
+
+  // Adds additional context to the given status.
+  Status AttachContext(const Status& status);
 
   std::vector<Shape*> all_shapes_;    // values are owned.
   std::vector<Dimension*> all_dims_;  // values are owned.
