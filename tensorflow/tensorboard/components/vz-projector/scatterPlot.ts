@@ -268,14 +268,14 @@ export class ScatterPlot {
     this.render();
   }
 
-  private onClick(e?: MouseEvent) {
+  private onClick(e?: MouseEvent, notify = true) {
     if (e && this.selecting) {
       return;
     }
     this.labeledPoints =
         this.highlightedPoints.filter((id, i) => this.favorLabels(i));
     // Only call event handlers if the click originated from the scatter plot.
-    if (!this.isDragSequence) {
+    if (!this.isDragSequence && notify) {
       const selection = this.nearestPoint ? [this.nearestPoint] : [];
       this.selectionContext.notifySelectionChanged(selection);
     }
@@ -766,6 +766,6 @@ export class ScatterPlot {
 
   clickOnPoint(pointIndex: number) {
     this.nearestPoint = pointIndex;
-    this.onClick();
+    this.onClick(null, false);
   }
 }

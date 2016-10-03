@@ -77,13 +77,14 @@ export class ProjectorInput extends PolymerClass {
       if (this.inRegexMode) {
         new RegExp(this.paperInput.value);
       }
-      this.paperInput.removeAttribute('invalid');
-      this.notifyInputChanged(this.paperInput.value, this.inRegexMode);
     } catch (invalidRegexException) {
       this.paperInput.setAttribute('invalid', 'true');
       this.message = '';
       this.notifyInputChanged(null, true);
+      return;
     }
+    this.paperInput.removeAttribute('invalid');
+    this.notifyInputChanged(this.paperInput.value, this.inRegexMode);
   }
 
   private showHideSlashes() {
