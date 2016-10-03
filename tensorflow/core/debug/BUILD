@@ -23,10 +23,20 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_kernel_tests_linkstatic",
+    "tf_proto_library_cc",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
+)
+
+tf_proto_library_cc(
+    name = "debug_service_proto",
+    srcs = ["debug_service.proto"],
+    has_services = 1,
+    cc_api_version = 2,
+    cc_grpc_version = 1,
+    cc_libs = ["//tensorflow/core:protos_all_cc"],
 )
 
 tf_cuda_library(
@@ -72,6 +82,7 @@ tf_cuda_library(
     copts = tf_copts(),
     linkstatic = 1,
     deps = [
+        ":debug_service_proto_cc",  # TODO(cais): Confirm safe.
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -85,6 +96,7 @@ tf_cuda_library(
 tf_cc_test_gpu(
     name = "debug_gateway_test",
     size = "small",
+    srcs = ["debug_gateway_test.cc"],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
@@ -114,6 +126,7 @@ tf_cc_test_gpu(
 tf_cc_test(
     name = "debug_io_utils_test",
     size = "small",
+    srcs = ["debug_io_utils_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":debug_io_utils",

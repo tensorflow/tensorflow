@@ -861,7 +861,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       close_op.run()
 
       # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(tf.errors.AbortedError, "is closed"):
+      with self.assertRaisesRegexp(tf.errors.CancelledError, "is closed"):
         enqueue_op.run()
 
   def testEnqueueManyToClosedQueue(self):
@@ -875,7 +875,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
       close_op.run()
 
       # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(tf.errors.AbortedError, "is closed"):
+      with self.assertRaisesRegexp(tf.errors.CancelledError, "is closed"):
         enqueue_op.run()
 
   def testBlockingEnqueueToFullQueue(self):
@@ -954,7 +954,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
         sess.run(blocking_enqueue_op)
 
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(tf.errors.AbortedError, "closed"):
+        with self.assertRaisesRegexp(tf.errors.CancelledError, "closed"):
           sess.run(blocking_enqueue_op)
       thread1 = self.checkedThread(target=blocking_enqueue)
       thread1.start()
@@ -997,7 +997,7 @@ class RandomShuffleQueueTest(tf.test.TestCase):
         sess.run(blocking_enqueue_op)
         # At this point the close operation will become unblocked, so the
         # next enqueue will fail.
-        with self.assertRaisesRegexp(tf.errors.AbortedError, "closed"):
+        with self.assertRaisesRegexp(tf.errors.CancelledError, "closed"):
           sess.run(blocking_enqueue_op)
       thread1 = self.checkedThread(target=blocking_enqueue)
       thread1.start()
@@ -1030,8 +1030,11 @@ class RandomShuffleQueueTest(tf.test.TestCase):
           1, 0, tf.float32, ((),), shared_name="shared_queue")
       q1.enqueue((10.0,)).run()
 
+      # TensorFlow TestCase adds a default graph seed (=87654321). We check if
+      # the seed computed from the default graph seed is reproduced.
+      seed = 887634792
       q2 = tf.RandomShuffleQueue(
-          1, 0, tf.float32, ((),), shared_name="shared_queue")
+          1, 0, tf.float32, ((),), shared_name="shared_queue", seed=seed)
 
       q1_size_t = q1.size()
       q2_size_t = q2.size()
@@ -1053,6 +1056,25 @@ class RandomShuffleQueueTest(tf.test.TestCase):
 
       self.assertEqual(q1_size_t.eval(), 0)
       self.assertEqual(q2_size_t.eval(), 0)
+
+  def testSharedQueueSameSessionGraphSeedNone(self):
+    with self.test_session():
+      q1 = tf.RandomShuffleQueue(
+          1, 0, tf.float32, ((),), shared_name="shared_queue", seed=98765432)
+      q1.enqueue((10.0,)).run()
+
+      # If both graph and op seeds are not provided, the default value must be
+      # used, and in case a shared queue is already created, the second queue op
+      # must accept any previous seed value.
+      tf.set_random_seed(None)
+      q2 = tf.RandomShuffleQueue(
+          1, 0, tf.float32, ((),), shared_name="shared_queue")
+
+      q1_size_t = q1.size()
+      q2_size_t = q2.size()
+
+      self.assertEqual(q1_size_t.eval(), 1)
+      self.assertEqual(q2_size_t.eval(), 1)
 
   def testIncompatibleSharedQueueErrors(self):
     with self.test_session():

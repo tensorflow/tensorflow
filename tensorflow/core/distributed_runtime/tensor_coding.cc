@@ -79,11 +79,18 @@ Status TensorResponse::ParseFrom(Source* source) {
     input.SetTotalBytesLimit(INT_MAX, INT_MAX);  // Unlimited
 
     // Pre-parse into local storage, then delegate to device.
-    RecvTensorResponse proto;
-    if (!proto.ParseFromCodedStream(&input) || !input.ConsumedEntireMessage()) {
+    if (!meta_.ParseFromCodedStream(&input) || !input.ConsumedEntireMessage()) {
       return errors::InvalidArgument("Cannot parse tensor from response");
     }
-    return device_->MakeTensorFromProto(proto.tensor(), alloc_attrs_, &tensor_);
+    Status s =
+        device_->MakeTensorFromProto(meta_.tensor(), alloc_attrs_, &tensor_);
+    // Reduce memory usage for big tensors.
+    {
+      TensorProto empty;
+      meta_.mutable_tensor()->Swap(&empty);
+    }
+    meta_.clear_tensor();
+    return s;
   }
   if (already_used_) {
     ClearTensor();
@@ -108,7 +115,7 @@ inline WireType GetTagWireType(uint32 tag) {
 }
 
 bool ReadVarintSizeAsInt(protobuf::io::CodedInputStream* input, int* result) {
-  uint64 v;
+  protobuf_uint64 v;
   if (input->ReadVarint64(&v) && v <= static_cast<uint64>(INT_MAX)) {
     *result = static_cast<int>(v);
     return true;
@@ -237,7 +244,7 @@ bool TensorResponse::ParseFast(Source* source) {
         break;
       }
       case RecvTensorResponse::kSendStartMicrosFieldNumber: {
-        uint64 v;
+        protobuf_uint64 v;
         if ((wt != WIRETYPE_VARINT) || !input.ReadVarint64(&v)) return false;
         meta_.set_send_start_micros(static_cast<int64>(v));
         break;

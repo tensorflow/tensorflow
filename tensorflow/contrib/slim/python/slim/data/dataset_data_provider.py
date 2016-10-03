@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ For example, to read data using a single thread without shuffling:
   pascal_voc_data_provider = DatasetDataProvider(
       slim.datasets.pascal_voc.get_split('train'),
       shuffle=False)
-  images, labels = pascal_voc_data_provider.Get(['images', 'labels'])
+  images, labels = pascal_voc_data_provider.get(['images', 'labels'])
 
 To read data using multiple readers simultaneous with shuffling:
 
@@ -31,7 +31,13 @@ To read data using multiple readers simultaneous with shuffling:
       slim.datasets.pascal_voc.Dataset(),
       num_readers=10,
       shuffle=True)
-  images, labels = pascal_voc_data_provider.Get(['images', 'labels'])
+  images, labels = pascal_voc_data_provider.get(['images', 'labels'])
+
+Equivalently, one may request different fields of the same sample seperately:
+
+  [images] = pascal_voc_data_provider.get(['images'])
+  [labels] = pascal_voc_data_provider.get(['labels'])
+
 """
 
 from __future__ import absolute_import

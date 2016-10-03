@@ -62,7 +62,9 @@ Status IOError(const string& context, int err_number);
 class LocalPosixFileSystem : public PosixFileSystem {
  public:
   string TranslateName(const string& name) const override {
-    return GetNameFromURI(name);
+    StringPiece scheme, host, path;
+    ParseURI(name, &scheme, &host, &path);
+    return path.ToString();
   }
 };
 

@@ -191,15 +191,6 @@ tutorial](https://www.tensorflow.org/versions/r0.10/how_tos/graph_viz/index.html
 
 # Frequently Asked Questions
 
-### Does TensorBoard support distributed summary writers?
-
-No. Currently, TensorBoard expects that only a single summary writer will be
-active at a time, and as consequence, only a single events file is ever written
-to at a time. Violating this assumption may cause TensorBoard to lose data or
-stop updating unexpectedly. If you are running a distributed training process,
-we encourage you to designate a single worker as the "chief" that is responsible
-for writing all summaries to disk.
-
 ### My TensorBoard isn't showing any data! What's wrong?
 
 The first thing to do is ensure that TensorBoard is properly loading data from

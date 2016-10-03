@@ -15,6 +15,8 @@ py_library(
     deps = [
         "//tensorflow/contrib/bayesflow:bayesflow_py",
         "//tensorflow/contrib/copy_graph:copy_graph_py",
+        "//tensorflow/contrib/crf:crf_py",
+        "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_py",
         "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
@@ -34,7 +36,9 @@ py_library(
         "//tensorflow/contrib/slim:nets",
         "//tensorflow/contrib/tensor_forest:tensor_forest_py",
         "//tensorflow/contrib/tensor_forest/hybrid:ops_lib",
+        "//tensorflow/contrib/tensorboard",
         "//tensorflow/contrib/testing:testing_py",
+        "//tensorflow/contrib/tfprof",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
     ],
@@ -47,7 +51,6 @@ cc_library(
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/layers:bucketization_op_kernel",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
-        "//tensorflow/contrib/linear_optimizer:sdca_op_kernels",
         "//tensorflow/contrib/metrics:set_ops_kernels",
     ],
 )
@@ -57,9 +60,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/factorization:all_ops",
+        "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/layers:bucketization_op_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
-        "//tensorflow/contrib/linear_optimizer:sdca_ops_op_lib",
         "//tensorflow/contrib/metrics:set_ops_op_lib",
     ],
 )

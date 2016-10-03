@@ -38,10 +38,11 @@ static Status HandleGradAndIndicesInputs(InferenceContext* c, bool sparse,
   DimensionHandle unused;
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(indices, 0), c->Dim(grad, 0), &unused));
 
-  // Trailing part of grad matches *s.
-  ShapeHandle grad_subshape;
-  TF_RETURN_IF_ERROR(c->Subshape(grad, 1, &grad_subshape));
-  TF_RETURN_IF_ERROR(c->Merge(*s, grad_subshape, s));
+  // Trailing part of grad matches trailing part of *s.
+  ShapeHandle grad_unknown_first;
+  TF_RETURN_IF_ERROR(
+      c->ReplaceDim(grad, 0, c->UnknownDim(), &grad_unknown_first));
+  TF_RETURN_IF_ERROR(c->Merge(*s, grad_unknown_first, s));
 
   return Status::OK();
 }

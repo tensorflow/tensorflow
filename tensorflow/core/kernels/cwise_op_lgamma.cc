@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
+#include "tensorflow/core/platform/dynamic_annotations.h"
+
 namespace tensorflow {
 
 template <typename Device, typename Functor>
@@ -25,8 +27,11 @@ class LgammaOp : public UnaryOp<Device, Functor> {
   }
 };
 
+#if EIGEN_HAS_C99_MATH
 REGISTER3(LgammaOp, CPU, "Lgamma", functor::lgamma, float, Eigen::half, double);
 #if GOOGLE_CUDA
 REGISTER3(LgammaOp, GPU, "Lgamma", functor::lgamma, float, Eigen::half, double);
 #endif
+#endif  // EIGEN_HAS_C99_MATH
+
 }  // namespace tensorflow

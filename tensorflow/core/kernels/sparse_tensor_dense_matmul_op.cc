@@ -267,9 +267,7 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, ADJ_A, ADJ_B> {
         // columns in the nnz loop.
         Eigen::array<int, 2> shuffle(1, 0);  // preserve dimension order
         Eigen::Tensor<T, 2, Eigen::ColMajor> col_major_conj_b =
-            b.swap_layout().shuffle(shuffle).unaryExpr(
-                Eigen::internal::scalar_conjugate_op<T>());
-
+            b.swap_layout().shuffle(shuffle).conjugate();
         LOOP_NNZ(col_major_conj_b);
       } else {
         LOOP_NNZ(b);

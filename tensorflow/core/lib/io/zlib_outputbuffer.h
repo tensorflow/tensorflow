@@ -16,20 +16,15 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_IO_COMPRESSED_OUTPUTBUFFER_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_LIB_IO_COMPRESSED_OUTPUTBUFFER_H_
 
+#include <zlib.h>
+
 #include <string>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-
-// TODO(srbs|vrv): Move to a platform/zlib.h file to centralize all
-// platform-specific includes.
-#ifdef __ANDROID__
-#include "zlib.h"
-#else
-#include <zlib.h>
-#endif  // __ANDROID__
 
 namespace tensorflow {
 namespace io {
@@ -45,6 +40,7 @@ class ZlibOutputBuffer {
   // 2. the deflated output
   // with sizes `input_buffer_bytes` and `output_buffer_bytes` respectively.
   // Does not take ownership of `file`.
+  // output_buffer_bytes should be greater than 1.
   ZlibOutputBuffer(
       WritableFile* file,
       int32 input_buffer_bytes,   // size of z_stream.next_in buffer
@@ -52,6 +48,10 @@ class ZlibOutputBuffer {
       const ZlibCompressionOptions& zlib_options);
 
   ~ZlibOutputBuffer();
+
+  // Initializes some state necessary for the output buffer. This call is
+  // required before any other operation on the buffer.
+  Status Init();
 
   // Adds `data` to the compression pipeline.
   //
@@ -78,6 +78,7 @@ class ZlibOutputBuffer {
 
  private:
   WritableFile* file_;  // Not owned
+  Status init_status_;
   size_t input_buffer_capacity_;
   size_t output_buffer_capacity_;
 

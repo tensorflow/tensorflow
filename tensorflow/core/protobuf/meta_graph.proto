@@ -67,6 +67,9 @@ message MetaGraphDef {
   // signature_def: Map from user supplied key for a signature to a single
   // SignatureDef.
   map<string, SignatureDef> signature_def = 5;
+
+  // Asset file def to be used with the defined graph.
+  repeated AssetFileDef asset_file_def = 6;
 }
 
 // CollectionDef should cover most collections.
@@ -265,4 +268,15 @@ message SignatureDef {
   // method_name. This is commonly used to support multi-headed computation,
   // where a single graph computation may return multiple results.
   string method_name = 3;
+}
+
+// An asset file def for a single file or a set of sharded files with the same
+// name.
+message AssetFileDef {
+  // The tensor to bind the asset filename to.
+  TensorInfo tensor_info = 1;
+  // The filename within an assets directory. Note: does not include the path
+  // prefix, i.e. directories. For an asset at /tmp/path/vocab.txt, the filename
+  // would be "vocab.txt".
+  string filename = 2;
 }

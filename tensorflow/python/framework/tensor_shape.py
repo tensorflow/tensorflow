@@ -112,11 +112,13 @@ class Dimension(object):
 
     Dimensions are combined as follows:
 
+    ```python
         Dimension(n)   .merge_with(Dimension(n))    == Dimension(n)
         Dimension(n)   .merge_with(Dimension(None)) == Dimension(n)
         Dimension(None).merge_with(Dimension(n))    == Dimension(n)
         Dimension(None).merge_with(Dimension(None)) == Dimension(None)
         Dimension(n)   .merge_with(Dimension(m)) raises ValueError for n != m
+    ```
 
     Args:
       other: Another Dimension.
@@ -185,16 +187,18 @@ class Dimension(object):
 
     Dimensions are summed as follows:
 
+    ```
       Dimension(m)    * Dimension(n)    == Dimension(m * n)
       Dimension(m)    * Dimension(None) == Dimension(None)
       Dimension(None) * Dimension(n)    == Dimension(None)
       Dimension(None) * Dimension(None) == Dimension(None)
+    ```
 
     Args:
       other: Another Dimension.
 
     Returns:
-      A Dimension whose value is the sum of `self` and `other`.
+      A Dimension whose value is the product of `self` and `other`.
     """
     other = as_dimension(other)
     if self._value is None or other.value is None:
@@ -767,11 +771,10 @@ class TensorShape(object):
     """Returns a list of integers or `None` for each dimension.
 
     Returns:
-      `None` if shape is unknown; otherwise, a list of integers or `None` for
-      each dimension.
+      A list of integers or `None` for each dimension.
 
     Raises:
-      ValueError: if `self` is completely unknown.
+      ValueError: If `self` is an unknown shape with an unknown rank.
     """
     if self._dims is None:
       raise ValueError("as_list() is not defined on an unknown TensorShape.")

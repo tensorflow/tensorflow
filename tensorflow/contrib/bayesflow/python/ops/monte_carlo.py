@@ -30,7 +30,7 @@ If `E_p[|f(Z)|] < infinity`, then `S_n --> E_p[f(Z)]` by the strong law of large
 numbers.  If `E_p[f(Z)^2] < infinity`, then `S_n` is asymptotically normal with
 variance `Var[f(Z)] / n`.
 
-Practicioners of Bayesian statistics often find themselves wanting to estimate
+Practitioners of Bayesian statistics often find themselves wanting to estimate
 `E_p[f(Z)]` when the distribution `p` is known only up to a constant.  For
 example, the joint distribution `p(z, x)` may be known, but the evidence
 `p(x) = \int p(z, x) dz` may be intractable.  In that case, a parameterized
@@ -55,7 +55,7 @@ Log E_q[ f(Z) p(Z) / q(Z) ]
 C := Max[ Log[f(Z)] + Log[p(Z)] - Log[q(Z)] ].
 ```
 
-The maximum value of the exponentiated term will be 0.0, and the the expecation
+The maximum value of the exponentiated term will be 0.0, and the the expectation
 can be evaluated in a stable manner.
 
 ## Ops
@@ -252,9 +252,7 @@ def expectation(f, p, z=None, n=None, seed=None, name='expectation'):
   User supplies either `Tensor` of samples `z`, or number of samples to draw `n`
 
   Args:
-    f: Callable mapping samples from `sampling_dist_q` to `Tensors` with
-      shape broadcastable to `q.batch_shape`.
-      For example, `f` works "just like" `sampling_dist_q.log_prob`.
+    f: Callable mapping samples from `p` to `Tensors`.
     p:  `tf.contrib.distributions.BaseDistribution`.
     z:  `Tensor` of samples from `p`, produced by `p.sample_n`.
     n:  Integer `Tensor`.  Number of samples to generate if `z` is not provided.
@@ -262,7 +260,36 @@ def expectation(f, p, z=None, n=None, seed=None, name='expectation'):
     name:  A name to give this `Op`.
 
   Returns:
-    A `Tensor` with same `dtype` as `p`, and shape equal to `p.batch_shape`.
+    A `Tensor` with the same `dtype` as `p`.
+
+  Example:
+
+  ```python
+  N_samples = 10000
+
+  distributions = tf.contrib.distributions
+
+  dist = distributions.Uniform([0.0, 0.0], [1.0, 2.0])
+  elementwise_mean = lambda x: x
+  mean_sum = lambda x: tf.reduce_sum(x, 1)
+
+  estimate_elementwise_mean_tf = monte_carlo.expectation(elementwise_mean,
+                                                         dist,
+                                                         n=N_samples)
+  estimate_mean_sum_tf = monte_carlo.expectation(mean_sum,
+                                                 dist,
+                                                 n=N_samples)
+
+  with tf.Session() as sess:
+    estimate_elementwise_mean, estimate_mean_sum = (
+        sess.run([estimate_elementwise_mean_tf, estimate_mean_sum_tf]))
+  print estimate_elementwise_mean
+  >>> np.array([ 0.50018013  1.00097895], dtype=np.float32)
+  print estimate_mean_sum
+  >>> 1.49571
+
+  ```
+
   """
   with ops.name_scope(name, values=[n, z]):
     z = _get_samples(p, z, n, seed)

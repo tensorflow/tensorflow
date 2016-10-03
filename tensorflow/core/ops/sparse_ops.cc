@@ -358,7 +358,7 @@ REGISTER_OP("SparseConcat")
     .Output("output_indices: int64")
     .Output("output_values: T")
     .Output("output_shape: int64")
-    .Attr("concat_dim: int >= 0")
+    .Attr("concat_dim: int")
     .Attr("N: int >= 2")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
@@ -446,7 +446,8 @@ shapes: 1-D.  Shapes of each `SparseTensor`.
 output_indices: 2-D.  Indices of the concatenated `SparseTensor`.
 output_values: 1-D.  Non-empty values of the concatenated `SparseTensor`.
 output_shape: 1-D.  Shape of the concatenated `SparseTensor`.
-concat_dim: Dimension to concatenate along.
+concat_dim: Dimension to concatenate along. Must be in range [-rank, rank),
+    where rank is the number of dimensions in each input `SparseTensor`.
 )doc");
 
 REGISTER_OP("SparseSplit")
@@ -633,10 +634,7 @@ REGISTER_OP("SparseReduceSum")
     .Attr("keep_dims: bool = False")
     .Output("output: T")
     .Attr("T: numbertype")
-    .SetShapeFn([](InferenceContext* c) {
-      c->set_output(0, c->UnknownShape());
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Computes the sum of elements across dimensions of a SparseTensor.
 
@@ -662,6 +660,41 @@ keep_dims: If true, retain reduced dimensions with length 1.
 output: `R-K`-D.  The reduced Tensor.
 )doc");
 
+REGISTER_OP("SparseReduceSumSparse")
+    .Input("input_indices: int64")
+    .Input("input_values: T")
+    .Input("input_shape: int64")
+    .Input("reduction_axes: int32")
+    .Attr("keep_dims: bool = False")
+    .Output("output_indices: int64")
+    .Output("output_values: T")
+    .Output("output_shape: int64")
+    .Attr("T: numbertype")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Computes the sum of elements across dimensions of a SparseTensor.
+
+This Op takes a SparseTensor and is the sparse counterpart to
+`tf.reduce_sum()`.  In contrast to SparseReduceSum, this Op returns a
+SparseTensor.
+
+Reduces `sp_input` along the dimensions given in `reduction_axes`.  Unless
+`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+`reduction_axes`. If `keep_dims` is true, the reduced dimensions are retained
+with length 1.
+
+If `reduction_axes` has no entries, all dimensions are reduced, and a tensor
+with a single element is returned.  Additionally, the axes can be negative,
+which are interpreted according to the indexing rules in Python.
+
+input_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
+  SparseTensor, possibly not in canonical ordering.
+input_values: 1-D.  `N` non-empty values corresponding to `input_indices`.
+input_shape: 1-D.  Shape of the input SparseTensor.
+reduction_axes: 1-D.  Length-`K` vector containing the reduction axes.
+keep_dims: If true, retain reduced dimensions with length 1.
+)doc");
+
 #define SPARSE_DENSE_CWISE_SIGNATURE()                           \
   Input("sp_indices: int64")                                     \
       .Input("sp_values: T")                                     \
@@ -671,7 +704,7 @@ output: `R-K`-D.  The reduced Tensor.
       .Attr("T: numbertype")                                     \
       .SetShapeFn([](InferenceContext* c) {                      \
         ShapeHandle input;                                       \
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &input)); \
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input)); \
         c->set_output(0, c->Vector(c->Dim(input, 0)));           \
         return Status::OK();                                     \
       })

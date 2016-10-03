@@ -204,17 +204,17 @@ Example:
 ```python
 # Decode a JPG image and resize it to 299 by 299 using default method.
 image = tf.image.decode_jpeg(...)
-resized_image = tf.image.resize_images(image, 299, 299)
+resized_image = tf.image.resize_images(image, [299, 299])
 ```
 
 - - -
 
-### `tf.image.resize_images(images, new_height, new_width, method=0, align_corners=False)` {#resize_images}
+### `tf.image.resize_images(images, size, method=0, align_corners=False)` {#resize_images}
 
-Resize `images` to `new_width`, `new_height` using the specified `method`.
+Resize `images` to `size` using the specified `method`.
 
 Resized images will be distorted if their original aspect ratio is not
-the same as `new_width`, `new_height`.  To avoid distortions see
+the same as `size`.  To avoid distortions see
 [`resize_image_with_crop_or_pad`](#resize_image_with_crop_or_pad).
 
 `method` can be one of:
@@ -232,8 +232,8 @@ the same as `new_width`, `new_height`.  To avoid distortions see
 
 *  <b>`images`</b>: 4-D Tensor of shape `[batch, height, width, channels]` or
           3-D Tensor of shape `[height, width, channels]`.
-*  <b>`new_height`</b>: integer.
-*  <b>`new_width`</b>: integer.
+*  <b>`size`</b>: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
+        new size for the images.
 *  <b>`method`</b>: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
 *  <b>`align_corners`</b>: bool. If true, exactly align all 4 corners of the input and
                  output. Defaults to `false`.
@@ -243,6 +243,7 @@ the same as `new_width`, `new_height`.  To avoid distortions see
 
 *  <b>`ValueError`</b>: if the shape of `images` is incompatible with the
     shape arguments to this function
+*  <b>`ValueError`</b>: if `size` has invalid shape or type.
 *  <b>`ValueError`</b>: if an unsupported resize method is specified.
 
 ##### Returns:
@@ -548,7 +549,7 @@ The argument `normalized` and `centered` controls how the windows are built:
     indicates if the offset coordinates are normalized.
 *  <b>`uniform_noise`</b>: An optional `bool`. Defaults to `True`.
     indicates if the noise should be generated using a
-    uniform distribution or a gaussian distribution.
+    uniform distribution or a Gaussian distribution.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -749,15 +750,16 @@ See also `transpose()`.
 
 - - -
 
-### `tf.image.rot90(image, k=1)` {#rot90}
+### `tf.image.rot90(image, k=1, name=None)` {#rot90}
 
 Rotate an image counter-clockwise by 90 degrees.
 
 ##### Args:
 
 
-*  <b>`image`</b>: A 3-D tensor of shape `[height, width, channels].`
-*  <b>`k`</b>: Number of times the image is rotated by 90 degrees.
+*  <b>`image`</b>: A 3-D tensor of shape `[height, width, channels]`.
+*  <b>`k`</b>: A scalar integer. The number of times the image is rotated by 90 degrees.
+*  <b>`name`</b>: A name for this operation (optional).
 
 ##### Returns:
 
@@ -1191,6 +1193,7 @@ of all values in image, and
 away from zero to protect against division by 0 when handling uniform images.
 
 Note that this implementation is limited:
+
 *  It only whitens based on the statistics of an individual image.
 *  It does not take into account the covariance structure.
 
@@ -1225,7 +1228,7 @@ bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
 height of the underlying image.
 
 For example, if an image is 100 x 200 pixels and the bounding box is
-`[0.1, 0.5, 0.2, 0.9]`, the bottom-left and upper-right coordinates of the
+`[0.1, 0.2, 0.5, 0.9]`, the bottom-left and upper-right coordinates of the
 bounding box will be `(10, 40)` to `(50, 180)`.
 
 Parts of the bounding box may fall outside the image.
@@ -1266,7 +1269,7 @@ system result in the same boxes being selected by the algorithm.
 The output of this operation is a set of integers indexing into the input
 collection of bounding boxes representing the selected boxes.  The bounding
 box coordinates corresponding to the selected indices can then be obtained
-using the tf.gather operation.  For example:
+using the `tf.gather operation`.  For example:
 
   selected_indices = tf.image.non_max_suppression(
       boxes, scores, max_output_size, iou_threshold)
@@ -1311,7 +1314,7 @@ localization of an object, i.e. bounding box, given an `image_size`,
 The output of this Op is a single bounding box that may be used to crop the
 original image. The output is returned as 3 tensors: `begin`, `size` and
 `bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
-image. The latter may be supplied to `tf.image.draw_bounding_box` to visualize
+image. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize
 what the bounding box looks like.
 
 Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The
@@ -1320,6 +1323,7 @@ height of the underlying image.
 
 For example,
 
+```python
     # Generate a single distorted bounding box.
     begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
         tf.shape(image),
@@ -1332,6 +1336,7 @@ For example,
 
     # Employ the bounding box to distort the image.
     distorted_image = tf.slice(image, begin, size)
+```
 
 Note that if no bounding box information is available, setting
 `use_image_if_no_bounding_boxes = true` will assume there is a single implicit

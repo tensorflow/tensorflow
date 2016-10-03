@@ -31,6 +31,7 @@ TEST(PathTest, JoinPath) {
 
   EXPECT_EQ("/foo/bar/baz/blah/blink/biz",
             JoinPath("/foo/bar/baz/", "/blah/blink/biz"));
+  EXPECT_EQ("/foo/bar/baz/blah", JoinPath("/foo", "bar", "baz", "blah"));
 }
 
 TEST(PathTest, IsAbsolutePath) {
@@ -74,6 +75,26 @@ TEST(PathTest, Extension) {
   EXPECT_EQ("html", Extension("/a/path.bar/to/foo.html"));
   EXPECT_EQ("", Extension("/a/path.bar/to/foo"));
   EXPECT_EQ("baz", Extension("/a/path.bar/to/foo.bar.baz"));
+}
+
+TEST(PathTest, CleanPath) {
+  EXPECT_EQ(".", CleanPath(""));
+  EXPECT_EQ("x", CleanPath("x"));
+  EXPECT_EQ("/a/b/c/d", CleanPath("/a/b/c/d"));
+  EXPECT_EQ("/a/b/c/d/*", CleanPath("/a/b/c/d/*"));
+  EXPECT_EQ("/a/b/c/d", CleanPath("/a/b/c/d/"));
+  EXPECT_EQ("/a/b", CleanPath("/a//b"));
+  EXPECT_EQ("/a/b", CleanPath("//a//b/"));
+  EXPECT_EQ("/", CleanPath("/.."));
+  EXPECT_EQ("/", CleanPath("/././././"));
+  EXPECT_EQ("/a", CleanPath("/a/b/.."));
+  EXPECT_EQ("/", CleanPath("/a/b/../../.."));
+  EXPECT_EQ("/", CleanPath("//a//b/..////../..//"));
+  EXPECT_EQ("/x", CleanPath("//a//../x//"));
+  EXPECT_EQ("x", CleanPath("x"));
+  EXPECT_EQ("../../a/c", CleanPath("../../a/b/../c"));
+  EXPECT_EQ("../..", CleanPath("../../a/b/../c/../.."));
+  EXPECT_EQ("../../bar", CleanPath("foo/../../../bar"));
 }
 
 }  // namespace io

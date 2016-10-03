@@ -43,7 +43,7 @@ class SparseAddTest(tf.test.TestCase):
     x = np.random.randn(n, m).astype(np_dtype)
     return _sparsify(x) if sparse else x
 
-  def _SparseTensor_3x3(self, negate=False):
+  def _SparseTensorValue_3x3(self, negate=False):
     # [    1]
     # [2    ]
     # [3   4]
@@ -53,10 +53,13 @@ class SparseAddTest(tf.test.TestCase):
     if negate:
       val = -np.array([1, 2, 3, 4])
     shape = np.array([3, 3])
-    return tf.SparseTensor(
-        tf.constant(ind, tf.int64),
-        tf.constant(val, tf.float32),
-        tf.constant(shape, tf.int64))
+    return tf.SparseTensorValue(
+        np.array(ind, np.int64),
+        np.array(val, np.float32),
+        np.array(shape, np.int64))
+
+  def _SparseTensor_3x3(self, negate=False):
+    return tf.SparseTensor.from_value(self._SparseTensorValue_3x3(negate))
 
   def _SparseTensor_3x3_v2(self):
     # [           1]
@@ -72,18 +75,17 @@ class SparseAddTest(tf.test.TestCase):
 
   def testAddSelf(self):
     with self.test_session(use_gpu=False) as sess:
-      sp_a = self._SparseTensor_3x3()
-      sp_b = self._SparseTensor_3x3()
+      for sp_a in (self._SparseTensorValue_3x3(), self._SparseTensor_3x3()):
+        for sp_b in (self._SparseTensorValue_3x3(), self._SparseTensor_3x3()):
+          sp_sum = tf.sparse_add(sp_a, sp_b)
 
-      sp_sum = tf.sparse_add(sp_a, sp_b)
+          sum_out = sess.run(sp_sum)
 
-      sum_out = sess.run(sp_sum)
-
-      self.assertEqual(sp_sum.shape.get_shape(), [2])
-      self.assertAllEqual(
-          sum_out.indices, [[0, 1], [1, 0], [2, 0], [2, 1]])
-      self.assertAllEqual(sum_out.values, [2, 4, 6, 8])
-      self.assertAllEqual(sum_out.shape, [3, 3])
+          self.assertEqual(sp_sum.shape.get_shape(), [2])
+          self.assertAllEqual(
+              sum_out.indices, [[0, 1], [1, 0], [2, 0], [2, 1]])
+          self.assertAllEqual(sum_out.values, [2, 4, 6, 8])
+          self.assertAllEqual(sum_out.shape, [3, 3])
 
   def testAddSelfAndNegation(self):
     with self.test_session(use_gpu=False) as sess:

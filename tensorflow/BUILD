@@ -30,6 +30,15 @@ config_setting(
 )
 
 config_setting(
+    name = "android_arm64",
+    values = {
+        "crosstool_top": "//external:android/crosstool",
+        "android_cpu": "arm64-v8a",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
     visibility = ["//visibility:public"],
@@ -45,10 +54,7 @@ config_setting(
 
 package_group(
     name = "internal",
-    packages = [
-        "//learning/vis/...",
-        "//tensorflow/...",
-    ],
+    packages = ["//tensorflow/..."],
 )
 
 sh_binary(
@@ -84,9 +90,13 @@ filegroup(
         ":all_files",
         "//tensorflow/c:all_files",
         "//tensorflow/cc:all_files",
+        "//tensorflow/cc/saved_model:all_files",
         "//tensorflow/contrib:all_files",
+        "//tensorflow/contrib/android:all_files",
         "//tensorflow/contrib/bayesflow:all_files",
         "//tensorflow/contrib/copy_graph:all_files",
+        "//tensorflow/contrib/crf:all_files",
+        "//tensorflow/contrib/cudnn_rnn:all_files",
         "//tensorflow/contrib/distributions:all_files",
         "//tensorflow/contrib/factorization:all_files",
         "//tensorflow/contrib/factorization/kernels:all_files",
@@ -94,12 +104,12 @@ filegroup(
         "//tensorflow/contrib/ffmpeg/default:all_files",
         "//tensorflow/contrib/framework:all_files",
         "//tensorflow/contrib/graph_editor:all_files",
+        "//tensorflow/contrib/grid_rnn:all_files",
         "//tensorflow/contrib/layers:all_files",
         "//tensorflow/contrib/layers/kernels:all_files",
         "//tensorflow/contrib/learn:all_files",
         "//tensorflow/contrib/learn/python/learn/datasets:all_files",
         "//tensorflow/contrib/linear_optimizer:all_files",
-        "//tensorflow/contrib/linear_optimizer/kernels:all_files",
         "//tensorflow/contrib/lookup:all_files",
         "//tensorflow/contrib/losses:all_files",
         "//tensorflow/contrib/metrics:all_files",
@@ -117,7 +127,11 @@ filegroup(
         "//tensorflow/contrib/slim/python/slim/nets:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
+        "//tensorflow/contrib/tensorboard:all_files",
         "//tensorflow/contrib/testing:all_files",
+        "//tensorflow/contrib/tfprof/python/tools/tfprof:all_files",
+        "//tensorflow/contrib/tfprof/tools/tfprof:all_files",
+        "//tensorflow/contrib/tfprof/tools/tfprof/internal:all_files",
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
         "//tensorflow/core:all_files",
@@ -128,13 +142,16 @@ filegroup(
         "//tensorflow/core/ops/compat:all_files",
         "//tensorflow/core/platform/cloud:all_files",
         "//tensorflow/core/platform/default/build_config:all_files",
+        "//tensorflow/core/platform/hadoop:all_files",
         "//tensorflow/core/util/ctc:all_files",
+        "//tensorflow/core/util/tensor_bundle:all_files",
         "//tensorflow/examples/android:all_files",
         "//tensorflow/examples/how_tos/reading_data:all_files",
         "//tensorflow/examples/image_retraining:all_files",
         "//tensorflow/examples/label_image:all_files",
         "//tensorflow/examples/learn:all_files",
         "//tensorflow/examples/skflow:all_files",
+        "//tensorflow/examples/tutorials/estimators:all_files",
         "//tensorflow/examples/tutorials/mnist:all_files",
         "//tensorflow/examples/tutorials/word2vec:all_files",
         "//tensorflow/g3doc/how_tos/adding_an_op:all_files",
@@ -151,11 +168,15 @@ filegroup(
         "//tensorflow/python:all_files",
         "//tensorflow/python/debug:all_files",
         "//tensorflow/python/kernel_tests:all_files",
+        "//tensorflow/python/saved_model:all_files",
+        "//tensorflow/python/saved_model/example:all_files",
         "//tensorflow/python/tools:all_files",
         "//tensorflow/tensorboard:all_files",
         "//tensorflow/tensorboard/app:all_files",
         "//tensorflow/tensorboard/backend:all_files",
         "//tensorflow/tensorboard/components:all_files",
+        "//tensorflow/tensorboard/components/vz-data-summary:all_files",
+        "//tensorflow/tensorboard/components/vz-projector:all_files",
         "//tensorflow/tensorboard/lib:all_files",
         "//tensorflow/tensorboard/lib/python:all_files",
         "//tensorflow/tensorboard/scripts:all_files",
@@ -163,9 +184,11 @@ filegroup(
         "//tensorflow/tools/docker:all_files",
         "//tensorflow/tools/docker/notebooks:all_files",
         "//tensorflow/tools/docs:all_files",
+        "//tensorflow/tools/git:all_files",
         "//tensorflow/tools/proto_text:all_files",
         "//tensorflow/tools/test:all_files",
         "//tensorflow/user_ops:all_files",
+        "//third_party/hadoop:all_files",
     ],
     visibility = [":__subpackages__"],
 )

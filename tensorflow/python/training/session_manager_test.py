@@ -59,7 +59,7 @@ class SessionManagerTest(tf.test.TestCase):
     try:
       gfile.DeleteRecursively(checkpoint_dir)
       gfile.DeleteRecursively(checkpoint_dir2)
-    except OSError:
+    except errors.OpError:
       pass                      # Ignore
     gfile.MakeDirs(checkpoint_dir)
 
@@ -105,7 +105,7 @@ class SessionManagerTest(tf.test.TestCase):
     checkpoint_dir = os.path.join(self.get_temp_dir(), "recover_session")
     try:
       gfile.DeleteRecursively(checkpoint_dir)
-    except OSError:
+    except errors.OpError:
       pass                      # Ignore
     gfile.MakeDirs(checkpoint_dir)
 
@@ -163,7 +163,7 @@ class SessionManagerTest(tf.test.TestCase):
                                   "recover_session_ready_for_local_init")
     try:
       gfile.DeleteRecursively(checkpoint_dir)
-    except OSError:
+    except errors.OpError:
       pass  # Ignore
     gfile.MakeDirs(checkpoint_dir)
 
@@ -220,7 +220,7 @@ class SessionManagerTest(tf.test.TestCase):
         "recover_session_ready_for_local_init_fails_to_ready_local")
     try:
       gfile.DeleteRecursively(checkpoint_dir)
-    except OSError:
+    except errors.OpError:
       pass  # Ignore
     gfile.MakeDirs(checkpoint_dir)
 
@@ -299,7 +299,7 @@ class SessionManagerTest(tf.test.TestCase):
         "recover_session_ready_for_local_init_fails_stil_run")
     try:
       gfile.DeleteRecursively(checkpoint_dir)
-    except OSError:
+    except errors.OpError:
       pass  # Ignore
     gfile.MakeDirs(checkpoint_dir)
 
@@ -522,7 +522,7 @@ class ObsoleteSessionManagerTest(tf.test.TestCase):
     try:
       gfile.DeleteRecursively(checkpoint_dir)
       gfile.DeleteRecursively(checkpoint_dir2)
-    except OSError:
+    except errors.OpError:
       pass                      # Ignore
     gfile.MakeDirs(checkpoint_dir)
 
@@ -568,7 +568,7 @@ class ObsoleteSessionManagerTest(tf.test.TestCase):
     checkpoint_dir = os.path.join(self.get_temp_dir(), "recover_session")
     try:
       gfile.DeleteRecursively(checkpoint_dir)
-    except OSError:
+    except errors.OpError:
       pass                      # Ignore
     gfile.MakeDirs(checkpoint_dir)
 

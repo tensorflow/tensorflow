@@ -16,6 +16,7 @@ limitations under the License.
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <fnmatch.h>
 #include <stdio.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -54,6 +55,10 @@ class PosixEnv : public Env {
   PosixEnv() {}
 
   ~PosixEnv() override { LOG(FATAL) << "Env::Default() must not be destroyed"; }
+
+  bool MatchPath(const string& path, const string& pattern) override {
+    return fnmatch(pattern.c_str(), path.c_str(), FNM_PATHNAME) == 0;
+  }
 
   uint64 NowMicros() override {
     struct timeval tv;

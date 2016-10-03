@@ -24,6 +24,7 @@ operators to your graph.
 @@add
 @@sub
 @@mul
+@@scalar_mul
 @@div
 @@truediv
 @@floordiv
@@ -74,47 +75,30 @@ mathematical functions to your graph.
 TensorFlow provides several operations that you can use to add linear algebra
 functions on matrices to your graph.
 
-@@batch_matrix_diag
-@@batch_matrix_diag_part
-@@batch_matrix_band_part
-@@batch_matrix_set_diag
-
 @@diag
 @@diag_part
 @@trace
 @@transpose
-@@batch_matrix_transpose
+
+@@matrix_diag
+@@matrix_diag_part
+@@matrix_band_part
+@@matrix_set_diag
+@@matrix_transpose
 
 @@matmul
 @@batch_matmul
 
 @@matrix_determinant
-@@batch_matrix_determinant
-
 @@matrix_inverse
-@@batch_matrix_inverse
-
 @@cholesky
-@@batch_cholesky
 @@cholesky_solve
-@@batch_cholesky_solve
-
 @@matrix_solve
-@@batch_matrix_solve
-
 @@matrix_triangular_solve
-@@batch_matrix_triangular_solve
-
 @@matrix_solve_ls
-@@batch_matrix_solve_ls
-
 @@self_adjoint_eig
-@@batch_self_adjoint_eig
 @@self_adjoint_eigvals
-@@batch_self_adjoint_eigvals
-
 @@svd
-@@batch_svd
 
 ## Complex Number Functions
 
@@ -126,18 +110,18 @@ functions to your graph.
 @@conj
 @@imag
 @@real
+
+## Fourier Transform Functions
+
+TensorFlow provides several operations that you can use to add discrete
+Fourier transform functions to your graph.
+
 @@fft
 @@ifft
 @@fft2d
 @@ifft2d
 @@fft3d
 @@ifft3d
-@@batch_fft
-@@batch_ifft
-@@batch_fft2d
-@@batch_ifft2d
-@@batch_fft3d
-@@batch_ifft3d
 
 ## Reduction
 
@@ -154,6 +138,8 @@ common math computations that reduce various dimensions of a tensor.
 @@reduce_logsumexp
 
 @@accumulate_n
+
+@@einsum
 
 ## Scan
 
@@ -227,7 +213,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -523,16 +508,20 @@ def real(input, name=None):
   tf.real(input) ==> [-2.25, 3.25]
   ```
 
+  If `input` is already real, it is returned unchanged.
+
   Args:
-    input: A `Tensor`. Must be one of the following types: `complex64`,
-         `complex128`.
+    input: A `Tensor`. Must have numeric type.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` of type `float32` or `float64`.
   """
   with ops.name_scope(name, "Real", [input]) as name:
-    return gen_math_ops.real(input, Tout=input.dtype.real_dtype, name=name)
+    real_dtype = input.dtype.real_dtype
+    if input.dtype.base_dtype == real_dtype:
+      return input
+    return gen_math_ops.real(input, Tout=real_dtype, name=name)
 
 
 def imag(input, name=None):
@@ -773,6 +762,15 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
       x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
       return func(x, y, name=name)
 
+  # Propagate func.__doc__ to the wrappers
+  try:
+    doc = func.__doc__
+  except AttributeError:
+    doc = None
+  binary_op_wrapper.__doc__ = doc
+  r_binary_op_wrapper.__doc__ = doc
+  binary_op_wrapper_sparse.__doc__ = doc
+
   if clazz_object is ops.Tensor:
     clazz_object._override_operator("__%s__" % op_name, binary_op_wrapper)
     del binary_op_wrapper
@@ -788,6 +786,7 @@ def _OverrideBinaryOperatorHelper(func, op_name, clazz_object=ops.Tensor):
 _TRUEDIV_TABLE = {
     dtypes.uint8: dtypes.float32,
     dtypes.int8: dtypes.float32,
+    dtypes.uint16: dtypes.float32,
     dtypes.int16: dtypes.float32,
     dtypes.int32: dtypes.float64,
     dtypes.int64: dtypes.float64,
@@ -952,54 +951,76 @@ ops.Tensor._override_operator("__gt__", gen_math_ops.greater)
 ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
 
 
-def range(start, limit=None, delta=1, name="range"):
-  """Creates a sequence of integers.
+def range(start, limit=None, delta=1, dtype=None, name="range"):
+  """Creates a sequence of numbers.
 
-  Creates a sequence of integers that begins at `start` and extends by
+  Creates a sequence of numbers that begins at `start` and extends by
   increments of `delta` up to but not including `limit`.
+
+  The dtype of the resulting tensor is inferred from the inputs unless
+  it is provided explicitly.
 
   Like the Python builtin `range`, `start` defaults to 0, so that
   `range(n) = range(0, n)`.
 
   For example:
 
-  ```
+  ```python
   # 'start' is 3
   # 'limit' is 18
   # 'delta' is 3
   tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
+
+  # 'start' is 3
+  # 'limit' is 1
+  # 'delta' is -0.5
+  tf.range(start, limit, delta) ==> [3, 2.5, 2, 1.5]
 
   # 'limit' is 5
   tf.range(limit) ==> [0, 1, 2, 3, 4]
   ```
 
   Args:
-    start: A 0-D (scalar) of type `int32`. First entry in sequence.
-      Defaults to 0.
-    limit: A 0-D (scalar) of type `int32`. Upper limit of sequence,
-      exclusive.
-    delta: A 0-D `Tensor` (scalar) of type `int32`. Optional. Default is 1.
-      Number that increments `start`.
-    name: A name for the operation (optional).
+    start: A 0-D `Tensor` (scalar). Acts as first entry in the range if
+      `limit` is not None; otherwise, acts as range limit and first entry
+      defaults to 0.
+    limit: A 0-D `Tensor` (scalar). Upper limit of sequence,
+      exclusive. If None, defaults to the value of `start` while the first
+      entry of the range defaults to 0.
+    delta: A 0-D `Tensor` (scalar). Number that increments
+      `start`. Defaults to 1.
+    dtype: The type of the elements of the resulting tensor.
+    name: A name for the operation. Defaults to "range".
 
   Returns:
-    An 1-D `int32` `Tensor`.
+    An 1-D `Tensor` of type `dtype`.
   """
   if limit is None:
     start, limit = 0, start
-  return gen_math_ops._range(start, limit, delta, name=name)
+
+  with ops.name_scope(name, "Range", [start, limit, delta]) as name:
+    start = ops.convert_to_tensor(start, dtype=dtype, name="start")
+    limit = ops.convert_to_tensor(limit, dtype=dtype, name="limit")
+    delta = ops.convert_to_tensor(delta, dtype=dtype, name="delta")
+
+    # infer dtype if not explicitly provided
+    if dtype is None:
+      dtype_hierarchy = [dtypes.int32, dtypes.int64, dtypes.float32,
+                         dtypes.float64]
+      assert all(arg.dtype in dtype_hierarchy for arg in [start, limit, delta])
+      inferred_dtype = max([arg.dtype for arg in [start, limit, delta]],
+                           key=dtype_hierarchy.index)
+
+      start = cast(start, inferred_dtype)
+      limit = cast(limit, inferred_dtype)
+      delta = cast(delta, inferred_dtype)
+
+    return gen_math_ops._range(start, limit, delta, name=name)
 
 
 @ops.RegisterShape("Range")
 def _RangeShape(op):
-  start_value = tensor_util.constant_value(op.inputs[0])
-  limit_value = tensor_util.constant_value(op.inputs[1])
-  delta_value = tensor_util.constant_value(op.inputs[2])
-  if start_value is None or limit_value is None or delta_value is None:
-    return [tensor_shape.vector(None)]
-  else:
-    return [tensor_shape.vector((limit_value - start_value + delta_value - 1) //
-                                delta_value)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[0, 1, 2])
 
 
 # Reduction operations
@@ -1264,7 +1285,7 @@ def reduce_logsumexp(input_tensor, reduction_indices=None, keep_dims=False,
   If `reduction_indices` has no entries, all dimensions are reduced, and a
   tensor with a single element is returned.
 
-  This funciton is more numerically stable than log(sum(exp(input))). It avoids
+  This function is more numerically stable than log(sum(exp(input))). It avoids
   overflows caused by taking the exp of large inputs and underflows caused by
   taking the log of small inputs.
 
@@ -1282,7 +1303,7 @@ def reduce_logsumexp(input_tensor, reduction_indices=None, keep_dims=False,
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
-    reduction_indices: The dimensions to reduce. If `None` (the defaut),
+    reduction_indices: The dimensions to reduce. If `None` (the default),
       reduces all dimensions.
     keep_dims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
@@ -1305,23 +1326,35 @@ def reduce_logsumexp(input_tensor, reduction_indices=None, keep_dims=False,
 def trace(x, name=None):
   """ Compute the trace of a tensor `x`.
 
-  `trace(x)` returns the sum of along the diagonal.
+  `trace(x)` returns the sum along the main diagonal of each inner-most matrix
+  in x. If x is of rank `k` with shape `[I, J, K, ..., L, M, N]`, then output
+  is a tensor of rank `k-2` with dimensions `[I, J, K, ..., L]` where
+
+  `output[i, j, k, ..., l] = trace(x[i, j, i, ..., l, :, :])`
 
   For example:
 
   ```python
-  # 'x' is [[1, 1],
-  #         [1, 1]]
-  tf.trace(x) ==> 2
+  # 'x' is [[1, 2],
+  #         [3, 4]]
+  tf.trace(x) ==> 5
 
   # 'x' is [[1,2,3],
   #         [4,5,6],
   #         [7,8,9]]
   tf.trace(x) ==> 15
+
+  # 'x' is [[[1,2,3],
+  #          [4,5,6],
+  #          [7,8,9]],
+  #         [[-1,-2,-3],
+  #          [-4,-5,-6],
+  #          [-7,-8,-9]]]
+  tf.trace(x) ==> [15,-15]
   ```
 
   Args:
-    x: 2-D tensor.
+    x: tensor.
     name: A name for the operation (optional).
 
   Returns:
@@ -1329,10 +1362,7 @@ def trace(x, name=None):
   """
   with ops.name_scope(name, "Trace", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
-    if len(x.get_shape()) != 2:
-      raise ValueError("Expected a tensor with rank 2, rank %d tensor received"
-                       % len(x.get_shape()))
-    return reduce_sum(array_ops.diag_part(x), name=name)
+    return reduce_sum(array_ops.matrix_diag_part(x), [-1], name=name)
 
 
 def matmul(a, b,
@@ -1532,6 +1562,9 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
   otherwise, these are inferred.
 
+  NOTE: This operation is not differentiable and cannot be used if inputs depend
+  on trainable variables. Please use `tf.add_n` for such cases.
+
   For example:
 
   ```python
@@ -1592,22 +1625,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
             ref, var_name=var.op.name, name=name)
 
 
-@ops.RegisterShape("BatchMatMul")
-def _BatchMatMulShape(op):
-  """Shape function for BatchMatMul op."""
-  a_shape = op.inputs[0].get_shape()
-  adj_a = op.get_attr("adj_x")
-  b_shape = op.inputs[1].get_shape()
-  adj_b = op.get_attr("adj_y")
-  if a_shape.dims is None and b_shape.dims is None:
-    return [tensor_shape.unknown_shape()]
-  batch_dims = a_shape[:-2].merge_with(b_shape[:-2])
-  output_rows = a_shape[-1] if adj_a else a_shape[-2]
-  output_cols = b_shape[-2] if adj_b else b_shape[-1]
-  inner_a = a_shape[-2] if adj_a else a_shape[-1]
-  inner_b = b_shape[-1] if adj_b else b_shape[-2]
-  inner_a.assert_is_compatible_with(inner_b)
-  return [batch_dims.concatenate([output_rows, output_cols])]
+ops.RegisterShape("BatchMatMul")(common_shapes.call_cpp_shape_fn)
 
 
 def sigmoid(x, name=None):
@@ -1739,79 +1757,113 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
         x, axis, exclusive=exclusive, reverse=reverse, name=name)
 
 
-ops.RegisterShape("Abs")(common_shapes.unchanged_shape)
-ops.RegisterShape("Acos")(common_shapes.unchanged_shape)
-ops.RegisterShape("Asin")(common_shapes.unchanged_shape)
-ops.RegisterShape("Atan")(common_shapes.unchanged_shape)
-ops.RegisterShape("Ceil")(common_shapes.unchanged_shape)
-ops.RegisterShape("Conj")(common_shapes.unchanged_shape)
-ops.RegisterShape("Cos")(common_shapes.unchanged_shape)
-ops.RegisterShape("Cross")(common_shapes.unchanged_shape)
-ops.RegisterShape("Exp")(common_shapes.unchanged_shape)
-ops.RegisterShape("Floor")(common_shapes.unchanged_shape)
-ops.RegisterShape("Imag")(common_shapes.unchanged_shape)
-ops.RegisterShape("Inv")(common_shapes.unchanged_shape)
-ops.RegisterShape("IsFinite")(common_shapes.unchanged_shape)
-ops.RegisterShape("IsInf")(common_shapes.unchanged_shape)
-ops.RegisterShape("IsNan")(common_shapes.unchanged_shape)
-ops.RegisterShape("Log")(common_shapes.unchanged_shape)
-ops.RegisterShape("LogicalNot")(common_shapes.unchanged_shape)
-ops.RegisterShape("Neg")(common_shapes.unchanged_shape)
-ops.RegisterShape("Real")(common_shapes.unchanged_shape)
-ops.RegisterShape("Rsqrt")(common_shapes.unchanged_shape)
-ops.RegisterShape("Sign")(common_shapes.unchanged_shape)
-ops.RegisterShape("Sin")(common_shapes.unchanged_shape)
-ops.RegisterShape("Sqrt")(common_shapes.unchanged_shape)
-ops.RegisterShape("Square")(common_shapes.unchanged_shape)
-ops.RegisterShape("Sigmoid")(common_shapes.unchanged_shape)
-ops.RegisterShape("Tanh")(common_shapes.unchanged_shape)
-ops.RegisterShape("Tan")(common_shapes.unchanged_shape)
-ops.RegisterShape("Lgamma")(common_shapes.unchanged_shape)
-ops.RegisterShape("Digamma")(common_shapes.unchanged_shape)
-ops.RegisterShape("Erf")(common_shapes.unchanged_shape)
-ops.RegisterShape("Erfc")(common_shapes.unchanged_shape)
-ops.RegisterShape("Cast")(common_shapes.unchanged_shape)
-ops.RegisterShape("ComplexAbs")(common_shapes.unchanged_shape)
-ops.RegisterShape("FFT")(common_shapes.unchanged_shape)
-ops.RegisterShape("IFFT")(common_shapes.unchanged_shape)
-ops.RegisterShape("FFT2D")(common_shapes.unchanged_shape)
-ops.RegisterShape("IFFT2D")(common_shapes.unchanged_shape)
-ops.RegisterShape("FFT3D")(common_shapes.unchanged_shape)
-ops.RegisterShape("IFFT3D")(common_shapes.unchanged_shape)
-ops.RegisterShape("BatchFFT")(common_shapes.unchanged_shape)
-ops.RegisterShape("BatchIFFT")(common_shapes.unchanged_shape)
-ops.RegisterShape("BatchFFT2D")(common_shapes.unchanged_shape)
-ops.RegisterShape("BatchIFFT2D")(common_shapes.unchanged_shape)
-ops.RegisterShape("BatchFFT3D")(common_shapes.unchanged_shape)
-ops.RegisterShape("BatchIFFT3D")(common_shapes.unchanged_shape)
-ops.RegisterShape("TanhGrad")(common_shapes.unchanged_shape)
-ops.RegisterShape("SigmoidGrad")(common_shapes.unchanged_shape)
-ops.RegisterShape("Cumsum")(common_shapes.unchanged_shape)
-ops.RegisterShape("Cumprod")(common_shapes.unchanged_shape)
+def conj(x, name=None):
+  r"""Returns the complex conjugate of a complex number.
+
+  Given a tensor `input` of complex numbers, this operation returns a tensor of
+  complex numbers that are the complex conjugate of each element in `input`. The
+  complex numbers in `input` must be of the form \\(a + bj\\), where *a* is the
+  real part and *b* is the imaginary part.
+
+  The complex conjugate returned by this operation is of the form \\(a - bj\\).
+
+  For example:
+
+      # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+      tf.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
+
+  If `x` is real, it is returned unchanged.
+
+  Args:
+    x: `Tensor` to conjugate.  Must have numeric type.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` that is the conjugate of `x` (with the same type).
+
+  Raises:
+    TypeError: If `x` is not a numeric tensor.
+  """
+  with ops.name_scope(name, "Conj", [x]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    if x.dtype.is_complex:
+      return gen_math_ops._conj(x, name=name)
+    elif x.dtype.is_floating or x.dtype.is_integer:
+      return x
+    else:
+      raise TypeError("Expected numeric tensor, got dtype %r" % x.dtype)
 
 
-@ops.RegisterShape("Add")
-@ops.RegisterShape("Complex")
-@ops.RegisterShape("Div")
-@ops.RegisterShape("Equal")
-@ops.RegisterShape("Greater")
-@ops.RegisterShape("GreaterEqual")
-@ops.RegisterShape("Igamma")
-@ops.RegisterShape("Igammac")
-@ops.RegisterShape("Zeta")
-@ops.RegisterShape("Polygamma")
-@ops.RegisterShape("Less")
-@ops.RegisterShape("LessEqual")
-@ops.RegisterShape("LogicalAnd")
-@ops.RegisterShape("LogicalOr")
-@ops.RegisterShape("Maximum")
-@ops.RegisterShape("Minimum")
-@ops.RegisterShape("Mod")
-@ops.RegisterShape("Mul")
-@ops.RegisterShape("NotEqual")
-@ops.RegisterShape("Pow")
-@ops.RegisterShape("Sub")
-@ops.RegisterShape("SquaredDifference")
+ops.RegisterShape("Abs")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Acos")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Asin")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Atan")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Ceil")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Conj")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Cos")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Cross")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Exp")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Floor")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Imag")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Inv")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("IsFinite")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("IsInf")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("IsNan")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Log")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LogicalNot")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Neg")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Real")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Rsqrt")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Sign")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Sin")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Sqrt")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Square")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Sigmoid")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Tanh")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Tan")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Lgamma")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Digamma")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Erf")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Erfc")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Cast")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ComplexAbs")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FFT")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("IFFT")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FFT2D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("IFFT2D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("FFT3D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("IFFT3D")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("TanhGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SigmoidGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("InvGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SqrtGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RsqrtGrad")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Cumsum")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Cumprod")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Add")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Complex")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Div")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Equal")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Greater")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("GreaterEqual")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Igamma")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Igammac")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Zeta")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Polygamma")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Less")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LessEqual")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LogicalAnd")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("LogicalOr")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Maximum")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Minimum")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Mod")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Mul")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("NotEqual")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Pow")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Sub")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SquaredDifference")(common_shapes.call_cpp_shape_fn)
+
+
 def _BroadcastShape(op):
   """Common shape function for binary operators that broadcast their inputs."""
   return [common_shapes.broadcast_shape(
@@ -1819,89 +1871,18 @@ def _BroadcastShape(op):
       op.inputs[1].get_shape())]
 
 
-@ops.RegisterShape("Betainc")
-def _BetaincOpShape(op):  # pylint: disable=invalid-name
-  """Shape function for BetaincOp."""
-  a_shape = op.inputs[0].get_shape()
-  b_shape = op.inputs[1].get_shape()
-  x_shape = op.inputs[2].get_shape()
-  merged_shape = tensor_shape.TensorShape(None)
-  for shape in (a_shape, b_shape, x_shape):
-    if shape.ndims != 0:
-      merged_shape = merged_shape.merge_with(shape)
-  # Scalars get broadcasted; non-scalar shapes must all match.
-  # Output will be the merged non-scalar shape, if any.
-  return [merged_shape if merged_shape.ndims is not None else a_shape]
-
-
-@ops.RegisterShape("SparseDenseCwiseMul")
-@ops.RegisterShape("SparseDenseCwiseDiv")
-@ops.RegisterShape("SparseDenseCwiseAdd")
-def _SparseDenseBinaryOpShape(op):  # pylint: disable=invalid-name
-  """Common shape for 'sparse <binary cwise op> dense -> sparse' operators."""
-  nnz = op.inputs[1].get_shape()[0]
-  return [tensor_shape.TensorShape(nnz)]
-
-
-@ops.RegisterShape("AddN")
-def _AddNShape(op):
-  merged_shape = tensor_shape.unknown_shape()
-  for input_ in op.inputs:
-    merged_shape = merged_shape.merge_with(input_.get_shape())
-  return [merged_shape]
-
-
-@ops.RegisterShape("Select")
-def _SelectShape(op):
-  """Shape function for SelectOp."""
-  # The inputs 'then' and 'else' must have the same shape.
-  # The input 'cond' must either have the same shape as 'then' and
-  # 'else', or be a vector if 'then' and 'else' are at least vectors.
-  c_shape = op.inputs[0].get_shape()
-  t_shape = op.inputs[1].get_shape()
-  e_shape = op.inputs[2].get_shape()
-  t_e_shape = t_shape.merge_with(e_shape)
-  c_shape_list = c_shape.as_list() if c_shape.ndims is not None else None
-  t_e_shape_list = t_e_shape.as_list() if t_e_shape.ndims is not None else None
-  if c_shape_list is not None and t_e_shape_list is not None:
-    if len(c_shape_list) != 1:
-      # If the rank of 'cond' is != 1, the shape must match 'then' and 'else'
-      t_e_shape = t_e_shape.merge_with(c_shape)
-    if t_e_shape_list:
-      # If then and else are not scalars, then cond must be at least
-      # a vector, and its first value must match that of 'else'
-      c_shape = c_shape.with_rank_at_least(1)
-      if len(c_shape.as_list()) == 1:
-        c_shape.merge_with(tensor_shape.vector(t_e_shape_list[0]))
-  return [t_e_shape]
+ops.RegisterShape("Betainc")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseDenseCwiseMul")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseDenseCwiseDiv")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseDenseCwiseAdd")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("AddN")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Select")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("ArgMax")
 @ops.RegisterShape("ArgMin")
 def _ArgOpShape(op):
-  """Common shape function for arg-reduction ops."""
-  dimension_shape = op.inputs[1].get_shape()
-  dimension_shape.assert_is_compatible_with(tensor_shape.scalar())
-  input_shape = op.inputs[0].get_shape()
-  if input_shape.ndims is None:
-    return [tensor_shape.unknown_shape()]
-  elif input_shape.ndims <= 1:
-    return [tensor_shape.scalar()]
-
-  dimension = tensor_util.constant_value(op.inputs[1])
-  if dimension is None:
-    return [tensor_shape.unknown_shape(ndims=input_shape.ndims - 1)]
-  elif 0 <= dimension and dimension < input_shape.ndims:
-    returned_shape = []
-    for i, dim in enumerate(input_shape.dims):
-      if i != dimension:
-        returned_shape.append(dim)
-    return [tensor_shape.TensorShape(returned_shape)]
-  else:
-    raise ValueError(
-        "dimension (%d) must be in the range [0, %d), where %d is the number "
-        "of dimensions in the input"
-        % (dimension, input_shape.ndims, input_shape.ndims))
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
 @ops.RegisterShape("All")
@@ -1912,103 +1893,35 @@ def _ArgOpShape(op):
 @ops.RegisterShape("Prod")
 @ops.RegisterShape("Sum")
 def _ReductionShape(op):
-  """Common shape function for reduction ops."""
-  input_shape = op.inputs[0].get_shape()
-  op.inputs[1].get_shape().with_rank_at_most(1)
-  reduction_indices = tensor_util.constant_value(op.inputs[1])
-  keep_dims = op.get_attr("keep_dims")
-  if reduction_indices is None or input_shape.ndims is None:
-    if keep_dims:
-      return [tensor_shape.unknown_shape(ndims=input_shape.ndims)]
-    else:
-      return [tensor_shape.unknown_shape()]
-
-  # Turn reduction_indices from scalar to vector if necessary
-  reduction_indices = np.ravel(reduction_indices)
-
-  for reduction_index in reduction_indices:
-    if (reduction_index < -input_shape.ndims or
-        reduction_index >= input_shape.ndims):
-      raise ValueError("Invalid reduction dimension %d for input with %d "
-                       "dimensions" % (reduction_index, input_shape.ndims))
-
-  reduction_indices = set([(x + input_shape.ndims) % input_shape.ndims
-                           for x in reduction_indices])
-
-  returned_dims = []
-  if keep_dims:
-    for i, dim in enumerate(input_shape.dims):
-      if i in reduction_indices:
-        returned_dims.append(1)
-      else:
-        returned_dims.append(dim)
-  else:
-    for i, dim in enumerate(input_shape.dims):
-      if i not in reduction_indices:
-        returned_dims.append(dim)
-  return [tensor_shape.TensorShape(returned_dims)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
 
 
-@ops.RegisterShape("SegmentMax")
-@ops.RegisterShape("SegmentMean")
-@ops.RegisterShape("SegmentMin")
-@ops.RegisterShape("SegmentProd")
-@ops.RegisterShape("SegmentSum")
-def _SegmentReductionShape(op):
-  """Common shape function for segment reduction ops."""
-  data_shape = op.inputs[0].get_shape()
-  segment_ids_shape = op.inputs[1].get_shape()
-  segment_ids_shape.assert_has_rank(1)
-  return [tensor_shape.TensorShape([None]).concatenate(data_shape[1:])]
-
-
-@ops.RegisterShape("SparseSegmentMean")
-@ops.RegisterShape("SparseSegmentSqrtN")
-@ops.RegisterShape("SparseSegmentSum")
-def _SparseSegmentReductionShape(op):
-  """Common shape function for sparse segment reduction ops."""
-  data_shape = op.inputs[0].get_shape()
-  indices_shape = op.inputs[1].get_shape()
-  indices_shape.assert_has_rank(1)
-  segment_ids_shape = op.inputs[2].get_shape()
-  segment_ids_shape.assert_has_rank(1)
-  indices_shape.assert_is_compatible_with(segment_ids_shape)
-  return [tensor_shape.TensorShape([None]).concatenate(data_shape[1:])]
+ops.RegisterShape("SegmentMax")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SegmentMean")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SegmentMin")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SegmentProd")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SegmentSum")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseSegmentMean")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseSegmentSqrtN")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("SparseSegmentSum")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("SparseSegmentMeanGrad")
 @ops.RegisterShape("SparseSegmentSqrtNGrad")
 # pylint: disable=invalid-name
 def _SparseSegmentReductionGradShape(op):
-  """Shape function for the SparseSegment[Mean|SqrtN]Grad ops."""
-  input_shape = op.inputs[0].get_shape()
-  indices_shape = op.inputs[1].get_shape().with_rank(1)
-  unused_segment_ids_shape = op.inputs[2].get_shape().merge_with(indices_shape)
-  unused_output_dim0_shape = op.inputs[3].get_shape().merge_with(
-      tensor_shape.scalar())
-  dim0 = tensor_util.constant_value(op.inputs[3])
-  return [tensor_shape.TensorShape([dim0]).concatenate(input_shape[1:])]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[3])
 # pylint: enable=invalid-name
 
 
 @ops.RegisterShape("UnsortedSegmentSum")
 def _UnsortedSegmentSumShape(op):
-  """Shape function for UnsortedSegmentSum."""
-  data_shape = op.inputs[0].get_shape()
-  segment_ids_shape = op.inputs[1].get_shape()
-  mid = segment_ids_shape.ndims
-  if mid is None:
-    return [tensor_shape.unknown_shape()]
-  else:
-    num_segments = tensor_util.constant_value(op.inputs[2])
-    return [tensor_shape.TensorShape([num_segments]).concatenate(
-        data_shape[mid:])]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2])
 
 
 @ops.RegisterShape("LinSpace")
 def _LinspaceShape(op):
-  num = tensor_util.constant_value(op.inputs[2])
-  return [tensor_shape.vector(num)]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[2])
 
 
 def reduced_shape(input_shape, axes):

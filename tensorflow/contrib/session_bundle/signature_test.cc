@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -499,7 +499,7 @@ TEST(GetSignatures, WrongProtoInAny) {
   const auto status = GetSignatures(meta_graph_def, &read_signatures);
   EXPECT_FALSE(status.ok());
   EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("Expected signature Any type_url for: "
+                  .contains("Expected Any type_url for: "
                             "tensorflow.serving.Signatures"))
       << status.error_message();
 }

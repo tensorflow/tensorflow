@@ -50,7 +50,7 @@ known ahead of time.
   # Get stratified batch according to per-class probabilities.
   init_probs = [1.0/NUM_CLASSES for _ in range(NUM_CLASSES)]
   [data_batch], labels = (
-      tf.contrib.framework.sampling_ops.stratified_sample_unknown_dist(
+      tf.contrib.training.stratified_sample_unknown_dist(
           [data], label, init_probs, 16))
 
   # Run batch through network.

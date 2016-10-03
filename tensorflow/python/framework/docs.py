@@ -22,6 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import inspect
 import os
 import re
@@ -118,8 +119,10 @@ def collect_members(module_to_name, exclude=()):
   for module, module_name in module_to_name.items():
     all_names = getattr(module, "__all__", None)
     for name, member in inspect.getmembers(module):
-      if ((inspect.isfunction(member) or inspect.isclass(member)) and
-          not _always_drop_symbol_re.match(name) and
+      if ((inspect.isfunction(member)
+           or inspect.isclass(member)
+           or isinstance(member, functools.partial))
+          and not _always_drop_symbol_re.match(name) and
           (all_names is None or name in all_names)):
         fullname = "%s.%s" % (module_name, name)
         if fullname in exclude:
@@ -223,13 +226,11 @@ class Library(Document):
 
   def _should_include_member(self, name):
     """Returns True if this member should be included in the document."""
-    # Always exclude symbols matching _always_drop_symbol_re.
-    if _always_drop_symbol_re.match(name):
-      return False
-    # Finally, exclude any specifically-excluded symbols.
-    if name in self._exclude_symbols:
-      return False
-    return True
+    # __x__ should be documented always
+    name_is_operator = name.startswith("__") and name.endswith("__")
+    name_is_private = name.startswith("_") and not name_is_operator
+    name_is_excluded = name in self._exclude_symbols
+    return not (name_is_private or name_is_excluded)
 
   def get_imported_modules(self, module):
     """Returns the list of modules imported from `module`."""
@@ -253,11 +254,11 @@ class Library(Document):
     for name, member in inspect.getmembers(cls):
       # Only show methods and properties presently.  In Python 3,
       # methods register as isfunction.
-      is_method = inspect.ismethod(member) or inspect.isfunction(member)
+      is_method = (inspect.ismethod(member) or inspect.isfunction(member)
+                   or isinstance(member, functools.partial))
       if not (is_method or isinstance(member, property)):
         continue
-      if ((is_method and member.__name__ == "__init__")
-          or self._should_include_member(name)):
+      if self._should_include_member(name):
         yield name, ("%s.%s" % (cls_name, name), member)
 
   def shard_dir(self, name):
@@ -302,10 +303,15 @@ class Library(Document):
 
     # TODO(mrry): This is a workaround for documenting signature of
     # functions that have the @contextlib.contextmanager decorator.
+    # TODO(aselle): This workaround is brittle on TestCase.__call__
+    #  so we need to wrap this in a try/catch
     # We should do something better.
     if argspec.varargs == "args" and argspec.keywords == "kwds":
-      original_func = func.__closure__[0].cell_contents
-      return self._generate_signature_for_function(original_func)
+      try:
+        original_func = func.__closure__[0].cell_contents
+        return self._generate_signature_for_function(original_func)
+      except TypeError:
+        pass
 
     if argspec.defaults:
       for arg, default in zip(
@@ -418,8 +424,10 @@ class Library(Document):
 
   def _write_member_markdown_to_file(self, f, prefix, name, member):
     """Print `member` to `f`."""
-    if (inspect.isfunction(member) or inspect.ismethod(member) or
-        isinstance(member, property)):
+    if (inspect.isfunction(member) or inspect.ismethod(member)
+        or (isinstance(member, functools.partial)
+            and inspect.isfunction(member.func))
+        or isinstance(member, property)):
       print("- - -", file=f)
       print("", file=f)
       self._print_function(f, prefix, name, member)
@@ -430,7 +438,9 @@ class Library(Document):
         indivf = open(
             os.path.join(self.shard_dir(name), name + ".md"), "w+")
         self._print_function(indivf, prefix, name, member)
-    elif inspect.isclass(member):
+    elif (inspect.isclass(member)
+          or (isinstance(member, functools.partial)
+              and inspect.isclass(member.func))):
       print("- - -", file=f)
       print("", file=f)
       print("%s `class %s` {#%s}" % (prefix, name,

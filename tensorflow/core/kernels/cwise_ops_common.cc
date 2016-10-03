@@ -45,20 +45,6 @@ void BinaryOpShared::SetComputeError(OpKernelContext* ctx) {
   }
 }
 
-static BCast::Vec FromShape(const TensorShape& shape) {
-  const int N = shape.dims();
-  BCast::Vec ret(N);
-  for (int i = 0; i < N; ++i) {
-    ret[i] = shape.dim_size(i);
-  }
-  return ret;
-}
-
-static TensorShape ToShape(const BCast::Vec& vec) {
-  TensorShape shape(vec);
-  return shape;
-}
-
 BinaryOpShared::BinaryOpState::BinaryOpState(OpKernelContext* ctx)
     : in0(ctx->input(0)),
       in1(ctx->input(1)),

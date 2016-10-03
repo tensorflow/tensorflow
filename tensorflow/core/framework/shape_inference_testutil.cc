@@ -43,7 +43,9 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
         "No shape inference function exists for op '", op.name,
         "', did you forget to define it?");
   }
-  TF_RETURN_IF_ERROR(op_reg_data->shape_inference_fn(&c));
+
+  TF_RETURN_IF_ERROR(c.Run(op_reg_data->shape_inference_fn));
+
   const int num_outputs = c.num_outputs();
 
   if (expected_outs == "e") {
@@ -97,7 +99,7 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
     }
 
     // Verify the dimensions.
-    CHECK(expected.starts_with("[") && expected.ends_with("]"));
+    CHECK(expected.starts_with("[") && expected.ends_with("]")) << expected;
     expected.remove_prefix(1);
     expected.remove_suffix(1);
 

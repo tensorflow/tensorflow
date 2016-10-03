@@ -32,6 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
@@ -50,6 +51,9 @@ class Gamma(distribution.Distribution):
 
   where GammaInc is the incomplete lower Gamma function.
 
+  WARNING: This distribution may draw 0-valued samples for small alpha values.
+      See the note on `tf.random_gamma`.
+
   Examples:
 
   ```python
@@ -62,8 +66,8 @@ class Gamma(distribution.Distribution):
   def __init__(self,
                alpha,
                beta,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Gamma"):
     """Construct Gamma distributions with parameters `alpha` and `beta`.
 
@@ -77,10 +81,11 @@ class Gamma(distribution.Distribution):
       beta: Floating point tensor, the inverse scale params of the
         distribution(s).
         beta must contain only positive values.
-      validate_args: Whether to assert that `a > 0, b > 0`, and that `x > 0` in
-        the methods `prob(x)` and `log_prob(x)`.  If `validate_args` is `False`
-        and the inputs are invalid, correct behavior is not guaranteed.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert that
+        `a > 0`, `b > 0`, and that `x > 0` in the methods `prob(x)` and
+        `log_prob(x)`.  If `validate_args` is `False` and the inputs are
+        invalid, correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -89,7 +94,7 @@ class Gamma(distribution.Distribution):
     Raises:
       TypeError: if `alpha` and `beta` are different dtypes.
     """
-    with ops.name_scope(name, values=[alpha, beta]):
+    with ops.name_scope(name, values=[alpha, beta]) as ns:
       with ops.control_dependencies([
           check_ops.assert_positive(alpha),
           check_ops.assert_positive(beta),
@@ -102,7 +107,15 @@ class Gamma(distribution.Distribution):
             parameters={"alpha": self._alpha, "beta": self._beta},
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
-            name=name)
+            is_continuous=True,
+            is_reparameterized=False,
+            name=ns)
+
+  @staticmethod
+  def _param_shapes(sample_shape):
+    return dict(
+        zip(("alpha", "beta"), ([ops.convert_to_tensor(
+            sample_shape, dtype=dtypes.int32)] * 2)))
 
   @property
   def alpha(self):
@@ -128,6 +141,7 @@ class Gamma(distribution.Distribution):
     return tensor_shape.scalar()
 
   def _sample_n(self, n, seed=None):
+    """See the documentation for tf.random_gamma for more details."""
     return random_ops.random_gamma([n],
                                    self.alpha,
                                    beta=self.beta,
@@ -158,6 +172,16 @@ class Gamma(distribution.Distribution):
   def _cdf(self, x):
     return math_ops.igamma(self.alpha, self.beta * x)
 
+  @distribution_util.AppendDocstring(
+      """This is defined to be
+
+      ```
+      entropy = alpha - log(beta) + log(Gamma(alpha))
+      + (1-alpha)digamma(alpha)
+      ```
+
+      where digamma(alpha) is the digamma function.
+      """)
   def _entropy(self):
     return (self.alpha -
             math_ops.log(self.beta) +
@@ -173,6 +197,10 @@ class Gamma(distribution.Distribution):
   def _std(self):
     return math_ops.sqrt(self.alpha) / self.beta
 
+  @distribution_util.AppendDocstring(
+      """The mode of a gamma distribution is `(alpha - 1) / beta` when
+      `alpha > 1`, and `NaN` otherwise.  If `self.allow_nan_stats` is `False`,
+      an exception will be raised rather than returning `NaN`.""")
   def _mode(self):
     mode = (self.alpha - 1.) / self.beta
     if self.allow_nan_stats:
@@ -190,26 +218,19 @@ class Gamma(distribution.Distribution):
           ], mode)
 
 
-distribution_util.append_class_fun_doc(Gamma.sample_n, doc_str="""
+class GammaWithSoftplusAlphaBeta(Gamma):
+  """Gamma with softplus transform on `alpha` and `beta`."""
 
-    See the documentation for tf.random_gamma for more details.
-""")
-
-distribution_util.append_class_fun_doc(Gamma.entropy, doc_str="""
-
-    This is defined to be
-
-    ```
-    entropy = alpha - log(beta) + log(Gamma(alpha))
-                 + (1-alpha)digamma(alpha)
-    ```
-
-    where digamma(alpha) is the digamma function.
-""")
-
-distribution_util.append_class_fun_doc(Gamma.mode, doc_str="""
-
-    The mode of a gamma distribution is `(alpha - 1) / beta` when `alpha > 1`,
-    and `NaN` otherwise.  If `self.allow_nan_stats` is `False`, an exception
-    will be raised rather than returning `NaN`.
-""")
+  def __init__(self,
+               alpha,
+               beta,
+               validate_args=False,
+               allow_nan_stats=True,
+               name="GammaWithSoftplusAlphaBeta"):
+    with ops.name_scope(name, values=[alpha, beta]) as ns:
+      super(GammaWithSoftplusAlphaBeta, self).__init__(
+          alpha=nn.softplus(alpha),
+          beta=nn.softplus(beta),
+          validate_args=validate_args,
+          allow_nan_stats=allow_nan_stats,
+          name=ns)

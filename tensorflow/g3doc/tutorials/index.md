@@ -70,6 +70,14 @@ Monitor API to audit the in-progress training of a neural network.
 
 [View Tutorial](../tutorials/monitors/index.md)
 
+### Building Input Functions with tf.contrib.learn
+
+This tutorial introduces you to creating input functions in tf.contrib.learn,
+and walks you through implementing an `input_fn` to train a neural network
+for predicting median house values.
+
+[View Tutorial](../tutorials/input_fn/index.md)
+
 ## TensorFlow Serving
 
 ### TensorFlow Serving
@@ -104,7 +112,7 @@ Building on the Inception recognition model, we will release a TensorFlow
 version of the [Deep Dream](https://github.com/google/deepdream) neural network
 visual hallucination software.
 
-[View Tutorial](https://www.tensorflow.org/code/tensorflow/examples/tutorials/deepdream/deepdream.ipynb)
+[View Tutorial](https://nbviewer.jupyter.org/github/tensorflow/tensorflow/blob/master/tensorflow/examples/tutorials/deepdream/deepdream.ipynb)
 
 
 ## Language and Sequence Processing

@@ -143,6 +143,7 @@ class LinearComposableModel(_ComposableModel):
   def __init__(self,
                num_label_columns,
                optimizer=None,
+               _joint_weights=False,
                gradient_clip_norm=None,
                num_ps_replicas=0,
                scope=None):
@@ -152,6 +153,9 @@ class LinearComposableModel(_ComposableModel):
       num_label_columns: The number of label/target columns.
       optimizer: An instance of `tf.Optimizer` used to apply gradients to
         the model. If `None`, will use a FTRL optimizer.
+      _joint_weights: If True use a single (possibly partitioned) variable
+        to store all weights in this model. Faster, but requires that all
+        feature columns are sparse and have the 'sum' combiner.
       gradient_clip_norm: A float > 0. If provided, gradients are clipped
         to their global norm with this clipping ratio. See
         tf.clip_by_global_norm for more details.
@@ -166,6 +170,7 @@ class LinearComposableModel(_ComposableModel):
         gradient_clip_norm=gradient_clip_norm,
         num_ps_replicas=num_ps_replicas,
         scope=scope)
+    self._joint_weights = _joint_weights
 
   def get_weights(self, model_dir):
     """Returns weights per feature of the linear part.
@@ -210,12 +215,20 @@ class LinearComposableModel(_ComposableModel):
         self._scope,
         values=features.values(),
         partitioner=partitioner) as scope:
-      logits, _, _ = layers.weighted_sum_from_feature_columns(
-          columns_to_tensors=features,
-          feature_columns=self._get_feature_columns(),
-          num_outputs=self._num_label_columns,
-          weight_collections=[self._scope],
-          scope=scope)
+      if self._joint_weights:
+        logits, _, _ = layers.joint_weighted_sum_from_feature_columns(
+            columns_to_tensors=features,
+            feature_columns=self._get_feature_columns(),
+            num_outputs=self._num_label_columns,
+            weight_collections=[self._scope],
+            scope=scope)
+      else:
+        logits, _, _ = layers.weighted_sum_from_feature_columns(
+            columns_to_tensors=features,
+            feature_columns=self._get_feature_columns(),
+            num_outputs=self._num_label_columns,
+            weight_collections=[self._scope],
+            scope=scope)
     return logits
 
   def _get_default_optimizer(self, optimizer_name=None):

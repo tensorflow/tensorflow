@@ -18,19 +18,21 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
 class Device;
-class MasterEnv;
+struct MasterEnv;
 class MasterSessionInterface;
 
 namespace internal {
 
-MasterSessionInterface* NewMasterSession(const SessionOptions& options,
-                                         const MasterEnv* env,
-                                         std::vector<Device*>* remote_devs);
+MasterSessionInterface* NewMasterSession(
+    const SessionOptions& options, const MasterEnv* env,
+    std::vector<Device*>* remote_devs,
+    StatsPublisherFactory stats_publisher_factory);
 
 }  // namespace internal
 }  // end namespace tensorflow

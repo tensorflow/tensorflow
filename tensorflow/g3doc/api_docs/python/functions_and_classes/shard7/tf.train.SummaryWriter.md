@@ -82,7 +82,7 @@ commonly done to report evaluation results in event files.
 
 Adds a `SessionLog` protocol buffer to the event file.
 
-This method wraps the provided session in an `Event` procotol buffer
+This method wraps the provided session in an `Event` protocol buffer
 and adds it to the event file.
 
 ##### Args:
@@ -146,6 +146,13 @@ Adds a metadata information for a single session.run() call.
 
 
 *  <b>`ValueError`</b>: If the provided tag was already used for this type of event.
+
+
+- - -
+
+#### `tf.train.SummaryWriter.get_logdir()` {#SummaryWriter.get_logdir}
+
+Returns the directory where event file will be written.
 
 
 

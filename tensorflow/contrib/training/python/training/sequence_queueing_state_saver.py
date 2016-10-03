@@ -28,6 +28,7 @@ import numbers
 import six
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -113,7 +114,7 @@ def _check_multiple_of(value, multiple_of):
   """
   assert isinstance(value, ops.Tensor)
   with ops.control_dependencies([
-      logging_ops.Assert(
+      control_flow_ops.Assert(
           math_ops.logical_and(
               math_ops.equal(math_ops.mod(value, multiple_of), 0),
               math_ops.not_equal(value, 0)),
@@ -146,7 +147,7 @@ def _check_rank(value, expected_rank):
   """
   assert isinstance(value, ops.Tensor)
   with ops.control_dependencies([
-      logging_ops.Assert(
+      control_flow_ops.Assert(
           math_ops.equal(expected_rank, array_ops.rank(value)),
           [string_ops.string_join(
               ["Rank of tensor %s should be: " % value.name,
@@ -195,7 +196,7 @@ def _check_shape(value, expected_shape):
   else:
     value = _check_rank(value, len(expected_shape))
   with ops.control_dependencies([
-      logging_ops.Assert(
+      control_flow_ops.Assert(
           math_ops.reduce_all(math_ops.equal(expected_shape, array_ops.shape(
               value))), [string_ops.string_join([
                   "Shape of tensor %s should be: " % value.name,
@@ -272,7 +273,7 @@ def _check_dimensions(value, dimensions, expected_sizes, debug_prefix):
         raise ValueError("Dimensions check failed for %s: %s"
                          % (debug_prefix, str(e)))
   with ops.control_dependencies([
-      logging_ops.Assert(
+      control_flow_ops.Assert(
           math_ops.equal(expected_size, array_ops.shape(value)[dimension]),
           [string_ops.string_join(
               ["Dimension %d of tensor labeled %s should be: "
@@ -851,7 +852,7 @@ class SequenceQueueingStateSaver(object):
 
         # Make sure that the length is <= the padded_length
         with ops.control_dependencies([
-            logging_ops.Assert(
+            control_flow_ops.Assert(
                 math_ops.less_equal(self._length, self._padded_length),
                 ["Input length should be <= than length from sequences:",
                  self._length, " vs. ", self._padded_length])]):
@@ -1251,7 +1252,7 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
 
   Static features of an example that do not vary across time can be part of the
   `input_context`, a dict with Tensor values. This method copies the context for
-  each segment and makes it availabe in the `context` of the output.
+  each segment and makes it available in the `context` of the output.
 
   This method can maintain and update a state for each example. It accepts some
   initial_states as a dict with Tensor values. The first mini-batch an example
@@ -1347,7 +1348,8 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
     batch_size: int or int32 scalar `Tensor`, how large minibatches should
       be when accessing the `state()` method and `context`, `sequences`, etc,
       properties.
-    num_threads: The int number of threads enquing input examples into a queue.
+    num_threads: The int number of threads enqueuing input examples into a
+      queue.
     capacity: The max capacity of the queue in number of examples. Needs to be
       at least `batch_size`. Defaults to 1000. When iterating over the same
       input example multiple times reusing their keys the `capacity` must be
@@ -1383,7 +1385,7 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
       for key, value in input_sequences.items():
         value_length = array_ops.shape(value)[0]
         with ops.control_dependencies([
-            logging_ops.Assert(
+            control_flow_ops.Assert(
                 math_ops.logical_and(
                     math_ops.equal(value_length % num_unroll, 0),
                     math_ops.not_equal(value_length, 0)),
@@ -1414,9 +1416,10 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
         math_ops.cast(barrier.ready_size(), dtypes.float32))
 
     q_runner = queue_runner.QueueRunner(
-        stateful_reader, [stateful_reader.prefetch_op]*num_threads)
+        stateful_reader, [stateful_reader.prefetch_op]*num_threads,
+        queue_closed_exception_types=(errors.OutOfRangeError,
+                                      errors.CancelledError))
     queue_runner.add_queue_runner(q_runner)
-
     return stateful_reader.next_batch
 
 
@@ -1454,7 +1457,7 @@ def _padding(sequences, num_unroll):
   lengths = [array_ops.shape(value)[0] for value in sequences_dict.values()]
   length = lengths[0]
   all_lengths_equal = [
-      logging_ops.Assert(
+      control_flow_ops.Assert(
           math_ops.equal(l, length), [string_ops.string_join(
               ["All sequence lengths must match, but received lengths: ",
                string_ops.as_string(lengths)])])

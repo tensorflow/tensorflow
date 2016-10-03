@@ -15,6 +15,14 @@
   called.
 * The NodeDef protocol message is now defined in its own file node_def.proto
   instead of graph.proto.
+* ops.NoGradient was renamed ops.NotDifferentiable. ops.NoGradient will
+  be removed soon.
+* dot.h / DotGraph was removed (it was an early analysis tool prior
+  to TensorBoard, no longer that useful).  It remains in history
+  should someone find the code useful.
+* re2 / regexp.h was removed from being a public interface of TF.
+  Should users need regular expressions, they should depend on the RE2
+  library directly rather than via TensorFlow.
 
 # Release 0.10.0
 
@@ -123,7 +131,7 @@ answered questions, and were part of inspiring discussions.
 * Allow building against cuDNN 5 (not incl. RNN/LSTM support) 
 * Added instructions and binaries for ProtoBuf library with fast serialization and without 64MB limit
 * Added special functions
-* `bool`-strictness: Tensors have to be explictly compared to `None`
+* `bool`-strictness: Tensors have to be explicitly compared to `None`
 * Shape strictness: all fed values must have a shape that is compatible with the tensor they are replacing
 * Exposed `tf.while_loop` (deprecated `control_flow_ops.While`)
 * run() now takes RunOptions and RunMetadata, which enable timing stats

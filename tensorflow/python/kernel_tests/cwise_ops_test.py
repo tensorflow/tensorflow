@@ -24,6 +24,8 @@ import math
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.ops import gen_math_ops
+
 
 _ADD = lambda x, y: x + y
 _SUB = lambda x, y: x - y
@@ -77,8 +79,7 @@ class UnaryOpTest(tf.test.TestCase):
       else:
         self.assertAllClose(np_ans, tf_cpu)
 
-      if (x.dtype in (np.complex64, np.complex128) and
-            tf_func in (tf.sign, tf.sqrt, tf.rsqrt, tf.log)):
+      if x.dtype in (np.complex64, np.complex128) and tf_func == tf.sign:
         return  # Return early
 
       if x.dtype == np.float16:
@@ -369,7 +370,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(x, np.negative, _NEG)
     self._compareCpu(y, self._inv, tf.inv)
     self._compareCpu(x, np.square, tf.square)
-    self._compareCpu(x, np.sqrt, tf.sqrt)
+    self._compareCpu(y, np.sqrt, tf.sqrt)
     self._compareCpu(y, self._rsqrt, tf.rsqrt)
     self._compareCpu(x, np.exp, tf.exp)
     self._compareCpu(y, np.log, tf.log)
@@ -400,7 +401,7 @@ class UnaryOpTest(tf.test.TestCase):
     self._compareCpu(x, np.negative, _NEG)
     self._compareCpu(y, self._inv, tf.inv)
     self._compareCpu(x, np.square, tf.square)
-    self._compareCpu(x, np.sqrt, tf.sqrt)
+    self._compareCpu(y, np.sqrt, tf.sqrt)
     self._compareCpu(y, self._rsqrt, tf.rsqrt)
     self._compareCpu(x, np.exp, tf.exp)
     self._compareCpu(y, np.log, tf.log)
@@ -420,6 +421,40 @@ class UnaryOpTest(tf.test.TestCase):
       return x / np.abs(x)
     self._compareCpu(y, complex_sign, tf.sign)
     self._compareBothSparse(y, complex_sign, tf.sign)
+
+  def testGradGrad(self):
+    np.random.seed(7)
+    shape = (5,)
+    dtype_tols = [(np.float32, 5e-4), (np.float64, 1e-6), (np.complex64, 5e-4),
+                  (np.complex128, 1e-6)]
+    op_range = [(gen_math_ops._inv_grad, [-2, 2]),
+                (gen_math_ops._rsqrt_grad, [0.1, 3]),
+                (gen_math_ops._sigmoid_grad, [-2, 2]),
+                (gen_math_ops._sqrt_grad, [0.1, 3]),
+                (gen_math_ops._tanh_grad, [-2, 2]),]
+
+    def rand(dtype):
+      x = np.random.uniform(
+          real_range[0], real_range[1], size=shape[0]).astype(dtype)
+      if dtype in (np.complex64, np.complex128):
+        x += 1j * np.random.uniform(-2, 2, size=shape[0]).astype(dtype)
+      return x
+
+    for op, real_range in op_range:
+      with self.test_session():
+        for dtype, tol in dtype_tols:
+          x = tf.constant(rand(dtype))
+          y = tf.constant(rand(dtype))
+          z = op(x, y)
+          grads = tf.test.compute_gradient(
+              [x, y], [shape, shape],
+              z,
+              shape,
+              x_init_value=[rand(dtype), rand(dtype)])
+          if isinstance(grads, tuple):
+            grads = [grads]
+          for analytical, numerical in grads:
+            self.assertAllClose(analytical, numerical, rtol=tol, atol=tol)
 
 
 class BinaryOpTest(tf.test.TestCase):
@@ -453,6 +488,12 @@ class BinaryOpTest(tf.test.TestCase):
         self.assertAllClose(np_ans, np_var_right)
     self.assertShapeEqual(np_ans, out)
 
+  _GRAD_TOL = {tf.float16: 1e-3,
+               tf.float32: 1e-3,
+               tf.complex64: 1e-2,
+               tf.float64: 1e-5,
+               tf.complex128: 1e-4}
+
   def _compareGradientX(self, x, y, np_func, tf_func,
                         numeric_gradient_type=None):
     z = np_func(x, y)
@@ -483,12 +524,8 @@ class BinaryOpTest(tf.test.TestCase):
                                               x_init_value=xf,
                                               delta=1e-3)
         jacob_n = jacob_n.astype(x.dtype)
-      if x.dtype == np.float16:
-        self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
-      elif x.dtype == np.float32:
-        self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
-      elif x.dtype == np.float64:
-        self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
+      tol = self._GRAD_TOL[tf.as_dtype(x.dtype)]
+      self.assertAllClose(jacob_t, jacob_n, rtol=tol, atol=tol)
 
   def _compareGradientY(self, x, y, np_func, tf_func,
                         numeric_gradient_type=None):
@@ -519,12 +556,8 @@ class BinaryOpTest(tf.test.TestCase):
                                               zs,
                                               x_init_value=yf)
         jacob_n = jacob_n.astype(x.dtype)
-    if x.dtype == np.float16:
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
-    elif x.dtype == np.float32:
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-3, atol=1e-3)
-    elif x.dtype == np.float64:
-      self.assertAllClose(jacob_t, jacob_n, rtol=1e-5, atol=1e-5)
+    tol = self._GRAD_TOL[tf.as_dtype(x.dtype)]
+    self.assertAllClose(jacob_t, jacob_n, rtol=tol, atol=tol)
 
   def _compareGpu(self, x, y, np_func, tf_func):
     np_ans = np_func(x, y)
@@ -636,6 +669,16 @@ class BinaryOpTest(tf.test.TestCase):
     self._compareBoth(x, y, np.multiply, tf.mul)
     self._compareBoth(x, y, np.multiply, _MUL)
 
+  def testUint16Basic(self):
+    x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.uint16)
+    y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.uint16)
+    self._compareBoth(x, y, np.multiply, tf.mul)
+    self._compareBoth(x, y, np.multiply, _MUL)
+    self._compareBoth(x, y, np.true_divide, tf.truediv)
+    self._compareBoth(x, y, np.floor_divide, tf.floordiv)
+    self._compareBoth(x, y, np.true_divide, _TRUEDIV)
+    self._compareBoth(x, y, np.floor_divide, _FLOORDIV)
+
   def testInt32Basic(self):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.int32)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int32)
@@ -674,28 +717,28 @@ class BinaryOpTest(tf.test.TestCase):
         np.complex64)
     y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(1, 3, 2).astype(
         np.complex64)
-    self._compareCpu(x, y, np.add, tf.add)
-    self._compareCpu(x, y, np.subtract, tf.sub)
-    self._compareCpu(x, y, np.multiply, tf.mul)
-    self._compareCpu(x, y + 0.1, np.true_divide, tf.truediv)
-    self._compareCpu(x, y, np.add, _ADD)
-    self._compareCpu(x, y, np.subtract, _SUB)
-    self._compareCpu(x, y, np.multiply, _MUL)
-    self._compareCpu(x, y + 0.1, np.true_divide, _TRUEDIV)
+    self._compareBoth(x, y, np.add, tf.add)
+    self._compareBoth(x, y, np.subtract, tf.sub)
+    self._compareBoth(x, y, np.multiply, tf.mul)
+    self._compareBoth(x, y + 0.1, np.true_divide, tf.truediv)
+    self._compareBoth(x, y, np.add, _ADD)
+    self._compareBoth(x, y, np.subtract, _SUB)
+    self._compareBoth(x, y, np.multiply, _MUL)
+    self._compareBoth(x, y + 0.1, np.true_divide, _TRUEDIV)
 
   def testComplex128Basic(self):
     x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(1, 3, 2).astype(
         np.complex128)
     y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(1, 3, 2).astype(
         np.complex128)
-    self._compareCpu(x, y, np.add, tf.add)
-    self._compareCpu(x, y, np.subtract, tf.sub)
-    self._compareCpu(x, y, np.multiply, tf.mul)
-    self._compareCpu(x, y + 0.1, np.true_divide, tf.truediv)
-    self._compareCpu(x, y, np.add, _ADD)
-    self._compareCpu(x, y, np.subtract, _SUB)
-    self._compareCpu(x, y, np.multiply, _MUL)
-    self._compareCpu(x, y + 0.1, np.true_divide, _TRUEDIV)
+    self._compareBoth(x, y, np.add, tf.add)
+    self._compareBoth(x, y, np.subtract, tf.sub)
+    self._compareBoth(x, y, np.multiply, tf.mul)
+    self._compareBoth(x, y + 0.1, np.true_divide, tf.truediv)
+    self._compareBoth(x, y, np.add, _ADD)
+    self._compareBoth(x, y, np.subtract, _SUB)
+    self._compareBoth(x, y, np.multiply, _MUL)
+    self._compareBoth(x, y + 0.1, np.true_divide, _TRUEDIV)
 
   def testStringComparison(self):
     x = np.array([["abc", "bh"], ["c", ""]])
@@ -722,10 +765,15 @@ class BinaryOpTest(tf.test.TestCase):
     self._compareCpu(z, w, _ADD, _ADD)
 
   def _compareBCast(self, xs, ys, dtype, np_func, tf_func):
-    x = (1 + np.linspace(0, 5, np.prod(xs))).astype(dtype).reshape(xs)
-    y = (1 + np.linspace(0, 5, np.prod(ys))).astype(dtype).reshape(ys)
+    if dtype in (np.complex64, np.complex128):
+      x = (1 + np.linspace(0, 2 + 3j, np.prod(xs))).astype(dtype).reshape(xs)
+      y = (1 + np.linspace(0, 2 - 2j, np.prod(ys))).astype(dtype).reshape(ys)
+    else:
+      x = (1 + np.linspace(0, 5, np.prod(xs))).astype(dtype).reshape(xs)
+      y = (1 + np.linspace(0, 5, np.prod(ys))).astype(dtype).reshape(ys)
     self._compareCpu(x, y, np_func, tf_func)
-    if x.dtype in (np.float16, np.float32, np.float64):
+    if x.dtype in (np.float16, np.float32, np.float64, np.complex64,
+                   np.complex128):
       if tf_func not in (_FLOORDIV, tf.floordiv):
         if x.dtype == np.float16:
           # Compare fp16 theoretical gradients to fp32 numerical gradients,
@@ -986,7 +1034,7 @@ class BinaryOpTest(tf.test.TestCase):
     for func in [tf.add, tf.sub, tf.mul, tf.div, _ADD, _SUB, _MUL, _TRUEDIV,
                  _FLOORDIV]:
       with self.assertRaisesWithPredicateMatch(
-          ValueError, lambda e: "Incompatible shapes" in str(e)):
+          ValueError, lambda e: "Dimensions must" in str(e)):
         func(tf.convert_to_tensor([10.0, 20.0, 30.0]),
              tf.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
@@ -1000,25 +1048,15 @@ class BinaryOpTest(tf.test.TestCase):
         error = tf.test.compute_gradient_error(y, [], z, [])
         self.assertEqual(error, 0)
 
-  def testComplexPowGradPositiveBase(self):
+  def testComplexPowGrad(self):
     with self.test_session():
       for dtype in np.complex64, np.complex128:
-        x = tf.constant(2.0, dtype=dtype)
-        y = tf.constant(2.0, dtype=dtype)
-        z = tf.pow(x, y)
-        error = tf.test.compute_gradient_error(y, [], z, [])
-        self.assertLess(error, 1e-4)
-
-  def testComplexPowGradNegativeBase(self):
-    with self.test_session() as session:
-      for dtype in np.complex64, np.complex128:
-        x = tf.constant(-2.0, dtype=dtype)
-        y = tf.constant(2.0, dtype=dtype)
-        z = tf.pow(x, y)
-        expected_x_grad = -4
-        expected_y_grad = (-2)**2 * (np.log(2) + np.pi * 1j)
-        self.assertAllClose([expected_x_grad, expected_y_grad],
-                            session.run(tf.gradients(z, [x, y])))
+        for base in 2.0, -2.0:
+          x = tf.constant(base, dtype=dtype)
+          y = tf.constant(2.0, dtype=dtype)
+          z = tf.pow(x, y)
+          error = tf.test.compute_gradient_error(y, [], z, [])
+          self.assertLess(error, 2e-4)
 
 
 class ComparisonOpTest(tf.test.TestCase):
@@ -1146,7 +1184,7 @@ class ComparisonOpTest(tf.test.TestCase):
     for t in dtypes:
       for f in funcs:
         with self.assertRaisesWithPredicateMatch(
-            ValueError, lambda e: "Incompatible shapes" in str(e)):
+            ValueError, lambda e: "Dimensions must" in str(e)):
           f(x.astype(t), y.astype(t))
 
 
@@ -1222,7 +1260,7 @@ class LogicalOpTest(tf.test.TestCase):
     y = np.random.randint(0, 2, 6).astype(np.bool).reshape(3, 2, 1)
     for f in [tf.logical_and, tf.logical_or, tf.logical_xor]:
       with self.assertRaisesWithPredicateMatch(
-          ValueError, lambda e: "Incompatible shapes" in str(e)):
+          ValueError, lambda e: "Dimensions must" in str(e)):
         f(x, y)
 
   def testUsingAsPythonValueFails(self):
@@ -1770,6 +1808,12 @@ class ComplexMakeRealImagTest(tf.test.TestCase):
     self._compareRealImag(cplx, use_gpu=False)
     self._compareRealImag(cplx, use_gpu=True)
 
+  def testRealReal(self):
+    for dtype in tf.int32, tf.int64, tf.float32, tf.float64:
+      x = tf.placeholder(dtype)
+      y = tf.real(x)
+      self.assertEqual(x, y)
+
   def _compareConj(self, cplx, use_gpu):
     np_ans = np.conj(cplx)
     with self.test_session(use_gpu=use_gpu):
@@ -1792,6 +1836,17 @@ class ComplexMakeRealImagTest(tf.test.TestCase):
     cplx = real + 1j * imag
     self._compareConj(cplx, use_gpu=False)
     self._compareConj(cplx, use_gpu=True)
+
+  def testConjReal(self):
+    for dtype in tf.int32, tf.int64, tf.float16, tf.float32, tf.float64:
+      x = tf.placeholder(dtype)
+      y = tf.conj(x)
+      self.assertEqual(x, y)
+
+  def testConjString(self):
+    x = tf.placeholder(tf.string)
+    with self.assertRaisesRegexp(TypeError, r"Expected numeric tensor"):
+      tf.conj(x)
 
   def _compareGradient(self, x):
     # x[:, 0] is real, x[:, 1] is imag.  We combine real and imag into
@@ -1822,14 +1877,14 @@ class ComplexMakeRealImagTest(tf.test.TestCase):
     epsilon = 1e-3
     with self.test_session():
       for args in [(x_, 0.), (0., x_)]:
-          z = tf.reduce_sum(tf.complex_abs(tf.complex(*args)))
-          jacob_t, jacob_n = tf.test.compute_gradient(x_,
-                                                      list(x.shape),
-                                                      z,
-                                                      [1],
-                                                      x_init_value=x,
-                                                      delta=epsilon)
-          self.assertAllClose(jacob_t, jacob_n, rtol=epsilon, atol=epsilon)
+        z = tf.reduce_sum(tf.complex_abs(tf.complex(*args)))
+        jacob_t, jacob_n = tf.test.compute_gradient(x_,
+                                                    list(x.shape),
+                                                    z,
+                                                    [1],
+                                                    x_init_value=x,
+                                                    delta=epsilon)
+        self.assertAllClose(jacob_t, jacob_n, rtol=epsilon, atol=epsilon)
 
   def testGradient(self):
     # complex64

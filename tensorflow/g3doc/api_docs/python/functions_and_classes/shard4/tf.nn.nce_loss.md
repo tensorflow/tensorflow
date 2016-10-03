@@ -8,6 +8,11 @@ unnormalized statistical models]
 Also see our [Candidate Sampling Algorithms Reference]
 (../../extras/candidate_sampling.pdf)
 
+Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
+so your labels must be sorted in order of decreasing frequency to achieve
+good results.  For more details, see
+[log_uniform_candidate_sampler](#log_uniform_candidate_sampler).
+
 Note: In the case where `num_true` > 1, we assign to each target class
 the target probability 1 / `num_true` so that the target probabilities
 sum to 1 per-example.

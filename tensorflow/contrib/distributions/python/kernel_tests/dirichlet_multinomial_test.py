@@ -60,24 +60,26 @@ class DirichletMultinomialTest(tf.test.TestCase):
     alpha = [[1., 2, 3]]
     n = [[5.]]
     with self.test_session():
-      dist = tf.contrib.distributions.DirichletMultinomial(n, alpha)
+      dist = tf.contrib.distributions.DirichletMultinomial(
+          n, alpha, validate_args=True)
       dist.pmf([2., 3, 0]).eval()
       dist.pmf([3., 0, 2]).eval()
-      with self.assertRaisesOpError('Condition x >= 0.*'):
+      with self.assertRaisesOpError("Condition x >= 0.*"):
         dist.pmf([-1., 4, 2]).eval()
-      with self.assertRaisesOpError('counts do not sum to n'):
+      with self.assertRaisesOpError("counts do not sum to n"):
         dist.pmf([3., 3, 0]).eval()
 
   def testPmf_non_integer_counts(self):
     alpha = [[1., 2, 3]]
     n = [[5.]]
     with self.test_session():
-      dist = tf.contrib.distributions.DirichletMultinomial(n, alpha)
+      dist = tf.contrib.distributions.DirichletMultinomial(
+          n, alpha, validate_args=True)
       dist.pmf([2., 3, 0]).eval()
       dist.pmf([3., 0, 2]).eval()
       dist.pmf([3.0, 0, 2.0]).eval()
       # Both equality and integer checking fail.
-      with self.assertRaisesOpError('Condition x == y.*'):
+      with self.assertRaisesOpError("Condition x == y.*"):
         dist.pmf([1.0, 2.5, 1.5]).eval()
       dist = tf.contrib.distributions.DirichletMultinomial(
           n, alpha, validate_args=False)
@@ -358,5 +360,5 @@ class DirichletMultinomialTest(tf.test.TestCase):
       dist.pmf(counts).eval()  # Should not raise.
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   tf.test.main()

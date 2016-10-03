@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -70,13 +70,29 @@ class DatasetDataProviderTest(tf.test.TestCase):
     with self.test_session():
       provider = slim.dataset_data_provider.DatasetDataProvider(
           _create_tfrecord_dataset(self.get_temp_dir()))
-    image, label = provider.get(['image', 'label'])
+      image, label = provider.get(['image', 'label'])
+      image = _resize_image(image, height, width)
+
+      with tf.Session('') as sess:
+        with slim.queues.QueueRunners(sess):
+          image, label = sess.run([image, label])
+      self.assertListEqual([height, width, 3], list(image.shape))
+      self.assertListEqual([1], list(label.shape))
+
+  def testTFRecordSeparateGetDataset(self):
+    height = 300
+    width = 280
+
+    with self.test_session():
+      provider = slim.dataset_data_provider.DatasetDataProvider(
+          _create_tfrecord_dataset(self.get_temp_dir()))
+    [image] = provider.get(['image'])
+    [label] = provider.get(['label'])
     image = _resize_image(image, height, width)
 
-    sv = tf.train.Supervisor(logdir=self.get_temp_dir())
-    with sv.prepare_or_wait_for_session() as sess:
-      sv.start_queue_runners(sess)
-      image, label = sess.run([image, label])
+    with tf.Session('') as sess:
+      with slim.queues.QueueRunners(sess):
+        image, label = sess.run([image, label])
       self.assertListEqual([height, width, 3], list(image.shape))
       self.assertListEqual([1], list(label.shape))
 

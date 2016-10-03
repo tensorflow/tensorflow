@@ -48,9 +48,11 @@ class TransformedDistribution(distribution.Distribution):
   A simple example constructing a Log-Normal distribution from a Normal
   distribution:
 
-  ```
+  ```python
   logit_normal = TransformedDistribution(
-    base_dist=Normal(mu, sigma),
+    base_dist_cls=tf.contrib.distributions.Normal,
+    mu=mu,
+    sigma=sigma,
     transform=lambda x: tf.sigmoid(x),
     inverse=lambda y: tf.log(y) - tf.log(1. - y),
     log_det_jacobian=(lambda x:
@@ -87,7 +89,7 @@ class TransformedDistribution(distribution.Distribution):
       TypeError: if `base_dist_cls` is not a subclass of
           `Distribution`.
     """
-    with ops.name_scope(name, values=base_dist_args.values()):
+    with ops.name_scope(name, values=base_dist_args.values()) as ns:
       self._base_dist = base_dist_cls(**base_dist_args)
       self._transform = transform
       self._inverse = inverse
@@ -95,10 +97,16 @@ class TransformedDistribution(distribution.Distribution):
       self._inverse_cache = {}
       super(TransformedDistribution, self).__init__(
           dtype=self._base_dist.dtype,
+          parameters={"base_dist_cls": base_dist_cls,
+                      "transform": transform,
+                      "inverse": inverse,
+                      "log_det_jacobian": log_det_jacobian,
+                      "base_dist_args": base_dist_args},
+          is_continuous=self._base_dist.is_continuous,
           is_reparameterized=self._base_dist.is_reparameterized,
           validate_args=self._base_dist.validate_args,
           allow_nan_stats=self._base_dist.allow_nan_stats,
-          name=name)
+          name=ns)
 
   @property
   def base_distribution(self):
@@ -132,6 +140,9 @@ class TransformedDistribution(distribution.Distribution):
   def _get_event_shape(self):
     return self.base_distribution.get_event_shape()
 
+  @distribution_util.AppendDocstring(
+      """Samples from the base distribution and then passes through
+      the transform.""")
   def _sample_n(self, n, seed=None):
     samples = self.base_distribution.sample_n(n=n, seed=seed)
     with ops.name_scope("transform"):
@@ -139,7 +150,47 @@ class TransformedDistribution(distribution.Distribution):
       self._inverse_cache[transformed] = samples
       return transformed
 
+  @distribution_util.AppendDocstring(
+      """Implements `(log o p o g)(y) - (log o det o J o g)(y)`,
+      where `g` is the inverse of `transform`.
+
+      Also raises a `ValueError` if `inverse` was not provided to the
+      distribution and `y` was not returned from `sample`.""")
   def _log_prob(self, y):
+    x = self._inverse_possibly_from_cache(y)
+    with ops.name_scope("log_det_jacobian"):
+      log_det_jacobian = self.log_det_jacobian(x)
+    return self.base_distribution.log_prob(x) - log_det_jacobian
+
+  @distribution_util.AppendDocstring(
+      """Implements `p(g(y)) / det|J(g(y))|`, where `g` is the inverse of
+      `transform`.
+
+      Also raises a `ValueError` if `inverse` was not provided to the
+      distribution and `y` was not returned from `sample`.""")
+  def _prob(self, y):
+    return math_ops.exp(self._log_prob(y))
+
+  def _log_cdf(self, y):
+    # If Y = f(X),
+    # P[Y <= y] = P[f(X) <= y] = P[X <= f^{-1}(y)]
+    x = self._inverse_possibly_from_cache(y)
+    return self.base_distribution.log_cdf(x)
+
+  def _cdf(self, y):
+    x = self._inverse_possibly_from_cache(y)
+    return self.base_distribution.cdf(x)
+
+  def _log_survival_function(self, y):
+    x = self._inverse_possibly_from_cache(y)
+    return self.base_distribution.log_survival_function(x)
+
+  def _survival_function(self, y):
+    x = self._inverse_possibly_from_cache(y)
+    return self.base_distribution.survival_function(x)
+
+  def _inverse_possibly_from_cache(self, y):
+    """Return `self._inverse(y)`, possibly using cached value."""
     y = ops.convert_to_tensor(y, name="y")
     with ops.name_scope("inverse"):
       if y in self._inverse_cache:
@@ -149,45 +200,4 @@ class TransformedDistribution(distribution.Distribution):
       else:
         raise ValueError("No inverse function exists and input `y` was not "
                          "returned from `sample`.")
-    with ops.name_scope("log_det_jacobian"):
-      log_det_jacobian = self.log_det_jacobian(x)
-    return self.base_distribution.log_prob(x) - log_det_jacobian
-
-  def _prob(self, y):
-    return math_ops.exp(self._log_prob(y))
-
-
-distribution_util.append_class_fun_doc(TransformedDistribution.batch_shape,
-                                       doc_str="""
-
-    The product of the dimensions of the `batch_shape` is the number of
-    independent distributions of this kind the instance represents.
-
-""")
-
-distribution_util.append_class_fun_doc(TransformedDistribution.sample_n,
-                                       doc_str="""
-
-    Samples from the base distribution and then passes through the transform.
-""")
-
-distribution_util.append_class_fun_doc(TransformedDistribution.log_prob,
-                                       doc_str="""
-
-  `(log o p o g)(y) - (log o det o J o g)(y)`,
-  where `g` is the inverse of `transform`.
-
-  Raises:
-    ValueError: if `inverse` was not provided to the distribution and `y` was
-        not returned from `sample`.
-""")
-
-distribution_util.append_class_fun_doc(TransformedDistribution.prob,
-                                       doc_str="""
-
-  `p(g(y)) / det|J(g(y))|`, where `g` is the inverse of `transform`.
-
-  Raises:
-    ValueError: if `inverse` was not provided to the distribution and `y` was
-        not returned from `sample`.
-""")
+    return x

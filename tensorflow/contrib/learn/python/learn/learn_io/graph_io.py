@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
@@ -235,6 +236,7 @@ def read_keyed_batch_features(file_pattern,
                               feature_queue_capacity=100,
                               num_queue_runners=2,
                               parser_num_threads=None,
+                              parse_fn=None,
                               name=None):
   """Adds operations to read, queue, batch and parse `Example` protos.
 
@@ -269,6 +271,8 @@ def read_keyed_batch_features(file_pattern,
       a full queue when the subsequent computations overall are cheaper than
       parsing.
     parser_num_threads: (Deprecated) The number of threads to parse examples.
+    parse_fn: Parsing function, takes `Example` Tensor returns parsed
+      representation. If `None`, no parsing is done.
     name: Name of resulting op.
 
   Returns:
@@ -289,11 +293,56 @@ def read_keyed_batch_features(file_pattern,
         file_pattern, batch_size, reader, randomize_input=randomize_input,
         num_epochs=num_epochs, queue_capacity=queue_capacity,
         num_threads=reader_num_threads, read_batch_size=batch_size,
-        name=scope)
-
+        parse_fn=parse_fn, name=scope)
     # Parse the example.
     feature_map = parsing_ops.parse_example(examples, features)
+    return queue_parsed_features(
+        feature_map,
+        keys=keys,
+        feature_queue_capacity=feature_queue_capacity,
+        num_queue_runners=num_queue_runners,
+        name=scope)
 
+
+def queue_parsed_features(parsed_features,
+                          keys=None,
+                          feature_queue_capacity=100,
+                          num_queue_runners=2,
+                          name=None):
+  """Speeds up parsing by using queues to do it asynchronously.
+
+  This function adds the tensors in `parsed_features` to a queue, which allows
+  the parsing (or any other expensive op before this) to be asynchronous wrt the
+  rest of the training graph. This greatly improves read latency and speeds up
+  training since the data will already be parsed and ready when each step of
+  training needs it.
+
+  All queue runners are added to the queue runners collection, and may be
+  started via `start_queue_runners`.
+
+  All ops are added to the default graph.
+
+  Args:
+    parsed_features: A dict of string key to `Tensor` or `SparseTensor` objects.
+    keys: `Tensor` of string keys.
+    feature_queue_capacity: Capacity of the parsed features queue.
+    num_queue_runners: Number of queue runners to start for the feature queue,
+      Adding multiple queue runners for the parsed example queue helps maintain
+      a full queue when the subsequent computations overall are cheaper than
+      parsing.
+    name: Name of resulting op.
+
+  Returns:
+    Returns tuple of:
+    - `Tensor` corresponding to `keys` if provided, otherwise `None`.
+    -  A dict of string key to `Tensor` or `SparseTensor` objects corresponding
+       to `parsed_features`.
+  """
+  args = list(parsed_features.values())
+  if keys is not None:
+    args += [keys]
+
+  with ops.name_scope(name, 'queue_parsed_features', args):
     # Lets also add preprocessed tensors into the queue types for each item of
     # the queue.
     tensors_to_enqueue = []
@@ -304,15 +353,17 @@ def read_keyed_batch_features(file_pattern,
     # tensors into a queue. This could be taken care in somewhere else so others
     # can reuse it. Also, QueueBase maybe extended to handle sparse tensors
     # directly.
-    for key in sorted(feature_map.keys()):
-      tensor = feature_map[key]
+    for key in sorted(parsed_features.keys()):
+      tensor = parsed_features[key]
       if isinstance(tensor, ops.SparseTensor):
         tensors_mapping.append((key, True))
         tensors_to_enqueue.extend([tensor.indices, tensor.values, tensor.shape])
       else:
         tensors_mapping.append((key, False))
         tensors_to_enqueue.append(tensor)
-    tensors_to_enqueue.append(keys)
+
+    if keys is not None:
+      tensors_to_enqueue.append(keys)
 
     queue_dtypes = [x.dtype for x in tensors_to_enqueue]
     input_queue = data_flow_ops.FIFOQueue(feature_queue_capacity, queue_dtypes)
@@ -327,8 +378,10 @@ def read_keyed_batch_features(file_pattern,
     # than two queue-runners may hog the cpu on the worker to fill up the queue.
     for _ in range(num_queue_runners):
       queue_runner.add_queue_runner(
-          queue_runner.QueueRunner(input_queue, [input_queue.enqueue(
-              tensors_to_enqueue)]))
+          queue_runner.QueueRunner(
+              input_queue, [input_queue.enqueue(tensors_to_enqueue)],
+              queue_closed_exception_types=(errors.OutOfRangeError,
+                                            errors.CancelledError)))
 
     dequeued_tensors = input_queue.dequeue()
 
@@ -337,27 +390,31 @@ def read_keyed_batch_features(file_pattern,
       dequeued_tensors[i].set_shape(tensors_to_enqueue[i].get_shape())
 
     # Recreate feature mapping according to the original dictionary.
-    dequeued_feature_map = {}
+    dequeued_parsed_features = {}
     index = 0
     for key, is_sparse_tensor in tensors_mapping:
       if is_sparse_tensor:
         # Three tensors are (indices, values, shape).
-        dequeued_feature_map[key] = ops.SparseTensor(
+        dequeued_parsed_features[key] = ops.SparseTensor(
             dequeued_tensors[index], dequeued_tensors[index + 1],
             dequeued_tensors[index + 2])
         index += 3
       else:
-        dequeued_feature_map[key] = dequeued_tensors[index]
+        dequeued_parsed_features[key] = dequeued_tensors[index]
         index += 1
-    dequeued_keys = dequeued_tensors[-1]
 
-    return dequeued_keys, dequeued_feature_map
+    dequeued_keys = None
+    if keys is not None:
+      dequeued_keys = dequeued_tensors[-1]
+
+    return dequeued_keys, dequeued_parsed_features
 
 
 def read_batch_features(file_pattern, batch_size, features, reader,
                         randomize_input=True, num_epochs=None,
                         queue_capacity=10000, feature_queue_capacity=100,
-                        reader_num_threads=1, parser_num_threads=1, name=None):
+                        reader_num_threads=1, parser_num_threads=1,
+                        parse_fn=None, name=None):
   """Adds operations to read, queue, batch and parse `Example` protos.
 
   Given file pattern (or list of files), will setup a queue for file names,
@@ -389,6 +446,8 @@ def read_batch_features(file_pattern, batch_size, features, reader,
     reader_num_threads: The number of threads to read examples.
     parser_num_threads: The number of threads to parse examples.
       records to read at once
+    parse_fn: Parsing function, takes `Example` Tensor returns parsed
+      representation. If `None`, no parsing is done.
     name: Name of resulting op.
 
   Returns:
@@ -403,7 +462,8 @@ def read_batch_features(file_pattern, batch_size, features, reader,
       queue_capacity=queue_capacity,
       feature_queue_capacity=feature_queue_capacity,
       reader_num_threads=reader_num_threads,
-      parser_num_threads=parser_num_threads, name=name)
+      parser_num_threads=parser_num_threads,
+      parse_fn=parse_fn, name=name)
   return features
 
 

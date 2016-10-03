@@ -52,6 +52,7 @@ class SummaryWriter(object):
   @@add_event
   @@add_graph
   @@add_run_metadata
+  @@get_logdir
 
   @@flush
   @@close
@@ -113,6 +114,10 @@ class SummaryWriter(object):
       # Calling it with both graph and graph_def for backward compatibility.
       self.add_graph(graph=graph, graph_def=graph_def)
 
+  def get_logdir(self):
+    """Returns the directory where event file will be written."""
+    return self._logdir
+
   def reopen(self):
     """Reopens the summary writer.
 
@@ -154,7 +159,7 @@ class SummaryWriter(object):
   def add_session_log(self, session_log, global_step=None):
     """Adds a `SessionLog` protocol buffer to the event file.
 
-    This method wraps the provided session in an `Event` procotol buffer
+    This method wraps the provided session in an `Event` protocol buffer
     and adds it to the event file.
 
     Args:

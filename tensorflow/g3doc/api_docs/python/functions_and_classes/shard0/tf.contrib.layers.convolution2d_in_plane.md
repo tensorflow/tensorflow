@@ -23,10 +23,12 @@ operations such as image gradients:
     Can be an int if both strides are the same. Note that presently
     both strides must have the same value.
 *  <b>`padding`</b>: the padding type to use, either 'SAME' or 'VALID'.
-*  <b>`activation_fn`</b>: activation function.
+*  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
+    a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
-    `normalize_fn` is provided then `biases_initializer` and
+    `normalizer_fn` is provided then `biases_initializer` and
     `biases_regularizer` are ignored and `biases` are not created nor added.
+    default set to None for no normalizer function
 *  <b>`normalizer_params`</b>: normalization function parameters.
 *  <b>`weights_initializer`</b>: An initializer for the weights.
 *  <b>`weights_regularizer`</b>: Optional regularizer for the weights.
@@ -35,7 +37,7 @@ operations such as image gradients:
 *  <b>`reuse`</b>: whether or not the layer and its variables should be reused. To be
     able to reuse the layer scope must be given.
 *  <b>`variables_collections`</b>: optional list of collections for all the variables or
-    a dictionay containing a different list of collection per variable.
+    a dictionary containing a different list of collection per variable.
 *  <b>`outputs_collections`</b>: collection to add the outputs.
 *  <b>`trainable`</b>: If `True` also add variables to the graph collection
     `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).

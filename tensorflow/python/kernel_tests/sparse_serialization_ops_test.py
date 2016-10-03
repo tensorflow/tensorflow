@@ -66,6 +66,28 @@ class SerializeSparseTest(tf.test.TestCase):
 
   def testSerializeDeserializeMany(self):
     with self.test_session(use_gpu=False) as sess:
+      sp_input0 = self._SparseTensorValue_5x6(np.arange(6))
+      sp_input1 = self._SparseTensorValue_3x4(np.arange(6))
+      serialized0 = tf.serialize_sparse(sp_input0)
+      serialized1 = tf.serialize_sparse(sp_input1)
+      serialized_concat = tf.pack([serialized0, serialized1])
+
+      sp_deserialized = tf.deserialize_many_sparse(
+          serialized_concat, dtype=tf.int32)
+
+      combined_indices, combined_values, combined_shape = sess.run(
+          sp_deserialized)
+
+      self.assertAllEqual(combined_indices[:6, 0], [0] * 6)  # minibatch 0
+      self.assertAllEqual(combined_indices[:6, 1:], sp_input0[0])
+      self.assertAllEqual(combined_indices[6:, 0], [1] * 6)  # minibatch 1
+      self.assertAllEqual(combined_indices[6:, 1:], sp_input1[0])
+      self.assertAllEqual(combined_values[:6], sp_input0[1])
+      self.assertAllEqual(combined_values[6:], sp_input1[1])
+      self.assertAllEqual(combined_shape, [2, 5, 6])
+
+  def testFeedSerializeDeserializeMany(self):
+    with self.test_session(use_gpu=False) as sess:
       sp_input0 = self._SparseTensorPlaceholder()
       sp_input1 = self._SparseTensorPlaceholder()
       input0_val = self._SparseTensorValue_5x6(np.arange(6))

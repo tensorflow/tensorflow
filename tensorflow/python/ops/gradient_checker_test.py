@@ -28,6 +28,12 @@ def _bad_grad(unused_op, grad):
   return tf.transpose(grad)
 
 
+@tf.RegisterGradient("NaNGrad")
+def _nan_grad(unused_op, grad):
+  """A gradient that returns NaN."""
+  return np.nan * grad
+
+
 class GradientCheckerTest(tf.test.TestCase):
 
   def testAddSimple(self):
@@ -159,6 +165,18 @@ class GradientCheckerTest(tf.test.TestCase):
           tf.test.compute_gradient(x, (0, 3), y, (0, 3))
         with self.assertRaisesRegexp(ValueError, bad):
           tf.test.compute_gradient_error(x, (0, 3), y, (0, 3))
+
+  def testNaNGradFails(self):
+    with tf.Graph().as_default() as g:
+      with self.test_session(graph=g):
+        x = tf.placeholder(tf.float32)
+        with g.gradient_override_map({"Identity": "NaNGrad"}):
+          y = tf.identity(x)
+          error = tf.test.compute_gradient_error(x, (), y, ())
+          # Typical test would assert error < max_err, so assert this test would
+          # raise AssertionError, since NaN is not < 1.0.
+          with self.assertRaisesRegexp(AssertionError, "False is not true"):
+            self.assertTrue(error < 1.0)
 
 
 # Gradient checker for MNIST.

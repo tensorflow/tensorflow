@@ -98,7 +98,7 @@ class RNNCell(object):
   If `self.state_size` is an integer, this operation also results in a new
   state matrix with `self.state_size` columns.  If `self.state_size` is a
   tuple of integers, then it results in a tuple of `len(state_size)` state
-  matrices, each with the a column size corresponding to values in `state_size`.
+  matrices, each with a column size corresponding to values in `state_size`.
 
   This module provides a number of basic commonly used RNN cells, such as
   LSTM (Long Short Term Memory) or GRU (Gated Recurrent Unit), and a number
@@ -121,6 +121,7 @@ class RNNCell(object):
 
     Returns:
       A pair containing:
+
       - Output: A `2-D` tensor with shape `[batch_size x self.output_size]`.
       - New state: Either a single `2-D` tensor, or a tuple of tensors matching
         the arity and shapes of `state`.
@@ -463,6 +464,7 @@ class LSTMCell(RNNCell):
 
     Returns:
       A tuple containing:
+
       - A `2-D, [batch x output_dim]`, Tensor representing the output of the
         LSTM after reading `inputs` when previous state was `state`.
         Here output_dim is:
@@ -495,7 +497,7 @@ class LSTMCell(RNNCell):
 
       b = vs.get_variable(
           "B", shape=[4 * self._num_units],
-          initializer=array_ops.zeros_initializer, dtype=dtype)
+          initializer=init_ops.zeros_initializer, dtype=dtype)
 
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
       cell_inputs = array_ops.concat(1, [inputs, m_prev])

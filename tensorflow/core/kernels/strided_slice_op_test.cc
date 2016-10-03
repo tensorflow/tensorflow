@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/util/strided_slice_op.h"
 
 namespace tensorflow {
 namespace {
@@ -86,6 +88,39 @@ static void BM_SliceBFloat16(int iters, int dim2) {
 }
 
 BENCHMARK(BM_SliceBFloat16)->Arg(100)->Arg(1000)->Arg(10000);
+
+static void BM_ValidateStridedSliceOp(int iters) {
+  testing::StopTiming();
+  int kDim = 100;
+  int kMaxSize = 15000;
+  int size = 100;
+  Tensor begin = test::AsTensor<int32>({10, 10});
+  Tensor end = test::AsTensor<int32>({10 + kDim, 10 + size});
+  Tensor strides = test::AsTensor<int32>({1, 1});
+  TensorShape input_shape({2 * kDim, kMaxSize});
+
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    TensorShape processing_shape, final_shape;
+    bool is_identity = true, slice_dim0 = true, is_simple_slice = true;
+    gtl::InlinedVector<int64, 4> begin_out, end_out, strides_out;
+    const int32 begin_mask = 0;
+    const int32 end_mask = 0;
+    const int32 ellipsis_mask = 0;
+    const int32 new_axis_mask = 0;
+    const int32 shrink_axis_mask = 0;
+
+    ShapeReadWriteFromTensorShape wrapped_processing_shape(&processing_shape);
+    ShapeReadWriteFromTensorShape wrapped_final_shape(&final_shape);
+    TF_CHECK_OK(ValidateStridedSliceOp(
+        begin, end, strides, ShapeReadWriteFromTensorShape(&input_shape),
+        begin_mask, end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
+        &wrapped_processing_shape, &wrapped_final_shape, &is_identity,
+        &is_simple_slice, &slice_dim0, &begin_out, &end_out, &strides_out));
+  }
+}
+
+BENCHMARK(BM_ValidateStridedSliceOp);
 
 }  // namespace
 }  // namespace tensorflow

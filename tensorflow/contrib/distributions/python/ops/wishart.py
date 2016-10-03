@@ -71,8 +71,8 @@ class _WishartOperatorPD(distribution.Distribution):
                df,
                scale_operator_pd,
                cholesky_input_output_matrices=False,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name=None):
     """Construct Wishart distributions.
 
@@ -85,10 +85,10 @@ class _WishartOperatorPD(distribution.Distribution):
         Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
         `sample_n` returns a Cholesky when
         `cholesky_input_output_matrices=True`.
-      validate_args: Whether to validate input with asserts. If `validate_args`
-        is `False`, and the inputs are invalid, correct behavior is not
-        guaranteed.
-      allow_nan_stats:  `Boolean`, default `False`. If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to validate input with
+        asserts. If `validate_args` is `False`, and the inputs are invalid,
+        correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`. If `False`, raise an
         exception if a statistic (e.g., mean, mode) is undefined for any batch
         member. If True, batch members with valid parameters leading to
         undefined statistics will return `NaN` for this statistic.
@@ -100,26 +100,26 @@ class _WishartOperatorPD(distribution.Distribution):
       ValueError: if df < k, where scale operator event shape is `(k, k)`
     """
     self._cholesky_input_output_matrices = cholesky_input_output_matrices
-    with ops.name_scope(name):
-      with ops.name_scope('init', values=[df, scale_operator_pd]):
+    with ops.name_scope(name) as ns:
+      with ops.name_scope("init", values=[df, scale_operator_pd]):
         if not scale_operator_pd.dtype.is_floating:
           raise TypeError(
-              'scale_operator_pd.dtype=%s is not a floating-point type' %
+              "scale_operator_pd.dtype=%s is not a floating-point type" %
               scale_operator_pd.dtype)
         self._scale_operator_pd = scale_operator_pd
         self._df = ops.convert_to_tensor(
-            df, dtype=scale_operator_pd.dtype, name='df')
+            df, dtype=scale_operator_pd.dtype, name="df")
         contrib_tensor_util.assert_same_float_dtype(
             (self._df, self._scale_operator_pd))
         if (self._scale_operator_pd.get_shape().ndims is None or
             self._scale_operator_pd.get_shape()[-1].value is None):
           self._dimension = math_ops.cast(
               self._scale_operator_pd.vector_space_dimension(),
-              dtype=self._scale_operator_pd.dtype, name='dimension')
+              dtype=self._scale_operator_pd.dtype, name="dimension")
         else:
           self._dimension = ops.convert_to_tensor(
               self._scale_operator_pd.get_shape()[-1].value,
-              dtype=self._scale_operator_pd.dtype, name='dimension')
+              dtype=self._scale_operator_pd.dtype, name="dimension")
         df_val = tensor_util.constant_value(self._df)
         dim_val = tensor_util.constant_value(self._dimension)
         if df_val is not None and dim_val is not None:
@@ -127,24 +127,26 @@ class _WishartOperatorPD(distribution.Distribution):
           if not df_val.shape: df_val = (df_val,)
           if any(df_val < dim_val):
             raise ValueError(
-                'Degrees of freedom (df = %s) cannot be less than dimension of '
-                'scale matrix (scale.dimension = %s)'
+                "Degrees of freedom (df = %s) cannot be less than dimension of "
+                "scale matrix (scale.dimension = %s)"
                 % (df_val, dim_val))
         elif validate_args:
           assertions = check_ops.assert_less_equal(
               self._dimension, self._df,
-              message=('Degrees of freedom (df = %s) cannot be less than '
-                       'dimension of scale matrix (scale.dimension = %s)' %
+              message=("Degrees of freedom (df = %s) cannot be less than "
+                       "dimension of scale matrix (scale.dimension = %s)" %
                        (self._dimension, self._df)))
           self._df = control_flow_ops.with_dependencies([assertions], self._df)
         super(_WishartOperatorPD, self).__init__(
             dtype=self._scale_operator_pd.dtype,
-            parameters={'df': self._df,
-                        'scale_operator_pd': self._scale_operator_pd,
-                        'dimension': self._dimension},
+            parameters={"df": self._df,
+                        "scale_operator_pd": self._scale_operator_pd,
+                        "dimension": self._dimension},
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
-            name=name)
+            is_continuous=True,
+            is_reparameterized=True,
+            name=ns)
 
   @property
   def df(self):
@@ -212,10 +214,10 @@ class _WishartOperatorPD(distribution.Distribution):
                                 seed=seed)
 
     # Complexity: O(nbk^2)
-    x = array_ops.batch_matrix_band_part(x, -1, 0)  # Tri-lower.
+    x = array_ops.matrix_band_part(x, -1, 0)  # Tri-lower.
 
     # Complexity: O(nbk)
-    x = array_ops.batch_matrix_set_diag(x, math_ops.sqrt(g))
+    x = array_ops.matrix_set_diag(x, math_ops.sqrt(g))
 
     # Make batch-op ready.
     # Complexity: O(nbk^2)
@@ -248,7 +250,7 @@ class _WishartOperatorPD(distribution.Distribution):
       x_sqrt = x
     else:
       # Complexity: O(nbk^3)
-      x_sqrt = linalg_ops.batch_cholesky(x)
+      x_sqrt = linalg_ops.cholesky(x)
 
     batch_shape = self.batch_shape()
     event_shape = self.event_shape()
@@ -307,7 +309,7 @@ class _WishartOperatorPD(distribution.Distribution):
 
     # Complexity: O(nbk)
     half_log_det_x = math_ops.reduce_sum(
-        math_ops.log(array_ops.batch_matrix_diag_part(x_sqrt)),
+        math_ops.log(array_ops.matrix_diag_part(x_sqrt)),
         reduction_indices=[-1])
 
     # Complexity: O(nbk^2)
@@ -346,44 +348,44 @@ class _WishartOperatorPD(distribution.Distribution):
 
   def _variance(self):
     x = math_ops.sqrt(self.df) * self.scale_operator_pd.to_dense()
-    d = array_ops.expand_dims(array_ops.batch_matrix_diag_part(x), -1)
+    d = array_ops.expand_dims(array_ops.matrix_diag_part(x), -1)
     v = math_ops.square(x) + math_ops.batch_matmul(d, d, adj_y=True)
     if self.cholesky_input_output_matrices:
-      return linalg_ops.batch_cholesky(v)
+      return linalg_ops.cholesky(v)
     return v
 
   def _std(self):
     if self.cholesky_input_output_matrices:
       raise ValueError(
-          'Computing std. dev. when is cholesky_input_output_matrices=True '
-          'does not make sense.')
-    return linalg_ops.batch_cholesky(self.variance())
+          "Computing std. dev. when is cholesky_input_output_matrices=True "
+          "does not make sense.")
+    return linalg_ops.cholesky(self.variance())
 
   def _mode(self):
     s = self.df - self.dimension - 1.
     s = math_ops.select(
         math_ops.less(s, 0.),
-        constant_op.constant(float('NaN'), dtype=self.dtype, name='nan'),
+        constant_op.constant(float("NaN"), dtype=self.dtype, name="nan"),
         s)
     if self.cholesky_input_output_matrices:
       return math_ops.sqrt(s) * self.scale_operator_pd.sqrt_to_dense()
     return s * self.scale_operator_pd.to_dense()
 
-  def mean_log_det(self, name='mean_log_det'):
+  def mean_log_det(self, name="mean_log_det"):
     """Computes E[log(det(X))] under this Wishart distribution."""
     with self._name_scope(name):
       return (self._multi_digamma(0.5 * self.df, self.dimension) +
               self.dimension * math.log(2.) +
               self.scale_operator_pd.log_det())
 
-  def log_normalizing_constant(self, name='log_normalizing_constant'):
+  def log_normalizing_constant(self, name="log_normalizing_constant"):
     """Computes the log normalizing constant, log(Z)."""
     with self._name_scope(name):
       return (self.df * self.scale_operator_pd.sqrt_log_det() +
               0.5 * self.df * self.dimension * math.log(2.) +
               self._multi_lgamma(0.5 * self.df, self.dimension))
 
-  def _multi_gamma_sequence(self, a, p, name='multi_gamma_sequence'):
+  def _multi_gamma_sequence(self, a, p, name="multi_gamma_sequence"):
     """Creates sequence used in multivariate (di)gamma; shape = shape(a)+[p]."""
     with self._name_scope(name, values=[a, p]):
       # Linspace only takes scalars, so we'll add in the offset afterwards.
@@ -393,7 +395,7 @@ class _WishartOperatorPD(distribution.Distribution):
           math_ops.cast(p, dtypes.int32))
       return seq + array_ops.expand_dims(a, [-1])
 
-  def _multi_lgamma(self, a, p, name='multi_lgamma'):
+  def _multi_lgamma(self, a, p, name="multi_lgamma"):
     """Computes the log multivariate gamma function; log(Gamma_p(a))."""
     with self._name_scope(name, values=[a, p]):
       seq = self._multi_gamma_sequence(a, p)
@@ -401,7 +403,7 @@ class _WishartOperatorPD(distribution.Distribution):
               math_ops.reduce_sum(math_ops.lgamma(seq),
                                   reduction_indices=(-1,)))
 
-  def _multi_digamma(self, a, p, name='multi_digamma'):
+  def _multi_digamma(self, a, p, name="multi_digamma"):
     """Computes the multivariate digamma function; Psi_p(a)."""
     with self._name_scope(name, values=[a, p]):
       seq = self._multi_gamma_sequence(a, p)
@@ -459,7 +461,7 @@ class WishartCholesky(_WishartOperatorPD):
 
   # Initialize two 3x3 Wisharts with Cholesky factored scale matrices.
   df = [5, 4]
-  chol_scale = tf.batch_cholesky(...)  # Shape is [2, 3, 3].
+  chol_scale = tf.cholesky(...)  # Shape is [2, 3, 3].
   dist = tf.contrib.distributions.WishartCholesky(df=df, scale=chol_scale)
 
   # Evaluate this on four observations.
@@ -467,7 +469,7 @@ class WishartCholesky(_WishartOperatorPD):
   dist.pdf(x)  # Shape is [2, 2].
 
   # (*) - To efficiently create a trainable covariance matrix, see the example
-  #   in tf.contrib.distributions.batch_matrix_diag_transform.
+  #   in tf.contrib.distributions.matrix_diag_transform.
   ```
 
   """
@@ -476,9 +478,9 @@ class WishartCholesky(_WishartOperatorPD):
                df,
                scale,
                cholesky_input_output_matrices=False,
-               validate_args=True,
-               allow_nan_stats=False,
-               name='WishartCholesky'):
+               validate_args=False,
+               allow_nan_stats=True,
+               name="WishartCholesky"):
     """Construct Wishart distributions.
 
     Args:
@@ -491,10 +493,10 @@ class WishartCholesky(_WishartOperatorPD):
         Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
         `sample_n` returns a Cholesky when
         `cholesky_input_output_matrices=True`.
-      validate_args: Whether to validate input with asserts. If `validate_args`
-        is `False`, and the inputs are invalid, correct behavior is not
-        guaranteed.
-      allow_nan_stats:  `Boolean`, default `False`. If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to validate input
+        with asserts. If `validate_args` is `False`, and the inputs are invalid,
+        correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`. If `False`, raise an
         exception if a statistic (e.g., mean, mode) is undefined for any batch
         member. If True, batch members with valid parameters leading to
         undefined statistics will return `NaN` for this statistic.
@@ -564,7 +566,7 @@ class WishartFull(_WishartOperatorPD):
   dist.pdf(x)  # Shape is [2, 2].
 
   # (*) - To efficiently create a trainable covariance matrix, see the example
-  #   in tf.contrib.distributions.batch_matrix_diag_transform.
+  #   in tf.contrib.distributions.matrix_diag_transform.
   ```
 
   """
@@ -573,9 +575,9 @@ class WishartFull(_WishartOperatorPD):
                df,
                scale,
                cholesky_input_output_matrices=False,
-               validate_args=True,
-               allow_nan_stats=False,
-               name='WishartFull'):
+               validate_args=False,
+               allow_nan_stats=True,
+               name="WishartFull"):
     """Construct Wishart distributions.
 
     Args:
@@ -588,10 +590,10 @@ class WishartFull(_WishartOperatorPD):
         Cholesky factored matrix. Example`log_pdf` input takes a Cholesky and
         `sample_n` returns a Cholesky when
         `cholesky_input_output_matrices=True`.
-      validate_args: Whether to validate input with asserts. If `validate_args`
-        is `False`, and the inputs are invalid, correct behavior is not
-        guaranteed.
-      allow_nan_stats:  `Boolean`, default `False`. If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to validate input with
+        asserts. If `validate_args` is `False`, and the inputs are invalid,
+        correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`. If `False`, raise an
         exception if a statistic (e.g., mean, mode) is undefined for any batch
         member. If True, batch members with valid parameters leading to
         undefined statistics will return `NaN` for this statistic.

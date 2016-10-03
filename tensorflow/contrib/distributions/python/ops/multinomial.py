@@ -26,6 +26,21 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 
 
+_multinomial_prob_note = """
+For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
+that after sampling `n` draws from this Multinomial distribution, the
+number of draws falling in class `j` is `n_j`.  Note that different
+sequences of draws can result in the same counts, thus the probability
+includes a combinatorial coefficient.
+
+Note that input "counts" must be a non-negative tensor with dtype `dtype`
+and whose shape can be broadcast with `self.p` and `self.n`.  For fixed
+leading dimensions, the last dimension represents counts for the
+corresponding Multinomial distribution in `self.p`. `counts` is only legal
+if it sums up to `n` and its components are equal to integer values.
+"""
+
+
 class Multinomial(distribution.Distribution):
   """Multinomial distribution.
 
@@ -92,8 +107,8 @@ class Multinomial(distribution.Distribution):
                n,
                logits=None,
                p=None,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="Multinomial"):
     """Initialize a batch of Multinomial distributions.
 
@@ -111,10 +126,10 @@ class Multinomial(distribution.Distribution):
         a batch of `N1 x ... x Nm` different `k` class Multinomial
         distributions. `p`'s components in the last portion of its shape should
         sum up to 1.
-      validate_args: Whether to assert valid values for parameters `n` and `p`,
-        and `x` in `prob` and `log_prob`.  If `False`, correct behavior is not
-        guaranteed.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert valid
+        values for parameters `n` and `p`, and `x` in `prob` and `log_prob`.
+        If `False`, correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -136,7 +151,7 @@ class Multinomial(distribution.Distribution):
     self._logits, self._p = distribution_util.get_logits_and_prob(
         name=name, logits=logits, p=p, validate_args=validate_args,
         multidimensional=True)
-    with ops.name_scope(name, values=[n, self._p]):
+    with ops.name_scope(name, values=[n, self._p]) as ns:
       with ops.control_dependencies([
           check_ops.assert_non_negative(
               n, message="n has negative components."),
@@ -155,9 +170,10 @@ class Multinomial(distribution.Distribution):
                         "logits": self._logits,
                         "broadcast_shape": self._broadcast_shape},
             is_continuous=False,
+            is_reparameterized=False,
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
-            name=name)
+            name=ns)
 
   @property
   def n(self):
@@ -187,6 +203,7 @@ class Multinomial(distribution.Distribution):
   def _get_event_shape(self):
     return self._mean_val.get_shape().with_rank_at_least(1)[-1:]
 
+  @distribution_util.AppendDocstring(_multinomial_prob_note)
   def _log_prob(self, counts):
     counts = self._assert_valid_sample(counts)
     log_unnormalized_prob = math_ops.reduce_sum(
@@ -195,6 +212,7 @@ class Multinomial(distribution.Distribution):
     log_normalizer = -distribution_util.log_combinations(self.n, counts)
     return log_unnormalized_prob - log_normalizer
 
+  @distribution_util.AppendDocstring(_multinomial_prob_note)
   def _prob(self, counts):
     return math_ops.exp(self._log_prob(counts))
 
@@ -206,8 +224,8 @@ class Multinomial(distribution.Distribution):
     outer_prod = math_ops.batch_matmul(
         array_ops.expand_dims(self._mean_val, -1),
         array_ops.expand_dims(p, -2))
-    return array_ops.batch_matrix_set_diag(
-        -outer_prod, self._mean_val - self._mean_val * p)
+    return array_ops.matrix_set_diag(-outer_prod,
+                                     self._mean_val - self._mean_val * p)
 
   def _assert_valid_sample(self, counts):
     """Check counts for proper shape, values, then return tensor version."""
@@ -221,20 +239,3 @@ class Multinomial(distribution.Distribution):
         distribution_util.assert_integer_form(
             counts, message="counts have non-integer components.")
     ], counts)
-
-_prob_note = """
-
-    For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
-    that after sampling `n` draws from this Multinomial distribution, the
-    number of draws falling in class `j` is `n_j`.  Note that different
-    sequences of draws can result in the same counts, thus the probability
-    includes a combinatorial coefficient.
-
-    Note that input "counts" must be a non-negative tensor with dtype `dtype`
-    and whose shape can be broadcast with `self.p` and `self.n`.  For fixed
-    leading dimensions, the last dimension represents counts for the
-    corresponding Multinomial distribution in `self.p`. `counts` is only legal
-    if it sums up to `n` and its components are equal to integer values.
-"""
-distribution_util.append_class_fun_doc(Multinomial.log_prob, doc_str=_prob_note)
-distribution_util.append_class_fun_doc(Multinomial.prob, doc_str=_prob_note)

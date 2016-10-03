@@ -32,10 +32,23 @@ class FeatureColumnTest(tf.test.TestCase):
     with self.assertRaises(AttributeError):
       a.column_name = "bbb"
 
-  def testSparseColumn(self):
+  def testSparseColumnWithHashBucket(self):
     a = tf.contrib.layers.sparse_column_with_hash_bucket("aaa",
                                                          hash_bucket_size=100)
     self.assertEqual(a.name, "aaa")
+    self.assertEqual(a.dtype, tf.string)
+
+    a = tf.contrib.layers.sparse_column_with_hash_bucket("aaa",
+                                                         hash_bucket_size=100,
+                                                         dtype=tf.int64)
+    self.assertEqual(a.name, "aaa")
+    self.assertEqual(a.dtype, tf.int64)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "dtype must be string or integer"):
+      a = tf.contrib.layers.sparse_column_with_hash_bucket("aaa",
+                                                           hash_bucket_size=100,
+                                                           dtype=tf.float32)
 
   def testWeightedSparseColumn(self):
     ids = tf.contrib.layers.sparse_column_with_keys(
@@ -100,6 +113,18 @@ class FeatureColumnTest(tf.test.TestCase):
       e1_value = e1.eval()
     for i in range(len(d1_value)):
       self.assertAllClose(d1_value[i], e1_value[i])
+
+  def testOneHotColumn(self):
+    a = tf.contrib.layers.sparse_column_with_keys("a", ["a", "b", "c", "d"])
+    onehot_a = tf.contrib.layers.one_hot_column(a)
+    self.assertEqual(onehot_a.sparse_id_column.name, "a")
+    self.assertEqual(onehot_a.length, 4)
+
+    b = tf.contrib.layers.sparse_column_with_hash_bucket(
+        "b", hash_bucket_size=100, combiner="sum")
+    onehot_b = tf.contrib.layers.one_hot_column(b)
+    self.assertEqual(onehot_b.sparse_id_column.name, "b")
+    self.assertEqual(onehot_b.length, 100)
 
   def testRealValuedColumn(self):
     a = tf.contrib.layers.real_valued_column("aaa")
@@ -195,6 +220,11 @@ class FeatureColumnTest(tf.test.TestCase):
     normalizer = lambda x: x - 1
     h1 = tf.contrib.layers.real_valued_column("h1", normalizer=normalizer)
     self.assertEqual(normalizer(10), h1.normalizer_fn(10))
+
+    # Test that normalizer is not stored within key
+    self.assertFalse("normalizer" in g1.key)
+    self.assertFalse("normalizer" in g2.key)
+    self.assertFalse("normalizer" in h1.key)
 
   def testBucketizedColumnNameEndsWithUnderscoreBucketized(self):
     a = tf.contrib.layers.bucketized_column(

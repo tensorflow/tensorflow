@@ -23,9 +23,11 @@ Extract `patches` from `images` and put them in the "depth" output dimension.
 
     We specify the size-related attributes as:
 
+    ```python
           ksizes = [1, ksize_rows, ksize_cols, 1]
           strides = [1, strides_rows, strides_cols, 1]
           rates = [1, rates_rows, rates_cols, 1]
+    ```
 
 *  <b>`name`</b>: A name for the operation (optional).
 

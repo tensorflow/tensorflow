@@ -21,6 +21,8 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.util.all_util import reveal_undocumented
+
 
 class SegmentReductionHelper(tf.test.TestCase):
 
@@ -81,7 +83,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
                 (np.ndarray.__mul__, None, tf.segment_prod),
                 (np.minimum, None, tf.segment_min),
                 (np.maximum, None, tf.segment_max)]
-    
+
     # A subset of ops has been enabled for complex numbers
     complex_ops_list = [(np.add, None, tf.segment_sum),
                         (np.ndarray.__mul__, None, tf.segment_prod)]
@@ -91,9 +93,9 @@ class SegmentReductionOpTest(SegmentReductionHelper):
     indices = [i // 3 for i in range(n)]
     for dtype in dtypes:
       if dtype in (tf.complex64, tf.complex128):
-          curr_ops_list = complex_ops_list
+        curr_ops_list = complex_ops_list
       else:
-          curr_ops_list = ops_list
+        curr_ops_list = ops_list
 
       with self.test_session(use_gpu=False):
         tf_x, np_x = self._input(shape, dtype=dtype)
@@ -349,6 +351,12 @@ class SparseSegmentReductionHelper(SegmentReductionHelper):
 
 class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
 
+  def setUp(self):
+    reveal_undocumented("tensorflow.python."
+                        "sparse_segment_mean_grad", tf)
+    reveal_undocumented("tensorflow.python."
+                        "sparse_segment_sqrt_n_grad", tf)
+
   def testValues(self):
     dtypes = [tf.float32,
               tf.float64,
@@ -400,7 +408,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
         s.eval()
 
-  def testIndiciesInvalid1(self):
+  def testIndicesInvalid1(self):
     tf_x, _ = self._input([10, 4], dtype=tf.float32)
     ops_list = [tf.sparse_segment_sum, tf.sparse_segment_mean]
     segment_indices = [0, 1, 2, 2]
@@ -412,7 +420,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
             r"indices\[1\] == -1 out of range \[0, 10\)"):
           s.eval()
 
-  def testIndiciesInvalid2(self):
+  def testIndicesInvalid2(self):
     tf_x, _ = self._input([10, 4], dtype=tf.float32)
     ops_list = [tf.sparse_segment_sum, tf.sparse_segment_mean]
     segment_indices = [0, 1, 2, 2]

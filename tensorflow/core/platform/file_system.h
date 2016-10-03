@@ -58,8 +58,38 @@ class FileSystem {
 
   virtual bool FileExists(const string& fname) = 0;
 
+  /// \brief Returns the immediate children in the given directory.
+  ///
+  /// The returned paths are relative to 'dir'.
   virtual Status GetChildren(const string& dir,
                              std::vector<string>* result) = 0;
+
+  // \brief Given a pattern, stores in *results the set of paths that matches
+  // that pattern. *results is cleared.
+  //
+  // pattern must match all of a name, not just a substring.
+  //
+  // pattern: { term }
+  // term:
+  //   '*': matches any sequence of non-'/' characters
+  //   '?': matches a single non-'/' character
+  //   '[' [ '^' ] { match-list } ']':
+  //        matches any single character (not) on the list
+  //   c: matches character c (c != '*', '?', '\\', '[')
+  //   '\\' c: matches character c
+  // character-range:
+  //   c: matches character c (c != '\\', '-', ']')
+  //   '\\' c: matches character c
+  //   lo '-' hi: matches character c for lo <= c <= hi
+  //
+  // Typical return codes
+  //  * OK - no errors
+  //  * UNIMPLEMENTED - Some underlying functions (like GetChildren) are not
+  //                    implemented
+  // The default implementation uses a combination of GetChildren, MatchPath
+  // and IsDirectory.
+  virtual Status GetMatchingPaths(const string& pattern,
+                                  std::vector<string>* results);
 
   virtual Status Stat(const string& fname, FileStatistics* stat) = 0;
 
@@ -67,14 +97,38 @@ class FileSystem {
 
   virtual Status CreateDir(const string& dirname) = 0;
 
+  // \brief Creates the specified directory and all the necessary
+  // subdirectories. Typical return codes.
+  //  * OK - successfully created the directory and sub directories, even if
+  //         they were already created.
+  //  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
+  virtual Status RecursivelyCreateDir(const string& dirname);
+
   virtual Status DeleteDir(const string& dirname) = 0;
+
+  // \brief Deletes the specified directory and all subdirectories and files
+  // underneath it. undeleted_files and undeleted_dirs stores the number of
+  // files and directories that weren't deleted (unspecified if the return
+  // status is not OK).
+  // REQUIRES: undeleted_files, undeleted_dirs to be not null.
+  // Typical return codes
+  //  * OK - dirname exists and we were able to delete everything underneath.
+  //  * NOT_FOUND - dirname doesn't exist
+  //  * PERMISSION_DENIED - dirname or some descendant is not writable
+  //  * UNIMPLEMENTED - Some underlying functions (like Delete) are not
+  //                    implemented
+  virtual Status DeleteRecursively(const string& dirname,
+                                   int64* undeleted_files,
+                                   int64* undeleted_dirs);
 
   virtual Status GetFileSize(const string& fname, uint64* file_size) = 0;
 
+  // Overwrites the target if it exists.
   virtual Status RenameFile(const string& src, const string& target) = 0;
 
   // Translate an URI to a filename usable by the FileSystem implementation. The
-  // implementation in this class returns the name as-is.
+  // implementation in this class cleans up the path, removing duplicate /'s,
+  // resolving .. and . (more details in tensorflow::lib::io::CleanPath).
   virtual string TranslateName(const string& name) const;
 
   // Returns whether the given path is a directory or not.
@@ -87,6 +141,7 @@ class FileSystem {
   virtual Status IsDirectory(const string& fname);
 };
 
+#ifndef SWIG
 // Degenerate file system that provides no implementations.
 class NullFileSystem : public FileSystem {
  public:
@@ -146,6 +201,7 @@ class NullFileSystem : public FileSystem {
     return errors::Unimplemented("Stat unimplemented");
   }
 };
+#endif
 
 /// A file abstraction for randomly reading the contents of a file.
 class RandomAccessFile {
@@ -172,9 +228,7 @@ class RandomAccessFile {
                       char* scratch) const = 0;
 
  private:
-  /// No copying allowed
-  RandomAccessFile(const RandomAccessFile&);
-  void operator=(const RandomAccessFile&);
+  TF_DISALLOW_COPY_AND_ASSIGN(RandomAccessFile);
 };
 
 /// \brief A file abstraction for sequential writing.
@@ -192,9 +246,7 @@ class WritableFile {
   virtual Status Sync() = 0;
 
  private:
-  /// No copying allowed
-  WritableFile(const WritableFile&);
-  void operator=(const WritableFile&);
+  TF_DISALLOW_COPY_AND_ASSIGN(WritableFile);
 };
 
 /// \brief A readonly memmapped file abstraction.
@@ -226,11 +278,18 @@ class FileSystemRegistry {
       std::vector<string>* schemes) = 0;
 };
 
-// Given URI of the form [scheme://]<filename>, return 'scheme'.
-string GetSchemeFromURI(const string& name);
+// Populates the scheme, host, and path from a URI.
+//
+// Corner cases:
+// - If the URI is invalid, scheme and host are set to empty strings and the
+//   passed string is assumed to be a path
+// - If the URI omits the path (e.g. file://host), then the path is left empty.
+void ParseURI(StringPiece uri, StringPiece* scheme, StringPiece* host,
+              StringPiece* path);
 
-// Given URI of the form [scheme://]<filename>, return 'filename'.
-string GetNameFromURI(const string& name);
+// Creates a URI from a scheme, host, and path. If the scheme is empty, we just
+// return the path.
+string CreateURI(StringPiece scheme, StringPiece host, StringPiece path);
 
 }  // namespace tensorflow
 

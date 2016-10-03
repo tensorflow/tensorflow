@@ -20,23 +20,23 @@
 # runs from within a container based on the image.
 #
 # Usage:
-#   remote_test.sh [--setup-cluster-only]
-#                  [--num-workers <NUM_WORKERS>]
-#                  [--num-parameter-servers <NUM_PARAMETER_SERVERS>]
-#                  [--sync-replicas]
+#   remote_test.sh [--setup_cluster_only]
+#                  [--num_workers <NUM_WORKERS>]
+#                  [--num_parameter_servers <NUM_PARAMETER_SERVERS>]
+#                  [--sync_replicas]
 #
 # Arguments:
-#   --setup-cluster-only:
+#   --setup_cluster_only:
 #       Setup the TensorFlow k8s cluster only, and do not perform testing of
 #       the distributed runtime.
 #
-# --num-workers <NUM_WORKERS>:
+# --num_workers <NUM_WORKERS>:
 #   Specifies the number of worker pods to start
 #
-# --num-parameter-server <NUM_PARAMETER_SERVERS>:
+# --num_parameter_server <NUM_PARAMETER_SERVERS>:
 #   Specifies the number of parameter servers to start
 #
-# --sync-replicas
+# --sync_replicas
 #   Use the synchronized-replica mode. The parameter updates from the replicas
 #   (workers) will be aggregated before applied, which avoids stale parameter
 #   updates.
@@ -56,9 +56,7 @@
 #                                 TF_DIST_GRPC_SERVER_URL is empty, same below)
 #   TF_DIST_GCLOUD_COMPUTE_ZONE:  gcloud compute zone.
 #   TF_DIST_CONTAINER_CLUSTER:    name of the GKE cluster
-#   TF_DIST_GCLOUD_KEY_FILE_DIR:  path to the host directory that contains
-#                                 the gloud service key file
-#                                 "tensorflow-testing.json"
+#   TF_DIST_GCLOUD_KEY_FILE:      path to the gloud service JSON key file
 #   TF_DIST_GRPC_PORT:            port on which to create the TensorFlow GRPC
 #                                 servers
 #   TF_DIST_DOCKER_NO_CACHE:      do not use cache when building docker images
@@ -99,9 +97,9 @@ fi
 
 docker build ${NO_CACHE_FLAG} \
     -t ${DOCKER_IMG_NAME} -f "${DIR}/Dockerfile" "${DIR}"
-KEY_FILE_DIR=${TF_DIST_GCLOUD_KEY_FILE_DIR:-"${HOME}/gcloud-secrets"}
+KEY_FILE=${TF_DIST_GCLOUD_KEY_FILE:-"${HOME}/gcloud-secrets/tensorflow-testing.json"}
 
-docker run --rm -v ${KEY_FILE_DIR}:/var/gcloud/secrets \
+docker run --rm -v ${KEY_FILE}:/var/gcloud/secrets/tensorflow-testing.json \
   ${DOCKER_ENV_FLAGS} \
   ${DOCKER_IMG_NAME} \
   /var/tf-dist-test/scripts/dist_test.sh $@

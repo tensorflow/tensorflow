@@ -13,7 +13,17 @@ This folder contains examples of how to build applications for iOS devices using
  - Download
    [Inception v1](https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip),
    and extract the label and graph files into the data folders inside both the
-   simple and camera examples.
+   simple and camera examples:
+
+```bash
+mkdir -p ~/graphs
+curl -o ~/graphs/inception5h.zip \
+ https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip \
+ && unzip ~/graphs/inception5h.zip -d ~/graphs/inception5h
+cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/benchmark/data/
+cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/camera/data/
+cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/simple/data/
+```
 
  - Load the Xcode project inside the `simple` subfolder, and press Command-R to
    build and run it on the simulator or your connected device.
@@ -86,3 +96,46 @@ rundown:
    flag will cause these duplicates to become link errors. If you were using
    `-all_load` to avoid issues with Objective-C categories in static libraries,
    you may be able to replace it with the `-ObjC` flag.
+
+## Reducing the binary size
+
+TensorFlow is a comparatively large library for a mobile device, so it will
+increase the size of your app. Currently on iOS we see around a 11 MB binary
+footprint per CPU architecture, though we're actively working on reducing that.
+It can be tricky to set up the right configuration in your own app to keep the
+size minimized, so if you do run into this issue we recommend you start by
+looking at the simple example to examine its size. Here's how you do that:
+
+ - Open the Xcode project in tensorflow/contrib/ios_examples/simple.
+
+ - Make sure you've followed the steps above to get the data files.
+
+ - Choose "Generic iOS Device" as the build configuration.
+
+ - Select Product->Build.
+
+ - Once the build's complete, open the Report Navigator and select the logs.
+
+ - Near the bottom, you'll see a line saying "Touch tf_ios_makefile_example.app".
+
+ - Expand that line using the icon on the right, and copy the first argument to
+   the Touch command.
+
+ - Go to the terminal, type `ls -lah ` and then paste the path you copied.
+
+ - For example it might look like `ls -lah /Users/petewarden/Library/Developer/Xcode/DerivedData/tf_ios_makefile_example-etdbksqytcnzeyfgdwiihzkqpxwr/Build/Products/Debug-iphoneos/tf_ios_makefile_example.app`
+
+ - Running this command will show the size of the executable as the
+   `tf_ios_makefile_example` line.
+
+Right now you'll see a size of around 23 MB, since it's including two
+architectures (armv7 and arm64). As a first step, you should make sure the size
+increase you see in your own app is similar, and if it's larger, look at the
+"Other Linker Flags" used in the Simple Xcode project settings to strip the
+executable.
+
+After that, you can manually look at modifying the list of kernels
+included in tensorflow/contrib/makefile/tf_op_files.txt to reduce the number of
+implementations to the ones you're actually using in your own model. We're
+hoping to automate this step in the future, but for now manually removing them
+is the best approach.

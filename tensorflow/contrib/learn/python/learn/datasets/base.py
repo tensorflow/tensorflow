@@ -35,21 +35,6 @@ Dataset = collections.namedtuple('Dataset', ['data', 'target'])
 Datasets = collections.namedtuple('Datasets', ['train', 'validation', 'test'])
 
 
-@deprecated('2016-09-15', 'Please use load_csv_{with|without}_header instead.')
-def load_csv(filename, target_dtype, target_column=-1, has_header=True):
-  """Load dataset from CSV file."""
-  if has_header:
-    return load_csv_with_header(filename=filename,
-                                target_dtype=target_dtype,
-                                features_dtype=np.float64,
-                                target_column=target_column)
-  else:
-    return load_csv_without_header(filename=filename,
-                                   target_dtype=target_dtype,
-                                   features_dtype=np.float64,
-                                   target_column=target_column)
-
-
 def load_csv_with_header(filename,
                          target_dtype,
                          features_dtype,
@@ -60,7 +45,7 @@ def load_csv_with_header(filename,
     header = next(data_file)
     n_samples = int(header[0])
     n_features = int(header[1])
-    data = np.zeros((n_samples, n_features))
+    data = np.zeros((n_samples, n_features), dtype=features_dtype)
     target = np.zeros((n_samples,), dtype=target_dtype)
     for i, row in enumerate(data_file):
       target[i] = np.asarray(row.pop(target_column), dtype=target_dtype)
@@ -83,8 +68,7 @@ def load_csv_without_header(filename,
 
   target = np.array(target, dtype=target_dtype)
   data = np.array(data)
-  return Dataset(data=np.array(data),
-                 target=np.array(target).astype(target_dtype))
+  return Dataset(data=data, target=target)
 
 
 def shrink_csv(filename, ratio):
@@ -157,6 +141,6 @@ def maybe_download(filename, work_directory, source_url):
       urllib.request.urlretrieve(source_url, temp_file_name)
       gfile.Copy(temp_file_name, filepath)
       with gfile.GFile(filepath) as f:
-        size = f.Size()
+        size = f.size()
       print('Successfully downloaded', filename, size, 'bytes.')
   return filepath

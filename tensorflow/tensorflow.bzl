@@ -15,6 +15,12 @@ def _parse_bazel_version(bazel_version):
     version_tuple += (str(number),)
   return version_tuple
 
+# Given a source file, generate a test name.
+# i.e. "common_runtime/direct_session_test.cc" becomes
+#      "common_runtime_direct_session_test"
+def src_to_test_name(src):
+  return src.replace("/", "_").split(".")[0]
+
 # Check that a specific bazel version is being used.
 def check_version(bazel_version):
   if "bazel_version" in dir(native) and native.bazel_version:
@@ -67,6 +73,7 @@ def tf_android_core_proto_sources_relative():
         "framework/versions.proto",
         "lib/core/error_codes.proto",
         "protobuf/config.proto",
+        "protobuf/tensor_bundle.proto",
         "protobuf/saver.proto",
         "util/memmapped_file_system.proto",
         "util/saved_tensor_slice.proto",
@@ -90,6 +97,12 @@ def if_android_arm(a):
       "//conditions:default": [],
   })
 
+def if_android_arm64(a):
+  return select({
+      "//tensorflow:android_arm64": a,
+      "//conditions:default": [],
+  })
+
 def if_not_android(a):
   return select({
       "//tensorflow:android": [],
@@ -106,6 +119,20 @@ def if_ios(a):
   return select({
       "//tensorflow:ios": a,
       "//conditions:default": [],
+  })
+
+def if_mobile(a):
+  return select({
+      "//tensorflow:android": a,
+      "//tensorflow:ios": a,
+      "//conditions:default": [],
+  })
+
+def if_not_mobile(a):
+  return select({
+      "//tensorflow:android": [],
+      "//tensorflow:ios": [],
+      "//conditions:default": a,
   })
 
 def tf_copts():
@@ -131,14 +158,16 @@ def tf_opts_nortti_if_android():
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
-def tf_gen_op_libs(op_lib_names):
+def tf_gen_op_libs(op_lib_names, deps=None):
   # Make library out of each op so it can also be used to generate wrappers
   # for various languages.
+  if not deps:
+    deps = []
   for n in op_lib_names:
     native.cc_library(name=n + "_op_lib",
                       copts=tf_copts(),
                       srcs=["ops/" + n + ".cc"],
-                      deps=(["//tensorflow/core:framework"]),
+                      deps=deps + ["//tensorflow/core:framework"],
                       visibility=["//visibility:public"],
                       alwayslink=1,
                       linkstatic=1,)
@@ -217,7 +246,8 @@ def tf_gen_op_wrappers_cc(name,
 
 # Invoke this rule in .../tensorflow/python to build the wrapper library.
 def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],
-                         require_shape_functions=False, hidden_file=None):
+                         require_shape_functions=False, hidden_file=None,
+                         generated_target_name=None):
   # Construct a cc_binary containing the specified ops.
   tool_name = "gen_" + name + "_py_wrappers_cc"
   if not deps:
@@ -265,7 +295,9 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],
              + ("1" if require_shape_functions else "0") + " > $@"))
 
   # Make a py_library out of the generated python file.
-  native.py_library(name=name,
+  if not generated_target_name:
+    generated_target_name = name
+  native.py_library(name=generated_target_name,
                     srcs=[out],
                     srcs_version="PY2AND3",
                     visibility=visibility,
@@ -276,30 +308,30 @@ def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],
 # Define a bazel macro that creates cc_test for tensorflow.
 # TODO(opensource): we need to enable this to work around the hidden symbol
 # __cudaRegisterFatBinary error. Need more investigations.
-def tf_cc_test(name, deps, linkstatic=0, tags=[], data=[], size="medium",
+def tf_cc_test(name, srcs, deps, linkstatic=0, tags=[], data=[], size="medium",
                suffix="", args=None, linkopts=[]):
-  name = name.replace(".cc", "")
-  native.cc_test(name="%s%s" % (name.replace("/", "_"), suffix),
+  native.cc_test(name="%s%s" % (name, suffix),
+                 srcs=srcs,
                  size=size,
-                 srcs=["%s.cc" % (name)],
                  args=args,
                  copts=tf_copts(),
                  data=data,
                  deps=deps,
                  linkopts=["-lpthread", "-lm"] + linkopts,
                  linkstatic=linkstatic,
-                 tags=tags,)
+                 tags=tags)
 
 # Part of the testing workflow requires a distinguishable name for the build
 # rules that involve a GPU, even if otherwise identical to the base rule.
-def tf_cc_test_gpu(name, deps, linkstatic=0, tags=[], data=[], size="medium",
-                   suffix="", args=None):
-  tf_cc_test(name, deps, linkstatic=linkstatic, tags=tags, data=data,
+def tf_cc_test_gpu(name, srcs, deps, linkstatic=0, tags=[], data=[],
+                   size="medium", suffix="", args=None):
+  tf_cc_test(name, srcs, deps, linkstatic=linkstatic, tags=tags, data=data,
              size=size, suffix=suffix, args=args)
 
-def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium", linkstatic=0,
-                    args=[], linkopts=[]):
+def tf_cuda_cc_test(name, srcs, deps, tags=[], data=[], size="medium",
+                    linkstatic=0, args=[], linkopts=[]):
   tf_cc_test(name=name,
+             srcs=srcs,
              deps=deps,
              tags=tags + ["manual"],
              data=data,
@@ -308,6 +340,7 @@ def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium", linkstatic=0,
              linkopts=linkopts,
              args=args)
   tf_cc_test(name=name,
+             srcs=srcs,
              suffix="_gpu",
              deps=deps + if_cuda(["//tensorflow/core:gpu_runtime"]),
              linkstatic=if_cuda(1, 0),
@@ -318,22 +351,36 @@ def tf_cuda_cc_test(name, deps, tags=[], data=[], size="medium", linkstatic=0,
              args=args)
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
-def tf_cc_tests(tests, deps, linkstatic=0, tags=[], size="medium", args=None,
-                linkopts=[]):
-  for t in tests:
-    tf_cc_test(t, deps, linkstatic, tags=tags, size=size, args=args,
-               linkopts=linkopts)
+def tf_cc_tests(srcs, deps, linkstatic=0, tags=[], size="medium",
+                args=None, linkopts=[]):
+  for src in srcs:
+    tf_cc_test(
+        name=src_to_test_name(src),
+        srcs=[src],
+        deps=deps,
+        linkstatic=linkstatic,
+        tags=tags,
+        size=size,
+        args=args,
+        linkopts=linkopts)
 
-def tf_cc_tests_gpu(tests, deps, linkstatic=0, tags=[], size="medium",
+def tf_cc_tests_gpu(srcs, deps, linkstatic=0, tags=[], size="medium",
                     args=None):
-  tf_cc_tests(tests, deps, linkstatic, tags=tags, size=size, args=args)
+  tf_cc_tests(srcs, deps, linkstatic, tags=tags, size=size, args=args)
 
 
-def tf_cuda_cc_tests(tests, deps, tags=[], size="medium", linkstatic=0,
+def tf_cuda_cc_tests(srcs, deps, tags=[], size="medium", linkstatic=0,
                      args=None, linkopts=[]):
-  for t in tests:
-    tf_cuda_cc_test(t, deps, tags=tags, size=size, linkstatic=linkstatic,
-                    args=args, linkopts=linkopts)
+  for src in srcs:
+    tf_cuda_cc_test(
+        name=src_to_test_name(src),
+        srcs=[src],
+        deps=deps,
+        tags=tags,
+        size=size,
+        linkstatic=linkstatic,
+        args=args,
+        linkopts=linkopts)
 
 def _cuda_copts():
     """Gets the appropriate set of copts for (maybe) CUDA compilation.
@@ -351,10 +398,6 @@ def _cuda_copts():
                 "-nvcc_options=relaxed-constexpr",
                 "-nvcc_options=ftz=true",
             ]
-        ),
-        "@local_config_cuda//cuda:using_gcudacc": (
-            common_cuda_opts +
-            ["--gcudacc_flag=-ftz=true"]
         ),
         "@local_config_cuda//cuda:using_clang": (
             common_cuda_opts +
@@ -523,7 +566,7 @@ _py_wrap_cc = rule(
             allow_files = True,
         ),
         "swig_includes": attr.label_list(
-            cfg = DATA_CFG,
+            cfg = "data",
             allow_files = True,
         ),
         "deps": attr.label_list(
@@ -537,7 +580,7 @@ _py_wrap_cc = rule(
         "py_module_name": attr.string(mandatory = True),
         "swig_binary": attr.label(
             default = Label("//tensorflow:swig"),
-            cfg = HOST_CFG,
+            cfg = "host",
             executable = True,
             allow_files = True,
         ),
@@ -725,7 +768,7 @@ def tf_py_wrap_cc(name, srcs, swig_includes=[], deps=[], copts=[], **kwargs):
                     data=[":" + cc_library_name])
 
 def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
-               tags=[], shard_count=1, additional_deps=[]):
+               tags=[], shard_count=1, additional_deps=[], flaky=0):
   native.py_test(
       name=name,
       size=size,
@@ -740,10 +783,11 @@ def tf_py_test(name, srcs, size="medium", data=[], main=None, args=[],
           "//tensorflow/python:extra_py_tests_deps",
           "//tensorflow/python:gradient_checker",
       ] + additional_deps,
+      flaky=flaky,
       srcs_version="PY2AND3")
 
 def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
-                 shard_count=1, additional_deps=[], tags=[]):
+                 shard_count=1, additional_deps=[], tags=[], flaky=0):
   test_tags = tags + tf_cuda_tests_tags()
   tf_py_test(name=name,
              size=size,
@@ -753,7 +797,8 @@ def cuda_py_test(name, srcs, size="medium", data=[], main=None, args=[],
              args=args,
              tags=test_tags,
              shard_count=shard_count,
-             additional_deps=additional_deps)
+             additional_deps=additional_deps,
+             flaky=flaky)
 
 def py_tests(name,
              srcs,
@@ -805,3 +850,18 @@ def tf_genrule_cmd_append_to_srcs(to_append):
     return ("cat $(SRCS) > $(@) && " +
             "echo >> $(@) && " +
             "echo " + to_append + " >> $(@)")
+
+
+def tf_version_info_genrule():
+  native.genrule(
+      name = "version_info_gen",
+      srcs = [
+          "//tensorflow/tools/git:gen/spec.json",
+          "//tensorflow/tools/git:gen/head",
+          "//tensorflow/tools/git:gen/branch_ref",
+      ],
+      outs = ["util/version_info.cc"],
+      cmd = "$(location //tensorflow/tools/git:gen_git_source.py) --generate $(SRCS) \"$@\"",
+      local = 1,
+      tools = ["//tensorflow/tools/git:gen_git_source.py"],
+  )

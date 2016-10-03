@@ -32,7 +32,7 @@ using CpuDevice = Eigen::ThreadPoolDevice;
 TF_CALL_ALL_TYPES(DEFINE_CPU_KERNELS);
 DEFINE_CPU_KERNELS(bfloat16);
 
-#undef DEFINE_GPU_KERNELS
+#undef DEFINE_CPU_KERNELS
 
 }  // namespace tensorflow
 

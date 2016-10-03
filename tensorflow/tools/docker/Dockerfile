@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python \
         python-dev \
         rsync \
+        software-properties-common \
         unzip \
         && \
     apt-get clean && \
@@ -31,7 +32,7 @@ RUN pip --no-cache-dir install \
         && \
     python -m ipykernel.kernelspec
 
-ENV TENSORFLOW_VERSION 0.10.0rc0
+ENV TENSORFLOW_VERSION 0.10.0
 
 # --- DO NOT EDIT OR DELETE BETWEEN THE LINES --- #
 # These lines will be edited automatically by parameterized_docker_build.sh. #

@@ -3,7 +3,7 @@ Base class for monitors that execute callbacks every N steps.
 This class adds three new callbacks:
   - every_n_step_begin
   - every_n_step_end
-  - every_n_pos_step
+  - every_n_post_step
 
 The callbacks are executed every n steps, or optionally every step for the
 first m steps, where m and n can both be user-specified.
@@ -15,7 +15,7 @@ When extending this class, note that if you wish to use any of the
     super(ExampleMonitor, self).step_begin(step)
     return []
 
-Failing to call the super implementation will cause unpredictible behavior.
+Failing to call the super implementation will cause unpredictable behavior.
 
 The `every_n_post_step()` callback is also called after the last step if it
 was not already called through the regular conditions.  Note that
@@ -170,6 +170,8 @@ In addition, the callback has the opportunity to stop training by returning
 #### `tf.contrib.learn.monitors.EveryN.set_estimator(estimator)` {#EveryN.set_estimator}
 
 A setter called automatically by the target estimator.
+
+If the estimator is locked, this method does nothing.
 
 ##### Args:
 

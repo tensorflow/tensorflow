@@ -51,6 +51,17 @@ TEST(ImageOpsTest, Resize_ShapeFn) {
   }
 }
 
+TEST(ImageOpsTest, DecodeGif) {
+  ShapeInferenceTestOp op("DecodeGif");
+
+  // Rank check.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1]");
+
+  // Output is always ?,?,?,3.
+  INFER_OK(op, "?", "[?,?,?,3]");
+  INFER_OK(op, "[]", "[?,?,?,3]");
+}
+
 TEST(ImageOpsTest, DecodeImage_ShapeFn) {
   for (const char* op_name : {"DecodeJpeg", "DecodePng"}) {
     ShapeInferenceTestOp op(op_name);
@@ -58,7 +69,10 @@ TEST(ImageOpsTest, DecodeImage_ShapeFn) {
     // Rank check.
     INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1]");
 
-    // Channel not set - output is unknown.
+    // Set the channel to zero - output is not known.
+    TF_ASSERT_OK(NodeDefBuilder("test", op_name)
+                     .Input({"a", 0, DT_STRING})
+                     .Finalize(&op.node_def));
     INFER_OK(op, "[]", "[?,?,?]");
 
     // Set the channel and so that part of output shape is known.
@@ -192,6 +206,24 @@ TEST(ImageOpsTest, CropAndResizeGradImage_ShapeFn) {
   Tensor image_size = test::AsTensor<int32>({10, 20, 30, 40});
   op.input_tensors[3] = &image_size;
   INFER_OK(op, "?;?;?;[1]", "[10, 20, 30, 40]");
+}
+
+TEST(ImageOpsTest, RandomCrop_ShapeFn) {
+  ShapeInferenceTestOp op("RandomCrop");
+  op.input_tensors.resize(2);
+
+  // Rank checks.
+  INFER_ERROR("must be rank 3", op, "[1,2];?");
+  INFER_ERROR("must be equal", op, "?;[3]");
+  INFER_ERROR("must be equal", op, "?;[1,2]");
+
+  // Unknown size tensor values.
+  INFER_OK(op, "[?,?,?];[2]", "[?,?,d0_2]");
+
+  // Known size should result in full shape information.
+  Tensor size = test::AsTensor<int64>({10, 20});
+  op.input_tensors[1] = &size;
+  INFER_OK(op, "[?,?,?];[2]", "[10,20,d0_2]");
 }
 
 }  // end namespace tensorflow

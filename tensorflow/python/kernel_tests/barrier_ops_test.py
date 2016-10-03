@@ -542,7 +542,7 @@ class BarrierTest(tf.test.TestCase):
       def insert(sess, i):
         try:
           sess.run([insert_0_ops[i], insert_1_ops[i]])
-        except tf.errors.AbortedError:
+        except tf.errors.CancelledError:
           pass
 
       taken = []
@@ -626,7 +626,7 @@ class BarrierTest(tf.test.TestCase):
         if cancel:
           try:
             insert_1_ops[i].run(session=sess)
-          except tf.errors.AbortedError:
+          except tf.errors.CancelledError:
             pass
         else:
           insert_1_ops[i].run(session=sess)

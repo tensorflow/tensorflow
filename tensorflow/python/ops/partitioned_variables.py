@@ -54,8 +54,6 @@ from __future__ import print_function
 
 import math
 
-import six  # pylint: disable=unused-import
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import variable_scope
@@ -306,5 +304,5 @@ def create_partitioned_variables(
         trainable=trainable,
         partitioner=partitioner,
         collections=collections)
-    return partitioned_var._get_variable_list()
+    return list(partitioned_var)
     # pylint: enable=protected-access

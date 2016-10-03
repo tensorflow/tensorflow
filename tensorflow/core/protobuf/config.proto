@@ -109,6 +109,13 @@ message GraphOptions {
   // a session after adding a node to a graph whose placement
   // constraints are unsatisfiable.
   bool place_pruned_graph = 6;
+
+  // If true, transfer float values between processes as bfloat16.
+  bool enable_bfloat16_sendrecv = 7;
+
+  // If > 0, record a timeline every this many steps.
+  // EXPERIMENTAL: This currently has no effect in MasterSession.
+  int32 timeline_step = 8;
 };
 
 message ThreadPoolOptionProto {
@@ -120,7 +127,7 @@ message ThreadPoolOptionProto {
 };
 
 // Session configuration parameters.
-// The system picks an appropriate values for fields that are not set.
+// The system picks appropriate values for fields that are not set.
 message ConfigProto {
   // Map from device type name (e.g., "CPU" or "GPU" ) to maximum
   // number of devices of that type to use.  If a particular device

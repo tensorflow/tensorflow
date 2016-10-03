@@ -8,7 +8,7 @@ Warning: this function is directly manipulating the internals of the tf.Graph.
 
 
 *  <b>`op`</b>: a tf.Operation to which the control inputs are added.
-*  <b>`cops`</b>: an object convertible to a list of tf.Operation.
+*  <b>`cops`</b>: an object convertible to a list of `tf.Operation`.
 
 ##### Raises:
 

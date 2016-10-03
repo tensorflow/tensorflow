@@ -75,6 +75,7 @@ import collections
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.core.protobuf import control_flow_pb2
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -84,7 +85,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
-from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 # go/tf-wildcard-import
@@ -101,6 +102,45 @@ _basetuple = tuple
 
 
 # pylint: disable=protected-access
+
+
+# Assert and Print are special symbols in python, so we must
+# use an upper-case version of them.
+def Assert(condition, data, summarize=None, name=None):
+  """Asserts that the given condition is true.
+
+  If `condition` evaluates to false, print the list of tensors in `data`.
+  `summarize` determines how many entries of the tensors to print.
+
+  NOTE: To ensure that Assert executes, one usually attaches a dependency:
+
+  ```python
+   # Ensure maximum element of x is smaller or equal to 1
+  assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
+  x = tf.with_dependencies([assert_op], x)
+  ```
+
+  Args:
+    condition: The condition to evaluate.
+    data: The tensors to print out when condition is false.
+    summarize: Print this many entries of each tensor.
+    name: A name for this operation (optional).
+
+  Returns:
+    assert_op: An `Operation` that, when executed, raises a
+    `tf.errors.InvalidArgumentError` if `condition` is not true.
+  """
+  with ops.name_scope(name, "Assert", [condition, data]) as name:
+    condition = ops.convert_to_tensor(condition, name="Condition")
+    def true_assert():
+      return gen_logging_ops._assert(
+          condition, data, summarize, name="Assert")
+    # TODO(ebrevdo): Remove the cond once when can tell all inputs are on host.
+    guarded_assert = cond(
+        condition, no_op, true_assert, name="AssertGuard")
+    return guarded_assert.op
+
+
 def _Identity(data, name=None):
   """Return a tensor with the same shape and contents as the input tensor.
 
@@ -438,14 +478,10 @@ def _GetLoopConstantEnter(value):
   return op if _IsLoopConstantEnter(op) else None
 
 
-def _IsLoopExit(op):
-  return op.type == "Exit" or op.type == "RefExit"
-
-
 def _GetOutputContext(op):
   """Return the control flow context for the output of an op."""
   ctxt = op._get_control_flow_context()
-  if _IsLoopExit(op):
+  if IsLoopExit(op):
     ctxt = ctxt.outer_context
   return ctxt
 
@@ -657,6 +693,9 @@ class GradLoopState(object):
     # Information needed by backprop.
     self._history_map = {}
     self._switch_map = {}
+    self._unused_exits = []
+    self._deferred_exits = []
+    self._pending_exits_count = len(forward_ctxt.loop_exits)
 
     self._outer_grad_state = outer_grad_state
     if outer_grad_state:
@@ -760,8 +799,28 @@ class GradLoopState(object):
 
   @property
   def switch_map(self):
-    """The map that records all the Switch ops for the While loop."""
+    """The map that records all the Switch ops for the while loop."""
     return self._switch_map
+
+  @property
+  def unused_exits(self):
+    """The list of "unused" exits."""
+    return self._unused_exits
+
+  @property
+  def deferred_exits(self):
+    """The list of "deferred" exits."""
+    return self._deferred_exits
+
+  @property
+  def pending_exits_count(self):
+    """The number of exits we expect to see but haven't."""
+    return self._pending_exits_count
+
+  @pending_exits_count.setter
+  def pending_exits_count(self, cnt):
+    """Set the pending count to cnt."""
+    self._pending_exits_count = cnt
 
   def AddForwardAccumulator(self, value, dead_branch=False):
     """Add an accumulator for each forward tensor that is needed in backprop.
@@ -881,6 +940,7 @@ class GradLoopState(object):
         branch = (1 - cond_ctxt.branch) if dead_branch else cond_ctxt.branch
         history_value = _SwitchRefOrTensor(history_value, pred)[branch]
       pop = gen_data_flow_ops._stack_pop(history_value, value.dtype.base_dtype)
+      pop.set_shape(value.get_shape())
       self.grad_context.Exit()
     parallel_iterations = self.grad_context.parallel_iterations
     if parallel_iterations > 1:
@@ -952,9 +1012,9 @@ class ControlFlowState(object):
   def __init__(self):
     self._map = {}   # maps forward loop context to GradLoopState
 
-  def _GetGradState(self, op, before):
+  def GetGradState(self, op, before):
     """Return the grad state for this op if it's in a forward loop context."""
-    if before and _IsLoopExit(op):
+    if before and IsLoopExit(op):
       forward_ctxt = op._get_control_flow_context()
       forward_ctxt = forward_ctxt.outer_context
       if forward_ctxt:
@@ -965,23 +1025,53 @@ class ControlFlowState(object):
       return self._map.get(forward_ctxt)
     return None
 
-  def GetAllLoopExits(self):
-    """Return a list containing the exits of all the loops."""
+  def ProcessUnusedLoopExits(self, pending_count, to_ops_set):
+    """Process all the "unused" loop exits.
+
+    The "unused" exits of the loops are added to `unused_exits`. An exit is
+    unused if its pending_count is 0. If there is an exit with real gradient,
+    all these deferred exits will enter the backprop loop with zero gradient.
+    Otherwise, they will enter the backprop loop with None. As an example,
+    people often write:
+
+           ```
+           v1, _ = tf.while_loop(p, b, [x1, x2])
+           result = gradients(v1, x1)
+           ```
+
+    The exit node for x2 is not included by the betweenness analysis. But we
+    need to backprop x2 if x2 is involved in computing v1.
+
+    Args:
+      pending_count: The number of backprop inputs for every op.
+      to_ops_set: The set of ops for ys in gradients(ys, xs)
+
+    Returns:
+      The set of unused loop exits that we know at this point we need
+      to backprop.
+    """
     loop_exits = []
-    for forward_ctxt in self._map:
-      for loop_exit in forward_ctxt.loop_exits:
-        loop_exits.append(loop_exit)
+    for forward_ctxt, grad_state in self._map.items():
+      for y in forward_ctxt.loop_exits:
+        # pylint: disable=protected-access
+        if pending_count[y.op._id] == 0:
+          grad_state.pending_exits_count -= 1
+          if y.op._id not in to_ops_set:
+            grad_state.unused_exits.append(y)
+          if grad_state.pending_exits_count == 0:
+            loop_exits.extend(grad_state.unused_exits)
+        # pylint: enable=protected-access
     return loop_exits
 
   def EnterGradWhileContext(self, op, before):
     """Enter the WhileContext for gradient computation."""
-    grad_state = self._GetGradState(op, before)
+    grad_state = self.GetGradState(op, before)
     if grad_state:
       grad_state.grad_context.Enter()
 
   def ExitGradWhileContext(self, op, before):
     """Exit the WhileContext for gradient computation."""
-    grad_state = self._GetGradState(op, before)
+    grad_state = self.GetGradState(op, before)
     if grad_state:
       grad_state.grad_context.Exit()
 
@@ -994,8 +1084,6 @@ class ControlFlowState(object):
     Note that this method modifies `between_op_list` and `between_ops`.
     """
     forward_ctxt = _GetWhileContext(op)
-    if forward_ctxt.grad_state:
-      raise TypeError("Second-order gradient for while loops not supported.")
     grad_state = self._map.get(forward_ctxt)
     if grad_state is None:
       # This is a new while loop so create a grad state for it.
@@ -1147,16 +1235,26 @@ class ControlFlowState(object):
           # gradients for all iterations > 0.
           dtype = b_merge.op.inputs[0].dtype
           shape = b_merge.op.inputs[0].get_shape()
-          if not shape.is_fully_defined():
-            shape = None
-          grad_state.grad_context.Enter()
-          grad_val = constant_op.constant(0, dtype=dtype, shape=shape)
-          next_grad_val = _NextIteration(grad_val)
-          grad_state.grad_context.Exit()
           # pylint: disable=protected-access
-          if not shape:
-            grad_val._shape = b_merge.op.inputs[0].get_shape()
-            next_grad_val.set_shape(grad_val.get_shape())
+          if shape.is_fully_defined():
+            grad_state.grad_context.Enter()
+            # Create a zeros and use it for iterations > 0.
+            grad_val = constant_op.constant(0, dtype=dtype, shape=shape)
+            next_grad_val = _NextIteration(grad_val)
+            grad_state.grad_context.Exit()
+          else:
+            # Create a zeros in the outer grad context.
+            outer_grad_ctxt = grad_state.grad_context.outer_context
+            if outer_grad_ctxt: outer_grad_ctxt.Enter()
+            enter_grad_op = b_merge.op.inputs[0].op
+            enter_grad = enter_grad_op.inputs[0]
+            grad_shape = array_ops.shape_internal(enter_grad, optimize=False)
+            grad_val = array_ops.zeros(grad_shape)
+            if outer_grad_ctxt: outer_grad_ctxt.Exit()
+            # Use the zeros for iterations > 0.
+            grad_state.grad_context.Enter()
+            next_grad_val = _NextIteration(grad_val)
+            grad_state.grad_context.Exit()
           b_merge.op._update_input(1, next_grad_val)
           # pylint: enable=protected-access
 
@@ -1173,7 +1271,7 @@ def MaybeCreateControlFlowState(between_op_list, between_ops,
   """
   loop_state = None
   for op in between_op_list:
-    if _IsLoopExit(op):
+    if IsLoopExit(op):
       if loop_state is None:
         loop_state = ControlFlowState()
       if colocate_gradients_with_ops:
@@ -1185,12 +1283,17 @@ def MaybeCreateControlFlowState(between_op_list, between_ops,
 
 
 def IsSwitch(op):
-  """Return true if `op` is the Switch."""
+  """Return true if `op` is a Switch."""
   return op.type == "Switch" or op.type == "RefSwitch"
 
 
+def IsLoopExit(op):
+  """Return true if `op` is an Exit."""
+  return op.type == "Exit" or op.type == "RefExit"
+
+
 def IsLoopSwitch(op):
-  """Return true if `op` is the Switch for a While loop."""
+  """Return true if `op` is the Switch for a while loop."""
   if IsSwitch(op):
     ctxt = op._get_control_flow_context()
     return ctxt and isinstance(ctxt, WhileContext)
@@ -1229,13 +1332,35 @@ class ControlFlowContext(object):
       Pushed and popped by ctxt.Enter() and ctxt.Exit()
   """
 
-  def __init__(self):
+  def __init__(self, values_def=None):
     self._outer_context = ops.get_default_graph()._get_control_flow_context()
     self._context_stack = []
-    # Values that have been already seen in this context.
-    self._values = set()
-    # Values referenced by but external to this context.
+    if values_def:
+      self._init_values_from_proto(values_def)
+    else:
+      # Values that have been already seen in this context.
+      self._values = set()
+      # Values referenced by but external to this context.
+      self._external_values = {}
+
+  def _init_values_from_proto(self, values_def):
+    """Initializes values and external_values from `ValuesDef` protocol buffer.
+
+    Args:
+      values_def: `ValuesDef` protocol buffer.
+    """
+    assert isinstance(values_def, control_flow_pb2.ValuesDef)
+    self._values = set(values_def.values)
+    g = ops.get_default_graph()
     self._external_values = {}
+    for k, v in values_def.external_values.items():
+      self._external_values[k] = g.as_graph_element(v)
+    op_names = set([op.split(":")[0]
+                    for op in self._values - set(self._external_values)])
+    for op in op_names:
+      # pylint: disable=protected-access
+      g.as_graph_element(op)._set_control_flow_context(self)
+      # pylint: enable=protected-access
 
   @property
   def outer_context(self):
@@ -1249,6 +1374,23 @@ class ControlFlowContext(object):
   @property
   def back_prop(self):
     raise NotImplementedError("Abstract method")
+
+  def _to_proto(self):
+    """Converts the values to a `ValuesDef` protocol buffer.
+
+    Returns:
+      A `ValuesDef` protocol buffer.
+    """
+    values_def = control_flow_pb2.ValuesDef()
+    values_def.values.extend([v for v in sorted(self._values)])
+    for k, v in self._external_values.items():
+      values_def.external_values[k] = v.name
+    return values_def
+
+  @staticmethod
+  def _from_proto(values_def):
+    """Returns a `ControlFlowContext` created from `values_def`."""
+    return ControlFlowContext(values_def=values_def)
 
   def AddName(self, name):
     self._values.add(name)
@@ -1324,15 +1466,41 @@ class ControlFlowContext(object):
 class CondContext(ControlFlowContext):
   """The context for the conditional construct."""
 
-  def __init__(self, pred, pivot, branch):
-    ControlFlowContext.__init__(self)
-    self._pred = pred         # The boolean tensor for the cond predicate
-    self._pivot = pivot       # The predicate tensor in this branch
-    self._branch = branch     # 0 or 1 representing this branch
+  def __init__(self, pred=None, pivot=None, branch=None,
+               name="cond_text", context_def=None):
+    self._name = ops.get_default_graph().unique_name(name)
 
-    # Values considered to have been already seen in this context.
-    self._values.add(pred.name)
-    self._values.add(pivot.name)
+    if context_def:
+      self._init_from_proto(context_def)
+    else:
+      # Initializes the default fields.
+      ControlFlowContext.__init__(self)
+      self._pred = pred         # The boolean tensor for the cond predicate
+      self._pivot = pivot       # The predicate tensor in this branch
+      self._branch = branch     # 0 or 1 representing this branch
+
+      # Values considered to have been already seen in this context.
+      self._values.add(pred.name)
+      self._values.add(pivot.name)
+
+  def _init_from_proto(self, context_def):
+    """Creates a new `CondContext` from protocol buffer.
+
+    Args:
+      context_def: `CondContextDef` protocol buffer.
+    """
+    assert isinstance(context_def, control_flow_pb2.CondContextDef)
+    # Create from context_def.
+    g = ops.get_default_graph()
+    self._name = context_def.context_name
+    self._pred = g.as_graph_element(context_def.pred_name)
+    self._pivot = g.as_graph_element(context_def.pivot_name)
+    self._branch = context_def.branch
+    super(CondContext, self).__init__(values_def=context_def.values_def)
+
+  @property
+  def name(self):
+    return self._name
 
   @property
   def pred(self):
@@ -1357,6 +1525,29 @@ class CondContext(ControlFlowContext):
     if self.GetWhileContext():
       self.GetWhileContext().back_prop
     return False
+
+  def GetControlPivot(self):
+    return self._pivot
+
+  def to_proto(self):
+    """Converts a `CondContext` to a `CondContextDef` protocol buffer.
+
+    Returns:
+      A `CondContextDef` protocol buffer.
+    """
+    context_def = control_flow_pb2.CondContextDef()
+    context_def.context_name = self.name
+    context_def.pred_name = self._pred.name
+    context_def.pivot_name = self._pivot.name
+    context_def.branch = self._branch
+    context_def.values_def.MergeFrom(super(CondContext, self)._to_proto())
+
+    return context_def
+
+  @staticmethod
+  def from_proto(context_def):
+    """Returns a `CondContext` object created from `context_def`."""
+    return CondContext(context_def=context_def)
 
   def AddValue(self, val):
     """Add `val` to the current context and its outer context recursively."""
@@ -1414,8 +1605,25 @@ class CondContext(ControlFlowContext):
           op._update_input(index, x)
       for x in op.outputs:
         self._values.add(x.name)
-    if self._outer_context or op.type not in {"Exit", "RefExit"}:
+    if self._outer_context or not IsLoopExit(op):
       op.graph.prevent_fetching(op)
+
+  def _ProcessOutputTensor(self, val):
+    """Process an output tensor of a conditional branch."""
+    real_val = val
+    if val.name not in self._values:
+      # Handle the special case of lambda: x
+      self._values.add(val.name)
+      if self._outer_context:
+        real_val = self._outer_context.AddValue(val)
+        self._values.add(real_val.name)
+      real_val = _SwitchRefOrTensor(real_val, self._pred)[self._branch]
+      self._external_values[val.name] = real_val
+    else:
+      external_val = self._external_values.get(val.name)
+      if external_val is not None:
+        real_val = external_val
+    return real_val
 
   def BuildCondBranch(self, fn):
     """Add the subgraph defined by fn() to the graph."""
@@ -1432,18 +1640,20 @@ class CondContext(ControlFlowContext):
         if isinstance(v, ops.Operation):
           # Use pivot as the proxy for this op.
           real_v = with_dependencies([v], self._pivot)
-        elif v.name not in self._values:
-          # Handle the special case of lambda: x
-          self._values.add(v.name)
-          if self._outer_context:
-            real_v = self._outer_context.AddValue(v)
-            self._values.add(real_v.name)
-          real_v = _SwitchRefOrTensor(real_v, self._pred)[self._branch]
-          self._external_values[v.name] = real_v
         else:
-          external_v = self._external_values.get(v.name)
-          if external_v is not None:
-            real_v = external_v
+          if isinstance(v, (ops.IndexedSlices, ops.SparseTensor)):
+            values = self._ProcessOutputTensor(v.values)
+            indices = self._ProcessOutputTensor(v.indices)
+            if isinstance(v, ops.IndexedSlices):
+              dense_shape = v.dense_shape
+              if dense_shape is not None:
+                dense_shape = self._ProcessOutputTensor(dense_shape)
+              real_v = ops.IndexedSlices(values, indices, dense_shape)
+            else:
+              dense_shape = self._ProcessOutputTensor(v.shape)
+              real_v = ops.SparseTensor(indices, values, dense_shape)
+          else:
+            real_v = self._ProcessOutputTensor(v)
         result.append(real_v)
     return original_r, result
 
@@ -1462,7 +1672,7 @@ def cond(pred, fn1, fn2, name=None):
   result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
   ```
 
-  If x < y, the tf.add operation will be executed and tf.square
+  If x < y, the `tf.add` operation will be executed and tf.square
   operation will not be executed. Since z is needed for at least one
   branch of the cond, the tf.mul operation is always executed, unconditionally.
   Although this behavior is consistent with the dataflow model of TensorFlow,
@@ -1535,6 +1745,8 @@ def cond(pred, fn1, fn2, name=None):
     for x, y in zip(res_f, res_t):
       assert ((isinstance(x, ops.IndexedSlices) and
                isinstance(y, ops.IndexedSlices)) or
+              (isinstance(x, ops.SparseTensor) and
+               isinstance(y, ops.SparseTensor)) or
               (isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor)))
       val_x = x if isinstance(x, ops.Tensor) else x.values
       val_y = y if isinstance(y, ops.Tensor) else y.values
@@ -1543,6 +1755,11 @@ def cond(pred, fn1, fn2, name=None):
                          "%s, %s" % (val_x.dtype.name, val_y.dtype.name))
     merges = [merge([x[0], x[1]])[0] for x in zip(res_f, res_t)]
     merges = _convert_flows_to_tensorarrays(orig_res, merges)
+
+    # Add to collections
+    ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_t)
+    ops.add_to_collection(ops.GraphKeys.COND_CONTEXT, context_f)
+
     return merges[0] if len(merges) == 1 else merges
 
 
@@ -1552,9 +1769,30 @@ def cond(pred, fn1, fn2, name=None):
 class WhileContext(ControlFlowContext):
   """The context for the loop construct."""
 
-  def __init__(self, parallel_iterations, back_prop, swap_memory, name,
-               grad_state=None):
-    ControlFlowContext.__init__(self)
+  def __init__(self, parallel_iterations=10, back_prop=True, swap_memory=False,
+               name="while_context", grad_state=None, context_def=None):
+    if context_def:
+      self._init_from_proto(context_def)
+    else:
+      ControlFlowContext.__init__(self)
+      self._init_from_args(parallel_iterations, back_prop, swap_memory,
+                           name)
+    # The gradient loop state.
+    self._grad_state = grad_state
+
+  def _init_from_args(self, parallel_iterations, back_prop, swap_memory,
+                      name):
+    """Creates a new `WhileContext` from arguments.
+
+    Args:
+      parallel_iterations: The number of iterations allowed to run in parallel.
+      back_prop: Whether backprop is enabled for this while loop.
+      swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
+      name: Optional name prefix for the returned tensors.
+
+    Raises:
+      ValueError: If `parallel_iterations` has invalid value.
+    """
     if not isinstance(parallel_iterations, int) or (parallel_iterations <= 0):
       raise ValueError("`parallel_iterations` must be a positive integer: "
                        "%s" % parallel_iterations)
@@ -1570,9 +1808,31 @@ class WhileContext(ControlFlowContext):
     # generation for gradient computation
     self._pivot = None
     # The list of exit tensors for loop variables.
-    self._loop_exits = None
-    # The gradient loop state.
-    self._grad_state = grad_state
+    self._loop_exits = []
+
+  def _init_from_proto(self, context_def):
+    """Creates a new `WhileContext` from protocol buffer.
+
+    Args:
+      context_def: `WhileContextDef` protocol buffer.
+    """
+    assert isinstance(context_def, control_flow_pb2.WhileContextDef)
+    # Create from context_def.
+    g = ops.get_default_graph()
+    self._name = context_def.context_name
+    self._parallel_iterations = context_def.parallel_iterations
+    self._back_prop = context_def.back_prop
+    self._swap_memory = context_def.swap_memory
+    self._pivot_for_pred = g.as_graph_element(context_def.pivot_for_pred_name)
+    # We use this node to control constants created by the body lambda.
+    self._pivot_for_body = g.as_graph_element(context_def.pivot_for_body_name)
+    # The boolean tensor for loop termination condition. Used in code
+    # generation for gradient computation.
+    self._pivot = g.as_graph_element(context_def.pivot_name)
+    # The list of exit tensors for loop variables.
+    self._loop_exits = [g.as_graph_element(exit_name)
+                        for exit_name in context_def.loop_exit_names]
+    super(WhileContext, self).__init__(values_def=context_def.values_def)
 
   @property
   def name(self):
@@ -1585,12 +1845,12 @@ class WhileContext(ControlFlowContext):
 
   @property
   def back_prop(self):
-    """True iff backprop is enabled for this While loop."""
+    """True iff backprop is enabled for this while loop."""
     return self._back_prop
 
   @property
   def swap_memory(self):
-    """True iff GPU-CPU memory swap is enabled for this While loop."""
+    """True iff GPU-CPU memory swap is enabled for this while loop."""
     return self._swap_memory
 
   @property
@@ -1607,6 +1867,31 @@ class WhileContext(ControlFlowContext):
   def grad_state(self):
     """The gradient loop state."""
     return self._grad_state
+
+  def to_proto(self):
+    """Converts a `WhileContext` to a `WhileContextDef` protocol buffer.
+
+    Returns:
+      A `WhileContextDef` protocol buffer.
+    """
+    context_def = control_flow_pb2.WhileContextDef()
+    context_def.context_name = self.name
+    context_def.parallel_iterations = self._parallel_iterations
+    context_def.back_prop = self._back_prop
+    context_def.swap_memory = self._swap_memory
+    context_def.pivot_for_pred_name = self._pivot_for_pred.name
+    context_def.pivot_for_body_name = self._pivot_for_body.name
+    context_def.pivot_name = self._pivot.name
+    if self._loop_exits:
+      context_def.loop_exit_names.extend([l.name for l in self._loop_exits])
+    context_def.values_def.MergeFrom(super(WhileContext, self)._to_proto())
+
+    return context_def
+
+  @staticmethod
+  def from_proto(context_def):
+    """Returns a `WhileContext` object created from `context_def`."""
+    return WhileContext(context_def=context_def)
 
   def GetWhileContext(self):
     return self
@@ -1630,7 +1915,7 @@ class WhileContext(ControlFlowContext):
         grad_ctxt = grad_ctxt.GetWhileContext()
         if grad_ctxt.grad_state:
           forward_ctxt = _GetWhileContext(val.op)
-          if _IsLoopExit(val.op):
+          if IsLoopExit(val.op):
             forward_ctxt = forward_ctxt.outer_context
           if forward_ctxt == grad_ctxt.grad_state.forward_context:
             real_val = grad_ctxt.grad_state.GetRealValue(val)
@@ -1712,7 +1997,7 @@ class WhileContext(ControlFlowContext):
       self._MaybeAddControlDependency(op)
       for x in op.outputs:
         self._values.add(x.name)
-    if self._outer_context or op.type not in {"Exit", "RefExit"}:
+    if self._outer_context or not IsLoopExit(op):
       op.graph.prevent_fetching(op)
 
   def _MaybeAddControlDependency(self, op):
@@ -1859,11 +2144,13 @@ class WhileContext(ControlFlowContext):
     else:
       value = op.inputs[0]
       if self.outer_context:
-        forward_ctxt = self.grad_state.forward_ctxt
+        forward_ctxt = self.grad_state.forward_context
         forward_ctxt.outer_context.Enter()
         zeros_shape = array_ops.shape_internal(value, optimize=False)
         forward_ctxt.outer_context.Exit()
-        history_zeros_shape = grad_state.AddForwardAccumulator(zeros_shape)
+        outer_grad_state = self.grad_state.outer_grad_state
+        history_zeros_shape = outer_grad_state.AddForwardAccumulator(
+            zeros_shape)
         self.outer_context.Enter()
         real_shape = outer_grad_state.AddBackPropAccumulatedValue(
             history_zeros_shape, zeros_shape)
@@ -1919,7 +2206,7 @@ class WhileContext(ControlFlowContext):
     else:
       values_shape = array_ops.shape_internal(op.inputs[0], optimize=False)[1:]
       values_shape = array_ops.concat(0, [[1], values_shape])
-      values_acc = array_ops.zeros(values_shape)
+      values_acc = array_ops.zeros(values_shape, dtype=values.dtype)
     indices_acc = constant_op.constant([0], indices.dtype)
     shape_acc = None
     if dense_shape is not None:
@@ -1930,8 +2217,7 @@ class WhileContext(ControlFlowContext):
         if self.outer_context: self.outer_context.Exit()
       else:
         shape_acc = array_ops.zeros_like(
-            array_ops.shape_internal(
-                op.inputs[0], optimize=False),
+            array_ops.shape_internal(op.inputs[0], optimize=False),
             optimize=False)
 
     if self.outer_context: self.outer_context.Exit()
@@ -2002,6 +2288,13 @@ class WhileContext(ControlFlowContext):
                            parallel_iterations=self._parallel_iterations,
                            use_input_shape=(shape_invariants is None))
                     for x in real_vars]
+    if self._outer_context:
+      control_pivot = self._outer_context.GetControlPivot().op
+      for var in enter_vars:
+        if _IsLoopConstantEnter(var.op.inputs[0].op):
+          # pylint: disable=protected-access
+          var.op._add_control_input(control_pivot)
+          # pylint: enable=protected-access
     _SetShapeInvariants(real_vars, enter_vars, shape_invariants)
 
     # Fix the control inputs and control flow context of these enter ops.
@@ -2242,6 +2535,7 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
       nest.assert_same_structure(loop_vars, shape_invariants)
 
     context = WhileContext(parallel_iterations, back_prop, swap_memory, name)
+    ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, context)
     result = context.BuildLoop(cond, body, loop_vars, shape_invariants)
     return result
 
@@ -2608,8 +2902,8 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
            % ", ".join([p.name for p in preds])),
           preds_c]
       with ops.control_dependencies([
-          logging_ops.Assert(condition=at_most_one_true_condition,
-                             data=error_msg, summarize=len(preds))]):
+          Assert(condition=at_most_one_true_condition,
+                 data=error_msg, summarize=len(preds))]):
         case_seq = _build_case()
     else:
       case_seq = _build_case()
@@ -2617,15 +2911,15 @@ def case(pred_fn_pairs, default, exclusive=False, name="case"):
     return case_seq
 
 
-ops.RegisterShape("Enter")(common_shapes.unknown_shape)
-ops.RegisterShape("Exit")(common_shapes.unchanged_shape)
-ops.RegisterShape("NextIteration")(common_shapes.unchanged_shape)
-ops.RegisterShape("RefEnter")(common_shapes.unchanged_shape)
-ops.RegisterShape("RefExit")(common_shapes.unchanged_shape)
-ops.RegisterShape("RefNextIteration")(common_shapes.unchanged_shape)
-ops.RegisterShape("ControlTrigger")(common_shapes.no_outputs)
-ops.RegisterShape("NoOp")(common_shapes.no_outputs)
-ops.RegisterShape("Abort")(common_shapes.no_outputs)
+ops.RegisterShape("Enter")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Exit")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("NextIteration")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RefEnter")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RefExit")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RefNextIteration")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ControlTrigger")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("NoOp")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Abort")(common_shapes.call_cpp_shape_fn)
 
 
 @ops.RegisterShape("LoopCond")
@@ -2634,7 +2928,9 @@ def _LoopCondShape(op):
   return [op.inputs[0].get_shape().merge_with(tensor_shape.scalar())]
 
 
-@ops.RegisterShape("Merge")
+ops.RegisterShape("Merge")(common_shapes.call_cpp_shape_fn)
+
+
 def _MergeShape(op):
   """Shape function for the Merge op.
 
@@ -2672,40 +2968,17 @@ def _MergeShape(op):
 ops.RegisterShape("RefMerge")(_MergeShape)
 
 
-@ops.RegisterShape("RefSelect")
-def _RefSelectShape(op):
-  """Shape function for the RefSelect op.
-
-  The RefSelect takes one scalar input and N inputs of arbitrary
-  shapes, and produces one output, which is one of those N inputs.
-
-  This function conservatively assumes that if any of the N inputs is
-  not fully defined, the output shape is unknown. If all of the N
-  inputs have the exact same known shape, the output must have that
-  shape.
-
-  Args:
-    op: A RefSelect Operation.
-
-  Returns:
-    A single-element list containing the Shape of the RefSelect op.
-  """
-  unused_shape = op.inputs[0].get_shape().merge_with(tensor_shape.scalar())
-  first_input_shape = op.inputs[1].get_shape()
-  if first_input_shape.is_fully_defined():
-    for input_ in op.inputs[2:]:
-      input_shape = input_.get_shape()
-      if (not input_shape.is_fully_defined()
-          or not input_shape.is_compatible_with(first_input_shape)):
-        return [tensor_shape.unknown_shape()]
-    return [first_input_shape]
-  else:
-    return [tensor_shape.unknown_shape()]
+ops.RegisterShape("RefSelect")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("RefSwitch")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("Switch")(common_shapes.call_cpp_shape_fn)
 
 
-@ops.RegisterShape("RefSwitch")
-@ops.RegisterShape("Switch")
-def _SwitchShape(op):
-  input_shape = op.inputs[0].get_shape()
-  unused_pred_shape = op.inputs[1].get_shape().merge_with(tensor_shape.scalar())
-  return [input_shape] * 2
+ops.register_proto_function(ops.GraphKeys.COND_CONTEXT,
+                            proto_type=control_flow_pb2.CondContextDef,
+                            to_proto=CondContext.to_proto,
+                            from_proto=CondContext.from_proto)
+
+ops.register_proto_function(ops.GraphKeys.WHILE_CONTEXT,
+                            proto_type=control_flow_pb2.WhileContextDef,
+                            to_proto=WhileContext.to_proto,
+                            from_proto=WhileContext.from_proto)

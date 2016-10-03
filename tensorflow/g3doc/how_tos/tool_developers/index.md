@@ -56,7 +56,7 @@ Here we get a file handle for the path we've passed in to the script
 
 ```python
   if FLAGS.input_binary:
-    graph_def.ParseFromString(f.read)
+    graph_def.ParseFromString(f.read())
   else:
     text_format.Merge(f.read(), graph_def)
 ```

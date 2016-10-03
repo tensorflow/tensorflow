@@ -137,6 +137,125 @@ SquarePlusOne[T:{float, double, int32, int64}](x:T) -> (y:T) {
   EXPECT_EQ(DebugString(result.gdef), e2);
 }
 
+REGISTER_OP("HasDefaultType")
+    .Output("out: T")
+    .Attr("T: {float, double, int32, int64} = DT_FLOAT");
+
+// This verifies that a function using an op before a type attr (with
+// a default) is added, still works.  This is important for backwards
+// compatibilty.
+TEST(TFunc, MissingTypeAttrOld) {
+  auto fdef = FDH::Define(  // Create a FunctionDef using Function::Nodes.
+      // Name
+      "BackCompat",
+      // Args
+      {},
+      // Return values
+      {"y: float"},
+      // Attrs
+      {},
+      // Nodes
+      {// y = HasDefaultType(x), T missing, defaults to float
+       {{"y"}, "HasDefaultType", {}, {}}});
+
+  const char* e = R"P(
+BackCompat() -> (y:float) {
+  y = HasDefaultType()
+}
+)P";
+  EXPECT_EQ(DebugString(fdef), e);
+
+  InstantiationResult result;
+  TF_ASSERT_OK(
+      InstantiateFunction(fdef, InstantiateAttrValueMap{}, GetOpSig, &result));
+  // Should get T=float from Op's default.
+  const char* e2 = R"P(
+() -> (n0:float) {
+  n0 = HasDefaultType[T=float]()
+}
+)P";
+  EXPECT_EQ(result.arg_types, DataTypeVector());
+  EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
+  EXPECT_EQ(DebugString(result.gdef), e2);
+}
+
+TEST(TFunc, MissingTypeAttrNodeDef) {
+  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+      // Name
+      "BackCompat",
+      // Args
+      {},
+      // Return values
+      {"y: float"},
+      // Attrs
+      {},
+      // Nodes
+      {// y = HasDefaultType(x), T missing, defaults to float
+       {{"a"}, "HasDefaultType", {}, {}}},
+      // Returns
+      {{"y", "a:out:0"}});
+
+  const char* e = R"P(
+BackCompat() -> (y:float) {
+  a = HasDefaultType()
+  return y = a:out:0
+}
+)P";
+  EXPECT_EQ(DebugString(fdef), e);
+
+  InstantiationResult result;
+  TF_ASSERT_OK(
+      InstantiateFunction(fdef, InstantiateAttrValueMap{}, GetOpSig, &result));
+  // Should get T=float from Op's default.
+  const char* e2 = R"P(
+() -> (n0:float) {
+  n0 = HasDefaultType[T=float]()
+}
+)P";
+  EXPECT_EQ(result.arg_types, DataTypeVector());
+  EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
+  EXPECT_EQ(DebugString(result.gdef), e2);
+}
+
+TEST(TFunc, NTimesTNodeDef) {
+  // Note that the equivalent FunctionDef using FunctionDef::Node requires
+  // using a _ListToArray to package up the two inputs to AddN as a single
+  // N*T edge.
+  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+      // Name
+      "NTimesT",
+      // Inputs
+      {"x: float", "y: float"},
+      // Outputs
+      {"z: float"},
+      // Attrs
+      {},
+      // Nodes
+      {// a = AddN<N=2>(x, y)
+       {{"a"}, "AddN", {"x", "y"}, {{"T", DT_FLOAT}, {"N", 2}}}},
+      // Returns
+      {{"z", "a:sum:0"}});
+
+  const char* e = R"P(
+NTimesT(x:float, y:float) -> (z:float) {
+  a = AddN[N=2, T=float](x, y)
+  return z = a:sum:0
+}
+)P";
+  EXPECT_EQ(DebugString(fdef), e);
+
+  InstantiationResult result;
+  TF_ASSERT_OK(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result));
+  const char* e2 = R"P(
+(n0:float, n1:float) -> (n2:float) {
+  n2 = AddN[N=2, T=float](n0, n1)
+}
+)P";
+  EXPECT_EQ(result.arg_types, DataTypeVector({DT_FLOAT, DT_FLOAT}));
+  EXPECT_EQ(result.ret_types, DataTypeVector({DT_FLOAT}));
+  EXPECT_EQ(DebugString(result.gdef), e2);
+}
+
 // NOTE: This is the simplest Map op. It takes a f:T->U.
 REGISTER_OP("Map")
     .Input("x: N * T")
@@ -611,6 +730,125 @@ TEST(InstantiateErrors, TypeList_Missing_Arg) {
   InstantiationResult result;
   HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
            "arg[1] is not found");
+}
+
+TEST(InstantiateErrors, NodeDef_TooManyInputs) {
+  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+      // Name
+      "TooManyInputs",
+      // Inputs
+      {"x: float", "y: float"},
+      // Outputs
+      {"z: float"},
+      // Attrs
+      {},
+      // Nodes
+      {// a = AddN<N=2>(x, y, x)
+       {{"a"}, "AddN", {"x", "y", "x"}, {{"T", DT_FLOAT}, {"N", 2}}}},
+      // Returns
+      {{"z", "a:sum:0"}});
+
+  InstantiationResult result;
+  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+           "Expected input[2] == 'x' to be a control input.");
+}
+
+TEST(InstantiateErrors, NodeDef_TooFewInputs) {
+  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+      // Name
+      "TooFewInputs",
+      // Inputs
+      {"x: float", "y: float"},
+      // Outputs
+      {"z: float"},
+      // Attrs
+      {},
+      // Nodes
+      {// a = AddN<N=3>(x, y)
+       {{"a"}, "AddN", {"x", "y"}, {{"T", DT_FLOAT}, {"N", 3}}}},
+      // Returns
+      {{"z", "a:sum:0"}});
+
+  InstantiationResult result;
+  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+           "Attempt to access beyond input size: 2 >= 2");
+}
+
+TEST(InstantiateErrors, NodeDef_TooManyInputsFromArray1) {
+  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+      // Name
+      "TooManyInputsFromArray",
+      // Inputs
+      {"x: float", "y: float"},
+      // Outputs
+      {"z: float"},
+      // Attrs
+      {},
+      // Nodes
+      {// a = _ListToArray(x,y)
+       {{"a"},
+        "_ListToArray",
+        {"x", "y"},
+        {{"N", 2},
+         {"T", DT_FLOAT},
+         {"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}}}},
+       // b = AddN<N=2>(a, y)
+       {{"b"}, "AddN", {"a:output", "y"}, {{"T", DT_FLOAT}, {"N", 2}}}},
+      // Returns
+      {{"z", "a:sum:0"}});
+
+  InstantiationResult result;
+  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+           "Expected input[1] == 'y' to be a control input.");
+}
+
+TEST(InstantiateErrors, NodeDef_TooManyInputsFromArray2) {
+  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+      // Name
+      "TooManyInputsFromArray",
+      // Inputs
+      {"x: float", "y: float"},
+      // Outputs
+      {"z: float"},
+      // Attrs
+      {},
+      // Nodes
+      {// a = _ListToArray(x,y)
+       {{"a"},
+        "_ListToArray",
+        {"x", "y"},
+        {{"N", 2},
+         {"T", DT_FLOAT},
+         {"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}}}},
+       // b = AddN<N=2>(x, a)
+       {{"b"}, "AddN", {"x", "a:output"}, {{"T", DT_FLOAT}, {"N", 2}}}},
+      // Returns
+      {{"z", "a:sum:0"}});
+
+  InstantiationResult result;
+  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+           "Input a:output too long for inputs");
+}
+
+TEST(InstantiateErrors, NodeDef_TypeMismatch) {
+  auto fdef = FDH::Create(  // Create a FunctionDef using NodeDefs.
+      // Name
+      "TypeMismatch",
+      // Inputs
+      {"x: float", "y: int32"},
+      // Outputs
+      {"z: float"},
+      // Attrs
+      {},
+      // Nodes
+      {// a = AddN<N=2>(x, y)
+       {{"a"}, "AddN", {"x", "y"}, {{"T", DT_FLOAT}, {"N", 3}}}},
+      // Returns
+      {{"z", "a:sum:0"}});
+
+  InstantiationResult result;
+  HasError(InstantiateFunction(fdef, kNoAttrs, GetOpSig, &result),
+           "input inputs[1] expected type float != int32, the type of y[0]");
 }
 
 TEST(FunctionCallFrame, Void_Void) {

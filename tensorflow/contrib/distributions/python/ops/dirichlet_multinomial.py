@@ -28,6 +28,21 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
 
 
+_dirichlet_multinomial_prob_note = """
+For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
+that after sampling `n` draws from this Dirichlet Multinomial
+distribution, the number of draws falling in class `j` is `n_j`.  Note that
+different sequences of draws can result in the same counts, thus the
+probability includes a combinatorial coefficient.
+
+Note that input, "counts", must be a non-negative tensor with dtype `dtype`
+and whose shape can be broadcast with `self.alpha`.  For fixed leading
+dimensions, the last dimension represents counts for the corresponding
+Dirichlet Multinomial distribution in `self.alpha`. `counts` is only legal if
+it sums up to `n` and its components are equal to integer values.
+"""
+
+
 class DirichletMultinomial(distribution.Distribution):
   """DirichletMultinomial mixture distribution.
 
@@ -103,8 +118,8 @@ class DirichletMultinomial(distribution.Distribution):
   def __init__(self,
                n,
                alpha,
-               validate_args=True,
-               allow_nan_stats=False,
+               validate_args=False,
+               allow_nan_stats=True,
                name="DirichletMultinomial"):
     """Initialize a batch of DirichletMultinomial distributions.
 
@@ -118,10 +133,10 @@ class DirichletMultinomial(distribution.Distribution):
         `n` with shape broadcastable to `[N1,..., Nm, k]` `m >= 0`.  Defines
         this as a batch of `N1 x ... x Nm` different `k` class Dirichlet
         multinomial distributions.
-      validate_args: Whether to assert valid values for parameters `alpha` and
-        `n`, and `x` in `prob` and `log_prob`.  If `False`, correct behavior is
-        not guaranteed.
-      allow_nan_stats:  Boolean, default `False`.  If `False`, raise an
+      validate_args: `Boolean`, default `False`.  Whether to assert valid
+        values for parameters `alpha` and `n`, and `x` in `prob` and
+        `log_prob`.  If `False`, correct behavior is not guaranteed.
+      allow_nan_stats: `Boolean`, default `True`.  If `False`, raise an
         exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member.  If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
@@ -139,7 +154,7 @@ class DirichletMultinomial(distribution.Distribution):
     ```
 
     """
-    with ops.name_scope(name, values=[n, alpha]):
+    with ops.name_scope(name, values=[n, alpha]) as ns:
       # Broadcasting works because:
       # * The broadcasting convention is to prepend dimensions of size [1], and
       #   we use the last dimension for the distribution, wherease
@@ -159,9 +174,10 @@ class DirichletMultinomial(distribution.Distribution):
                       "alpha_sum": self._alpha_sum,
                       "n": self._n},
           is_continuous=False,
+          is_reparameterized=False,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=name)
+          name=ns)
 
   @property
   def n(self):
@@ -191,6 +207,7 @@ class DirichletMultinomial(distribution.Distribution):
     # Event shape depends only on alpha, not "n".
     return self.alpha.get_shape().with_rank_at_least(1)[-1:]
 
+  @distribution_util.AppendDocstring(_dirichlet_multinomial_prob_note)
   def _log_prob(self, counts):
     counts = self._assert_valid_counts(counts)
     ordered_prob = (special_math_ops.lbeta(self.alpha + counts) -
@@ -199,6 +216,7 @@ class DirichletMultinomial(distribution.Distribution):
         self.n, counts)
     return log_prob
 
+  @distribution_util.AppendDocstring(_dirichlet_multinomial_prob_note)
   def _prob(self, counts):
     return math_ops.exp(self._log_prob(counts))
 
@@ -206,14 +224,31 @@ class DirichletMultinomial(distribution.Distribution):
     normalized_alpha = self.alpha / array_ops.expand_dims(self.alpha_sum, -1)
     return array_ops.expand_dims(self.n, -1) * normalized_alpha
 
+  @distribution_util.AppendDocstring(
+      """The variance for each batch member is defined as the following:
+
+      ```
+      Var(X_j) = n * alpha_j / alpha_0 * (1 - alpha_j / alpha_0) *
+      (n + alpha_0) / (1 + alpha_0)
+      ```
+
+      where `alpha_0 = sum_j alpha_j`.
+
+      The covariance between elements in a batch is defined as:
+
+      ```
+      Cov(X_i, X_j) = -n * alpha_i * alpha_j / alpha_0 ** 2 *
+      (n + alpha_0) / (1 + alpha_0)
+      ```
+      """)
   def _variance(self):
     alpha_sum = array_ops.expand_dims(self.alpha_sum, -1)
     normalized_alpha = self.alpha / alpha_sum
     variance = -math_ops.batch_matmul(
         array_ops.expand_dims(normalized_alpha, -1),
         array_ops.expand_dims(normalized_alpha, -2))
-    variance = array_ops.batch_matrix_set_diag(
-        variance, normalized_alpha * (1. - normalized_alpha))
+    variance = array_ops.matrix_set_diag(variance, normalized_alpha *
+                                         (1. - normalized_alpha))
     shared_factor = (self.n * (alpha_sum + self.n) /
                      (alpha_sum + 1) * array_ops.ones_like(self.alpha))
     variance *= array_ops.expand_dims(shared_factor, -1)
@@ -247,44 +282,3 @@ class DirichletMultinomial(distribution.Distribution):
     return control_flow_ops.with_dependencies(
         [check_ops.assert_non_negative(n),
          distribution_util.assert_integer_form(n)], n)
-
-
-_prob_note = """
-
-  For each batch of counts `[n_1,...,n_k]`, `P[counts]` is the probability
-  that after sampling `n` draws from this Dirichlet Multinomial
-  distribution, the number of draws falling in class `j` is `n_j`.  Note that
-  different sequences of draws can result in the same counts, thus the
-  probability includes a combinatorial coefficient.
-
-  Note that input, "counts", must be a non-negative tensor with dtype `dtype`
-  and whose shape can be broadcast with `self.alpha`.  For fixed leading
-  dimensions, the last dimension represents counts for the corresponding
-  Dirichlet Multinomial distribution in `self.alpha`. `counts` is only legal if
-  it sums up to `n` and its components are equal to integer values.
-"""
-distribution_util.append_class_fun_doc(DirichletMultinomial.log_prob,
-                                       doc_str=_prob_note)
-distribution_util.append_class_fun_doc(DirichletMultinomial.prob,
-                                       doc_str=_prob_note)
-
-distribution_util.append_class_fun_doc(DirichletMultinomial.variance,
-                                       doc_str="""
-
-  The variance for each batch member is defined as the following:
-
-  ```
-  Var(X_j) = n * alpha_j / alpha_0 * (1 - alpha_j / alpha_0) *
-    (n + alpha_0) / (1 + alpha_0)
-  ```
-
-  where `alpha_0 = sum_j alpha_j`.
-
-  The covariance between elements in a batch is defined as:
-
-  ```
-  Cov(X_i, X_j) = -n * alpha_i * alpha_j / alpha_0 ** 2 *
-    (n + alpha_0) / (1 + alpha_0)
-  ```
-
-""")

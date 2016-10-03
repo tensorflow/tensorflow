@@ -118,6 +118,7 @@ py_library(
 tf_cc_test(
     name = "quantize_down_and_shrink_range_op_test",
     size = "small",
+    srcs = ["quantize_down_and_shrink_range_op_test.cc"],
     deps = [
         ":quantized_ops",
         "//tensorflow/contrib/quantization:cc_array_ops",
@@ -135,6 +136,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "quantization_utils_test",
+    srcs = ["quantization_utils_test.cc"],
     deps = [
         ":quantized_ops",
         "//tensorflow/contrib/quantization:cc_array_ops",
@@ -154,6 +156,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "quantized_activation_ops_test",
+    srcs = ["quantized_activation_ops_test.cc"],
     deps = [
         ":quantized_ops",
         "//tensorflow/contrib/quantization:cc_array_ops",
@@ -172,6 +175,7 @@ tf_cc_test(
 tf_cc_test(
     name = "quantized_bias_add_op_test",
     size = "small",
+    srcs = ["quantized_bias_add_op_test.cc"],
     deps = [
         ":quantized_ops",
         "//tensorflow/contrib/quantization:cc_array_ops",
@@ -190,6 +194,7 @@ tf_cc_test(
 tf_cc_test(
     name = "quantized_conv_ops_test",
     size = "small",
+    srcs = ["quantized_conv_ops_test.cc"],
     deps = [
         ":quantized_ops",
         "//tensorflow/contrib/quantization:cc_array_ops",
@@ -208,6 +213,7 @@ tf_cc_test(
 tf_cc_test(
     name = "quantize_op_test",
     size = "small",
+    srcs = ["quantize_op_test.cc"],
     deps = [
         ":quantized_ops",
         "//tensorflow/contrib/quantization:cc_array_ops",
@@ -226,6 +232,7 @@ tf_cc_test(
 tf_cc_test(
     name = "quantized_matmul_op_test",
     size = "small",
+    srcs = ["quantized_matmul_op_test.cc"],
     deps = [
         ":quantized_ops",
         "//tensorflow/contrib/quantization:cc_array_ops",
@@ -244,6 +251,7 @@ tf_cc_test(
 tf_cc_test(
     name = "quantized_pooling_ops_test",
     size = "small",
+    srcs = ["quantized_pooling_ops_test.cc"],
     deps = [
         ":quantized_ops",
         "//tensorflow/contrib/quantization:cc_array_ops",
@@ -262,6 +270,7 @@ tf_cc_test(
 tf_cc_test(
     name = "quantized_concat_op_test",
     size = "small",
+    srcs = ["quantized_concat_op_test.cc"],
     deps = [
         ":quantized_ops",
         "//tensorflow/contrib/quantization:cc_array_ops",
@@ -282,6 +291,7 @@ tf_cc_test(
 tf_cc_test(
     name = "quantized_batch_norm_op_test",
     size = "small",
+    srcs = ["quantized_batch_norm_op_test.cc"],
     deps = [
         ":quantized_ops",
         "//tensorflow/contrib/quantization:cc_array_ops",

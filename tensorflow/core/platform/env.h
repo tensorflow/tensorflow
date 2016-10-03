@@ -141,6 +141,17 @@ class Env {
   /// Original contents of *results are dropped.
   Status GetChildren(const string& dir, std::vector<string>* result);
 
+  /// \brief Returns true if the path matches the given pattern. The wildcards
+  /// allowed in pattern are described in FileSystem::GetMatchingPaths.
+  virtual bool MatchPath(const string& path, const string& pattern) = 0;
+
+  /// \brief Given a pattern, stores in *results the set of paths that matches
+  /// that pattern. *results is cleared.
+  ///
+  /// More details about `pattern` in FileSystem::GetMatchingPaths.
+  virtual Status GetMatchingPaths(const string& pattern,
+                                  std::vector<string>* results);
+
   /// Deletes the named file.
   Status DeleteFile(const string& fname);
 
@@ -158,7 +169,17 @@ class Env {
   Status DeleteRecursively(const string& dirname, int64* undeleted_files,
                            int64* undeleted_dirs);
 
-  /// Creates the specified directory.
+  /// \brief Creates the specified directory and all the necessary
+  /// subdirectories. Typical return codes.
+  ///  * OK - successfully created the directory and sub directories, even if
+  ///         they were already created.
+  ///  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
+  Status RecursivelyCreateDir(const string& dirname);
+
+  /// \brief Creates the specified directory. Typical return codes
+  ///  * OK - successfully created the directory.
+  ///  * ALREADY_EXISTS - directory already exists.
+  ///  * PERMISSION_DENIED - dirname is not writable.
   Status CreateDir(const string& dirname);
 
   /// Deletes the specified directory.
@@ -241,11 +262,8 @@ class Env {
                                       void** symbol) = 0;
 
  private:
-  /// No copying allowed
-  Env(const Env&);
-  void operator=(const Env&);
-
   std::unique_ptr<FileSystemRegistry> file_system_registry_;
+  TF_DISALLOW_COPY_AND_ASSIGN(Env);
 };
 
 /// \brief An implementation of Env that forwards all calls to another Env.
@@ -273,6 +291,10 @@ class EnvWrapper : public Env {
   Status RegisterFileSystem(const string& scheme,
                             FileSystemRegistry::Factory factory) override {
     return target_->RegisterFileSystem(scheme, factory);
+  }
+
+  bool MatchPath(const string& path, const string& pattern) override {
+    return target_->MatchPath(path, pattern);
   }
 
   uint64 NowMicros() override { return target_->NowMicros(); }
@@ -309,9 +331,7 @@ class Thread {
   virtual ~Thread();
 
  private:
-  /// No copying allowed
-  Thread(const Thread&);
-  void operator=(const Thread&);
+  TF_DISALLOW_COPY_AND_ASSIGN(Thread);
 };
 
 /// \brief Options to configure a Thread.
@@ -333,10 +353,19 @@ Status ReadFileToString(Env* env, const string& fname, string* data);
 Status WriteStringToFile(Env* env, const string& fname,
                          const StringPiece& data);
 
+/// Write binary representation of "proto" to the named file.
+Status WriteBinaryProto(Env* env, const string& fname,
+                        const ::tensorflow::protobuf::MessageLite& proto);
+
 /// Reads contents of named file and parse as binary encoded proto data
 /// and store into `*proto`.
 Status ReadBinaryProto(Env* env, const string& fname,
                        ::tensorflow::protobuf::MessageLite* proto);
+
+/// Read contents of named file and parse as text encoded proto data
+/// and store into `*proto`.
+Status ReadTextProto(Env* env, const string& fname,
+                     ::tensorflow::protobuf::Message* proto);
 
 namespace register_file_system {
 

@@ -11,7 +11,7 @@ A default `Graph` is always registered, and accessible by calling
 To add an operation to the default graph, simply call one of the functions
 that defines a new `Operation`:
 
-```
+```python
 c = tf.constant(4.0)
 assert c.graph is tf.get_default_graph()
 ```
@@ -732,6 +732,13 @@ with tf.Graph().as_default() as g:
 
 
 #### Other Methods
+- - -
+
+#### `tf.Graph.building_function` {#Graph.building_function}
+
+Returns True iff this graph represents a function.
+
+
 - - -
 
 #### `tf.Graph.colocate_with(op, ignore_existing=False)` {#Graph.colocate_with}

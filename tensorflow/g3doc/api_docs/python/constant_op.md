@@ -23,7 +23,7 @@ all elements set to zero.
 For example:
 
 ```python
-tf.zeros([3, 4], int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+tf.zeros([3, 4], tf.int32) ==> [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
 ```
 
 ##### Args:
@@ -84,7 +84,7 @@ elements set to 1.
 For example:
 
 ```python
-tf.ones([2, 3], int32) ==> [[1, 1, 1], [1, 1, 1]]
+tf.ones([2, 3], tf.int32) ==> [[1, 1, 1], [1, 1, 1]]
 ```
 
 ##### Args:
@@ -242,7 +242,8 @@ tf.linspace(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
     First entry in the range.
 *  <b>`stop`</b>: A `Tensor`. Must have the same type as `start`.
     Last entry in the range.
-*  <b>`num`</b>: A `Tensor` of type `int32`. Number of values to generate.
+*  <b>`num`</b>: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+    Number of values to generate.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
@@ -253,23 +254,31 @@ tf.linspace(10.0, 12.0, 3, name="linspace") => [ 10.0  11.0  12.0]
 
 - - -
 
-### `tf.range(start, limit=None, delta=1, name='range')` {#range}
+### `tf.range(start, limit=None, delta=1, dtype=None, name='range')` {#range}
 
-Creates a sequence of integers.
+Creates a sequence of numbers.
 
-Creates a sequence of integers that begins at `start` and extends by
+Creates a sequence of numbers that begins at `start` and extends by
 increments of `delta` up to but not including `limit`.
+
+The dtype of the resulting tensor is inferred from the inputs unless
+it is provided explicitly.
 
 Like the Python builtin `range`, `start` defaults to 0, so that
 `range(n) = range(0, n)`.
 
 For example:
 
-```
+```python
 # 'start' is 3
 # 'limit' is 18
 # 'delta' is 3
 tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
+
+# 'start' is 3
+# 'limit' is 1
+# 'delta' is -0.5
+tf.range(start, limit, delta) ==> [3, 2.5, 2, 1.5]
 
 # 'limit' is 5
 tf.range(limit) ==> [0, 1, 2, 3, 4]
@@ -278,17 +287,20 @@ tf.range(limit) ==> [0, 1, 2, 3, 4]
 ##### Args:
 
 
-*  <b>`start`</b>: A 0-D (scalar) of type `int32`. First entry in sequence.
-    Defaults to 0.
-*  <b>`limit`</b>: A 0-D (scalar) of type `int32`. Upper limit of sequence,
-    exclusive.
-*  <b>`delta`</b>: A 0-D `Tensor` (scalar) of type `int32`. Optional. Default is 1.
-    Number that increments `start`.
-*  <b>`name`</b>: A name for the operation (optional).
+*  <b>`start`</b>: A 0-D `Tensor` (scalar). Acts as first entry in the range if
+    `limit` is not None; otherwise, acts as range limit and first entry
+    defaults to 0.
+*  <b>`limit`</b>: A 0-D `Tensor` (scalar). Upper limit of sequence,
+    exclusive. If None, defaults to the value of `start` while the first
+    entry of the range defaults to 0.
+*  <b>`delta`</b>: A 0-D `Tensor` (scalar). Number that increments
+    `start`. Defaults to 1.
+*  <b>`dtype`</b>: The type of the elements of the resulting tensor.
+*  <b>`name`</b>: A name for the operation. Defaults to "range".
 
 ##### Returns:
 
-  An 1-D `int32` `Tensor`.
+  An 1-D `Tensor` of type `dtype`.
 
 
 
@@ -560,6 +572,26 @@ Example:
 
   samples = tf.random_gamma([30], [[1.],[3.],[5.]], beta=[[3., 4.]])
   # samples has shape [30, 3, 2], with 30 samples each of 3x2 distributions.
+
+  Note that for small alpha values, there is a chance you will draw a value of
+  exactly 0, which gets worse for lower-precision dtypes, even though zero is
+  not in the support of the gamma distribution.
+
+  Relevant cdfs (~chance you will draw a exactly-0 value):
+  ```
+    stats.gamma(.01).cdf(np.finfo(np.float16).tiny)
+        0.91269738769897879
+    stats.gamma(.01).cdf(np.finfo(np.float32).tiny)
+        0.41992668622045726
+    stats.gamma(.01).cdf(np.finfo(np.float64).tiny)
+        0.00084322740680686662
+    stats.gamma(.35).cdf(np.finfo(np.float16).tiny)
+        0.037583276135263931
+    stats.gamma(.35).cdf(np.finfo(np.float32).tiny)
+        5.9514895726818067e-14
+    stats.gamma(.35).cdf(np.finfo(np.float64).tiny)
+        2.3529843400647272e-108
+  ```
 
 ##### Args:
 

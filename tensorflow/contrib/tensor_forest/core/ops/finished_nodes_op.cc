@@ -67,6 +67,9 @@ void Evaluate(const EvaluateParams& params, mutex* mutex, int32 start,
 
   for (int32 i = start; i < end; i++) {
     const int32 leaf = internal::SubtleMustCopy(leaves(i));
+    if (leaf == -1) {
+      continue;
+    }
     if (!FastBoundsCheck(leaf, node_map.size())) {
       LOG(ERROR) << "leaf " << leaf << " not in valid range.";
     }

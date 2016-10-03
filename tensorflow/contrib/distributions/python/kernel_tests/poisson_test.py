@@ -39,7 +39,8 @@ class PoissonTest(tf.test.TestCase):
     for lam in invalid_lams:
       with self.test_session():
         with self.assertRaisesOpError("Condition x > 0"):
-          poisson = tf.contrib.distributions.Poisson(lam=lam)
+          poisson = tf.contrib.distributions.Poisson(
+              lam=lam, validate_args=True)
           poisson.lam.eval()
 
   def testPoissonLogPmf(self):
@@ -62,7 +63,7 @@ class PoissonTest(tf.test.TestCase):
       batch_size = 6
       lam = tf.constant([3.0] * batch_size)
       x = [2.5, 3.2, 4.3, 5.1, 6., 7.]
-      poisson = tf.contrib.distributions.Poisson(lam=lam)
+      poisson = tf.contrib.distributions.Poisson(lam=lam, validate_args=True)
 
       # Non-integer
       with self.assertRaisesOpError("x has non-integer components"):

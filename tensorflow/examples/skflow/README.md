@@ -12,7 +12,6 @@ Some examples use the `pandas` library for data processing (`sudo pip install pa
 * [Deep Neural Network Regression with Boston Data](boston.py)
 * [Convolutional Neural Networks with Digits Data](digits.py)
 * [Deep Neural Network Classification with Iris Data](iris.py)
-* [Deep Neural Network Autoencoder with Iris Data](dnn_autoencoder_iris.py)
 * [Building A Custom Model](iris_custom_model.py)
 * [Accessing Weights and Biases in A Custom Model](mnist_weights.py)
 * [Building A Model Using Different GPU Configurations](iris_run_config.py)

@@ -81,14 +81,14 @@ module Categorizer {
       if (tags.length === 0) {
         return [];
       }
-      var sortedTags = tags.slice().sort(VZ.Sorting.compareTagNames);
-      var categories: Category[] = [];
-      var currentCategory = {
+      let sortedTags = tags.slice().sort(VZ.Sorting.compareTagNames);
+      let categories: Category[] = [];
+      let currentCategory = {
         name: extractor(sortedTags[0]),
         tags: [],
       };
       sortedTags.forEach((t: string) => {
-        var topLevel = extractor(t);
+        let topLevel = extractor(t);
         if (currentCategory.name !== topLevel) {
           categories.push(currentCategory);
           currentCategory = {
@@ -104,7 +104,7 @@ module Categorizer {
   }
 
   function splitCategorizer(r: RegExp): Categorizer {
-    var extractor = (t: string) => {
+    let extractor = (t: string) => {
       return t.split(r)[0];
     };
     return extractorToCategorizer(extractor);
@@ -116,8 +116,8 @@ module Categorizer {
   }
 
   export function defineCategory(ruledef: string): CategoryDefinition {
-    var r = new RegExp(ruledef);
-    var f = function(tag: string): boolean {
+    let r = new RegExp(ruledef);
+    let f = function(tag: string): boolean {
       return r.test(tag);
     };
     return { name: ruledef, matches: f };
@@ -126,25 +126,25 @@ module Categorizer {
   export function _categorizer(
       rules: CategoryDefinition[], fallback: Categorizer) {
     return function(tags: string[]): Category[] {
-      var remaining: d3.Set = d3.set(tags);
-      var userSpecified = rules.map((def: CategoryDefinition) => {
-        var tags: string[] = [];
+      let remaining: d3.Set = d3.set(tags);
+      let userSpecified = rules.map((def: CategoryDefinition) => {
+        let tags: string[] = [];
         remaining.forEach((t: string) => {
           if (def.matches(t)) {
             tags.push(t);
           }
         });
-        var cat = {name: def.name, tags: tags.sort(VZ.Sorting.compareTagNames)};
+        let cat = {name: def.name, tags: tags.sort(VZ.Sorting.compareTagNames)};
         return cat;
       });
-      var defaultCategories = fallback(remaining.values());
+      let defaultCategories = fallback(remaining.values());
       return userSpecified.concat(defaultCategories);
     };
   }
 
   export function categorizer(s: CustomCategorization): Categorizer {
-    var rules = s.categoryDefinitions.map(defineCategory);
-    var fallback = fallbackCategorizer(s.fallbackCategorizer);
+    let rules = s.categoryDefinitions.map(defineCategory);
+    let fallback = fallbackCategorizer(s.fallbackCategorizer);
     return _categorizer(rules, fallback);
   };
 }

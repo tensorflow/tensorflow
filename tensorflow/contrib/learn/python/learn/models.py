@@ -22,8 +22,6 @@ from __future__ import print_function
 import functools
 
 from tensorflow.contrib import rnn as contrib_rnn
-from tensorflow.contrib.learn.python.learn.ops import autoencoder_ops
-from tensorflow.contrib.learn.python.learn.ops import dnn_ops
 from tensorflow.contrib.learn.python.learn.ops import losses_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -177,66 +175,8 @@ def logistic_regression(x,
                                          class_weight=class_weight)
 
 
-def get_dnn_model(hidden_units, target_predictor_fn, dropout=None):
-  """Returns a function that creates a DNN TensorFlow subgraph.
-
-  Args:
-    hidden_units: List of values of hidden units for layers.
-    target_predictor_fn: Function that will predict target from input
-                         features. This can be logistic regression,
-                         linear regression or any other model,
-                         that takes x, y and returns predictions and loss
-                         tensors.
-    dropout: When not none, causes dropout regularization to be used,
-             with the specified probability of removing a given coordinate.
-
-  Returns:
-    A function that creates the subgraph.
-  """
-
-  def dnn_estimator(x, y):
-    """DNN estimator with target predictor function on top."""
-    layers = dnn_ops.dnn(x, hidden_units, dropout=dropout)
-    return target_predictor_fn(layers, y)
-
-  return dnn_estimator
-
-
-def get_autoencoder_model(hidden_units, target_predictor_fn,
-                          activation, add_noise=None, dropout=None):
-  """Returns a function that creates a Autoencoder TensorFlow subgraph.
-
-  Args:
-    hidden_units: List of values of hidden units for layers.
-    target_predictor_fn: Function that will predict target from input
-                         features. This can be logistic regression,
-                         linear regression or any other model,
-                         that takes x, y and returns predictions and loss
-                         tensors.
-    activation: activation function used to map inner latent layer onto
-                reconstruction layer.
-    add_noise: a function that adds noise to tensor_in,
-           e.g. def add_noise(x):
-                    return(x + np.random.normal(0, 0.1, (len(x), len(x[0]))))
-    dropout: When not none, causes dropout regularization to be used,
-             with the specified probability of removing a given coordinate.
-
-  Returns:
-      A function that creates the subgraph.
-  """
-  def dnn_autoencoder_estimator(x):
-    """Autoencoder estimator with target predictor function on top."""
-    encoder, decoder = autoencoder_ops.dnn_autoencoder(
-        x, hidden_units, activation,
-        add_noise=add_noise, dropout=dropout)
-    return encoder, decoder, target_predictor_fn(x, decoder)
-  return dnn_autoencoder_estimator
-
-
 ## This will be in TensorFlow 0.7.
 ## TODO(ilblackdragon): Clean this up when it's released
-
-
 def _reverse_seq(input_seq, lengths):
   """Reverse a list of Tensors up to specified lengths.
 
@@ -395,7 +335,7 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
           fw_cell, attn_length=attn_length, attn_size=attn_size,
           attn_vec_size=attn_vec_size, state_is_tuple=False)
         bw_cell = contrib_rnn.AttentionCellWrapper(
-          fw_cell, attn_length=attn_length, attn_size=attn_size,
+          bw_cell, attn_length=attn_length, attn_size=attn_size,
           attn_vec_size=attn_vec_size, state_is_tuple=False)
       rnn_fw_cell = nn.rnn_cell.MultiRNNCell([fw_cell] * num_layers,
                                              state_is_tuple=False)

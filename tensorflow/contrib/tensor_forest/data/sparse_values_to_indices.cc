@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,12 +20,15 @@
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
+
+using shape_inference::InferenceContext;
 
 using tensorforest::CheckTensorBounds;
 using tensorforest::Initialize;
@@ -34,11 +37,12 @@ int64 Convert(const string& in, int32 offset_bits) {
   std::size_t hashed = std::hash<string>()(in);
   // Mask off the offset_bits msb's
   int64 mask = static_cast<int64>(pow(2, offset_bits) - 1)
-               << (32 - offset_bits);
+               << (26 - offset_bits);
   // TODO(gilberth): Use int64 to store feature indices in tensor_forest.
-  // Only use the lower 31 bits because that's what we currently store as
-  // feature indices.
-  mask = ~mask & 0x7FFFFFFF;
+  // Only use the lower 26 bits because we only store 32 and need to keep
+  // max number of elements down under 2^41 when comined with other
+  // features.
+  mask = ~mask & 0x03FFFFFF;
   return static_cast<int64>(hashed & mask);
 }
 
@@ -51,7 +55,11 @@ void Evaluate(const Tensor& sparse_indices, const Tensor& sparse_values,
 
   for (int32 i = start; i < end; ++i) {
     out_data(i, 0) = indices(i, 0);
-    out_data(i, 1) = Convert(values(i), offset_bits) + offset;
+    int64 c = Convert(values(i), offset_bits);
+    int64 ind = c + offset;
+    CHECK_LT(ind, kint32max) << "convert is more than int32: " << c << ", "
+                             << offset;
+    out_data(i, 1) = ind;
   }
 }
 
@@ -62,7 +70,11 @@ REGISTER_OP("SparseValuesToIndices")
     .Input("offset: int64")
     .Output("output_indices: int64")
     .Output("output_values: float")
-
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      c->set_output(1, c->input(1));
+      return Status::OK();
+    })
     .Doc(R"doc(
    Converts string values to sparse indices in a bit vector.
 

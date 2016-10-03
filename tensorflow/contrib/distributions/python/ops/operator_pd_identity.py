@@ -44,7 +44,7 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
   performance.
   """
 
-  def __init__(self, shape, dtype, verify_pd=True, name='OperatorPDIdentity'):
+  def __init__(self, shape, dtype, verify_pd=True, name="OperatorPDIdentity"):
     """Initialize an `OperatorPDIdentity`.
 
     Args:
@@ -58,21 +58,21 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
 
     # Grab static shape if available now.
     with ops.name_scope(name):
-      with ops.name_scope('init', values=[shape]):
+      with ops.name_scope("init", values=[shape]):
         self._dtype = dtypes.as_dtype(dtype)
         self._verify_pd = verify_pd
         self._name = name
 
         # Store the static shape (if possible) right now before adding the
         # asserts, since the asserts prevent .constant_value from working.
-        shape = ops.convert_to_tensor(shape, name='shape')
+        shape = ops.convert_to_tensor(shape, name="shape")
         self._get_shape = tensor_shape.TensorShape(
             tensor_util.constant_value(shape))
         self._shape_arg = self._check_shape(shape)
 
   def _check_shape(self, shape):
     """Check that the init arg `shape` defines a valid operator."""
-    shape = ops.convert_to_tensor(shape, name='shape')
+    shape = ops.convert_to_tensor(shape, name="shape")
     if not self._verify_pd:
       return shape
 
@@ -103,22 +103,22 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
     # real Operator.
     if self.dtype != x.dtype:
       raise TypeError(
-          'Expected argument "x" to have same dtype as this operator (%s).  '
-          'Found: %s' % (self.dtype, x.dtype))
+          "Expected argument \"x\" to have same dtype as this operator (%s).  "
+          "Found: %s" % (self.dtype, x.dtype))
 
     x_shape = x.get_shape()
     self_shape = self.get_shape()
     found_msg = (
-        'Found: operator.shape = %s,  x.shape = %s' % (self_shape, x_shape))
+        "Found: operator.shape = %s,  x.shape = %s" % (self_shape, x_shape))
     if x_shape.ndims is not None and self_shape.ndims is not None:
       if x_shape.ndims != self_shape.ndims:
         raise ValueError(
-            'Expected argument "x" to have same tensor rank as this operator.  '
-            + found_msg)
+            "Expected argument \"x\" to have same tensor rank as this "
+            "operator. " + found_msg)
       if x_shape.is_fully_defined() and self_shape.is_fully_defined():
         if x_shape[-2] != self_shape[-1]:
           raise ValueError(
-              'Incompatible shapes for matrix-matrix operation.  ' + found_msg)
+              "Incompatible shapes for matrix-matrix operation.  " + found_msg)
 
   @property
   def name(self):
@@ -137,9 +137,9 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
 
   def _add_to_tensor(self, mat):
     # Add to a tensor in O(k) time!
-    mat_diag = array_ops.batch_matrix_diag_part(mat)
+    mat_diag = array_ops.matrix_diag_part(mat)
     new_diag = constant_op.constant(1, dtype=self.dtype) + mat_diag
-    return array_ops.batch_matrix_set_diag(mat, new_diag)
+    return array_ops.matrix_set_diag(mat, new_diag)
 
   def _inv_quadratic_form_on_vectors(self, x):
     self._check_x(x)
@@ -182,7 +182,7 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
 
   def _batch_matmul(self, x, transpose_x=False):
     if transpose_x:
-      x = array_ops.batch_matrix_transpose(x)
+      x = array_ops.matrix_transpose(x)
     self._check_x(x)
     return x
 
@@ -199,7 +199,7 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
 
   def _to_dense(self):
     diag = array_ops.ones(self.vector_shape(), dtype=self.dtype)
-    dense = array_ops.batch_matrix_diag(diag)
+    dense = array_ops.matrix_diag(diag)
     dense.set_shape(self.get_shape())
     return dense
 

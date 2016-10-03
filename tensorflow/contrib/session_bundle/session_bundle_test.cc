@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -119,6 +119,18 @@ void BasicTest(const string& export_path) {
   SessionBundle bundle;
   TF_ASSERT_OK(LoadSessionBundleFromPath(options, export_path, &bundle));
   CheckSessionBundle(export_path, bundle);
+}
+
+// Test for resource leaks when loading and unloading large numbers of
+// SessionBundles. Concurrent with adding this test, we had a leak where the
+// TensorFlow Session was not being closed, which leaked memory.
+// TODO(b/31711147): Increase the SessionBundle ResourceLeakTest iterations and
+// move outside of the test suite.
+TEST(LoadSessionBundleFromPath, ResourceLeakTest) {
+  const string export_path = test_util::TestSrcDirPath(kExportPath);
+  for (int i = 0; i < 100; i++) {
+    BasicTest(export_path);
+  }
 }
 
 TEST(LoadSessionBundleFromPath, BasicTensorFlowContrib) {
@@ -295,8 +307,7 @@ TEST_F(SessionBundleTest, AssetFileAny_IncorrectType) {
   EXPECT_FALSE(status_.ok());
   EXPECT_TRUE(
       StringPiece(status_.error_message())
-          .contains(
-              "Expected asset Any type_url for: tensorflow.serving.AssetFile"))
+          .contains("Expected Any type_url for: tensorflow.serving.AssetFile"))
       << status_.error_message();
 }
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 
 #include <limits>
+#include <map>
 #include <unordered_map>
 
 #include "grpc++/create_channel.h"
@@ -23,24 +24,22 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
 namespace {
-RE2* kTargetRE = new RE2("^/job:([^/]+)/replica:([0-9]+)/task:([0-9]+)$");
-RE2* kHostPortRE = new RE2("([^:/]+):(\\d+)");
-RE2* kSparseHostPortRE = new RE2("(\\d+):([^:/]+):(\\d+)");
 
-string MakeAddress(const string& job, int replica, int task) {
-  return strings::StrCat("/job:", job, "/replica:", replica, "/task:", task);
+string MakeAddress(const string& job, int task) {
+  return strings::StrCat("/job:", job, "/replica:0/task:", task);
 }
 
 }  // namespace
@@ -53,44 +52,43 @@ SharedGrpcChannelPtr NewHostPortGrpcChannel(const string& target) {
       target, ::grpc::InsecureChannelCredentials(), args);
 }
 
+namespace {
+Status ValidateHostPortPair(const string& host_port) {
+  uint32 port;
+  std::vector<string> parts = str_util::Split(host_port, ':');
+  // Must be host:port, port must be a number, host must not contain a '/'.
+  if (parts.size() != 2 || !strings::safe_strtou32(parts[1], &port) ||
+      parts[0].find("/") != string::npos) {
+    return errors::InvalidArgument("Could not interpret \"", host_port,
+                                   "\" as a host-port pair.");
+  }
+  return Status::OK();
+}
+}  // namespace
+
 Status GrpcChannelSpec::AddHostPortsJob(const string& job_id,
-                                        const std::vector<string>& host_ports,
-                                        int tasks_per_replica) {
+                                        const std::vector<string>& host_ports) {
+  std::map<int, string> host_ports_map;
+  for (int i = 0; i < host_ports.size(); ++i) {
+    host_ports_map[i] = host_ports[i];
+  }
+  return AddHostPortsJob(job_id, host_ports_map);
+}
+
+Status GrpcChannelSpec::AddHostPortsJob(
+    const string& job_id, const std::map<int, string>& host_ports) {
   if (!job_ids_.insert(job_id).second) {
     return errors::InvalidArgument(
         "Duplicate job ID in cluster specification: ", job_id);
   }
-  HostPortsJob job;
-  job.job_id = job_id;
-  for (const string& host_port : host_ports) {
-    string host;
-    int port;
-    if (!RE2::FullMatch(host_port, *kHostPortRE, &host, &port)) {
-      return errors::InvalidArgument("Could not interpret \"", host_port,
-                                     "\" as a host-port pair.");
-    }
+  for (const auto& id_host_port : host_ports) {
+    TF_RETURN_IF_ERROR(ValidateHostPortPair(id_host_port.second));
   }
-  job.host_ports = host_ports;
-  job.tasks_per_replica = tasks_per_replica;
-  host_ports_jobs_.push_back(job);
+  host_ports_jobs_.emplace_back(job_id, host_ports);
   return Status::OK();
 }
 
-GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& spec,
-                                      ChannelCreationFunction channel_func) {
-  const int num_jobs = spec.host_ports_jobs().size();
-  if (!num_jobs) {
-    LOG(ERROR) << "Empty channel spec.";
-    return nullptr;
-  }
-  std::vector<GrpcChannelCache*> caches;
-  caches.reserve(num_jobs);
-  for (const GrpcChannelSpec::HostPortsJob& job : spec.host_ports_jobs()) {
-    caches.push_back(NewHostPortsGrpcChannelCache(
-        job.job_id, job.host_ports, job.tasks_per_replica, channel_func));
-  }
-  return caches.size() == 1 ? caches[0] : NewMultiGrpcChannelCache(caches);
-}
+namespace {
 
 // GrpcChannelCache that caches results to FindWorkerChannel() calls.
 class CachingGrpcChannelCache : public GrpcChannelCache {
@@ -188,114 +186,50 @@ class MultiGrpcChannelCache : public CachingGrpcChannelCache {
   std::unordered_map<string, GrpcChannelCache*> target_caches_ GUARDED_BY(mu_);
 };
 
-GrpcChannelCache* NewMultiGrpcChannelCache(
-    const std::vector<GrpcChannelCache*>& caches) {
-  return new MultiGrpcChannelCache(caches);
-}
-
-class HostPortsGrpcChannelCache : public CachingGrpcChannelCache {
+class SparseGrpcChannelCache : public CachingGrpcChannelCache {
  public:
-  HostPortsGrpcChannelCache(const string& job_id,
-                            const std::vector<string>& host_ports,
-                            int tasks_per_replica,
-                            ChannelCreationFunction channel_func)
+  SparseGrpcChannelCache(const string& job_id,
+                         const std::map<int, string>& host_ports,
+                         ChannelCreationFunction channel_func)
       : job_id_(job_id),
-        host_ports_(BuildDenseHostPortsList(host_ports, tasks_per_replica)),
-        tasks_per_replica_(tasks_per_replica),
-        channel_func_(channel_func) {
-    LOG(INFO) << "Initialize HostPortsGrpcChannelCache for job " << job_id
-              << " -> {" << str_util::Join(host_ports, ", ") << "}";
+        host_ports_(host_ports),
+        channel_func_(std::move(channel_func)) {
+    LOG(INFO) << "Initialize GrpcChannelCache for job " << ToString();
   }
-  ~HostPortsGrpcChannelCache() override {}
+  ~SparseGrpcChannelCache() override {}
 
   void ListWorkers(std::vector<string>* workers) override {
-    int num_host_ports = 0;
-    for (size_t i = 0; i < host_ports_.size(); ++i) {
-      if (!host_ports_[i].empty()) {
-        ++num_host_ports;
-      }
-    }
-    workers->reserve(workers->size() + num_host_ports);
-    for (size_t i = 0; i < host_ports_.size(); ++i) {
-      if (!host_ports_[i].empty()) {
-        workers->emplace_back(MakeAddress(job_id_, i / tasks_per_replica_,
-                                          i % tasks_per_replica_));
-      }
+    workers->reserve(workers->size() + host_ports_.size());
+    for (const auto& id_host_port : host_ports_) {
+      workers->emplace_back(MakeAddress(job_id_, id_host_port.first));
     }
   }
 
   string TranslateTask(const string& target) override {
-    RegexpStringPiece job;
-    int32 replica;
-    int32 task;
-    if (!RE2::FullMatch(target, *kTargetRE, &job, &replica, &task)) {
+    DeviceNameUtils::ParsedName parsed;
+    if (!DeviceNameUtils::ParseFullName(target, &parsed)) {
       LOG(WARNING) << "Invalid target: " << target;
       return "";
     }
-    if (job != job_id_) {
+
+    if (!parsed.has_job || parsed.job != job_id_) {
       return "";
     }
-    if (task >= tasks_per_replica_) {
-      LOG(WARNING) << "Task out of bounds for job " << job_id_ << ": " << task;
+    if (!parsed.has_replica || parsed.replica != 0) {
+      LOG(WARNING) << "Replica ID must be 0 in target: " << target;
       return "";
     }
-    const size_t i = replica * tasks_per_replica_ + task;
-    if (i >= host_ports_.size()) {
-      LOG(WARNING) << "Replica/task out of bounds for job " << job_id_ << ": "
-                   << target;
-      return "";
-    }
-    if (host_ports_[i].empty()) {
-      LOG(WARNING) << "Replica/task not in sparse index:host:port list for job "
+    int32 task = parsed.has_task ? parsed.task : -1;
+    auto iter = host_ports_.find(task);
+    if (iter == host_ports_.end()) {
+      LOG(WARNING) << "Task " << task << " was not defined in sparse job "
                    << job_id_ << ": " << target;
       return "";
     }
-    return host_ports_[i];
+    return iter->second;
   }
 
  protected:
-  static std::vector<string> BuildDenseHostPortsList(
-      const std::vector<string>& host_ports, int tasks_per_replica) {
-    std::map<int, string> sparse_host_ports;
-    for (const string& host_port : host_ports) {
-      int i = -1;
-      string host;
-      int port = -1;
-      if (RE2::FullMatch(host_port, *kSparseHostPortRE, &i, &host, &port)) {
-        CHECK_LE(0, i);
-        CHECK_LE(0, port);
-        CHECK(sparse_host_ports.find(i) == sparse_host_ports.end())
-            << "Duplicate index " << i << ": {"
-            << str_util::Join(host_ports, ", ") << "}";
-        sparse_host_ports[i] = strings::StrCat(host, ":", port);
-      } else {
-        CHECK(RE2::FullMatch(host_port, *kHostPortRE, &host, &port))
-            << host_port
-            << " does not look like a host:port or an index:host:port";
-      }
-    }
-
-    if (sparse_host_ports.empty()) {
-      // The input is a dense list; return it directly.
-      return host_ports;
-    }
-
-    // The input is a sparse list. Convert it to a dense list.
-    CHECK_EQ(host_ports.size(), sparse_host_ports.size())
-        << "Mix of host:port and index:host:port: {"
-        << str_util::Join(host_ports, ", ") << "}";
-    int num_tasks = sparse_host_ports.rbegin()->first + 1;
-    if (num_tasks % tasks_per_replica != 0) {
-      num_tasks = (num_tasks / tasks_per_replica + 1) * tasks_per_replica;
-    }
-    std::vector<string> dense_host_ports;
-    dense_host_ports.resize(num_tasks);
-    for (const auto& p : sparse_host_ports) {
-      dense_host_ports[p.first] = p.second;
-    }
-    return dense_host_ports;
-  }
-
   SharedGrpcChannelPtr FindChannelOnce(const string& target) override {
     const string host_port = TranslateTask(target);
     if (host_port.empty()) {
@@ -305,18 +239,39 @@ class HostPortsGrpcChannelCache : public CachingGrpcChannelCache {
   }
 
  private:
+  string ToString() {
+    std::vector<string> task_strings;
+    task_strings.reserve(host_ports_.size());
+    for (const auto& id_host_port : host_ports_) {
+      task_strings.emplace_back(
+          strings::StrCat(id_host_port.first, " -> ", id_host_port.second));
+    }
+    return strings::StrCat(job_id_, " -> {", str_util::Join(task_strings, ", "),
+                           "}");
+  }
+
   const string job_id_;
-  const std::vector<string> host_ports_;
-  const int tasks_per_replica_;
+  const std::map<int, string> host_ports_;
   const ChannelCreationFunction channel_func_;
-  TF_DISALLOW_COPY_AND_ASSIGN(HostPortsGrpcChannelCache);
+  TF_DISALLOW_COPY_AND_ASSIGN(SparseGrpcChannelCache);
 };
 
-GrpcChannelCache* NewHostPortsGrpcChannelCache(
-    const string& job_id, const std::vector<string>& host_ports,
-    int tasks_per_replica, ChannelCreationFunction channel_func) {
-  return new HostPortsGrpcChannelCache(job_id, host_ports, tasks_per_replica,
-                                       channel_func);
+}  // namespace
+
+GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& spec,
+                                      ChannelCreationFunction channel_func) {
+  const int num_jobs = spec.host_ports_jobs().size();
+  if (!num_jobs) {
+    LOG(ERROR) << "Empty channel spec.";
+    return nullptr;
+  }
+  std::vector<GrpcChannelCache*> caches;
+  caches.reserve(num_jobs);
+  for (auto& job : spec.host_ports_jobs()) {
+    caches.push_back(
+        new SparseGrpcChannelCache(job.job_id, job.host_ports, channel_func));
+  }
+  return caches.size() == 1 ? caches[0] : new MultiGrpcChannelCache(caches);
 }
 
 }  // end namespace tensorflow

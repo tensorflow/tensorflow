@@ -65,7 +65,7 @@ class OperatorPDDerivedClassTest(tf.test.TestCase):
     batch_shape = list(batch_shape)
     mat_shape = batch_shape + [k, k]
     # return operator, mat
-    raise NotImplementedError('Not implemented yet.')
+    raise NotImplementedError("Not implemented yet.")
 
   def test_to_dense(self):
     with self.test_session():
@@ -96,7 +96,7 @@ class OperatorPDDerivedClassTest(tf.test.TestCase):
       for batch_shape in [(), (2, 3,)]:
         for k in [1, 4]:
           operator, mat = self._build_operator_and_mat(batch_shape, k)
-          expected_det = tf.batch_matrix_determinant(mat).eval()
+          expected_det = tf.matrix_determinant(mat).eval()
 
           self._compare_results(expected_det, operator.det())
           self._compare_results(np.log(expected_det), operator.log_det())
@@ -139,8 +139,7 @@ class OperatorPDDerivedClassTest(tf.test.TestCase):
           x = self._rng.randn(*(batch_shape + (k, 5)))
 
           self._compare_results(
-              expected=tf.batch_matrix_solve(mat, x).eval(),
-              actual=operator.solve(x))
+              expected=tf.matrix_solve(mat, x).eval(), actual=operator.solve(x))
 
   def test_sqrt_solve(self):
     # Square roots are not unique, but we should still have
@@ -155,7 +154,7 @@ class OperatorPDDerivedClassTest(tf.test.TestCase):
           x = self._rng.randn(*(batch_shape + (k, 5)))
 
           self._compare_results(
-              expected=tf.batch_matrix_solve(mat, x).eval(),
+              expected=tf.matrix_solve(mat, x).eval(),
               actual=operator.sqrt_solve(operator.sqrt_solve(x)))
 
   def test_add_to_tensor(self):

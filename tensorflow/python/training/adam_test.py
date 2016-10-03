@@ -193,6 +193,25 @@ class AdamOptimizerTest(tf.test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
+  def testTwoSessions(self):
+    optimizer = tf.train.AdamOptimizer()
+    g = tf.Graph()
+    with g.as_default():
+      with tf.Session():
+        var0 = tf.Variable(np.array([1.0, 2.0]), name="v0")
+        grads0 = tf.constant(np.array([0.1, 0.1]))
+        optimizer.apply_gradients([(grads0, var0)])
+
+    gg = tf.Graph()
+    with gg.as_default():
+      with tf.Session():
+        var0 = tf.Variable(np.array([1.0, 2.0]), name="v0")
+        grads0 = tf.constant(np.array([0.1, 0.1]))
+
+        # If the optimizer saves any state not keyed by graph the following line
+        # fails.
+        optimizer.apply_gradients([(grads0, var0)])
+
 
 if __name__ == "__main__":
   tf.test.main()

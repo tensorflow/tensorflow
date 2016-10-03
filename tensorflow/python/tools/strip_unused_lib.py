@@ -51,6 +51,9 @@ def strip_unused(input_graph_def, input_node_names, output_node_names,
       placeholder_node.name = node.name
       placeholder_node.attr["dtype"].CopyFrom(tf.AttrValue(
           type=placeholder_type_enum))
+      if "_output_shapes" in node.attr:
+        placeholder_node.attr["_output_shapes"].CopyFrom(
+            node.attr["_output_shapes"])
       inputs_replaced_graph_def.node.extend([placeholder_node])
     else:
       inputs_replaced_graph_def.node.extend([copy.deepcopy(node)])
@@ -61,7 +64,7 @@ def strip_unused(input_graph_def, input_node_names, output_node_names,
 
 
 def strip_unused_from_files(input_graph, input_binary, output_graph,
-                            input_node_names, output_node_names,
+                            output_binary, input_node_names, output_node_names,
                             placeholder_type_enum):
   """Removes unused nodes from a graph file."""
 
@@ -79,12 +82,16 @@ def strip_unused_from_files(input_graph, input_binary, output_graph,
     if input_binary:
       input_graph_def.ParseFromString(f.read())
     else:
-      text_format.Merge(f.read(), input_graph_def)
+      text_format.Merge(f.read().decode("utf-8"), input_graph_def)
 
   output_graph_def = strip_unused(input_graph_def, input_node_names.split(","),
                                   output_node_names.split(","),
                                   placeholder_type_enum)
 
-  with tf.gfile.GFile(output_graph, "wb") as f:
-    f.write(output_graph_def.SerializeToString())
+  if output_binary:
+    with tf.gfile.GFile(output_graph, "wb") as f:
+      f.write(output_graph_def.SerializeToString())
+  else:
+    with tf.gfile.GFile(output_graph, "w") as f:
+      f.write(text_format.MessageToString(output_graph_def))
   print("%d ops in the final graph." % len(output_graph_def.node))

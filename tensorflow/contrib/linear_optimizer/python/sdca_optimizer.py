@@ -1,5 +1,5 @@
 """Linear Estimators."""
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ class SDCAOptimizer(object):
     real_feature_column = real_valued_column(...)
     sparse_feature_column = sparse_column_with_hash_bucket(...)
     sdca_optimizer = linear.SDCAOptimizer(example_id_column='example_id',
-                                          num_partitions=1,
+                                          num_loss_partitions=1,
                                           num_table_shards=1,
                                           symmetric_l2_regularization=2.0)
     classifier = tf.contrib.learn.LinearClassifier(
@@ -47,20 +47,25 @@ class SDCAOptimizer(object):
   Here the expectation is that the input_fn_* functions passed to train and
   evaluate return a pair (dict, label_tensor) where dict has `example_id_column`
   as `key` whose value is a `Tensor` of shape [batch_size] and dtype string.
-  num_partitions defines the number of partitions of the loss function, which
-  is equivalent to the number of concurrent workers running the train steps.
-  num_table_shards defines the number of shards for the internal state table,
-  typically set to match the number of parameter servers for large data sets.
+  num_loss_partitions defines the number of partitions of the global loss
+  function and should be set to (#concurrent train ops/per worker) x (#workers).
+  Convergence of (global) loss is guranteed if num_loss_partitions is larger or
+  equal to the above product. Larger values for num_loss_partitions lead to
+  slower convergence. The recommended value for num_loss_partitions in tf.learn
+  (where currently there is one process per worker) is the number of workers
+  running the train steps. It defaults to 1 (single machine). num_table_shards
+  defines the number of shards for the internal state table, typically set to
+  match the number of parameter servers for large data sets.
   """
 
   def __init__(self,
                example_id_column,
-               num_partitions=1,
+               num_loss_partitions=1,
                num_table_shards=None,
                symmetric_l1_regularization=0.0,
                symmetric_l2_regularization=1.0):
     self._example_id_column = example_id_column
-    self._num_partitions = num_partitions
+    self._num_loss_partitions = num_loss_partitions
     self._num_table_shards = num_table_shards
     self._symmetric_l1_regularization = symmetric_l1_regularization
     self._symmetric_l2_regularization = symmetric_l2_regularization
@@ -68,8 +73,8 @@ class SDCAOptimizer(object):
   def get_name(self):
     return 'SDCAOptimizer'
 
-  def get_train_step(self, linear_feature_columns, weight_column_name,
-                     loss_type, features, targets, columns_to_variables,
+  def get_train_step(self, columns_to_variables,
+                     weight_column_name, loss_type, features, targets,
                      global_step):
     """Returns the training operation of an SdcaModel optimizer."""
 
@@ -102,7 +107,7 @@ class SDCAOptimizer(object):
       dense_feature_weights = []
       sparse_feature_weights, sparse_feature_with_values_weights = [], []
       # pylint: disable=protected-access
-      for column in sorted(set(linear_feature_columns), key=lambda x: x.key):
+      for column in sorted(columns_to_variables.keys(), key=lambda x: x.key):
         transformed_tensor = features[column]
         if isinstance(column, layers.feature_column._RealValuedColumn):
           # A real-valued column corresponds to a dense feature in SDCA. A
@@ -124,8 +129,8 @@ class SDCAOptimizer(object):
           sparse_feature_with_values.append(sparse_feature_column)
           # For bucketized columns, the variables list contains exactly one
           # element.
-          sparse_feature_with_values_weights.append(columns_to_variables[
-              column][0])
+          sparse_feature_with_values_weights.append(
+              columns_to_variables[column][0])
         elif isinstance(column, (layers.feature_column._CrossedColumn,
                                  layers.feature_column._SparseColumn)):
           sparse_features.append(sdca_ops.SparseFeatureColumn(
@@ -141,8 +146,8 @@ class SDCAOptimizer(object):
                   array_ops.split(1, 2, id_tensor.indices)[0], [-1]),
               array_ops.reshape(id_tensor.values, [-1]), array_ops.reshape(
                   weight_tensor.values, [-1])))
-          sparse_feature_with_values_weights.append(columns_to_variables[
-              column][0])
+          sparse_feature_with_values_weights.append(
+            columns_to_variables[column][0])
         else:
           raise ValueError('SDCAOptimizer does not support column type %s.' %
                            type(column).__name__)
@@ -172,7 +177,7 @@ class SDCAOptimizer(object):
         options=dict(
             symmetric_l1_regularization=self._symmetric_l1_regularization,
             symmetric_l2_regularization=self._symmetric_l2_regularization,
-            num_partitions=self._num_partitions,
+            num_loss_partitions=self._num_loss_partitions,
             num_table_shards=self._num_table_shards,
             loss_type=loss_type))
     return sdca_model.minimize(global_step=global_step)

@@ -7,7 +7,7 @@ Additional RNN operations and cells.
 
 ## This package provides additional contributed RNNCells.
 
-### Fused RNNCells
+### Block RNNCells
 - - -
 
 ### `class tf.contrib.rnn.LSTMBlockCell` {#LSTMBlockCell}
@@ -19,12 +19,19 @@ The implementation is based on: http://arxiv.org/abs/1409.2329.
 We add forget_bias (default: 1) to the biases of the forget gate in order to
 reduce the scale of forgetting in the beginning of the training.
 
-Unlike BasicLSTMCell, this is a monolithic op and should be much faster. The
-weight and bias matrixes should be compatible as long as the variabel scope
-matches.
+Unlike rnn_cell.LSTMCell, this is a monolithic op and should be much faster.
+The weight and bias matrixes should be compatible as long as the variable
+scope matches, and you use `use_compatible_names=True`.
 - - -
 
-#### `tf.contrib.rnn.LSTMBlockCell.__init__(num_units, forget_bias=1.0, use_peephole=False)` {#LSTMBlockCell.__init__}
+#### `tf.contrib.rnn.LSTMBlockCell.__call__(x, states_prev, scope=None)` {#LSTMBlockCell.__call__}
+
+Long short-term memory cell (LSTM).
+
+
+- - -
+
+#### `tf.contrib.rnn.LSTMBlockCell.__init__(num_units, forget_bias=1.0, use_peephole=False, use_compatible_names=False)` {#LSTMBlockCell.__init__}
 
 Initialize the basic LSTM cell.
 
@@ -34,6 +41,8 @@ Initialize the basic LSTM cell.
 *  <b>`num_units`</b>: int, The number of units in the LSTM cell.
 *  <b>`forget_bias`</b>: float, The bias added to forget gates (see above).
 *  <b>`use_peephole`</b>: Whether to use peephole connections or not.
+*  <b>`use_compatible_names`</b>: If True, use the same variable naming as
+    rnn_cell.LSTMCell
 
 
 - - -
@@ -84,9 +93,11 @@ Computes the LSTM cell forward propagation for 1 time step.
 
 This kernel op implements the following mathematical equations:
 
-Baises are initialized with :
-`b_ru` - constant_initializer(1.0)
-`b_c` - constant_initializer(0.0)
+Biases are initialized with:
+
+* `b_ru` - constant_initializer(1.0)
+* `b_c` - constant_initializer(0.0)
+
 ```
 x_h_prev = [x, h_prev]
 
@@ -104,6 +115,13 @@ c = tanh(c_bar)
 
 h = (1-u) \circ c + u \circ h_prev
 ```
+- - -
+
+#### `tf.contrib.rnn.GRUBlockCell.__call__(x, h_prev, scope=None)` {#GRUBlockCell.__call__}
+
+GRU cell.
+
+
 - - -
 
 #### `tf.contrib.rnn.GRUBlockCell.__init__(cell_size)` {#GRUBlockCell.__init__}
@@ -154,6 +172,152 @@ the shapes `[batch_size x s]` for each s in `state_size`.
 
 
 
+### Fused RNNCells
+- - -
+
+### `class tf.contrib.rnn.FusedRNNCell` {#FusedRNNCell}
+
+Abstract object representing a fused RNN cell.
+
+A fused RNN cell represents the entire RNN expanded over the time
+dimension. In effect, this represents an entire recurrent network.
+
+Unlike RNN cells which are subclasses of rnn_cell.RNNCell , a `FusedRNNCell`
+operates on the entire time sequence at once, by putting the loop over time
+inside the cell. This usually leads to much more efficient, but more complex
+and less flexible implementations.
+
+Every `FusedRNNCell` must implement `__call__` with the following signature.
+- - -
+
+#### `tf.contrib.rnn.FusedRNNCell.__call__(inputs, initial_state=None, dtype=None, sequence_length=None, scope=None)` {#FusedRNNCell.__call__}
+
+Run this fused RNN on inputs, starting from the given state.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: `3-D` tensor with shape `[time_len x batch_size x input_size]`
+    or a list of `time_len` tensors of shape `[batch_size x input_size]`.
+*  <b>`initial_state`</b>: either a tensor with shape `[batch_size x state_size]`
+    or a tuple with shapes `[batch_size x s] for s in state_size`, if the
+    cell takes tuples. If this is not provided, the cell is expected to
+    create a zero initial state of type `dtype`.
+*  <b>`dtype`</b>: The data type for the initial state and expected output. Required
+    if `initial_state` is not provided or RNN state has a heterogeneous
+      dtype.
+*  <b>`sequence_length`</b>: Specifies the length of each sequence in inputs. An int32
+    or int64 vector (tensor) size [batch_size], values in [0, time_len).
+    Defaults to `time_len` for each element.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to class name.
+
+##### Returns:
+
+  A pair containing:
+  - Output: A `3-D` tensor of shape `[time_len x batch_size x output_size]`
+    or a list of time_len tensors of shape `[batch_size x output_size]`, to
+    match the type of the `inputs`.
+  - Final state: Either a single `2-D` tensor, or a tuple of tensors
+    matching the arity and shapes of `initial_state`.
+
+
+
+- - -
+
+### `class tf.contrib.rnn.FusedRNNCellAdaptor` {#FusedRNNCellAdaptor}
+
+This is an adaptor for RNNCell classes to be used with FusedRNNCell.
+- - -
+
+#### `tf.contrib.rnn.FusedRNNCellAdaptor.__call__(inputs, initial_state=None, dtype=None, sequence_length=None, scope=None)` {#FusedRNNCellAdaptor.__call__}
+
+
+
+
+- - -
+
+#### `tf.contrib.rnn.FusedRNNCellAdaptor.__init__(cell, use_dynamic_rnn=False)` {#FusedRNNCellAdaptor.__init__}
+
+
+
+
+
+- - -
+
+### `class tf.contrib.rnn.LSTMBlockFusedCell` {#LSTMBlockFusedCell}
+
+FusedRNNCell implementation of LSTM.
+
+This is an extremely efficient LSTM implementation, that uses a single TF op
+for the entire LSTM. It should be both faster and more memory-efficient than
+LSTMBlockCell defined above.
+
+The implementation is based on: http://arxiv.org/abs/1409.2329.
+
+We add forget_bias (default: 1) to the biases of the forget gate in order to
+reduce the scale of forgetting in the beginning of the training.
+
+The variable naming is consistent with rnn_cell.LSTMCell.
+- - -
+
+#### `tf.contrib.rnn.LSTMBlockFusedCell.__call__(inputs, initial_state=None, dtype=None, sequence_length=None, scope=None)` {#LSTMBlockFusedCell.__call__}
+
+Run this LSTM on inputs, starting from the given state.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: `3-D` tensor with shape `[time_len x batch_size x input_size]`
+    or a list of `time_len` tensors of shape `[batch_size x input_size]`.
+*  <b>`initial_state`</b>: a tuple `(initial_cell_state, initial_output)` with tensors
+    of shape `[batch_size, self._num_units]`. If this is not provided, the
+    cell is expected to create a zero initial state of type `dtype`.
+*  <b>`dtype`</b>: The data type for the initial state and expected output. Required
+    if `initial_state` is not provided or RNN state has a heterogeneous
+    dtype.
+*  <b>`sequence_length`</b>: Specifies the length of each sequence in inputs. An int32
+    or int64 vector (tensor) size [batch_size], values in [0, time_len).
+    Defaults to `time_len` for each element.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to class name.
+
+##### Returns:
+
+  A pair containing:
+  - Output: A `3-D` tensor of shape `[time_len x batch_size x output_size]`
+    or a list of time_len tensors of shape `[batch_size x output_size]`, to
+    match the type of the `inputs`.
+  - Final state: a tuple `(cell_state, output)` matching initial_state.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: in case of shape mismatches
+
+
+- - -
+
+#### `tf.contrib.rnn.LSTMBlockFusedCell.__init__(num_units, forget_bias=1.0, cell_clip=None, use_peephole=False)` {#LSTMBlockFusedCell.__init__}
+
+Initialize the LSTM cell.
+
+##### Args:
+
+
+*  <b>`num_units`</b>: int, The number of units in the LSTM cell.
+*  <b>`forget_bias`</b>: float, The bias added to forget gates (see above).
+*  <b>`cell_clip`</b>: clip the cell to this value. Defaults to `3`.
+*  <b>`use_peephole`</b>: Whether to use peephole connections or not.
+
+
+- - -
+
+#### `tf.contrib.rnn.LSTMBlockFusedCell.num_units` {#LSTMBlockFusedCell.num_units}
+
+Number of units in this cell (output dimension).
+
+
+
+
 ### LSTM-like cells
 - - -
 
@@ -184,6 +348,40 @@ Greff et al. "LSTM: A Search Space Odyssey"
 
 The class uses optional peep-hole connections, and an optional projection
 layer.
+- - -
+
+#### `tf.contrib.rnn.CoupledInputForgetGateLSTMCell.__call__(inputs, state, scope=None)` {#CoupledInputForgetGateLSTMCell.__call__}
+
+Run one step of LSTM.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: input Tensor, 2D, batch x num_units.
+*  <b>`state`</b>: if `state_is_tuple` is False, this must be a state Tensor,
+    `2-D, batch x state_size`.  If `state_is_tuple` is True, this must be a
+    tuple of state Tensors, both `2-D`, with column sizes `c_state` and
+    `m_state`.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "LSTMCell".
+
+##### Returns:
+
+  A tuple containing:
+  - A `2-D, [batch x output_dim]`, Tensor representing the output of the
+    LSTM after reading `inputs` when previous state was `state`.
+    Here output_dim is:
+       num_proj if num_proj was set,
+       num_units otherwise.
+  - Tensor(s) representing the new state of LSTM after reading `inputs` when
+    the previous state was `state`.  Same type and shape(s) as `state`.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: If input size cannot be inferred from inputs via
+    static shape inference.
+
+
 - - -
 
 #### `tf.contrib.rnn.CoupledInputForgetGateLSTMCell.__init__(num_units, use_peepholes=False, initializer=None, num_proj=None, proj_clip=None, num_unit_shards=1, num_proj_shards=1, forget_bias=1.0, state_is_tuple=False, activation=tanh)` {#CoupledInputForgetGateLSTMCell.__init__}
@@ -268,6 +466,36 @@ This implementation is based on:
 It uses peep-hole connections and optional cell clipping.
 - - -
 
+#### `tf.contrib.rnn.TimeFreqLSTMCell.__call__(inputs, state, scope=None)` {#TimeFreqLSTMCell.__call__}
+
+Run one step of LSTM.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: input Tensor, 2D, batch x num_units.
+*  <b>`state`</b>: state Tensor, 2D, batch x state_size.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to
+    "TimeFreqLSTMCell".
+
+##### Returns:
+
+  A tuple containing:
+  - A 2D, batch x output_dim, Tensor representing the output of the LSTM
+    after reading "inputs" when previous state was "state".
+    Here output_dim is num_units.
+  - A 2D, batch x state_size, Tensor representing the new state of LSTM
+    after reading "inputs" when previous state was "state".
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if an input_size was specified and the provided inputs have
+    a different dimension.
+
+
+- - -
+
 #### `tf.contrib.rnn.TimeFreqLSTMCell.__init__(num_units, use_peepholes=False, cell_clip=None, initializer=None, num_unit_shards=1, forget_bias=1.0, feature_size=None, frequency_skip=None)` {#TimeFreqLSTMCell.__init__}
 
 Initialize the parameters for an LSTM cell.
@@ -345,6 +573,35 @@ When peephole connections are used, the implementation is based on:
   for LVCSR Tasks." submitted to INTERSPEECH, 2016.
 
 The code uses optional peephole connections, shared_weights and cell clipping.
+- - -
+
+#### `tf.contrib.rnn.GridLSTMCell.__call__(inputs, state, scope=None)` {#GridLSTMCell.__call__}
+
+Run one step of LSTM.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: input Tensor, 2D, batch x num_units.
+*  <b>`state`</b>: state Tensor, 2D, batch x state_size.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to "LSTMCell".
+
+##### Returns:
+
+  A tuple containing:
+  - A 2D, batch x output_dim, Tensor representing the output of the LSTM
+    after reading "inputs" when previous state was "state".
+    Here output_dim is num_units.
+  - A 2D, batch x state_size, Tensor representing the new state of LSTM
+    after reading "inputs" when previous state was "state".
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if an input_size was specified and the provided inputs have
+    a different dimension.
+
+
 - - -
 
 #### `tf.contrib.rnn.GridLSTMCell.__init__(num_units, use_peepholes=False, share_time_frequency_weights=False, cell_clip=None, initializer=None, num_unit_shards=1, forget_bias=1.0, feature_size=None, frequency_skip=None, num_frequency_blocks=1, couple_input_forget_gates=False, state_is_tuple=False)` {#GridLSTMCell.__init__}
@@ -436,6 +693,13 @@ Basic attention cell wrapper.
 Implementation based on https://arxiv.org/pdf/1601.06733.pdf.
 - - -
 
+#### `tf.contrib.rnn.AttentionCellWrapper.__call__(inputs, state, scope=None)` {#AttentionCellWrapper.__call__}
+
+Long short-term memory cell with attention (LSTMA).
+
+
+- - -
+
 #### `tf.contrib.rnn.AttentionCellWrapper.__init__(cell, attn_length, attn_size=None, attn_vec_size=None, input_size=None, state_is_tuple=False)` {#AttentionCellWrapper.__init__}
 
 Create a cell with attention.
@@ -500,5 +764,284 @@ Return zero-filled state tensor(s).
   a nested list or tuple (of the same structure) of `2-D` tensors with
 the shapes `[batch_size x s]` for each s in `state_size`.
 
+
+
+
+## Other Functions and Classes
+- - -
+
+### `class tf.contrib.rnn.LSTMBlockWrapper` {#LSTMBlockWrapper}
+
+This is a helper class that provides housekeeping for LSTM cells.
+
+This may be useful for alternative LSTM and similar type of cells.
+The subclasses must implement `_call_cell` method and `num_units` property.
+- - -
+
+#### `tf.contrib.rnn.LSTMBlockWrapper.__call__(inputs, initial_state=None, dtype=None, sequence_length=None, scope=None)` {#LSTMBlockWrapper.__call__}
+
+Run this LSTM on inputs, starting from the given state.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: `3-D` tensor with shape `[time_len x batch_size x input_size]`
+    or a list of `time_len` tensors of shape `[batch_size x input_size]`.
+*  <b>`initial_state`</b>: a tuple `(initial_cell_state, initial_output)` with tensors
+    of shape `[batch_size, self._num_units]`. If this is not provided, the
+    cell is expected to create a zero initial state of type `dtype`.
+*  <b>`dtype`</b>: The data type for the initial state and expected output. Required
+    if `initial_state` is not provided or RNN state has a heterogeneous
+    dtype.
+*  <b>`sequence_length`</b>: Specifies the length of each sequence in inputs. An int32
+    or int64 vector (tensor) size [batch_size], values in [0, time_len).
+    Defaults to `time_len` for each element.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to class name.
+
+##### Returns:
+
+  A pair containing:
+  - Output: A `3-D` tensor of shape `[time_len x batch_size x output_size]`
+    or a list of time_len tensors of shape `[batch_size x output_size]`, to
+    match the type of the `inputs`.
+  - Final state: a tuple `(cell_state, output)` matching initial_state.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: in case of shape mismatches
+
+
+- - -
+
+#### `tf.contrib.rnn.LSTMBlockWrapper.num_units` {#LSTMBlockWrapper.num_units}
+
+Number of units in this cell (output dimension).
+
+
+
+- - -
+
+### `class tf.contrib.rnn.LayerNormBasicLSTMCell` {#LayerNormBasicLSTMCell}
+
+LSTM unit with layer normalization and recurrent dropout.
+
+This class adds layer normalization and recurrent dropout to a
+basic LSTM unit. Layer normalization implementation is based on:
+
+  https://arxiv.org/abs/1607.06450.
+
+"Layer Normalization"
+Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton
+
+and is applied before the internal nonlinearities.
+Recurrent dropout is base on:
+
+  https://arxiv.org/abs/1603.05118
+
+"Recurrent Dropout without Memory Loss"
+Stanislau Semeniuta, Aliaksei Severyn, Erhardt Barth.
+- - -
+
+#### `tf.contrib.rnn.LayerNormBasicLSTMCell.__call__(inputs, state, scope=None)` {#LayerNormBasicLSTMCell.__call__}
+
+LSTM cell with layer normalization and recurrent dropout.
+
+
+- - -
+
+#### `tf.contrib.rnn.LayerNormBasicLSTMCell.__init__(num_units, forget_bias=1.0, input_size=None, activation=tanh, layer_norm=True, norm_gain=1.0, norm_shift=0.0, dropout_keep_prob=1.0, dropout_prob_seed=None)` {#LayerNormBasicLSTMCell.__init__}
+
+Initializes the basic LSTM cell.
+
+##### Args:
+
+
+*  <b>`num_units`</b>: int, The number of units in the LSTM cell.
+*  <b>`forget_bias`</b>: float, The bias added to forget gates (see above).
+*  <b>`input_size`</b>: Deprecated and unused.
+*  <b>`activation`</b>: Activation function of the inner states.
+*  <b>`layer_norm`</b>: If `True`, layer normalization will be applied.
+*  <b>`norm_gain`</b>: float, The layer normalization gain initial value. If
+    `layer_norm` has been set to `False`, this argument will be ignored.
+*  <b>`norm_shift`</b>: float, The layer normalization shift initial value. If
+    `layer_norm` has been set to `False`, this argument will be ignored.
+*  <b>`dropout_keep_prob`</b>: unit Tensor or float between 0 and 1 representing the
+    recurrent dropout probability value. If float and 1.0, no dropout will
+    be applied.
+*  <b>`dropout_prob_seed`</b>: (optional) integer, the randomness seed.
+
+
+- - -
+
+#### `tf.contrib.rnn.LayerNormBasicLSTMCell.output_size` {#LayerNormBasicLSTMCell.output_size}
+
+
+
+
+- - -
+
+#### `tf.contrib.rnn.LayerNormBasicLSTMCell.state_size` {#LayerNormBasicLSTMCell.state_size}
+
+
+
+
+- - -
+
+#### `tf.contrib.rnn.LayerNormBasicLSTMCell.zero_state(batch_size, dtype)` {#LayerNormBasicLSTMCell.zero_state}
+
+Return zero-filled state tensor(s).
+
+##### Args:
+
+
+*  <b>`batch_size`</b>: int, float, or unit Tensor representing the batch size.
+*  <b>`dtype`</b>: the data type to use for the state.
+
+##### Returns:
+
+  If `state_size` is an int or TensorShape, then the return value is a
+  `N-D` tensor of shape `[batch_size x state_size]` filled with zeros.
+
+  If `state_size` is a nested list or tuple, then the return value is
+  a nested list or tuple (of the same structure) of `2-D` tensors with
+the shapes `[batch_size x s]` for each s in `state_size`.
+
+
+
+- - -
+
+### `class tf.contrib.rnn.TimeReversedFusedRNN` {#TimeReversedFusedRNN}
+
+This is an adaptor to time-reverse a FusedRNNCell.
+
+For example,
+
+```python
+cell = tf.nn.rnn_cell.BasicRNNCell(10)
+fw_lstm = tf.contrib.rnn.FusedRNNCellAdaptor(cell, use_dynamic_rnn=True)
+bw_lstm = tf.contrib.rnn.TimeReversedFusedRNN(fw_lstm)
+fw_out, fw_state = fw_lstm(inputs)
+bw_out, bw_state = bw_lstm(inputs)
+```
+- - -
+
+#### `tf.contrib.rnn.TimeReversedFusedRNN.__call__(inputs, initial_state=None, dtype=None, sequence_length=None, scope=None)` {#TimeReversedFusedRNN.__call__}
+
+
+
+
+- - -
+
+#### `tf.contrib.rnn.TimeReversedFusedRNN.__init__(cell)` {#TimeReversedFusedRNN.__init__}
+
+
+
+
+
+- - -
+
+### `tf.contrib.rnn.stack_bidirectional_dynamic_rnn(cells_fw, cells_bw, inputs, initial_states_fw=None, initial_states_bw=None, dtype=None, sequence_length=None, scope=None)` {#stack_bidirectional_dynamic_rnn}
+
+Creates a dynamic bidirectional recurrent neural network.
+
+Stacks several bidirectional rnn layers. The combined forward and backward
+layer outputs are used as input of the next layer. tf.bidirectional_rnn
+does not allow to share forward and backward information between layers.
+The input_size of the first forward and backward cells must match.
+The initial state for both directions is zero and no intermediate states
+are returned.
+
+##### Args:
+
+
+*  <b>`cells_fw`</b>: List of instances of RNNCell, one per layer,
+    to be used for forward direction.
+*  <b>`cells_bw`</b>: List of instances of RNNCell, one per layer,
+    to be used for backward direction.
+*  <b>`inputs`</b>: A length T list of inputs, each a tensor of shape
+    [batch_size, input_size], or a nested tuple of such elements.
+*  <b>`initial_states_fw`</b>: (optional) A list of the initial states (one per layer)
+    for the forward RNN.
+    Each tensor must has an appropriate type and shape
+    `[batch_size, cell_fw.state_size]`.
+*  <b>`initial_states_bw`</b>: (optional) Same as for `initial_states_fw`, but using
+    the corresponding properties of `cells_bw`.
+*  <b>`dtype`</b>: (optional) The data type for the initial state.  Required if
+    either of the initial states are not provided.
+*  <b>`sequence_length`</b>: (optional) An int32/int64 vector, size `[batch_size]`,
+    containing the actual lengths for each of the sequences.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to None.
+
+##### Returns:
+
+  A tuple (outputs, output_state_fw, output_state_bw) where:
+
+*  <b>`outputs`</b>: Output `Tensor` shaped:
+      `batch_size, max_time, layers_output]`. Where layers_output
+      are depth-concatenated forward and backward outputs.
+    output_states_fw is the final states, one tensor per layer,
+      of the forward rnn.
+    output_states_bw is the final states, one tensor per layer,
+      of the backward rnn.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
+*  <b>`ValueError`</b>: If inputs is `None`, not a list or an empty list.
+
+
+- - -
+
+### `tf.contrib.rnn.stack_bidirectional_rnn(cells_fw, cells_bw, inputs, initial_states_fw=None, initial_states_bw=None, dtype=None, sequence_length=None, scope=None)` {#stack_bidirectional_rnn}
+
+Creates a bidirectional recurrent neural network.
+
+Stacks several bidirectional rnn layers. The combined forward and backward
+layer outputs are used as input of the next layer. tf.bidirectional_rnn
+does not allow to share forward and backward information between layers.
+The input_size of the first forward and backward cells must match.
+The initial state for both directions is zero and no intermediate states
+are returned.
+
+As described in https://arxiv.org/abs/1303.5778
+
+##### Args:
+
+
+*  <b>`cells_fw`</b>: List of instances of RNNCell, one per layer,
+    to be used for forward direction.
+*  <b>`cells_bw`</b>: List of instances of RNNCell, one per layer,
+    to be used for backward direction.
+*  <b>`inputs`</b>: A length T list of inputs, each a tensor of shape
+    [batch_size, input_size], or a nested tuple of such elements.
+*  <b>`initial_states_fw`</b>: (optional) A list of the initial states (one per layer)
+    for the forward RNN.
+    Each tensor must has an appropriate type and shape
+    `[batch_size, cell_fw.state_size]`.
+*  <b>`initial_states_bw`</b>: (optional) Same as for `initial_states_fw`, but using
+    the corresponding properties of `cells_bw`.
+*  <b>`dtype`</b>: (optional) The data type for the initial state.  Required if
+    either of the initial states are not provided.
+*  <b>`sequence_length`</b>: (optional) An int32/int64 vector, size `[batch_size]`,
+    containing the actual lengths for each of the sequences.
+*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to None.
+
+##### Returns:
+
+  A tuple (outputs, output_state_fw, output_state_bw) where:
+    outputs is a length `T` list of outputs (one for each input), which
+      are depth-concatenated forward and backward outputs.
+    output_states_fw is the final states, one tensor per layer,
+      of the forward rnn.
+    output_states_bw is the final states, one tensor per layer,
+      of the backward rnn.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
+*  <b>`ValueError`</b>: If inputs is None, not a list or an empty list.
 
 

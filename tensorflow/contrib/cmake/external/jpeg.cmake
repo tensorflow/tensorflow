@@ -5,7 +5,12 @@ set(jpeg_URL http://www.ijg.org/files/jpegsrc.v9a.tar.gz)
 set(jpeg_HASH SHA256=3a753ea48d917945dd54a2d97de388aa06ca2eb1066cbfdc6652036349fe05a7)
 set(jpeg_BUILD ${CMAKE_BINARY_DIR}/jpeg/src/jpeg)
 set(jpeg_INSTALL ${CMAKE_BINARY_DIR}/jpeg/install)
-set(jpeg_STATIC_LIBRARIES ${jpeg_INSTALL}/lib/libjpeg.a)
+
+if(WIN32)
+  set(jpeg_STATIC_LIBRARIES ${jpeg_INSTALL}/lib/libjpeg.lib)
+else()
+  set(jpeg_STATIC_LIBRARIES ${jpeg_INSTALL}/lib/libjpeg.a)
+endif()
 
 set(jpeg_HEADERS
     "${jpeg_INSTALL}/include/jconfig.h"
@@ -44,7 +49,6 @@ if (WIN32)
     )
 
 else()
-
     ExternalProject_Add(jpeg
         PREFIX jpeg
         URL ${jpeg_URL}
@@ -57,13 +61,14 @@ else()
             ${jpeg_BUILD}/configure
             --prefix=${jpeg_INSTALL}
             --enable-shared=yes
+	    CFLAGS=-fPIC
     )
   
 endif()
 
 # put jpeg includes in the directory where they are expected
 add_custom_target(jpeg_create_destination_dir
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${jpeg_INCLUDE_DIR}/jpeg-9a
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${jpeg_INCLUDE_DIR}
     DEPENDS jpeg)
 
 add_custom_target(jpeg_copy_headers_to_destination
@@ -71,5 +76,5 @@ add_custom_target(jpeg_copy_headers_to_destination
 
 foreach(header_file ${jpeg_HEADERS})
     add_custom_command(TARGET jpeg_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${jpeg_INCLUDE_DIR}/jpeg-9a)
+    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${jpeg_INCLUDE_DIR})
 endforeach()

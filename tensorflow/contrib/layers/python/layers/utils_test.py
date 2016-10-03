@@ -180,5 +180,33 @@ class SmartCondDynamicTest(tf.test.TestCase):
         self.assertEqual(o.eval(feed_dict={p: v}), expected(v))
 
 
+class CollectNamedOutputsTest(tf.test.TestCase):
+
+  def test_collect(self):
+    t1 = tf.constant(1.0, name='t1')
+    t2 = tf.constant(2.0, name='t2')
+    utils.collect_named_outputs('end_points', 'a1', t1)
+    utils.collect_named_outputs('end_points', 'a2', t2)
+    self.assertEqual(tf.get_collection('end_points'), [t1, t2])
+
+  def test_aliases(self):
+    t1 = tf.constant(1.0, name='t1')
+    t2 = tf.constant(2.0, name='t2')
+    utils.collect_named_outputs('end_points', 'a1', t1)
+    utils.collect_named_outputs('end_points', 'a2', t2)
+    self.assertEqual(t1.alias, 'a1')
+    self.assertEqual(t2.alias, 'a2')
+
+  def test_gather_aliases(self):
+    t1 = tf.constant(1.0, name='t1')
+    t2 = tf.constant(2.0, name='t2')
+    t3 = tf.constant(2.0, name='t3')
+    utils.collect_named_outputs('end_points', 'a1', t1)
+    utils.collect_named_outputs('end_points', 'a2', t2)
+    tf.add_to_collection('end_points', t3)
+    aliases = utils.gather_tensors_alias(tf.get_collection('end_points'))
+    self.assertListEqual(aliases, ['a1', 'a2', 't3'])
+
+
 if __name__ == '__main__':
   tf.test.main()

@@ -227,12 +227,12 @@ class GmmAlgorithm(object):
       shard: current data shard, 1 X num_examples X dimensions.
     """
     diff = shard - self._means
-    cholesky = tf.batch_cholesky(self._covs + self._min_var)
-    log_det_covs = 2.0 * tf.reduce_sum(tf.log(
-        tf.batch_matrix_diag_part(cholesky)), 1)
-    x_mu_cov = tf.square(tf.batch_matrix_triangular_solve(
-        cholesky, tf.transpose(diff, perm=[0, 2, 1]),
-        lower=True))
+    cholesky = tf.cholesky(self._covs + self._min_var)
+    log_det_covs = 2.0 * tf.reduce_sum(tf.log(tf.matrix_diag_part(cholesky)), 1)
+    x_mu_cov = tf.square(
+        tf.matrix_triangular_solve(
+            cholesky, tf.transpose(
+                diff, perm=[0, 2, 1]), lower=True))
     diag_m = tf.transpose(tf.reduce_sum(x_mu_cov, 1))
     self._probs[shard_id] = -0.5 * (
         diag_m + tf.to_float(self._dimensions) * tf.log(2 * np.pi) +

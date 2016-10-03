@@ -335,7 +335,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     local_step = array_ops.reshape(local_step, ())
     is_stale = math_ops.less(local_step, global_step)
 
-    with ops.name_scope(None, self._name, inputs):
+    with ops.name_scope(name, self._name, inputs) as name:
       for grad, var in grads_and_vars:
         var_list.append(var)
         with ops.device(var.device):
@@ -411,7 +411,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         with ops.control_dependencies([final_train_ops]):
           token = sync_token_queue.dequeue()
           train_op = state_ops.scatter_update(self._local_steps,
-                                              self._replica_id, token)
+                                              self._replica_id,
+                                              token, name=name)
 
         with ops.control_dependencies(clear_queue_ops):
           # Sync_op needs to insert tokens to the token queue at the end of the

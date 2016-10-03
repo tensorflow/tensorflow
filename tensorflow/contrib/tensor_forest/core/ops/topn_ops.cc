@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,12 +16,18 @@
 // RefreshShortlist.
 
 #include <algorithm>
+#include <numeric>
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
+
+using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("TopNInsert")
     .Input("ids: int64")
@@ -31,7 +37,12 @@ REGISTER_OP("TopNInsert")
     .Output("shortlist_ids: int64")
     .Output("update_ids: int64")
     .Output("update_scores: float32")
-
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
+      return Status::OK();
+    })
     .Doc(R"doc(
   Outputs update Tensors for adding new_ids and new_scores to the shortlist.
 
@@ -196,7 +207,11 @@ REGISTER_OP("TopNRemove")
     .Input("remove_ids: int64")
     .Output("shortlist_ids: int64")
     .Output("new_length: int64")
-
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+      return Status::OK();
+    })
     .Doc(R"doc(
   Remove ids from a shortlist.
 

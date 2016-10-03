@@ -69,7 +69,7 @@ and
 models.
 * [preprocess](https://www.tensorflow.org/code/tensorflow/contrib/slim/python/slim/preprocess.py):
 is a module with various preprocessing utilities.
-* [queues](https://www.tensorflow.org/code/tensorflow/contrib/slim/queues.py):
+* [queues](https://www.tensorflow.org/code/tensorflow/contrib/slim/python/slim/queues.py):
 provides a context manager for easily and safely starting and closing
 QueueRunners.
 * [regularizers](https://www.tensorflow.org/code/tensorflow/contrib/layers/python/layers/regularizers.py):
@@ -503,7 +503,7 @@ pose_loss = MyCustomLossFunction(pose_predictions, pose_labels)
 slim.losses.add_loss(pose_loss) # Letting TF-Slim know about the additional loss.
 
 # The following two ways to compute the total loss are equivalent:
-regularization_loss = tf.add_n(slim.get_regularization_losses())
+regularization_loss = tf.add_n(slim.losses.get_regularization_losses())
 total_loss1 = classification_loss + sum_of_squares_loss + pose_loss + regularization_loss
 
 # (Regularization Loss is included in the total loss by default).
@@ -729,7 +729,7 @@ log_dir = '/path/to/my_pascal_model_dir/'
 
 # Restore only the convolutional layers:
 variables_to_restore = slim.get_variables_to_restore(exclude=['fc6', 'fc7', 'fc8'])
-init_fn = assign_from_checkpoint_fn(model_path, var_list):
+init_fn = assign_from_checkpoint_fn(model_path, variables_to_restore)
 
 # Start training.
 slim.learning.train(train_op, log_dir, init_fn=init_fn)

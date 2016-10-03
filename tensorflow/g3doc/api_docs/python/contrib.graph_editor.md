@@ -6,7 +6,7 @@
 TensorFlow Graph Editor.
 
 The TensorFlow Graph Editor library allows for modification of an existing
-tf.Graph instance in-place.
+`tf.Graph` instance in-place.
 
 The author's github username is [purpledog](https://github.com/purpledog).
 
@@ -82,8 +82,8 @@ my_sgv = ge.sgv("foo/.*/.*read$", graph=tf.get_default_graph())
 Note that the Graph Editor is meant to manipulate several graphs at the same
 time, typically during transform or copy operation. For that reason,
 to avoid any confusion, the default graph is never used and the graph on
-which to operate must always be explicitely given. This is the reason why
-*graph=tf.get_default_graph()* is used in the code snippets above.
+which to operate must always be given explicitly. This is the reason why
+*`graph=tf.get_default_graph()`* is used in the code snippets above.
 
 ## Modules overview
 
@@ -94,7 +94,7 @@ which to operate must always be explicitely given. This is the reason why
 * reroute: various ways of rerouting tensors to different consuming ops like
   *swap* or *reroute_a2b*.
 * subgraph: the SubGraphView class, which enables subgraph manipulations in a
-  TensorFlow tf.Graph.
+  TensorFlow `tf.Graph`.
 * edit: various editing functions operating on subgraphs like *detach*,
   *connect* or *bypass*.
 * transform: the Transformer class, which enables transforming
@@ -106,25 +106,27 @@ which to operate must always be explicitely given. This is the reason why
 
 ### `tf.contrib.graph_editor.make_list_of_op(ops, check_graph=True, allow_graph=True, ignore_ts=False)` {#make_list_of_op}
 
-Convert ops to a list of tf.Operation.
+Convert ops to a list of `tf.Operation`.
 
 ##### Args:
 
 
-*  <b>`ops`</b>: can be an iterable of tf.Operation, a tf.Graph or a single operation.
-*  <b>`check_graph`</b>: if True check if all the operations belong to the same graph.
-*  <b>`allow_graph`</b>: if False a tf.Graph cannot be converted.
-*  <b>`ignore_ts`</b>: if True, silently ignore tf.Tensor.
+*  <b>`ops`</b>: can be an iterable of `tf.Operation`, a `tf.Graph` or a single
+    operation.
+*  <b>`check_graph`</b>: if `True` check if all the operations belong to the same graph.
+*  <b>`allow_graph`</b>: if `False` a `tf.Graph` cannot be converted.
+*  <b>`ignore_ts`</b>: if True, silently ignore `tf.Tensor`.
 
 ##### Returns:
 
-  A newly created list of tf.Operation.
+  A newly created list of `tf.Operation`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if ops cannot be converted to a list of tf.Operation or,
-   if check_graph is True, if all the ops do not belong to the same graph.
+*  <b>`TypeError`</b>: if ops cannot be converted to a list of `tf.Operation` or,
+   if `check_graph` is `True`, if all the ops do not belong to the
+   same graph.
 
 
 - - -
@@ -136,62 +138,62 @@ get all the tensors which are input or output of an op in the graph.
 ##### Args:
 
 
-*  <b>`graph`</b>: a tf.Graph.
+*  <b>`graph`</b>: a `tf.Graph`.
 
 ##### Returns:
 
-  A list of tf.Tensor.
+  A list of `tf.Tensor`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if graph is not a tf.Graph.
+*  <b>`TypeError`</b>: if graph is not a `tf.Graph`.
 
 
 - - -
 
 ### `tf.contrib.graph_editor.make_list_of_t(ts, check_graph=True, allow_graph=True, ignore_ops=False)` {#make_list_of_t}
 
-Convert ts to a list of tf.Tensor.
+Convert ts to a list of `tf.Tensor`.
 
 ##### Args:
 
 
-*  <b>`ts`</b>: can be an iterable of tf.Tensor, a tf.Graph or a single tensor.
-*  <b>`check_graph`</b>: if True check if all the tensors belong to the same graph.
-*  <b>`allow_graph`</b>: if False a tf.Graph cannot be converted.
-*  <b>`ignore_ops`</b>: if True, silently ignore tf.Operation.
+*  <b>`ts`</b>: can be an iterable of `tf.Tensor`, a `tf.Graph` or a single tensor.
+*  <b>`check_graph`</b>: if `True` check if all the tensors belong to the same graph.
+*  <b>`allow_graph`</b>: if `False` a `tf.Graph` cannot be converted.
+*  <b>`ignore_ops`</b>: if `True`, silently ignore `tf.Operation`.
 
 ##### Returns:
 
-  A newly created list of tf.Tensor.
+  A newly created list of `tf.Tensor`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if ts cannot be converted to a list of tf.Tensor or,
-   if check_graph is True, if all the ops do not belong to the same graph.
+*  <b>`TypeError`</b>: if `ts` cannot be converted to a list of `tf.Tensor` or,
+   if `check_graph` is `True`, if all the ops do not belong to the same graph.
 
 
 - - -
 
 ### `tf.contrib.graph_editor.get_generating_ops(ts)` {#get_generating_ops}
 
-Return all the generating ops of the tensors in ts.
+Return all the generating ops of the tensors in `ts`.
 
 ##### Args:
 
 
-*  <b>`ts`</b>: a list of tf.Tensor
+*  <b>`ts`</b>: a list of `tf.Tensor`
 
 ##### Returns:
 
-  A list of all the generating tf.Operation of the tensors in ts.
+  A list of all the generating `tf.Operation` of the tensors in `ts`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if ts cannot be converted to a list of tf.Tensor.
+*  <b>`TypeError`</b>: if `ts` cannot be converted to a list of `tf.Tensor`.
 
 
 - - -
@@ -203,16 +205,16 @@ Return all the consuming ops of the tensors in ts.
 ##### Args:
 
 
-*  <b>`ts`</b>: a list of tf.Tensor
+*  <b>`ts`</b>: a list of `tf.Tensor`
 
 ##### Returns:
 
-  A list of all the consuming tf.Operation of the tensors in ts.
+  A list of all the consuming `tf.Operation` of the tensors in `ts`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if ts cannot be converted to a list of tf.Tensor.
+*  <b>`TypeError`</b>: if ts cannot be converted to a list of `tf.Tensor`.
 
 
 - - -
@@ -229,18 +231,18 @@ Create a dictionary of control-output dependencies.
 ##### Args:
 
 
-*  <b>`graph`</b>: a tf.Graph.
+*  <b>`graph`</b>: a `tf.Graph`.
 
 ##### Returns:
 
-  A dictionary where a key is a tf.Operation instance and the corresponding
-    value is a list of all the ops which have the key as one of their
-    control-input dependencies.
+  A dictionary where a key is a `tf.Operation` instance and the
+     corresponding value is a list of all the ops which have the key
+     as one of their control-input dependencies.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: graph is not a tf.Graph.
+*  <b>`TypeError`</b>: graph is not a `tf.Graph`.
 
 
 - - -
@@ -276,14 +278,14 @@ Update the control outputs if the graph has changed.
 
 ### `tf.contrib.graph_editor.placeholder_name(t=None, scope=None)` {#placeholder_name}
 
-Create placeholder name for tjhe graph editor.
+Create placeholder name for the graph editor.
 
 ##### Args:
 
 
 *  <b>`t`</b>: optional tensor on which the placeholder operation's name will be based
     on
-*  <b>`scope`</b>: absolute scope with which to predix the placeholder's name. None
+*  <b>`scope`</b>: absolute scope with which to prefix the placeholder's name. None
     means that the scope of t is preserved. "" means the root scope.
 
 ##### Returns:
@@ -302,26 +304,26 @@ Create placeholder name for tjhe graph editor.
 
 ### `tf.contrib.graph_editor.make_placeholder_from_tensor(t, scope=None)` {#make_placeholder_from_tensor}
 
-Create a tf.placeholder for the Graph Editor.
+Create a `tf.placeholder` for the Graph Editor.
 
 Note that the correct graph scope must be set by the calling function.
 
 ##### Args:
 
 
-*  <b>`t`</b>: a tf.Tensor whose name will be used to create the placeholder
+*  <b>`t`</b>: a `tf.Tensor` whose name will be used to create the placeholder
     (see function placeholder_name).
 *  <b>`scope`</b>: absolute scope within which to create the placeholder. None
-    means that the scope of t is preserved. "" means the root scope.
+    means that the scope of `t` is preserved. `""` means the root scope.
 
 ##### Returns:
 
-  A newly created tf.placeholder.
+  A newly created `tf.placeholder`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if t is not None or a tf.Tensor.
+*  <b>`TypeError`</b>: if `t` is not `None` or a `tf.Tensor`.
 
 
 - - -
@@ -359,18 +361,18 @@ Get all the tensors which are input or output of an op in ops.
 ##### Args:
 
 
-*  <b>`ops`</b>: an object convertible to a list of tf.Operation.
+*  <b>`ops`</b>: an object convertible to a list of `tf.Operation`.
 *  <b>`positive_filter`</b>: a function deciding whether to keep a tensor or not.
-    If True, all the tensors are returned.
+    If `True`, all the tensors are returned.
 
 ##### Returns:
 
-  A list of tf.Tensor.
+  A list of `tf.Tensor`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if ops cannot be converted to a list of tf.Operation.
+*  <b>`TypeError`</b>: if ops cannot be converted to a list of `tf.Operation`.
 
 
 - - -
@@ -429,19 +431,19 @@ Get all the operations that match the given regex.
 ##### Args:
 
 
-*  <b>`ops`</b>: an object convertible to a list of tf.Operation.
+*  <b>`ops`</b>: an object convertible to a list of `tf.Operation`.
 *  <b>`regex`</b>: a regular expression matching the operation's name.
-    For example, "^foo(/.*)?$" will match all the operations in the "foo"
+    For example, `"^foo(/.*)?$"` will match all the operations in the "foo"
     scope.
 
 ##### Returns:
 
-  A list of tf.Operation.
+  A list of `tf.Operation`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if ops cannot be converted to a list of tf.Operation.
+*  <b>`TypeError`</b>: if ops cannot be converted to a list of `tf.Operation`.
 
 
 - - -
@@ -501,33 +503,33 @@ Do various check on control_inputs and control_outputs.
 
 ### `tf.contrib.graph_editor.get_ops_ios(ops, control_inputs=False, control_outputs=None, control_ios=None)` {#get_ops_ios}
 
-Return all the tf.Operation which are connected to an op in ops.
+Return all the `tf.Operation` which are connected to an op in ops.
 
 ##### Args:
 
 
-*  <b>`ops`</b>: an object convertible to a list of tf.Operation.
+*  <b>`ops`</b>: an object convertible to a list of `tf.Operation`.
 *  <b>`control_inputs`</b>: A boolean indicating whether control inputs are enabled.
-*  <b>`control_outputs`</b>: An instance of util.ControlOutputs or None. If not None,
-    control outputs are enabled.
-*  <b>`control_ios`</b>: An instance of util.ControlOutputs or None. If not None, both
-    control inputs and control outputs are enabled. This is equivalent to set
-    control_inputs to True and control_outputs to the util.ControlOutputs
-    instance.
+*  <b>`control_outputs`</b>: An instance of `util.ControlOutputs` or `None`. If not
+    `None`, control outputs are enabled.
+*  <b>`control_ios`</b>: An instance of `util.ControlOutputs` or `None`. If not `None`,
+    both control inputs and control outputs are enabled. This is equivalent to
+    set `control_inputs` to `True` and `control_outputs` to the
+    `util.ControlOutputs` instance.
 
 ##### Returns:
 
-  All the tf.Operation surrounding the given ops.
+  All the `tf.Operation` surrounding the given ops.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if ops cannot be converted to a list of tf.Operation.
+*  <b>`TypeError`</b>: if `ops` cannot be converted to a list of `tf.Operation`.
 
 
 - - -
 
-### `tf.contrib.graph_editor.compute_boundary_ts(ops, ambiguous_are_outputs=True)` {#compute_boundary_ts}
+### `tf.contrib.graph_editor.compute_boundary_ts(ops, ambiguous_ts_are_outputs=True)` {#compute_boundary_ts}
 
 Compute the tensors at the boundary of a set of ops.
 
@@ -541,9 +543,10 @@ and classify them into three categories:
 
 
 *  <b>`ops`</b>: an object convertible to a list of tf.Operation.
-*  <b>`ambiguous_are_outputs`</b>: a tensor can have consumers both inside and outside
-    ops. Such tensors are treated as outside tensor if inside_output_as_output
-    is True, otherwise they are treated as inside tensor.
+*  <b>`ambiguous_ts_are_outputs`</b>: a tensor can have consumers both inside and
+    outside ops. Such tensors are treated as outside tensor if
+    ambiguous_ts_are_outputs is True, otherwise they are treated as
+    inside tensor.
 
 ##### Returns:
 
@@ -562,33 +565,34 @@ and classify them into three categories:
 
 ### `tf.contrib.graph_editor.get_within_boundary_ops(ops, seed_ops, boundary_ops=(), inclusive=True, control_inputs=False, control_outputs=None, control_ios=None)` {#get_within_boundary_ops}
 
-Return all the tf.Operation within the given boundary.
+Return all the `tf.Operation` within the given boundary.
 
 ##### Args:
 
 
-*  <b>`ops`</b>: an object convertible to a list of tf.Operation. those ops define the
-    set in which to perform the operation (if a tf.Graph is given, it
+*  <b>`ops`</b>: an object convertible to a list of `tf.Operation`. those ops define the
+    set in which to perform the operation (if a `tf.Graph` is given, it
     will be converted to the list of all its operations).
 *  <b>`seed_ops`</b>: the operations from which to start expanding.
 *  <b>`boundary_ops`</b>: the ops forming the boundary.
-*  <b>`inclusive`</b>: if True, the result will also include the boundary ops.
+*  <b>`inclusive`</b>: if `True`, the result will also include the boundary ops.
 *  <b>`control_inputs`</b>: A boolean indicating whether control inputs are enabled.
-*  <b>`control_outputs`</b>: An instance of util.ControlOutputs or None. If not None,
-    control outputs are enabled.
-*  <b>`control_ios`</b>: An instance of util.ControlOutputs or None. If not None, both
-    control inputs and control outputs are enabled. This is equivalent to set
-    control_inputs to True and control_outputs to the util.ControlOutputs
-    instance.
+*  <b>`control_outputs`</b>: An instance of `util.ControlOutputs` or `None`. If not
+    `None`, control outputs are enabled.
+*  <b>`control_ios`</b>: An instance of `util.ControlOutputs` or `None`. If not
+    `None`, both control inputs and control outputs are enabled. This is
+    equivalent to set control_inputs to True and control_outputs to
+    the `util.ControlOutputs` instance.
 
 ##### Returns:
 
-  All the tf.Operation surrounding the given ops.
+  All the `tf.Operation` surrounding the given ops.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if ops or seed_ops cannot be converted to a list of tf.Operation.
+*  <b>`TypeError`</b>: if `ops` or `seed_ops` cannot be converted to a list of
+    `tf.Operation`.
 *  <b>`ValueError`</b>: if the boundary is intersecting with the seeds.
 
 
@@ -605,22 +609,22 @@ Do a forward graph walk and return all the visited ops.
     walk starts. If a list of tensors is given instead, the seed_ops are set
     to be the consumers of those tensors.
 *  <b>`inclusive`</b>: if True the given seed_ops are also part of the resulting set.
-*  <b>`within_ops`</b>: an iterable of tf.Operation whithin which the search is
-    restricted. If within_ops is None, the search is performed within
+*  <b>`within_ops`</b>: an iterable of `tf.Operation` within which the search is
+    restricted. If `within_ops` is `None`, the search is performed within
     the whole graph.
 *  <b>`stop_at_ts`</b>: an iterable of tensors at which the graph walk stops.
-*  <b>`control_outputs`</b>: a util.ControlOutputs instance or None.
-    If not None, it will be used while walking the graph forward.
+*  <b>`control_outputs`</b>: a `util.ControlOutputs` instance or None.
+    If not `None`, it will be used while walking the graph forward.
 
 ##### Returns:
 
-  A Python set of all the tf.Operation ahead of seed_ops.
+  A Python set of all the `tf.Operation` ahead of `seed_ops`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if seed_ops or within_ops cannot be converted to a list of
-    tf.Operation.
+*  <b>`TypeError`</b>: if `seed_ops` or `within_ops` cannot be converted to a list of
+    `tf.Operation`.
 
 
 - - -
@@ -636,28 +640,28 @@ Do a backward graph walk and return all the visited ops.
     walk starts. If a list of tensors is given instead, the seed_ops are set
     to be the generators of those tensors.
 *  <b>`inclusive`</b>: if True the given seed_ops are also part of the resulting set.
-*  <b>`within_ops`</b>: an iterable of tf.Operation whithin which the search is
-    restricted. If within_ops is None, the search is performed within
+*  <b>`within_ops`</b>: an iterable of `tf.Operation` within which the search is
+    restricted. If `within_ops` is `None`, the search is performed within
     the whole graph.
 *  <b>`stop_at_ts`</b>: an iterable of tensors at which the graph walk stops.
 *  <b>`control_inputs`</b>: if True, control inputs will be used while moving backward.
 
 ##### Returns:
 
-  A Python set of all the tf.Operation behind seed_ops.
+  A Python set of all the `tf.Operation` behind `seed_ops`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if seed_ops or within_ops cannot be converted to a list of
-    tf.Operation.
+*  <b>`TypeError`</b>: if `seed_ops` or `within_ops` cannot be converted to a list of
+    `tf.Operation`.
 
 
 - - -
 
 ### `tf.contrib.graph_editor.get_walks_intersection_ops(forward_seed_ops, backward_seed_ops, forward_inclusive=True, backward_inclusive=True, within_ops=None, control_inputs=False, control_outputs=None, control_ios=None)` {#get_walks_intersection_ops}
 
-Return the intersection of a foward and a backward walk.
+Return the intersection of a forward and a backward walk.
 
 ##### Args:
 
@@ -672,7 +676,7 @@ Return the intersection of a foward and a backward walk.
     resulting set.
 *  <b>`backward_inclusive`</b>: if True the given backward_seed_ops are also part of the
     resulting set.
-*  <b>`within_ops`</b>: an iterable of tf.Operation whithin which the search is
+*  <b>`within_ops`</b>: an iterable of tf.Operation within which the search is
     restricted. If within_ops is None, the search is performed within
     the whole graph.
 *  <b>`control_inputs`</b>: A boolean indicating whether control inputs are enabled.
@@ -685,21 +689,21 @@ Return the intersection of a foward and a backward walk.
 
 ##### Returns:
 
-  A Python set of all the tf.Operation in the intersection of a foward and a
+  A Python set of all the tf.Operation in the intersection of a forward and a
     backward walk.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if forward_seed_ops or backward_seed_ops or within_ops cannot be
-    converted to a list of tf.Operation.
+*  <b>`TypeError`</b>: if `forward_seed_ops` or `backward_seed_ops` or `within_ops`
+    cannot be converted to a list of `tf.Operation`.
 
 
 - - -
 
 ### `tf.contrib.graph_editor.get_walks_union_ops(forward_seed_ops, backward_seed_ops, forward_inclusive=True, backward_inclusive=True, within_ops=None, control_inputs=False, control_outputs=None, control_ios=None)` {#get_walks_union_ops}
 
-Return the union of a foward and a backward walk.
+Return the union of a forward and a backward walk.
 
 ##### Args:
 
@@ -726,7 +730,7 @@ Return the union of a foward and a backward walk.
 
 ##### Returns:
 
-  A Python set of all the tf.Operation in the union of a foward and a
+  A Python set of all the tf.Operation in the union of a forward and a
     backward walk.
 
 ##### Raises:
@@ -746,24 +750,24 @@ Helper to select operations.
 
 
 *  <b>`*args`</b>: list of 1) regular expressions (compiled or not) or  2) (array of)
-    tf.Operation. tf.Tensor instances are silently ignored.
-*  <b>`**kwargs`</b>: 'graph': tf.Graph in which to perform the regex query.This is
+    `tf.Operation`. `tf.Tensor` instances are silently ignored.
+*  <b>`**kwargs`</b>: 'graph': `tf.Graph` in which to perform the regex query.This is
     required when using regex.
-    'positive_filter': an elem if selected only if positive_filter(elem) is
-      True. This is optional.
+    'positive_filter': an elem if selected only if `positive_filter(elem)` is
+      `True`. This is optional.
     'restrict_ops_regex': a regular expression is ignored if it doesn't start
       with the substring "(?#ops)".
 
 ##### Returns:
 
-  A list of tf.Operation.
+  A list of `tf.Operation`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if the optional keyword argument graph is not a tf.Graph
-    or if an argument in args is not an (array of) tf.Operation
-    or an (array of) tf.Tensor (silently ignored) or a string
+*  <b>`TypeError`</b>: if the optional keyword argument graph is not a `tf.Graph`
+    or if an argument in args is not an (array of) `tf.Operation`
+    or an (array of) `tf.Tensor` (silently ignored) or a string
     or a regular expression.
 *  <b>`ValueError`</b>: if one of the keyword arguments is unexpected or if a regular
     expression is used without passing a graph as a keyword argument.
@@ -779,24 +783,24 @@ Helper to select tensors.
 
 
 *  <b>`*args`</b>: list of 1) regular expressions (compiled or not) or  2) (array of)
-    tf.Tensor. tf.Operation instances are silently ignored.
-*  <b>`**kwargs`</b>: 'graph': tf.Graph in which to perform the regex query.This is
+    `tf.Tensor`. `tf.Operation` instances are silently ignored.
+*  <b>`**kwargs`</b>: 'graph': `tf.Graph` in which to perform the regex query.This is
     required when using regex.
-    'positive_filter': an elem if selected only if positive_filter(elem) is
-      True. This is optional.
+    'positive_filter': an elem if selected only if `positive_filter(elem)` is
+      `True`. This is optional.
     'restrict_ts_regex': a regular expression is ignored if it doesn't start
       with the substring "(?#ts)".
 
 ##### Returns:
 
-  A list of tf.Tensor.
+  A list of `tf.Tensor`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if the optional keyword argument graph is not a tf.Graph
-    or if an argument in args is not an (array of) tf.Tensor
-    or an (array of) tf.Operation (silently ignored) or a string
+*  <b>`TypeError`</b>: if the optional keyword argument graph is not a `tf.Graph`
+    or if an argument in args is not an (array of) `tf.Tensor`
+    or an (array of) `tf.Operation` (silently ignored) or a string
     or a regular expression.
 *  <b>`ValueError`</b>: if one of the keyword arguments is unexpected or if a regular
     expression is used without passing a graph as a keyword argument.
@@ -812,25 +816,26 @@ Helper to select operations and tensors.
 
 
 *  <b>`*args`</b>: list of 1) regular expressions (compiled or not) or  2) (array of)
-    tf.Operation 3) (array of) tf.Tensor. Regular expressions matching tensors
-    must start with the comment "(?#ts)", for instance: "(?#ts)^foo/.*".
-*  <b>`**kwargs`</b>: 'graph': tf.Graph in which to perform the regex query.This is
+    `tf.Operation` 3) (array of) tf.Tensor. Regular expressions matching
+    tensors must start with the comment `"(?#ts)"`, for instance:
+    `"(?#ts)^foo/.*"`.
+*  <b>`**kwargs`</b>: 'graph': `tf.Graph` in which to perform the regex query.This is
     required when using regex.
-    'positive_filter': an elem if selected only if positive_filter(elem) is
-      True. This is optional.
+    'positive_filter': an elem if selected only if `positive_filter(elem)` is
+      `True`. This is optional.
 
 ##### Returns:
 
   A tuple `(ops, ts)` where:
-    `ops` is a list of tf.Operation
-    `ts` is a list of tf.Tensor
+    `ops` is a list of `tf.Operation`, and
+    `ts` is a list of `tf.Tensor`
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if the optional keyword argument graph is not a tf.Graph
-    or if an argument in args is not an (array of) tf.Tensor
-    or an (array of) tf.Operation or a string or a regular expression.
+*  <b>`TypeError`</b>: if the optional keyword argument graph is not a `tf.Graph`
+    or if an argument in args is not an (array of) `tf.Tensor`
+    or an (array of) `tf.Operation` or a string or a regular expression.
 *  <b>`ValueError`</b>: if one of the keyword arguments is unexpected or if a regular
     expression is used without passing a graph as a keyword argument.
 
@@ -842,17 +847,18 @@ Helper to select operations and tensors.
 
 ### `class tf.contrib.graph_editor.SubGraphView` {#SubGraphView}
 
-A subgraph view on an existing tf.Graph.
+A subgraph view on an existing `tf.Graph`.
 
-An instance of this class is a subgraph view on an existing tf.Graph.
-"subgraph" means that it can represent part of the whole tf.Graph.
+An instance of this class is a subgraph view on an existing `tf.Graph`.
+"subgraph" means that it can represent part of the whole `tf.Graph`.
 "view" means that it only provides a passive observation and do not to act
-on the tf.Graph. Note that in this documentation, the term "subgraph" is often
-used as substitute to "subgraph view".
+on the `tf.Graph`. Note that in this documentation, the term "subgraph" is
+often used as substitute to "subgraph view".
 
 A subgraph contains:
-* a list of input tensors, accessible via the "inputs" property.
-* a list of output tensors, accessible via the "outputs" property.
+
+* a list of input tensors, accessible via the `inputs` property.
+* a list of output tensors, accessible via the `outputs` property.
 * and the operations in between, accessible via the "ops" property.
 
 An subgraph can be seen as a function F(i0, i1, ...) -> o0, o1, ... It is a
@@ -861,6 +867,7 @@ output tensors. The computation that the function performs is encoded in the
 operations of the subgraph.
 
 The tensors (input or output) can be of two kinds:
+
 - connected: a connected tensor connects to at least one operation contained
 in the subgraph. One example is a subgraph representing a single operation
 and its inputs and outputs: all the input and output tensors of the op
@@ -872,23 +879,24 @@ present both in the input and output tensors of the subgraph. It can however
 be remapped to only appear as an input (or output) only.
 
 The input and output tensors can be remapped. For instance, some input tensor
-can be ommited. For instance, a subgraph representing an operation with two
+can be omitted. For instance, a subgraph representing an operation with two
 inputs can be remapped to only take one input. Note that this does not change
-at all the underlying tf.Graph (remember, it is a view). It means that
+at all the underlying `tf.Graph` (remember, it is a view). It means that
 the other input is being ignored, or is being treated as "given".
 The analogy with functions can be extended like this: F(x,y) is the original
 function. Remapping the inputs from [x, y] to just [x] means that the subgraph
 now represent the function F_y(x) (y is "given").
 
 The output tensors can also be remapped. For instance, some output tensor can
-be ommited. Other output tensor can be duplicated as well. As mentioned
-before, this does not change at all the underlying tf.Graph.
+be omitted. Other output tensor can be duplicated as well. As mentioned
+before, this does not change at all the underlying `tf.Graph`.
 The analogy with functions can be extended like this: F(...)->x,y is the
 original function. Remapping the outputs from [x, y] to just [y,y] means that
 the subgraph now represent the function M(F(...)) where M is the function
 M(a,b)->b,b.
 
 It is useful to describe three other kind of tensors:
+
 * internal: an internal tensor is a tensor connecting operations contained
   in the subgraph. One example in the subgraph representing the two
   operations A and B connected sequentially: -> A -> B ->. The middle arrow
@@ -906,7 +914,8 @@ It is useful to describe three other kind of tensors:
   not listed as an output and one of whose generating operations belongs to
   the subgraph.
 
-Here are some usefull guarantees about an instance of a SubGraphView:
+Here are some useful guarantees about an instance of a SubGraphView:
+
 * the input (or output) tensors are not internal.
 * the input (or output) tensors are either "connected" or "passthrough".
 * the passthrough tensors are not connected to any of the operation of
@@ -925,19 +934,67 @@ instances of a given subgraph. In that sense, the class SubGraphView is meant
 to be used like an immutable python object.
 
 A common problem when using views is that they can get out-of-sync with the
-data they observe (in this case, a tf.Graph). This is up to the user to insure
-that this doesn't happen. To keep on the safe sife, it is recommended that
-the life time of subgraph views are kept very short. One way to achieve this
-is to use subgraphs within a "with make_sgv(...) as sgv:" Python context.
+data they observe (in this case, a `tf.Graph`). This is up to the user to
+ensure that this doesn't happen. To keep on the safe side, it is recommended
+that the life time of subgraph views are kept very short. One way to achieve
+this is to use subgraphs within a "with make_sgv(...) as sgv:" Python context.
 
 To alleviate the out-of-sync problem, some functions are granted the right to
 modified subgraph in place. This is typically the case of graph manipulation
 functions which, given some subgraphs as arguments, can modify the underlying
-tf.Graph. Since this modification is likely to render the subgraph view
+`tf.Graph`. Since this modification is likely to render the subgraph view
 invalid, those functions can modify the argument in place to reflect the
 change. For instance, calling the function swap_inputs(svg0, svg1) will modify
 svg0 and svg1 in place to reflect the fact that their inputs have now being
 swapped.
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__bool__()` {#SubGraphView.__bool__}
+
+Allows for implicit boolean conversion.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__copy__()` {#SubGraphView.__copy__}
+
+Create a copy of this subgraph.
+
+Note that this class is a "view", copying it only create another view and
+does not copy the underlying part of the `tf.Graph`.
+
+##### Returns:
+
+  A new identical instance of the original subgraph view.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__enter__()` {#SubGraphView.__enter__}
+
+Allow Python context to minimize the life time of a subgraph view.
+
+A subgraph view is meant to be a lightweight and transient object. A short
+lifetime will alleviate the "out-of-sync" issue mentioned earlier. For that
+reason, a SubGraphView instance can be used within a Python context. For
+example:
+
+from tensorflow.contrib import graph_editor as ge
+with ge.make_sgv(...) as sgv:
+  print(sgv)
+
+##### Returns:
+
+  Itself.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__exit__(exc_type, exc_value, traceback)` {#SubGraphView.__exit__}
+
+
+
+
 - - -
 
 #### `tf.contrib.graph_editor.SubGraphView.__init__(inside_ops=(), passthrough_ts=())` {#SubGraphView.__init__}
@@ -947,9 +1004,9 @@ Create a subgraph containing the given ops and the "passthrough" tensors.
 ##### Args:
 
 
-*  <b>`inside_ops`</b>: an object convertible to a list of tf.Operation. This list
+*  <b>`inside_ops`</b>: an object convertible to a list of `tf.Operation`. This list
     defines all the operations in the subgraph.
-*  <b>`passthrough_ts`</b>: an object convertible to a list of tf.Tensor. This list
+*  <b>`passthrough_ts`</b>: an object convertible to a list of `tf.Tensor`. This list
     define all the "passthrough" tensors. A passthrough tensor is a tensor
     which goes directly from the input of the subgraph to it output, without
     any intermediate operations. All the non passthrough tensors are
@@ -958,8 +1015,22 @@ Create a subgraph containing the given ops and the "passthrough" tensors.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if inside_ops cannot be converted to a list of tf.Operation or
-    if passthrough_ts cannot be converted to a list of tf.Tensor.
+*  <b>`TypeError`</b>: if inside_ops cannot be converted to a list of `tf.Operation`
+    or if `passthrough_ts` cannot be converted to a list of `tf.Tensor`.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__nonzero__()` {#SubGraphView.__nonzero__}
+
+Allows for implicit boolean conversion.
+
+
+- - -
+
+#### `tf.contrib.graph_editor.SubGraphView.__str__()` {#SubGraphView.__str__}
+
+
 
 
 - - -
@@ -1023,7 +1094,7 @@ Return the op named op_name.
 
 #### `tf.contrib.graph_editor.SubGraphView.graph` {#SubGraphView.graph}
 
-The underlying tf.Graph.
+The underlying `tf.Graph`.
 
 
 - - -
@@ -1162,7 +1233,7 @@ Remap the inputs of the subgraph.
 If the inputs of the original subgraph are [t0, t1, t2], remapping to [2,0]
 will create a new instance whose inputs is [t2, t0].
 
-Note that this is only modifying the view: the underlying tf.Graph is not
+Note that this is only modifying the view: the underlying `tf.Graph` is not
 affected.
 
 ##### Args:
@@ -1244,7 +1315,7 @@ Create a SubGraphView from selected operations and passthrough tensors.
 
 
 *  <b>`*args`</b>: list of 1) regular expressions (compiled or not) or  2) (array of)
-    tf.Operation 3) (array of) tf.Tensor. Those objects will be converted
+    `tf.Operation` 3) (array of) `tf.Tensor`. Those objects will be converted
     into a list of operations and a list of candidate for passthrough tensors.
 *  <b>`**kwargs`</b>: keyword graph is used 1) to check that the ops and ts are from
     the correct graph 2) for regular expression query
@@ -1256,9 +1327,9 @@ Create a SubGraphView from selected operations and passthrough tensors.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if the optional keyword argument graph is not a tf.Graph
-    or if an argument in args is not an (array of) tf.Tensor
-    or an (array of) tf.Operation or a string or a regular expression.
+*  <b>`TypeError`</b>: if the optional keyword argument graph is not a `tf.Graph`
+    or if an argument in args is not an (array of) `tf.Tensor`
+    or an (array of) `tf.Operation` or a string or a regular expression.
 *  <b>`ValueError`</b>: if one of the keyword arguments is unexpected.
 
 
@@ -1272,7 +1343,7 @@ Make a subgraph from a name scope.
 
 
 *  <b>`scope`</b>: the name of the scope.
-*  <b>`graph`</b>: the tf.Graph.
+*  <b>`graph`</b>: the `tf.Graph`.
 
 ##### Returns:
 
@@ -1295,8 +1366,8 @@ A0 A1     A0 A1
 ##### Args:
 
 
-*  <b>`ts0`</b>: an object convertible to a list of tf.Tensor.
-*  <b>`ts1`</b>: an object convertible to a list of tf.Tensor.
+*  <b>`ts0`</b>: an object convertible to a list of `tf.Tensor`.
+*  <b>`ts1`</b>: an object convertible to a list of `tf.Tensor`.
 *  <b>`can_modify`</b>: iterable of operations which can be modified. Any operation
     outside within_ops will be left untouched by this function.
 *  <b>`cannot_modify`</b>: iterable of operations which cannot be modified.
@@ -1330,8 +1401,8 @@ The end of the tensors in ts1 are left dangling.
 ##### Args:
 
 
-*  <b>`ts0`</b>: an object convertible to a list of tf.Tensor.
-*  <b>`ts1`</b>: an object convertible to a list of tf.Tensor.
+*  <b>`ts0`</b>: an object convertible to a list of `tf.Tensor`.
+*  <b>`ts1`</b>: an object convertible to a list of `tf.Tensor`.
 *  <b>`can_modify`</b>: iterable of operations which can be modified. Any operation
     outside within_ops will be left untouched by this function.
 *  <b>`cannot_modify`</b>: iterable of operations which cannot be modified. Any
@@ -1364,8 +1435,8 @@ The end of the tensors in ts0 are left dangling.
 ##### Args:
 
 
-*  <b>`ts0`</b>: an object convertible to a list of tf.Tensor.
-*  <b>`ts1`</b>: an object convertible to a list of tf.Tensor.
+*  <b>`ts0`</b>: an object convertible to a list of `tf.Tensor`.
+*  <b>`ts1`</b>: an object convertible to a list of `tf.Tensor`.
 *  <b>`can_modify`</b>: iterable of operations which can be modified. Any operation
     outside within_ops will be left untouched by this function.
 *  <b>`cannot_modify`</b>: iterable of operations which cannot be modified.
@@ -1453,18 +1524,19 @@ Re-route the inputs and outputs of sgv1 to sgv0 (see _reroute).
 
 Remove the control inputs cops from co.
 
-Warning: this function is directly manipulating the internals of the tf.Graph.
+Warning: this function is directly manipulating the internals of the
+`tf.Graph`.
 
 ##### Args:
 
 
-*  <b>`op`</b>: a tf.Operation from which to remove the control inputs.
-*  <b>`cops`</b>: an object convertible to a list of tf.Operation.
+*  <b>`op`</b>: a `tf.Operation` from which to remove the control inputs.
+*  <b>`cops`</b>: an object convertible to a list of `tf.Operation`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if op is not a tf.Operation
+*  <b>`TypeError`</b>: if op is not a `tf.Operation`.
 *  <b>`ValueError`</b>: if any cop in cops is not a control input of op.
 
 
@@ -1480,7 +1552,7 @@ Warning: this function is directly manipulating the internals of the tf.Graph.
 
 
 *  <b>`op`</b>: a tf.Operation to which the control inputs are added.
-*  <b>`cops`</b>: an object convertible to a list of tf.Operation.
+*  <b>`cops`</b>: an object convertible to a list of `tf.Operation`.
 
 ##### Raises:
 
@@ -1550,7 +1622,7 @@ Detach the inputs of a subgraph view.
 
 ### `tf.contrib.graph_editor.detach_outputs(sgv, control_outputs=None)` {#detach_outputs}
 
-Detach the outputa of a subgraph view.
+Detach the output of a subgraph view.
 
 ##### Args:
 
@@ -1718,7 +1790,7 @@ Add the transformed elem to the (renamed) collections of elem.
 
 
 *  <b>`info`</b>: Transform._Info instance.
-*  <b>`elem`</b>: the original element (tf.Tensor or tf.Operation)
+*  <b>`elem`</b>: the original element (`tf.Tensor` or `tf.Operation`)
 *  <b>`elem_`</b>: the transformed element
 
 
@@ -1748,13 +1820,13 @@ if they are inside the subgraph, otherwise they are just ignored.
 
 ### `tf.contrib.graph_editor.copy_op_handler(info, op, copy_shape=True)` {#copy_op_handler}
 
-Copy a tf.Operation.
+Copy a `tf.Operation`.
 
 ##### Args:
 
 
 *  <b>`info`</b>: Transform._Info instance.
-*  <b>`op`</b>: the tf.Operation to be copied.
+*  <b>`op`</b>: the `tf.Operation` to be copied.
 *  <b>`copy_shape`</b>: also copy the shape of the tensor
 
 ##### Returns:
@@ -1795,12 +1867,46 @@ replaces inputs with placeholders. This behavior can be modified by changing
 the handlers.
 - - -
 
+#### `tf.contrib.graph_editor.Transformer.__call__(sgv, dst_graph, dst_scope, src_scope='', reuse_dst_scope=False)` {#Transformer.__call__}
+
+Execute the transformation.
+
+##### Args:
+
+
+*  <b>`sgv`</b>: the source subgraph-view.
+*  <b>`dst_graph`</b>: the destination graph.
+*  <b>`dst_scope`</b>: the destination scope.
+*  <b>`src_scope`</b>: the source scope, which specify the path from which the
+    relative path of the transformed nodes are computed. For instance, if
+    src_scope is a/ and dst_scoped is b/, then the node a/x/y will have a
+    relative path of x/y and will be transformed into b/x/y.
+*  <b>`reuse_dst_scope`</b>: if True the dst_scope is re-used if it already exists.
+    Otherwise, the scope is given a unique name based on the one given
+    by appending an underscore followed by a digit (default).
+
+##### Returns:
+
+  A tuple `(sgv, info)` where:
+    `sgv` is the transformed subgraph view;
+    `info` is an instance of Transformer.ResultInfo containing
+    information about the transform, including mapping between
+    original and transformed tensors and operations.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if the arguments are invalid.
+
+
+- - -
+
 #### `tf.contrib.graph_editor.Transformer.__init__()` {#Transformer.__init__}
 
 Transformer constructor.
 
 The following members can be modified:
-transform_op_handler: handle the transformation of a tf.Operation.
+transform_op_handler: handle the transformation of a `tf.Operation`.
   This handler defaults to a simple copy.
 assign_collections_handler: handle the assignment of collections.
   This handler defaults to assigning new collections created under the
@@ -1813,7 +1919,7 @@ transform_external_hidden_input_handler: handle the transform of the
   in sgv.inputs. This handler defaults to a transform which keep the same
   input if the source and destination graphs are the same, otherwise
   use placeholders.
-transform_original_op_hanlder: handle the transform of original_op. This
+transform_original_op_handler: handle the transform of original_op. This
   handler defaults to transforming original_op only if they are in the
   subgraph, otherwise they are ignored.
 
@@ -1870,7 +1976,7 @@ Copy a subgraph.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if dst_graph is not a tf.Graph.
+*  <b>`TypeError`</b>: if `dst_graph` is not a `tf.Graph`.
 *  <b>`StandardError`</b>: if sgv cannot be converted to a SubGraphView using
     the same rules than the function subgraph.make_view.
 
@@ -1924,7 +2030,7 @@ Create a new graph which compute the targets from the replaced Tensors.
 ##### Args:
 
 
-*  <b>`target_ts`</b>: a single tf.Tensor or an iterabble of tf.Tensor.
+*  <b>`target_ts`</b>: a single tf.Tensor or an iterable of tf.Tensor.
 *  <b>`replacement_ts`</b>: dictionary mapping from original tensors to replaced tensors
 *  <b>`dst_scope`</b>: the destination scope.
 *  <b>`src_scope`</b>: the source scope.
@@ -1971,6 +2077,13 @@ Check if an op is of the given type.
 ### `class tf.contrib.graph_editor.OpMatcher` {#OpMatcher}
 
 Graph match class.
+- - -
+
+#### `tf.contrib.graph_editor.OpMatcher.__call__(op)` {#OpMatcher.__call__}
+
+Evaluate if the op matches or not.
+
+
 - - -
 
 #### `tf.contrib.graph_editor.OpMatcher.__init__(positive_filter)` {#OpMatcher.__init__}
@@ -2036,7 +2149,7 @@ Create a SubGraphView from selected operations and passthrough tensors.
 
 
 *  <b>`*args`</b>: list of 1) regular expressions (compiled or not) or  2) (array of)
-    tf.Operation 3) (array of) tf.Tensor. Those objects will be converted
+    `tf.Operation` 3) (array of) `tf.Tensor`. Those objects will be converted
     into a list of operations and a list of candidate for passthrough tensors.
 *  <b>`**kwargs`</b>: keyword graph is used 1) to check that the ops and ts are from
     the correct graph 2) for regular expression query
@@ -2048,9 +2161,9 @@ Create a SubGraphView from selected operations and passthrough tensors.
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if the optional keyword argument graph is not a tf.Graph
-    or if an argument in args is not an (array of) tf.Tensor
-    or an (array of) tf.Operation or a string or a regular expression.
+*  <b>`TypeError`</b>: if the optional keyword argument graph is not a `tf.Graph`
+    or if an argument in args is not an (array of) `tf.Tensor`
+    or an (array of) `tf.Operation` or a string or a regular expression.
 *  <b>`ValueError`</b>: if one of the keyword arguments is unexpected.
 
 
@@ -2064,7 +2177,7 @@ Make a subgraph from a name scope.
 
 
 *  <b>`scope`</b>: the name of the scope.
-*  <b>`graph`</b>: the tf.Graph.
+*  <b>`graph`</b>: the `tf.Graph`.
 
 ##### Returns:
 
@@ -2081,24 +2194,24 @@ Helper to select tensors.
 
 
 *  <b>`*args`</b>: list of 1) regular expressions (compiled or not) or  2) (array of)
-    tf.Tensor. tf.Operation instances are silently ignored.
-*  <b>`**kwargs`</b>: 'graph': tf.Graph in which to perform the regex query.This is
+    `tf.Tensor`. `tf.Operation` instances are silently ignored.
+*  <b>`**kwargs`</b>: 'graph': `tf.Graph` in which to perform the regex query.This is
     required when using regex.
-    'positive_filter': an elem if selected only if positive_filter(elem) is
-      True. This is optional.
+    'positive_filter': an elem if selected only if `positive_filter(elem)` is
+      `True`. This is optional.
     'restrict_ts_regex': a regular expression is ignored if it doesn't start
       with the substring "(?#ts)".
 
 ##### Returns:
 
-  A list of tf.Tensor.
+  A list of `tf.Tensor`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if the optional keyword argument graph is not a tf.Graph
-    or if an argument in args is not an (array of) tf.Tensor
-    or an (array of) tf.Operation (silently ignored) or a string
+*  <b>`TypeError`</b>: if the optional keyword argument graph is not a `tf.Graph`
+    or if an argument in args is not an (array of) `tf.Tensor`
+    or an (array of) `tf.Operation` (silently ignored) or a string
     or a regular expression.
 *  <b>`ValueError`</b>: if one of the keyword arguments is unexpected or if a regular
     expression is used without passing a graph as a keyword argument.
@@ -2114,24 +2227,24 @@ Helper to select operations.
 
 
 *  <b>`*args`</b>: list of 1) regular expressions (compiled or not) or  2) (array of)
-    tf.Operation. tf.Tensor instances are silently ignored.
-*  <b>`**kwargs`</b>: 'graph': tf.Graph in which to perform the regex query.This is
+    `tf.Operation`. `tf.Tensor` instances are silently ignored.
+*  <b>`**kwargs`</b>: 'graph': `tf.Graph` in which to perform the regex query.This is
     required when using regex.
-    'positive_filter': an elem if selected only if positive_filter(elem) is
-      True. This is optional.
+    'positive_filter': an elem if selected only if `positive_filter(elem)` is
+      `True`. This is optional.
     'restrict_ops_regex': a regular expression is ignored if it doesn't start
       with the substring "(?#ops)".
 
 ##### Returns:
 
-  A list of tf.Operation.
+  A list of `tf.Operation`.
 
 ##### Raises:
 
 
-*  <b>`TypeError`</b>: if the optional keyword argument graph is not a tf.Graph
-    or if an argument in args is not an (array of) tf.Operation
-    or an (array of) tf.Tensor (silently ignored) or a string
+*  <b>`TypeError`</b>: if the optional keyword argument graph is not a `tf.Graph`
+    or if an argument in args is not an (array of) `tf.Operation`
+    or an (array of) `tf.Tensor` (silently ignored) or a string
     or a regular expression.
 *  <b>`ValueError`</b>: if one of the keyword arguments is unexpected or if a regular
     expression is used without passing a graph as a keyword argument.
@@ -2142,6 +2255,13 @@ Helper to select operations.
 ### `class tf.contrib.graph_editor.matcher` {#matcher}
 
 Graph match class.
+- - -
+
+#### `tf.contrib.graph_editor.matcher.__call__(op)` {#matcher.__call__}
+
+Evaluate if the op matches or not.
+
+
 - - -
 
 #### `tf.contrib.graph_editor.matcher.__init__(positive_filter)` {#matcher.__init__}

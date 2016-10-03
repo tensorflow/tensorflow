@@ -227,7 +227,7 @@ class CoordinatedSessionTest(tf.test.TestCase):
       coord.request_stop()
       self.assertTrue(coord_sess.should_stop())
 
-  def test_request_stop_on_exception(self):
+  def test_dont_request_stop_on_exception_in_main_thread(self):
     with self.test_session() as sess:
       c = tf.constant(0)
       v = tf.identity(c)
@@ -238,10 +238,10 @@ class CoordinatedSessionTest(tf.test.TestCase):
       self.assertEqual(1, coord_sess.run(v, feed_dict={c: 1}))
       with self.assertRaisesRegexp(TypeError, 'None has invalid type'):
         coord_sess.run([None], feed_dict={c: 2})
-      self.assertTrue(coord.should_stop())
-      self.assertTrue(coord_sess.should_stop())
+      self.assertFalse(coord.should_stop())
+      self.assertFalse(coord_sess.should_stop())
 
-  def test_stop_threads_on_exception(self):
+  def test_stop_threads_on_close_after_exception(self):
     with self.test_session() as sess:
       c = tf.constant(0)
       v = tf.identity(c)
@@ -263,6 +263,7 @@ class CoordinatedSessionTest(tf.test.TestCase):
         self.assertTrue(t.is_alive())
       with self.assertRaisesRegexp(TypeError, 'None has invalid type'):
         coord_sess.run([None], feed_dict={c: 2})
+      coord_sess.close()
       for t in threads:
         self.assertFalse(t.is_alive())
       self.assertTrue(coord.should_stop())
@@ -291,6 +292,9 @@ class AbortAtNSession(object):
     self._sess = sess
     self._count = n
 
+  def close(self):
+    pass
+
   def run(self, *args, **kwargs):
     if self._count == 0:
       raise tf.errors.AbortedError('Aborted at N', None, None)
@@ -301,10 +305,19 @@ class AbortAtNSession(object):
 class RecoverableSessionTest(tf.test.TestCase):
   """_RecoverableSession tests."""
 
+  class _SessionReturner(object):
+
+    def __init__(self, sess):
+      self._sess = sess
+
+    def create_session(self):
+      return self._sess
+
   def test_properties(self):
     with self.test_session() as sess:
       tf.constant(0.0)
-      recoverable_sess = monitored_session._RecoverableSession(lambda: sess)
+      recoverable_sess = monitored_session._RecoverableSession(
+          self._SessionReturner(sess))
       self.assertEquals(sess.graph, recoverable_sess.graph)
       self.assertEquals(sess.sess_str, recoverable_sess.sess_str)
 
@@ -312,34 +325,50 @@ class RecoverableSessionTest(tf.test.TestCase):
     with self.test_session() as sess:
       c = tf.constant(0)
       v = tf.identity(c)
-      recoverable_sess = monitored_session._RecoverableSession(lambda: sess)
+      recoverable_sess = monitored_session._RecoverableSession(
+          self._SessionReturner(sess))
       self.assertEqual(51, recoverable_sess.run(v, feed_dict={c: 51}))
 
   def test_recovery(self):
     with self.test_session() as sess:
+
+      class StackSessionCreator(object):
+
+        def __init__(self, sess):
+          self.sessions_to_use = [
+              AbortAtNSession(sess, x + 1) for x in range(3)
+          ]
+
+        def create_session(self):
+          return self.sessions_to_use.pop(0)
+
       c = tf.constant(0)
       v = tf.identity(c)
+      session_creator = StackSessionCreator(sess)
       # List of 3 sessions to use for recovery.  The first one aborts
       # after 1 run() call, the second after 2 run calls, the third
       # after 3 run calls.
-      sessions_to_use = [AbortAtNSession(sess, x + 1) for x in range(3)]
-      self.assertEqual(3, len(sessions_to_use))
+      self.assertEqual(3, len(session_creator.sessions_to_use))
       # Make the recoverable session uses these 3 sessions in sequence by
       # passing a factory that pops from the session_to_use list.
-      recoverable_sess = monitored_session._RecoverableSession(
-          lambda: sessions_to_use.pop(0))
-      self.assertEqual(2, len(sessions_to_use))  # One session popped.
+      recoverable_sess = monitored_session._RecoverableSession(session_creator)
+      self.assertEqual(
+          2, len(session_creator.sessions_to_use))  # One session popped.
       # Using first session.
       self.assertEqual(51, recoverable_sess.run(v, feed_dict={c: 51}))
-      self.assertEqual(2, len(sessions_to_use))  # Still 2 sessions available
+      self.assertEqual(
+          2, len(session_creator.sessions_to_use))  # Still 2 sessions available
       # This will fail and recover by picking up the second session.
       self.assertEqual(42, recoverable_sess.run(v, feed_dict={c: 42}))
-      self.assertEqual(1, len(sessions_to_use))  # Still 1 session available
+      self.assertEqual(
+          1, len(session_creator.sessions_to_use))  # Still 1 session available
       self.assertEqual(33, recoverable_sess.run(v, feed_dict={c: 33}))
-      self.assertEqual(1, len(sessions_to_use))  # Still 1 session available
+      self.assertEqual(
+          1, len(session_creator.sessions_to_use))  # Still 1 session available
       # This will fail and recover by picking up the last session.
       self.assertEqual(24, recoverable_sess.run(v, feed_dict={c: 24}))
-      self.assertEqual(0, len(sessions_to_use))  # All sessions used.
+      self.assertEqual(
+          0, len(session_creator.sessions_to_use))  # All sessions used.
       self.assertEqual(11, recoverable_sess.run(v, feed_dict={c: 11}))
       self.assertEqual(0, recoverable_sess.run(v, feed_dict={c: 0}))
       # This will fail and throw a real error as the pop() will fail.
@@ -569,7 +598,7 @@ class MonitoredSessionTest(tf.test.TestCase):
   def test_defaults(self):
     with tf.Graph().as_default():
       a_var = tf.Variable(0)
-      with monitored_session.MonitoredSession('') as session:
+      with monitored_session.MonitoredSession() as session:
         self.assertEqual(0, session.run(a_var))
 
   def test_last_step(self):
@@ -577,11 +606,10 @@ class MonitoredSessionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
-      scaffold = monitored_session.Scaffold()
       # Run till step 3 and save.
       hooks = [basic_session_run_hooks.StopAtStepHook(last_step=3)]
-      with monitored_session.MonitoredSession(
-          '', scaffold=scaffold, hooks=hooks) as session:
+      scaffold = monitored_session.Scaffold().finalize()
+      with monitored_session.MonitoredSession(hooks=hooks) as session:
         self.assertEqual(0, session.run(gstep))
         self.assertFalse(session.should_stop())
         self.assertEqual(1, session.run(do_step))
@@ -590,16 +618,17 @@ class MonitoredSessionTest(tf.test.TestCase):
         self.assertFalse(session.should_stop())
         self.assertEqual(3, session.run(do_step))
         self.assertTrue(session.should_stop())
-        save_path = scaffold.saver.save(session.session,
+        save_path = scaffold.saver.save(session._coordinated_creator.tf_sess,
                                         os.path.join(logdir, 'step-3'))
       # Run till step 5 and save.
       def load_ckpt(scaffold, sess):
         scaffold.saver.restore(sess, save_path)
 
-      scaffold = monitored_session.Scaffold(init_fn=load_ckpt)
+      session_creator = monitored_session.ChiefSessionCreator(
+          monitored_session.Scaffold(init_fn=load_ckpt))
       hooks = [basic_session_run_hooks.StopAtStepHook(last_step=5)]
       with monitored_session.MonitoredSession(
-          '', scaffold=scaffold, hooks=hooks) as session:
+          hooks=hooks, session_creator=session_creator) as session:
         self.assertEqual(3, session.run(gstep))
         self.assertFalse(session.should_stop())
         self.assertEqual(4, session.run(do_step))
@@ -612,27 +641,27 @@ class MonitoredSessionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
-      scaffold = monitored_session.Scaffold()
       # Do 3 steps and save.
       hooks = [basic_session_run_hooks.StopAtStepHook(num_steps=3)]
-      with monitored_session.MonitoredSession(
-          '', scaffold=scaffold, hooks=hooks) as session:
+      scaffold = monitored_session.Scaffold().finalize()
+      with monitored_session.MonitoredSession(hooks=hooks) as session:
         session.run(do_step)
         self.assertFalse(session.should_stop())
         session.run(do_step)
         self.assertFalse(session.should_stop())
         session.run(do_step)
         self.assertTrue(session.should_stop())
-        save_path = scaffold.saver.save(session.session,
+        save_path = scaffold.saver.save(session._coordinated_creator.tf_sess,
                                         os.path.join(logdir, 'step-3'))
       # Restore and do 4 steps.
       def load_ckpt(scaffold, sess):
         scaffold.saver.restore(sess, save_path)
 
-      scaffold = monitored_session.Scaffold(init_fn=load_ckpt)
+      session_creator = monitored_session.ChiefSessionCreator(
+          scaffold=monitored_session.Scaffold(init_fn=load_ckpt))
       hooks = [basic_session_run_hooks.StopAtStepHook(num_steps=4)]
       with monitored_session.MonitoredSession(
-          '', scaffold=scaffold, hooks=hooks) as session:
+          hooks=hooks, session_creator=session_creator) as session:
         self.assertEqual(4, session.run(do_step))
         self.assertFalse(session.should_stop())
         session.run(do_step)
@@ -656,13 +685,16 @@ class MonitoredSessionTest(tf.test.TestCase):
       hooks = [basic_session_run_hooks.CheckpointSaverHook(
           logdir, save_steps=1, scaffold=scaffold)]
       with monitored_session.MonitoredSession(
-          '', scaffold=scaffold, checkpoint_dir=logdir, hooks=hooks) as session:
+          session_creator=monitored_session.ChiefSessionCreator(
+              scaffold, checkpoint_dir=logdir),
+          hooks=hooks) as session:
         self.assertEqual(0, session.run(gstep))
         self.assertEqual(1, session.run(do_step))
         self.assertEqual(2, session.run(do_step))
       # A restart will find the checkpoint and recover automatically.
       with monitored_session.MonitoredSession(
-          '', scaffold=scaffold, checkpoint_dir=logdir) as session:
+          session_creator=monitored_session.ChiefSessionCreator(
+              scaffold, checkpoint_dir=logdir)) as session:
         self.assertEqual(2, session.run(gstep))
 
   def test_retry_on_aborted_error(self):
@@ -671,10 +703,8 @@ class MonitoredSessionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
-      scaffold = monitored_session.Scaffold()
       hook = RaiseOnceAtCountN(4, tf.errors.AbortedError(None, None, 'Abort'))
-      with monitored_session.MonitoredSession(
-          '', scaffold=scaffold, hooks=[hook]) as session:
+      with monitored_session.MonitoredSession(hooks=[hook]) as session:
         self.assertEqual(0, session.run(gstep))
         self.assertEqual(1, session.run(do_step))
         self.assertEqual(2, session.run(do_step))
@@ -704,7 +734,9 @@ class MonitoredSessionTest(tf.test.TestCase):
           logdir, save_steps=1, scaffold=scaffold)
       hooks = [abort_hook, ckpt_hook]
       with monitored_session.MonitoredSession(
-          '', scaffold=scaffold, checkpoint_dir=logdir, hooks=hooks) as session:
+          session_creator=monitored_session.ChiefSessionCreator(
+              scaffold, checkpoint_dir=logdir),
+          hooks=hooks) as session:
         self.assertEqual(0, session.run(gstep))
         self.assertEqual(1, session.run(do_step))
         self.assertEqual(2, session.run(do_step))
@@ -722,10 +754,8 @@ class MonitoredSessionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
-      scaffold = monitored_session.Scaffold()
       hook = RaiseOnceAtCountN(2, tf.errors.OutOfRangeError(None, None, 'EOI'))
-      session = monitored_session.MonitoredSession(
-          '', scaffold=scaffold, hooks=[hook])
+      session = monitored_session.MonitoredSession(hooks=[hook])
       # session should cleanly exit from the context.
       with session:
         self.assertEqual(0, session.run(gstep))
@@ -742,10 +772,8 @@ class MonitoredSessionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
-      scaffold = monitored_session.Scaffold()
       hook = RaiseOnceAtCountN(2, StopIteration)
-      session = monitored_session.MonitoredSession(
-          '', scaffold=scaffold, hooks=[hook])
+      session = monitored_session.MonitoredSession(hooks=[hook])
       # session should cleanly exit from the context.
       with session:
         self.assertEqual(0, session.run(gstep))
@@ -763,10 +791,8 @@ class MonitoredSessionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
-      scaffold = monitored_session.Scaffold()
       hook = RaiseOnceAtCountN(4, RuntimeError('regular exception'))
-      session = monitored_session.MonitoredSession(
-          '', scaffold=scaffold, hooks=[hook])
+      session = monitored_session.MonitoredSession(hooks=[hook])
       with self.assertRaisesRegexp(RuntimeError, 'regular exception'):
         with session:
           self.assertEqual(0, session.run(gstep))
@@ -786,8 +812,8 @@ class MonitoredSessionTest(tf.test.TestCase):
     # set the session in stop mode.
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
-      scaffold = monitored_session.Scaffold()
-      session = monitored_session.MonitoredSession('', scaffold=scaffold)
+      session = monitored_session.MonitoredSession()
+      run_performed_without_error = False
       with self.assertRaisesRegexp(RuntimeError, 'a thread wants to stop'):
         with session:
           self.assertEqual(0, session.run(gstep))
@@ -795,11 +821,11 @@ class MonitoredSessionTest(tf.test.TestCase):
           try:
             raise RuntimeError('a thread wants to stop')
           except RuntimeError as e:
-            session.coord.request_stop(e)
-          # Call run() which should raise the reported exception.
+            session._coordinated_creator.coord.request_stop(e)
+          # Call run() which should perform normally.
           self.assertEqual(0, session.run(gstep))
-          # We should not hit this
-          self.assertFalse(True)
+          run_performed_without_error = True
+      self.assertTrue(run_performed_without_error)
 
   def test_regular_exception_reported_to_coord_pass_through_return(self):
     # Tests that regular exceptions reported to the coordinator from a thread
@@ -807,8 +833,7 @@ class MonitoredSessionTest(tf.test.TestCase):
     # set the session in stop mode.
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
-      scaffold = monitored_session.Scaffold()
-      session = monitored_session.MonitoredSession('', scaffold=scaffold)
+      session = monitored_session.MonitoredSession()
       with self.assertRaisesRegexp(RuntimeError, 'a thread wants to stop'):
         with session:
           self.assertEqual(0, session.run(gstep))
@@ -816,8 +841,7 @@ class MonitoredSessionTest(tf.test.TestCase):
           try:
             raise RuntimeError('a thread wants to stop')
           except RuntimeError as e:
-            session.coord.request_stop(e)
-          # Do not call run, just terminate the with.session block cleanly.
+            session._coordinated_creator.coord.request_stop(e)
           self.assertTrue(session.should_stop())
 
   # This set of tests, verifies the session behavior when exceptions are raised
@@ -828,8 +852,7 @@ class MonitoredSessionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
-      scaffold = monitored_session.Scaffold()
-      session = monitored_session.MonitoredSession('', scaffold=scaffold)
+      session = monitored_session.MonitoredSession()
       with session:
         self.assertEqual(1, session.run(do_step))
         self.assertEqual(2, session.run(do_step))
@@ -843,8 +866,7 @@ class MonitoredSessionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
-      scaffold = monitored_session.Scaffold()
-      session = monitored_session.MonitoredSession('', scaffold=scaffold)
+      session = monitored_session.MonitoredSession()
       # We should see that exception.
       with self.assertRaisesRegexp(RuntimeError, 'regular exception'):
         with session:
@@ -856,6 +878,12 @@ class MonitoredSessionTest(tf.test.TestCase):
       # Should have closed.
       self.assertTrue(session.should_stop())
       self.assertTrue(session._is_closed())
+
+  def test_graph(self):
+    g = tf.Graph()
+    with g.as_default():
+      session = monitored_session.MonitoredSession()
+      self.assertEqual(g, session.graph)
 
 
 if __name__ == '__main__':

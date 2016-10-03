@@ -70,7 +70,7 @@ class ReverseSequenceTest(tf.test.TestCase):
     batch_dim = 2
     self._testBothReverseSequence(x, batch_dim, seq_dim, seq_lengths, truth)
 
-  def testSeqLenghtInt32(self):
+  def testSeqLengthInt32(self):
     self._testBasic(np.float32, np.int32)
 
   def testFloatBasic(self):
@@ -134,7 +134,7 @@ class ReverseSequenceTest(tf.test.TestCase):
           seq_dim=3)
 
     # seq_dim out of bounds.
-    with self.assertRaisesRegexp(ValueError, "seq_dim must be < input.dims()"):
+    with self.assertRaisesRegexp(ValueError, "seq_dim must be < input rank"):
       tf.reverse_sequence(
           tf.placeholder(tf.float32, shape=(32, 2, 3)),
           seq_lengths=tf.placeholder(tf.int64, shape=(32,)),
@@ -142,7 +142,7 @@ class ReverseSequenceTest(tf.test.TestCase):
 
     # batch_dim out of bounds.
     with self.assertRaisesRegexp(
-        ValueError, "batch_dim must be < input.dims()"):
+        ValueError, "batch_dim must be < input rank"):
       tf.reverse_sequence(
           tf.placeholder(tf.float32, shape=(32, 2, 3)),
           seq_lengths=tf.placeholder(tf.int64, shape=(32,)),

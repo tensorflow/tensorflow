@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import bisect
 
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary.impl import gcs
 from tensorflow.python.summary.impl import io_wrapper
@@ -86,7 +87,7 @@ class DirectoryWatcher(object):
     try:
       for event in self._LoadInternal():
         yield event
-    except (IOError, OSError):
+    except errors.OpError:
       if not io_wrapper.Exists(self._directory):
         raise DirectoryDeletedError(
             'Directory %s has been permanently deleted' % self._directory)
@@ -183,7 +184,7 @@ class DirectoryWatcher(object):
         size = io_wrapper.Size(old_path)
         logging.debug('Setting latest size of %s to %d', old_path, size)
         self._finalized_sizes[old_path] = size
-      except (IOError, OSError) as e:
+      except errors.OpError as e:
         logging.error('Unable to get size of %s: %s', old_path, e)
 
     self._path = path

@@ -72,6 +72,9 @@ plugin is requred to implement two functions:
         "reload(tag, dataProvider)",
         "_changeSeries(visibleSeries.*)"
       ],
+      ready: function() {
+        this.fire('ready');
+      },
       attached: function() {
         this._attached = true;
         this._changeSeries();

@@ -36,7 +36,7 @@ Returns True if the `other` DType will be converted to this DType.
 
 The conversion rules are as follows:
 
-```
+```python
 DType(T)       .is_compatible_with(DType(T))        == True
 DType(T)       .is_compatible_with(DType(T).as_ref) == True
 DType(T).as_ref.is_compatible_with(DType(T))        == False
@@ -150,6 +150,20 @@ Returns a `types_pb2.DataType` enum value based on this `DType`.
 #### Other Methods
 - - -
 
+#### `tf.DType.__eq__(other)` {#DType.__eq__}
+
+Returns True iff this DType refers to the same type as `other`.
+
+
+- - -
+
+#### `tf.DType.__hash__()` {#DType.__hash__}
+
+
+
+
+- - -
+
 #### `tf.DType.__init__(type_enum)` {#DType.__init__}
 
 Creates a new `DataType`.
@@ -167,6 +181,27 @@ construct a `DataType` object directly. Instead, use the
 
 
 *  <b>`TypeError`</b>: If `type_enum` is not a value `types_pb2.DataType`.
+
+
+- - -
+
+#### `tf.DType.__ne__(other)` {#DType.__ne__}
+
+Returns True iff self != other.
+
+
+- - -
+
+#### `tf.DType.__repr__()` {#DType.__repr__}
+
+
+
+
+- - -
+
+#### `tf.DType.__str__()` {#DType.__str__}
+
+
 
 
 - - -

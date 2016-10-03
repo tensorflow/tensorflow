@@ -17,19 +17,24 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 
 namespace tensorflow {
 
-Scope::Scope(Graph* graph, Status* status, Scope::NameMap* name_map)
+Scope::Scope(Graph* graph, Status* status, Scope::NameMap* name_map,
+             ShapeRefiner* refiner)
     : graph_(graph),
       status_(status),
       name_map_(name_map),
+      refiner_(refiner),
       scope_used_(nullptr) {}
 
 Scope Scope::NewRootScope() {
-  return Scope(new Graph(OpRegistry::Global()), new Status, new Scope::NameMap);
+  Graph* graph = new Graph(OpRegistry::Global());
+  ShapeRefiner* refiner = new ShapeRefiner(graph->op_registry());
+  return Scope(graph, new Status, new Scope::NameMap, refiner);
 }
 
 Scope::Scope(const Scope& other, Scope::Tags::ScopeName, const string& name,
@@ -38,6 +43,7 @@ Scope::Scope(const Scope& other, Scope::Tags::ScopeName, const string& name,
       status_(other.status_),
       name_map_(copy_names ? other.name_map_
                            : std::shared_ptr<NameMap>(new NameMap)),
+      refiner_(other.refiner_),
       scope_used_(nullptr),
       control_deps_(other.control_deps_),
       name_(name),
@@ -52,6 +58,7 @@ Scope::Scope(const Scope& other, Scope::Tags::OpName, const string& name,
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(other.control_deps_),
       name_(name),
@@ -66,6 +73,7 @@ Scope::Scope(const Scope& other, Scope::Tags::ControlDeps,
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(clear_control_deps
                         ? std::vector<ops::Operation>()
@@ -84,6 +92,7 @@ Scope::Scope(const Scope& other, Scope::Tags::Device, const string& device)
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(other.control_deps_),
       name_(other.name_),
@@ -98,6 +107,7 @@ Scope::Scope(const Scope& other, Scope::Tags::SingleUseScope,
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(new bool(false)),
       control_deps_(other.control_deps_),
       name_(other.name_),
@@ -111,6 +121,7 @@ Scope::Scope(const Scope& other, Scope::Tags::ExitOnError)
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(other.control_deps_),
       name_(other.name_),
@@ -125,6 +136,7 @@ Scope::Scope(const Scope& other, Scope::Tags::KernelLabel,
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(other.control_deps_),
       name_(other.name_),
@@ -139,6 +151,7 @@ Scope::Scope(const Scope& other, Scope::Tags::Colocate,
     : graph_(other.graph_),
       status_(other.status_),
       name_map_(other.name_map_),
+      refiner_(other.refiner_),
       scope_used_(other.scope_used_),
       control_deps_(other.control_deps_),
       name_(other.name_),
@@ -155,15 +168,12 @@ std::unordered_set<string> Scope::GetColocationConstraints(
     const ops::Operation& colocate_with_op) const {
   std::unordered_set<string> current_constraints(colocation_constraints_);
   const NodeDef& node_def = colocate_with_op.node()->def();
-  if (node_def.attr().find("_class") != node_def.attr().end()) {
-    const AttrValue& loc = node_def.attr().find("_class")->second;
-    if (loc.value_case() == AttrValue::kList && loc.list().s_size() > 0) {
-      for (int i = 0; i < loc.list().s_size(); ++i) {
-        // Filter out the ones that don't have "loc:@" prefix
-        if (loc.list().s(i).find("loc:@") == 0) {
-          // Skip the "loc:@" prefix
-          current_constraints.insert(loc.list().s(i).substr(5));
-        }
+  std::vector<string> node_constraints;
+  if (GetNodeAttr(node_def, kColocationAttrName, &node_constraints).ok()) {
+    for (const string& entry : node_constraints) {
+      StringPiece s(entry);
+      if (s.Consume(kColocationGroupPrefix)) {
+        current_constraints.insert(s.ToString());
       }
     }
   } else {
@@ -215,8 +225,10 @@ void Scope::UpdateBuilder(NodeBuilder* builder) const {
     std::sort(constraints.begin(), constraints.end());
     // Add loc:@ prefix
     std::transform(constraints.begin(), constraints.end(), constraints.begin(),
-                   [](const string& s) { return strings::StrCat("loc:@", s); });
-    builder->Attr("_class", constraints);
+                   [](const string& s) {
+                     return strings::StrCat(kColocationGroupPrefix, s);
+                   });
+    builder->Attr(kColocationAttrName, constraints);
   }
   if (!device_.empty()) {
     builder->Device(device_);

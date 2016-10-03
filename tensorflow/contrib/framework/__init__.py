@@ -24,12 +24,12 @@
 @@is_strictly_increasing
 @@is_tensor
 @@reduce_sum_n
-@@safe_embedding_lookup_sparse
 @@with_shape
 @@with_same_shape
 
 ## Deprecation
 @@deprecated
+@@deprecated_args
 @@deprecated_arg_values
 
 ## Arg_Scope
@@ -60,6 +60,7 @@
 @@model_variable
 @@variable
 @@VariableDeviceChooser
+@@zero_initializer
 """
 
 from __future__ import absolute_import

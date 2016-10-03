@@ -96,6 +96,7 @@ def logistic_model_no_mode_fn(features, target):
 class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
 
   def __init__(self, expect_calls):
+    super(CheckCallsMonitor, self).__init__()
     self.begin_calls = None
     self.end_calls = None
     self.expect_calls = expect_calls
@@ -352,6 +353,16 @@ class EstimatorTest(tf.test.TestCase):
         tf.contrib.testing.latest_events(est.model_dir), ['loss'])
     self.assertEqual(len(loss_summary), 1)
 
+  def test_export_returns_exported_dirname(self):
+    expected = '/path/to/some_dir'
+    with tf.test.mock.patch.object(estimator, 'export') as mock_export_module:
+      mock_export_module._export_estimator.return_value = expected
+
+      est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+      actual = est.export('/path/to')
+
+    self.assertEquals(actual, expected)
+
 
 class InferRealValuedColumnsTest(tf.test.TestCase):
 
@@ -502,6 +513,20 @@ class ReplicaDeviceSetterTest(tf.test.TestCase):
       output = table.lookup(input_string)
     self.assertDeviceEqual('', table._table_ref.device)
     self.assertDeviceEqual('', output.device)
+
+  def testTaskIsSetOnWorkerWhenJobNameIsSet(self):
+    with tf.device(
+        estimator._get_replica_device_setter(
+            tf.contrib.learn.RunConfig(
+                num_ps_replicas=1, job_name='worker', task=3))):
+      v = tf.Variable([1, 2])
+      w = tf.Variable([2, 1])
+      a = v + w
+    self.assertDeviceEqual('/job:ps/task:0', v.device)
+    self.assertDeviceEqual('/job:ps/task:0', v.initializer.device)
+    self.assertDeviceEqual('/job:ps/task:0', w.device)
+    self.assertDeviceEqual('/job:ps/task:0', w.initializer.device)
+    self.assertDeviceEqual('/job:worker/task:3', a.device)
 
 
 if __name__ == '__main__':

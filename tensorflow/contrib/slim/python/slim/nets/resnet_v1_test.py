@@ -156,7 +156,7 @@ class ResnetUtilsTest(tf.test.TestCase):
     with tf.variable_scope(scope, values=[inputs]):
       with slim.arg_scope([slim.conv2d], outputs_collections='end_points'):
         net = resnet_utils.stack_blocks_dense(inputs, blocks, output_stride)
-        end_points = dict(tf.get_collection('end_points'))
+        end_points = slim.utils.convert_collection_to_dict('end_points')
         return net, end_points
 
   def testEndPointsV1(self):
