@@ -47,6 +47,7 @@ export class InspectorPanel extends PolymerClass {
   private metadataFields: string[];
   private dom: d3.Selection<HTMLElement>;
   private projector: Projector;
+  private selectedPointIndex: number;
 
   initialize(projector: Projector) {
     this.projector = projector;
@@ -60,9 +61,29 @@ export class InspectorPanel extends PolymerClass {
   updateInspectorPane(indices: number[],
       neighbors: knn.NearestEntry[]) {
     if (neighbors.length > 0 || indices.length === 0) {
-      this.updateMetadata(indices[0]);
+      this.selectedPointIndex = indices[0];
+      this.updateMetadata();
+    } else {
+      this.selectedPointIndex = null;
     }
     this.updateIsolateButton(indices.length);
+    this.updateNeighborsList(neighbors);
+  }
+
+  metadataChanged(result: MetadataResult) {
+    let labelIndex = -1;
+    this.metadataFields = result.stats.map((stats, i) => {
+      if (!stats.isNumeric && labelIndex === -1) {
+        labelIndex = i;
+      }
+      return stats.name;
+    });
+    labelIndex = Math.max(0, labelIndex);
+    // Make the default label the first non-numeric column.
+    this.selectedMetadataField = result.stats[labelIndex].name;
+  }
+
+  private updateNeighborsList(neighbors: knn.NearestEntry[]) {
     let nnlist = this.dom.select('.nn-list');
     nnlist.html('');
     this.dom.select('.nn').style('display', neighbors.length ? null : 'none');
@@ -112,19 +133,6 @@ export class InspectorPanel extends PolymerClass {
     });
   }
 
-  metadataChanged(result: MetadataResult) {
-    let labelIndex = -1;
-    this.metadataFields = result.stats.map((stats, i) => {
-      if (!stats.isNumeric && labelIndex === -1) {
-        labelIndex = i;
-      }
-      return stats.name;
-    });
-    labelIndex = Math.max(0, labelIndex);
-    // Make the default label the first non-numeric column.
-    this.selectedMetadataField = result.stats[labelIndex].name;
-  }
-
   private updateIsolateButton(numPoints: number) {
     let isolateButton = this.dom.select('.set-filter');
     let clearButton = this.dom.select('button.clear-selection');
@@ -138,12 +146,13 @@ export class InspectorPanel extends PolymerClass {
   }
 
   /** Updates the displayed metadata for the selected point. */
-  private updateMetadata(pointIndex: number) {
+  private updateMetadata() {
     let metadataContainerElement = this.dom.select('.metadata');
     metadataContainerElement.selectAll('*').remove();
     let point = null;
-    if (this.projector.currentDataSet != null && pointIndex != null) {
-      point = this.projector.currentDataSet.points[pointIndex];
+    if (this.projector.currentDataSet != null &&
+        this.selectedPointIndex != null) {
+      point = this.projector.currentDataSet.points[this.selectedPointIndex];
     }
     this.dom.select('.metadata-container')
         .style('display', point != null ? '' : 'none');
@@ -183,6 +192,9 @@ export class InspectorPanel extends PolymerClass {
       this.dom.selectAll('.distance a').classed('selected', false);
       eucDist.classed('selected', true);
       this.distFunc = vector.dist;
+      let neighbors = this.projector.currentDataSet.findNeighbors(
+          this.selectedPointIndex, this.distFunc, this.numNN);
+      this.updateNeighborsList(neighbors);
     });
 
     let cosDist = this.dom.select('.distance a.cosine');
@@ -190,6 +202,9 @@ export class InspectorPanel extends PolymerClass {
       this.dom.selectAll('.distance a').classed('selected', false);
       cosDist.classed('selected', true);
       this.distFunc = vector.cosDist;
+      let neighbors = this.projector.currentDataSet.findNeighbors(
+          this.selectedPointIndex, this.distFunc, this.numNN);
+      this.updateNeighborsList(neighbors);
     });
 
     let searchBox = this.querySelector('#search-box') as ProjectorInput;
