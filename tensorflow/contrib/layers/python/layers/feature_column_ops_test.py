@@ -1104,7 +1104,7 @@ class WeightedSumTest(tf.test.TestCase):
         self.assertAllClose(output.eval(), [[1.6]])
 
   def testMultivalentCrossUsageInPredictionsWithPartition(self):
-    # bucket size has to be big enough to allwo sharding.
+    # bucket size has to be big enough to allow sharding.
     language = tf.contrib.layers.sparse_column_with_hash_bucket(
         "language", hash_bucket_size=64 << 19)
     country = tf.contrib.layers.sparse_column_with_hash_bucket(

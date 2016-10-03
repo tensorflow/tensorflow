@@ -30,7 +30,7 @@ def _get_input_fn(x, y, batch_size=None):
 
 
 # We use a null optimizer since we can't get deterministic results out of
-# supervisor's mulitple threads.
+# supervisor's multiple threads.
 class _NullOptimizer(tf.train.Optimizer):
 
   def __init__(self):
