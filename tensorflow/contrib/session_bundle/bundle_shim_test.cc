@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/contrib/session_bundle/bundle_shim_constants.h"
 #include "tensorflow/contrib/session_bundle/test_util.h"
+#include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -31,11 +33,23 @@ constexpr char kSessionBundlePath[] =
 constexpr char kSessionBundleMetaGraphFilename[] = "export.meta";
 constexpr char kSessionBundleVariablesFilename[] = "export-00000-of-00001";
 
+string MakeSerializedExample(float x) {
+  tensorflow::Example example;
+  auto* feature_map = example.mutable_features()->mutable_feature();
+  (*feature_map)["x"].mutable_float_list()->add_value(x);
+  return example.SerializeAsString();
+}
+
 void ValidateHalfPlusTwo(const SavedModelBundle& saved_model_bundle,
                          const string& input_tensor_name,
                          const string& output_tensor_name) {
   // Validate the half plus two behavior.
-  Tensor input = test::AsTensor<float>({0, 1, 2, 3}, TensorShape({4, 1}));
+  std::vector<string> serialized_examples;
+  for (float x : {0, 1, 2, 3}) {
+    serialized_examples.push_back(MakeSerializedExample(x));
+  }
+  Tensor input = test::AsTensor<string>(serialized_examples, TensorShape({4}));
+
   std::vector<Tensor> outputs;
   TF_ASSERT_OK(saved_model_bundle.session->Run(
       {{input_tensor_name, input}}, {output_tensor_name}, {}, &outputs));
@@ -289,6 +303,7 @@ TEST(BundleShimTest, BasicExport) {
   const auto& regression_entry =
       signature_def_map.find(kDefaultSignatureDefKey);
   SignatureDef regression_signature_def = regression_entry->second;
+  EXPECT_EQ(kRegressMethodName, regression_signature_def.method_name());
   EXPECT_EQ(1, regression_signature_def.inputs_size());
   TensorInfo input_tensor_info =
       regression_signature_def.inputs().find(kSignatureInputs)->second;
