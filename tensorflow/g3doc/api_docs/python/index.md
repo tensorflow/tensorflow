@@ -401,6 +401,8 @@
 * **[Inputs and Readers](../../api_docs/python/io_ops.md)**:
   * [`batch`](../../api_docs/python/io_ops.md#batch)
   * [`batch_join`](../../api_docs/python/io_ops.md#batch_join)
+  * [`ConditionalAccumulator`](../../api_docs/python/io_ops.md#ConditionalAccumulator)
+  * [`ConditionalAccumulatorBase`](../../api_docs/python/io_ops.md#ConditionalAccumulatorBase)
   * [`decode_csv`](../../api_docs/python/io_ops.md#decode_csv)
   * [`decode_json_example`](../../api_docs/python/io_ops.md#decode_json_example)
   * [`decode_raw`](../../api_docs/python/io_ops.md#decode_raw)
@@ -430,6 +432,7 @@
   * [`size`](../../api_docs/python/io_ops.md#size)
   * [`slice_input_producer`](../../api_docs/python/io_ops.md#slice_input_producer)
   * [`sparse_placeholder`](../../api_docs/python/io_ops.md#sparse_placeholder)
+  * [`SparseConditionalAccumulator`](../../api_docs/python/io_ops.md#SparseConditionalAccumulator)
   * [`string_input_producer`](../../api_docs/python/io_ops.md#string_input_producer)
   * [`TextLineReader`](../../api_docs/python/io_ops.md#TextLineReader)
   * [`TFRecordReader`](../../api_docs/python/io_ops.md#TFRecordReader)
