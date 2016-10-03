@@ -163,7 +163,7 @@ export class DataSet implements scatterPlot.DataSet {
         index: dp.index,
         vector: dp.vector.slice(),
         projectedPoint: [0, 0, 0] as [number, number, number],
-        projections: {}
+        projections: {} as {[key: string]: number}
       };
     });
 
