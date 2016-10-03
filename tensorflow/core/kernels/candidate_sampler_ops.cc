@@ -134,7 +134,7 @@ class AllCandidateSamplerOp : public BaseCandidateSamplerOp {
       : BaseCandidateSamplerOp(context) {
     int64 range_max;
     OP_REQUIRES_OK(context, context->GetAttr("num_sampled", &range_max));
-    CHECK_LE(num_sampled_, range_max);
+    OP_REQUIRES(context, num_sampled_< range_max, errors::InvalidArgument("The number of samples must be less than the range of the sample indices"));
     set_sampler(new AllSampler(range_max));
   }
 };
