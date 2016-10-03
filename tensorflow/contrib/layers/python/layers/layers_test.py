@@ -24,6 +24,8 @@ import tensorflow as tf
 
 # TODO(sguada) Expose tf.with_dependencies
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.contrib.layers.python.layers import layers as _layers
+
 
 
 class AvgPool2DTest(tf.test.TestCase):
@@ -1000,8 +1002,7 @@ class PartialFlattenTest(tf.test.TestCase):
                             [np.prod(shape[new_rank - 1:])])
       expected_flattened = np.reshape(inputs, expected_new_shape)
 
-      inputs_t = tf.constant(inputs)
-      flattened_t = tf.contrib.layers.python.layers._inner_flatten(inputs_t, new_rank)
+      flattened_t = _layers._inner_flatten(inputs, new_rank)
       static_shape = flattened_t.get_shape().as_list()
       self.assertEqual(static_shape, expected_new_shape)
       with self.test_session() as sess:
@@ -1022,8 +1023,7 @@ class PartialFlattenTest(tf.test.TestCase):
 
       inputs_t = tf.SparseTensor(indices, values, shape)
 
-      flattened_t = tf.contrib.layers.python.layers._inner_flatten(
-          inputs_t, new_rank)
+      flattened_t = _layers._inner_flatten(inputs_t, new_rank)
 
       with self.test_session() as sess:
         flattened = sess.run(flattened_t)
@@ -1038,19 +1038,19 @@ class PartialFlattenTest(tf.test.TestCase):
     inputs = tf.placeholder(tf.int32)
     inputs.set_shape(shape)
 
-    flattened1 = tf.contrib.layers.python.layers._inner_flatten(inputs, 1)
+    flattened1 = _layers._inner_flatten(inputs, 1)
     self.assertEquals([None], flattened1.get_shape().as_list())
 
-    flattened2 = tf.contrib.layers.python.layers._inner_flatten(inputs, 2)
+    flattened2 = _layers._inner_flatten(inputs, 2)
     self.assertEquals([2, None], flattened2.get_shape().as_list())
 
-    flattened3 = tf.contrib.layers.python.layers._inner_flatten(inputs, 3)
+    flattened3 = _layers._inner_flatten(inputs, 3)
     self.assertEquals([2, None, None], flattened3.get_shape().as_list())
 
-    flattened4 = tf.contrib.layers.python.layers._inner_flatten(inputs, 4)
+    flattened4 = _layers._inner_flatten(inputs, 4)
     self.assertEquals([2, None, 4, None], flattened4.get_shape().as_list())
 
-    flattened5 = tf.contrib.layers.python.layers._inner_flatten(inputs, 5)
+    flattened5 = _layers._inner_flatten(inputs, 5)
     self.assertEquals([2, None, 4, None, 30], flattened5.get_shape().as_list())
 
 

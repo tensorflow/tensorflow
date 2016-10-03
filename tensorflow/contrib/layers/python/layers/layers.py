@@ -55,7 +55,6 @@ __all__ = ['avg_pool2d',
            'dropout',
            'flatten',
            'fully_connected',
-           '_inner_flatten',
            'layer_norm',
            'linear',
            'max_pool2d',
@@ -841,13 +840,12 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
   Raises:
     TypeError: `inputs` is not a `Tensor` or `SparseTensor`.
   """
-  with ops.name_scope(scope, 'PartialFlatten', [inputs, new_rank]) as sc:
+  with ops.name_scope(scope, 'InnerFlatten', [inputs, new_rank]) as sc:
     if isinstance(inputs, ops.SparseTensor):
       flattened = _sparse_inner_flatten(inputs, new_rank)
-    elif isinstance(inputs, ops.Tensor):
-      flattened = _dense_inner_flatten(inputs, new_rank)
     else:
-      raise TypeError('inputs must be a Tensor or SparseTensor.')
+      inputs = ops.convert_to_tensor(inputs)
+      flattened = _dense_inner_flatten(inputs, new_rank)
   return utils.collect_named_outputs(output_collections, sc, flattened)
 
 
