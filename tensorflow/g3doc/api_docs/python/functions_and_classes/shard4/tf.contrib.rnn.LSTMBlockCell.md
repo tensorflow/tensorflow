@@ -2,10 +2,10 @@ Basic LSTM recurrent network cell.
 
 The implementation is based on: http://arxiv.org/abs/1409.2329.
 
-We add forget_bias (default: 1) to the biases of the forget gate in order to
+We add `forget_bias` (default: 1) to the biases of the forget gate in order to
 reduce the scale of forgetting in the beginning of the training.
 
-Unlike rnn_cell.LSTMCell, this is a monolithic op and should be much faster.
+Unlike `rnn_cell.LSTMCell`, this is a monolithic op and should be much faster.
 The weight and bias matrixes should be compatible as long as the variable
 scope matches, and you use `use_compatible_names=True`.
 - - -
