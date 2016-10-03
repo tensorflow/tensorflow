@@ -107,7 +107,7 @@ def avg_pool2d(inputs,
                           ksize=[1, kernel_h, kernel_w, 1],
                           strides=[1, stride_h, stride_w, 1],
                           padding=padding)
-    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -745,7 +745,7 @@ def dropout(inputs,
     dropout_fn = lambda: nn.dropout(inputs, keep_prob, noise_shape)
     id_fn = lambda: array_ops.identity(inputs)
     outputs = utils.smart_cond(is_training, dropout_fn, id_fn)
-    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -777,7 +777,7 @@ def flatten(inputs,
       raise ValueError('Inputs 2nd dimension must be defined.')
     k = dims.num_elements()
     outputs = array_ops.reshape(inputs, [-1, k])
-    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.original_name_scope, outputs)
 
 
 def _sparse_inner_flatten(inputs, new_rank):
@@ -848,7 +848,7 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
       flattened = _dense_inner_flatten(inputs, new_rank)
     else:
       raise TypeError('inputs must be a Tensor or SparseTensor.')
-  return utils.collect_named_outputs(output_collections, sc, flattened)
+  return utils.collect_named_outputs(output_collections, sc.original_name_scope, flattened)
 
 
 @add_arg_scope
@@ -1088,7 +1088,7 @@ def max_pool2d(inputs,
                           ksize=[1, kernel_h, kernel_w, 1],
                           strides=[1, stride_h, stride_w, 1],
                           padding=padding)
-    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.original_name_scope, outputs)
 
 
 @add_arg_scope
@@ -1119,7 +1119,7 @@ def one_hot_encoding(labels,
                                    num_classes,
                                    on_value=on_value,
                                    off_value=off_value)
-    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.original_name_scope, outputs)
 
 
 def _apply_activation(y, activation_fn, output_collections):
