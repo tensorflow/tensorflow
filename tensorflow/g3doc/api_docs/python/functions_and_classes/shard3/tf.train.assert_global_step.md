@@ -1,4 +1,4 @@
-### `tf.contrib.framework.assert_global_step(global_step_tensor)` {#assert_global_step}
+### `tf.train.assert_global_step(global_step_tensor)` {#assert_global_step}
 
 Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
 

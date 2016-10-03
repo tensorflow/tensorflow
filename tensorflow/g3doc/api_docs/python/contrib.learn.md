@@ -3024,12 +3024,12 @@ Perform various training, evaluation, and inference actions on a graph.
 
 - - -
 
-### `class tf.contrib.learn.NanLossDuringTrainingError` {#NanLossDuringTrainingError}
+### `class tf.train.NanLossDuringTrainingError` {#NanLossDuringTrainingError}
 
 
 - - -
 
-#### `tf.contrib.learn.NanLossDuringTrainingError.__str__()` {#NanLossDuringTrainingError.__str__}
+#### `tf.train.NanLossDuringTrainingError.__str__()` {#NanLossDuringTrainingError.__str__}
 
 
 
