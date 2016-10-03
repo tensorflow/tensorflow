@@ -48,6 +48,7 @@ from tensorflow.tensorboard.plugins import REGISTERED_PLUGINS
 
 
 DATA_PREFIX = '/data'
+LOGDIR_ROUTE = '/logdir'
 RUNS_ROUTE = '/runs'
 PLUGIN_PREFIX = '/plugin'
 SCALARS_ROUTE = '/' + event_accumulator.SCALARS
@@ -104,8 +105,9 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
   #                      responses using send_header.
   protocol_version = 'HTTP/1.1'
 
-  def __init__(self, multiplexer, *args):
+  def __init__(self, multiplexer, logdir, *args):
     self._multiplexer = multiplexer
+    self._logdir = logdir
     BaseHTTPServer.BaseHTTPRequestHandler.__init__(self, *args)
 
   # We use underscore_names for consistency with inherited methods.
@@ -235,6 +237,11 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     """
     content = json.dumps(json_util.WrapSpecialFloats(obj))
     self._respond(content, 'application/json', code)
+
+  def _serve_logdir(self, unused_query_params):
+    """Writes out the logdir argument with which this tensorboard was started.
+    """
+    self._respond(self._logdir, 'text/plain', code=200)
 
   def send_csv_response(self, serialized_csv, code=200):
     """Writes out the given string, which represents CSV data.
@@ -562,6 +569,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       clean_path = clean_path[:-1]
 
     data_handlers = {
+        DATA_PREFIX + LOGDIR_ROUTE: self._serve_logdir,
         DATA_PREFIX + SCALARS_ROUTE: self._serve_scalars,
         DATA_PREFIX + GRAPH_ROUTE: self._serve_graph,
         DATA_PREFIX + RUN_METADATA_ROUTE: self._serve_run_metadata,
