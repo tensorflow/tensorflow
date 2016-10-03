@@ -226,16 +226,17 @@ class CategoricalTest(tf.test.TestCase):
 
           kl = tf.contrib.distributions.kl(a, b)
           kl_val = sess.run(kl)
+          # Make sure KL(a||a) is 0
+          kl_same = sess.run(tf.contrib.distributions.kl(a, a))
 
           prob_a = np_softmax(a_logits)
           prob_b = np_softmax(b_logits)
           kl_expected = np.sum(
-            prob_a * (np.log(prob_a) - np.log(prob_b)),
-            axis=-1,
-          )
+              prob_a * (np.log(prob_a) - np.log(prob_b)), axis=-1)
 
           self.assertEqual(kl.get_shape(), (batch_size,))
           self.assertAllClose(kl_val, kl_expected)
+          self.assertAllClose(kl_same, np.zeros_like(kl_expected))
 
 
 if __name__ == "__main__":

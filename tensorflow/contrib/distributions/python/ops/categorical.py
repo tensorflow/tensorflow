@@ -183,8 +183,7 @@ def _kl_categorical_categorical(a, b, name=None):
   """
   with ops.name_scope(
     name, "kl_categorical_categorical", [a.logits, b.logits]):
+    # sum(p*ln(p/q))
     return math_ops.reduce_sum(
         nn_ops.softmax(a.logits)*(nn_ops.log_softmax(a.logits)
-                                  - nn_ops.log_softmax(b.logits)),
-        reduction_indices=[-1],
-    )
+            - nn_ops.log_softmax(b.logits)), reduction_indices=[-1])

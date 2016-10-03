@@ -308,15 +308,16 @@ def _kl_beta_beta(d1, d2, name=None):
     Batchwise KL(d1 || d2)
   """
   inputs = [d1.a, d1.b, d1.a_b_sum, d2.a_b_sum]
-  with ops.name_scope(
-    name, "kl_beta_beta", inputs):
-      log_betas = (math_ops.lgamma(d2.a) + math_ops.lgamma(d2.b)
-                 - math_ops.lgamma(d2.a_b_sum) + math_ops.lgamma(d1.a_b_sum)
-                 - math_ops.lgamma(d1.a) - math_ops.lgamma(d1.b))
-      digammas = ((d1.a - d2.a)*math_ops.digamma(d1.a)
-                + (d1.b - d2.b)*math_ops.digamma(d1.b)
-                + (d2.a_b_sum - d1.a_b_sum)*math_ops.digamma(d1.a_b_sum))
-      return log_betas + digammas
+  with ops.name_scope(name, "kl_beta_beta", inputs):
+    # ln(B(a', b') / B(a, b))
+    log_betas = (math_ops.lgamma(d2.a) + math_ops.lgamma(d2.b)
+                - math_ops.lgamma(d2.a_b_sum) + math_ops.lgamma(d1.a_b_sum)
+                - math_ops.lgamma(d1.a) - math_ops.lgamma(d1.b))
+    # (a - a')*psi(a) + (b - b')*psi(b) + (a' - a + b' - b)*psi(a + b)
+    digammas = ((d1.a - d2.a)*math_ops.digamma(d1.a)
+              + (d1.b - d2.b)*math_ops.digamma(d1.b)
+              + (d2.a_b_sum - d1.a_b_sum)*math_ops.digamma(d1.a_b_sum))
+    return log_betas + digammas
 
 
 # Register KL divergences.

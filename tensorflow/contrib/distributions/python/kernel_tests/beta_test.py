@@ -322,6 +322,10 @@ class BetaTest(tf.test.TestCase):
             kl_val = sess.run(kl)
             self.assertEqual(kl.get_shape(), shape)
             self.assertAllClose(kl_val, kl_expected)
+        
+        # Make sure KL(d1||d1) is 0
+        kl_same = sess.run(tf.contrib.distributions.kl(d1, d1))
+        self.assertAllClose(kl_same, np.zeros_like(kl_expected))
 
 
 if __name__ == "__main__":
