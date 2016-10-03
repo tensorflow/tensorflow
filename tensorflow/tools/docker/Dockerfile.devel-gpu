@@ -79,9 +79,9 @@ RUN mkdir /bazel && \
 
 # Download and build TensorFlow.
 
-RUN git clone -b r0.10 --recursive --recurse-submodules https://github.com/tensorflow/tensorflow.git && \
+RUN git clone -b r0.11 --recursive --recurse-submodules https://github.com/tensorflow/tensorflow.git && \
     cd tensorflow && \
-    git checkout r0.10
+    git checkout r0.11
 WORKDIR /tensorflow
 
 # Configure the build for our CUDA configuration.

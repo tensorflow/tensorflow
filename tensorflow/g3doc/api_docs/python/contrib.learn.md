@@ -85,7 +85,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa
         the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).
@@ -384,7 +384,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa
         the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).
@@ -1018,7 +1018,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa
         the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).
@@ -1355,7 +1355,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa
         the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).
@@ -1996,7 +1996,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa
         the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).
@@ -2347,7 +2347,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa
         the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).
@@ -2744,7 +2744,7 @@ The signature of the input_fn accepted by export is changing to be consistent wi
         string key to `Tensor` and targets is a `Tensor` that's currently not
         used (and so can be `None`).
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
-        key into the features dict returned by `input_fn` that corresponds to
+        key into the features dict returned by `input_fn` that corresponds toa
         the raw `Example` strings `Tensor` that the exported model will take as
         input. Can only be `None` if you're using a custom `signature_fn` that
         does not use the first arg (examples).
