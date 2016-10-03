@@ -186,8 +186,9 @@ class DebugAnalyzer(object):
     # TODO(cais): Implement list_nodes.
 
   def _error(self, msg):
+    full_msg = "ERROR: " + msg
     return debugger_cli_common.RichTextLines(
-        ["ERROR: " + msg], font_attr_segs={0: [(0, len(msg), "red")]})
+        [full_msg], font_attr_segs={0: [(0, len(full_msg), "red")]})
 
   def get_help(self, handler_name):
     return self._arg_parsers[handler_name].format_help()
