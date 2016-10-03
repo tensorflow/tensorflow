@@ -245,8 +245,10 @@ _hidden_symbols = ["Event", "LogMessage", "Summary", "SessionLog", "xrange",
 # TODO(wicke): Remove contrib.layers.relu* after shortnames are
 # disabled.  These conflict with tf.nn.relu*
 EXCLUDE = frozenset(["tf.contrib.learn.monitors.NanLossDuringTrainingError",
-                     "tf.contrib.layers.relu",
-                     "tf.contrib.layers.relu6"])
+                     "tf.contrib.layers.relu", "tf.contrib.layers.relu6",
+                     "tf.contrib.framework.assert_global_step",
+                     "tf.contrib.framework.get_global_step",
+                     "tf.contrib.learn.NanLossDuringTrainingError"])
 
 
 def main(unused_argv):

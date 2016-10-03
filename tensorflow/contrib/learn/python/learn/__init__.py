@@ -22,6 +22,7 @@ from __future__ import print_function
 import numpy as np
 
 # pylint: disable=wildcard-import
+from tensorflow.contrib.learn.python.learn import basic_session_run_hooks
 from tensorflow.contrib.learn.python.learn import datasets
 from tensorflow.contrib.learn.python.learn import estimators
 from tensorflow.contrib.learn.python.learn import graph_actions

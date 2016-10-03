@@ -332,18 +332,6 @@ py_test(
 )
 
 py_test(
-    name = "monitored_session_test",
-    size = "small",
-    srcs = ["python/learn/tests/monitored_session_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
     name = "monitors_test",
     size = "small",
     srcs = ["python/learn/tests/monitors_test.py"],
@@ -700,16 +688,6 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
-    name = "summary_writer_cache_test",
-    size = "small",
-    srcs = ["python/learn/tests/summary_writer_cache_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
     ],
 )
 
