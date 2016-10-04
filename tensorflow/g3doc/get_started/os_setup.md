@@ -814,6 +814,10 @@ Note that this setup still requires you to rebuild the
 a C++ file; add, delete, or move any python file; or if you change bazel build
 rules.
 
+Note also that `bazel test` will not always properly resolve dependencies
+through these symlinks, so test results may be unreliable. A workaround is to
+remove the `_python_build` directory before running `bazel test`.
+
 ## Train your first TensorFlow neural net model
 
 Starting from the root of your source tree, run:
