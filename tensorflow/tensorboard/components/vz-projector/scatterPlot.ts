@@ -148,6 +148,7 @@ export class ScatterPlot {
   private mouseIsDown = false;
   private isDragSequence = false;
   private animationID: number;
+  private cameraSetFromState: boolean = false;
 
   constructor(
       container: d3.Selection<any>, labelAccessor: (index: number) => string,
@@ -226,9 +227,16 @@ export class ScatterPlot {
     this.cameraControls.enableRotate = true;
     let position = new THREE.Vector3(POS_3D.x, POS_3D.y, POS_3D.z);
     let target = new THREE.Vector3(TAR_3D.x, TAR_3D.y, TAR_3D.z);
-    this.animate(position, target, () => {
-      this.startLazySusanAnimation();
-    });
+
+    // Don't animate if the camera is set from a bookmark load.
+    // TODO(nsthorat): Remove this. This method shouldn't be called every time
+    // a projection changes.
+    if (!this.cameraSetFromState) {
+      this.animate(position, target, () => {
+        this.startLazySusanAnimation();
+      });
+    }
+    this.cameraSetFromState = false;
   }
 
   /** Sets up camera to work in 2D (called after makeCamera()). */
@@ -239,7 +247,14 @@ export class ScatterPlot {
     this.cameraControls.target0.set(TAR_2D.x, TAR_2D.y, TAR_2D.z);
     let position = new THREE.Vector3(POS_2D.x, POS_2D.y, POS_2D.z);
     let target = new THREE.Vector3(TAR_2D.x, TAR_2D.y, TAR_2D.z);
-    this.animate(position, target);
+
+    // Don't animate if the camera is set from a bookmark load.
+    // TODO(nsthorat): Remove this. This method shouldn't be called every time
+    // a projection changes.
+    if (!this.cameraSetFromState) {
+      this.animate(position, target);
+    }
+    this.cameraSetFromState = false;
     this.cameraControls.enableRotate = false;
   }
 
@@ -259,8 +274,11 @@ export class ScatterPlot {
   setCameraPositionAndTarget(position: Point3D, target: Point3D) {
     this.perspCamera.position.set(position[0], position[1], position[2]);
     this.cameraControls.target.set(target[0], target[1], target[2]);
+
+    this.cameraSetFromState = true;
     this.cameraControls.autoRotate = false;
     this.animating = false;
+    this.cancelAnimation();
     cancelAnimationFrame(this.lazySusanAnimation);
     this.cameraControls.update();
     this.render();
