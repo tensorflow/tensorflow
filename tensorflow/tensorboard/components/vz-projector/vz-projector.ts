@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption, DataSet, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
 import {updateWarningMessage} from './async';
+import {ColorOption, DataSet, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
 import {DataProvider, getDataProvider, MetadataResult} from './data-loader';
+import {HoverContext, HoverListener} from './hoverContext';
 import * as knn from './knn';
 import {Mode, ScatterPlot} from './scatterPlot';
 import {ScatterPlotVisualizer3DLabels} from './scatterPlotVisualizer3DLabels';
@@ -27,9 +28,10 @@ import * as vector from './vector';
 import {BookmarkPanel} from './vz-projector-bookmark-panel';
 import {DataPanel} from './vz-projector-data-panel';
 import {ProjectorInput} from './vz-projector-input';
+import {InspectorPanel} from './vz-projector-inspector-panel';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
-import {InspectorPanel} from './vz-projector-inspector-panel';
+
 
 
 /** T-SNE perplexity. Roughly how many neighbors each point influences. */
@@ -39,12 +41,7 @@ let learningRate: number = 10;
 /** Number of dimensions for the scatter plot. */
 let dimension = 3;
 
-/** Highlight stroke color for the nearest neighbors. */
-const NN_HIGHLIGHT_COLOR = '#FA6666';
-/** Color to denote a missing value. */
 const MISSING_VALUE_COLOR = 'black';
-/** Highlight stroke color for the selected point */
-const POINT_HIGHLIGHT_COLOR = '#760B4F';
 
 /**
  * The minimum number of dimensions the data should have to automatically
@@ -72,11 +69,13 @@ export let ProjectorPolymer = PolymerElement({
   }
 });
 
-export class Projector extends ProjectorPolymer implements SelectionContext {
+export class Projector extends ProjectorPolymer implements SelectionContext,
+                                                           HoverContext {
   // The working subset of the data source's original data set.
   currentDataSet: DataSet;
 
   private selectionChangedListeners: SelectionChangedListener[];
+  private hoverListeners: HoverListener[];
 
   private dataSet: DataSet;
   private dom: d3.Selection<any>;
@@ -109,6 +108,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
 
   ready() {
     this.selectionChangedListeners = [];
+    this.hoverListeners = [];
     this.dataPanel = this.$['data-panel'] as DataPanel;
     this.inspectorPanel = this.$['inspector-panel'] as InspectorPanel;
     this.inspectorPanel.initialize(this);
@@ -142,7 +142,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
   _colorOptionChanged() {
     let colorMap = this.colorOption.map;
     if (colorMap == null) {
-      this.scatterPlot.setColorAccessor(null);
+      this.updateUnselectedColorArray(null);
       return;
     };
     let colors = (i: number) => {
@@ -152,7 +152,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
       }
       return colorMap(value);
     };
-    this.scatterPlot.setColorAccessor(colors);
+    this.updateUnselectedColorArray(colors);
   }
 
   clearCentroids(): void {
@@ -213,12 +213,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     let neighbors: knn.NearestEntry[] = [];
 
     if (newSelectedPointIndices.length === 1) {
-      const firstSelectedIndex = newSelectedPointIndices[0];
-      this.scatterPlot.clickOnPoint(firstSelectedIndex);
-      neighbors = this.currentDataSet.findNeighbors(firstSelectedIndex,
-          this.inspectorPanel.distFunc, this.inspectorPanel.numNN);
-      this.selectedPoints =
-          [newSelectedPointIndices[0]].concat(neighbors.map(n => n.index));
+      neighbors = this.currentDataSet.findNeighbors(
+          newSelectedPointIndices[0], this.inspectorPanel.distFunc,
+          this.inspectorPanel.numNN);
     }
 
     this.selectionChangedListeners.forEach(
@@ -237,6 +234,38 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     this.dataSet.spriteImage = result.spriteImage;
     this.dataSet.metadata = result.datasetMetadata;
     this.inspectorPanel.metadataChanged(result);
+  }
+
+  /**
+   * Registers a listener to be called any time the mouse hovers over a point.
+   */
+  registerHoverListener(listener: HoverListener) {
+    this.hoverListeners.push(listener);
+  }
+
+  /**
+   * Used by clients to indicate that a hover is occurring.
+   */
+  notifyHoverOverPoint(pointIndex: number) {
+    this.hoverListeners.forEach(l => l(pointIndex));
+  }
+
+  private updateUnselectedColorArray(colorAccessor: (index: number) => string) {
+    if (colorAccessor == null) {
+      this.scatterPlot.setUnselectedPointColors(null);
+      return;
+    }
+    const n = this.currentDataSet.points.length;
+    const colors = new Float32Array(n * 3);
+    let dst = 0;
+    for (let i = 0; i < n; ++i) {
+      const c = new THREE.Color(colorAccessor(i));
+      colors[dst++] = c.r;
+      colors[dst++] = c.g;
+      colors[dst++] = c.b;
+    }
+    this.scatterPlot.setUnselectedPointColors(colors);
+    this.scatterPlot.render();
   }
 
   clearSelection() {
@@ -261,7 +290,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     this.dim = this.currentDataSet.dim[1];
     this.dom.select('span.numDataPoints').text(this.currentDataSet.dim[0]);
     this.dom.select('span.dim').text(this.currentDataSet.dim[1]);
-    this.showTab('pca', true /* recreateScene */);
+    this.showTab('pca', true);
   }
 
   private setupInputUIInCustomTab(name: string) {
@@ -376,41 +405,40 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
       this.scatterPlot.update();
     });
 
-    // Resize
     window.addEventListener('resize', () => {
       this.scatterPlot.resize();
     });
 
-    // Canvas
-    {
-      this.scatterPlot = new ScatterPlot(
-          this.getScatterContainer(),
-          i => '' + this.currentDataSet.points[i].metadata[this.labelOption],
-          this);
-      this.createVisualizers(false);
-    }
-
-    this.scatterPlot.onHover(hoveredIndex => {
-      if (hoveredIndex == null) {
-        this.highlightedPoints = [];
-      } else {
-        let point = this.currentDataSet.points[hoveredIndex];
-        this.dom.select('#hoverInfo').text(point.metadata[this.labelOption]);
-        this.highlightedPoints =
-            [{index: hoveredIndex, color: POINT_HIGHLIGHT_COLOR}];
-      }
-      this.highlightSelectedPointsAndNeighborsInScatterPlot();
-    });
+    this.scatterPlot = new ScatterPlot(
+        this.getScatterContainer(),
+        i => '' + this.currentDataSet.points[i].metadata[this.labelOption],
+        this, this);
+    this.createVisualizers(false);
 
     this.scatterPlot.onCameraMove(
         (cameraPosition: THREE.Vector3, cameraTarget: THREE.Vector3) =>
             this.bookmarkPanel.clearStateSelection());
+
+    this.registerHoverListener(
+        (hoverIndex: number) => this.onHover(hoverIndex));
 
     this.registerSelectionChangedListener(
         (selectedPointIndices: number[],
          neighborsOfFirstPoint: knn.NearestEntry[]) =>
             this.onSelectionChanged(
                 selectedPointIndices, neighborsOfFirstPoint));
+  }
+
+  private onHover(hoverIndex: number) {
+    let hoverText: string = '';
+    if (hoverIndex != null) {
+      const point = this.currentDataSet.points[hoverIndex];
+      if (point.metadata[this.labelOption]) {
+        hoverText = point.metadata[this.labelOption].toString();
+      }
+    }
+    this.dom.select('#hoverInfo').text(hoverText);
+    this.scatterPlot.render();
   }
 
   private getScatterContainer(): d3.Selection<any> {
@@ -420,20 +448,21 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
   private createVisualizers(inLabels3DMode: boolean) {
     const scatterPlot = this.scatterPlot;
     const selectionContext = this;
+    const hoverContext = this;
     scatterPlot.removeAllVisualizers();
 
     if (inLabels3DMode) {
       scatterPlot.addVisualizer(
-          new ScatterPlotVisualizer3DLabels(selectionContext));
+          new ScatterPlotVisualizer3DLabels(selectionContext, hoverContext));
     } else {
       scatterPlot.addVisualizer(
-          new ScatterPlotVisualizerSprites(selectionContext));
+          new ScatterPlotVisualizerSprites(selectionContext, hoverContext));
 
       scatterPlot.addVisualizer(
           new ScatterPlotVisualizerTraces(selectionContext));
 
-      scatterPlot.addVisualizer(
-          new ScatterPlotVisualizerCanvasLabels(this.getScatterContainer()));
+      scatterPlot.addVisualizer(new ScatterPlotVisualizerCanvasLabels(
+          this.getScatterContainer(), selectionContext, hoverContext));
     }
   }
 
@@ -442,12 +471,12 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
       neighborsOfFirstPoint: knn.NearestEntry[]) {
     this.dom.select('#hoverInfo')
         .text(`Selected ${selectedPointIndices.length} points`);
-    if (neighborsOfFirstPoint && (neighborsOfFirstPoint.length > 0)) {
+    this.inspectorPanel.updateInspectorPane(
+        selectedPointIndices, neighborsOfFirstPoint);
+    if (neighborsOfFirstPoint.length > 0) {
       this.showTab('inspector');
     }
-    this.inspectorPanel.updateInspectorPane(selectedPointIndices,
-        neighborsOfFirstPoint);
-    this.highlightSelectedPointsAndNeighborsInScatterPlot();
+    this.scatterPlot.render();
   }
 
   private showPCA(callback?: () => void) {
@@ -551,21 +580,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
             this.stopTsneButton.attr('disabled', true);
           }
         });
-  }
-
-  private highlightSelectedPointsAndNeighborsInScatterPlot() {
-    const selectedAndHighlightedPoints =
-        this.highlightedPoints.map(x => x.index).concat(this.selectedPoints);
-    const stroke = (i: number) => {
-      return i < this.highlightedPoints.length ?
-          this.highlightedPoints[i].color :
-          NN_HIGHLIGHT_COLOR;
-    };
-    const favor = (i: number) => {
-      return i === 0 || (i < this.highlightedPoints.length ? false : true);
-    };
-    this.scatterPlot.highlightPoints(
-        selectedAndHighlightedPoints, stroke, favor);
   }
 
   getPcaSampledDim() { return PCA_SAMPLE_DIM.toLocaleString(); }
