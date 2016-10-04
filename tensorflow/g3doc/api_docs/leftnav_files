@@ -30,6 +30,7 @@ python/contrib.bayesflow.stochastic_tensor.md
 python/contrib.bayesflow.variational_inference.md
 python/contrib.copy_graph.md
 python/contrib.crf.md
+python/contrib.distributions.md
 python/contrib.ffmpeg.md
 python/contrib.framework.md
 python/contrib.graph_editor.md
