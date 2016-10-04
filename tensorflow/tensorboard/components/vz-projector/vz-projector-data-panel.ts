@@ -68,7 +68,7 @@ export class DataPanel extends DataPanelPolymer {
         });
 
     // Get all the runs.
-    this.dataProvider.getRuns(runs => {
+    this.dataProvider.retrieveRuns(runs => {
       this.runNames = runs;
       // If there is only 1 run, choose that one by default.
       if (this.runNames.length === 1) {
@@ -87,14 +87,17 @@ export class DataPanel extends DataPanelPolymer {
         .attr('title', metadataFile);
     // Label by options.
     let labelIndex = -1;
-    this.labelOptions = columnStats.length > 1 ? columnStats.map((stats, i) => {
-      // Make the default label by the first non-numeric column.
-      if (!stats.isNumeric && labelIndex === -1) {
-        labelIndex = i;
-      }
-      return stats.name;
-    }) :
-                                                 ['label'];
+    if (columnStats.length > 1) {
+      this.labelOptions = columnStats.map((stats, i) => {
+        // Make the default label by the first non-numeric column.
+        if (!stats.isNumeric && labelIndex === -1) {
+          labelIndex = i;
+        }
+        return stats.name;
+      });
+    } else {
+      this.labelOptions = ['label'];
+    }
     this.labelOption = this.labelOptions[Math.max(0, labelIndex)];
 
     // Color by options.
@@ -158,23 +161,22 @@ export class DataPanel extends DataPanelPolymer {
     if (this.selectedTensor == null) {
       return;
     }
-    this.dataProvider.getTensor(this.selectedRun, this.selectedTensor, ds => {
+    this.dataProvider.retrieveTensor(this.selectedRun, this.selectedTensor, ds => {
       let metadataFile =
           this.checkpointInfo.tensors[this.selectedTensor].metadataFile;
+      this.projector.updateDataSet(ds);
       if (metadataFile) {
-        this.dataProvider.getMetadata(
-            this.selectedRun, ds, this.selectedTensor, stats => {
-              this.projector.updateDataSet(ds);
-              this.updateMetadataUI(stats, metadataFile);
+        this.dataProvider.retrieveMetadata(
+            this.selectedRun, this.selectedTensor, result => {
+              this.projector.mergeMetadata(result);
+              this.updateMetadataUI(result.stats, metadataFile);
             });
-      } else {
-        this.projector.updateDataSet(ds);
       }
     });
   }
 
   _selectedRunChanged() {
-    this.dataProvider.getCheckpointInfo(this.selectedRun, info => {
+    this.dataProvider.retrieveCheckpointInfo(this.selectedRun, info => {
       this.checkpointInfo = info;
       let names =
           Object.keys(this.checkpointInfo.tensors)
@@ -235,9 +237,9 @@ export class DataPanel extends DataPanelPolymer {
   }
 
   private metadataWasReadFromFile(rawContents: string, fileName: string) {
-    parseRawMetadata(rawContents, this.projector.dataSet, stats => {
-      this.projector.updateDataSet(this.projector.dataSet);
-      this.updateMetadataUI(stats, fileName);
+    parseRawMetadata(rawContents, result => {
+      this.projector.mergeMetadata(result);
+      this.updateMetadataUI(result.stats, fileName);
     });
   }
 

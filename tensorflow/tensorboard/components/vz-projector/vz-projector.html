@@ -30,12 +30,14 @@ limitations under the License.
 
 <link rel="import" href="vz-projector-data-panel.html">
 <link rel="import" href="vz-projector-bookmark-panel.html">
+<link rel="import" href="vz-projector-inspector-panel.html">
 <link rel="import" href="vz-projector-input.html">
+<link rel="import" href="styles.html">
 
 <dom-module id='vz-projector'>
 <template>
+<style include="vz-projector-styles"></style>
 <style>
-
 :host {
   display: flex;
   width: 100%;
@@ -119,22 +121,6 @@ limitations under the License.
   background: none;
 }
 
-.slider {
-  display: flex;
-  align-items: center;
-  margin-bottom: 10px;
-  justify-content: space-between;
-}
-
-.slider span {
-  width: 35px;
-  text-align: right;
-}
-
-.slider label {
-  width: 100%;
-}
-
 .control input[type=text]:focus {
   outline: none;
   border-bottom: 1px solid rgba(0, 0, 0, 1);
@@ -186,40 +172,6 @@ limitations under the License.
   stroke: #fff;
   fill-opacity: .125;
   shape-rendering: crispEdges;
-}
-
-.nn-list .neighbor {
-  font-size: 12px;
-  margin-bottom: 6px;
-}
-
-.nn-list .neighbor .value {
-  float: right;
-  color: #666;
-  font-weight: 300;
-}
-
-.nn-list .neighbor .bar {
-  position: relative;
-  border-top: 1px solid rgba(0, 0, 0, 0.15);
-  margin: 2px 0;
-}
-
-.nn-list .neighbor .bar .fill {
-  position: absolute;
-  top: -1px;
-  border-top: 1px solid white;
-}
-
-.nn-list .neighbor .tick {
-  position: absolute;
-  top: 0px;
-  height: 3px;
-  border-left: 1px solid rgba(0, 0, 0, 0.15);
-}
-
-.nn-list .neighbor-link:hover {
-  cursor: pointer;
 }
 
 .origin text {
@@ -298,39 +250,6 @@ limitations under the License.
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
 }
 
-.ink-panel-metadata-container {
-  margin-top: 15px;
-}
-
-.ink-panel-metadata-container span {
-  font-size: 16px;
-}
-
-.ink-panel-metadata {
-  border-bottom: 1px solid #ccc;
-  display: table;
-  padding: 10px 0;
-  width: 100%;
-}
-
-.ink-panel-metadata-row {
-  display: table-row;
-}
-
-.ink-panel-metadata-key {
-  font-weight: bold;
-}
-
-.ink-panel-metadata-key,
-.ink-panel-metadata-value {
-  display: table-cell;
-  padding-right: 10px;
-}
-
-.ink-panel-buttons {
-  margin-bottom: 10px;
-}
-
 .ink-panel-content {
   padding: 24px;
   overflow-y: auto;
@@ -340,16 +259,6 @@ limitations under the License.
 
 .ink-panel-content.active {
   display: block;
-}
-
-.ink-panel-content .distance a {
-  text-decoration: none;
-  color: black;
-}
-
-.ink-panel-content .distance a.selected {
-  color: black;
-  border-bottom: 2px solid black;
 }
 
 .ink-panel-footer {
@@ -431,47 +340,6 @@ paper-listbox .pca-item {
   height: 15px;
   margin: 0;
   padding: 0;
-}
-
-paper-tooltip {
-  max-width: 200px;
-  --paper-tooltip: {
-    font-size: 12px;
-  };
-}
-
-.toggle {
-  min-width: 0px;
-  font-size: 12px;
-  width: 17px;
-  min-height: 0px;
-  height: 21px;
-  padding: 0;
-  margin: 0px;
-}
-
-.toggle[active] {
-  background-color: #880E4F;
-  color: white;
-}
-
-paper-checkbox {
-  --paper-checkbox-checked-color: #880E4F;
-}
-
-paper-toggle-button {
-  --paper-toggle-button-checked-bar-color:  #880E4F;
-  --paper-toggle-button-checked-button-color:  #880E4F;
-  --paper-toggle-button-checked-ink-color: #880E4F;
-}
-
-paper-icon-button {
-  border-radius: 50%;
-}
-
-paper-icon-button[active] {
-  color: white;
-  background-color: #880E4F;
 }
 
 .ink-fab {
@@ -570,7 +438,7 @@ paper-icon-button[active] {
     <div data-panel="custom" class="ink-panel-content">
       <p>
         Search for two vectors upon which to project all points. Click the
-        <code class="toggle" style="padding: 2px;">.*</code> button to enable
+        <code style="padding: 2px;">.*</code> button to enable
         regex mode. The search is case insensitive.
       <p>
       <h3>Horizontal</h3>
@@ -627,34 +495,7 @@ paper-icon-button[active] {
 
     <!-- Inspector UI controls -->
     <div data-panel="inspector" class="ink-panel-content">
-      <div class="slider num-nn">
-        <label>Number of neighbors</label>
-        <input type="range" min="5" max="1000"></input>
-        <span></span>
-      </div>
-      <vz-projector-input id="search-box" label="Search by label"></vz-projector-input>
-      <div class="ink-panel-metadata-container" style="display: none">
-        <span>Metadata</span>
-        <div class="ink-panel-metadata"></div>
-      </div>
-      <div class="ink-panel-buttons">
-        <div style="margin-bottom: 10px">
-          <button style="display: none;" class="ink-button reset-filter">Show All Data</button>
-        </div>
-        <button style="display: none;" class="ink-button set-filter">Isolate selection</button>
-        <button class="ink-button clear-selection" style="display: none;">Clear selection</button>
-      </div>
-      <div class="nn">
-        <div class="distance">
-          Distance:
-          <div style="float:right">
-            <a class="selected cosine" href="javascript:void(0);">cosine</a> |
-            <a class="euclidean" href="javascript:void(0);">euclidean</a>
-          </div>
-        </div>
-        <p>Nearest points:
-        <div class="nn-list"></div>
-      </div>
+      <vz-projector-inspector-panel id="inspector-panel"></vz-projector-inspector-panel>
     </div>
 
     <!-- Data UI controls -->

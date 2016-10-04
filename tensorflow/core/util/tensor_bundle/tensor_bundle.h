@@ -102,12 +102,12 @@ extern const char* const kHeaderEntryKey;
 // All threads accessing the same BundleWriter must synchronize.
 class BundleWriter {
  public:
-  BundleWriter(Env* env, const string& prefix);
+  BundleWriter(Env* env, StringPiece prefix);
   ~BundleWriter();
 
   // Adds the tensor "val" under key "key".
   // Across calls "key" must be unique but can be added in any order.
-  Status Add(const string& key, const Tensor& val);
+  Status Add(StringPiece key, const Tensor& val);
 
   // Partitioned variables support.
   // A slice of a full tensor is stored in two entries in the metadata table:
@@ -125,7 +125,7 @@ class BundleWriter {
   // consistent entry for "full_tensor_key" is produced.
   //
   // Returns an error if the same slice is added the second time.
-  Status AddSlice(const string& full_tensor_key,
+  Status AddSlice(StringPiece full_tensor_key,
                   const TensorShape& full_tensor_shape,
                   const TensorSlice& slice_spec, const Tensor& slice_tensor);
 
@@ -159,7 +159,7 @@ class BundleWriter {
 // Once merged, makes a best effort to delete the old metadata files.
 // Returns OK iff all bundles are successfully merged.
 Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
-                    const string& merged_prefix);
+                    StringPiece merged_prefix);
 
 // On construction, silently attempts to read the metadata associated with
 // "prefix".  If caller intends to call any function afterwards, "status()"
@@ -167,7 +167,7 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
 // All threads accessing the same BundleReader must synchronize.
 class BundleReader {
  public:
-  BundleReader(Env* const env, const string& prefix);
+  BundleReader(Env* const env, StringPiece prefix);
   ~BundleReader();
 
   // Is ok() iff the reader construction is successful (completed the read of
@@ -182,7 +182,7 @@ class BundleReader {
   // Looks up the shape of the tensor keyed by "key".
   // Clears "shape" if not found.
   // REQUIRES: status().ok()
-  Status LookupTensorShape(const string& key,
+  Status LookupTensorShape(StringPiece key,
                            TensorShape* shape) TF_MUST_USE_RESULT;
 
   // Looks up the tensor keyed by "key".  If "key" refers to a partitioned
@@ -202,19 +202,18 @@ class BundleReader {
   //
   // Validates the stored crc32c checksum against the restored bytes.
   // REQUIRES: status().ok()
-  Status Lookup(const string& key, Tensor* val) TF_MUST_USE_RESULT;
+  Status Lookup(StringPiece key, Tensor* val) TF_MUST_USE_RESULT;
 
   // Looks up a specific slice of a partitioned tensor.
   // It is only required that the stored slices cover the requested slice,
   // namely "slice_spec" is a subset of the union of the stored slices.
   // REQUIRES: status().ok()
-  Status LookupSlice(const string& full_tensor_key,
-                     const TensorSlice& slice_spec,
+  Status LookupSlice(StringPiece full_tensor_key, const TensorSlice& slice_spec,
                      Tensor* val) TF_MUST_USE_RESULT;
 
   // Seeks to the first position in the bundle whose key is no less than "key".
   // REQUIRES: status().ok()
-  void Seek(const string& key) { return iter_->Seek(key); }
+  void Seek(StringPiece key) { return iter_->Seek(key); }
   // Moves to the next position in the bundle.
   // REQUIRES: status().ok()
   void Next() const { iter_->Next(); }
@@ -235,7 +234,7 @@ class BundleReader {
   // Seeks for "key" and reads the metadata proto.
   // On non-OK return, clears "entry" for the caller.
   // REQUIRES: status().ok()
-  Status GetBundleEntryProto(const string& key,
+  Status GetBundleEntryProto(StringPiece key,
                              BundleEntryProto* entry) TF_MUST_USE_RESULT;
 
   // Reads the tensor value described by the metadata proto "entry".
@@ -246,7 +245,7 @@ class BundleReader {
   // Reads the slice described by "slice_spec".  The corresponding full tensor
   // has key "ful_tensor_key" and metadata proto "full_tensor_entry".
   // REQUIRES: full_tensor_entry.slices_size() > 0
-  Status GetSliceValue(const string& full_tensor_key,
+  Status GetSliceValue(StringPiece full_tensor_key,
                        const BundleEntryProto& full_tensor_entry,
                        const TensorSlice& slice_spec,
                        Tensor* val) TF_MUST_USE_RESULT;
@@ -311,9 +310,9 @@ class FileOutputBuffer {
 };
 
 // Pattern: "<prefix>.data-<padded shard_id>-of-<padded num_shards>".
-string DataFilename(const string& prefix, int32 shard_id, int32 num_shards);
+string DataFilename(StringPiece prefix, int32 shard_id, int32 num_shards);
 // Pattern: "<prefix>.index."
-string MetaFilename(const string& prefix);
+string MetaFilename(StringPiece prefix);
 
 }  // namespace tensorflow
 

@@ -82,6 +82,12 @@ Queues](../../how_tos/threading_and_queues/index.md).
 @@RandomShuffleQueue
 @@PriorityQueue
 
+## Conditional Accumulators
+
+@@ConditionalAccumulatorBase
+@@ConditionalAccumulator
+@@SparseConditionalAccumulator
+
 ## Dealing with the filesystem
 
 @@matching_files

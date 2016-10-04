@@ -30,10 +30,7 @@ from six import reraise
 
 from tensorflow.contrib.framework.python.ops import ops as contrib_ops
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
-from tensorflow.contrib.learn.python.learn import basic_session_run_hooks
-from tensorflow.contrib.learn.python.learn import monitored_session
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
-from tensorflow.contrib.learn.python.learn import summary_writer_cache
 from tensorflow.contrib.learn.python.learn.utils import checkpoints
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.client import session as tf_session
@@ -45,10 +42,13 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import coordinator
+from tensorflow.python.training import monitored_session
 from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import session_manager as session_manager_lib
+from tensorflow.python.training import summary_io
 from tensorflow.python.training import supervisor as tf_supervisor
 
 # Singleton for SummaryWriter per logdir folder.
@@ -60,7 +60,7 @@ _summary_writer_lock = threading.Lock()
 
 def clear_summary_writers():
   """Clear cached summary writers. Currently only used for unit tests."""
-  return summary_writer_cache.SummaryWriterCache.clear()
+  return summary_io.SummaryWriterCache.clear()
 
 
 def get_summary_writer(logdir):
@@ -73,7 +73,7 @@ def get_summary_writer(logdir):
     Existing `SummaryWriter` object or new one if never wrote to given
     directory.
   """
-  return summary_writer_cache.SummaryWriterCache.get(logdir)
+  return summary_io.SummaryWriterCache.get(logdir)
 
 
 def _make_saver(graph, keep_checkpoint_max=5):
@@ -260,7 +260,7 @@ def _monitored_train(graph,
           scaffold=scaffold,
           checkpoint_dir=output_dir,
           master=supervisor_master)
-      summary_writer = summary_writer_cache.SummaryWriterCache.get(output_dir)
+      summary_writer = summary_io.SummaryWriterCache.get(output_dir)
       all_hooks.append(
           basic_session_run_hooks.StepCounterHook(
               summary_writer=summary_writer))

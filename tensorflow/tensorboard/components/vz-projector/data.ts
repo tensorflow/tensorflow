@@ -17,8 +17,14 @@ import {runAsyncTask} from './async';
 import {TSNE} from './bh_tsne';
 import * as knn from './knn';
 import * as scatterPlot from './scatterPlot';
-import {shuffle} from './util';
+import {shuffle, getSearchPredicate} from './util';
 import * as vector from './vector';
+
+export type DistanceFunction = (a: number[], b: number[]) => number;
+
+export interface PointMetadata {
+  [key: string]: number | string;
+}
 
 export interface DataPoint extends scatterPlot.DataPoint {
   /** The point in the original space. */
@@ -28,7 +34,7 @@ export interface DataPoint extends scatterPlot.DataPoint {
    * Metadata for each point. Each metadata is a set of key/value pairs
    * where the value can be a string or a number.
    */
-  metadata: {[key: string]: number | string};
+  metadata: PointMetadata;
 
   /** This is where the calculated projections space are cached */
   projections: {[key: string]: number};
@@ -156,14 +162,15 @@ export class DataSet implements scatterPlot.DataSet {
    * @return A subset of the original dataset.
    */
   getSubset(subset?: number[]): DataSet {
-    let pointsSubset = subset ? subset.map(i => this.points[i]) : this.points;
+    let pointsSubset = subset && subset.length ?
+        subset.map(i => this.points[i]) : this.points;
     let points = pointsSubset.map(dp => {
       return {
         metadata: dp.metadata,
         index: dp.index,
         vector: dp.vector.slice(),
         projectedPoint: [0, 0, 0] as [number, number, number],
-        projections: {}
+        projections: {} as {[key: string]: number}
       };
     });
 
@@ -176,8 +183,7 @@ export class DataSet implements scatterPlot.DataSet {
    */
   normalize() {
     // Compute the centroid of all data points.
-    let centroid =
-        vector.centroid(this.points, () => true, a => a.vector).centroid;
+    let centroid = vector.centroid(this.points, a => a.vector);
     if (centroid == null) {
       throw Error('centroid should not be null');
     }
@@ -290,7 +296,39 @@ export class DataSet implements scatterPlot.DataSet {
     });
   }
 
+  mergeMetadata(metadata: PointMetadata[]) {
+    metadata.forEach((m, i) => this.points[i].metadata = m);
+  }
+
   stopTSNE() { this.tSNEShouldStop = true; }
+
+  /**
+   * Finds the nearest neighbors of the query point using a
+   * user-specified distance metric.
+   */
+  findNeighbors(pointIndex: number, distFunc: DistanceFunction, numNN: number):
+      knn.NearestEntry[] {
+    // Find the nearest neighbors of a particular point.
+    let neighbors = knn.findKNNofPoint(this.points, pointIndex, numNN,
+        (d => d.vector), distFunc);
+    // TODO(smilkov): Figure out why we slice.
+    let result = neighbors.slice(0, numNN);
+    return result;
+  }
+
+  /**
+   * Search the dataset based on a metadata field.
+   */
+  query(query: string, inRegexMode: boolean, fieldName: string,): number[] {
+    let predicate = getSearchPredicate(query, inRegexMode, fieldName);
+    let matches: number[] = [];
+    this.points.forEach((point, id) => {
+      if (predicate(point)) {
+        matches.push(id);
+      }
+    });
+    return matches;
+  }
 }
 
 export interface DatasetMetadata {

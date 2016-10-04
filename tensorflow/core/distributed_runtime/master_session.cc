@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/tensor_id.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -246,20 +247,14 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     int waiting_for = partitions_.size();
     if (waiting_for > 0) {
       mutex scoped_mu;
-      // TODO(suharshs): Use BlockingCounter instead?
-      Notification all_done;
+      BlockingCounter all_done(waiting_for);
       for (auto& p : partitions_) {
         LoggingResponse* resp = new LoggingResponse;
         p.worker->LoggingAsync(
             &req, resp, [step_id, ss, resp, &scoped_mu, &waiting_for,
                          &all_done](const Status& s) {
-              bool notify_all_done = false;
               {
                 mutex_lock l(scoped_mu);
-                --waiting_for;
-                if (waiting_for == 0) {
-                  notify_all_done = true;
-                }
                 if (s.ok()) {
                   for (auto& lss : resp->step()) {
                     if (step_id != lss.step_id()) {
@@ -271,14 +266,12 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                 }
                 delete resp;
               }
-              // Must not call all_done.Notify() until out of critical
-              // section where *ss is updated.
-              if (notify_all_done) {
-                all_done.Notify();
-              }
+              // Must not decrement all_done until out of critical section where
+              // *ss is updated.
+              all_done.DecrementCount();
             });
       }
-      all_done.WaitForNotification();
+      all_done.Wait();
     }
   }
 
@@ -511,10 +504,10 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     RegisterGraphRequest req;
     RegisterGraphResponse resp;
     Status status;
-    Notification done;
   };
   const int num = partitions_.size();
   gtl::InlinedVector<Call, 4> calls(num);
+  BlockingCounter done(num);
   for (int i = 0; i < num; ++i) {
     const Part& part = partitions_[i];
     Call* c = &calls[i];
@@ -522,15 +515,15 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     *c->req.mutable_graph_def() = part.gdef;
     *c->req.mutable_graph_options() = session_opts_.config.graph_options();
     VLOG(2) << "Register " << part.gdef.DebugString();
-    auto cb = [c](const Status& s) {
+    auto cb = [c, &done](const Status& s) {
       c->status = s;
-      c->done.Notify();
+      done.DecrementCount();
     };
     part.worker->RegisterGraphAsync(&c->req, &c->resp, cb);
   }
-  for (int i = num - 1; i >= 0; --i) {
+  done.Wait();
+  for (int i = 0; i < num; ++i) {
     Call* c = &calls[i];
-    c->done.WaitForNotification();
     s.Update(c->status);
     partitions_[i].graph_handle = c->resp.graph_handle();
   }
@@ -553,7 +546,7 @@ static bool CopyIfNeeded(TensorProto* in, TensorProto* out) {
 // Helper class to manage "num" parallel RunGraph calls.
 class RunManyGraphs {
  public:
-  explicit RunManyGraphs(int num) : calls_(num), num_pending_(num) {}
+  explicit RunManyGraphs(int num) : calls_(num), pending_(num) {}
 
   ~RunManyGraphs() {}
 
@@ -568,14 +561,11 @@ class RunManyGraphs {
   // When the index-th call is done, updates the overall status.
   void WhenDone(int index, const Status& s) {
     TRACEPRINTF("Partition %d %s", index, s.ToString().c_str());
-    {
+    if (!s.ok()) {
       mutex_lock l(mu_);
-      if (!s.ok()) {
-        UpdateStatusLocked(s);
-      }
-      --num_pending_;
-      cv_pending_.notify_all();
+      UpdateStatusLocked(s);
     }
+    pending_.DecrementCount();
   }
 
   void StartCancel() {
@@ -583,12 +573,7 @@ class RunManyGraphs {
     UpdateStatusLocked(errors::Cancelled("RunManyGraphs"));
   }
 
-  void Wait() {
-    mutex_lock l(mu_);
-    while (num_pending_ > 0) {
-      cv_pending_.wait(l);
-    }
-  }
+  void Wait() { pending_.Wait(); }
 
   Status status() const {
     mutex_lock l(mu_);
@@ -598,12 +583,8 @@ class RunManyGraphs {
  private:
   gtl::InlinedVector<Call, 4> calls_;
 
-  // TODO(jeff,sanjay): Replace bookkeeping state here with a
-  // BlockingCounter abstraction that we define in
-  // tensorflow/core/lib/core.
+  BlockingCounter pending_;
   mutable mutex mu_;
-  condition_variable cv_pending_;
-  int num_pending_;
   Status status_ GUARDED_BY(mu_);
 
   void UpdateStatusLocked(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {

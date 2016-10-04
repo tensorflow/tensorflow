@@ -33,7 +33,7 @@
     "tsify": "^0.14.8",
     "tslint": "^3.2.1",
     "typescript": "^2.0.0",
-    "typings": "~1.0.4",
+    "typings": "1.4.0",
     "vinyl-source-stream": "^1.1.0",
     "vulcanize": "^1.14.0",
     "web-component-tester": "4.2.2"

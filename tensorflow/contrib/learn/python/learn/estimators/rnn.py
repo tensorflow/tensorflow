@@ -121,7 +121,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
         config=config,
         verbose=verbose)
 
-  def _model_fn(self, x, y):
+  def _model_fn(self, x, y):  # pylint: disable=method-hidden
     return models.get_rnn_model(self.rnn_size, self.cell_type, self.num_layers,
                                 self.input_op_fn, self.bidirectional,
                                 models.logistic_regression,
@@ -230,7 +230,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
         config=config,
         verbose=verbose)
 
-  def _model_fn(self, x, y):
+  def _model_fn(self, x, y):  # pylint: disable=method-hidden
     return models.get_rnn_model(self.rnn_size, self.cell_type, self.num_layers,
                                 self.input_op_fn, self.bidirectional,
                                 models.linear_regression, self.sequence_length,

@@ -362,3 +362,37 @@ def summary_iterator(path):
   """
   for r in tf_record.tf_record_iterator(path):
     yield event_pb2.Event.FromString(r)
+
+
+class SummaryWriterCache(object):
+  """Cache for summary writers.
+
+  This class caches summary writers, one per directory.
+  """
+  # Cache, keyed by directory.
+  _cache = {}
+
+  # Lock protecting _SUMMARY_WRITERS.
+  _lock = threading.RLock()
+
+  @staticmethod
+  def clear():
+    """Clear cached summary writers. Currently only used for unit tests."""
+    with SummaryWriterCache._lock:
+      SummaryWriterCache._cache = {}
+
+  @staticmethod
+  def get(logdir):
+    """Returns the SummaryWriter for the specified directory.
+
+    Args:
+      logdir: str, name of the directory.
+
+    Returns:
+      A `SummaryWriter`.
+    """
+    with SummaryWriterCache._lock:
+      if logdir not in SummaryWriterCache._cache:
+        SummaryWriterCache._cache[logdir] = SummaryWriter(
+            logdir, graph=ops.get_default_graph())
+      return SummaryWriterCache._cache[logdir]

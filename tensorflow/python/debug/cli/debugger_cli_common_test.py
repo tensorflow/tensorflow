@@ -210,7 +210,9 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
     # The registry should catch and wrap exceptions that occur during command
     # handling.
     cmd_output = registry.dispatch_command("raise_exception", [])
-    self.assertEqual(2, len(cmd_output.lines))
+    # The error output contains a stack trace.
+    # So the line count should be >= 2.
+    self.assertGreater(len(cmd_output.lines), 2)
     self.assertTrue(cmd_output.lines[0].startswith(
         "Error occurred during handling of command"))
     self.assertTrue(cmd_output.lines[1].endswith(self._intentional_error_msg))
@@ -254,11 +256,14 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
     self.assertFalse(help_lines[4])
     self.assertFalse(help_lines[5])
 
-    self.assertEqual("noop", help_lines[6])
-    self.assertTrue(help_lines[7].endswith("Aliases: n, NOOP"))
-    self.assertFalse(help_lines[8])
-    self.assertTrue(help_lines[9].endswith("No operation."))
-    self.assertTrue(help_lines[10].endswith("I.e., do nothing."))
+    # The default help command should appear in the help output.
+    self.assertEqual("help", help_lines[6])
+
+    self.assertEqual("noop", help_lines[12])
+    self.assertTrue(help_lines[13].endswith("Aliases: n, NOOP"))
+    self.assertFalse(help_lines[14])
+    self.assertTrue(help_lines[15].endswith("No operation."))
+    self.assertTrue(help_lines[16].endswith("I.e., do nothing."))
 
   def testGetHelpSingleCommand(self):
     registry = debugger_cli_common.CommandHandlerRegistry()
@@ -295,6 +300,55 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
     help_lines = registry.get_help("foo").lines
 
     self.assertEqual("Invalid command prefix: \"foo\"", help_lines[0])
+
+  def testHelpCommandWithoutIntro(self):
+    registry = debugger_cli_common.CommandHandlerRegistry()
+    registry.register_command_handler(
+        "noop",
+        self._noop_handler,
+        "No operation.\nI.e., do nothing.",
+        prefix_aliases=["n", "NOOP"])
+    registry.register_command_handler(
+        "cols",
+        self._echo_screen_cols,
+        "Show screen width in number of columns.",
+        prefix_aliases=["c"])
+
+    # Get help for all commands.
+    output = registry.dispatch_command("help", [])
+    self.assertEqual(["cols", "  Aliases: c", "",
+                      "  Show screen width in number of columns.", "", "",
+                      "help", "  Aliases: h", "", "  Print this help message.",
+                      "", "", "noop", "  Aliases: n, NOOP", "",
+                      "  No operation.", "  I.e., do nothing.", "", ""],
+                     output.lines)
+
+    # Get help for one specific command prefix.
+    output = registry.dispatch_command("help", ["noop"])
+    self.assertEqual(["noop", "  Aliases: n, NOOP", "", "  No operation.",
+                      "  I.e., do nothing."], output.lines)
+
+    # Get help for a nonexistent command prefix.
+    output = registry.dispatch_command("help", ["foo"])
+    self.assertEqual(["Invalid command prefix: \"foo\""], output.lines)
+
+  def testHelpCommandWithIntro(self):
+    registry = debugger_cli_common.CommandHandlerRegistry()
+    registry.register_command_handler(
+        "noop",
+        self._noop_handler,
+        "No operation.\nI.e., do nothing.",
+        prefix_aliases=["n", "NOOP"])
+
+    help_intro = ["Introductory comments.", ""]
+    registry.set_help_intro(help_intro)
+
+    output = registry.dispatch_command("help", [])
+    self.assertEqual(
+        help_intro + ["help", "  Aliases: h", "", "  Print this help message.",
+                      "", "", "noop", "  Aliases: n, NOOP", "",
+                      "  No operation.", "  I.e., do nothing.", "", ""],
+        output.lines)
 
 
 class RegexFindTest(test_util.TensorFlowTestCase):

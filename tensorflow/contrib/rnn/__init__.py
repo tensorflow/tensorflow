@@ -23,6 +23,7 @@
 ### Fused RNNCells
 @@FusedRNNCell
 @@FusedRNNCellAdaptor
+@@TimeReversedFusedRNN
 @@LSTMBlockFusedCell
 
 ### LSTM-like cells

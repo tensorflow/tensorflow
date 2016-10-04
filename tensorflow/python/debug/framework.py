@@ -147,7 +147,7 @@ class OnSessionInitRequest(object):
       sess: A tensorflow Session object.
     """
 
-    _check_type(sess, session.Session)
+    _check_type(sess, session.BaseSession)
     self.session = sess
 
 
@@ -299,7 +299,7 @@ class BaseDebugWrapperSession(object):
       ValueError: On invalid OnSessionInitAction value.
     """
 
-    _check_type(sess, session.Session)
+    _check_type(sess, session.BaseSession)
 
     # The session being wrapped.
     self._sess = sess

@@ -24,9 +24,11 @@ limitations under the License.
 <link rel="import" href="../paper-checkbox/paper-checkbox.html">
 <link rel="import" href="../paper-tooltip/paper-tooltip.html">
 <link rel="import" href="vz-projector-legend.html">
+<link rel="import" href="styles.html">
 
 <dom-module id='vz-projector-data-panel'>
 <template>
+<style include="vz-projector-styles"></style>
 <style>
 :host {
 }
@@ -68,10 +70,6 @@ paper-item {
   font-size: 12px;
 }
 
-paper-button {
-  border: 1px solid #ccc;
-}
-
 #save-container {
   text-align: center;
 }
@@ -103,17 +101,6 @@ paper-button {
   height: 15px;
   margin: 0;
   padding: 0;
-}
-
-paper-tooltip {
-  max-width: 200px;
-  --paper-tooltip: {
-    font-size: 12px;
-  };
-}
-
-paper-checkbox {
-  --paper-checkbox-checked-color: #880E4F;
 }
 </style>
 

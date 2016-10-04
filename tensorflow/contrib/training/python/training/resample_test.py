@@ -66,7 +66,7 @@ class ResampleTest(tf.test.TestCase):
       self.assert_expected([1.0 for _ in weights], 1.0, counts_reresampled, n,
                            abs_delta=0.1*n*count)
 
-  def testCorrectRates(self, rate=0.25, count=10, n=500, rtol=0.1):
+  def testCorrectRates(self, rate=0.25, count=10, n=500, rtol=0.2):
     """Tests that the rates returned by weighted_resample are correct."""
 
     # The approach here is to verify that:
