@@ -36,7 +36,10 @@ class CursesUI(object):
   CLI_EXIT_CMDS = ["exit", "quit"]
   CLI_TERMINATOR_KEY = 7  # Terminator key for input text box.
   CLI_TAB_KEY = ord("\t")
-  CLI_CR_KEYS = [ord("\n"), ord("\r")]  # Possible carriage return keys.
+
+  # Possible Enter keys. 343 is curses key code for the num-pad Enter key when
+  # num lock is off.
+  CLI_CR_KEYS = [ord("\n"), ord("\r"), 343]
 
   _SCROLL_UP = "up"
   _SCROLL_DOWN = "down"
@@ -86,7 +89,7 @@ class CursesUI(object):
     # Height of command text box
     self._command_textbox_height = 2
 
-    self._debug_row = 0
+    self._title_row = 0
 
     # Top row index of the output pad.
     self._output_top_row = 1
@@ -150,11 +153,13 @@ class CursesUI(object):
     curses.echo()
     curses.endwin()
 
-  def run_ui(self, init_command=None):
+  def run_ui(self, init_command=None, title=None, title_color=None):
     """Run the Curses CLI.
 
     Args:
       init_command: (str) Optional command to run on CLI start up.
+      title: (str) Optional title to display in the CLI.
+      title_color: (str) Optional color of the title, e.g., "yellow".
 
     Returns:
       An exit token of arbitrary type. Can be None.
@@ -165,6 +170,9 @@ class CursesUI(object):
     # Optional initial command.
     if init_command is not None:
       self._dispatch_command(init_command)
+
+    if title is not None:
+      self._title(title, title_color=title_color)
 
     # CLI main loop.
     exit_token = self._ui_loop()
@@ -248,9 +256,8 @@ class CursesUI(object):
         If command is a normal command entered with the Enter key, the value
         will be the key itself. If this is a tab completion call (using the
         Tab key), the value will reflect that as well.
-      pending_command_changed:
-        If the pending command has changed. Used during command history
-        navigation.
+      pending_command_changed:  (bool) If the pending command has changed.
+        Used during command history navigation.
     """
 
     # First, reset textbox state variables.
@@ -267,7 +274,8 @@ class CursesUI(object):
 
   def _strip_terminator(self, command):
     for v in self.CLI_CR_KEYS:
-      command = command.replace(chr(v), "")
+      if v < 256:
+        command = command.replace(chr(v), "")
 
     return command.strip()
 
@@ -442,8 +450,21 @@ class CursesUI(object):
       self._active_command_history = []
       return x
 
-  def _debug_log(self, message):
-    self._screen_draw_text_line(self._debug_row, message)
+  def _title(self, title, title_color=None):
+    """Display title.
+
+    Args:
+      title: (str) The title to display.
+      title_color: (str) Color of the title, e.g., "yellow".
+    """
+
+    # Pad input title str with "-" and space characters to make it pretty.
+    self._title_line = "--- %s " % title
+    if len(self._title_line) < self._max_x:
+      self._title_line += "-" * (self._max_x - len(self._title_line))
+
+    self._screen_draw_text_line(
+        self._title_row, self._title_line, color=title_color)
 
   def _auto_key_in(self, command):
     """Automatically key in a command to the command Textbox.
@@ -502,8 +523,8 @@ class CursesUI(object):
     # in curses.
 
     cols = self._max_x
-    self._curr_wrapped_output = debugger_cli_common.wrap_rich_text_lines(output,
-                                                                         cols)
+    self._curr_wrapped_output = debugger_cli_common.wrap_rich_text_lines(
+        output, cols - 1)
 
     self._screen_refresh()
 
@@ -600,8 +621,8 @@ class CursesUI(object):
 
     # Finally, draw all the segments.
     for segment, color_pair in zip(all_segments, all_color_pairs):
-      self._output_pad.addstr(
-          row, segment[0], txt[segment[0]:segment[1]], color_pair)
+      self._output_pad.addstr(row, segment[0], txt[segment[0]:segment[1]],
+                              color_pair)
 
   def _screen_scroll_output_pad(self):
     self._output_pad.refresh(self._output_pad_row, 0,

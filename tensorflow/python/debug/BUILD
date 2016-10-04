@@ -19,7 +19,6 @@ py_library(
     name = "debug_data",
     srcs = ["debug_data.py"],
     srcs_version = "PY2AND3",
-    deps = [],
 )
 
 py_library(
@@ -59,6 +58,7 @@ py_library(
     srcs = ["cli/analyzer_cli.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":debug_data",
         ":debugger_cli_common",
         ":tensor_format",
     ],
@@ -84,6 +84,7 @@ py_library(
         ":debug_data",
         ":debugger_cli_common",
         ":framework",
+        "//tensorflow:tensorflow_py",  # TODO(cais): Change in buildozer.yml.
         "//tensorflow/python:session",
     ],
 )
@@ -95,6 +96,18 @@ py_binary(
     deps = [
         ":local_cli",
         "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_binary(
+    name = "debug_mnist",
+    srcs = ["examples/debug_mnist.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_data",
+        ":local_cli",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/examples/tutorials/mnist:input_data",
     ],
 )
 
@@ -219,6 +232,20 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:session",
+    ],
+)
+
+py_test(
+    name = "local_cli_test",
+    size = "small",
+    srcs = [
+        "local_cli_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":local_cli",
+        "//tensorflow:tensorflow_py",  # TODO(cais): Buildozer rule.
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 

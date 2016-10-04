@@ -238,8 +238,9 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(ui.unwrapped_outputs))
     self.assertEqual(1, len(ui.wrapped_outputs))
     self.assertEqual(1, len(ui.scroll_messages))
-
-    print(ui.unwrapped_outputs[0].lines)
+    self.assertEqual(
+        ["Syntax error for command: babble", "For help, do \"help babble\""],
+        ui.unwrapped_outputs[0].lines)
 
   def testRunUIScrollTallOutputPageDownUp(self):
     """Scroll tall output with PageDown and PageUp."""

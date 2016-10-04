@@ -66,7 +66,8 @@ def assert_listed_tensors(tst,
                           out,
                           expected_tensor_names,
                           node_name_regex=None,
-                          op_type_regex=None):
+                          op_type_regex=None,
+                          tensor_filter_name=None):
   """Check RichTextLines output for list_tensors commands.
 
   Args:
@@ -75,12 +76,18 @@ def assert_listed_tensors(tst,
     expected_tensor_names: Expected tensor names in the list.
     node_name_regex: Optional: node name regex filter.
     op_type_regex: Optional: op type regex filter.
+    tensor_filter_name: Optional: name of the tensor filter.
   """
 
   line_iter = iter(out.lines)
 
   num_tensors = len(expected_tensor_names)
-  tst.assertEqual("%d dumped tensor(s):" % num_tensors, next(line_iter))
+
+  if tensor_filter_name is None:
+    tst.assertEqual("%d dumped tensor(s):" % num_tensors, next(line_iter))
+  else:
+    tst.assertEqual("%d dumped tensor(s) passing filter \"%s\":" %
+                    (num_tensors, tensor_filter_name), next(line_iter))
 
   if op_type_regex is not None:
     tst.assertEqual("Op type regex filter: \"%s\"" % op_type_regex,
@@ -250,7 +257,8 @@ def check_syntax_error_output(tst, out, command_prefix):
 
   tst.assertEqual([
       "Syntax error for command: %s" % command_prefix,
-      "For help, do \"help %s\"" % command_prefix], out.lines)
+      "For help, do \"help %s\"" % command_prefix
+  ], out.lines)
 
 
 def check_error_output(tst, out, command_prefix, args):
@@ -311,11 +319,11 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
       run_metadata = config_pb2.RunMetadata()
       sess.run(x, options=run_options, run_metadata=run_metadata)
 
-    debug_dump = debug_data.DebugDumpDir(
+    cls._debug_dump = debug_data.DebugDumpDir(
         cls._dump_root, partition_graphs=run_metadata.partition_graphs)
 
     # Construct the analyzer.
-    analyzer = analyzer_cli.DebugAnalyzer(debug_dump)
+    cls._analyzer = analyzer_cli.DebugAnalyzer(cls._debug_dump)
 
     # Construct the handler registry.
     cls._registry = debugger_cli_common.CommandHandlerRegistry()
@@ -323,18 +331,18 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     # Register command handlers.
     cls._registry.register_command_handler(
         "list_tensors",
-        analyzer.list_tensors,
-        analyzer.get_help("list_tensors"),
+        cls._analyzer.list_tensors,
+        cls._analyzer.get_help("list_tensors"),
         prefix_aliases=["lt"])
     cls._registry.register_command_handler(
         "node_info",
-        analyzer.node_info,
-        analyzer.get_help("node_info"),
+        cls._analyzer.node_info,
+        cls._analyzer.get_help("node_info"),
         prefix_aliases=["ni"])
     cls._registry.register_command_handler(
         "print_tensor",
-        analyzer.print_tensor,
-        analyzer.get_help("print_tensor"),
+        cls._analyzer.print_tensor,
+        cls._analyzer.get_help("print_tensor"),
         prefix_aliases=["pt"])
 
   @classmethod
@@ -394,6 +402,28 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         ],
         node_name_regex=".*add$",
         op_type_regex="(Add|MatMul)")
+
+  def testListTensorsFilterNanOrInf(self):
+    """Test register and invoke a tensor filter."""
+
+    # First, register the filter.
+    self._analyzer.add_tensor_filter("has_inf_or_nan",
+                                     debug_data.has_inf_or_nan)
+
+    # Use shorthand alias for the command prefix.
+    out = self._registry.dispatch_command("lt", ["-f", "has_inf_or_nan"])
+
+    # This TF graph run did not generate any bad numerical values.
+    assert_listed_tensors(self, out, [], tensor_filter_name="has_inf_or_nan")
+    # TODO(cais): A test with some actual bad numerical values.
+
+  def testListTensorNonexistentFilter(self):
+    """Test attempt to use a nonexistent tensor filter."""
+
+    out = self._registry.dispatch_command("lt", ["-f", "foo_filter"])
+
+    self.assertEqual(["ERROR: There is no tensor filter named \"foo_filter\"."],
+                     out.lines)
 
   def testListTensorsInvalidOptions(self):
     out = self._registry.dispatch_command("list_tensors", ["--foo"])
@@ -491,6 +521,51 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         "ERROR: Node \"simple_mul_add/matmul/foo\" does not exist in partition "
         "graphs"
     ], out.lines)
+
+  def testAddGetTensorFilterLambda(self):
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+    analyzer.add_tensor_filter("foo_filter", lambda x, y: True)
+    self.assertTrue(analyzer.get_tensor_filter("foo_filter")(None, None))
+
+  def testAddGetTensorFilterNestedFunction(self):
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+
+    def foo_filter(unused_arg_0, unused_arg_1):
+      return True
+
+    analyzer.add_tensor_filter("foo_filter", foo_filter)
+    self.assertTrue(analyzer.get_tensor_filter("foo_filter")(None, None))
+
+  def testAddTensorFilterEmptyName(self):
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "Input argument filter_name cannot be empty."):
+      analyzer.add_tensor_filter("", lambda datum, tensor: True)
+
+  def testAddTensorFilterNonStrName(self):
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+
+    with self.assertRaisesRegexp(
+        TypeError,
+        "Input argument filter_name is expected to be str, ""but is not"):
+      analyzer.add_tensor_filter(1, lambda datum, tensor: True)
+
+  def testAddGetTensorFilterNonCallable(self):
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+
+    with self.assertRaisesRegexp(
+        TypeError, "Input argument filter_callable is expected to be callable, "
+        "but is not."):
+      analyzer.add_tensor_filter("foo_filter", "bar")
+
+  def testGetNonexistentTensorFilter(self):
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+
+    analyzer.add_tensor_filter("foo_filter", lambda datum, tensor: True)
+    with self.assertRaisesRegexp(ValueError,
+                                 "There is no tensor filter named \"bar\""):
+      analyzer.get_tensor_filter("bar")
 
 
 class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
