@@ -10,6 +10,7 @@
   like `foo[1, 2:4, tf.newaxis, ..., :-3:-1, :]` are now supported. In addition
   we have preliminary (non-broadcasting) support for sliced assignment to
   variables. In particular one can write `var[1:3].assign([1,11,111])`.
+* Deprecated `tf.op_scope` and `tf.variable_op_scope` in favor of a unified `tf.name_scope` and `tf.variable_scope`. The new argument order of `tf.variable_scope` is incompatible with previous versions.
 * Introducing `core/util/tensor_bundle` module: a module to efficiently
   serialize/deserialize tensors to disk.  Will be used in TF's new checkpoint
   format.
