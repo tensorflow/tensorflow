@@ -48,26 +48,43 @@ export class InspectorPanel extends PolymerClass {
   private dom: d3.Selection<HTMLElement>;
   private projector: Projector;
   private selectedPointIndex: number;
+  private searchBox: ProjectorInput;
+
+  private resetFilterButton: d3.Selection<HTMLElement>;
+  private setFilterButton: d3.Selection<HTMLElement>;
+  private clearSelectionButton: d3.Selection<HTMLElement>;
+
+  ready() {
+    this.dom = d3.select(this);
+    this.resetFilterButton = this.dom.select('.reset-filter');
+    this.setFilterButton = this.dom.select('.set-filter');
+    this.clearSelectionButton = this.dom.select('.clear-selection');
+    this.searchBox = this.querySelector('#search-box') as ProjectorInput;
+    // https://www.polymer-project.org/1.0/docs/devguide/styling#scope-subtree
+    this.scopeSubtree(this, true);
+  }
 
   initialize(projector: Projector) {
     this.projector = projector;
-    this.dom = d3.select(this);
-    // Dynamically creating elements inside .nn-list.
-    this.scopeSubtree(this, true);
     this.setupUI();
   }
 
   /** Updates the nearest neighbors list in the inspector. */
   updateInspectorPane(indices: number[],
       neighbors: knn.NearestEntry[]) {
-    if (neighbors.length > 0 || indices.length === 0) {
+    if (neighbors.length > 0) {
       this.selectedPointIndex = indices[0];
-      this.updateMetadata();
     } else {
       this.selectedPointIndex = null;
     }
+    this.updateMetadata();
     this.updateIsolateButton(indices.length);
     this.updateNeighborsList(neighbors);
+    if (neighbors.length === 0) {
+      this.updateSearchResults(indices);
+    } else {
+      this.updateSearchResults([]);
+    }
   }
 
   metadataChanged(result: MetadataResult) {
@@ -83,6 +100,32 @@ export class InspectorPanel extends PolymerClass {
     this.selectedMetadataField = result.stats[labelIndex].name;
   }
 
+  datasetChanged() {
+    this.resetFilterButton.attr('disabled', true);
+  }
+
+  private updateSearchResults(indices: number[]) {
+    let container = this.dom.select('.matches-list');
+    container.style('display', indices.length ? null : 'none');
+    let list = container.select('.list');
+    list.html('');
+    if (indices.length === 0) {
+      return;
+    }
+    indices = indices.slice(0, 100);
+    let rows = list.selectAll('.row')
+      .data(indices)
+      .enter()
+      .append('div').attr('class', 'row');
+    rows.append('a').text(index => {
+      return this.projector.currentDataSet.points[index]
+          .metadata[this.selectedMetadataField];
+    });
+    rows.on('click', index => {
+      this.projector.notifySelectionChanged([index]);
+    });
+  }
+
   private updateNeighborsList(neighbors: knn.NearestEntry[]) {
     let nnlist = this.dom.select('.nn-list');
     nnlist.html('');
@@ -92,6 +135,7 @@ export class InspectorPanel extends PolymerClass {
       return;
     }
 
+    this.searchBox.message = '';
     let minDist = neighbors.length > 0 ? neighbors[0].dist : 0;
     let n = nnlist.selectAll('.neighbor')
                 .data(neighbors)
@@ -109,7 +153,7 @@ export class InspectorPanel extends PolymerClass {
           return point.metadata[this.selectedMetadataField];
         });
 
-    n.append('span').attr('class', 'value').text(d => d.dist.toFixed(2));
+    n.append('span').attr('class', 'value').text(d => d.dist.toFixed(6));
 
     let bar = n.append('div').attr('class', 'bar');
 
@@ -134,14 +178,13 @@ export class InspectorPanel extends PolymerClass {
   }
 
   private updateIsolateButton(numPoints: number) {
-    let isolateButton = this.dom.select('.set-filter');
-    let clearButton = this.dom.select('button.clear-selection');
     if (numPoints > 1) {
-      isolateButton.text(`Isolate ${numPoints} points`).style('display', null);
-      clearButton.style('display', null);
+      this.setFilterButton.text(`Isolate ${numPoints} points`)
+          .attr('disabled', null);
+      this.clearSelectionButton.attr('disabled', null);
     } else {
-      isolateButton.style('display', 'none');
-      clearButton.style('display', 'none');
+      this.setFilterButton.attr('disabled', true);
+      this.clearSelectionButton.attr('disabled', true);
     }
   }
 
@@ -207,25 +250,23 @@ export class InspectorPanel extends PolymerClass {
       this.updateNeighborsList(neighbors);
     });
 
-    let searchBox = this.querySelector('#search-box') as ProjectorInput;
-
     // Called whenever the search text input changes.
     let updateInput = (value: string, inRegexMode: boolean) => {
       if (value == null || value.trim() === '') {
-        searchBox.message = '';
+        this.searchBox.message = '';
         this.projector.notifySelectionChanged([]);
         return;
       }
       let indices = this.projector.currentDataSet.query(value, inRegexMode,
           this.selectedMetadataField);
       if (indices.length === 0) {
-        searchBox.message = '0 matches.';
+        this.searchBox.message = '0 matches.';
       } else {
-        searchBox.message = `${indices.length} matches.`;
+        this.searchBox.message = `${indices.length} matches.`;
       }
       this.projector.notifySelectionChanged(indices);
     };
-    searchBox.onInputChanged((value, inRegexMode) => {
+    this.searchBox.onInputChanged((value, inRegexMode) => {
       updateInput(value, inRegexMode);
     });
 
@@ -239,20 +280,21 @@ export class InspectorPanel extends PolymerClass {
     updateNumNN();
 
     // Filtering dataset.
-    this.dom.select('.set-filter').on('click', () => {
+    this.setFilterButton.on('click', () => {
       this.projector.filterDataset();
-      this.dom.select('.reset-filter').style('display', null);
+      this.resetFilterButton.attr('disabled', null);
       this.updateIsolateButton(0);
     });
 
-    this.dom.select('.reset-filter').on('click', () => {
+    this.resetFilterButton.on('click', () => {
       this.projector.resetFilterDataset();
-      this.dom.select('.reset-filter').style('display', 'none');
+      this.resetFilterButton.attr('disabled', true);
     });
 
-    this.dom.select('.clear-selection').on('click', () => {
+    this.clearSelectionButton.on('click', () => {
       this.projector.clearSelection();
     });
+    this.resetFilterButton.attr('disabled', true);
   }
 }
 

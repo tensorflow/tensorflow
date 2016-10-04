@@ -174,7 +174,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     this.normalizeData = this.dataSet.dim[1] >= THRESHOLD_DIM_NORMALIZE;
     this.dataPanel.setNormalizeData(this.normalizeData);
     this.setCurrentDataSet(this.dataSet.getSubset());
-    this.dom.select('.reset-filter').style('display', 'none');
+    this.inspectorPanel.datasetChanged();
     this.clearCentroids();
     this.setupInputUIInCustomTab('xLeft');
     this.setupInputUIInCustomTab('xRight');

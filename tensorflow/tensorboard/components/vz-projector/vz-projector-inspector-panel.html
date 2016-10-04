@@ -24,7 +24,10 @@ limitations under the License.
 <style include="vz-projector-styles"></style>
 <style>
 .metadata-container {
-  margin-top: 15px;
+  margin: 10px 0;
+  padding: 10px 0;
+  border-bottom: 1px solid #ccc;
+  border-top: 1px solid #ccc;
 }
 
 .metadata-container span {
@@ -32,9 +35,8 @@ limitations under the License.
 }
 
 .metadata {
-  border-bottom: 1px solid #ccc;
   display: table;
-  padding: 10px 0;
+  margin-top: 10px;
   width: 100%;
 }
 
@@ -52,12 +54,27 @@ limitations under the License.
 }
 
 .buttons {
+  display: flex;
   margin-bottom: 10px;
+  height: 60px;
+}
+
+.button {
+  margin-right: 10px;
+  border: none;
+  border-radius: 7px;
+  font-size: 13px;
+  padding: 10px;
+  background: #e3e3e3;
+}
+
+.button:last-child {
+  margin-right: 0;
 }
 
 .nn-list .neighbor {
   font-size: 12px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .nn-list .neighbor .value {
@@ -106,10 +123,6 @@ limitations under the License.
   float: right;
 }
 
-.show-all-data-container {
-  margin-bottom: 10px;
-}
-
 .options a {
   text-decoration: none;
   color: black;
@@ -120,8 +133,20 @@ limitations under the License.
   border-bottom: 2px solid black;
 }
 
+.matches-list .row {
+  border-bottom: 1px solid #ddd;
+  cursor: pointer;
+  font-size: 12px;
+  margin: 5px 0;
+  padding: 4px 0;
+}
 </style>
 <template>
+<div class="buttons">
+  <button class="button reset-filter">Show All Data</button>
+  <button class="button set-filter">Isolate selection</button>
+  <button class="button clear-selection">Clear selection</button>
+</div>
 <div class="slider num-nn">
   <label>Number of neighbors</label>
   <input type="range" min="5" max="1000" value="100"></input>
@@ -143,23 +168,22 @@ limitations under the License.
   <span>Metadata</span>
   <div class="metadata"></div>
 </div>
-<div class="buttons">
-  <div class="show-all-data-container">
-    <button style="display: none;" class="ink-button reset-filter">Show All Data</button>
-  </div>
-  <button style="display: none;" class="ink-button set-filter">Isolate selection</button>
-  <button class="ink-button clear-selection" style="display: none;">Clear selection</button>
-</div>
-<div class="nn">
-  <div class="distance">
-    Distance:
-    <div class="options">
-      <a class="selected cosine" href="javascript:void(0);">cosine</a> |
-      <a class="euclidean" href="javascript:void(0);">euclidean</a>
+<div class="results">
+  <div class="nn">
+    <div class="distance">
+      Distance:
+      <div class="options">
+        <a class="selected cosine" href="javascript:void(0);">cosine</a> |
+        <a class="euclidean" href="javascript:void(0);">euclidean</a>
+      </div>
     </div>
+    <p>Nearest points:
+    <div class="nn-list"></div>
   </div>
-  <p>Nearest points:
-  <div class="nn-list"></div>
+  <div class="matches-list">
+    Showing up to 100 results.
+    <div class="list"></div>
+  </div>
 </div>
 
 <!-- Closing global template -->
