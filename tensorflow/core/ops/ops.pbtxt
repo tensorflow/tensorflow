@@ -1663,6 +1663,45 @@ op {
   }
   summary: "Outputs a `Summary` protocol buffer with audio."
   description: "The summary has up to `max_outputs` summary values containing audio. The\naudio is built from `tensor` which must be 3-D with shape `[batch_size,\nframes, channels]` or 2-D with shape `[batch_size, frames]`. The values are\nassumed to be in the range of `[-1.0, 1.0]` with a sample rate of `sample_rate`.\n\nThe `tag` argument is a scalar `Tensor` of type `string`.  It is used to\nbuild the `tag` of the summary values:\n\n*  If `max_outputs` is 1, the summary value tag is \'*tag*/audio\'.\n*  If `max_outputs` is greater than 1, the summary value tags are\n   generated sequentially as \'*tag*/audio/0\', \'*tag*/audio/1\', etc."
+  deprecation {
+    version: 15
+    explanation: "Use AudioSummaryV2."
+  }
+}
+op {
+  name: "AudioSummaryV2"
+  input_arg {
+    name: "tag"
+    description: "Scalar. Used to build the `tag` attribute of the summary values."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor"
+    description: "2-D of shape `[batch_size, frames]`."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "sample_rate"
+    description: "The sample rate of the signal in hertz."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "summary"
+    description: "Scalar. Serialized `Summary` protocol buffer."
+    type: DT_STRING
+  }
+  attr {
+    name: "max_outputs"
+    type: "int"
+    default_value {
+      i: 3
+    }
+    description: "Max number of batch elements to generate audio for."
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Outputs a `Summary` protocol buffer with audio."
+  description: "The summary has up to `max_outputs` summary values containing audio. The\naudio is built from `tensor` which must be 3-D with shape `[batch_size,\nframes, channels]` or 2-D with shape `[batch_size, frames]`. The values are\nassumed to be in the range of `[-1.0, 1.0]` with a sample rate of `sample_rate`.\n\nThe `tag` argument is a scalar `Tensor` of type `string`.  It is used to\nbuild the `tag` of the summary values:\n\n*  If `max_outputs` is 1, the summary value tag is \'*tag*/audio\'.\n*  If `max_outputs` is greater than 1, the summary value tags are\n   generated sequentially as \'*tag*/audio/0\', \'*tag*/audio/1\', etc."
 }
 op {
   name: "AvgPool"
