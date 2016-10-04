@@ -17,7 +17,6 @@ limitations under the License.
 
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-dropdown-menu/paper-dropdown-menu.html">
-<link rel="import" href="../paper-input/paper-input.html">
 <link rel="import" href="../paper-item/paper-item.html">
 <link rel="import" href="../paper-listbox/paper-listbox.html">
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
@@ -30,7 +29,8 @@ limitations under the License.
 <template>
 <style include="vz-projector-styles"></style>
 <style>
-:host {
+.container {
+  padding: 0 20px;
 }
 
 input[type=file] {
@@ -70,32 +70,6 @@ paper-item {
   font-size: 12px;
 }
 
-#save-container {
-  text-align: center;
-}
-
-.state-row {
-  display: table-row;
-}
-
-.state-radio {
-  display: table-cell;
-  vertical-align: middle;
-  padding-top: 16px;
-}
-
-.state-label {
-  display: table-cell;
-  vertical-align: middle;
-  top: 14px;
-}
-
-.state-clear {
-  display: table-cell;
-  vertical-align: middle;
-  top: 14px;
-}
-
 .help-icon {
   width: 15px;
   height: 15px;
@@ -104,7 +78,7 @@ paper-item {
 }
 </style>
 
-<div>
+<div class="container">
   <!-- Upload buttons -->
   <div style="display: flex; justify-content: space-between;">
     <!-- Upload data -->
@@ -162,71 +136,34 @@ paper-item {
       </paper-listbox>
     </paper-dropdown-menu>
   </template>
-</div>
-
-<!-- Label by -->
-<template is="dom-if" if="[[_hasChoices(labelOptions)]]">
-  <paper-dropdown-menu style="width: 100%" no-animations label="Label by">
-    <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{labelOption}}">
-      <template is="dom-repeat" items="[[labelOptions]]">
-        <paper-item style="justify-content: space-between;" value="[[item]]" label="[[item]]">
-          [[item]]
-        </paper-item>
-      </template>
-    </paper-listbox>
-  </paper-dropdown-menu>
-</template>
-
-<!-- Color by -->
-<template is="dom-if" if="[[_hasChoices(colorOptions)]]">
-  <paper-dropdown-menu id="colorby" style="width: 100%" no-animations label="Color by">
-    <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{colorOption}}">
-      <template is="dom-repeat" items="[[colorOptions]]">
-        <paper-item style="justify-content: space-between;" class$="[[getSeparatorClass(item.isSeparator)]]" value="[[item]]" label="[[item.name]]" disabled="[[item.isSeparator]]">
-          [[item.name]]
-          <span class="item-details">[[item.desc]]</span>
-        </paper-item>
-      </template>
-    </paper-listbox>
-  </paper-dropdown-menu>
-  <vz-projector-legend render-info="[[colorLegendRenderInfo]]"></vz-projector-legend>
-</template>
-
-<!-- Saving state section -->
-<div id="state-section" style="display: none">
-  <div style="display: flex; justify-content: space-between;">
-    <button id="state-download" title="Save all states" class="ink-button">Save all states</button>
-    <button id="state-upload" title="Load states file" class="ink-button">Load states file</button>
-  </div>
-  <input type="file" id="state-file" name="state-file"/>
-
-  <template is="dom-repeat" items="{{savedStates}}">
-    <div class="state-row">
-      <div class="state-radio">
-        <template is="dom-if" if="{{item.isSelected}}">
-          <paper-icon-button icon="radio-button-checked"></paper-icon-button>
+  <!-- Label by -->
+  <template is="dom-if" if="[[_hasChoices(labelOptions)]]">
+    <paper-dropdown-menu style="width: 100%" no-animations label="Label by">
+      <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{labelOption}}">
+        <template is="dom-repeat" items="[[labelOptions]]">
+          <paper-item style="justify-content: space-between;" value="[[item]]" label="[[item]]">
+            [[item]]
+          </paper-item>
         </template>
-        <template is="dom-if" if="{{!item.isSelected}}">
-          <paper-icon-button
-              icon="radio-button-unchecked"
-              data-index$="{{index}}"
-              on-tap="_radioButtonHandler"></paper-icon-button>
-        </template>
-      </div>
-      <div class="state-label">
-        <paper-input value="[[item.label]]" on-change="_labelChange" data-index$="[[index]]" autoresizing></paper-input>
-      </div>
-      <div class="state-clear">
-        <paper-icon-button
-            icon="clear"
-            data-index$="{{index}}"
-            on-tap="_clearButtonHandler"></paper-icon-button>
-      </div>
-    </div>
+      </paper-listbox>
+    </paper-dropdown-menu>
   </template>
-  <button id="state-add" title="Add current view" class="ink-button">Add current view</button>
-</template>
 
+  <!-- Color by -->
+  <template is="dom-if" if="[[_hasChoices(colorOptions)]]">
+    <paper-dropdown-menu id="colorby" style="width: 100%" no-animations label="Color by">
+      <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{colorOption}}">
+        <template is="dom-repeat" items="[[colorOptions]]">
+          <paper-item style="justify-content: space-between;" class$="[[getSeparatorClass(item.isSeparator)]]" value="[[item]]" label="[[item.name]]" disabled="[[item.isSeparator]]">
+            [[item.name]]
+            <span class="item-details">[[item.desc]]</span>
+          </paper-item>
+        </template>
+      </paper-listbox>
+    </paper-dropdown-menu>
+    <vz-projector-legend render-info="[[colorLegendRenderInfo]]"></vz-projector-legend>
+  </template>
+</div>
 <!-- Closing global template -->
 </template>
 </dom-module>

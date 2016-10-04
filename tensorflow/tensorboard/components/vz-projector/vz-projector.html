@@ -85,10 +85,12 @@ limitations under the License.
 }
 
 #right-pane {
-  min-width: 300px;
-  width: 300px;
   border-left: 1px solid rgba(0, 0, 0, 0.1);
   background: #fafafa;
+  display: flex;
+  height: 100%;
+  min-width: 300px;
+  width: 300px;
 }
 
 .file-name {
@@ -225,10 +227,9 @@ limitations under the License.
 }
 
 .ink-panel-content {
-  padding: 24px;
-  overflow-y: auto;
   display: none;
   height: 100%;
+  padding: 20px 0;
 }
 
 .ink-panel-content.active {

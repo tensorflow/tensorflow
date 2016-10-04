@@ -30,6 +30,9 @@ const NN_COLOR_SCALE =
         .range(['hsl(285, 80%, 40%)', 'hsl(0, 80%, 65%)', 'hsl(40, 70%, 60%)'])
         .clamp(true);
 
+/** Limit the number of search results we show to the user. */
+const LIMIT_RESULTS = 100;
+
 // tslint:disable-next-line
 export let PolymerClass = PolymerElement({
   is: 'vz-projector-inspector-panel',
@@ -53,12 +56,14 @@ export class InspectorPanel extends PolymerClass {
   private resetFilterButton: d3.Selection<HTMLElement>;
   private setFilterButton: d3.Selection<HTMLElement>;
   private clearSelectionButton: d3.Selection<HTMLElement>;
+  private limitMessage: d3.Selection<HTMLElement>;
 
   ready() {
     this.dom = d3.select(this);
     this.resetFilterButton = this.dom.select('.reset-filter');
     this.setFilterButton = this.dom.select('.set-filter');
     this.clearSelectionButton = this.dom.select('.clear-selection');
+    this.limitMessage = this.dom.select('.limit-msg');
     this.searchBox = this.querySelector('#search-box') as ProjectorInput;
     // https://www.polymer-project.org/1.0/docs/devguide/styling#scope-subtree
     this.scopeSubtree(this, true);
@@ -112,18 +117,31 @@ export class InspectorPanel extends PolymerClass {
     if (indices.length === 0) {
       return;
     }
-    indices = indices.slice(0, 100);
+    this.limitMessage.style(
+        'display', indices.length <= LIMIT_RESULTS ? 'none' : null);
+    indices = indices.slice(0, LIMIT_RESULTS);
     let rows = list.selectAll('.row')
       .data(indices)
       .enter()
       .append('div').attr('class', 'row');
-    rows.append('a').text(index => {
-      return this.projector.currentDataSet.points[index]
-          .metadata[this.selectedMetadataField];
+    rows.append('a')
+      .attr('class', 'label')
+      .attr('title', index => this.getLabelFromIndex(index))
+      .text(index => this.getLabelFromIndex(index));
+    rows.on('mouseenter', index => {
+      this.projector.notifyHoverOverPoint(index);
+    });
+    rows.on('mouseleave', () => {
+      this.projector.notifyHoverOverPoint(null);
     });
     rows.on('click', index => {
       this.projector.notifySelectionChanged([index]);
     });
+  }
+
+  private getLabelFromIndex(pointIndex: number): string {
+    let point = this.projector.currentDataSet.points[pointIndex];
+    return point.metadata[this.selectedMetadataField].toString();
   }
 
   private updateNeighborsList(neighbors: knn.NearestEntry[]) {
@@ -138,22 +156,24 @@ export class InspectorPanel extends PolymerClass {
     this.searchBox.message = '';
     let minDist = neighbors.length > 0 ? neighbors[0].dist : 0;
     let n = nnlist.selectAll('.neighbor')
-                .data(neighbors)
-                .enter()
-                .append('div')
-                .attr('class', 'neighbor')
-                .append('a')
-                .attr('class', 'neighbor-link');
+      .data(neighbors)
+      .enter()
+      .append('div')
+      .attr('class', 'neighbor')
+      .append('a')
+      .attr('class', 'neighbor-link')
+      .attr('title', d => this.getLabelFromIndex(d.index));
 
-    n.append('span')
+
+    let labelValue = n.append('div').attr('class', 'label-and-value');
+    labelValue.append('div')
         .attr('class', 'label')
         .style('color', d => dist2color(this.distFunc, d.dist, minDist))
-        .text(d => {
-          let point = this.projector.currentDataSet.points[d.index];
-          return point.metadata[this.selectedMetadataField];
-        });
+        .text(d => this.getLabelFromIndex(d.index));
 
-    n.append('span').attr('class', 'value').text(d => d.dist.toFixed(6));
+    labelValue.append('div')
+      .attr('class', 'value')
+      .text(d => d.dist.toFixed(3));
 
     let bar = n.append('div').attr('class', 'bar');
 
@@ -171,7 +191,12 @@ export class InspectorPanel extends PolymerClass {
         .append('div')
         .attr('class', 'tick')
         .style('left', d => d * 100 / 4 + '%');
-
+    n.on('mouseenter', d => {
+      this.projector.notifyHoverOverPoint(d.index);
+    });
+    n.on('mouseleave', () => {
+      this.projector.notifyHoverOverPoint(null);
+    });
     n.on('click', d => {
       this.projector.notifySelectionChanged([d.index]);
     });
