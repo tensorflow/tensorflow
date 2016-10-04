@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.contrib.framework.python.ops import add_arg_scope as contrib_add_arg_scope
 from tensorflow.contrib.framework.python.ops import gen_variable_ops
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -80,11 +81,8 @@ def zero_initializer(ref, use_locking=True, name="zero_initializer"):
   return gen_variable_ops.zero_initializer(ref, name=name)
 
 
-# shape function for _ZeroInitializerOp
-@ops.RegisterShape("ZeroInitializer")
-def _ZeroInitializerShape(op):
-  var_shape = op.inputs[0].get_shape()
-  return [var_shape]
+ops.RegisterShape('ZeroInitializer')(common_shapes.call_cpp_shape_fn)
+
 
 def assert_global_step(global_step_tensor):
   training_util.assert_global_step(global_step_tensor)
