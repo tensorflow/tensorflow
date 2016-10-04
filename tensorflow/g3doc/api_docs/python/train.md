@@ -3341,7 +3341,8 @@ Example usage:
 ```python
 saver_hook = CheckpointSaverHook(...)
 summary_hook = SummaryHook(...)
-with MonitoredSession(master=..., hooks=[saver_hook, summary_hook]) as sess:
+with MonitoredSession(session_creator=ChiefSessionCreator(...),
+                      hooks=[saver_hook, summary_hook]) as sess:
   while not sess.should_stop():
     sess.run(train_op)
 ```
@@ -3371,6 +3372,18 @@ Exit: At the `close()`, the monitored session does following things in order:
 * closes the queue runners and the session
 * surpresses `OutOfRange` error which indicates that all inputs have been
   processed if the monitored_session is used as a context.
+
+How to set `tf.Session` arguments:
+* In most cases you can set session arguments as follows:
+  ```python
+  MonitoredSession(
+    session_creator=ChiefSessionCreator(master=..., config=...))
+  ```
+* In distributed setting for a non-chief worker, you can use following:
+  ```python
+  MonitoredSession(
+    session_creator=WorkerSessionCreator(master=..., config=...))
+  ```
 - - -
 
 #### `tf.train.MonitoredSession.__enter__()` {#MonitoredSession.__enter__}
@@ -3394,7 +3407,8 @@ Creates a MonitoredSession.
 ##### Args:
 
 
-*  <b>`session_creator`</b>: A factory object to create session.
+*  <b>`session_creator`</b>: A factory object to create session. Typically a
+    `ChiefSessionCreator` which is the default one.
 *  <b>`hooks`</b>: An iterable of `SessionRunHook' objects.
 
 
