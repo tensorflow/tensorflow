@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption, DataPoint, DataSet, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
-import {DataProvider, getDataProvider} from './data-loader';
+import {ColorOption, DataSet, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE, State} from './data';
+import {updateWarningMessage} from './async';
+import {DataProvider, getDataProvider, MetadataResult} from './data-loader';
 import * as knn from './knn';
 import {Mode, ScatterPlot} from './scatterPlot';
 import {ScatterPlotVisualizer3DLabels} from './scatterPlotVisualizer3DLabels';
@@ -28,7 +29,7 @@ import {DataPanel} from './vz-projector-data-panel';
 import {ProjectorInput} from './vz-projector-input';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
-
+import {InspectorPanel} from './vz-projector-inspector-panel';
 
 
 /** T-SNE perplexity. Roughly how many neighbors each point influences. */
@@ -37,8 +38,6 @@ let perplexity: number = 30;
 let learningRate: number = 10;
 /** Number of dimensions for the scatter plot. */
 let dimension = 3;
-/** Number of nearest neighbors to highlight around the selected point. */
-let numNN = 100;
 
 /** Highlight stroke color for the nearest neighbors. */
 const NN_HIGHLIGHT_COLOR = '#FA6666';
@@ -46,13 +45,6 @@ const NN_HIGHLIGHT_COLOR = '#FA6666';
 const MISSING_VALUE_COLOR = 'black';
 /** Highlight stroke color for the selected point */
 const POINT_HIGHLIGHT_COLOR = '#760B4F';
-
-/** Color scale for nearest neighbors. */
-const NN_COLOR_SCALE =
-    d3.scale.linear<string>()
-        .domain([1, 0.7, 0.4])
-        .range(['hsl(285, 80%, 40%)', 'hsl(0, 80%, 65%)', 'hsl(40, 70%, 60%)'])
-        .clamp(true);
 
 /**
  * The minimum number of dimensions the data should have to automatically
@@ -64,8 +56,6 @@ type Centroids = {
   [key: string]: number[]; xLeft: number[]; xRight: number[]; yUp: number[];
   yDown: number[];
 };
-
-type SearchPredicate = (p: DataPoint) => boolean;
 
 export let ProjectorPolymer = PolymerElement({
   is: 'vz-projector',
@@ -83,19 +73,19 @@ export let ProjectorPolymer = PolymerElement({
 });
 
 export class Projector extends ProjectorPolymer implements SelectionContext {
-  dataSet: DataSet;
+  // The working subset of the data source's original data set.
+  currentDataSet: DataSet;
+
   private selectionChangedListeners: SelectionChangedListener[];
 
+  private dataSet: DataSet;
   private dom: d3.Selection<any>;
   private pcaX: number;
   private pcaY: number;
   private pcaZ: number;
   private hasPcaZ: boolean;
-  // The working subset of the data source's original data set.
-  private currentDataSet: DataSet;
   private scatterPlot: ScatterPlot;
   private dim: number;
-  private selectedDistance: (a: number[], b: number[]) => number;
   private highlightedPoints: {index: number, color: string}[];
   // The index of all selected points.
   private selectedPoints: number[];
@@ -111,6 +101,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
   private routePrefix: string;
   private selectedProjection: Projection = 'pca';
   private normalizeData: boolean;
+  private inspectorPanel: InspectorPanel;
 
   // t-SNE.
   private runTsneButton: d3.Selection<HTMLButtonElement>;
@@ -119,6 +110,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
   ready() {
     this.selectionChangedListeners = [];
     this.dataPanel = this.$['data-panel'] as DataPanel;
+    this.inspectorPanel = this.$['inspector-panel'] as InspectorPanel;
+    this.inspectorPanel.initialize(this);
     // Get the data loader and initialize the data panel with it.
     getDataProvider(this.routePrefix, dataProvider => {
       this.dataProvider = dataProvider;
@@ -130,14 +123,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
 
     // And select a default dataset.
     this.hasPcaZ = true;
-    this.selectedDistance =
-        this.normalizeData ? vector.cosDistNorm : vector.cosDist;
     this.highlightedPoints = [];
     this.selectedPoints = [];
     this.centroidValues = {xLeft: null, xRight: null, yUp: null, yDown: null};
     this.clearCentroids();
-    // Dynamically creating elements inside .nn-list.
-    this.scopeSubtree(this.$$('.nn-list'), true);
     this.dom = d3.select(this);
     // Sets up all the UI.
     this.setupUIControls();
@@ -173,12 +162,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
 
   setNormalizeData(normalizeData: boolean) {
     this.normalizeData = normalizeData;
-    // Assign the proper distance metric depending on whether the data was
-    // normalized or not.
-    if (this.selectedDistance !== vector.dist) {
-      this.selectedDistance =
-          this.normalizeData ? vector.cosDistNorm : vector.cosDist;
-    }
     this.setCurrentDataSet(this.dataSet.getSubset());
   }
 
@@ -211,6 +194,17 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     this.selectionChangedListeners.push(listener);
   }
 
+  filterDataset() {
+    this.setCurrentDataSet(this.currentDataSet.getSubset(this.selectedPoints));
+    this.clearSelection();
+    this.scatterPlot.recreateScene();
+  }
+
+  resetFilterDataset() {
+    this.setCurrentDataSet(this.dataSet.getSubset(null));
+    this.selectedPoints = [];
+  }
+
   /**
    * Used by clients to indicate that a selection has occurred.
    */
@@ -220,7 +214,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
 
     if (newSelectedPointIndices.length === 1) {
       const firstSelectedIndex = newSelectedPointIndices[0];
-      neighbors = this.findNeighbors(firstSelectedIndex);
+      this.scatterPlot.clickOnPoint(firstSelectedIndex);
+      neighbors = this.currentDataSet.findNeighbors(firstSelectedIndex,
+          this.inspectorPanel.distFunc, this.inspectorPanel.numNN);
       this.selectedPoints =
           [newSelectedPointIndices[0]].concat(neighbors.map(n => n.index));
     }
@@ -229,21 +225,23 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
         l => l(this.selectedPoints, neighbors));
   }
 
-  /**
-   * Normalizes the distance so it can be visually encoded with color.
-   * The normalization depends on the distance metric (cosine vs euclidean).
-   */
-  private normalizeDist(d: number, minDist: number): number {
-    return this.selectedDistance === vector.dist ? minDist / d : 1 - d;
+  mergeMetadata(result: MetadataResult): void {
+    let numTensors = this.dataSet.points.length;
+    if (result.metadata.length !== numTensors) {
+      updateWarningMessage(
+          `Number of tensors (${numTensors}) do not match` +
+          ` the number of lines in metadata (${result.metadata.length}).`);
+    }
+    this.dataSet.mergeMetadata(result.metadata);
+    this.setCurrentDataSet(this.dataSet.getSubset());
+    this.dataSet.spriteImage = result.spriteImage;
+    this.dataSet.metadata = result.datasetMetadata;
+    this.inspectorPanel.metadataChanged(result);
   }
 
-  /** Normalizes and encodes the provided distance with color. */
-  private dist2color(d: number, minDist: number): string {
-    return NN_COLOR_SCALE(this.normalizeDist(d, minDist));
-  }
-
-  private clearSelection() {
+  clearSelection() {
     this.notifySelectionChanged([]);
+    this.scatterPlot.setMode(Mode.HOVER);
   }
 
   private unsetCurrentDataSet() {
@@ -350,15 +348,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     learningRateInput.property('value', 1).on('input', updateLearningRate);
     updateLearningRate();
 
-    // Nearest neighbors controls.
-    let numNNInput = this.dom.select('.num-nn input');
-    let updateNumNN = () => {
-      numNN = +numNNInput.property('value');
-      this.dom.select('.num-nn span').text(numNN);
-    };
-    numNNInput.property('value', numNN).on('input', updateNumNN);
-    updateNumNN();
-
     // View controls
     this.querySelector('#reset-zoom').addEventListener('click', () => {
       this.scatterPlot.resetZoom();
@@ -368,65 +357,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     });
     this.querySelector('#zoom-out').addEventListener('click', () => {
       this.scatterPlot.zoomStep(0.5);
-    });
-
-    // Toolbar controls
-    let searchBox = this.querySelector('#search-box') as ProjectorInput;
-
-
-    let gatherPointsByRegex =
-        (pattern: string, inRegexMode: boolean): number[] => {
-          let predicate = this.getSearchPredicate(pattern, inRegexMode);
-          let indices: number[] = [];
-          this.currentDataSet.points.forEach((point, id) => {
-            if (predicate(point)) {
-              indices.push(id);
-            }
-          });
-          return indices;
-        };
-
-    // Called whenever the search text input changes.
-    let updateInput = (value: string, inRegexMode: boolean) => {
-      if (value == null || value.trim() === '') {
-        searchBox.message = '';
-        this.clearSelection();
-        return;
-      }
-      let indices = gatherPointsByRegex(value, inRegexMode);
-      if (indices) {
-        if (indices.length === 0) {
-          searchBox.message = '0 matches.';
-        } else {
-          searchBox.message = `${indices.length} matches.`;
-          this.showTab('inspector');
-        }
-        this.notifySelectionChanged(indices);
-      }
-    };
-    searchBox.onInputChanged((value, inRegexMode) => {
-      updateInput(value, inRegexMode);
-    });
-
-    this.dom.select('.distance a.euclidean').on('click', function() {
-      self.dom.selectAll('.distance a').classed('selected', false);
-      d3.select(this).classed('selected', true);
-      self.selectedDistance = vector.dist;
-      if (self.selectedPoints.length > 0) {
-        let neighbors = self.findNeighbors(self.selectedPoints[0]);
-        self.updateInspectorPane(neighbors);
-      }
-    });
-
-    this.dom.select('.distance a.cosine').on('click', function() {
-      self.dom.selectAll('.distance a').classed('selected', false);
-      d3.select(this).classed('selected', true);
-      self.selectedDistance =
-          this.normalizeData ? vector.cosDistNorm : vector.cosDist;
-      if (self.selectedPoints.length > 0) {
-        let neighbors = self.findNeighbors(self.selectedPoints[0]);
-        self.updateInspectorPane(neighbors);
-      }
     });
 
     let selectModeButton = this.querySelector('#selectMode');
@@ -455,7 +385,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
     {
       this.scatterPlot = new ScatterPlot(
           this.getScatterContainer(),
-          i => '' + this.currentDataSet.points[i].metadata['label'], this);
+          i => '' + this.currentDataSet.points[i].metadata[this.labelOption],
+          this);
       this.createVisualizers(false);
     }
 
@@ -464,7 +395,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
         this.highlightedPoints = [];
       } else {
         let point = this.currentDataSet.points[hoveredIndex];
-        this.dom.select('#hoverInfo').text(point.metadata['label']);
+        this.dom.select('#hoverInfo').text(point.metadata[this.labelOption]);
         this.highlightedPoints =
             [{index: hoveredIndex, color: POINT_HIGHLIGHT_COLOR}];
       }
@@ -475,35 +406,11 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
         (cameraPosition: THREE.Vector3, cameraTarget: THREE.Vector3) =>
             this.bookmarkPanel.clearStateSelection());
 
-    // Selection controls
-    this.dom.select('.set-filter').on('click', () => {
-      let highlighted = this.selectedPoints;
-      let highlightedOrig: number[] = highlighted.map(d => {
-        return this.currentDataSet.points[d].index;
-      });
-      this.setCurrentDataSet(this.dataSet.getSubset(highlightedOrig));
-      this.dom.select('.reset-filter').style('display', null);
-      this.clearSelection();
-      this.scatterPlot.recreateScene();
-      this.updateIsolateButton();
-    });
-
-    this.dom.select('.reset-filter').on('click', () => {
-      this.setCurrentDataSet(this.dataSet.getSubset(null));
-      this.dom.select('.reset-filter').style('display', 'none');
-    });
-
-    this.dom.select('.clear-selection').on('click', () => {
-      this.clearSelection();
-      this.scatterPlot.setMode(Mode.HOVER);
-      this.scatterPlot.clickOnPoint(null);
-    });
-
     this.registerSelectionChangedListener(
-        (newSelectedPointIndices: number[],
+        (selectedPointIndices: number[],
          neighborsOfFirstPoint: knn.NearestEntry[]) =>
             this.onSelectionChanged(
-                newSelectedPointIndices, neighborsOfFirstPoint));
+                selectedPointIndices, neighborsOfFirstPoint));
   }
 
   private getScatterContainer(): d3.Selection<any> {
@@ -531,15 +438,15 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
   }
 
   private onSelectionChanged(
-      newSelectedPointIndices: number[],
+      selectedPointIndices: number[],
       neighborsOfFirstPoint: knn.NearestEntry[]) {
     this.dom.select('#hoverInfo')
-        .text(`Selected ${newSelectedPointIndices.length} points`);
+        .text(`Selected ${selectedPointIndices.length} points`);
     if (neighborsOfFirstPoint && (neighborsOfFirstPoint.length > 0)) {
       this.showTab('inspector');
     }
-    this.updateInspectorPane(neighborsOfFirstPoint);
-    this.updateIsolateButton();
+    this.inspectorPanel.updateInspectorPane(selectedPointIndices,
+        neighborsOfFirstPoint);
     this.highlightSelectedPointsAndNeighborsInScatterPlot();
   }
 
@@ -622,7 +529,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
         dimension === 3 ?
             (i => this.currentDataSet.points[i].projections['tsne-2']) :
             null);
-    this.updateInspectorPane([]);
+    this.inspectorPanel.updateInspectorPane([], []);
     this.scatterPlot.setAxisLabels('tsne-0', 'tsne-1');
     if (!this.currentDataSet.hasTSNERun) {
       this.runTSNE();
@@ -646,46 +553,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
         });
   }
 
-  // Updates the displayed metadata for the selected point.
-  private updateMetadata() {
-    if (this.currentDataSet == null) {
-      return;
-    }
-    let metadataContainerElement = this.dom.select('.ink-panel-metadata');
-    metadataContainerElement.selectAll('*').remove();
-
-    let point = this.currentDataSet.points[this.selectedPoints[0]];
-    this.dom.select('.ink-panel-metadata-container')
-        .style('display', point != null ? '' : 'none');
-
-    if (point == null) {
-      return;
-    }
-
-    for (let metadataKey in point.metadata) {
-      if (!point.metadata.hasOwnProperty(metadataKey)) {
-        continue;
-      }
-      let rowElement = document.createElement('div');
-      rowElement.className = 'ink-panel-metadata-row vz-projector';
-
-      let keyElement = document.createElement('div');
-      keyElement.className = 'ink-panel-metadata-key vz-projector';
-      keyElement.textContent = metadataKey;
-
-      let valueElement = document.createElement('div');
-      valueElement.className = 'ink-panel-metadata-value vz-projector';
-      valueElement.textContent = '' + point.metadata[metadataKey];
-
-      rowElement.appendChild(keyElement);
-      rowElement.appendChild(valueElement);
-
-      metadataContainerElement.append(function() {
-        return this.appendChild(rowElement);
-      });
-    }
-  }
-
   private highlightSelectedPointsAndNeighborsInScatterPlot() {
     const selectedAndHighlightedPoints =
         this.highlightedPoints.map(x => x.index).concat(this.selectedPoints);
@@ -701,106 +568,20 @@ export class Projector extends ProjectorPolymer implements SelectionContext {
         selectedAndHighlightedPoints, stroke, favor);
   }
 
-  /**
-   * Finds the nearest neighbors of the currently selected point using the
-   * currently selected distance method.
-   */
-  private findNeighbors(pointIndex: number): knn.NearestEntry[] {
-    // Find the nearest neighbors of a particular point.
-    let neighbors = knn.findKNNofPoint(
-        this.currentDataSet.points, pointIndex, numNN, (d => d.vector),
-        this.selectedDistance);
-    let result = neighbors.slice(0, numNN);
-    return result;
-  }
-
-  /** Updates the nearest neighbors list in the inspector. */
-  private updateInspectorPane(neighbors: knn.NearestEntry[]) {
-    this.updateMetadata();
-    let nnlist = this.dom.select('.nn-list');
-    nnlist.html('');
-    this.dom.select('.nn').style('display', neighbors.length ? null : 'none');
-
-    if (neighbors.length === 0) {
-      return;
-    }
-
-    let minDist = neighbors.length > 0 ? neighbors[0].dist : 0;
-    let n = nnlist.selectAll('.neighbor')
-                .data(neighbors)
-                .enter()
-                .append('div')
-                .attr('class', 'neighbor')
-                .append('a')
-                .attr('class', 'neighbor-link');
-
-    n.append('span')
-        .attr('class', 'label')
-        .style('color', d => this.dist2color(d.dist, minDist))
-        .text(d => this.dataSet.points[d.index].metadata['label']);
-
-    n.append('span').attr('class', 'value').text(d => d.dist.toFixed(2));
-
-    let bar = n.append('div').attr('class', 'bar');
-
-    bar.append('div')
-        .attr('class', 'fill')
-        .style('border-top-color', d => this.dist2color(d.dist, minDist))
-        .style('width', d => this.normalizeDist(d.dist, minDist) * 100 + '%');
-
-    bar.selectAll('.tick')
-        .data(d3.range(1, 4))
-        .enter()
-        .append('div')
-        .attr('class', 'tick')
-        .style('left', d => d * 100 / 4 + '%');
-
-    n.on('click', d => {
-      this.scatterPlot.clickOnPoint(d.index);
-    });
-  }
-
-  private updateIsolateButton() {
-    let numPoints = this.selectedPoints.length;
-    let isolateButton = this.dom.select('.set-filter');
-    let clearButton = this.dom.select('button.clear-selection');
-    if (numPoints > 1) {
-      isolateButton.text(`Isolate ${numPoints} points`).style('display', null);
-      clearButton.style('display', null);
-    } else {
-      isolateButton.style('display', 'none');
-      clearButton.style('display', 'none');
-    }
-  }
-
   getPcaSampledDim() { return PCA_SAMPLE_DIM.toLocaleString(); }
 
   getTsneSampleSize() { return SAMPLE_SIZE.toLocaleString(); }
-
-  private getSearchPredicate(pattern: string, inRegexMode: boolean):
-      SearchPredicate {
-    let predicate: SearchPredicate;
-    if (inRegexMode) {
-      let regExp = new RegExp(pattern, 'i');
-      predicate = p => regExp.test(p.metadata['label'].toString());
-    } else {
-      // Doing a case insensitive substring match.
-      pattern = pattern.toLowerCase();
-      predicate = p => {
-        let label = p.metadata['label'].toString().toLowerCase();
-        return label.indexOf(pattern) >= 0;
-      };
-    }
-    return predicate;
-  }
 
   private getCentroid(pattern: string, inRegexMode: boolean): CentroidResult {
     if (pattern == null || pattern === '') {
       return {numMatches: 0};
     }
-    let accessor = (a: DataPoint) => a.vector;
-    let predicate = this.getSearchPredicate(pattern, inRegexMode);
-    return vector.centroid(this.currentDataSet.points, predicate, accessor);
+    let accessor = (i: number) => this.currentDataSet.points[i].vector;
+    let r = this.currentDataSet.query(pattern, inRegexMode, this.labelOption);
+    return {
+      centroid: vector.centroid(r, accessor),
+      numMatches: r.length
+    };
   }
 
   /**

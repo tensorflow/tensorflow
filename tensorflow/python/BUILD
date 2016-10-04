@@ -2029,6 +2029,26 @@ py_test(
     ],
 )
 
+py_test(
+    name = "basic_session_run_hooks_test",
+    size = "small",
+    srcs = ["training/basic_session_run_hooks_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "monitored_session_test",
+    size = "small",
+    srcs = ["training/monitored_session_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 tf_py_test(
     name = "input_test",
     size = "small",

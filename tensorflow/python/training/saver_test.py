@@ -1669,6 +1669,12 @@ class CheckpointReaderForV2Test(CheckpointReaderTest):
 
 class WriteGraphTest(tf.test.TestCase):
 
+  def testWriteGraph(self):
+    test_dir = _TestDir("write_graph_dir")
+    tf.Variable([[1, 2, 3], [4, 5, 6]], dtype=tf.float32, name="v0")
+    tf.train.write_graph(tf.get_default_graph(),
+                         "/".join([test_dir, "l1"]), "graph.pbtxt")
+
   def testRecursiveCreate(self):
     test_dir = _TestDir("deep_dir")
     tf.Variable([[1, 2, 3], [4, 5, 6]], dtype=tf.float32, name="v0")

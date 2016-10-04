@@ -145,7 +145,7 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn,
   daemon_threads = True
 
 
-def BuildServer(multiplexer, host, port):
+def BuildServer(multiplexer, host, port, logdir):
   """Sets up an HTTP server for running TensorBoard.
 
   Args:
@@ -153,9 +153,10 @@ def BuildServer(multiplexer, host, port):
       information about events.
     host: The host name.
     port: The port number to bind to, or 0 to pick one automatically.
+    logdir: The logdir argument string that tensorboard started up with.
 
   Returns:
     A `BaseHTTPServer.HTTPServer`.
   """
-  factory = functools.partial(handler.TensorboardHandler, multiplexer)
+  factory = functools.partial(handler.TensorboardHandler, multiplexer, logdir)
   return ThreadedHTTPServer((host, port), factory)

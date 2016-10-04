@@ -19,10 +19,14 @@ from __future__ import print_function
 
 import copy
 import re
+import traceback
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 HELP_INDENT = "  "
+
+EXIT_TOKEN_KEY = "exit_token"
+EXPLICIT_USER_EXIT = "explicit_user_exit"
 
 
 class RichTextLines(object):
@@ -35,6 +39,10 @@ class RichTextLines(object):
   This is not to be confused with Rich Text Format (RTF). This class is for text
   lines only.
   """
+
+  # A RichTextLines object can have the following key EXIT_TOKEN_KEY in its
+  # annotations field. The CLI receiving this RichTextLines may use this field
+  # to exit the command loop while returning a proper return value.
 
   def __init__(self, lines, font_attr_segs=None, annotations=None):
     """Constructor of RichTextLines.
@@ -267,6 +275,16 @@ class CommandHandlerRegistry(object):
     # A dictionary from command prefix to help string.
     self._prefix_to_help = {}
 
+    # Introductory text to help information.
+    self._help_intro = None
+
+    # Register a default handler for the command "help".
+    self.register_command_handler(
+        "help",
+        self._help_handler,
+        "Print this help message.",
+        prefix_aliases=["h"])
+
   def register_command_handler(self,
                                prefix,
                                handler,
@@ -295,6 +313,10 @@ class CommandHandlerRegistry(object):
         4) elements in prefix_aliases clash with existing aliases.
         5) help_info is not a str.
     """
+
+    # TODO(cais): Refactor handler specification so that it returns not only
+    #   a RichTextLine object, but also an exit token.
+
     if not prefix:
       raise ValueError("Empty command prefix")
 
@@ -360,10 +382,21 @@ class CommandHandlerRegistry(object):
     handler = self._handlers[resolved_prefix]
     try:
       output = handler(argv, screen_info=screen_info)
+    except SystemExit as e:
+      # Special case for syntax errors caught by argparse.
+      lines = ["Syntax error for command: %s" % prefix,
+               "For help, do \"help %s\"" % prefix]
+      output = RichTextLines(lines)
+
     except BaseException as e:  # pylint: disable=broad-except
-      output = RichTextLines(
-          ["Error occurred during handling of command: %s %s:" %
-           (resolved_prefix, " ".join(argv)), "%s: %s" % (type(e), str(e))])
+      lines = ["Error occurred during handling of command: %s %s:" %
+               (resolved_prefix, " ".join(argv)), "%s: %s" % (type(e), str(e))]
+
+      # Include traceback of the exception.
+      lines.append("")
+      lines.extend(traceback.format_exc().split("\n"))
+
+      output = RichTextLines(lines)
 
     if not isinstance(output, RichTextLines):
       raise ValueError(
@@ -398,6 +431,10 @@ class CommandHandlerRegistry(object):
     if not cmd_prefix:
       # Print full help information, in sorted order of the command prefixes.
       lines = []
+      if self._help_intro:
+        # If help intro is available, show it at the beginning.
+        lines.extend(self._help_intro)
+
       sorted_prefixes = sorted(self._handlers)
       for cmd_prefix in sorted_prefixes:
         lines.extend(self._get_help_for_command_prefix(cmd_prefix))
@@ -407,6 +444,39 @@ class CommandHandlerRegistry(object):
       return RichTextLines(lines)
     else:
       return RichTextLines(self._get_help_for_command_prefix(cmd_prefix))
+
+  def set_help_intro(self, help_intro):
+    """Set an introductory message to help output.
+
+    Args:
+      help_intro: (list of str) Text lines appended to the beginning of the
+        beginning of the output of the command "help", as introductory
+        information.
+    """
+    self._help_intro = help_intro
+
+  def _help_handler(self, args, screen_info=None):
+    """Command handler for "help".
+
+    "help" is a common command that merits built-in support from this class.
+
+    Args:
+      args: Command line arguments to "help" (not including "help" itself).
+      screen_info: (dict) Information regarding the screen, e.g., the screen
+        width in characters: {"cols": 80}
+
+    Returns:
+      (RichTextLines) Screen text output.
+    """
+
+    _ = screen_info  # Unused currently.
+
+    if not args:
+      return self.get_help()
+    elif len(args) == 1:
+      return self.get_help(args[0])
+    else:
+      return RichTextLines(["ERROR: help takes only 0 or 1 input argument."])
 
   def _resolve_prefix(self, token):
     """Resolve command prefix from the prefix itself or its alias.

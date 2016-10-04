@@ -95,6 +95,11 @@ more information about how to configure a distributed TensorFlow program.
 @@SessionManager
 @@ClusterSpec
 @@replica_device_setter
+@@Scaffold
+@@SessionCreator
+@@ChiefSessionCreator
+@@WorkerSessionCreator
+@@MonitoredSession
 
 ## Summary Operations
 
@@ -133,7 +138,19 @@ overview of summaries, event files, and visualization in TensorBoard.
 ## Training utilities
 
 @@global_step
+@@get_global_step
+@@assert_global_step
 @@write_graph
+@@SessionRunHook
+@@LoggingTensorHook
+@@StopAtStepHook
+@@CheckpointSaverHook
+@@StepCounterHook
+@@NanLossDuringTrainingError
+@@SummarySaverHook
+@@SessionRunArgs
+@@SessionRunContext
+@@SessionRunValues
 
 """
 # pylint: enable=line-too-long
@@ -175,8 +192,19 @@ from tensorflow.python.training.queue_runner import *
 from tensorflow.python.training import input as _input
 from tensorflow.python.training.input import *
 
+from tensorflow.python.training.basic_session_run_hooks import LoggingTensorHook
+from tensorflow.python.training.basic_session_run_hooks import StopAtStepHook
+from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverHook
+from tensorflow.python.training.basic_session_run_hooks import StepCounterHook
+from tensorflow.python.training.basic_session_run_hooks import NanLossDuringTrainingError
+from tensorflow.python.training.basic_session_run_hooks import SummarySaverHook
 from tensorflow.python.training.basic_loops import basic_train_loop
 from tensorflow.python.training.device_setter import replica_device_setter
+from tensorflow.python.training.monitored_session import Scaffold
+from tensorflow.python.training.monitored_session import SessionCreator
+from tensorflow.python.training.monitored_session import ChiefSessionCreator
+from tensorflow.python.training.monitored_session import WorkerSessionCreator
+from tensorflow.python.training.monitored_session import MonitoredSession
 from tensorflow.python.training.saver import generate_checkpoint_state_proto
 from tensorflow.python.training.saver import get_checkpoint_state
 from tensorflow.python.training.saver import latest_checkpoint
@@ -184,12 +212,19 @@ from tensorflow.python.training.saver import Saver
 from tensorflow.python.training.saver import update_checkpoint_state
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.training.saver import import_meta_graph
+from tensorflow.python.training.session_run_hook import SessionRunHook
+from tensorflow.python.training.session_run_hook import SessionRunArgs
+from tensorflow.python.training.session_run_hook import SessionRunContext
+from tensorflow.python.training.session_run_hook import SessionRunValues
 from tensorflow.python.training.session_manager import SessionManager
 from tensorflow.python.training.summary_io import summary_iterator
 from tensorflow.python.training.summary_io import SummaryWriter
+from tensorflow.python.training.summary_io import SummaryWriterCache
 from tensorflow.python.training.supervisor import Supervisor
 from tensorflow.python.training.training_util import write_graph
 from tensorflow.python.training.training_util import global_step
+from tensorflow.python.training.training_util import get_global_step
+from tensorflow.python.training.training_util import assert_global_step
 from tensorflow.python.pywrap_tensorflow import do_quantize_training_on_graphdef
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
 

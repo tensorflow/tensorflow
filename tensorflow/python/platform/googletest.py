@@ -80,7 +80,7 @@ def g_main(*args, **kwargs):
 
 
 # Redefine main to allow running benchmarks
-def main():
+def main():  # pylint: disable=function-redefined
   benchmark.benchmarks_main(true_main=g_main)
 
 

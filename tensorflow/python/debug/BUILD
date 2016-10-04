@@ -64,6 +64,40 @@ py_library(
     ],
 )
 
+py_library(
+    name = "curses_ui",
+    srcs = ["cli/curses_ui.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debugger_cli_common",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "local_cli",
+    srcs = ["local_cli.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":analyzer_cli",
+        ":curses_ui",
+        ":debug_data",
+        ":debugger_cli_common",
+        ":framework",
+        "//tensorflow/python:session",
+    ],
+)
+
+py_binary(
+    name = "debug_fibonacci",
+    srcs = ["examples/debug_fibonacci.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":local_cli",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_test(
     name = "debug_data_test",
     size = "small",
@@ -110,6 +144,21 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
+    ],
+)
+
+py_test(
+    name = "curses_ui_test",
+    size = "small",
+    srcs = [
+        "cli/curses_ui_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":curses_ui",
+        ":debugger_cli_common",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 

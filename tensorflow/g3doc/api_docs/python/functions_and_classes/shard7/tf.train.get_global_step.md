@@ -1,4 +1,4 @@
-### `tf.contrib.framework.get_global_step(graph=None)` {#get_global_step}
+### `tf.train.get_global_step(graph=None)` {#get_global_step}
 
 Get the global step tensor.
 

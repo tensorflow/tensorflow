@@ -85,7 +85,7 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
     document.body.appendChild(a);
     a.style.display = 'none';
     a.href = textFile;
-    a.download = 'state';
+    (a as any).download = 'state';
     a.click();
 
     document.body.removeChild(a);

@@ -575,7 +575,7 @@ class _Transformer(object):
     Raises:
       ValueError: if FeatureColumn cannot be handled by this Transformer.
     """
-    logging.info('Transforming feature_column %s', feature_column)
+    logging.debug('Transforming feature_column %s', feature_column)
     if feature_column in self._columns_to_tensors:
       # Feature_column is already transformed.
       return self._columns_to_tensors[feature_column]

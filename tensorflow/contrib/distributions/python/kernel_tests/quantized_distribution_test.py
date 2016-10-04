@@ -358,8 +358,9 @@ class QuantizedDistributionTest(tf.test.TestCase):
           atol=0)
 
   def test_log_prob_and_grad_gives_finite_results(self):
-    with self.test_session():
-      for dtype in [np.float32, np.float64]:
+    for dtype in [np.float32, np.float64]:
+      g = tf.Graph()
+      with g.as_default():
         mu = tf.Variable(0., name="mu", dtype=dtype)
         sigma = tf.Variable(1., name="sigma", dtype=dtype)
         qdist = distributions.QuantizedDistribution(
@@ -367,15 +368,13 @@ class QuantizedDistributionTest(tf.test.TestCase):
             mu=mu,
             sigma=sigma)
         x = np.arange(-100, 100, 2).astype(dtype)
-
-        tf.initialize_all_variables().run()
-
         proba = qdist.log_prob(x)
         grads = tf.gradients(proba, [mu, sigma])
-
-        self._assert_all_finite(proba.eval())
-        self._assert_all_finite(grads[0].eval())
-        self._assert_all_finite(grads[1].eval())
+        with self.test_session(graph=g):
+          tf.initialize_all_variables().run()
+          self._assert_all_finite(proba.eval())
+          self._assert_all_finite(grads[0].eval())
+          self._assert_all_finite(grads[1].eval())
 
   def test_prob_and_grad_gives_finite_results_for_common_events(self):
     with self.test_session():
@@ -460,7 +459,6 @@ class QuantizedDistributionTest(tf.test.TestCase):
 
       y = self._rng.randint(0, 5, size=batch_shape).astype(np.float32)
       self.assertEqual(batch_shape, qdist.prob(y).get_shape())
-      self.assertEqual(batch_shape, qdist.prob(y).eval().shape)
 
 
 if __name__ == "__main__":

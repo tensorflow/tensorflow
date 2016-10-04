@@ -245,6 +245,14 @@ def assert_node_attribute_lines(tst,
     tst.assertEqual(sorted(dump_timestamps_ms), dump_timestamps_ms)
 
 
+def check_syntax_error_output(tst, out, command_prefix):
+  """Check RichTextLines output for valid command prefix but invalid syntax."""
+
+  tst.assertEqual([
+      "Syntax error for command: %s" % command_prefix,
+      "For help, do \"help %s\"" % command_prefix], out.lines)
+
+
 def check_error_output(tst, out, command_prefix, args):
   """Check RichTextLines output from invalid/erroneous commands.
 
@@ -255,7 +263,7 @@ def check_error_output(tst, out, command_prefix, args):
     args: The arguments (excluding prefix) of the command that caused the error.
   """
 
-  tst.assertEqual(2, len(out.lines))
+  tst.assertGreater(len(out.lines), 2)
   tst.assertStartsWith(out.lines[0],
                        "Error occurred during handling of command: %s %s" %
                        (command_prefix, " ".join(args)))
@@ -389,7 +397,7 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
   def testListTensorsInvalidOptions(self):
     out = self._registry.dispatch_command("list_tensors", ["--foo"])
-    check_error_output(self, out, "list_tensors", ["--foo"])
+    check_syntax_error_output(self, out, "list_tensors")
 
   def testNodeInfoByNodeName(self):
     out = self._registry.dispatch_command("node_info",
@@ -447,6 +455,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     self.assertEqual(
         ["ERROR: There is no node named \"bar\" in the partition graphs"],
         out.lines)
+    # Check color indicating error.
+    self.assertEqual({0: [(0, 59, "red")]}, out.font_attr_segs)
 
   def testPrintTensor(self):
     out = self._registry.dispatch_command(

@@ -1523,7 +1523,7 @@ def expand_and_tile(tensor, multiple, dim=0, name=None):
   tiled `multiple` times along the new dimension.
 
   Args:
-    tensor: Input `Tensor`.
+    tensor: Input `Tensor` or `SparseTensor`.
     multiple: Integer, number of times to tile.
     dim: Integer, dimension along which to tile.
     name: Name of operation.

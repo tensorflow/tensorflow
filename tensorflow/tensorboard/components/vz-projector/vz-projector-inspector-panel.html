@@ -1,0 +1,167 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+
+<link rel="import" href="styles.html">
+<link rel="import" href="vz-projector-input.html">
+
+<dom-module id="vz-projector-inspector-panel">
+<style include="vz-projector-styles"></style>
+<style>
+.metadata-container {
+  margin-top: 15px;
+}
+
+.metadata-container span {
+  font-size: 16px;
+}
+
+.metadata {
+  border-bottom: 1px solid #ccc;
+  display: table;
+  padding: 10px 0;
+  width: 100%;
+}
+
+.metadata-row {
+  display: table-row;
+}
+
+.metadata-key {
+  font-weight: bold;
+}
+
+.metadata-key, .metadata-value {
+  display: table-cell;
+  padding-right: 10px;
+}
+
+.buttons {
+  margin-bottom: 10px;
+}
+
+.nn-list .neighbor {
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.nn-list .neighbor .value {
+  float: right;
+  color: #666;
+  font-weight: 300;
+}
+
+.nn-list .neighbor .bar {
+  position: relative;
+  border-top: 1px solid rgba(0, 0, 0, 0.15);
+  margin: 2px 0;
+}
+
+.nn-list .neighbor .bar .fill {
+  position: absolute;
+  top: -1px;
+  border-top: 1px solid white;
+}
+
+.nn-list .neighbor .tick {
+  position: absolute;
+  top: 0px;
+  height: 3px;
+  border-left: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.nn-list .neighbor-link:hover {
+  cursor: pointer;
+}
+
+.search-by {
+  display: flex;
+}
+
+.search-by vz-projector-input {
+  width: 100%;
+}
+
+.search-by paper-dropdown-menu {
+  margin-left: 10px;
+  width: 100px;
+}
+
+.distance .options {
+  float: right;
+}
+
+.show-all-data-container {
+  margin-bottom: 10px;
+}
+
+.options a {
+  text-decoration: none;
+  color: black;
+}
+
+.options a.selected {
+  color: black;
+  border-bottom: 2px solid black;
+}
+
+</style>
+<template>
+<div class="slider num-nn">
+  <label>Number of neighbors</label>
+  <input type="range" min="5" max="1000" value="100"></input>
+  <span></span>
+</div>
+<div class="search-by">
+  <vz-projector-input id="search-box" label="Query"></vz-projector-input>
+  <paper-dropdown-menu no-animations label="by">
+    <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedMetadataField}}">
+      <template is="dom-repeat" items="[[metadataFields]]">
+        <paper-item value="[[item]]" label="[[item]]">
+          [[item]]
+        </paper-item>
+      </template>
+    </paper-listbox>
+  </paper-dropdown-menu>
+</div>
+<div class="metadata-container" style="display: none">
+  <span>Metadata</span>
+  <div class="metadata"></div>
+</div>
+<div class="buttons">
+  <div class="show-all-data-container">
+    <button style="display: none;" class="ink-button reset-filter">Show All Data</button>
+  </div>
+  <button style="display: none;" class="ink-button set-filter">Isolate selection</button>
+  <button class="ink-button clear-selection" style="display: none;">Clear selection</button>
+</div>
+<div class="nn">
+  <div class="distance">
+    Distance:
+    <div class="options">
+      <a class="selected cosine" href="javascript:void(0);">cosine</a> |
+      <a class="euclidean" href="javascript:void(0);">euclidean</a>
+    </div>
+  </div>
+  <p>Nearest points:
+  <div class="nn-list"></div>
+</div>
+
+<!-- Closing global template -->
+</template>
+</dom-module>
