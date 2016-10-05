@@ -285,8 +285,13 @@ def _monitored_train(graph,
         hooks=all_hooks) as super_sess:
       loss = None
       while not super_sess.should_stop():
-        _, loss = super_sess.run([train_op, loss_op], feed_fn() if feed_fn else
-                                 None)
+        feed_dict = feed_fn() if feed_fn else None
+        # check for case when iterator stopped exactly at multiple of batch_size
+        # In such case, all the returned numpy array are len zero.
+        edge_condition = True if feed_dict and all(len(v) == 0 for v in feed_dict.values()) else False
+        if not edge_condition:
+          _, loss = super_sess.run([train_op, loss_op], feed_dict)
+          
       return loss
 
 
