@@ -25,7 +25,7 @@ def src_to_test_name(src):
 def check_version(bazel_version):
   if "bazel_version" not in dir(native):
     fail("\nCurrent Bazel version is lower than 0.2.1, expected at least %s\n" % bazel_version)
-  if not native.bazel_version:
+  elif not native.bazel_version:
     print("\nCurrent Bazel is not a release version, cannot check for compatibility.")
     print("Make sure that you are running at least Bazel %s.\n" % bazel_version)
   else:
@@ -34,6 +34,7 @@ def check_version(bazel_version):
     if minimum_bazel_version > current_bazel_version:
       fail("\nCurrent Bazel version is {}, expected at least {}\n".format(
           native.bazel_version, bazel_version))
+  pass
 
 # Return the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
