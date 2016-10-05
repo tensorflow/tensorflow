@@ -65,7 +65,7 @@ class ConcatOp : public OpKernel {
                (allow_legacy_scalars() && concat_dim == 0),
         errors::InvalidArgument(
             "ConcatOp : Expected concatenating dimensions in the range [", 0,
-            ", ", input_dims, "), but got ", concat_dim));
+            ", ", input_dims, "], but got ", concat_dim));
 
     // Note that we reduce the concat of n-dimensional tensors into a two
     // dimensional concat. Assuming the dimensions of any input/output
