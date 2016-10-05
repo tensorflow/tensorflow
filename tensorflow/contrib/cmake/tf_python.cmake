@@ -289,6 +289,8 @@ add_library(pywrap_tensorflow SHARED
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_reader.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_writer.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/io/py_record_writer.cc"
+    "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.h"
+    "${tensorflow_source_dir}/tensorflow/python/util/kernel_registry.cc"
     "${tensorflow_source_dir}/tensorflow/c/c_api.cc"
     "${tensorflow_source_dir}/tensorflow/c/c_api.h"
     "${tensorflow_source_dir}/tensorflow/c/checkpoint_reader.cc"

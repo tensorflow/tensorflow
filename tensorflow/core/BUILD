@@ -675,6 +675,7 @@ filegroup(
             "platform/png.*",
             "platform/gif.*",
             "platform/stream_executor.*",
+            "platform/windows/**/*",
             "user_ops/**/*.cu.cc",
             "common_runtime/gpu/**/*",
             "common_runtime/gpu_device_factory.*",
