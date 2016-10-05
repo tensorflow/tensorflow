@@ -226,6 +226,39 @@ class PyOpTest(tf.test.TestCase):
       # This will result in a deadlock if the py_func's don't run in parallel.
       session.run([x, y])
 
+  def testNoReturnValueStateful(self):
+
+    class State(object):
+
+      def __init__(self):
+        self._value = np.array([1], np.int64)
+
+      def _increment(self, diff):
+        self._value += diff
+
+      def increment(self, diff):
+        return tf.py_func(self._increment, [diff], [], stateful=True)
+
+      @property
+      def value(self):
+        return self._value
+
+    with self.test_session() as sess:
+      s = State()
+      op = s.increment(tf.constant(2, tf.int64))
+      ret = sess.run(op)
+      self.assertIsNone(ret)
+      self.assertAllEqual([3], s.value)
+
+  def testNoReturnValueStateless(self):
+
+    def do_nothing(unused_x):
+      pass
+
+    f = tf.py_func(do_nothing, [tf.constant(3, tf.int64)], [], stateful=False)
+    with self.test_session() as sess:
+      self.assertEqual(sess.run(f), [])
+
 
 if __name__ == "__main__":
   tf.test.main()

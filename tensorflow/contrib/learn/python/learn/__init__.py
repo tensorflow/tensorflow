@@ -22,6 +22,7 @@ from __future__ import print_function
 import numpy as np
 
 # pylint: disable=wildcard-import
+from tensorflow.contrib.learn.python.learn import basic_session_run_hooks
 from tensorflow.contrib.learn.python.learn import datasets
 from tensorflow.contrib.learn.python.learn import estimators
 from tensorflow.contrib.learn.python.learn import graph_actions
@@ -41,6 +42,7 @@ from tensorflow.contrib.learn.python.learn.graph_actions import run_feeds
 from tensorflow.contrib.learn.python.learn.graph_actions import run_n
 from tensorflow.contrib.learn.python.learn.graph_actions import train
 from tensorflow.contrib.learn.python.learn.learn_io import *
+from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 from tensorflow.contrib.learn.python.learn.monitors import NanLossDuringTrainingError
 from tensorflow.contrib.learn.python.learn.trainable import Trainable
 # pylint: enable=wildcard-import

@@ -184,10 +184,14 @@ tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
 }
 
 tensorflow::WritableFile* CreateWritableFile(
-    const string& filename, TF_Status* out_status) {
+    const string& filename, const string& mode, TF_Status* out_status) {
   std::unique_ptr<tensorflow::WritableFile> file;
-  tensorflow::Status status =
-      tensorflow::Env::Default()->NewWritableFile(filename, &file);
+  tensorflow::Status status;
+  if (mode.find("a") != std::string::npos) {
+    status = tensorflow::Env::Default()->NewAppendableFile(filename, &file);
+  } else {
+    status = tensorflow::Env::Default()->NewWritableFile(filename, &file);
+  }
   if (!status.ok()) {
     Set_TF_Status_from_Status(out_status, status);
     return nullptr;
@@ -258,6 +262,7 @@ void Stat(const string& filename, tensorflow::FileStatistics* stats,
 tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
     const string& filename, size_t buffer_size, TF_Status* out_status);
 tensorflow::WritableFile* CreateWritableFile(const string& filename,
+                                             const string& mode,
                                              TF_Status* out_status);
 void AppendToFile(const string& file_content, tensorflow::WritableFile* file,
                   TF_Status* out_status);

@@ -38,6 +38,125 @@ op {
   description: "Given a tensor `x`, this operation returns a tensor containing the absolute\nvalue of each element in `x`. For example, if x is an input element and y is\nan output element, this operation computes \\\\(y = |x|\\\\)."
 }
 op {
+  name: "AccumulatorApplyGradient"
+  input_arg {
+    name: "handle"
+    description: "The handle to a accumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "local_step"
+    description: "The local_step value at which the gradient was computed."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "gradient"
+    description: "A tensor of the gradient to be accumulated."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The data type of accumulated gradients. Needs to correspond to the type\nof the accumulator."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Applies a gradient to a given accumulator. Does not add if local_step is lesser"
+  description: "than the accumulator\'s global_step."
+}
+op {
+  name: "AccumulatorNumAccumulated"
+  input_arg {
+    name: "handle"
+    description: "The handle to an accumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  output_arg {
+    name: "num_accumulated"
+    description: "The number of gradients aggregated in the given accumulator."
+    type: DT_INT32
+  }
+  summary: "Returns the number of gradients aggregated in the given accumulators."
+}
+op {
+  name: "AccumulatorSetGlobalStep"
+  input_arg {
+    name: "handle"
+    description: "The handle to an accumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "new_global_step"
+    description: "The new global_step value to set."
+    type: DT_INT64
+  }
+  summary: "Updates the accumulator with a new value for global_step. Logs warning if the"
+  description: "accumulator\'s value is already higher than new_global_step."
+}
+op {
+  name: "AccumulatorTakeGradient"
+  input_arg {
+    name: "handle"
+    description: "The handle to an accumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "num_required"
+    description: "Number of gradients required before we return an aggregate."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "average"
+    description: "The average of the accumulated gradients."
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The data type of accumulated gradients. Needs to correspond to the type\nof the accumulator."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Extracts the average gradient in the given ConditionalAccumulator, provided"
+  description: "that sufficient (i.e., more than num_required) gradients have been accumulated.\nThe op blocks until sufficient gradients have been accumulated.\nIf the accumulator has already aggregated more than num_required gradients, it\nreturns the average of the accumulated gradients.\nAlso automatically increments the recorded global_step in the accumulator by 1,\nand resets the aggregate to 0."
+}
+op {
   name: "Acos"
   input_arg {
     name: "x"
@@ -1531,6 +1650,45 @@ op {
     name: "sample_rate"
     type: "float"
     description: "The sample rate of the signal in hertz."
+  }
+  attr {
+    name: "max_outputs"
+    type: "int"
+    default_value {
+      i: 3
+    }
+    description: "Max number of batch elements to generate audio for."
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Outputs a `Summary` protocol buffer with audio."
+  description: "The summary has up to `max_outputs` summary values containing audio. The\naudio is built from `tensor` which must be 3-D with shape `[batch_size,\nframes, channels]` or 2-D with shape `[batch_size, frames]`. The values are\nassumed to be in the range of `[-1.0, 1.0]` with a sample rate of `sample_rate`.\n\nThe `tag` argument is a scalar `Tensor` of type `string`.  It is used to\nbuild the `tag` of the summary values:\n\n*  If `max_outputs` is 1, the summary value tag is \'*tag*/audio\'.\n*  If `max_outputs` is greater than 1, the summary value tags are\n   generated sequentially as \'*tag*/audio/0\', \'*tag*/audio/1\', etc."
+  deprecation {
+    version: 15
+    explanation: "Use AudioSummaryV2."
+  }
+}
+op {
+  name: "AudioSummaryV2"
+  input_arg {
+    name: "tag"
+    description: "Scalar. Used to build the `tag` attribute of the summary values."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor"
+    description: "2-D of shape `[batch_size, frames]`."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "sample_rate"
+    description: "The sample rate of the signal in hertz."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "summary"
+    description: "Scalar. Serialized `Summary` protocol buffer."
+    type: DT_STRING
   }
   attr {
     name: "max_outputs"
@@ -3567,6 +3725,62 @@ op {
   }
   summary: "Computes offsets of concat inputs within its output."
   description: "For example:\n\n```prettyprint\n# \'x\' is [2, 2, 7]\n# \'y\' is [2, 3, 7]\n# \'z\' is [2, 5, 7]\nconcat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]\n```"
+}
+op {
+  name: "ConditionalAccumulator"
+  output_arg {
+    name: "handle"
+    description: "The handle to the accumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the value being accumulated."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    description: "The shape of the values, can be [], in which case shape is unknown."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this accumulator is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this accumulator will be shared under the given name\nacross multiple sessions."
+  }
+  summary: "A conditional accumulator for aggregating gradients. The accumulator accepts"
+  description: "gradients marked with local_step greater or equal to the most recent global_step\nknown to the accumulator. The average can be extracted from the accumulator,\nprovided sufficient gradients have been accumulated. Extracting the average\nautomatically resets the aggregate to 0, and increments the global_step recorded\nby the accumulator."
+  is_stateful: true
 }
 op {
   name: "Conj"
@@ -11039,7 +11253,6 @@ op {
     type: "list(type)"
     description: "Data types of the outputs from the op.\nThe length of the list specifies the number of outputs."
     has_minimum: true
-    minimum: 1
   }
   summary: "Invokes a python function to compute func(input)->output."
   description: "This operation is considered stateful. For a stateless version, see\nPyFuncStateless."
@@ -11068,7 +11281,6 @@ op {
     name: "Tout"
     type: "list(type)"
     has_minimum: true
-    minimum: 1
   }
   summary: "A stateless version of PyFunc."
 }
@@ -14685,6 +14897,119 @@ op {
   description: "Rearranges blocks of spatial data, into depth. More specifically,\nthis op outputs a copy of the input tensor where values from the `height`\nand `width` dimensions are moved to the `depth` dimension.\nThe attr `block_size` indicates the input block size and how the data is moved.\n\n  * Non-overlapping blocks of size `block_size x block size` are rearranged\n    into depth at each location.\n  * The depth of the output tensor is `input_depth * block_size * block_size`.\n  * The input tensor\'s height and width must be divisible by block_size.\n\nThat is, assuming the input is in the shape:\n`[batch, height, width, depth]`,\nthe shape of the output will be:\n`[batch, height/block_size, width/block_size, depth*block_size*block_size]`\n\nThis operation requires that the input tensor be of rank 4, and that\n`block_size` be >=1 and a divisor of both the input `height` and `width`.\n\nThis operation is useful for resizing the activations between convolutions\n(but keeping all data), e.g. instead of pooling. It is also useful for training\npurely convolutional models.\n\nFor example, given this input of shape `[1, 2, 2, 1]`, and block_size of 2:\n\n```prettyprint\nx = [[[[1], [2]],\n      [[3], [4]]]]\n```\n\nThis operation will output a tensor of shape `[1, 1, 1, 4]`:\n\n```prettyprint\n[[[[1, 2, 3, 4]]]]\n```\n\nHere, the input has a batch of 1 and each batch element has shape `[2, 2, 1]`,\nthe corresponding output will have a single element (i.e. width and height are\nboth 1) and will have a depth of 4 channels (1 * block_size * block_size).\nThe output element shape is `[1, 1, 4]`.\n\nFor an input tensor with larger depth, here of shape `[1, 2, 2, 3]`, e.g.\n\n```prettyprint\nx = [[[[1, 2, 3], [4, 5, 6]],\n      [[7, 8, 9], [10, 11, 12]]]]\n```\n\nThis operation, for block_size of 2, will return the following tensor of shape\n`[1, 1, 1, 12]`\n\n```prettyprint\n[[[[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]]]]\n```\n\nSimilarly, for the following input of shape `[1 4 4 1]`, and a block size of 2:\n\n```prettyprint\nx = [[[[1],   [2],  [5],  [6]],\n      [[3],   [4],  [7],  [8]],\n      [[9],  [10], [13],  [14]],\n      [[11], [12], [15],  [16]]]]\n```\n\nthe operator will return the following tensor of shape `[1 2 2 4]`:\n\n```prettyprint\nx = [[[[1, 2, 3, 4],\n       [5, 6, 7, 8]],\n      [[9, 10, 11, 12],\n       [13, 14, 15, 16]]]]\n```"
 }
 op {
+  name: "SparseAccumulatorApplyGradient"
+  input_arg {
+    name: "handle"
+    description: "The handle to a accumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "local_step"
+    description: "The local_step value at which the sparse gradient was computed."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "gradient_indices"
+    description: "Indices of the sparse gradient to be accumulated. Must be a\nvector."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "gradient_values"
+    description: "Values are the non-zero slices of the gradient, and must have\nthe same first dimension as indices, i.e., the nnz represented by indices and\nvalues must be consistent."
+    type_attr: "dtype"
+  }
+  input_arg {
+    name: "gradient_shape"
+    description: "Shape of the sparse gradient to be accumulated."
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The data type of accumulated gradients. Needs to correspond to the type\nof the accumulator."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "has_known_shape"
+    type: "bool"
+    description: "Boolean indicating whether gradient_shape is unknown, in which\ncase the input is ignored during validation."
+  }
+  summary: "Applies a sparse gradient to a given accumulator. Does not add if local_step is"
+  description: "lesser than the accumulator\'s global_step."
+}
+op {
+  name: "SparseAccumulatorTakeGradient"
+  input_arg {
+    name: "handle"
+    description: "The handle to a SparseConditionalAccumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  input_arg {
+    name: "num_required"
+    description: "Number of gradients required before we return an aggregate."
+    type: DT_INT32
+  }
+  output_arg {
+    name: "indices"
+    description: "Indices of the average of the accumulated sparse gradients."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "values"
+    description: "Values of the average of the accumulated sparse gradients."
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "shape"
+    description: "Shape of the average of the accumulated sparse gradients."
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The data type of accumulated gradients. Needs to correspond to the type\nof the accumulator."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  summary: "Extracts the average sparse gradient in the given SparseConditionalAccumulator,"
+  description: "provided that sufficient (i.e., more than num_required) gradients have been\naccumulated. The op will blocks until sufficient gradients have been\naccumulated. If the accumulator has already aggregated more than num_required\ngradients, it will return its average of the accumulated gradients.\nAlso automatically increments the recorded global_step in the accumulator by 1,\nand resets the aggregate to 0."
+}
+op {
   name: "SparseAdd"
   input_arg {
     name: "a_indices"
@@ -15610,6 +15935,62 @@ op {
   }
   summary: "Concatenates a list of `SparseTensor` along the specified dimension."
   description: "Concatenation is with respect to the dense versions of these sparse tensors.\nIt is assumed that each input is a `SparseTensor` whose elements are ordered\nalong increasing dimension number.\n\nAll inputs\' shapes must match, except for the concat dimension.  The\n`indices`, `values`, and `shapes` lists must have the same length.\n\nThe output shape is identical to the inputs\', except along the concat\ndimension, where it is the sum of the inputs\' sizes along that dimension.\n\nThe output elements will be resorted to preserve the sort order along\nincreasing dimension number.\n\nThis op runs in `O(M log M)` time, where `M` is the total number of non-empty\nvalues across all inputs. This is due to the need for an internal sort in\norder to concatenate efficiently across an arbitrary dimension.\n\nFor example, if `concat_dim = 1` and the inputs are\n\n    sp_inputs[0]: shape = [2, 3]\n    [0, 2]: \"a\"\n    [1, 0]: \"b\"\n    [1, 1]: \"c\"\n\n    sp_inputs[1]: shape = [2, 4]\n    [0, 1]: \"d\"\n    [0, 2]: \"e\"\n\nthen the output will be\n\n    shape = [2, 7]\n    [0, 2]: \"a\"\n    [0, 4]: \"d\"\n    [0, 5]: \"e\"\n    [1, 0]: \"b\"\n    [1, 1]: \"c\"\n\nGraphically this is equivalent to doing\n\n    [    a] concat [  d e  ] = [    a   d e  ]\n    [b c  ]        [       ]   [b c          ]"
+}
+op {
+  name: "SparseConditionalAccumulator"
+  output_arg {
+    name: "handle"
+    description: "The handle to the accumulator."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The type of the value being accumulated."
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    description: "The shape of the values."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this accumulator is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this accumulator will be shared under the given name\nacross multiple sessions."
+  }
+  summary: "A conditional accumulator for aggregating sparse gradients. The accumulator"
+  description: "accepts gradients marked with local_step greater or equal to the most recent\nglobal_step known to the accumulator. The average can be extracted from the\naccumulator, provided sufficient gradients have been accumulated. Extracting the\naverage automatically resets the aggregate to 0, and increments the global_step\nrecorded by the accumulator."
+  is_stateful: true
 }
 op {
   name: "SparseDenseCwiseAdd"

@@ -132,55 +132,55 @@ class DNNSampledSoftmaxClassifierTest(tf.test.TestCase):
     with self.assertRaisesRegexp(tf.errors.InvalidArgumentError, 'target'):
       classifier.fit(input_fn=_input_fn, steps=5)
 
-  # TODO(dnivara): will analyze the flakiness.
-  #   def testTrainWithPartitionedVariables(self):
-  #     """Tests the following.
-  #
-  #     1. Tests training with partitioned variables.
-  #     2. Test that the model actually trains.
-  #     3. Tests the output of evaluate() and predict().
-  #     ""  #
-  #     def _input_fn():
-  #       features = {
-  #           'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-  #                                       indices=[[0, 0], [0, 1], [2, 0]],
-  #                                       shape=[3, 2])
-  #       }
-  #       target = tf.constant([[1], [0], [0]], dtype=tf.int64)
-  #       return features, target
-  #
-  #     # The given hash_bucket_size results in variables larger than the
-  #     # default min_slice_size attribute, so the variables are partitioned.
-  #     sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
-  #         'language', hash_bucket_size=2e7)
-  #     embedding_features =  #
-  #         tf.contrib.layers.embedding_column(sparse_column, dimension=1)
-  #     ]
-  #
-  #     classifier = dnn_sampled_softmax_classifier._DNNSampledSoftmaxClassifier
-  #(
-  #         n_classes=3,
-  #         n_samples=2,
-  #         n_labels=1,
-  #         feature_columns=embedding_features,
-  #         hidden_units=[4,   #
-  #         # Because we did not start a distributed cluster, we need to pass an
-  #         # empty ClusterSpec, otherwise the device_setter will look for
-  #         # distributed jobs, such as "/job:ps" which are not present.
-  #         config=tf.contrib.learn.RunConfig(
-  #             num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({}),
-  #             tf_random_seed=5))
-  #
-  #     # Test that the model actually trains.
-  #     classifier.fit(input_fn=_input_fn, steps=50)
-  #     evaluate_output = classifier.evaluate(input_fn=_input_fn, steps=1)
-  #     self.assertGreater(evaluate_output['precision_at_1'], 0.9)
-  #     self.assertGreater(evaluate_output['recall_at_1'], 0.9)
-  #
-  #     # Test the output of predict()
-  #     predict_output = classifier.predict(input_fn=_input_fn)
-  #     self.assertListEqual([1, 0, 0], list(predict_output))
-  #
+  def testTrainWithPartitionedVariables(self):
+    """Tests the following.
+
+    1. Tests training with partitioned variables.
+    2. Test that the model actually trains.
+    3. Tests the output of evaluate() and predict().
+    """
+    def _input_fn():
+      features = {
+          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
+                                      indices=[[0, 0], [0, 1], [2, 0]],
+                                      shape=[3, 2])
+      }
+      target = tf.constant([[1], [0], [0]], dtype=tf.int64)
+      return features, target
+
+    # The given hash_bucket_size results in variables larger than the
+    # default min_slice_size attribute, so the variables are partitioned.
+    sparse_column = tf.contrib.layers.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=2e7)
+    embedding_features = [
+        tf.contrib.layers.embedding_column(sparse_column, dimension=1)
+    ]
+
+    classifier = dnn_sampled_softmax_classifier._DNNSampledSoftmaxClassifier(
+        n_classes=3,
+        n_samples=2,
+        n_labels=1,
+        feature_columns=embedding_features,
+        hidden_units=[4, 4],
+        # Because we did not start a distributed cluster, we need to pass an
+        # empty ClusterSpec, otherwise the device_setter will look for
+        # distributed jobs, such as "/job:ps" which are not present.
+        config=tf.contrib.learn.RunConfig(
+            num_ps_replicas=2, cluster_spec=tf.train.ClusterSpec({}),
+            tf_random_seed=5))
+
+    # Test that the model actually trains.
+    classifier.fit(input_fn=_input_fn, steps=50)
+    evaluate_output = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self.assertGreater(evaluate_output['precision_at_1'], 0.6)
+    self.assertGreater(evaluate_output['recall_at_1'], 0.6)
+
+    # Test the output of predict()
+    predict_output = classifier.predict(input_fn=_input_fn)
+    self.assertListEqual([3], list(predict_output.shape))
+    # TODO(dnivara): Setup this test such that it is not flaky and predict() and
+    # evaluate() outputs can be tested.
+
   def testTrainSaveLoad(self):
     """Tests that ensure that you can save and reload a trained model."""
     def _input_fn():

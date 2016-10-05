@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {HoverContext} from './hoverContext';
 import {NearestEntry} from './knn';
 import {RenderContext} from './renderContext';
 import {DataSet} from './scatterPlot';
@@ -26,6 +27,8 @@ const IMAGE_SIZE = 30;
 
 const POINT_COLOR = 0x7575D9;
 const POINT_COLOR_GRAYED = 0x888888;
+const POINT_COLOR_HIGHLIGHT = '#760B4F';
+const POINT_COLOR_NEIGHBOR = '#FA6666';
 
 // Constants relating to the indices of buffer arrays.
 /** Item size of a single point in a bufferArray representing colors */
@@ -120,6 +123,9 @@ const FRAGMENT_SHADER = `
  */
 export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
   private dataSet: DataSet;
+  private selectedPointIndices: number[] = [];
+  private neighborsOfFirstPoint: NearestEntry[] = [];
+  private hoverIndex: number;
 
   private image: HTMLImageElement;
   private geometry: THREE.BufferGeometry;
@@ -128,7 +134,6 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
   private pickingMaterial: THREE.ShaderMaterial;
   private uniforms: Object;
 
-  private defaultPointColor = POINT_COLOR;
   private sceneIs3D: boolean = true;
   private pointSize2D: number;
   private pointSize3D: number;
@@ -138,12 +143,15 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
   private pickingColors: Float32Array;
   private renderColors: Float32Array;
 
-  constructor(selectionContext: SelectionContext) {
+  constructor(selectionContext: SelectionContext, hoverContext: HoverContext) {
     selectionContext.registerSelectionChangedListener(
-        (selectedPointIndices: number[],
-         neighborsOfFirstPoint: NearestEntry[]) =>
-            this.onSelectionChanged(
-                selectedPointIndices, neighborsOfFirstPoint));
+        (s: number[], n: NearestEntry[]) => {
+          this.selectedPointIndices = s;
+          this.neighborsOfFirstPoint = n;
+        });
+    hoverContext.registerHoverListener((h: number) => {
+      this.hoverIndex = h;
+    });
   }
 
   /**
@@ -271,66 +279,85 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
     this.geometry.addAttribute('isHighlight', highlights);
 
     this.colorSprites(null);
-    this.highlightSprites(null, null);
   }
 
-  private colorSprites(colorAccessor: (index: number) => string) {
+  private getUnselectedPointColor(): THREE.Color {
+    if (this.image) {
+      return new THREE.Color(0xFFFFFF);
+    } else if (this.selectedPointIndices.length > 0) {
+      return new THREE.Color(POINT_COLOR_GRAYED);
+    } else {
+      return new THREE.Color(POINT_COLOR);
+    }
+  }
+
+  private colorSprites(unselectedPointColors?: Float32Array) {
     if (this.geometry == null) {
       return;
     }
-    let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
-    colors.array = this.renderColors;
-    let getColor: (index: number) => string = (() => undefined);
-    if (this.image == null) {
-      getColor =
-          colorAccessor ? colorAccessor : () => (this.defaultPointColor as any);
-    }
-    for (let i = 0; i < this.dataSet.points.length; i++) {
-      let color = new THREE.Color(getColor(i));
-      colors.setXYZ(i, color.r, color.g, color.b);
-    }
-    colors.needsUpdate = true;
-  }
 
-  private highlightSprites(
-      highlightedPoints: number[], highlightStroke: (index: number) => string) {
-    if (this.geometry == null) {
-      return;
-    }
-    let highlights =
+    const colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
+    const highlights =
         this.geometry.getAttribute('isHighlight') as THREE.BufferAttribute;
-    for (let i = 0; i < this.dataSet.points.length; i++) {
-      highlights.setX(i, 0.0);
-    }
-    if (highlightedPoints && highlightStroke) {
-      let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
-      // Traverse in reverse so that the point we are hovering over
-      // (highlightedPoints[0]) is painted last.
-      for (let i = highlightedPoints.length - 1; i >= 0; i--) {
-        let assocPoint = highlightedPoints[i];
-        let color = new THREE.Color(highlightStroke(i));
-        // Fill colors array (single array of numPoints*3 elements,
-        // triples of which refer to the rgb values of a single vertex).
-        colors.setXYZ(assocPoint, color.r, color.g, color.b);
-        highlights.setX(assocPoint, 1.0);
+
+    const unselectedColor = this.getUnselectedPointColor();
+    const selectedColor = new THREE.Color(POINT_COLOR_NEIGHBOR);
+
+    // Paint all points with the unselected colors.
+    if (unselectedPointColors == null) {
+      colors.array = this.renderColors;
+      for (let i = 0; i < this.dataSet.points.length; i++) {
+        colors.setXYZ(
+            i, unselectedColor.r, unselectedColor.g, unselectedColor.b);
       }
-      colors.needsUpdate = true;
+    } else {
+      this.renderColors = unselectedPointColors;
+      colors.array = this.renderColors;
     }
+
+    // Mark all points as not highlighted
+    for (let i = 0; i < this.dataSet.points.length; i++) {
+      highlights.setX(i, 0);
+    }
+
+    // Highlight all of the selected points and their neighbors.
+    {
+      const highlightedIndices: number[] = [];
+      this.selectedPointIndices.forEach(i => highlightedIndices.push(i));
+      this.neighborsOfFirstPoint.forEach(n => highlightedIndices.push(n.index));
+
+      if (highlightedIndices.length > 0) {
+        for (let i = highlightedIndices.length - 1; i >= 0; i--) {
+          const p = highlightedIndices[i];
+          colors.setXYZ(p, selectedColor.r, selectedColor.g, selectedColor.b);
+        }
+      }
+    }
+
+    if (this.selectedPointIndices.length > 0) {
+      for (let i = 0; i < this.selectedPointIndices.length; ++i) {
+        const p = this.selectedPointIndices[i];
+        highlights.setX(p, 1);
+      }
+    }
+
+    if (this.hoverIndex) {
+      const p: number = this.hoverIndex;
+      const c = new THREE.Color(POINT_COLOR_HIGHLIGHT);
+      colors.setXYZ(p, c.r, c.g, c.b);
+      highlights.setX(p, 1);
+    }
+
+    colors.needsUpdate = true;
     highlights.needsUpdate = true;
   }
 
-  /* Updates the positions buffer array to reflect the actual data. */
   private updatePositionsArray() {
-    // Update the points.
     for (let i = 0; i < this.dataSet.points.length; i++) {
-      // Set position based on projected point.
       let pp = this.dataSet.points[i].projectedPoint;
       this.positionBuffer.setXYZ(i, pp[0], pp[1], pp[2]);
     }
-
-    if (this.geometry) {
-      this.positionBuffer.needsUpdate = true;
-    }
+    this.positionBuffer.needsUpdate = true;
   }
 
   removeAllFromScene(scene: THREE.Scene) {
@@ -352,12 +379,6 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
     this.positionBuffer = new THREE.BufferAttribute(positions, XYZ_NUM_BYTES);
   }
 
-  onSelectionChanged(
-      selectedPointIndices: number[], neighborsOfFirstPoint: NearestEntry[]) {
-    this.defaultPointColor =
-        (selectedPointIndices.length > 0) ? POINT_COLOR_GRAYED : POINT_COLOR;
-  }
-
   onRecreateScene(
       scene: THREE.Scene, sceneIs3D: boolean, backgroundColor: number) {
     this.sceneIs3D = sceneIs3D;
@@ -366,7 +387,6 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
     if (this.dataSet) {
       this.addSprites(scene);
       this.colorSprites(null);
-      this.highlightSprites(null, null);
     }
   }
 
@@ -397,8 +417,7 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
     if (!this.geometry) {
       return;
     }
-    this.colorSprites(rc.colorAccessor);
-    this.highlightSprites(rc.highlightedPoints, rc.highlightStroke);
+    this.colorSprites(rc.unselectedPointColors);
 
     this.setFogDistances(
         rc.nearestCameraSpacePointZ, rc.farthestCameraSpacePointZ);

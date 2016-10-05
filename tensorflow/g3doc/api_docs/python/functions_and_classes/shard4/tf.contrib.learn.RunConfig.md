@@ -5,7 +5,7 @@ If you're a Google-internal user using command line flags with learn_runner.py
 probably want to use learn_runner.EstimatorConfig instead.
 - - -
 
-#### `tf.contrib.learn.RunConfig.__init__(master=None, task=None, num_ps_replicas=None, num_cores=0, log_device_placement=False, gpu_memory_fraction=1, cluster_spec=None, tf_random_seed=None, save_summary_steps=100, save_checkpoints_secs=600, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000, job_name=None, is_chief=None, evaluation_master='')` {#RunConfig.__init__}
+#### `tf.contrib.learn.RunConfig.__init__(master=None, task=None, num_ps_replicas=None, num_cores=0, log_device_placement=False, gpu_memory_fraction=1, cluster_spec=None, tf_random_seed=None, save_summary_steps=100, save_checkpoints_secs=600, save_checkpoints_steps=None, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000, job_name=None, is_chief=None, evaluation_master='')` {#RunConfig.__init__}
 
 Constructor.
 
@@ -63,7 +63,10 @@ Example:
 *  <b>`tf_random_seed`</b>: Random seed for TensorFlow initializers.
     Setting this value allows consistency between reruns.
 *  <b>`save_summary_steps`</b>: Save summaries every this many steps.
-*  <b>`save_checkpoints_secs`</b>: Save checkpoints every this many seconds.
+*  <b>`save_checkpoints_secs`</b>: Save checkpoints every this many seconds. Can not
+      be specified with `save_checkpoints_steps`.
+*  <b>`save_checkpoints_steps`</b>: Save checkpoints every this many steps. Can not be
+      specified with `save_checkpoints_secs`.
 *  <b>`keep_checkpoint_max`</b>: The maximum number of recent checkpoint files to
     keep. As new files are created, older files are deleted. If None or 0,
     all checkpoint files are kept. Defaults to 5 (that is, the 5 most recent

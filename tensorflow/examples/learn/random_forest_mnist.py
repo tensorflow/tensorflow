@@ -56,8 +56,8 @@ def train_and_eval():
   # forest is no longer growing.
   early_stopping_rounds = 100
   check_every_n_steps = 100
-  monitor = random_forest.LossMonitor(early_stopping_rounds,
-                                      check_every_n_steps)
+  monitor = random_forest.TensorForestLossMonitor(early_stopping_rounds,
+                                                  check_every_n_steps)
 
   mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=False)
 

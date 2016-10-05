@@ -1,0 +1,330 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../iron-collapse/iron-collapse.html">
+<link rel="import" href="../paper-toggle-button/paper-toggle-button.html">
+<link rel="import" href="../paper-listbox/paper-listbox.html">
+<link rel="import" href="../paper-item/paper-item.html">
+<link rel="import" href="../paper-checkbox/paper-checkbox.html">
+<link rel="import" href="../iron-icons/iron-icons.html">
+<link rel="import" href="../iron-icons/image-icons.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
+<link rel="import" href="../paper-tooltip/paper-tooltip.html">
+<link rel="import" href="../paper-input/paper-input.html">
+<link rel="import" href="../paper-button/paper-button.html">
+
+<dom-module id="vz-projector-projections-panel">
+<template>
+<style>
+
+.slider {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  justify-content: space-between;
+}
+
+.slider span {
+  width: 35px;
+  text-align: right;
+}
+
+.slider label {
+  width: 100%;
+}
+
+/* Ink Framework */
+
+/* - Buttons */
+.ink-button, ::shadow .ink-button {
+  border: none;
+  border-radius: 2px;
+  font-size: 13px;
+  padding: 10px;
+  min-width: 100px;
+  flex-shrink: 0;
+  background: #e3e3e3;
+}
+
+/* - Tabs */
+
+.ink-tab-group {
+  display: flex;
+  justify-content: space-around;
+  box-sizing: border-box;
+  height: 100%;
+  margin: 0 12px;
+}
+
+.ink-tab-group .projection-tab {
+  font-weight: 300;
+  color: rgba(0, 0, 0, 0.5);
+  text-align: center;
+  text-transform: uppercase;
+  line-height: 60px;
+  cursor: pointer;
+  padding: 0 12px;
+}
+
+.ink-tab-group .projection-tab:hover {
+  color: black;
+}
+
+.ink-tab-group .projection-tab.active {
+  font-weight: 500;
+  color: black;
+  border-bottom: 2px solid black;
+
+}
+
+/* - Panel */
+
+.ink-panel {
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+}
+
+.ink-panel h4 {
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 5px;
+  margin-bottom: 10px;
+}
+
+.ink-panel-header {
+  height: 60px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.ink-panel-buttons {
+  margin-bottom: 10px;
+}
+
+.ink-panel-content {
+  padding: 20px;
+  overflow-y: auto;
+  display: none;
+  height: 100%;
+}
+
+.ink-panel-content.active {
+  display: block;
+}
+
+.ink-panel-content h3 {
+  font-weight: 500;
+  font-size: 14px;
+  text-transform: uppercase;
+  margin-top: 20px;
+  margin-bottom: 5px;
+}
+
+.ink-panel-header h3 {
+  margin: 0;
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 60px;
+  text-transform: uppercase;
+  padding: 0 24px;
+}
+
+.two-way-toggle {
+  display: flex;
+  flex-direction: row;
+}
+
+.two-way-toggle span {
+  padding-right: 7px;
+}
+
+paper-listbox .pca-item {
+  cursor: pointer;
+  min-height: 17px;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.has-border {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.help-icon {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+}
+
+paper-tooltip {
+  max-width: 200px;
+  --paper-tooltip: {
+    font-size: 12px;
+  };
+}
+
+.toggle {
+  min-width: 0px;
+  font-size: 12px;
+  width: 17px;
+  min-height: 0px;
+  height: 21px;
+  padding: 0;
+  margin: 0px;
+}
+
+.toggle[active] {
+  background-color: #880E4F;
+  color: white;
+}
+
+paper-checkbox {
+  --paper-checkbox-checked-color: #880E4F;
+}
+
+paper-toggle-button {
+  --paper-toggle-button-checked-bar-color:  #880E4F;
+  --paper-toggle-button-checked-button-color:  #880E4F;
+  --paper-toggle-button-checked-ink-color: #880E4F;
+}
+
+paper-icon-button {
+  border-radius: 50%;
+}
+
+paper-icon-button[active] {
+  color: white;
+  background-color: #880E4F;
+}
+
+.two-columns {
+  display:flex;
+  justify-content: space-between;
+}
+
+.two-columns :first-child {
+  margin-right: 15px;
+}
+
+</style>
+<div class="ink-panel-header">
+  <div class="ink-tab-group">
+    <div data-tab="tsne" class="ink-tab projection-tab" title="t-distributed stochastic neighbor embedding">t-SNE</div>
+    <div data-tab="pca" class="ink-tab projection-tab" title="Principal component analysis">PCA</div>
+    <div data-tab="custom" class="ink-tab projection-tab" title="Linear projection of two custom vectors">Custom</div>
+  </div>
+</div>
+<!-- TSNE Controls -->
+<div data-panel="tsne" class="ink-panel-content">
+  <p>
+    <a href="https://en.wikipedia.org/wiki/T-distributed_stochastic_neighbor_embedding">t-distributed stochastic neighbor embedding</a> is a dimensionality reduction technique.
+  </p>
+  <p style="color: #880E4F; font-weight: bold;">
+    For fast results, your data will be sampled down to [[getTsneSampleSize()]] points.
+  </p>
+  <div class="slider">
+    <label>Dimension</label>
+    <div class="two-way-toggle">
+      <span>2D</span>
+      <paper-toggle-button id="tsne-toggle" checked>3D</paper-toggle-button>
+    </div>
+  </div>
+  <div class="slider tsne-perplexity">
+    <label>
+      Perplexity
+      <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+      <paper-tooltip position="right" animation-delay="0" fit-to-visible-bounds>
+        The most appropriate perplexity value depends on the density of your
+        data. Loosely speaking, one could say that a larger / denser dataset
+        requires a larger perplexity. Typical values for the perplexity range
+        between 5 and 50.
+      </paper-tooltip>
+    </label>
+    <input type="range" min="2" max="100"></input>
+    <span></span>
+  </div>
+  <div class="slider tsne-learning-rate">
+    <label>
+      Learning rate
+      <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+      <paper-tooltip position="right" animation-delay="0" fit-to-visible-bounds>
+        The most appropriate learning rate depends on the size of your data,
+        with smaller datasets requiring smaller learning rates.
+      </paper-tooltip>
+    </label>
+    <input type="range" min="-3" max="2"></input>
+    <span></span>
+  </div>
+  <p>
+    <button class="run-tsne ink-button" title="Re-run t-SNE">Re-run</button>
+    <button class="stop-tsne ink-button" title="Stop t-SNE">Stop</button>
+  </p>
+  <p>Iteration: <span class="run-tsne-iter">0</span></p>
+</div>
+<!-- PCA Controls -->
+<div data-panel="pca" class="ink-panel-content">
+  <p>
+    <a href="https://en.wikipedia.org/wiki/Principal_component_analysis">Principal component analysis</a> is a dimensionality reduction technique.
+  </p>
+  <p style="color: #880E4F; font-weight: bold;">
+    For fast results, your data will be sampled down to [[getPcaSampledDim()]] dimensions, so the PCA computation is approximate.
+  </p>
+  <label>X</label>
+  <paper-listbox class="has-border" selected="{{pcaX}}">
+    <template is="dom-repeat" items="[[pcaComponents]]">
+      <paper-item class="pca-item">Component #[[item]]</paper-item>
+    </template>
+  </paper-listbox>
+  <br/>
+  <label>Y</label>
+  <paper-listbox class="has-border" selected="{{pcaY}}">
+    <template is="dom-repeat" items="[[pcaComponents]]">
+      <paper-item class="pca-item">Component #[[item]]</paper-item>
+    </template>
+  </paper-listbox>
+  <br/>
+  <paper-checkbox id="z-checkbox" checked="{{hasPcaZ}}">Z</paper-checkbox>
+  <paper-listbox class="has-border" disabled="true" selected="{{pcaZ}}">
+    <template is="dom-repeat" items="[[pcaComponents]]">
+      <paper-item disabled="[[!hasPcaZ]]" class="pca-item">Component #[[item]]</paper-item>
+    </template>
+  </paper-listbox>
+</div>
+<!-- Custom Controls -->
+<div data-panel="custom" class="ink-panel-content">
+  <p>
+    Search for two vectors upon which to project all points. Click the
+    <code style="padding: 2px;">.*</code> button to enable
+    regex mode. The search is case insensitive.
+  <p>
+  <h3>Horizontal</h3>
+  <div class="two-columns">
+    <vz-projector-input id="xLeft" label="Left"></vz-projector-input>
+    <vz-projector-input id="xRight" label="Right"></vz-projector-input>
+  </div>
+  <h3>Vertical</h3>
+  <div class="two-columns">
+    <vz-projector-input id="yUp" label="Up"></vz-projector-input>
+    <vz-projector-input id="yDown" label="Down"></vz-projector-input>
+  </div>
+</div>
+</div>
+</template>
+</dom-module>

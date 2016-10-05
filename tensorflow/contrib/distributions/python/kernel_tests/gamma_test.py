@@ -257,7 +257,6 @@ class GammaTest(tf.test.TestCase):
     # Uses the Kolmogorov-Smirnov test for goodness of fit.
     ks, _ = stats.kstest(samples, stats.gamma(alpha, scale=1 / beta).cdf)
     # Return True when the test passes.
-    print(ks)
     return ks < 0.02
 
   def testGammaPdfOfSampleMultiDims(self):

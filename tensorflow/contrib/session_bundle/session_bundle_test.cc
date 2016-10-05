@@ -22,6 +22,8 @@ limitations under the License.
 #include "google/protobuf/any.pb.h"
 #include "tensorflow/contrib/session_bundle/signature.h"
 #include "tensorflow/contrib/session_bundle/test_util.h"
+#include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -74,6 +76,63 @@ Status CopyExport(const string& export_path, const string& variables_filename,
   return Status::OK();
 }
 
+string MakeSerializedExample(float x) {
+  tensorflow::Example example;
+  auto* feature_map = example.mutable_features()->mutable_feature();
+  (*feature_map)["x"].mutable_float_list()->add_value(x);
+  return example.SerializeAsString();
+}
+
+void CheckRegressionSignature(const Signatures& signatures,
+                              const SessionBundle& bundle) {
+  // Recover the Tensor names of our inputs and outputs.
+  ASSERT_TRUE(signatures.default_signature().has_regression_signature());
+  const RegressionSignature regression_signature =
+      signatures.default_signature().regression_signature();
+
+  const string input_name = regression_signature.input().tensor_name();
+  const string output_name = regression_signature.output().tensor_name();
+
+  // Validate the half plus two behavior.
+  std::vector<string> serialized_examples;
+  for (float x : {0, 1, 2, 3}) {
+    serialized_examples.push_back(MakeSerializedExample(x));
+  }
+  Tensor input = test::AsTensor<string>(serialized_examples, TensorShape({4}));
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(
+      bundle.session->Run({{input_name, input}}, {output_name}, {}, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+  test::ExpectTensorEqual<float>(
+      outputs[0], test::AsTensor<float>({2, 2.5, 3, 3.5}, TensorShape({4, 1})));
+}
+
+void CheckNamedSignatures(const Signatures& signatures,
+                          const SessionBundle& bundle) {
+  // Recover the Tensor names of our inputs and outputs.
+  const string input_name = signatures.named_signatures()
+                                .at("inputs")
+                                .generic_signature()
+                                .map()
+                                .at("x")
+                                .tensor_name();
+  const string output_name = signatures.named_signatures()
+                                 .at("outputs")
+                                 .generic_signature()
+                                 .map()
+                                 .at("y")
+                                 .tensor_name();
+
+  // Validate the half plus two behavior.
+  Tensor input = test::AsTensor<float>({0, 1, 2, 3}, TensorShape({4, 1}));
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(
+      bundle.session->Run({{input_name, input}}, {output_name}, {}, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+  test::ExpectTensorEqual<float>(
+      outputs[0], test::AsTensor<float>({2, 2.5, 3, 3.5}, TensorShape({4, 1})));
+}
+
 void CheckSessionBundle(const string& export_path,
                         const SessionBundle& bundle) {
   const string asset_path = io::JoinPath(export_path, kAssetsDirectory);
@@ -93,25 +152,10 @@ void CheckSessionBundle(const string& export_path,
                              TensorShape({})),
       path_outputs[1]);
 
-  // Validate the half plus two behavior.
-  Tensor input = test::AsTensor<float>({0, 1, 2, 3}, TensorShape({4, 1}));
-
-  // Recover the Tensor names of our inputs and outputs.
   Signatures signatures;
   TF_ASSERT_OK(GetSignatures(bundle.meta_graph_def, &signatures));
-  ASSERT_TRUE(signatures.default_signature().has_regression_signature());
-  const RegressionSignature regression_signature =
-      signatures.default_signature().regression_signature();
-
-  const string input_name = regression_signature.input().tensor_name();
-  const string output_name = regression_signature.output().tensor_name();
-
-  std::vector<Tensor> outputs;
-  TF_ASSERT_OK(
-      bundle.session->Run({{input_name, input}}, {output_name}, {}, &outputs));
-  ASSERT_EQ(outputs.size(), 1);
-  test::ExpectTensorEqual<float>(
-      outputs[0], test::AsTensor<float>({2, 2.5, 3, 3.5}, TensorShape({4, 1})));
+  CheckRegressionSignature(signatures, bundle);
+  CheckNamedSignatures(signatures, bundle);
 }
 
 void BasicTest(const string& export_path) {

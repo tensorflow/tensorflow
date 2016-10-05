@@ -184,40 +184,31 @@ export function zeros(length: number): Vector {
   return result;
 }
 
-export type Predicate<T> = (a: T) => boolean;
-
 /**
- * Computes the centroid of the data points that pass the specified predicate.
- * If the provided data points are not vectors, an accessor function needs
- * to be provided.
+ * Computes the centroid of the data points. If the provided data points are not
+ * vectors, an accessor function needs to be provided.
  */
-export function centroid<T>(
-    dataPoints: T[], predicate: Predicate<T>,
-    accessor?: (a: T) => Vector): {centroid: Vector, numMatches: number} {
+export function centroid<T>(dataPoints: T[], accessor?: (a: T) => Vector):
+    Vector {
+  if (dataPoints.length === 0) {
+    return null;
+  }
   if (accessor == null) {
     accessor = (a: T) => <any>a;
   }
   assert(dataPoints.length >= 0, '`vectors` must be of length >= 1');
-  let n = 0;
   let centroid = zeros(accessor(dataPoints[0]).length);
   for (let i = 0; i < dataPoints.length; ++i) {
     let dataPoint = dataPoints[i];
-    if (!predicate(dataPoint)) {
-      continue;
-    }
-    ++n;
     let vector = accessor(dataPoint);
     for (let j = 0; j < centroid.length; ++j) {
       centroid[j] += vector[j];
     }
   }
-  if (n === 0) {
-    return {centroid: null, numMatches: 0};
-  }
   for (let j = 0; j < centroid.length; ++j) {
-    centroid[j] /= n;
+    centroid[j] /= dataPoints.length;
   }
-  return {centroid: centroid, numMatches: n};
+  return centroid;
 }
 
 /**

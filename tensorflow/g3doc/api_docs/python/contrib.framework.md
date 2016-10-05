@@ -481,7 +481,7 @@ Adds a variable to the `GraphKeys.MODEL_VARIABLES` collection.
 
 - - -
 
-### `tf.contrib.framework.assert_global_step(global_step_tensor)` {#assert_global_step}
+### `tf.train.assert_global_step(global_step_tensor)` {#assert_global_step}
 
 Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
 
@@ -648,7 +648,7 @@ Create global step tensor in graph.
 
 - - -
 
-### `tf.contrib.framework.get_global_step(graph=None)` {#get_global_step}
+### `tf.train.get_global_step(graph=None)` {#get_global_step}
 
 Get the global step tensor.
 
