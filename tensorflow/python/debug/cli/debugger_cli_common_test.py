@@ -495,41 +495,43 @@ class TabCompletionRegistryTest(test_util.TensorFlowTestCase):
 
   def testTabCompletion(self):
     # The returned completions should have sorted order.
-    self.assertEqual(["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
-                     self._tc_reg.get_completions("print_tensor", "node_"))
+    self.assertEqual(
+        (["node_a:1", "node_a:2", "node_b:1", "node_b:2"], "node_"),
+        self._tc_reg.get_completions("print_tensor", "node_"))
 
-    self.assertEqual(["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
-                     self._tc_reg.get_completions("pt", ""))
+    self.assertEqual((["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
+                      "node_"), self._tc_reg.get_completions("pt", ""))
 
-    self.assertEqual(["node_a:1", "node_a:2"],
+    self.assertEqual((["node_a:1", "node_a:2"], "node_a:"),
                      self._tc_reg.get_completions("print_tensor", "node_a"))
 
-    self.assertEqual(["node_a:1"],
+    self.assertEqual((["node_a:1"], "node_a:1"),
                      self._tc_reg.get_completions("pt", "node_a:1"))
 
-    self.assertEqual([], self._tc_reg.get_completions("print_tensor",
-                                                      "node_a:3"))
+    self.assertEqual(([], ""),
+                     self._tc_reg.get_completions("print_tensor", "node_a:3"))
 
-    self.assertIsNone(self._tc_reg.get_completions("foo", "node_"))
+    self.assertEqual((None, None), self._tc_reg.get_completions("foo", "node_"))
 
   def testExtendCompletionItems(self):
-    self.assertEqual(["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
-                     self._tc_reg.get_completions("print_tensor", "node_"))
-    self.assertEqual(["node_a", "node_b", "node_c"],
+    self.assertEqual(
+        (["node_a:1", "node_a:2", "node_b:1", "node_b:2"], "node_"),
+        self._tc_reg.get_completions("print_tensor", "node_"))
+    self.assertEqual((["node_a", "node_b", "node_c"], "node_"),
                      self._tc_reg.get_completions("node_info", "node_"))
 
     self._tc_reg.extend_comp_items("print_tensor", ["node_A:1", "node_A:2"])
 
-    self.assertEqual(["node_A:1", "node_A:2", "node_a:1", "node_a:2",
-                      "node_b:1", "node_b:2"],
+    self.assertEqual((["node_A:1", "node_A:2", "node_a:1", "node_a:2",
+                       "node_b:1", "node_b:2"], "node_"),
                      self._tc_reg.get_completions("print_tensor", "node_"))
 
     # Extending the completions for one of the context's context words should
     # have taken effect on other context words of the same context as well.
-    self.assertEqual(["node_A:1", "node_A:2", "node_a:1", "node_a:2",
-                      "node_b:1", "node_b:2"],
+    self.assertEqual((["node_A:1", "node_A:2", "node_a:1", "node_a:2",
+                       "node_b:1", "node_b:2"], "node_"),
                      self._tc_reg.get_completions("pt", "node_"))
-    self.assertEqual(["node_a", "node_b", "node_c"],
+    self.assertEqual((["node_a", "node_b", "node_c"], "node_"),
                      self._tc_reg.get_completions("node_info", "node_"))
 
   def testExtendCompletionItemsNonexistentContext(self):
@@ -538,16 +540,17 @@ class TabCompletionRegistryTest(test_util.TensorFlowTestCase):
       self._tc_reg.extend_comp_items("foo", ["node_A:1", "node_A:2"])
 
   def testRemoveCompletionItems(self):
-    self.assertEqual(["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
-                     self._tc_reg.get_completions("print_tensor", "node_"))
-    self.assertEqual(["node_a", "node_b", "node_c"],
+    self.assertEqual(
+        (["node_a:1", "node_a:2", "node_b:1", "node_b:2"], "node_"),
+        self._tc_reg.get_completions("print_tensor", "node_"))
+    self.assertEqual((["node_a", "node_b", "node_c"], "node_"),
                      self._tc_reg.get_completions("node_info", "node_"))
 
     self._tc_reg.remove_comp_items("pt", ["node_a:1", "node_a:2"])
 
-    self.assertEqual(["node_b:1", "node_b:2"],
+    self.assertEqual((["node_b:1", "node_b:2"], "node_b:"),
                      self._tc_reg.get_completions("print_tensor", "node_"))
-    self.assertEqual(["node_a", "node_b", "node_c"],
+    self.assertEqual((["node_a", "node_b", "node_c"], "node_"),
                      self._tc_reg.get_completions("node_info", "node_"))
 
   def testRemoveCompletionItemsNonexistentContext(self):
@@ -556,23 +559,27 @@ class TabCompletionRegistryTest(test_util.TensorFlowTestCase):
       self._tc_reg.remove_comp_items("foo", ["node_a:1", "node_a:2"])
 
   def testDeregisterContext(self):
-    self.assertEqual(["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
-                     self._tc_reg.get_completions("print_tensor", "node_"))
-    self.assertEqual(["node_a", "node_b", "node_c"],
+    self.assertEqual(
+        (["node_a:1", "node_a:2", "node_b:1", "node_b:2"], "node_"),
+        self._tc_reg.get_completions("print_tensor", "node_"))
+    self.assertEqual((["node_a", "node_b", "node_c"], "node_"),
                      self._tc_reg.get_completions("node_info", "node_"))
 
     self._tc_reg.deregister_context(["print_tensor"])
 
-    self.assertIsNone(self._tc_reg.get_completions("print_tensor", "node_"))
+    self.assertEqual((None, None),
+                     self._tc_reg.get_completions("print_tensor", "node_"))
 
     # The alternative context word should be unaffected.
-    self.assertEqual(["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
-                     self._tc_reg.get_completions("pt", "node_"))
+    self.assertEqual(
+        (["node_a:1", "node_a:2", "node_b:1", "node_b:2"], "node_"),
+        self._tc_reg.get_completions("pt", "node_"))
 
   def testDeregisterNonexistentContext(self):
-    self.assertEqual(["node_a:1", "node_a:2", "node_b:1", "node_b:2"],
-                     self._tc_reg.get_completions("print_tensor", "node_"))
-    self.assertEqual(["node_a", "node_b", "node_c"],
+    self.assertEqual(
+        (["node_a:1", "node_a:2", "node_b:1", "node_b:2"], "node_"),
+        self._tc_reg.get_completions("print_tensor", "node_"))
+    self.assertEqual((["node_a", "node_b", "node_c"], "node_"),
                      self._tc_reg.get_completions("node_info", "node_"))
 
     self._tc_reg.deregister_context(["print_tensor"])
