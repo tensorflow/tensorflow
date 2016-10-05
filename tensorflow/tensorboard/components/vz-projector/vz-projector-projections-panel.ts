@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 import {DataSet, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE} from './data';
+import {MetadataResult} from './data-loader';
 import * as vector from './vector';
 import {Projector} from './vz-projector';
 import {ProjectorInput} from './vz-projector-input';
@@ -24,11 +25,18 @@ import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
 export let ProjectionsPanelPolymer = PolymerElement({
   is: 'vz-projector-projections-panel',
   properties: {
+    // PCA projection.
     pcaComponents: {type: Array, value: d3.range(1, 11)},
-    pcaX: {type: Number, value: 0, observer: 'showPCA'},
-    pcaY: {type: Number, value: 1, observer: 'showPCA'},
-    pcaZ: {type: Number, value: 2, observer: 'showPCA'},
+    pcaX: {type: Number, value: 1, observer: 'showPCA'},
+    pcaY: {type: Number, value: 2, observer: 'showPCA'},
+    pcaZ: {type: Number, value: 3, observer: 'showPCA'},
     hasPcaZ: {type: Boolean, value: true},
+    // Custom projection.
+    selectedSearchByMetadataOption: {
+      type: String,
+      value: 'label',
+      observer: '_searchByMetadataOptionChanged'
+    },
   }
 });
 
@@ -36,6 +44,8 @@ export let ProjectionsPanelPolymer = PolymerElement({
  * A polymer component which handles the projection tabs in the projector.
  */
 export class ProjectionsPanel extends ProjectionsPanelPolymer {
+  selectedSearchByMetadataOption: string;
+
   private projector: Projector;
 
   // The working subset of the data source's original data set.
@@ -48,6 +58,8 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   private perplexity: number;
   /** T-SNE learning rate. */
   private learningRate: number;
+
+  private searchByMetadataOptions: string[];
 
   /** Centroids for custom projections. */
   private centroidValues: any;
@@ -88,6 +100,8 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
 
   ready() {
     this.dom = d3.select(this);
+
+    this.searchByMetadataOptions = ['label'];
   }
 
   private setupUIControls() {
@@ -143,10 +157,25 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.dim = dim;
     this.clearCentroids();
 
-    this.setupInputUIInCustomTab('xLeft');
-    this.setupInputUIInCustomTab('xRight');
-    this.setupInputUIInCustomTab('yUp');
-    this.setupInputUIInCustomTab('yDown');
+    this.setupAllInputsInCustomTab();
+  }
+
+  metadataChanged(result: MetadataResult) {
+    // Project by options for custom projections.
+    let searchByMetadataIndex = -1;
+    if (result.stats.length > 1) {
+      this.searchByMetadataOptions = result.stats.map((stats, i) => {
+        // Make the default label by the first non-numeric column.
+        if (!stats.isNumeric && searchByMetadataIndex === -1) {
+          searchByMetadataIndex = i;
+        }
+        return stats.name;
+      });
+    } else {
+      this.searchByMetadataOptions = ['label'];
+    }
+    this.selectedSearchByMetadataOption =
+        this.searchByMetadataOptions[Math.max(0, searchByMetadataIndex)];
   }
 
   public showProjectionTab(projection: Projection) {
@@ -201,9 +230,10 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       return;
     }
     this.currentDataSet.projectPCA().then(() => {
-      let x = this.pcaX;
-      let y = this.pcaY;
-      let z = this.pcaZ;
+      // Polymer properties are 1-based.
+      let x = this.pcaX - 1;
+      let y = this.pcaY - 1;
+      let z = this.pcaZ - 1;
       let hasZ = this.dimension === 3;
 
       this.projector.setProjection(
@@ -219,8 +249,9 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   }
 
   private showCustom() {
-    if (this.centroids.xLeft == null || this.centroids.xRight == null ||
-        this.centroids.yUp == null || this.centroids.yDown == null) {
+    if (this.centroids == null || this.centroids.xLeft == null ||
+        this.centroids.xRight == null || this.centroids.yUp == null ||
+        this.centroids.yDown == null) {
       return;
     }
     let xDir = vector.sub(this.centroids.xRight, this.centroids.xLeft);
@@ -247,7 +278,23 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.allCentroid = null;
   }
 
-  private setupInputUIInCustomTab(name: string) {
+  _searchByMetadataOptionChanged(newVal: string, oldVal: string) {
+    // Ignore the initial call to the observer so we don't try to create these
+    // projections pre-emptively.
+    if (oldVal) {
+      this.setupAllInputsInCustomTab(true /** callListenersImmediately */);
+    }
+  }
+
+  private setupAllInputsInCustomTab(callListenersImmediately = false) {
+    this.setupInputUIInCustomTab('xLeft', callListenersImmediately);
+    this.setupInputUIInCustomTab('xRight', callListenersImmediately);
+    this.setupInputUIInCustomTab('yUp', callListenersImmediately);
+    this.setupInputUIInCustomTab('yDown', callListenersImmediately);
+  }
+
+  private setupInputUIInCustomTab(
+      name: string, callListenersImmediately = false) {
     let input = this.querySelector('#' + name) as ProjectorInput;
 
     let updateInput = (value: string, inRegexMode: boolean) => {
@@ -265,13 +312,13 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       this.centroidValues[name] = value;
     };
 
-    updateInput('', false);
+    updateInput(input.getValue(), false);
 
     // Setup the input text.
     input.onInputChanged((input, inRegexMode) => {
       updateInput(input, inRegexMode);
       this.showCustom();
-    }, false /** callImmediately */);
+    }, callListenersImmediately);
   }
 
   private getCentroid(pattern: string, inRegexMode: boolean): CentroidResult {
@@ -279,10 +326,8 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       return {numMatches: 0};
     }
     let accessor = (i: number) => this.currentDataSet.points[i].vector;
-    // TODO(nsthorat): Don't use labelOption, create a new dropdown for this
-    // component.
     let r = this.projector.currentDataSet.query(
-        pattern, inRegexMode, this.projector.labelOption);
+        pattern, inRegexMode, this.selectedSearchByMetadataOption);
     return {centroid: vector.centroid(r, accessor), numMatches: r.length};
   }
 

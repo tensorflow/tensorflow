@@ -94,6 +94,10 @@ export class ProjectorInput extends PolymerClass {
         .selectAll('.slash')
         .style('display', this.inRegexMode ? null : 'none');
   }
+
+  getValue(): string {
+    return this.paperInput.value;
+  }
 }
 
 document.registerElement(ProjectorInput.prototype.is, ProjectorInput);

@@ -57,9 +57,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
                                                            HoverContext {
   // The working subset of the data source's original data set.
   currentDataSet: DataSet;
-  // TODO(nsthorat): Make this private again when we create a second
-  // dropdown for centroid computation.
-  labelOption: string;
 
   private selectionChangedListeners: SelectionChangedListener[];
   private hoverListeners: HoverListener[];
@@ -77,6 +74,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   private inspectorPanel: InspectorPanel;
 
   private colorOption: ColorOption;
+  private labelOption: string;
   private routePrefix: string;
   private normalizeData: boolean;
   private selectedProjection: Projection;
@@ -194,6 +192,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.dataSet.spriteImage = result.spriteImage;
     this.dataSet.metadata = result.datasetMetadata;
     this.inspectorPanel.metadataChanged(result);
+    this.projectionsPanel.metadataChanged(result);
   }
 
   /**
