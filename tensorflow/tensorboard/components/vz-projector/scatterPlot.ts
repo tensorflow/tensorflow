@@ -219,7 +219,7 @@ export class ScatterPlot {
   }
 
   /** Sets up camera to work in 3D (called after makeCamera()). */
-  private makeCamera3D() {
+  private makeCamera3D(animate?: boolean) {
     // Set up the camera position at a skewed angle from the xy plane, looking
     // toward the origin
     this.cameraControls.position0.set(POS_3D.x, POS_3D.y, POS_3D.z);
@@ -232,9 +232,16 @@ export class ScatterPlot {
     // TODO(nsthorat): Remove this. This method shouldn't be called every time
     // a projection changes.
     if (!this.cameraSetFromState) {
-      this.animate(position, target, () => {
-        this.startLazySusanAnimation();
-      });
+      if (animate) {
+        this.animate(position, target, () => {
+          this.startLazySusanAnimation();
+        });
+      } else {
+        this.cameraControls.target.set(target.x, target.y, target.z);
+        this.perspCamera.position.set(position.x, position.y, position.z);
+        this.cameraControls.update();
+        this.render();
+      }
     }
     this.cameraSetFromState = false;
   }
@@ -586,13 +593,13 @@ export class ScatterPlot {
     this.addAxesToScene();
   }
 
-  recreateScene() {
+  recreateScene(animate = true) {
     this.removeAll();
     this.cancelAnimation();
     if (this.sceneIs3D()) {
-      this.makeCamera3D();
+      this.makeCamera3D(animate);
     } else {
-      this.makeCamera2D();
+      this.makeCamera2D(animate);
     }
     this.visualizers.forEach(v => {
       v.onRecreateScene(this.scene, this.sceneIs3D(), this.backgroundColor);

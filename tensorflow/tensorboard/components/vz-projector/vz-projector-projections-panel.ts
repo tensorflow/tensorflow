@@ -171,10 +171,12 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
             (i => this.currentDataSet.points[i].projections['tsne-2']) :
             null,
         // Axis labels.
-        'tsne-0', 'tsne-1');
+        'tsne-0', 'tsne-1', true /** deferUpdate */);
 
     if (!this.currentDataSet.hasTSNERun) {
       this.runTSNE();
+    } else {
+      this.projector.notifyProjectionsUpdated();
     }
   }
 

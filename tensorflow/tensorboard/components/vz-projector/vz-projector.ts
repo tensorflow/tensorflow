@@ -389,13 +389,18 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       projection: Projection, xAccessor: (index: number) => number,
       yAccessor: (index: number) => number,
       zAccessor: (index: number) => number, xAxisLabel: string,
-      yAxisLabel: string) {
+      yAxisLabel: string, deferUpdate = false) {
     this.selectedProjection = projection;
     this.scatterPlot.showTickLabels(false);
     this.scatterPlot.setPointAccessors(xAccessor, yAccessor, zAccessor);
     this.scatterPlot.setAxisLabels(xAxisLabel, yAxisLabel);
-    this.scatterPlot.update();
-    this.scatterPlot.recreateScene();
+    if (!deferUpdate) {
+      this.scatterPlot.update();
+    }
+    // Don't animate if we've defered updating as expensive computation is
+    // happening to compute the projections, and there's no reason to animate
+    // around non-existence projections.
+    this.scatterPlot.recreateScene(!deferUpdate /** animate */);
   }
 
   notifyProjectionsUpdated() {
