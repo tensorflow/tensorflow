@@ -32,16 +32,36 @@ py_library(
 )
 
 py_library(
+    name = "framework",
+    srcs = ["framework.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_utils",
+        "//tensorflow/python:session",
+    ],
+)
+
+py_library(
     name = "debugger_cli_common",
     srcs = ["cli/debugger_cli_common.py"],
     srcs_version = "PY2AND3",
 )
 
 py_library(
+    name = "tensor_format",
+    srcs = ["cli/tensor_format.py"],
+    srcs_version = "PY2AND3",
+    deps = [":debugger_cli_common"],
+)
+
+py_library(
     name = "analyzer_cli",
     srcs = ["cli/analyzer_cli.py"],
     srcs_version = "PY2AND3",
-    deps = [":debugger_cli_common"],
+    deps = [
+        ":debugger_cli_common",
+        ":tensor_format",
+    ],
 )
 
 py_test(
@@ -75,6 +95,24 @@ py_test(
     ],
 )
 
+py_test(
+    name = "framework_test",
+    size = "small",
+    srcs = [
+        "framework_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_data",
+        ":framework",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:variables",
+    ],
+)
+
 cuda_py_test(
     name = "session_debug_test",
     size = "small",
@@ -100,6 +138,19 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":debugger_cli_common",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "tensor_format_test",
+    size = "small",
+    srcs = [
+        "cli/tensor_format_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tensor_format",
         "//tensorflow/python:framework_test_lib",
     ],
 )

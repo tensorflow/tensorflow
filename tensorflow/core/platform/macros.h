@@ -23,6 +23,7 @@ limitations under the License.
 #define TF_ATTRIBUTE_NOINLINE __attribute__((noinline))
 #define TF_ATTRIBUTE_UNUSED __attribute__((unused))
 #define TF_ATTRIBUTE_COLD __attribute__((cold))
+#define TF_ATTRIBUTE_WEAK __attribute__((weak))
 #define TF_PACKED __attribute__((packed))
 #define TF_MUST_USE_RESULT __attribute__((warn_unused_result))
 #define TF_PRINTF_ATTRIBUTE(string_index, first_to_check) \
@@ -36,6 +37,7 @@ limitations under the License.
 #define TF_ATTRIBUTE_NOINLINE
 #define TF_ATTRIBUTE_UNUSED
 #define TF_ATTRIBUTE_COLD
+#define TF_ATTRIBUTE_WEAK
 #define TF_MUST_USE_RESULT
 #define TF_PACKED
 #define TF_PRINTF_ATTRIBUTE(string_index, first_to_check)

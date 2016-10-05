@@ -128,13 +128,13 @@ def crf_log_likelihood(inputs,
                        tag_indices,
                        sequence_lengths,
                        transition_params=None):
-  """Computes the log-likehood of tag sequences in a CRF.
+  """Computes the log-likelihood of tag sequences in a CRF.
 
   Args:
     inputs: A [batch_size, max_seq_len, num_tags] tensor of unary potentials
         to use as input to the CRF layer.
     tag_indices: A [batch_size, max_seq_len] matrix of tag indices for which we
-        compute the log-likehood.
+        compute the log-likelihood.
     sequence_lengths: A [batch_size] vector of true sequence lengths.
     transition_params: A [num_tags, num_tags] transition matrix, if available.
   Returns:
@@ -291,7 +291,7 @@ def viterbi_decode(score, transition_params):
   Returns:
     viterbi: A [seq_len] list of integers containing the highest scoring tag
         indicies.
-    viterbi_score: A float containing the score for the viterbi sequence.
+    viterbi_score: A float containing the score for the Viterbi sequence.
   """
   trellis = np.zeros_like(score)
   backpointers = np.zeros_like(score, dtype=np.int32)

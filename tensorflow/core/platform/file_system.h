@@ -64,11 +64,32 @@ class FileSystem {
   virtual Status GetChildren(const string& dir,
                              std::vector<string>* result) = 0;
 
-  /// \brief Recursively returns all the files in the given directory.
-  ///
-  /// The returned paths are relative to 'dir'.
-  virtual Status GetChildrenRecursively(const string& dir,
-                                        std::vector<string>* result);
+  // \brief Given a pattern, stores in *results the set of paths that matches
+  // that pattern. *results is cleared.
+  //
+  // pattern must match all of a name, not just a substring.
+  //
+  // pattern: { term }
+  // term:
+  //   '*': matches any sequence of non-'/' characters
+  //   '?': matches a single non-'/' character
+  //   '[' [ '^' ] { match-list } ']':
+  //        matches any single character (not) on the list
+  //   c: matches character c (c != '*', '?', '\\', '[')
+  //   '\\' c: matches character c
+  // character-range:
+  //   c: matches character c (c != '\\', '-', ']')
+  //   '\\' c: matches character c
+  //   lo '-' hi: matches character c for lo <= c <= hi
+  //
+  // Typical return codes
+  //  * OK - no errors
+  //  * UNIMPLEMENTED - Some underlying functions (like GetChildren) are not
+  //                    implemented
+  // The default implementation uses a combination of GetChildren, MatchPath
+  // and IsDirectory.
+  virtual Status GetMatchingPaths(const string& pattern,
+                                  std::vector<string>* results);
 
   virtual Status Stat(const string& fname, FileStatistics* stat) = 0;
 
@@ -76,10 +97,33 @@ class FileSystem {
 
   virtual Status CreateDir(const string& dirname) = 0;
 
+  // \brief Creates the specified directory and all the necessary
+  // subdirectories. Typical return codes.
+  //  * OK - successfully created the directory and sub directories, even if
+  //         they were already created.
+  //  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
+  virtual Status RecursivelyCreateDir(const string& dirname);
+
   virtual Status DeleteDir(const string& dirname) = 0;
+
+  // \brief Deletes the specified directory and all subdirectories and files
+  // underneath it. undeleted_files and undeleted_dirs stores the number of
+  // files and directories that weren't deleted (unspecified if the return
+  // status is not OK).
+  // REQUIRES: undeleted_files, undeleted_dirs to be not null.
+  // Typical return codes
+  //  * OK - dirname exists and we were able to delete everything underneath.
+  //  * NOT_FOUND - dirname doesn't exist
+  //  * PERMISSION_DENIED - dirname or some descendant is not writable
+  //  * UNIMPLEMENTED - Some underlying functions (like Delete) are not
+  //                    implemented
+  virtual Status DeleteRecursively(const string& dirname,
+                                   int64* undeleted_files,
+                                   int64* undeleted_dirs);
 
   virtual Status GetFileSize(const string& fname, uint64* file_size) = 0;
 
+  // Overwrites the target if it exists.
   virtual Status RenameFile(const string& src, const string& target) = 0;
 
   // Translate an URI to a filename usable by the FileSystem implementation. The

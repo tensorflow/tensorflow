@@ -46,6 +46,21 @@ __all__ = [
     "MultivariateNormalDiagPlusVDVT",
 ]
 
+_mvn_prob_note = """
+`x` is a batch vector with compatible shape if `x` is a `Tensor` whose
+shape can be broadcast up to either:
+
+```
+self.batch_shape + self.event_shape
+```
+
+or
+
+```
+[M1,...,Mm] + self.batch_shape + self.event_shape
+```
+"""
+
 
 class _MultivariateNormalOperatorPD(distribution.Distribution):
   """The multivariate normal distribution on `R^k`.
@@ -232,6 +247,7 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
     samples = correlated_samples + self.mu
     return samples
 
+  @distribution_util.AppendDocstring(_mvn_prob_note)
   def _log_prob(self, x):
     # Q:  Why are shape requirements as stated above?
     # A:  The compatible shapes are precisely the ones that will broadcast to
@@ -263,6 +279,7 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
     log_prob_value.set_shape(output_static_shape)
     return log_prob_value
 
+  @distribution_util.AppendDocstring(_mvn_prob_note)
   def _prob(self, x):
     return math_ops.exp(self.log_prob(x))
 
@@ -285,23 +302,6 @@ class _MultivariateNormalOperatorPD(distribution.Distribution):
 
   def _mode(self):
     return array_ops.identity(self._mu)
-
-
-_prob_note = """
-    `x` is a batch vector with compatible shape if `x` is a `Tensor` whose
-    shape can be broadcast up to either:
-
-    ````
-    self.batch_shape + self.event_shape
-    OR
-    [M1,...,Mm] + self.batch_shape + self.event_shape
-    ```
-
-"""
-distribution_util.append_class_fun_doc(_MultivariateNormalOperatorPD.log_prob,
-                                       doc_str=_prob_note)
-distribution_util.append_class_fun_doc(_MultivariateNormalOperatorPD.prob,
-                                       doc_str=_prob_note)
 
 
 class MultivariateNormalDiag(_MultivariateNormalOperatorPD):
@@ -572,7 +572,7 @@ class MultivariateNormalCholesky(_MultivariateNormalOperatorPD):
   dist.pdf(x)
   ```
 
-  Trainable (batch) Choesky matrices can be created with
+  Trainable (batch) Cholesky matrices can be created with
   `tf.contrib.distributions.matrix_diag_transform()`
 
   """

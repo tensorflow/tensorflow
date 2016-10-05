@@ -262,7 +262,7 @@ output data.
 
 This gives us a vector of `Tensor` objects, which in this case we know will only be a
 single object long. You can think of a `Tensor` as a multi-dimensional array in this
-context, and it holds a 299 pixel high, 299 pixel width, 3 channel image as float
+context, and it holds a 299 pixel high, 299 pixel wide, 3 channel image as float
 values. If you have your own image-processing framework in your product already, you
 should be able to use that instead, as long as you apply the same transformations
 before you feed images into the main graph.

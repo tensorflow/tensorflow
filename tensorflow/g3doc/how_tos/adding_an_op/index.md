@@ -538,7 +538,7 @@ Your Op registration now specifies that the input's type must be `float`, or
 > REGISTER_OP("StringToNumber")
 >     .Input("string_tensor: string")
 >     .Output("output: out_type")
->     .Attr("out_type: {float, int32}");
+>     .Attr("out_type: {float, int32} = DT_FLOAT");
 >     .Doc(R"doc(
 > Converts each string in the input Tensor to the specified numeric type.
 > )doc");
@@ -626,7 +626,7 @@ REGISTER\_OP("ZeroOut")
 
 Instead of writing another `OpKernel` with redundant code as above, often you
 will be able to use a C++ template instead.  You will still have one kernel
-registration (`REGISTER\_KERNEL\_BUILDER` call) per overload.
+registration (`REGISTER_KERNEL_BUILDER` call) per overload.
 
 <code class="lang-c++"><pre>
 <b>template &lt;typename T&gt;</b>

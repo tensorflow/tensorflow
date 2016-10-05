@@ -49,7 +49,8 @@ class LogisticRegressor(estimator.Estimator):
   """Logistic regression Estimator for binary classification.
   """
 
-  def __init__(self, model_fn, thresholds=None, model_dir=None, config=None):
+  def __init__(self, model_fn, thresholds=None, model_dir=None, config=None,
+               feature_engineering_fn=None):
     """Initializes a LogisticRegressor.
 
     Args:
@@ -61,13 +62,19 @@ class LogisticRegressor(estimator.Estimator):
         be used to load checkpoints from the directory into a estimator to
         continue training a previously saved model.
       config: A RunConfig configuration object.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        targets which are the output of `input_fn` and
+                        returns features and targets which will be fed
+                        into the model.
     """
     if thresholds is None:
       thresholds = [0.5]
     self._thresholds = thresholds
-    super(LogisticRegressor, self).__init__(model_fn=model_fn,
-                                            model_dir=model_dir,
-                                            config=config)
+    super(LogisticRegressor, self).__init__(
+        model_fn=model_fn,
+        model_dir=model_dir,
+        config=config,
+        feature_engineering_fn=feature_engineering_fn)
 
   # TODO(zakaria): use target column.
 

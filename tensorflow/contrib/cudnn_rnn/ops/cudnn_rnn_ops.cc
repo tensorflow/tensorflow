@@ -72,7 +72,10 @@ REGISTER_OP("CudnnRNNParamsSize")
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
     .Output("params_size: S")
-    .SetShapeFn(shape_inference::ScalarShape)
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(1));
+      return Status::OK();
+    })
     .Doc(strings::StrCat(R"doc(
 Return the params size that can be used by the Cudnn RNN model. Subsequent
 weight allocation and initialization should use this size.

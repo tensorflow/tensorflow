@@ -554,16 +554,24 @@ REGISTER_OP("MatrixSetDiag")
       ShapeHandle diag;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &diag));
-
-      DimensionHandle square_dim;
+      if (c->RankKnown(input)) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(1), c->Rank(input) - 1, &diag));
+      }
+      DimensionHandle smallest_dim;
       TF_RETURN_IF_ERROR(
-          c->Merge(c->Dim(input, -2), c->Dim(input, -1), &square_dim));
-      TF_RETURN_IF_ERROR(c->Merge(square_dim, c->Dim(diag, -1), &square_dim));
+          c->Min(c->Dim(input, -2), c->Dim(input, -1), &smallest_dim));
+      TF_RETURN_IF_ERROR(
+          c->Merge(smallest_dim, c->Dim(diag, -1), &smallest_dim));
 
-      ShapeHandle output;
-      TF_RETURN_IF_ERROR(c->Concatenate(diag, c->Vector(square_dim), &output));
-      TF_RETURN_IF_ERROR(c->Merge(input, output, &output));
-
+      ShapeHandle output = input;
+      if (c->RankKnown(diag) && !c->FullyDefined(input)) {
+        // Try to infer parts of shape from diag.
+        ShapeHandle diag_prefix;
+        TF_RETURN_IF_ERROR(c->Subshape(diag, 0, -1, &diag_prefix));
+        TF_RETURN_IF_ERROR(
+            c->Concatenate(diag_prefix, c->UnknownShapeOfRank(2), &diag));
+        TF_RETURN_IF_ERROR(c->Merge(input, diag, &output));
+      }
       c->set_output(0, output);
       return Status::OK();
     })
@@ -571,15 +579,14 @@ REGISTER_OP("MatrixSetDiag")
 Returns a batched matrix tensor with new batched diagonal values.
 
 Given `input` and `diagonal`, this operation returns a tensor with the
-same shape and values as `input`, except for the diagonals of the innermost
-matrices.  These will be overwritten by the values in `diagonal`.
-The batched matrices must be square.
+same shape and values as `input`, except for the main diagonal of the
+innermost matrices.  These will be overwritten by the values in `diagonal`.
 
 The output is computed as follows:
 
-Assume `input` has `k+1` dimensions `[I, J, K, ..., N, N]` and `diagonal` has
-`k` dimensions `[I, J, K, ..., N]`.  Then the output is a
-tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+Assume `input` has `k+1` dimensions `[I, J, K, ..., M, N]` and `diagonal` has
+`k` dimensions `[I, J, K, ..., min(M, N)]`.  Then the output is a
+tensor of rank `k+1` with dimensions `[I, J, K, ..., M, N]` where:
 
   * `output[i, j, k, ..., m, n] = diagonal[i, j, k, ..., n]` for `m == n`.
   * `output[i, j, k, ..., m, n] = input[i, j, k, ..., m, n]` for `m != n`.
@@ -602,14 +609,13 @@ REGISTER_OP("MatrixDiagPart")
         return Status::OK();
       }
       const int32 rank = c->Rank(in);
-      // Last two dims must match.
-      DimensionHandle unused;
-      TF_RETURN_IF_ERROR(
-          c->Merge(c->Dim(in, rank - 1), c->Dim(in, rank - 2), &unused));
-
-      // Output shape has all dims but last of input.
       std::vector<DimensionHandle> dims;
-      for (int i = 0; i < rank - 1; ++i) dims.push_back(c->Dim(in, i));
+      for (int i = 0; i < rank - 2; ++i) dims.push_back(c->Dim(in, i));
+
+      DimensionHandle min_dim;
+      TF_RETURN_IF_ERROR(
+          c->Min(c->Dim(in, rank - 2), c->Dim(in, rank - 1), &min_dim));
+      dims.push_back(min_dim);
       c->set_output(0, c->MakeShape(dims));
       return Status::OK();
     })
@@ -619,8 +625,8 @@ Returns the batched diagonal part of a batched tensor.
 This operation returns a tensor with the `diagonal` part
 of the batched `input`. The `diagonal` part is computed as follows:
 
-Assume `input` has `k` dimensions `[I, J, K, ..., N, N]`, then the output is a
-tensor of rank `k - 1` with dimensions `[I, J, K, ..., N]` where:
+Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
+tensor of rank `k - 1` with dimensions `[I, J, K, ..., min(M, N)]` where:
 
 `diagonal[i, j, k, ..., n] = input[i, j, k, ..., n, n]`.
 
@@ -645,9 +651,9 @@ tf.matrix_diag_part(input) ==> [[1, 2, 3, 4], [5, 6, 7, 8]]
 which has shape (2, 4)
 ```
 
-input: Rank `k` tensor where `k >= 2` and the last two dimensions are equal.
+input: Rank `k` tensor where `k >= 2`.
 diagonal: The extracted diagonal(s) having shape
-  `diagonal.shape = input.shape[:-1]`.
+  `diagonal.shape = input.shape[:-2] + [min(input.shape[-2:])]`.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -668,9 +674,10 @@ tensor with the same shape where
 
 `band[i, j, k, ..., m, n] = in_band(m, n) * input[i, j, k, ..., m, n]`.
 
-The indicator function 'in_band(m, n)` is one if
-`(num_lower < 0 || (m-n) <= num_lower)) &&
-(num_upper < 0 || (n-m) <= num_upper)`, and zero otherwise.
+The indicator function
+
+`in_band(m, n) = (num_lower < 0 || (m-n) <= num_lower)) &&
+                 (num_upper < 0 || (n-m) <= num_upper)`.
 
 For example:
 
@@ -681,14 +688,14 @@ For example:
                  [-3, -2, -1, 0]],
 
 tf.matrix_band_part(input, 1, -1) ==> [[ 0,  1,  2, 3]
-                                             [-1,  0,  1, 2]
-                                             [ 0, -1,  0, 1]
-                                             [ 0,  0, -1, 0]],
+                                       [-1,  0,  1, 2]
+                                       [ 0, -1,  0, 1]
+                                       [ 0,  0, -1, 0]],
 
 tf.matrix_band_part(input, 2, 1) ==> [[ 0,  1,  0, 0]
-                                            [-1,  0,  1, 0]
-                                            [-2, -1,  0, 1]
-                                            [ 0, -2, -1, 0]]
+                                      [-1,  0,  1, 0]
+                                      [-2, -1,  0, 1]
+                                      [ 0, -2, -1, 0]]
 ```
 
 Useful special cases:
@@ -938,6 +945,7 @@ Gather slices from `params` according to `indices`.
 `indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
 Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
 
+```python
     # Scalar indices
     output[:, ..., :] = params[indices, :, ... :]
 
@@ -946,6 +954,7 @@ Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
 
     # Higher rank indices
     output[i, ..., j, :, ... :] = params[indices[i, ..., j], :, ..., :]
+```
 
 If `indices` is a permutation and `len(indices) == params.shape[0]` then
 this operation will permute `params` accordingly.
@@ -1010,18 +1019,23 @@ Some examples below.
 
 Simple indexing into a matrix:
 
+```python
     indices = [[0, 0], [1, 1]]
     params = [['a', 'b'], ['c', 'd']]
     output = ['a', 'd']
+```
 
 Slice indexing into a matrix:
 
+```python
     indices = [[1], [0]]
     params = [['a', 'b'], ['c', 'd']]
     output = [['c', 'd'], ['a', 'b']]
+```
 
 Indexing into a 3-tensor:
 
+```python
     indices = [[1]]
     params = [[['a0', 'b0'], ['c0', 'd0']],
               [['a1', 'b1'], ['c1', 'd1']]]
@@ -1038,27 +1052,32 @@ Indexing into a 3-tensor:
     params = [[['a0', 'b0'], ['c0', 'd0']],
               [['a1', 'b1'], ['c1', 'd1']]]
     output = ['b0', 'b1']
+```
 
 Batched indexing into a matrix:
 
+```python
     indices = [[[0, 0]], [[0, 1]]]
     params = [['a', 'b'], ['c', 'd']]
     output = [['a'], ['b']]
+```
 
 Batched slice indexing into a matrix:
 
+```python
     indices = [[[1]], [[0]]]
     params = [['a', 'b'], ['c', 'd']]
     output = [[['c', 'd']], [['a', 'b']]]
+```
 
 Batched indexing into a 3-tensor:
 
+```python
     indices = [[[1]], [[0]]]
     params = [[['a0', 'b0'], ['c0', 'd0']],
               [['a1', 'b1'], ['c1', 'd1']]]
     output = [[[['a1', 'b1'], ['c1', 'd1']]],
               [[['a0', 'b0'], ['c0', 'd0']]]]
-
 
     indices = [[[0, 1], [1, 0]], [[0, 0], [1, 1]]]
     params = [[['a0', 'b0'], ['c0', 'd0']],
@@ -1071,7 +1090,7 @@ Batched indexing into a 3-tensor:
     params = [[['a0', 'b0'], ['c0', 'd0']],
               [['a1', 'b1'], ['c1', 'd1']]]
     output = [['b0', 'b1'], ['d0', 'c1']]
-
+```
 
 params: `M-D`.  The tensor from which to gather values.
 indices: `(N+1)-D`.  Index tensor having shape `[d_0, ..., d_N, R]`.
@@ -1851,23 +1870,105 @@ REGISTER_OP("StridedSlice")
     .Doc(R"doc(
 Return a strided slice from `input`.
 
-The output tensor is a tensor with dimensions implied by `begin`,
-`end`, and `strides`, whose values are extracted from `begin`.
+Note, most python users will want to use the Python `Tensor.__getitem__`
+or `Variable.__getitem__` rather than this op directly.
 
-Specifically, the result tensor at index `(i[0], i[1], ..., i[n-1])`
-will obtain the value `input[begin[0] + i[0] * stride[0], ..., `
-                            `begin[n-1] + i[n-1] * stride[n-1])]`.
+The goal of this op is to produce a new tensor with a subset of
+the elements from the `n` dimensional `input` tensor. The subset is chosen using
+a sequence of `m` sparse range specifications encoded into the arguments
+of this function. Note, in some cases
+`m` could be equal to `n`, but this need not be the case. Each
+range specification entry can be one of the following:
+
+- An ellipsis (...). Ellipses are used to imply zero or more
+  dimensions of full-dimension selection and are produced using
+  `ellipsis_mask`. For example, `foo[...]` is the identity slice.
+
+- A new axis. This is used to insert a new shape=1 dimension and is
+  produced using `new_axis_mask`. For example, `foo[:, ...]` where
+  `foo` is shape `(3, 4)` produces a `(1, 3, 4)` tensor.
+
+
+- A range `begin:end:stride`. This is used to specify how much to choose from
+  a given dimension. `stride` can be any integer but 0.  `begin` is an integer
+  which represents the index of the first value to select while `end` represents
+  the index of the last value to select. The number of values selected in each
+  dimension is `end - begin` if `stride > 0` and `begin - end` if `stride < 0`.
+  `begin` and `end` can be negative where `-1` is the last element, `-2` is
+  the second to last. `begin_mask` controls whether to replace the explicitly
+  given `begin` with an implicit effective value of `0` if `stride > 0` and
+  `-1` if `stride < 0`. `end_mask` is analogous but produces the number
+  required to create the largest open interval. For example, given a shape
+  `(3,)` tensor `foo[:]`, the effective `begin` and `end` are `0` and `3`. Do
+  not assume this is equivalent to `foo[0:-1]` which has an effective `begin`
+  and `end` of `0` and `2`. Another example is `foo[-2::-1]` which reverses the
+  first dimension of a tensor while dropping the last two (in the original
+  order elements). For example `foo = [1,2,3,4]; foo[-2::-1]` is `[4,3]`.
+
+- A single index. This is used to keep only elements that have a given
+  index. For example (`foo[2, :]` on a shape `(5,6)` tensor produces a
+  shape `(6,)` tensor. This is encoded in `begin` and `end` and
+  `shrink_axis_mask`.
+
+Each conceptual range specification is encoded in the op's argument. This
+encoding is best understand by considering a non-trivial example. In
+particular,
+`foo[1, 2:4, None, ..., :-3:-1, :]` will be encoded as
+
+```prettyprint
+begin = [1, 2, x, x, 0, x] # x denotes don't care (usually 0)
+end = [2, 4, x, x, -3, x]
+strides = [1, 1, x, x, -1, 1]
+begin_mask = 1<<4 | 1 << 5 = 48
+end_mask = 1<<5 = 32
+ellipsis_mask = 1<<3 = 8
+new_axis_mask = 1<<2 4
+shrink_axis_mask = 1<<0
+```
+
+In this case if `foo.shape` is (5, 5, 5, 5, 5, 5) the final shape of
+the slice becomes (2, 1, 5, 5, 2, 5).
+Let us walk step by step through each argument specification.
+
+1.  The first argument in the example slice is turned into `begin = 1` and
+`end = begin + 1 = 2`. To disambiguate from the original spec `2:4` we
+also set the appropriate bit in `shrink_axis_mask`.
+
+2. `2:4` is contributes 2, 4, 1 to begin, end, and stride. All masks have
+zero bits contributed.
+
+3. None is a synonym for `tf.newaxis`. This means insert a dimension of size 1
+dimension in the final shape. Dummy values are contributed to begin,
+end and stride, while the new_axis_mask bit is set.
+
+4. `...` grab the full ranges from as many dimensions as needed to
+fully specify a slice for every dimension of the input shape.
+
+5. `:-3:-1` shows the use of negative indices. A negative index `i` associated
+with a dimension that has shape `s` is converted to a positive index
+`s + i`. So `-1` becomes `s-1` (i.e. the last element). This conversion
+is done internally so begin, end and strides receive x, -3, and -1.
+The appropriate begin_mask bit is set to indicate the start range is the
+full range (ignoring the x).
+
+6. `:` indicates that the entire contents of the corresponding dimension
+is selected. This is equivalent to `::` or `0::1`. begin, end, and strides
+receive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and
+`end_mask` are also set.
 
 *Requirements*:
-  `0 != strides[i] for i in [0, n)`
+  `0 != strides[i] for i in [0, m)`
+  `ellipsis_mask must be a power of two (only one ellipsis)`
 
-begin: `begin[i]` specifies the offset into the `i`th dimension of
-  `input` to slice from.
-end: `end[i]` specifies the first offset into the `i`th dimension of
-  `input` that will not be extracted. Out or range values are
-  clamped to `[0,dim[i]) if slice[i] > 0` or `[-1,dim[i]-1]`
-  `if slice[i] < 0`
-strides: `strides[i]` specifies the increment in the `i`th dimension
+begin: `begin[k]` specifies the offset into the `k`th range specification.
+  The exact dimension this corresponds to will be determined by context.
+  Out-of-bounds values will be silently clamped. If the `k`th bit of
+  `begin_mask` then `begin[k]` is ignored and the full range of the
+  appropriate dimension is used instead. Negative values causes indexing
+  to start from the highest element e.g. If `foo==[1,2,3]` then `foo[-1]==3`.
+end: `end[i]` is like `begin` with the exception that `end_mask` is
+  used to determine full ranges.
+strides: `strides[i]` specifies the increment in the `i`th specification
   after extracting a given element. Negative indices will reverse
   the original order. Out or range values are
   clamped to `[0,dim[i]) if slice[i]>0` or `[-1,dim[i]-1] if slice[i] < 0`
@@ -1878,14 +1979,18 @@ begin_mask: a bitmask where a bit i being 1 means to ignore the begin
 end_mask: analogous to `begin_mask`
 ellipsis_mask: a bitmask where bit `i` being 1 means the `i`th
   position is actually an ellipsis. One bit at most can be 1.
+  If `ellipsis_mask == 0`, then an implicit ellipsis mask of `1 << (m+1)`
+  is provided. This means that `foo[3:5] == foo[3:5, ...]`. An ellipsis
+  implicitly creates as many range specifications as necessary to fully
+  specify the sliced range for every dimension. For example for a 4-dimensional
+  tensor `foo` the slice `foo[2, ..., 5:8]` implies `foo[2, :, :, 5:8]`.
 new_axis_mask: a bitmask where bit `i` being 1 means the `i`th
-  position creates a dimension in the tensor of length 1. Thus
-  the total number of elements remain unchanged but the shape
-  gets a 1 in the appropriate position.
+  specification creates a new shape 1 dimension. For example
+  `foo[:4, tf.newaxis, :2]` would produce a shape `(4, 1, 2)` tensor.
 shrink_axis_mask: a bitmask where bit `i` implies that the `i`th
-  position should shrink the dimensionality. begin and end
+  specification should shrink the dimensionality. begin and end
   must imply a slice of size 1 in the dimension. For example in
-  python one might do `foo[:,3,:]` which would result in
+  python one might do `foo[:, 3, :]` which would result in
   `shrink_axis_mask` being 2.
 )doc");
 
@@ -2782,6 +2887,7 @@ This operation is equivalent to the following steps:
    input according to `paddings` to produce `padded` of shape `padded_shape`.
 
 2. Reshape `padded` to `reshaped_padded` of shape:
+
      [batch] +
      [padded_shape[1] / block_shape[0],
        block_shape[0],
@@ -2792,6 +2898,7 @@ This operation is equivalent to the following steps:
 
 3. Permute dimensions of `reshaped_padded` to produce
    `permuted_reshaped_padded` of shape:
+
      block_shape +
      [batch] +
      [padded_shape[1] / block_shape[0],
@@ -2801,6 +2908,7 @@ This operation is equivalent to the following steps:
 
 4. Reshape `permuted_reshaped_padded` to flatten `block_shape` into the batch
    dimension, producing an output tensor of shape:
+
      [batch * prod(block_shape)] +
      [padded_shape[1] / block_shape[0],
       ...,
@@ -3582,9 +3690,11 @@ padding: The type of padding algorithm to use.
 
 We specify the size-related attributes as:
 
+```python
       ksizes = [1, ksize_rows, ksize_cols, 1]
       strides = [1, strides_rows, strides_cols, 1]
       rates = [1, rates_rows, rates_cols, 1]
+```
 )doc");
 
 // --------------------------------------------------------------------------

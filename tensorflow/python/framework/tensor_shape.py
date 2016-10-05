@@ -112,11 +112,13 @@ class Dimension(object):
 
     Dimensions are combined as follows:
 
+    ```python
         Dimension(n)   .merge_with(Dimension(n))    == Dimension(n)
         Dimension(n)   .merge_with(Dimension(None)) == Dimension(n)
         Dimension(None).merge_with(Dimension(n))    == Dimension(n)
         Dimension(None).merge_with(Dimension(None)) == Dimension(None)
         Dimension(n)   .merge_with(Dimension(m)) raises ValueError for n != m
+    ```
 
     Args:
       other: Another Dimension.
@@ -185,10 +187,12 @@ class Dimension(object):
 
     Dimensions are summed as follows:
 
+    ```
       Dimension(m)    * Dimension(n)    == Dimension(m * n)
       Dimension(m)    * Dimension(None) == Dimension(None)
       Dimension(None) * Dimension(n)    == Dimension(None)
       Dimension(None) * Dimension(None) == Dimension(None)
+    ```
 
     Args:
       other: Another Dimension.

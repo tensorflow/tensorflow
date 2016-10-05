@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.metrics.python.ops import metric_ops_util
+from tensorflow.contrib.framework import tensor_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -37,10 +37,13 @@ def confusion_matrix(predictions, labels, num_classes=None, dtype=dtypes.int32,
   And a label array such as: `[2, 2, 3]`
 
   The confusion matrix returned would be the following one:
+
+  ```python
       [[0, 0, 0]
        [0, 1, 0]
        [0, 1, 0]
        [0, 0, 1]]
+  ```
 
   If `weights` is not None, then the confusion matrix elements are the
   corresponding `weights` elements.
@@ -52,9 +55,9 @@ def confusion_matrix(predictions, labels, num_classes=None, dtype=dtypes.int32,
   the same shape in order for this function to work.
 
   Args:
-    predictions: A 1-D array represeting the predictions for a given
+    predictions: A 1-D array representing the predictions for a given
                  classification.
-    labels: A 1-D represeting the real labels for the classification task.
+    labels: A 1-D representing the real labels for the classification task.
     num_classes: The possible number of labels the classification task can
                  have. If this value is not provided, it will be calculated
                  using both predictions and labels array.
@@ -63,7 +66,7 @@ def confusion_matrix(predictions, labels, num_classes=None, dtype=dtypes.int32,
     weights: An optional `Tensor` whose shape matches `predictions`.
 
   Returns:
-    A k X k matrix represeting the confusion matrix, where k is the number of
+    A k X k matrix representing the confusion matrix, where k is the number of
     possible labels in the classification task.
 
   Raises:
@@ -73,7 +76,7 @@ def confusion_matrix(predictions, labels, num_classes=None, dtype=dtypes.int32,
   """
   with ops.name_scope(name, 'confusion_matrix',
                       [predictions, labels, num_classes]) as name:
-    predictions, labels = metric_ops_util.remove_squeezable_dimensions(
+    predictions, labels = tensor_util.remove_squeezable_dimensions(
         ops.convert_to_tensor(
             predictions, name='predictions'),
         ops.convert_to_tensor(labels, name='labels'))

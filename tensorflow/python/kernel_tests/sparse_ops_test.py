@@ -308,7 +308,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(output.values, [0, 10, 13, 14, 32, 33])
       self.assertAllEqual(output.shape, [3, 6, 7])
 
-  def testInputUnavaibleInGraphConstructionOk(self):
+  def testInputUnavailableInGraphConstructionOk(self):
     with self.test_session(use_gpu=False) as sess:
       sp_input = self._SparseTensorValue_2x5x6()
       new_shape = np.array([3, 6, 7], dtype=np.int64)
@@ -322,7 +322,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(output.values, [0, 10, 13, 14, 32, 33])
       self.assertAllEqual(output.shape, [3, 6, 7])
 
-  def testFeedInputUnavaibleInGraphConstructionOk(self):
+  def testFeedInputUnavailableInGraphConstructionOk(self):
     with self.test_session(use_gpu=False) as sess:
       sp_input = array_ops.sparse_placeholder(dtype=dtypes.int32)
       new_shape = np.array([3, 6, 7], dtype=np.int64)
@@ -358,7 +358,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         sparse_ops.sparse_reset_shape(sp_input, new_shape)
 
-  def testInvalidRankNewShapeUnavaibleInGraphConstruction(self):
+  def testInvalidRankNewShapeUnavailableInGraphConstruction(self):
     with self.test_session(use_gpu=False) as sess:
       new_shape = array_ops.placeholder(dtype=dtypes.int64)
       sp_input = self._SparseTensor_2x5x6()
@@ -779,12 +779,6 @@ class SparseMinimumMaximumTest(test_util.TensorFlowTestCase):
 
 
 class SparseTransposeTest(tf.test.TestCase):
-
-  def _SparseTensorPlaceholder(self):
-    return tf.SparseTensor(
-        tf.placeholder(tf.int64),
-        tf.placeholder(tf.float64),
-        tf.placeholder(tf.int64))
 
   def testTranspose(self):
     with self.test_session(use_gpu=False):

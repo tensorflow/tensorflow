@@ -35,6 +35,14 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 
 
+_beta_prob_note = """
+    Note that the argument `x` must be a non-negative floating point tensor
+    whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
+    dimensions, the last dimension represents counts for the corresponding Beta
+    distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
+"""
+
+
 class Beta(distribution.Distribution):
   """Beta distribution.
 
@@ -54,7 +62,7 @@ class Beta(distribution.Distribution):
 
 
   This class provides methods to create indexed batches of Beta
-  distributions. One entry of the broacasted
+  distributions. One entry of the broadcasted
   shape represents of `a` and `b` represents one single Beta distribution.
   When calling distribution functions (e.g. `dist.pdf(x)`), `a`, `b`
   and `x` are broadcast to the same shape (if possible).
@@ -202,9 +210,11 @@ class Beta(distribution.Distribution):
                          math_ops.lgamma(self.a_b_sum))
     return log_unnormalized_prob - log_normalization
 
+  @distribution_util.AppendDocstring(_beta_prob_note)
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))
 
+  @distribution_util.AppendDocstring(_beta_prob_note)
   def _log_cdf(self, x):
     return math_ops.log(self._cdf(x))
 
@@ -228,6 +238,11 @@ class Beta(distribution.Distribution):
   def _std(self):
     return math_ops.sqrt(self.variance())
 
+  @distribution_util.AppendDocstring(
+      """Note that the mode for the Beta distribution is only defined
+      when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
+      and `NaN` otherwise. If `self.allow_nan_stats` is `False`, an exception
+      will be raised rather than returning `NaN`.""")
   def _mode(self):
     mode = (self.a - 1.)/ (self.a_b_sum - 2.)
     if self.allow_nan_stats:
@@ -259,26 +274,6 @@ class Beta(distribution.Distribution):
             x, array_ops.ones((), self.dtype),
             message="Event>=1 lies outside Beta distribution support."),
     ], x)
-
-
-_prob_note = """
-
-    Note that the argument `x` must be a non-negative floating point tensor
-    whose shape can be broadcast with `self.a` and `self.b`.  For fixed leading
-    dimensions, the last dimension represents counts for the corresponding Beta
-    distribution in `self.a` and `self.b`. `x` is only legal if `0 < x < 1`.
-"""
-
-distribution_util.append_class_fun_doc(Beta.log_prob, doc_str=_prob_note)
-distribution_util.append_class_fun_doc(Beta.prob, doc_str=_prob_note)
-
-distribution_util.append_class_fun_doc(Beta.mode, doc_str="""
-
-    Note that the mode for the Beta distribution is only defined
-    when `a > 1`, `b > 1`. This returns the mode when `a > 1` and `b > 1`,
-    and `NaN` otherwise. If `self.allow_nan_stats` is `False`, an exception
-    will be raised rather than returning `NaN`.
-""")
 
 
 class BetaWithSoftplusAB(Beta):

@@ -57,7 +57,7 @@ class ProjectorPlugin(TBPlugin):
   def _read_config_files(self, run_paths):
     configs = {}
     config_fpaths = {}
-    for run_name, logdir in six.iteritems(run_paths):
+    for run_name, logdir in run_paths.items():
       config_fpath = os.path.join(logdir, PROJECTOR_FILENAME)
       if not file_io.file_exists(config_fpath):
         # Skip runs that have no config file.

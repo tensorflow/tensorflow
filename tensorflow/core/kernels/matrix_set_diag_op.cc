@@ -59,21 +59,18 @@ class MatrixSetDiagOp : public OpKernel {
                     "input must be at least 2-dim, received shape: ",
                     input.shape().DebugString()));
 
-    // Check to make sure the last two dimensions have the same value
-    const int64 k = input_shape.dim_size(rank - 1);
-    OP_REQUIRES(
-        context, k == input_shape.dim_size(rank - 2),
-        errors::InvalidArgument(
-            "input's last two dimensions must be equal, received shape: ",
-            input.shape().DebugString()));
-
-    TensorShape input_shape_but_one = input_shape;
-    input_shape_but_one.RemoveDim(rank - 1);
-
-    OP_REQUIRES(context, input_shape_but_one == diag_shape,
+    // Check to make sure the last dimension of diag is equal to the smaller of
+    // the last two dimensions of input.
+    const int64 min_dim = std::min(input_shape.dim_size(rank - 1),
+                                   input_shape.dim_size(rank - 2));
+    TensorShape expected_diag_shape = input_shape;
+    expected_diag_shape.RemoveDim(rank - 1);
+    expected_diag_shape.RemoveDim(rank - 2);
+    expected_diag_shape.AddDim(min_dim);
+    OP_REQUIRES(context, expected_diag_shape == diag_shape,
                 errors::InvalidArgument(
-                    "must have diagonal.shape == input.shape[:-1], but "
-                    "received input shape: ",
+                    "must have diagonal.shape == input.shape[:-2] + "
+                    "min(input.shape[-2:]), but received input shape: ",
                     input_shape.DebugString(), " and diagonal shape: ",
                     diag_shape.DebugString()));
 
@@ -127,7 +124,7 @@ struct MatrixSetDiag<CPUDevice, T> {
                       typename TTypes<T, 3>::Tensor output) {
     output.device(d) = input;
     for (int64 r = 0; r < output.dimension(0); ++r) {
-      for (int64 d = 0; d < output.dimension(1); ++d) {
+      for (int64 d = 0; d < diag.dimension(1); ++d) {
         output(r, d, d) = diag(r, d);
       }
     }

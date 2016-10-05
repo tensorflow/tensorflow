@@ -87,6 +87,7 @@
   * [`get_variable_scope`](../../api_docs/python/state_ops.md#get_variable_scope)
   * [`import_meta_graph`](../../api_docs/python/state_ops.md#import_meta_graph)
   * [`IndexedSlices`](../../api_docs/python/state_ops.md#IndexedSlices)
+  * [`initialize_all_tables`](../../api_docs/python/state_ops.md#initialize_all_tables)
   * [`initialize_all_variables`](../../api_docs/python/state_ops.md#initialize_all_variables)
   * [`initialize_local_variables`](../../api_docs/python/state_ops.md#initialize_local_variables)
   * [`initialize_variables`](../../api_docs/python/state_ops.md#initialize_variables)
@@ -453,6 +454,7 @@
   * [`conv2d_transpose`](../../api_docs/python/nn.md#conv2d_transpose)
   * [`conv3d`](../../api_docs/python/nn.md#conv3d)
   * [`conv3d_transpose`](../../api_docs/python/nn.md#conv3d_transpose)
+  * [`convolution`](../../api_docs/python/nn.md#convolution)
   * [`crelu`](../../api_docs/python/nn.md#crelu)
   * [`ctc_beam_search_decoder`](../../api_docs/python/nn.md#ctc_beam_search_decoder)
   * [`ctc_greedy_decoder`](../../api_docs/python/nn.md#ctc_greedy_decoder)
@@ -483,6 +485,7 @@
   * [`moments`](../../api_docs/python/nn.md#moments)
   * [`nce_loss`](../../api_docs/python/nn.md#nce_loss)
   * [`normalize_moments`](../../api_docs/python/nn.md#normalize_moments)
+  * [`pool`](../../api_docs/python/nn.md#pool)
   * [`raw_rnn`](../../api_docs/python/nn.md#raw_rnn)
   * [`relu`](../../api_docs/python/nn.md#relu)
   * [`relu6`](../../api_docs/python/nn.md#relu6)
@@ -502,6 +505,7 @@
   * [`top_k`](../../api_docs/python/nn.md#top_k)
   * [`uniform_candidate_sampler`](../../api_docs/python/nn.md#uniform_candidate_sampler)
   * [`weighted_cross_entropy_with_logits`](../../api_docs/python/nn.md#weighted_cross_entropy_with_logits)
+  * [`weighted_moments`](../../api_docs/python/nn.md#weighted_moments)
 
 * **[Neural Network RNN Cells](../../api_docs/python/rnn_cell.md)**:
   * [`BasicLSTMCell`](../../api_docs/python/rnn_cell.md#BasicLSTMCell)
@@ -702,8 +706,8 @@
   * [`MultivariateNormalDiagWithSoftplusStDev`](../../api_docs/python/contrib.distributions.md#MultivariateNormalDiagWithSoftplusStDev)
   * [`MultivariateNormalFull`](../../api_docs/python/contrib.distributions.md#MultivariateNormalFull)
   * [`Normal`](../../api_docs/python/contrib.distributions.md#Normal)
-  * [`normal_congugates_known_sigma_predictive`](../../api_docs/python/contrib.distributions.md#normal_congugates_known_sigma_predictive)
   * [`normal_conjugates_known_sigma_posterior`](../../api_docs/python/contrib.distributions.md#normal_conjugates_known_sigma_posterior)
+  * [`normal_conjugates_known_sigma_predictive`](../../api_docs/python/contrib.distributions.md#normal_conjugates_known_sigma_predictive)
   * [`NormalWithSoftplusSigma`](../../api_docs/python/contrib.distributions.md#NormalWithSoftplusSigma)
   * [`Poisson`](../../api_docs/python/contrib.distributions.md#Poisson)
   * [`QuantizedDistribution`](../../api_docs/python/contrib.distributions.md#QuantizedDistribution)
@@ -759,6 +763,7 @@
   * [`VariableDeviceChooser`](../../api_docs/python/contrib.framework.md#VariableDeviceChooser)
   * [`with_same_shape`](../../api_docs/python/contrib.framework.md#with_same_shape)
   * [`with_shape`](../../api_docs/python/contrib.framework.md#with_shape)
+  * [`zero_initializer`](../../api_docs/python/contrib.framework.md#zero_initializer)
 
 * **[Graph Editor (contrib)](../../api_docs/python/contrib.graph_editor.md)**:
   * [`add_control_inputs`](../../api_docs/python/contrib.graph_editor.md#add_control_inputs)
@@ -925,11 +930,18 @@
 * **[RNN (contrib)](../../api_docs/python/contrib.rnn.md)**:
   * [`AttentionCellWrapper`](../../api_docs/python/contrib.rnn.md#AttentionCellWrapper)
   * [`CoupledInputForgetGateLSTMCell`](../../api_docs/python/contrib.rnn.md#CoupledInputForgetGateLSTMCell)
+  * [`FusedRNNCell`](../../api_docs/python/contrib.rnn.md#FusedRNNCell)
+  * [`FusedRNNCellAdaptor`](../../api_docs/python/contrib.rnn.md#FusedRNNCellAdaptor)
   * [`GridLSTMCell`](../../api_docs/python/contrib.rnn.md#GridLSTMCell)
   * [`GRUBlockCell`](../../api_docs/python/contrib.rnn.md#GRUBlockCell)
   * [`LayerNormBasicLSTMCell`](../../api_docs/python/contrib.rnn.md#LayerNormBasicLSTMCell)
   * [`LSTMBlockCell`](../../api_docs/python/contrib.rnn.md#LSTMBlockCell)
+  * [`LSTMBlockFusedCell`](../../api_docs/python/contrib.rnn.md#LSTMBlockFusedCell)
+  * [`LSTMBlockWrapper`](../../api_docs/python/contrib.rnn.md#LSTMBlockWrapper)
+  * [`stack_bidirectional_dynamic_rnn`](../../api_docs/python/contrib.rnn.md#stack_bidirectional_dynamic_rnn)
+  * [`stack_bidirectional_rnn`](../../api_docs/python/contrib.rnn.md#stack_bidirectional_rnn)
   * [`TimeFreqLSTMCell`](../../api_docs/python/contrib.rnn.md#TimeFreqLSTMCell)
+  * [`TimeReversedFusedRNN`](../../api_docs/python/contrib.rnn.md#TimeReversedFusedRNN)
 
 * **[Metrics (contrib)](../../api_docs/python/contrib.metrics.md)**:
   * [`accuracy`](../../api_docs/python/contrib.metrics.md#accuracy)
@@ -943,6 +955,7 @@
   * [`set_union`](../../api_docs/python/contrib.metrics.md#set_union)
   * [`streaming_accuracy`](../../api_docs/python/contrib.metrics.md#streaming_accuracy)
   * [`streaming_auc`](../../api_docs/python/contrib.metrics.md#streaming_auc)
+  * [`streaming_concat`](../../api_docs/python/contrib.metrics.md#streaming_concat)
   * [`streaming_covariance`](../../api_docs/python/contrib.metrics.md#streaming_covariance)
   * [`streaming_mean`](../../api_docs/python/contrib.metrics.md#streaming_mean)
   * [`streaming_mean_absolute_error`](../../api_docs/python/contrib.metrics.md#streaming_mean_absolute_error)
@@ -967,9 +980,11 @@
   * [`bucket`](../../api_docs/python/contrib.training.md#bucket)
   * [`bucket_by_sequence_length`](../../api_docs/python/contrib.training.md#bucket_by_sequence_length)
   * [`NextQueuedSequenceBatch`](../../api_docs/python/contrib.training.md#NextQueuedSequenceBatch)
+  * [`resample_at_rate`](../../api_docs/python/contrib.training.md#resample_at_rate)
   * [`SequenceQueueingStateSaver`](../../api_docs/python/contrib.training.md#SequenceQueueingStateSaver)
   * [`stratified_sample`](../../api_docs/python/contrib.training.md#stratified_sample)
   * [`stratified_sample_unknown_dist`](../../api_docs/python/contrib.training.md#stratified_sample_unknown_dist)
+  * [`weighted_resample`](../../api_docs/python/contrib.training.md#weighted_resample)
 
 * **[Utilities (contrib)](../../api_docs/python/contrib.util.md)**:
   * [`constant_value`](../../api_docs/python/contrib.util.md#constant_value)

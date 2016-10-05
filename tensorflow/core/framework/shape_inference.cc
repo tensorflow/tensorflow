@@ -82,6 +82,52 @@ InferenceContext::~InferenceContext() {
   for (auto* d : all_dims_) delete d;
 }
 
+Status InferenceContext::set_output(StringPiece output_name,
+                                    const std::vector<ShapeHandle>& shapes) {
+  const auto result = output_name_map_.find(output_name.ToString());
+  if (result == output_name_map_.end()) {
+    return errors::InvalidArgument("Unknown output name: ", output_name);
+  } else {
+    const int start = result->second.first;
+    const int size = result->second.second - start;
+    if (size != shapes.size()) {
+      errors::InvalidArgument("Must have exactly ", shapes.size(), " shapes.");
+    }
+    for (int i = 0; i < size; ++i) {
+      outputs_[i + start] = shapes[i];
+    }
+  }
+  return Status::OK();
+}
+
+Status InferenceContext::input(StringPiece input_name,
+                               std::vector<ShapeHandle>* output) const {
+  const auto result = input_name_map_.find(input_name.ToString());
+  if (result == input_name_map_.end()) {
+    return errors::InvalidArgument("Unknown input name: ", input_name);
+  } else {
+    output->clear();
+    for (int i = result->second.first; i < result->second.second; ++i) {
+      output->push_back(inputs_[i]);
+    }
+  }
+  return Status::OK();
+}
+
+Status InferenceContext::output(StringPiece output_name,
+                                std::vector<ShapeHandle>* output) const {
+  const auto result = output_name_map_.find(output_name.ToString());
+  if (result == output_name_map_.end()) {
+    return errors::InvalidArgument("Unknown output name: ", output_name);
+  } else {
+    output->clear();
+    for (int i = result->second.first; i < result->second.second; ++i) {
+      output->push_back(outputs_[i]);
+    }
+  }
+  return Status::OK();
+}
+
 void InferenceContext::PreInputInit(
     const OpDef& op_def, const std::vector<const Tensor*>& input_tensors) {
   input_tensors_ = input_tensors;
@@ -171,6 +217,7 @@ Status InferenceContext::WithRank(ShapeHandle shape, int32 rank,
     return Status::OK();
   }
   *out = nullptr;
+
   return errors::InvalidArgument("Shape must be rank ", rank, " but is rank ",
                                  existing);
 }
@@ -706,6 +753,19 @@ Status InferenceContext::MakeShapeFromString(const string& spec,
   *output = MakeShape(dims);
 
   return Status::OK();
+}
+
+Status InferenceContext::AttachContext(const Status& status) {
+  std::vector<string> input_shapes;
+  for (const ShapeHandle& input_shape : inputs_) {
+    input_shapes.emplace_back(DebugString(input_shape));
+  }
+
+  string error_context = strings::StrCat(
+      " for '", node_def_.name(), "' (op: '", node_def_.op(),
+      "') with input shapes: ", str_util::Join(input_shapes, ", "), ".");
+  return Status(status.code(),
+                strings::StrCat(status.error_message(), error_context));
 }
 
 }  // namespace shape_inference

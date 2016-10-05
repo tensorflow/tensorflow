@@ -55,6 +55,9 @@
 * `dot.h` / DotGraph was removed (it was an early analysis tool prior
   to TensorBoard, no longer that useful).  It remains in history
   should someone find the code useful.
+* re2 / regexp.h was removed from being a public interface of TF.
+  Should users need regular expressions, they should depend on the RE2
+  library directly rather than via TensorFlow.
 
 ## Thanks to our Contributors
 

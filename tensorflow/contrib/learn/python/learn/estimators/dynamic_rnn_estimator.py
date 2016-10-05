@@ -136,7 +136,8 @@ class _DynamicRNNEstimator(estimator.BaseEstimator):
                dtype=None,
                parallel_iterations=None,
                swap_memory=False,
-               name=None):
+               name=None,
+               feature_engineering_fn=None):
     """Initialize `DynamicRNNEstimator`.
 
     Args:
@@ -163,6 +164,10 @@ class _DynamicRNNEstimator(estimator.BaseEstimator):
         tensors produced in forward inference but needed for back prop from GPU
         to CPU.
       name: Optional name for the `Estimator`.
+      feature_engineering_fn: Feature engineering function. Takes features and
+                        targets which are the output of `input_fn` and
+                        returns features and targets which will be fed
+                        into the model.
     """
     super(_DynamicRNNEstimator, self).__init__(
         model_dir=model_dir, config=config)
@@ -177,6 +182,9 @@ class _DynamicRNNEstimator(estimator.BaseEstimator):
     self._parallel_iterations = parallel_iterations
     self._swap_memory = swap_memory
     self._name = name or 'DynamicRnnEstimator'
+    self._feature_engineering_fn = (
+        feature_engineering_fn or
+        (lambda features, targets: (features, targets)))
 
   def _construct_rnn(self, features):
     """Apply an RNN to `features`.

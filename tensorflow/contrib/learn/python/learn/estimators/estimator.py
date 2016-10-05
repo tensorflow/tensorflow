@@ -465,12 +465,11 @@ class BaseEstimator(
       '2016-09-23',
       'The signature of the input_fn accepted by export is changing to be '
       'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate. '
-      'input_fn and input_feature_key will become required args, '
-      'and use_deprecated_input_fn will default to False and be removed '
+      'input_fn (and in most cases, input_feature_key) will become required '
+      'args, and use_deprecated_input_fn will default to False and be removed '
       'altogether.',
       use_deprecated_input_fn=True,
-      input_fn=None,
-      input_feature_key=None)
+      input_fn=None)
   def export(self,
              export_dir,
              input_fn=export._default_input_fn,  # pylint: disable=protected-access
@@ -494,7 +493,8 @@ class BaseEstimator(
       input_feature_key: Only used if `use_deprecated_input_fn` is false. String
         key into the features dict returned by `input_fn` that corresponds toa 
         the raw `Example` strings `Tensor` that the exported model will take as
-        input.
+        input. Can only be `None` if you're using a custom `signature_fn` that
+        does not use the first arg (examples).
       use_deprecated_input_fn: Determines the signature format of `input_fn`.
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s

@@ -51,21 +51,11 @@ type AugmSPNode = SPNode&{numCells: number, yCell: number[], rCell: number};
  * results. Recommended value mentioned in the paper is 0.8.
  */
 const THETA = 0.8;
-
 // Variables used for memorizing the second random number since running
 // gaussRandom() generates two random numbers at the cost of 1 atomic
 // computation. This optimization results in 2X speed-up of the generator.
 let return_v = false;
 let v_val = 0.0;
-
-/** Returns a vector filled with zeros */
-function zerosArray(length: number): number[] {
-  let result = new Array(length);
-  for (let i = 0; i < length; ++i) {
-    result[i] = 0;
-  }
-  return result;
-}
 
 /** Returns the square euclidean distance between two vectors. */
 export function dist2(a: number[], b: number[]): number {
@@ -138,11 +128,7 @@ function randnMatrix(n: number, d: number, rng: () => number) {
 function arrayofs(n: number, d: number, val: number) {
   let x: number[][] = [];
   for (let i = 0; i < n; ++i) {
-    let row = new Array(d);
-    for (let j = 0; j < d; ++j) {
-      row[j] = val;
-    }
-    x.push(row);
+    x.push(d === 3 ? [val, val, val] : [val, val]);
   }
   return x;
 };
@@ -240,6 +226,19 @@ function sign(x: number) {
   return x > 0 ? 1 : x < 0 ? -1 : 0;
 }
 
+function computeForce_2d(
+    force: number[], mult: number, pointA: number[], pointB: number[]) {
+  force[0] += mult * (pointA[0] - pointB[0]);
+  force[1] += mult * (pointA[1] - pointB[1]);
+}
+
+function computeForce_3d(
+    force: number[], mult: number, pointA: number[], pointB: number[]) {
+  force[0] += mult * (pointA[0] - pointB[0]);
+  force[1] += mult * (pointA[1] - pointB[1]);
+  force[2] += mult * (pointA[2] - pointB[2]);
+}
+
 export interface TSNEOptions {
   /** How many dimensions. */
   dim: number;
@@ -265,6 +264,9 @@ export class TSNE {
   private nearest: {index: number, dist: number}[][];
   private dim: number;
   private dist2: (a: number[], b: number[]) => number;
+  private computeForce:
+      (force: number[], mult: number, pointA: number[],
+       pointB: number[]) => void;
 
   constructor(opt: TSNEOptions) {
     opt = opt || {dim: 2};
@@ -274,10 +276,12 @@ export class TSNE {
     this.dim = opt.dim;
     if (opt.dim === 2) {
       this.dist2 = dist2_2D;
+      this.computeForce = computeForce_2d;
     } else if (opt.dim === 3) {
       this.dist2 = dist2_3D;
+      this.computeForce = computeForce_3d;
     } else {
-      this.dist2 = dist2;
+      throw new Error('Only 2D and 3D is supported');
     }
   }
 
@@ -313,7 +317,7 @@ export class TSNE {
     let grad = this.costGrad(this.Y);  // evaluate gradient
 
     // perform gradient step
-    let ymean = zerosArray(this.dim);
+    let ymean = this.dim === 3 ? [0, 0, 0] : [0, 0];
     for (let i = 0; i < N; ++i) {
       for (let d = 0; d < this.dim; ++d) {
         let gid = grad[i][d];
@@ -368,23 +372,21 @@ export class TSNE {
     }
 
     // Make a tree.
-    let tree = new SPTree(points, 1);
+    let tree = new SPTree(points);
     let root = tree.root as AugmSPNode;
     // Annotate the tree.
 
     let annotateTree =
         (node: AugmSPNode): {numCells: number, yCell: number[]} => {
-          let numCells = node.points ? node.points.length : 0;
+          let numCells = 1;
           if (node.children == null) {
             // Update the current node and tell the parent.
             node.numCells = numCells;
-            // TODO(smilkov): yCell should be average across all points.
-            node.yCell = node.points[0];
+            node.yCell = node.point;
             return {numCells, yCell: node.yCell};
           }
-          // TODO(smilkov): yCell should be average across all points.
-          let yCell =
-              node.points ? node.points[0].slice() : zerosArray(this.dim);
+          // node.point is a 2 or 3-dim number[], so slice() makes a copy.
+          let yCell = node.point.slice();
           for (let i = 0; i < node.children.length; ++i) {
             let child = node.children[i];
             if (child == null) {
@@ -415,7 +417,7 @@ export class TSNE {
     for (let i = 0; i < N; ++i) {
       let pointI = points[i];
       // Compute the positive forces for the i-th node.
-      let Fpos = zerosArray(this.dim);
+      let Fpos = this.dim === 3 ? [0, 0, 0] : [0, 0];
       let neighbors = this.nearest[i];
       for (let k = 0; k < neighbors.length; ++k) {
         let j = neighbors[k].index;
@@ -423,12 +425,10 @@ export class TSNE {
         let pointJ = points[j];
         let squaredDistItoJ = this.dist2(pointI, pointJ);
         let premult = pij / (1 + squaredDistItoJ);
-        for (let d = 0; d < this.dim; ++d) {
-          Fpos[d] += premult * (pointI[d] - pointJ[d]);
-        }
+        this.computeForce(Fpos, premult, pointI, pointJ);
       }
       // Compute the negative forces for the i-th node.
-      let FnegZ = zerosArray(this.dim);
+      let FnegZ = this.dim === 3 ? [0, 0, 0] : [0, 0];
       tree.visit((node: AugmSPNode) => {
         let squaredDistToCell = this.dist2(pointI, node.yCell);
         // Squared distance from point i to cell.
@@ -438,31 +438,27 @@ export class TSNE {
           let dZ = node.numCells * qijZ;
           Z += dZ;
           dZ *= qijZ;
-          for (let d = 0; d < this.dim; ++d) {
-            FnegZ[d] += dZ * (pointI[d] - node.yCell[d]);
-          }
+          this.computeForce(FnegZ, dZ, pointI, node.yCell);
           return true;
         }
-        if (node.points != null) {
-          // TODO(smilkov): Iterate over all points.
-          let squaredDistToPoint = this.dist2(pointI, node.points[0]);
-          let qijZ = 1 / (1 + squaredDistToPoint);
-          Z += qijZ;
-          qijZ *= qijZ;
-          for (let d = 0; d < this.dim; ++d) {
-            FnegZ[d] += qijZ * (pointI[d] - node.points[0][d]);
-          }
-        }
+        // Cell is too close to approximate.
+        let squaredDistToPoint = this.dist2(pointI, node.point);
+        let qijZ = 1 / (1 + squaredDistToPoint);
+        Z += qijZ;
+        qijZ *= qijZ;
+        this.computeForce(FnegZ, qijZ, pointI, node.point);
         return false;
       }, true);
       forces[i] = [Fpos, FnegZ];
     }
     // Normalize the negative forces and compute the gradient.
+    const A = 4 * alpha;
+    const B = 4 / Z;
     for (let i = 0; i < N; ++i) {
       let [FPos, FNegZ] = forces[i];
       let gsum = new Array(this.dim);
       for (let d = 0; d < this.dim; ++d) {
-        gsum[d] = 4 * (alpha * FPos[d] - FNegZ[d] / Z);
+        gsum[d] = A * FPos[d] - B * FNegZ[d];
       }
       grad.push(gsum);
     }

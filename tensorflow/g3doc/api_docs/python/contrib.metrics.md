@@ -307,7 +307,7 @@ computed using the height of the precision values by the recall.
 
 This value is ultimately returned as `auc`, an idempotent operation that
 computes the area under a discretized curve of precision versus recall values
-(computed using the afformentioned variables). The `num_thresholds` variable
+(computed using the aforementioned variables). The `num_thresholds` variable
 controls the degree of discretization with larger numbers of thresholds more
 closely approximating the true AUC.
 
@@ -724,13 +724,14 @@ variables and returns the updated covariance.
 
 ### `tf.contrib.metrics.streaming_pearson_correlation(predictions, labels, weights=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_pearson_correlation}
 
-Computes pearson correlation coefficient between `predictions`, `labels`.
+Computes Pearson correlation coefficient between `predictions`, `labels`.
 
 The `streaming_pearson_correlation` function delegates to
 `streaming_covariance` the tracking of three [co]variances:
-- streaming_covariance(predictions, labels), i.e. covariance
-- streaming_covariance(predictions, predictions), i.e. variance
-- streaming_covariance(labels, labels), i.e. variance
+
+- `streaming_covariance(predictions, labels)`, i.e. covariance
+- `streaming_covariance(predictions, predictions)`, i.e. variance
+- `streaming_covariance(labels, labels)`, i.e. variance
 
 The product-moment correlation ultimately returned is an idempotent operation
 `cov(predictions, labels) / sqrt(var(predictions) * var(labels))`. To
@@ -759,7 +760,7 @@ https://wikipedia.org/wiki/Weighted_arithmetic_mean#Weighted_sample_variance
 ##### Returns:
 
 
-*  <b>`pearson_r`</b>: A tensor representing the current pearson product-moment
+*  <b>`pearson_r`</b>: A tensor representing the current Pearson product-moment
     correlation coefficient, the value of
     `cov(predictions, labels) / sqrt(var(predictions) * var(labels))`.
 *  <b>`update_op`</b>: An operation that updates the underlying variables appropriately.
@@ -973,7 +974,7 @@ If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
     be added to.
 *  <b>`updates_collections`</b>: An optional list of collections that updates should
     be added to.
-*  <b>`name`</b>: Name of new update operation, and namespace for other dependant ops.
+*  <b>`name`</b>: Name of new update operation, and namespace for other dependent ops.
 
 ##### Returns:
 
@@ -1044,7 +1045,7 @@ Instructions for updating:
       be added to.
     updates_collections: An optional list of collections that updates should
       be added to.
-    name: Name of new update operation, and namespace for other dependant ops.
+    name: Name of new update operation, and namespace for other dependent ops.
 
   Returns:
     precision: Scalar `float64` `Tensor` with the value of `true_positives`
@@ -1118,7 +1119,7 @@ Instructions for updating:
       be added to.
     updates_collections: An optional list of collections that updates should
       be added to.
-    name: Name of new update operation, and namespace for other dependant ops.
+    name: Name of new update operation, and namespace for other dependent ops.
 
   Returns:
     recall: Scalar `float64` `Tensor` with the value of `true_positives` divided
@@ -1189,6 +1190,53 @@ following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
     `weights` is not `None` and its shape doesn't match `predictions`, or if
     `sensitivity` is not between 0 and 1, or if either `metrics_collections`
     or `updates_collections` are not a list or tuple.
+
+
+- - -
+
+### `tf.contrib.metrics.streaming_concat(values, axis=0, max_size=None, metrics_collections=None, updates_collections=None, name=None)` {#streaming_concat}
+
+Concatenate values along an axis across batches.
+
+The function `streaming_concat` creates two local variables, `array` and
+`size`, that are used to store concatenated values. Internally, `array` is
+used as storage for a dynamic array (if `maxsize` is `None`), which ensures
+that updates can be run in amortized constant time.
+
+For estimation of the metric over a stream of data, the function creates an
+`update_op` operation that appends the values of a tensor and returns the
+`value` of the concatenated tensors.
+
+This op allows for evaluating metrics that cannot be updated incrementally
+using the same framework as other streaming metrics.
+
+##### Args:
+
+
+*  <b>`values`</b>: tensor to concatenate. Rank and the shape along all axes other than
+    the axis to concatenate along must be statically known.
+*  <b>`axis`</b>: optional integer axis to concatenate along.
+*  <b>`max_size`</b>: optional integer maximum size of `value` along the given axis.
+    Once the maximum size is reached, further updates are no-ops. By default,
+    there is no maximum size: the array is resized as necessary.
+*  <b>`metrics_collections`</b>: An optional list of collections that `value`
+    should be added to.
+*  <b>`updates_collections`</b>: An optional list of collections `update_op` should be
+    added to.
+*  <b>`name`</b>: An optional variable_scope name.
+
+##### Returns:
+
+
+*  <b>`value`</b>: A tensor representing the concatenated values.
+*  <b>`update_op`</b>: An operation that concatenates the next values.
+
+##### Raises:
+
+
+*  <b>`ValueError`</b>: if `values` does not have a statically known rank, `axis` is
+    not in the valid range or the size of `values` is not statically known
+    along any axis other than `axis`.
 
 
 
@@ -1272,12 +1320,14 @@ label 1-D int arrays.
 Considering a prediction array such as: `[1, 2, 3]`
 And a label array such as: `[2, 2, 3]`
 
-##### The confusion matrix returned would be the following one:
+The confusion matrix returned would be the following one:
 
+```python
     [[0, 0, 0]
      [0, 1, 0]
      [0, 1, 0]
      [0, 0, 1]]
+```
 
 If `weights` is not None, then the confusion matrix elements are the
 corresponding `weights` elements.
@@ -1291,9 +1341,9 @@ the same shape in order for this function to work.
 ##### Args:
 
 
-*  <b>`predictions`</b>: A 1-D array represeting the predictions for a given
+*  <b>`predictions`</b>: A 1-D array representing the predictions for a given
                classification.
-*  <b>`labels`</b>: A 1-D represeting the real labels for the classification task.
+*  <b>`labels`</b>: A 1-D representing the real labels for the classification task.
 *  <b>`num_classes`</b>: The possible number of labels the classification task can
                have. If this value is not provided, it will be calculated
                using both predictions and labels array.
@@ -1303,7 +1353,7 @@ the same shape in order for this function to work.
 
 ##### Returns:
 
-  A k X k matrix represeting the confusion matrix, where k is the number of
+  A k X k matrix representing the confusion matrix, where k is the number of
   possible labels in the classification task.
 
 ##### Raises:

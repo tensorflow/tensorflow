@@ -63,7 +63,7 @@ HOST_GENDIR := $(MAKEFILE_DIR)/gen/host_obj/
 # Settings for the host compiler.
 HOST_CXX := $(CC_PREFIX) gcc
 HOST_CXXFLAGS := --std=c++11
-HOST_LDOPTS := 
+HOST_LDOPTS :=
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	HOST_LDOPTS += -L$(MAKEFILE_DIR)/gen/protobuf-host/lib
 endif
@@ -426,6 +426,8 @@ $(wildcard tensorflow/core/platform/*/*/*.cc) \
 $(wildcard tensorflow/core/util/*.cc) \
 $(wildcard tensorflow/core/util/*/*.cc) \
 tensorflow/core/util/version_info.cc
+# Remove duplicates (for version_info.cc)
+CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
 CORE_CC_EXCLUDE_SRCS := \
 $(wildcard tensorflow/core/*/*test.cc) \
 $(wildcard tensorflow/core/*/*testutil*) \
@@ -487,7 +489,7 @@ all: $(LIB_PATH) $(BENCHMARK_NAME)
 
 .phony_version_info:
 tensorflow/core/util/version_info.cc: .phony_version_info
-	python tensorflow/tools/git/gen_git_source.py --raw_generate $@
+	tensorflow/tools/git/gen_git_source.sh $@
 
 # Gathers together all the objects we've compiled into a single '.a' archive.
 $(LIB_PATH): $(LIB_OBJS)

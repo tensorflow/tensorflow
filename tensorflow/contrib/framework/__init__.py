@@ -60,6 +60,7 @@
 @@model_variable
 @@variable
 @@VariableDeviceChooser
+@@zero_initializer
 """
 
 from __future__ import absolute_import

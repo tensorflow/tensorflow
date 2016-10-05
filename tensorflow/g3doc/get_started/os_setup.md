@@ -859,7 +859,7 @@ and you left the Cuda or cuDNN version empty, try specifying them explicitly.
 ### Protobuf library related issues
 
 TensorFlow pip package depends on protobuf pip package version
-3.0.0b2. Protobuf's pip package downloaded from [PyPI](https://pypi.python.org)
+3.1.0. Protobuf's pip package downloaded from [PyPI](https://pypi.python.org)
 (when running `pip install protobuf`) is a Python only library, that has
 Python implementations of proto serialization/deserialization which can be
 10x-50x slower than the C++ implementation. Protobuf also supports a binary
@@ -877,14 +877,33 @@ $ pip install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/prot
 $ pip install --upgrade https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.0.0-cp27-cp27m-macosx_10_11_x86_64.whl
 ```
 
-And for Python 3:
+And for Python 3.5:
 
 ```bash
 # Ubuntu/Linux 64-bit:
-$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.0.0-cp3-none-linux_x86_64.whl
+$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/linux/cpu/protobuf-3.0.0-cp35-cp35m-linux_x86_64.whl
 
 # Mac OS X:
-$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.0.0-cp3-cp3m-macosx_10_11_x86_64.whl
+$ pip3 install --upgrade https://storage.googleapis.com/tensorflow/mac/cpu/protobuf-3.0.0-cp35-cp35m-macosx_10_11_x86_64.whl
+```
+
+If your system/configuration is not listed above, you can use the following
+instructions to build your own protobuf wheel file.
+To install its prerequisites, [see
+here](https://github.com/google/protobuf/blob/master/src/README.md):
+
+Then:
+```bash
+$ git clone https://github.com/google/protobuf.git
+$ cd protobuf
+$ ./autogen.sh
+$ CXXFLAGS="-fPIC -g -O2" ./configure
+$ make -j12
+$ export PROTOC=$PWD/src/protoc
+$ cd python
+$ python setup.py bdist_wheel --cpp_implementation --compile_static_extension
+$ pip uninstall protobuf
+$ pip install dist/<wheel file name>
 ```
 
 Install the above package _after_ you have installed TensorFlow via pip, as the

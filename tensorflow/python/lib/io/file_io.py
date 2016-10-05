@@ -62,7 +62,7 @@ class FileIO(object):
     """Returns the mode in which the file was opened."""
     return self.__mode
 
-  def _prereadline_check(self):
+  def _preread_check(self):
     if not self._read_buf:
       if not self._read_check_passed:
         raise errors.PermissionDeniedError(None, None,
@@ -91,23 +91,36 @@ class FileIO(object):
       pywrap_tensorflow.AppendToFile(
           compat.as_bytes(file_content), self._writable_file, status)
 
-  def read(self):
-    """Returns the contents of a file as a string."""
-    if not self._read_check_passed:
-      raise errors.PermissionDeniedError(None, None,
-                                         "File isn't open for reading")
+  def read(self, n=-1):
+    """Returns the contents of a file as a string.
+
+    Starts reading from current position in file.
+
+    Args:
+      n: Read 'n' bytes if n != -1.  If n = -1, reads to end of file.
+    """
+    self._preread_check()
     with errors.raise_exception_on_not_ok_status() as status:
-      return pywrap_tensorflow.ReadFileToString(
-          compat.as_bytes(self.__name), status)
+      if n == -1:
+        length = self.size() - self.tell()
+      else:
+        length = n
+      return pywrap_tensorflow.ReadFromStream(self._read_buf, length, status)
+
+  def seek(self, position):
+    """Seeks to the position in the file."""
+    self._preread_check()
+    with errors.raise_exception_on_not_ok_status() as status:
+      return pywrap_tensorflow.SeekInStream(self._read_buf, position, status)
 
   def readline(self):
     r"""Reads the next line from the file. Leaves the '\n' at the end."""
-    self._prereadline_check()
+    self._preread_check()
     return compat.as_str_any(self._read_buf.ReadLineAsString())
 
   def readlines(self):
     """Returns all lines from the file in a list."""
-    self._prereadline_check()
+    self._preread_check()
     lines = []
     while True:
       s = self.readline()
@@ -115,6 +128,13 @@ class FileIO(object):
         break
       lines.append(s)
     return lines
+
+  def tell(self):
+    """Returns the current position in the file."""
+    if not self._read_check_passed:
+      raise errors.PermissionDeniedError(None, None,
+                                         "File isn't open for reading")
+    return self._read_buf.Tell()
 
   def __enter__(self):
     """Make usable with "with" statement."""

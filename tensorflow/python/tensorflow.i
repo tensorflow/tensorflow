@@ -37,3 +37,4 @@ limitations under the License.
 %include "tensorflow/python/framework/python_op_gen.i"
 
 %include "tensorflow/python/framework/cpp_shape_inference.i"
+%include "tensorflow/python/util/kernel_registry.i"

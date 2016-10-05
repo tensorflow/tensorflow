@@ -151,12 +151,13 @@ def load(sess, tags, export_dir):
   saver = tf_saver.import_meta_graph(meta_graph_def_to_load)
 
   # Build the checkpoint path where the variables are located.
-  ckpt_path = os.path.join(
+  variables_path = os.path.join(
       compat.as_bytes(export_dir),
-      compat.as_bytes(constants.VARIABLES_FILENAME))
+      compat.as_bytes(constants.VARIABLES_DIRECTORY),
+      compat.as_bytes(constants.VARIABLES_FILENAME_SHARDED))
 
   # Restore the variables using the built saver in the provided session.
-  saver.restore(sess, ckpt_path)
+  saver.restore(sess, variables_path)
 
   # Return the meta graph def that was loaded into the session.
   return meta_graph_def_to_load

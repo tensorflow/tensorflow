@@ -90,7 +90,8 @@ class TensorForestEstimator(estimator.BaseEstimator):
   def __init__(self, params, device_assigner=None, model_dir=None,
                graph_builder_class=tensor_forest.RandomForestGraphs,
                master='', accuracy_metric=None,
-               tf_random_seed=None, config=None):
+               tf_random_seed=None, config=None,
+               feature_engineering_fn=None):
     self.params = params.fill()
     self.accuracy_metric = (accuracy_metric or
                             ('r2' if self.params.regression else 'accuracy'))
@@ -100,6 +101,9 @@ class TensorForestEstimator(estimator.BaseEstimator):
     self.graph_builder_class = graph_builder_class
     self.training_args = {}
     self.construction_args = {}
+    self._feature_engineering_fn = (
+        feature_engineering_fn or
+        (lambda features, targets: (features, targets)))
 
     super(TensorForestEstimator, self).__init__(model_dir=model_dir,
                                                 config=config)
@@ -207,6 +211,7 @@ class TensorForestEstimator(estimator.BaseEstimator):
     """
     features, _, spec = data_ops.ParseDataTensorOrDict(features)
     labels = data_ops.ParseLabelTensorOrDict(targets)
+    features, labels = self._feature_engineering_fn(features, labels)
     _assert_float32(features)
     _assert_float32(labels)
 
@@ -233,6 +238,7 @@ class TensorForestEstimator(estimator.BaseEstimator):
         self.params, device_assigner=self.device_assigner, training=False,
         **self.construction_args)
     features, keys, spec = data_ops.ParseDataTensorOrDict(features)
+    features, _ = self._feature_engineering_fn(features, None)
     _assert_float32(features)
     output_dict = {
         'probabilities': graph_builder.inference_graph(features,
@@ -244,6 +250,7 @@ class TensorForestEstimator(estimator.BaseEstimator):
   def _get_eval_ops(self, features, targets, metrics):
     features, _, spec = data_ops.ParseDataTensorOrDict(features)
     labels = data_ops.ParseLabelTensorOrDict(targets)
+    features, labels = self._feature_engineering_fn(features, labels)
     _assert_float32(features)
     _assert_float32(labels)
 

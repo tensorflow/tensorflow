@@ -16,7 +16,9 @@ limitations under the License.
 -->
 
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../iron-icons/iron-icons.html">
 <link rel="import" href="../paper-checkbox/paper-checkbox.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
 <link rel="import" href="../paper-input/paper-input.html">
 <link rel="import" href="../tf-imports/lodash.html">
 <link rel="import" href="../tf-dashboard-common/scrollbar-style.html">
@@ -51,13 +53,22 @@ handle these situations gracefully.
         <div
           class="run-row"
         >
-          <div class="checkbox-container vertical-align-container">
+          <div class="icon-container checkbox-container vertical-align-container">
             <paper-checkbox
               class="checkbox vertical-align-center"
               name="[[item]]"
               checked$="[[_isChecked(item, runToIsCheckedMapping.*)]]"
               on-change="_checkboxChange"
             ></paper-checkbox>
+
+          </div>
+          <div class="icon-container isolator-container vertical-align-container">
+            <paper-icon-button
+              icon="radio-button-unchecked"
+              class="isolator vertical-align-center"
+              on-tap="_isolateRun"
+              name="[[item]]"
+            ></paper-icon-button>
           </div>
           <div class="item-label-container">
             <span>[[item]]</span>
@@ -96,15 +107,30 @@ handle these situations gracefully.
       flex-direction: row;
       font-size: 13px;
     }
-    .checkbox-container {
+    .icon-container {
       flex-grow: 0;
       flex-shrink: 0;
+      padding-left: 2px;
     }
     .checkbox {
       padding-left: 2px;
-      width: 32px;
+      width: 18px;
+      height: 18px;
+    }
+    .isolator {
+      width: 18px;
+      height: 18px;
+      padding: 0px;
+    }
+    .isolator-container {
+      padding-left: 6px;
+      padding-right: 3px;
+    }
+    .checkbox-container {
+      padding-left: 2px;
     }
     .item-label-container {
+      padding-left: 5px;
       flex-grow: 1;
       flex-shrink: 1;
       width: 0px; /* hack to get the flex-grow to work properly */
@@ -169,6 +195,7 @@ handle these situations gracefully.
     },
     observers: [
       "_initializeRunToIsCheckedMapping(names.*)",
+      "_setIsolatorIcon(runToIsCheckedMapping.*)",
     ],
     makeRegex: function(regex) {
       try {
@@ -176,6 +203,19 @@ handle these situations gracefully.
       } catch (e) {
         return null;
       }
+    },
+    _setIsolatorIcon(change) {
+      var runMap = this.runToIsCheckedMapping;
+      var numChecked = _.filter(_.values(runMap)).length;
+      var buttons = Array.prototype.slice.call(this.querySelectorAll(".isolator"));
+
+      buttons.forEach(function(b) {
+        if (numChecked === 1 && runMap[b.name]) {
+          b.icon = "radio-button-checked";
+        } else {
+          b.icon = "radio-button-unchecked";
+        }
+      });
     },
     _initializeRunToIsCheckedMapping: function(change) {
       var runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
@@ -212,6 +252,11 @@ handle these situations gracefully.
         p.customStyle['--paper-checkbox-unchecked-color'] = color;
         p.customStyle['--paper-checkbox-unchecked-ink-color'] = color;
       });
+      var buttons = Array.prototype.slice.call(this.querySelectorAll(".isolator"));
+      buttons.forEach(function(p) {
+        var color = scale.scale(p.name);
+        p.style['color'] = color;
+      });
       this.updateStyles();
       // The updateStyles call fails silently if the browser doesn't have focus,
       // e.g. if TensorBoard was opened into a new tab that isn't visible.
@@ -220,8 +265,20 @@ handle these situations gracefully.
       var _this = this;
       window.requestAnimationFrame(function() {_this.updateStyles();});
     },
+    _isolateRun: function(e) {
+      // If user clicks on the label for one run, enable it and disable all other runs.
+
+      var name = Polymer.dom(e).localTarget.name;
+      var _this = this;
+      _.keys(this.runToIsCheckedMapping).forEach(function(k) {
+        _this.runToIsCheckedMapping[k] = false;
+      });
+      this.runToIsCheckedMapping[name] = true;
+      // we can't use notifyPath because the run names may have periods
+      this.runToIsCheckedMapping = _.clone(this.runToIsCheckedMapping);
+    },
     _checkboxChange: function(e) {
-      var target = e.srcElement || e.target; // Firefox doesn't have srcElement.
+      var target = Polymer.dom(e).localTarget;
       var name = target.name;
       var checked = target.checked;
       this.runToIsCheckedMapping[name] = checked;

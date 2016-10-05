@@ -15,13 +15,11 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
-#include "tensorflow/core/kernels/gather_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/gather_op_cpu_impl.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/kernels/gather_functor.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
@@ -78,7 +76,7 @@ class GatherOp : public OpKernel {
       auto indices_flat = indices.flat<Index>();
       auto out_flat = out->shaped<T, 2>({N, out->NumElements() / N});
 
-      functor::Gather<Device, T, Index> functor;
+      functor::GatherFunctor<Device, T, Index> functor;
       int64 bad_i = functor(c->eigen_device<Device>(), params_flat,
                             indices_flat, out_flat);
 
@@ -90,19 +88,6 @@ class GatherOp : public OpKernel {
     }
   }
 };
-
-namespace functor {
-
-// Specialization gather functor for CPU.
-template <typename T, typename Index>
-struct Gather<CPUDevice, T, Index> {
-  int64 operator()(const CPUDevice& d, typename TTypes<T>::ConstMatrix params,
-                   typename TTypes<Index>::ConstFlat indices,
-                   typename TTypes<T>::Matrix out) {
-    return GatherCpu<T, Index>()(params, indices, out);
-  }
-};
-}  // namespace functor
 
 #define REGISTER_GATHER_FULL(dev, type, index_type)                    \
   REGISTER_KERNEL_BUILDER(Name("Gather")                               \
@@ -117,31 +102,13 @@ struct Gather<CPUDevice, T, Index> {
 
 #define REGISTER_GATHER_CPU(type) REGISTER_GATHER_ALL_INDICES(CPU, type)
 
+// Registration of the CPU implementations.
 TF_CALL_ALL_TYPES(REGISTER_GATHER_CPU);
 TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_CPU);
 
 #undef REGISTER_GATHER_CPU
 
 #if GOOGLE_CUDA
-// Forward declarations of the functor specializations for GPU.
-namespace functor {
-#define DECLARE_GPU_SPECS_INDEX(T, Index)                          \
-  template <>                                                      \
-  Index Gather<GPUDevice, T, Index>::operator()(                   \
-      const GPUDevice& d, typename TTypes<T>::ConstMatrix Tparams, \
-      typename TTypes<Index>::ConstFlat Tindices,                  \
-      typename TTypes<T>::Matrix Tout);                            \
-  extern template struct Gather<GPUDevice, T, Index>;
-
-#define DECLARE_GPU_SPECS(T)         \
-  DECLARE_GPU_SPECS_INDEX(T, int32); \
-  DECLARE_GPU_SPECS_INDEX(T, int64)
-
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
-
-#undef DECLARE_GPU_SPECS
-#undef DECLARE_GPU_SPECS_INDEX
-}  // namespace functor
 
 // Registration of the GPU implementations.
 #define REGISTER_GATHER_GPU(type) REGISTER_GATHER_ALL_INDICES(GPU, type)

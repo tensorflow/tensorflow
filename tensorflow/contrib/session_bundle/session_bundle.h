@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,6 +45,17 @@ const char kGraphKey[] = "serving_graph";
 struct SessionBundle {
   std::unique_ptr<Session> session;
   MetaGraphDef meta_graph_def;
+
+  // A TensorFlow Session does not Close itself on destruction. To avoid
+  // resource leaks, we explicitly call Close on Sessions that we create.
+  ~SessionBundle() {
+    if (session) {
+      session->Close();
+    }
+  }
+
+  SessionBundle(SessionBundle&&) = default;
+  SessionBundle() = default;
 };
 
 // Loads a manifest and initialized session using the output of an Exporter.

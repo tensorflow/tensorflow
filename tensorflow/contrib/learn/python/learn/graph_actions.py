@@ -162,7 +162,7 @@ def _monitored_train(graph,
       This feed dictionary will be used when `init_op` is evaluated.
     init_fn: Optional callable passed to Supervisor to initialize the model.
     log_every_steps: Output logs regularly. The logs contain timing data and the
-      current loss.
+      current loss. A `0` or negative value disables logging.
     supervisor_is_chief: Whether the current process is the chief supervisor in
       charge of restoring the model and running standard services.
     supervisor_master: The master string to use when preparing the session.
@@ -171,7 +171,7 @@ def _monitored_train(graph,
     keep_checkpoint_max: The maximum number of recent checkpoint files to
       keep. As new files are created, older files are deleted. If None or 0,
       all checkpoint files are kept. This is simply passed as the max_to_keep
-      arg to tf.Saver constructor.
+      arg to `tf.Saver` constructor.
     supervisor_save_summaries_steps: Save summaries every
       `supervisor_save_summaries_steps` seconds when training.
     feed_fn: A function that is called every iteration to produce a `feed_dict`
@@ -231,21 +231,25 @@ def _monitored_train(graph,
   # (such as ExportMonitor). Appending them after the basic_session_run_hooks.
   all_hooks = []
   with graph.as_default():
-    all_hooks.extend([
-        basic_session_run_hooks.NanTensorHook(
-            loss_op, fail_on_nan_loss=fail_on_nan_loss),
-        basic_session_run_hooks.LoggingTensorHook({
-            'loss': loss_op.name,
-            'step': global_step_tensor.name
-        }, every_n_iter=log_every_steps),
-    ])
+    all_hooks.append(basic_session_run_hooks.NanTensorHook(
+        loss_op, fail_on_nan_loss=fail_on_nan_loss))
+    if log_every_steps > 0:
+      all_hooks.append(basic_session_run_hooks.LoggingTensorHook({
+          'loss': loss_op.name,
+          'step': global_step_tensor.name
+      }, every_n_iter=log_every_steps))
+
+    def make_saver():
+      return tf_saver.Saver(
+          sharded=True, max_to_keep=keep_checkpoint_max, defer_build=True)
 
     scaffold = monitored_session.Scaffold(
         init_op=init_op,
         init_feed_dict=init_feed_dict,
         init_fn=init_fn,
-        saver=tf_saver.Saver(
-            sharded=True, max_to_keep=keep_checkpoint_max, defer_build=True))
+        saver=monitored_session.Scaffold.get_or_default('saver',
+                                                        ops.GraphKeys.SAVERS,
+                                                        make_saver))
 
     if not supervisor_is_chief:
       session_creator = monitored_session.WorkerSessionCreator(
@@ -666,7 +670,7 @@ def evaluate(graph,
       evaluated in every logging step. The result of the final evaluation is
       returned. If `update_op` is None, then it's evaluated in every step. If
       `max_steps` is `None`, this should depend on a reader that will raise an
-      end-of-inupt exception when the inputs are exhausted.
+      end-of-input exception when the inputs are exhausted.
     update_op: A `Tensor` which is run in every step.
     global_step_tensor: A `Variable` containing the global step. If `None`,
       one is extracted from the graph using the same logic as in `Supervisor`.

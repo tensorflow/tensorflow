@@ -51,7 +51,12 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
       tensors: `dict` of tag to tensors/names or
           `iterable` of tensors/names.
       every_n_iter: `int`, print every N iteration.
+
+    Raises:
+     ValueError: if `every_n_iter` is non-positive.
     """
+    if every_n_iter <= 0:
+      raise ValueError("Invalid every_n_iter=%s." % every_n_iter)
     if not isinstance(tensors, dict):
       tensors = {item: item for item in tensors}
     self._tensors = tensors
@@ -147,7 +152,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     Raises:
       ValueError: One of `save_steps` or `save_secs` should be set.
     """
-    logging.info("Create CheckpointSaverHook")
+    logging.info("Create CheckpointSaverHook.")
     self._saver = saver
     self._checkpoint_dir = checkpoint_dir
     self._summary_writer = SummaryWriterCache.get(checkpoint_dir)
@@ -173,7 +178,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
 
   def before_run(self, run_context):  # pylint: disable=unused-argument
     if self._last_saved_time is None:
-      # Write graph in the first call
+      # Write graph in the first call.
       training_util.write_graph(
           ops.get_default_graph().as_graph_def(add_shapes=True),
           self._checkpoint_dir,

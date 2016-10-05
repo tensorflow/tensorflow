@@ -276,7 +276,7 @@ class Supervisor(object):
       global_step: An integer Tensor of size 1 that counts steps.  The value
         from 'global_step' is used in summaries and checkpoint filenames.
         Default to the op named 'global_step' in the graph if it exists, is of
-        rank 1, size 1, and of type tf.int32 ot tf.int64.  If `None` the global
+        rank 1, size 1, and of type tf.int32 or tf.int64.  If `None` the global
         step is not recorded in summaries and checkpoint files.  Used by chief
         supervisors if a `logdir` was specified.
       save_summaries_secs: Number of seconds between the computation of

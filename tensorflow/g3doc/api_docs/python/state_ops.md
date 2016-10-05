@@ -1522,7 +1522,7 @@ protocol buffer file in the call to `save()`.
 
 - - -
 
-#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False, allow_empty=False)` {#Saver.__init__}
+#### `tf.train.Saver.__init__(var_list=None, reshape=False, sharded=False, max_to_keep=5, keep_checkpoint_every_n_hours=10000.0, name=None, restore_sequentially=False, saver_def=None, builder=None, defer_build=False, allow_empty=False, write_version=1)` {#Saver.__init__}
 
 Creates a `Saver`.
 
@@ -1590,6 +1590,11 @@ checkpoints per device.
 *  <b>`allow_empty`</b>: If `False` (default) raise an error if there are no
     variables in the graph. Otherwise, construct the saver anyway and make
     it a no-op.
+*  <b>`write_version`</b>: controls what format to use when saving checkpoints.  It
+    also affects certain filepath matching logic.  Defaults to V1
+    currently, and will be switched to the more memory-efficient V2 format
+    in the future.  If set to V2, the Saver is still able to restore from
+    old V1 checkpoints.
 
 ##### Raises:
 
@@ -1907,9 +1912,9 @@ Similarly, if the regularizer is `None` (the default), the default regularizer
 passed in the variable scope will be used (if that is `None` too,
 then by default no regularization is performed).
 
-If a partitioner is provided, first a sharded `Variable` is created
-via `_get_partitioned_variable`, and the return value is a
-`Tensor` composed of the shards concatenated along the partition axis.
+If a partitioner is provided, a `PartitionedVariable` is returned.
+Accessing this object as a `Tensor` returns the shards concatenated along
+the partition axis.
 
 Some useful partitioners are available.  See, e.g.,
 `variable_axis_size_partitioner` and `min_max_variable_partitioner`.
@@ -1925,9 +1930,9 @@ Some useful partitioners are available.  See, e.g.,
     applying it on a newly created variable will be added to the collection
     GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
 *  <b>`trainable`</b>: If `True` also add the variable to the graph collection
-    `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 *  <b>`collections`</b>: List of graph collections keys to add the Variable to.
-    Defaults to `[GraphKeys.VARIABLES]` (see tf.Variable).
+    Defaults to `[GraphKeys.VARIABLES]` (see `tf.Variable`).
 *  <b>`caching_device`</b>: Optional device string or function describing where the
     Variable should be cached for reading.  Defaults to the Variable's
     device.  If not `None`, caches on another device.  Typical use is to
@@ -1954,7 +1959,8 @@ Some useful partitioners are available.  See, e.g.,
 
 ##### Returns:
 
-  The created or existing variable.
+  The created or existing `Variable` (or `PartitionedVariable`, if a
+  partitioner was used).
 
 ##### Raises:
 
@@ -2242,7 +2248,7 @@ have the following properties:
    that are intended to be locals can be created by specifying
    `tf.Variable(..., trainable=false)`.
 * The function may use variable scopes and other templates internally to
-    create and reuse variables, but it shouldn't use `tf.get_variables` to
+    create and reuse variables, but it shouldn't use `tf.all_variables` to
     capture variables that are defined outside of the scope of the function.
 * Internal scopes and variable names should not depend on any arguments that
     are not supplied to `make_template`. In general you will get a ValueError
@@ -3054,6 +3060,26 @@ The `Operation` that produces `values` as an output.
 
 The `Graph` that contains the values, indices, and shape tensors.
 
+
+
+
+### Read-only Lookup Tables
+
+- - -
+
+### `tf.initialize_all_tables(name='init_all_tables')` {#initialize_all_tables}
+
+Returns an Op that initializes all tables of the default graph.
+
+##### Args:
+
+
+*  <b>`name`</b>: Optional name for the initialization op.
+
+##### Returns:
+
+  An Op that initializes all tables.  Note that if there are
+  not tables the returned Op is a NoOp.
 
 
 

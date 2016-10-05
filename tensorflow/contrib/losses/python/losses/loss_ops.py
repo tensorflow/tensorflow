@@ -140,6 +140,10 @@ def compute_weighted_loss(losses, weight=1.0):
   if weight.get_shape().ndims is None:
     raise ValueError("weight.get_shape().ndims cannot be None")
 
+  weight_shape = weight.get_shape()
+  if weight_shape.ndims > 1 and weight_shape.dims[-1].is_compatible_with(1):
+    weight = array_ops.squeeze(weight, [-1])
+
   total_loss = _scale_losses(losses, weight)
   num_present = _num_present(losses, weight)
   mean_loss = _safe_mean(total_loss, num_present)
@@ -170,9 +174,6 @@ def _num_present(losses, weight, per_batch=False):
       `per_batch` is True, the value is returned as a tensor of size
       [batch_size]. Otherwise, a single scalar tensor is returned.
   """
-  # To ensure that dims of [2, 1] gets mapped to [2,]
-  weight = array_ops.squeeze(weight)
-
   # If the weight is a scalar, its easy to compute:
   if weight.get_shape().ndims == 0:
     batch_size = array_ops.reshape(array_ops.slice(array_ops.shape(losses),
@@ -306,6 +307,7 @@ def sigmoid_cross_entropy(logits, multi_class_labels, weight=1.0,
   corresponding sample.
 
   If `label_smoothing` is nonzero, smooth the labels towards 1/2:
+
       new_multiclass_labels = multiclass_labels * (1 - label_smoothing)
                               + 0.5 * label_smoothing
 
@@ -540,7 +542,7 @@ def sum_of_pairwise_squares(predictions, targets, weight=1.0, scope=None):
   Note that since the inputs are of size [batch_size, d0, ... dN], the
   corresponding pairs are computed within each batch sample but not across
   samples within a batch. For example, if `predictions` represents a batch of
-  16 grayscale images of dimenion [batch_size, 100, 200], then the set of pairs
+  16 grayscale images of dimension [batch_size, 100, 200], then the set of pairs
   is drawn from each image, but not across images.
 
   `weight` acts as a coefficient for the loss. If a scalar is provided, then the

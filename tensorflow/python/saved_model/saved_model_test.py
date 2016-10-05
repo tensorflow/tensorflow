@@ -38,7 +38,7 @@ def tearDownModule():
 class SavedModelTest(tf.test.TestCase):
 
   def testSequence(self):
-    export_dir = os.path.join(tf.test.get_temp_dir(), "sequence")
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_sequence")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Expect an assertion error since add_meta_graph_and_variables() should be
@@ -57,8 +57,7 @@ class SavedModelTest(tf.test.TestCase):
                         sess, ["baz"])
 
   def testTags(self):
-    export_dir = os.path.join(
-        compat.as_bytes(tf.test.get_temp_dir()), compat.as_bytes("tags"))
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_tags")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Graph with a single variable. SavedModel invoked to:
@@ -122,8 +121,7 @@ class SavedModelTest(tf.test.TestCase):
                         export_dir)
 
   def testVariables(self):
-    export_dir = os.path.join(
-        compat.as_bytes(tf.test.get_temp_dir()), compat.as_bytes("variables"))
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_variables")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Graph with two variables. SavedModel invoked to:
@@ -182,8 +180,7 @@ class SavedModelTest(tf.test.TestCase):
                         export_dir)
 
   def testSaveAsText(self):
-    export_dir = os.path.join(
-        compat.as_bytes(tf.test.get_temp_dir()), compat.as_bytes("astext"))
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_astext")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Graph with a single variable. SavedModel invoked to:
@@ -216,8 +213,7 @@ class SavedModelTest(tf.test.TestCase):
       self.assertEqual(42, tf.get_collection(tf.GraphKeys.VARIABLES)[0].eval())
 
   def testCollections(self):
-    export_dir = os.path.join(
-        compat.as_bytes(tf.test.get_temp_dir()), compat.as_bytes("collections"))
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_collections")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Graph with a single variable added to a collection. SavedModel invoked to:
@@ -267,9 +263,7 @@ class SavedModelTest(tf.test.TestCase):
       self.assertEqual(len(tf.get_collection("foo_vars")), 0)
 
   def testSignatureDefs(self):
-    export_dir = os.path.join(
-        compat.as_bytes(tf.test.get_temp_dir()),
-        compat.as_bytes("signature_defs"))
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_signature_defs")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Graph with a single variable and a single entry in the signature def map.
@@ -326,8 +320,7 @@ class SavedModelTest(tf.test.TestCase):
       self.assertEqual("foo_new", bar_signature["foo_key"].method_name)
 
   def testAssets(self):
-    export_dir = os.path.join(
-        compat.as_bytes(tf.test.get_temp_dir()), compat.as_bytes("with-assets"))
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_assets")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     with self.test_session(graph=tf.Graph()) as sess:
@@ -380,8 +373,7 @@ class SavedModelTest(tf.test.TestCase):
       self.assertFalse(file_io.file_exists(ignored_asset_path))
 
   def testOp(self):
-    export_dir = os.path.join(
-        compat.as_bytes(tf.test.get_temp_dir()), compat.as_bytes("op"))
+    export_dir = os.path.join(tf.test.get_temp_dir(), "test_op")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     with tf.Session(

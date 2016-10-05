@@ -178,7 +178,6 @@ class DebugTensorDatum(object):
           the value of the debug_dump_rel_path should be
           "ns_1/node_a_0_DebugIdenity_1234456789".
     """
-
     base = os.path.basename(debug_dump_rel_path)
 
     # TODO(cais): Add hostname and pid to support dumps from distributed
@@ -188,9 +187,12 @@ class DebugTensorDatum(object):
     self._debug_op = base.split("_")[-2]
     self._output_slot = int(base.split("_")[-3])
 
+    namespace = os.path.dirname(debug_dump_rel_path)
     node_base_name = "_".join(base.split("_")[:-3])
-    self._node_name = os.path.dirname(
-        debug_dump_rel_path) + "/" + node_base_name
+    if not namespace or namespace == ".":
+      self._node_name = node_base_name
+    else:
+      self._node_name = namespace + "/" + node_base_name
 
     self._file_path = os.path.join(dump_root, debug_dump_rel_path)
 
@@ -650,7 +652,8 @@ class DebugDumpDir(object):
     """
 
     if self._node_inputs is None or self._node_ctrl_inputs is None:
-      raise RuntimeError("Node inputs are not loaded from partiton graphs yet.")
+      raise RuntimeError(
+          "Node inputs are not loaded from partition graphs yet.")
 
     if node_name not in self._node_inputs:
       raise ValueError("Node '%s' does not exist in partition graphs." %
@@ -678,7 +681,8 @@ class DebugDumpDir(object):
     """
 
     if not self._node_inputs or not self._node_ctrl_inputs:
-      raise RuntimeError("Node inputs are not loaded from partiton graphs yet.")
+      raise RuntimeError(
+          "Node inputs are not loaded from partition graphs yet.")
 
     if node_name not in self._node_inputs:
       raise ValueError("Node '%s' does not exist in partition graphs." %
@@ -750,7 +754,7 @@ class DebugDumpDir(object):
 
     if self._node_recipients is None or self._node_ctrl_recipients is None:
       raise RuntimeError(
-          "Node recipients are not loaded from partiton graphs yet.")
+          "Node recipients are not loaded from partition graphs yet.")
 
     if node_name not in self._node_recipients:
       raise ValueError("Node '%s' does not exist in partition graphs." %
@@ -773,9 +777,28 @@ class DebugDumpDir(object):
     """
 
     if self._devices is None:
-      raise RuntimeError("Devices are not loaded from partiton graphs yet.")
+      raise RuntimeError("Devices are not loaded from partition graphs yet.")
 
     return self._devices
+
+  def node_exists(self, node_name):
+    """Test if a node exists in the partition graphs.
+
+    Args:
+      node_name: Name of the node to be checked, as a str.
+
+    Returns:
+      A boolean indicating whether the node exists.
+
+    Raises:
+      RuntimeError: If no partition graphs have been loaded yet.
+    """
+
+    if self._node_inputs is None:
+      raise RuntimeError(
+          "Nodes have not been loaded from partition graphs yet.")
+
+    return node_name in self._node_inputs
 
   def node_device(self, node_name):
     """Get the device of a node.
@@ -793,7 +816,7 @@ class DebugDumpDir(object):
     """
     if self._node_devices is None:
       raise RuntimeError(
-          "Node devices are not loaded from partiton graphs yet.")
+          "Node devices are not loaded from partition graphs yet.")
 
     if node_name not in self._node_devices:
       raise ValueError("Node '%s' does not exist in partition graphs." %
@@ -817,7 +840,7 @@ class DebugDumpDir(object):
     """
     if self._node_op_types is None:
       raise RuntimeError(
-          "Node op types are not loaded from partiton graphs yet.")
+          "Node op types are not loaded from partition graphs yet.")
 
     if node_name not in self._node_op_types:
       raise ValueError("Node '%s' does not exist in partition graphs." %

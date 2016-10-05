@@ -665,7 +665,7 @@ class LinearClassifierTest(tf.test.TestCase):
     classifier = tf.contrib.learn.LinearClassifier(
         feature_columns=[age, language])
 
-    # Evaluate on trained mdoel
+    # Evaluate on trained model
     classifier.fit(input_fn=input_fn, steps=100)
     classifier.evaluate(input_fn=input_fn, steps=1)
 

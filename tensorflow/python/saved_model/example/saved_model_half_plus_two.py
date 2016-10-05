@@ -37,11 +37,12 @@ from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import utils
 
 
-def _generate_saved_model_for_half_plus_two(export_dir):
+def _generate_saved_model_for_half_plus_two(export_dir, as_text=False):
   """Generates SavedModel for half plus two.
 
   Args:
     export_dir: The directory to which the SavedModel should be written.
+    as_text: Writes the SavedModel protocol buffer in text format to disk.
   """
   builder = saved_model_builder.SavedModelBuilder(export_dir)
 
@@ -72,12 +73,15 @@ def _generate_saved_model_for_half_plus_two(export_dir):
     builder.add_meta_graph_and_variables(
         sess, [constants.TAG_SERVING],
         signature_def_map={"regression": signature_def})
-    builder.save()
+    builder.save(as_text)
 
 
 def main(_):
-  export_dir = "/tmp/saved_model/half_plus_two"
-  _generate_saved_model_for_half_plus_two(export_dir)
+  export_dir_pb = "/tmp/saved_model/half_plus_two"
+  _generate_saved_model_for_half_plus_two(export_dir_pb)
+
+  export_dir_pbtxt = "/tmp/saved_model/half_plus_two_pbtxt"
+  _generate_saved_model_for_half_plus_two(export_dir_pbtxt, as_text=True)
 
 
 if __name__ == "__main__":

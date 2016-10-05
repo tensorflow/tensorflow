@@ -121,7 +121,7 @@ class RunConfig(object):
 
     Raises:
       ValueError: if num_ps_replicas and cluster_spec are set (cluster_spec
-        may fome from the TF_CONFIG environment variable).
+        may come from the TF_CONFIG environment variable).
     """
     # If not explicitly specified in the constructor and the TF_CONFIG
     # environment variable is present, load cluster_spec from TF_CONFIG.

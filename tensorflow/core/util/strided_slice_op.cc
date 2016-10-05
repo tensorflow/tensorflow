@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -94,8 +94,8 @@ struct StridedSliceDenseSpec {
 }  // namespace
 
 template <class T>
-static void BuildDenseSpec(const StridedSliceSparseSpec& sparse,
-                           StridedSliceDenseSpec* dense) {
+static Status TF_MUST_USE_RESULT BuildDenseSpec(
+    const StridedSliceSparseSpec& sparse, StridedSliceDenseSpec* dense) {
   // Build expanded begin, end, strides, begin_mask, end_mask
   // to remove any ellipsis
   dense->begin.resize(dense->dims);
@@ -130,6 +130,12 @@ static void BuildDenseSpec(const StridedSliceSparseSpec& sparse,
       } else if ((1 << i) & sparse.new_axis_mask) {
         dense->final_shape_gather_indices.push_back(kNewAxis);
       } else {
+        if (full_index == dense->begin.size()) {
+          return errors::InvalidArgument("Index out of range using input dim ",
+                                         full_index, "; input has only ",
+                                         dense->dims, " dims");
+        }
+
         // Gather slicing spec into appropriate index
         dense->begin[full_index] = internal::SubtleMustCopy<T>(begin_flat(i));
         dense->end[full_index] = internal::SubtleMustCopy<T>(end_flat(i));
@@ -154,6 +160,7 @@ static void BuildDenseSpec(const StridedSliceSparseSpec& sparse,
       }
     }
   }
+  return Status::OK();
 }
 
 Status ValidateStridedSliceOp(
@@ -233,9 +240,9 @@ Status ValidateStridedSliceOp(
       input_shape.dims(), 0, 0, *begin, *end, *strides};
 
   if (begin_tensor.dtype() == DT_INT32) {
-    BuildDenseSpec<int32>(sparse_spec, &dense_spec);
+    TF_RETURN_IF_ERROR(BuildDenseSpec<int32>(sparse_spec, &dense_spec));
   } else if (begin_tensor.dtype() == DT_INT64) {
-    BuildDenseSpec<int64>(sparse_spec, &dense_spec);
+    TF_RETURN_IF_ERROR(BuildDenseSpec<int64>(sparse_spec, &dense_spec));
   } else {
     LOG(FATAL) << "begin must be either int32 or int64";
   }

@@ -30,31 +30,4 @@ list(APPEND tf_core_cpu_srcs
 )
 
 add_library(tf_core_cpu OBJECT ${tf_core_cpu_srcs})
-
-target_include_directories(tf_core_cpu PRIVATE
-    ${tensorflow_source_dir}
-    ${eigen_INCLUDE_DIRS}
-    ${re2_INCLUDES}
-)
-
-add_dependencies(tf_core_cpu
-    tf_core_framework
-)
-#target_link_libraries(tf_core_cpu
-#    ${CMAKE_THREAD_LIBS_INIT}
-#    ${PROTOBUF_LIBRARIES}
-#    tf_core_framework
-#    tf_core_lib
-#    tf_protos_cc
-#)
-
-target_compile_options(tf_core_cpu PRIVATE
-    -fno-exceptions
-    -DEIGEN_AVOID_STL_ARRAY
-)
-
-# C++11
-target_compile_features(tf_core_cpu PRIVATE
-    cxx_rvalue_references
-)
-
+add_dependencies(tf_core_cpu tf_core_framework)

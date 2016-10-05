@@ -1608,6 +1608,23 @@ class CondContext(ControlFlowContext):
     if self._outer_context or not IsLoopExit(op):
       op.graph.prevent_fetching(op)
 
+  def _ProcessOutputTensor(self, val):
+    """Process an output tensor of a conditional branch."""
+    real_val = val
+    if val.name not in self._values:
+      # Handle the special case of lambda: x
+      self._values.add(val.name)
+      if self._outer_context:
+        real_val = self._outer_context.AddValue(val)
+        self._values.add(real_val.name)
+      real_val = _SwitchRefOrTensor(real_val, self._pred)[self._branch]
+      self._external_values[val.name] = real_val
+    else:
+      external_val = self._external_values.get(val.name)
+      if external_val is not None:
+        real_val = external_val
+    return real_val
+
   def BuildCondBranch(self, fn):
     """Add the subgraph defined by fn() to the graph."""
     r = fn()
@@ -1623,18 +1640,20 @@ class CondContext(ControlFlowContext):
         if isinstance(v, ops.Operation):
           # Use pivot as the proxy for this op.
           real_v = with_dependencies([v], self._pivot)
-        elif v.name not in self._values:
-          # Handle the special case of lambda: x
-          self._values.add(v.name)
-          if self._outer_context:
-            real_v = self._outer_context.AddValue(v)
-            self._values.add(real_v.name)
-          real_v = _SwitchRefOrTensor(real_v, self._pred)[self._branch]
-          self._external_values[v.name] = real_v
         else:
-          external_v = self._external_values.get(v.name)
-          if external_v is not None:
-            real_v = external_v
+          if isinstance(v, (ops.IndexedSlices, ops.SparseTensor)):
+            values = self._ProcessOutputTensor(v.values)
+            indices = self._ProcessOutputTensor(v.indices)
+            if isinstance(v, ops.IndexedSlices):
+              dense_shape = v.dense_shape
+              if dense_shape is not None:
+                dense_shape = self._ProcessOutputTensor(dense_shape)
+              real_v = ops.IndexedSlices(values, indices, dense_shape)
+            else:
+              dense_shape = self._ProcessOutputTensor(v.shape)
+              real_v = ops.SparseTensor(indices, values, dense_shape)
+          else:
+            real_v = self._ProcessOutputTensor(v)
         result.append(real_v)
     return original_r, result
 
@@ -1653,7 +1672,7 @@ def cond(pred, fn1, fn2, name=None):
   result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
   ```
 
-  If x < y, the tf.add operation will be executed and tf.square
+  If x < y, the `tf.add` operation will be executed and tf.square
   operation will not be executed. Since z is needed for at least one
   branch of the cond, the tf.mul operation is always executed, unconditionally.
   Although this behavior is consistent with the dataflow model of TensorFlow,
@@ -1726,6 +1745,8 @@ def cond(pred, fn1, fn2, name=None):
     for x, y in zip(res_f, res_t):
       assert ((isinstance(x, ops.IndexedSlices) and
                isinstance(y, ops.IndexedSlices)) or
+              (isinstance(x, ops.SparseTensor) and
+               isinstance(y, ops.SparseTensor)) or
               (isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor)))
       val_x = x if isinstance(x, ops.Tensor) else x.values
       val_y = y if isinstance(y, ops.Tensor) else y.values

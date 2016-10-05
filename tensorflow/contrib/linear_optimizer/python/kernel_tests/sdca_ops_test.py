@@ -19,9 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from threading import Thread
+
 import tensorflow as tf
 
-from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import _sdca_ops
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import _ShardedMutableHashTable
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SdcaModel
 from tensorflow.contrib.linear_optimizer.python.ops.sdca_ops import SparseFeatureColumn
@@ -523,8 +523,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
       lr = SdcaModel(examples, variables, options)
       tf.initialize_all_variables().run()
       train_op = lr.minimize()
-      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
-                                   'Found sparse feature indices out.*'):
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError, 'indices.*'):
         train_op.run()
 
   def testOutOfRangeDenseFeatures(self):
@@ -996,7 +995,7 @@ class SdcaFprintTest(SdcaModelTest):
   def testFprint(self):
     with self._single_threaded_test_session():
       in_data = tf.constant(['abc', 'very looooooong string', 'def'])
-      out_data = _sdca_ops.sdca_fprint(in_data)
+      out_data = tf.sdca.sdca_fprint(in_data)
       self.assertAllEqual(
           [b'\x04l\x12\xd2\xaf\xb2\x809E\x9e\x02\x13',
            b'\x9f\x0f\x91P\x9aG.Ql\xf2Y\xf9',

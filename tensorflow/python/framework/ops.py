@@ -797,8 +797,10 @@ def register_tensor_conversion_function(base_type, conversion_func,
 
   The conversion function must have the following signature:
 
+  ```python
       def conversion_func(value, dtype=None, name=None, as_ref=False):
         # ...
+  ```
 
   It must return a `Tensor` with the given `dtype` if specified. If the
   conversion function creates a new `Tensor`, it should use the given
@@ -1944,7 +1946,7 @@ class Graph(object):
   To add an operation to the default graph, simply call one of the functions
   that defines a new `Operation`:
 
-  ```
+  ```python
   c = tf.constant(4.0)
   assert c.graph is tf.get_default_graph()
   ```
@@ -2052,6 +2054,7 @@ class Graph(object):
     self._graph_def_versions = versions_pb2.VersionDef(
         producer=versions.GRAPH_DEF_VERSION,
         min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER)
+    self._building_function = False
     # Stack of colocate_with ops
     self._colocation_stack = []
     # Set of tensors that are dangerous to feed!
@@ -2293,6 +2296,11 @@ class Graph(object):
         function.python_grad_func is not None):
       raise ValueError("Gradient defined twice for function %s" % name)
     self._functions[name] = function
+
+  @property
+  def building_function(self):
+    """Returns True iff this graph represents a function."""
+    return self._building_function
 
   # Helper functions to create operations.
   def create_op(self, op_type, inputs, dtypes,
@@ -3877,12 +3885,14 @@ def _get_graph_from_inputs(op_input_list, graph=None):
   This library method provides a consistent algorithm for choosing the graph
   in which an Operation should be constructed:
 
-  1. If the "graph" is specified explicitly, we validate that all of the inputs
+  1. If the default graph is being used to construct a function, we
+     use the default graph.
+  2. If the "graph" is specified explicitly, we validate that all of the inputs
      in "op_input_list" are compatible with that graph.
-  2. Otherwise, we attempt to select a graph from the first Operation-
+  3. Otherwise, we attempt to select a graph from the first Operation-
      or Tensor-valued input in "op_input_list", and validate that all other
      such inputs are in the same graph.
-  3. If the graph was not specified and it could not be inferred from
+  4. If the graph was not specified and it could not be inferred from
      "op_input_list", we attempt to use the default graph.
 
   Args:
@@ -3899,7 +3909,11 @@ def _get_graph_from_inputs(op_input_list, graph=None):
 
   Returns:
     The appropriate graph to use for the given inputs.
+
   """
+  if get_default_graph().building_function:
+    return get_default_graph()
+
   op_input_list = tuple(op_input_list)  # Handle generators correctly
   if graph and not isinstance(graph, Graph):
     raise TypeError("Input graph needs to be a Graph: %s" % graph)

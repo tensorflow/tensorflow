@@ -34,6 +34,12 @@
 #      kernels.
 # ":direct_session" - An implementation of the Session interface that
 #      directly runs Graphs via the internal TensorFlow executor.
+#  "framework_lite" - Intended to be used by operator implementations
+#      (kernels) that can also be run outside the tensorflow runtime. This
+#      contains a small set of headers and utilities that can be used for core
+#      kernels, without bringing in libraries that can bloat code size (e.g.,
+#      logging is not included because using it will bring in a large amount of
+#      ostream code).
 #
 # ":example_parser_configuration" -- A library for extracting the
 #      tensorflow.Example proto configuration from a Graph.
@@ -47,7 +53,10 @@
 #   supporting SELECTIVE_REGISTRATION feature.
 # portable_proto_library ":android_proto_lib" (Google-internal)
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = [
+    "//tensorflow:internal",
+    "//tensorflow_models:__subpackages__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -77,6 +86,7 @@ load(
     "tf_proto_library_cc",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
+    "tf_additional_minimal_lib_srcs",
     "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
     "tf_additional_lib_deps",
@@ -99,6 +109,7 @@ tf_proto_library(
     srcs = glob(
         ["**/*.proto"],
         exclude = [
+            "debug/debug_service.proto",
             "protobuf/worker.proto",
             "protobuf/worker_service.proto",
             "protobuf/master.proto",
@@ -140,6 +151,7 @@ cc_library(
     hdrs = [
         # TODO(josh11b): Make many of these internal.
         "lib/core/arena.h",
+        "lib/core/bitmap.h",
         "lib/core/bits.h",
         "lib/core/casts.h",
         "lib/core/coding.h",
@@ -178,6 +190,7 @@ cc_library(
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",
         "platform/cpu_info.h",
+        "platform/dynamic_annotations.h",
         "platform/env.h",
         "platform/file_system.h",
         "platform/fingerprint.h",
@@ -188,9 +201,9 @@ cc_library(
         "platform/net.h",
         "platform/mutex.h",
         "platform/notification.h",
+        "platform/prefetch.h",
         "platform/profile_utils/cpu_utils.h",
         "platform/protobuf.h",  # TODO(josh11b): make internal
-        "platform/regexp.h",
         "platform/stacktrace.h",
         "platform/strong_hash.h",
         "platform/thread_annotations.h",
@@ -303,6 +316,29 @@ tf_cuda_library(
     deps = [":framework_internal"],
 )
 
+cc_library(
+    name = "framework_lite",
+    srcs = tf_additional_minimal_lib_srcs(),
+    hdrs = [
+        "framework/numeric_types.h",
+        "framework/tensor_types.h",
+        "framework/type_traits.h",
+        "platform/dynamic_annotations.h",
+        "platform/macros.h",
+        "platform/mutex.h",
+        "platform/platform.h",
+        "platform/prefetch.h",
+        "platform/thread_annotations.h",
+        "platform/types.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps =
+        [
+            "//tensorflow/core/platform/default/build_config:minimal",
+            "//third_party/eigen3",
+        ],
+)
+
 # Generates library per group of ops.
 tf_gen_op_libs(
     op_lib_names = [
@@ -322,6 +358,7 @@ tf_gen_op_libs(
         "no_op",
         "parsing_ops",
         "random_ops",
+        "sdca_ops",
         "script_ops",
         "sendrecv_ops",
         "sparse_ops",
@@ -363,6 +400,7 @@ cc_library(
         ":parsing_ops_op_lib",
         ":random_ops_op_lib",
         ":script_ops_op_lib",
+        ":sdca_ops_op_lib",
         ":sendrecv_ops_op_lib",
         ":sparse_ops_op_lib",
         ":state_ops_op_lib",
@@ -483,6 +521,7 @@ cc_library(
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:required",
+        "//tensorflow/core/kernels:sdca_ops",
         "//tensorflow/core/kernels:sparse",
         "//tensorflow/core/kernels:state",
         "//tensorflow/core/kernels:string",
@@ -596,6 +635,7 @@ filegroup(
         "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
         "//tensorflow/core/util/ctc:android_srcs",
+        "//tensorflow/core/util/tensor_bundle:android_srcs",
         "common_runtime/gpu/gpu_tracer.cc",
         "common_runtime/gpu/gpu_tracer.h",
     ] + glob(
@@ -950,7 +990,6 @@ cc_library(
         "lib/strings/base64.h",
         "lib/strings/ordered_code.h",
         "lib/strings/proto_text_util.h",
-        "lib/strings/regexp.h",
         "lib/strings/scanner.h",
         "lib/wav/wav_io.h",
         "platform/demangle.h",
@@ -1113,6 +1152,7 @@ filegroup(
         "platform/default/notification.h",
         "platform/default/protobuf.h",
         "platform/default/thread_annotations.h",
+        "platform/dynamic_annotations.h",
         "platform/env.h",
         "platform/file_statistics.h",
         "platform/file_system.h",
@@ -1124,6 +1164,7 @@ filegroup(
         "platform/net.h",
         "platform/notification.h",
         "platform/platform.h",
+        "platform/prefetch.h",
         "platform/protobuf.h",
         "platform/strong_hash.h",
         "platform/thread_annotations.h",
@@ -1201,6 +1242,19 @@ tf_cuda_library(
         "//tensorflow/core/kernels:required",
     ] + tf_additional_lib_deps(),
     alwayslink = 1,
+)
+
+# This library is deprecated and no longer publicly available.
+# Do not add more uses of it.
+cc_library(
+    name = "regexp_internal",
+    hdrs = [
+        "platform/regexp.h",
+    ],
+    visibility = [
+        "//tensorflow/contrib/tfprof:__subpackages__",
+    ],
+    deps = [":lib_internal"],
 )
 
 tf_cuda_library(
@@ -1366,6 +1420,7 @@ tf_cc_tests(
     srcs = [
         "lib/core/arena_test.cc",
         "lib/core/bit_cast_test.cc",
+        "lib/core/bitmap_test.cc",
         "lib/core/blocking_counter_test.cc",
         "lib/core/coding_test.cc",
         "lib/core/notification_test.cc",
@@ -1432,7 +1487,6 @@ tf_cc_tests(
 tf_cc_tests(
     size = "small",
     srcs = ["platform/env_test.cc"],
-    tags = ["manual"],  # http://b/30439755
     deps = [
         ":lib",
         ":lib_internal",

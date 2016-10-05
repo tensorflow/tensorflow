@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import six
 
 from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.contrib.framework.python.ops import variables
@@ -31,9 +32,11 @@ from tensorflow.contrib.layers.python.layers import utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import moving_averages
@@ -52,6 +55,7 @@ __all__ = ['avg_pool2d',
            'dropout',
            'flatten',
            'fully_connected',
+           '_inner_flatten',
            'layer_norm',
            'linear',
            'max_pool2d',
@@ -120,6 +124,7 @@ def batch_norm(inputs,
                variables_collections=None,
                outputs_collections=None,
                trainable=True,
+               batch_weights=None,
                scope=None):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
@@ -131,15 +136,15 @@ def batch_norm(inputs,
   Can be used as a normalizer function for conv2d and fully_connected.
 
   Note: When is_training is True the moving_mean and moving_variance need to be
-  updated, by default the update_ops are placed in tf.GraphKeys.UPDATE_OPS so
-  they need to be added as a dependency to the train_op, example:
+  updated, by default the update_ops are placed in `tf.GraphKeys.UPDATE_OPS` so
+  they need to be added as a dependency to the `train_op`, example:
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     if update_ops:
       updates = tf.group(*update_ops)
       total_loss = control_flow_ops.with_dependencies([updates], total_loss)
 
-  One can set update_collections=None to force the updates in place, but that
+  One can set updates_collections=None to force the updates in place, but that
   can have speed penalty, specially in distributed settings.
 
   Args:
@@ -154,7 +159,7 @@ def batch_norm(inputs,
     activation_fn: activation function, default set to None to skip it and
       maintain a linear activation.
     updates_collections: collections to collect the update ops for computation.
-      The updates_ops need to be excuted with the train_op.
+      The updates_ops need to be executed with the train_op.
       If None, a control dependency would be added to make sure the updates are
       computed in place.
     is_training: whether or not the layer is in training mode. In training mode
@@ -167,7 +172,12 @@ def batch_norm(inputs,
     variables_collections: optional collections for the variables.
     outputs_collections: collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    batch_weights: An optional tensor of shape `[batch_size]`,
+      containing a frequency weight for each batch item. If present,
+      then the batch normalization uses weighted mean and
+      variance. (This can be used to correct for bias in training
+      example selection.)
     scope: Optional scope for `variable_scope`.
 
   Returns:
@@ -184,6 +194,14 @@ def batch_norm(inputs,
     if inputs_rank is None:
       raise ValueError('Inputs %s has undefined rank.' % inputs.name)
     dtype = inputs.dtype.base_dtype
+    if batch_weights is not None:
+      batch_weights = ops.convert_to_tensor(batch_weights)
+      inputs_shape[0:1].assert_is_compatible_with(batch_weights.get_shape())
+
+      # Reshape batch weight values so they broadcast across inputs.
+      nshape = [-1] + [1 for _ in range(inputs_rank - 1)]
+      batch_weights = array_ops.reshape(batch_weights, nshape)
+
     axis = list(range(inputs_rank - 1))
     params_shape = inputs_shape[-1:]
     if not params_shape.is_fully_defined():
@@ -241,9 +259,13 @@ def batch_norm(inputs,
     need_moments = is_training_value is None or is_training_value
     if need_moments:
       # Calculate the moments based on the individual batch.
-      # Use a copy of moving_mean as a shift to compute more reliable moments.
-      shift = math_ops.add(moving_mean, 0)
-      mean, variance = nn.moments(inputs, axis, shift=shift)
+      if batch_weights is None:
+        # Use a copy of moving_mean as a shift to compute more reliable moments.
+        shift = math_ops.add(moving_mean, 0)
+        mean, variance = nn.moments(inputs, axis, shift=shift)
+      else:
+        mean, variance = nn.weighted_moments(inputs, axis, batch_weights)
+
       moving_vars_fn = lambda: (moving_mean, moving_variance)
       if updates_collections is None:
         def _force_updates():
@@ -399,7 +421,7 @@ def convolution2d(inputs,
     reuse: whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
     variables_collections: optional list of collections for all the variables or
-      a dictionay containing a different list of collection per variable.
+      a dictionary containing a different list of collection per variable.
     outputs_collections: collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
@@ -510,7 +532,7 @@ def convolution2d_in_plane(
     reuse: whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
     variables_collections: optional list of collections for all the variables or
-      a dictionay containing a different list of collection per variable.
+      a dictionary containing a different list of collection per variable.
     outputs_collections: collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
@@ -608,7 +630,7 @@ def convolution2d_transpose(
     reuse: whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
     variables_collections: optional list of collections for all the variables or
-      a dictionay containing a different list of collection per variable.
+      a dictionary containing a different list of collection per variable.
     outputs_collections: collection to add the outputs.
     trainable: whether or not the variables should be trainable or not.
     scope: Optional scope for variable_scope.
@@ -721,7 +743,7 @@ def dropout(inputs,
   with ops.name_scope(scope, 'Dropout', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
     dropout_fn = lambda: nn.dropout(inputs, keep_prob, noise_shape)
-    id_fn = lambda: inputs
+    id_fn = lambda: array_ops.identity(inputs)
     outputs = utils.smart_cond(is_training, dropout_fn, id_fn)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
@@ -756,6 +778,77 @@ def flatten(inputs,
     k = dims.num_elements()
     outputs = array_ops.reshape(inputs, [-1, k])
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
+
+def _sparse_inner_flatten(inputs, new_rank):
+  """Helper function for `inner_flatten`."""
+  outer_dimensions = array_ops.slice(
+      inputs.shape, [0], [new_rank - 1], name='collect_outer_dims')
+  new_shape = array_ops.concat(0, (outer_dimensions, [-1]))
+  flattened = sparse_ops.sparse_reshape(inputs, new_shape)
+  return flattened
+
+
+def _dense_inner_flatten(inputs, new_rank):
+  """Helper function for `inner_flatten`."""
+  rank_assertion = check_ops.assert_rank_at_least(
+      inputs, new_rank, message='inputs has rank less than new_rank')
+  with ops.control_dependencies([rank_assertion]):
+    outer_dimensions = array_ops.slice(
+        array_ops.shape(inputs), [0], [new_rank - 1])
+    new_shape = array_ops.concat(0, (outer_dimensions, [-1]))
+    reshaped = array_ops.reshape(inputs, new_shape)
+
+  # if `new_rank` is an integer, try to calculate new shape.
+  if isinstance(new_rank, six.integer_types):
+    static_shape = inputs.get_shape()
+    if static_shape is not None and static_shape.dims is not None:
+      static_shape = static_shape.as_list()
+      static_outer_dims = static_shape[:new_rank - 1]
+      static_inner_dims = static_shape[new_rank - 1:]
+      flattened_dimension = 1
+      for inner_dim in static_inner_dims:
+        if inner_dim is None:
+          flattened_dimension = None
+          break
+        flattened_dimension *= inner_dim
+      reshaped.set_shape(static_outer_dims + [flattened_dimension])
+  return reshaped
+
+
+@add_arg_scope
+def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
+  """Flattens inner dimensions of `inputs`, returns a Tensor with `new_rank`.
+
+  For example:
+  '''
+      x = tf.random_uniform(shape=[1, 2, 3, 4, 5, 6])
+      y = _inner_flatten(x, 4)
+      assert y.get_shape().as_list() == [1, 2, 3, (4 * 5 * 6)]
+  '''
+  This layer will fail at run time if `new_rank` is greater than the current
+  rank of `inputs`.
+
+  Args:
+    inputs: a `Tensor` or `SparseTensor`.
+    new_rank: the desired rank of the returned `Tensor` or `SparseTensor`.
+    output_collections: collection to which the outputs will be added.
+    scope: optional scope for `name_scope`.
+  Returns:
+    A `Tensor` or `SparseTensor` conataining the same values as `inputs`, but
+    with innermost dimensions flattened to obtain rank `new_rank`.
+
+  Raises:
+    TypeError: `inputs` is not a `Tensor` or `SparseTensor`.
+  """
+  with ops.name_scope(scope, 'PartialFlatten', [inputs, new_rank]) as sc:
+    if isinstance(inputs, ops.SparseTensor):
+      flattened = _sparse_inner_flatten(inputs, new_rank)
+    elif isinstance(inputs, ops.Tensor):
+      flattened = _dense_inner_flatten(inputs, new_rank)
+    else:
+      raise TypeError('inputs must be a Tensor or SparseTensor.')
+  return utils.collect_named_outputs(output_collections, sc, flattened)
 
 
 @add_arg_scope
@@ -1005,7 +1098,7 @@ def one_hot_encoding(labels,
                      off_value=0.0,
                      outputs_collections=None,
                      scope=None):
-  """Transform numeric labels into onehot_labels using tf.one_hot.
+  """Transform numeric labels into onehot_labels using `tf.one_hot`.
 
   Args:
     labels: [batch_size] target labels.

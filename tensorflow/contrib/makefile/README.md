@@ -58,8 +58,8 @@ tensorflow/contrib/makefile/build_all_linux.sh
 ```
 
 This should compile a static library in 
-`tensorflow/contrib/makefile/gen/lib/tf_lib.a`, and create an example executable
-at `tensorflow/contrib/makefile/gen/bin/benchmark`. 
+`tensorflow/contrib/makefile/gen/lib/libtensorflow-core.a`, 
+and create an example executable at `tensorflow/contrib/makefile/gen/bin/benchmark`. 
 
 Get the graph file, if you have not already:
 
@@ -140,6 +140,12 @@ xcode-select --install
 
 If this is a new install, you will need to run XCode once to agree to the
 license before continuing.
+
+Then install [automake](https://en.wikipedia.org/wiki/Automake):
+
+```bash
+brew install automake
+```
 
 Also, download the graph if you haven't already:
 
