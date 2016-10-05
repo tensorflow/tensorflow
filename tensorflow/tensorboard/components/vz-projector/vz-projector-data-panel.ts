@@ -121,10 +121,7 @@ export class DataPanel extends DataPanelPolymer {
                 let range = scale.range();
                 // Re-order the range.
                 let newRange = range.map((color, i) => {
-                  let index = (i * 2) % (range.length - 1);
-                  if (index === 0) {
-                    index = range.length - 1;
-                  }
+                  let index = (i * 3) % range.length;
                   return range[index];
                 });
                 items = stats.uniqueEntries;
