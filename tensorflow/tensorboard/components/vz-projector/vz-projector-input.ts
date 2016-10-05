@@ -37,7 +37,7 @@ export class ProjectorInput extends PolymerClass {
   label: string;
 
   /** Subscribe to be called everytime the input changes. */
-  onInputChanged(listener: InputChangedListener, callImmediately = true) {
+  onInputChanged(listener: InputChangedListener, callImmediately = false) {
     this.inputChangedListeners.push(listener);
     if (callImmediately) {
       listener(this.paperInput.value, this.inRegexMode);
