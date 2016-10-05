@@ -865,6 +865,8 @@ tf_kernel_libraries(
     deps = [
         ":bounds_check",
         ":concat_lib",
+        ":conditional_accumulator_base_ops",
+        ":conditional_accumulator_ops",
         ":fifo_queue",
         ":initializable_lookup_table",
         ":lookup_util",
@@ -872,8 +874,10 @@ tf_kernel_libraries(
         ":priority_queue",
         ":queue_base",
         ":queue_op",
+        ":sparse_conditional_accumulator_ops",
         ":split_lib",
         ":tensor_array",
+        ":typed_conditional_accumulator_base",
         ":typed_queue",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:data_flow_ops_op_lib",
@@ -927,6 +931,84 @@ cc_library(
         ":typed_queue",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "conditional_accumulator_base",
+    srcs = ["conditional_accumulator_base.cc"],
+    hdrs = [
+        "conditional_accumulator_base.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "typed_conditional_accumulator_base",
+    hdrs = ["typed_conditional_accumulator_base.h"],
+    deps = [
+        ":conditional_accumulator_base",
+    ],
+)
+
+cc_library(
+    name = "conditional_accumulator",
+    hdrs = [
+        "conditional_accumulator.h",
+        "conditional_accumulator_base_op.h",
+    ],
+    deps = [
+        ":typed_conditional_accumulator_base",
+        "//tensorflow/core/kernels:fill_functor",
+    ],
+)
+
+cc_library(
+    name = "sparse_conditional_accumulator",
+    hdrs = ["sparse_conditional_accumulator.h"],
+    deps = [
+        ":typed_conditional_accumulator_base",
+    ],
+)
+
+cc_library(
+    name = "conditional_accumulator_base_ops",
+    srcs = ["conditional_accumulator_base_op.cc"],
+    hdrs = [
+        "conditional_accumulator_base_op.h",
+    ],
+    deps = [
+        ":conditional_accumulator_base",
+    ],
+)
+
+cc_library(
+    name = "conditional_accumulator_ops",
+    srcs = ["conditional_accumulator_op.cc"],
+    hdrs = [
+        "conditional_accumulator.h",
+        "conditional_accumulator_base_op.h",
+    ],
+    deps = [
+        ":conditional_accumulator",
+        ":conditional_accumulator_base_ops",
+    ],
+)
+
+cc_library(
+    name = "sparse_conditional_accumulator_ops",
+    srcs = ["sparse_conditional_accumulator_op.cc"],
+    hdrs = [
+        "conditional_accumulator_base_op.h",
+        "sparse_conditional_accumulator.h",
+    ],
+    deps = [
+        ":conditional_accumulator_base_ops",
+        ":sparse_conditional_accumulator",
     ],
 )
 

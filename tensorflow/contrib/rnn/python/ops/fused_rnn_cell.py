@@ -30,7 +30,7 @@ class FusedRNNCell(object):
   A fused RNN cell represents the entire RNN expanded over the time
   dimension. In effect, this represents an entire recurrent network.
 
-  Unlike RNN cells which are subclasses of rnn_cell.RNNCell , a `FusedRNNCell`
+  Unlike RNN cells which are subclasses of `rnn_cell.RNNCell`, a `FusedRNNCell`
   operates on the entire time sequence at once, by putting the loop over time
   inside the cell. This usually leads to much more efficient, but more complex
   and less flexible implementations.
@@ -59,16 +59,19 @@ class FusedRNNCell(object):
       dtype: The data type for the initial state and expected output. Required
         if `initial_state` is not provided or RNN state has a heterogeneous
           dtype.
-      sequence_length: Specifies the length of each sequence in inputs. An int32
-        or int64 vector (tensor) size [batch_size], values in [0, time_len).
+      sequence_length: Specifies the length of each sequence in inputs. An
+        `int32` or `int64` vector (tensor) size `[batch_size]`, values in `[0,
+        time_len)`.
         Defaults to `time_len` for each element.
-      scope: VariableScope for the created subgraph; defaults to class name.
+      scope: `VariableScope` or `string` for the created subgraph; defaults to
+        class name.
 
     Returns:
       A pair containing:
+
       - Output: A `3-D` tensor of shape `[time_len x batch_size x output_size]`
-        or a list of time_len tensors of shape `[batch_size x output_size]`, to
-        match the type of the `inputs`.
+        or a list of `time_len` tensors of shape `[batch_size x output_size]`,
+        to match the type of the `inputs`.
       - Final state: Either a single `2-D` tensor, or a tuple of tensors
         matching the arity and shapes of `initial_state`.
     """
@@ -76,11 +79,15 @@ class FusedRNNCell(object):
 
 
 class FusedRNNCellAdaptor(FusedRNNCell):
-  """This is an adaptor for RNNCell classes to be used with FusedRNNCell.
-
-  """
+  """This is an adaptor for RNNCell classes to be used with `FusedRNNCell`."""
 
   def __init__(self, cell, use_dynamic_rnn=False):
+    """Initialize the adaptor.
+
+    Args:
+      cell: an instance of a subclass of a `rnn_cell.RNNCell`.
+      use_dynamic_rnn: whether to use dynamic (or static) RNN.
+    """
     self._cell = cell
     self._use_dynamic_rnn = use_dynamic_rnn
 
@@ -145,7 +152,7 @@ class TimeReversedFusedRNN(FusedRNNCell):
 
     Args:
       t: 3D tensor or list of 2D tensors to be reversed
-      lengths: 1D tensor of lengths, or None
+      lengths: 1D tensor of lengths, or `None`
 
     Returns:
       A reversed tensor or list of tensors

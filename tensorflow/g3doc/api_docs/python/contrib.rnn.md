@@ -16,10 +16,10 @@ Basic LSTM recurrent network cell.
 
 The implementation is based on: http://arxiv.org/abs/1409.2329.
 
-We add forget_bias (default: 1) to the biases of the forget gate in order to
+We add `forget_bias` (default: 1) to the biases of the forget gate in order to
 reduce the scale of forgetting in the beginning of the training.
 
-Unlike rnn_cell.LSTMCell, this is a monolithic op and should be much faster.
+Unlike `rnn_cell.LSTMCell`, this is a monolithic op and should be much faster.
 The weight and bias matrixes should be compatible as long as the variable
 scope matches, and you use `use_compatible_names=True`.
 - - -
@@ -182,7 +182,7 @@ Abstract object representing a fused RNN cell.
 A fused RNN cell represents the entire RNN expanded over the time
 dimension. In effect, this represents an entire recurrent network.
 
-Unlike RNN cells which are subclasses of rnn_cell.RNNCell , a `FusedRNNCell`
+Unlike RNN cells which are subclasses of `rnn_cell.RNNCell`, a `FusedRNNCell`
 operates on the entire time sequence at once, by putting the loop over time
 inside the cell. This usually leads to much more efficient, but more complex
 and less flexible implementations.
@@ -206,17 +206,20 @@ Run this fused RNN on inputs, starting from the given state.
 *  <b>`dtype`</b>: The data type for the initial state and expected output. Required
     if `initial_state` is not provided or RNN state has a heterogeneous
       dtype.
-*  <b>`sequence_length`</b>: Specifies the length of each sequence in inputs. An int32
-    or int64 vector (tensor) size [batch_size], values in [0, time_len).
+*  <b>`sequence_length`</b>: Specifies the length of each sequence in inputs. An
+    `int32` or `int64` vector (tensor) size `[batch_size]`, values in `[0,
+    time_len)`.
     Defaults to `time_len` for each element.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to class name.
+*  <b>`scope`</b>: `VariableScope` or `string` for the created subgraph; defaults to
+    class name.
 
 ##### Returns:
 
   A pair containing:
+
   - Output: A `3-D` tensor of shape `[time_len x batch_size x output_size]`
-    or a list of time_len tensors of shape `[batch_size x output_size]`, to
-    match the type of the `inputs`.
+    or a list of `time_len` tensors of shape `[batch_size x output_size]`,
+    to match the type of the `inputs`.
   - Final state: Either a single `2-D` tensor, or a tuple of tensors
     matching the arity and shapes of `initial_state`.
 
@@ -226,7 +229,7 @@ Run this fused RNN on inputs, starting from the given state.
 
 ### `class tf.contrib.rnn.FusedRNNCellAdaptor` {#FusedRNNCellAdaptor}
 
-This is an adaptor for RNNCell classes to be used with FusedRNNCell.
+This is an adaptor for RNNCell classes to be used with `FusedRNNCell`.
 - - -
 
 #### `tf.contrib.rnn.FusedRNNCellAdaptor.__call__(inputs, initial_state=None, dtype=None, sequence_length=None, scope=None)` {#FusedRNNCellAdaptor.__call__}
@@ -237,6 +240,42 @@ This is an adaptor for RNNCell classes to be used with FusedRNNCell.
 - - -
 
 #### `tf.contrib.rnn.FusedRNNCellAdaptor.__init__(cell, use_dynamic_rnn=False)` {#FusedRNNCellAdaptor.__init__}
+
+Initialize the adaptor.
+
+##### Args:
+
+
+*  <b>`cell`</b>: an instance of a subclass of a `rnn_cell.RNNCell`.
+*  <b>`use_dynamic_rnn`</b>: whether to use dynamic (or static) RNN.
+
+
+
+- - -
+
+### `class tf.contrib.rnn.TimeReversedFusedRNN` {#TimeReversedFusedRNN}
+
+This is an adaptor to time-reverse a FusedRNNCell.
+
+For example,
+
+```python
+cell = tf.nn.rnn_cell.BasicRNNCell(10)
+fw_lstm = tf.contrib.rnn.FusedRNNCellAdaptor(cell, use_dynamic_rnn=True)
+bw_lstm = tf.contrib.rnn.TimeReversedFusedRNN(fw_lstm)
+fw_out, fw_state = fw_lstm(inputs)
+bw_out, bw_state = bw_lstm(inputs)
+```
+- - -
+
+#### `tf.contrib.rnn.TimeReversedFusedRNN.__call__(inputs, initial_state=None, dtype=None, sequence_length=None, scope=None)` {#TimeReversedFusedRNN.__call__}
+
+
+
+
+- - -
+
+#### `tf.contrib.rnn.TimeReversedFusedRNN.__init__(cell)` {#TimeReversedFusedRNN.__init__}
 
 
 
@@ -257,7 +296,7 @@ The implementation is based on: http://arxiv.org/abs/1409.2329.
 We add forget_bias (default: 1) to the biases of the forget gate in order to
 reduce the scale of forgetting in the beginning of the training.
 
-The variable naming is consistent with rnn_cell.LSTMCell.
+The variable naming is consistent with `rnn_cell.LSTMCell`.
 - - -
 
 #### `tf.contrib.rnn.LSTMBlockFusedCell.__call__(inputs, initial_state=None, dtype=None, sequence_length=None, scope=None)` {#LSTMBlockFusedCell.__call__}
@@ -267,26 +306,28 @@ Run this LSTM on inputs, starting from the given state.
 ##### Args:
 
 
-*  <b>`inputs`</b>: `3-D` tensor with shape `[time_len x batch_size x input_size]`
-    or a list of `time_len` tensors of shape `[batch_size x input_size]`.
+*  <b>`inputs`</b>: `3-D` tensor with shape `[time_len, batch_size, input_size]`
+    or a list of `time_len` tensors of shape `[batch_size, input_size]`.
 *  <b>`initial_state`</b>: a tuple `(initial_cell_state, initial_output)` with tensors
     of shape `[batch_size, self._num_units]`. If this is not provided, the
     cell is expected to create a zero initial state of type `dtype`.
 *  <b>`dtype`</b>: The data type for the initial state and expected output. Required
     if `initial_state` is not provided or RNN state has a heterogeneous
     dtype.
-*  <b>`sequence_length`</b>: Specifies the length of each sequence in inputs. An int32
-    or int64 vector (tensor) size [batch_size], values in [0, time_len).
+*  <b>`sequence_length`</b>: Specifies the length of each sequence in inputs. An
+    `int32` or `int64` vector (tensor) size `[batch_size]`, values in `[0,
+    time_len).`
     Defaults to `time_len` for each element.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to class name.
+*  <b>`scope`</b>: `VariableScope` for the created subgraph; defaults to class name.
 
 ##### Returns:
 
   A pair containing:
-  - Output: A `3-D` tensor of shape `[time_len x batch_size x output_size]`
-    or a list of time_len tensors of shape `[batch_size x output_size]`, to
-    match the type of the `inputs`.
-  - Final state: a tuple `(cell_state, output)` matching initial_state.
+
+  - Output: A `3-D` tensor of shape `[time_len, batch_size, output_size]`
+    or a list of time_len tensors of shape `[batch_size, output_size]`,
+    to match the type of the `inputs`.
+  - Final state: a tuple `(cell_state, output)` matching `initial_state`.
 
 ##### Raises:
 
@@ -785,26 +826,28 @@ Run this LSTM on inputs, starting from the given state.
 ##### Args:
 
 
-*  <b>`inputs`</b>: `3-D` tensor with shape `[time_len x batch_size x input_size]`
-    or a list of `time_len` tensors of shape `[batch_size x input_size]`.
+*  <b>`inputs`</b>: `3-D` tensor with shape `[time_len, batch_size, input_size]`
+    or a list of `time_len` tensors of shape `[batch_size, input_size]`.
 *  <b>`initial_state`</b>: a tuple `(initial_cell_state, initial_output)` with tensors
     of shape `[batch_size, self._num_units]`. If this is not provided, the
     cell is expected to create a zero initial state of type `dtype`.
 *  <b>`dtype`</b>: The data type for the initial state and expected output. Required
     if `initial_state` is not provided or RNN state has a heterogeneous
     dtype.
-*  <b>`sequence_length`</b>: Specifies the length of each sequence in inputs. An int32
-    or int64 vector (tensor) size [batch_size], values in [0, time_len).
+*  <b>`sequence_length`</b>: Specifies the length of each sequence in inputs. An
+    `int32` or `int64` vector (tensor) size `[batch_size]`, values in `[0,
+    time_len).`
     Defaults to `time_len` for each element.
-*  <b>`scope`</b>: VariableScope for the created subgraph; defaults to class name.
+*  <b>`scope`</b>: `VariableScope` for the created subgraph; defaults to class name.
 
 ##### Returns:
 
   A pair containing:
-  - Output: A `3-D` tensor of shape `[time_len x batch_size x output_size]`
-    or a list of time_len tensors of shape `[batch_size x output_size]`, to
-    match the type of the `inputs`.
-  - Final state: a tuple `(cell_state, output)` matching initial_state.
+
+  - Output: A `3-D` tensor of shape `[time_len, batch_size, output_size]`
+    or a list of time_len tensors of shape `[batch_size, output_size]`,
+    to match the type of the `inputs`.
+  - Final state: a tuple `(cell_state, output)` matching `initial_state`.
 
 ##### Raises:
 
@@ -906,36 +949,6 @@ Return zero-filled state tensor(s).
   If `state_size` is a nested list or tuple, then the return value is
   a nested list or tuple (of the same structure) of `2-D` tensors with
 the shapes `[batch_size x s]` for each s in `state_size`.
-
-
-
-- - -
-
-### `class tf.contrib.rnn.TimeReversedFusedRNN` {#TimeReversedFusedRNN}
-
-This is an adaptor to time-reverse a FusedRNNCell.
-
-For example,
-
-```python
-cell = tf.nn.rnn_cell.BasicRNNCell(10)
-fw_lstm = tf.contrib.rnn.FusedRNNCellAdaptor(cell, use_dynamic_rnn=True)
-bw_lstm = tf.contrib.rnn.TimeReversedFusedRNN(fw_lstm)
-fw_out, fw_state = fw_lstm(inputs)
-bw_out, bw_state = bw_lstm(inputs)
-```
-- - -
-
-#### `tf.contrib.rnn.TimeReversedFusedRNN.__call__(inputs, initial_state=None, dtype=None, sequence_length=None, scope=None)` {#TimeReversedFusedRNN.__call__}
-
-
-
-
-- - -
-
-#### `tf.contrib.rnn.TimeReversedFusedRNN.__init__(cell)` {#TimeReversedFusedRNN.__init__}
-
-
 
 
 

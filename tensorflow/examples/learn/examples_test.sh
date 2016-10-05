@@ -28,7 +28,7 @@ then
   DIR="$DIR"/"$TEST_WORKSPACE"
 fi
 
-SKFLOW_EXAMPLE_BASE_DIR=$DIR/tensorflow/examples/skflow
+SKFLOW_EXAMPLE_BASE_DIR=$DIR/tensorflow/examples/learn
 
 
 function test() {
@@ -58,3 +58,5 @@ test text_classification_builtin_rnn_model --test_with_fake_data
 test text_classification_cnn --test_with_fake_data
 test text_classification_character_cnn --test_with_fake_data
 test text_classification_character_rnn --test_with_fake_data
+test random_forest_mnist
+test wide_n_deep_tutorial

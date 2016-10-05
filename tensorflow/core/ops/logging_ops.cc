@@ -181,6 +181,35 @@ bad_color: Color to use for pixels with non-finite values.
 summary: Scalar. Serialized `Summary` protocol buffer.
 )doc");
 
+REGISTER_OP("AudioSummaryV2")
+    .Input("tag: string")
+    .Input("tensor: float")
+    .Input("sample_rate: float")
+    .Output("summary: string")
+    .Attr("max_outputs: int >= 1 = 3")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Outputs a `Summary` protocol buffer with audio.
+
+The summary has up to `max_outputs` summary values containing audio. The
+audio is built from `tensor` which must be 3-D with shape `[batch_size,
+frames, channels]` or 2-D with shape `[batch_size, frames]`. The values are
+assumed to be in the range of `[-1.0, 1.0]` with a sample rate of `sample_rate`.
+
+The `tag` argument is a scalar `Tensor` of type `string`.  It is used to
+build the `tag` of the summary values:
+
+*  If `max_outputs` is 1, the summary value tag is '*tag*/audio'.
+*  If `max_outputs` is greater than 1, the summary value tags are
+   generated sequentially as '*tag*/audio/0', '*tag*/audio/1', etc.
+
+tag: Scalar. Used to build the `tag` attribute of the summary values.
+tensor: 2-D of shape `[batch_size, frames]`.
+sample_rate: The sample rate of the signal in hertz.
+max_outputs: Max number of batch elements to generate audio for.
+summary: Scalar. Serialized `Summary` protocol buffer.
+)doc");
+
 REGISTER_OP("AudioSummary")
     .Input("tag: string")
     .Input("tensor: float")
@@ -188,6 +217,7 @@ REGISTER_OP("AudioSummary")
     .Attr("sample_rate: float")
     .Attr("max_outputs: int >= 1 = 3")
     .SetShapeFn(shape_inference::ScalarShape)
+    .Deprecated(15, "Use AudioSummaryV2.")
     .Doc(R"doc(
 Outputs a `Summary` protocol buffer with audio.
 

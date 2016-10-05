@@ -44,6 +44,15 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     self.assertEqual({tensor_format.OMITTED_INDICES_KEY: expected_indices},
                      annot)
 
+  def testFormatZeroDimensionTensor(self):
+    a = np.array(42.0, dtype=np.float32)
+
+    out = tensor_format.format_tensor(a, "a")
+
+    self.assertEqual(["Tensor \"a\":", "", "array(42.0, dtype=float32)"],
+                     out.lines)
+    self._checkTensorMetadata(a, out.annotations)
+
   def testFormatTensor1DNoEllipsis(self):
     a = np.zeros(20)
 

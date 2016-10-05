@@ -46,6 +46,7 @@ class RunConfig(object):
                tf_random_seed=None,
                save_summary_steps=100,
                save_checkpoints_secs=600,
+               save_checkpoints_steps=None,
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
                job_name=None,
@@ -105,7 +106,10 @@ class RunConfig(object):
       tf_random_seed: Random seed for TensorFlow initializers.
         Setting this value allows consistency between reruns.
       save_summary_steps: Save summaries every this many steps.
-      save_checkpoints_secs: Save checkpoints every this many seconds.
+      save_checkpoints_secs: Save checkpoints every this many seconds. Can not
+          be specified with `save_checkpoints_steps`.
+      save_checkpoints_steps: Save checkpoints every this many steps. Can not be
+          specified with `save_checkpoints_secs`.
       keep_checkpoint_max: The maximum number of recent checkpoint files to
         keep. As new files are created, older files are deleted. If None or 0,
         all checkpoint files are kept. Defaults to 5 (that is, the 5 most recent
@@ -191,6 +195,7 @@ class RunConfig(object):
     self.tf_random_seed = tf_random_seed
     self.save_summary_steps = save_summary_steps
     self.save_checkpoints_secs = save_checkpoints_secs
+    self.save_checkpoints_steps = save_checkpoints_steps
     self.keep_checkpoint_max = keep_checkpoint_max
     self.keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
 

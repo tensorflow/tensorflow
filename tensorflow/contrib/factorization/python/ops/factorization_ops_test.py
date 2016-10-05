@@ -500,7 +500,7 @@ class WalsModelTest(tf.test.TestCase):
   def test_als_transposed_with_cache(self):
     self._run_test_als_transposed(True)
 
-  def test_als_without_cache(self):
+  def test_als_transposed_without_cache(self):
     self._run_test_als_transposed(False)
 
   def test_train_full_low_rank_wals_with_cache(self):

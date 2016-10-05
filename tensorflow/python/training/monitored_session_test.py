@@ -27,9 +27,7 @@ import time
 
 import tensorflow as tf
 
-from tensorflow.contrib.learn.python.learn import basic_session_run_hooks
-from tensorflow.contrib.learn.python.learn import monitored_session
-from tensorflow.contrib.learn.python.learn import session_run_hook
+from tensorflow.python.training import monitored_session
 
 
 class ScaffoldTest(tf.test.TestCase):
@@ -37,7 +35,7 @@ class ScaffoldTest(tf.test.TestCase):
 
   def test_nothing_created_before_finalize(self):
     with tf.Graph().as_default():
-      scaffold = monitored_session.Scaffold()
+      scaffold = tf.train.Scaffold()
       self.assertEqual(None, scaffold.init_op)
       self.assertEqual(None, scaffold.init_feed_dict)
       self.assertEqual(None, scaffold.init_fn)
@@ -47,7 +45,7 @@ class ScaffoldTest(tf.test.TestCase):
 
   def test_defaults_empty_graph(self):
     with tf.Graph().as_default():
-      scaffold = monitored_session.Scaffold()
+      scaffold = tf.train.Scaffold()
       tf.Variable(1, name='my_var')
       scaffold.finalize()
       self.assertTrue(isinstance(scaffold.init_op, tf.Operation))
@@ -63,7 +61,7 @@ class ScaffoldTest(tf.test.TestCase):
 
   def test_defaults_no_variables(self):
     with tf.Graph().as_default():
-      scaffold = monitored_session.Scaffold()
+      scaffold = tf.train.Scaffold()
       tf.constant(1, name='my_const')
       scaffold.finalize()
       self.assertTrue(isinstance(scaffold.init_op, tf.Operation))
@@ -76,9 +74,9 @@ class ScaffoldTest(tf.test.TestCase):
   def test_caches_values(self):
     with tf.Graph().as_default():
       tf.Variable([1])
-      scaffold1 = monitored_session.Scaffold()
+      scaffold1 = tf.train.Scaffold()
       scaffold1.finalize()
-      scaffold2 = monitored_session.Scaffold()
+      scaffold2 = tf.train.Scaffold()
       scaffold2.finalize()
       self.assertEqual(scaffold1.init_op, scaffold2.init_op)
       self.assertEqual(scaffold1.ready_op, scaffold2.ready_op)
@@ -91,13 +89,13 @@ class ScaffoldTest(tf.test.TestCase):
       tf.add_to_collection(tf.GraphKeys.SAVERS, tf.train.Saver())
       tf.add_to_collection(tf.GraphKeys.SAVERS, tf.train.Saver())
       with self.assertRaisesRegexp(RuntimeError, 'More than one item'):
-        monitored_session.Scaffold().finalize()
+        tf.train.Scaffold().finalize()
 
   def test_uses_passed_values(self):
     with tf.Graph().as_default():
       tf.Variable([1])
       saver = tf.train.Saver()
-      scaffold = monitored_session.Scaffold(
+      scaffold = tf.train.Scaffold(
           init_op=2,
           init_feed_dict=3,
           init_fn=lambda scaffold, sess: 4,
@@ -115,7 +113,7 @@ class ScaffoldTest(tf.test.TestCase):
   def test_graph_is_finalized(self):
     with tf.Graph().as_default():
       tf.Variable([1])
-      monitored_session.Scaffold().finalize()
+      tf.train.Scaffold().finalize()
       with self.assertRaisesRegexp(RuntimeError,
                                    'Graph is finalized and cannot be modified'):
         tf.constant([0])
@@ -388,7 +386,7 @@ class FakeSession(monitored_session._WrappedSession):
     return monitored_session._WrappedSession.run(self, fetches)
 
 
-class FakeHook(session_run_hook.SessionRunHook):
+class FakeHook(tf.train.SessionRunHook):
 
   def __init__(self):
     self.should_stop = False
@@ -440,10 +438,9 @@ class HookedSessionTest(tf.test.TestCase):
 
       for hook in [mock_hook, mock_hook2]:
         self.assertEqual(
-            hook.last_run_values,
-            session_run_hook.SessionRunValues(results=None))
+            hook.last_run_values, tf.train.SessionRunValues(results=None))
         self.assertEqual(hook.last_run_context.original_args,
-                         session_run_hook.SessionRunArgs(a_tensor))
+                         tf.train.SessionRunArgs(a_tensor))
         self.assertEqual(hook.last_run_context.session, sess)
         self.assertEqual(hook.call_counter['before_run'], 1)
         self.assertEqual(hook.call_counter['after_run'], 1)
@@ -473,8 +470,8 @@ class HookedSessionTest(tf.test.TestCase):
       a_tensor = tf.constant([0], name='a_tensor')
       another_tensor = tf.constant([5], name='another_tensor')
       third_tensor = tf.constant([10], name='third_tensor')
-      mock_hook.request = session_run_hook.SessionRunArgs([another_tensor])
-      mock_hook2.request = session_run_hook.SessionRunArgs([third_tensor])
+      mock_hook.request = tf.train.SessionRunArgs([another_tensor])
+      mock_hook2.request = tf.train.SessionRunArgs([third_tensor])
       sess.run(tf.initialize_all_variables())
 
       output = mon_sess.run(fetches=a_tensor)
@@ -491,10 +488,14 @@ class HookedSessionTest(tf.test.TestCase):
       a_tensor = tf.constant([0], name='a_tensor')
       b_tensor = tf.constant([0], name='b_tensor')
       add_tensor = a_tensor + b_tensor
-      mock_hook.request = session_run_hook.SessionRunArgs(
-          None, feed_dict={a_tensor: [5]})
-      mock_hook2.request = session_run_hook.SessionRunArgs(
-          None, feed_dict={b_tensor: [10]})
+      mock_hook.request = tf.train.SessionRunArgs(
+          None, feed_dict={
+              a_tensor: [5]
+          })
+      mock_hook2.request = tf.train.SessionRunArgs(
+          None, feed_dict={
+              b_tensor: [10]
+          })
       sess.run(tf.initialize_all_variables())
 
       self.assertEqual(mon_sess.run(fetches=add_tensor), [15])
@@ -509,10 +510,14 @@ class HookedSessionTest(tf.test.TestCase):
       b_tensor = tf.constant([0], name='b_tensor')
       c_tensor = tf.constant([0], name='c_tensor')
       add_tensor = a_tensor + b_tensor + c_tensor
-      mock_hook.request = session_run_hook.SessionRunArgs(
-          None, feed_dict={a_tensor: [5]})
-      mock_hook2.request = session_run_hook.SessionRunArgs(
-          None, feed_dict={b_tensor: [10]})
+      mock_hook.request = tf.train.SessionRunArgs(
+          None, feed_dict={
+              a_tensor: [5]
+          })
+      mock_hook2.request = tf.train.SessionRunArgs(
+          None, feed_dict={
+              b_tensor: [10]
+          })
       sess.run(tf.initialize_all_variables())
 
       feed_dict = {c_tensor: [20]}
@@ -530,10 +535,14 @@ class HookedSessionTest(tf.test.TestCase):
       a_tensor = tf.constant([0], name='a_tensor')
       b_tensor = tf.constant([0], name='b_tensor')
       add_tensor = a_tensor + b_tensor
-      mock_hook.request = session_run_hook.SessionRunArgs(
-          None, feed_dict={a_tensor: [5]})
-      mock_hook2.request = session_run_hook.SessionRunArgs(
-          None, feed_dict={a_tensor: [10]})
+      mock_hook.request = tf.train.SessionRunArgs(
+          None, feed_dict={
+              a_tensor: [5]
+          })
+      mock_hook2.request = tf.train.SessionRunArgs(
+          None, feed_dict={
+              a_tensor: [10]
+          })
       sess.run(tf.initialize_all_variables())
 
       with self.assertRaisesRegexp(RuntimeError, 'Same tensor is fed'):
@@ -548,17 +557,21 @@ class HookedSessionTest(tf.test.TestCase):
       a_tensor = tf.constant([0], name='a_tensor')
       b_tensor = tf.constant([0], name='b_tensor')
       add_tensor = a_tensor + b_tensor
-      mock_hook.request = session_run_hook.SessionRunArgs(
-          None, feed_dict={a_tensor: [5]})
-      mock_hook2.request = session_run_hook.SessionRunArgs(
-          None, feed_dict={b_tensor: [10]})
+      mock_hook.request = tf.train.SessionRunArgs(
+          None, feed_dict={
+              a_tensor: [5]
+          })
+      mock_hook2.request = tf.train.SessionRunArgs(
+          None, feed_dict={
+              b_tensor: [10]
+          })
       sess.run(tf.initialize_all_variables())
 
       with self.assertRaisesRegexp(RuntimeError, 'Same tensor is fed'):
         mon_sess.run(fetches=add_tensor, feed_dict={b_tensor: [10]})
 
 
-class RaiseOnceAtCountN(session_run_hook.SessionRunHook):
+class RaiseOnceAtCountN(tf.train.SessionRunHook):
   """Hook that raises an Exception at step N."""
 
   def __init__(self, n, ex):
@@ -598,7 +611,7 @@ class MonitoredSessionTest(tf.test.TestCase):
   def test_defaults(self):
     with tf.Graph().as_default():
       a_var = tf.Variable(0)
-      with monitored_session.MonitoredSession() as session:
+      with tf.train.MonitoredSession() as session:
         self.assertEqual(0, session.run(a_var))
 
   def test_last_step(self):
@@ -607,9 +620,9 @@ class MonitoredSessionTest(tf.test.TestCase):
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
       # Run till step 3 and save.
-      hooks = [basic_session_run_hooks.StopAtStepHook(last_step=3)]
-      scaffold = monitored_session.Scaffold().finalize()
-      with monitored_session.MonitoredSession(hooks=hooks) as session:
+      hooks = [tf.train.StopAtStepHook(last_step=3)]
+      scaffold = tf.train.Scaffold().finalize()
+      with tf.train.MonitoredSession(hooks=hooks) as session:
         self.assertEqual(0, session.run(gstep))
         self.assertFalse(session.should_stop())
         self.assertEqual(1, session.run(do_step))
@@ -624,10 +637,10 @@ class MonitoredSessionTest(tf.test.TestCase):
       def load_ckpt(scaffold, sess):
         scaffold.saver.restore(sess, save_path)
 
-      session_creator = monitored_session.ChiefSessionCreator(
-          monitored_session.Scaffold(init_fn=load_ckpt))
-      hooks = [basic_session_run_hooks.StopAtStepHook(last_step=5)]
-      with monitored_session.MonitoredSession(
+      session_creator = tf.train.ChiefSessionCreator(
+          tf.train.Scaffold(init_fn=load_ckpt))
+      hooks = [tf.train.StopAtStepHook(last_step=5)]
+      with tf.train.MonitoredSession(
           hooks=hooks, session_creator=session_creator) as session:
         self.assertEqual(3, session.run(gstep))
         self.assertFalse(session.should_stop())
@@ -642,9 +655,9 @@ class MonitoredSessionTest(tf.test.TestCase):
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
       # Do 3 steps and save.
-      hooks = [basic_session_run_hooks.StopAtStepHook(num_steps=3)]
-      scaffold = monitored_session.Scaffold().finalize()
-      with monitored_session.MonitoredSession(hooks=hooks) as session:
+      hooks = [tf.train.StopAtStepHook(num_steps=3)]
+      scaffold = tf.train.Scaffold().finalize()
+      with tf.train.MonitoredSession(hooks=hooks) as session:
         session.run(do_step)
         self.assertFalse(session.should_stop())
         session.run(do_step)
@@ -657,10 +670,10 @@ class MonitoredSessionTest(tf.test.TestCase):
       def load_ckpt(scaffold, sess):
         scaffold.saver.restore(sess, save_path)
 
-      session_creator = monitored_session.ChiefSessionCreator(
-          scaffold=monitored_session.Scaffold(init_fn=load_ckpt))
-      hooks = [basic_session_run_hooks.StopAtStepHook(num_steps=4)]
-      with monitored_session.MonitoredSession(
+      session_creator = tf.train.ChiefSessionCreator(
+          scaffold=tf.train.Scaffold(init_fn=load_ckpt))
+      hooks = [tf.train.StopAtStepHook(num_steps=4)]
+      with tf.train.MonitoredSession(
           hooks=hooks, session_creator=session_creator) as session:
         self.assertEqual(4, session.run(do_step))
         self.assertFalse(session.should_stop())
@@ -679,21 +692,21 @@ class MonitoredSessionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
-      scaffold = monitored_session.Scaffold()
+      scaffold = tf.train.Scaffold()
       # Use a hook to save the model every 100 steps.  It also saves it at
       # the end.
-      hooks = [basic_session_run_hooks.CheckpointSaverHook(
+      hooks = [tf.train.CheckpointSaverHook(
           logdir, save_steps=1, scaffold=scaffold)]
-      with monitored_session.MonitoredSession(
-          session_creator=monitored_session.ChiefSessionCreator(
+      with tf.train.MonitoredSession(
+          session_creator=tf.train.ChiefSessionCreator(
               scaffold, checkpoint_dir=logdir),
           hooks=hooks) as session:
         self.assertEqual(0, session.run(gstep))
         self.assertEqual(1, session.run(do_step))
         self.assertEqual(2, session.run(do_step))
       # A restart will find the checkpoint and recover automatically.
-      with monitored_session.MonitoredSession(
-          session_creator=monitored_session.ChiefSessionCreator(
+      with tf.train.MonitoredSession(
+          session_creator=tf.train.ChiefSessionCreator(
               scaffold, checkpoint_dir=logdir)) as session:
         self.assertEqual(2, session.run(gstep))
 
@@ -704,7 +717,7 @@ class MonitoredSessionTest(tf.test.TestCase):
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
       hook = RaiseOnceAtCountN(4, tf.errors.AbortedError(None, None, 'Abort'))
-      with monitored_session.MonitoredSession(hooks=[hook]) as session:
+      with tf.train.MonitoredSession(hooks=[hook]) as session:
         self.assertEqual(0, session.run(gstep))
         self.assertEqual(1, session.run(do_step))
         self.assertEqual(2, session.run(do_step))
@@ -726,15 +739,15 @@ class MonitoredSessionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
-      scaffold = monitored_session.Scaffold()
+      scaffold = tf.train.Scaffold()
       abort_hook = RaiseOnceAtCountN(
           4, tf.errors.AbortedError(None, None, 'Abort'))
       # Save after each step.
-      ckpt_hook = basic_session_run_hooks.CheckpointSaverHook(
+      ckpt_hook = tf.train.CheckpointSaverHook(
           logdir, save_steps=1, scaffold=scaffold)
       hooks = [abort_hook, ckpt_hook]
-      with monitored_session.MonitoredSession(
-          session_creator=monitored_session.ChiefSessionCreator(
+      with tf.train.MonitoredSession(
+          session_creator=tf.train.ChiefSessionCreator(
               scaffold, checkpoint_dir=logdir),
           hooks=hooks) as session:
         self.assertEqual(0, session.run(gstep))
@@ -755,7 +768,7 @@ class MonitoredSessionTest(tf.test.TestCase):
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
       hook = RaiseOnceAtCountN(2, tf.errors.OutOfRangeError(None, None, 'EOI'))
-      session = monitored_session.MonitoredSession(hooks=[hook])
+      session = tf.train.MonitoredSession(hooks=[hook])
       # session should cleanly exit from the context.
       with session:
         self.assertEqual(0, session.run(gstep))
@@ -773,7 +786,7 @@ class MonitoredSessionTest(tf.test.TestCase):
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
       hook = RaiseOnceAtCountN(2, StopIteration)
-      session = monitored_session.MonitoredSession(hooks=[hook])
+      session = tf.train.MonitoredSession(hooks=[hook])
       # session should cleanly exit from the context.
       with session:
         self.assertEqual(0, session.run(gstep))
@@ -792,7 +805,7 @@ class MonitoredSessionTest(tf.test.TestCase):
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
       hook = RaiseOnceAtCountN(4, RuntimeError('regular exception'))
-      session = monitored_session.MonitoredSession(hooks=[hook])
+      session = tf.train.MonitoredSession(hooks=[hook])
       with self.assertRaisesRegexp(RuntimeError, 'regular exception'):
         with session:
           self.assertEqual(0, session.run(gstep))
@@ -812,7 +825,7 @@ class MonitoredSessionTest(tf.test.TestCase):
     # set the session in stop mode.
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
-      session = monitored_session.MonitoredSession()
+      session = tf.train.MonitoredSession()
       run_performed_without_error = False
       with self.assertRaisesRegexp(RuntimeError, 'a thread wants to stop'):
         with session:
@@ -833,7 +846,7 @@ class MonitoredSessionTest(tf.test.TestCase):
     # set the session in stop mode.
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
-      session = monitored_session.MonitoredSession()
+      session = tf.train.MonitoredSession()
       with self.assertRaisesRegexp(RuntimeError, 'a thread wants to stop'):
         with session:
           self.assertEqual(0, session.run(gstep))
@@ -852,7 +865,7 @@ class MonitoredSessionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
-      session = monitored_session.MonitoredSession()
+      session = tf.train.MonitoredSession()
       with session:
         self.assertEqual(1, session.run(do_step))
         self.assertEqual(2, session.run(do_step))
@@ -866,7 +879,7 @@ class MonitoredSessionTest(tf.test.TestCase):
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
-      session = monitored_session.MonitoredSession()
+      session = tf.train.MonitoredSession()
       # We should see that exception.
       with self.assertRaisesRegexp(RuntimeError, 'regular exception'):
         with session:
@@ -882,7 +895,7 @@ class MonitoredSessionTest(tf.test.TestCase):
   def test_graph(self):
     g = tf.Graph()
     with g.as_default():
-      session = monitored_session.MonitoredSession()
+      session = tf.train.MonitoredSession()
       self.assertEqual(g, session.graph)
 
 

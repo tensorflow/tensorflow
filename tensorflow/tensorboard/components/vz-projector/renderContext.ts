@@ -25,29 +25,22 @@ export class RenderContext {
   screenHeight: number;
   nearestCameraSpacePointZ: number;
   farthestCameraSpacePointZ: number;
-  colorAccessor: (index: number) => string;
-  labeledPoints: number[];
   labelAccessor: (index: number) => string;
-  highlightedPoints: number[];
-  highlightStroke: (index: number) => string;
+  unselectedPointColors: Float32Array;
 
   constructor(
       camera: THREE.PerspectiveCamera, cameraTarget: THREE.Vector3,
       screenWidth: number, screenHeight: number,
       nearestCameraSpacePointZ: number, farthestCameraSpacePointZ: number,
-      colorAccessor: (index: number) => string, labeledPoints: number[],
-      labelAccessor: (index: number) => string, highlightedPoints: number[],
-      highlightStroke: (index: number) => string) {
+      labelAccessor: (index: number) => string,
+      unselectedPointColors: Float32Array) {
     this.camera = camera;
     this.cameraTarget = cameraTarget;
     this.screenWidth = screenWidth;
     this.screenHeight = screenHeight;
     this.nearestCameraSpacePointZ = nearestCameraSpacePointZ;
     this.farthestCameraSpacePointZ = farthestCameraSpacePointZ;
-    this.colorAccessor = colorAccessor;
-    this.labeledPoints = labeledPoints;
     this.labelAccessor = labelAccessor;
-    this.highlightedPoints = highlightedPoints;
-    this.highlightStroke = highlightStroke;
+    this.unselectedPointColors = unselectedPointColors;
   }
 }

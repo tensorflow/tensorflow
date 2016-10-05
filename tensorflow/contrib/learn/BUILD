@@ -332,18 +332,6 @@ py_test(
 )
 
 py_test(
-    name = "monitored_session_test",
-    size = "small",
-    srcs = ["python/learn/tests/monitored_session_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
     name = "monitors_test",
     size = "small",
     srcs = ["python/learn/tests/monitors_test.py"],
@@ -447,6 +435,10 @@ py_test(
     srcs = ["python/learn/estimators/dnn_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",  # http://b/31934515
+        "notap",
+    ],
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -459,7 +451,6 @@ py_test(
     size = "large",
     srcs = ["python/learn/estimators/dnn_sampled_softmax_classifier_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],  # http://b/31616095
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -700,16 +691,6 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
-    name = "summary_writer_cache_test",
-    size = "small",
-    srcs = ["python/learn/tests/summary_writer_cache_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
     ],
 )
 

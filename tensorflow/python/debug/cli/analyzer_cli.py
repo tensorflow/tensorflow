@@ -29,6 +29,7 @@ import re
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.debug import debug_data
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import tensor_format
 
@@ -60,6 +61,9 @@ class DebugAnalyzer(object):
 
     self._debug_dump = debug_dump
 
+    # Initialize tensor filters state.
+    self._tensor_filters = {}
+
     # Argument parsers for command handlers.
     self._arg_parsers = {}
 
@@ -68,11 +72,12 @@ class DebugAnalyzer(object):
         description="List dumped intermediate tensors.",
         usage=argparse.SUPPRESS)
     ap.add_argument(
-        "-o",
-        "--offending",
-        dest="offending",
-        action="store_true",
-        help="List only offending tensors.")  # TODO(cais): Implement.
+        "-f",
+        "--tensor_filter",
+        dest="tensor_filter",
+        type=str,
+        default="",
+        help="List only Tensors passing the filter of the specified name")
     ap.add_argument(
         "-n",
         "--node_name_filter",
@@ -186,8 +191,67 @@ class DebugAnalyzer(object):
     # TODO(cais): Implement list_nodes.
 
   def _error(self, msg):
+    full_msg = "ERROR: " + msg
     return debugger_cli_common.RichTextLines(
-        ["ERROR: " + msg], font_attr_segs={0: [(0, len(msg), "red")]})
+        [full_msg], font_attr_segs={0: [(0, len(full_msg), "red")]})
+
+  def add_tensor_filter(self, filter_name, filter_callable):
+    """Add a tensor filter.
+
+    A tensor filter is a named callable of the siganture:
+      filter_callable(dump_datum, tensor),
+
+    wherein dump_datum is an instance of debug_data.DebugTensorDatum carrying
+    metadata about the dumped tensor, including tensor name, timestamps, etc.
+    tensor is the value of the dumped tensor as an numpy.ndarray object.
+    The return value of the function is a bool.
+    This is the same signature as the input argument to
+    debug_data.DebugDumpDir.find().
+
+    Args:
+      filter_name: (str) name of the filter. Cannot be empty.
+      filter_callable: (callable) a filter function of the signature described
+        as above.
+
+    Raises:
+      ValueError: If filter_name is an empty str.
+      TypeError: If filter_name is not a str.
+                 Or if filter_callable is not callable.
+    """
+
+    if not isinstance(filter_name, str):
+      raise TypeError("Input argument filter_name is expected to be str, "
+                      "but is not.")
+
+    # Check that filter_name is not an empty str.
+    if not filter_name:
+      raise ValueError("Input argument filter_name cannot be empty.")
+
+    # Check that filter_callable is callable.
+    if not callable(filter_callable):
+      raise TypeError(
+          "Input argument filter_callable is expected to be callable, "
+          "but is not.")
+
+    self._tensor_filters[filter_name] = filter_callable
+
+  def get_tensor_filter(self, filter_name):
+    """Retrieve filter function by name.
+
+    Args:
+      filter_name: Name of the filter set during add_tensor_filter() call.
+
+    Returns:
+      The callable associated with the filter name.
+
+    Raises:
+      ValueError: If there is no tensor filter of the specified filter name.
+    """
+
+    if filter_name not in self._tensor_filters:
+      raise ValueError("There is no tensor filter named \"%s\"" % filter_name)
+
+    return self._tensor_filters[filter_name]
 
   def get_help(self, handler_name):
     return self._arg_parsers[handler_name].format_help()
@@ -229,10 +293,21 @@ class DebugAnalyzer(object):
     else:
       node_name_regex = None
 
+    if parsed.tensor_filter:
+      try:
+        filter_callable = self.get_tensor_filter(parsed.tensor_filter)
+      except ValueError:
+        return self._error(
+            "There is no tensor filter named \"%s\"." % parsed.tensor_filter)
+
+      data_to_show = self._debug_dump.find(filter_callable)
+    else:
+      data_to_show = self._debug_dump.dumped_tensor_data
+
     # TODO(cais): Implement filter by lambda on tensor value.
 
     dump_count = 0
-    for dump in self._debug_dump.dumped_tensor_data:
+    for dump in data_to_show:
       if node_name_regex and not node_name_regex.match(dump.node_name):
         continue
 
@@ -249,7 +324,12 @@ class DebugAnalyzer(object):
     output.insert(0, "")
 
     output = filter_strs + output
-    output.insert(0, "%d dumped tensor(s):" % dump_count)
+
+    if parsed.tensor_filter:
+      output.insert(0, "%d dumped tensor(s) passing filter \"%s\":" %
+                    (dump_count, parsed.tensor_filter))
+    else:
+      output.insert(0, "%d dumped tensor(s):" % dump_count)
 
     return debugger_cli_common.RichTextLines(output)
 
@@ -276,7 +356,8 @@ class DebugAnalyzer(object):
 
     # Get a node name, regardless of whether the input is a node name (without
     # output slot attached) or a tensor name (with output slot attached).
-    node_name, unused_slot = self._parse_node_or_tensor_name(parsed.node_name)
+    node_name, unused_slot = debug_data.parse_node_or_tensor_name(
+        parsed.node_name)
 
     if not self._debug_dump.node_exists(node_name):
       return self._error(
@@ -373,7 +454,7 @@ class DebugAnalyzer(object):
 
     parsed = self._arg_parsers["print_tensor"].parse_args(args)
 
-    node_name, output_slot = self._parse_node_or_tensor_name(
+    node_name, output_slot = debug_data.parse_node_or_tensor_name(
         parsed.tensor_name)
     if output_slot is None:
       return self._error("\"%s\" is not a valid tensor name" %
@@ -482,7 +563,7 @@ class DebugAnalyzer(object):
     lines = []
 
     # Check if this is a tensor name, instead of a node name.
-    node_name, _ = self._parse_node_or_tensor_name(node_name)
+    node_name, _ = debug_data.parse_node_or_tensor_name(node_name)
 
     # Check if node exists.
     if not self._debug_dump.node_exists(node_name):
@@ -514,6 +595,8 @@ class DebugAnalyzer(object):
       lines.append("  (Ctrl): Control input.")
     if op_type:
       lines.append("  [Op]: Input node has op type Op.")
+
+    # TODO(cais): Consider appending ":0" at the end of 1st outputs of nodes.
 
     return debugger_cli_common.RichTextLines(lines)
 
@@ -599,9 +682,12 @@ class DebugAnalyzer(object):
       lines.append(hang + ctrl_str + op_type_str + inp)
 
       # Recursive call.
+      # The input's/output's name can be a tensor name, in the case of node
+      # with >1 output slots.
+      inp_node_name, _ = debug_data.parse_node_or_tensor_name(inp)
       self._dfs_from_node(
           lines,
-          inp,
+          inp_node_name,
           tracker,
           max_depth,
           depth + 1,
@@ -691,26 +777,3 @@ class DebugAnalyzer(object):
     lines.insert(1, "%d dumped tensor(s):" % dump_count)
 
     return lines
-
-  def _parse_node_or_tensor_name(self, name):
-    """Get the node name from a string that can be node or tensor name.
-
-    Args:
-      name: An input node name (e.g., "node_a") or tensor name (e.g.,
-        "node_a:0"), as a str.
-
-    Returns:
-      1) The node name, as a str. If the input name is a tensor name, i.e.,
-        consists of a colon, the final colon and the following output slot
-        will be stripped.
-      2) If the input name is a tensor name, the output slot, as an int. If
-        the input name is not a tensor name, None.
-    """
-
-    if ":" in name and not name.endswith(":"):
-      node_name = name[:name.rfind(":")]
-      output_slot = int(name[name.rfind(":") + 1:])
-
-      return node_name, output_slot
-    else:
-      return name, None

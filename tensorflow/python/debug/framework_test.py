@@ -183,6 +183,12 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
     # correct session object.
     self.assertEqual(self._sess, self._observer["request_sess"])
 
+  def testInteractiveSessionInit(self):
+    """The wrapper should work also on other subclassses of session.Session."""
+
+    TestDebugWrapperSession(
+        session.InteractiveSession(), self._dump_root, self._observer)
+
   def testSessionRun(self):
     wrapper = TestDebugWrapperSession(
         self._sess, self._dump_root, self._observer)
