@@ -160,7 +160,10 @@ sh_test(
         ":text_classification_cnn",
         ":wide_n_deep_tutorial",
     ],
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 filegroup(
