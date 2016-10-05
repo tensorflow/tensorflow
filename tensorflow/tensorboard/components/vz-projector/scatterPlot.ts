@@ -617,6 +617,7 @@ export class ScatterPlot {
     this.visualizers.forEach(v => {
       v.onDataSet(dataSet, spriteImage);
     });
+    this.render();
   }
 
   update() {

@@ -119,11 +119,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   }
 
   _colorOptionChanged() {
-    const colors = this.recomputeScatterPlotColors(
-        this.getLegendPointColorer(this.colorOption), this.selectedPointIndices,
-        this.neighborsOfFirstPoint, this.hoverPointIndex);
-    this.scatterPlot.setPointColors(colors);
-    this.scatterPlot.render();
+    this.updateScatterPlotColors();
   }
 
   setNormalizeData(normalizeData: boolean) {
@@ -131,13 +127,16 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.setCurrentDataSet(this.dataSet.getSubset());
   }
 
-  updateDataSet(ds: DataSet) {
+  updateDataSet(ds: DataSet, metadata: MetadataResult) {
     this.dataSet = ds;
     if (this.scatterPlot == null || this.dataSet == null) {
       // We are not ready yet.
       return;
     }
     this.normalizeData = this.dataSet.dim[1] >= THRESHOLD_DIM_NORMALIZE;
+    if (metadata != null) {
+      this.mergeMetadata(ds, metadata);
+    }
     this.dataPanel.setNormalizeData(this.normalizeData);
     this.setCurrentDataSet(this.dataSet.getSubset());
     this.inspectorPanel.datasetChanged();
@@ -188,17 +187,16 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
         l => l(this.selectedPointIndices, neighbors));
   }
 
-  mergeMetadata(result: MetadataResult): void {
-    let numTensors = this.dataSet.points.length;
+  private mergeMetadata(ds: DataSet, result: MetadataResult): void {
+    let numTensors = ds.points.length;
     if (result.metadata.length !== numTensors) {
       updateWarningMessage(
           `Number of tensors (${numTensors}) do not match` +
           ` the number of lines in metadata (${result.metadata.length}).`);
     }
-    this.dataSet.mergeMetadata(result.metadata);
-    this.setCurrentDataSet(this.dataSet.getSubset());
-    this.dataSet.spriteImage = result.spriteImage;
-    this.dataSet.metadata = result.datasetMetadata;
+    ds.spriteImage = result.spriteImage;
+    ds.metadata = result.datasetMetadata;
+    ds.mergeMetadata(result.metadata);
     this.inspectorPanel.metadataChanged(result);
     this.projectionsPanel.metadataChanged(result);
   }
@@ -237,7 +235,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       selectedPointIndices: number[], neighborsOfFirstPoint: knn.NearestEntry[],
       hoverPointIndex: number): Float32Array {
     if (this.currentDataSet == null) {
-      return null;
+      return new Float32Array(0);
     }
 
     const colors = new Float32Array(this.currentDataSet.points.length * 3);
@@ -327,6 +325,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       this.currentDataSet.normalize();
     }
     this.scatterPlot.setDataSet(this.currentDataSet, this.dataSet.spriteImage);
+    this.updateScatterPlotColors();
     this.dim = this.currentDataSet.dim[1];
     this.dom.select('span.numDataPoints').text(this.currentDataSet.dim[0]);
     this.dom.select('span.dim').text(this.currentDataSet.dim[1]);
@@ -405,10 +404,15 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
         hoverText = point.metadata[this.labelOption].toString();
       }
     }
+    this.updateScatterPlotColors();
     this.dom.select('#hoverInfo').text(hoverText);
+
+  }
+
+  private updateScatterPlotColors() {
     const colors = this.recomputeScatterPlotColors(
         this.getLegendPointColorer(this.colorOption), this.selectedPointIndices,
-        this.neighborsOfFirstPoint, hoverIndex);
+        this.neighborsOfFirstPoint, this.hoverPointIndex);
     this.scatterPlot.setPointColors(colors);
     this.scatterPlot.render();
   }
@@ -450,11 +454,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     if (neighborsOfFirstPoint.length > 0) {
       this.showTab('inspector');
     }
-    const colors = this.recomputeScatterPlotColors(
-        this.getLegendPointColorer(this.colorOption), selectedPointIndices,
-        neighborsOfFirstPoint, this.hoverPointIndex);
-    this.scatterPlot.setPointColors(colors);
-    this.scatterPlot.render();
+    this.updateScatterPlotColors();
   }
 
   public showTab(id: string) {

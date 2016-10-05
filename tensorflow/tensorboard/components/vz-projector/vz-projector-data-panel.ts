@@ -161,16 +161,18 @@ export class DataPanel extends DataPanelPolymer {
     if (this.selectedTensor == null) {
       return;
     }
-    this.dataProvider.retrieveTensor(this.selectedRun, this.selectedTensor, ds => {
+    this.dataProvider.retrieveTensor(
+        this.selectedRun, this.selectedTensor, ds => {
       let metadataFile =
           this.checkpointInfo.tensors[this.selectedTensor].metadataFile;
-      this.projector.updateDataSet(ds);
       if (metadataFile) {
         this.dataProvider.retrieveMetadata(
             this.selectedRun, this.selectedTensor, result => {
-              this.projector.mergeMetadata(result);
               this.updateMetadataUI(result.stats, metadataFile);
+              this.projector.updateDataSet(ds, result);
             });
+      } else {
+        this.projector.updateDataSet(ds, null);
       }
     });
   }
@@ -232,13 +234,13 @@ export class DataPanel extends DataPanelPolymer {
       this.dom.select('#checkpoint-file')
           .text(fileName)
           .attr('title', fileName);
-      this.projector.updateDataSet(ds);
+      this.projector.updateDataSet(ds, null);
     });
   }
 
   private metadataWasReadFromFile(rawContents: string, fileName: string) {
     parseRawMetadata(rawContents, result => {
-      this.projector.mergeMetadata(result);
+      this.projector.updateDataSet(this.projector.currentDataSet, result);
       this.updateMetadataUI(result.stats, fileName);
     });
   }
