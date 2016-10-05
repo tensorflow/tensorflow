@@ -553,6 +553,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     state.cameraPosition = this.scatterPlot.getCameraPosition();
     state.cameraTarget = this.scatterPlot.getCameraTarget();
 
+    // Save the color and label by options.
+    state.colorOption = this.colorOption;
+    state.labelOption = this.labelOption;
+
     return state;
   }
 
@@ -564,6 +568,12 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.showTab(state.selectedProjection);
 
     this.notifySelectionChanged(state.selectedPoints);
+
+    // Load the color and label by options.
+    this.colorOption = state.colorOption;
+    this.labelOption = state.labelOption;
+    this.set('colorOption', this.colorOption);
+    this.set('labelOption', this.labelOption);
 
     this.scatterPlot.setCameraPositionAndTarget(
         state.cameraPosition, state.cameraTarget);
