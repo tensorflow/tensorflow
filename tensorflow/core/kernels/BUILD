@@ -1248,20 +1248,6 @@ tf_cc_tests(
 )
 
 tf_kernel_libraries(
-    name = "linalg_not_windows",
-    prefixes = [
-        "svd_op",
-    ],
-    deps = [
-        ":linalg_ops_common",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:linalg_ops_op_lib",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_kernel_libraries(
     name = "linalg",
     prefixes = [
         "cholesky_op",
@@ -1273,7 +1259,7 @@ tf_kernel_libraries(
         "matrix_solve_ls_op",
         "matrix_solve_op",
         "matrix_triangular_solve_op",
-        # "svd_op",
+        "svd_op",
     ],
     deps = [
         ":linalg_ops_common",
@@ -1297,25 +1283,10 @@ cc_library(
 )
 
 tf_kernel_libraries(
-    name = "logging_not_windows",
-    prefixes = [
-    # This is causing following error on Windows during the linking of tutorial_example_trainer:
-    # LINK : fatal error LNK1000: unknown error at 000000013F8D4241; consult documentation for technical support options
-        "summary_audio_op",
-    ],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:logging_ops_op_lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-tf_kernel_libraries(
     name = "logging",
     prefixes = [
         "logging_ops",
+        "summary_audio_op",
         "summary_image_op",
         "summary_op",
         "summary_tensor_op",
@@ -1353,7 +1324,6 @@ tf_cc_tests(
 tf_kernel_libraries(
     name = "math_not_windows",
     prefixes = [
-        "cwise_op",
         "sparse_matmul_op",
     ],
     deps = [
@@ -1380,6 +1350,7 @@ tf_kernel_libraries(
         "cast_op",
         "check_numerics_op",
         "cross_op",
+        "cwise_op",
         "fft_ops",
         "matmul_op",
         "reduction_ops",

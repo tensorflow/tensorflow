@@ -535,8 +535,6 @@ cc_library(
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:array_not_windows",
         "//tensorflow/core/kernels:math_not_windows",
-        "//tensorflow/core/kernels:linalg_not_windows",
-        "//tensorflow/core/kernels:logging_not_windows",
     ]),
 )
 
