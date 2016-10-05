@@ -32,10 +32,6 @@ const XYZ_ELEMENTS_PER_ENTRY = 3;
 const UV_ELEMENTS_PER_ENTRY = 2;
 const VERTICES_PER_GLYPH = 2 * 3;  // 2 triangles, 3 verts per triangle
 
-const VERTEX_COLOR_UNSELECTED = 0xFFFFFF;
-const VERTEX_COLOR_SELECTED = '#FA6666';
-const VERTEX_COLOR_HIGHLIGHT = '#760B4F';
-
 /**
  * Each label is made up of triangles (two per letter.) Each vertex, then, is
  * the corner of one of these triangles (and thus the corner of a letter
@@ -322,54 +318,25 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     }
   }
 
-  private colorSprites(unselectedPointColors?: Float32Array) {
+  private colorSprites(pointColors?: Float32Array) {
     if (this.geometry == null || this.dataSet == null) {
       return;
     }
 
-    const unselectedColor = new THREE.Color(VERTEX_COLOR_UNSELECTED);
-    const selectedColor = new THREE.Color(VERTEX_COLOR_SELECTED);
+    if (pointColors == null) {
+      return;
+    }
 
     const colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     colors.array = this.renderColors;
 
-    if (unselectedPointColors == null) {
-      const n = this.dataSet.points.length;
-      for (let i = 0; i < n; i++) {
-        this.labelVertexMap[i].forEach((j) => {
-          colors.setXYZ(
-              j, unselectedColor.r, unselectedColor.g, unselectedColor.b);
-        });
-      }
-    } else {
-      const n = this.dataSet.points.length;
-      let src = 0;
-      for (let i = 0; i < n; ++i) {
-        const c = new THREE.Color(
-            unselectedPointColors[src++], unselectedPointColors[src++],
-            unselectedPointColors[src++]);
-        this.labelVertexMap[i].forEach((j) => {
-          colors.setXYZ(j, c.r, c.g, c.b);
-        });
-      }
-    }
-
-    let labelIndices: number[] = [];
-    this.selectedPointIndices.forEach(i => labelIndices.push(i));
-    this.neighborsOfFirstPoint.forEach(n => labelIndices.push(n.index));
-
-    for (let i = 0; i < labelIndices.length; i++) {
-      let assocPoint = labelIndices[i];
-      this.labelVertexMap[assocPoint].forEach((j) => {
-        colors.setXYZ(j, selectedColor.r, selectedColor.g, selectedColor.b);
-      });
-    }
-
-    if (this.hoverPointIndex) {
-      const p = this.hoverPointIndex;
-      const c = new THREE.Color(VERTEX_COLOR_HIGHLIGHT);
-      this.labelVertexMap[p].forEach((i) => {
-        colors.setXYZ(i, c.r, c.g, c.b);
+    const n = this.dataSet.points.length;
+    let src = 0;
+    for (let i = 0; i < n; ++i) {
+      const c = new THREE.Color(
+          pointColors[src++], pointColors[src++], pointColors[src++]);
+      this.labelVertexMap[i].forEach((j) => {
+        colors.setXYZ(j, c.r, c.g, c.b);
       });
     }
 
@@ -410,7 +377,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   }
 
   onRender(rc: RenderContext) {
-    this.colorSprites(rc.unselectedPointColors);
+    this.colorSprites(rc.pointColors);
 
     this.material.uniforms.texture.value = this.glyphTexture.texture;
     this.material.uniforms.picking.value = false;

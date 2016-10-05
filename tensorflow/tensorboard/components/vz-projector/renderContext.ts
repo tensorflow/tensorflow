@@ -26,14 +26,13 @@ export class RenderContext {
   nearestCameraSpacePointZ: number;
   farthestCameraSpacePointZ: number;
   labelAccessor: (index: number) => string;
-  unselectedPointColors: Float32Array;
+  pointColors: Float32Array;
 
   constructor(
       camera: THREE.PerspectiveCamera, cameraTarget: THREE.Vector3,
       screenWidth: number, screenHeight: number,
       nearestCameraSpacePointZ: number, farthestCameraSpacePointZ: number,
-      labelAccessor: (index: number) => string,
-      unselectedPointColors: Float32Array) {
+      labelAccessor: (index: number) => string, pointColors: Float32Array) {
     this.camera = camera;
     this.cameraTarget = cameraTarget;
     this.screenWidth = screenWidth;
@@ -41,6 +40,6 @@ export class RenderContext {
     this.nearestCameraSpacePointZ = nearestCameraSpacePointZ;
     this.farthestCameraSpacePointZ = farthestCameraSpacePointZ;
     this.labelAccessor = labelAccessor;
-    this.unselectedPointColors = unselectedPointColors;
+    this.pointColors = pointColors;
   }
 }

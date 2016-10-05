@@ -140,7 +140,7 @@ export class ScatterPlot {
   private light: THREE.PointLight;
   private selectionSphere: THREE.Mesh;
 
-  private unselectedPointColors?: Float32Array;
+  private pointColors: Float32Array;
 
   private animating = false;
   private selecting = false;
@@ -654,7 +654,7 @@ export class ScatterPlot {
     let rc = new RenderContext(
         this.perspCamera, this.cameraControls.target, this.width, this.height,
         cameraSpacePointExtents[0], cameraSpacePointExtents[1],
-        this.labelAccessor, this.unselectedPointColors);
+        this.labelAccessor, this.pointColors);
 
     this.visualizers.forEach(v => {
       v.onRender(rc);
@@ -689,9 +689,9 @@ export class ScatterPlot {
     }
   }
 
-  /** Set the colors for every unselected data point. (RGB triplets) */
-  setUnselectedPointColors(colors?: Float32Array) {
-    this.unselectedPointColors = colors;
+  /** Set the colors for every data point. (RGB triplets) */
+  setPointColors(colors: Float32Array) {
+    this.pointColors = colors;
   }
 
   getMode(): Mode { return this.mode; }

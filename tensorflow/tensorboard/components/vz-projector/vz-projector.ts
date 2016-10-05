@@ -31,8 +31,11 @@ import {ProjectionsPanel} from './vz-projector-projections-panel';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
 
-
-const MISSING_VALUE_COLOR = 'black';
+const POINT_COLOR_UNSELECTED = 0x888888;
+const POINT_COLOR_NO_SELECTION = 0x7575D9;
+const POINT_COLOR_SELECTED = 0xFA6666;
+const POINT_COLOR_HOVER = 0x760B4F;
+const POINT_COLOR_MISSING = 'black';
 
 /**
  * The minimum number of dimensions the data should have to automatically
@@ -65,14 +68,17 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   private dom: d3.Selection<any>;
   private scatterPlot: ScatterPlot;
   private dim: number;
-  private highlightedPoints: {index: number, color: string}[];
-  // The index of all selected points.
-  private selectedPoints: number[];
+
+  private selectedPointIndices: number[];
+  private neighborsOfFirstPoint: knn.NearestEntry[];
+  private hoverPointIndex: number;
+
   private dataProvider: DataProvider;
+  private inspectorPanel: InspectorPanel;
+
   private colorOption: ColorOption;
   private routePrefix: string;
   private normalizeData: boolean;
-  private inspectorPanel: InspectorPanel;
   private selectedProjection: Projection;
 
   /** Polymer component panels */
@@ -83,26 +89,23 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   ready() {
     this.selectionChangedListeners = [];
     this.hoverListeners = [];
+    this.selectedPointIndices = [];
+    this.neighborsOfFirstPoint = [];
+
+    this.dom = d3.select(this);
     this.dataPanel = this.$['data-panel'] as DataPanel;
     this.inspectorPanel = this.$['inspector-panel'] as InspectorPanel;
     this.inspectorPanel.initialize(this);
-    // Get the data loader and initialize the data panel with it.
+    this.bookmarkPanel = this.$['bookmark-panel'] as BookmarkPanel;
+    this.bookmarkPanel.initialize(this);
+    this.projectionsPanel = this.$['projections-panel'] as ProjectionsPanel;
+    this.projectionsPanel.initialize(this);
+
     getDataProvider(this.routePrefix, dataProvider => {
       this.dataProvider = dataProvider;
       this.dataPanel.initialize(this, dataProvider);
     });
 
-    this.bookmarkPanel = this.$['bookmark-panel'] as BookmarkPanel;
-    this.bookmarkPanel.initialize(this);
-
-    this.projectionsPanel = this.$['projections-panel'] as ProjectionsPanel;
-    this.projectionsPanel.initialize(this);
-
-    // And select a default dataset.
-    this.highlightedPoints = [];
-    this.selectedPoints = [];
-    this.dom = d3.select(this);
-    // Sets up all the UI.
     this.setupUIControls();
   }
 
@@ -114,19 +117,11 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   }
 
   _colorOptionChanged() {
-    let colorMap = this.colorOption.map;
-    if (colorMap == null) {
-      this.updateUnselectedColorArray(null);
-      return;
-    };
-    let colors = (i: number) => {
-      let value = this.currentDataSet.points[i].metadata[this.colorOption.name];
-      if (value == null) {
-        return MISSING_VALUE_COLOR;
-      }
-      return colorMap(value);
-    };
-    this.updateUnselectedColorArray(colors);
+    const colors = this.recomputeScatterPlotColors(
+        this.getLegendPointColorer(this.colorOption), this.selectedPointIndices,
+        this.neighborsOfFirstPoint, this.hoverPointIndex);
+    this.scatterPlot.setPointColors(colors);
+    this.scatterPlot.render();
   }
 
   setNormalizeData(normalizeData: boolean) {
@@ -159,21 +154,22 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   }
 
   filterDataset() {
-    this.setCurrentDataSet(this.currentDataSet.getSubset(this.selectedPoints));
+    this.setCurrentDataSet(
+        this.currentDataSet.getSubset(this.selectedPointIndices));
     this.clearSelection();
     this.scatterPlot.recreateScene();
   }
 
   resetFilterDataset() {
     this.setCurrentDataSet(this.dataSet.getSubset(null));
-    this.selectedPoints = [];
+    this.selectedPointIndices = [];
   }
 
   /**
    * Used by clients to indicate that a selection has occurred.
    */
   notifySelectionChanged(newSelectedPointIndices: number[]) {
-    this.selectedPoints = newSelectedPointIndices;
+    this.selectedPointIndices = newSelectedPointIndices;
     let neighbors: knn.NearestEntry[] = [];
 
     if (newSelectedPointIndices.length === 1) {
@@ -183,7 +179,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     }
 
     this.selectionChangedListeners.forEach(
-        l => l(this.selectedPoints, neighbors));
+        l => l(this.selectedPointIndices, neighbors));
   }
 
   mergeMetadata(result: MetadataResult): void {
@@ -214,22 +210,95 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.hoverListeners.forEach(l => l(pointIndex));
   }
 
-  private updateUnselectedColorArray(colorAccessor: (index: number) => string) {
-    if (colorAccessor == null) {
-      this.scatterPlot.setUnselectedPointColors(null);
-      return;
+  private getLegendPointColorer(colorOption: ColorOption):
+      (index: number) => string {
+    if ((colorOption == null) || (colorOption.map == null)) {
+      return null;
     }
-    const n = this.currentDataSet.points.length;
-    const colors = new Float32Array(n * 3);
-    let dst = 0;
-    for (let i = 0; i < n; ++i) {
-      const c = new THREE.Color(colorAccessor(i));
+    const colorer = (i: number) => {
+      let value = this.currentDataSet.points[i].metadata[this.colorOption.name];
+      if (value == null) {
+        return POINT_COLOR_MISSING;
+      }
+      return colorOption.map(value);
+    };
+    return colorer;
+  }
+
+  private recomputeScatterPlotColors(
+      legendPointColorer: (index: number) => string,
+      selectedPointIndices: number[], neighborsOfFirstPoint: knn.NearestEntry[],
+      hoverPointIndex: number): Float32Array {
+    if (this.currentDataSet == null) {
+      return null;
+    }
+
+    const colors = new Float32Array(this.currentDataSet.points.length * 3);
+
+    // Give all points the unselected color.
+    {
+      const n = this.currentDataSet.points.length;
+      let dst = 0;
+      if (selectedPointIndices.length > 0) {
+        const c = new THREE.Color(POINT_COLOR_UNSELECTED);
+        for (let i = 0; i < n; ++i) {
+          colors[dst++] = c.r;
+          colors[dst++] = c.g;
+          colors[dst++] = c.b;
+        }
+      } else {
+        if (legendPointColorer) {
+          for (let i = 0; i < n; ++i) {
+            const c = new THREE.Color(legendPointColorer(i));
+            colors[dst++] = c.r;
+            colors[dst++] = c.g;
+            colors[dst++] = c.b;
+          }
+        } else {
+          const c = new THREE.Color(POINT_COLOR_NO_SELECTION);
+          for (let i = 0; i < n; ++i) {
+            colors[dst++] = c.r;
+            colors[dst++] = c.g;
+            colors[dst++] = c.b;
+          }
+        }
+      }
+    }
+
+    // Color the selected points.
+    {
+      const n = selectedPointIndices.length;
+      const c = new THREE.Color(POINT_COLOR_SELECTED);
+      for (let i = 0; i < n; ++i) {
+        let dst = selectedPointIndices[i] * 3;
+        colors[dst++] = c.r;
+        colors[dst++] = c.g;
+        colors[dst++] = c.b;
+      }
+    }
+
+    // Color the neighbors.
+    {
+      const n = neighborsOfFirstPoint.length;
+      const c = new THREE.Color(POINT_COLOR_SELECTED);
+      for (let i = 0; i < n; ++i) {
+        let dst = neighborsOfFirstPoint[i].index * 3;
+        colors[dst++] = c.r;
+        colors[dst++] = c.g;
+        colors[dst++] = c.b;
+      }
+    }
+
+    // Color the hover point.
+    if (hoverPointIndex) {
+      const c = new THREE.Color(POINT_COLOR_HOVER);
+      let dst = hoverPointIndex * 3;
       colors[dst++] = c.r;
       colors[dst++] = c.g;
       colors[dst++] = c.b;
     }
-    this.scatterPlot.setUnselectedPointColors(colors);
-    this.scatterPlot.render();
+
+    return colors;
   }
 
   clearSelection() {
@@ -321,6 +390,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   }
 
   private onHover(hoverIndex: number) {
+    this.hoverPointIndex = hoverIndex;
     let hoverText: string = '';
     if (hoverIndex != null) {
       const point = this.currentDataSet.points[hoverIndex];
@@ -329,6 +399,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       }
     }
     this.dom.select('#hoverInfo').text(hoverText);
+    const colors = this.recomputeScatterPlotColors(
+        this.getLegendPointColorer(this.colorOption), this.selectedPointIndices,
+        this.neighborsOfFirstPoint, hoverIndex);
+    this.scatterPlot.setPointColors(colors);
     this.scatterPlot.render();
   }
 
@@ -360,6 +434,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   private onSelectionChanged(
       selectedPointIndices: number[],
       neighborsOfFirstPoint: knn.NearestEntry[]) {
+    this.selectedPointIndices = selectedPointIndices;
+    this.neighborsOfFirstPoint = neighborsOfFirstPoint;
     this.dom.select('#hoverInfo')
         .text(`Selected ${selectedPointIndices.length} points`);
     this.inspectorPanel.updateInspectorPane(
@@ -367,6 +443,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     if (neighborsOfFirstPoint.length > 0) {
       this.showTab('inspector');
     }
+    const colors = this.recomputeScatterPlotColors(
+        this.getLegendPointColorer(this.colorOption), selectedPointIndices,
+        neighborsOfFirstPoint, this.hoverPointIndex);
+    this.scatterPlot.setPointColors(colors);
     this.scatterPlot.render();
   }
 
@@ -419,13 +499,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       state.projections.push(this.currentDataSet.points[i].projections);
     }
 
-    // Save the type of projection.
     state.selectedProjection = this.selectedProjection;
-
-    // Save the selected points.
-    state.selectedPoints = this.selectedPoints;
-
-    // Save the camera position and target.
+    state.selectedPoints = this.selectedPointIndices;
     state.cameraPosition = this.scatterPlot.getCameraPosition();
     state.cameraTarget = this.scatterPlot.getCameraTarget();
 
@@ -434,20 +509,13 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
   /** Loads a State object into the world. */
   loadState(state: State) {
-    // Load the individual datapoint projections.
     for (let i = 0; i < state.projections.length; i++) {
       this.currentDataSet.points[i].projections = state.projections[i];
     }
-
-    // Select the type of projection.
     this.showTab(state.selectedProjection);
-
-    // Load the selected points.
     if (state.selectedPoints.length > 0) {
       this.notifySelectionChanged(state.selectedPoints);
     }
-
-    // Load the camera position and target.
     this.scatterPlot.setCameraPositionAndTarget(
         state.cameraPosition, state.cameraTarget);
   }
