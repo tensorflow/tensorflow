@@ -520,9 +520,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       this.currentDataSet.points[i].projections = state.projections[i];
     }
     this.showTab(state.selectedProjection);
-    if (state.selectedPoints.length > 0) {
-      this.notifySelectionChanged(state.selectedPoints);
-    }
+
+    this.notifySelectionChanged(state.selectedPoints);
+
     this.scatterPlot.setCameraPositionAndTarget(
         state.cameraPosition, state.cameraTarget);
   }
