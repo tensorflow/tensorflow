@@ -192,18 +192,13 @@ class StackPushOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     // Get the stack from the handle.
     Stack* stack = nullptr;
-    Status s = GetStack(ctx, &stack);
-    if (!s.ok()) {
-      ctx->CtxFailureWithWarning(s);
-      done();
-      return;
-    }
+    OP_REQUIRES_OK_ASYNC(ctx, GetStack(ctx, &stack), done);
     core::ScopedUnref unref(stack);
 
     if (ctx->input_dtype(1) != stack->ElemType()) {
-      ctx->CtxFailureWithWarning(
-          errors::InvalidArgument("Must have type ", stack->ElemType(),
-                                  " but got ", ctx->input_dtype(1)));
+      ctx->CtxFailure(errors::InvalidArgument("Must have type ",
+                                              stack->ElemType(), " but got ",
+                                              ctx->input_dtype(1)));
       done();
       return;
     }
@@ -300,23 +295,13 @@ class StackPopOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     // Get the stack from the handle.
     Stack* stack = nullptr;
-    Status s = GetStack(ctx, &stack);
-    if (!s.ok()) {
-      ctx->CtxFailureWithWarning(s);
-      done();
-      return;
-    }
+    OP_REQUIRES_OK_ASYNC(ctx, GetStack(ctx, &stack), done);
     core::ScopedUnref unref(stack);
 
     // Pop the tensor. Transfer the tensor back to device if it was
     // swapped out to CPU.
     Stack::TensorAndAllocation value;
-    s = stack->Pop(&value);
-    if (!s.ok()) {
-      ctx->CtxFailureWithWarning(s);
-      done();
-      return;
-    }
+    OP_REQUIRES_OK_ASYNC(ctx, stack->Pop(&value), done);
     if (value.swapped_to_cpu) {
       // Asynchronously copy the tensor back from CPU to GPU memory.
       DeviceContext* device_ctxt = ctx->op_device_context();
