@@ -124,13 +124,20 @@ limitations under the License.
   justify-content: center;
 }
 
-#notify-msg {
-  display: none;
+#notify-msgs {
+  display: block;
+}
+
+.notify-msg {
+  margin: 5px 0;
   font-weight: 500;
   color: black;
   background-color: #FFF9C4;
   padding: 5px;
   border: 1px solid #FBC02D;
+  backface-visibility: hidden;
+  opacity: 1;
+  transition: opacity 0.25s ease-in-out;
 }
 
 #warning-msg {
@@ -305,7 +312,7 @@ limitations under the License.
 }
 </style>
 <div id="wrapper-notify-msg">
-  <div id="notify-msg">Loading...</div>
+  <div id="notify-msgs"></div>
 </div>
 <div id="warning-msg"></div>
 <div id="container">

@@ -111,7 +111,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       this.dataProvider = dataProvider;
       this.dataPanel.initialize(this, dataProvider);
     });
-
+    this.scopeSubtree(this.$$('#wrapper-notify-msg'), true);
     this.setupUIControls();
   }
 
@@ -162,7 +162,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   filterDataset() {
     this.setCurrentDataSet(
         this.currentDataSet.getSubset(this.selectedPointIndices));
-    this.clearSelection();
+    this.clearSelectionAndHover();
     this.scatterPlot.recreateScene();
   }
 
@@ -347,8 +347,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     return colors;
   }
 
-  clearSelection() {
+  clearSelectionAndHover() {
     this.notifySelectionChanged([]);
+    this.notifyHoverOverPoint(null);
     this.scatterPlot.setMode(Mode.HOVER);
   }
 
@@ -357,7 +358,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   }
 
   private setCurrentDataSet(ds: DataSet) {
-    this.clearSelection();
+    this.clearSelectionAndHover();
     if (this.currentDataSet != null) {
       this.unsetCurrentDataSet();
     }
