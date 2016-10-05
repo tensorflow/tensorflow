@@ -13,12 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {HoverContext} from './hoverContext';
-import {NearestEntry} from './knn';
 import {RenderContext} from './renderContext';
 import {DataSet} from './scatterPlot';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
-import {SelectionContext} from './selectionContext';
 import {createTexture} from './util';
 
 const FONT_SIZE = 80;
@@ -110,9 +107,6 @@ type GlyphTexture = {
  */
 export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   private dataSet: DataSet;
-  private selectedPointIndices: number[] = [];
-  private neighborsOfFirstPoint: NearestEntry[] = [];
-  private hoverPointIndex: number;
   private scene: THREE.Scene;
   private labelAccessor: (index: number) => string;
   private geometry: THREE.BufferGeometry;
@@ -126,15 +120,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   private labelVertexMap: number[][];
   private glyphTexture: GlyphTexture;
 
-  constructor(selectionContext: SelectionContext, hoverContext: HoverContext) {
-    selectionContext.registerSelectionChangedListener(
-        (s: number[], n: NearestEntry[]) => {
-          this.selectedPointIndices = s;
-          this.neighborsOfFirstPoint = n;
-        });
-    hoverContext.registerHoverListener((h: number) => {
-      this.hoverPointIndex = h;
-    });
+  constructor() {
     this.glyphTexture = this.createGlyphTexture();
 
     this.uniforms = {

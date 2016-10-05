@@ -141,6 +141,7 @@ export class ScatterPlot {
   private selectionSphere: THREE.Mesh;
 
   private pointColors: Float32Array;
+  private pointScaleFactors: Float32Array;
 
   private animating = false;
   private selecting = false;
@@ -655,7 +656,7 @@ export class ScatterPlot {
     let rc = new RenderContext(
         this.perspCamera, this.cameraControls.target, this.width, this.height,
         cameraSpacePointExtents[0], cameraSpacePointExtents[1],
-        this.labelAccessor, this.pointColors);
+        this.labelAccessor, this.pointColors, this.pointScaleFactors);
 
     this.visualizers.forEach(v => {
       v.onRender(rc);
@@ -693,6 +694,11 @@ export class ScatterPlot {
   /** Set the colors for every data point. (RGB triplets) */
   setPointColors(colors: Float32Array) {
     this.pointColors = colors;
+  }
+
+  /** Set the scale factors for every data point. (scalars) */
+  setPointScaleFactors(scaleFactors: Float32Array) {
+    this.pointScaleFactors = scaleFactors;
   }
 
   getMode(): Mode { return this.mode; }

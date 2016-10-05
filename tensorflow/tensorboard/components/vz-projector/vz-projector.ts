@@ -38,6 +38,11 @@ const POINT_COLOR_SELECTED = 0xFA6666;
 const POINT_COLOR_HOVER = 0x760B4F;
 const POINT_COLOR_MISSING = 'black';
 
+const POINT_SCALE_DEFAULT = 1.0;
+const POINT_SCALE_SELECTED = 1.2;
+const POINT_SCALE_NEIGHBOR = 1.2;
+const POINT_SCALE_HOVER = 1.3;
+
 /**
  * The minimum number of dimensions the data should have to automatically
  * decide to normalize the data.
@@ -119,7 +124,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   }
 
   _colorOptionChanged() {
-    this.updateScatterPlotColors();
+    this.updateScatterPlot();
   }
 
   setNormalizeData(normalizeData: boolean) {
@@ -230,7 +235,43 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     return colorer;
   }
 
-  private recomputeScatterPlotColors(
+  private generateScatterPlotScaleFactorArray(
+      selectedPointIndices: number[], neighborsOfFirstPoint: knn.NearestEntry[],
+      hoverPointIndex: number): Float32Array {
+    if (this.currentDataSet == null) {
+      return new Float32Array(0);
+    }
+
+    const scale = new Float32Array(this.currentDataSet.points.length);
+    scale.fill(POINT_SCALE_DEFAULT);
+
+    // Scale up all selected points.
+    {
+      const n = selectedPointIndices.length;
+      for (let i = 0; i < n; ++i) {
+        const p = selectedPointIndices[i];
+        scale[p] = POINT_SCALE_SELECTED;
+      }
+    }
+
+    // Scale up the neighbor points.
+    {
+      const n = neighborsOfFirstPoint.length;
+      for (let i = 0; i < n; ++i) {
+        const p = neighborsOfFirstPoint[i].index;
+        scale[p] = POINT_SCALE_NEIGHBOR;
+      }
+    }
+
+    // Scale up the hover point.
+    if (hoverPointIndex != null) {
+      scale[hoverPointIndex] = POINT_SCALE_HOVER;
+    }
+
+    return scale;
+  }
+
+  private generateScatterPlotColorArray(
       legendPointColorer: (index: number) => string,
       selectedPointIndices: number[], neighborsOfFirstPoint: knn.NearestEntry[],
       hoverPointIndex: number): Float32Array {
@@ -325,7 +366,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       this.currentDataSet.normalize();
     }
     this.scatterPlot.setDataSet(this.currentDataSet, this.dataSet.spriteImage);
-    this.updateScatterPlotColors();
+    this.updateScatterPlot();
     this.dim = this.currentDataSet.dim[1];
     this.dom.select('span.numDataPoints').text(this.currentDataSet.dim[0]);
     this.dom.select('span.dim').text(this.currentDataSet.dim[1]);
@@ -404,16 +445,19 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
         hoverText = point.metadata[this.labelOption].toString();
       }
     }
-    this.updateScatterPlotColors();
+    this.updateScatterPlot();
     this.dom.select('#hoverInfo').text(hoverText);
-
   }
 
-  private updateScatterPlotColors() {
-    const colors = this.recomputeScatterPlotColors(
+  private updateScatterPlot() {
+    const colors = this.generateScatterPlotColorArray(
         this.getLegendPointColorer(this.colorOption), this.selectedPointIndices,
         this.neighborsOfFirstPoint, this.hoverPointIndex);
+    const scaleFactors = this.generateScatterPlotScaleFactorArray(
+        this.selectedPointIndices, this.neighborsOfFirstPoint,
+        this.hoverPointIndex);
     this.scatterPlot.setPointColors(colors);
+    this.scatterPlot.setPointScaleFactors(scaleFactors);
     this.scatterPlot.render();
   }
 
@@ -428,11 +472,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     scatterPlot.removeAllVisualizers();
 
     if (inLabels3DMode) {
-      scatterPlot.addVisualizer(
-          new ScatterPlotVisualizer3DLabels(selectionContext, hoverContext));
+      scatterPlot.addVisualizer(new ScatterPlotVisualizer3DLabels());
     } else {
-      scatterPlot.addVisualizer(
-          new ScatterPlotVisualizerSprites(selectionContext, hoverContext));
+      scatterPlot.addVisualizer(new ScatterPlotVisualizerSprites());
 
       scatterPlot.addVisualizer(
           new ScatterPlotVisualizerTraces(selectionContext));
@@ -454,7 +496,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     if (neighborsOfFirstPoint.length > 0) {
       this.showTab('inspector');
     }
-    this.updateScatterPlotColors();
+    this.updateScatterPlot();
   }
 
   public showTab(id: string) {
