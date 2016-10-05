@@ -507,7 +507,7 @@ class StreamingDataFeeder(DataFeeder):
           inp[i, :] = six.next(self._x)
         except StopIteration:
           self.stopped = True
-          if i==0:
+          if i == 0:
             raise StopIteration
           else:
             inp = inp[:i, :]
