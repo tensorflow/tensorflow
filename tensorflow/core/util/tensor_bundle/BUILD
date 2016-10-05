@@ -9,6 +9,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "tf_copts")
+
 # To be exported to tensorflow/core:android_srcs.
 filegroup(
     name = "android_srcs",
@@ -32,6 +34,7 @@ cc_library(
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
     ],
+    copts = tf_copts(),
 )
 
 cc_test(

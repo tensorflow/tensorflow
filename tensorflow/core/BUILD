@@ -981,10 +981,11 @@ cc_library(
                     "**/*test*",
                     "platform/**/cuda.h",
                     "platform/**/stream_executor.h",
-                ] +
+                ] 
                 # Protobuf deps already included through the ":lib_proto_parsing"
                 # dependency.
-                tf_additional_proto_srcs(),
+                # Excluding logging.h from srcs will cause a linking error
+                # + tf_additional_proto_srcs(),
     ),
     hdrs = tf_additional_lib_hdrs() + [
         "lib/core/blocking_counter.h",
@@ -1057,6 +1058,7 @@ tf_version_info_genrule()
 cc_library(
     name = "version_lib",
     srcs = ["util/version_info.cc"],
+    copts = tf_copts(),
 )
 
 tf_cuda_library(
