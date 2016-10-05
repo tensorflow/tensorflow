@@ -287,7 +287,6 @@ def _monitored_train(graph,
       while not super_sess.should_stop():
         _, loss = super_sess.run([train_op, loss_op], feed_fn() if feed_fn else
                                  None)
-        
       return loss
 
 
