@@ -32,6 +32,7 @@ limitations under the License.
 <link rel="import" href="vz-projector-data-panel.html">
 <link rel="import" href="vz-projector-inspector-panel.html">
 <link rel="import" href="vz-projector-input.html">
+<link rel="import" href="vz-projector-metadata-card.html">
 <link rel="import" href="vz-projector-projections-panel.html">
 <link rel="import" href="styles.html">
 
@@ -297,6 +298,11 @@ limitations under the License.
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
+#metadata-card {
+  position: absolute;
+  right: 5px;
+  top: 25px;
+}
 </style>
 <div id="wrapper-notify-msg">
   <div id="notify-msg">Loading...</div>
@@ -330,6 +336,7 @@ limitations under the License.
     </div>
     <div class="stage">
       <div id="scatter"></div>
+      <vz-projector-metadata-card id="metadata-card"></vz-projector-metadata-card>
     </div>
     <div id="info-panel" class="ink-panel-footer">
       <div>
@@ -362,4 +369,3 @@ limitations under the License.
 </div>
 </template>
 </dom-module>
-

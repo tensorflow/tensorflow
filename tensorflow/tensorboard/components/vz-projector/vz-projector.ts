@@ -27,6 +27,7 @@ import {SelectionChangedListener, SelectionContext} from './selectionContext';
 import {BookmarkPanel} from './vz-projector-bookmark-panel';
 import {DataPanel} from './vz-projector-data-panel';
 import {InspectorPanel} from './vz-projector-inspector-panel';
+import {MetadataCard} from './vz-projector-metadata-card';
 import {ProjectionsPanel} from './vz-projector-projections-panel';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
@@ -83,6 +84,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   private dataPanel: DataPanel;
   private bookmarkPanel: BookmarkPanel;
   private projectionsPanel: ProjectionsPanel;
+  private metadataCard: MetadataCard;
 
   ready() {
     this.selectionChangedListeners = [];
@@ -98,6 +100,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.bookmarkPanel.initialize(this);
     this.projectionsPanel = this.$['projections-panel'] as ProjectionsPanel;
     this.projectionsPanel.initialize(this);
+    this.metadataCard = this.$['metadata-card'] as MetadataCard;
 
     getDataProvider(this.routePrefix, dataProvider => {
       this.dataProvider = dataProvider;
@@ -112,6 +115,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       return this.currentDataSet.points[i].metadata[this.labelOption] as string;
     };
     this.scatterPlot.setLabelAccessor(labelAccessor);
+    this.metadataCard.setLabelOption(this.labelOption);
   }
 
   _colorOptionChanged() {
@@ -174,6 +178,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       neighbors = this.currentDataSet.findNeighbors(
           newSelectedPointIndices[0], this.inspectorPanel.distFunc,
           this.inspectorPanel.numNN);
+      this.metadataCard.updateMetadata(
+          this.dataSet.points[newSelectedPointIndices[0]].metadata);
+    } else {
+      this.metadataCard.updateMetadata(null);
     }
 
     this.selectionChangedListeners.forEach(

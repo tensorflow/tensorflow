@@ -82,7 +82,6 @@ export class InspectorPanel extends PolymerClass {
     } else {
       this.selectedPointIndex = null;
     }
-    this.updateMetadata();
     this.updateIsolateButton(indices.length);
     this.updateNeighborsList(neighbors);
     if (neighbors.length === 0) {
@@ -210,46 +209,6 @@ export class InspectorPanel extends PolymerClass {
     } else {
       this.setFilterButton.attr('disabled', true);
       this.clearSelectionButton.attr('disabled', true);
-    }
-  }
-
-  /** Updates the displayed metadata for the selected point. */
-  private updateMetadata() {
-    let metadataContainerElement = this.dom.select('.metadata');
-    metadataContainerElement.selectAll('*').remove();
-    let point = null;
-    if (this.projector.currentDataSet != null &&
-        this.selectedPointIndex != null) {
-      point = this.projector.currentDataSet.points[this.selectedPointIndex];
-    }
-    this.dom.select('.metadata-container')
-        .style('display', point != null ? '' : 'none');
-
-    if (point == null) {
-      return;
-    }
-
-    for (let metadataKey in point.metadata) {
-      if (!point.metadata.hasOwnProperty(metadataKey)) {
-        continue;
-      }
-      let rowElement = document.createElement('div');
-      rowElement.className = 'metadata-row';
-
-      let keyElement = document.createElement('div');
-      keyElement.className = 'metadata-key';
-      keyElement.textContent = metadataKey;
-
-      let valueElement = document.createElement('div');
-      valueElement.className = 'metadata-value';
-      valueElement.textContent = '' + point.metadata[metadataKey];
-
-      rowElement.appendChild(keyElement);
-      rowElement.appendChild(valueElement);
-
-      metadataContainerElement.append(function() {
-        return this.appendChild(rowElement);
-      });
     }
   }
 
