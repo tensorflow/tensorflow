@@ -28,9 +28,11 @@ limitations under the License.
 <link rel="import" href="../paper-tooltip/paper-tooltip.html">
 <link rel="import" href="../paper-input/paper-input.html">
 <link rel="import" href="../paper-button/paper-button.html">
+<link rel="import" href="styles.html">
 
 <dom-module id="vz-projector-projections-panel">
 <template>
+<style include="vz-projector-styles"></style>
 <style>
 
 .slider {
@@ -165,13 +167,6 @@ paper-listbox .pca-item {
 
 .has-border {
   border: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.help-icon {
-  width: 15px;
-  height: 15px;
-  margin: 0;
-  padding: 0;
 }
 
 paper-tooltip {
