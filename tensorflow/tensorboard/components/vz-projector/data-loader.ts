@@ -75,6 +75,7 @@ class ServerDataProvider implements DataProvider {
   /** Prefix added to the http requests when asking the server for data. */
   static DEFAULT_ROUTE_PREFIX = 'data';
   private routePrefix: string;
+  private runCheckpointInfoCache: {[run: string]: CheckpointInfo} = {};
 
   constructor(routePrefix: string) {
     this.routePrefix = routePrefix;
@@ -90,9 +91,15 @@ class ServerDataProvider implements DataProvider {
 
   retrieveCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void)
       : void {
+    if (run in this.runCheckpointInfoCache) {
+      callback(this.runCheckpointInfoCache[run]);
+      return;
+    }
+
     let msgId = updateMessage('Fetching checkpoint info...');
     d3.json(`${this.routePrefix}/info?run=${run}`, (err, checkpointInfo) => {
       updateMessage(null, msgId);
+      this.runCheckpointInfoCache[run] = checkpointInfo;
       callback(checkpointInfo);
     });
   }
