@@ -141,6 +141,7 @@ cc_library(
         "platform/protobuf.h",
         "platform/types.h",
     ] + glob(tf_additional_proto_hdrs()),
+    copts = tf_copts(),
     deps = [
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:proto_parsing",
@@ -979,11 +980,10 @@ cc_library(
                     "**/*test*",
                     "platform/**/cuda.h",
                     "platform/**/stream_executor.h",
-                ] 
+                ] +
                 # Protobuf deps already included through the ":lib_proto_parsing"
                 # dependency.
-                # Excluding logging.h from srcs will cause a linking error
-                # + tf_additional_proto_srcs(),
+                tf_additional_proto_srcs(),
     ),
     hdrs = tf_additional_lib_hdrs() + [
         "lib/core/blocking_counter.h",
