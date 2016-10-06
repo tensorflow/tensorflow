@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/python/lib/core/py_func.h"
 
+#include <array>
+
 #include <Python.h>
 #include "numpy/arrayobject.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -162,8 +164,8 @@ bool IsSingleNone(PyObject* obj) {
   if (PyArray_NDIM(array_obj) != 0 || PyArray_SIZE(array_obj) != 1) {
     return false;
   }
-  npy_intp indices[] = {};
-  char* item_ptr = static_cast<char*>(PyArray_GetPtr(array_obj, indices));
+  std::array<npy_intp, 0> indices;
+  char* item_ptr = static_cast<char*>(PyArray_GetPtr(array_obj, indices.data()));
   PyObject* item = PyArray_GETITEM(array_obj, item_ptr);
   CHECK(item);
   return item == Py_None;
