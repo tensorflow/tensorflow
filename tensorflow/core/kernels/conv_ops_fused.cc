@@ -43,8 +43,8 @@ namespace {
 // going to be extremely large, so break it into chunks if it's bigger than
 // a limit. Each chunk will be processed serially, so we can refill the
 // buffer for the next chunk and reuse it, keeping maximum memory size down.
-// In this case, we've picked 16 megabytes as a reasonable limit.
-const size_t kMaxChunkSize = (16 * 1024 * 1024);
+// In this case, we've picked 1 megabyte as a reasonable limit.
+const size_t kMaxChunkSize = (1 * 1024 * 1024);
 
 // Lookup method used when resizing.
 enum SamplingMode {
