@@ -32,16 +32,9 @@ from __future__ import print_function
 import tensorflow as tf
 from tensorflow.contrib.session_bundle import exporter
 
-tf.flags.DEFINE_bool("use_checkpoint_v2", False,
-                     "If true, write v2 checkpoint files.")
-
-FLAGS = tf.flags.FLAGS
-
 
 def Export():
   export_path = "/tmp/half_plus_two"
-  if FLAGS.use_checkpoint_v2:
-    export_path = "/tmp/half_plus_two_ckpt_v2"
   with tf.Session() as sess:
     # Make model parameters a&b variables instead of constants to
     # exercise the variable reloading mechanisms.
@@ -62,14 +55,7 @@ def Export():
     y = tf.add(tf.mul(a, x), b, name="y")
 
     # Setup a standard Saver for our variables.
-    save = tf.train.Saver(
-        {
-            "a": a,
-            "b": b
-        },
-        sharded=True,
-        write_version=tf.train.SaverDef.V2 if FLAGS.use_checkpoint_v2 else
-        tf.train.SaverDef.V1)
+    save = tf.train.Saver({"a": a, "b": b}, sharded=True)
 
     # asset_path contains the base directory of assets used in training (e.g.
     # vocabulary files).
@@ -77,8 +63,10 @@ def Export():
     # Ops reading asset files should reference the asset_path tensor
     # which stores the original asset path at training time and the
     # overridden assets directory at restore time.
-    asset_path = tf.Variable(
-        original_asset_path, name="asset_path", trainable=False, collections=[])
+    asset_path = tf.Variable(original_asset_path,
+                             name="asset_path",
+                             trainable=False,
+                             collections=[])
     assign_asset_path = asset_path.assign(original_asset_path)
 
     # Use a fixed global step number.
@@ -92,12 +80,8 @@ def Export():
         # (whichever is created first) during serving.
         output_tensor=tf.identity(y))
     named_graph_signature = {
-        "inputs": exporter.generic_signature({
-            "x": x
-        }),
-        "outputs": exporter.generic_signature({
-            "y": y
-        })
+        "inputs": exporter.generic_signature({"x": x}),
+        "outputs": exporter.generic_signature({"y": y})
     }
 
     # Create two filename assets and corresponding tensors.
@@ -105,13 +89,17 @@ def Export():
     # hashes (e.g. sha1) for consistency.
     original_filename1 = tf.constant("hello1.txt")
     tf.add_to_collection(tf.GraphKeys.ASSET_FILEPATHS, original_filename1)
-    filename1 = tf.Variable(
-        original_filename1, name="filename1", trainable=False, collections=[])
+    filename1 = tf.Variable(original_filename1,
+                            name="filename1",
+                            trainable=False,
+                            collections=[])
     assign_filename1 = filename1.assign(original_filename1)
     original_filename2 = tf.constant("hello2.txt")
     tf.add_to_collection(tf.GraphKeys.ASSET_FILEPATHS, original_filename2)
-    filename2 = tf.Variable(
-        original_filename2, name="filename2", trainable=False, collections=[])
+    filename2 = tf.Variable(original_filename2,
+                            name="filename2",
+                            trainable=False,
+                            collections=[])
     assign_filename2 = filename2.assign(original_filename2)
 
     # Init op contains a group of all variables that we assign.

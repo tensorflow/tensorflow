@@ -112,7 +112,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":signature",
-        "//tensorflow/core/util/tensor_bundle:tensor_bundle",
     ] + if_not_mobile([
         ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
@@ -134,7 +133,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":signature_lite",
-        "//tensorflow/core/util/tensor_bundle:tensor_bundle",
     ] + if_not_mobile([
         ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",

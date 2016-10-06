@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 namespace tensorflow {
 namespace serving {
@@ -100,18 +99,11 @@ void AddAssetsTensorsToInputs(const StringPiece export_dir,
 // This method is to support models exported by both types of saver object.
 // The change is backward-compatible, therefore no changes are needed for
 // existing model exports.
-// Checkpoint v2 support: Models exported in the checkpoint v2 format will have
-// an export.index file. When the exported model uses checkpoint v2 the returned
-// variables filename should not have a file type suffix. The variable is
-// distributed among the export.index and export.data-?????-of-????? files.
 string GetVariablesFilename(const StringPiece export_dir) {
   const char kVariablesFilename[] = "export";
-  const string kVariablesIndexFilename = MetaFilename("export");  // V2 ckpts
   const char kVariablesFilenamePattern[] = "export-\?\?\?\?\?-of-\?\?\?\?\?";
   if (Env::Default()->FileExists(
-          io::JoinPath(export_dir, kVariablesFilename)) ||
-      Env::Default()->FileExists(
-          io::JoinPath(export_dir, kVariablesIndexFilename))) {
+          io::JoinPath(export_dir, kVariablesFilename))) {
     return io::JoinPath(export_dir, kVariablesFilename);
   } else {
     return io::JoinPath(export_dir, kVariablesFilenamePattern);
