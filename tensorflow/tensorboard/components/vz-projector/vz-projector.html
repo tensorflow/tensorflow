@@ -27,11 +27,13 @@ limitations under the License.
 <link rel="import" href="../paper-tooltip/paper-tooltip.html">
 <link rel="import" href="../paper-input/paper-input.html">
 <link rel="import" href="../paper-button/paper-button.html">
+<link rel="import" href="../paper-dialog/paper-dialog.html">
 
 <link rel="import" href="vz-projector-bookmark-panel.html">
 <link rel="import" href="vz-projector-data-panel.html">
 <link rel="import" href="vz-projector-inspector-panel.html">
 <link rel="import" href="vz-projector-input.html">
+<link rel="import" href="vz-projector-metadata-card.html">
 <link rel="import" href="vz-projector-projections-panel.html">
 <link rel="import" href="styles.html">
 
@@ -123,13 +125,20 @@ limitations under the License.
   justify-content: center;
 }
 
-#notify-msg {
-  display: none;
+#notify-msgs {
+  display: block;
+}
+
+.notify-msg {
+  margin: 5px 0;
   font-weight: 500;
   color: black;
   background-color: #FFF9C4;
   padding: 5px;
   border: 1px solid #FBC02D;
+  backface-visibility: hidden;
+  opacity: 1;
+  transition: opacity 0.3s ease-out;
 }
 
 #warning-msg {
@@ -297,9 +306,40 @@ limitations under the License.
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
+#metadata-card {
+  position: absolute;
+  right: 5px;
+  top: 25px;
+}
+
+#help-3d-icon {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+}
+
+#help3dDialog .main {
+  margin: 0;
+  padding: 20px;
+}
+
+#help3dDialog .note {
+  margin-top: 25px;
+  font-size: 11px;
+  text-align: right;
+}
+
+#help3dDialog h3 {
+  margin-top: 20px;
+  margin-bottom: 5px;
+}
+
+#help3dDialog h3:first-child {
+  margin-top: 0;
+}
 </style>
 <div id="wrapper-notify-msg">
-  <div id="notify-msg">Loading...</div>
+  <div id="notify-msgs"></div>
 </div>
 <div id="warning-msg"></div>
 <div id="container">
@@ -330,6 +370,22 @@ limitations under the License.
     </div>
     <div class="stage">
       <div id="scatter"></div>
+      <vz-projector-metadata-card id="metadata-card"></vz-projector-metadata-card>
+      <paper-icon-button raised onclick="help3dDialog.open()" icon="3d-rotation" id="help-3d-icon"></paper-icon-button>
+      <paper-tooltip animation-delay="0" for="help-3d-icon">Help with interaction controls.</paper-tooltip>
+      <paper-dialog id="help3dDialog" with-backdrop>
+        <div class="main" dialog-confirm autofocus>
+          <h3>3D controls</h3>
+            <b>Rotate</b> Mouse left click.<br/>
+            <b>Pan</b> Mouse right click.<br/>
+            <b>Zoom</b> Mouse wheel.<br/>
+            Holding <b>ctrl</b> reverses the mouse clicks.
+          <h3>2D controls</h3>
+            <b>Pan</b> Mouse left click.<br/>
+            <b>Zoom</b> Mouse wheel.
+          <div class="note"> Click anywhere to dismiss.</div>
+        </div>
+      </paper-dialog>
     </div>
     <div id="info-panel" class="ink-panel-footer">
       <div>
@@ -362,4 +418,3 @@ limitations under the License.
 </div>
 </template>
 </dom-module>
-

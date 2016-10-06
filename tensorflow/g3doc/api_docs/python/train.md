@@ -3262,6 +3262,37 @@ Get from cache or create a default operation.
 
 - - -
 
+### `tf.train.MonitoredTrainingSession(master='', is_chief=True, checkpoint_dir=None, hooks=None, scaffold=None, config=None)` {#MonitoredTrainingSession}
+
+Creates a `MonitoredSession` for training.
+
+For a chief, this utility sets proper session initializer/restorer. It also
+creates hooks related to checkpoint and summary saving. For workers, this
+utility sets proper session creator which waits for the chief to
+inialize/restore.
+
+
+##### Args:
+
+
+*  <b>`master`</b>: `String` the TensorFlow master to use.
+*  <b>`is_chief`</b>: If `True`, it will take care of initialization and recovery the
+    underlying TensorFlow session. If `False`, it will wait on a chief to
+    initialize or recover the TensorFlow session.
+*  <b>`checkpoint_dir`</b>: A string.  Optional path to a directory where to restore
+    variables.
+*  <b>`hooks`</b>: Optional list of `SessionRunHook` objects.
+*  <b>`scaffold`</b>: A `Scaffold` used for gathering or building supportive ops. If
+    not specified, a default one is created. It's used to finalize the graph.
+*  <b>`config`</b>: `ConfigProto` proto used to configure the session.
+
+##### Returns:
+
+  A `MonitoredSession` object.
+
+
+- - -
+
 ### `class tf.train.SessionCreator` {#SessionCreator}
 
 A factory for tf.Session.
@@ -3384,6 +3415,7 @@ How to set `tf.Session` arguments:
   MonitoredSession(
     session_creator=WorkerSessionCreator(master=..., config=...))
   ```
+See `MonitoredTrainingSession` for an example usage based on chief or worker.
 - - -
 
 #### `tf.train.MonitoredSession.__enter__()` {#MonitoredSession.__enter__}
@@ -4367,6 +4399,70 @@ such as saving a last checkpoint.
 #### `tf.train.NanLossDuringTrainingError.__str__()` {#NanLossDuringTrainingError.__str__}
 
 
+
+
+
+- - -
+
+### `class tf.train.NanTensorHook` {#NanTensorHook}
+
+NaN Loss monitor.
+
+Monitors loss and stops training if loss is NaN.
+Can either fail with exception or just stop training.
+- - -
+
+#### `tf.train.NanTensorHook.__init__(loss_tensor, fail_on_nan_loss=True)` {#NanTensorHook.__init__}
+
+Initializes NanLoss monitor.
+
+##### Args:
+
+
+*  <b>`loss_tensor`</b>: `Tensor`, the loss tensor.
+*  <b>`fail_on_nan_loss`</b>: `bool`, whether to raise exception when loss is NaN.
+
+
+- - -
+
+#### `tf.train.NanTensorHook.after_run(run_context, run_values)` {#NanTensorHook.after_run}
+
+
+
+
+- - -
+
+#### `tf.train.NanTensorHook.before_run(run_context)` {#NanTensorHook.before_run}
+
+
+
+
+- - -
+
+#### `tf.train.NanTensorHook.begin()` {#NanTensorHook.begin}
+
+Called once before using the session.
+
+When called, the default graph is the one that will be launched in the
+session.  The hook can modify the graph by adding new operations to it.
+After the `begin()` call the graph will be finalized and the other callbacks
+can not modify the graph anymore. Second call of `begin()` on the same
+graph, should not change the graph.
+
+
+- - -
+
+#### `tf.train.NanTensorHook.end(session)` {#NanTensorHook.end}
+
+Called at the end of session.
+
+The `session` argument can be used in case the hook wants to run final ops,
+such as saving a last checkpoint.
+
+##### Args:
+
+
+*  <b>`session`</b>: A TensorFlow Session that will be soon closed.
 
 
 

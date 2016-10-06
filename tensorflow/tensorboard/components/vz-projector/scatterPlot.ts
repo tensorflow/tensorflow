@@ -140,7 +140,13 @@ export class ScatterPlot {
   private light: THREE.PointLight;
   private selectionSphere: THREE.Mesh;
 
-  private unselectedPointColors?: Float32Array;
+  private pointColors: Float32Array;
+  private pointScaleFactors: Float32Array;
+  private labelIndices: Uint32Array;
+  private labelScaleFactors: Float32Array;
+  private labelStrokeColor: number;
+  private labelFillColor: number;
+  private labelDefaultFontSize: number;
 
   private animating = false;
   private selecting = false;
@@ -197,8 +203,6 @@ export class ScatterPlot {
     this.cameraControls =
         new (THREE as any)
             .OrbitControls(this.perspCamera, this.renderer.domElement);
-    this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
-    this.cameraControls.mouseButtons.PAN = THREE.MOUSE.RIGHT;
     // Start is called when the user stars interacting with
     // orbit controls.
     this.cameraControls.addEventListener('start', () => {
@@ -219,12 +223,14 @@ export class ScatterPlot {
   }
 
   /** Sets up camera to work in 3D (called after makeCamera()). */
-  private makeCamera3D() {
+  private makeCamera3D(animate?: boolean) {
     // Set up the camera position at a skewed angle from the xy plane, looking
     // toward the origin
     this.cameraControls.position0.set(POS_3D.x, POS_3D.y, POS_3D.z);
     this.cameraControls.target0.set(TAR_3D.x, TAR_3D.y, TAR_3D.z);
     this.cameraControls.enableRotate = true;
+    this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
+    this.cameraControls.mouseButtons.PAN = THREE.MOUSE.RIGHT;
     let position = new THREE.Vector3(POS_3D.x, POS_3D.y, POS_3D.z);
     let target = new THREE.Vector3(TAR_3D.x, TAR_3D.y, TAR_3D.z);
 
@@ -232,9 +238,16 @@ export class ScatterPlot {
     // TODO(nsthorat): Remove this. This method shouldn't be called every time
     // a projection changes.
     if (!this.cameraSetFromState) {
-      this.animate(position, target, () => {
-        this.startLazySusanAnimation();
-      });
+      if (animate) {
+        this.animate(position, target, () => {
+          this.startLazySusanAnimation();
+        });
+      } else {
+        this.cameraControls.target.set(target.x, target.y, target.z);
+        this.perspCamera.position.set(position.x, position.y, position.z);
+        this.cameraControls.update();
+        this.render();
+      }
     }
     this.cameraSetFromState = false;
   }
@@ -245,6 +258,8 @@ export class ScatterPlot {
     // toward the middle of the xy plane
     this.cameraControls.position0.set(POS_2D.x, POS_2D.y, POS_2D.z);
     this.cameraControls.target0.set(TAR_2D.x, TAR_2D.y, TAR_2D.z);
+    this.cameraControls.mouseButtons.PAN = THREE.MOUSE.LEFT;
+    this.cameraControls.mouseButtons.ORBIT = null;
     let position = new THREE.Vector3(POS_2D.x, POS_2D.y, POS_2D.z);
     let target = new THREE.Vector3(TAR_2D.x, TAR_2D.y, TAR_2D.z);
 
@@ -310,7 +325,7 @@ export class ScatterPlot {
         this.createSelectionSphere();
       }
     } else if (
-        !e.ctrlKey &&
+        !e.ctrlKey && this.zAccessor &&
         this.cameraControls.mouseButtons.ORBIT === THREE.MOUSE.RIGHT) {
       // The user happened to press the ctrl key when the tab was active,
       // unpressed the ctrl when the tab was inactive, and now he/she
@@ -318,7 +333,7 @@ export class ScatterPlot {
       this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
       this.cameraControls.mouseButtons.PAN = THREE.MOUSE.RIGHT;
     } else if (
-        e.ctrlKey &&
+        e.ctrlKey && this.zAccessor &&
         this.cameraControls.mouseButtons.ORBIT === THREE.MOUSE.LEFT) {
       // Similarly to the situation above.
       this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.RIGHT;
@@ -365,7 +380,7 @@ export class ScatterPlot {
   /** For using ctrl + left click as right click, and for circle select */
   private onKeyDown(e: any) {
     // If ctrl is pressed, use left click to orbit
-    if (e.keyCode === CTRL_KEY) {
+    if (e.keyCode === CTRL_KEY && this.zAccessor) {
       this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.RIGHT;
       this.cameraControls.mouseButtons.PAN = THREE.MOUSE.LEFT;
     }
@@ -379,7 +394,7 @@ export class ScatterPlot {
 
   /** For using ctrl + left click as right click, and for circle select */
   private onKeyUp(e: any) {
-    if (e.keyCode === CTRL_KEY) {
+    if (e.keyCode === CTRL_KEY && this.zAccessor) {
       this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
       this.cameraControls.mouseButtons.PAN = THREE.MOUSE.RIGHT;
     }
@@ -586,13 +601,13 @@ export class ScatterPlot {
     this.addAxesToScene();
   }
 
-  recreateScene() {
+  recreateScene(animate = true) {
     this.removeAll();
     this.cancelAnimation();
     if (this.sceneIs3D()) {
-      this.makeCamera3D();
+      this.makeCamera3D(animate);
     } else {
-      this.makeCamera2D();
+      this.makeCamera2D(animate);
     }
     this.visualizers.forEach(v => {
       v.onRecreateScene(this.scene, this.sceneIs3D(), this.backgroundColor);
@@ -610,6 +625,7 @@ export class ScatterPlot {
     this.visualizers.forEach(v => {
       v.onDataSet(dataSet, spriteImage);
     });
+    this.render();
   }
 
   update() {
@@ -647,7 +663,9 @@ export class ScatterPlot {
     let rc = new RenderContext(
         this.perspCamera, this.cameraControls.target, this.width, this.height,
         cameraSpacePointExtents[0], cameraSpacePointExtents[1],
-        this.labelAccessor, this.unselectedPointColors);
+        this.labelAccessor, this.pointColors, this.pointScaleFactors,
+        this.labelIndices, this.labelScaleFactors, this.labelDefaultFontSize,
+        this.labelStrokeColor, this.labelFillColor);
 
     this.visualizers.forEach(v => {
       v.onRender(rc);
@@ -682,9 +700,25 @@ export class ScatterPlot {
     }
   }
 
-  /** Set the colors for every unselected data point. (RGB triplets) */
-  setUnselectedPointColors(colors?: Float32Array) {
-    this.unselectedPointColors = colors;
+  /** Set the colors for every data point. (RGB triplets) */
+  setPointColors(colors: Float32Array) {
+    this.pointColors = colors;
+  }
+
+  /** Set the scale factors for every data point. (scalars) */
+  setPointScaleFactors(scaleFactors: Float32Array) {
+    this.pointScaleFactors = scaleFactors;
+  }
+
+  setVisibleLabels(
+      visibleLabelIndices: Uint32Array, visibleLabelScaleFactors: Float32Array,
+      labelStrokeColor: number, labelFillColor: number,
+      labelDefaultFontSize: number) {
+    this.labelIndices = visibleLabelIndices;
+    this.labelScaleFactors = visibleLabelScaleFactors;
+    this.labelStrokeColor = labelStrokeColor;
+    this.labelFillColor = labelFillColor;
+    this.labelDefaultFontSize = labelDefaultFontSize;
   }
 
   getMode(): Mode { return this.mode; }

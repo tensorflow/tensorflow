@@ -850,6 +850,8 @@ tf_kernel_libraries(
     prefixes = [
         "dynamic_partition_op",
         "dynamic_stitch_op",
+        "conditional_accumulator_base_op",
+        "conditional_accumulator_op",
         "barrier_ops",
         "fifo_queue_op",
         "priority_queue_op",
@@ -859,14 +861,15 @@ tf_kernel_libraries(
         "queue_ops",
         "random_shuffle_queue_op",
         "session_ops",
+        "sparse_conditional_accumulator_op",
         "stack_ops",
         "tensor_array_ops",
     ],
     deps = [
         ":bounds_check",
         ":concat_lib",
-        ":conditional_accumulator_base_ops",
-        ":conditional_accumulator_ops",
+        ":conditional_accumulator",
+        ":conditional_accumulator_base",
         ":fifo_queue",
         ":initializable_lookup_table",
         ":lookup_util",
@@ -874,7 +877,7 @@ tf_kernel_libraries(
         ":priority_queue",
         ":queue_base",
         ":queue_op",
-        ":sparse_conditional_accumulator_ops",
+        ":sparse_conditional_accumulator",
         ":split_lib",
         ":tensor_array",
         ":typed_conditional_accumulator_base",
@@ -972,43 +975,6 @@ cc_library(
     hdrs = ["sparse_conditional_accumulator.h"],
     deps = [
         ":typed_conditional_accumulator_base",
-    ],
-)
-
-cc_library(
-    name = "conditional_accumulator_base_ops",
-    srcs = ["conditional_accumulator_base_op.cc"],
-    hdrs = [
-        "conditional_accumulator_base_op.h",
-    ],
-    deps = [
-        ":conditional_accumulator_base",
-    ],
-)
-
-cc_library(
-    name = "conditional_accumulator_ops",
-    srcs = ["conditional_accumulator_op.cc"],
-    hdrs = [
-        "conditional_accumulator.h",
-        "conditional_accumulator_base_op.h",
-    ],
-    deps = [
-        ":conditional_accumulator",
-        ":conditional_accumulator_base_ops",
-    ],
-)
-
-cc_library(
-    name = "sparse_conditional_accumulator_ops",
-    srcs = ["sparse_conditional_accumulator_op.cc"],
-    hdrs = [
-        "conditional_accumulator_base_op.h",
-        "sparse_conditional_accumulator.h",
-    ],
-    deps = [
-        ":conditional_accumulator_base_ops",
-        ":sparse_conditional_accumulator",
     ],
 )
 
@@ -1524,6 +1490,8 @@ tf_cuda_cc_test(
 tf_kernel_library(
     name = "conv_ops",
     srcs = [
+        "conv_grad_filter_ops.cc",
+        "conv_grad_input_ops.cc",
         "conv_grad_ops.cc",
         "conv_grad_ops_3d.cc",
         "deep_conv2d.cc",
@@ -2299,6 +2267,8 @@ filegroup(
         "check_numerics_op.cc",
         "control_flow_ops.cc",
         "conv_2d.h",
+        "conv_grad_filter_ops.cc",
+        "conv_grad_input_ops.cc",
         "conv_grad_ops.cc",
         "conv_grad_ops.h",
         "conv_ops.cc",

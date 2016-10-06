@@ -107,7 +107,8 @@ def input_from_feature_columns(columns_to_tensors,
                                          values=columns_to_tensors.values()):
         try:
           transformed_tensor = transformer.transform(column)
-          output_tensors.append(column.to_dnn_input_layer(
+          # pylint: disable=protected-access
+          output_tensors.append(column._to_dnn_input_layer(
               transformed_tensor, weight_collections, trainable))
         except ValueError as e:
           raise ValueError('Error creating input layer for column: {}.\n'

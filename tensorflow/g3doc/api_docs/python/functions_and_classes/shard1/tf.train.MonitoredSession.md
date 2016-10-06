@@ -47,6 +47,7 @@ How to set `tf.Session` arguments:
   MonitoredSession(
     session_creator=WorkerSessionCreator(master=..., config=...))
   ```
+See `MonitoredTrainingSession` for an example usage based on chief or worker.
 - - -
 
 #### `tf.train.MonitoredSession.__enter__()` {#MonitoredSession.__enter__}

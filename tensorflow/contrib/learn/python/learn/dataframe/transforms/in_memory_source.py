@@ -150,7 +150,7 @@ class OrderedDictNumpySource(BaseInMemorySource):
 
   @property
   def _output_names(self):
-    return tuple(["index"] + self._data.keys())
+    return tuple(["index"] + list(self._data.keys()))
 
 
 class PandasSource(BaseInMemorySource):

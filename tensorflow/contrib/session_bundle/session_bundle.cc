@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -39,6 +40,17 @@ limitations under the License.
 namespace tensorflow {
 namespace serving {
 namespace {
+
+auto* load_attempt = monitoring::Counter<1>::New(
+    "/tensorflow/contrib/session_bundle/load_attempt", "model_path",
+    "The number of times a session bundle was requested to be loaded.");
+auto* load_success = monitoring::Counter<1>::New(
+    "/tensorflow/contrib/session_bundle/load_success", "model_path",
+    "The number of times a session bundle was successfully loaded.");
+auto* load_latency = monitoring::Counter<1>::New(
+    "/tensorflow/contrib/session_bundle/load_latency", "model_path",
+    "Latency in microseconds for session bundles that were succesfully "
+    "loaded.");
 
 // Create a session using the given options and load the graph.
 Status CreateSessionFromGraphDef(const SessionOptions& options,
@@ -139,9 +151,10 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
                                                 const RunOptions& run_options,
                                                 const StringPiece export_dir,
                                                 SessionBundle* const bundle) {
+  load_attempt->GetCell(export_dir.ToString())->IncrementBy(1);
   LOG(INFO) << "Attempting to load a SessionBundle from: " << export_dir;
   LOG(INFO) << "Using RunOptions: " << DebugStringIfAvailable(run_options);
-  const int64 start_seconds = Env::Default()->NowSeconds();
+  const uint64 start_microseconds = Env::Default()->NowMicros();
   TF_RETURN_IF_ERROR(
       GetMetaGraphDefFromExport(export_dir, &(bundle->meta_graph_def)));
 
@@ -197,8 +210,17 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
                                  bundle->session.get()));
   }
 
-  LOG(INFO) << "Done loading SessionBundle. Took "
-            << Env::Default()->NowSeconds() - start_seconds << " seconds.";
+  const uint64 load_latency_microsecs = [&]() -> uint64 {
+    const uint64 end_microseconds = Env::Default()->NowMicros();
+    // Avoid clock skew.
+    if (end_microseconds < start_microseconds) return 0;
+    return end_microseconds - start_microseconds;
+  }();
+  LOG(INFO) << "Done loading SessionBundle. Took " << load_latency_microsecs
+            << " microseconds.";
+  load_success->GetCell(export_dir.ToString())->IncrementBy(1);
+  load_latency->GetCell(export_dir.ToString())
+      ->IncrementBy(load_latency_microsecs);
   return Status::OK();
 }
 

@@ -323,6 +323,10 @@ cc_library(
         "framework/numeric_types.h",
         "framework/tensor_types.h",
         "framework/type_traits.h",
+        "platform/default/dynamic_annotations.h",
+        "platform/default/integral_types.h",
+        "platform/default/mutex.h",
+        "platform/default/thread_annotations.h",
         "platform/dynamic_annotations.h",
         "platform/macros.h",
         "platform/mutex.h",
@@ -1186,6 +1190,20 @@ tf_cuda_library(
     ],
     deps = [
         "//tensorflow/core/platform/default/build_config:stream_executor",
+    ],
+)
+
+# Like stream_executor library, but compiles without --config=cuda
+# and does not include any cuda dependencies.
+cc_library(
+    name = "stream_executor_no_cuda",
+    srcs = tf_additional_stream_executor_srcs(),
+    hdrs = [
+        "platform/stream_executor_no_cuda.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:stream_executor_no_cuda",
     ],
 )
 

@@ -96,6 +96,7 @@ more information about how to configure a distributed TensorFlow program.
 @@ClusterSpec
 @@replica_device_setter
 @@Scaffold
+@@MonitoredTrainingSession
 @@SessionCreator
 @@ChiefSessionCreator
 @@WorkerSessionCreator
@@ -147,6 +148,7 @@ overview of summaries, event files, and visualization in TensorBoard.
 @@CheckpointSaverHook
 @@StepCounterHook
 @@NanLossDuringTrainingError
+@@NanTensorHook
 @@SummarySaverHook
 @@SessionRunArgs
 @@SessionRunContext
@@ -197,10 +199,12 @@ from tensorflow.python.training.basic_session_run_hooks import StopAtStepHook
 from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverHook
 from tensorflow.python.training.basic_session_run_hooks import StepCounterHook
 from tensorflow.python.training.basic_session_run_hooks import NanLossDuringTrainingError
+from tensorflow.python.training.basic_session_run_hooks import NanTensorHook
 from tensorflow.python.training.basic_session_run_hooks import SummarySaverHook
 from tensorflow.python.training.basic_loops import basic_train_loop
 from tensorflow.python.training.device_setter import replica_device_setter
 from tensorflow.python.training.monitored_session import Scaffold
+from tensorflow.python.training.monitored_session import MonitoredTrainingSession
 from tensorflow.python.training.monitored_session import SessionCreator
 from tensorflow.python.training.monitored_session import ChiefSessionCreator
 from tensorflow.python.training.monitored_session import WorkerSessionCreator

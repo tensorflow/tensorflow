@@ -262,6 +262,9 @@ class CommandHandlerRegistry(object):
   The call will return a RichTextLines object which can be rendered by a CLI.
   """
 
+  HELP_COMMAND = "help"
+  HELP_COMMAND_ALIASES = ["h"]
+
   def __init__(self):
     # A dictionary from command prefix to handler.
     self._handlers = {}
@@ -280,10 +283,10 @@ class CommandHandlerRegistry(object):
 
     # Register a default handler for the command "help".
     self.register_command_handler(
-        "help",
+        self.HELP_COMMAND,
         self._help_handler,
         "Print this help message.",
-        prefix_aliases=["h"])
+        prefix_aliases=self.HELP_COMMAND_ALIASES)
 
   def register_command_handler(self,
                                prefix,
@@ -533,6 +536,9 @@ class TabCompletionRegistry(object):
   def __init__(self):
     self._comp_dict = {}
 
+  # TODO(cais): Rename method names with "comp" to "*completion*" to avoid
+  # confusion.
+
   def register_tab_comp_context(self, context_words, comp_items):
     """Register a tab-completion context.
 
@@ -601,7 +607,7 @@ class TabCompletionRegistry(object):
     Args:
       context_word: A single completion word as a string. The extension will
         also apply to all other context words of the same context.
-      new_comp_items: New completion items to add.
+      new_comp_items: (list of str) New completion items to add.
 
     Raises:
       KeyError: if the context word has not been registered.
@@ -641,18 +647,45 @@ class TabCompletionRegistry(object):
       prefix: The prefix of the incomplete word.
 
     Returns:
-      None if no registered context matches the context_word.
-      A list of str for the matching completion items. Can be an empty list
-        of a matching context exists, but no completion item matches the
-        prefix.
+      (1) None if no registered context matches the context_word.
+          A list of str for the matching completion items. Can be an empty list
+          of a matching context exists, but no completion item matches the
+          prefix.
+      (2) Common prefix of all the words in the first return value. If the
+          first return value is None, this return value will be None, too. If
+          the first return value is not None, i.e., a list, this return value
+          will be a str, which can be an empty str if there is no common
+          prefix among the items of the list.
     """
 
     if context_word not in self._comp_dict:
-      return None
+      return None, None
 
     comp_items = self._comp_dict[context_word]
+    comp_items = sorted(
+        [item for item in comp_items if item.startswith(prefix)])
 
-    return sorted([item for item in comp_items if item.startswith(prefix)])
+    return comp_items, self._common_prefix(comp_items)
+
+  def _common_prefix(self, m):
+    """Given a list of str, returns the longest common prefix.
+
+    Args:
+      m: (list of str) A list of strings.
+
+    Returns:
+      (str) The longest common prefix.
+    """
+    if not m:
+      return ""
+
+    s1 = min(m)
+    s2 = max(m)
+    for i, c in enumerate(s1):
+      if c != s2[i]:
+        return s1[:i]
+
+    return s1
 
 
 class CommandHistory(object):

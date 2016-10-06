@@ -29,6 +29,35 @@ namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
+template <typename Device, typename T>
+class ZeroInitializerOp : public OpKernel {
+ public:
+  explicit ZeroInitializerOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES(ctx, IsRefType(ctx->input_type(0)),
+                errors::InvalidArgument("input needs to be a ref type"));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    mutex_lock l(*ctx->input_ref_mutex(0));
+    Tensor input = ctx->mutable_input(0, true);
+    OP_REQUIRES(ctx, !input.IsInitialized(),
+                errors::InvalidArgument("input is already initialized"));
+    AllocatorAttributes attr;
+    attr.set_gpu_compatible(true);
+    attr.set_nic_compatible(true);
+    PersistentTensor out_persistent;
+    Tensor* out_tensor = nullptr;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_persistent(input.dtype(), input.shape(),
+                                      &out_persistent, &out_tensor, attr));
+    functor::TensorSetZero<Device, T>()(ctx->eigen_device<Device>(),
+                                        out_tensor->flat<T>());
+    ctx->replace_ref_input(0, *out_tensor, true);
+    // we always return the input ref.
+    ctx->forward_ref_input_to_ref_output(0, 0);
+  }
+};
+
 #define REGISTER_KERNELS(D, T)                                           \
   REGISTER_KERNEL_BUILDER(                                               \
       Name("ZeroInitializer").Device(DEVICE_##D).TypeConstraint<T>("T"), \

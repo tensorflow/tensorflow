@@ -27,6 +27,7 @@ import time
 
 import tensorflow as tf
 
+from tensorflow.contrib import testing
 from tensorflow.python.training import monitored_session
 
 
@@ -117,6 +118,59 @@ class ScaffoldTest(tf.test.TestCase):
       with self.assertRaisesRegexp(RuntimeError,
                                    'Graph is finalized and cannot be modified'):
         tf.constant([0])
+
+
+def _test_dir(temp_dir, test_name):
+  """Create an empty dir to use for tests.
+
+  Args:
+    temp_dir: Tmp directory path.
+    test_name: Name of the test.
+
+  Returns:
+    Absolute path to the test directory.
+  """
+  test_dir = os.path.join(temp_dir, test_name)
+  if os.path.isdir(test_dir):
+    for f in glob.glob('%s/*' % test_dir):
+      os.remove(f)
+  else:
+    os.makedirs(test_dir)
+  return test_dir
+
+
+class MonitoredTrainingSessionTest(tf.test.TestCase):
+  """Tests MonitoredTrainingSession."""
+
+  def test_saving_restoring_checkpoint(self):
+    logdir = _test_dir(self.get_temp_dir(), 'test_saving_restoring_checkpoint')
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+      do_step = tf.assign_add(gstep, 1)
+      with tf.train.MonitoredTrainingSession(
+          is_chief=True, checkpoint_dir=logdir) as session:
+        self.assertEqual(0, session.run(gstep))
+        self.assertEqual(1, session.run(do_step))
+        self.assertEqual(2, session.run(do_step))
+      # A restart will find the checkpoint and recover automatically.
+      with tf.train.MonitoredTrainingSession(
+          is_chief=True, checkpoint_dir=logdir) as session:
+        self.assertEqual(2, session.run(gstep))
+
+  def test_summaries(self):
+    logdir = _test_dir(self.get_temp_dir(), 'test_summaries')
+    with tf.Graph().as_default():
+      gstep = tf.contrib.framework.get_or_create_global_step()
+      do_step = tf.assign_add(gstep, 1)
+      tf.scalar_summary('my_summary_tag', gstep * 2)
+      with tf.train.MonitoredTrainingSession(
+          is_chief=True, checkpoint_dir=logdir) as session:
+        for _ in range(101):  # 100 is default summary writing steps
+          session.run(do_step)
+    summaries = testing.latest_summaries(logdir)
+    tags = [s.summary.value[0].tag for s in summaries]
+    self.assertIn('my_summary_tag', tags)
+    self.assertIn('global_step/sec', tags)
 
 
 class StopAtNSession(monitored_session._WrappedSession):
@@ -591,23 +645,6 @@ class RaiseOnceAtCountN(tf.train.SessionRunHook):
 class MonitoredSessionTest(tf.test.TestCase):
   """MonitoredSession tests."""
 
-  def _test_dir(self, test_name):
-    """Create an empty dir to use for tests.
-
-    Args:
-      test_name: Name of the test.
-
-    Returns:
-      Absolute path to the test directory.
-    """
-    test_dir = os.path.join(self.get_temp_dir(), test_name)
-    if os.path.isdir(test_dir):
-      for f in glob.glob('%s/*' % test_dir):
-        os.remove(f)
-    else:
-      os.makedirs(test_dir)
-    return test_dir
-
   def test_defaults(self):
     with tf.Graph().as_default():
       a_var = tf.Variable(0)
@@ -615,7 +652,7 @@ class MonitoredSessionTest(tf.test.TestCase):
         self.assertEqual(0, session.run(a_var))
 
   def test_last_step(self):
-    logdir = self._test_dir('test_last_step')
+    logdir = _test_dir(self.get_temp_dir(), 'test_last_step')
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
@@ -650,7 +687,7 @@ class MonitoredSessionTest(tf.test.TestCase):
         self.assertTrue(session.should_stop())
 
   def test_num_steps(self):
-    logdir = self._test_dir('test_num_steps')
+    logdir = _test_dir(self.get_temp_dir(), 'test_num_steps')
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
@@ -688,7 +725,7 @@ class MonitoredSessionTest(tf.test.TestCase):
   # are raised next to the innermost session run() call.
 
   def test_recovery(self):
-    logdir = self._test_dir('test_recovery')
+    logdir = _test_dir(self.get_temp_dir(), 'test_recovery')
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)
@@ -735,7 +772,8 @@ class MonitoredSessionTest(tf.test.TestCase):
   def test_recover_and_retry_on_aborted_error(self):
     # Tests that we silently retry and recover on abort.  This test uses
     # a CheckpointSaver to have something to recover from.
-    logdir = self._test_dir('test_recover_and_retry_on_aborted_error')
+    logdir = _test_dir(self.get_temp_dir(),
+                       'test_recover_and_retry_on_aborted_error')
     with tf.Graph().as_default():
       gstep = tf.contrib.framework.get_or_create_global_step()
       do_step = tf.assign_add(gstep, 1)

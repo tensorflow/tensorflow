@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption} from './data';
-import {CheckpointInfo, ColumnStats, DataProvider, parseRawMetadata, parseRawTensors} from './data-loader';
+import {ColorOption, ColumnStats} from './data';
+import {CheckpointInfo, DataProvider, parseRawMetadata, parseRawTensors} from './data-loader';
 import {Projector} from './vz-projector';
 import {ColorLegendRenderInfo, ColorLegendThreshold} from './vz-projector-legend';
 // tslint:disable-next-line:no-unused-variable
@@ -121,10 +121,7 @@ export class DataPanel extends DataPanelPolymer {
                 let range = scale.range();
                 // Re-order the range.
                 let newRange = range.map((color, i) => {
-                  let index = (i * 2) % (range.length - 1);
-                  if (index === 0) {
-                    index = range.length - 1;
-                  }
+                  let index = (i * 3) % range.length;
                   return range[index];
                 });
                 items = stats.uniqueEntries;
@@ -161,16 +158,18 @@ export class DataPanel extends DataPanelPolymer {
     if (this.selectedTensor == null) {
       return;
     }
-    this.dataProvider.retrieveTensor(this.selectedRun, this.selectedTensor, ds => {
+    this.dataProvider.retrieveTensor(
+        this.selectedRun, this.selectedTensor, ds => {
       let metadataFile =
           this.checkpointInfo.tensors[this.selectedTensor].metadataFile;
-      this.projector.updateDataSet(ds);
       if (metadataFile) {
         this.dataProvider.retrieveMetadata(
-            this.selectedRun, this.selectedTensor, result => {
-              this.projector.mergeMetadata(result);
-              this.updateMetadataUI(result.stats, metadataFile);
+            this.selectedRun, this.selectedTensor, metadata => {
+              this.updateMetadataUI(metadata.stats, metadataFile);
+              this.projector.updateDataSet(ds, metadata);
             });
+      } else {
+        this.projector.updateDataSet(ds, null);
       }
     });
   }
@@ -232,14 +231,14 @@ export class DataPanel extends DataPanelPolymer {
       this.dom.select('#checkpoint-file')
           .text(fileName)
           .attr('title', fileName);
-      this.projector.updateDataSet(ds);
+      this.projector.updateDataSet(ds, null);
     });
   }
 
   private metadataWasReadFromFile(rawContents: string, fileName: string) {
-    parseRawMetadata(rawContents, result => {
-      this.projector.mergeMetadata(result);
-      this.updateMetadataUI(result.stats, fileName);
+    parseRawMetadata(rawContents, metadata => {
+      this.projector.updateDataSet(this.projector.currentDataSet, metadata);
+      this.updateMetadataUI(metadata.stats, fileName);
     });
   }
 

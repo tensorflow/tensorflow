@@ -58,6 +58,9 @@ class MockCursesUI(curses_ui.CursesUI):
     # Observers of command textbox.
     self.existing_commands = []
 
+    # Observers for tab-completion candidates.
+    self.candidates_lists = []
+
     curses_ui.CursesUI.__init__(self)
 
   # Below, override the _screen_ prefixed member methods that interact with the
@@ -101,15 +104,17 @@ class MockCursesUI(curses_ui.CursesUI):
     self._curr_existing_command = existing_command
 
   def _screen_new_output_pad(self, rows, cols):
-    self._output_pad = "mock_output_pad"
+    return "mock_pad"
 
-  def _screen_add_line_to_output_pad(self, row, txt, color_segs=None):
+  def _screen_add_line_to_output_pad(self, pad, row, txt, color_segments=None):
     pass
 
   def _screen_draw_text_line(self, row, line, attr=curses.A_NORMAL, color=None):
     pass
 
-  def _screen_scroll_output_pad(self):
+  def _screen_scroll_output_pad(self, pad, viewport_top, viewport_left,
+                                screen_location_top, screen_location_left,
+                                screen_location_bottom, screen_location_right):
     pass
 
   def _screen_get_user_command(self):
@@ -126,6 +131,7 @@ class MockCursesUI(curses_ui.CursesUI):
         return ""
 
       y = self._on_textbox_keypress(c)
+
       self._command_key_counter += 1
       if y == curses_ui.CursesUI.CLI_TERMINATOR_KEY:
         break
@@ -148,7 +154,7 @@ class MockCursesUI(curses_ui.CursesUI):
     it is a good place to insert the observer.
 
     Args:
-      direction: which direction to scroll:
+      direction: which direction to scroll.
     """
 
     curses_ui.CursesUI._scroll_output(self, direction)
@@ -156,6 +162,11 @@ class MockCursesUI(curses_ui.CursesUI):
     self.unwrapped_outputs.append(self._curr_unwrapped_output)
     self.wrapped_outputs.append(self._curr_wrapped_output)
     self.scroll_messages.append(self._scroll_info)
+
+  def _display_candidates(self, candidates):
+    curses_ui.CursesUI._display_candidates(self, candidates)
+
+    self.candidates_lists.append(candidates)
 
 
 class CursesTest(test_util.TensorFlowTestCase):
@@ -505,6 +516,231 @@ class CursesTest(test_util.TensorFlowTestCase):
     # The 2nd scroll info should contain no scrolling, because the screen size
     # is now greater than the numberf lines in the output.
     self.assertEqual("-" * 85, ui.scroll_messages[1])
+
+  def testTabCompletionWithCommonPrefix(self):
+    # Type "b" and trigger tab completion.
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[string_to_codes("b\t"), string_to_codes("\n"),
+                          self._EXIT])
+
+    ui.register_command_handler(
+        "babble", self._babble, "babble some", prefix_aliases=["ba"])
+    ui.run_ui()
+
+    # The automatically registered exit commands "exit" and "quit" should not
+    # appear in the tab completion candidates because they don't start with
+    # "b".
+    self.assertEqual([["ba", "babble"]], ui.candidates_lists)
+
+    # "ba" is a common prefix of the two candidates. So the "ba" command should
+    # have been issued after the Enter.
+    self.assertEqual(1, len(ui.unwrapped_outputs))
+    self.assertEqual(1, len(ui.wrapped_outputs))
+    self.assertEqual(1, len(ui.scroll_messages))
+    self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines)
+
+  def testTabCompletionEmptyTriggerWithoutCommonPrefix(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[string_to_codes("\t"),  # Trigger tab completion.
+                          string_to_codes("\n"),
+                          self._EXIT])
+
+    ui.register_command_handler(
+        "babble", self._babble, "babble some", prefix_aliases=["a"])
+    # Use a different alias "a" instead.
+    ui.run_ui()
+
+    # The manually registered command, along with the automatically registered
+    # exit commands should appear in the candidates.
+    self.assertEqual([["a", "babble", "exit", "h", "help", "quit"]],
+                     ui.candidates_lists)
+
+    # The two candidates have no common prefix. So no command should have been
+    # issued.
+    self.assertEqual(0, len(ui.unwrapped_outputs))
+    self.assertEqual(0, len(ui.wrapped_outputs))
+    self.assertEqual(0, len(ui.scroll_messages))
+
+  def testTabCompletionNonemptyTriggerSingleCandidate(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[string_to_codes("b\t"),  # Trigger tab completion.
+                          string_to_codes("\n"),
+                          self._EXIT])
+
+    ui.register_command_handler(
+        "babble", self._babble, "babble some", prefix_aliases=["a"])
+    ui.run_ui()
+
+    # There is only one candidate, so no candidates should have been displayed.
+    # Instead, the completion should have been automatically keyed in, leading
+    # to the "babble" command being issue.
+    self.assertEqual([[]], ui.candidates_lists)
+
+    self.assertEqual(1, len(ui.unwrapped_outputs))
+    self.assertEqual(1, len(ui.wrapped_outputs))
+    self.assertEqual(1, len(ui.scroll_messages))
+    self.assertEqual(["bar"] * 60, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 60, ui.wrapped_outputs[0].lines)
+
+  def testTabCompletionNoMatch(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[string_to_codes("c\t"),  # Trigger tab completion.
+                          string_to_codes("\n"),
+                          self._EXIT])
+
+    ui.register_command_handler(
+        "babble", self._babble, "babble some", prefix_aliases=["a"])
+    ui.run_ui()
+
+    # Only the invalid command "c" should have been issued.
+    self.assertEqual(1, len(ui.unwrapped_outputs))
+    self.assertEqual(1, len(ui.wrapped_outputs))
+    self.assertEqual(1, len(ui.scroll_messages))
+
+    self.assertEqual(["ERROR: Invalid command prefix \"c\""],
+                     ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["ERROR: Invalid command prefix \"c\""],
+                     ui.wrapped_outputs[0].lines)
+
+  def testTabCompletionOneWordContext(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 3\t"),  # Trigger tab completion.
+            string_to_codes("\n"),
+            self._EXIT
+        ])
+
+    ui.register_command_handler(
+        "babble", self._babble, "babble some", prefix_aliases=["b"])
+    ui.register_tab_comp_context(["babble", "b"], ["10", "20", "30", "300"])
+    ui.run_ui()
+
+    self.assertEqual([["30", "300"]], ui.candidates_lists)
+
+    self.assertEqual(1, len(ui.unwrapped_outputs))
+    self.assertEqual(1, len(ui.wrapped_outputs))
+    self.assertEqual(1, len(ui.scroll_messages))
+    self.assertEqual(["bar"] * 30, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 30, ui.wrapped_outputs[0].lines)
+
+  def testTabCompletionTwice(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 1\t"),  # Trigger tab completion.
+            string_to_codes("2\t"),  # With more prefix, tab again.
+            string_to_codes("3\n"),
+            self._EXIT
+        ])
+
+    ui.register_command_handler(
+        "babble", self._babble, "babble some", prefix_aliases=["b"])
+    ui.register_tab_comp_context(["babble", "b"], ["10", "120", "123"])
+    ui.run_ui()
+
+    # There should have been two different lists of candidates.
+    self.assertEqual([["10", "120", "123"], ["120", "123"]],
+                     ui.candidates_lists)
+
+    self.assertEqual(1, len(ui.unwrapped_outputs))
+    self.assertEqual(1, len(ui.wrapped_outputs))
+    self.assertEqual(1, len(ui.scroll_messages))
+    self.assertEqual(["bar"] * 123, ui.unwrapped_outputs[0].lines)
+    self.assertEqual(["bar"] * 123, ui.wrapped_outputs[0].lines)
+
+  def testRegexSearch(self):
+    """Test regex search."""
+
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 3\n"),
+            string_to_codes("/(b|r)\n"),  # Regex search and highlight.
+            string_to_codes("/a\n"),  # Regex search and highlight.
+            self._EXIT
+        ])
+
+    ui.register_command_handler(
+        "babble", self._babble, "babble some", prefix_aliases=["b"])
+    ui.run_ui()
+
+    # The unwrapped (original) output should never have any highglighting.
+    self.assertEqual(3, len(ui.unwrapped_outputs))
+    for i in range(3):
+      self.assertEqual(["bar"] * 3, ui.unwrapped_outputs[i].lines)
+      self.assertEqual({}, ui.unwrapped_outputs[i].font_attr_segs)
+
+    # The wrapped outputs should show highlighting depending on the regex.
+    self.assertEqual(3, len(ui.wrapped_outputs))
+
+    # The first output should have no highlighting.
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[0].lines)
+    self.assertEqual({}, ui.wrapped_outputs[0].font_attr_segs)
+
+    # The second output should have highlighting for "b" and "r".
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[1].lines)
+    for i in range(3):
+      self.assertEqual([(0, 1, "bw_reversed"), (2, 3, "bw_reversed")],
+                       ui.wrapped_outputs[1].font_attr_segs[i])
+
+    # The third output should have highlighting for "a" only.
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[1].lines)
+    for i in range(3):
+      self.assertEqual([(1, 2, "bw_reversed")],
+                       ui.wrapped_outputs[2].font_attr_segs[i])
+
+  def testRegexSearchFromCommandHistory(self):
+    """Test regex search commands are recorded in command history."""
+
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 3\n"),
+            string_to_codes("/(b|r)\n"),  # Regex search and highlight.
+            string_to_codes("babble -n 4\n"),
+            [curses.KEY_UP],
+            [curses.KEY_UP],
+            string_to_codes("\n"),  # Hit Up twice and Enter.
+            self._EXIT
+        ])
+
+    ui.register_command_handler(
+        "babble", self._babble, "babble some", prefix_aliases=["b"])
+    ui.run_ui()
+
+    self.assertEqual(4, len(ui.wrapped_outputs))
+
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[0].lines)
+    self.assertEqual({}, ui.wrapped_outputs[0].font_attr_segs)
+
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[1].lines)
+    for i in range(3):
+      self.assertEqual([(0, 1, "bw_reversed"), (2, 3, "bw_reversed")],
+                       ui.wrapped_outputs[1].font_attr_segs[i])
+
+    self.assertEqual(["bar"] * 4, ui.wrapped_outputs[2].lines)
+    self.assertEqual({}, ui.wrapped_outputs[2].font_attr_segs)
+
+    # The regex search command loaded from history should have worked on the
+    # new screen output.
+    self.assertEqual(["bar"] * 4, ui.wrapped_outputs[3].lines)
+    for i in range(4):
+      self.assertEqual([(0, 1, "bw_reversed"), (2, 3, "bw_reversed")],
+                       ui.wrapped_outputs[3].font_attr_segs[i])
 
 
 if __name__ == "__main__":
