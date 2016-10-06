@@ -580,6 +580,7 @@
   * [`merge_summary`](../../api_docs/python/train.md#merge_summary)
   * [`MomentumOptimizer`](../../api_docs/python/train.md#MomentumOptimizer)
   * [`MonitoredSession`](../../api_docs/python/train.md#MonitoredSession)
+  * [`MonitoredTrainingSession`](../../api_docs/python/train.md#MonitoredTrainingSession)
   * [`NanLossDuringTrainingError`](../../api_docs/python/train.md#NanLossDuringTrainingError)
   * [`NanTensorHook`](../../api_docs/python/train.md#NanTensorHook)
   * [`Optimizer`](../../api_docs/python/train.md#Optimizer)
