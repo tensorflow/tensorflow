@@ -27,9 +27,9 @@ __all__ = ["rnn_decoder",
            "rnn_decoder_attention"]
 
 
-def rnn_decoder(*args, *kwargs):
+def rnn_decoder(*args, **kwargs):
   pass
 
 
-def rnn_decoder_attention(*args, *kwargs)
+def rnn_decoder_attention(*args, **kwargs):
   pass

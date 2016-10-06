@@ -26,5 +26,5 @@ from tensorflow.python.ops import array_ops
 __all__ = ["seq2seq_loss"]
 
 
-def seq2seq_loss(*args, *kwargs):
+def seq2seq_loss(*args, **kwargs):
   pass
