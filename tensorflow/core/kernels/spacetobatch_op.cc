@@ -274,7 +274,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER);
                               .HostMemory("paddings"),     \
                           SpaceToBatchOp<GPUDevice, T>);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER);
 #undef REGISTER
 #endif  // GOOGLE_CUDA
 
