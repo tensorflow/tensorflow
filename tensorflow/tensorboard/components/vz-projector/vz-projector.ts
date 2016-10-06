@@ -96,6 +96,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   private projectionsPanel: ProjectionsPanel;
   private metadataCard: MetadataCard;
 
+  private statusBar: d3.Selection<HTMLElement>;
+
   ready() {
     this.selectionChangedListeners = [];
     this.hoverListeners = [];
@@ -111,6 +113,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.projectionsPanel = this.$['projections-panel'] as ProjectionsPanel;
     this.projectionsPanel.initialize(this);
     this.metadataCard = this.$['metadata-card'] as MetadataCard;
+    this.statusBar = this.dom.select('#status-bar');
 
     getDataProvider(this.routePrefix, dataProvider => {
       this.dataProvider = dataProvider;
@@ -168,8 +171,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   }
 
   filterDataset() {
-    this.setCurrentDataSet(
-        this.currentDataSet.getSubset(this.selectedPointIndices));
+    let indices = this.selectedPointIndices.concat(
+        this.neighborsOfFirstPoint.map(n => n.index));
+    this.setCurrentDataSet(this.currentDataSet.getSubset(indices));
     this.clearSelectionAndHover();
     this.scatterPlot.recreateScene();
   }
@@ -502,7 +506,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
   private onHover(hoverIndex: number) {
     this.hoverPointIndex = hoverIndex;
-    let hoverText: string = '';
+    let hoverText = null;
     if (hoverIndex != null) {
       const point = this.currentDataSet.points[hoverIndex];
       if (point.metadata[this.labelOption]) {
@@ -510,7 +514,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       }
     }
     this.updateScatterPlot();
-    this.dom.select('#hoverInfo').text(hoverText);
+    if (this.selectedPointIndices.length === 0) {
+      this.statusBar.style('display', hoverText ? null : 'none');
+      this.statusBar.text(hoverText);
+    }
   }
 
   private updateScatterPlot() {
@@ -561,8 +568,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       neighborsOfFirstPoint: knn.NearestEntry[]) {
     this.selectedPointIndices = selectedPointIndices;
     this.neighborsOfFirstPoint = neighborsOfFirstPoint;
-    this.dom.select('#hoverInfo')
-        .text(`Selected ${selectedPointIndices.length} points`);
+    let totalNumPoints =
+        this.selectedPointIndices.length + neighborsOfFirstPoint.length;
+    this.statusBar.text(`Selected ${totalNumPoints} points`)
+        .style('display', totalNumPoints > 0 ? null : 'none');
     this.inspectorPanel.updateInspectorPane(
         selectedPointIndices, neighborsOfFirstPoint);
     if (neighborsOfFirstPoint.length > 0) {

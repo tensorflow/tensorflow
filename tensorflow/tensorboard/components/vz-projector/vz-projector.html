@@ -51,6 +51,7 @@ limitations under the License.
   display: flex;
   width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 
 .hidden {
@@ -245,13 +246,15 @@ limitations under the License.
   display: block;
 }
 
-.ink-panel-footer {
+.status-bar-panel {
   display: flex;
   align-items: center;
-  border-top: solid 1px #eee;
-  height: 60px;
-  padding: 0 24px;
-  color: rgba(0, 0, 0, 0.5);
+}
+
+.status-bar-entry {
+  border-left: 1px solid rgba(0, 0, 0, 0.5);
+  margin-left: 5px;
+  padding-left: 5px;
 }
 
 .ink-panel-content h3 {
@@ -356,7 +359,11 @@ limitations under the License.
 
       <paper-icon-button id="labels3DMode" alt="Enable/disable 3D labels mode" toggles icon="flip-to-front"></paper-icon-button>
       <paper-tooltip for="labels3DMode" position="bottom" animation-delay="0" fit-to-visible-bounds>Enable/disable 3D labels mode</paper-tooltip>
-
+      <div class="status-bar-panel">
+        <div class="status-bar-entry">Number of points: <span class="numDataPoints">Loading...</span></div>
+        <div class="status-bar-entry">Dimension: <span class="dim">Loading...</span></div>
+        <div id="status-bar" class="status-bar-entry" style="display: none;"></div>
+      </div>
       <div class="ink-fabs">
         <paper-icon-button id="reset-zoom" class="ink-fab" alt="Reset zoom to fit all points" icon="home"></paper-icon-button>
         <paper-tooltip for="reset-zoom" position="bottom" animation-delay="0" fit-to-visible-bounds>Reset zoom to fit all points</paper-tooltip>
@@ -386,12 +393,6 @@ limitations under the License.
           <div class="note"> Click anywhere to dismiss.</div>
         </div>
       </paper-dialog>
-    </div>
-    <div id="info-panel" class="ink-panel-footer">
-      <div>
-        Number of data points: <span class="numDataPoints"></span>, dimension of embedding: <span class="dim"></span>
-        | <span id="hoverInfo"></span>
-      </div>
     </div>
   </div>
   <div id="right-pane" class="ink-panel">
