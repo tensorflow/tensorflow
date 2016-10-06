@@ -1192,6 +1192,20 @@ tf_cuda_library(
     ],
 )
 
+# Like stream_executor library, but compiles without --config=cuda
+# and does not include any cuda dependencies.
+cc_library(
+    name = "stream_executor_no_cuda",
+    srcs = tf_additional_stream_executor_srcs(),
+    hdrs = [
+        "platform/stream_executor_no_cuda.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform/default/build_config:stream_executor_no_cuda",
+    ],
+)
+
 # TODO(josh11b): Is this needed, or can we just use ":protos_all"?
 cc_library(
     name = "protos_cc",

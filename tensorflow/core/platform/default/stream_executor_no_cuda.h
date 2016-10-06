@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_DEFAULT_STREAM_EXECUTOR_H_
-#define TENSORFLOW_PLATFORM_DEFAULT_STREAM_EXECUTOR_H_
+#ifndef TENSORFLOW_PLATFORM_DEFAULT_STREAM_EXECUTOR_NO_CUDA_H_
+#define TENSORFLOW_PLATFORM_DEFAULT_STREAM_EXECUTOR_NO_CUDA_H_
 
-// IWYU pragma: private, include "third_party/tensorflow/core/platform/stream_executor.h"
-// IWYU pragma: friend third_party/tensorflow/core/platform/stream_executor.h
+// IWYU pragma: private, include "third_party/tensorflow/core/platform/stream_executor_no_cuda.h"
+// IWYU pragma: friend third_party/tensorflow/core/platform/stream_executor_no_cuda.h
 
 #include "tensorflow/core/platform/default/from_stream_executor_status.h"
 #include "tensorflow/stream_executor/device_memory.h"
@@ -31,4 +31,4 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
-#endif  // TENSORFLOW_PLATFORM_DEFAULT_STREAM_EXECUTOR_H_
+#endif  // TENSORFLOW_PLATFORM_DEFAULT_STREAM_EXECUTOR_NO_CUDA_H_
