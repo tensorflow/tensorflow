@@ -81,14 +81,18 @@ class ServerDataProvider implements DataProvider {
   }
 
   retrieveRuns(callback: (runs: string[]) => void): void {
+    let msgId = updateMessage('Fetching runs...');
     d3.json(`${this.routePrefix}/runs`, (err, runs) => {
+      updateMessage(null, msgId);
       callback(runs);
     });
   }
 
   retrieveCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void)
       : void {
+    let msgId = updateMessage('Fetching checkpoint info...');
     d3.json(`${this.routePrefix}/info?run=${run}`, (err, checkpointInfo) => {
+      updateMessage(null, msgId);
       callback(checkpointInfo);
     });
   }
