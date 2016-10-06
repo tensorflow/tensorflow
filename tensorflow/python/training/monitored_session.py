@@ -27,6 +27,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as training_saver
@@ -199,6 +200,57 @@ class Scaffold(object):
                                   data_flow_ops.initialize_all_tables())
 
 
+def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
+                             is_chief=True,
+                             checkpoint_dir=None,
+                             hooks=None,
+                             scaffold=None,
+                             config=None):
+  """Creates a `MonitoredSession` for training.
+
+  For a chief, this utility sets proper session initializer/restorer. It also
+  creates hooks related to checkpoint and summary saving. For workers, this
+  utility sets proper session creator which waits for the chief to
+  inialize/restore.
+
+
+  Args:
+    master: `String` the TensorFlow master to use.
+    is_chief: If `True`, it will take care of initialization and recovery the
+      underlying TensorFlow session. If `False`, it will wait on a chief to
+      initialize or recover the TensorFlow session.
+    checkpoint_dir: A string.  Optional path to a directory where to restore
+      variables.
+    hooks: Optional list of `SessionRunHook` objects.
+    scaffold: A `Scaffold` used for gathering or building supportive ops. If
+      not specified, a default one is created. It's used to finalize the graph.
+    config: `ConfigProto` proto used to configure the session.
+
+  Returns:
+    A `MonitoredSession` object.
+  """
+  hooks = hooks or []
+  scaffold = scaffold or Scaffold()
+  if not is_chief:
+    session_creator = WorkerSessionCreator(
+        scaffold=scaffold, master=master, config=config)
+  else:
+    session_creator = ChiefSessionCreator(
+        scaffold=scaffold,
+        checkpoint_dir=checkpoint_dir,
+        master=master,
+        config=config)
+    hooks.extend([
+        basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir),
+        basic_session_run_hooks.SummarySaverHook(
+            scaffold=scaffold, output_dir=checkpoint_dir),
+        basic_session_run_hooks.CheckpointSaverHook(
+            checkpoint_dir, save_secs=600, scaffold=scaffold),
+    ])
+
+  return MonitoredSession(session_creator=session_creator, hooks=hooks)
+
+
 class SessionCreator(object):
   """A factory for tf.Session."""
 
@@ -334,6 +386,7 @@ class MonitoredSession(object):
     MonitoredSession(
       session_creator=WorkerSessionCreator(master=..., config=...))
     ```
+  See `MonitoredTrainingSession` for an example usage based on chief or worker.
   """
 
   def __init__(self, session_creator=None, hooks=None):
