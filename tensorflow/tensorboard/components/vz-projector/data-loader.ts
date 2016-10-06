@@ -92,7 +92,7 @@ class ServerDataProvider implements DataProvider {
 
   retrieveTensor(run: string, tensorName: string, callback: (ds: DataSet) => void) {
     // Get the tensor.
-    updateMessage('Fetching tensor values...');
+    let msgId = updateMessage('Fetching tensor values...');
     d3.text(
         `${this.routePrefix}/tensor?run=${run}&name=${tensorName}`,
         (err: Error, tsv: string) => {
@@ -100,6 +100,7 @@ class ServerDataProvider implements DataProvider {
             console.error(err);
             return;
           }
+          updateMessage(null, msgId);
           parseTensors(tsv).then(dataPoints => {
             callback(new DataSet(dataPoints));
           });
@@ -108,7 +109,7 @@ class ServerDataProvider implements DataProvider {
 
   retrieveMetadata(run: string, tensorName: string,
       callback: (r: MetadataResult) => void) {
-    updateMessage('Fetching metadata...');
+    let msgId = updateMessage('Fetching metadata...');
     d3.text(
         `${this.routePrefix}/metadata?run=${run}&name=${tensorName}`,
         (err: Error, rawMetadata: string) => {
@@ -116,6 +117,7 @@ class ServerDataProvider implements DataProvider {
             console.error(err);
             return;
           }
+          updateMessage(null, msgId);
           parseMetadata(rawMetadata).then(result => callback(result));
         });
   }
@@ -392,13 +394,14 @@ class DemoDataProvider implements DataProvider {
     let demoDataSet = DemoDataProvider.DEMO_DATASETS[tensorName];
     let separator = demoDataSet.fpath.substr(-3) === 'tsv' ? '\t' : ' ';
     let url = `${DemoDataProvider.DEMO_FOLDER}/${demoDataSet.fpath}`;
-    updateMessage('Fetching tensors...');
+    let msgId = updateMessage('Fetching tensors...');
     d3.text(url, (error: Error, dataString: string) => {
       if (error) {
         console.error(error);
         updateMessage('Error loading data.');
         return;
       }
+      updateMessage(null, msgId);
       parseTensors(dataString, separator).then(points => {
         callback(new DataSet(points));
       });
@@ -411,7 +414,7 @@ class DemoDataProvider implements DataProvider {
     let dataSetPromise: Promise<MetadataResult> = null;
     if (demoDataSet.metadata_path) {
       dataSetPromise = new Promise<MetadataResult>((resolve, reject) => {
-        updateMessage('Fetching metadata...');
+        let msgId = updateMessage('Fetching metadata...');
         d3.text(
             `${DemoDataProvider.DEMO_FOLDER}/${demoDataSet.metadata_path}`,
             (err: Error, rawMetadata: string) => {
@@ -420,19 +423,25 @@ class DemoDataProvider implements DataProvider {
                 reject(err);
                 return;
               }
+              updateMessage(null, msgId);
               resolve(parseMetadata(rawMetadata));
             });
       });
     }
+    let spriteMsgId = null;
     let spritesPromise: Promise<HTMLImageElement> = null;
     if (demoDataSet.metadata && demoDataSet.metadata.image) {
       let spriteFilePath = demoDataSet.metadata.image.sprite_fpath;
+      spriteMsgId = updateMessage('Fetching sprite image...');
       spritesPromise =
           fetchImage(`${DemoDataProvider.DEMO_FOLDER}/${spriteFilePath}`);
     }
 
     // Fetch the metadata and the image in parallel.
     Promise.all([dataSetPromise, spritesPromise]).then(values => {
+      if (spriteMsgId) {
+        updateMessage(null, spriteMsgId);
+      }
       let [result, spriteImage] = values;
       result.spriteImage = spriteImage;
       result.datasetMetadata = demoDataSet.metadata;

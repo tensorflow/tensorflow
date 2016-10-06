@@ -44,7 +44,7 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$JAVA_HOME/jre/lib/amd64/server
     expanded as described in the libhdfs documentation:
 
 ```shell
-CLASSPATH=$($HADOOP_HDFS_HOME/bin/hdfs classpath --glob) python your_script.py
+CLASSPATH=$($HADOOP_HDFS_HOME/bin/hadoop classpath --glob) python your_script.py
 ```
 
 If you are running [Distributed TensorFlow](../distributed/index.md), then all

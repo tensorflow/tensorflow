@@ -201,8 +201,13 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     ])
 
     if self._tensor_filters:
+      filter_names = []
       for filter_name in self._tensor_filters:
+        filter_names.append(filter_name)
         help_intro.append("        * " + filter_name)
+
+      # Register tab completion for the filter names.
+      run_start_cli.register_tab_comp_context(["run", "r"], filter_names)
     else:
       help_intro.append("        (None)")
 
@@ -299,6 +304,25 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
           "prompt.",
           prefix_aliases=["r"]
       )
+
+      # Get names of all dumped tensors.
+      dumped_tensor_names = []
+      for datum in debug_dump.dumped_tensor_data:
+        dumped_tensor_names.append("%s:%d" %
+                                   (datum.node_name, datum.output_slot))
+
+      # Tab completions for command "print_tensors".
+      run_end_cli.register_tab_comp_context(["print_tensor", "pt"],
+                                            dumped_tensor_names)
+
+      # Tab completion for commands "node_info", "list_inputs" and
+      # "list_outputs". The list comprehension is used below because nodes()
+      # output can be unicodes and they need to be converted to strs.
+      run_end_cli.register_tab_comp_context(
+          ["node_info", "ni", "list_inputs", "li", "list_outputs", "lo"],
+          [str(node_name) for node_name in debug_dump.nodes()])
+      # TODO(cais): Reduce API surface area for aliases vis-a-vis tab
+      #    completion contexts and registered command handlers.
 
       title = "run-end: " + self._run_description
       run_end_cli.run_ui(
