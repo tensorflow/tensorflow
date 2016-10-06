@@ -142,6 +142,11 @@ export class ScatterPlot {
 
   private pointColors: Float32Array;
   private pointScaleFactors: Float32Array;
+  private labelIndices: Uint32Array;
+  private labelScaleFactors: Float32Array;
+  private labelStrokeColor: number;
+  private labelFillColor: number;
+  private labelDefaultFontSize: number;
 
   private animating = false;
   private selecting = false;
@@ -656,7 +661,9 @@ export class ScatterPlot {
     let rc = new RenderContext(
         this.perspCamera, this.cameraControls.target, this.width, this.height,
         cameraSpacePointExtents[0], cameraSpacePointExtents[1],
-        this.labelAccessor, this.pointColors, this.pointScaleFactors);
+        this.labelAccessor, this.pointColors, this.pointScaleFactors,
+        this.labelIndices, this.labelScaleFactors, this.labelDefaultFontSize,
+        this.labelStrokeColor, this.labelFillColor);
 
     this.visualizers.forEach(v => {
       v.onRender(rc);
@@ -699,6 +706,17 @@ export class ScatterPlot {
   /** Set the scale factors for every data point. (scalars) */
   setPointScaleFactors(scaleFactors: Float32Array) {
     this.pointScaleFactors = scaleFactors;
+  }
+
+  setVisibleLabels(
+      visibleLabelIndices: Uint32Array, visibleLabelScaleFactors: Float32Array,
+      labelStrokeColor: number, labelFillColor: number,
+      labelDefaultFontSize: number) {
+    this.labelIndices = visibleLabelIndices;
+    this.labelScaleFactors = visibleLabelScaleFactors;
+    this.labelStrokeColor = labelStrokeColor;
+    this.labelFillColor = labelFillColor;
+    this.labelDefaultFontSize = labelDefaultFontSize;
   }
 
   getMode(): Mode { return this.mode; }
