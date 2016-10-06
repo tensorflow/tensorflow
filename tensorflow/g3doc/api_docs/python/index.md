@@ -581,6 +581,7 @@
   * [`MomentumOptimizer`](../../api_docs/python/train.md#MomentumOptimizer)
   * [`MonitoredSession`](../../api_docs/python/train.md#MonitoredSession)
   * [`NanLossDuringTrainingError`](../../api_docs/python/train.md#NanLossDuringTrainingError)
+  * [`NanTensorHook`](../../api_docs/python/train.md#NanTensorHook)
   * [`Optimizer`](../../api_docs/python/train.md#Optimizer)
   * [`QueueRunner`](../../api_docs/python/train.md#QueueRunner)
   * [`replica_device_setter`](../../api_docs/python/train.md#replica_device_setter)

@@ -263,11 +263,12 @@ diff = y_ * tf.log(tf.clip_by_value(y, 1e-8, 1.0))
 **Other features of the tfdbg diagnostics CLI:**
 
 <!---
-TODO(cais): Add the following UI features once they are checked in: tab
-completion; regex search and highlighting.
+TODO(cais): Add the following UI features once they are checked in:
+regex search and highlighting.
 --->
 *   Navigation through command history using the Up and Down arrow keys.
     Prefix-based navigation is also supported.
+*   Tab completion of commands and some command arguments.
 
 
 

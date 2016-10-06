@@ -1478,13 +1478,6 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
     // At this point, this node is completely done.
     input_frame->GetIteration(input_iter)->outstanding_ops--;
     CleanupFramesIterations(input_frame, input_iter, ready);
-
-    // The execution of a node such as Enter may cause the completion of
-    // output_frame:output_iter, so clean up if output_frame:output_iter
-    // is indeed completed.
-    if (IsEnter(tagged_node.node)) {
-      CleanupFramesIterations(output_frame, output_iter, ready);
-    }
   }
 }
 

@@ -14,23 +14,30 @@ limitations under the License.
 ==============================================================================*/
 
 /** Delay for running async tasks, in milliseconds. */
-const ASYNC_DELAY_MS = 15;
+const ASYNC_DELAY_MS = 25;
 
 /** Duration in ms for showing warning messages to the user */
 const WARNING_DURATION_MS = 5000;
+
+/**
+ * Animation duration for the user message which should align with `transition`
+ * css property in `.notify-msg` in `vz-projector.html`.
+ */
+const MSG_ANIMATION_DURATION = 250;
+
 
 /**
  * Runs an expensive task asynchronously with some delay
  * so that it doesn't block the UI thread immediately.
  */
 export function runAsyncTask<T>(message: string, task: () => T): Promise<T> {
-  updateMessage(message);
+  let msgId = updateMessage(message);
   return new Promise<T>((resolve, reject) => {
     d3.timer(() => {
       try {
         let result = task();
         // Clearing the old message.
-        updateMessage();
+        updateMessage(null, msgId);
         resolve(result);
       } catch (ex) {
         updateMessage('Error: ' + ex.message);
@@ -41,16 +48,35 @@ export function runAsyncTask<T>(message: string, task: () => T): Promise<T> {
   });
 }
 
+let msgId = 0;
+
 /**
- * Updates the user message at the top of the page. If the provided msg is
- * null, the message box is hidden from the user.
+ * Updates the user message with the provided id.
+ *
+ * @param msg The message shown to the user. If null, the message is removed.
+ * @param id The id of an existing message. If no id is provided, a unique id
+ *     is assigned.
+ * @return The id of the message.
  */
-export function updateMessage(msg?: string): void {
-  if (msg == null) {
-    d3.select('#notify-msg').style('display', 'none');
-  } else {
-    d3.select('#notify-msg').style('display', 'block').text(msg);
+export function updateMessage(msg: string, id = null): string {
+  if (id == null) {
+    id = (msgId++).toString();
   }
+  let divId = `notify-msg-${id}`;
+  let msgDiv = d3.select('#' + divId);
+  let exists = msgDiv.size() > 0;
+  if (!exists) {
+    msgDiv = d3.select('#notify-msgs').insert('div', ':first-child')
+      .attr('class', 'notify-msg')
+      .attr('id', divId);
+  }
+  if (msg == null) {
+    msgDiv.style('opacity', 0);
+    setTimeout(() => msgDiv.remove(), MSG_ANIMATION_DURATION);
+  } else {
+    msgDiv.text(msg);
+  }
+  return id;
 }
 
 /**

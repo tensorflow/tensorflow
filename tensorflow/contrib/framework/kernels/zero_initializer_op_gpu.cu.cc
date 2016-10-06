@@ -13,21 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_FRAMEWORK_KERNELS_ZERO_INITIALIZER_OP_H_
-#define TENSORFLOW_CONTRIB_FRAMEWORK_KERNELS_ZERO_INITIALIZER_OP_H_
+#if GOOGLE_CUDA
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/tensor_types.h"
+#define EIGEN_USE_GPU
+
+#include "tensorflow/contrib/framework/kernels/zero_initializer_op.h"
+
+#include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {
 namespace functor {
-template <typename Device, typename T>
-struct TensorSetZero {
-  void operator()(const Device& d, typename TTypes<T>::Flat t) {
-    t.device(d) = t.constant(T(0));
-  }
-};
-}  // namespace functor
 
-} // end namespace tensorflow
-#endif // TENSORFLOW_CONTRIB_FRAMEWORK_KERNELS_ZERO_INITIALIZER_OP_H_
+using GPUDevice = Eigen::GpuDevice;
+
+#define DEFINE_GPU_SPECS(T) template struct TensorSetZero<GPUDevice, T>;
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
+#undef DEFINE_GPU_SPECS
+
+}  // namespace functor
+}  // namespace tensorflow
+
+#endif  // GOOGLE_CUDA
