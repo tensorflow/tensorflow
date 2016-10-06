@@ -46,7 +46,7 @@ const POINT_COLOR_MISSING = 'black';
 const POINT_SCALE_DEFAULT = 1.0;
 const POINT_SCALE_SELECTED = 1.2;
 const POINT_SCALE_NEIGHBOR = 1.2;
-const POINT_SCALE_HOVER = 1.3;
+const POINT_SCALE_HOVER = 1.2;
 
 /**
  * The minimum number of dimensions the data should have to automatically
@@ -287,7 +287,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
     let dst = 0;
 
-    if (hoverPointIndex) {
+    if (hoverPointIndex != null) {
       scale[dst++] = LABEL_SCALE_LARGE;
     }
 
@@ -360,7 +360,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
           colors[dst++] = c.b;
         }
       } else {
-        if (legendPointColorer) {
+        if (legendPointColorer != null) {
           for (let i = 0; i < n; ++i) {
             const c = new THREE.Color(legendPointColorer(i));
             colors[dst++] = c.r;
@@ -403,7 +403,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     }
 
     // Color the hover point.
-    if (hoverPointIndex) {
+    if (hoverPointIndex != null) {
       const c = new THREE.Color(POINT_COLOR_HOVER);
       let dst = hoverPointIndex * 3;
       colors[dst++] = c.r;
