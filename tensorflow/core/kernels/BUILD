@@ -1490,6 +1490,8 @@ tf_cuda_cc_test(
 tf_kernel_library(
     name = "conv_ops",
     srcs = [
+        "conv_grad_filter_ops.cc",
+        "conv_grad_input_ops.cc",
         "conv_grad_ops.cc",
         "conv_grad_ops_3d.cc",
         "deep_conv2d.cc",
@@ -2265,6 +2267,8 @@ filegroup(
         "check_numerics_op.cc",
         "control_flow_ops.cc",
         "conv_2d.h",
+        "conv_grad_filter_ops.cc",
+        "conv_grad_input_ops.cc",
         "conv_grad_ops.cc",
         "conv_grad_ops.h",
         "conv_ops.cc",
