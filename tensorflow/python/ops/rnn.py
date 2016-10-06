@@ -921,8 +921,8 @@ def _dynamic_rnn_loop(cell,
       raise ValueError(
           "Input size (depth of inputs) must be accessible via shape inference,"
           " but saw value None.")
-    got_time_steps = shape[0]
-    got_batch_size = shape[1]
+    got_time_steps = shape[0].value
+    got_batch_size = shape[1].value
     if const_time_steps != got_time_steps:
       raise ValueError(
           "Time steps is not the same for all the elements in the input in a "
