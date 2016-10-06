@@ -203,8 +203,6 @@ export class ScatterPlot {
     this.cameraControls =
         new (THREE as any)
             .OrbitControls(this.perspCamera, this.renderer.domElement);
-    this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
-    this.cameraControls.mouseButtons.PAN = THREE.MOUSE.RIGHT;
     // Start is called when the user stars interacting with
     // orbit controls.
     this.cameraControls.addEventListener('start', () => {
@@ -231,6 +229,8 @@ export class ScatterPlot {
     this.cameraControls.position0.set(POS_3D.x, POS_3D.y, POS_3D.z);
     this.cameraControls.target0.set(TAR_3D.x, TAR_3D.y, TAR_3D.z);
     this.cameraControls.enableRotate = true;
+    this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
+    this.cameraControls.mouseButtons.PAN = THREE.MOUSE.RIGHT;
     let position = new THREE.Vector3(POS_3D.x, POS_3D.y, POS_3D.z);
     let target = new THREE.Vector3(TAR_3D.x, TAR_3D.y, TAR_3D.z);
 
@@ -258,6 +258,8 @@ export class ScatterPlot {
     // toward the middle of the xy plane
     this.cameraControls.position0.set(POS_2D.x, POS_2D.y, POS_2D.z);
     this.cameraControls.target0.set(TAR_2D.x, TAR_2D.y, TAR_2D.z);
+    this.cameraControls.mouseButtons.PAN = THREE.MOUSE.LEFT;
+    this.cameraControls.mouseButtons.ORBIT = null;
     let position = new THREE.Vector3(POS_2D.x, POS_2D.y, POS_2D.z);
     let target = new THREE.Vector3(TAR_2D.x, TAR_2D.y, TAR_2D.z);
 
@@ -323,7 +325,7 @@ export class ScatterPlot {
         this.createSelectionSphere();
       }
     } else if (
-        !e.ctrlKey &&
+        !e.ctrlKey && this.zAccessor &&
         this.cameraControls.mouseButtons.ORBIT === THREE.MOUSE.RIGHT) {
       // The user happened to press the ctrl key when the tab was active,
       // unpressed the ctrl when the tab was inactive, and now he/she
@@ -331,7 +333,7 @@ export class ScatterPlot {
       this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
       this.cameraControls.mouseButtons.PAN = THREE.MOUSE.RIGHT;
     } else if (
-        e.ctrlKey &&
+        e.ctrlKey && this.zAccessor &&
         this.cameraControls.mouseButtons.ORBIT === THREE.MOUSE.LEFT) {
       // Similarly to the situation above.
       this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.RIGHT;
@@ -378,7 +380,7 @@ export class ScatterPlot {
   /** For using ctrl + left click as right click, and for circle select */
   private onKeyDown(e: any) {
     // If ctrl is pressed, use left click to orbit
-    if (e.keyCode === CTRL_KEY) {
+    if (e.keyCode === CTRL_KEY && this.zAccessor) {
       this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.RIGHT;
       this.cameraControls.mouseButtons.PAN = THREE.MOUSE.LEFT;
     }
@@ -392,7 +394,7 @@ export class ScatterPlot {
 
   /** For using ctrl + left click as right click, and for circle select */
   private onKeyUp(e: any) {
-    if (e.keyCode === CTRL_KEY) {
+    if (e.keyCode === CTRL_KEY && this.zAccessor) {
       this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
       this.cameraControls.mouseButtons.PAN = THREE.MOUSE.RIGHT;
     }
