@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption} from './data';
-import {CheckpointInfo, ColumnStats, DataProvider, parseRawMetadata, parseRawTensors} from './data-loader';
+import {ColorOption, ColumnStats} from './data';
+import {CheckpointInfo, DataProvider, parseRawMetadata, parseRawTensors} from './data-loader';
 import {Projector} from './vz-projector';
 import {ColorLegendRenderInfo, ColorLegendThreshold} from './vz-projector-legend';
 // tslint:disable-next-line:no-unused-variable
@@ -164,9 +164,9 @@ export class DataPanel extends DataPanelPolymer {
           this.checkpointInfo.tensors[this.selectedTensor].metadataFile;
       if (metadataFile) {
         this.dataProvider.retrieveMetadata(
-            this.selectedRun, this.selectedTensor, result => {
-              this.updateMetadataUI(result.stats, metadataFile);
-              this.projector.updateDataSet(ds, result);
+            this.selectedRun, this.selectedTensor, metadata => {
+              this.updateMetadataUI(metadata.stats, metadataFile);
+              this.projector.updateDataSet(ds, metadata);
             });
       } else {
         this.projector.updateDataSet(ds, null);
@@ -236,9 +236,9 @@ export class DataPanel extends DataPanelPolymer {
   }
 
   private metadataWasReadFromFile(rawContents: string, fileName: string) {
-    parseRawMetadata(rawContents, result => {
-      this.projector.updateDataSet(this.projector.currentDataSet, result);
-      this.updateMetadataUI(result.stats, fileName);
+    parseRawMetadata(rawContents, metadata => {
+      this.projector.updateDataSet(this.projector.currentDataSet, metadata);
+      this.updateMetadataUI(metadata.stats, fileName);
     });
   }
 

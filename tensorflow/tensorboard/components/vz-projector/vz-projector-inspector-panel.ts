@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {DistanceFunction} from './data';
+import {DistanceFunction, MetadataInfo} from './data';
 import * as vector from './vector';
 import {ProjectorInput} from './vz-projector-input';
 import {Projector} from './vz-projector';
 import * as knn from './knn';
-import {MetadataResult} from './data-loader';
 
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
@@ -91,9 +90,9 @@ export class InspectorPanel extends PolymerClass {
     }
   }
 
-  metadataChanged(result: MetadataResult) {
+  metadataChanged(metadata: MetadataInfo) {
     let labelIndex = -1;
-    this.metadataFields = result.stats.map((stats, i) => {
+    this.metadataFields = metadata.stats.map((stats, i) => {
       if (!stats.isNumeric && labelIndex === -1) {
         labelIndex = i;
       }
@@ -101,7 +100,7 @@ export class InspectorPanel extends PolymerClass {
     });
     labelIndex = Math.max(0, labelIndex);
     // Make the default label the first non-numeric column.
-    this.selectedMetadataField = result.stats[labelIndex].name;
+    this.selectedMetadataField = metadata.stats[labelIndex].name;
   }
 
   datasetChanged() {

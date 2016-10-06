@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {updateWarningMessage} from './async';
-import {ColorOption, DataSet, Projection, State} from './data';
-import {DataProvider, getDataProvider, MetadataResult} from './data-loader';
+import {ColorOption, DataSet, Projection, State, MetadataInfo} from './data';
+import {DataProvider, getDataProvider} from './data-loader';
 import {HoverContext, HoverListener} from './hoverContext';
 import * as knn from './knn';
 import {Mode, ScatterPlot} from './scatterPlot';
@@ -132,7 +131,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.setCurrentDataSet(this.dataSet.getSubset());
   }
 
-  updateDataSet(ds: DataSet, metadata: MetadataResult) {
+  updateDataSet(ds: DataSet, metadata: MetadataInfo) {
     this.dataSet = ds;
     if (this.scatterPlot == null || this.dataSet == null) {
       // We are not ready yet.
@@ -140,12 +139,15 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     }
     this.normalizeData = this.dataSet.dim[1] >= THRESHOLD_DIM_NORMALIZE;
     if (metadata != null) {
-      this.mergeMetadata(ds, metadata);
+      ds.mergeMetadata(metadata);
     }
     this.dataPanel.setNormalizeData(this.normalizeData);
     this.setCurrentDataSet(this.dataSet.getSubset());
     this.inspectorPanel.datasetChanged();
-
+    if (metadata != null) {
+      this.inspectorPanel.metadataChanged(metadata);
+      this.projectionsPanel.metadataChanged(metadata);
+    }
     // Set the container to a fixed height, otherwise in Colab the
     // height can grow indefinitely.
     let container = this.dom.select('#container');
@@ -190,20 +192,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
     this.selectionChangedListeners.forEach(
         l => l(this.selectedPointIndices, neighbors));
-  }
-
-  private mergeMetadata(ds: DataSet, result: MetadataResult): void {
-    let numTensors = ds.points.length;
-    if (result.metadata.length !== numTensors) {
-      updateWarningMessage(
-          `Number of tensors (${numTensors}) do not match` +
-          ` the number of lines in metadata (${result.metadata.length}).`);
-    }
-    ds.spriteImage = result.spriteImage;
-    ds.metadata = result.datasetMetadata;
-    ds.mergeMetadata(result.metadata);
-    this.inspectorPanel.metadataChanged(result);
-    this.projectionsPanel.metadataChanged(result);
   }
 
   /**

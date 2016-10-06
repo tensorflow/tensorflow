@@ -23,21 +23,32 @@ const WARNING_DURATION_MS = 5000;
  * Animation duration for the user message which should align with `transition`
  * css property in `.notify-msg` in `vz-projector.html`.
  */
-const MSG_ANIMATION_DURATION = 250;
+const MSG_ANIMATION_DURATION = 300;
 
 
 /**
  * Runs an expensive task asynchronously with some delay
  * so that it doesn't block the UI thread immediately.
+ *
+ * @param message The message to display to the user.
+ * @param task The expensive task to run.
+ * @param msgId Optional. ID of an existing message. If provided, will overwrite
+ *     an existing message and won't automatically clear the message when the
+ *     task is done.
+ * @return The value returned by the task.
  */
-export function runAsyncTask<T>(message: string, task: () => T): Promise<T> {
-  let msgId = updateMessage(message);
+export function runAsyncTask<T>(message: string, task: () => T,
+    msgId: string = null): Promise<T> {
+  let autoClear = (msgId == null);
+  msgId = updateMessage(message, msgId);
   return new Promise<T>((resolve, reject) => {
     d3.timer(() => {
       try {
         let result = task();
         // Clearing the old message.
-        updateMessage(null, msgId);
+        if (autoClear) {
+          updateMessage(null, msgId);
+        }
         resolve(result);
       } catch (ex) {
         updateMessage('Error: ' + ex.message);
@@ -58,7 +69,7 @@ let msgId = 0;
  *     is assigned.
  * @return The id of the message.
  */
-export function updateMessage(msg: string, id = null): string {
+export function updateMessage(msg: string, id: string = null): string {
   if (id == null) {
     id = (msgId++).toString();
   }
