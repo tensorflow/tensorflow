@@ -1380,6 +1380,20 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "warpctc_ops",
+    prefix = "warpctc",
+    deps = [
+        ":bounds_check",
+        ":ops_util",
+        "//tensorflow/core:warpctc_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels/warp-ctc/tests:ctc_gpu",
+    ],
+    alwayslink = 1,
+)
+
 tf_cc_test(
     name = "control_flow_ops_test",
     size = "small",

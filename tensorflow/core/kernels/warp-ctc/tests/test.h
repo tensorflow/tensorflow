@@ -4,12 +4,16 @@
 #include <vector>
 #include <random>
 
-#include <ctc.h>
+#include "tensorflow/core/kernels/warp-ctc/include/ctc.h"
 
 inline void throw_on_error(ctcStatus_t status, const char* message) {
     if (status != CTC_STATUS_SUCCESS) {
+        printf("error in cpu ctc: message: %s\n", message);
+        printf("error in cpu ctc: status: %s\n", ctcGetStatusString(status));
+#if 0
         throw std::runtime_error(message + (", stat = " + 
-                                            std::string(ctcGetStatusString(status))));
+                                            ctcGetStatusString(status)));
+#endif
     }
 }
 
@@ -25,7 +29,7 @@ inline void throw_on_error(cudaError_t error, const char* message) {
 
 #endif
 
-std::vector<float>
+inline std::vector<float>
 genActs(int size) {
     std::vector<float> arr(size);
     std::mt19937 gen(0);
@@ -35,7 +39,7 @@ genActs(int size) {
     return arr;
 }
 
-std::vector<int>
+inline std::vector<int>
 genLabels(int alphabet_size, int L) {
     std::vector<int> label(L);
 
@@ -53,7 +57,7 @@ genLabels(int alphabet_size, int L) {
     return label;
 }
 
-float rel_diff(const std::vector<float>& grad,
+inline float rel_diff(const std::vector<float>& grad,
                const std::vector<float>& num_grad) {
     float diff = 0.;
     float tot = 0.;
@@ -66,7 +70,7 @@ float rel_diff(const std::vector<float>& grad,
 }
 
 // Numerically stable softmax for a minibatch of 1
-void softmax(const float* const acts,
+inline void softmax(const float* const acts,
              int alphabet_size, int T,
              float *probs) {
 

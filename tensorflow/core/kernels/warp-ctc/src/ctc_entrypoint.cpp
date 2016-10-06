@@ -2,11 +2,11 @@
 #include <iostream>
 #include <algorithm>
 
-#include <ctc.h>
+#include "tensorflow/core/kernels/warp-ctc/include/ctc.h"
 
-#include "detail/cpu_ctc.h"
+#include "tensorflow/core/kernels/warp-ctc/include/detail/cpu_ctc.h"
 #ifdef __CUDACC__
-    #include "detail/gpu_ctc.h"
+    #include "tensorflow/core/kernels/warp-ctc/include/detail/gpu_ctc.h"
 #endif
 
 

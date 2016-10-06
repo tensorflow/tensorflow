@@ -5,7 +5,7 @@
 
 #include <iostream>
 
-#include <ctc.h>
+#include "tensorflow/core/kernels/warp-ctc/include/ctc.h"
 
 #include "test.h"
 

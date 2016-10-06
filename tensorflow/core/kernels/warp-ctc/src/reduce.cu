@@ -10,8 +10,8 @@
 // #include <helper_cuda.h>
 
 // For the functors
-#include "detail/ctc_helper.h"
-#include "ctc.h"
+#include "tensorflow/core/kernels/warp-ctc/include/detail/ctc_helper.h"
+#include "tensorflow/core/kernels/warp-ctc/include/ctc.h"
 
 const int warp_size = 32;
 
@@ -68,7 +68,7 @@ __global__ void reduce_rows(Iop f, Rop g, const T* input, T* output,
 
 
     while (idx < num_rows) {
-        curr = g(curr, f(input[idx + col*num_rows]));
+        curr += f(input[idx + col*num_rows]);
         idx += NT;
     }
 

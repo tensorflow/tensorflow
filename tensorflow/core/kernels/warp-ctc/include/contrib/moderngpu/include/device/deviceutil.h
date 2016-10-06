@@ -34,7 +34,7 @@
 
 #pragma once
 
-#include "intrinsics.cuh"
+#include "intrinsics.h"
 
 namespace mgpu {
 

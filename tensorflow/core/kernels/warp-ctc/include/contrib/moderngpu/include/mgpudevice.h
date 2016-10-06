@@ -35,7 +35,7 @@
 #pragma once
 
 #include "mgpuenums.h"
-#include "device/deviceutil.cuh"
+#include "device/deviceutil.h"
 
 namespace mgpu {
 
@@ -285,5 +285,5 @@ MGPU_DEVICE void DeviceTransferMergeValuesShared(int count, const T* a_global,
 } // namespace mgpu
 
 
-#include "device/loadstore.cuh"
-#include "device/ctasegscan.cuh"
+#include "device/loadstore.h"
+#include "device/ctasegscan.h"

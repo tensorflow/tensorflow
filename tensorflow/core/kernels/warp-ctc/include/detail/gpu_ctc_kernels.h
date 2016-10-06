@@ -1,7 +1,7 @@
 #pragma once
 
-#include <contrib/moderngpu/include/device/ctascan.cuh>
-#include <contrib/moderngpu/include/device/ctamerge.cuh>
+#include "tensorflow/core/kernels/warp-ctc/include/contrib/moderngpu/include/device/ctascan.h"
+#include "tensorflow/core/kernels/warp-ctc/include/contrib/moderngpu/include/device/ctamerge.h"
 
 #include "ctc_helper.h"
 

@@ -168,13 +168,11 @@ CpuCTC<ProbT>::softmax(const ProbT* const activations, ProbT* probs,
                 max_activation = std::max(max_activation, activations[r + col_offset]);
 
             ProbT denom = ProbT(0.);
-            for(int r = 0; r < alphabet_size_; ++r) {
-                probs[r + col_offset] = std::exp(activations[r + col_offset] - max_activation);
-                denom += probs[r + col_offset];
-            }
+            for(int r = 0; r < alphabet_size_; ++r)
+                denom += std::exp(activations[r + col_offset] - max_activation);
 
             for(int r = 0; r < alphabet_size_; ++r) {
-                probs[r + col_offset] /= denom;
+                probs[r + col_offset] = std::exp(activations[r + col_offset] - max_activation) / denom;
             }
         }
     }

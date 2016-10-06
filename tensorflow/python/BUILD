@@ -1111,6 +1111,14 @@ tf_gen_op_wrapper_private_py(
     name = "ctc_ops_gen",
 )
 
+tf_gen_op_wrapper_py(
+    name = "warpctc_ops",
+    hidden = [
+        "WarpCTCLoss",
+    ],
+    require_shape_functions = True,
+)
+
 tf_gen_op_wrapper_private_py(
     name = "data_flow_ops_gen",
     visibility = [
@@ -2159,7 +2167,10 @@ py_library(
 # This target is deprecated.
 py_library(
     name = "ops",
-    srcs = ["user_ops/user_ops.py"],
+    srcs = [
+        "user_ops/user_ops.py",
+        "ops/gen_warpctc_ops.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":user_ops_gen",

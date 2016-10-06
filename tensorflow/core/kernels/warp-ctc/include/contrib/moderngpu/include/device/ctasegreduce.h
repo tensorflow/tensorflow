@@ -34,8 +34,8 @@
 
 #pragma once
 
-#include "ctasegscan.cuh"
-#include "ctasearch.cuh"
+#include "ctasegscan.h"
+#include "ctasearch.h"
 
 namespace mgpu {
 

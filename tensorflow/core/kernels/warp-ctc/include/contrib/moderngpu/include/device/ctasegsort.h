@@ -34,10 +34,10 @@
 
 #pragma once
 
-#include "ctascan.cuh"
-#include "ctasearch.cuh"
-#include "loadstore.cuh"
-#include "sortnetwork.cuh"
+#include "ctascan.h"
+#include "ctasearch.h"
+#include "loadstore.h"
+#include "sortnetwork.h"
 
 namespace mgpu {
 

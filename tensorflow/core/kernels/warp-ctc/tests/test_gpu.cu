@@ -4,9 +4,10 @@
 #include <vector>
 #include <iostream>
 
-#include <ctc.h>
+#include "tensorflow/core/kernels/warp-ctc/include/ctc.h"
 
 #include "test.h"
+#include "test_gpu.h"
 
 bool small_test() {
     const int alphabet_size = 5;

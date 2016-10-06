@@ -34,7 +34,7 @@
 
 #pragma once
 
-#include "deviceutil.cuh"
+#include "deviceutil.h"
 
 namespace mgpu {
 
