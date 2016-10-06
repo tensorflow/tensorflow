@@ -26,7 +26,7 @@ namespace functor {
 
 using GPUDevice = Eigen::GpuDevice;
 
-#define DEFINE_GPU_SPECS(T) template struct TensorZero<GPUDevice, T>;
+#define DEFINE_GPU_SPECS(T) template struct TensorSetZero<GPUDevice, T>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 #undef DEFINE_GPU_SPECS
 
