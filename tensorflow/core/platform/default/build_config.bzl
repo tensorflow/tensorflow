@@ -91,7 +91,7 @@ def tf_proto_library(name, srcs = [], has_services = None,
   )
 
 def tf_additional_lib_hdrs(exclude = []):
-  return  select({
+  return select({
     "//tensorflow:windows" : native.glob([
         "platform/default/*.h",
         "platform/windows/*.h",
@@ -104,7 +104,7 @@ def tf_additional_lib_hdrs(exclude = []):
   })
 
 def tf_additional_lib_srcs(exclude = []):
-  return  select({
+  return select({
     "//tensorflow:windows" : native.glob([
         "platform/default/*.cc",
         "platform/windows/*.cc",

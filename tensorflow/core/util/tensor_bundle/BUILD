@@ -24,6 +24,7 @@ cc_library(
     name = "tensor_bundle",
     srcs = ["tensor_bundle.cc"],
     hdrs = ["tensor_bundle.h"],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -34,7 +35,6 @@ cc_library(
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
     ],
-    copts = tf_copts(),
 )
 
 cc_test(

@@ -312,11 +312,11 @@ tf_cuda_library(
         "util/util.h",
         "util/work_sharder.h",
     ] + select({
-            "//tensorflow:windows" : [],
-            "//conditions:default" : [
-                "util/memmapped_file_system.h",
-                "util/memmapped_file_system_writer.h",
-            ],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "util/memmapped_file_system.h",
+            "util/memmapped_file_system_writer.h",
+        ],
     }),
     visibility = ["//visibility:public"],
     deps = [":framework_internal"],
@@ -952,38 +952,44 @@ tf_proto_library_cc(
 cc_library(
     name = "lib_internal",
     srcs = select({
-                "//tensorflow:windows" : glob([
-                    "lib/**/*.h",
-                    "lib/**/*.cc",
-                    "platform/*.h",
-                    "platform/*.cc",
-                ],  exclude = [
-                    "**/*test*",
-                    "platform/**/cuda.h",
-                    "platform/**/stream_executor.h",
-                    "platform/load_library.cc",
-                ]),
-                "//conditions:default" : glob([
-                    "lib/**/*.h",
-                    "lib/**/*.cc",
-                    "platform/*.h",
-                    "platform/*.cc",
-                    "platform/profile_utils/**/*.h",
-                    "platform/profile_utils/**/*.cc",
-                ],  exclude = [
-                    "**/*test*",
-                    "platform/**/cuda.h",
-                    "platform/**/stream_executor.h",
-                ]),
+        "//tensorflow:windows": glob(
+            [
+                "lib/**/*.h",
+                "lib/**/*.cc",
+                "platform/*.h",
+                "platform/*.cc",
+            ],
+            exclude = [
+                "**/*test*",
+                "platform/**/cuda.h",
+                "platform/**/stream_executor.h",
+                "platform/load_library.cc",
+            ],
+        ),
+        "//conditions:default": glob(
+            [
+                "lib/**/*.h",
+                "lib/**/*.cc",
+                "platform/*.h",
+                "platform/*.cc",
+                "platform/profile_utils/**/*.h",
+                "platform/profile_utils/**/*.cc",
+            ],
+            exclude = [
+                "**/*test*",
+                "platform/**/cuda.h",
+                "platform/**/stream_executor.h",
+            ],
+        ),
     }) + tf_additional_lib_srcs(
-                exclude = [
-                    "**/*test*",
-                    "platform/**/cuda.h",
-                    "platform/**/stream_executor.h",
-                ] +
-                # Protobuf deps already included through the ":lib_proto_parsing"
-                # dependency.
-                tf_additional_proto_srcs(),
+        exclude = [
+            "**/*test*",
+            "platform/**/cuda.h",
+            "platform/**/stream_executor.h",
+        ] +
+        # Protobuf deps already included through the ":lib_proto_parsing"
+        # dependency.
+        tf_additional_proto_srcs(),
     ),
     hdrs = tf_additional_lib_hdrs() + [
         "lib/core/blocking_counter.h",
@@ -1082,11 +1088,11 @@ tf_cuda_library(
             "util/memmapped_file_system_writer.*",
         ],
     ) + select({
-            "//tensorflow:windows" : [],
-            "//conditions:default" : glob([
-                "util/memmapped_file_system.*",
-                "util/memmapped_file_system_writer.*",
-            ]),
+        "//tensorflow:windows": [],
+        "//conditions:default": glob([
+            "util/memmapped_file_system.*",
+            "util/memmapped_file_system_writer.*",
+        ]),
     }),
     hdrs = [
         "framework/op_segment.h",
