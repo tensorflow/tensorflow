@@ -51,7 +51,7 @@ export interface ScatterPlotVisualizer {
    * (selection) render. Set up render state for any geometry to use picking IDs
    * instead of visual colors.
    */
-  onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3);
+  onPickingRender(renderContext: RenderContext);
   /**
    * Called immediately before the main scatter plot performs a color (visual)
    * render. Set up render state, lights, etc here.

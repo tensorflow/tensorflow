@@ -642,34 +642,39 @@ export class ScatterPlot {
       return;
     }
 
-    let cameraSpacePointExtents: [number, number] = getNearFarPoints(
+    // place the light near the camera
+    {
+      const lightPos = new THREE.Vector3().copy(this.perspCamera.position);
+      lightPos.x += 1;
+      lightPos.y += 1;
+      this.light.position.set(lightPos.x, lightPos.y, lightPos.z);
+    }
+
+    const cameraSpacePointExtents: [number, number] = getNearFarPoints(
         this.dataSet, this.perspCamera.position, this.cameraControls.target);
 
-    // Render first pass to picking target. This render fills pickingTexture
-    // with colors that are actually point ids, so that sampling the texture at
-    // the mouse's current x,y coordinates will reveal the data point that the
-    // mouse is over.
-    this.visualizers.forEach(v => {
-      v.onPickingRender(this.perspCamera, this.cameraControls.target);
-    });
-    this.renderer.render(this.scene, this.perspCamera, this.pickingTexture);
-
-    // Render second pass to color buffer, to be displayed on the canvas.
-    let lightPos = new THREE.Vector3().copy(this.perspCamera.position);
-    lightPos.x += 1;
-    lightPos.y += 1;
-    this.light.position.set(lightPos.x, lightPos.y, lightPos.z);
-
-    let rc = new RenderContext(
+    const rc = new RenderContext(
         this.perspCamera, this.cameraControls.target, this.width, this.height,
         cameraSpacePointExtents[0], cameraSpacePointExtents[1],
         this.labelAccessor, this.pointColors, this.pointScaleFactors,
         this.labelIndices, this.labelScaleFactors, this.labelDefaultFontSize,
         this.labelStrokeColor, this.labelFillColor);
 
+    // Render first pass to picking target. This render fills pickingTexture
+    // with colors that are actually point ids, so that sampling the texture at
+    // the mouse's current x,y coordinates will reveal the data point that the
+    // mouse is over.
+    this.visualizers.forEach(v => {
+      v.onPickingRender(rc);
+    });
+
+    this.renderer.render(this.scene, this.perspCamera, this.pickingTexture);
+
+    // Render second pass to color buffer, to be displayed on the canvas.
     this.visualizers.forEach(v => {
       v.onRender(rc);
     });
+
     this.renderer.render(this.scene, this.perspCamera);
   }
 

@@ -171,6 +171,6 @@ export class ScatterPlotVisualizerCanvasLabels implements
     this.makeLabels(rc);
   }
 
-  onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {}
+  onPickingRender(renderContext: RenderContext) {}
   onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 }
