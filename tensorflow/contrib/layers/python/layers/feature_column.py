@@ -91,7 +91,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
@@ -162,27 +161,12 @@ class _FeatureColumn(object):
     raise NotImplementedError("Transform is not implemented for {}.".format(
         self))
 
-  @abc.abstractmethod
-  @deprecation.deprecated(
-      "2016-09-25",
-      "Use layers.input_from_feature_columns instead.")
-  def to_dnn_input_layer(self,
-                         input_tensor,
-                         weight_collection=None,
-                         trainable=True):
+  # pylint: disable=unused-argument
+  def _to_dnn_input_layer(self,
+                          input_tensor,
+                          weight_collection=None,
+                          trainable=True):
     """Returns a Tensor as an input to the first layer of neural network."""
-    raise ValueError("Calling an abstract method.")
-
-  @abc.abstractmethod
-  @deprecation.deprecated(
-      "2016-09-25",
-      "Use layers.weighted_sum_from_feature_columns instead.")
-  def to_weighted_sum(self,
-                      input_tensor,
-                      num_outputs=1,
-                      weight_collections=None,
-                      trainable=True):
-    """Returns a Tensor as linear predictions and a list of created Variable."""
     raise ValueError("Calling an abstract method.")
 
   # It is expected that classes implement either to_embedding_lookup_arguments
@@ -333,29 +317,14 @@ class _SparseColumn(_FeatureColumn,
     return None
 
   # pylint: disable=unused-argument
-  def to_dnn_input_layer(self,
-                         input_tensor,
-                         weight_collections=None,
-                         trainable=True):
+  def _to_dnn_input_layer(self,
+                          input_tensor,
+                          weight_collections=None,
+                          trainable=True):
     raise ValueError(
         "SparseColumn is not supported in DNN. "
         "Please use embedding_column or one_hot_column. column: {}".format(
             self))
-
-  def to_weighted_sum(self,
-                      input_tensor,
-                      num_outputs=1,
-                      weight_collections=None,
-                      trainable=True):
-    return _create_embedding_lookup(
-        input_tensor=self.id_tensor(input_tensor),
-        weight_tensor=self.weight_tensor(input_tensor),
-        vocab_size=self.length,
-        dimension=num_outputs,
-        weight_collections=_add_variable_collection(weight_collections),
-        initializer=init_ops.zeros_initializer,
-        combiner=self.combiner,
-        trainable=trainable)
 
   def _to_embedding_lookup_arguments(self, input_tensor):
     return _EmbeddingLookupArguments(
@@ -615,29 +584,14 @@ class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
     return input_tensor[1]
 
   # pylint: disable=unused-argument
-  def to_dnn_input_layer(self,
-                         input_tensor,
-                         weight_collections=None,
-                         trainable=True):
+  def _to_dnn_input_layer(self,
+                          input_tensor,
+                          weight_collections=None,
+                          trainable=True):
     raise ValueError(
         "WeightedSparseColumn is not supported in DNN. "
         "Please use embedding_column or one_hot_column. column: {}".format(
             self))
-
-  def to_weighted_sum(self,
-                      input_tensor,
-                      num_outputs=1,
-                      weight_collections=None,
-                      trainable=True):
-    return _create_embedding_lookup(
-        input_tensor=self.id_tensor(input_tensor),
-        weight_tensor=self.weight_tensor(input_tensor),
-        vocab_size=self.length,
-        dimension=num_outputs,
-        weight_collections=_add_variable_collection(weight_collections),
-        initializer=init_ops.zeros_initializer,
-        combiner=self.sparse_id_column.combiner,
-        trainable=trainable)
 
   def _to_embedding_lookup_arguments(self, input_tensor):
     return _EmbeddingLookupArguments(
@@ -722,10 +676,10 @@ class _OneHotColumn(_FeatureColumn,
       self.sparse_id_column.insert_transformed_feature(columns_to_tensors)
     columns_to_tensors[self] = columns_to_tensors[self.sparse_id_column]
 
-  def to_dnn_input_layer(self,
-                         transformed_input_tensor,
-                         unused_weight_collections=None,
-                         unused_trainable=False):
+  def _to_dnn_input_layer(self,
+                          transformed_input_tensor,
+                          unused_weight_collections=None,
+                          unused_trainable=False):
     """Returns a Tensor as an input to the first layer of neural network.
 
     Args:
@@ -762,15 +716,6 @@ class _OneHotColumn(_FeatureColumn,
 
     # Reduce to get a multi-hot per example.
     return math_ops.reduce_sum(one_hot_id_tensor, reduction_indices=[1])
-
-  # pylint: disable=unused-argument
-  def to_weighted_sum(self,
-                      input_tensor,
-                      num_outputs=1,
-                      weight_collections=None,
-                      trainable=True):
-    raise ValueError("OneHotColumn is not supported in linear models. "
-                     "Please use sparse_column. column: {}".format(self))
 
 
 class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
@@ -868,10 +813,10 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
       self.sparse_id_column.insert_transformed_feature(columns_to_tensors)
     columns_to_tensors[self] = columns_to_tensors[self.sparse_id_column]
 
-  def to_dnn_input_layer(self,
-                         input_tensor,
-                         weight_collections=None,
-                         trainable=True):
+  def _to_dnn_input_layer(self,
+                          input_tensor,
+                          weight_collections=None,
+                          trainable=True):
     is_shared_embedding = self.shared_embedding_name is not None
     output, embedding_weights = _create_embedding_lookup(
         input_tensor=self.sparse_id_column.id_tensor(input_tensor),
@@ -898,15 +843,6 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
     if self.ckpt_to_load_from is not None:
       return self.ckpt_to_load_from, self.tensor_name_in_ckpt
     return None
-
-  # pylint: disable=unused-argument
-  def to_weighted_sum(self,
-                      input_tensor,
-                      num_outputs=1,
-                      weight_collections=None,
-                      trainable=True):
-    raise ValueError("EmbeddingColumn is not supported in linear models. "
-                     "Please use sparse_column. column: {}".format(self))
 
   # pylint: disable=unused-argument
   def _to_embedding_lookup_arguments(self, input_tensor):
@@ -1097,10 +1033,10 @@ class _HashedEmbeddingColumn(collections.namedtuple(
   def insert_transformed_feature(self, columns_to_tensors):
     columns_to_tensors[self] = columns_to_tensors[self.column_name]
 
-  def to_dnn_input_layer(self,
-                         input_tensor,
-                         weight_collections=None,
-                         trainable=True):
+  def _to_dnn_input_layer(self,
+                          input_tensor,
+                          weight_collections=None,
+                          trainable=True):
     embeddings = _create_embeddings(
         shape=[self.size],
         initializer=self.initializer,
@@ -1226,37 +1162,12 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
         math_ops.to_float(input_tensor), flattened_shape, name="reshape")
 
   # pylint: disable=unused-argument
-  def to_dnn_input_layer(self,
-                         transformed_input_tensor,
-                         weight_collections=None,
-                         trainable=True):
+  def _to_dnn_input_layer(self,
+                          transformed_input_tensor,
+                          weight_collections=None,
+                          trainable=True):
     """Returns a Tensor as an input to the first layer of neural network."""
     return transformed_input_tensor
-
-  def to_weighted_sum(self,
-                      transformed_input_tensor,
-                      num_outputs=1,
-                      weight_collections=None,
-                      trainable=True):
-    """Returns a Tensor as linear predictions and a list of created Variable."""
-
-    def _weight(name):
-      return variable_scope.get_variable(
-          name,
-          shape=[self.dimension, num_outputs],
-          initializer=init_ops.zeros_initializer,
-          collections=_add_variable_collection(weight_collections))
-
-    if self.name:
-      weight = _weight("weight")
-    else:
-      # Old behavior to support a subset of old checkpoints.
-      weight = _weight("_weight")
-
-    # The _RealValuedColumn has the shape of [batch_size, column.dimension].
-    log_odds_by_dim = math_ops.matmul(
-        transformed_input_tensor, weight, name="matmul")
-    return log_odds_by_dim, [weight]
 
   def _to_dense_tensor(self, input_tensor):
     return input_tensor
@@ -1441,10 +1352,10 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
         name="bucketize")
 
   # pylint: disable=unused-argument
-  def to_dnn_input_layer(self,
-                         input_tensor,
-                         weight_collections=None,
-                         trainable=True):
+  def _to_dnn_input_layer(self,
+                          input_tensor,
+                          weight_collections=None,
+                          trainable=True):
     return array_ops.reshape(
         array_ops.one_hot(
             math_ops.to_int64(input_tensor),
@@ -1484,22 +1395,6 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
     sparse_id_values = ops.SparseTensor(indices, bucket_indices, shape)
 
     return sparse_id_values
-
-  def to_weighted_sum(self,
-                      input_tensor,
-                      num_outputs=1,
-                      weight_collections=None,
-                      trainable=True):
-    """Returns a Tensor as linear predictions and a list of created Variable."""
-    return _create_embedding_lookup(
-        input_tensor=self.to_sparse_tensor(input_tensor),
-        weight_tensor=None,
-        vocab_size=self.length * self.source_column.dimension,
-        dimension=num_outputs,
-        weight_collections=_add_variable_collection(weight_collections),
-        initializer=init_ops.zeros_initializer,
-        combiner="sum",
-        trainable=trainable)
 
   def _to_embedding_lookup_arguments(self, input_tensor):
     return _EmbeddingLookupArguments(
@@ -1679,35 +1574,12 @@ class _CrossedColumn(_FeatureColumn,
         name="cross")
 
   # pylint: disable=unused-argument
-  def to_dnn_input_layer(self,
-                         input_tensor,
-                         weight_collections=None,
-                         trainable=True):
+  def _to_dnn_input_layer(self,
+                          input_tensor,
+                          weight_collections=None,
+                          trainable=True):
     raise ValueError("CrossedColumn is not supported in DNN. "
                      "Please use embedding_column. column: {}".format(self))
-
-  def to_weighted_sum(self,
-                      input_tensor,
-                      num_outputs=1,
-                      weight_collections=None,
-                      trainable=True):
-    output, embedding_weights = _create_embedding_lookup(
-        input_tensor=input_tensor,
-        weight_tensor=None,
-        vocab_size=self.length,
-        dimension=num_outputs,
-        weight_collections=_add_variable_collection(weight_collections),
-        initializer=init_ops.zeros_initializer,
-        combiner=self.combiner,
-        trainable=trainable)
-    if self.ckpt_to_load_from is not None:
-      weights_to_restore = embedding_weights
-      if len(embedding_weights) == 1:
-        weights_to_restore = embedding_weights[0]
-      checkpoint_utils.init_from_checkpoint(
-          self.ckpt_to_load_from,
-          {self.tensor_name_in_ckpt: weights_to_restore})
-    return output, embedding_weights
 
   def _checkpoint_path(self):
     if self.ckpt_to_load_from is not None:
@@ -1806,10 +1678,10 @@ class DataFrameColumn(_FeatureColumn,
     columns_to_tensors[self] = self.series.build(columns_to_tensors)
 
   # pylint: disable=unused-argument
-  def to_dnn_input_layer(self,
-                         input_tensor,
-                         weight_collections=None,
-                         trainable=True):
+  def _to_dnn_input_layer(self,
+                          input_tensor,
+                          weight_collections=None,
+                          trainable=True):
     # DataFrame typically provides Tensors of shape [batch_size],
     # but Estimator requires shape [batch_size, 1]
     dims = input_tensor.get_shape().ndims
@@ -1822,33 +1694,8 @@ class DataFrameColumn(_FeatureColumn,
     else:
       return input_tensor
 
-  # TODO(soergel): This mirrors RealValuedColumn for now, but should become
-  # better abstracted with less code duplication when we add other kinds.
-  def to_weighted_sum(self,
-                      input_tensor,
-                      num_outputs=1,
-                      weight_collections=None,
-                      trainable=True):
-
-    def _weight(name):
-      return variable_scope.get_variable(
-          name,
-          shape=[self.dimension, num_outputs],
-          initializer=init_ops.zeros_initializer,
-          collections=_add_variable_collection(weight_collections))
-
-    if self.name:
-      weight = _weight("weight")
-    else:
-      # Old behavior to support a subset of old checkpoints.
-      weight = _weight("_weight")
-
-    # The _RealValuedColumn has the shape of [batch_size, column.dimension].
-    log_odds_by_dim = math_ops.matmul(input_tensor, weight, name="matmul")
-    return log_odds_by_dim, [weight]
-
   def _to_dense_tensor(self, input_tensor):
-    return self.to_dnn_input_layer(input_tensor)
+    return self._to_dnn_input_layer(input_tensor)
 
   def __eq__(self, other):
     if isinstance(other, self.__class__):
