@@ -226,13 +226,28 @@ To view the value of the tensor, do
 tfdbg> pt cross_entropy/Log:0
 ```
 
-<!---
-TODO(cais): Once the "/inf" style regex search+highlight+scroll is checked in,
-modify the sentence below to reflect that.
---->
-Scroll down a little and you will notice some scattered inf values. Using the
-following command, you can see that this node has the op type "Log" and that
-its input is the node "softmax/Softmax".
+Scroll down a little and you will notice some scattered `inf` values. If the
+instances of `inf` and `nan` are difficult to spot by eye, you can use the
+following command to perform regex search and highlighting on the screen
+output:
+
+```
+tfdbg> /inf
+
+or
+
+tfdbg> /(inf|nan)
+```
+
+To go back to the list of "offending" tensors, you can use the Up key to
+navigate to the following command and hit Enter:
+
+```
+tfdbg> lt -f has_inf_or_nan
+```
+
+Using the following command, you can see that this node has the op type "Log"
+and that its input is the node "softmax/Softmax".
 
 ```
 tfdbg> ni cross_entropy/Log

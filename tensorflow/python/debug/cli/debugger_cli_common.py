@@ -262,6 +262,9 @@ class CommandHandlerRegistry(object):
   The call will return a RichTextLines object which can be rendered by a CLI.
   """
 
+  HELP_COMMAND = "help"
+  HELP_COMMAND_ALIASES = ["h"]
+
   def __init__(self):
     # A dictionary from command prefix to handler.
     self._handlers = {}
@@ -280,10 +283,10 @@ class CommandHandlerRegistry(object):
 
     # Register a default handler for the command "help".
     self.register_command_handler(
-        "help",
+        self.HELP_COMMAND,
         self._help_handler,
         "Print this help message.",
-        prefix_aliases=["h"])
+        prefix_aliases=self.HELP_COMMAND_ALIASES)
 
   def register_command_handler(self,
                                prefix,

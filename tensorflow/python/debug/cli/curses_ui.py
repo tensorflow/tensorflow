@@ -37,6 +37,7 @@ class CursesUI(object):
   CLI_EXIT_COMMANDS = ["exit", "quit"]
   CLI_TERMINATOR_KEY = 7  # Terminator key for input text box.
   CLI_TAB_KEY = ord("\t")
+  REGEX_SEARCH_PREFIX = "/"
 
   # Possible Enter keys. 343 is curses key code for the num-pad Enter key when
   # num lock is off.
@@ -63,9 +64,12 @@ class CursesUI(object):
     # tab-completion context with it.
     self._tab_completion_registry = debugger_cli_common.TabCompletionRegistry()
 
-    # Create top-level tab-completion context and register the exit commands.
+    # Create top-level tab-completion context and register the exit and help
+    # commands.
     self._tab_completion_registry.register_tab_comp_context(
-        [""], self.CLI_EXIT_COMMANDS)
+        [""], self.CLI_EXIT_COMMANDS +
+        [debugger_cli_common.CommandHandlerRegistry.HELP_COMMAND] +
+        debugger_cli_common.CommandHandlerRegistry.HELP_COMMAND_ALIASES)
 
     self._command_history_store = debugger_cli_common.CommandHistory()
 
@@ -128,6 +132,9 @@ class CursesUI(object):
     # Maximum number of lines the candidates display can have.
     self._candidates_max_lines = int(self._output_num_rows / 2)
 
+    # Font attribute for search and highlighting.
+    self._search_highlight_font_attr = "bw_reversed"
+
   def _screen_init(self):
     """Screen initialization.
 
@@ -145,6 +152,7 @@ class CursesUI(object):
     curses.init_pair(3, curses.COLOR_GREEN, curses.COLOR_BLACK)
     curses.init_pair(4, curses.COLOR_YELLOW, curses.COLOR_BLACK)
     curses.init_pair(5, curses.COLOR_BLUE, curses.COLOR_BLACK)
+    curses.init_pair(6, curses.COLOR_BLACK, curses.COLOR_WHITE)
 
     self._color_pairs = {}
     self._color_pairs["white"] = curses.color_pair(1)
@@ -152,6 +160,15 @@ class CursesUI(object):
     self._color_pairs["green"] = curses.color_pair(3)
     self._color_pairs["yellow"] = curses.color_pair(4)
     self._color_pairs["blue"] = curses.color_pair(5)
+
+    # Black-white reversed
+    self._color_pairs["bw_reversed"] = curses.color_pair(6)
+
+    # A_BOLD is not really a "color". But place it here for convenience.
+    self._color_pairs["bold"] = curses.A_BOLD
+
+    # Default color pair to use when a specified color pair does not exist.
+    self._default_color_pair = self._color_pairs["white"]
 
   def _screen_launch(self):
     """Launch the curses screen."""
@@ -358,13 +375,27 @@ class CursesUI(object):
       # token.
       return debugger_cli_common.EXPLICIT_USER_EXIT
 
+    if command:
+      self._command_history_store.add_command(command)
+
+    if (len(command) > len(self.REGEX_SEARCH_PREFIX) and
+        command.startswith(self.REGEX_SEARCH_PREFIX) and
+        self._curr_unwrapped_output):
+      # Regex search and highlighting in screen output.
+      regex = command[len(self.REGEX_SEARCH_PREFIX):]
+
+      # TODO(cais): Support scrolling to matches.
+      # TODO(cais): Display warning message on screen if no match.
+      self._display_output(self._curr_unwrapped_output, highlight_regex=regex)
+      self._command_pointer = 0
+      self._pending_command = ""
+      return
+
     prefix, args = self._parse_command(command)
 
     if not prefix:
       # Empty command: take no action. Should not exit.
       return
-
-    self._command_history_store.add_command(command)
 
     screen_info = {"cols": self._max_x}
     if self._command_handler_registry.is_registered(prefix):
@@ -389,7 +420,6 @@ class CursesUI(object):
       return exit_token
 
     self._display_output(screen_output)
-
     self._command_pointer = 0
     self._pending_command = ""
 
@@ -579,15 +609,21 @@ class CursesUI(object):
 
     return curses.newpad(rows, cols)
 
-  def _display_output(self, output, is_refresh=False):
+  def _display_output(self, output, is_refresh=False, highlight_regex=None):
     """Display text output in a scrollable text pad.
 
     Args:
       output: A RichTextLines object that is the screen output text.
       is_refresh: (bool) Is this a refreshing display with existing output.
+      highlight_regex: (str) Optional string representing the regex used to
+        search and highlight in the current screen output.
     """
 
-    self._curr_unwrapped_output = output
+    if highlight_regex:
+      output = debugger_cli_common.regex_find(
+          output, highlight_regex, font_attr=self._search_highlight_font_attr)
+    else:
+      self._curr_unwrapped_output = output
 
     self._curr_wrapped_output = debugger_cli_common.wrap_rich_text_lines(
         output, self._max_x - 1)
@@ -676,10 +712,8 @@ class CursesUI(object):
       TypeError: If color_segments is not of type list.
     """
 
-    default_color_pair = self._color_pairs["white"]
-
     if not color_segments:
-      pad.addstr(row, 0, txt, default_color_pair)
+      pad.addstr(row, 0, txt, self._default_color_pair)
       return
 
     if not isinstance(color_segments, list):
@@ -693,19 +727,19 @@ class CursesUI(object):
       pass
     else:
       all_segments.append((0, color_segments[0][0]))
-      all_color_pairs.append(default_color_pair)
+      all_color_pairs.append(self._default_color_pair)
 
     for (curr_start, curr_end, curr_color), (next_start, _, _) in zip(
         color_segments, color_segments[1:] + [(len(txt), None, None)]):
       all_segments.append((curr_start, curr_end))
 
-      # TODO(cais): Deal with the case in which the color pair is unavailable.
-      all_color_pairs.append(self._color_pairs[curr_color])
+      all_color_pairs.append(
+          self._color_pairs.get(curr_color, self._default_color_pair))
 
       if curr_end < next_start:
         # Fill in the gap with the default color.
         all_segments.append((curr_end, next_start))
-        all_color_pairs.append(default_color_pair)
+        all_color_pairs.append(self._default_color_pair)
 
     # Finally, draw all the segments.
     for segment, color_pair in zip(all_segments, all_color_pairs):

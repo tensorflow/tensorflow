@@ -557,7 +557,8 @@ class CursesTest(test_util.TensorFlowTestCase):
 
     # The manually registered command, along with the automatically registered
     # exit commands should appear in the candidates.
-    self.assertEqual([["a", "babble", "exit", "quit"]], ui.candidates_lists)
+    self.assertEqual([["a", "babble", "exit", "h", "help", "quit"]],
+                     ui.candidates_lists)
 
     # The two candidates have no common prefix. So no command should have been
     # issued.
@@ -658,6 +659,88 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(ui.scroll_messages))
     self.assertEqual(["bar"] * 123, ui.unwrapped_outputs[0].lines)
     self.assertEqual(["bar"] * 123, ui.wrapped_outputs[0].lines)
+
+  def testRegexSearch(self):
+    """Test regex search."""
+
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 3\n"),
+            string_to_codes("/(b|r)\n"),  # Regex search and highlight.
+            string_to_codes("/a\n"),  # Regex search and highlight.
+            self._EXIT
+        ])
+
+    ui.register_command_handler(
+        "babble", self._babble, "babble some", prefix_aliases=["b"])
+    ui.run_ui()
+
+    # The unwrapped (original) output should never have any highglighting.
+    self.assertEqual(3, len(ui.unwrapped_outputs))
+    for i in range(3):
+      self.assertEqual(["bar"] * 3, ui.unwrapped_outputs[i].lines)
+      self.assertEqual({}, ui.unwrapped_outputs[i].font_attr_segs)
+
+    # The wrapped outputs should show highlighting depending on the regex.
+    self.assertEqual(3, len(ui.wrapped_outputs))
+
+    # The first output should have no highlighting.
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[0].lines)
+    self.assertEqual({}, ui.wrapped_outputs[0].font_attr_segs)
+
+    # The second output should have highlighting for "b" and "r".
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[1].lines)
+    for i in range(3):
+      self.assertEqual([(0, 1, "bw_reversed"), (2, 3, "bw_reversed")],
+                       ui.wrapped_outputs[1].font_attr_segs[i])
+
+    # The third output should have highlighting for "a" only.
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[1].lines)
+    for i in range(3):
+      self.assertEqual([(1, 2, "bw_reversed")],
+                       ui.wrapped_outputs[2].font_attr_segs[i])
+
+  def testRegexSearchFromCommandHistory(self):
+    """Test regex search commands are recorded in command history."""
+
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[
+            string_to_codes("babble -n 3\n"),
+            string_to_codes("/(b|r)\n"),  # Regex search and highlight.
+            string_to_codes("babble -n 4\n"),
+            [curses.KEY_UP],
+            [curses.KEY_UP],
+            string_to_codes("\n"),  # Hit Up twice and Enter.
+            self._EXIT
+        ])
+
+    ui.register_command_handler(
+        "babble", self._babble, "babble some", prefix_aliases=["b"])
+    ui.run_ui()
+
+    self.assertEqual(4, len(ui.wrapped_outputs))
+
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[0].lines)
+    self.assertEqual({}, ui.wrapped_outputs[0].font_attr_segs)
+
+    self.assertEqual(["bar"] * 3, ui.wrapped_outputs[1].lines)
+    for i in range(3):
+      self.assertEqual([(0, 1, "bw_reversed"), (2, 3, "bw_reversed")],
+                       ui.wrapped_outputs[1].font_attr_segs[i])
+
+    self.assertEqual(["bar"] * 4, ui.wrapped_outputs[2].lines)
+    self.assertEqual({}, ui.wrapped_outputs[2].font_attr_segs)
+
+    # The regex search command loaded from history should have worked on the
+    # new screen output.
+    self.assertEqual(["bar"] * 4, ui.wrapped_outputs[3].lines)
+    for i in range(4):
+      self.assertEqual([(0, 1, "bw_reversed"), (2, 3, "bw_reversed")],
+                       ui.wrapped_outputs[3].font_attr_segs[i])
 
 
 if __name__ == "__main__":
