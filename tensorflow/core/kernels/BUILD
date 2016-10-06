@@ -379,37 +379,39 @@ cc_header_only_library(
 
 # OpKernel libraries ----------------------------------------------------------
 
+ARRAY_DEPS = [
+    ":batch_space_ops",
+    ":bounds_check",
+    ":concat_lib",
+    ":cuda_device_array",
+    ":depth_space_ops",
+    ":extract_image_patches_op",
+    ":fill_functor",
+    ":gather_functor",
+    ":ops_util",
+    ":split_lib",
+    ":strided_slice_op",
+    ":transpose_functor",
+    "//tensorflow/core:array_grad",
+    "//tensorflow/core:array_ops_op_lib",
+    "//tensorflow/core:core_cpu",
+    "//tensorflow/core:framework",
+    "//tensorflow/core:gpu_runtime",
+    "//tensorflow/core:lib",
+    "//tensorflow/core:lib_internal",
+    "//tensorflow/core:proto_text",
+    "//tensorflow/core:protos_all_cc",
+    "//tensorflow/core/debug:debug_io_utils",
+    "//third_party/eigen3",
+]
+
 tf_kernel_libraries(
     name = "array_not_windows",
     prefixes = [
         "debug_ops",
         "immutable_constant_op",
     ],
-    deps = [
-        ":batchtospace_op",
-        ":bounds_check",
-        ":concat_lib",
-        ":cuda_device_array",
-        ":depth_space_ops",
-        ":extract_image_patches_op",
-        ":fill_functor",
-        ":ops_util",
-        ":spacetobatch_op",
-        ":split_lib",
-        ":strided_slice_op",
-        ":transpose_functor",
-        "//tensorflow/core:array_grad",
-        "//tensorflow/core:array_ops_op_lib",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_runtime",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:proto_text",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/debug:debug_io_utils",
-        "//third_party/eigen3",
-    ],
+    deps = ARRAY_DEPS,
 )
 
 tf_kernel_libraries(
@@ -445,31 +447,7 @@ tf_kernel_libraries(
         "unpack_op",
         "where_op",
     ],
-    deps = [
-        ":batch_space_ops",
-        ":bounds_check",
-        ":concat_lib",
-        ":cuda_device_array",
-        ":depth_space_ops",
-        ":extract_image_patches_op",
-        ":fill_functor",
-        ":gather_functor",
-        ":ops_util",
-        ":split_lib",
-        ":strided_slice_op",
-        ":transpose_functor",
-        "//tensorflow/core:array_grad",
-        "//tensorflow/core:array_ops_op_lib",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_runtime",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:proto_text",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/debug:debug_io_utils",
-        "//third_party/eigen3",
-    ],
+    deps = ARRAY_DEPS,
 )
 
 tf_cc_test(
@@ -1321,23 +1299,25 @@ tf_cc_tests(
     ],
 )
 
+MATH_DEPS = [
+    ":bounds_check",
+    ":fill_functor",
+    ":transpose_functor",
+    "//tensorflow/core:core_cpu",
+    "//tensorflow/core:framework",
+    "//tensorflow/core:lib",
+    "//tensorflow/core:lib_internal",
+    "//tensorflow/core:math_grad",
+    "//tensorflow/core:math_ops_op_lib",
+    "//third_party/eigen3",
+]
+
 tf_kernel_libraries(
     name = "math_not_windows",
     prefixes = [
         "sparse_matmul_op",
     ],
-    deps = [
-        ":bounds_check",
-        ":fill_functor",
-        ":transpose_functor",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:math_grad",
-        "//tensorflow/core:math_ops_op_lib",
-        "//third_party/eigen3",
-    ],
+    deps = MATH_DEPS,
 )
 
 tf_kernel_libraries(
@@ -1358,18 +1338,7 @@ tf_kernel_libraries(
         "scan_ops",
         "sequence_ops",
     ],
-    deps = [
-        ":bounds_check",
-        ":fill_functor",
-        ":transpose_functor",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:math_grad",
-        "//tensorflow/core:math_ops_op_lib",
-        "//third_party/eigen3",
-    ],
+    deps = MATH_DEPS,
 )
 
 tf_cuda_cc_test(

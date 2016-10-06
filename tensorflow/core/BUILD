@@ -1090,8 +1090,10 @@ tf_cuda_library(
     ) + select({
         "//tensorflow:windows": [],
         "//conditions:default": glob([
-            "util/memmapped_file_system.*",
-            "util/memmapped_file_system_writer.*",
+            "util/memmapped_file_system.h",
+            "util/memmapped_file_system.cc",
+            "util/memmapped_file_system_writer.h",
+            "util/memmapped_file_system_writer.cc",
         ]),
     }),
     hdrs = [
@@ -1387,7 +1389,9 @@ tf_cuda_library(
         ":lib_internal",
         ":protos_all_cc",
         "//third_party/eigen3",
-    ] + if_not_windows([":stream_executor"]),
+    ] + if_not_windows([
+        ":stream_executor",
+    ]),
     alwayslink = 1,
 )
 
