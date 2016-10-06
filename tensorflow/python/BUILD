@@ -1579,6 +1579,7 @@ py_library(
         ":sparse_ops",
         ":state_ops",
         ":string_ops",
+        ":summary",
         ":training_ops_gen",
         ":variable_scope",
         ":variables",
@@ -1968,7 +1969,6 @@ cuda_py_tests(
         "training/rmsprop_test.py",
         "training/saver_test.py",
         "training/slot_creator_test.py",
-        "training/summary_writer_test.py",
         "training/tensorboard_logging_test.py",
         "training/training_ops_test.py",
     ],
@@ -2088,6 +2088,7 @@ py_tests(
         "summary/impl/gcs_file_loader_test.py",
         "summary/impl/reservoir_test.py",
         "summary/summary_test.py",
+        "summary/writer/writer_test.py",
     ],
     additional_deps = [
         ":summary",

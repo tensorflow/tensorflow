@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for training_coordinator.py."""
 from __future__ import absolute_import
 from __future__ import division
@@ -24,6 +23,7 @@ import shutil
 import time
 
 import tensorflow as tf
+
 from tensorflow.core.util.event_pb2 import SessionLog
 
 
@@ -73,12 +73,12 @@ class SummaryWriterTestCase(tf.test.TestCase):
     sw = tf.train.SummaryWriter(test_dir)
 
     sw.add_session_log(tf.SessionLog(status=SessionLog.START), 1)
-    sw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="mee",
-                                                      simple_value=10.0)]),
-                   10)
-    sw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="boo",
-                                                      simple_value=20.0)]),
-                   20)
+    sw.add_summary(
+        tf.Summary(value=[tf.Summary.Value(
+            tag="mee", simple_value=10.0)]), 10)
+    sw.add_summary(
+        tf.Summary(value=[tf.Summary.Value(
+            tag="boo", simple_value=20.0)]), 20)
     with tf.Graph().as_default() as g:
       tf.constant([0], name="zero")
     sw.add_graph(g, global_step=30)
@@ -241,9 +241,10 @@ class SummaryWriterTestCase(tf.test.TestCase):
       # Test the summary can be passed serialized.
       summ = tf.Summary(value=[tf.Summary.Value(tag="i", simple_value=1.0)])
       sw.add_summary(summ.SerializeToString(), i.eval())
-      sw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="l",
-                                                        simple_value=2.0)]),
-                     l.eval())
+      sw.add_summary(
+          tf.Summary(value=[tf.Summary.Value(
+              tag="l", simple_value=2.0)]),
+          l.eval())
       sw.close()
 
     rr = self._EventsReader(test_dir)

@@ -17,7 +17,9 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 from tensorflow.core.framework import summary_pb2
+from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import summary_io
 
 
@@ -33,12 +35,14 @@ class FakeSummaryWriter(object):
       raise ValueError('FakeSummaryWriter already installed.')
     cls._replaced_summary_writer = summary_io.SummaryWriter
     summary_io.SummaryWriter = FakeSummaryWriter
+    writer_cache.SummaryWriter = FakeSummaryWriter
 
   @classmethod
   def uninstall(cls):
     if not cls._replaced_summary_writer:
       raise ValueError('FakeSummaryWriter not installed.')
     summary_io.SummaryWriter = cls._replaced_summary_writer
+    writer_cache.SummaryWriter = cls._replaced_summary_writer
     cls._replaced_summary_writer = None
 
   def __init__(self, logdir, graph=None):
