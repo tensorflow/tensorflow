@@ -23,6 +23,7 @@ Some examples use the `pandas` library for data processing (`sudo pip install pa
 ## Specialized Models
 * [Building a Random Forest Model](random_forest.py)
 * [Building a Wide & Deep Model](wide_n_deep_tutorial.py)
+* [Building a Residual Network Model](resnet.py)
 
 ## Text classification
 

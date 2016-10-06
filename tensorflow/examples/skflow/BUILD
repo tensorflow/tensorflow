@@ -99,15 +99,6 @@ py_binary(
 )
 
 py_binary(
-    name = "resnet",
-    srcs = ["resnet.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
     name = "text_classification_save_restore",
     srcs = ["text_classification_save_restore.py"],
     srcs_version = "PY2AND3",

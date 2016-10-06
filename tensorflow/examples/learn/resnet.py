@@ -32,7 +32,6 @@ from sklearn import metrics
 import tensorflow as tf
 from tensorflow.contrib import learn
 from tensorflow.contrib.layers import batch_norm, convolution2d
-from tensorflow.examples.tutorials.mnist import input_data
 
 
 def res_net(x, y, activation=tf.nn.relu):
@@ -136,14 +135,14 @@ def res_net(x, y, activation=tf.nn.relu):
   return learn.models.logistic_regression(net, y)
 
 # Download and load MNIST data.
-mnist = input_data.read_data_sets('MNIST_data')
+mnist = learn.datasets.load_dataset('mnist')
 
 # Create a new resnet classifier.
 classifier = learn.TensorFlowEstimator(
     model_fn=res_net, n_classes=10, batch_size=100, steps=100,
     learning_rate=0.001, continue_training=True)
 
-while True:
+for step in xrange(100):
   # Train model and save summaries into logdir.
   classifier.fit(
       mnist.train.images, mnist.train.labels, logdir='models/resnet/')
