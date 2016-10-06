@@ -29,8 +29,7 @@ Then, row_pooling_sequence should satisfy:
 4.  length(row_pooling_sequence) = output_row_length+1
 
 For more details on fractional max pooling, see this paper:
-[Benjamin Graham, Fractional Max-Pooling]
-(http://arxiv.org/abs/1412.6071)
+[Benjamin Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071)
 
 ##### Args:
 

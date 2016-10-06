@@ -36,8 +36,9 @@ https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/w
        $ sudo pip install pandas
        ```
 
-    If you have trouble installing pandas, consult the [instructions]
-(http://pandas.pydata.org/pandas-docs/stable/install.html) on the pandas site.
+    If you have trouble installing pandas, consult the
+    [instructions](http://pandas.pydata.org/pandas-docs/stable/install.html)
+    on the pandas site.
 
 4. Execute the tutorial code with the following command to train the linear
 model described in this tutorial:
@@ -50,12 +51,11 @@ Read on to find out how this code builds its linear model.
 
 ## Reading The Census Data
 
-The dataset we'll be using is the [Census Income Dataset]
-(https://archive.ics.uci.edu/ml/datasets/Census+Income). You can download the
-[training data]
-(https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data) and
-[test data]
-(https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test)
+The dataset we'll be using is the
+[Census Income Dataset](https://archive.ics.uci.edu/ml/datasets/Census+Income).
+You can download the
+[training data](https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data)
+and [test data](https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test)
 manually or use code like this:
 
 ```python
@@ -67,8 +67,8 @@ urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/ad
 urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)
 ```
 
-Once the CSV files are downloaded, let's read them into [Pandas]
-(http://pandas.pydata.org/) dataframes.
+Once the CSV files are downloaded, let's read them into
+[Pandas](http://pandas.pydata.org/) dataframes.
 
 ```python
 import pandas as pd
@@ -147,10 +147,9 @@ When building a TF.Learn model, the input data is specified by means of an Input
 Builder function. This builder function will not be called until it is later
 passed to TF.Learn methods such as `fit` and `evaluate`. The purpose of this
 function is to construct the input data, which is represented in the form of
-[Tensors]
-(https://www.tensorflow.org/versions/r0.9/api_docs/python/framework.html#Tensor)
-or [SparseTensors]
-(https://www.tensorflow.org/versions/r0.9/api_docs/python/sparse_ops.html#SparseTensor).
+[Tensors](https://www.tensorflow.org/versions/r0.9/api_docs/python/framework.html#Tensor)
+or
+[SparseTensors](https://www.tensorflow.org/versions/r0.9/api_docs/python/sparse_ops.html#SparseTensor).
 In more detail, the Input Builder function returns the following as a pair:
 
 1.  `feature_cols`: A dict from feature column names to `Tensors` or
@@ -170,8 +169,7 @@ Our model represents the input data as *constant* tensors, meaning that the
 tensor represents a constant value, in this case the values of a particular
 column of `df_train` or `df_test`. This is the simplest way to pass data into
 TensorFlow. Another more advanced way to represent input data would be to
-construct an [Input Reader]
-(https://www.tensorflow.org/versions/r0.9/api_docs/python/io_ops.html#inputs-and-readers)
+construct an [Input Reader](https://www.tensorflow.org/versions/r0.9/api_docs/python/io_ops.html#inputs-and-readers)
 that represents a file or other data source, and iterates through the file as
 TensorFlow runs the graph. Each continuous column in the train or test dataframe
 will be converted into a `Tensor`, which in general is a good format to
@@ -387,9 +385,8 @@ The first line of the output should be something like `accuracy: 0.83557522`,
 which means the accuracy is 83.6%. Feel free to try more features and
 transformations and see if you can do even better!
 
-If you'd like to see a working end-to-end example, you can download our [example
-code]
-(https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/wide_n_deep_tutorial.py)
+If you'd like to see a working end-to-end example, you can download our
+[example code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/wide_n_deep_tutorial.py)
 and set the `model_type` flag to `wide`.
 
 ## Adding Regularization to Prevent Overfitting

@@ -186,10 +186,9 @@ Now that we have defined our model and training loss function, it is
 straightforward to train using TensorFlow.  Because TensorFlow knows the entire
 computation graph, it can use automatic differentiation to find the gradients of
 the loss with respect to each of the variables.  TensorFlow has a variety of
-[built-in optimization algorithms]
-(../../../api_docs/python/train.md#optimizers).  For this example, we will use
-steepest gradient descent, with a step length of 0.5, to descend the cross
-entropy.
+[built-in optimization algorithms](../../../api_docs/python/train.md#optimizers).
+For this example, we will use steepest gradient descent, with a step length of
+0.5, to descend the cross entropy.
 
 ```python
 train_step = tf.train.GradientDescentOptimizer(0.5).minimize(cross_entropy)
@@ -380,7 +379,7 @@ y_conv = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
 How well does this model do? To train and evaluate it we will use code that is
 nearly identical to that for the simple one layer SoftMax network above.
 
-The differences are that: 
+The differences are that:
 
 - We will replace the steepest gradient descent optimizer with the more
   sophisticated ADAM optimizer.

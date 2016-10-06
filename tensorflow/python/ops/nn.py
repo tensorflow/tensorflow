@@ -142,9 +142,8 @@ to the `Convolution` section for details about the padding calculation.
 
 Morphological operators are non-linear filters used in image processing.
 
-[Greyscale morphological dilation]
-(https://en.wikipedia.org/wiki/Dilation_(morphology)) is the max-sum counterpart
-of standard sum-product convolution:
+[Greyscale morphological dilation](https://en.wikipedia.org/wiki/Dilation_(morphology))
+is the max-sum counterpart of standard sum-product convolution:
 
     output[b, y, x, c] =
         max_{dy, dx} input[b,
@@ -157,9 +156,8 @@ The `filter` is usually called structuring function. Max-pooling is a special
 case of greyscale morphological dilation when the filter assumes all-zero
 values (a.k.a. flat structuring function).
 
-[Greyscale morphological erosion]
-(https://en.wikipedia.org/wiki/Erosion_(morphology)) is the min-sum counterpart
-of standard sum-product convolution:
+[Greyscale morphological erosion](https://en.wikipedia.org/wiki/Erosion_(morphology))
+is the min-sum counterpart of standard sum-product convolution:
 
     output[b, y, x, c] =
         min_{dy, dx} input[b,
@@ -255,8 +253,8 @@ Candidate Sampling training algorithms can speed up your step times by
 only considering a small randomly-chosen subset of contrastive classes
 (called candidates) for each batch of training examples.
 
-See our [Candidate Sampling Algorithms Reference]
-(../../extras/candidate_sampling.pdf)
+See our
+[Candidate Sampling Algorithms Reference](../../extras/candidate_sampling.pdf)
 
 ### Sampled Loss Functions
 
