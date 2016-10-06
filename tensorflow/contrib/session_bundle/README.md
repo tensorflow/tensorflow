@@ -4,8 +4,8 @@
 
 ## Overview
 
-This document describes the data formats and layouts for exporting [TensorFlow]
-(https://www.tensorflow.org/) models for inference.
+This document describes the data formats and layouts for exporting
+[TensorFlow](https://www.tensorflow.org/) models for inference.
 
 These exports have the following properties:
 
@@ -50,8 +50,8 @@ binary.
 
 ### Exporting TF.learn models
 
-TF.learn uses an [Exporter wrapper]
-(https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/utils/export.py)
+TF.learn uses an
+[Exporter wrapper](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/learn/python/learn/utils/export.py)
 that can be used for building signatures. Use the `BaseEstimator.export`
 function to export your Estimator with a signature.
 

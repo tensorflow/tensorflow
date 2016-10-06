@@ -199,8 +199,8 @@ will end up basing its prediction on the background color, not the features of
 the object you actually care about. To avoid this, try to take pictures in as
 wide a variety of situations as you can, at different times, and with different
 devices. If you want to know more about this problem, you can read about the
-classic (and possibly apocryphal) [tank recognition problem]
-(http://www.jefftk.com/p/detecting-tanks).
+classic (and possibly apocryphal)
+[tank recognition problem](http://www.jefftk.com/p/detecting-tanks).
 
 You may also want to think about the categories you use. It might be worth
 splitting big categories that cover a lot of different physical forms into
