@@ -17,7 +17,7 @@ function bazel_clean_and_fetch() {
 while true; do
   fromuser=""
   if [ -z "$PYTHON_BIN_PATH" ]; then
-    default_python_bin_path=$(which python || true)
+    default_python_bin_path=$(which python || which python3  || true)
     read -p "Please specify the location of python. [Default is $default_python_bin_path]: " PYTHON_BIN_PATH
     fromuser="1"
     if [ -z "$PYTHON_BIN_PATH" ]; then
