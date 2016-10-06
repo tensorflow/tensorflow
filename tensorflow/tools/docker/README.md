@@ -10,7 +10,7 @@ General installation instructions are
 quick links here:
 
 * [OSX](https://docs.docker.com/installation/mac/): [docker toolbox](https://www.docker.com/toolbox)
-* [ubuntu](https://docs.docker.com/installation/ubuntulinux/)
+* [ubuntu](https://docs.docker.com/engine/installation/linux/ubuntulinux/)
 
 ## Which containers exist?
 
