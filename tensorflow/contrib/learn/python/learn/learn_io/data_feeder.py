@@ -508,7 +508,7 @@ class StreamingDataFeeder(DataFeeder):
         except StopIteration:
           self.stopped = True
           if i == 0:
-            raise StopIteration
+            raise
           inp = inp[:i, :]
           if self._y is not None:
             out = out[:i]
