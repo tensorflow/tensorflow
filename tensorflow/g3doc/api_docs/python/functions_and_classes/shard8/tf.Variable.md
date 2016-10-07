@@ -89,7 +89,7 @@ Creating a variable.
 
 - - -
 
-#### `tf.Variable.__init__(initial_value=None, trainable=True, collections=None, validate_shape=True, caching_device=None, name=None, variable_def=None, dtype=None)` {#Variable.__init__}
+#### `tf.Variable.__init__(initial_value=None, trainable=True, collections=None, validate_shape=True, caching_device=None, name=None, variable_def=None, dtype=None, expected_shape=None)` {#Variable.__init__}
 
 Creates a new variable with value `initial_value`.
 
@@ -132,6 +132,8 @@ variable to its initial value.
 *  <b>`dtype`</b>: If set, initial_value will be converted to the given type.
     If `None`, either the datatype will be kept (if `initial_value` is
     a Tensor), or `convert_to_tensor` will decide.
+*  <b>`expected_shape`</b>: A TensorShape. If set, initial_value is expected
+    to have this shape.
 
 ##### Raises:
 
