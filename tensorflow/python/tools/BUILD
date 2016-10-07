@@ -158,6 +158,24 @@ py_test(
     ],
 )
 
+py_binary(
+    name = "print_selective_registration_header",
+    srcs = ["print_selective_registration_header.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow:tensorflow_py"],
+)
+
+py_test(
+    name = "print_selective_registration_header_test",
+    srcs = ["print_selective_registration_header_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":print_selective_registration_header",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

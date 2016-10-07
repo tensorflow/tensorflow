@@ -53,7 +53,7 @@ Computes the normalization for a CRF.
 
 ### `tf.contrib.crf.crf_log_likelihood(inputs, tag_indices, sequence_lengths, transition_params=None)` {#crf_log_likelihood}
 
-Computes the log-likehood of tag sequences in a CRF.
+Computes the log-likelihood of tag sequences in a CRF.
 
 ##### Args:
 
@@ -61,7 +61,7 @@ Computes the log-likehood of tag sequences in a CRF.
 *  <b>`inputs`</b>: A [batch_size, max_seq_len, num_tags] tensor of unary potentials
       to use as input to the CRF layer.
 *  <b>`tag_indices`</b>: A [batch_size, max_seq_len] matrix of tag indices for which we
-      compute the log-likehood.
+      compute the log-likelihood.
 *  <b>`sequence_lengths`</b>: A [batch_size] vector of true sequence lengths.
 *  <b>`transition_params`</b>: A [num_tags, num_tags] transition matrix, if available.
 
@@ -209,6 +209,6 @@ This should only be used at test time.
 
 *  <b>`viterbi`</b>: A [seq_len] list of integers containing the highest scoring tag
       indicies.
-*  <b>`viterbi_score`</b>: A float containing the score for the viterbi sequence.
+*  <b>`viterbi_score`</b>: A float containing the score for the Viterbi sequence.
 
 

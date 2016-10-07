@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,11 +26,43 @@ from tensorflow.contrib.session_bundle import constants
 
 from tensorflow.contrib.session_bundle import manifest_pb2
 from tensorflow.contrib.session_bundle import session_bundle
+from tensorflow.core.example.example_pb2 import Example
 from tensorflow.python.framework import graph_util
 from tensorflow.python.util import compat
 
 
+def _make_serialized_example(x):
+  example = Example()
+  example.features.feature["x"].float_list.value.append(x)
+  return example.SerializeToString()
+
+
 class SessionBundleLoadTest(tf.test.TestCase):
+
+  def _checkRegressionSignature(self, signatures, sess):
+    default_signature = signatures.default_signature
+    input_name = default_signature.regression_signature.input.tensor_name
+    output_name = default_signature.regression_signature.output.tensor_name
+    tf_example = [_make_serialized_example(x) for x in [0, 1, 2, 3]]
+    y = sess.run([output_name], {input_name: tf_example})
+    # The operation is y = 0.5 * x + 2
+    self.assertEqual(y[0][0], 2)
+    self.assertEqual(y[0][1], 2.5)
+    self.assertEqual(y[0][2], 3)
+    self.assertEqual(y[0][3], 3.5)
+
+  def _checkNamedSigantures(self, signatures, sess):
+    named_signatures = signatures.named_signatures
+    input_name = (named_signatures["inputs"].generic_signature.map["x"]
+                  .tensor_name)
+    output_name = (named_signatures["outputs"].generic_signature.map["y"]
+                   .tensor_name)
+    y = sess.run([output_name], {input_name: np.array([[0], [1], [2], [3]])})
+    # The operation is y = 0.5 * x + 2
+    self.assertEqual(y[0][0], 2)
+    self.assertEqual(y[0][1], 2.5)
+    self.assertEqual(y[0][2], 3)
+    self.assertEqual(y[0][3], 3.5)
 
   def testBasic(self):
     base_path = tf.test.test_src_dir_path(
@@ -55,15 +87,8 @@ class SessionBundleLoadTest(tf.test.TestCase):
 
       signatures = manifest_pb2.Signatures()
       signatures_any[0].Unpack(signatures)
-      default_signature = signatures.default_signature
-      input_name = default_signature.regression_signature.input.tensor_name
-      output_name = default_signature.regression_signature.output.tensor_name
-      y = sess.run([output_name], {input_name: np.array([[0], [1], [2], [3]])})
-      # The operation is y = 0.5 * x + 2
-      self.assertEqual(y[0][0], 2)
-      self.assertEqual(y[0][1], 2.5)
-      self.assertEqual(y[0][2], 3)
-      self.assertEqual(y[0][3], 3.5)
+      self._checkRegressionSignature(signatures, sess)
+      self._checkNamedSigantures(signatures, sess)
 
   def testBadPath(self):
     base_path = tf.test.test_src_dir_path("/no/such/a/dir")

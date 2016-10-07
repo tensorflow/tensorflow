@@ -47,75 +47,6 @@ Add all input tensors element wise.
 inputs: Must all be the same size and shape.
 )doc");
 
-namespace {
-
-// Shape inference function for binary operators that broadcast their inputs.
-Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
-  ShapeHandle shape_x = c->input(0);
-  ShapeHandle shape_y = c->input(1);
-  if (!c->RankKnown(shape_x) || !c->RankKnown(shape_y)) {
-    c->set_output(0, c->UnknownShape());
-    return Status::OK();
-  }
-  const int32 rank_x = c->Rank(shape_x);
-  const int32 rank_y = c->Rank(shape_y);
-  const int32 rank_out = std::max(rank_x, rank_y);
-
-  // To compute the broadcast dimensions, we zip together shape_x and shape_y
-  // and
-  // pad with 1 to make them the same length.
-  std::vector<DimensionHandle> dims;
-  DimensionHandle dim_one;
-  if (rank_x != rank_y) dim_one = c->MakeDim(1);
-  for (int i = 0; i < rank_out; ++i) {
-    const auto dim_x = i < (rank_out - rank_x)
-                           ? dim_one
-                           : c->Dim(shape_x, i - (rank_out - rank_x));
-    const bool dim_y_is_one = (i < (rank_out - rank_y));
-    const auto dim_y =
-        dim_y_is_one ? dim_one : c->Dim(shape_y, i - (rank_out - rank_y));
-    if (!c->ValueKnown(dim_x) || !c->ValueKnown(dim_y)) {
-      // One or both dimensions is unknown.
-      //
-      // - If either dimension is greater than 1, we assume that the program is
-      // correct, and the other dimension will be broadcast to match it.
-      // TODO(cwhipkey): For shape inference, if we eliminate the shape checks
-      // in C++ op code, we must still assert that the unknown dim is either 1
-      // or the same as the known dim.
-      // - If either dimension is 1, the other dimension is the output.
-      if (c->Value(dim_x) > 1) {
-        dims.push_back(dim_x);
-      } else if (c->Value(dim_y) > 1) {
-        dims.push_back(dim_y);
-      } else if (c->Value(dim_x) == 1) {
-        dims.push_back(dim_y);
-      } else if (c->Value(dim_y) == 1) {
-        dims.push_back(dim_x);
-      } else {
-        dims.push_back(c->UnknownDim());
-      }
-    } else if (c->Value(dim_x) == 1 || c->Value(dim_y) == 1) {
-      if (c->Value(dim_x) == 1 && !dim_y_is_one) {
-        // We will broadcast dim_x to dim_y.
-        dims.push_back(dim_y);
-      } else {
-        DCHECK_EQ(c->Value(dim_y), 1);
-        // We will broadcast dim_y to dim_x.
-        dims.push_back(dim_x);
-      }
-    } else {
-      DimensionHandle dim;
-      TF_RETURN_IF_ERROR(c->Merge(dim_x, dim_y, &dim));
-      dims.push_back(dim);
-    }
-  }
-
-  c->set_output(0, c->MakeShape(dims));
-  return Status::OK();
-}
-
-}  // namespace
-
 // --------------------------------------------------------------------------
 
 REGISTER_OP("BatchMatMul")
@@ -517,7 +448,7 @@ REGISTER_OP("Add")
     .Attr(
         "T: {half, float, double, uint8, int8, int16, int32, int64, complex64, "
         "complex128, string}")
-    .SetShapeFn(BroadcastBinaryOpShapeFn)
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns x + y element-wise.
 
@@ -527,7 +458,7 @@ Returns x + y element-wise.
 
 REGISTER_OP("Sub")
     .BINARY_FEWER()
-    .SetShapeFn(BroadcastBinaryOpShapeFn)
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns x - y element-wise.
 
@@ -538,7 +469,7 @@ Returns x - y element-wise.
 REGISTER_OP("Mul")
     .BINARY_MORE()
     .SetIsCommutative()
-    .SetShapeFn(BroadcastBinaryOpShapeFn)
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns x * y element-wise.
 
@@ -546,7 +477,10 @@ Returns x * y element-wise.
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
-REGISTER_OP("Div").BINARY_MORE().SetShapeFn(BroadcastBinaryOpShapeFn).Doc(R"doc(
+REGISTER_OP("Div")
+    .BINARY_MORE()
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
+    .Doc(R"doc(
 Returns x / y element-wise.
 
 *NOTE*: `Div` supports broadcasting. More about broadcasting
@@ -556,7 +490,7 @@ Returns x / y element-wise.
 REGISTER_OP("SquaredDifference")
     .BINARY_FEWER()
     .SetIsCommutative()
-    .SetShapeFn(BroadcastBinaryOpShapeFn)
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns (x - y)(x - y) element-wise.
 
@@ -573,7 +507,7 @@ REGISTER_OP("Maximum")
     .Output("z: T")
     .Attr("T: {half, float, double, int32, int64}")
     .SetIsCommutative()
-    .SetShapeFn(BroadcastBinaryOpShapeFn)
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns the max of x and y (i.e. x > y ? x : y) element-wise.
 
@@ -587,7 +521,7 @@ REGISTER_OP("Minimum")
     .Output("z: T")
     .Attr("T: {half, float, double, int32, int64}")
     .SetIsCommutative()
-    .SetShapeFn(BroadcastBinaryOpShapeFn)
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns the min of x and y (i.e. x < y ? x : y) element-wise.
 
@@ -600,7 +534,7 @@ REGISTER_OP("Mod")
     .Input("y: T")
     .Output("z: T")
     .Attr("T: {int32, int64, float, double}")
-    .SetShapeFn(BroadcastBinaryOpShapeFn)
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Returns element-wise remainder of division.
 
@@ -613,7 +547,7 @@ REGISTER_OP("Pow")
     .Input("y: T")
     .Output("z: T")
     .Attr("T: {half, float, double, int32, int64, complex64, complex128}")
-    .SetShapeFn(BroadcastBinaryOpShapeFn)
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Computes the power of one value to another.
 
@@ -632,7 +566,7 @@ REGISTER_OP("Igammac")
     .Input("x: T")
     .Output("z: T")
     .Attr("T: {float, double}")
-    .SetShapeFn(BroadcastBinaryOpShapeFn)
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Compute the upper regularized incomplete Gamma function `Q(a, x)`.
 
@@ -656,7 +590,7 @@ REGISTER_OP("Igamma")
     .Input("x: T")
     .Output("z: T")
     .Attr("T: {float, double}")
-    .SetShapeFn(BroadcastBinaryOpShapeFn)
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Compute the lower regularized incomplete Gamma function `Q(a, x)`.
 
@@ -680,7 +614,7 @@ REGISTER_OP("Zeta")
     .Input("q: T")
     .Output("z: T")
     .Attr("T: {float, double}")
-    .SetShapeFn(BroadcastBinaryOpShapeFn)
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Compute the Hurwitz zeta function \\(\zeta(x, q)\\).
 
@@ -696,7 +630,7 @@ REGISTER_OP("Polygamma")
     .Input("x: T")
     .Output("z: T")
     .Attr("T: {float, double}")
-    .SetShapeFn(BroadcastBinaryOpShapeFn)
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Compute the polygamma function \\(\psi^{(n)}(x)\\).
 
@@ -773,7 +707,7 @@ beta function.
       .Input("y: T")             \
       .Output("z: bool")         \
       .Attr("T: realnumbertype") \
-      .SetShapeFn(BroadcastBinaryOpShapeFn)
+      .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
 REGISTER_OP("Less")
     .COMPARISON()
@@ -824,7 +758,7 @@ Returns the truth value of (x >= y) element-wise.
           "T: {half, float, double, uint8, int8, int16, int32, int64, " \
           "complex64, "                                                 \
           "quint8, qint8, qint32, string, bool, complex128}")           \
-      .SetShapeFn(BroadcastBinaryOpShapeFn)
+      .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
 REGISTER_OP("Equal")
     .EQUALITY_COMPARISON()
@@ -861,7 +795,7 @@ Returns the truth value of NOT x element-wise.
       .Input("y: bool")   \
       .Output("z: bool")  \
       .SetIsCommutative() \
-      .SetShapeFn(BroadcastBinaryOpShapeFn)
+      .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
 REGISTER_OP("LogicalAnd")
     .BINARY_LOGICAL()
@@ -1699,12 +1633,42 @@ output: The reduced tensor.
 
 // --------------------------------------------------------------------------
 
+namespace {
+
+template <typename T>
+Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
+                 const Tensor* delta_t, InferenceContext* const c) {
+  T start = start_t->scalar<T>()();
+  T limit = limit_t->scalar<T>()();
+  T delta = delta_t->scalar<T>()();
+  if (start > limit && delta > 0) {
+    return errors::InvalidArgument("Requires start <= limit when delta > 0: ",
+                                   start, "/", limit);
+  }
+  if (start < limit && delta < 0) {
+    return errors::InvalidArgument("Requires start >= limit when delta < 0: ",
+                                   start, "/", limit);
+  }
+  if (delta == 0) {
+    return errors::InvalidArgument("Requires delta != 0");
+  }
+
+  int64 size =
+      (std::is_integral<T>::value
+           ? ((std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta))
+           : std::ceil(std::abs((limit - start) / delta)));
+  c->set_output(0, c->Vector(size));
+  return Status::OK();
+}
+
+}  // namespace
+
 REGISTER_OP("Range")
     .Input("start: Tidx")
     .Input("limit: Tidx")
     .Input("delta: Tidx")
     .Output("output: Tidx")
-    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("Tidx: {float, double, int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_WITH_CONTEXT_IF_ERROR(c->WithRank(c->input(0), 0, &unused),
@@ -1716,36 +1680,27 @@ REGISTER_OP("Range")
       const Tensor* start_t = c->input_tensor(0);
       const Tensor* limit_t = c->input_tensor(1);
       const Tensor* delta_t = c->input_tensor(2);
+      DataType dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
       if (start_t == nullptr || limit_t == nullptr || delta_t == nullptr) {
         c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
         return Status::OK();
       }
-      // TODO
-      int64 start, limit, delta;
-      if (start_t->dtype() == DT_INT32) {
-        start = start_t->scalar<int32>()();
-        limit = limit_t->scalar<int32>()();
-        delta = delta_t->scalar<int32>()();
+      if (dtype == DT_INT32) {
+        return RangeSize<int32>(start_t, limit_t, delta_t, c);
+      } else if (dtype == DT_INT64) {
+        return RangeSize<int64>(start_t, limit_t, delta_t, c);
+      } else if (dtype == DT_FLOAT) {
+        return RangeSize<float>(start_t, limit_t, delta_t, c);
       } else {
-        start = start_t->scalar<int64>()();
-        limit = limit_t->scalar<int64>()();
-        delta = delta_t->scalar<int64>()();
+        return RangeSize<double>(start_t, limit_t, delta_t, c);
       }
-      if (start > limit) {
-        return errors::InvalidArgument("Requires start <= limit: ", start, "/",
-                                       limit);
-      }
-      if (delta <= 0) {
-        return errors::InvalidArgument("Requires delta > 0: ", delta);
-      }
-      const int64 size = (limit - start + delta - 1) / delta;
-      c->set_output(0, c->Vector(size));
       return Status::OK();
     })
     .Doc(R"doc(
-Creates a sequence of integers.
+Creates a sequence of numbers.
 
-This operation creates a sequence of integers that begins at `start` and
+This operation creates a sequence of numbers that begins at `start` and
 extends by increments of `delta` up to but not including `limit`.
 
 For example:
@@ -1819,7 +1774,7 @@ REGISTER_OP("Complex")
     .Output("out: Tout")
     .Attr("T: {float, double} = DT_FLOAT")
     .Attr("Tout: {complex64, complex128} = DT_COMPLEX64")
-    .SetShapeFn(BroadcastBinaryOpShapeFn)
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
 Converts two real numbers to a complex number.
 

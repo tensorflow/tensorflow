@@ -582,9 +582,9 @@ typedef struct {
 } TF_AttrMetadata;
 
 // Returns metadata about the value of the attribute `attr_name` of `oper`.
-TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
-                                            const char* attr_name,
-                                            TF_Status* status);
+extern TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
+                                                   const char* attr_name,
+                                                   TF_Status* status);
 
 // Fills in `value` with the value of the attribute `attr_name`.  `value` must
 // point to an array of length at least `max_length` (ideally set to
@@ -740,7 +740,7 @@ extern TF_Operation* TF_GraphOperationByName(TF_Graph* graph,
 extern TF_Operation* TF_GraphNextOperation(TF_Graph* graph, size_t* pos);
 
 // Write out a serialized representation of `graph` (as a GraphDef protocol
-// message) to `output_graph_def`.
+// message) to `output_graph_def` (allocated by TF_NewBuffer()).
 //
 // May fail on very large graphs in the future.
 extern void TF_GraphToGraphDef(TF_Graph* graph, TF_Buffer* output_graph_def,

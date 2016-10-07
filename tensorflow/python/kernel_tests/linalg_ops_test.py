@@ -33,7 +33,7 @@ class CholeskySolveTest(tf.test.TestCase):
   def setUp(self):
     self.rng = np.random.RandomState(0)
 
-  def test_works_with_five_different_random_pos_def_matricies(self):
+  def test_works_with_five_different_random_pos_def_matrices(self):
     with self.test_session():
       for n in range(1, 6):
         for np_type, atol in [(np.float32, 0.05), (np.float64, 1e-5)]:

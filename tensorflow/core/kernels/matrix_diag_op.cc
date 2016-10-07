@@ -58,23 +58,19 @@ class MatrixDiagPartOp : public OpKernel {
                     "input must be at least 2-dim, received shape: ",
                     input.shape().DebugString()));
 
-    // Check to make sure the last two dimensions have the same value
-    const int64 k = input_shape.dim_size(rank - 1);
-    OP_REQUIRES(
-        context, k == input_shape.dim_size(rank - 2),
-        errors::InvalidArgument(
-            "input's last two dimensions must be equal, received shape: ",
-            input.shape().DebugString()));
-
-    auto input_reshaped = input.flat_inner_dims<T, 3>();
-
-    TensorShape output_shape = input_shape;
-    output_shape.RemoveDim(rank - 1);
+    TensorShape output_shape;
+    for (int i = 0; i < rank - 2; ++i) {
+      output_shape.AddDim(input_shape.dim_size(i));
+    }
+    const int64 min_dim = std::min(input_shape.dim_size(rank - 2),
+                                   input_shape.dim_size(rank - 1));
+    output_shape.AddDim(min_dim);
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
     auto output_reshaped = output->flat_inner_dims<T, 2>();
+    auto input_reshaped = input.flat_inner_dims<T, 3>();
 
     functor::MatrixDiagPart<Device, T>::Compute(
         context->eigen_device<Device>(), input_reshaped, output_reshaped);
@@ -101,7 +97,6 @@ class MatrixDiagOp : public OpKernel {
                     "input must be at least 1-dim, received shape: ",
                     input.shape().DebugString()));
 
-    // Check to make sure the last two dimensions have the same value
     const int64 k = input_shape.dim_size(rank - 1);
     auto input_reshaped = input.flat_inner_dims<T, 2>();
 

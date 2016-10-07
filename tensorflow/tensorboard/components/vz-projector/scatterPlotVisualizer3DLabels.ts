@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {RenderContext} from './renderContext';
-import {DataSet, ScatterPlot} from './scatterPlot';
+import {DataSet} from './scatterPlot';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import {createTexture} from './util';
 
@@ -28,7 +28,6 @@ const RGB_ELEMENTS_PER_ENTRY = 3;
 const XYZ_ELEMENTS_PER_ENTRY = 3;
 const UV_ELEMENTS_PER_ENTRY = 2;
 const VERTICES_PER_GLYPH = 2 * 3;  // 2 triangles, 3 verts per triangle
-const POINT_COLOR = 0xFFFFFF;
 
 /**
  * Each label is made up of triangles (two per letter.) Each vertex, then, is
@@ -117,14 +116,12 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   private uniforms: Object;
   private labelsMesh: THREE.Mesh;
   private positions: THREE.BufferAttribute;
-  private defaultPointColor = POINT_COLOR;
   private totalVertexCount: number;
   private labelVertexMap: number[][];
   private glyphTexture: GlyphTexture;
 
-  constructor(scatterPlot: ScatterPlot) {
-    scatterPlot.onSelection((s: number[]) => this.onSelectionChanged(s));
-    this.createGlyphTexture();
+  constructor() {
+    this.glyphTexture = this.createGlyphTexture();
 
     this.uniforms = {
       texture: {type: 't', value: this.glyphTexture.texture},
@@ -139,7 +136,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     });
   }
 
-  private createGlyphTexture() {
+  private createGlyphTexture(): GlyphTexture {
     if (this.glyphTexture) {
       this.glyphTexture.texture.dispose();
     }
@@ -168,11 +165,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
       leftCoord += textLength;
     }
     let tex = createTexture(canvas);
-    this.glyphTexture = {
-      texture: tex,
-      lengths: glyphLengths,
-      offsets: glyphOffset
-    };
+    return {texture: tex, lengths: glyphLengths, offsets: glyphOffset};
   }
 
   private processLabelVerts() {
@@ -311,39 +304,29 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     }
   }
 
-  private colorSprites(colorAccessor: (index: number) => string) {
+  private colorSprites(pointColors?: Float32Array) {
     if (this.geometry == null || this.dataSet == null) {
       return;
     }
-    let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
+
+    if (pointColors == null) {
+      return;
+    }
+
+    const colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     colors.array = this.renderColors;
-    let getColor: (index: number) => string =
-        colorAccessor ? colorAccessor : () => (this.defaultPointColor as any);
-    for (let i = 0; i < this.dataSet.points.length; i++) {
-      let color = new THREE.Color(getColor(i));
+
+    const n = this.dataSet.points.length;
+    let src = 0;
+    for (let i = 0; i < n; ++i) {
+      const c = new THREE.Color(
+          pointColors[src++], pointColors[src++], pointColors[src++]);
       this.labelVertexMap[i].forEach((j) => {
-        colors.setXYZ(j, color.r, color.g, color.b);
+        colors.setXYZ(j, c.r, c.g, c.b);
       });
     }
-    colors.needsUpdate = true;
-  }
 
-  private highlightSprites(
-      highlightedPoints: number[], highlightStroke: (index: number) => string) {
-    if (this.geometry == null || this.dataSet == null) {
-      return;
-    }
-    if (highlightedPoints && highlightStroke) {
-      let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
-      for (let i = highlightedPoints.length - 1; i >= 0; --i) {
-        let assocPoint = highlightedPoints[i];
-        let color = new THREE.Color(highlightStroke(i));
-        this.labelVertexMap[assocPoint].forEach((j) => {
-          colors.setXYZ(j, color.r, color.g, color.b);
-        });
-      }
-      colors.needsUpdate = true;
-    }
+    colors.needsUpdate = true;
   }
 
   onRecreateScene(
@@ -380,8 +363,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
   }
 
   onRender(rc: RenderContext) {
-    this.colorSprites(rc.colorAccessor);
-    this.highlightSprites(rc.highlightedPoints, rc.highlightStroke);
+    this.colorSprites(rc.pointColors);
 
     this.material.uniforms.texture.value = this.glyphTexture.texture;
     this.material.uniforms.picking.value = false;
@@ -397,8 +379,6 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
       this.scene.add(this.labelsMesh);
     }
   }
-
-  onSelectionChanged(selection: number[]) {}
 
   onResize(newWidth: number, newHeight: number) {}
 }

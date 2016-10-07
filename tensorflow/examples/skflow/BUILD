@@ -7,15 +7,6 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 py_binary(
-    name = "boston",
-    srcs = ["boston.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
     name = "digits",
     srcs = ["digits.py"],
     srcs_version = "PY2AND3",
@@ -25,62 +16,8 @@ py_binary(
 )
 
 py_binary(
-    name = "iris",
-    srcs = ["iris.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "iris_run_config",
-    srcs = ["iris_run_config.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "iris_custom_decay_dnn",
-    srcs = ["iris_custom_decay_dnn.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "iris_custom_model",
-    srcs = ["iris_custom_model.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
     name = "iris_save_restore",
     srcs = ["iris_save_restore.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "iris_val_based_early_stopping",
-    srcs = ["iris_val_based_early_stopping.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "iris_with_pipeline",
-    srcs = ["iris_with_pipeline.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
@@ -171,76 +108,11 @@ py_binary(
 )
 
 py_binary(
-    name = "text_classification",
-    srcs = ["text_classification.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "text_classification_builtin_rnn_model",
-    srcs = ["text_classification_builtin_rnn_model.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "text_classification_character_cnn",
-    srcs = ["text_classification_character_cnn.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "text_classification_character_rnn",
-    srcs = ["text_classification_character_rnn.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
-    name = "text_classification_cnn",
-    srcs = ["text_classification_cnn.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_binary(
     name = "text_classification_save_restore",
     srcs = ["text_classification_save_restore.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
-    ],
-)
-
-sh_test(
-    name = "examples_test",
-    size = "large",
-    srcs = ["examples_test.sh"],
-    data = [
-        ":boston",
-        ":iris",
-        ":iris_custom_decay_dnn",
-        ":iris_custom_model",
-        ":iris_run_config",
-        ":iris_val_based_early_stopping",
-        ":iris_with_pipeline",
-        ":text_classification",
-        ":text_classification_builtin_rnn_model",
-        ":text_classification_character_cnn",
-        ":text_classification_character_rnn",
-        ":text_classification_cnn",
     ],
 )
 

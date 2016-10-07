@@ -95,7 +95,7 @@ class Input {
   // constants such as simple primitive constants and nested initializer lists
   // representing a multi-dimensional array. Initializer constructors are all
   // templates, so the aforementioned kinds of C++ constants can be used to
-  // construct an Initializer. Intializer stores the value it got constructed
+  // construct an Initializer. Initializer stores the value it got constructed
   // with in a Tensor object.
   struct Initializer {
     // Construct from a scalar value of an arithmetic type or a type that can be
@@ -156,7 +156,7 @@ class Input {
     }
 
     // Construct a multi-dimensional tensor from a nested initializer list. Note
-    // that C++ syntax allows nesting of arbitrarily typed intializer lists, so
+    // that C++ syntax allows nesting of arbitrarily typed initializer lists, so
     // such invalid initializers cannot be disallowed at compile time. This
     // function performs checks to make sure that the nested initializer list is
     // indeed a valid multi-dimensional tensor.

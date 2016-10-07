@@ -47,7 +47,7 @@ Status ComputeTheoreticalJacobianTranspose(
   auto dy_data_flat = dy_data.flat<T>();
   dy_data_flat.setZero();
 
-  // Compute the theoretical Jacobian one row at a time by backproping '1.0'
+  // Compute the theoretical Jacobian one row at a time by back propagating '1.0'
   // for each element of 'dy', while holding all other elements of 'dy' at zero.
   ClientSession session(scope);
   std::vector<Tensor> dxout;
@@ -133,7 +133,7 @@ Status ComputeGradientError(const Scope& scope, const ops::Output& x,
   TF_RETURN_IF_ERROR(ComputeTheoreticalJacobianTranspose<T>(
       scope, x, x_shape, x_data, y, y_shape, &jacobian_t));
 
-  // Inititalize numeric Jacobian to zeros.
+  // Initialize numeric Jacobian to zeros.
   Tensor jacobian_n(x.type(), {x_size, y_size});
   auto jacobian_n_flat = jacobian_n.flat<T>();
   jacobian_n_flat.setZero();

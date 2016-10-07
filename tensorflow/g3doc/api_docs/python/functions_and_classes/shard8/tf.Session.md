@@ -36,8 +36,7 @@ with tf.Session() as sess:
   sess.run(...)
 ```
 
-The [`ConfigProto`]
-(https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
+The [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
 protocol buffer exposes various configuration options for a
 session. For example, to create a session that uses soft constraints
 for device placement, and log the resulting placement decisions,

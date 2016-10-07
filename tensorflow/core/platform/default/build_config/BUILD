@@ -37,6 +37,16 @@ tf_cuda_library(
     }),
 )
 
+cc_library(
+    name = "stream_executor_no_cuda",
+    hdrs = [
+        "stream_executor_no_cuda.h",
+    ],
+    deps = [
+        "//tensorflow/stream_executor",
+    ],
+)
+
 # OSX framework for device driver access
 cc_library(
     name = "IOKit",
@@ -51,6 +61,15 @@ cc_library(
     deps = [
         "//tensorflow/core:protos_cc",
     ],
+)
+
+# Minimal lib to be used by tensorflow/core:framework_lite.
+# This provides minimal support for writing operator implementations (kernels),
+# and excludes anything that can bloat binary size if used.
+cc_library(
+    name = "minimal",
+    srcs = [],
+    copts = tf_copts(),
 )
 
 cc_library(

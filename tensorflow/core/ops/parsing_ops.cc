@@ -351,7 +351,7 @@ Converts each string in the input Tensor to the specified numeric type.
 (Note that int32 overflow results in an error while float overflow
 results in a rounded value.)
 
-out_type: The numeric type to interpret each string in string_tensor as.
+out_type: The numeric type to interpret each string in `string_tensor` as.
 output: A Tensor of the same shape as the input `string_tensor`.
 )doc");
 

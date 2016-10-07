@@ -25,29 +25,37 @@ export class RenderContext {
   screenHeight: number;
   nearestCameraSpacePointZ: number;
   farthestCameraSpacePointZ: number;
-  colorAccessor: (index: number) => string;
-  labeledPoints: number[];
   labelAccessor: (index: number) => string;
-  highlightedPoints: number[];
-  highlightStroke: (index: number) => string;
+  pointColors: Float32Array;
+  pointScaleFactors: Float32Array;
+  labelIndices: Uint32Array;
+  labelScaleFactors: Float32Array;
+  labelDefaultFontSize: number;
+  labelFillColor: number;
+  labelStrokeColor: number;
 
   constructor(
       camera: THREE.PerspectiveCamera, cameraTarget: THREE.Vector3,
       screenWidth: number, screenHeight: number,
       nearestCameraSpacePointZ: number, farthestCameraSpacePointZ: number,
-      colorAccessor: (index: number) => string, labeledPoints: number[],
-      labelAccessor: (index: number) => string, highlightedPoints: number[],
-      highlightStroke: (index: number) => string) {
+      labelAccessor: (index: number) => string, pointColors: Float32Array,
+      pointScaleFactors: Float32Array, visibleLabelIndices: Uint32Array,
+      visibleLabelScaleFactors: Float32Array,
+      visibleLabelDefaultFontSize: number, visibleLabelFillColor: number,
+      visibleLabelStrokeColor: number) {
     this.camera = camera;
     this.cameraTarget = cameraTarget;
     this.screenWidth = screenWidth;
     this.screenHeight = screenHeight;
     this.nearestCameraSpacePointZ = nearestCameraSpacePointZ;
     this.farthestCameraSpacePointZ = farthestCameraSpacePointZ;
-    this.colorAccessor = colorAccessor;
-    this.labeledPoints = labeledPoints;
     this.labelAccessor = labelAccessor;
-    this.highlightedPoints = highlightedPoints;
-    this.highlightStroke = highlightStroke;
+    this.pointColors = pointColors;
+    this.pointScaleFactors = pointScaleFactors;
+    this.labelIndices = visibleLabelIndices;
+    this.labelScaleFactors = visibleLabelScaleFactors;
+    this.labelDefaultFontSize = visibleLabelDefaultFontSize;
+    this.labelFillColor = visibleLabelFillColor;
+    this.labelStrokeColor = visibleLabelStrokeColor;
   }
 }

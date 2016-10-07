@@ -14,8 +14,8 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   # These lines need to be changed when updating Eigen. They are parsed from
   # this file by the cmake and make builds to determine the eigen version and
   # hash.
-  eigen_version = "c78d757b69d3"
-  eigen_sha256 = "dfb650e20a0dee6172dcc99796210a07e40af61348497503b42dc12935b4e6f5"
+  eigen_version = "f6508f52a798"
+  eigen_sha256 = "9824d3beea839455e496ea472e4dcf05f7e25ec01dfb68e540fbfe522b609f72"
 
   native.new_http_archive(
     name = "eigen_archive",
@@ -197,30 +197,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
   native.bind(
     name = "nanopb",
     actual = "@nanopb_git//:nanopb",
-  )
-
-  native.new_http_archive(
-    name = "avro_archive",
-    url = "http://www-us.apache.org/dist/avro/avro-1.8.0/cpp/avro-cpp-1.8.0.tar.gz",
-    sha256 = "ec6e2ec957e95ca07f70cc25f02f5c416f47cb27bd987a6ec770dcbe72527368",
-    strip_prefix = "avro-cpp-1.8.0",
-    build_file = str(Label("//:avro.BUILD")),
-  )
-
-  native.new_http_archive(
-    name = "boost_archive",
-    url = "http://pilotfiber.dl.sourceforge.net/project/boost/boost/1.61.0/boost_1_61_0.tar.gz",
-    sha256 = "a77c7cc660ec02704c6884fbb20c552d52d60a18f26573c9cee0788bf00ed7e6",
-    strip_prefix = "boost_1_61_0",
-    build_file = str(Label("//:boost.BUILD")),
-  )
-
-  native.new_http_archive(
-    name = "bzip2_archive",
-    url = "http://www.bzip.org/1.0.6/bzip2-1.0.6.tar.gz",
-    sha256 = "a2848f34fcd5d6cf47def00461fcb528a0484d8edef8208d6d2e2909dc61d9cd",
-    strip_prefix = "bzip2-1.0.6",
-    build_file = str(Label("//:bzip2.BUILD")),
   )
 
   native.new_http_archive(

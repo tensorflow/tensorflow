@@ -47,6 +47,18 @@ class FileIoTest(tf.test.TestCase):
     file_contents = file_io.read_file_to_string(file_path)
     self.assertEqual(b"testing", file_contents)
 
+  def testAppend(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="w") as f:
+      f.write("begin\n")
+    with file_io.FileIO(file_path, mode="a") as f:
+      f.write("a1\n")
+    with file_io.FileIO(file_path, mode="a") as f:
+      f.write("a2\n")
+    with file_io.FileIO(file_path, mode="r") as f:
+      file_contents = f.read()
+      self.assertEqual(b"begin\na1\na2\n", file_contents)
+
   def testMultipleWrites(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     with file_io.FileIO(file_path, mode="w") as f:
@@ -298,6 +310,16 @@ class FileIoTest(tf.test.TestCase):
     self.assertEqual("testing5", f.readline())
     self.assertEqual("", f.readline())
 
+  def testRead(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="r+") as f:
+      f.write("testing1\ntesting2\ntesting3\n\ntesting5")
+    self.assertEqual(36, f.size())
+    self.assertEqual(b"testing1\n", f.read(9))
+    self.assertEqual(b"testing2\n", f.read(9))
+    self.assertEqual(b"t", f.read(1))
+    self.assertEqual(b"esting3\n\ntesting5", f.read())
+
   def testTell(self):
     file_path = os.path.join(self._base_dir, "temp_file")
     with file_io.FileIO(file_path, mode="r+") as f:
@@ -314,6 +336,27 @@ class FileIoTest(tf.test.TestCase):
     self.assertEqual(36, f.tell())
     self.assertEqual("", f.readline())
     self.assertEqual(36, f.tell())
+
+  def testSeek(self):
+    file_path = os.path.join(self._base_dir, "temp_file")
+    with file_io.FileIO(file_path, mode="r+") as f:
+      f.write("testing1\ntesting2\ntesting3\n\ntesting5")
+    self.assertEqual("testing1\n", f.readline())
+    self.assertEqual(9, f.tell())
+
+    # Seek to 18
+    f.seek(18)
+    self.assertEqual(18, f.tell())
+    self.assertEqual("testing3\n", f.readline())
+
+    # Seek back to 9
+    f.seek(9)
+    self.assertEqual(9, f.tell())
+    self.assertEqual("testing2\n", f.readline())
+
+    f.seek(0)
+    self.assertEqual(0, f.tell())
+    self.assertEqual("testing1\n", f.readline())
 
   def testReadingIterator(self):
     file_path = os.path.join(self._base_dir, "temp_file")

@@ -43,7 +43,7 @@ class BetaTest(tf.test.TestCase):
       self.assertEqual(tf.TensorShape([]), dist.get_event_shape())
       self.assertEqual(tf.TensorShape([3, 2, 2]), dist.get_batch_shape())
 
-  def testComplexShapes_broadcast(self):
+  def testComplexShapesBroadcast(self):
     with self.test_session():
       a = np.random.rand(3, 2, 2)
       b = np.random.rand(2, 2)
@@ -179,7 +179,7 @@ class BetaTest(tf.test.TestCase):
       self.assertEqual(dist.mode().get_shape(), (3,))
       self.assertAllClose(expected_mode, dist.mode().eval())
 
-  def testBetaMode_invalid(self):
+  def testBetaModeInvalid(self):
     with tf.Session():
       a = np.array([1., 2, 3])
       b = np.array([2., 4, 1.2])
@@ -193,7 +193,7 @@ class BetaTest(tf.test.TestCase):
       with self.assertRaisesOpError("Condition x < y.*"):
         dist.mode().eval()
 
-  def testBetaMode_enable_allow_nan_stats(self):
+  def testBetaModeEnableAllowNanStats(self):
     with tf.Session():
       a = np.array([1., 2, 3])
       b = np.array([2., 4, 1.2])
@@ -247,10 +247,8 @@ class BetaTest(tf.test.TestCase):
 
   def testBetaSampleMultidimensional(self):
     with self.test_session():
-      # TODO(srvasude): Remove the 1.1 when Gamma sampler doesn't
-      # return 0 when a < 1.
-      a = np.random.rand(3, 2, 2).astype(np.float32) + 1.1
-      b = np.random.rand(3, 2, 2).astype(np.float32) + 1.1
+      a = np.random.rand(3, 2, 2).astype(np.float32)
+      b = np.random.rand(3, 2, 2).astype(np.float32)
       beta = tf.contrib.distributions.Beta(a, b)
       n = tf.constant(100000)
       samples = beta.sample_n(n)

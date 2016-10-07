@@ -362,6 +362,11 @@ Status WriteBinaryProto(Env* env, const string& fname,
 Status ReadBinaryProto(Env* env, const string& fname,
                        ::tensorflow::protobuf::MessageLite* proto);
 
+/// Read contents of named file and parse as text encoded proto data
+/// and store into `*proto`.
+Status ReadTextProto(Env* env, const string& fname,
+                     ::tensorflow::protobuf::Message* proto);
+
 namespace register_file_system {
 
 template <typename Factory>

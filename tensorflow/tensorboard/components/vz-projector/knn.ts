@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {runAsyncTask} from './async';
+import {runAsyncTask, updateMessage} from './async';
 import {KMin} from './heap';
 import * as vector from './vector';
 
@@ -31,6 +31,8 @@ export type NearestEntry = {
  * allocation limit, we can freeze the graphics of the whole OS.
  */
 const OPTIMAL_GPU_BLOCK_SIZE = 256;
+/** Id of message box used for knn gpu progress bar. */
+const KNN_GPU_MSG_ID = 'knn-gpu';
 
 /**
  * Returns the K nearest neighbors for each vector where the distance
@@ -103,10 +105,11 @@ export function findKNNGPUCosine<T>(
       progress += progressDiff;
       offset += B;
       piece++;
-    }).then(() => {
+    }, KNN_GPU_MSG_ID).then(() => {
       if (piece < numPieces) {
         step(resolve);
       } else {
+        updateMessage(null, KNN_GPU_MSG_ID);
         bigMatrix.delete();
         resolve(nearest);
       }

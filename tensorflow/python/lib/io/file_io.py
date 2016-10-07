@@ -78,7 +78,7 @@ class FileIO(object):
                                            "File isn't open for writing")
       with errors.raise_exception_on_not_ok_status() as status:
         self._writable_file = pywrap_tensorflow.CreateWritableFile(
-            compat.as_bytes(self.__name), status)
+            compat.as_bytes(self.__name), compat.as_bytes(self.__mode), status)
 
   def size(self):
     """Returns the size of the file."""
@@ -91,15 +91,30 @@ class FileIO(object):
       pywrap_tensorflow.AppendToFile(
           compat.as_bytes(file_content), self._writable_file, status)
 
-  def read(self):
+  def read(self, n=-1):
     """Returns the contents of a file as a string.
 
     Starts reading from current position in file.
+
+    Args:
+      n: Read 'n' bytes if n != -1. If n = -1, reads to end of file.
+
+    Returns:
+      'n' bytes of the file (or whole file) requested as a string.
     """
     self._preread_check()
     with errors.raise_exception_on_not_ok_status() as status:
-      length = self.size() - self.tell()
+      if n == -1:
+        length = self.size() - self.tell()
+      else:
+        length = n
       return pywrap_tensorflow.ReadFromStream(self._read_buf, length, status)
+
+  def seek(self, position):
+    """Seeks to the position in the file."""
+    self._preread_check()
+    with errors.raise_exception_on_not_ok_status() as status:
+      return pywrap_tensorflow.SeekInStream(self._read_buf, position, status)
 
   def readline(self):
     r"""Reads the next line from the file. Leaves the '\n' at the end."""

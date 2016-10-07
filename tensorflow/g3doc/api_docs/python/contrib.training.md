@@ -44,7 +44,7 @@ many non-padded time steps there are.
 
 Static features of an example that do not vary across time can be part of the
 `input_context`, a dict with Tensor values. This method copies the context for
-each segment and makes it availabe in the `context` of the output.
+each segment and makes it available in the `context` of the output.
 
 This method can maintain and update a state for each example. It accepts some
 initial_states as a dict with Tensor values. The first mini-batch an example
@@ -145,7 +145,8 @@ while True:
 *  <b>`batch_size`</b>: int or int32 scalar `Tensor`, how large minibatches should
     be when accessing the `state()` method and `context`, `sequences`, etc,
     properties.
-*  <b>`num_threads`</b>: The int number of threads enquing input examples into a queue.
+*  <b>`num_threads`</b>: The int number of threads enqueuing input examples into a
+    queue.
 *  <b>`capacity`</b>: The max capacity of the queue in number of examples. Needs to be
     at least `batch_size`. Defaults to 1000. When iterating over the same
     input example multiple times reusing their keys the `capacity` must be
@@ -722,12 +723,58 @@ It should be run in a separate thread via e.g. a `QueueRunner`.
 
 ## Online data resampling
 
+To resample data with replacement on a per-example basis, use
+['resample_at_rate'](#resample_at_rate), providing the desired rate
+for each example. If you wish to specify relative rates, rather than
+absolute ones, use ['weighted_resample'](#weighted_resample) (which
+also returns the actual resampling rate used for each output example).
+
 Use ['stratified_sample'](#stratified_sample) or
-['stratified_sample_unknown_dist'](#stratified_sample_unknown_dist) to resample
-from the data and change the class proportions that the Tensorflow graph sees.
-For instance, if you have a binary classification dataset that is 99.9% class
-1, a common approach is to resample from the data so that the data is more
+['stratified_sample_unknown_dist'](#stratified_sample_unknown_dist) to
+resample without replacement from the data to achieve a desired mix of
+class proportions that the Tensorflow graph sees. For instance, if you
+have a binary classification dataset that is 99.9% class 1, a common
+approach is to resample from the data so that the data is more
 balanced.
+
+- - -
+
+### `tf.contrib.training.resample_at_rate(inputs, rates, scope=None, seed=None, back_prop=False)` {#resample_at_rate}
+
+Given `inputs` tensors, stochastically resamples each at a given rate.
+
+For example, if the inputs are `[[a1, a2], [b1, b2]]` and the rates
+tensor contains `[3, 1]`, then the return value may look like `[[a1,
+a2, a1, a1], [b1, b2, b1, b1]]`. However, many other outputs are
+possible, since this is stochastic -- averaged over many repeated
+calls, each set of inputs should appear in the output `rate` times
+the number of invocations.
+
+Uses Knuth's method to generate samples from the poisson
+distribution (but instead of just incrementing a count, actually
+emits the input); this is described at
+https://en.wikipedia.org/wiki/Poisson_distribution in the section on
+generating Poisson-distributed random variables.
+
+Note that this method is not appropriate for large rate values: with
+float16 it will stop performing correctly for rates above 9.17;
+float32, 87; and float64, 708. (These are the base-e versions of the
+minimum representable exponent for each type.)
+
+##### Args:
+
+
+*  <b>`inputs`</b>: A list of tensors, each of which has a shape of `[batch_size, ...]`
+*  <b>`rates`</b>: A tensor of shape `[batch_size]` contiaining the resampling rates
+         for each input.
+*  <b>`scope`</b>: Scope for the op.
+*  <b>`seed`</b>: Random seed to use.
+*  <b>`back_prop`</b>: Whether to allow back-propagation through this op.
+
+##### Returns:
+
+  Selections from the input tensors.
+
 
 - - -
 
@@ -851,6 +898,37 @@ known ahead of time.
 
   # Run batch through network.
   ...
+
+
+- - -
+
+### `tf.contrib.training.weighted_resample(inputs, weights, overall_rate, scope=None, mean_decay=0.999, warmup=10, seed=None)` {#weighted_resample}
+
+Performs an approximate weighted resampling of `inputs`.
+
+This method chooses elements from `inputs` where each item's rate of
+selection is proportional to its value in `weights`, and the average
+rate of selection across all inputs (and many invocations!) is
+`overall_rate`.
+
+##### Args:
+
+
+*  <b>`inputs`</b>: A list of tensors whose first dimension is `batch_size`.
+*  <b>`weights`</b>: A `[batch_size]`-shaped tensor with each batch member's weight.
+*  <b>`overall_rate`</b>: Desired overall rate of resampling.
+*  <b>`scope`</b>: Scope to use for the op.
+*  <b>`mean_decay`</b>: How quickly to decay the running estimate of the mean weight.
+*  <b>`warmup`</b>: Until the resulting tensor has been evaluated `warmup`
+    times, the resampling menthod uses the true mean over all calls
+    as its weight estimate, rather than a decayed mean.
+*  <b>`seed`</b>: Random seed.
+
+##### Returns:
+
+  A list of tensors exactly like `inputs`, but with an unknown (and
+    possibly zero) first dimension.
+  A tensor containing the effective resampling rate used for each output.
 
 
 

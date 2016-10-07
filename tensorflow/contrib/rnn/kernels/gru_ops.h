@@ -17,6 +17,7 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/contrib/rnn/kernels/blas_gemm.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -31,55 +32,6 @@ namespace tensorflow {
 class OpKernelContext;
 
 namespace functor {
-
-template <typename T>
-struct TensorCuBlasGemm {
-  void operator()(OpKernelContext* ctx, perftools::gputools::Stream* stream,
-                  bool transa, bool transb, uint64 m, uint64 n, uint64 k,
-                  T alpha, const T* a, int lda, const T* b, int ldb, T beta,
-                  T* c, int ldc);
-};
-
-template <typename Device, typename T, bool USE_CUBLAS>
-struct TensorBlasGemm;
-
-template <typename Device, typename T>
-struct TensorBlasGemm<Device, T, true /* USE_CUBLAS */> {
-  static void compute(OpKernelContext* ctx, perftools::gputools::Stream* stream,
-                      const Device& d, bool transa, bool transb, T alpha,
-                      typename TTypes<T>::ConstMatrix a,
-                      typename TTypes<T>::ConstMatrix b, T beta,
-                      typename TTypes<T>::Matrix c) {
-    int64 m = c.dimensions()[0];
-    int64 n = c.dimensions()[1];
-    int64 k = transa ? a.dimensions()[0] : a.dimensions()[1];
-
-    TensorCuBlasGemm<T>()(ctx, stream, transb, transa, n, m, k, alpha, b.data(),
-                          transb ? k : n, a.data(), transa ? m : k, beta,
-                          c.data(), n);
-  }
-};
-
-template <typename Device, typename T>
-struct TensorBlasGemm<Device, T, false /* USE_CUBLAS */> {
-  static void compute(OpKernelContext* ctx, perftools::gputools::Stream* stream,
-                      const Device& d, bool transa, bool transb, T alpha,
-                      typename TTypes<T>::ConstMatrix a,
-                      typename TTypes<T>::ConstMatrix b, T beta,
-                      typename TTypes<T>::Matrix c) {
-    Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_pairs;
-    contract_pairs[0] =
-        Eigen::IndexPair<Eigen::DenseIndex>(transa == false, transb == true);
-    if (alpha == T(1) && beta == T(0)) {
-      c.device(d) = a.contract(b, contract_pairs);
-    } else if (alpha == T(1) && beta == T(1)) {
-      c.device(d) += a.contract(b, contract_pairs);
-    } else {
-      c.device(d) = c.constant(alpha) * a.contract(b, contract_pairs) +
-                    c.constant(beta) * c;
-    }
-  }
-};
 
 struct GRUCell {
   GRUCell(const int batch_size, const int input_size, const int cell_size)

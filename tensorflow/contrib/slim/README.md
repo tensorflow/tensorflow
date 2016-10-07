@@ -69,7 +69,7 @@ and
 models.
 * [preprocess](https://www.tensorflow.org/code/tensorflow/contrib/slim/python/slim/preprocess.py):
 is a module with various preprocessing utilities.
-* [queues](https://www.tensorflow.org/code/tensorflow/contrib/slim/queues.py):
+* [queues](https://www.tensorflow.org/code/tensorflow/contrib/slim/python/slim/queues.py):
 provides a context manager for easily and safely starting and closing
 QueueRunners.
 * [regularizers](https://www.tensorflow.org/code/tensorflow/contrib/layers/python/layers/regularizers.py):

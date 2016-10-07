@@ -26,47 +26,41 @@ import tensorflow as tf
 class TransformedDistributionTest(tf.test.TestCase):
 
   def testTransformedDistribution(self):
-    with self.test_session():
+    g = tf.Graph()
+    with g.as_default():
       mu = 3.0
       sigma = 2.0
+      # Note: the Jacobian callable only works for this example; more generally
+      # you may or may not need a reduce_sum.
       log_normal = tf.contrib.distributions.TransformedDistribution(
           base_dist_cls=tf.contrib.distributions.Normal,
           mu=mu,
           sigma=sigma,
           transform=lambda x: tf.exp(x),
           inverse=lambda y: tf.log(y),
-          log_det_jacobian=(lambda x: tf.reduce_sum(x)))
+          log_det_jacobian=(lambda x: x))
       sp_dist = stats.lognorm(s=sigma, scale=np.exp(mu))
 
       # sample
-      self.assertAllClose(
-          sp_dist.mean(),
-          np.mean(log_normal.sample_n(100000, seed=235).eval()),
-          atol=0.0, rtol=0.05)
+      sample = log_normal.sample_n(100000, seed=235)
+      with self.test_session(graph=g):
+        self.assertAllClose(sp_dist.mean(), np.mean(sample.eval()),
+                            atol=0.0, rtol=0.05)
 
       # pdf, log_pdf, cdf, etc...
       # The mean of the lognormal is around 148.
       test_vals = np.linspace(0.1, 1000., num=20).astype(np.float32)
-      for test_val in test_vals:
-        self.assertAllClose(
-            sp_dist.logpdf(test_val),
-            log_normal.log_pdf(test_val).eval(), atol=0, rtol=0.01)
-        self.assertAllClose(
-            sp_dist.pdf(test_val),
-            log_normal.pdf(test_val).eval(), atol=0, rtol=0.01)
-        self.assertAllClose(
-            sp_dist.cdf(test_val),
-            log_normal.cdf(test_val).eval(), atol=0, rtol=0.01)
-        self.assertAllClose(
-            sp_dist.logcdf(test_val),
-            log_normal.log_cdf(test_val).eval(), atol=0, rtol=0.01)
-        self.assertAllClose(
-            sp_dist.sf(test_val),
-            log_normal.survival_function(test_val).eval(), atol=0, rtol=0.01)
-        self.assertAllClose(
-            sp_dist.logsf(test_val),
-            log_normal.log_survival_function(test_val).eval(),
-            atol=0, rtol=0.01)
+      for func in [
+          [log_normal.log_prob, sp_dist.logpdf],
+          [log_normal.prob, sp_dist.pdf],
+          [log_normal.log_cdf, sp_dist.logcdf],
+          [log_normal.cdf, sp_dist.cdf],
+          [log_normal.survival_function, sp_dist.sf],
+          [log_normal.log_survival_function, sp_dist.logsf]]:
+        actual = func[0](test_vals)
+        expected = func[1](test_vals)
+        with self.test_session(graph=g):
+          self.assertAllClose(expected, actual.eval(), atol=0, rtol=0.01)
 
   def testCachedSamplesWithoutInverse(self):
     with self.test_session() as sess:

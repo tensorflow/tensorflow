@@ -391,7 +391,7 @@ using a tensor as input is not currently allowed
 
 Some useful examples:
 
-```
+```python
 # strip leading and trailing 2 elements
 foo = tf.constant([1,2,3,4,5,6])
 print(foo[2:-2].eval()) # => [3,4]

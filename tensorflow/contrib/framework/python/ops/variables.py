@@ -20,17 +20,23 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework.python.ops import add_arg_scope as contrib_add_arg_scope
+from tensorflow.contrib.framework.python.ops import gen_variable_ops
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework.load_library import load_op_library
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver as tf_saver
+from tensorflow.python.training import training_util
 
 
 __all__ = ['add_model_variable',
@@ -53,28 +59,33 @@ __all__ = ['add_model_variable',
            'local_variable',
            'model_variable',
            'variable',
-           'VariableDeviceChooser']
+           'VariableDeviceChooser',
+           'zero_initializer']
+
+
+def zero_initializer(ref, use_locking=True, name="zero_initializer"):
+  """Initialize 'ref' with all zeros, ref tensor should be uninitialized.
+  If already initialized, you will get ValueError. This op is intended to
+  save memory during initialization.
+  Args:
+    ref: ref of the tensor need to be zero initialized.
+    name: optional name for this operation.
+  Returns:
+    ref that initialized.
+  Raises:
+    ValueError: If ref tensor is initialized.
+  """
+  _variable_ops = load_op_library(resource_loader.get_path_to_datafile(
+        "_variable_ops.so"))
+  assert _variable_ops, "Could not load _variable_ops.so"
+  return gen_variable_ops.zero_initializer(ref, name=name)
+
+
+ops.RegisterShape('ZeroInitializer')(common_shapes.call_cpp_shape_fn)
 
 
 def assert_global_step(global_step_tensor):
-  """Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
-
-  Args:
-    global_step_tensor: `Tensor` to test.
-  """
-  if not (isinstance(global_step_tensor, variables.Variable) or
-          isinstance(global_step_tensor, ops.Tensor)):
-    raise TypeError('Existing "global_step" must be a Variable or Tensor.')
-
-  if not global_step_tensor.dtype.base_dtype.is_integer:
-    raise TypeError(
-        'Existing "global_step" does not have integer type: %s' %
-        global_step_tensor.dtype)
-
-  if global_step_tensor.get_shape().ndims != 0:
-    raise TypeError(
-        'Existing "global_step" is not scalar: %s' %
-        global_step_tensor.get_shape())
+  training_util.assert_global_step(global_step_tensor)
 
 
 def assert_or_get_global_step(graph=None, global_step_tensor=None):
@@ -101,39 +112,8 @@ def assert_or_get_global_step(graph=None, global_step_tensor=None):
   return global_step_tensor
 
 
-# TODO(ptucker): Change supervisor to use this when it's migrated to core.
 def get_global_step(graph=None):
-  """Get the global step tensor.
-
-  The global step tensor must be an integer variable. We first try to find it
-  in the collection `GLOBAL_STEP`, or by name `global_step:0`.
-
-  Args:
-    graph: The graph to find the global step in. If missing, use default graph.
-
-  Returns:
-    The global step variable, or `None` if none was found.
-
-  Raises:
-    TypeError: If the global step tensor has a non-integer type, or if it is not
-      a `Variable`.
-  """
-  graph = ops.get_default_graph() if graph is None else graph
-  global_step_tensor = None
-  global_step_tensors = graph.get_collection(ops.GraphKeys.GLOBAL_STEP)
-  if len(global_step_tensors) == 1:
-    global_step_tensor = global_step_tensors[0]
-  elif not global_step_tensors:
-    try:
-      global_step_tensor = graph.get_tensor_by_name('global_step:0')
-    except KeyError:
-      return None
-  else:
-    logging.error('Multiple tensors in global_step collection.')
-    return None
-
-  assert_global_step(global_step_tensor)
-  return global_step_tensor
+  return training_util.get_global_step(graph)
 
 
 def create_global_step(graph=None):
@@ -208,9 +188,9 @@ def variable(name, shape=None, dtype=None, initializer=None,
         applying it on a newly created variable will be added to the collection
         GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
     trainable: If `True` also add the variable to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     collections: A list of collection names to which the Variable will be added.
-      If None it would default to tf.GraphKeys.VARIABLES.
+      If None it would default to `tf.GraphKeys.VARIABLES`.
     caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.
@@ -248,7 +228,7 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
         applying it on a newly created variable will be added to the collection
         GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
     trainable: If `True` also add the variable to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     collections: A list of collection names to which the Variable will be added.
       Note that the variable is always also added to the `GraphKeys.VARIABLES`
       and `GraphKeys.MODEL_VARIABLES` collections.
@@ -285,7 +265,8 @@ def get_variables(scope=None, suffix=None, collection=ops.GraphKeys.VARIABLES):
   Args:
     scope: an optional scope for filtering the variables to return.
     suffix: an optional suffix for filtering the variables to return.
-    collection: in which collection search for. Defaults to GraphKeys.VARIABLES.
+    collection: in which collection search for. Defaults to
+      `GraphKeys.VARIABLES`.
 
   Returns:
     a list of variables in collection with scope and suffix.
@@ -494,8 +475,8 @@ def assign_from_checkpoint(model_path, var_list):
     model_path: The full path to the model checkpoint. To get latest checkpoint
         use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
     var_list: A list of `Variable` objects or a dictionary mapping names in the
-        checkpoint to the correspoing variables to initialize. If empty or None,
-        it would return  no_op(), None.
+        checkpoint to the corresponding variables to initialize. If empty or
+        None, it would return  no_op(), None.
 
   Returns:
     the restore_op and the feed_dict that need to be run to restore var_list.

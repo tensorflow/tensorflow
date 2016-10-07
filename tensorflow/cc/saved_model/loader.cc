@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,18 +37,8 @@ Status ReadSavedModel(const string& export_dir, SavedModel* saved_model_proto) {
   const string saved_model_pbtxt_path =
       io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
   if (Env::Default()->FileExists(saved_model_pbtxt_path)) {
-    string pbtxt_data;
-    Status status =
-        ReadFileToString(Env::Default(), saved_model_pbtxt_path, &pbtxt_data);
-    if (status != Status::OK()) {
-      return status;
-    }
-    if (!protobuf::TextFormat::ParseFromString(pbtxt_data, saved_model_proto)) {
-      return Status(error::Code::UNKNOWN,
-                    "Could not parse SavedModel proto from .pbtxt format: " +
-                        saved_model_pbtxt_path);
-    }
-    return Status::OK();
+    return ReadTextProto(Env::Default(), saved_model_pbtxt_path,
+                         saved_model_proto);
   }
   return Status(error::Code::NOT_FOUND,
                 "Could not find SavedModel .pb or .pbtxt at supplied export "

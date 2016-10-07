@@ -138,10 +138,8 @@ class Bernoulli(distribution.Distribution):
     return math_ops.exp(self._log_prob(event))
 
   def _entropy(self):
-    # TODO(b/31086883): use tf.nn.softplus; fix inconsistent behavior between
-    # cpu and gpu at -inf/inf.
     return (-self.logits * (math_ops.sigmoid(self.logits) - 1) +
-            math_ops.log(1. + math_ops.exp(-self.logits)))
+            nn.softplus(-self.logits))
 
   def _mean(self):
     return array_ops.identity(self.p)
@@ -153,14 +151,8 @@ class Bernoulli(distribution.Distribution):
     return math_ops.sqrt(self._variance())
 
   def _mode(self):
+    """Returns `1` if `p > 1-p` and `0` otherwise."""
     return math_ops.cast(self.p > self.q, self.dtype)
-
-
-distribution_util.append_class_fun_doc(Bernoulli.mode, doc_str="""
-
-  Specific notes:
-    1 if p > 1-p. 0 otherwise.
-""")
 
 
 class BernoulliWithSigmoidP(Bernoulli):

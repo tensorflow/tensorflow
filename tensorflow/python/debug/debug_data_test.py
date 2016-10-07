@@ -21,9 +21,27 @@ import os
 import shutil
 import tempfile
 
+import numpy as np
+
 from tensorflow.python.debug import debug_data
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
+
+
+class ParseNodeOrTensorNameTest(test_util.TensorFlowTestCase):
+
+  def testParseNodeName(self):
+    node_name, slot = debug_data.parse_node_or_tensor_name("namespace1/node_1")
+
+    self.assertEqual("namespace1/node_1", node_name)
+    self.assertIsNone(slot)
+
+  def testParseTensorName(self):
+    node_name, slot = debug_data.parse_node_or_tensor_name(
+        "namespace1/node_2:3")
+
+    self.assertEqual("namespace1/node_2", node_name)
+    self.assertEqual(3, slot)
 
 
 class NodeNameChecksTest(test_util.TensorFlowTestCase):
@@ -79,6 +97,37 @@ class ParseDebugNodeNameTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError,
                                  "Invalid tensor name in debug node name"):
       debug_data.parse_debug_node_name(invalid_debug_node_name_1)
+
+
+class HasNanOrInfTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    self._dummy_datum = dummy_datum = debug_data.DebugTensorDatum(
+        "/foo", "bar_0_DebugIdentity_42")
+
+  def testNaN(self):
+    a = np.array([np.nan, np.nan, 7.0])
+    self.assertTrue(debug_data.has_inf_or_nan(self._dummy_datum, a))
+
+  def testInf(self):
+    a = np.array([np.inf, np.inf, 7.0])
+    self.assertTrue(debug_data.has_inf_or_nan(self._dummy_datum, a))
+
+  def testNanAndInf(self):
+    a = np.array([np.inf, np.nan, 7.0])
+    self.assertTrue(debug_data.has_inf_or_nan(self._dummy_datum, a))
+
+  def testNoNanOrInf(self):
+    a = np.array([0.0, 0.0, 7.0])
+    self.assertFalse(debug_data.has_inf_or_nan(self._dummy_datum, a))
+
+  def testEmpty(self):
+    a = np.array([])
+    self.assertFalse(debug_data.has_inf_or_nan(self._dummy_datum, a))
+
+  def testNone(self):
+    a = None
+    self.assertFalse(debug_data.has_inf_or_nan(self._dummy_datum, a))
 
 
 class DebugTensorDatumTest(test_util.TensorFlowTestCase):

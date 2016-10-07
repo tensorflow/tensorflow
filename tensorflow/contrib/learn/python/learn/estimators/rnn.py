@@ -93,7 +93,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
         classes for loss computation. If not given, all classes are
         supposed to have weight one.
       continue_training: when continue_training is True, once initialized
-        model will be continuely trained on every call of fit.
+        model will be continually trained on every call of fit.
       config: RunConfig object that controls the configurations of the session,
         e.g. num_cores, gpu_memory_fraction, etc.
     """
@@ -121,7 +121,7 @@ class TensorFlowRNNClassifier(TensorFlowEstimator, _sklearn.ClassifierMixin):
         config=config,
         verbose=verbose)
 
-  def _model_fn(self, x, y):
+  def _model_fn(self, x, y):  # pylint: disable=method-hidden
     return models.get_rnn_model(self.rnn_size, self.cell_type, self.num_layers,
                                 self.input_op_fn, self.bidirectional,
                                 models.logistic_regression,
@@ -199,7 +199,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
         ````
 
       continue_training: when continue_training is True, once initialized
-        model will be continuely trained on every call of fit.
+        model will be continually trained on every call of fit.
       config: RunConfig object that controls the configurations of the
         session, e.g. num_cores, gpu_memory_fraction, etc.
       verbose: Controls the verbosity, possible values:
@@ -230,7 +230,7 @@ class TensorFlowRNNRegressor(TensorFlowEstimator, _sklearn.RegressorMixin):
         config=config,
         verbose=verbose)
 
-  def _model_fn(self, x, y):
+  def _model_fn(self, x, y):  # pylint: disable=method-hidden
     return models.get_rnn_model(self.rnn_size, self.cell_type, self.num_layers,
                                 self.input_op_fn, self.bidirectional,
                                 models.linear_regression, self.sequence_length,

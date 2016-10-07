@@ -797,8 +797,10 @@ def register_tensor_conversion_function(base_type, conversion_func,
 
   The conversion function must have the following signature:
 
+  ```python
       def conversion_func(value, dtype=None, name=None, as_ref=False):
         # ...
+  ```
 
   It must return a `Tensor` with the given `dtype` if specified. If the
   conversion function creates a new `Tensor`, it should use the given
@@ -1944,7 +1946,7 @@ class Graph(object):
   To add an operation to the default graph, simply call one of the functions
   that defines a new `Operation`:
 
-  ```
+  ```python
   c = tf.constant(4.0)
   assert c.graph is tf.get_default_graph()
   ```

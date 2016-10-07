@@ -54,7 +54,8 @@ class TensorboardServerTest(tf.test.TestCase):
         size_guidance=server.TENSORBOARD_SIZE_GUIDANCE)
     server.ReloadMultiplexer(self._multiplexer, {self.get_temp_dir(): None})
     # 0 to pick an unused port.
-    self._server = server.BuildServer(self._multiplexer, 'localhost', 0)
+    self._server = server.BuildServer(
+        self._multiplexer, 'localhost', 0, '/foo/logdir/argument')
     self._server_thread = threading.Thread(target=self._server.serve_forever)
     self._server_thread.daemon = True
     self._server_thread.start()
@@ -96,6 +97,12 @@ class TensorboardServerTest(tf.test.TestCase):
     """Attempt a directory traversal attack."""
     response = self._get('/..' * 30 + '/etc/passwd')
     self.assertEqual(response.status, 404)
+
+  def testLogdir(self):
+    """Test the status code and content of the data/logdir endpoint."""
+    response = self._get('/data/logdir')
+    self.assertEqual(response.status, 200)
+    self.assertEqual(response.read().decode('utf-8'), '/foo/logdir/argument')
 
   def testRuns(self):
     """Test the format of the /data/runs endpoint."""

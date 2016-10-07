@@ -22,6 +22,7 @@ import collections
 
 import numpy as np
 from scipy import special
+from scipy import stats
 import tensorflow as tf
 
 sm = tf.contrib.bayesflow.special_math
@@ -158,6 +159,8 @@ class LogNdtrTestUpper(NdtrTest):
 class NdtrGradientTest(tf.test.TestCase):
   _use_log = False
   _grid = GridSpec(min=-100., max=100., shape=[1, 2, 3, 8])
+  _error32 = ErrorSpec(rtol=1e-4, atol=0)
+  _error64 = ErrorSpec(rtol=1e-7, atol=0)
 
   def assert_all_true(self, v):
     self.assertAllEqual(np.ones_like(v, dtype=np.bool), v)
@@ -174,11 +177,11 @@ class NdtrGradientTest(tf.test.TestCase):
       self.assert_all_true(np.isfinite(output.eval()))
       self.assert_all_true(np.isfinite(grad_output[0].eval()))
 
-  def _test_grads_are_positive(self, dtype, grid_spec):
-    grid = tf.convert_to_tensor(_make_grid(dtype, grid_spec))
+  def _test_grad_accuracy(self, dtype, grid_spec, error_spec):
+    raw_grid = _make_grid(dtype, grid_spec)
+    grid = tf.convert_to_tensor(raw_grid)
     with self.test_session():
-      output = (sm.log_ndtr(grid) if self._use_log
-                else sm.ndtr(grid))
+      fn = sm.log_ndtr if self._use_log else sm.ndtr
 
       # If there are N points in the grid,
       # grad_eval.shape = (N, N), with grad_eval[i, j] the partial derivative of
@@ -187,7 +190,7 @@ class NdtrGradientTest(tf.test.TestCase):
       # TODO(b/31131137): Replace tf.test.compute_gradient with our own custom
       # gradient evaluation to ensure we correctly handle small function delta.
       grad_eval, _ = tf.test.compute_gradient(
-          grid, grid_spec.shape, output, grid_spec.shape)
+          grid, grid_spec.shape, fn(grid), grid_spec.shape)
       grad_eval = np.diag(grad_eval)
 
       # Check for NaN separately in order to get informative failures.
@@ -195,20 +198,44 @@ class NdtrGradientTest(tf.test.TestCase):
       self.assert_all_true(grad_eval > 0.)
       self.assert_all_true(np.isfinite(grad_eval))
 
+      # Do the same checks but explicitly compute the gradient.
+      # (We did this because we're not sure if we trust
+      # tf.test.compute_gradient.)
+      grad_eval = tf.gradients(fn(grid), grid)[0].eval()
+      self.assert_all_false(np.isnan(grad_eval))
+      if self._use_log:
+        g = np.reshape(grad_eval, [-1])
+        half = np.ceil(len(g)/2)
+        self.assert_all_true(g[:half] > 0.)
+        self.assert_all_true(g[half:] >= 0.)
+      else:
+        # The ndtr gradient will only be non-zero in the range [-14, 14] for
+        # float32 and [-38, 38] for float64.
+        self.assert_all_true(grad_eval >= 0.)
+      self.assert_all_true(np.isfinite(grad_eval))
+
+      # Versus scipy.
+      expected = stats.norm.pdf(raw_grid)
+      if self._use_log:
+        expected /= special.ndtr(raw_grid)
+        expected[np.isnan(expected)] = 0.
+      # Scipy prematurely goes to zero at some places that we don't.  So don't
+      # include these in the comparison.
+      self.assertAllClose(expected.astype(np.float64)[expected < 0],
+                          grad_eval.astype(np.float64)[expected < 0],
+                          rtol=error_spec.rtol, atol=error_spec.atol)
+
   def test_float32(self):
-    self._test_grads_are_positive(np.float32, self._grid)
+    self._test_grad_accuracy(np.float32, self._grid, self._error32)
     self._test_grad_finite(np.float32)
 
   def test_float64(self):
-    self._test_grads_are_positive(np.float64, self._grid)
+    self._test_grad_accuracy(np.float64, self._grid, self._error64)
     self._test_grad_finite(np.float64)
 
 
 class LogNdtrGradientTest(NdtrGradientTest):
   _use_log = True
-  _grid = GridSpec(min=-100., max=100., shape=[1, 2, 3, 8])
-  _error32 = ErrorSpec(rtol=1e-4, atol=0)
-  _error64 = ErrorSpec(rtol=1e-7, atol=0)
 
 
 if __name__ == "__main__":

@@ -81,6 +81,13 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "conditional_accumulator_test",
+    size = "small",
+    srcs = ["conditional_accumulator_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
     name = "ctc_decoder_ops_test",
     size = "small",
     srcs = ["ctc_decoder_ops_test.py"],
@@ -273,6 +280,13 @@ tf_py_test(
     name = "sparse_concat_op_test",
     size = "small",
     srcs = ["sparse_concat_op_test.py"],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
+tf_py_test(
+    name = "sparse_conditional_accumulator_test",
+    size = "small",
+    srcs = ["sparse_conditional_accumulator_test.py"],
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
@@ -1055,6 +1069,24 @@ cuda_py_test(
     name = "atrous_conv2d_test",
     size = "medium",
     srcs = ["atrous_conv2d_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+cuda_py_test(
+    name = "atrous_convolution_test",
+    size = "medium",
+    srcs = ["atrous_convolution_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+cuda_py_test(
+    name = "pool_test",
+    size = "medium",
+    srcs = ["pool_test.py"],
     additional_deps = [
         "//tensorflow:tensorflow_py",
     ],

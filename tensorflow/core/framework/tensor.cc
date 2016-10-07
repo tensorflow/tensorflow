@@ -109,7 +109,7 @@ void LogUnexpectedSize(int64 actual, int64 expected) {
 template <typename T>
 struct Helper {
   // By default, we assume T is a simple type (float, int32, etc.)
-  static_assert(Allocator::is_simple<T>::value, "T is not a simple type.");
+  static_assert(is_simple_type<T>::value, "T is not a simple type.");
   typedef protobuf::RepeatedField<T> RepeatedFieldType;
 
   // Encoder of simple type T to a string.  We do a copy.
@@ -669,7 +669,7 @@ size_t Tensor::TotalBytes() const {
 }
 
 bool Tensor::CanUseDMA() const {
-  CASES(dtype(), return Allocator::is_simple<T>::value);
+  CASES(dtype(), return is_simple_type<T>::value);
   return false;  // Makes compiler happy.
 }
 

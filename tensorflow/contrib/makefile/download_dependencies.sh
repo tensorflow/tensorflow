@@ -48,7 +48,7 @@ download_and_extract() {
   local dir="${2:?${usage}}"
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
-  tar -C "${dir}" --strip-components=1 -xz < <(curl -Ls "${url}")
+  curl -Ls "${url}" | tar -C "${dir}" --strip-components=1 -xz
 }
 
 download_and_extract "${EIGEN_URL}" "${DOWNLOADS_DIR}/eigen"

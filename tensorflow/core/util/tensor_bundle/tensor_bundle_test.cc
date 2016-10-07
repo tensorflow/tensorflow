@@ -50,6 +50,8 @@ Tensor Constant_2x3(T v) {
 template <typename T>
 void Expect(BundleReader* reader, const string& key,
             const Tensor& expected_val) {
+  // Tests for Contains().
+  EXPECT_TRUE(reader->Contains(key));
   // Tests for LookupTensorShape().
   TensorShape shape;
   TF_ASSERT_OK(reader->LookupTensorShape(key, &shape));

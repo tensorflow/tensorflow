@@ -2,8 +2,7 @@
 
 ## Introduction
 
-Take a look at [this great article]
-(http://colah.github.io/posts/2015-08-Understanding-LSTMs/)
+Take a look at [this great article](http://colah.github.io/posts/2015-08-Understanding-LSTMs/)
 for an introduction to recurrent neural networks and LSTMs in particular.
 
 ## Language Modeling

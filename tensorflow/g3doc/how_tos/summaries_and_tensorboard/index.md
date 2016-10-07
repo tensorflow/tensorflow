@@ -24,8 +24,7 @@ lifecycle for summary data within TensorBoard.
 
 First, create the TensorFlow graph that you'd like to collect summary
 data from, and decide which nodes you would like to annotate with
-[summary operations]
-(../../api_docs/python/train.md#summary-operations).
+[summary operations](../../api_docs/python/train.md#summary-operations).
 
 For example, suppose you are training a convolutional neural network for
 recognizing MNIST digits. You'd like to record how the learning rate
@@ -42,8 +41,7 @@ this data by attaching
 the gradient outputs and to the variable that holds your weights, respectively.
 
 For details on all of the summary operations available, check out the docs on
-[summary operations]
-(../../api_docs/python/train.md#summary-operations).
+[summary operations](../../api_docs/python/train.md#summary-operations).
 
 Operations in TensorFlow don't do anything until you run them, or an op that
 depends on their output. And the summary nodes that we've just created are
@@ -72,12 +70,13 @@ every single step, and record a ton of training data. That's likely to be more
 data than you need, though. Instead, consider running the merged summary op
 every `n` steps.
 
-The code example below is a modification of the [simple MNIST tutorial]
-(http://tensorflow.org/tutorials/mnist/beginners/index.md), in which we have
-added some summary ops, and run them every ten steps. If you run this and then
-launch `tensorboard --logdir=/tmp/mnist_logs`, you'll be able to visualize
-statistics, such as how the weights or accuracy varied during training.
-The code below is an excerpt; full source is [here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/mnist_with_summaries.py).
+The code example below is a modification of the
+[simple MNIST tutorial](http://tensorflow.org/tutorials/mnist/beginners/index.md),
+in which we have added some summary ops, and run them every ten steps. If you
+run this and then launch `tensorboard --logdir=/tmp/mnist_logs`, you'll be able
+to visualize statistics, such as how the weights or accuracy varied during
+training. The code below is an excerpt; full source is
+[here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/mnist_with_summaries.py).
 
 ```python
 def variable_summaries(var, name):

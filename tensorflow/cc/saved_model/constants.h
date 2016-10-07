@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,11 +28,11 @@ constexpr char kSavedModelFilenamePbTxt[] = "saved_model.pbtxt";
 constexpr char kSavedModelVariablesDirectory[] = "variables";
 
 // SavedModel variables filename.
-constexpr char kSavedModelVariablesFilename[] = "saved_model_variables";
+constexpr char kSavedModelVariablesFilename[] = "variables";
 
 // SavedModel sharded variables filename.
 constexpr char kSavedModelVariablesShardedFilename[] =
-    "saved_model_variables-\?\?\?\?\?-of-\?\?\?\?\?";
+    "variables-\?\?\?\?\?-of-\?\?\?\?\?";
 
 // Commonly used tags.
 constexpr char kSavedModelTagServe[] = "serve";

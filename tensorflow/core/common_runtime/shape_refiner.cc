@@ -79,7 +79,7 @@ Status ShapeRefiner::AddNode(const Node* node) {
   }
 
   // Run the shape inference function, and return if there was an error.
-  TF_RETURN_IF_ERROR(op_reg_data->shape_inference_fn(c.get()));
+  TF_RETURN_IF_ERROR(c->Run(op_reg_data->shape_inference_fn));
 
   // We must run the shape function repeatedly, in case users write
   // shape functions where they only conditionally call input_tensor()

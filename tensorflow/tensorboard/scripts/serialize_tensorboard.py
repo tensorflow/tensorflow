@@ -191,7 +191,7 @@ def main(unused_argv=None):
   server.ReloadMultiplexer(multiplexer, path_to_run)
 
   PrintAndLog('Multiplexer load finished. Starting TensorBoard server.')
-  s = server.BuildServer(multiplexer, 'localhost', 0)
+  s = server.BuildServer(multiplexer, 'localhost', 0, logdir)
   server_thread = threading.Thread(target=s.serve_forever)
   server_thread.daemon = True
   server_thread.start()

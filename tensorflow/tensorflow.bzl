@@ -23,7 +23,12 @@ def src_to_test_name(src):
 
 # Check that a specific bazel version is being used.
 def check_version(bazel_version):
-  if "bazel_version" in dir(native) and native.bazel_version:
+  if "bazel_version" not in dir(native):
+    fail("\nCurrent Bazel version is lower than 0.2.1, expected at least %s\n" % bazel_version)
+  elif not native.bazel_version:
+    print("\nCurrent Bazel is not a release version, cannot check for compatibility.")
+    print("Make sure that you are running at least Bazel %s.\n" % bazel_version)
+  else:
     current_bazel_version = _parse_bazel_version(native.bazel_version)
     minimum_bazel_version = _parse_bazel_version(bazel_version)
     if minimum_bazel_version > current_bazel_version:
@@ -185,7 +190,7 @@ def tf_gen_op_wrapper_cc(name, out_ops_file, pkg="",
   )
 
   # Run the op generator.
-  if name == "sendrecv_ops":
+  if name == "sendrecv_ops" or name == "function_ops":
     include_internal = "1"
   else:
     include_internal = "0"
@@ -224,7 +229,8 @@ def tf_gen_op_wrappers_cc(name,
                               "//tensorflow/cc:scope",
                               "//tensorflow/cc:const_op",
                           ],
-                          op_gen="//tensorflow/cc:cc_op_gen_main"):
+                          op_gen="//tensorflow/cc:cc_op_gen_main",
+                          visibility=None):
   subsrcs = other_srcs
   subhdrs = other_hdrs
   for n in op_lib_names:
@@ -242,7 +248,8 @@ def tf_gen_op_wrappers_cc(name,
                         "//tensorflow/core:protos_all_cc",
                     ],
                     copts=tf_copts(),
-                    alwayslink=1,)
+                    alwayslink=1,
+                    visibility=visibility)
 
 # Invoke this rule in .../tensorflow/python to build the wrapper library.
 def tf_gen_op_wrapper_py(name, out=None, hidden=None, visibility=None, deps=[],

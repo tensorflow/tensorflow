@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {HoverContext} from './hoverContext';
 import {RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import {ScatterPlotVisualizerAxes} from './scatterPlotVisualizerAxes';
+import {SelectionContext} from './selectionContext';
 import {getNearFarPoints, getProjectedPointFromIndex, vector3DToScreenCoords} from './util';
 import {dist_2D, Point3D} from './vector';
 
@@ -85,15 +87,12 @@ export interface DataTrace {
   pointIndices: number[];
 }
 
-export type OnHoverListener = (index: number) => void;
-export type OnSelectionListener = (indexes: number[]) => void;
 export type OnCameraMoveListener =
     (cameraPosition: THREE.Vector3, cameraTarget: THREE.Vector3) => void;
 
 /** Supported modes of interaction. */
 export enum Mode {
   SELECT,
-  SEARCH,
   HOVER
 }
 
@@ -105,18 +104,14 @@ export enum Mode {
  */
 export class ScatterPlot {
   private dataSet: DataSet;
+  private selectionContext: SelectionContext;
+  private hoverContext: HoverContext;
+
   private spriteImage: HTMLImageElement;
   private containerNode: HTMLElement;
   private visualizers: ScatterPlotVisualizer[] = [];
 
-  private highlightedPoints: number[] = [];
-  private highlightStroke: (index: number) => string;
-  private labeledPoints: number[] = [];
-  private favorLabels: (i: number) => boolean;
   private labelAccessor: (index: number) => string;
-  private colorAccessor: (index: number) => string;
-  private onHoverListeners: OnHoverListener[] = [];
-  private onSelectionListeners: OnSelectionListener[] = [];
   private onCameraMoveListeners: OnCameraMoveListener[] = [];
   private lazySusanAnimation: number;
 
@@ -145,16 +140,28 @@ export class ScatterPlot {
   private light: THREE.PointLight;
   private selectionSphere: THREE.Mesh;
 
+  private pointColors: Float32Array;
+  private pointScaleFactors: Float32Array;
+  private labelIndices: Uint32Array;
+  private labelScaleFactors: Float32Array;
+  private labelStrokeColor: number;
+  private labelFillColor: number;
+  private labelDefaultFontSize: number;
+
   private animating = false;
   private selecting = false;
   private nearestPoint: number;
   private mouseIsDown = false;
   private isDragSequence = false;
   private animationID: number;
+  private cameraSetFromState: boolean = false;
 
   constructor(
-      container: d3.Selection<any>, labelAccessor: (index: number) => string) {
+      container: d3.Selection<any>, labelAccessor: (index: number) => string,
+      selectionContext: SelectionContext, hoverContext: HoverContext) {
     this.containerNode = container.node() as HTMLElement;
+    this.selectionContext = selectionContext;
+    this.hoverContext = hoverContext;
     this.getLayoutValues();
 
     this.labelAccessor = labelAccessor;
@@ -196,8 +203,6 @@ export class ScatterPlot {
     this.cameraControls =
         new (THREE as any)
             .OrbitControls(this.perspCamera, this.renderer.domElement);
-    this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
-    this.cameraControls.mouseButtons.PAN = THREE.MOUSE.RIGHT;
     // Start is called when the user stars interacting with
     // orbit controls.
     this.cameraControls.addEventListener('start', () => {
@@ -218,17 +223,33 @@ export class ScatterPlot {
   }
 
   /** Sets up camera to work in 3D (called after makeCamera()). */
-  private makeCamera3D() {
+  private makeCamera3D(animate?: boolean) {
     // Set up the camera position at a skewed angle from the xy plane, looking
     // toward the origin
     this.cameraControls.position0.set(POS_3D.x, POS_3D.y, POS_3D.z);
     this.cameraControls.target0.set(TAR_3D.x, TAR_3D.y, TAR_3D.z);
     this.cameraControls.enableRotate = true;
+    this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
+    this.cameraControls.mouseButtons.PAN = THREE.MOUSE.RIGHT;
     let position = new THREE.Vector3(POS_3D.x, POS_3D.y, POS_3D.z);
     let target = new THREE.Vector3(TAR_3D.x, TAR_3D.y, TAR_3D.z);
-    this.animate(position, target, () => {
-      this.startLazySusanAnimation();
-    });
+
+    // Don't animate if the camera is set from a bookmark load.
+    // TODO(nsthorat): Remove this. This method shouldn't be called every time
+    // a projection changes.
+    if (!this.cameraSetFromState) {
+      if (animate) {
+        this.animate(position, target, () => {
+          this.startLazySusanAnimation();
+        });
+      } else {
+        this.cameraControls.target.set(target.x, target.y, target.z);
+        this.perspCamera.position.set(position.x, position.y, position.z);
+        this.cameraControls.update();
+        this.render();
+      }
+    }
+    this.cameraSetFromState = false;
   }
 
   /** Sets up camera to work in 2D (called after makeCamera()). */
@@ -237,9 +258,18 @@ export class ScatterPlot {
     // toward the middle of the xy plane
     this.cameraControls.position0.set(POS_2D.x, POS_2D.y, POS_2D.z);
     this.cameraControls.target0.set(TAR_2D.x, TAR_2D.y, TAR_2D.z);
+    this.cameraControls.mouseButtons.PAN = THREE.MOUSE.LEFT;
+    this.cameraControls.mouseButtons.ORBIT = null;
     let position = new THREE.Vector3(POS_2D.x, POS_2D.y, POS_2D.z);
     let target = new THREE.Vector3(TAR_2D.x, TAR_2D.y, TAR_2D.z);
-    this.animate(position, target);
+
+    // Don't animate if the camera is set from a bookmark load.
+    // TODO(nsthorat): Remove this. This method shouldn't be called every time
+    // a projection changes.
+    if (!this.cameraSetFromState) {
+      this.animate(position, target);
+    }
+    this.cameraSetFromState = false;
     this.cameraControls.enableRotate = false;
   }
 
@@ -259,23 +289,24 @@ export class ScatterPlot {
   setCameraPositionAndTarget(position: Point3D, target: Point3D) {
     this.perspCamera.position.set(position[0], position[1], position[2]);
     this.cameraControls.target.set(target[0], target[1], target[2]);
+
+    this.cameraSetFromState = true;
     this.cameraControls.autoRotate = false;
     this.animating = false;
+    this.cancelAnimation();
     cancelAnimationFrame(this.lazySusanAnimation);
     this.cameraControls.update();
     this.render();
   }
 
-  private onClick(e?: MouseEvent) {
+  private onClick(e?: MouseEvent, notify = true) {
     if (e && this.selecting) {
       return;
     }
-    this.labeledPoints =
-        this.highlightedPoints.filter((id, i) => this.favorLabels(i));
-    let selection = this.nearestPoint || null;
     // Only call event handlers if the click originated from the scatter plot.
-    if (!this.isDragSequence) {
-      this.onSelectionListeners.forEach(l => l(selection ? [selection] : []));
+    if (!this.isDragSequence && notify) {
+      const selection = this.nearestPoint ? [this.nearestPoint] : [];
+      this.selectionContext.notifySelectionChanged(selection);
     }
     this.isDragSequence = false;
     this.render();
@@ -294,7 +325,7 @@ export class ScatterPlot {
         this.createSelectionSphere();
       }
     } else if (
-        !e.ctrlKey &&
+        !e.ctrlKey && this.zAccessor &&
         this.cameraControls.mouseButtons.ORBIT === THREE.MOUSE.RIGHT) {
       // The user happened to press the ctrl key when the tab was active,
       // unpressed the ctrl when the tab was inactive, and now he/she
@@ -302,7 +333,7 @@ export class ScatterPlot {
       this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
       this.cameraControls.mouseButtons.PAN = THREE.MOUSE.RIGHT;
     } else if (
-        e.ctrlKey &&
+        e.ctrlKey && this.zAccessor &&
         this.cameraControls.mouseButtons.ORBIT === THREE.MOUSE.LEFT) {
       // Similarly to the situation above.
       this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.RIGHT;
@@ -341,18 +372,15 @@ export class ScatterPlot {
       }
       this.render();
     } else if (!this.mouseIsDown) {
-      let lastNearestPoint = this.nearestPoint;
       this.setNearestPointToMouse(e);
-      if (lastNearestPoint !== this.nearestPoint) {
-        this.onHoverListeners.forEach(l => l(this.nearestPoint));
-      }
+      this.hoverContext.notifyHoverOverPoint(this.nearestPoint);
     }
   }
 
   /** For using ctrl + left click as right click, and for circle select */
   private onKeyDown(e: any) {
     // If ctrl is pressed, use left click to orbit
-    if (e.keyCode === CTRL_KEY) {
+    if (e.keyCode === CTRL_KEY && this.zAccessor) {
       this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.RIGHT;
       this.cameraControls.mouseButtons.PAN = THREE.MOUSE.LEFT;
     }
@@ -366,7 +394,7 @@ export class ScatterPlot {
 
   /** For using ctrl + left click as right click, and for circle select */
   private onKeyUp(e: any) {
-    if (e.keyCode === CTRL_KEY) {
+    if (e.keyCode === CTRL_KEY && this.zAccessor) {
       this.cameraControls.mouseButtons.ORBIT = THREE.MOUSE.LEFT;
       this.cameraControls.mouseButtons.PAN = THREE.MOUSE.RIGHT;
     }
@@ -417,23 +445,21 @@ export class ScatterPlot {
   }
 
   private adjustSelectionSphere(e: MouseEvent) {
-    let dist = this.getDist2ToMouse(this.nearestPoint, e) / 100;
+    const dist = this.getDist2ToMouse(this.nearestPoint, e) / 100;
     this.selectionSphere.scale.set(dist, dist, dist);
-    let selectedPoints: number[] = [];
+    const selectedPoints: number[] = [];
     this.dataSet.points.forEach(point => {
-      let pt = point.projectedPoint;
-      let pointVect = new THREE.Vector3(pt[0], pt[1], pt[2]);
-      let distPointToSphereOrigin = new THREE.Vector3()
-                                        .copy(this.selectionSphere.position)
-                                        .sub(pointVect)
-                                        .length();
+      const pt = point.projectedPoint;
+      const pointVect = new THREE.Vector3(pt[0], pt[1], pt[2]);
+      const distPointToSphereOrigin = new THREE.Vector3()
+                                          .copy(this.selectionSphere.position)
+                                          .sub(pointVect)
+                                          .length();
       if (distPointToSphereOrigin < dist) {
         selectedPoints.push(this.dataSet.points.indexOf(point));
       }
     });
-    this.labeledPoints = selectedPoints;
-    // Whenever anything is selected, we want to set the corect point color.
-    this.onSelectionListeners.forEach(l => l(selectedPoints));
+    this.selectionContext.notifySelectionChanged(selectedPoints);
   }
 
   /** Cancels current animation */
@@ -553,8 +579,6 @@ export class ScatterPlot {
     return this.zAccessor != null;
   }
 
-  // PUBLIC API
-
   /** Adds a visualizer to the set, will start dispatching events to it */
   addVisualizer(visualizer: ScatterPlotVisualizer) {
     this.visualizers.push(visualizer);
@@ -577,13 +601,13 @@ export class ScatterPlot {
     this.addAxesToScene();
   }
 
-  recreateScene() {
+  recreateScene(animate = true) {
     this.removeAll();
     this.cancelAnimation();
     if (this.sceneIs3D()) {
-      this.makeCamera3D();
+      this.makeCamera3D(animate);
     } else {
-      this.makeCamera2D();
+      this.makeCamera2D(animate);
     }
     this.visualizers.forEach(v => {
       v.onRecreateScene(this.scene, this.sceneIs3D(), this.backgroundColor);
@@ -598,11 +622,10 @@ export class ScatterPlot {
     this.dataSet = dataSet;
     this.spriteImage = spriteImage;
     this.nearestPoint = null;
-    this.labeledPoints = [];
-    this.highlightedPoints = [];
     this.visualizers.forEach(v => {
       v.onDataSet(dataSet, spriteImage);
     });
+    this.render();
   }
 
   update() {
@@ -640,18 +663,14 @@ export class ScatterPlot {
     let rc = new RenderContext(
         this.perspCamera, this.cameraControls.target, this.width, this.height,
         cameraSpacePointExtents[0], cameraSpacePointExtents[1],
-        this.colorAccessor, this.labeledPoints, this.labelAccessor,
-        this.highlightedPoints, this.highlightStroke);
+        this.labelAccessor, this.pointColors, this.pointScaleFactors,
+        this.labelIndices, this.labelScaleFactors, this.labelDefaultFontSize,
+        this.labelStrokeColor, this.labelFillColor);
 
     this.visualizers.forEach(v => {
       v.onRender(rc);
     });
     this.renderer.render(this.scene, this.perspCamera);
-  }
-
-  setColorAccessor(colorAccessor: (index: number) => string) {
-    this.colorAccessor = colorAccessor;
-    this.render();
   }
 
   setPointAccessors(
@@ -679,6 +698,27 @@ export class ScatterPlot {
       this.selecting = false;
       this.containerNode.style.cursor = 'default';
     }
+  }
+
+  /** Set the colors for every data point. (RGB triplets) */
+  setPointColors(colors: Float32Array) {
+    this.pointColors = colors;
+  }
+
+  /** Set the scale factors for every data point. (scalars) */
+  setPointScaleFactors(scaleFactors: Float32Array) {
+    this.pointScaleFactors = scaleFactors;
+  }
+
+  setVisibleLabels(
+      visibleLabelIndices: Uint32Array, visibleLabelScaleFactors: Float32Array,
+      labelStrokeColor: number, labelFillColor: number,
+      labelDefaultFontSize: number) {
+    this.labelIndices = visibleLabelIndices;
+    this.labelScaleFactors = visibleLabelScaleFactors;
+    this.labelStrokeColor = labelStrokeColor;
+    this.labelFillColor = labelFillColor;
+    this.labelDefaultFontSize = labelDefaultFontSize;
   }
 
   getMode(): Mode { return this.mode; }
@@ -719,18 +759,6 @@ export class ScatterPlot {
     }
   }
 
-  highlightPoints(
-      pointIndexes: number[], highlightStroke: (i: number) => string,
-      favorLabels: (i: number) => boolean) {
-    this.favorLabels = favorLabels;
-    this.highlightedPoints = pointIndexes;
-    this.labeledPoints = pointIndexes;
-    this.highlightStroke = highlightStroke;
-    this.render();
-  }
-
-  getHighlightedPoints(): number[] { return this.highlightedPoints; }
-
   setDayNightMode(isNight: boolean) {
     d3.select(this.containerNode)
         .selectAll('canvas')
@@ -758,17 +786,12 @@ export class ScatterPlot {
     };
   }
 
-  onSelection(listener: OnSelectionListener) {
-    this.onSelectionListeners.push(listener);
-  }
-
-  onHover(listener: OnHoverListener) { this.onHoverListeners.push(listener); }
   onCameraMove(listener: OnCameraMoveListener) {
     this.onCameraMoveListeners.push(listener);
   }
 
   clickOnPoint(pointIndex: number) {
     this.nearestPoint = pointIndex;
-    this.onClick();
+    this.onClick(null, false);
   }
 }

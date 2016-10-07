@@ -89,7 +89,7 @@ struct GatherNdSlice<GPUDevice, T, Index, IXDIM> {
     // clang-format on
 
     // TODO(ebrevdo): enable indices validation on GPU.
-    // Right now checking for indicies out of bound in the kernel would
+    // Right now checking for indices out of bound in the kernel would
     // require copying code between GPU/CPU, and is too slow.
     return -1;
   }

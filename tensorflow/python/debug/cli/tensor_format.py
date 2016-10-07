@@ -134,6 +134,10 @@ def _annotate_ndarray_lines(
 
   dims = np.shape(tensor)
   ndims = len(dims)
+  if ndims == 0:
+    # No indices for a 0D tensor.
+    return annotations
+
   curr_indices = [0] * len(dims)
   curr_dim = 0
   for i in xrange(len(array_lines)):

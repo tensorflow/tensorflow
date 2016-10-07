@@ -233,20 +233,30 @@ def _MatrixDiagGrad(_, grad):
 
 
 @ops.RegisterGradient("MatrixDiagPart")
-def _MatrixDiagPartGrad(_, grad):
-  return array_ops.matrix_diag(grad)
+def _MatrixDiagPartGrad(op, grad):
+  matrix_shape = op.inputs[0].get_shape()[-2:]
+  if matrix_shape.is_fully_defined() and matrix_shape[0] == matrix_shape[1]:
+    return array_ops.matrix_diag(grad)
+  else:
+    return array_ops.matrix_set_diag(array_ops.zeros_like(op.inputs[0]), grad)
 
 
 @ops.RegisterGradient("MatrixSetDiag")
 def _MatrixSetDiagGrad(op, grad):
+  input_shape = op.inputs[0].get_shape().merge_with(grad.get_shape())
   diag_shape = op.inputs[1].get_shape()
-  diag_shape = diag_shape.merge_with(op.inputs[0].get_shape()[:-1])
-  diag_shape = diag_shape.merge_with(grad.get_shape()[:-1])
-  if diag_shape.is_fully_defined():
-    diag_shape = diag_shape.as_list()
+  batch_shape = input_shape[:-2].merge_with(diag_shape[:-1])
+  matrix_shape = input_shape[-2:]
+  if batch_shape.is_fully_defined() and matrix_shape.is_fully_defined():
+    diag_shape = batch_shape.as_list() + [min(matrix_shape.as_list())]
   else:
-    diag_shape = array_ops.shape(grad)
-    diag_shape = array_ops.slice(diag_shape, [0], [array_ops.rank(grad) - 1])
+    with ops.colocate_with(grad):
+      grad_shape = array_ops.shape(grad)
+      grad_rank = array_ops.rank(grad)
+      batch_shape = array_ops.slice(grad_shape, [0], [grad_rank - 2])
+      matrix_shape = array_ops.slice(grad_shape, [grad_rank - 2], [2])
+      min_dim = math_ops.reduce_min(matrix_shape)
+      diag_shape = array_ops.concat(0, [batch_shape, [min_dim]])
   grad_input = array_ops.matrix_set_diag(
       grad, array_ops.zeros(
           diag_shape, dtype=grad.dtype))

@@ -34,23 +34,24 @@ import traceback
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
 
-# pywrap_tensorflow is a SWIG generated python library that dynamically loads
-# _pywrap_tensorflow.so. The default mode for loading keeps all the symbol
-# private and not visible to other libraries that may be loaded. Setting
-# the mode to RTLD_GLOBAL to make the symbols visible, so libraries such
-# as the ones implementing custom ops can have access to tensorflow
-# framework's symbols.
-# one catch is that numpy *must* be imported before the call to
-# setdlopenflags(), or there is a risk that later c modules will segfault
-# when importing numpy (gh-2034).
+# On UNIX-based platforms, pywrap_tensorflow is a SWIG-generated
+# python library that dynamically loads _pywrap_tensorflow.so. The
+# default mode for loading keeps all the symbol private and not
+# visible to other libraries that may be loaded. Setting the mode to
+# RTLD_GLOBAL to make the symbols visible, so that custom op libraries
+# imported using `tf.load_op_library()` can access symbols defined in
+# _pywrap_tensorflow.so.
 import numpy as np
-_default_dlopen_flags = sys.getdlopenflags()
-sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_GLOBAL)
-from tensorflow.python import pywrap_tensorflow
-sys.setdlopenflags(_default_dlopen_flags)
-
 try:
-  from tensorflow.core.framework.graph_pb2 import *
+  if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
+    _default_dlopen_flags = sys.getdlopenflags()
+    sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_GLOBAL)
+    from tensorflow.python import pywrap_tensorflow
+    sys.setdlopenflags(_default_dlopen_flags)
+  else:
+    # TODO(keveman,mrry): Support dynamic op loading on platforms that do not
+    # use `dlopen()` for dynamic loading.
+    from tensorflow.python import pywrap_tensorflow
 except ImportError:
   msg = """%s\n\nError importing tensorflow.  Unless you are using bazel,
 you should not try to import tensorflow from its source directory;
@@ -58,6 +59,8 @@ please exit the tensorflow source tree, and relaunch your python interpreter
 from there.""" % traceback.format_exc()
   raise ImportError(msg)
 
+# Protocol buffers
+from tensorflow.core.framework.graph_pb2 import *
 from tensorflow.core.framework.node_def_pb2 import *
 from tensorflow.core.framework.summary_pb2 import *
 from tensorflow.core.framework.attr_value_pb2 import *
@@ -143,7 +146,6 @@ _allowed_symbols = [
     'RunMetadata',
     'SessionLog',
     'Summary',
-    'initialize_all_tables',
 ]
 
 # The following symbols are kept for compatibility. It is our plan

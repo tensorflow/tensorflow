@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,9 +41,17 @@ def Export():
     a = tf.Variable(0.5, name="a")
     b = tf.Variable(2.0, name="b")
 
+    # Create a placeholder for serialized tensorflow.Example messages to be fed.
+    serialized_tf_example = tf.placeholder(tf.string, name="tf_example")
+
+    # Parse the tensorflow.Example looking for a feature named "x" with a single
+    # floating point value.
+    feature_configs = {"x": tf.FixedLenFeature([1], dtype=tf.float32),}
+    tf_example = tf.parse_example(serialized_tf_example, feature_configs)
+    # Use tf.identity() to assign name
+    x = tf.identity(tf_example["x"], name="x")
+
     # Calculate, y = a*x + b
-    # here we use a placeholder 'x' which is fed at inference time.
-    x = tf.placeholder(tf.float32, name="x")
     y = tf.add(tf.mul(a, x), b, name="y")
 
     # Setup a standard Saver for our variables.
@@ -65,7 +73,16 @@ def Export():
     global_step_tensor = tf.Variable(123, name="global_step")
 
     # Create a RegressionSignature for our input and output.
-    signature = exporter.regression_signature(input_tensor=x, output_tensor=y)
+    regression_signature = exporter.regression_signature(
+        input_tensor=serialized_tf_example,
+        # Use tf.identity here because we export two signatures here.
+        # Otherwise only graph for one of the signatures will be loaded
+        # (whichever is created first) during serving.
+        output_tensor=tf.identity(y))
+    named_graph_signature = {
+        "inputs": exporter.generic_signature({"x": x}),
+        "outputs": exporter.generic_signature({"y": y})
+    }
 
     # Create two filename assets and corresponding tensors.
     # TODO(b/26254158) Consider adding validation of file existance as well as
@@ -101,7 +118,8 @@ def Export():
     export.init(
         sess.graph.as_graph_def(),
         init_op=init_op,
-        default_graph_signature=signature,
+        default_graph_signature=regression_signature,
+        named_graph_signatures=named_graph_signature,
         assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS),
         assets_callback=CopyAssets)
     export.export(export_path, global_step_tensor, sess)

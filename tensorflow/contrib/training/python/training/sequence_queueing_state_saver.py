@@ -28,6 +28,7 @@ import numbers
 import six
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -1251,7 +1252,7 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
 
   Static features of an example that do not vary across time can be part of the
   `input_context`, a dict with Tensor values. This method copies the context for
-  each segment and makes it availabe in the `context` of the output.
+  each segment and makes it available in the `context` of the output.
 
   This method can maintain and update a state for each example. It accepts some
   initial_states as a dict with Tensor values. The first mini-batch an example
@@ -1347,7 +1348,8 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
     batch_size: int or int32 scalar `Tensor`, how large minibatches should
       be when accessing the `state()` method and `context`, `sequences`, etc,
       properties.
-    num_threads: The int number of threads enquing input examples into a queue.
+    num_threads: The int number of threads enqueuing input examples into a
+      queue.
     capacity: The max capacity of the queue in number of examples. Needs to be
       at least `batch_size`. Defaults to 1000. When iterating over the same
       input example multiple times reusing their keys the `capacity` must be
@@ -1414,9 +1416,10 @@ def batch_sequences_with_states(input_key, input_sequences, input_context,
         math_ops.cast(barrier.ready_size(), dtypes.float32))
 
     q_runner = queue_runner.QueueRunner(
-        stateful_reader, [stateful_reader.prefetch_op]*num_threads)
+        stateful_reader, [stateful_reader.prefetch_op]*num_threads,
+        queue_closed_exception_types=(errors.OutOfRangeError,
+                                      errors.CancelledError))
     queue_runner.add_queue_runner(q_runner)
-
     return stateful_reader.next_batch
 
 

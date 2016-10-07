@@ -30,6 +30,7 @@ sh_binary(
         ":other_headers",
         ":simple_console",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/ndlstm:all_files",
         "//tensorflow/contrib/session_bundle:all_files",
         "//tensorflow/contrib/slim:all_files",
         "//tensorflow/contrib/slim/python/slim/data:all_files",

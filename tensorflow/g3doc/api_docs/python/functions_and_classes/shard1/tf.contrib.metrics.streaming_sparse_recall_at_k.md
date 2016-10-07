@@ -54,7 +54,7 @@ Instructions for updating:
       be added to.
     updates_collections: An optional list of collections that updates should
       be added to.
-    name: Name of new update operation, and namespace for other dependant ops.
+    name: Name of new update operation, and namespace for other dependent ops.
 
   Returns:
     recall: Scalar `float64` `Tensor` with the value of `true_positives` divided

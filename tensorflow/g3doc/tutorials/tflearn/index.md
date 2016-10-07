@@ -2,10 +2,10 @@
 
 TensorFlow’s high-level machine learning API (tf.contrib.learn) makes it easy to
 configure, train, and evaluate a variety of machine learning models. In this
-tutorial, you’ll use tf.contrib.learn to construct a [neural network]
-(https://en.wikipedia.org/wiki/Artificial_neural_network) classifier and train
-it on the [Iris data set](https://en.wikipedia.org/wiki/Iris_flower_data_set) to
-predict flower species based on sepal/petal geometry. You'll write code to
+tutorial, you’ll use tf.contrib.learn to construct a
+[neural network](https://en.wikipedia.org/wiki/Artificial_neural_network)
+classifier and train it on the [Iris data set](https://en.wikipedia.org/wiki/Iris_flower_data_set)
+to predict flower species based on sepal/petal geometry. You'll write code to
 perform the following five steps:
 
 1.  Load CSVs containing Iris training/test data into a TensorFlow `Dataset`
@@ -15,9 +15,9 @@ perform the following five steps:
 4.  Evaluate the accuracy of the model
 5.  Classify new samples
 
-NOTE: Remember to [install TensorFlow on your machine]
-(../../get_started/os_setup.md#download-and-setup) before getting started with
-this tutorial.
+NOTE: Remember to
+[install TensorFlow on your machine](../../get_started/os_setup.md#download-and-setup)
+before getting started with this tutorial.
 
 ## Complete Neural Network Source Code
 
@@ -85,11 +85,11 @@ and [*Iris virginica*](https://www.flickr.com/photos/33397993@N05/3352169862)
 (by [Frank Mayfield](https://www.flickr.com/photos/33397993@N05), CC BY-SA
 2.0).**
 
-Each row contains the following data for each flower sample: [sepal]
-(https://en.wikipedia.org/wiki/Sepal) length, sepal width, [petal]
-(https://en.wikipedia.org/wiki/Petal) length, petal width, and flower species.
-Flower species are represented as integers, with 0 denoting *Iris setosa*, 1
-denoting *Iris versicolor*, and 2 denoting *Iris virginica*.
+Each row contains the following data for each flower sample:
+[sepal](https://en.wikipedia.org/wiki/Sepal) length, sepal width,
+[petal](https://en.wikipedia.org/wiki/Petal) length, petal width, and flower
+species. Flower species are represented as integers, with 0 denoting
+*Iris setosa*, 1 denoting *Iris versicolor*, and 2 denoting *Iris virginica*.
 
 Sepal Length | Sepal Width | Petal Length | Petal Width | Species
 :----------- | :---------- | :----------- | :---------- | :-------
@@ -126,8 +126,8 @@ import tensorflow as tf
 import numpy as np
 ```
 
-Next, load the training and test sets into `Dataset`s using the [`load_csv()`]
-(https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/datasets/base.py)
+Next, load the training and test sets into `Dataset`s using the
+[`load_csv()`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/datasets/base.py)
 method in `learn.datasets.base`. The `load_csv()` method takes two required
 arguments:
 
@@ -152,28 +152,29 @@ test_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TEST,
                                                    target_dtype=np.int)
 ```
 
-`Dataset`s in tf.contrib.learn are [named tuples]
-(https://docs.python.org/2/library/collections.html#collections.namedtuple); you
-can access feature data and target values via the `data` and `target` fields.
-Here, `training_set.data` and `training_set.target` contain the feature data and
-target values for the training set, respectively, and `test_set.data` and
-`test_set.target` contain feature data and target values for the test set.
+`Dataset`s in tf.contrib.learn are
+[named tuples](https://docs.python.org/2/library/collections.html#collections.namedtuple);
+you can access feature data and target values via the `data` and `target`
+fields. Here, `training_set.data` and `training_set.target` contain the feature
+data and target values for the training set, respectively, and `test_set.data`
+and `test_set.target` contain feature data and target values for the test set.
 
-Later on, in ["Fit the DNNClassifier to the Iris Training Data,"]
-(#fit-dnnclassifier) you'll use `training_set.data` and `training_set.target` to
-train your model, and in ["Evaluate Model Accuracy,"](#evaluate-accuracy) you'll
-use `test_set.data` and `test_set.target`. But first, you'll construct your
-model in the next section.
+Later on, in
+["Fit the DNNClassifier to the Iris Training Data,"](#fit-dnnclassifier)
+you'll use `training_set.data` and `training_set.target` to train your model,
+and in ["Evaluate Model Accuracy,"](#evaluate-accuracy) you'll use
+`test_set.data` and `test_set.target`. But first, you'll construct your model in
+the next section.
 
 ## Construct a Deep Neural Network Classifier
 
-tf.contrib.learn offers a variety of predefined models, called [`Estimator`s]
-(../../api_docs/python/contrib.learn.md#estimators), which you can use "out of
-the box" to run training and evaluation operations on your data. Here, you'll
-configure a Deep Neural Network Classifier model to fit the Iris data. Using
-tf.contrib.learn, you can instantiate your [`DNNClassifier`]
-(../../api_docs/python/contrib.learn.md#DNNClassifier) with just a couple lines
-of code:
+tf.contrib.learn offers a variety of predefined models, called
+[`Estimator`s](../../api_docs/python/contrib.learn.md#estimators), which you can
+use "out of the box" to run training and evaluation operations on your data.
+Here, you'll configure a Deep Neural Network Classifier model to fit the Iris
+data. Using tf.contrib.learn, you can instantiate your
+[`DNNClassifier`](../../api_docs/python/contrib.learn.md#DNNClassifier)
+with just a couple lines of code:
 
 ```python
 # Specify that all features have real-value data
@@ -208,9 +209,9 @@ Then, the code creates a `DNNClassifier` model using the following arguments:
 ## Fit the DNNClassifier to the Iris Training Data {#fit-dnnclassifier}
 
 Now that you've configured your DNN `classifier` model, you can fit it to the
-Iris training data using the [`fit`]
-(../../api_docs/python/contrib.learn.md#BaseEstimator.fit) method. Pass as
-arguments your feature data (`training_set.data`), target values
+Iris training data using the
+[`fit`](../../api_docs/python/contrib.learn.md#BaseEstimator.fit) method. Pass
+as arguments your feature data (`training_set.data`), target values
 (`training_set.target`), and the number of steps to train (here, 2000):
 
 ```python
@@ -228,8 +229,8 @@ classifier.fit(x=training_set.data, y=training_set.target, steps=1000)
 ```
 
 However, if you're looking to track the model while it trains, you'll likely
-want to instead use a TensorFlow [`monitor`]
-(https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/monitors.py)
+want to instead use a TensorFlow
+[`monitor`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/monitors.py)
 to perform logging operations. See the tutorial [&ldquo;Logging and Monitoring
 Basics with tf.contrib.learn&rdquo;](../monitors/index.md) for more on this
 topic.
@@ -237,12 +238,12 @@ topic.
 ## Evaluate Model Accuracy {#evaluate-accuracy}
 
 You've fit your `DNNClassifier` model on the Iris training data; now, you can
-check its accuracy on the Iris test data using the [`evaluate`]
-(../../api_docs/python/contrib.learn.md#BaseEstimator.evaluate) method. Like
-`fit`, `evaluate` takes feature data and target values as arguments, and returns
-a `dict` with the evaluation results. The following code passes the Iris test
-data&mdash;`test_set.data` and `test_set.target`&mdash;to `evaluate` and prints
-the `accuracy` from the results:
+check its accuracy on the Iris test data using the
+[`evaluate`](../../api_docs/python/contrib.learn.md#BaseEstimator.evaluate)
+method. Like `fit`, `evaluate` takes feature data and target values as
+arguments, and returns a `dict` with the evaluation results. The following code
+passes the Iris test data&mdash;`test_set.data` and `test_set.target`&mdash;to
+`evaluate` and prints the `accuracy` from the results:
 
 ```python
 accuracy_score = classifier.evaluate(x=test_set.data, y=test_set.target)["accuracy"]

@@ -143,6 +143,7 @@ Svd
 # logging_ops
 Assert
 AudioSummary
+AudioSummaryV2
 HistogramAccumulatorSummary
 HistogramSummary
 ImageSummary

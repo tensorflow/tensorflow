@@ -143,14 +143,8 @@ class OperatorPDCholesky(operator_pd.OperatorPDBase):
     # tf.batch_matmul is defined x * y, so "y" is on the right, not "x".
     return math_ops.batch_matmul(chol, x, adj_y=transpose_x)
 
-  def _solve(self, rhs):
-    return linalg_ops.cholesky_solve(self._chol, rhs)
-
   def _batch_solve(self, rhs):
     return linalg_ops.cholesky_solve(self._chol, rhs)
-
-  def _sqrt_solve(self, rhs):
-    return linalg_ops.matrix_triangular_solve(self._chol, rhs, lower=True)
 
   def _batch_sqrt_solve(self, rhs):
     return linalg_ops.matrix_triangular_solve(self._chol, rhs, lower=True)

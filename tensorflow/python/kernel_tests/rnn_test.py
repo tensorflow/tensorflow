@@ -132,6 +132,15 @@ class RNNTest(tf.test.TestCase):
     self._seed = 23489
     np.random.seed(self._seed)
 
+  def testInvalidSequenceLengthShape(self):
+    cell = Plus1RNNCell()
+    inputs = [tf.placeholder(tf.float32, shape=(3, 4))]
+    with self.assertRaisesRegexp(ValueError, "must be a vector"):
+      tf.nn.rnn(cell, inputs, dtype=tf.float32, sequence_length=4)
+    with self.assertRaisesRegexp(ValueError, "must be a vector"):
+      tf.nn.dynamic_rnn(
+          cell, tf.pack(inputs), dtype=tf.float32, sequence_length=[[4]])
+
   def testRNN(self):
     cell = Plus1RNNCell()
     batch_size = 2
@@ -840,6 +849,12 @@ class LSTMTest(tf.test.TestCase):
       self.assertEqual(len(outputs0_values), len(outputs1_values))
       for out0, out1 in zip(outputs0_values, outputs1_values):
         self.assertAllEqual(out0, out1)
+
+  def testDynamicRNNAllowsUnknownTimeDimension(self):
+    inputs = tf.placeholder(tf.float32, shape=[1, None, 20])
+    cell = tf.nn.rnn_cell.GRUCell(30)
+    # Smoke test, this should not raise an error
+    tf.nn.dynamic_rnn(cell, inputs, dtype=tf.float32)
 
   def testDynamicRNNWithTupleStates(self):
     num_units = 3

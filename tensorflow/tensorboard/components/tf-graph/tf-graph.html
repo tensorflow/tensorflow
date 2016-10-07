@@ -55,7 +55,9 @@ paper-button {
 </style>
 <div class="container">
   <div class="vertical">
-    <h2>[[title]]</h2>
+    <template is="dom-if" if="[[title]]">
+      <h2>[[title]]</h2>
+    </template>
     <tf-graph-scene id="scene" class="auto"
           render-hierarchy="[[renderHierarchy]]"
           highlighted-node="[[_getVisible(highlightedNode)]]"

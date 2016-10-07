@@ -18,9 +18,9 @@ limitations under the License.
 
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include <math.h>
 #undef _USE_MATH_DEFINES
 
-#include <math.h>
 #include <string.h>
 #include <algorithm>
 

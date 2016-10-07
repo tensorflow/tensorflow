@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
 __all__ = ["safe_embedding_lookup_sparse", "hashed_embedding_lookup",
@@ -44,7 +45,9 @@ def safe_embedding_lookup_sparse(embedding_weights,
 
   The partitioned embedding in `embedding_weights` must all be the same shape
   except for the first dimension. The first dimension is allowed to vary as the
-  vocabulary size is not necessarily a multiple of `P`.
+  vocabulary size is not necessarily a multiple of `P`.  `embedding_weights`
+  may be a `PartitionedVariable` as returned by using `tf.get_variable()` with a
+  partitioner.
 
   Invalid IDs (< 0) are pruned from input IDs and weights, as well as any IDs
   with non-positive weight. For an entry with no features, the embedding vector
@@ -55,9 +58,10 @@ def safe_embedding_lookup_sparse(embedding_weights,
 
   Args:
     embedding_weights:  A list of `P` float tensors or values representing
-        partitioned embedding tensors.  The total unpartitioned shape should be
-        `[e_0, e_1, ..., e_m]`, where `e_0` represents the vocab size and
-        `e_1, ..., e_m` are the embedding dimensions.
+        partitioned embedding tensors.  Alternatively, a `PartitionedVariable`,
+        created by partitioning along dimension 0.  The total unpartitioned
+        shape should be `[e_0, e_1, ..., e_m]`, where `e_0` represents the
+        vocab size and `e_1, ..., e_m` are the embedding dimensions.
     sparse_ids: `SparseTensor` of shape `[d_0, d_1, ..., d_n]` containing the
         ids. `d_0` is typically batch size.
     sparse_weights: `SparseTensor` of same shape as `sparse_ids`, containing
@@ -86,6 +90,8 @@ def safe_embedding_lookup_sparse(embedding_weights,
     raise ValueError("Missing embedding_weights %s." % embedding_weights)
 
   dtype = sparse_weights.dtype if sparse_weights is not None else None
+  if isinstance(embedding_weights, variables.PartitionedVariable):
+    embedding_weights = list(embedding_weights)
   embedding_weights = [
       ops.convert_to_tensor(w, dtype=dtype) for w in embedding_weights
   ]
@@ -189,7 +195,7 @@ def hashed_embedding_lookup(params, values, dimension, name=None):
   partitioned in 4 tensors with length `[3, 3, 2, 2]`.
 
   Args:
-    params: A `Tensor` or `list` of `Tensors`.
+    params: A `Tensor`, `list` of `Tensors`, or `PartitionedVariable`.
       Each tensor must be of rank 1 with fully-defined shape.
     values: `Tensor` of values to be embedded.
     dimension: Embedding dimension
@@ -202,6 +208,8 @@ def hashed_embedding_lookup(params, values, dimension, name=None):
   Raises:
     ValueError: if dimension is not positive or the partition size is invalid.
   """
+  if isinstance(params, variables.PartitionedVariable):
+    params = list(params)
   if not isinstance(params, list):
     params = [params]
 
@@ -258,7 +266,7 @@ def hashed_embedding_lookup_sparse(params,
   See `tf.contrib.layers.hashed_embedding_lookup` for embedding with hashing.
 
   Args:
-    params: A `Tensor` or `list` of `Tensors`.
+    params: A `Tensor`, `list` of `Tensors`, or `PartitionedVariable`.
       Each tensor must be of rank 1 with fully-defined shape.
     sparse_values: A 2-D `SparseTensor` containing the values to be embedded.
       Some rows may be empty.
@@ -281,6 +289,8 @@ def hashed_embedding_lookup_sparse(params,
     logging.warn("The default value of combiner will change from \"mean\" "
                  "to \"sqrtn\" after 2016/11/01.")
     combiner = "mean"
+  if isinstance(params, variables.PartitionedVariable):
+    params = list(params)
   if not isinstance(params, list):
     params = [params]
   if not isinstance(sparse_values, ops.SparseTensor):

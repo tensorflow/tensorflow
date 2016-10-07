@@ -12,7 +12,7 @@ computed using the height of the precision values by the recall.
 
 This value is ultimately returned as `auc`, an idempotent operation that
 computes the area under a discretized curve of precision versus recall values
-(computed using the afformentioned variables). The `num_thresholds` variable
+(computed using the aforementioned variables). The `num_thresholds` variable
 controls the degree of discretization with larger numbers of thresholds more
 closely approximating the true AUC.
 

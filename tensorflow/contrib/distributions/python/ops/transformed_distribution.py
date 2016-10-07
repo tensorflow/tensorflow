@@ -48,7 +48,7 @@ class TransformedDistribution(distribution.Distribution):
   A simple example constructing a Log-Normal distribution from a Normal
   distribution:
 
-  ```
+  ```python
   logit_normal = TransformedDistribution(
     base_dist_cls=tf.contrib.distributions.Normal,
     mu=mu,
@@ -140,6 +140,9 @@ class TransformedDistribution(distribution.Distribution):
   def _get_event_shape(self):
     return self.base_distribution.get_event_shape()
 
+  @distribution_util.AppendDocstring(
+      """Samples from the base distribution and then passes through
+      the transform.""")
   def _sample_n(self, n, seed=None):
     samples = self.base_distribution.sample_n(n=n, seed=seed)
     with ops.name_scope("transform"):
@@ -147,12 +150,24 @@ class TransformedDistribution(distribution.Distribution):
       self._inverse_cache[transformed] = samples
       return transformed
 
+  @distribution_util.AppendDocstring(
+      """Implements `(log o p o g)(y) - (log o det o J o g)(y)`,
+      where `g` is the inverse of `transform`.
+
+      Also raises a `ValueError` if `inverse` was not provided to the
+      distribution and `y` was not returned from `sample`.""")
   def _log_prob(self, y):
     x = self._inverse_possibly_from_cache(y)
     with ops.name_scope("log_det_jacobian"):
       log_det_jacobian = self.log_det_jacobian(x)
     return self.base_distribution.log_prob(x) - log_det_jacobian
 
+  @distribution_util.AppendDocstring(
+      """Implements `p(g(y)) / det|J(g(y))|`, where `g` is the inverse of
+      `transform`.
+
+      Also raises a `ValueError` if `inverse` was not provided to the
+      distribution and `y` was not returned from `sample`.""")
   def _prob(self, y):
     return math_ops.exp(self._log_prob(y))
 
@@ -186,39 +201,3 @@ class TransformedDistribution(distribution.Distribution):
         raise ValueError("No inverse function exists and input `y` was not "
                          "returned from `sample`.")
     return x
-
-
-distribution_util.append_class_fun_doc(TransformedDistribution.batch_shape,
-                                       doc_str="""
-
-    The product of the dimensions of the `batch_shape` is the number of
-    independent distributions of this kind the instance represents.
-
-""")
-
-distribution_util.append_class_fun_doc(TransformedDistribution.sample_n,
-                                       doc_str="""
-
-    Samples from the base distribution and then passes through the transform.
-""")
-
-distribution_util.append_class_fun_doc(TransformedDistribution.log_prob,
-                                       doc_str="""
-
-  `(log o p o g)(y) - (log o det o J o g)(y)`,
-  where `g` is the inverse of `transform`.
-
-  Raises:
-    ValueError: if `inverse` was not provided to the distribution and `y` was
-        not returned from `sample`.
-""")
-
-distribution_util.append_class_fun_doc(TransformedDistribution.prob,
-                                       doc_str="""
-
-  `p(g(y)) / det|J(g(y))|`, where `g` is the inverse of `transform`.
-
-  Raises:
-    ValueError: if `inverse` was not provided to the distribution and `y` was
-        not returned from `sample`.
-""")

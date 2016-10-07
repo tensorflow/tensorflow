@@ -18,28 +18,32 @@
 Monitors are useful to track training, report progress, request early
 stopping and more. Monitors use the observer pattern and notify at the following
 points:
- - when training begins
- - before a training step
- - after a training step
- - when training ends
+
+* when training begins
+* before a training step
+* after a training step
+* when training ends
 
 Monitors are not intended to be reusable.
 
 There are a few pre-defined monitors:
- - CaptureVariable: saves a variable's values
- - GraphDump: intended for debug only - saves all tensor values
- - PrintTensor: outputs one or more tensor values to log
- - SummarySaver: saves summaries to a summary writer
- - ValidationMonitor: runs model validation, by periodically calculating eval
-     metrics on a separate data set; supports optional early stopping
+
+* `CaptureVariable`: saves a variable's values
+* `GraphDump`: intended for debug only - saves all tensor values
+* `PrintTensor`: outputs one or more tensor values to log
+* `SummarySaver`: saves summaries to a summary writer
+* `ValidationMonitor`: runs model validation, by periodically calculating eval
+    metrics on a separate data set; supports optional early stopping
 
 For more specific needs, you can create custom monitors by extending one of the
 following classes:
- - BaseMonitor: the base class for all monitors
- - EveryN: triggers a callback every N training steps
+
+* `BaseMonitor`: the base class for all monitors
+* `EveryN`: triggers a callback every N training steps
 
 Example:
 
+```python
   class ExampleMonitor(monitors.BaseMonitor):
     def __init__(self):
       print 'Init'
@@ -62,6 +66,7 @@ Example:
   example_monitor = ExampleMonitor()
   linear_regressor.fit(
     x, y, steps=2, batch_size=1, monitors=[example_monitor])
+```
 
 @@get_default_monitors
 @@BaseMonitor
@@ -300,7 +305,7 @@ class EveryN(BaseMonitor):
       super(ExampleMonitor, self).step_begin(step)
       return []
 
-  Failing to call the super implementation will cause unpredictible behavior.
+  Failing to call the super implementation will cause unpredictable behavior.
 
   The `every_n_post_step()` callback is also called after the last step if it
   was not already called through the regular conditions.  Note that
@@ -904,9 +909,9 @@ class ExportMonitor(EveryN):
       "2016-09-23",
       "The signature of the input_fn accepted by export is changing to be "
       "consistent with what's used by tf.Learn Estimator's train/evaluate. "
-      "input_fn and input_feature_key will both become required args.",
-      input_fn=None,
-      input_feature_key=None)
+      "input_fn (and in most cases, input_feature_key) will both become "
+      "required args.",
+      input_fn=None)
   def __init__(self,
                every_n_steps,
                export_dir,
@@ -926,7 +931,9 @@ class ExportMonitor(EveryN):
         `None`).
       input_feature_key: String key into the features dict returned by
         `input_fn` that corresponds to the raw `Example` strings `Tensor` that
-        the exported model will take as input.
+        the exported model will take as input. Can only be `None` if you're
+        using a custom `signature_fn` that does not use the first arg
+        (examples).
       exports_to_keep: int, number of exports to keep.
       signature_fn: Function that returns a default signature and a named
         signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
@@ -937,12 +944,6 @@ class ExportMonitor(EveryN):
       ValueError: If `input_fn` and `input_feature_key` are not both defined or
         are not both `None`.
     """
-    if (input_fn is None) != (input_feature_key is None):
-      raise ValueError(
-          "input_fn and input_feature_key must both be defined or both be "
-          "None. Not passing in input_fn and input_feature_key is also "
-          "deprecated, so you should go with the former.")
-
     super(ExportMonitor, self).__init__(every_n_steps=every_n_steps)
     self._export_dir = export_dir
     self._input_fn = input_fn
