@@ -421,15 +421,15 @@ export class ScatterPlot {
     let pixelBuffer = new Uint8Array(4);
     // No need to account for dpr (device pixel ratio) since the pickingTexture
     // has the same coordinates as the mouse (flipped on y).
-    let x = e.offsetX;
-    let y = e.offsetY;
+    const x = e.offsetX;
+    const y = e.offsetY;
 
     // Read the pixel under the mouse from the texture.
     this.renderer.readRenderTargetPixels(
         this.pickingTexture, x, this.pickingTexture.height - y, 1, 1,
         pixelBuffer);
     // Interpret the pixel as an ID.
-    let id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | pixelBuffer[2];
+    const id = (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | pixelBuffer[2];
     this.nearestPoint =
         (id !== 0xffffff) && (id < this.dataSet.points.length) ? id : null;
   }
@@ -778,14 +778,23 @@ export class ScatterPlot {
     this.getLayoutValues();
     this.perspCamera.aspect = this.width / this.height;
     this.perspCamera.updateProjectionMatrix();
+
     // Accouting for retina displays.
     this.renderer.setPixelRatio(window.devicePixelRatio || 1);
     this.renderer.setSize(this.width, this.height);
-    this.pickingTexture = new THREE.WebGLRenderTarget(this.width, this.height);
+
+    // the picking texture needs to be exactly the same as the render texture.
+    {
+      const renderCanvasSize = this.renderer.getSize();
+      this.pickingTexture = new THREE.WebGLRenderTarget(
+          renderCanvasSize.width, renderCanvasSize.height);
+    }
+
     this.pickingTexture.texture.minFilter = THREE.LinearFilter;
     this.visualizers.forEach(v => {
       v.onResize(this.width, this.height);
     });
+
     if (render) {
       this.render();
     };
