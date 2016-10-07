@@ -35,6 +35,8 @@ from tensorflow.python.platform import tf_logging as logging
 
 DATA_OPS_FILE = '_data_ops.so'
 
+EXAMPLE_WEIGHT_NAME = '__weight__'
+
 _data_ops = None
 _ops_lock = threading.Lock()
 
@@ -87,13 +89,6 @@ def _ParseSparse(data):
   """
   convert_ops = Load()
 
-  # TODO(gilberth): Support mixed string/float sparse tensors.
-  # We currently only support string (categorical) data if we're using sparse
-  # tensors.
-  for v in data.values():
-    if v.dtype != dtypes.string:
-      raise ValueError('Only sparse tensors of type string are supported.')
-
   # Sparse tensor indices have 63 bits to use for information. We use the
   # minimum number of these (MSBs) for the offset, and pack the rest with the
   # actual data.
@@ -106,10 +101,18 @@ def _ParseSparse(data):
 
   sparse_tensors = []
   keys = None
+  weights = None
   for k in sorted(data.keys()):
     if k == graph_io.KEY_FEATURE_NAME:
       keys = data[k]
+    elif k == EXAMPLE_WEIGHT_NAME:
+      weights = data[k]
     elif isinstance(data[k], ops.SparseTensor):
+      # TODO(gilberth): Support mixed string/float sparse tensors.
+      # We currently only support string (categorical) data if we're using
+      # sparse tensors.
+      if data[k].dtype != dtypes.string:
+        raise ValueError('Only sparse tensors of type string are supported.')
       sparse_indices = data[k].indices
       sparse_values = data[k].values
       new_shape = array_ops.concat(
@@ -119,15 +122,14 @@ def _ParseSparse(data):
           sparse_indices,
           sparse_values,
           offset, offset_bits=offset_bits)
+      sparse_tensors.append(ops.SparseTensor(indices=new_indices,
+                                             values=new_values,
+                                             shape=new_shape))
     else:
       # Convert dense to sparse.
       raise NotImplementedError('Dense to sparse conversion not implemented.')
 
-    sparse_tensors.append(ops.SparseTensor(indices=new_indices,
-                                           values=new_values,
-                                           shape=new_shape))
-
-  return (sparse_ops.sparse_concat(1, sparse_tensors), keys,
+  return (sparse_ops.sparse_concat(1, sparse_tensors), keys, weights,
           [constants.DATA_CATEGORICAL])
 
 
@@ -145,15 +147,18 @@ def _ParseDense(data):
                constants.DATA_FLOAT for k in sorted(data.keys())]
   data_spec = [constants.DATA_FLOAT] + data_spec
   keys = None
+  weights = None
   features = []
   for k in sorted(data.keys()):
     if k == graph_io.KEY_FEATURE_NAME:
       keys = data[k]
+    elif k == EXAMPLE_WEIGHT_NAME:
+      weights = data[k]
     else:
       features.append(
           convert_ops.string_to_float(data[k]) if data[k].dtype == dtypes.string
           else data[k])
-  return array_ops.concat(1, features), keys, data_spec
+  return array_ops.concat(1, features), keys, weights, data_spec
 
 
 def ParseDataTensorOrDict(data):
@@ -182,7 +187,8 @@ def ParseDataTensorOrDict(data):
     else:
       return _ParseDense(data)
   else:
-    return data, None, [constants.DATA_FLOAT] * data.get_shape().as_list()[1]
+    return (data, None, None,
+            [constants.DATA_FLOAT] * data.get_shape().as_list()[1])
 
 
 def ParseLabelTensorOrDict(labels):
