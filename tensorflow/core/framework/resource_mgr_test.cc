@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -111,6 +111,13 @@ TEST(ResourceMgrTest, Basic) {
   // Drop the whole container foo.
   TF_CHECK_OK(rm.Cleanup("foo"));
   HasError(FindErr<Resource>(rm, "foo", "bar"), "Not found: Container foo");
+
+  // Dropping it a second time is OK.
+  TF_CHECK_OK(rm.Cleanup("foo"));
+  HasError(FindErr<Resource>(rm, "foo", "bar"), "Not found: Container foo");
+
+  // Dropping a non-existent container is also ok.
+  TF_CHECK_OK(rm.Cleanup("bar"));
 }
 
 TEST(ResourceMgr, CreateOrLookup) {

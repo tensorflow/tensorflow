@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -390,9 +390,9 @@ TEST(EigenBackwardSpatialConvolutionsTest,
   const int dy = patch_rows - 1;
   const int dx = patch_cols - 1;
 
-  const int forward_pad_x = dx - dx / 2;
-  const int forward_pad_y = dy - dy / 2;
-  const int forward_pad_z = dz - dz / 2;
+  const int forward_pad_x = dx / 2;
+  const int forward_pad_y = dy / 2;
+  const int forward_pad_z = dz / 2;
 
   for (int id = 0; id < input_depth; ++id) {
     for (int i = 0; i < input_planes; ++i) {
@@ -461,9 +461,9 @@ TEST(EigenBackwardSpatialConvolutionsTest,
   const int dy = patch_rows - 1;
   const int dx = patch_cols - 1;
 
-  const int forward_pad_x = dx - dx / 2;
-  const int forward_pad_y = dy - dy / 2;
-  const int forward_pad_z = dz - dz / 2;
+  const int forward_pad_x = dx / 2;
+  const int forward_pad_y = dy / 2;
+  const int forward_pad_z = dz / 2;
 
   for (int id = 0; id < input_depth; ++id) {
     for (int i = 0; i < input_planes; ++i) {

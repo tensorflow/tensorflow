@@ -3,11 +3,10 @@
 syntax = "proto3";
 
 import "tensorflow/core/example/feature.proto";
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 option java_outer_classname = "ExampleProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.example";
-option java_generate_equals_and_hash = true;
 
 package tensorflow;
 
@@ -94,8 +93,19 @@ message Example {
 // some context.  The context contains features which apply to the entire
 // example. The feature_lists contain a key, value map where each key is
 // associated with a repeated set of Features (a FeatureList).
+// A FeatureList thus represents the values of a feature identified by its key
+// over time / frames.
 //
-// A SequenceExample for a movie recommendation application:
+// Below is a SequenceExample for a movie recommendation application recording a
+// sequence of ratings by a user. The time-independent features ("locale",
+// "age", "favorites") describing the user are part of the context. The sequence
+// of movies the user rated are part of the feature_lists. For each movie in the
+// sequence we have information on its name and actors and the user's rating.
+// This information is recorded in three separate feature_list(s).
+// In the example below there are only two movies. All three feature_list(s),
+// namely "movie_ratings", "movie_names", and "actors" have a feature value for
+// both movies. Note, that "actors" is itself a bytes_list with multiple
+// strings per movie.
 //
 // context: {
 //   feature: {
@@ -154,6 +164,21 @@ message Example {
 //       }
 //     }
 //   }
+//   feature_list: {
+//     key  : "actors"
+//     value: {
+//       feature: {
+//         bytes_list: {
+//           value: [ "Tim Robbins", "Morgan Freeman" ]
+//         }
+//       }
+//       feature: {
+//         bytes_list: {
+//           value: [ "Brad Pitt", "Edward Norton", "Helena Bonham Carter" ]
+//         }
+//       }
+//     }
+//   }
 // }
 //
 // A conformant SequenceExample data set obeys the following conventions:
@@ -167,13 +192,12 @@ message Example {
 //     an empty list (zero length).
 //   - If a FeatureList L exists, it may be empty (zero length).
 //   - If a FeatureList L is non-empty, all features within the FeatureList
-//     must have data type T.
+//     must have the same data type T. Even across SequenceExamples, the type T
+//     of the FeatureList identified by the same key must be the same.
 //   - If a FeatureList L is non-empty, it is up to the parser configuration
 //     to determine if all features within the FeatureList must
 //     have the same size.  The same holds for this FeatureList across multiple
 //     examples.
-//   - If a FeatureList L exists in one example with data type T,
-//     it must be of type T in all other examples when present.
 //
 // Examples of conformant and non-conformant examples' FeatureLists:
 //
@@ -267,9 +291,4 @@ message Example {
 message SequenceExample {
   Features context = 1;
   FeatureLists feature_lists = 2;
-};
-
-message InferenceExample {
-  Features context = 1;
-  repeated Features features = 2;
 };

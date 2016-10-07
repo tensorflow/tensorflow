@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/data_flow_ops.cc.
 
+#include <algorithm>
 #include <deque>
 #include <vector>
 
@@ -59,7 +60,7 @@ void FIFOQueue::TryEnqueue(const Tuple& tuple, OpKernelContext* ctx,
           [tuple, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(
-                  errors::Aborted("FIFOQueue '", name_, "' is closed."));
+                  errors::Cancelled("FIFOQueue '", name_, "' is closed."));
               return kComplete;
             }
             if (queues_[0].size() < static_cast<size_t>(capacity_)) {
@@ -117,7 +118,7 @@ void FIFOQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
           [tuple, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             if (closed_) {
               attempt->context->SetStatus(
-                  errors::Aborted("FIFOQueue '", name_, "' is closed."));
+                  errors::Cancelled("FIFOQueue '", name_, "' is closed."));
               return kComplete;
             }
             RunResult result = kNoProgress;
@@ -162,15 +163,15 @@ void FIFOQueue::TryDequeue(OpKernelContext* ctx, CallbackWithTuple callback) {
       dequeue_attempts_.emplace_back(
           1, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-            const int64 s = queues_[0].size();
-            if (closed_ && s == 0) {
+            const int64 queue_size = queues_[0].size();
+            if (closed_ && queue_size == 0) {
               attempt->context->SetStatus(errors::OutOfRange(
                   "FIFOQueue '", name_, "' is closed and has ",
-                  "insufficient elements (requested ", 1, ", current size ", s,
-                  ")"));
+                  "insufficient elements (requested ", 1, ", current size ",
+                  queue_size, ")"));
               return kComplete;
             }
-            if (s > 0) {
+            if (queue_size > 0) {
               Tuple tuple;
               DequeueLocked(attempt->context, &tuple);
               attempt->done_callback = [callback, tuple]() { callback(tuple); };
@@ -192,17 +193,10 @@ void FIFOQueue::TryDequeue(OpKernelContext* ctx, CallbackWithTuple callback) {
 void FIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                                bool allow_small_batch,
                                CallbackWithTuple callback) {
-  if (allow_small_batch) {
-    ctx->SetStatus(
-        errors::Unimplemented("Dequeue: Queue does not support small batches"));
-    callback(Tuple());
-    return;
-  }
-
   if (!specified_shapes()) {
-    ctx->SetStatus(
-        errors::InvalidArgument("FIFOQueue's DequeueMany requires the "
-                                "components to have specified shapes."));
+    ctx->SetStatus(errors::InvalidArgument(
+        "FIFOQueue's DequeueMany and DequeueUpTo require the "
+        "components to have specified shapes."));
     callback(Tuple());
     return;
   }
@@ -253,77 +247,95 @@ void FIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       // TODO(josh11b): This makes two copies of callback, avoid this if possible.
       dequeue_attempts_.emplace_back(
           num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
-          [callback, this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-            int64 s = queues_[0].size();
-            if (closed_ && s < attempt->elements_requested) {
-              attempt->context->SetStatus(errors::OutOfRange(
-                  "FIFOQueue '", name_, "' is closed and has ",
-                  "insufficient elements (requested ",
-                  attempt->elements_requested, ", current size ", s, ")"));
+          [callback, allow_small_batch, this](Attempt* attempt)
+              EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                int64 queue_size = queues_[0].size();
 
-              // TODO(mrry): Add support for producing a partial batch as
-              // output when the queue is closed.
-              if (!attempt->tuple.empty()) {
-                // Restore already-dequeued elements to the front of the queue.
-                for (int64 i = attempt->tuple[0].dim_size(0) -
-                               attempt->elements_requested - 1;
-                     i >= 0; --i) {
-                  for (int j = 0; j < num_components(); ++j) {
-                    PersistentTensor element;
-                    Status s = GetElementComponentFromBatch(
-                        attempt->tuple, i, j, attempt->context, &element);
-                    if (!s.ok()) {
-                      attempt->context->SetStatus(
-                          errors::DataLoss("Failed to restore element from "
-                                           "partially-dequeued batch "
-                                           "to FIFOQueue: ",
-                                           s.error_message()));
+                if (closed_ && queue_size < attempt->elements_requested) {
+                  // If we don't have enough for a full dequeue, we have
+                  // to reset the attempt tuple.
+                  if (!attempt->tuple.empty()) {
+                    // Restore already-dequeued elements to the front of the
+                    // queue.
+                    for (int64 i = attempt->tuple[0].dim_size(0) -
+                                   attempt->elements_requested - 1;
+                         i >= 0; --i) {
+                      for (int j = 0; j < num_components(); ++j) {
+                        PersistentTensor element;
+                        Status s = GetElementComponentFromBatch(
+                            attempt->tuple, i, j, attempt->context, &element);
+                        if (!s.ok()) {
+                          attempt->context->SetStatus(
+                              errors::DataLoss("Failed to restore element from "
+                                               "partially-dequeued batch "
+                                               "to FIFOQueue: ",
+                                               s.error_message()));
+                        }
+                        queues_[j].push_front(element);
+                      }
                     }
-                    queues_[j].push_front(element);
+                  }
+                  if (allow_small_batch && queues_[0].size() > 0) {
+                    // Request all remaining elements in the queue.
+                    queue_size = queues_[0].size();
+                    attempt->tuple.clear();
+                    attempt->elements_requested = queue_size;
+                  } else {
+                    if (allow_small_batch) {
+                      // There may be some other attempts containing
+                      // values.  If so, we'll yield and wait for them
+                      // to add elements to the queue.
+                      if (!enqueue_attempts_.empty()) return kProgress;
+                    }
+                    if (attempt->context->status().ok()) {
+                      attempt->context->SetStatus(errors::OutOfRange(
+                          "FIFOQueue '", name_, "' is closed and has ",
+                          "insufficient elements (requested ",
+                          attempt->elements_requested, ", current size ",
+                          queue_size, ")"));
+                    }
+                    return kComplete;
                   }
                 }
-              }
-              return kComplete;
-            }
 
-            RunResult result = kNoProgress;
-            for (; s > 0; --s) {
-              if (attempt->tuple.empty()) {
-                // Only allocate tuple when we have something to dequeue
-                // so we don't use excessive memory when there are many
-                // blocked dequeue attempts waiting.
-                attempt->tuple.reserve(num_components());
-                for (int i = 0; i < num_components(); ++i) {
-                  const TensorShape shape =
-                      ManyOutShape(i, attempt->elements_requested);
-                  Tensor element;
-                  attempt->context->allocate_temp(component_dtypes_[i], shape,
-                                                  &element);
-                  attempt->tuple.emplace_back(element);
+                RunResult result = kNoProgress;
+                for (; queue_size > 0; --queue_size) {
+                  if (attempt->tuple.empty()) {
+                    // Only allocate tuple when we have something to dequeue
+                    // so we don't use excessive memory when there are many
+                    // blocked dequeue attempts waiting.
+                    attempt->tuple.reserve(num_components());
+                    for (int i = 0; i < num_components(); ++i) {
+                      const TensorShape shape =
+                          ManyOutShape(i, attempt->elements_requested);
+                      Tensor element;
+                      attempt->context->allocate_temp(component_dtypes_[i],
+                                                      shape, &element);
+                      attempt->tuple.emplace_back(element);
+                    }
+                  }
+                  result = kProgress;
+                  Tuple tuple;
+                  DequeueLocked(attempt->context, &tuple);
+                  const int64 index = attempt->tuple[0].dim_size(0) -
+                                      attempt->elements_requested;
+                  for (int i = 0; i < num_components(); ++i) {
+                    attempt->context->SetStatus(CopyElementToSlice(
+                        tuple[i], &attempt->tuple[i], index));
+                    if (!attempt->context->status().ok()) return kComplete;
+                  }
+                  tuple.clear();
+                  --attempt->elements_requested;
+                  if (attempt->elements_requested == 0) {
+                    tuple = attempt->tuple;
+                    attempt->done_callback = [callback, tuple]() {
+                      callback(tuple);
+                    };
+                    return kComplete;
+                  }
                 }
-              }
-              result = kProgress;
-              Tuple tuple;
-              DequeueLocked(attempt->context, &tuple);
-              const int64 index =
-                  attempt->tuple[0].dim_size(0) - attempt->elements_requested;
-              for (int i = 0; i < num_components(); ++i) {
-                attempt->context->SetStatus(
-                    CopyElementToSlice(tuple[i], &attempt->tuple[i], index));
-                if (!attempt->context->status().ok()) return kComplete;
-              }
-              tuple.clear();
-              --attempt->elements_requested;
-              if (attempt->elements_requested == 0) {
-                tuple = attempt->tuple;
-                attempt->done_callback = [callback, tuple]() {
-                  callback(tuple);
-                };
-                return kComplete;
-              }
-            }
-            return result;
-          });
+                return result;
+              });
     }
   }
   if (!already_cancelled) {

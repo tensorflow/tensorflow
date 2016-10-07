@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,7 +48,17 @@ EVAL_FREQUENCY = 100  # Number of steps between evaluations.
 
 
 tf.app.flags.DEFINE_boolean("self_test", False, "True if running a self test.")
+tf.app.flags.DEFINE_boolean('use_fp16', False,
+                            "Use half floats instead of full floats if True.")
 FLAGS = tf.app.flags.FLAGS
+
+
+def data_type():
+  """Return the type of the activations, weights, and placeholder variables."""
+  if FLAGS.use_fp16:
+    return tf.float16
+  else:
+    return tf.float32
 
 
 def maybe_download(filename):
@@ -59,7 +69,7 @@ def maybe_download(filename):
   if not tf.gfile.Exists(filepath):
     filepath, _ = urllib.request.urlretrieve(SOURCE_URL + filename, filepath)
     with tf.gfile.GFile(filepath) as f:
-      size = f.Size()
+      size = f.size()
     print('Successfully downloaded', filename, size, 'bytes.')
   return filepath
 
@@ -72,10 +82,10 @@ def extract_data(filename, num_images):
   print('Extracting', filename)
   with gzip.open(filename) as bytestream:
     bytestream.read(16)
-    buf = bytestream.read(IMAGE_SIZE * IMAGE_SIZE * num_images)
+    buf = bytestream.read(IMAGE_SIZE * IMAGE_SIZE * num_images * NUM_CHANNELS)
     data = numpy.frombuffer(buf, dtype=numpy.uint8).astype(numpy.float32)
     data = (data - (PIXEL_DEPTH / 2.0)) / PIXEL_DEPTH
-    data = data.reshape(num_images, IMAGE_SIZE, IMAGE_SIZE, 1)
+    data = data.reshape(num_images, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS)
     return data
 
 
@@ -142,11 +152,11 @@ def main(argv=None):  # pylint: disable=unused-argument
   # These placeholder nodes will be fed a batch of training data at each
   # training step using the {feed_dict} argument to the Run() call below.
   train_data_node = tf.placeholder(
-      tf.float32,
+      data_type(),
       shape=(BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
   train_labels_node = tf.placeholder(tf.int64, shape=(BATCH_SIZE,))
   eval_data = tf.placeholder(
-      tf.float32,
+      data_type(),
       shape=(EVAL_BATCH_SIZE, IMAGE_SIZE, IMAGE_SIZE, NUM_CHANNELS))
 
   # The variables below hold all the trainable weights. They are passed an
@@ -155,24 +165,24 @@ def main(argv=None):  # pylint: disable=unused-argument
   conv1_weights = tf.Variable(
       tf.truncated_normal([5, 5, NUM_CHANNELS, 32],  # 5x5 filter, depth 32.
                           stddev=0.1,
-                          seed=SEED))
-  conv1_biases = tf.Variable(tf.zeros([32]))
-  conv2_weights = tf.Variable(
-      tf.truncated_normal([5, 5, 32, 64],
-                          stddev=0.1,
-                          seed=SEED))
-  conv2_biases = tf.Variable(tf.constant(0.1, shape=[64]))
+                          seed=SEED, dtype=data_type()))
+  conv1_biases = tf.Variable(tf.zeros([32], dtype=data_type()))
+  conv2_weights = tf.Variable(tf.truncated_normal(
+      [5, 5, 32, 64], stddev=0.1,
+      seed=SEED, dtype=data_type()))
+  conv2_biases = tf.Variable(tf.constant(0.1, shape=[64], dtype=data_type()))
   fc1_weights = tf.Variable(  # fully connected, depth 512.
-      tf.truncated_normal(
-          [IMAGE_SIZE // 4 * IMAGE_SIZE // 4 * 64, 512],
-          stddev=0.1,
-          seed=SEED))
-  fc1_biases = tf.Variable(tf.constant(0.1, shape=[512]))
-  fc2_weights = tf.Variable(
-      tf.truncated_normal([512, NUM_LABELS],
+      tf.truncated_normal([IMAGE_SIZE // 4 * IMAGE_SIZE // 4 * 64, 512],
                           stddev=0.1,
-                          seed=SEED))
-  fc2_biases = tf.Variable(tf.constant(0.1, shape=[NUM_LABELS]))
+                          seed=SEED,
+                          dtype=data_type()))
+  fc1_biases = tf.Variable(tf.constant(0.1, shape=[512], dtype=data_type()))
+  fc2_weights = tf.Variable(tf.truncated_normal([512, NUM_LABELS],
+                                                stddev=0.1,
+                                                seed=SEED,
+                                                dtype=data_type()))
+  fc2_biases = tf.Variable(tf.constant(
+      0.1, shape=[NUM_LABELS], dtype=data_type()))
 
   # We will replicate the model structure for the training subgraph, as well
   # as the evaluation subgraphs, while sharing the trainable parameters.
@@ -230,7 +240,7 @@ def main(argv=None):  # pylint: disable=unused-argument
 
   # Optimizer: set up a variable that's incremented once per batch and
   # controls the learning rate decay.
-  batch = tf.Variable(0)
+  batch = tf.Variable(0, dtype=data_type())
   # Decay once per epoch, using an exponential schedule starting at 0.01.
   learning_rate = tf.train.exponential_decay(
       0.01,                # Base learning rate.

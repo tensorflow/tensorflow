@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,22 @@ import numpy as np
 
 import tensorflow as tf
 
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+
+
+# TODO(zongheng): it'd be great to factor out this function and various random
+# SparseTensor gen funcs.
+def _sparsify(x, thresh=0.5, index_dtype=np.int64):
+  x[x < thresh] = 0
+
+  non_zero = np.where(x)
+  x_indices = np.vstack(non_zero).astype(index_dtype).T
+  x_values = x[non_zero]
+  x_shape = x.shape
+
+  return ops.SparseTensor(
+      indices=x_indices, values=x_values, shape=x_shape), len(x_values)
 
 class ShapeOpsTest(tf.test.TestCase):
 
@@ -29,6 +45,18 @@ class ShapeOpsTest(tf.test.TestCase):
     np_ans = np.array(np.shape(x))
     with self.test_session(use_gpu=use_gpu):
       tf_ans = tf.shape(x)
+      tf_ans_64 = tf.shape(x, out_type=tf.int64)
+      result = tf_ans.eval()
+      result_64 = tf_ans_64.eval()
+    self.assertAllEqual(np_ans, result)
+    self.assertAllEqual(np_ans, result_64)
+    self.assertShapeEqual(np_ans, tf_ans)
+
+  def _compareShapeSparse(self, x_np, use_gpu=False):
+    np_ans = np.array(np.shape(x_np))
+    x_tf, unused_nnz = _sparsify(x_np)
+    with self.test_session(use_gpu=use_gpu):
+      tf_ans = tf.shape(x_tf)
       result = tf_ans.eval()
     self.assertAllEqual(np_ans, result)
     self.assertShapeEqual(np_ans, tf_ans)
@@ -37,9 +65,12 @@ class ShapeOpsTest(tf.test.TestCase):
     np_ans = np.array(np.shape(x))
     with self.test_session(use_gpu=use_gpu) as sess:
       tf_ans = tf.shape_n([x, x, x])
+      tf_ans_64 = tf.shape_n([x, x, x], out_type=tf.int64)
       result = sess.run(tf_ans)
+      result_64 = sess.run(tf_ans_64)
     for i in range(3):
       self.assertAllEqual(np_ans, result[i])
+      self.assertAllEqual(np_ans, result_64[i])
       self.assertShapeEqual(np_ans, tf_ans[i])
 
   def _compareRank(self, x, use_gpu=False):
@@ -50,10 +81,31 @@ class ShapeOpsTest(tf.test.TestCase):
     self.assertAllEqual(np_ans, result)
     self.assertShapeEqual(np_ans, tf_ans)
 
+  def _compareRankSparse(self, x_np, use_gpu=False):
+    np_ans = np.asarray(np.ndim(x_np))
+    x_tf, unused_nnz = _sparsify(x_np)
+    with self.test_session(use_gpu=use_gpu):
+      tf_ans = tf.rank(x_tf)
+      result = tf_ans.eval()
+    self.assertAllEqual(np_ans, result)
+    self.assertShapeEqual(np_ans, tf_ans)
+
   def _compareSize(self, x, use_gpu=False):
     np_ans = np.asarray(np.size(x))
     with self.test_session(use_gpu=use_gpu):
       tf_ans = tf.size(x)
+      result = tf_ans.eval()
+      tf_ans_64 = tf.size(x, out_type=tf.int64)
+      result_64 = tf_ans_64.eval()
+    self.assertAllEqual(np_ans, result)
+    self.assertAllEqual(np_ans, result_64)
+    self.assertShapeEqual(np_ans, tf_ans)
+
+  def _compareSizeSparse(self, x_np, use_gpu=False):
+    np_ans = np.asarray(np.size(x_np))
+    x_tf, unused_nnz = _sparsify(x_np)
+    with self.test_session(use_gpu=use_gpu):
+      tf_ans = tf.size(x_tf)
       result = tf_ans.eval()
     self.assertAllEqual(np_ans, result)
     self.assertShapeEqual(np_ans, tf_ans)
@@ -63,24 +115,47 @@ class ShapeOpsTest(tf.test.TestCase):
     self._compareShapeN(x, use_gpu=False)
     self._compareRank(x, use_gpu=False)
     self._compareSize(x, use_gpu=False)
+    self._compareShapeSparse(x, use_gpu=False)
+    self._compareRankSparse(x, use_gpu=False)
+    self._compareSizeSparse(x, use_gpu=False)
 
   def _testGpu(self, x):
     self._compareShape(x, use_gpu=True)
     self._compareShapeN(x, use_gpu=True)
     self._compareRank(x, use_gpu=True)
     self._compareSize(x, use_gpu=True)
+    self._compareShapeSparse(x, use_gpu=True)
+    self._compareRankSparse(x, use_gpu=True)
+    self._compareSizeSparse(x, use_gpu=True)
 
   def _testAll(self, x):
     self._testCpu(x)
     self._testGpu(x)
 
   def testBasic(self):
-    self._testAll(np.zeros([2]))
-    self._testAll(np.zeros([2, 3]))
-    self._testAll(np.zeros([2, 3, 5]))
-    self._testAll(np.zeros([2, 3, 5, 7]))
-    self._testAll(np.zeros([2, 3, 5, 7, 11]))
-    self._testAll(np.zeros([2, 3, 5, 7, 11, 13]))
+    self._testAll(np.random.randn(2))
+    self._testAll(np.random.randn(2, 3))
+    self._testAll(np.random.randn(2, 3, 5))
+    self._testAll(np.random.randn(2, 3, 5, 7))
+    self._testAll(np.random.randn(2, 3, 5, 7, 11))
+    self._testAll(np.random.randn(2, 3, 5, 7, 11, 13))
+
+  # Disabled because it takes too long to run, but manually verified
+  # as passing at time of writing.
+  def _test64BitOutput(self):
+    with self.test_session():
+      inp = tf.zeros([2**31])
+      num_elements = array_ops.size_internal(
+          inp, optimize=False, out_type=tf.int64)
+      self.assertEqual(2**31, num_elements.eval())
+
+    # Too large for tf.int32 output.
+    with self.assertRaises(tf.errors.InvalidArgumentError):
+      with self.test_session():
+        inp = tf.zeros([2**31])
+        num_elements = array_ops.size_internal(
+            inp, optimize=False, out_type=tf.int32)
+        self.assertEqual(2**31, num_elements.eval())
 
   def _compareExpandDims(self, x, dim, use_gpu):
     np_ans = np.expand_dims(x, axis=dim)
@@ -271,6 +346,8 @@ class TileTest(tf.test.TestCase):
         "bool": (tf.bool, bool),
         "float32": (tf.float32, float),
         "float64": (tf.float64, float),
+        "complex64": (tf.complex64, complex),
+        "complex128": (tf.complex128, complex),
         "uint8": (tf.uint8, int),
         "int32": (tf.int32, int),
         "int64": (tf.int64, int),
@@ -435,6 +512,16 @@ class TileTest(tf.test.TestCase):
     inp = tf.placeholder(tf.float32)
     tiled = tf.tile(inp, tf.placeholder(tf.int32))
     self.assertIs(None, tiled.get_shape().ndims)
+
+    # Known input and partially known multiples.
+    inp = tf.constant(0.0, shape=[1, 1])
+    tiled = tf.tile(inp, [tf.placeholder(tf.int32), 7])
+    self.assertEqual([None, 7], tiled.get_shape().as_list())
+
+    # Mismatched input rank and multiples length.
+    inp = tf.placeholder(tf.float32, shape=[None, None])
+    with self.assertRaises(ValueError):
+      tiled = tf.tile(inp, tf.placeholder(tf.int32, shape=[3]))
 
 
 if __name__ == "__main__":

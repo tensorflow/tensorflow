@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,6 +49,12 @@ string EncodeTensorNameSlice(const string& name,
 // Parse out the name and the slice from string encoded as an ordered code.
 Status DecodeTensorNameSlice(const string& code, string* name,
                              tensorflow::TensorSlice* slice);
+
+// Extracts the full shape, slice spec, and shape of the slice from
+// "shape_and_slice".  On non-OK return, caller must clear the out-arguments
+// before reusing.
+Status ParseShapeAndSlice(const string& shape_and_slice, TensorShape* shape,
+                          TensorSlice* slice, TensorShape* shape_slice);
 
 template <typename T>
 struct SaveTypeTraits;
@@ -110,7 +116,8 @@ TENSOR_PROTO_EXTRACT_TYPE(double, double, double);
 TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(complex64, scomplex, float);
 TENSOR_PROTO_EXTRACT_TYPE_COMPLEX(complex128, dcomplex, double);
 TENSOR_PROTO_EXTRACT_TYPE(int32, int, int32);
-TENSOR_PROTO_EXTRACT_TYPE(int64, int64, int64);
+TENSOR_PROTO_EXTRACT_TYPE(int64, int64, protobuf_int64);
+TENSOR_PROTO_EXTRACT_TYPE(uint16, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(uint8, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(int8, int, int32);
 TENSOR_PROTO_EXTRACT_TYPE(int16, int, int32);

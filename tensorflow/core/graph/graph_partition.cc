@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -119,7 +119,7 @@ bool NeedSameDeviceSendRecv(const Edge* edge, const GraphInfo& info) {
   if (src->assigned_device_name() == dst->assigned_device_name()) {
     int src_port = edge->src_output();
     int dst_port = edge->dst_input();
-    if (info.device_types[src->id()] == DEVICE_GPU) {
+    if (info.device_types[src->id()] != DEVICE_CPU) {
       auto src_it = info.output_types.find({src->id(), src_port});
       DCHECK(src_it != info.output_types.end());
       auto dst_it = info.input_types.find({dst->id(), dst_port});
@@ -134,7 +134,7 @@ bool NeedSameDeviceSendRecv(const Edge* edge, const GraphInfo& info) {
 bool IsDstInputOnHost(const Edge* edge, const GraphInfo& info) {
   Node* dst = edge->dst();
   int dst_port = edge->dst_input();
-  if (info.device_types[dst->id()] == DEVICE_GPU) {
+  if (info.device_types[dst->id()] != DEVICE_CPU) {
     if (edge->IsControlEdge()) return false;
     auto dst_it = info.input_types.find({dst->id(), dst_port});
     DCHECK(dst_it != info.input_types.end());
@@ -547,7 +547,7 @@ struct ControlLoop {
 };
 
 // Add the control flow info of a new node added during partitioning.
-// The new node has the same control flow info as edge->src().
+// The new node has the same control flow info as src.
 void AddControlFlowInfo(const Node* node, const Node* src,
                         std::vector<ControlFlowInfo>* cf_info) {
   int id = node->id();
@@ -655,6 +655,26 @@ Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
   return Status::OK();
 }
 
+const Node* InputFrame(const Node* node,
+                       const std::vector<ControlFlowInfo>& cf_info) {
+  // An input is in the same frame as the node except for Enter nodes.
+  // The input of Enter is in the parent frame of the Enter node.
+  if (!node->IsEnter()) {
+    return node;
+  }
+  return cf_info[node->id()].parent_frame;
+}
+
+const Node* OutputFrame(const Node* node,
+                        const std::vector<ControlFlowInfo>& cf_info) {
+  // An output is in the same frame as the node except for Exit nodes.
+  // The output of Exit is in the parent frame of the Exit node.
+  if (!node->IsExit()) {
+    return node;
+  }
+  return cf_info[node->id()].parent_frame;
+}
+
 // Each participating device needs to decide a) if there is a next iteration,
 // and b) if the loop terminates. We take the approach to encode this control
 // flow logic in the dataflow graph. There are at least two possible encodings.
@@ -713,10 +733,12 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
     // Skip local edges.
     if (src_device == dst_device) continue;
 
-    const string& src_frame = cf_info[src->id()].frame_name;
-    const string& dst_frame = cf_info[dst->id()].frame_name;
+    const Node* src_frame = OutputFrame(src, cf_info);
+    const Node* dst_frame = InputFrame(dst, cf_info);
+    const string& src_frame_name = cf_info[src_frame->id()].frame_name;
+    const string& dst_frame_name = cf_info[dst_frame->id()].frame_name;
     // Skip if src and dst are not in the same frame.
-    if (src_frame.empty() || src_frame != dst_frame) {
+    if (src_frame_name.empty() || src_frame_name != dst_frame_name) {
       continue;
     }
 
@@ -725,8 +747,8 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
     // for its outer frame when nested.
     ControlLoop child_loop;
     while (true) {
-      const string& curr_frame = cf_info[src->id()].frame_name;
-      if (curr_frame.empty()) {
+      const string& curr_frame_name = cf_info[src_frame->id()].frame_name;
+      if (curr_frame_name.empty()) {
         // We have reached the root frame.
         if (child_loop.merge != nullptr) {
           const string& node_name = opts.new_name(edge->dst()->name());
@@ -734,13 +756,13 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
           Node* const_node =
               AddControlConst(device_name, bopts.WithName(node_name));
           if (!status.ok()) return status;
-          AddControlFlowInfo(const_node, src, &cf_info);
+          AddControlFlowInfo(const_node, src_frame, &cf_info);
           g->AddEdge(const_node, 0, child_loop.enter, 0);
         }
         break;
       }
 
-      const string& cl_key = strings::StrCat(curr_frame, "$$", dst_device);
+      const string& cl_key = strings::StrCat(curr_frame_name, "$$", dst_device);
       auto it = control_loops.find(cl_key);
       if (it != control_loops.end()) {
         if (child_loop.enter != nullptr) {
@@ -750,17 +772,18 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
       }
 
       // Get the frame's LoopCond.
-      auto cond_it = frame_cond_map.find(curr_frame);
+      auto cond_it = frame_cond_map.find(curr_frame_name);
       if (cond_it == frame_cond_map.end()) {
         return errors::InvalidArgument(
-            "A cross-device loop must have a pivot predicate: ", curr_frame);
+            "A cross-device loop must have a pivot predicate: ",
+            curr_frame_name);
       }
       Node* loop_cond = cond_it->second;
 
       // Add the control loop.
       ControlLoop curr_loop;
-      status =
-          AddControlLoop(opts, g, src, edge, loop_cond, &cf_info, &curr_loop);
+      status = AddControlLoop(opts, g, src_frame, edge, loop_cond, &cf_info,
+                              &curr_loop);
       if (!status.ok()) return status;
       control_loops[cl_key] = curr_loop;
 
@@ -768,7 +791,7 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
         // Connect the merge of the outer loop to the enter of the inner.
         g->AddEdge(curr_loop.merge, 0, child_loop.enter, 0);
       }
-      src = cf_info[src->id()].parent_frame;
+      src_frame = cf_info[src_frame->id()].parent_frame;
       child_loop = curr_loop;
     }
   }
@@ -790,10 +813,13 @@ Status AddControlFlow(const PartitionOptions& opts, Graph* g,
     const string& src_device = src->assigned_device_name();
     const string& dst_device = dst->assigned_device_name();
     if (src_device != dst_device) {
-      const string& src_frame = cf_info[src->id()].frame_name;
-      const string& dst_frame = cf_info[dst->id()].frame_name;
-      if (!src_frame.empty() && src_frame == dst_frame) {
-        const string& cl_key = strings::StrCat(dst_frame, "$$", dst_device);
+      const Node* src_frame = OutputFrame(src, cf_info);
+      const Node* dst_frame = InputFrame(dst, cf_info);
+      const string& src_frame_name = cf_info[src_frame->id()].frame_name;
+      const string& dst_frame_name = cf_info[dst_frame->id()].frame_name;
+      if (!src_frame_name.empty() && src_frame_name == dst_frame_name) {
+        const string& cl_key =
+            strings::StrCat(dst_frame_name, "$$", dst_device);
         ControlLoop loop = control_loops[cl_key];
         DCHECK(loop.enter != nullptr);
         g->AddControlEdge(loop.merge, dst);
@@ -895,6 +921,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     status = AddControlFlow(opts, g, &g_info);
     if (!status.ok()) return status;
   }
+
   // At this point, all the graph mutations have been done. Build memory
   // and device type info for every node and edge in the graph.
   status = BuildMemoryDeviceInfo(*g, &g_info);
@@ -934,13 +961,15 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     ref_recvs.clear();
     ref_control_inputs.clear();
     const Edge* control_flow_edge = nullptr;
+    int32 num_control_flow_edges = 0;
     for (const Edge* edge : dst->in_edges()) {
       if (edge->IsControlEdge()) {
         if (IsMerge(edge->src()) && IsControlLoop(edge->src())) {
           // This is one of the control edges added for control flow. There
           // can be multiple such edges as the dest node may have multiple
-          // remote inputs. We will just take one and ignore the others.
+          // remote inputs. We keep track of the number of such edges.
           control_flow_edge = edge;
+          ++num_control_flow_edges;
         } else {
           inputs.push_back(edge);
         }
@@ -952,7 +981,6 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
     // Process in order so that all data edges are added as inputs to
     // dst in Edge::dst_input() order.
-    bool recv_added = false;
     for (const Edge* edge : inputs) {
       const Node* src = edge->src();
       if (!src->IsOp()) continue;  // Skip Sink/Source nodes.
@@ -999,6 +1027,8 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         } else {
           AddInput(dst_def, recv_node_name, 0);
         }
+        ref_control_inputs.push_back(recv_node_name);
+
         // We want the start_time for the recv to be the smallest of the start
         // times of it's consumers. So we update this whenever we use a recv,
         // and write it out to the attribute at the end of the subroutine
@@ -1038,19 +1068,19 @@ Status Partition(const PartitionOptions& opts, Graph* g,
           AddRecv(opts, g_info, dst_graph, edge, &real_recv, &status);
       if (!status.ok()) return status;
 
-      // Fix up the control flow edge. Redirect it to the recv.
+      // Fix up the control flow edge.
       // NOTE(yuanbyu): 'real_recv' must be the real recv node.
-      recv_added = true;
-      if (control_flow_edge != nullptr) {
+      if (src_graph == dst_graph) {
+        // For same device send/recv, add a control edge from send to recv.
+        // This prevents the asynchronous recv kernel from being scheduled
+        // before the data is available.
+        AddInput(real_recv, send->name(), Graph::kControlSlot);
+      } else if (control_flow_edge != nullptr) {
+        // Redirect control edge to the real recv since this is not a same
+        // device send/recv.
+        --num_control_flow_edges;
         AddInput(real_recv, control_flow_edge->src()->name(),
                  Graph::kControlSlot);
-      }
-
-      // For same device send/recv, add a control edge from send to recv.
-      // This prevents the asynchronous recv kernel from being scheduled
-      // immediately.
-      if (src_graph == dst_graph) {
-        AddInput(real_recv, send->name(), Graph::kControlSlot);
       }
 
       if (!edge->IsControlEdge() &&
@@ -1089,9 +1119,12 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     // execution of recvs until all the other inputs become available.
     AddReadControl(ref_recvs, ref_control_inputs);
 
-    // Add back this control edge for control flow if not used.
-    if (!recv_added && (control_flow_edge != nullptr)) {
-      AddInput(dst_def, control_flow_edge->src()->name(), Graph::kControlSlot);
+    // Add back the control edges for control flow that are not used.
+    if (control_flow_edge != nullptr) {
+      for (int i = 0; i < num_control_flow_edges; ++i) {
+        AddInput(dst_def, control_flow_edge->src()->name(),
+                 Graph::kControlSlot);
+      }
     }
   }
 

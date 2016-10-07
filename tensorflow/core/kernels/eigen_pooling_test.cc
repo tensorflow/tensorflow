@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -404,9 +404,9 @@ TEST(EigenPoolingTest, SameCuboid) {
 
   // Number of pixels the input is extended with at the lower end in every
   // dimension.
-  const int dp = pad_p - pad_p / 2;
-  const int dr = pad_r - pad_r / 2;
-  const int dc = pad_c - pad_c / 2;
+  const int dp = pad_p / 2;
+  const int dr = pad_r / 2;
+  const int dc = pad_c / 2;
 
   for (int b = 0; b < num_batches; ++b) {
     for (int d = 0; d < channels; ++d) {
@@ -482,9 +482,9 @@ TEST(EigenPoolingTest, SameCuboidRowMajor) {
 
   // Number of pixels the input is extended with at the lower end in every
   // dimension.
-  const int dp = pad_p - pad_p / 2;
-  const int dr = pad_r - pad_r / 2;
-  const int dc = pad_c - pad_c / 2;
+  const int dp = pad_p / 2;
+  const int dr = pad_r / 2;
+  const int dc = pad_c / 2;
 
   for (int b = 0; b < num_batches; ++b) {
     for (int d = 0; d < channels; ++d) {
@@ -539,7 +539,8 @@ TEST(EigenPoolingTest, Strided) {
 
   // Max pooling using a 3x3 window and a stride of 2.
   int stride = 2;
-  result = SpatialMaxPooling(input, patch_rows, patch_cols, stride, stride, PADDING_VALID);
+  result = SpatialMaxPooling(input, patch_rows, patch_cols, stride, stride,
+                             PADDING_VALID);
 
   EXPECT_EQ(result.dimension(0), depth);
   EXPECT_EQ(result.dimension(1), output_rows);
@@ -553,11 +554,14 @@ TEST(EigenPoolingTest, Strided) {
           float expected = -10000.f;
           for (int r = 0; r < patch_rows; ++r) {
             for (int c = 0; c < patch_cols; ++c) {
-              expected = (std::max)(expected, input(d, r+stride*i, c+stride*j, b));
+              expected = (std::max)(
+                  expected, input(d, r + stride * i, c + stride * j, b));
             }
           }
           if (result(d, i, j, b) != expected) {
-            std::cout << "at d=" << d << " b=" << b << " i=" << i << " j=" << j << " " << result(d, i, j, b) << " vs " << expected << std::endl;
+            std::cout << "at d=" << d << " b=" << b << " i=" << i << " j=" << j
+                      << " " << result(d, i, j, b) << " vs " << expected
+                      << std::endl;
           }
           EigenApprox(result(d, i, j, b), expected);
         }

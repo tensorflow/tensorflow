@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -72,7 +72,7 @@ class Reservoir(object):
       raise ValueError('size must be nonegative integer, was %s' % size)
     self._buckets = collections.defaultdict(
         lambda: _ReservoirBucket(size, random.Random(seed)))
-    # _mutex guards the keys - creating new keys, retreiving by key, etc
+    # _mutex guards the keys - creating new keys, retrieving by key, etc
     # the internal items are guarded by the ReservoirBuckets' internal mutexes
     self._mutex = threading.Lock()
 
@@ -231,4 +231,4 @@ class _ReservoirBucket(object):
   def Items(self):
     """Get all the items in the bucket."""
     with self._mutex:
-      return self.items
+      return list(self.items)

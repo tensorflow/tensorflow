@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -97,12 +97,7 @@ class ReverseOp : public OpKernel {
                               .HostMemory("dims"),    \
                           ReverseOp<CPUDevice, T>)
 
-REGISTER_KERNEL(uint8);
-REGISTER_KERNEL(int8);
-REGISTER_KERNEL(int32);
-REGISTER_KERNEL(bool);
-REGISTER_KERNEL(float);
-REGISTER_KERNEL(double);
+TF_CALL_POD_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA
@@ -128,12 +123,14 @@ namespace functor {
   DECLARE_GPU_SPEC_DIM(T, 7) \
   DECLARE_GPU_SPEC_DIM(T, 8)
 
-DECLARE_GPU_SPEC(uint8);
-DECLARE_GPU_SPEC(int8);
-DECLARE_GPU_SPEC(int32);
-DECLARE_GPU_SPEC(bool);
-DECLARE_GPU_SPEC(float);
-DECLARE_GPU_SPEC(double);
+TF_CALL_uint8(DECLARE_GPU_SPEC);
+TF_CALL_int8(DECLARE_GPU_SPEC);
+TF_CALL_bool(DECLARE_GPU_SPEC);
+TF_CALL_half(DECLARE_GPU_SPEC);
+TF_CALL_float(DECLARE_GPU_SPEC);
+TF_CALL_double(DECLARE_GPU_SPEC);
+TF_CALL_complex64(DECLARE_GPU_SPEC);
+TF_CALL_complex128(DECLARE_GPU_SPEC);
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPEC_DIM
 }  // namespace functor
@@ -145,11 +142,27 @@ DECLARE_GPU_SPEC(double);
                               .TypeConstraint<T>("T") \
                               .HostMemory("dims"),    \
                           ReverseOp<GPUDevice, T>)
-REGISTER_GPU_KERNEL(uint8);
-REGISTER_GPU_KERNEL(int8);
-REGISTER_GPU_KERNEL(float);
-REGISTER_GPU_KERNEL(double);
+TF_CALL_uint8(REGISTER_GPU_KERNEL);
+TF_CALL_int8(REGISTER_GPU_KERNEL);
+// TODO decide whether we want to enable the bool kernel.
+// TF_CALL_bool(REGISTER_GPU_KERNEL);
+TF_CALL_half(REGISTER_GPU_KERNEL);
+TF_CALL_float(REGISTER_GPU_KERNEL);
+TF_CALL_double(REGISTER_GPU_KERNEL);
+TF_CALL_complex64(REGISTER_GPU_KERNEL);
+TF_CALL_complex128(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Reverse")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("tensor")
+                            .HostMemory("dims")
+                            .HostMemory("output"),
+                        ReverseOp<CPUDevice, int32>);
 
 #endif  // GOOGLE_CUDA
 

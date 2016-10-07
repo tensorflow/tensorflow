@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -60,8 +60,8 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       np.int64: fast_tensor_util.AppendInt64ArrayToTensorProto,
       np.uint8: fast_tensor_util.AppendUInt8ArrayToTensorProto,
       np.uint16: fast_tensor_util.AppendUInt16ArrayToTensorProto,
-      np.int16: fast_tensor_util.AppendInt16ArrayToTensorProto,
       np.int8: fast_tensor_util.AppendInt8ArrayToTensorProto,
+      np.int16: fast_tensor_util.AppendInt16ArrayToTensorProto,
       np.complex64: fast_tensor_util.AppendComplex64ArrayToTensorProto,
       np.complex128: fast_tensor_util.AppendComplex128ArrayToTensorProto,
       np.object: fast_tensor_util.AppendObjectArrayToTensorProto,
@@ -69,6 +69,10 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
       dtypes.qint8.as_numpy_dtype:
           fast_tensor_util.AppendInt8ArrayToTensorProto,
       dtypes.quint8.as_numpy_dtype:
+          fast_tensor_util.AppendUInt8ArrayToTensorProto,
+      dtypes.qint16.as_numpy_dtype:
+          fast_tensor_util.AppendInt8ArrayToTensorProto,
+      dtypes.quint16.as_numpy_dtype:
           fast_tensor_util.AppendUInt8ArrayToTensorProto,
       dtypes.qint32.as_numpy_dtype:
           fast_tensor_util.AppendInt32ArrayToTensorProto,
@@ -115,14 +119,16 @@ else:
       np.int64: SlowAppendInt64ArrayToTensorProto,
       np.uint8: SlowAppendIntArrayToTensorProto,
       np.uint16: SlowAppendIntArrayToTensorProto,
-      np.int16: SlowAppendIntArrayToTensorProto,
       np.int8: SlowAppendIntArrayToTensorProto,
+      np.int16: SlowAppendIntArrayToTensorProto,
       np.complex64: SlowAppendComplex64ArrayToTensorProto,
       np.complex128: SlowAppendComplex128ArrayToTensorProto,
       np.object: SlowAppendObjectArrayToTensorProto,
       np.bool: SlowAppendBoolArrayToTensorProto,
       dtypes.qint8.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
       dtypes.quint8.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
+      dtypes.qint16.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
+      dtypes.quint16.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
       dtypes.qint32.as_numpy_dtype: SlowAppendQIntArrayToTensorProto,
       # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
   }
@@ -182,7 +188,8 @@ def _FlattenToStrings(nested_strings):
 
 _TENSOR_CONTENT_TYPES = frozenset([
     dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8, dtypes.int16,
-    dtypes.int8, dtypes.int64
+    dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8, dtypes.qint16,
+    dtypes.quint16, dtypes.qint32,
 ])
 
 
@@ -252,21 +259,23 @@ def _FilterNotTensor(v):
 
 
 _TF_TO_IS_OK = {
+    dtypes.bool: _FilterBool,
+    dtypes.complex128: _FilterComplex,
+    dtypes.complex64: _FilterComplex,
     dtypes.float32: _FilterFloat,
     dtypes.float64: _FilterFloat,
-    dtypes.int32: _FilterInt,
-    dtypes.uint8: _FilterInt,
-    dtypes.uint16: _FilterInt,
     dtypes.int16: _FilterInt,
-    dtypes.int8: _FilterInt,
-    dtypes.string: _FilterStr,
-    dtypes.complex64: _FilterComplex,
-    dtypes.complex128: _FilterComplex,
+    dtypes.int32: _FilterInt,
     dtypes.int64: _FilterInt,
-    dtypes.bool: _FilterBool,
+    dtypes.int8: _FilterInt,
+    dtypes.qint16: _FilterInt,
     dtypes.qint32: _FilterInt,
-    dtypes.quint8: _FilterInt,
     dtypes.qint8: _FilterInt,
+    dtypes.quint16: _FilterInt,
+    dtypes.quint8: _FilterInt,
+    dtypes.string: _FilterStr,
+    dtypes.uint16: _FilterInt,
+    dtypes.uint8: _FilterInt,
 }
 
 
@@ -323,7 +332,8 @@ def make_tensor_proto(values, dtype=None, shape=None):
   if dtype:
     dtype = dtypes.as_dtype(dtype)
 
-  is_quantized = (dtype in [dtypes.qint8, dtypes.quint8, dtypes.qint32])
+  is_quantized = (dtype in [dtypes.qint8, dtypes.quint8, dtypes.qint16,
+                            dtypes.quint16, dtypes.qint32])
 
   # We first convert value to a numpy array or scalar.
   if isinstance(values, (np.ndarray, np.generic)):
@@ -350,12 +360,16 @@ def make_tensor_proto(values, dtype=None, shape=None):
                          """ - got shape %s, but wanted %s.""" % (
                              values, list(nparray.shape),
                              _GetDenseDimensions(values)))
+
     # python/numpy default float type is float64. We prefer float32 instead.
     if (nparray.dtype == np.float64) and dtype is None:
       nparray = nparray.astype(np.float32)
     # python/numpy default int type is int64. We prefer int32 instead.
     elif (nparray.dtype == np.int64) and dtype is None:
-      nparray = nparray.astype(np.int32)
+      downcasted_array = nparray.astype(np.int32)
+      # Do not down cast if it leads to precision loss.
+      if np.array_equal(downcasted_array, nparray):
+        nparray = downcasted_array
 
   # if dtype is provided, it must be compatible with what numpy
   # conversion says.
@@ -368,7 +382,8 @@ def make_tensor_proto(values, dtype=None, shape=None):
   if is_quantized:
     numpy_dtype = dtype
 
-  if dtype is not None and not dtype.base_dtype == numpy_dtype.base_dtype:
+  if dtype is not None and (not hasattr(dtype, "base_dtype") or
+                            dtype.base_dtype != numpy_dtype.base_dtype):
     raise TypeError("Incompatible types: %s vs. %s" % (dtype, nparray.dtype))
 
   # If shape is not given, get the shape from the numpy array.
@@ -441,6 +456,17 @@ def MakeNdarray(tensor):
 
   if tensor.tensor_content:
     return np.fromstring(tensor.tensor_content, dtype=dtype).reshape(shape)
+  elif tensor_dtype == dtypes.float16:
+    # the half_val field of the TensorProto stores the binary representation
+    # of the fp16: we need to reinterpret this as a proper float16
+    if len(tensor.half_val) == 1:
+      tmp = np.array(tensor.half_val[0], dtype=np.uint16)
+      tmp.dtype = np.float16
+      return np.repeat(tmp, num_elements).reshape(shape)
+    else:
+      tmp = np.fromiter(tensor.half_val, dtype=np.uint16)
+      tmp.dtype = np.float16
+      return tmp.reshape(shape)
   elif tensor_dtype == dtypes.float32:
     if len(tensor.float_val) == 1:
       return np.repeat(np.array(tensor.float_val[0], dtype=dtype),
@@ -455,7 +481,7 @@ def MakeNdarray(tensor):
       return np.fromiter(tensor.double_val, dtype=dtype).reshape(shape)
   elif tensor_dtype in [dtypes.int32, dtypes.uint8, dtypes.uint16, dtypes.int16,
                         dtypes.int8, dtypes.qint32, dtypes.quint8, dtypes.qint8,
-                        dtypes.bfloat16]:
+                        dtypes.qint16, dtypes.quint16, dtypes.bfloat16]:
     if len(tensor.int_val) == 1:
       return np.repeat(np.array(tensor.int_val[0], dtype=dtype),
                        num_elements).reshape(shape)
@@ -548,7 +574,7 @@ def _ConstantValue(tensor):
   elif tensor.op.type == "Rank":
     input_shape = tensor.op.inputs[0].get_shape()
     if input_shape.ndims is not None:
-      return input_shape.ndims
+      return np.array([input_shape.ndims], dtype=np.int32)
     else:
       return None
   elif tensor.op.type == "Range":
@@ -579,6 +605,14 @@ def _ConstantValue(tensor):
         return None
       values.append(value)
     return np.concatenate(values, axis=dim)
+  elif tensor.op.type == "Pack":
+    values = []
+    for x in tensor.op.inputs:
+      value = constant_value(x)
+      if value is None:
+        return None
+      values.append(value)
+    return np.array(values)
   else:
     return None
 
@@ -614,3 +648,55 @@ def constant_value(tensor):
     # conservatively prevent it from being fed.
     tensor.graph.prevent_feeding(tensor)
   return ret
+
+
+def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
+  """A version of `constant_value()` that returns a `TensorShape`.
+
+  This version should be used when a constant tensor value is
+  interpreted as a (possibly partial) shape, e.g. in the shape
+  function for `tf.reshape()`. By explicitly requesting a
+  `TensorShape` as the return value, it is possible to represent
+  unknown dimensions; by contrast, `constant_value()` is
+  all-or-nothing.
+
+  Args:
+    tensor: The rank-1 Tensor to be evaluated.
+
+  Returns:
+    A `TensorShape` based on the constant value of the given `tensor`.
+  """
+  shape = tensor.get_shape().with_rank(1)
+  if tensor.get_shape() == [0]:
+    return tensor_shape.scalar()
+  elif tensor.op.type == "Shape":
+    return tensor.op.inputs[0].get_shape()
+  elif tensor.op.type == "Pack":
+    ret = tensor_shape.scalar()  # Empty list.
+    for pack_input in tensor.op.inputs:
+      # `pack_input` must be a scalar. Attempt to evaluate it, and append it
+      # to `ret`.
+      pack_input_val = constant_value(pack_input)
+      if pack_input_val is None or pack_input_val < 0:
+        new_dim = tensor_shape.Dimension(None)
+      else:
+        new_dim = tensor_shape.Dimension(pack_input_val)
+      ret = ret.concatenate([new_dim])
+    return ret
+  elif tensor.op.type == "Concat":
+    # We assume that `tensor.op.inputs[0]` evaluates to 0, as this is
+    # the only legal value when concatenating vectors, and it will
+    # have been checked by a previous shape function.
+    ret = tensor_shape.scalar()  # Empty list.
+    for concat_input in tensor.op.inputs[1:]:
+      # `concat_input` must be a vector. Attempt to evaluate it as a shape,
+      # and concatenate it with `ret`.
+      ret = ret.concatenate(constant_value_as_shape(concat_input))
+    return ret
+  else:
+    ret = tensor_shape.unknown_shape(shape[0].value)
+    value = constant_value(tensor)
+    if value is not None:
+      ret = ret.merge_with(tensor_shape.TensorShape(
+          [d if d != -1 else None for d in value]))
+    return ret

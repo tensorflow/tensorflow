@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.platform.default import _googletest as googletest
-from tensorflow.python.platform.default import _logging as logging
+from tensorflow.python.platform import googletest
+from tensorflow.python.platform import tf_logging as logging
 
 
 class EventLoaderTest(googletest.TestCase):

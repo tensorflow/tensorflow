@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,14 +49,14 @@ Allocator::~Allocator() {}
 
 // If true, cpu allocator collects more stats.
 static bool cpu_allocator_collect_stats = false;
-// If true, cpu allocator collects detailed stats.
-static bool cpu_allocator_collect_detailed_stats = false;
+// If true, cpu allocator collects full stats.
+static bool cpu_allocator_collect_full_stats = false;
 
 void EnableCPUAllocatorStats(bool enable) {
   cpu_allocator_collect_stats = enable;
 }
-void EnableCPUAllocatorDetailedStats(bool enable) {
-  cpu_allocator_collect_detailed_stats = enable;
+void EnableCPUAllocatorFullStats(bool enable) {
+  cpu_allocator_collect_full_stats = enable;
 }
 
 class CPUAllocator : public Allocator {
@@ -111,7 +111,7 @@ class CPUAllocator : public Allocator {
 namespace {
 Allocator* MakeCpuAllocator() {
   Allocator* allocator = new CPUAllocator;
-  if (cpu_allocator_collect_detailed_stats || LogMemory::IsEnabled()) {
+  if (cpu_allocator_collect_full_stats || LogMemory::IsEnabled()) {
     allocator = new TrackingAllocator(allocator, true);
   }
   return allocator;

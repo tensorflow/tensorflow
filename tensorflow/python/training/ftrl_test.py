@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -222,7 +222,7 @@ class FtrlOptimizerTest(tf.test.TestCase):
       self.assertAllCloseAccordingToType(val0, val2)
       self.assertAllCloseAccordingToType(val1, val3)
 
-  def testEquivSparseGradientDescentwithoutRegularizaion(self):
+  def testEquivSparseGradientDescentwithoutRegularization(self):
     for dtype in [tf.half, tf.float32]:
       with self.test_session():
         val0, val1 = self.applyOptimizer(
@@ -242,7 +242,7 @@ class FtrlOptimizerTest(tf.test.TestCase):
       self.assertAllCloseAccordingToType(val0, val2)
       self.assertAllCloseAccordingToType(val1, val3)
 
-  def testEquivGradientDescentwithoutRegularizaion(self):
+  def testEquivGradientDescentwithoutRegularization(self):
     for dtype in [tf.half, tf.float32]:
       with self.test_session():
         val0, val1 = self.applyOptimizer(

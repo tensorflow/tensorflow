@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,17 +27,20 @@ namespace tensorflow {
 
 class TFRecordReader : public ReaderBase {
  public:
-  TFRecordReader(const string& node_name, Env* env)
+  TFRecordReader(const string& node_name, const string& compression_type,
+                 Env* env)
       : ReaderBase(strings::StrCat("TFRecordReader '", node_name, "'")),
         env_(env),
-        offset_(0) {}
+        offset_(0),
+        compression_type_(compression_type) {}
 
   Status OnWorkStartedLocked() override {
     offset_ = 0;
-    RandomAccessFile* file = nullptr;
-    TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(current_work(), &file));
-    file_.reset(file);
-    reader_.reset(new io::RecordReader(file));
+    TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(current_work(), &file_));
+
+    io::RecordReaderOptions options =
+        io::RecordReaderOptions::CreateRecordReaderOptions(compression_type_);
+    reader_.reset(new io::RecordReader(file_.get(), options));
     return Status::OK();
   }
 
@@ -74,6 +77,7 @@ class TFRecordReader : public ReaderBase {
   uint64 offset_;
   std::unique_ptr<RandomAccessFile> file_;
   std::unique_ptr<io::RecordReader> reader_;
+  string compression_type_ = "";
 };
 
 class TFRecordReaderOp : public ReaderOpKernel {
@@ -81,7 +85,13 @@ class TFRecordReaderOp : public ReaderOpKernel {
   explicit TFRecordReaderOp(OpKernelConstruction* context)
       : ReaderOpKernel(context) {
     Env* env = context->env();
-    SetReaderFactory([this, env]() { return new TFRecordReader(name(), env); });
+
+    string compression_type;
+    context->GetAttr("compression_type", &compression_type);
+
+    SetReaderFactory([this, compression_type, env]() {
+      return new TFRecordReader(name(), compression_type, env);
+    });
   }
 };
 

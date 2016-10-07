@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,11 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import sys
+import unittest
 
-from tensorflow.python.platform.default import _googletest as googletest
-
-from tensorflow.python.platform.default import _flags as flags
+from tensorflow.python.platform import app
+from tensorflow.python.platform import flags
 
 
 flags.DEFINE_string("string_foo", "default_val", "HelpString")
@@ -31,6 +32,7 @@ flags.DEFINE_float("float_foo", 42.0, "HelpString")
 
 flags.DEFINE_boolean("bool_foo", True, "HelpString")
 flags.DEFINE_boolean("bool_negation", True, "HelpString")
+flags.DEFINE_boolean("bool-dash-negation", True, "HelpString")
 flags.DEFINE_boolean("bool_a", False, "HelpString")
 flags.DEFINE_boolean("bool_c", False, "HelpString")
 flags.DEFINE_boolean("bool_d", True, "HelpString")
@@ -38,7 +40,7 @@ flags.DEFINE_bool("bool_e", True, "HelpString")
 
 FLAGS = flags.FLAGS
 
-class FlagsTest(googletest.TestCase):
+class FlagsTest(unittest.TestCase):
 
   def testString(self):
     res = FLAGS.string_foo
@@ -67,9 +69,6 @@ class FlagsTest(googletest.TestCase):
     # --bool_flag=False sets to False
     self.assertEqual(False, FLAGS.bool_d)
 
-    # --bool_flag=gibberish sets to False
-    self.assertEqual(False, FLAGS.bool_e)
-
   def testInt(self):
     res = FLAGS.int_foo
     self.assertEquals(res, 42)
@@ -83,14 +82,29 @@ class FlagsTest(googletest.TestCase):
     self.assertEqual(-1.0, FLAGS.float_foo)
 
 
+def main(argv):
+  # Test that argparse can parse flags that aren't registered
+  # with tf.flags.
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--argparse_val", type=int, default=1000,
+                      help="Test flag")
+  argparse_flags, _ = parser.parse_known_args(argv)
+  if argparse_flags.argparse_val != 10:
+    raise ValueError("argparse flag was not parsed: got %d",
+                     argparse_flags.argparse_val)
+
+  # unittest.main() tries to interpret the unknown flags, so use the
+  # direct functions instead.
+  runner = unittest.TextTestRunner()
+  itersuite = unittest.TestLoader().loadTestsFromTestCase(FlagsTest)
+  runner.run(itersuite)
+
+
 if __name__ == "__main__":
   # Test command lines
-  sys.argv.extend(["--bool_a", "--nobool_negation", "--bool_c=True",
-                   "--bool_d=False", "--bool_e=gibberish", "--unknown_flag",
+  sys.argv.extend(["--bool_a", "--nobool_negation",
+                   "--bool_c=True", "--bool_d=False",
+                   "--unknown_flag", "--argparse_val=10",
                    "and_argument"])
 
-  # googletest.main() tries to interpret the above flags, so use the
-  # direct functions instead.
-  runner = googletest.TextTestRunner()
-  itersuite = googletest.TestLoader().loadTestsFromTestCase(FlagsTest)
-  runner.run(itersuite)
+  app.run()

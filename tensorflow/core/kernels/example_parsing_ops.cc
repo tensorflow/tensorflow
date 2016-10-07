@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,237 +15,29 @@ limitations under the License.
 
 // See docs in ../ops/parsing_ops.cc.
 
+#include <numeric>
 #include <unordered_set>
-
 #include <vector>
+
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb_text.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/util/sparse/sparse_tensor.h"
-
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/util/example_proto_fast_parsing.h"
+#include "tensorflow/core/util/example_proto_helper.h"
+#include "tensorflow/core/util/sparse/sparse_tensor.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
-
-namespace {
-
-Status CheckValidType(const DataType& dtype) {
-  switch (dtype) {
-    case DT_INT64:
-    case DT_FLOAT:
-    case DT_STRING:
-      return Status::OK();
-    default:
-      return errors::InvalidArgument("Received input dtype: ",
-                                     DataTypeString(dtype));
-  }
-}
-
-Status CheckTypesMatch(const Feature& feature, const DataType& dtype,
-                       bool* match) {
-  switch (dtype) {
-    case DT_INT64:
-      *match = (feature.kind_case() == Feature::kInt64List);
-      break;
-    case DT_FLOAT:
-      *match = (feature.kind_case() == Feature::kFloatList);
-      break;
-    case DT_STRING:
-      *match = (feature.kind_case() == Feature::kBytesList);
-      break;
-    default:
-      return errors::InvalidArgument("Invalid input dtype: ",
-                                     DataTypeString(dtype));
-  }
-  return Status::OK();
-}
-
-Status FeatureDenseCopy(const std::size_t out_index, const string& name,
-                        const string& key, const DataType& dtype,
-                        const TensorShape& shape, const Feature& feature,
-                        Tensor* out) {
-  const std::size_t num_elements = shape.num_elements();
-  const std::size_t offset = out_index * num_elements;
-
-  switch (dtype) {
-    case DT_INT64: {
-      const Int64List& values = feature.int64_list();
-      if (static_cast<size_t>(values.value_size()) != num_elements) {
-        return errors::InvalidArgument(
-            "Name: ", name, ", Key: ", key, ", Index: ", out_index,
-            ".  Number of int64 values != expected.  "
-            "values size: ",
-            values.value_size(), " but output shape: ", shape.DebugString());
-      }
-      auto out_p = out->flat<int64>().data() + offset;
-      std::copy_n(values.value().data(), num_elements, out_p);
-      return Status::OK();
-    }
-    case DT_FLOAT: {
-      const FloatList& values = feature.float_list();
-      if (static_cast<size_t>(values.value_size()) != num_elements) {
-        return errors::InvalidArgument(
-            "Name: ", name, ", Key: ", key, ", Index: ", out_index,
-            ".  Number of float values != expected.  "
-            "values size: ",
-            values.value_size(), " but output shape: ", shape.DebugString());
-      }
-      auto out_p = out->flat<float>().data() + offset;
-      std::copy_n(values.value().data(), num_elements, out_p);
-      return Status::OK();
-    }
-    case DT_STRING: {
-      const BytesList& values = feature.bytes_list();
-      if (static_cast<size_t>(values.value_size()) != num_elements) {
-        return errors::InvalidArgument(
-            "Name: ", name, ", Key ", key, ", Index: ", out_index,
-            ".  Number of bytes values != expected.  "
-            "Values size: ",
-            values.value_size(), " but output shape: ", shape.DebugString());
-      }
-      auto out_p = out->flat<string>().data() + offset;
-      std::transform(values.value().data(),
-                     values.value().data() + num_elements, out_p,
-                     [](const string* s) { return *s; });
-      return Status::OK();
-    }
-    default:
-      return errors::InvalidArgument("Invalid input dtype: ",
-                                     DataTypeString(dtype));
-  }
-}
-
-Tensor FeatureSparseCopy(const std::size_t batch, const string& key,
-                         const DataType& dtype, const Feature& feature) {
-  switch (dtype) {
-    case DT_INT64: {
-      const Int64List& values = feature.int64_list();
-      const int64 num_elements = values.value_size();
-      Tensor out(dtype, TensorShape({num_elements}));
-      auto out_p = out.flat<int64>().data();
-      std::copy_n(values.value().data(), num_elements, out_p);
-      return out;
-    }
-    case DT_FLOAT: {
-      const FloatList& values = feature.float_list();
-      const int64 num_elements = values.value_size();
-      Tensor out(dtype, TensorShape({num_elements}));
-      auto out_p = out.flat<float>().data();
-      std::copy_n(values.value().data(), num_elements, out_p);
-      return out;
-    }
-    case DT_STRING: {
-      const BytesList& values = feature.bytes_list();
-      const int64 num_elements = values.value_size();
-      Tensor out(dtype, TensorShape({num_elements}));
-      auto out_p = out.flat<string>().data();
-      std::transform(values.value().data(),
-                     values.value().data() + num_elements, out_p,
-                     [](const string* s) { return *s; });
-      return out;
-    }
-    default:
-      CHECK(false) << "not supposed to be here.  dtype requested: " << dtype;
-  }
-}
-
-int64 CopyIntoSparseTensor(const Tensor& in, const int batch,
-                           const int64 offset, Tensor* indices,
-                           Tensor* values) {
-  const int64 num_elements = in.shape().num_elements();
-  const DataType& dtype = in.dtype();
-  CHECK_EQ(dtype, values->dtype());
-
-  // Update indices
-  auto ix_t = indices->matrix<int64>();
-  int64* ix_p = &ix_t(offset, 0);
-  for (int64 i = 0; i < num_elements; ++i, ix_p += 2) {
-    *ix_p = batch;    // Column 0 stores the batch entry
-    *(ix_p + 1) = i;  // Column 1 stores the index in the batch
-  }
-
-  // Copy values over
-  switch (dtype) {
-    case DT_INT64: {
-      std::copy_n(in.flat<int64>().data(), num_elements,
-                  values->flat<int64>().data() + offset);
-      break;
-    }
-    case DT_FLOAT: {
-      std::copy_n(in.flat<float>().data(), num_elements,
-                  values->flat<float>().data() + offset);
-      break;
-    }
-    case DT_STRING: {
-      std::copy_n(in.flat<string>().data(), num_elements,
-                  values->flat<string>().data() + offset);
-      break;
-      // auto values_t = values->flat<string>().data() + offset;
-      // auto in_t = in.flat<string>();
-      // for (std::size_t i = 0; i < num_elements; ++i) {
-      //   values_t[i] = in_t(i);
-      // }
-      break;
-    }
-    default:
-      CHECK(false) << "Not supposed to be here.  Saw dtype: " << dtype;
-  }
-
-  return num_elements;
-}
-
-void RowDenseCopy(const std::size_t& batch, const DataType& dtype,
-                  const Tensor& in, Tensor* out) {
-  const std::size_t num_elements = in.shape().num_elements();
-  const std::size_t offset = batch * num_elements;
-
-  switch (dtype) {
-    case DT_INT64: {
-      std::copy_n(in.flat<int64>().data(), num_elements,
-                  out->flat<int64>().data() + offset);
-      break;
-    }
-    case DT_FLOAT: {
-      std::copy_n(in.flat<float>().data(), num_elements,
-                  out->flat<float>().data() + offset);
-      break;
-    }
-    case DT_STRING: {
-      std::copy_n(in.flat<string>().data(), num_elements,
-                  out->flat<string>().data() + offset);
-      break;
-    }
-    default:
-      CHECK(false) << "Not supposed to be here.  Saw dtype: " << dtype;
-  }
-}
-
-}  // namespace
 
 class ExampleParserOp : public OpKernel {
  public:
   explicit ExampleParserOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("sparse_types", &sparse_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("Ndense", &num_dense_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("Nsparse", &num_sparse_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("Tdense", &dense_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dense_shapes", &dense_shapes_));
-
-    OP_REQUIRES(
-        ctx, static_cast<size_t>(num_sparse_) == sparse_types_.size(),
-        errors::InvalidArgument("len(sparse_keys) != len(sparse_types"));
-    OP_REQUIRES(ctx, static_cast<size_t>(num_dense_) == dense_types_.size(),
-                errors::InvalidArgument("len(dense_keys) != len(dense_types"));
-    OP_REQUIRES(ctx, static_cast<size_t>(num_dense_) == dense_shapes_.size(),
-                errors::InvalidArgument("len(dense_keys) != len(dense_shapes"));
-    for (const DataType& type : dense_types_) {
-      OP_REQUIRES_OK(ctx, CheckValidType(type));
-    }
-    for (const DataType& type : sparse_types_) {
-      OP_REQUIRES_OK(ctx, CheckValidType(type));
-    }
+    OP_REQUIRES_OK(ctx, attrs_.Init(ctx));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -255,25 +47,29 @@ class ExampleParserOp : public OpKernel {
     OpInputList sparse_keys;
     OpInputList dense_defaults;
 
+    // Grab the input list arguments.
     OP_REQUIRES_OK(ctx, ctx->input("names", &names));
     OP_REQUIRES_OK(ctx, ctx->input("serialized", &serialized));
     OP_REQUIRES_OK(ctx, ctx->input_list("dense_keys", &dense_keys));
     OP_REQUIRES_OK(ctx, ctx->input_list("sparse_keys", &sparse_keys));
     OP_REQUIRES_OK(ctx, ctx->input_list("dense_defaults", &dense_defaults));
 
-    std::vector<string> dense_keys_t(num_dense_);
-    std::vector<string> sparse_keys_t(num_sparse_);
-    CHECK_EQ(dense_keys.size(), num_dense_);
-    CHECK_EQ(sparse_keys.size(), num_sparse_);
-    for (int di = 0; di < num_dense_; ++di) {
+    std::vector<string> dense_keys_t(attrs_.num_dense);
+    std::vector<string> sparse_keys_t(attrs_.num_sparse);
+
+    // Check that the input list sizes match the attribute declared sizes.
+    CHECK_EQ(dense_keys.size(), attrs_.num_dense);
+    CHECK_EQ(sparse_keys.size(), attrs_.num_sparse);
+
+    // Copy from OpInputList to std::vector<string>.
+    for (int di = 0; di < attrs_.num_dense; ++di) {
       dense_keys_t[di] = dense_keys[di].scalar<string>()();
     }
-    for (int di = 0; di < num_sparse_; ++di) {
+    for (int di = 0; di < attrs_.num_sparse; ++di) {
       sparse_keys_t[di] = sparse_keys[di].scalar<string>()();
     }
 
-    bool has_names = (names->NumElements() > 0);
-    if (has_names) {
+    if (names->NumElements() > 0) {
       OP_REQUIRES(
           ctx, TensorShapeUtils::IsVector(names->shape()),
           errors::InvalidArgument("Expected names to be a vector, got shape: ",
@@ -284,173 +80,74 @@ class ExampleParserOp : public OpKernel {
               "Expected len(names) == len(serialized), but got: ",
               names->NumElements(), " vs. ", serialized->NumElements()));
     }
-    auto names_t = names->flat<string>();
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(serialized->shape()),
                 errors::InvalidArgument(
                     "Expected serialized to be a vector, got shape: ",
                     serialized->shape().DebugString()));
-    OP_REQUIRES(ctx, dense_defaults.size() == num_dense_,
+    OP_REQUIRES(ctx, dense_defaults.size() == attrs_.num_dense,
                 errors::InvalidArgument(
                     "Expected len(dense_defaults) == len(dense_keys) but got: ",
-                    dense_defaults.size(), " vs. ", num_dense_));
+                    dense_defaults.size(), " vs. ", attrs_.num_dense));
 
-    std::vector<bool> required(num_dense_);
-    for (int d = 0; d < num_dense_; ++d) {
+    for (int d = 0; d < static_cast<int>(attrs_.num_dense); ++d) {
       const Tensor& def_value = dense_defaults[d];
-      required[d] = (def_value.NumElements() == 0);  // No default provided.
-
       if (def_value.NumElements() > 0) {
-        OP_REQUIRES(ctx, def_value.shape() == dense_shapes_[d],
-                    errors::InvalidArgument("def_value[", d, "].shape() == ",
-                                            def_value.shape().DebugString(),
-                                            " != dense_shapes_[", d, "] == ",
-                                            dense_shapes_[d].DebugString()));
-        OP_REQUIRES(ctx, def_value.dtype() == dense_types_[d],
+        OP_REQUIRES(ctx, def_value.shape() == attrs_.dense_shapes[d],
+                    errors::InvalidArgument(
+                        "def_value[", d, "].shape() == ",
+                        def_value.shape().DebugString(), " != dense_shapes_[",
+                        d, "] == ", attrs_.dense_shapes[d].DebugString()));
+        OP_REQUIRES(ctx, def_value.dtype() == attrs_.dense_types[d],
                     errors::InvalidArgument(
                         "dense_defaults[", d, "].dtype() == ",
                         DataTypeString(def_value.dtype()), " != dense_types_[",
-                        d, "] == ", DataTypeString(dense_types_[d])));
+                        d, "] == ", DataTypeString(attrs_.dense_types[d])));
       }
     }
 
-    auto serialized_t = serialized->vec<string>();
+    example::Result result;
 
-    const int batch_size = serialized_t.size();
+    example::FastParseExampleConfig config;
+    for (int d = 0; d < attrs_.num_dense; ++d) {
+      config.dense.push_back({dense_keys_t[d], attrs_.dense_types[d],
+                              attrs_.dense_shapes[d], dense_defaults[d]});
+    }
+    for (int d = 0; d < attrs_.num_sparse; ++d) {
+      config.sparse.push_back({sparse_keys_t[d], attrs_.sparse_types[d]});
+    }
 
+    auto serialized_t = serialized->flat<string>();
+    auto names_t = names->flat<string>();
+    gtl::ArraySlice<string> slice(serialized_t.data(), serialized_t.size());
+    gtl::ArraySlice<string> names_slice(names_t.data(), names_t.size());
+
+    OP_REQUIRES_OK(
+        ctx,
+        FastParseExample(
+            config, slice, names_slice,
+            ctx->device()->tensorflow_cpu_worker_threads()->workers, &result));
+
+    OpOutputList dense_values;
     OpOutputList sparse_indices;
     OpOutputList sparse_values;
     OpOutputList sparse_shapes;
-    OpOutputList dense_values;
-
+    OP_REQUIRES_OK(ctx, ctx->output_list("dense_values", &dense_values));
     OP_REQUIRES_OK(ctx, ctx->output_list("sparse_indices", &sparse_indices));
     OP_REQUIRES_OK(ctx, ctx->output_list("sparse_values", &sparse_values));
     OP_REQUIRES_OK(ctx, ctx->output_list("sparse_shapes", &sparse_shapes));
-    OP_REQUIRES_OK(ctx, ctx->output_list("dense_values", &dense_values));
-
-    // Preallocate dense_values, since we know their sizes
-    for (int d = 0; d < num_dense_; ++d) {
-      TensorShape out_shape;
-      out_shape.AddDim(batch_size);
-      for (const int dim : dense_shapes_[d].dim_sizes()) out_shape.AddDim(dim);
-      Tensor* out = nullptr;
-      dense_values.allocate(d, out_shape, &out);
+    for (int d = 0; d < attrs_.num_dense; ++d) {
+      dense_values.set(d, result.dense_values[d]);
     }
-
-    // sparse_values_tmp will be num_sparse_ x batch_size, containing
-    // the sparse values from the input layer.  after these are all
-    // stored, we can allocate properly sized outputs and copy data over.
-    // Doing it this way saves us the trouble of either performing
-    // deserialization twice, or alternatively storing all copies of
-    // the full Example protos.
-    std::vector<std::vector<Tensor> > sparse_values_tmp(num_sparse_);
-
-    Example ex;
-    for (std::size_t b = 0; b < static_cast<size_t>(batch_size); ++b) {
-      OP_REQUIRES(
-          ctx, ParseProtoUnlimited(&ex, serialized_t(b)),
-          errors::InvalidArgument("Could not parse example input, value: '",
-                                  serialized_t(b), "'"));
-
-      const string& name = (has_names) ? names_t(b) : "<unknown>";
-      const Features& features = ex.features();
-      const auto& feature_dict = features.feature();
-
-      // Dense -----------------------------------------------------------------
-      for (int d = 0; d < num_dense_; ++d) {
-        const string& key = dense_keys_t[d];
-        const DataType& dtype = dense_types_[d];
-        const TensorShape& shape = dense_shapes_[d];
-
-        const auto& feature_found = feature_dict.find(key);
-        OP_REQUIRES(
-            ctx, (feature_found != feature_dict.end()) || !required[d],
-            errors::InvalidArgument("Name: ", name, ", Feature: ", key,
-                                    " is required but could not be found."));
-        if (feature_found != feature_dict.end()) {
-          const Feature& f = feature_found->second;
-          bool types_match;
-          OP_REQUIRES_OK(ctx, CheckTypesMatch(f, dtype, &types_match));
-          OP_REQUIRES(
-              ctx, types_match,
-              errors::InvalidArgument("Name: ", name, ", Feature: ", key,
-                                      ".  Data types don't match. ",
-                                      "Expected type: ", DataTypeString(dtype),
-                                      "  Feature is: ", ProtoDebugString(f)));
-
-          OP_REQUIRES_OK(ctx, FeatureDenseCopy(b, name, key, dtype, shape, f,
-                                               dense_values[d]));
-        } else {
-          RowDenseCopy(b, dtype, dense_defaults[d], dense_values[d]);
-        }
-      }
-
-      // Sparse ----------------------------------------------------------------
-      for (int d = 0; d < num_sparse_; ++d) {
-        const string& key = sparse_keys_t[d];
-        const DataType& dtype = sparse_types_[d];
-
-        const auto& feature_found = feature_dict.find(key);
-        bool feature_has_data =  // Found key & data type is set
-            (feature_found != feature_dict.end() &&
-             (feature_found->second.kind_case() != Feature::KIND_NOT_SET));
-        if (feature_has_data) {
-          const Feature& f = feature_found->second;
-          bool types_match;
-          OP_REQUIRES_OK(ctx, CheckTypesMatch(f, dtype, &types_match));
-          OP_REQUIRES(
-              ctx, types_match,
-              errors::InvalidArgument("Name: ", name, ", Feature: ", key,
-                                      ".  Data types don't match. ",
-                                      "Expected type: ", DataTypeString(dtype),
-                                      "  Feature is: ", ProtoDebugString(f)));
-          sparse_values_tmp[d].push_back(FeatureSparseCopy(b, key, dtype, f));
-        } else {
-          sparse_values_tmp[d].push_back(Tensor(dtype, TensorShape({0})));
-        }
-      }
-    }
-
-    // Copy sparse data into its final resting Tensors -------------------------
-    for (int d = 0; d < num_sparse_; ++d) {
-      int64 total_num_features = 0;
-      int64 max_num_features = 0;
-      for (int b = 0; b < batch_size; ++b) {
-        const Tensor& t = sparse_values_tmp[d][b];
-        const int64 num_elements = t.shape().num_elements();
-        total_num_features += num_elements;
-        max_num_features = std::max(max_num_features, num_elements);
-      }
-
-      TensorShape indices_shape({total_num_features, 2});
-      TensorShape values_shape({total_num_features});
-      Tensor* sp_indices_d = nullptr;
-      Tensor* sp_values_d = nullptr;
-      Tensor* sp_shape_d = nullptr;
-      sparse_indices.allocate(d, indices_shape, &sp_indices_d);
-      sparse_values.allocate(d, values_shape, &sp_values_d);
-      sparse_shapes.allocate(d, TensorShape({2}), &sp_shape_d);
-
-      auto shape_t = sp_shape_d->vec<int64>();
-      shape_t(0) = batch_size;
-      shape_t(1) = max_num_features;
-
-      int64 offset = 0;
-
-      for (int b = 0; b < batch_size; ++b) {
-        const int64 num_elements = CopyIntoSparseTensor(
-            sparse_values_tmp[d][b], b, offset, sp_indices_d, sp_values_d);
-        offset += num_elements;
-      }
+    for (int d = 0; d < attrs_.num_sparse; ++d) {
+      sparse_indices.set(d, result.sparse_indices[d]);
+      sparse_values.set(d, result.sparse_values[d]);
+      sparse_shapes.set(d, result.sparse_shapes[d]);
     }
   }
 
  protected:
-  int64 num_sparse_;
-  int64 num_dense_;
-  std::vector<DataType> sparse_types_;
-  std::vector<DataType> dense_types_;
-  std::vector<TensorShape> dense_shapes_;
+  ParseSingleExampleAttrs attrs_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParseExample").Device(DEVICE_CPU),
@@ -460,57 +157,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
  public:
   explicit SingleSequenceExampleParserOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("context_sparse_types", &context_sparse_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("Ncontext_dense", &num_context_dense_));
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("Nfeature_list_dense", &num_feature_list_dense_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("Ncontext_sparse", &num_context_sparse_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("Tcontext_dense", &context_dense_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("feature_list_sparse_types",
-                                     &feature_list_sparse_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("feature_list_dense_types",
-                                     &feature_list_dense_types_));
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("Nfeature_list_sparse", &num_feature_list_sparse_));
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("context_dense_shapes", &context_dense_shapes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("feature_list_dense_shapes",
-                                     &feature_list_dense_shapes_));
-
-    OP_REQUIRES(ctx, static_cast<size_t>(num_context_sparse_) ==
-                         context_sparse_types_.size(),
-                errors::InvalidArgument(
-                    "len(context_sparse_keys) != len(context_sparse_types"));
-    OP_REQUIRES(ctx, static_cast<size_t>(num_context_dense_) ==
-                         context_dense_types_.size(),
-                errors::InvalidArgument(
-                    "len(context_dense_keys) != len(context_dense_types"));
-    OP_REQUIRES(ctx, static_cast<size_t>(num_context_dense_) ==
-                         context_dense_shapes_.size(),
-                errors::InvalidArgument(
-                    "len(context_dense_keys) != len(context_dense_shapes"));
-    OP_REQUIRES(
-        ctx, static_cast<size_t>(num_feature_list_sparse_) ==
-                 feature_list_sparse_types_.size(),
-        errors::InvalidArgument(
-            "len(feature_list_sparse_keys) != len(feature_list_sparse_types"));
-    OP_REQUIRES(ctx, static_cast<size_t>(num_feature_list_dense_) ==
-                         feature_list_dense_types_.size(),
-                errors::InvalidArgument("len(feature_list_dense_keys) != "
-                                        "len(feature_list_dense_types"));
-    for (const DataType& type : context_dense_types_) {
-      OP_REQUIRES_OK(ctx, CheckValidType(type));
-    }
-    for (const DataType& type : context_sparse_types_) {
-      OP_REQUIRES_OK(ctx, CheckValidType(type));
-    }
-    for (const DataType& type : feature_list_dense_types_) {
-      OP_REQUIRES_OK(ctx, CheckValidType(type));
-    }
-    for (const DataType& type : feature_list_sparse_types_) {
-      OP_REQUIRES_OK(ctx, CheckValidType(type));
-    }
+    OP_REQUIRES_OK(ctx, attrs_.Init(ctx));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -538,16 +185,18 @@ class SingleSequenceExampleParserOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input_list("context_dense_defaults",
                                         &context_dense_defaults));
 
-    std::vector<string> context_dense_keys_t(num_context_dense_);
-    std::vector<string> context_sparse_keys_t(num_context_sparse_);
-    std::vector<string> feature_list_dense_keys_t(num_feature_list_dense_);
-    std::vector<string> feature_list_sparse_keys_t(num_feature_list_sparse_);
+    std::vector<string> context_dense_keys_t(attrs_.num_context_dense);
+    std::vector<string> context_sparse_keys_t(attrs_.num_context_sparse);
+    std::vector<string> feature_list_dense_keys_t(
+        attrs_.num_feature_list_dense);
+    std::vector<string> feature_list_sparse_keys_t(
+        attrs_.num_feature_list_sparse);
     std::unordered_set<string> feature_list_dense_missing_assumed_empty_set;
-    CHECK_EQ(context_dense_keys.size(), num_context_dense_);
-    CHECK_EQ(context_sparse_keys.size(), num_context_sparse_);
-    CHECK_EQ(feature_list_dense_keys.size(), num_feature_list_dense_);
-    CHECK_EQ(feature_list_sparse_keys.size(), num_feature_list_sparse_);
-    for (int di = 0; di < num_context_dense_; ++di) {
+    CHECK_EQ(context_dense_keys.size(), attrs_.num_context_dense);
+    CHECK_EQ(context_sparse_keys.size(), attrs_.num_context_sparse);
+    CHECK_EQ(feature_list_dense_keys.size(), attrs_.num_feature_list_dense);
+    CHECK_EQ(feature_list_sparse_keys.size(), attrs_.num_feature_list_sparse);
+    for (int di = 0; di < attrs_.num_context_dense; ++di) {
       OP_REQUIRES(ctx,
                   TensorShapeUtils::IsScalar(context_dense_keys[di].shape()),
                   errors::InvalidArgument(
@@ -556,7 +205,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
                       context_dense_keys[di].shape().DebugString()));
       context_dense_keys_t[di] = context_dense_keys[di].scalar<string>()();
     }
-    for (int di = 0; di < num_context_sparse_; ++di) {
+    for (int di = 0; di < attrs_.num_context_sparse; ++di) {
       OP_REQUIRES(ctx,
                   TensorShapeUtils::IsScalar(context_sparse_keys[di].shape()),
                   errors::InvalidArgument(
@@ -565,7 +214,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
                       context_sparse_keys[di].shape().DebugString()));
       context_sparse_keys_t[di] = context_sparse_keys[di].scalar<string>()();
     }
-    for (int di = 0; di < num_feature_list_dense_; ++di) {
+    for (int di = 0; di < attrs_.num_feature_list_dense; ++di) {
       OP_REQUIRES(
           ctx, TensorShapeUtils::IsScalar(feature_list_dense_keys[di].shape()),
           errors::InvalidArgument(
@@ -575,7 +224,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
       feature_list_dense_keys_t[di] =
           feature_list_dense_keys[di].scalar<string>()();
     }
-    for (int di = 0; di < num_feature_list_sparse_; ++di) {
+    for (int di = 0; di < attrs_.num_feature_list_sparse; ++di) {
       OP_REQUIRES(
           ctx, TensorShapeUtils::IsScalar(feature_list_sparse_keys[di].shape()),
           errors::InvalidArgument(
@@ -614,30 +263,30 @@ class SingleSequenceExampleParserOp : public OpKernel {
                     "Expected serialized to be a scalar, got shape: ",
                     serialized->shape().DebugString()));
 
-    OP_REQUIRES(ctx, context_dense_defaults.size() == num_context_dense_,
+    OP_REQUIRES(ctx, context_dense_defaults.size() == attrs_.num_context_dense,
                 errors::InvalidArgument("Expected len(context_dense_defaults) "
                                         "== len(context_dense_keys) but got: ",
                                         context_dense_defaults.size(), " vs. ",
-                                        num_context_dense_));
+                                        attrs_.num_context_dense));
 
-    std::vector<bool> required(num_context_dense_);
-    for (int d = 0; d < num_context_dense_; ++d) {
+    std::vector<bool> required(attrs_.num_context_dense);
+    for (int d = 0; d < attrs_.num_context_dense; ++d) {
       const Tensor& def_value = context_dense_defaults[d];
       required[d] = (def_value.NumElements() == 0);  // No default provided.
 
       if (def_value.NumElements() > 0) {
         OP_REQUIRES(
-            ctx, def_value.shape() == context_dense_shapes_[d],
-            errors::InvalidArgument("def_value[", d, "].shape() == ",
-                                    def_value.shape().DebugString(),
-                                    " != context_dense_shapes_[", d, "] == ",
-                                    context_dense_shapes_[d].DebugString()));
+            ctx, def_value.shape() == attrs_.context_dense_shapes[d],
+            errors::InvalidArgument(
+                "def_value[", d, "].shape() == ",
+                def_value.shape().DebugString(), " != context_dense_shapes_[",
+                d, "] == ", attrs_.context_dense_shapes[d].DebugString()));
         OP_REQUIRES(
-            ctx, def_value.dtype() == context_dense_types_[d],
+            ctx, def_value.dtype() == attrs_.context_dense_types[d],
             errors::InvalidArgument(
                 "context_dense_defaults[", d, "].dtype() == ",
                 DataTypeString(def_value.dtype()), " != context_dense_types_[",
-                d, "] == ", DataTypeString(context_dense_types_[d])));
+                d, "] == ", DataTypeString(attrs_.context_dense_types[d])));
       }
     }
 
@@ -684,18 +333,18 @@ class SingleSequenceExampleParserOp : public OpKernel {
     // Context Dense -----------------------------------------------------------
 
     // Preallocate context_dense_values, since we know their sizes
-    for (int d = 0; d < num_context_dense_; ++d) {
+    for (int d = 0; d < attrs_.num_context_dense; ++d) {
       TensorShape out_shape;
-      for (const int dim : context_dense_shapes_[d].dim_sizes())
+      for (const int dim : attrs_.context_dense_shapes[d].dim_sizes())
         out_shape.AddDim(dim);
       Tensor* out = nullptr;
       context_dense_values.allocate(d, out_shape, &out);
     }
 
-    for (int d = 0; d < num_context_dense_; ++d) {
+    for (int d = 0; d < attrs_.num_context_dense; ++d) {
       const string& key = context_dense_keys_t[d];
-      const DataType& dtype = context_dense_types_[d];
-      const TensorShape& shape = context_dense_shapes_[d];
+      const DataType& dtype = attrs_.context_dense_types[d];
+      const TensorShape& shape = attrs_.context_dense_shapes[d];
 
       const auto& feature_found = context_dict.find(key);
       OP_REQUIRES(
@@ -722,9 +371,9 @@ class SingleSequenceExampleParserOp : public OpKernel {
     }
 
     // Context Sparse ----------------------------------------------------------
-    for (int d = 0; d < num_context_sparse_; ++d) {
+    for (int d = 0; d < attrs_.num_context_sparse; ++d) {
       const string& key = context_sparse_keys_t[d];
-      const DataType& dtype = context_sparse_types_[d];
+      const DataType& dtype = attrs_.context_sparse_types[d];
 
       const auto& feature_found = context_dict.find(key);
       bool feature_has_data =  // Found key & data type is set
@@ -776,10 +425,10 @@ class SingleSequenceExampleParserOp : public OpKernel {
     const auto& feature_list_dict = feature_lists.feature_list();
     FeatureList empty_feature_list;  // Placeholder for missing FLs
 
-    for (int d = 0; d < num_feature_list_dense_; ++d) {
+    for (int d = 0; d < attrs_.num_feature_list_dense; ++d) {
       const string& key = feature_list_dense_keys_t[d];
-      const DataType& dtype = feature_list_dense_types_[d];
-      const TensorShape& shape = feature_list_dense_shapes_[d];
+      const DataType& dtype = attrs_.feature_list_dense_types[d];
+      const TensorShape& shape = attrs_.feature_list_dense_shapes[d];
 
       const auto& feature_list_found = feature_list_dict.find(key);
       bool feature_list_missing =
@@ -800,7 +449,7 @@ class SingleSequenceExampleParserOp : public OpKernel {
                                   ? empty_feature_list
                                   : feature_list_found->second;
       out_shape.AddDim(fl.feature_size());
-      for (const int dim : feature_list_dense_shapes_[d].dim_sizes()) {
+      for (const int dim : attrs_.feature_list_dense_shapes[d].dim_sizes()) {
         out_shape.AddDim(dim);
       }
       Tensor* out = nullptr;
@@ -822,9 +471,9 @@ class SingleSequenceExampleParserOp : public OpKernel {
     }
 
     // Feature List Sparse -----------------------------------------------------
-    for (int d = 0; d < num_feature_list_sparse_; ++d) {
+    for (int d = 0; d < attrs_.num_feature_list_sparse; ++d) {
       const string& key = feature_list_sparse_keys_t[d];
-      const DataType& dtype = feature_list_sparse_types_[d];
+      const DataType& dtype = attrs_.feature_list_sparse_types[d];
 
       const auto& feature_list_found = feature_list_dict.find(key);
       bool feature_list_has_data =  // Found key
@@ -883,20 +532,14 @@ class SingleSequenceExampleParserOp : public OpKernel {
   }
 
  protected:
-  int64 num_context_sparse_;
-  int64 num_context_dense_;
-  int64 num_feature_list_sparse_;
-  int64 num_feature_list_dense_;
-  std::vector<DataType> context_sparse_types_;
-  std::vector<DataType> context_dense_types_;
-  std::vector<TensorShape> context_dense_shapes_;
-  std::vector<DataType> feature_list_sparse_types_;
-  std::vector<DataType> feature_list_dense_types_;
-  std::vector<TensorShape> feature_list_dense_shapes_;
+  ParseSingleSequenceExampleAttrs attrs_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParseSingleSequenceExample").Device(DEVICE_CPU),
                         SingleSequenceExampleParserOp);
+
+#ifndef IS_MOBILE_PLATFORM
+// when using lite protos on mobile, decoding JSON is not available.
 
 class DecodeJSONExampleOp : public OpKernel {
  public:
@@ -930,5 +573,6 @@ class DecodeJSONExampleOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("DecodeJSONExample").Device(DEVICE_CPU),
                         DecodeJSONExampleOp);
+#endif
 
 }  // namespace tensorflow

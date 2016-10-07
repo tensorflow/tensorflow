@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,10 +21,66 @@ limitations under the License.
 
 namespace tensorflow {
 namespace io {
+RecordWriterOptions RecordWriterOptions::CreateRecordWriterOptions(
+    const string& compression_type) {
+  RecordWriterOptions options;
+  if (compression_type == "ZLIB") {
+    options.compression_type = io::RecordWriterOptions::ZLIB_COMPRESSION;
+#if defined(IS_SLIM_BUILD)
+    LOG(ERROR) << "Compression is not supported but compression_type is set."
+               << " No compression will be used.";
+#else
+    options.zlib_options = io::ZlibCompressionOptions::DEFAULT();
+#endif  // IS_SLIM_BUILD
+  } else if (compression_type == "GZIP") {
+    options.compression_type = io::RecordWriterOptions::ZLIB_COMPRESSION;
+#if defined(IS_SLIM_BUILD)
+    LOG(ERROR) << "Compression is not supported but compression_type is set."
+               << " No compression will be used.";
+#else
+    options.zlib_options = io::ZlibCompressionOptions::GZIP();
+#endif  // IS_SLIM_BUILD
+  } else if (compression_type != "") {
+    LOG(ERROR) << "Unsupported compression_type:" << compression_type
+               << ". No comprression will be used.";
+  }
+  return options;
+}
 
-RecordWriter::RecordWriter(WritableFile* dest) : dest_(dest) {}
+RecordWriter::RecordWriter(WritableFile* dest,
+                           const RecordWriterOptions& options)
+    : dest_(dest), options_(options) {
+  if (options.compression_type == RecordWriterOptions::ZLIB_COMPRESSION) {
+// We don't have zlib available on all embedded platforms, so fail.
+#if defined(IS_SLIM_BUILD)
+    LOG(FATAL) << "Zlib compression is unsupported on mobile platforms.";
+#else   // IS_SLIM_BUILD
+    zlib_output_buffer_.reset(new ZlibOutputBuffer(
+        dest_, options.zlib_options.input_buffer_size,
+        options.zlib_options.output_buffer_size, options.zlib_options));
+    Status s = zlib_output_buffer_->Init();
+    if (!s.ok()) {
+      LOG(FATAL) << "Failed to initialize Zlib inputbuffer. Error: "
+                 << s.ToString();
+    }
+#endif  // IS_SLIM_BUILD
+  } else if (options.compression_type == RecordWriterOptions::NONE) {
+    // Nothing to do
+  } else {
+    LOG(FATAL) << "Unspecified compression type :" << options.compression_type;
+  }
+}
 
-RecordWriter::~RecordWriter() {}
+RecordWriter::~RecordWriter() {
+#if !defined(IS_SLIM_BUILD)
+  if (zlib_output_buffer_) {
+    Status s = zlib_output_buffer_->Close();
+    if (!s.ok()) {
+      LOG(ERROR) << "Could not finish writing file: " << s;
+    }
+  }
+#endif  // IS_SLIM_BUILD
+}
 
 static uint32 MaskedCrc(const char* data, size_t n) {
   return crc32c::Mask(crc32c::Value(data, n));
@@ -40,17 +96,23 @@ Status RecordWriter::WriteRecord(StringPiece data) {
   core::EncodeFixed64(header + 0, data.size());
   core::EncodeFixed32(header + sizeof(uint64),
                       MaskedCrc(header, sizeof(uint64)));
-  Status s = dest_->Append(StringPiece(header, sizeof(header)));
-  if (!s.ok()) {
-    return s;
-  }
-  s = dest_->Append(data);
-  if (!s.ok()) {
-    return s;
-  }
   char footer[sizeof(uint32)];
   core::EncodeFixed32(footer, MaskedCrc(data.data(), data.size()));
-  return dest_->Append(StringPiece(footer, sizeof(footer)));
+
+#if !defined(IS_SLIM_BUILD)
+  if (zlib_output_buffer_) {
+    TF_RETURN_IF_ERROR(
+        zlib_output_buffer_->Write(StringPiece(header, sizeof(header))));
+    TF_RETURN_IF_ERROR(zlib_output_buffer_->Write(data));
+    return zlib_output_buffer_->Write(StringPiece(footer, sizeof(footer)));
+  } else {
+#endif  // IS_SLIM_BUILD
+    TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+    TF_RETURN_IF_ERROR(dest_->Append(data));
+    return dest_->Append(StringPiece(footer, sizeof(footer)));
+#if !defined(IS_SLIM_BUILD)
+  }
+#endif  // IS_SLIM_BUILD
 }
 
 }  // namespace io

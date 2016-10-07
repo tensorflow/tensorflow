@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cmath>
 
 #include "tensorflow/core/kernels/ops_util.h"
@@ -21,55 +22,6 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
-
-Status Get2dOutputSize(const int in_height, const int in_width,
-                       int filter_height, int filter_width, int row_stride,
-                       int col_stride, Padding padding, int* new_height,
-                       int* new_width, int* pad_rows, int* pad_cols) {
-  int pad_bottom_unused, pad_right_unused;
-  return Get2dOutputSizeVerbose(
-      in_height, in_width, filter_height, filter_width, row_stride, col_stride,
-      padding, new_height, new_width, pad_rows, &pad_bottom_unused, pad_cols,
-      &pad_right_unused);
-}
-
-Status Get2dOutputSizeVerbose(const int in_height, const int in_width,
-                              int filter_height, int filter_width,
-                              int row_stride, int col_stride, Padding padding,
-                              int* new_height, int* new_width, int* pad_top,
-                              int* pad_bottom, int* pad_left, int* pad_right) {
-  switch (padding) {
-    case Padding::VALID:
-      *new_height = ceil((in_height - filter_height + 1.f) /
-                         static_cast<float>(row_stride));
-      *new_width = ceil((in_width - filter_width + 1.f) /
-                        static_cast<float>(col_stride));
-      *pad_top = 0;
-      *pad_bottom = 0;
-      *pad_left = 0;
-      *pad_right = 0;
-      break;
-    case Padding::SAME:
-      *new_height = ceil(in_height / static_cast<float>(row_stride));
-      *new_width = ceil(in_width / static_cast<float>(col_stride));
-      // Calculate padding for top/bottom/left/right, spilling any excess
-      // padding to bottom and right.
-      const int pad_needed_height = std::max(0,
-          (*new_height - 1) * row_stride + filter_height - in_height);
-      *pad_top = pad_needed_height / 2;
-      *pad_bottom = pad_needed_height - *pad_top;
-
-      const int pad_needed_width = std::max(0,
-          (*new_width - 1) * col_stride + filter_width - in_width);
-      *pad_left = pad_needed_width / 2;
-      *pad_right = pad_needed_width - *pad_left;
-      break;
-  }
-  if (*new_height < 0 || *new_width < 0) {
-    return errors::InvalidArgument("computed output size would be negative");
-  }
-  return Status::OK();
-}
 
 Eigen::PaddingType BrainPadding2EigenPadding(Padding padding) {
   switch (padding) {

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,19 +36,17 @@ IntraProcessRendezvous::IntraProcessRendezvous(const DeviceMgr* device_mgr)
 
 IntraProcessRendezvous::~IntraProcessRendezvous() { local_->Unref(); }
 
-Status IntraProcessRendezvous::Send(const string& key,
+Status IntraProcessRendezvous::Send(const ParsedKey& parsed,
                                     const Rendezvous::Args& args,
                                     const Tensor& val, const bool is_dead) {
-  VLOG(1) << "IntraProcessRendezvous Send " << this << " " << key;
+  VLOG(1) << "IntraProcessRendezvous Send " << this << " " << parsed.FullKey();
   {
     mutex_lock l(mu_);
     if (!status_.ok()) return status_;
   }
-  Rendezvous::ParsedKey parsed;
-  TF_RETURN_IF_ERROR(Rendezvous::ParseKey(key, &parsed));
 
   // Buffers "val" and "device_context" in local_.
-  return local_->Send(key, args, val, is_dead);
+  return local_->Send(parsed, args, val, is_dead);
 }
 
 Status IntraProcessRendezvous::ParseKey(const string& key, bool is_src,
@@ -111,33 +109,31 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
                      done);
 }
 
-void IntraProcessRendezvous::RecvAsync(const string& key,
+void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
                                        const Rendezvous::Args& recv_args,
                                        DoneCallback done) {
-  VLOG(1) << "IntraProcessRendezvous Recv " << this << " " << key;
-
-  Rendezvous::ParsedKey parsed;
-  Status s = ParseKey(key, false /*!is_src*/, &parsed);
-  if (!s.ok()) {
-    done(s, Args(), recv_args, Tensor(), false);
-    return;
-  }
+  VLOG(1) << "IntraProcessRendezvous Recv " << this << " " << parsed.FullKey();
 
   // Recv the tensor from local_.
-  local_->RecvAsync(key, recv_args, [this, parsed, done](
-                                        const Status& status,
-                                        const Rendezvous::Args& send_args,
-                                        const Rendezvous::Args& recv_args,
-                                        const Tensor& in, bool is_dead) {
+  local_->RecvAsync(parsed, recv_args, [this, parsed, done](
+                                           const Status& status,
+                                           const Rendezvous::Args& send_args,
+                                           const Rendezvous::Args& recv_args,
+                                           const Tensor& in, bool is_dead) {
     Status s = status;
-    Tensor* out = new Tensor;
+
+    // If "in" is an uninitialized tensor, do copy-construction to preserve
+    // the uninitialized state, along with data type and shape info, which
+    // is useful for debugger purposes.
+    Tensor* out = in.IsInitialized() ? new Tensor : new Tensor(in);
+
     StatusCallback final_callback = [done, send_args, recv_args, out,
                                      is_dead](const Status& s) {
       done(s, send_args, recv_args, *out, is_dead);
       delete out;
     };
 
-    if (s.ok()) {
+    if (s.ok() && in.IsInitialized()) {
       SameWorkerRecvDone(parsed, send_args, recv_args, in, out, final_callback);
     } else {
       final_callback(s);

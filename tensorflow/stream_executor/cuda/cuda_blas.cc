@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// Include cuBLAS headers early, and then set EIGEN_HAS_CUDA_FP16
+// if we have new enough CUDA (which we will only know after including
+// cuda.h). This ensures that Eigen's Half.h does not attempt to make its own
+// __half typedef if CUDA has already defined one (and conversely, that we do
+// not include <cuda_fp16.h> after Half.h has made its typedef).
+#include "cuda/include/cuda.h"
+#include "cuda/include/cublas_v2.h"
+
+#if CUDA_VERSION >= 7050
+#define EIGEN_HAS_CUDA_FP16
+#endif
+
+#if CUDA_VERSION >= 8000
+#define SE_CUDA_DATA_HALF CUDA_R_16F
+#else
+#define SE_CUDA_DATA_HALF CUBLAS_DATA_HALF
+#endif
+
 #include "tensorflow/stream_executor/cuda/cuda_blas.h"
 
 #include <dlfcn.h>
 
 #include <complex>
 
-#include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
 #include "tensorflow/stream_executor/cuda/cuda_helpers.h"
@@ -253,6 +270,10 @@ PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasDgemmBatched)
 PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasCgemmBatched)
 PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasZgemmBatched)
 CUBLAS_BLAS_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUBLAS_V2_WRAP)
+
+#if CUDA_VERSION >= 7050
+PERFTOOLS_GPUTOOLS_CUBLAS_WRAP(cublasSgemmEx)
+#endif
 
 }  // namespace dynload
 
@@ -1622,6 +1643,58 @@ bool CUDABlas::DoBlasTrsv(Stream *stream, blas::UpperLower uplo,
                         CUDABlasUpperLower(uplo), CUDABlasTranspose(trans),
                         CUDABlasDiagonal(diag), n, CUDAComplex(CUDAMemory(a)),
                         lda, CUDAComplex(CUDAMemoryMutable(x)), incx);
+}
+
+bool CUDABlas::DoBlasGemm(
+    Stream *stream, blas::Transpose transa,
+    blas::Transpose transb, uint64 m, uint64 n, uint64 k,
+    float alpha, const DeviceMemory<Eigen::half> &a, int lda,
+    const DeviceMemory<Eigen::half> &b, int ldb, float beta,
+    DeviceMemory<Eigen::half> *c, int ldc) {
+#if CUDA_VERSION >= 7050
+  VLOG(1) << port::Printf(
+      "doing cuBLAS SGEMM: at=%d bt=%d m=%llu n=%llu "
+      "k=%llu alpha=%f a=%p lda=%d b=%p ldb=%d beta=%f "
+      "c=%p ldc=%d",
+      static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,
+      a.opaque(), lda, b.opaque(), ldb, beta, c->opaque(), ldc);
+  if (transa == blas::Transpose::kNoTranspose) {
+    if (lda < static_cast<int64>(m)) {
+      LOG(WARNING) << "GEMM lda was smaller than m (no transpose case); "
+                      "precondition violation";
+    }
+  } else {
+    if (lda < static_cast<int64>(k)) {
+      LOG(WARNING) << "GEMM lda (" << lda << ") was smaller than k (" << k
+                   << ") (transpose case); precondition violation";
+    }
+  }
+  if (transb == blas::Transpose::kNoTranspose) {
+    if (ldb < static_cast<int64>(k)) {
+      LOG(WARNING) << "GEMM ldb (" << ldb << ") was smaller than k (" << k
+                   << ") (no transpose case); precondition violation";
+    }
+  } else {
+    if (ldb < static_cast<int64>(n)) {
+      LOG(WARNING) << "GEMM ldb was smaller than n (transpose case); "
+                      "precondition violation";
+    }
+  }
+  // TODO(sesse): Consider supporting the Hgemm interface, which uses half
+  // calculations internally (faster on newer devices, such as Pascal and TX1,
+  // but less precise).
+  return DoBlasInternal(
+      dynload::cublasSgemmEx, stream, true /* = pointer_mode_host */,
+      CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k, &alpha,
+      CUDAMemory(a), SE_CUDA_DATA_HALF, lda,
+      CUDAMemory(b), SE_CUDA_DATA_HALF, ldb,
+      &beta,
+      CUDAMemoryMutable(c), SE_CUDA_DATA_HALF, ldc);
+#else
+  LOG(ERROR) << "fp16 sgemm is not implemented in this cuBLAS version "
+             << "(need at least CUDA 7.5)";
+  return false;
+#endif
 }
 
 bool CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,

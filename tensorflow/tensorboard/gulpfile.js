@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,20 +29,20 @@ function getTask(task) {
 }
 
 
-gulp.task('compile', getTask('compile'));
-gulp.task('typings', getTask('typings'));
+gulp.task('compile', getTask('compile')(true));
 gulp.task('tslint', getTask('tslint')(true));
 // tslint.permissive warns without failing.
 gulp.task('tslint.permissive', getTask('tslint')(false));
-gulp.task('first-compile', ['typings'], getTask('compile'));
+gulp.task('first-compile', getTask('compile')(true));
+gulp.task('compile-without-deps', getTask('compile')(false));
 gulp.task('test.onlytest', getTask('test')); // if you don't want to lint, etc
 gulp.task('test', ['tslint', 'compile'], getTask('test'));
 
 gulp.task('watch', [], function() {
   // Avoid watching generated .d.ts in the build (aka output) directory.
-  return gulp.watch('components/tf-*/**/*.ts',
-          {ignoreInitial: true},
-          ['compile', 'tslint.permissive']);
+  return gulp.watch(
+      ['components/tf-*/**/*.ts', 'components/vz-*/**/*.ts'],
+      {ignoreInitial: true}, ['compile', 'tslint.permissive']);
 });
 
 
@@ -66,9 +66,20 @@ gulp.task('server', ['first-compile'], function() {
 
 // TODO(danmane): When testing is nicer, integrate into vulcanize task
 // gulp vulcanize: Regenerate the tf-tensorboard.html.OPENSOURCE file for pre-release
-gulp.task('vulcanize', ['first-compile', 'tslint.permissive'], getTask('vulcanize')(false));
+gulp.task(
+    'vulcanize', ['compile-without-deps', 'tslint.permissive'],
+    getTask('vulcanize')(false));
 // gulp regenerate: Regenerate the tf-tensorboard.html for interactive bazel development
-gulp.task('regenerate', ['first-compile', 'tslint.permissive'], getTask('vulcanize')(true));
+gulp.task(
+    'regenerate', ['compile-without-deps', 'tslint.permissive'],
+    getTask('vulcanize')(true));
 
 // TODO(danmane): consider making bower install part of default task
 gulp.task('default', ['watch', 'server']);
+
+// Clean all compiled JS files.
+var cleanCompiledTypeScript = require('gulp-clean-compiled-typescript');
+gulp.task('clean', function () {
+  return gulp.src(['./components/**/*.ts', '!./components/**/deps.d.ts'])
+      .pipe(cleanCompiledTypeScript());
+});

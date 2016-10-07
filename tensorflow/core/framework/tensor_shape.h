@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -53,6 +53,13 @@ class TensorShape {
   /// Copy the specified shape
   TensorShape(const TensorShape& b);
   void operator=(const TensorShape& b);
+
+  /// Move the specified shape.  After moving, <b> is safe for destruction and
+  // can be reassigned into, but its dimensions and number of elements can be
+  // nonsensical (e.g., negative dimension sizes, or number of elements not
+  // properly recomputed).
+  TensorShape(TensorShape&& b);
+  void operator=(TensorShape&& b);
 
   /// Returns `true` iff `proto` is a valid tensor shape.
   static bool IsValid(const TensorShapeProto& proto);
@@ -190,11 +197,10 @@ class TensorShape {
   // an extra word of storage.
   friend class Tensor;
   friend class TensorShapeTestHelper;
-  friend class BitcastOp;
   DataType data_type() const { return static_cast<DataType>(buf()[13]); }
   void set_data_type(DataType dt) {
     // We only have 8 bits available to store DataType, so make sure it fits
-    DCHECK_LT(static_cast<uint32>(dt), 256);
+    DCHECK_LT(static_cast<uint32>(dt), 256u);
     buf()[13] = static_cast<uint8>(dt);
   }
 
@@ -252,14 +258,20 @@ class TensorShapeUtils {
 
   static bool IsMatrix(const TensorShape& shape) { return shape.dims() == 2; }
 
+  static bool IsSquareMatrix(const TensorShape& shape) {
+    return shape.dims() == 2 && shape.dim_size(0) == shape.dim_size(1);
+  }
+
   static bool IsMatrixOrHigher(const TensorShape& shape) {
     return shape.dims() >= 2;
   }
 
   /// \brief Returns a `TensorShape` whose dimensions are
   /// `dims[0]`, `dims[1]`, ..., `dims[n-1]`.
-  static Status MakeShape(const int32* dims, int n, TensorShape* out);
-  static Status MakeShape(const int64* dims, int n, TensorShape* out);
+  static Status MakeShape(const int32* dims, int64 n, TensorShape* out);
+  static Status MakeShape(const int64* dims, int64 n, TensorShape* out);
+  static Status MakeShape(gtl::ArraySlice<int32> shape, TensorShape* out);
+  static Status MakeShape(gtl::ArraySlice<int64> shape, TensorShape* out);
 
   static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
 
@@ -308,6 +320,15 @@ inline TensorShape::TensorShape(const TensorShape& b) {
   }
 }
 
+inline TensorShape::TensorShape(TensorShape&& b) {
+  num_elements_ = b.num_elements_;
+  memcpy(buf(), b.buf(), sizeof(u_.buf));
+  // memcpy above Implicitly does:
+  //   set_ndims_byte(b.ndims_byte());
+  //   set_tag(b.tag());
+  b.set_tag(REP16);  // other shape no longer owns out-of-line data, if any.
+}
+
 inline TensorShape::~TensorShape() {
   if (tag() == REP_OUT_OF_LINE) {
     DestructorOutOfLine();
@@ -324,6 +345,18 @@ inline void TensorShape::operator=(const TensorShape& b) {
   } else {
     SlowCopyFrom(b);
   }
+}
+
+inline void TensorShape::operator=(TensorShape&& b) {
+  if (tag() == REP_OUT_OF_LINE) {
+    DestructorOutOfLine();
+  }
+  num_elements_ = b.num_elements_;
+  memcpy(buf(), b.buf(), sizeof(u_.buf));
+  // memcpy above Implicitly does:
+  //   set_ndims_byte(b.ndims_byte());
+  //   set_tag(b.tag());
+  b.set_tag(REP16);  // other shape no longer owns out-of-line data, if any.
 }
 
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -695,9 +695,9 @@ TEST(EigenSpatialConvolutionsTest, Cuboid) {
   EXPECT_EQ(result.dimension(2), out_height);
   EXPECT_EQ(result.dimension(3), out_width);
 
-  const int off_p = kern_depth / 2;
-  const int off_r = kern_height / 2;
-  const int off_c = kern_width / 2;
+  const int off_p = (kern_depth - 1) / 2;
+  const int off_r = (kern_height - 1) / 2;
+  const int off_c = (kern_width - 1) / 2;
 
   for (int od = 0; od < kern_filters; ++od) {
     for (int i = 0; i < out_depth; ++i) {
@@ -757,9 +757,9 @@ TEST(EigenSpatialConvolutionsTest, CuboidRowMajor) {
   EXPECT_EQ(result.dimension(1), out_height);
   EXPECT_EQ(result.dimension(0), out_width);
 
-  const int off_p = kern_depth / 2;
-  const int off_r = kern_height / 2;
-  const int off_c = kern_width / 2;
+  const int off_p = (kern_depth - 1) / 2;
+  const int off_r = (kern_height - 1) / 2;
+  const int off_c = (kern_width - 1) / 2;
 
   for (int od = 0; od < kern_filters; ++od) {
     for (int i = 0; i < out_depth; ++i) {
@@ -926,9 +926,9 @@ TEST(EigenSpatialConvolutionsTest, BatchedCuboid) {
   EXPECT_EQ(result.dimension(3), out_width);
   EXPECT_EQ(result.dimension(4), batches);
 
-  const int off_p = kern_depth / 2;
-  const int off_r = kern_height / 2;
-  const int off_c = kern_width / 2;
+  const int off_p = (kern_depth - 1) / 2;
+  const int off_r = (kern_height - 1) / 2;
+  const int off_c = (kern_width - 1) / 2;
 
   for (int b = 0; b < batches; b++) {
     for (int od = 0; od < kern_filters; ++od) {
@@ -993,9 +993,9 @@ TEST(EigenSpatialConvolutionsTest, BatchedCuboidRowMajor) {
   EXPECT_EQ(result.dimension(1), out_width);
   EXPECT_EQ(result.dimension(0), batches);
 
-  const int off_p = kern_depth / 2;
-  const int off_r = kern_height / 2;
-  const int off_c = kern_width / 2;
+  const int off_p = (kern_depth - 1) / 2;
+  const int off_r = (kern_height - 1) / 2;
+  const int off_c = (kern_width - 1) / 2;
 
   for (int b = 0; b < batches; b++) {
     for (int od = 0; od < kern_filters; ++od) {
@@ -1169,15 +1169,15 @@ TEST(EigenSpatialConvolutionsTest, StridedSameCuboid) {
   EXPECT_EQ(result.dimension(2), out_height);
   EXPECT_EQ(result.dimension(3), out_width);
 
-  const int pad_p = out_depth * stride - in_depth + kern_depth - 1;
-  const int pad_r = out_height * stride - in_rows + kern_height - 1;
-  const int pad_c = out_width * stride - in_cols + kern_width - 1;
+  const int pad_p = (out_depth - 1) * stride - in_depth + kern_depth;
+  const int pad_r = (out_height - 1) * stride - in_rows + kern_height;
+  const int pad_c = (out_width - 1) * stride - in_cols + kern_width;
 
   // Number of pixels the input is extended with at the lower end in every
   // dimension.
-  const int dp = pad_p - pad_p / 2;
-  const int dr = pad_r - pad_r / 2;
-  const int dc = pad_c - pad_c / 2;
+  const int dp = pad_p / 2;
+  const int dr = pad_r / 2;
+  const int dc = pad_c / 2;
 
   for (int od = 0; od < kern_filters; ++od) {
     for (int i = 0; i < out_depth; ++i) {
@@ -1240,15 +1240,15 @@ TEST(EigenSpatialConvolutionsTest, StridedSameCuboidRowMajor) {
   EXPECT_EQ(result.dimension(1), out_height);
   EXPECT_EQ(result.dimension(0), out_width);
 
-  const int pad_p = out_depth * stride - in_depth + kern_depth - 1;
-  const int pad_r = out_height * stride - in_rows + kern_height - 1;
-  const int pad_c = out_width * stride - in_cols + kern_width - 1;
+  const int pad_p = (out_depth - 1) * stride - in_depth + kern_depth;
+  const int pad_r = (out_height - 1) * stride - in_rows + kern_height;
+  const int pad_c = (out_width - 1) * stride - in_cols + kern_width;
 
   // Number of pixels the input is extended with at the lower end in every
   // dimension.
-  const int dp = pad_p - pad_p / 2;
-  const int dr = pad_r - pad_r / 2;
-  const int dc = pad_c - pad_c / 2;
+  const int dp = pad_p / 2;
+  const int dr = pad_r / 2;
+  const int dc = pad_c / 2;
 
   for (int od = 0; od < kern_filters; ++od) {
     for (int i = 0; i < out_depth; ++i) {

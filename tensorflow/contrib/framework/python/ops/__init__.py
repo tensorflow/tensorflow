@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,5 +20,8 @@ from __future__ import print_function
 
 # TODO(ptucker): Add these to tf.contrib.variables?
 # pylint: disable=wildcard-import
+from tensorflow.contrib.framework.python.ops.arg_scope import *
 from tensorflow.contrib.framework.python.ops.ops import *
+from tensorflow.contrib.framework.python.ops.prettyprint_ops import *
 from tensorflow.contrib.framework.python.ops.variables import *
+# pylint: enable=wildcard-import

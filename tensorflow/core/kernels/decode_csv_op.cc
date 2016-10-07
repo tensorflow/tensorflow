@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,6 +30,8 @@ class DecodeCSVOp : public OpKernel {
     string delim;
 
     OP_REQUIRES_OK(ctx, ctx->GetAttr("OUT_TYPE", &out_type_));
+    OP_REQUIRES(ctx, out_type_.size() < std::numeric_limits<int>::max(),
+                errors::InvalidArgument("Out type too large"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("field_delim", &delim));
 
     OP_REQUIRES(ctx, delim.size() == 1,
@@ -45,7 +47,7 @@ class DecodeCSVOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("records", &records));
     OP_REQUIRES_OK(ctx, ctx->input_list("record_defaults", &record_defaults));
 
-    for (int64 i = 0; i < record_defaults.size(); ++i) {
+    for (int i = 0; i < record_defaults.size(); ++i) {
       OP_REQUIRES(ctx, record_defaults[i].NumElements() < 2,
                   errors::InvalidArgument(
                       "There should only be 1 default per field but field ", i,
@@ -58,7 +60,7 @@ class DecodeCSVOp : public OpKernel {
     OpOutputList output;
     OP_REQUIRES_OK(ctx, ctx->output_list("output", &output));
 
-    for (size_t i = 0; i < out_type_.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(out_type_.size()); ++i) {
       Tensor* out = nullptr;
       output.allocate(i, records->shape(), &out);
     }
@@ -73,7 +75,7 @@ class DecodeCSVOp : public OpKernel {
                                           " in record ", i));
 
       // Check each field in the record
-      for (size_t f = 0; f < out_type_.size(); ++f) {
+      for (int f = 0; f < static_cast<int>(out_type_.size()); ++f) {
         const DataType& dtype = out_type_[f];
         switch (dtype) {
           case DT_INT32: {

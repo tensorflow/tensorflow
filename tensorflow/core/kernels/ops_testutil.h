@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,10 +47,6 @@ limitations under the License.
 namespace tensorflow {
 
 namespace test {
-
-// Return a NodeDef with the specified name/op/inputs.
-NodeDef Node(const string& name, const string& op,
-             const std::vector<string>& inputs);
 
 inline void SetOutputAttrs(OpKernelContext::Params* params,
                            std::vector<AllocatorAttributes>* attrs) {
@@ -150,6 +146,28 @@ class OpsTestBase : public ::testing::Test {
     }
   }
 
+  // Convenience function to add an input and populate it with the elements from
+  // an initializer list converting the types as needed.
+  template <typename T, typename SrcType>
+  void AddInputFromList(const TensorShape& shape,
+                        std::initializer_list<SrcType> data) {
+    CHECK_GT(input_types_.size(), inputs_.size())
+        << "Adding more inputs than types; perhaps you need to call MakeOp";
+    bool is_ref = IsRefType(input_types_[inputs_.size()]);
+    Tensor* input = new Tensor(device_->GetAllocator(AllocatorAttributes()),
+                               DataTypeToEnum<T>::v(), shape);
+    test::FillValues<T>(input, data);
+    tensors_.push_back(input);
+    if (is_ref) {
+      CHECK_EQ(RemoveRefType(input_types_[inputs_.size()]),
+               DataTypeToEnum<T>::v());
+      inputs_.push_back({&lock_for_refs_, input});
+    } else {
+      CHECK_EQ(input_types_[inputs_.size()], DataTypeToEnum<T>::v());
+      inputs_.push_back({nullptr, input});
+    }
+  }
+
   // Runs an operation producing 'num_outputs' outputs.
   //
   // Returns the context's status after running the operation.
@@ -167,6 +185,7 @@ class OpsTestBase : public ::testing::Test {
     test::SetOutputAttrs(params_.get(), &attrs);
     checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
     params_.get()->slice_reader_cache = &slice_reader_cache_wrapper;
+    params_.get()->resource_manager = device_.get()->resource_manager();
 
     context_.reset(new OpKernelContext(params_.get()));
     device_->Compute(kernel_.get(), context_.get());

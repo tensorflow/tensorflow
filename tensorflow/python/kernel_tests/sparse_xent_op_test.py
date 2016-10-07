@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,12 +24,16 @@ import time
 import numpy as np
 import tensorflow as tf
 
+from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 
 
 class SparseXentTest(tf.test.TestCase):
 
   def _npXent(self, features, labels):
+    features = np.reshape(features, [-1, features.shape[-1]])
+    labels = np.reshape(labels, [-1])
     batch_dim = 0
     class_dim = 1
     batch_size = features.shape[batch_dim]
@@ -42,42 +46,54 @@ class SparseXentTest(tf.test.TestCase):
     l = -np.sum(labels_mat * np.log(probs + 1.0e-20), axis=1)
     return l, bp
 
-  def _testXent(self, np_features, np_labels, use_gpu=False):
+  def _testXent(self, np_features, np_labels):
     np_loss, np_backprop = self._npXent(np_features, np_labels)
-    with self.test_session(use_gpu=use_gpu) as sess:
-      loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+    with self.test_session(use_gpu=True) as sess:
+      loss, backprop = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
           np_features, np_labels)
-      backprop = loss.op.outputs[1]
       tf_loss, tf_backprop = sess.run([loss, backprop])
-    self.assertAllClose(np_loss, tf_loss)
-    self.assertAllClose(np_backprop, tf_backprop)
+    self.assertAllCloseAccordingToType(np_loss, tf_loss)
+    self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 
-  def _testAll(self, features, labels):
-    self._testXent(features, labels, use_gpu=False)
-    self._testXent(features, labels, use_gpu=True)
-
-  def _testSingleClass(self, use_gpu=False):
+  def testSingleClass(self):
     for label_dtype in np.int32, np.int64:
-      with self.test_session(use_gpu=use_gpu) as sess:
-        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+      with self.test_session(use_gpu=True) as sess:
+        loss, backprop = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
             np.array([[1.], [-1.], [0.]]).astype(np.float32),
             np.array([0, 0, 0]).astype(label_dtype))
-        backprop = loss.op.outputs[1]
         tf_loss, tf_backprop = sess.run([loss, backprop])
       self.assertAllClose([0.0, 0.0, 0.0], tf_loss)
       self.assertAllClose([[0.0], [0.0], [0.0]], tf_backprop)
 
-  def testSingleClass(self):
-    self._testSingleClass(use_gpu=True)
-    self._testSingleClass(use_gpu=False)
+  def testInvalidLabel(self):
+    features = [
+        [1., 1., 1., 1.],
+        [1., 1., 1., 1.],
+        [1., 2., 3., 4.],
+        [1., 2., 3., 4.]]
+    labels = [4, 3, 0, -1]
 
-  def testRankTooLarge(self):
-    np_features = np.array(
-        [[[1., 1., 1., 1.]], [[1., 2., 3., 4.]]]).astype(np.float32)
-    np_labels = np.array([1, 2])
-    self.assertRaisesRegexp(
-        ValueError, "must have rank 2",
-        tf.nn.sparse_softmax_cross_entropy_with_logits, np_features, np_labels)
+    if tf.test.is_built_with_cuda() and tf.test.is_gpu_available():
+      with self.test_session(use_gpu=True) as sess:
+        loss, backprop = (
+            gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
+                features, labels))
+        tf_loss, tf_backprop = sess.run([loss, backprop])
+        self.assertAllClose(
+            [[np.nan] * 4,
+             [0.25, 0.25, 0.25, -0.75],
+             [-0.968, 0.087, 0.237, 0.6439],
+             [np.nan] * 4],
+            tf_backprop, rtol=1e-3, atol=1e-3)
+        self.assertAllClose(
+            [np.nan, 1.3862, 3.4420, np.nan], tf_loss, rtol=1e-3, atol=1e-3)
+
+    with self.test_session(use_gpu=False) as sess:
+      loss, backprop = (
+          gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
+              features, labels))
+      with self.assertRaisesOpError("Received a label value of"):
+        sess.run([loss, backprop])
 
   def testNpXent(self):
     # We create 2 batches of logits for testing.
@@ -113,20 +129,33 @@ class SparseXentTest(tf.test.TestCase):
                         rtol=1.e-3, atol=1.e-3)
 
   def testShapeMismatch(self):
-    with self.test_session():
-      with self.assertRaises(ValueError):
+    with self.test_session(use_gpu=True):
+      with self.assertRaisesRegexp(ValueError, ".*Rank mismatch:*"):
         tf.nn.sparse_softmax_cross_entropy_with_logits(
-            [[0., 1.], [2., 3.]], [[0, 2]])
+            [[0., 1.], [2., 3.], [2., 3.]], [[0, 2]])
 
-  def testNotMatrix(self):
-    with self.test_session():
-      with self.assertRaises(ValueError):
+  def testScalar(self):
+    with self.test_session(use_gpu=True):
+      with self.assertRaisesRegexp(ValueError, ".*Logits cannot be scalars*"):
         tf.nn.sparse_softmax_cross_entropy_with_logits(
-            [0., 1., 2., 3.], [0, 2])
+            tf.constant(1.0), tf.constant(0))
+
+  def testLabelsPlaceholderScalar(self):
+    with self.test_session(use_gpu=True):
+      labels = tf.placeholder(np.int32)
+      y = tf.nn.sparse_softmax_cross_entropy_with_logits([[7.]], labels)
+      with self.assertRaisesOpError("labels must be 1-D"):
+        y.eval(feed_dict={labels: 0})
+
+  def testVector(self):
+    with self.test_session(use_gpu=True):
+      loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+          tf.constant([1.0]), tf.constant(0))
+      self.assertAllClose(0.0, loss.eval())
 
   def testFloat(self):
     for label_dtype in np.int32, np.int64:
-      self._testAll(
+      self._testXent(
           np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float32),
           np.array([3, 0]).astype(label_dtype))
 
@@ -134,11 +163,19 @@ class SparseXentTest(tf.test.TestCase):
     for label_dtype in np.int32, np.int64:
       self._testXent(
           np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64),
-          np.array([0, 3]).astype(label_dtype),
-          use_gpu=False)
+          np.array([0, 3]).astype(label_dtype))
+
+  def testHalf(self):
+    for label_dtype in np.int32, np.int64:
+      self._testXent(
+          np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float16),
+          np.array([3, 0]).astype(label_dtype))
+
+  def testEmpty(self):
+    self._testXent(np.zeros((0, 3)), np.zeros((0,), dtype=np.int32))
 
   def testGradient(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       l = tf.constant([3, 0, 1], name="l")
       f = tf.constant([0.1, 0.2, 0.3, 0.4,
                        0.1, 0.4, 0.9, 1.6,
@@ -148,6 +185,43 @@ class SparseXentTest(tf.test.TestCase):
       err = tf.test.compute_gradient_error(f, [3, 4], x, [3])
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
+
+  def _testHighDim(self, features, labels):
+    np_loss, np_backprop = self._npXent(np.array(features), np.array(labels))
+    # manually reshape loss
+    np_loss = np.reshape(np_loss, np.array(labels).shape)
+    with self.test_session(use_gpu=True) as sess:
+      loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+          features, labels)
+      backprop = loss.op.inputs[0].op.outputs[1]
+      tf_loss, tf_backprop = sess.run([loss, backprop])
+    self.assertAllCloseAccordingToType(np_loss, tf_loss)
+    self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
+
+  def testHighDim(self):
+    features = [[[1., 1., 1., 1.]], [[1., 2., 3., 4.]]]
+    labels = [[3], [0]]
+    self._testHighDim(features, labels)
+
+  def testHighDim2(self):
+    features = [[[1., 1., 1., 1.], [2., 2., 2., 2.]],
+                [[1., 2., 3., 4.], [5., 6., 7., 8.]]]
+    labels = [[3, 2], [0, 3]]
+    self._testHighDim(features, labels)
+
+  def testScalarHandling(self):
+    with self.test_session(use_gpu=False) as sess:
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   ".*labels must be 1-D.*"):
+        labels = tf.placeholder(tf.int32, shape=[None, 1])
+        logits = tf.placeholder(tf.float32, shape=[None, 3])
+        ce = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            logits,
+            tf.squeeze(labels))
+        labels_v2 = np.zeros((1, 1), dtype=np.int32)
+        logits_v2 = np.random.randn(1, 3)
+        sess.run([ce], feed_dict={labels: labels_v2,
+                                  logits: logits_v2})
 
 
 def _sparse_vs_dense_xent_benchmark_dense(labels, logits):

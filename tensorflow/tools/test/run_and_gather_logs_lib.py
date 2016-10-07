@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,7 +27,6 @@ import time
 
 import tensorflow as tf
 
-from google.protobuf import text_format
 from tensorflow.core.util import test_log_pb2
 from tensorflow.tools.test import system_info_lib
 
@@ -45,10 +44,12 @@ def get_git_commit_sha():
   return os.getenv("GIT_COMMIT")
 
 
-def process_test_logs(test_name, test_args, start_time, run_time, log_files):
+def process_test_logs(
+    name, test_name, test_args, start_time, run_time, log_files):
   """Gather test information and put it in a TestResults proto.
 
   Args:
+    name: Benchmark target identifier.
     test_name:  A unique bazel target, e.g. "//path/to:test"
     test_args:  A string containing all arguments to run the target with.
 
@@ -61,6 +62,7 @@ def process_test_logs(test_name, test_args, start_time, run_time, log_files):
   """
 
   results = test_log_pb2.TestResults()
+  results.name = name
   results.target = test_name
   results.start_time = start_time
   results.run_time = run_time
@@ -80,16 +82,17 @@ def process_test_logs(test_name, test_args, start_time, run_time, log_files):
 def process_benchmarks(log_files):
   benchmarks = test_log_pb2.BenchmarkEntries()
   for f in log_files:
-    content = tf.gfile.GFile(f).read()
-    entry = benchmarks.entry.add()
-    text_format.Merge(content, entry)
+    content = tf.gfile.GFile(f, "rb").read()
+    if benchmarks.MergeFromString(content) != len(content):
+      raise Exception("Failed parsing benchmark entry from %s" % f)
   return benchmarks
 
 
-def run_and_gather_logs(test_name, test_args):
+def run_and_gather_logs(name, test_name, test_args):
   """Run the bazel test given by test_name.  Gather and return the logs.
 
   Args:
+    name: Benchmark target identifier.
     test_name: A unique bazel target, e.g. "//path/to:test"
     test_args: A string containing all arguments to run the target with.
 
@@ -139,7 +142,8 @@ def run_and_gather_logs(test_name, test_args):
     run_time = time.time() - start_time
     log_files = tf.gfile.Glob("{}*".format(test_file_prefix))
 
-    return (process_test_logs(test_name, test_args, start_time=int(start_time),
+    return (process_test_logs(name, test_name, test_args,
+                              start_time=int(start_time),
                               run_time=run_time, log_files=log_files),
             mangled_test_name)
 

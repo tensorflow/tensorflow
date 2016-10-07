@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -85,11 +85,14 @@ class SplitOpTest(tf.test.TestCase):
       self._compare(np.random.rand(6, 7, 18).astype("f"), 0, 3, use_gpu)
       self._compare(np.random.rand(6, 7, 9).astype("f"), 0, 3, use_gpu)
 
-  def _RunAndVerify(self, use_gpu):
+  def _RunAndVerify(self, use_gpu, large_num_splits=False):
     # Random dims of rank 5
     shape = np.random.randint(0, 5, size=5)
     split_dim = np.random.randint(0, 5)
-    num_split = np.random.randint(2, 8)
+    if large_num_splits:
+      num_split = np.random.randint(9, 15)
+    else:
+      num_split = np.random.randint(2, 8)
     shape[split_dim] = np.random.randint(2, 5) * num_split
     inp = np.random.rand(*shape).astype("f")
     with self.test_session(use_gpu=use_gpu) as sess:
@@ -106,6 +109,7 @@ class SplitOpTest(tf.test.TestCase):
     for _ in range(5):
       self._RunAndVerify(use_gpu=False)
       self._RunAndVerify(use_gpu=True)
+      self._RunAndVerify(use_gpu=True, large_num_splits=True)
 
   def _testGradientsSimple(self, use_gpu):
     inp = np.random.rand(4, 4).astype("f")

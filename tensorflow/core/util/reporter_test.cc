@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -103,8 +103,10 @@ TEST(TestReporter, Benchmark) {
   string read;
   TF_EXPECT_OK(ReadFileToString(Env::Default(), expected_fname, &read));
 
-  BenchmarkEntry benchmark_entry;
-  EXPECT_TRUE(protobuf::TextFormat::ParseFromString(read, &benchmark_entry));
+  BenchmarkEntries benchmark_entries;
+  ASSERT_TRUE(benchmark_entries.ParseFromString(read));
+  ASSERT_EQ(1, benchmark_entries.entry_size());
+  const BenchmarkEntry& benchmark_entry = benchmark_entries.entry(0);
 
   EXPECT_EQ(benchmark_entry.name(), "b1/2/3");
   EXPECT_EQ(benchmark_entry.iters(), 1);

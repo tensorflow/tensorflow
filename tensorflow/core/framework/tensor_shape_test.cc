@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -473,6 +473,15 @@ TEST(TensorShapeTest, Randomized) {
       fprintf(stderr, "ITERATION %d: %s\n", i, sp.DebugString().c_str());
     }
     EXPECT_EQ(s.num_elements(), sold.num_elements());
+
+    // Test moves.
+    TensorShape copy = s;
+    TensorShape moved(std::move(copy));
+    EXPECT_EQ(s, moved);
+    copy = s;
+    moved = std::move(copy);
+    EXPECT_EQ(s, moved);
+
     int64 ne = sold.num_elements();
     int r = gen.Uniform(100);
     if (r < 10) {

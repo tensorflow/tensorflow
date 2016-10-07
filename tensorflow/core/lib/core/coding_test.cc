@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,8 +21,26 @@ limitations under the License.
 namespace tensorflow {
 namespace core {
 
+TEST(Coding, Fixed16) {
+  static const uint16 N = 50000;
+
+  string s;
+  for (uint16 v = 0; v < N; v++) {
+    char buf[sizeof(uint16)];
+    EncodeFixed16(buf, v);
+    s.append(buf, sizeof(buf));
+  }
+
+  const char* p = s.data();
+  for (uint16 v = 0; v < N; v++) {
+    uint16 actual = DecodeFixed16(p);
+    ASSERT_EQ(v, actual);
+    p += sizeof(uint16);
+  }
+}
+
 TEST(Coding, Fixed32) {
-  static const int N = 100000;
+  static const uint32 N = 100000;
 
   string s;
   for (uint32 v = 0; v < N; v++) {
@@ -73,6 +91,10 @@ TEST(Coding, Fixed64) {
 // Test that encoding routines generate little-endian encodings
 TEST(Coding, EncodingOutput) {
   char dst[8];
+  EncodeFixed16(dst, 0x0201);
+  ASSERT_EQ(0x01, static_cast<int>(dst[0]));
+  ASSERT_EQ(0x02, static_cast<int>(dst[1]));
+
   EncodeFixed32(dst, 0x04030201);
   ASSERT_EQ(0x01, static_cast<int>(dst[0]));
   ASSERT_EQ(0x02, static_cast<int>(dst[1]));

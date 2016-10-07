@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ class SparseTensor {
 
   // Returns the tensor shape (the dimensions of the "densified"
   // tensor this tensor represents).
-  const TensorShape shape() const { return shape_; }
+  const TensorShape& shape() const { return shape_; }
 
   const VarDimArray order() const { return order_; }
 
@@ -148,9 +148,9 @@ class SparseTensor {
                                          const int num_split);
 
   // Picks out the dimensions according to `dim_indices`.
-  std::vector<int64> PickDims(gtl::ArraySlice<int64> dim_indices) {
+  std::vector<int64> PickDims(gtl::ArraySlice<int64> dim_indices) const {
     std::vector<int64> res(dim_indices.size());
-    for (int i = 0; i < dim_indices.size(); ++i) {
+    for (size_t i = 0; i < dim_indices.size(); ++i) {
       res[i] = shape_.dim_size(dim_indices[i]);
     }
     return res;
@@ -271,19 +271,35 @@ void SparseTensor::Reorder(const VarDimArray& order) {
   auto ix_t = ix_.matrix<int64>();
   auto vals_t = vals_.vec<T>();
 
-  DimComparator sorter(ix_t, order, dims_);
-
   std::vector<int64> reorder(num_entries());
   std::iota(reorder.begin(), reorder.end(), 0);
 
   // Sort to get order of indices
-  std::sort(reorder.begin(), reorder.end(), sorter);
+  switch (order.size()) {
+#define CASE_SORT(ORDER_SIZE)                                    \
+  case ORDER_SIZE: {                                             \
+    FixedDimComparator<ORDER_SIZE> sorter(ix_t, order, shape()); \
+    std::sort(reorder.begin(), reorder.end(), sorter);           \
+    break;                                                       \
+  }
+    CASE_SORT(0);
+    CASE_SORT(1);
+    CASE_SORT(2);
+    CASE_SORT(3);
+    CASE_SORT(4);
+    CASE_SORT(5);
+#undef CASE_SORT
+    default: {
+      DimComparator sorter(ix_t, order, shape());
+      std::sort(reorder.begin(), reorder.end(), sorter);
+    }
+  }
 
   // We have a forward reordering, but what we'll need is a
   // permutation (the inverse).  This can be calculated with O(1)
   // additional
   // and O(n) time (INVPERM) but we just do the simple thing here.
-  std::vector<int64> permutation(reorder.size());
+  std::vector<size_t> permutation(reorder.size());
   for (std::size_t n = 0; n < reorder.size(); ++n) {
     permutation[reorder[n]] = n;
   }
@@ -344,7 +360,9 @@ bool SparseTensor::ToDense(Tensor* out, bool initialize) {
 
   std::vector<int64> strides(dims_);
   const auto& out_shape = out->shape();
-  strides[dims_ - 1] = 1;
+  if (dims_ > 0) {
+    strides[dims_ - 1] = 1;
+  }
   for (int d = dims_ - 2; d >= 0; --d) {
     strides[d] = strides[d + 1] * out_shape.dim_size(d + 1);
   }

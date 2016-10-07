@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER6(UnaryOp, CPU, "Sign", functor::sign, float, double, int32, int64,
-          complex64, Eigen::half);
+REGISTER7(UnaryOp, CPU, "Sign", functor::sign, float, double, int32, int64,
+          complex64, Eigen::half, complex128);
 #if GOOGLE_CUDA
-REGISTER4(UnaryOp, GPU, "Sign", functor::sign, float, Eigen::half, double,
-          int64);
+REGISTER6(UnaryOp, GPU, "Sign", functor::sign, float, Eigen::half, double,
+          int64, complex64, complex128);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

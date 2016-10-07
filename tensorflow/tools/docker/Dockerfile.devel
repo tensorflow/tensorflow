@@ -2,7 +2,7 @@ FROM ubuntu:14.04
 
 MAINTAINER Craig Citro <craigcitro@google.com>
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         curl \
         git \
@@ -11,10 +11,10 @@ RUN apt-get update && apt-get install -y \
         libzmq3-dev \
         pkg-config \
         python-dev \
-        python-numpy \
-        python-pip \
+        rsync \
         software-properties-common \
         swig \
+        unzip \
         zip \
         zlib1g-dev \
         && \
@@ -29,6 +29,7 @@ RUN pip --no-cache-dir install \
         ipykernel \
         jupyter \
         matplotlib \
+        numpy \
         && \
     python -m ipykernel.kernelspec
 
@@ -50,7 +51,7 @@ COPY run_jupyter.sh /
 #   https://bugs.launchpad.net/trusty-backports/+bug/1368094
 RUN add-apt-repository -y ppa:openjdk-r/ppa && \
     apt-get update && \
-    apt-get install -y openjdk-8-jdk openjdk-8-jre-headless && \
+    apt-get install -y --no-install-recommends openjdk-8-jdk openjdk-8-jre-headless && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -64,7 +65,7 @@ RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
     >>/root/.bazelrc
 ENV BAZELRC /root/.bazelrc
 # Install the most recent bazel release.
-ENV BAZEL_VERSION 0.2.1
+ENV BAZEL_VERSION 0.3.1
 WORKDIR /
 RUN mkdir /bazel && \
     cd /bazel && \
@@ -79,7 +80,7 @@ RUN mkdir /bazel && \
 
 RUN git clone --recursive https://github.com/tensorflow/tensorflow.git && \
     cd tensorflow && \
-    git checkout r0.8
+    git checkout r0.11
 WORKDIR /tensorflow
 
 # TODO(craigcitro): Don't install the pip package, since it makes it

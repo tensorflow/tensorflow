@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import tensorflow as tf
 class OptimizerTest(tf.test.TestCase):
 
   def testBasic(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype)
@@ -43,7 +43,7 @@ class OptimizerTest(tf.test.TestCase):
         self.assertAllClose([-6., -5.], var1.eval())
 
   def testAggregationMethod(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype)
@@ -66,8 +66,33 @@ class OptimizerTest(tf.test.TestCase):
         self.assertAllClose([-14., -13.], var0.eval())
         self.assertAllClose([-6., -5.], var1.eval())
 
+  def testPrecomputedGradient(self):
+    for dtype in [tf.half, tf.float32, tf.float64]:
+      with self.test_session():
+        var0 = tf.Variable([1.0, 2.0], dtype=dtype)
+        var1 = tf.Variable([3.0, 4.0], dtype=dtype)
+        cost = 5 * var0 + 3 * var1
+        grad_loss = tf.constant([42, -42], dtype=dtype)
+        global_step = tf.Variable(tf.zeros([], tf.int64), name='global_step')
+        sgd_op = tf.train.GradientDescentOptimizer(3.0)
+        opt_op = sgd_op.minimize(cost,
+                                 global_step, [var0, var1],
+                                 grad_loss=grad_loss)
+
+        tf.initialize_all_variables().run()
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0, 2.0], var0.eval())
+        self.assertAllClose([3.0, 4.0], var1.eval())
+        # Run 1 step of sgd through optimizer
+        opt_op.run()
+        # Validate updated params
+        self.assertAllClose(
+            [1.0 - 3 * 5 * 42.0, 2.0 - 3 * 5 * (-42.0)], var0.eval())
+        self.assertAllClose(
+            [3.0 - 3 * 3 * 42.0, 4.0 - 3 * 3 * (-42.0)], var1.eval())
+
   def testNoVariables(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype, trainable=False)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype, trainable=False)
@@ -77,7 +102,7 @@ class OptimizerTest(tf.test.TestCase):
           sgd_op.minimize(cost)
 
   def testNoGradients(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype)
@@ -88,6 +113,33 @@ class OptimizerTest(tf.test.TestCase):
           # var1 has no gradient
           sgd_op.minimize(cost, global_step, [var1])
 
+  def testGradientsAsVariables(self):
+    for dtype in [tf.half, tf.float32, tf.float64]:
+      with self.test_session() as sess:
+        var0 = tf.Variable([1.0, 2.0], dtype=dtype)
+        var1 = tf.Variable([3.0, 4.0], dtype=dtype)
+        cost = 5 * var0 + 3 * var1
+        global_step = tf.Variable(tf.zeros([], tf.int64), name='global_step')
+        sgd_op = tf.train.GradientDescentOptimizer(3.0)
+        grads_and_vars = sgd_op.compute_gradients(cost, [var0, var1])
+        # Convert gradients to tf.Variables
+        converted_grads = [tf.Variable(tf.zeros([2], dtype)) for i in grads_and_vars]
+        convert_ops = [tf.assign(converted_grads[i], gv[0]) for i,gv in enumerate(grads_and_vars)]
+        
+        converted_grads_and_vars = list(zip(converted_grads, [var0, var1]))
+        opt_op = sgd_op.apply_gradients(converted_grads_and_vars, global_step)
+
+        tf.initialize_all_variables().run()
+        # Run convert_ops to achieve the gradietns converting
+        sess.run(convert_ops)
+        # Fetch params to validate initial values
+        self.assertAllClose([1.0, 2.0], var0.eval())
+        self.assertAllClose([3.0, 4.0], var1.eval())
+        # Run 1 step of sgd through optimizer
+        opt_op.run()
+        # Validate updated params
+        self.assertAllClose([-14., -13.], var0.eval())
+        self.assertAllClose([-6., -5.], var1.eval()) 
 
 if __name__ == '__main__':
   tf.test.main()

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,12 +21,11 @@ limitations under the License.
 #include <stddef.h>
 #include "tensorflow/stream_executor/platform/port.h"
 
-#include "tensorflow/stream_executor/cuda/multi_op_activation.h"
 #include "tensorflow/stream_executor/device_options.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "third_party/gpus/cuda/include/cuda.h"
+#include "cuda/include/cuda.h"
 
 namespace perftools {
 namespace gputools {
@@ -38,6 +37,8 @@ enum class MemorySpace { kHost, kDevice };
 
 // Returns a casual string, such as "host" for the provided memory space.
 string MemorySpaceString(MemorySpace memory_space);
+
+class CudaContext;
 
 // CUDADriver contains wrappers for calls to the userspace library driver. It's
 // useful to isolate these calls and put basic wrappers around them to separate
@@ -66,19 +67,19 @@ class CUDADriver {
   // Returns the device associated with the given context.
   // device is an outparam owned by the caller, must not be null.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g4e84b109eba36cdaaade167f34ae881e
-  static port::StatusOr<CUdevice> DeviceFromContext(CUcontext context);
+  static port::StatusOr<CUdevice> DeviceFromContext(CudaContext* context);
 
   // Creates a new CUDA stream associated with the given context via
   // cuStreamCreate.
   // stream is an outparam owned by the caller, must not be null.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1ga581f0c5833e21ded8b5a56594e243f4
-  static bool CreateStream(CUcontext context, CUstream *stream);
+  static bool CreateStream(CudaContext* context, CUstream *stream);
 
   // Destroys a CUDA stream associated with the given context.
   // stream is owned by the caller, must not be null, and *stream is set to null
   // if the stream is successfuly destroyed.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g244c8833de4596bcd31a06cdf21ee758
-  static void DestroyStream(CUcontext context, CUstream *stream);
+  static void DestroyStream(CudaContext* context, CUstream *stream);
 
   // CUDA events can explicitly disable event TSC retrieval for some presumed
   // performance improvement if timing is unnecessary.
@@ -88,36 +89,36 @@ class CUDADriver {
   // Creates a new event associated with the given context.
   // result is an outparam owned by the caller and must not be null.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1g450687e75f3ff992fe01662a43d9d3db
-  static port::Status CreateEvent(CUcontext context, CUevent *result,
+  static port::Status CreateEvent(CudaContext* context, CUevent *result,
                                   EventFlags flags);
 
   // Destroys *event and turns it into a nullptr. event may not be null, but
   // *event may be, via cuEventDestroy
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1g593ec73a8ec5a5fc031311d3e4dca1ef
-  static port::Status DestroyEvent(CUcontext context, CUevent *event);
+  static port::Status DestroyEvent(CudaContext* context, CUevent *event);
 
   // Allocates a GPU memory space of size bytes associated with the given
   // context via cuMemAlloc.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gb82d2a09844a58dd9e744dc31e8aa467
-  static void *DeviceAllocate(CUcontext context, uint64 bytes);
+  static void *DeviceAllocate(CudaContext* context, uint64 bytes);
 
   // Deallocates a GPU memory space of size bytes associated with the given
   // context via cuMemFree.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g89b3f154e17cc89b6eea277dbdf5c93a
-  static void DeviceDeallocate(CUcontext context, void *location);
+  static void DeviceDeallocate(CudaContext* context, void *location);
 
   // Allocates page-locked and CUDA-registered memory on the host via
   // cuMemAllocHost.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gdd8311286d2c2691605362c689bc64e0
-  static void *HostAllocate(CUcontext context, uint64 bytes);
+  static void *HostAllocate(CudaContext* context, uint64 bytes);
 
   // Deallocates a location created by HostAllocate, via cuMemFreeHost.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g62e0fdbe181dab6b1c90fa1a51c7b92c
-  static void HostDeallocate(CUcontext context, void *location);
+  static void HostDeallocate(CudaContext* context, void *location);
 
   // Registers a memory region at location of size bytes via cuMemHostRegister.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gf0a9fe11544326dabd743b7aa6b54223
-  static bool HostRegister(CUcontext context, void *location, uint64 bytes);
+  static bool HostRegister(CudaContext* context, void *location, uint64 bytes);
 
   // Unregisters a memory region that was previously registered at location via
   // cuMemHostUnregister.
@@ -126,7 +127,7 @@ class CUDADriver {
   //
   // TODO(leary) verify an error will be returned if the location wasn't
   // previously registered.
-  static bool HostUnregister(CUcontext context, void *location);
+  static bool HostUnregister(CudaContext* context, void *location);
 
   // Given a device ordinal, returns a device handle into the device outparam,
   // which must not be null.
@@ -148,13 +149,13 @@ class CUDADriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g65dc0012348bc84810e2103a40d8e2cf
   static port::Status CreateContext(CUdevice device,
                                     DeviceOptions device_options,
-                                    CUcontext *context);
+                                    CudaContext** context);
 
   // Destroys the provided context via cuCtxDestroy.
   // Don't do this while clients could still be using the context, per the docs
   // bad things will happen.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g27a365aebb0eb548166309f58a1e8b8e
-  static void DestroyContext(CUcontext context);
+  static void DestroyContext(CudaContext* context);
 
   // Queries the runtime for the specified attribute of the specified function.
   // cuFuncGetAttribute (the underlying CUDA driver API routine) only operates
@@ -173,19 +174,19 @@ class CUDADriver {
   // CONTEXT (not function!), either default or four- or eight-byte bank size.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g17153a1b8b8c756f7ab8505686a4ad74
   static port::StatusOr<CUsharedconfig> ContextGetSharedMemConfig(
-      CUcontext context);
+      CudaContext* context);
 
   // Sets the preferred shared memory bank configuration for the specified
   // CONTEXT (not function!), either default or four- or eight-byte bank size.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g2574235fa643f8f251bf7bc28fac3692
   static port::Status ContextSetSharedMemConfig(
-      CUcontext context, CUsharedconfig shared_mem_config);
+      CudaContext* context, CUsharedconfig shared_mem_config);
 
   // Launches a CUDA kernel via cuLaunchKernel.
   // TODO(leary) describe the structure of kernel_params and extra in a readable
   // way.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gb8f3dc3031b40da29d5f9a7139e52e15
-  static bool LaunchKernel(CUcontext context, CUfunction function,
+  static bool LaunchKernel(CudaContext* context, CUfunction function,
                            unsigned int grid_dim_x, unsigned int grid_dim_y,
                            unsigned int grid_dim_z, unsigned int block_dim_x,
                            unsigned int block_dim_y, unsigned int block_dim_z,
@@ -194,25 +195,25 @@ class CUDADriver {
 
   // Loads ptx_contents with the CUDA driver's PTX JIT and stores the resulting
   // handle in "module". Any error logs that are produced are logged internally.
-  static bool LoadPtx(CUcontext context, const char *ptx_contents,
+  static bool LoadPtx(CudaContext* context, const char *ptx_contents,
                       CUmodule *module);
 
   // Loads cubin_bytes with the CUDA driver's blob loading interface and stores
   // the resulting handle in "module".
-  static port::Status LoadCubin(CUcontext context, const char *cubin_bytes,
+  static port::Status LoadCubin(CudaContext* context, const char *cubin_bytes,
                                 CUmodule *module);
 
   // Retrieves a named kernel from a loaded module, and places the resulting
   // handle into function (outparam) on success. Neither kernel_name nor
   // function may be null. No ownership is taken of kernel_name.
-  static bool GetModuleFunction(CUcontext context, CUmodule module,
+  static bool GetModuleFunction(CudaContext* context, CUmodule module,
                                 const char *kernel_name, CUfunction *function);
 
   // Retrieves a named global/constant symbol from a loaded module, and returns
   // a device pointer and size of the symbol on success. symbol_name may not be
   // null. At least one of dptr or bytes should not be null. No ownership is
   // taken of symbol_name.
-  static bool GetModuleSymbol(CUcontext context, CUmodule module,
+  static bool GetModuleSymbol(CudaContext* context, CUmodule module,
                               const char *symbol_name, CUdeviceptr *dptr,
                               size_t *bytes);
 
@@ -220,45 +221,53 @@ class CUDADriver {
   // TODO(leary) the documentation doesn't say what kind of disasters happen
   // if you try to unload a module while its CUfunctions are in use.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MODULE.html#group__CUDA__MODULE_1g8ea3d716524369de3763104ced4ea57b
-  static void UnloadModule(CUcontext context, CUmodule module);
+  static void UnloadModule(CudaContext* context, CUmodule module);
 
   // Performs a synchronous memset of the device memory segment via cuMemsetD8.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g6e582bf866e9e2fb014297bfaf354d7b
-  static bool SynchronousMemsetUint8(CUcontext context, CUdeviceptr location,
+  static bool SynchronousMemsetUint8(CudaContext* context, CUdeviceptr location,
                                      uint8 value, size_t size);
 
   // Performs a synchronous memset of the device memory segment via cuMemsetD32.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g983e8d8759acd1b64326317481fbf132
-  static bool SynchronousMemsetUint32(CUcontext context, CUdeviceptr location,
-                                      uint32 value, size_t uint32_count);
+  static bool SynchronousMemsetUint32(CudaContext* context,
+                                      CUdeviceptr location, uint32 value,
+                                      size_t uint32_count);
+
+  // Performs an asynchronous memset of the device memory segment via
+  // cuMemsetD8Async.
+  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gaef08a7ccd61112f94e82f2b30d43627
+  static bool AsynchronousMemsetUint8(CudaContext* context, CUdeviceptr location,
+                                      uint8 value, size_t uint32_count,
+                                      CUstream stream);
 
   // Performs an asynchronous memset of the device memory segment via
   // cuMemsetD32Async.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g58229da5d30f1c0cdf667b320ec2c0f5
-  static bool AsynchronousMemsetUint32(CUcontext context, CUdeviceptr location,
-                                       uint32 value, size_t uint32_count,
-                                       CUstream stream);
+  static bool AsynchronousMemsetUint32(CudaContext* context,
+                                       CUdeviceptr location, uint32 value,
+                                       size_t uint32_count, CUstream stream);
 
   // -- Synchronous memcopies.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g4d32266788c440b0220b1a9ba5795169
 
-  static bool SynchronousMemcpyD2H(CUcontext context, void *host_dst,
+  static bool SynchronousMemcpyD2H(CudaContext* context, void *host_dst,
                                    CUdeviceptr gpu_src, uint64 size);
-  static bool SynchronousMemcpyH2D(CUcontext context, CUdeviceptr gpu_dst,
+  static bool SynchronousMemcpyH2D(CudaContext* context, CUdeviceptr gpu_dst,
                                    const void *host_src, uint64 size);
-  static bool SynchronousMemcpyD2D(CUcontext context, CUdeviceptr gpu_dst,
+  static bool SynchronousMemcpyD2D(CudaContext* context, CUdeviceptr gpu_dst,
                                    CUdeviceptr gpu_src, uint64 size);
 
   // -- Asynchronous memcopies.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g56f30236c7c5247f8e061b59d3268362
 
-  static bool AsynchronousMemcpyD2H(CUcontext context, void *host_dst,
+  static bool AsynchronousMemcpyD2H(CudaContext* context, void *host_dst,
                                     CUdeviceptr gpu_src, uint64 size,
                                     CUstream stream);
-  static bool AsynchronousMemcpyH2D(CUcontext context, CUdeviceptr gpu_dst,
+  static bool AsynchronousMemcpyH2D(CudaContext* context, CUdeviceptr gpu_dst,
                                     const void *host_src, uint64 size,
                                     CUstream stream);
-  static bool AsynchronousMemcpyD2D(CUcontext context, CUdeviceptr gpu_dst,
+  static bool AsynchronousMemcpyD2D(CudaContext* context, CUdeviceptr gpu_dst,
                                     CUdeviceptr gpu_src, uint64 size,
                                     CUstream stream);
 
@@ -276,13 +285,13 @@ class CUDADriver {
   // Enqueues a callback operation into stream.
   // See StreamCallback above and the NVIDIA documentation for additional
   // details.
-  static bool AddStreamCallback(CUcontext context, CUstream stream,
+  static bool AddStreamCallback(CudaContext* context, CUstream stream,
                                 StreamCallback callback, void *data);
 
   // Causes stream to wait for event to trigger before proceeding via
   // cuStreamWaitEvent.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#axzz334nAXAhM
-  static bool WaitStreamOnEvent(CUcontext context, CUstream stream,
+  static bool WaitStreamOnEvent(CudaContext* context, CUstream stream,
                                 CUevent event);
 
   // Blocks the calling thread until the operations enqueued onto stream have
@@ -293,50 +302,51 @@ class CUDADriver {
   // amount of time?
   //
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g15e49dd91ec15991eb7c0a741beb7dad
-  static bool SynchronizeStream(CUcontext context, CUstream stream);
+  static bool SynchronizeStream(CudaContext* context, CUstream stream);
 
   // Blocks the calling thread until the operations associated with the context
   // have been completed, via cuCtxSynchronize.
   //
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g7a54725f28d34b8c6299f0c6ca579616
-  static bool SynchronizeContext(CUcontext context);
+  static bool SynchronizeContext(CudaContext* context);
 
   // Returns true if all stream tasks have completed at time of the call. Note
   // the potential for races around this call (if another thread adds work to
   // the stream immediately after this returns).
-  static bool IsStreamIdle(CUcontext context, CUstream stream);
+  static bool IsStreamIdle(CudaContext* context, CUstream stream);
 
   // Returns whether code in the from context can access memory in the to
   // context via cuDeviceCanAccessPeer.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__PEER__ACCESS.html#group__CUDA__PEER__ACCESS_1g496bdaae1f632ebfb695b99d2c40f19e
-  static bool CanEnablePeerAccess(CUcontext from, CUcontext to);
+  static bool CanEnablePeerAccess(CudaContext* from, CudaContext* to);
 
   // Enables peer access per CanEnablePeerAccess, via cuCtxEnablePeerAccess.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__PEER__ACCESS.html#group__CUDA__PEER__ACCESS_1g0889ec6728e61c05ed359551d67b3f5a
-  static port::Status EnablePeerAccess(CUcontext from, CUcontext to);
+  static port::Status EnablePeerAccess(CudaContext* from, CudaContext* to);
 
   // Returns the elapsed milliseconds between start and stop via
   // cuEventElapsedTime.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1gdfb1178807353bbcaa9e245da497cf97
-  static bool GetEventElapsedTime(CUcontext context,
+  static bool GetEventElapsedTime(CudaContext* context,
                                   float *elapsed_milliseconds, CUevent start,
                                   CUevent stop);
 
   // Records that an event occurred when execution reaches the current point in
   // thestream via cuEventRecord.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1g95424d3be52c4eb95d83861b70fb89d1
-  static port::Status RecordEvent(CUcontext context, CUevent event,
+  static port::Status RecordEvent(CudaContext* context, CUevent event,
                                   CUstream stream);
 
   // Polls (without blocking) to determine the status of an event - pending or
   // complete (or an error status).
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1g6f0704d755066b0ee705749ae911deef
-  static port::StatusOr<CUresult> QueryEvent(CUcontext context, CUevent event);
+  static port::StatusOr<CUresult> QueryEvent(CudaContext* context,
+                                             CUevent event);
 
   // -- Pointer-specific calls.
 
   // Returns the context in which pointer was allocated or registered.
-  static port::StatusOr<CUcontext> GetPointerContext(CUdeviceptr pointer);
+  static port::StatusOr<CudaContext*> GetPointerContext(CUdeviceptr pointer);
 
   // Returns the device associated with the context from GetPointerContext().
   static port::StatusOr<CUdevice> GetPointerDevice(CUdeviceptr pointer);
@@ -406,7 +416,8 @@ class CUDADriver {
   // Returns the free amount of memory and total amount of memory, as reported
   // by cuMemGetInfo.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g808f555540d0143a331cc42aa98835c0
-  static bool GetDeviceMemoryInfo(CUcontext context, int64 *free, int64 *total);
+  static bool GetDeviceMemoryInfo(CudaContext* context, int64* free,
+                                  int64* total);
 
   // Returns a PCI bus id string for the device.
   // [domain]:[bus]:[device].[function]
@@ -435,8 +446,12 @@ class CUDADriver {
   // specified kernel/CUfunction when launched with the specified parameters.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__OCCUPANCY.html#group__CUDA__OCCUPANCY_1gcc6e1094d05cba2cee17fe33ddd04a98
   static port::StatusOr<int> GetMaxOccupiedBlocksPerCore(
-      CUcontext context, CUfunction kernel, int threads_per_block,
+      CudaContext* context, CUfunction kernel, int threads_per_block,
       size_t dynamic_shared_memory_bytes);
+
+  // Returns the current context set in CUDA. This is done by calling the cuda
+  // driver (e.g., this value is not our cached view of the current context).
+  static CUcontext CurrentContextOrDie();
 
   // Seam for injecting an error at CUDA initialization time for testing
   // purposes.
@@ -450,22 +465,34 @@ class ScopedActivateContext {
   // active context (a la cuCtxGetCurrent). Note the alternative push/pop
   // mechanism is said by NVIDIA to be relatively slow and deprecated.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1gbe562ee6258b4fcc272ca6478ca2a2f7
-  explicit ScopedActivateContext(
-      CUcontext context, MultiOpActivation moa = MultiOpActivation::kNo);
+  explicit ScopedActivateContext(CudaContext* context);
 
   // Checks that the context has remained activated for the duration of the
   // scope.
   ~ScopedActivateContext();
 
  private:
-  CUcontext context_;  // context being activated.
+  CudaContext* to_restore_ = nullptr;
+};
 
-  CUcontext prior_context_;  // context that was active when we were activated.
+// CudaContext wraps a cuda CUcontext handle, and includes a unique id. The
+// unique id is positive, and ids are not repeated within the process.
+class CudaContext {
+ public:
+  CudaContext(CUcontext context, int64 id) : context_(context), id_(id) { }
 
-  // Stores whether this was instantiated during a MultiOpActivation, in which
-  // case we will not pop the context when we're destroyed (we will leave it to
-  // the parent MultiOpActivation that we were nested within).
-  bool previously_in_multi_op_activation_;
+  CUcontext context() const { return context_; }
+  int64 id() const { return id_; }
+
+  // Disallow copying and moving.
+  CudaContext(CudaContext&&) = delete;
+  CudaContext(const CudaContext&) = delete;
+  CudaContext& operator=(CudaContext&&) = delete;
+  CudaContext& operator=(const CudaContext&) = delete;
+
+ private:
+  CUcontext const context_;
+  const int64 id_;
 };
 
 }  // namespace cuda

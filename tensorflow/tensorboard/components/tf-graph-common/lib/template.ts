@@ -1,13 +1,13 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
+distributed under the License is distributed on an 'AS IS' BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
@@ -39,14 +39,16 @@ export function detect(h, verifyTemplate): {[templateId: string]: string[]} {
   // Sort the templates by minimum level in the graph at which they appear,
   // as this leads to optimal setting of the colors of each template for
   // maximum differentiation.
-  return <{[templateId: string]: string[]}> _(templates).pairs()
-      .sortBy(function(pair) {
+  return <{[templateId: string]: string[]}>_(templates)
+      .pairs()
+      .sortBy(function(pair: {level: number, nodes: string[]}[]) {
         return pair[1].level;
       })
-      .map(function(pair) {
+      .map(function(pair: {level: number, nodes: string[]}[]) {
         return [pair[0], pair[1].nodes];
       })
-      .object().value();
+      .object()
+      .value();
 };
 
 /**
@@ -55,18 +57,21 @@ export function detect(h, verifyTemplate): {[templateId: string]: string[]} {
  */
 function getSignature(metanode) {
   // depth=<number> |V|=<number> |E|=<number>
-  let props = _.map({
-      "depth": metanode.depth,
-      "|V|": metanode.metagraph.nodes().length,
-      "|E|": metanode.metagraph.edges().length
-  }, function(v, k) { return k + "=" + v; }).join(" ");
+  let props = _.map(
+                   {
+                     'depth': metanode.depth,
+                     '|V|': metanode.metagraph.nodes().length,
+                     '|E|': metanode.metagraph.edges().length
+                   },
+                   function(v, k) { return k + '=' + v; })
+                  .join(' ');
 
   // optype1=count1,optype2=count2
   let ops = _.map(metanode.opHistogram, function(count, op) {
-      return op + "=" + count;
-    }).join(",");
+               return op + '=' + count;
+             }).join(',');
 
-  return props + " [ops] " + ops;
+  return props + ' [ops] ' + ops;
 }
 
 /**
@@ -85,7 +90,7 @@ function clusterSimilarSubgraphs(h: hierarchy.Hierarchy) {
     if (node.type !== NodeType.META) {
         return hash;
     }
-    let levelOfMetaNode = name.split("/").length - 1;
+    let levelOfMetaNode = name.split('/').length - 1;
     let signature = getSignature(node);
     let templateInfo = hash[signature] ||
       {nodes: [], level: levelOfMetaNode};
@@ -97,17 +102,18 @@ function clusterSimilarSubgraphs(h: hierarchy.Hierarchy) {
     return hash;
   }, {});
 
-  return _(hashDict).pairs()
-           // filter nn metanode with only one member
-           .filter(function(pair) {
-             return pair[1].nodes.length > 1;
-           })
-           .sortBy(function(pair) {
-              // sort by depth
-              // (all members in the same nnGroup has equal depth)
-              return pair[1].nodes[0].depth;
-            })
-            .value();
+  return _(hashDict)
+      .pairs()
+      // filter nn metanode with only one member
+      .filter(function(pair: {level: number, nodes: string[]}) {
+        return pair[1].nodes.length > 1;
+      })
+      .sortBy(function(pair: {level: number, nodes: string[]}) {
+        // sort by depth
+        // (all members in the same nnGroup has equal depth)
+        return pair[1].nodes[0].depth;
+      })
+      .value();
 }
 
 function groupTemplateAndAssignId(nnGroups, verifyTemplate) {
@@ -135,8 +141,8 @@ function groupTemplateAndAssignId(nnGroups, verifyTemplate) {
           return;
         }
       }
-      // otherwise create a new cluster with id "signature [count] "
-      metanode.templateId = signature + "[" + clusters.length + "]";
+      // otherwise create a new cluster with id 'signature [count] '
+      metanode.templateId = signature + '[' + clusters.length + ']';
       clusters.push({
         metanode: metanode,
         members: [metanode.name]
@@ -205,8 +211,9 @@ function isSimilarSubgraph(g1: graphlib.Graph<any, any>,
 
     /* tslint:disable */
     if (visited1[sub1] ^ visited2[sub1]) {
-      console.warn("different visit pattern", "[" + g1prefix + "]", sub1,
-                                              "[" + g2prefix + "]", sub2);
+      console.warn(
+          'different visit pattern', '[' + g1prefix + ']', sub1,
+          '[' + g2prefix + ']', sub2);
       return true;
     }
     /* tslint:enable */
@@ -223,7 +230,7 @@ function isSimilarSubgraph(g1: graphlib.Graph<any, any>,
   let sources2 = g2.sources();
   if (sources1.length !== sources2.length) {
     /* tslint:disable */
-    console.log("different source length");
+    console.log('different source length');
     /* tslint:enable */
     return false;
   }
@@ -250,7 +257,7 @@ function isSimilarSubgraph(g1: graphlib.Graph<any, any>,
     let succ1 = g1.successors(cur.n1), succ2 = g2.successors(cur.n2);
     if (succ1.length !== succ2.length) {
       /* tslint:disable */
-      console.log("# of successors mismatch", succ1, succ2);
+      console.log('# of successors mismatch', succ1, succ2);
       /* tslint:enable */
       return false;
     }

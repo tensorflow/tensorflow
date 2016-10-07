@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -42,9 +42,11 @@ struct SparseXentFunctor<GPUDevice, T, Index> {
 }  // end namespace functor
 
 // Instantiate the GPU implementation for float.
-#define REGISTER(Index)                                                \
-  template struct functor::SparseXentFunctor<GPUDevice, float, Index>; \
-  template class generator::SparseXentGradGenerator<float, Index>;
+#define REGISTER(Index)                                                      \
+  template struct functor::SparseXentFunctor<GPUDevice, float, Index>;       \
+  template class generator::SparseXentGradGenerator<float, Index>;           \
+  template struct functor::SparseXentFunctor<GPUDevice, Eigen::half, Index>; \
+  template class generator::SparseXentGradGenerator<Eigen::half, Index>;
 REGISTER(int32)
 REGISTER(int64)
 #undef REGISTER

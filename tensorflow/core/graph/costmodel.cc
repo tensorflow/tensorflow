@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -126,7 +126,7 @@ void CostModel::Ensure(int id) {
     time_.resize(id + 1);
     max_mem_usage_.resize(id + 1);
     max_exec_time_.resize(id + 1);
-    output_port_alias_.resize(id + 1);
+    output_port_alloc_ids_.resize(id + 1);
   }
 }
 
@@ -136,7 +136,7 @@ void CostModel::SetNumOutputs(const Node* node, int num_outputs) {
   Ensure(id);
   auto perslot = &slot_bytes_[id];
   auto max_mem_usage = &max_mem_usage_[id];
-  auto output_port_alias = &output_port_alias_[id];
+  auto output_port_alloc_ids = &output_port_alloc_ids_[id];
   if (perslot->size() > 0) {
     CHECK_EQ(num_outputs, perslot->size()) << "Cannot resize slot_bytes, node="
                                            << node->name();
@@ -144,7 +144,7 @@ void CostModel::SetNumOutputs(const Node* node, int num_outputs) {
     perslot->resize(num_outputs, Bytes(-1));
     max_mem_usage->output_port_mem.resize(num_outputs, Bytes(-1));
     max_mem_usage->temp_memory_size = Bytes(-1);
-    output_port_alias->resize(num_outputs, -1);
+    output_port_alloc_ids->resize(num_outputs, -1);
   }
 }
 
@@ -232,20 +232,30 @@ void CostModel::CheckInitialized(const Graph& graph) const {
   }
 }
 
-void CostModel::RecordMaxSize(const Node* node, int output_slot, Bytes bytes) {
+void CostModel::RecordMaxMemorySize(const Node* node, int output_slot,
+                                    Bytes bytes) {
   const int id = Id(node);
   if (id < 0) return;
   Ensure(id);
-  max_mem_usage_[id].output_port_mem[output_slot] = bytes;
+  max_mem_usage_[id].output_port_mem[output_slot] = std::max(
+      max_mem_usage_[id].output_port_mem[output_slot].value(), bytes.value());
 }
 
-Bytes CostModel::MaxSize(const Node* node, int slot) const {
+Bytes CostModel::MaxMemorySize(const Node* node, int slot) const {
   const int id = Id(node);
   if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
       slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
     return Bytes(0);
   }
   return max_mem_usage_[id].output_port_mem[slot];
+}
+
+Bytes CostModel::TempMemorySize(const Node* node) const {
+  const int id = Id(node);
+  if (id < 0) {
+    return Bytes(0);
+  }
+  return max_mem_usage_[id].temp_memory_size;
 }
 
 void CostModel::RecordMaxExecutionTime(const Node* node, Microseconds time) {
@@ -263,21 +273,21 @@ Microseconds CostModel::MaxExecutionTime(const Node* node) const {
   return max_exec_time_[id];
 }
 
-void CostModel::RecordAliases(const Node* node, int output_slot,
-                              int64 alias_id) {
+void CostModel::RecordAllocationId(const Node* node, int output_slot,
+                                   int64 alloc_id) {
   const int id = Id(node);
   if (id < 0) return;
   Ensure(id);
-  output_port_alias_[id][output_slot] = alias_id;
+  output_port_alloc_ids_[id][output_slot] = alloc_id;
 }
 
-int64 CostModel::Aliases(const Node* node, int slot) const {
+int64 CostModel::AllocationId(const Node* node, int slot) const {
   const int id = Id(node);
   if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
       slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
     return -1;
   }
-  return output_port_alias_[id][slot];
+  return output_port_alloc_ids_[id][slot];
 }
 
 Microseconds CostModel::CopyTimeEstimate(Bytes b, double network_latency_millis,
@@ -368,7 +378,67 @@ void CostModel::InitFromGraph(const Graph& g) {
   CheckInitialized(g);
 }
 
-void CostModel::WriteToLog() {
+void CostModel::AddToCostGraphDef(const Graph* graph,
+                                  CostGraphDef* cost_graph) const {
+  std::vector<const Edge*> inputs;
+  std::vector<const Edge*> control_inputs;
+  for (const Node* n : graph->nodes()) {
+    CostGraphDef::Node* cnode = cost_graph->add_node();
+    cnode->set_name(n->name());
+    cnode->set_device(n->assigned_device_name());
+    cnode->set_id(Id(n));
+
+    inputs.clear();
+    inputs.resize(n->num_inputs(), nullptr);
+    control_inputs.clear();
+    for (const Edge* e : n->in_edges()) {
+      if (e->IsControlEdge()) {
+        control_inputs.push_back(e);
+      } else {
+        inputs[e->dst_input()] = e;
+      }
+    }
+    std::sort(control_inputs.begin(), control_inputs.end(),
+              [this](Edge const* a, Edge const* b) {
+                return Id(a->src()) < Id(b->src());
+              });
+
+    for (const Edge* e : inputs) {
+      CostGraphDef::Node::InputInfo* input_info = cnode->add_input_info();
+      input_info->set_preceding_node(Id(e->src()));
+      input_info->set_preceding_port(e->src_output());
+    }
+
+    for (int i = 0; i < n->num_outputs(); i++) {
+      CostGraphDef::Node::OutputInfo* output_info = cnode->add_output_info();
+      output_info->set_size(MaxMemorySize(n, i).value());
+      int64 alloc_id = AllocationId(n, i);
+      int64 alias_to_input = -1;
+      for (const Edge* e : inputs) {
+        int64 input_alloc_id = AllocationId(e->src(), e->src_output());
+        if (input_alloc_id == alloc_id) {
+          alias_to_input = e->dst_input();
+          break;
+        }
+      }
+      output_info->set_alias_input_port(alias_to_input);
+    }
+
+    for (const Edge* e : control_inputs) {
+      cnode->add_control_input(Id(e->src()));
+    }
+
+    cnode->set_temporary_memory_size(TempMemorySize(n).value());
+
+    cnode->set_compute_cost(MaxExecutionTime(n).value());
+
+    // For now we treat all send nodes as final.
+    // TODO(yuanbyu): Send nodes for fetches shouldn't be treated as final.
+    cnode->set_is_final(n->IsSend());
+  }
+}
+
+void CostModel::WriteSummaryToLog() const {
   LOG(INFO) << " min_count_=" << min_count_;
   for (size_t i = 0; i < count_.size(); ++i) {
     LOG(INFO) << "Node " << i << " count " << count_[i] << " total time "

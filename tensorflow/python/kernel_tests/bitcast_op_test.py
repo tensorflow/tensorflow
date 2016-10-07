@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ class BitcastTest(tf.test.TestCase):
       buff_before = memoryview(x).tobytes()
       self.assertEqual(buff_before, buff_after)
       self.assertEqual(tf_ans.get_shape(), shape)
+      self.assertEqual(tf_ans.dtype, datatype)
 
   def testSmaller(self):
     x = np.random.rand(3, 2)
@@ -53,7 +54,7 @@ class BitcastTest(tf.test.TestCase):
   def testSameSize(self):
     x = np.random.rand(3, 4)
     shape = [3, 4]
-    self._testBitcast(x, tf.double, shape)
+    self._testBitcast(x, tf.int64, shape)
 
   def testErrors(self):
     x = np.zeros([1, 1], np.int8)
@@ -66,6 +67,11 @@ class BitcastTest(tf.test.TestCase):
     datatype = tf.int8
     shape = [4]
     self._testBitcast(x, datatype, shape)
+
+  def testUnknown(self):
+    x = tf.placeholder(tf.float32)
+    datatype = tf.int8
+    tf.bitcast(x, datatype, None)
 
 
 if __name__ == "__main__":

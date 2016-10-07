@@ -67,6 +67,15 @@ compose in your graph, but here are the details of how to add you own custom Op.
 [View Tutorial](adding_an_op/index.md)
 
 
+## How to write TensorFlow code
+
+TensorFlow Style Guide is set of style decisions that both developers
+and users of TensorFlow should follow to increase the readability of their code,
+reduce the number of errors, and promote consistency.
+
+[View Style Guide](style_guide.md)
+
+
 ## Writing Documentation
 
 TensorFlow's documentation is largely generated from its source code. Here is an
@@ -118,3 +127,32 @@ categories of objects, which is a lot faster and easier than completely
 retraining a new model.
 
 [View Tutorial](../how_tos/image_retraining/index.md)
+
+## How to Export and Import a Model
+
+This tutorial describes how to export everything pertaining to a running
+model and import it later for various purposes.
+
+[View Tutorial](../how_tos/meta_graph/index.md)
+
+## How to Quantize Neural Networks with TensorFlow
+
+This guide shows how you can convert a float model into one using eight-bit
+quantized parameters and calculations. It also describes how the quantization
+process works under the hood.
+
+[View Tutorial](../how_tos/quantization/index.md)
+
+## How to run TensorFlow on Hadoop
+
+This tutorial shows how to read and write HDFS files, and will later describe
+running on cluster managers.
+
+[View Tutorial](../how_tos/hadoop/index.md)
+
+## TensorFlow in other languages
+
+This guide describes how TensorFlow features can be provided in other
+programming languages.
+
+[View Tutorial](language_bindings/index.md)

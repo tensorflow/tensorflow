@@ -1,15 +1,32 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 <link rel="import" href="../../polymer/polymer.html">
 <link rel="import" href="../../tf-graph-board/tf-graph-board.html">
 <link rel="import" href="../../tf-graph-loader/tf-graph-loader.html">
 <link rel="import" href="../../tf-graph/tf-graph-controls.html">
-<!-- Element for tf-graph demo page
 
-Example
+<!--
+Element for tf-graph demo page
+
+Example:
 
 <tf-graph-demo></tf-graph-demo>
-
 -->
-
 <dom-module id="tf-graph-demo">
 <template>
 <style>
@@ -43,17 +60,25 @@ Example
 </style>
 <div class="all">
   <div class="side">
+    <!-- The observatory header component is injected in during vulcanization
+         and an instance of it is initialized and filled here when the demo
+         app initializes. -->
+    <div id="observatory-header"></div>
     <tf-graph-controls
+        devices-for-stats="{{_devicesForStats}}"
         color-by-params="[[colorByParams]]"
         stats="[[stats]]"
         color-by="{{colorBy}}"
-        datasets="[[datasets]]",
+        datasets="[[datasets]]"
+        render-hierarchy="[[_renderHierarchy]]"
         selected-dataset="{{selectedDataset}}"
         selected-file="{{selectedFile}}"
         selected-metadata-tag="{{selectedMetadataTag}}"
+        show-session-runs-dropdown="[[showSessionRunsDropdown]]"
+        show-upload-button="[[showUploadButton]]"
     ></tf-graph-controls>
     <tf-graph-loader id="loader"
-        datasets="[[datasets]]",
+        datasets="[[datasets]]"
         selected-dataset="[[selectedDataset]]"
         selected-metadata-tag="[[selectedMetadataTag]]"
         selected-file="[[selectedFile]]"
@@ -66,13 +91,15 @@ Example
   </div>
   <div class="main">
     <tf-graph-board id="graphboard"
-        graph-hierarchy="[[graphHierarchy]]"
-        graph="[[graph]]"
-        stats="[[stats]]"
-        progress="[[_progress]]"
         color-by="[[colorBy]]"
         color-by-params="{{colorByParams}}"
+        devices-for-stats="[[_devicesForStats]]"
+        graph-hierarchy="[[graphHierarchy]]"
+        graph="[[graph]]"
         hierarchy-params="[[_hierarchyParams]]"
+        progress="[[_progress]]"
+        render-hierarchy="{{_renderHierarchy}}"
+        stats="[[stats]]"
     ></tf-graph-board>
   </div>
 </div>
@@ -82,155 +109,93 @@ Example
 <script>
 (function(){
 
-var datasets = [
-  {
-    name: "Mnist Eval",
-    path: "mnist_eval.pbtxt",
-  },
-  {
-    name: "Mnist with summaries (+stats)",
-    path: "mnist_with_summaries.pbtxt",
-    runMetadata: [
-      {
-        tag: "step100",
-        path: "mnist_with_summaries_step100.pbtxt"
-      },
-      {
-        tag: "step1000",
-        path: "mnist_with_summaries_step1000.pbtxt"
-      }
-    ]
-  },
-  {
-    name: "Mnist Train (with shapes)",
-    path: "mnist_train_shapes.pbtxt",
-  },
-  {
-    name: "Inception Train (huge)",
-    path: "inception_train.pbtxt",
-  },
-  {
-    name: "Inception Train Eval",
-    path: "inception_train_eval.pbtxt",
-  },
-  {
-    name: "Inception Test",
-    path: "inception_test_eval.pbtxt",
-  },
-  {
-    name: "PTB Word LSTM Train",
-    path: "ptb_word_lstm_train.pbtxt",
-  },
-  {
-    name: "PTB Word LSTM Train Eval",
-    path: "ptb_word_lstm_train_eval.pbtxt",
-  },
-  {
-    name: "PTB Word LSTM Test",
-    path: "ptb_word_lstm_test_eval.pbtxt",
-  },
-  {
-    name: "Cifar10 Train (+stats)",
-    path: "cifar10_train.pbtxt",
-    runMetadata: [
-      {
-        tag: "step0",
-        path: "cifar10_train_step0.pbtxt"
-      },
-      {
-        tag: "step100",
-        path: "cifar10_train_step100.pbtxt"
-      },
-      {
-        tag: "step200",
-        path: "cifar10_train_step200.pbtxt"
-      },
-      {
-        tag: "step300",
-        path: "cifar10_train_step300.pbtxt"
-      }
-    ]
-  },
-  {
-    name: "Cifar10 Multi-GPU Train",
-    path: "cifar10_multi_gpu_train.pbtxt",
-  },
-  {
-    name: "Cifar10 Eval (+stats)",
-    path: "cifar10_eval.pbtxt",
-    runMetadata: [
-      {
-        tag: "step0",
-        path: "cifar10_eval_step0.pbtxt"
-      },
-      {
-        tag: "step10",
-        path: "cifar10_eval_step10.pbtxt"
-      },
-      {
-        tag: "step20",
-        path: "cifar10_eval_step20.pbtxt"
-      },
-    ]
-  },
-  {
-    name: "Fatcat LSTM",
-    path: "fatcat_lstm.pbtxt",
-  },
-  {
-    name: "Legacy Inception Renamed",
-    path: "legacy_inception_renamed.pbtxt",
-  },
-  {
-    name: "Wolfe (Broken)",
-    path: "wolfe1.pbtxt",
-  },
-  {
-    name: "Wolfe (Fixed)",
-    path: "wolfe2.pbtxt",
-  },
-  {
-    name: "AlexNet",
-    path: "alexnet.pbtxt",
-  },
-  {
-    name: "TestError404",
-    path: "nofile"
-  }
-];
-
 Polymer({
   is: 'tf-graph-demo',
   properties: {
     datasets: {
-      type: Object,
-      value: function() {
-        return this._getDatasets();
-      }
+      type: Object
     },
     selectedDataset: {
       type: Number,
-      value: 1 // Mnist with metadata info.
+      value: 0,
+      observer: '_selectedDatasetChanged'
     },
-    _progress: Object
+    _renderHierarchy: Object,
+    _progress: Object,
+    showSessionRunsDropdown: {
+      type: Boolean,
+      value: true
+    },
+    showUploadButton: {
+      type: Boolean,
+      value: true
+    }
+  },
+  created: function() {
+    let queryParams = tf.graph.util.getQueryParams(location.search);
+    let selectedDataset = 0;
+
+    if (typeof DEMO_DATASETS === 'undefined') {
+      DEMO_DATASETS = 'demo_datasets.json';
+    }
+
+    d3.json(DEMO_DATASETS, function (error, datasets) {
+        let publicDatasets = [];
+
+        if (error) {
+          console.log('Error loading demo datasets:');
+          console.log(error);
+          return;
+        }
+
+        if(typeof DEMO_DIR_PREFIX === 'undefined') {
+          DEMO_DIR_PREFIX = 'tf_model_zoo/';
+        }
+        _.each(datasets, function(dataset, index) {
+          if (queryParams['graphid'] && dataset.id == queryParams['graphid']) {
+            selectedDataset = index;
+          } else if (dataset['private']) {
+            return;
+          }
+
+          dataset.path = this._normalizePath(dataset.path);
+          if (dataset.runMetadata != null) {
+            _.each(dataset.runMetadata, function(metadata) {
+              metadata.path = this._normalizePath(metadata.path);
+            }, this);
+          }
+          publicDatasets.push(dataset);
+        }, this);
+        this.set('datasets', publicDatasets);
+        if (selectedDataset != 0) {
+          this.set('selectedDataset', selectedDataset);
+        }
+    }.bind(this));
+  },
+  ready: function() {
+    if (typeof IS_OBSERVATORY !== 'undefined' && IS_OBSERVATORY) {
+      // Create the header and add it to the DOM. This component is injected in
+      // during vulcanization.
+      document.getElementById('observatory-header').appendChild(
+          document.createElement('tf-graph-observatory-header'));
+
+      this.set('showSessionRunsDropdown', false);
+      this.set('showUploadButton', false);
+    }
   },
   _normalizePath: function(path) {
-    return this.resolveUrl('tf_model_zoo/' + path)
-      .replace('tf_model_zoo', DEMO_DIR_PREFIX + 'tf_model_zoo');
+    return this.resolveUrl(DEMO_DIR_PREFIX + path);
   },
-  _getDatasets: function() {
-    if(typeof DEMO_DIR_PREFIX === 'undefined') {
-      DEMO_DIR_PREFIX = '';
-    }
-    _.each(datasets, function(dataset) {
-      dataset.path = this._normalizePath(dataset.path);
-      if (dataset.runMetadata != null) {
-        _.each(dataset.runMetadata, function(metadata) {
-          metadata.path = this._normalizePath(metadata.path);
-        }, this);
+  _selectedDatasetChanged: function() {
+    if (this.datasets) {
+      let dataset = this.datasets[this.selectedDataset];
+      let queryParams = '';
+      if (dataset['id']) {
+        queryParams = '?graphid=' + dataset['id'];
       }
-    }, this);
-    return datasets;
+      window.history.replaceState(
+          null, null, location.pathname + queryParams);
+    }
   }
 });
 })();

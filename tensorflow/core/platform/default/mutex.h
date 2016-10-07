@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,8 @@ limitations under the License.
 #include <mutex>
 #include "tensorflow/core/platform/thread_annotations.h"
 namespace tensorflow {
+
+#undef mutex_lock
 
 enum LinkerInitialized { LINKER_INITIALIZED };
 
@@ -52,6 +54,9 @@ class SCOPED_LOCKABLE mutex_lock : public std::unique_lock<std::mutex> {
       : std::unique_lock<std::mutex>(std::move(ml)) {}
   ~mutex_lock() RELEASE() {}
 };
+
+// Catch bug where variable name is omitted, e.g. mutex_lock (mu);
+#define mutex_lock(x) static_assert(0, "mutex_lock_decl_missing_var_name");
 
 using std::condition_variable;
 

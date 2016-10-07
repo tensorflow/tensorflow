@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -42,13 +42,6 @@ limitations under the License.
   $1 = &temp;
 }
 
-%typemap(out) tensorflow::Status tensorflow::NewServer {
-  if (!$1.ok()) {
-    RaiseStatusNotOK($1, $descriptor(tensorflow::Status*));
-    SWIG_fail;
-  }
-} 
-
 %typemap(argout) std::unique_ptr<tensorflow::ServerInterface>* out_server {
   // TODO(mrry): Convert this to SWIG_POINTER_OWN when the issues with freeing
   // a server are fixed.
@@ -65,10 +58,49 @@ limitations under the License.
 }
 
 %{
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/lib/core/status.h"
 
 using tensorflow::ServerDef;
+
+static void PyServer_New(const ServerDef& server_def,
+                         std::unique_ptr<tensorflow::ServerInterface>* out_server,
+                         TF_Status* out_status) {
+  tensorflow::Status status =
+      tensorflow::NewServer(server_def, out_server);
+  tensorflow::Set_TF_Status_from_Status(out_status, status);
+}
+
+static void PyServer_Start(
+    tensorflow::ServerInterface* in_server,
+    TF_Status* out_status) {
+  tensorflow::Set_TF_Status_from_Status(out_status, in_server->Start());
+}
+
+static void PyServer_Stop(
+    tensorflow::ServerInterface* in_server,
+    TF_Status* out_status) {
+  tensorflow::Set_TF_Status_from_Status(out_status, in_server->Stop());
+}
+
+static void PyServer_Join(
+    tensorflow::ServerInterface* in_server,
+    TF_Status* out_status) {
+  tensorflow::Set_TF_Status_from_Status(out_status, in_server->Join());
+}
 %}
+
+// Wrap this function.
+void PyServer_New(const ServerDef& server_def,
+                  std::unique_ptr<tensorflow::ServerInterface>* out_server,
+                  TF_Status* out_status);
+void PyServer_Start(tensorflow::ServerInterface* in_server,
+                    TF_Status* out_status);
+void PyServer_Stop(tensorflow::ServerInterface* in_server,
+                   TF_Status* out_status);
+void PyServer_Join(tensorflow::ServerInterface* in_server,
+                   TF_Status* out_status);
 
 %ignoreall
 
@@ -76,12 +108,12 @@ using tensorflow::ServerDef;
 %unignore tensorflow::ServerDef;
 %unignore tensorflow::ServerInterface;
 %unignore tensorflow::ServerInterface::~ServerInterface;
-%unignore tensorflow::ServerInterface::Start;
-%unignore tensorflow::ServerInterface::Stop;
-%unignore tensorflow::ServerInterface::Join;
 %unignore tensorflow::ServerInterface::target;
 
-%unignore tensorflow::NewServer;
+%unignore PyServer_New;
+%unignore PyServer_Start;
+%unignore PyServer_Stop;
+%unignore PyServer_Join;
 
 %include "tensorflow/core/distributed_runtime/server_lib.h"
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,17 +56,14 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
         node_offset, " with total nodes in graph: ", graph_def->node_size());
   }
 
-  Status s;
   for (int i = node_offset; i < graph_def->node_size(); ++i) {
     NodeDef* node_def = graph_def->mutable_node(i);
-    const OpDef* op_def = op_registry.LookUp(node_def->op(), &s);
-    if (!s.ok()) {
-      return s;
-    }
+    const OpDef* op_def;
+    TF_RETURN_IF_ERROR(op_registry.LookUpOpDef(node_def->op(), &op_def));
     AddDefaultsToNodeDef(*op_def, node_def);
   }
 
-  return s;
+  return Status::OK();
 }
 
 Status RemoveNewDefaultAttrsFromGraphDef(
@@ -77,12 +74,13 @@ Status RemoveNewDefaultAttrsFromGraphDef(
   std::vector<string> to_remove;
   for (int n = 0; n < graph_def->node_size(); ++n) {
     NodeDef* node_def = graph_def->mutable_node(n);
-    const OpDef* producer_op_def =
-        producer_op_registry.LookUp(node_def->op(), &s);
-    if (!s.ok()) return s;
-    const OpDef* consumer_op_def =
-        consumer_op_registry.LookUp(node_def->op(), &s);
-    if (!s.ok()) return s;
+    const OpDef* producer_op_def;
+    const OpDef* consumer_op_def;
+
+    TF_RETURN_IF_ERROR(
+        producer_op_registry.LookUpOpDef(node_def->op(), &producer_op_def));
+    TF_RETURN_IF_ERROR(
+        consumer_op_registry.LookUpOpDef(node_def->op(), &consumer_op_def));
 
     for (const auto& attr : node_def->attr()) {
       // If the attr is not in consumer_op_def and doesn't start with '_'...
@@ -120,11 +118,8 @@ Status RemoveNewDefaultAttrsFromGraphDef(
   return s;
 }
 
-Status StrippedOpListForGraph(const GraphDef& graph_def,
-                              const OpRegistryInterface& op_registry,
-                              OpList* stripped_op_list) {
-  stripped_op_list->clear_op();
-
+void OpsUsedByGraph(const GraphDef& graph_def,
+                    std::set<string>* ops_used_in_graph) {
   // Map function names to definitions.
   std::unordered_map<string, const FunctionDef*> name_to_function;
   for (const auto& function : graph_def.library().function()) {
@@ -153,21 +148,41 @@ Status StrippedOpListForGraph(const GraphDef& graph_def,
   while (!functions_to_process.empty()) {
     const FunctionDef* fun = functions_to_process.back();
     functions_to_process.pop_back();
-    for (const auto& node : fun->node()) {
-      mark_op_as_used(node.op());
+    if (fun->node_def_size() > 0) {
+      for (const auto& node : fun->node_def()) {
+        mark_op_as_used(node.op());
+      }
+    } else {  // TODO(josh11b): Eventually drop support for this.
+      for (const auto& node : fun->node()) {
+        mark_op_as_used(node.op());
+      }
     }
   }
 
-  // Build the stripped op list in sorted order, ignoring functions.
-  Status status;
+  // Filter out function names to produce output.
+  // TODO(josh11b): Change the above code to produce this directly.
+  ops_used_in_graph->clear();
   for (const string& op_name : used_ops) {
     if (name_to_function.find(op_name) == name_to_function.end()) {
-      const OpDef* op = op_registry.LookUp(op_name, &status);
-      if (!op) return status;
-      OpDef* stripped_op = stripped_op_list->add_op();
-      stripped_op->CopyFrom(*op);
-      RemoveDescriptionsFromOpDef(stripped_op);
+      ops_used_in_graph->insert(op_name);
     }
+  }
+}
+
+Status StrippedOpListForGraph(const GraphDef& graph_def,
+                              const OpRegistryInterface& op_registry,
+                              OpList* stripped_op_list) {
+  std::set<string> used_ops;
+  OpsUsedByGraph(graph_def, &used_ops);
+
+  // Build the stripped op list in sorted order, ignoring functions.
+  stripped_op_list->clear_op();
+  for (const string& op_name : used_ops) {
+    const OpDef* op_def;
+    TF_RETURN_IF_ERROR(op_registry.LookUpOpDef(op_name, &op_def));
+    OpDef* stripped_op = stripped_op_list->add_op();
+    stripped_op->CopyFrom(*op_def);
+    RemoveDescriptionsFromOpDef(stripped_op);
   }
   return Status::OK();
 }

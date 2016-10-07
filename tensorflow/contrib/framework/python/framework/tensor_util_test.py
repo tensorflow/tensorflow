@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -244,7 +244,8 @@ class WithShapeTest(tf.test.TestCase):
             incompatible_shape, tensor_partial_shape)
       for incompatible_shape in [[1, 2, 1]]:
         self.assertRaisesRegexp(
-            ValueError, "Incompatible shapes", tf.contrib.framework.with_shape,
+            ValueError, "Dimensions must be equal",
+            tf.contrib.framework.with_shape,
             incompatible_shape, tensor_partial_shape)
       for incompatible_shape in [[2, 1]]:
         self.assertRaisesRegexp(
@@ -267,6 +268,135 @@ class WithShapeTest(tf.test.TestCase):
             ValueError, tensor_2x2.eval, {tensor_partial_shape: [42.0, 43.0]})
         self.assertRaises(
             ValueError, tensor_2x2.eval, {tensor_partial_shape: [42.0]})
+
+
+class ConvertToTensorOrSparseTensorTest(tf.test.TestCase):
+
+  def test_convert_dense(self):
+    with self.test_session():
+      value = [42, 43]
+      from_value = tf.contrib.framework.convert_to_tensor_or_sparse_tensor(
+          value)
+      self.assertAllEqual(value, from_value.eval())
+
+  def test_convert_sparse(self):
+    with self.test_session():
+      indices = [[0, 1], [1, 0]]
+      values = [42, 43]
+      shape = [2, 2]
+      sparse_tensor_value = tf.SparseTensorValue(indices, values, shape)
+      sparse_tensor = tf.SparseTensor.from_value(sparse_tensor_value)
+      from_value = tf.contrib.framework.convert_to_tensor_or_sparse_tensor(
+          sparse_tensor_value).eval()
+      from_tensor = tf.contrib.framework.convert_to_tensor_or_sparse_tensor(
+          sparse_tensor).eval()
+      for convertee in [from_value, from_tensor]:
+        self.assertAllEqual(sparse_tensor_value.indices, convertee.indices)
+        self.assertAllEqual(sparse_tensor_value.values, convertee.values)
+        self.assertAllEqual(sparse_tensor_value.shape, convertee.shape)
+
+
+class RemoveSqueezableDimensionsTest(tf.test.TestCase):
+
+  def testRemoveSqueezableDimensions(self):
+    self._testRemoveSqueezableDimensions(
+        predictions_have_static_shape=False, predictions_have_extra_dim=False,
+        labels_have_static_shape=False, labels_have_extra_dim=False)
+
+  def testRemoveSqueezableDimensions_extraLabelDim(self):
+    self._testRemoveSqueezableDimensions(
+        predictions_have_static_shape=False, predictions_have_extra_dim=False,
+        labels_have_static_shape=False, labels_have_extra_dim=True)
+
+  def testRemoveSqueezableDimensions_staticLabel(self):
+    self._testRemoveSqueezableDimensions(
+        predictions_have_static_shape=False, predictions_have_extra_dim=False,
+        labels_have_static_shape=True, labels_have_extra_dim=False)
+
+  def testRemoveSqueezableDimensions_staticLabel_extraLabelDim(self):
+    self._testRemoveSqueezableDimensions(
+        predictions_have_static_shape=False, predictions_have_extra_dim=False,
+        labels_have_static_shape=True, labels_have_extra_dim=True)
+
+  def testRemoveSqueezableDimensions_extraPredictionDim(self):
+    self._testRemoveSqueezableDimensions(
+        predictions_have_static_shape=False, predictions_have_extra_dim=True,
+        labels_have_static_shape=False, labels_have_extra_dim=False)
+
+  def testRemoveSqueezableDimensions_extraPredictionDim_staticLabel(self):
+    self._testRemoveSqueezableDimensions(
+        predictions_have_static_shape=False, predictions_have_extra_dim=True,
+        labels_have_static_shape=True, labels_have_extra_dim=False)
+
+  def testRemoveSqueezableDimensions_staticPrediction(self):
+    self._testRemoveSqueezableDimensions(
+        predictions_have_static_shape=True, predictions_have_extra_dim=False,
+        labels_have_static_shape=False, labels_have_extra_dim=False)
+
+  def testRemoveSqueezableDimensions_staticPrediction_extraLabelDim(self):
+    self._testRemoveSqueezableDimensions(
+        predictions_have_static_shape=True, predictions_have_extra_dim=False,
+        labels_have_static_shape=False, labels_have_extra_dim=True)
+
+  def testRemoveSqueezableDimensions_static(self):
+    self._testRemoveSqueezableDimensions(
+        predictions_have_static_shape=True, predictions_have_extra_dim=False,
+        labels_have_static_shape=True, labels_have_extra_dim=False)
+
+  def testRemoveSqueezableDimensions_static_extraLabelDim(self):
+    self._testRemoveSqueezableDimensions(
+        predictions_have_static_shape=True, predictions_have_extra_dim=False,
+        labels_have_static_shape=True, labels_have_extra_dim=True)
+
+  def testRemoveSqueezableDimensions_staticPrediction_extraPredictionDim(self):
+    self._testRemoveSqueezableDimensions(
+        predictions_have_static_shape=True, predictions_have_extra_dim=True,
+        labels_have_static_shape=False, labels_have_extra_dim=False)
+
+  def testRemoveSqueezableDimensions_static_extraPredictionDim(self):
+    self._testRemoveSqueezableDimensions(
+        predictions_have_static_shape=True, predictions_have_extra_dim=True,
+        labels_have_static_shape=True, labels_have_extra_dim=False)
+
+  # TODO(ptucker): Replace this with parameterized test.
+  def _testRemoveSqueezableDimensions(
+      self,
+      predictions_have_static_shape,
+      predictions_have_extra_dim,
+      labels_have_static_shape,
+      labels_have_extra_dim):
+    assert not (predictions_have_extra_dim and labels_have_extra_dim)
+    predictions_value = (0, 1, 1, 0, 0, 1, 0)
+    labels_value = (0, 0, 1, 1, 0, 0, 0)
+
+    input_predictions_value = (
+        [[p] for p in predictions_value] if predictions_have_extra_dim else
+        predictions_value)
+    input_labels_value = (
+        [[l] for l in labels_value] if labels_have_extra_dim else labels_value)
+
+    with tf.Graph().as_default() as g:
+      feed_dict = {}
+      if predictions_have_static_shape:
+        predictions = tf.constant(input_predictions_value, dtype=tf.int32)
+      else:
+        predictions = tf.placeholder(dtype=tf.int32, name="predictions")
+        feed_dict[predictions] = input_predictions_value
+      if labels_have_static_shape:
+        labels = tf.constant(input_labels_value, dtype=tf.int32)
+      else:
+        labels = tf.placeholder(dtype=tf.int32, name="labels")
+        feed_dict[labels] = input_labels_value
+
+      squeezed_predictions, squeezed_labels = (
+          tf.contrib.framework.remove_squeezable_dimensions(
+              predictions, labels))
+      with self.test_session(g):
+        tf.initialize_local_variables().run()
+        self.assertAllClose(
+            predictions_value, squeezed_predictions.eval(feed_dict=feed_dict))
+        self.assertAllClose(
+            labels_value, squeezed_labels.eval(feed_dict=feed_dict))
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import tensorflow as tf
 class AdagradOptimizerTest(tf.test.TestCase):
 
   def doTestBasic(self, use_locking=False):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype)
@@ -56,7 +56,7 @@ class AdagradOptimizerTest(tf.test.TestCase):
     self.doTestBasic(use_locking=True)
 
   def testTensorLearningRate(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype)
@@ -80,43 +80,8 @@ class AdagradOptimizerTest(tf.test.TestCase):
         self.assertAllCloseAccordingToType(
             np.array([2.715679168701172, 3.715679168701172]), var1.eval())
 
-  def testFloat64(self):
-    with self.test_session():
-      opt = tf.train.AdagradOptimizer(3.0, initial_accumulator_value=0.1)
-
-      # compute_gradients.
-      values = [1.0, 3.0]
-      good_vars = [tf.Variable([v]) for v in values]
-      bad_loss = tf.constant(2.0, tf.float64, name="bad_loss")
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_loss.*expected.*float32",
-          opt.compute_gradients, bad_loss, good_vars)
-      bad_vars = [
-          tf.Variable(np.array([v], np.float64), name="bad_var")
-          for v in values
-      ]
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_var.*expected.*float32",
-          opt.compute_gradients, tf.cast(bad_vars[0] + bad_vars[1], tf.float32),
-          bad_vars)
-      opt.compute_gradients(good_vars[0] + good_vars[1], good_vars)
-
-      # apply_gradients.
-      bad_grads = [
-          tf.constant([0.1], dtype=np.float64, name="bad_grad"),
-          tf.constant([0.01])
-      ]
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_grad.*expected.*float32",
-          opt.apply_gradients, zip(bad_grads, good_vars))
-      good_grads = [tf.constant([0.01]), tf.constant([0.02])]
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_var.*expected.*float32",
-          opt.apply_gradients, zip(good_grads, bad_vars))
-      opt.apply_gradients(zip(good_grads, good_vars))
-
   def testSparseBasic(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([[1.0], [2.0]], dtype=dtype)
         var1 = tf.Variable([[3.0], [4.0]], dtype=dtype)
@@ -145,7 +110,7 @@ class AdagradOptimizerTest(tf.test.TestCase):
             np.array([[3.0], [3.715679168701172]]), var1.eval())
 
   def testSparseStability(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         shape = [1, 6]
         var0 = tf.Variable(
@@ -175,7 +140,7 @@ class AdagradOptimizerTest(tf.test.TestCase):
                          0.0144573, -0.01029443]]), var0.eval())
 
   def testSharing(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype)

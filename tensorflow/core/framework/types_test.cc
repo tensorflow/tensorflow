@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -127,6 +127,16 @@ TEST(TypesTest, QuantizedTypes) {
   EXPECT_FALSE(DataTypeIsQuantized(DT_INT16));
   EXPECT_FALSE(DataTypeIsQuantized(DT_INT32));
   EXPECT_FALSE(DataTypeIsQuantized(DT_BFLOAT16));
+}
+
+TEST(TypesTest, IntegerTypes) {
+  for (auto dt : AllTypes()) {
+    const string name = DataTypeString(dt);
+    const StringPiece n = name;
+    EXPECT_EQ(DataTypeIsInteger(dt),
+              n.starts_with("int") || n.starts_with("uint"))
+        << "DataTypeInteger failed for " << name;
+  }
 }
 
 }  // namespace

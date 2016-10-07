@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -42,28 +42,25 @@ class BitcastOp : public OpKernel {
     const Tensor& input_tensor = context->input(0);
 
     TensorShape adjusted_shape = input_tensor.shape();
-    adjusted_shape.set_data_type(output_data_type_);
     OP_REQUIRES(context, in_size_ >= out_size_ ||
-                             ((input_tensor.dims() > 0) ||
+                             (input_tensor.dims() > 0 &&
                               input_tensor.dim_size(input_tensor.dims() - 1) ==
-                                  in_size_ / out_size_),
+                                  out_size_ / in_size_) ||
+                             input_tensor.dim_size(input_tensor.dims()) == -1,
                 errors::InvalidArgument(
                     "Cannot bitcast from ", DataTypeString(input_data_type_),
                     " to ", DataTypeString(output_data_type_), ": shape ",
                     input_tensor.shape().DebugString()));
 
-    if (in_size_ == out_size_) {
-      adjusted_shape = input_tensor.shape();
-    } else {
-      if (out_size_ < in_size_) {
-        adjusted_shape.AddDim(in_size_ / out_size_);
-      } else {
-        adjusted_shape.RemoveDim(input_tensor.dims() - 1);
-      }
+    if (out_size_ < in_size_) {
+      adjusted_shape.AddDim(in_size_ / out_size_);
+    } else if (out_size_ > in_size_) {
+      adjusted_shape.RemoveDim(input_tensor.dims() - 1);
     }
     Tensor output_tensor;
 
-    output_tensor.UnsafeCopyFromInternal(input_tensor, adjusted_shape);
+    output_tensor.UnsafeCopyFromInternal(input_tensor, output_data_type_,
+                                         adjusted_shape);
     context->set_output(0, output_tensor);
   }
 

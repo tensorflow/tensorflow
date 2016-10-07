@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,6 +49,7 @@ namespace tensorflow {
 class Flag {
  public:
   Flag(const char* name, int32* dst1);
+  Flag(const char* name, int64* dst1);
   Flag(const char* name, bool* dst);
   Flag(const char* name, string* dst);
 
@@ -56,8 +57,9 @@ class Flag {
 
  private:
   string name_;
-  enum { TYPE_INT, TYPE_BOOL, TYPE_STRING } type_;
+  enum { TYPE_INT, TYPE_INT64, TYPE_BOOL, TYPE_STRING } type_;
   int* int_value_;
+  int64* int64_value_;
   bool* bool_value_;
   string* string_value_;
 };

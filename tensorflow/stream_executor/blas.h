@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,6 +45,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/lib/array_slice.h"
 #include "tensorflow/stream_executor/platform/port.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace perftools {
 namespace gputools {
@@ -846,6 +847,17 @@ class BlasSupport {
   // op(X) is one of op(X) = X, or op(X) = X', or op(X) = conj(X'); alpha and
   // beta are scalars; a, b, and c are matrices; op(a) is an m-by-k matrix;
   // op(b) is a k-by-n matrix; c is an m-by-n matrix.
+  //
+  // Note: The half interface uses float precision internally; the version
+  // that uses half precision internally is not yet supported. There is no
+  // batched version of the half-precision interface.
+  virtual bool DoBlasGemm(Stream *stream, blas::Transpose transa,
+                          blas::Transpose transb, uint64 m, uint64 n, uint64 k,
+                          float alpha,
+                          const DeviceMemory<Eigen::half> &a, int lda,
+                          const DeviceMemory<Eigen::half> &b, int ldb,
+                          float beta,
+                          DeviceMemory<Eigen::half> *c, int ldc) = 0;
   virtual bool DoBlasGemm(Stream *stream, blas::Transpose transa,
                           blas::Transpose transb, uint64 m, uint64 n, uint64 k,
                           float alpha, const DeviceMemory<float> &a, int lda,
@@ -1597,6 +1609,11 @@ class BlasSupport {
                   blas::Transpose trans, blas::Diagonal diag, uint64 n,        \
                   const DeviceMemory<std::complex<double>> &a, int lda,        \
                   DeviceMemory<std::complex<double>> *x, int incx) override;   \
+  bool DoBlasGemm(Stream *stream, blas::Transpose transa,                      \
+                  blas::Transpose transb, uint64 m, uint64 n, uint64 k,        \
+                  float alpha, const DeviceMemory<Eigen::half> &a, int lda,    \
+                  const DeviceMemory<Eigen::half> &b, int ldb, float beta,     \
+                  DeviceMemory<Eigen::half> *c, int ldc) override;             \
   bool DoBlasGemm(Stream *stream, blas::Transpose transa,                      \
                   blas::Transpose transb, uint64 m, uint64 n, uint64 k,        \
                   float alpha, const DeviceMemory<float> &a, int lda,          \

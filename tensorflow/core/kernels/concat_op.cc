@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,7 +32,9 @@ limitations under the License.
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
+#if GOOGLE_CUDA
 typedef Eigen::GpuDevice GPUDevice;
+#endif  // GOOGLE_CUDA
 
 // --------------------------------------------------------------------------
 template <typename Device, typename T>
@@ -76,7 +78,7 @@ class ConcatOp : public OpKernel {
     for (int d = 0; d < concat_dim; ++d) {
       inputs_flat_dim0 *= input_shape.dim_size(d);
     }
-    int output_concat_dim = 0;
+    int64 output_concat_dim = 0;
     const bool input_is_scalar = IsLegacyScalar(input_shape);
     for (int i = 0; i < N; ++i) {
       const auto in = values[i];
@@ -119,18 +121,20 @@ class ConcatOp : public OpKernel {
     if (output->NumElements() > 0) {
       int64 output_dim1 = output->NumElements() / inputs_flat_dim0;
       auto output_flat = output->shaped<T, 2>({inputs_flat_dim0, output_dim1});
+#if GOOGLE_CUDA
       if (std::is_same<Device, GPUDevice>::value) {
         // Switching indexing to int64 might cause performance issues.
         // Hence, we keep int32 indexing in the GPU kernel unless we need to
         // switch to int64.
         if (output->NumElements() < std::numeric_limits<int32>::max()) {
-          ConcatGPU64<T>(c->eigen_gpu_device(), inputs_flat, &output_flat);
-        } else {
           ConcatGPU32<T>(c->eigen_gpu_device(), inputs_flat, &output_flat);
+        } else {
+          ConcatGPU64<T>(c->eigen_gpu_device(), inputs_flat, &output_flat);
         }
-      } else {
-        ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+        return;
       }
+#endif  // GOOGLE_CUDA
+      ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
     }
   }
 };
@@ -145,6 +149,8 @@ class ConcatOp : public OpKernel {
 TF_CALL_ALL_TYPES(REGISTER_CONCAT);
 REGISTER_CONCAT(quint8);
 REGISTER_CONCAT(qint8);
+REGISTER_CONCAT(quint16);
+REGISTER_CONCAT(qint16);
 REGISTER_CONCAT(qint32);
 REGISTER_CONCAT(bfloat16);
 

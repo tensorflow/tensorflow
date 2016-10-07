@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,8 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
 
 REGISTER_OP("SymbolicGradient")
     .Input("input: Tin")
@@ -23,6 +28,18 @@ REGISTER_OP("SymbolicGradient")
     .Attr("Tin: list(type)")
     .Attr("Tout: list(type)")
     .Attr("f: func")
+    .SetShapeFn([](InferenceContext* c) {
+      if (c->num_inputs() < c->num_outputs()) {
+        return errors::InvalidArgument("len(inputs) < len(outputs)");
+      }
+      // Say, (u, v) = f(x, y, z), _symbolic_gradient(f) is a function of
+      // (x, y, z, du, dv) -> (dx, dy, dz). Therefore, shapes of its
+      // outputs (dx, dy, dz) are the same as (x, y, z).
+      for (int i = 0; i < c->num_outputs(); ++i) {
+        c->set_output(i, c->input(i));
+      }
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes the gradient function for function f via backpropagation.
 

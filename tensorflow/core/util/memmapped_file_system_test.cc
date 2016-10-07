@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -76,10 +76,10 @@ TEST(MemmappedFileSystemTest, SimpleTest) {
       ReadBinaryProto(&memmapped_env, kProtoFileName, &test_graph_def));
   EXPECT_EQ(kTestGraphDefVersion, test_graph_def.version());
   // Check that we can correctly get a tensor memory.
-  ReadOnlyMemoryRegion* memory_region;
+  std::unique_ptr<ReadOnlyMemoryRegion> memory_region;
   TF_ASSERT_OK(memmapped_env.NewReadOnlyMemoryRegionFromFile(kTensor2FileName,
                                                              &memory_region));
-  std::unique_ptr<ReadOnlyMemoryRegion> mem_region_ptr(memory_region);
+
   // The memory region can be bigger but not less than Tensor size.
   ASSERT_GE(memory_region->length(), test_tensor.TotalBytes());
   EXPECT_EQ(test_tensor.tensor_data(),
@@ -89,6 +89,11 @@ TEST(MemmappedFileSystemTest, SimpleTest) {
   uint64 file_size = 0;
   TF_ASSERT_OK(memmapped_env.GetFileSize(kTensor2FileName, &file_size));
   EXPECT_EQ(test_tensor.TotalBytes(), file_size);
+
+  // Check that Stat works.
+  FileStatistics stat;
+  TF_ASSERT_OK(memmapped_env.Stat(kTensor2FileName, &stat));
+  EXPECT_EQ(test_tensor.TotalBytes(), stat.length);
 
   // Check that if file not found correct error message returned.
   EXPECT_EQ(
@@ -103,13 +108,13 @@ TEST(MemmappedFileSystemTest, SimpleTest) {
 
 TEST(MemmappedFileSystemTest, NotInitalized) {
   MemmappedEnv memmapped_env(Env::Default());
-  ReadOnlyMemoryRegion* memory_region;
+  std::unique_ptr<ReadOnlyMemoryRegion> memory_region;
   EXPECT_EQ(
       error::FAILED_PRECONDITION,
       memmapped_env
           .NewReadOnlyMemoryRegionFromFile(kTensor1FileName, &memory_region)
           .code());
-  RandomAccessFile* file;
+  std::unique_ptr<RandomAccessFile> file;
   EXPECT_EQ(error::FAILED_PRECONDITION,
             memmapped_env.NewRandomAccessFile(kProtoFileName, &file).code());
 }
@@ -131,19 +136,20 @@ TEST(MemmappedFileSystemTest, ProxyToDefault) {
   const string dir = testing::TmpDir();
   const string filename = io::JoinPath(dir, "test_file");
   // Check that we can create write and read ordinary file.
-  WritableFile* writable_file;
+  std::unique_ptr<WritableFile> writable_file;
   TF_ASSERT_OK(memmapped_env.NewAppendableFile(filename, &writable_file));
-  std::unique_ptr<WritableFile> writable_file_ptr(writable_file);
   const string test_string = "bla-bla-bla";
   TF_ASSERT_OK(writable_file->Append(test_string));
   TF_ASSERT_OK(writable_file->Close());
   uint64 file_length = 0;
   TF_EXPECT_OK(memmapped_env.GetFileSize(filename, &file_length));
   EXPECT_EQ(test_string.length(), file_length);
-  RandomAccessFile* random_access_file;
+  FileStatistics stat;
+  TF_EXPECT_OK(memmapped_env.Stat(filename, &stat));
+  EXPECT_EQ(test_string.length(), stat.length);
+  std::unique_ptr<RandomAccessFile> random_access_file;
   TF_ASSERT_OK(
       memmapped_env.NewRandomAccessFile(filename, &random_access_file));
-  delete random_access_file;
 }
 
 }  // namespace

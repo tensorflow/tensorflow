@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -105,7 +105,7 @@ void MakeUnreducedIndices(gtl::InlinedVector<bool, 8> index_is_reduced,
 TensorShape GetOutputShape(gtl::InlinedVector<bool, 8> index_is_reduced,
                            const TensorShape& input_shape, bool keep_dims) {
   TensorShape output_shape;
-  for (int32 index = 0; index < index_is_reduced.size(); ++index) {
+  for (size_t index = 0; index < index_is_reduced.size(); ++index) {
     if (index_is_reduced[index]) {
       if (keep_dims) output_shape.AddDim(1);
     } else {

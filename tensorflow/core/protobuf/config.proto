@@ -1,11 +1,13 @@
 syntax = "proto3";
 
 package tensorflow;
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 option java_outer_classname = "ConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 
+import "tensorflow/core/framework/cost_graph.proto";
+import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
 
 message GPUOptions {
@@ -33,6 +35,23 @@ message GPUOptions {
   // If true, the allocator does not pre-allocate the entire specified
   // GPU memory region, instead starting small and growing as needed.
   bool allow_growth = 4;
+
+  // A comma-separated list of GPU ids that determines the 'visible'
+  // to 'virtual' mapping of GPU devices.  For example, if TensorFlow
+  // can see 8 GPU devices in the process, and one wanted to map
+  // visible GPU devices 5 and 3 as "/gpu:0", and "/gpu:1", then one
+  // would specify this field as "5,3".  This field is similar in
+  // spirit to the CUDA_VISIBLE_DEVICES environment variable, except
+  // it applies to the visible GPU devices in the process.
+  //
+  // NOTE: The GPU driver provides the process with the visible GPUs
+  // in an order which is not guaranteed to have any correlation to
+  // the *physical* GPU id in the machine.  This field is used for
+  // remapping "visible" to "virtual", which means this operates only
+  // after the process starts.  Users are required to use vendor
+  // specific mechanisms (e.g., CUDA_VISIBLE_DEVICES) to control the
+  // physical to visible device mapping prior to invoking TensorFlow.
+  string visible_device_list = 5;
 };
 
 // Options passed to the graph optimizer
@@ -73,13 +92,42 @@ message GraphOptions {
   // Options controlling how graph is optimized.
   OptimizerOptions optimizer_options = 3;
 
-  // Build a cost model detailing the memory usage and performance of
-  // each node of the graph.
-  bool build_cost_model = 4;
+  // The number of steps to run before returning a cost model detailing
+  // the memory usage and performance of each node of the graph. 0 means
+  // no cost model.
+  int64 build_cost_model = 4;
+
+  // Annotate each Node with Op output shape data, to the extent it can
+  // be statically inferred.
+  bool infer_shapes = 5;
+
+  // Only place the subgraphs that are run, rather than the entire graph.
+  //
+  // This is useful for interactive graph building, where one might
+  // produce graphs that cannot be placed during the debugging
+  // process.  In particular, it allows the client to continue work in
+  // a session after adding a node to a graph whose placement
+  // constraints are unsatisfiable.
+  bool place_pruned_graph = 6;
+
+  // If true, transfer float values between processes as bfloat16.
+  bool enable_bfloat16_sendrecv = 7;
+
+  // If > 0, record a timeline every this many steps.
+  // EXPERIMENTAL: This currently has no effect in MasterSession.
+  int32 timeline_step = 8;
+};
+
+message ThreadPoolOptionProto {
+  // The number of threads in the pool.
+  //
+  // 0 means the system picks a value based on where this option proto is used
+  // (see the declaration of the specific field for more info).
+  int32 num_threads = 1;
 };
 
 // Session configuration parameters.
-// The system picks an appropriate values for fields that are not set.
+// The system picks appropriate values for fields that are not set.
 message ConfigProto {
   // Map from device type name (e.g., "CPU" or "GPU" ) to maximum
   // number of devices of that type to use.  If a particular device
@@ -99,14 +147,29 @@ message ConfigProto {
   //
   // Note that the first Session created in the process sets the
   // number of threads for all future sessions unless use_per_session_threads is
-  // true.
+  // true or session_inter_op_thread_pool is configured.
   int32 inter_op_parallelism_threads = 5;
 
   // If true, use a new set of threads for this session rather than the global
   // pool of threads. Only supported by direct sessions.
   //
-  // If false, use the global threads created by the first session.
+  // If false, use the global threads created by the first session, or the
+  // per-session thread pools configured by session_inter_op_thread_pool.
+  //
+  // This option is deprecated. The same effect can be achieved by setting
+  // session_inter_op_thread_pool to have one element, whose num_threads equals
+  // inter_op_parallelism_threads.
   bool use_per_session_threads = 9;
+
+  // This option is experimental - it may be replaced with a different mechanism
+  // in the future. The intended use is for when some session invocations need
+  // to run in a background pool limited to a small number of threads.
+  //
+  // Configures session thread pools. If this is configured, then RunOptions for
+  // a Run call can select the thread pool to use.
+  //
+  // If a pool's num_threads is 0, then inter_op_parallelism_threads is used.
+  repeated ThreadPoolOptionProto session_inter_op_thread_pool = 12;
 
   // Assignment of Nodes to Devices is recomputed every placement_period
   // steps until the system warms up (at which point the recomputation
@@ -142,16 +205,54 @@ message ConfigProto {
   int64 operation_timeout_in_ms = 11;
 };
 
+// EXPERIMENTAL. Option for watching a node.
+message DebugTensorWatch {
+  // Name of the node to watch.
+  string node_name = 1;
+
+  // Output slot to watch.
+  // The semantics of output_slot == -1 is that the node is only watched for
+  // completion, but not for any output tensors. See NodeCompletionCallback
+  // in debug_gateway.h.
+  // TODO(cais): Implement this semantics.
+  int32 output_slot = 2;
+
+  // Name(s) of the debugging op(s).
+  // One or more than one probes on a tensor.
+  // e.g., {"DebugIdentity", "DebugNanCount"}
+  repeated string debug_ops = 3;
+
+  // URL(s) for debug targets(s).
+  //   E.g., "file:///foo/tfdbg_dump", "grpc://localhost:11011"
+  // Each debug op listed in debug_ops will publish its output tensor (debug
+  // signal) to all URLs in debug_urls.
+  repeated string debug_urls = 4;
+}
+
 // EXPERIMENTAL. Options for a single Run() call.
 message RunOptions {
+  // TODO(pbar) Turn this into a TraceOptions proto which allows
+  // tracing to be controlled in a more orthogonal manner?
   enum TraceLevel {
     NO_TRACE = 0;
-    FULL_TRACE = 1;
+    SOFTWARE_TRACE = 1;
+    HARDWARE_TRACE = 2;
+    FULL_TRACE = 3;
   }
   TraceLevel trace_level = 1;
 
   // Time to wait for operation to complete in milliseconds.
   int64 timeout_in_ms = 2;
+
+  // The thread pool to use, if session_inter_op_thread_pool is configured.
+  int32 inter_op_thread_pool = 3;
+
+  // Debugging options
+  repeated DebugTensorWatch debug_tensor_watch_opts = 4;
+
+  // Whether the partition graph(s) executed by the executor(s) should be
+  // outputted via RunMetadata.
+  bool output_partition_graphs = 5;
 }
 
 // EXPERIMENTAL. Metadata output (i.e., non-Tensor) for a single Run() call.
@@ -160,4 +261,10 @@ message RunMetadata {
   // "RunOptions" proto.
   // EXPERIMENTAL: The format and set of events may change in future versions.
   StepStats step_stats = 1;
+
+  // The cost graph for the computation defined by the run call.
+  CostGraphDef cost_graph = 2;
+
+  // Graphs of the partitions executed by executors.
+  repeated GraphDef partition_graphs = 3;
 }

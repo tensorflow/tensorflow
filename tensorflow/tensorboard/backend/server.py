@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import six
 from six.moves import BaseHTTPServer
 from six.moves import socketserver
 
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator
 from tensorflow.python.summary.impl import gcs
 from tensorflow.tensorboard.backend import handler
@@ -39,8 +39,9 @@ from tensorflow.tensorboard.backend import handler
 TENSORBOARD_SIZE_GUIDANCE = {
     event_accumulator.COMPRESSED_HISTOGRAMS: 500,
     event_accumulator.IMAGES: 4,
+    event_accumulator.AUDIO: 4,
     event_accumulator.SCALARS: 1000,
-    event_accumulator.HISTOGRAMS: 1,
+    event_accumulator.HISTOGRAMS: 50,
 }
 
 
@@ -79,11 +80,8 @@ def ParseEventFilesSpec(logdir):
     else:
       run_name = None
       path = specification
-
-    if not os.path.isabs(path) and not gcs.IsGCSPath(path):
-      # Create absolute path out of relative one.
-      path = os.path.join(os.path.realpath('.'), path)
-
+    if not gcs.IsGCSPath(path):
+      path = os.path.realpath(path)
     files[path] = run_name
   return files
 
@@ -119,12 +117,9 @@ def StartMultiplexerReloadingThread(multiplexer, path_to_run, load_interval):
 
   Returns:
     A started `threading.Thread` that reloads the multiplexer.
-
   """
-  # Ensure the Multiplexer initializes in a loaded state before it adds runs
-  # So it can handle HTTP requests while runs are loading
-  multiplexer.Reload()
-
+  # We don't call multiplexer.Reload() here because that would make
+  # AddRunsFromDirectory block until the runs have all loaded.
   for path in path_to_run.keys():
     if gcs.IsGCSPath(path):
       gcs.CheckIsSupported()
@@ -147,10 +142,10 @@ def StartMultiplexerReloadingThread(multiplexer, path_to_run, load_interval):
 class ThreadedHTTPServer(socketserver.ThreadingMixIn,
                          BaseHTTPServer.HTTPServer):
   """A threaded HTTP server."""
-  daemon = True
+  daemon_threads = True
 
 
-def BuildServer(multiplexer, host, port):
+def BuildServer(multiplexer, host, port, logdir):
   """Sets up an HTTP server for running TensorBoard.
 
   Args:
@@ -158,9 +153,10 @@ def BuildServer(multiplexer, host, port):
       information about events.
     host: The host name.
     port: The port number to bind to, or 0 to pick one automatically.
+    logdir: The logdir argument string that tensorboard started up with.
 
   Returns:
     A `BaseHTTPServer.HTTPServer`.
   """
-  factory = functools.partial(handler.TensorboardHandler, multiplexer)
+  factory = functools.partial(handler.TensorboardHandler, multiplexer, logdir)
   return ThreadedHTTPServer((host, port), factory)

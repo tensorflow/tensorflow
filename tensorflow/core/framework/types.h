@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -158,13 +158,6 @@ struct EnumToDataType {};  // Specializations below
     typedef TYPE Type;                                  \
   }
 
-// We use Eigen's QInt implementations for our quantized int types.
-typedef Eigen::QInt8 qint8;
-typedef Eigen::QUInt8 quint8;
-typedef Eigen::QInt32 qint32;
-typedef Eigen::QInt16 qint16;
-typedef Eigen::QUInt16 quint16;
-
 MATCH_TYPE_AND_ENUM(float, DT_FLOAT);
 MATCH_TYPE_AND_ENUM(double, DT_DOUBLE);
 MATCH_TYPE_AND_ENUM(int32, DT_INT32);
@@ -187,9 +180,22 @@ MATCH_TYPE_AND_ENUM(Eigen::half, DT_HALF);
 
 #undef MATCH_TYPE_AND_ENUM
 
+// All types not specialized are marked invalid.
+template <class T>
+struct IsValidDataType {
+  static constexpr bool value = false;
+};
+
+// Extra validity checking; not part of public API.
+static_assert(IsValidDataType<int64>::value, "Incorrect impl for int64");
+static_assert(IsValidDataType<int32>::value, "Incorrect impl for int32");
+
 bool DataTypeCanUseMemcpy(DataType dt);
 
 bool DataTypeIsQuantized(DataType dt);
+
+// Is the dtype nonquantized integral?
+bool DataTypeIsInteger(DataType dt);
 
 // Returns a 0 on failure
 int DataTypeSize(DataType dt);

@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,8 @@ normal math_ops.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import re
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -56,7 +58,7 @@ def lbeta(x, name='lbeta'):
   Raises:
     ValueError:  If `x` is empty with rank one or less.
   """
-  with ops.op_scope([x], name):
+  with ops.name_scope(name, values=[x]):
     x = ops.convert_to_tensor(x, name='x')
     x = control_flow_ops.with_dependencies(
         [check_ops.assert_rank_at_least(x, 1)], x)
@@ -64,14 +66,11 @@ def lbeta(x, name='lbeta'):
     is_empty = math_ops.equal(0, array_ops.size(x))
 
     def nonempty_lbeta():
-      last_index = array_ops.size(array_ops.shape(x)) - 1
       log_prod_gamma_x = math_ops.reduce_sum(
-          math_ops.lgamma(x),
-          reduction_indices=last_index)
-      sum_x = math_ops.reduce_sum(x, reduction_indices=last_index)
+          math_ops.lgamma(x), reduction_indices=[-1])
+      sum_x = math_ops.reduce_sum(x, reduction_indices=[-1])
       log_gamma_sum_x = math_ops.lgamma(sum_x)
       result = log_prod_gamma_x - log_gamma_sum_x
-      result.set_shape(x.get_shape()[:-1])
       return result
 
     def empty_lbeta():
@@ -89,3 +88,75 @@ def lbeta(x, name='lbeta'):
         return empty_lbeta()
     else:
       return control_flow_ops.cond(is_empty, empty_lbeta, nonempty_lbeta)
+
+
+def einsum(axes, *inputs):
+  """
+  A generalized contraction between tensors of arbitrary dimension.
+
+  Like numpy.einsum.
+  """
+
+  match = re.match('([a-z,]+)->([a-z]+)', axes)
+  assert match, \
+    "Indices have incorrect format: %s" % axes
+
+  inputs = list(inputs)
+  idx_in = match.group(1).split(',')
+  idx_out = match.group(2)
+  idx_all = set(''.join(idx_in))
+
+
+  assert len(idx_in) == len(inputs), \
+    "Expected %d inputs but only got %d" % (len(idx_in), len(inputs))
+
+  # transpose inputs so axes are in alphabetical order
+  for i, (input_, axes_) in enumerate(zip(inputs, idx_in)):
+    assert input_.get_shape().ndims == len(axes_), \
+      "Input %d with axes %s has incorrect" \
+      " number of dimensions (expected %d, got %d)" % (
+        i, axes_, len(axes_), input_.get_shape().ndims
+      )
+
+    sorted_idx = sorted(axes_)
+
+    if list(axes_) != sorted_idx:
+      permuted = [axes_.find(ax) for ax in sorted_idx]
+      inputs[i] = array_ops.transpose(input_, permuted)
+      idx_in[i] = sorted_idx
+
+  missing_idx = set(idx_out).difference(idx_all)
+  assert not missing_idx, \
+    "Unknown ouput axes: %s" % missing_idx
+
+  reduction_idx = []
+  shapes = [[dim if dim else -1
+             for dim in tensor.get_shape().as_list()]
+            for tensor in inputs]
+
+  # validate shapes for broadcasting
+  for j, ax in enumerate(sorted(idx_all)):
+    dims = []
+    for i, idx in enumerate(idx_in):
+      if ax not in idx:
+        shapes[i].insert(j, 1)
+      else:
+        dim = shapes[i][j]
+        if isinstance(dim, int) and dim > 1:
+          dims.append(dim)
+
+    assert len(set(dims)) <= 1, \
+      "Dimension mismatch on axis: %s" % ax
+
+    if ax not in idx_out:
+      reduction_idx.append(j)
+
+  # reshape, multiply
+  expanded_inputs = [array_ops.reshape(input_, shape)
+                     for input_, shape in zip(inputs, shapes)]
+  expanded_output = 1
+  for input_ in expanded_inputs:
+    expanded_output *= input_
+
+  # contract
+  return math_ops.reduce_sum(expanded_output, reduction_idx)

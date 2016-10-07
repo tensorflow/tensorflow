@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,10 +30,11 @@ class _FlagValues(object):
     self.__dict__['__parsed'] = False
 
   def _parse_flags(self):
-    result, _ = _global_parser.parse_known_args()
+    result, unparsed = _global_parser.parse_known_args()
     for flag_name, val in vars(result).items():
       self.__dict__['__flags'][flag_name] = val
     self.__dict__['__parsed'] = True
+    return unparsed
 
   def __getattr__(self, name):
     """Retrieves the 'value' attribute of the flag --name."""
@@ -101,9 +102,12 @@ def DEFINE_boolean(flag_name, default_value, docstring):
                               help=docstring,
                               default=default_value,
                               type=str2bool)
+
+  # Add negated version, stay consistent with argparse with regard to
+  # dashes in flag names.
   _global_parser.add_argument('--no' + flag_name,
                               action='store_false',
-                              dest=flag_name)
+                              dest=flag_name.replace('-', '_'))
 
 
 # The internal google library defines the following alias, so we match

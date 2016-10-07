@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -82,8 +82,11 @@ void ReEncodeConsts(GraphDef* gdef) {
 
 Status GrpcSession::CreateImpl(CallOptions* call_options,
                                const GraphDef& graph) {
-  if (!handle_.empty()) {
-    return errors::InvalidArgument("A session is alive.");
+  {
+    mutex_lock l(mu_);
+    if (!handle_.empty()) {
+      return errors::InvalidArgument("A session is alive.");
+    }
   }
   CreateSessionRequest req;
   *req.mutable_config() = options_.config;
@@ -114,7 +117,12 @@ Status GrpcSession::Create(const RunOptions& run_options,
 
 Status GrpcSession::ExtendImpl(CallOptions* call_options,
                                const GraphDef& graph) {
-  if (handle_.empty()) {
+  bool handle_is_empty;
+  {
+    mutex_lock l(mu_);
+    handle_is_empty = handle_.empty();
+  }
+  if (handle_is_empty) {
     // Session was unitialized, so simply initialize the session with 'graph'.
     return Create(graph);
   }
@@ -153,6 +161,8 @@ Status GrpcSession::Run(const RunOptions& run_options,
   // Convert to proto
   RunStepRequest req;
   RunStepResponse resp;
+
+  *req.mutable_options() = run_options;
 
   for (const auto& it : inputs) {
     Tensor input_tensor = it.second;
@@ -198,6 +208,10 @@ Status GrpcSession::Run(const RunOptions& run_options,
     (*outputs)[fetch_it->second] = output;
   }
 
+  if (run_metadata) {
+    run_metadata->Swap(resp.mutable_metadata());
+  }
+
   return Status::OK();
 }
 
@@ -213,11 +227,14 @@ Status GrpcSession::Run(const std::vector<std::pair<string, Tensor>>& inputs,
 
 Status GrpcSession::RunProto(CallOptions* call_options, RunStepRequest* req,
                              RunStepResponse* resp) {
-  if (handle_.empty()) {
-    return errors::InvalidArgument("A session is not created yet....");
-  }
+  {
+    mutex_lock l(mu_);
+    if (handle_.empty()) {
+      return errors::InvalidArgument("A session is not created yet....");
+    }
 
-  req->set_session_handle(handle_);
+    req->set_session_handle(handle_);
+  }
   return master_->RunStep(call_options, req, resp);
 }
 
@@ -236,12 +253,15 @@ Status GrpcSession::PRun(const string& handle,
 }
 
 Status GrpcSession::Close() {
-  if (handle_.empty()) {
-    return errors::InvalidArgument("A session is not created yet....");
-  }
   CloseSessionRequest req;
-  req.set_session_handle(handle_);
-  handle_.clear();
+  {
+    mutex_lock l(mu_);
+    if (handle_.empty()) {
+      return errors::InvalidArgument("A session is not created yet....");
+    }
+    req.set_session_handle(handle_);
+    handle_.clear();
+  }
   CloseSessionResponse resp;
   CallOptions call_options;
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());
@@ -275,6 +295,22 @@ void GrpcSession::SetRemoteMaster(MasterInterface* master) {
   master_.reset(master);
 }
 
+// Static method.
+Status GrpcSession::Reset(const SessionOptions& options,
+                          const std::vector<string>& containers) {
+  SharedGrpcChannelPtr master_channel =
+      NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength));
+  auto master = NewGrpcMaster(master_channel);
+  ResetRequest req;
+  for (const auto& c : containers) req.add_container(c);
+  ResetResponse resp;
+  CallOptions call_options;
+  call_options.SetTimeout(options.config.operation_timeout_in_ms());
+  Status ret = master->Reset(&call_options, &req, &resp);
+  delete master;
+  return ret;
+}
+
 class GrpcSessionFactory : public SessionFactory {
  public:
   bool AcceptsOptions(const SessionOptions& options) override {
@@ -290,6 +326,12 @@ class GrpcSessionFactory : public SessionFactory {
       LOG(ERROR) << "Error during session construction: " << s.ToString();
       return nullptr;
     }
+  }
+
+  // Invokes the session specific static method to reset containers.
+  Status Reset(const SessionOptions& options,
+               const std::vector<string>& containers) override {
+    return GrpcSession::Reset(options, containers);
   }
 };
 

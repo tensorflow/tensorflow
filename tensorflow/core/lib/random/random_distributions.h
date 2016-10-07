@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 #define TENSORFLOW_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 
+#define _USE_MATH_DEFINES
+#include <cmath>
 #include <math.h>
+#undef _USE_MATH_DEFINES
+
 #include <string.h>
 #include <algorithm>
 
@@ -52,6 +56,8 @@ class UniformDistribution<Generator, Eigen::half> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -74,6 +80,8 @@ class UniformDistribution<Generator, float> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -96,6 +104,8 @@ class UniformDistribution<Generator, double> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount / 2;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -118,6 +128,8 @@ class UniformDistribution<Generator, int32> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -150,6 +162,8 @@ class UniformDistribution<Generator, int64> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount / 2;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -239,6 +253,8 @@ class NormalDistribution<Generator, Eigen::half> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 70;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -264,6 +280,8 @@ class NormalDistribution<Generator, float> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 70;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -286,6 +304,8 @@ class NormalDistribution<Generator, double> {
  public:
   // The number of elements that will be returned.
   static const int kResultElementCount = Generator::kResultElementCount / 2;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 70;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = false;
@@ -328,6 +348,8 @@ class TruncatedNormalDistribution<SingleSampleGenerator, Eigen::half> {
   // The number of elements that will be returned.
   static const int kResultElementCount =
       SingleSampleGenerator::kNativeElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 90;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = true;
@@ -369,6 +391,8 @@ class TruncatedNormalDistribution<SingleSampleGenerator, float> {
   // The number of elements that will be returned.
   static const int kResultElementCount =
       SingleSampleGenerator::kNativeElementCount;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 90;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = true;
@@ -412,6 +436,8 @@ class TruncatedNormalDistribution<SingleSampleGenerator, double> {
       (SingleSampleGenerator::kNativeElementCount > 1)
           ? SingleSampleGenerator::kNativeElementCount / 2
           : 1;
+  // Cost of generation of a single element (in cycles).
+  static const int kElementCost = 90;
   // Indicate that this distribution may take variable number of samples
   // during the runtime.
   static const bool kVariableSamplesPerOutput = true;
@@ -458,7 +484,7 @@ void BoxMullerFloat(uint32 x0, uint32 x1, float* f0, float* f1) {
   }
   const float v1 = 2.0f * M_PI * Uint32ToFloat(x1);
   const float u2 = sqrt(-2.0f * log(u1));
-#if defined(__linux)
+#if defined(__linux__)
   sincosf(v1, f0, f1);
 #else
   *f0 = sinf(v1);
@@ -484,7 +510,7 @@ void BoxMullerDouble(uint32 x0, uint32 x1, uint32 x2, uint32 x3, double* d0,
   }
   const double v1 = 2 * M_PI * Uint64ToDouble(x2, x3);
   const double u2 = sqrt(-2.0 * log(u1));
-#if defined(__linux)
+#if defined(__linux__)
   sincos(v1, d0, d1);
 #else
   *d0 = sin(v1);

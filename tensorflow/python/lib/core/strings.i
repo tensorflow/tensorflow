@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -69,8 +69,8 @@ bool _BytesToStringPiece(PyObject* obj, tensorflow::StringPiece* result) {
   $1 = &temp;
 }
 
-// C++ functions returning tensorflow::StringPiece will simply return bytes in Python,
-// or None if the StringPiece contained a NULL pointer.
+// C++ functions returning tensorflow::StringPiece will simply return bytes in
+// Python, or None if the StringPiece contained a NULL pointer.
 %typemap(out) tensorflow::StringPiece {
   if ($1.data()) {
     $result = PyBytes_FromStringAndSize($1.data(), $1.size());
@@ -79,3 +79,28 @@ bool _BytesToStringPiece(PyObject* obj, tensorflow::StringPiece* result) {
     $result = Py_None;
   }
 }
+
+// Converts a C++ string vector to a a list of Python bytes objects.
+%typemap(out) std::vector<string> {
+  const int size = $1.size();
+  auto temp_string_list = tensorflow::make_safe(PyList_New(size));
+  if (!temp_string_list) {
+    SWIG_fail;
+  }
+  tensorflow::Safe_PyObjectVector converted;
+  converted.reserve(size);
+  for (const string& op : $1) {
+    // Always treat strings as bytes, consistent with the typemap
+    // for string.
+    PyObject* py_str = PyBytes_FromStringAndSize(op.data(), op.size());
+    if (!py_str) {
+      SWIG_fail;
+    }
+    converted.emplace_back(tensorflow::make_safe(py_str));
+  }
+  for (int i = 0; i < converted.size(); ++i) {
+    PyList_SET_ITEM(temp_string_list.get(), i, converted[i].release());
+  }
+  $result = temp_string_list.release();
+}
+

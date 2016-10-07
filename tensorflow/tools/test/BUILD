@@ -80,7 +80,7 @@ tf_cc_logged_benchmark(
 
 tf_py_logged_benchmark(
     name = "rnn_op_benchmark",
-    target = "//tensorflow/python:rnn_test",
+    target = "//tensorflow/python/kernel_tests:rnn_test",
 )
 
 filegroup(
@@ -95,11 +95,10 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-# TODO(irving): Reenable once the all_opensource_files mess is resolved.
-# py_test(
-#     name = "check_futures_test",
-#     size = "small",
-#     srcs = ["check_futures_test.py"],
-#     data = ["//tensorflow:all_opensource_files"],
-#     srcs_version = "PY2AND3",
-# )
+py_test(
+    name = "check_futures_test",
+    size = "small",
+    srcs = ["check_futures_test.py"],
+    data = ["//tensorflow:all_opensource_files"],
+    srcs_version = "PY2AND3",
+)

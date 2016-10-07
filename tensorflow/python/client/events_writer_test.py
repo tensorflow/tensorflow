@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ from tensorflow.core.framework import summary_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.lib.io import tf_record
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
@@ -43,7 +44,7 @@ class PywrapeventsWriterTest(test_util.TensorFlowTestCase):
     writer.Flush()
     writer.Close()
 
-    with self.assertRaises(IOError):
+    with self.assertRaises(errors.NotFoundError):
       for r in tf_record.tf_record_iterator(filename + "DOES_NOT_EXIST"):
         self.assertTrue(False)
 

@@ -16,6 +16,7 @@ to:
 * Register the new Op in a C++ file. The Op registration is independent of the
   implementation, and describes the semantics of how the Op is invoked. For
   example, it defines the Op name, and specifies its inputs and outputs.
+  It also defines the shape function that is used for tensor shape inference.
 * Implement the Op in C++. This implementation is called a "kernel", and there
   can be multiple kernels for different architectures (e.g. CPUs, GPUs) or
   input / output types.
@@ -23,13 +24,11 @@ to:
   the Op. A default wrapper is generated from the Op registration, which can be
   used directly or added to.
 * Optionally, write a function to compute gradients for the Op.
-* Optionally, write a function that describes the input and output shapes
-  for the Op.  This allows shape inference to work with your Op.
 * Test the Op, typically in Python. If you define gradients, you can verify them with the Python [`GradientChecker`](https://www.tensorflow.org/code/tensorflow/python/kernel_tests/gradient_checker.py).
 
 [TOC]
 
-## Define the Op's interface 
+## Define the Op's interface
 
 You define the interface of an Op by registering it with the TensorFlow system.
 In the registration, you specify the name of your Op, its inputs (types and
@@ -43,14 +42,21 @@ add a call to the `REGISTER_OP` macro that defines the interface for such an Op:
 
 ```c++
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 REGISTER_OP("ZeroOut")
     .Input("to_zero: int32")
-    .Output("zeroed: int32");
+    .Output("zeroed: int32")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
 ```
 
 This `ZeroOut` Op takes one tensor `to_zero` of 32-bit integers as input, and
-outputs a tensor `zeroed` of 32-bit integers.
+outputs a tensor `zeroed` of 32-bit integers of the same shape as the input.
+For example, if the input is a Tensor of shape [10, 20], then this shape
+function specifies that the output shape is also [10, 20].
 
 > A note on naming: The name of the Op should be unique and CamelCase.  Names
 > starting with an underscore (`_`) are reserved for internal use.
@@ -90,7 +96,7 @@ class ZeroOutOp : public OpKernel {
     Tensor* output_tensor = NULL;
     OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
                                                      &output_tensor));
-    auto output = output_tensor->template flat<int32>();
+    auto output = output_tensor->flat<int32>();
 
     // Set all but the first element of the output tensor to 0.
     const int N = input.size();
@@ -139,8 +145,11 @@ to compile your Op into a dynamic library.
 ```bash
 TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
 
-g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I $TF_INC
+g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I $TF_INC -O2
 ```
+
+On Mac OS X, the additional flag "-undefined dynamic_lookup" is required when
+building the .so file.
 
 > Note on gcc version 5: gcc5 uses the new C++
 [ABI](https://gcc.gnu.org/gcc-5/changes.html#libstdcxx). The binary pip packages
@@ -168,6 +177,12 @@ Run the following command to build `zero_out.so`.
 ```bash
 $ bazel build -c opt //tensorflow/core/user_ops:zero_out.so
 ```
+
+> Note:
+Although you can create a shared library (a `.so` file) with the standard
+`cc_library` rule, we strongly recommend that you use the `tf_custom_op_library`
+macro. It adds some required dependencies, and performs checks to ensure that
+the shared library is compatible with TensorFlow's plugin loading mechanism.
 
 ## Using the Op in Python
 
@@ -229,7 +244,7 @@ Then run your test:
 $ bazel test tensorflow/python:zero_out_op_test
 ```
 
-## Validation 
+## Validation
 
 The example above assumed that the Op applied to a tensor of any shape.  What
 if it only applied to vectors?  That means adding a check to the above OpKernel
@@ -471,8 +486,8 @@ REGISTER_OP("AttrDefaultExampleForAllTypes")
 Note in particular that the values of type `type` use [the `DT_*` names
 for the types](../../resources/dims_types.md#data-types).
 
-### Polymorphism 
-#### Type Polymorphism 
+### Polymorphism
+#### Type Polymorphism
 
 For ops that can take different types as input or produce different output
 types, you can specify [an attr](#attrs) in
@@ -523,7 +538,7 @@ Your Op registration now specifies that the input's type must be `float`, or
 > REGISTER_OP("StringToNumber")
 >     .Input("string_tensor: string")
 >     .Output("output: out_type")
->     .Attr("out_type: {float, int32}");
+>     .Attr("out_type: {float, int32} = DT_FLOAT");
 >     .Doc(R"doc(
 > Converts each string in the input Tensor to the specified numeric type.
 > )doc");
@@ -611,7 +626,7 @@ REGISTER\_OP("ZeroOut")
 
 Instead of writing another `OpKernel` with redundant code as above, often you
 will be able to use a C++ template instead.  You will still have one kernel
-registration (`REGISTER\_KERNEL\_BUILDER` call) per overload.
+registration (`REGISTER_KERNEL_BUILDER` call) per overload.
 
 <code class="lang-c++"><pre>
 <b>template &lt;typename T&gt;</b>
@@ -700,7 +715,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 ```
 
-#### List Inputs and Outputs 
+#### List Inputs and Outputs
 
 In addition to being able to accept or produce different types, ops can consume
 or produce a variable number of tensors.
@@ -806,7 +821,7 @@ expressions:
   ```c++
   REGISTER_OP("BuiltInTypesExample")
       .Input("integers: int32")
-      .Input("complex_numbers: scomplex64");
+      .Input("complex_numbers: complex64");
   ```
 
 * `<attr-type>`, where `<attr-type>` is the name of an [Attr](#attrs) with type
@@ -918,7 +933,7 @@ There are several ways to preserve backwards-compatibility.
 
 5. Namespace any new Ops you create, by prefixing the Op names with something
    unique to your project. This avoids having your Op colliding with any Ops
-   that might be included in future versions of Tensorflow.
+   that might be included in future versions of TensorFlow.
 
 6. Plan ahead! Try to anticipate future uses for the Op. Some signature changes
    can't be done in a compatible way (for example, making a list of the same
@@ -937,7 +952,7 @@ new optional arguments to the end.  Generally incompatible changes may only be
 made when TensorFlow's changes major versions, and must conform to the
 [`GraphDef` version semantics](../../resources/versions.md#graphs).
 
-## GPU Support 
+## GPU Support
 
 You can implement different OpKernels and register one for CPU and another for
 GPU, just like you can [register kernels for different types](#polymorphism).
@@ -956,6 +971,14 @@ One thing to note, even when the GPU kernel version of `pad` is used, it still
 needs its `"paddings"` input in CPU memory.  To mark that inputs or outputs are
 kept on the CPU, add a `HostMemory()` call to the kernel registration, e.g.:
 
+```c++
+#define REGISTER_GPU_KERNEL(T)                         \
+  REGISTER_KERNEL_BUILDER(Name("Pad")                  \
+                              .Device(DEVICE_GPU)      \
+                              .TypeConstraint<T>("T")  \
+                              .HostMemory("paddings"), \
+                          PadOp<GPUDevice, T>)
+```
 
 ### Compiling the kernel for the GPU device
 
@@ -983,14 +1006,10 @@ cuda_op_kernel.cu.o -I $TF_INC -fPIC -lcudart
 `cuda_op_kernel.so` produced above can be loaded as usual in Python, using the
 `tf.load_op_library` function.
 
-```c++
-#define REGISTER_GPU_KERNEL(T)                         \
-  REGISTER_KERNEL_BUILDER(Name("Pad")                  \
-                              .Device(DEVICE_GPU)      \
-                              .TypeConstraint<T>("T")  \
-                              .HostMemory("paddings"), \
-                          PadOp<GPUDevice, T>)
-```
+Note that if your CUDA libraries are not installed in `/usr/local/lib64`,
+you'll need to specify the path explicitly in the second (g++) command above.
+For example, add `-L /usr/local/cuda-8.0/lib64/` if your CUDA is installed in 
+`/usr/local/cuda-8.0`.
 
 ## Implement the gradient in Python
 
@@ -1003,13 +1022,13 @@ function which computes gradients with respect to the ops' inputs given
 gradients with respect to the ops' outputs.
 
 Mathematically, if an op computes \\(y = f(x)\\) the registered gradient op
-converts gradients \\(\partial / \partial y\\) with respect to \\(y\\) into
-gradients \\(\partial / \partial x\\) with respect to \\(x\\) via the chain
-rule:
+converts gradients \\(\partial L/ \partial y\\) of loss \\(L\\) with respect to
+\\(y\\) into gradients \\(\partial L/ \partial x\\) with respect to \\(x\\) via
+the chain rule:
 
-$$\frac{\partial}{\partial x}
-    = \frac{\partial}{\partial y} \frac{\partial y}{\partial x}
-    = \frac{\partial}{\partial y} \frac{\partial f}{\partial x}.$$
+$$\frac{\partial L}{\partial x}
+    = \frac{\partial L}{\partial y} \frac{\partial y}{\partial x}
+    = \frac{\partial L}{\partial y} \frac{\partial f}{\partial x}.$$
 
 In the case of `ZeroOut`, only one entry in the input affects the output, so the
 gradient with respect to the input is a sparse "one hot" tensor.  This is
@@ -1063,80 +1082,121 @@ Details about registering gradient functions with
   integer index `i`, the gradient function would `return [x_grad, None]`.
 
 * If there is no meaningful gradient for the op at all, use
-  `ops.NoGradient("OpName")` to disable automatic differentiation.
+  `ops.NotDifferentiable("OpName")` to disable automatic differentiation.
 
 Note that at the time the gradient function is called, only the data flow graph
 of ops is available, not the tensor data itself.  Thus, all computation must be
 performed using other tensorflow ops, to be run at graph execution time.
 
-## Implement a shape function in Python
+## Shape functions in C++
 
-The TensorFlow Python API has a feature called "shape inference" that provides
+The TensorFlow API has a feature called "shape inference" that provides
 information about the shapes of tensors without having to execute the
 graph. Shape inference is supported by "shape functions" that are registered for
-each op type, and perform two roles: asserting that the shapes of the inputs are
-compatible, and specifying the shapes for the outputs. A shape function is a
-Python function that takes an
-[`Operation`](../../api_docs/python/framework.md#Operation) as input, and
-returns a list of
-[`TensorShape`](../../api_docs/python/framework.md#TensorShape) objects (one per
-output of the op). To register a shape function, apply the
-[`tf.RegisterShape` decorator](../../api_docs/python/framework.md#RegisterShape)
-to a shape function. For example, the
-[`ZeroOut` op defined above](#define-the-ops-interface) would have a shape function like
-the following:
+each op type in the C++ `REGISTER_OP` declaration, and perform two roles:
+asserting that the shapes of the inputs are compatible during graph
+construction, and specifying the shapes for the outputs.
 
-```python
-@tf.RegisterShape("ZeroOut"):
-def _zero_out_shape(op):
-  """Shape function for the ZeroOut op.
+Shape functions are defined as operations on the
+`shape_inference::InferenceContext` class. For example, in the shape function
+for ZeroOut:
 
-  This is the unconstrained version of ZeroOut, which produces an output
-  with the same shape as its input.
-  """
-  return [op.inputs[0].get_shape()]
+```c++
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
+```
+
+`c->set_output(0, c->input(0));` declares that the first output's shape should
+be set to the first input's shape. There are a number of common shape functions
+that apply to many ops, such as `shape_inference::UnchangedShape` which can be
+found in [common_shape_fns.h](https://www.tensorflow.org/code/tensorflow/core/framework/common_shape_fns.h) and used as follows:
+
+```c++
+REGISTER_OP("ZeroOut")
+    .Input("to_zero: int32")
+    .Output("zeroed: int32")
+    .SetShapeFn([](::tensorflow::shape_inference::UnchangedShape);
 ```
 
 A shape function can also constrain the shape of an input. For the version of
 [`ZeroOut` with a vector shape constraint](#validation), the shape function
 would be as follows:
 
-```python
-@tf.RegisterShape("ZeroOut"):
-def _zero_out_shape(op):
-  """Shape function for the ZeroOut op.
-
-  This is the constrained version of ZeroOut, which requires the input to
-  have rank 1 (a vector).
-  """
-  input_shape = op.inputs[0].get_shape().with_rank(1)
-  return [input_shape]
+```c++
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      ::tensorflow::shape_inference::ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &input));
+      c->set_output(0, input);
+      return Status::OK();
+    });
 ```
 
-If your op is [polymorphic with multiple inputs](#polymorphism), use the
-properties of the operation to determine the number of shapes to check:
+The `WithRank` call validates that the input shape `c->input(0)` has
+a shape with exactly one dimension (or if the input shape is unknown,
+the output shape will be a vector with one unknown dimension).
 
-```
-@tf.RegisterShape("IntListInputExample")
-def _int_list_input_example_shape(op):
-  """Shape function for the "IntListInputExample" op.
+If your op is [polymorphic with multiple inputs](#polymorphism), you can use
+members of `InferenceContext` to determine the number of shapes to check, and
+`Merge` to validate that the shapes are all compatible (alternatively, access
+attributes that indicate the lengths, with `InferenceContext::GetAttr`, which
+provides access to the attributes of the op).
 
-  All inputs and the output are matrices of the same size.
-  """
-  output_shape = tf.TensorShape(None)
-  for input in op.inputs:
-    output_shape = output_shape.merge_with(input.get_shape().with_rank(2))
-  return [output_shape]
+```c++
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
+      ::tensorflow::shape_inference::ShapeHandle input;
+      ::tensorflow::shape_inference::ShapeHandle output;
+      for (size_t i = 0; i < c->num_inputs(); ++i) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 2, &input));
+        TF_RETURN_IF_ERROR(c->Merge(output, input, &output));
+      }
+      c->set_output(0, output);
+      return Status::OK();
+    });
 ```
 
 Since shape inference is an optional feature, and the shapes of tensors may vary
 dynamically, shape functions must be robust to incomplete shape information for
-any of the inputs. The [`merge_with`](../../api_docs/python/framework.md)
-method allows the caller to assert that two shapes are the same, even if either
+any of the inputs. The `Merge` method in [`InferenceContext`](https://www.tensorflow.org/code/tensorflow/core/framework/shape_inference.h)
+allows the caller to assert that two shapes are the same, even if either
 or both of them do not have complete information. Shape functions are defined
-for all of the
-[standard Python ops](https://www.tensorflow.org/code/tensorflow/python/ops/),
-and provide many different usage examples.
+for all of the core TensorFlow ops and provide many different usage examples.
+
+The `InferenceContext` class has a number of functions that can be used to
+define shape function manipulations.  For example, you can validate that a
+particular dimension has a very specific value using `InferenceContext::Dim` and
+`InferenceContext::WithValue`; you can specify that an output dimension is the
+sum / product of two input dimensions using `InferenceContext::Add` and
+`InferenceContext::Multiply`. See the `InferenceContext` class for
+all of the various shape manipulations you can specify.
+
+If you have a complicated shape function, you should consider adding a test for
+validating that various input shape combinations produce the expected output
+shape combinations.  You can see examples of how to write these tests in some
+our
+[core ops tests](https://www.tensorflow.org/code/tensorflow/core/ops/array_ops_test.cc).
+(The syntax of `INFER_OK` and `INFER_ERROR` are a little cryptic, but try to be
+compact in representing input and output shape specifications in tests.  For
+now, see the surrounding comments in those tests to get a sense of the shape
+string specification).
+
+### Shape functions in Python
+To register a shape function in Python, apply the
+[`tf.RegisterShape` decorator](../../api_docs/python/framework.md#RegisterShape)
+to a shape function. For example, the
+[`ZeroOut` op defined above](#define-the-ops-interface) would have a shape function like
+the following:
+
+```python
+@tf.RegisterShape("ZeroOut")(common_shapes.call_cpp_shape_fn)
+```
+
+This specifies that the shape function should use the C++-implemented
+shape specfication defined in your `REGISTER_OP` declaration above.  Note
+that TensorFlow will soon make this the default, so you only need
+to define the shape function once in C++ to get shape inference for
+free in Python.
 
 [core-array_ops]:https://www.tensorflow.org/code/tensorflow/core/ops/array_ops.cc
 [python-user_ops]:https://www.tensorflow.org/code/tensorflow/python/user_ops/user_ops.py

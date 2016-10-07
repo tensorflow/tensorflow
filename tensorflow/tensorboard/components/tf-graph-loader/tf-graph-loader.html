@@ -1,3 +1,20 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 <link rel="import" href="../polymer/polymer.html">
 
 <!--
@@ -51,22 +68,22 @@ Polymer({
   },
   observers: [
     '_selectedDatasetChanged(selectedDataset, datasets)',
-    '_readAndParseMetadata(selectedDataset, selectedMetadataTag, datasets)'
+    '_readAndParseMetadata(selectedMetadataTag)'
   ],
-  _readAndParseMetadata: function(datasetIndex, metadataIndex, datasets) {
-    if (metadataIndex == -1 || datasets[datasetIndex] == null ||
-        datasets[datasetIndex].runMetadata == null ||
-        datasets[datasetIndex].runMetadata[metadataIndex] == null) {
+  _readAndParseMetadata: function(metadataIndex) {
+    if (metadataIndex == -1 || this.datasets[this.selectedDataset] == null ||
+        this.datasets[this.selectedDataset].runMetadata == null ||
+        this.datasets[this.selectedDataset].runMetadata[metadataIndex] == null) {
       this._setOutStats(null);
       return;
     }
-    var path = datasets[datasetIndex].runMetadata[metadataIndex].path;
+    var path = this.datasets[this.selectedDataset].runMetadata[metadataIndex].path;
     // Reset the progress bar to 0.
     this.set('progress', {
       value: 0,
       msg: ''
     });
-    var tracker = tf.getTracker(this);
+    var tracker = tf.graph.util.getTracker(this);
     tf.graph.parser.fetchAndParseMetadata(path, tracker)
     .then(function(stats) {
       this._setOutStats(stats);
@@ -78,7 +95,7 @@ Polymer({
       value: 0,
       msg: ''
     });
-    var tracker = tf.getTracker(this);
+    var tracker = tf.graph.util.getTracker(this);
     var hierarchyParams = {
       verifyTemplate: true,
       // If a set of numbered op nodes has at least this number of nodes
@@ -91,9 +108,14 @@ Polymer({
       seriesMap: {},
     };
     this._setOutHierarchyParams(hierarchyParams);
-    var dataTracker = tf.getSubtaskTracker(tracker, 30, 'Data');
+    var dataTracker = tf.graph.util.getSubtaskTracker(tracker, 30, 'Data');
     tf.graph.parser.fetchAndParseGraphData(path, pbTxtFile, dataTracker)
     .then(function(graph) {
+      if (!graph) {
+        throw 'The graph is empty. Make sure that the graph is passed to the ' +
+            'SummaryWriter after the graph is defined.';
+      }
+
       // Build the flat graph (consists only of Op nodes).
 
       // This is the whitelist of inputs on op types that are considered
@@ -119,12 +141,12 @@ Polymer({
         outEmbeddingTypes: ['^[a-zA-Z]+Summary$'],
         refEdges: refEdges
       };
-      var graphTracker = tf.getSubtaskTracker(tracker, 20, 'Graph');
+      var graphTracker = tf.graph.util.getSubtaskTracker(tracker, 20, 'Graph');
       return tf.graph.build(graph, buildParams, graphTracker);
     })
     .then(function(graph) {
       this._setOutGraph(graph);
-      var hierarchyTracker = tf.getSubtaskTracker(tracker, 50,
+      var hierarchyTracker = tf.graph.util.getSubtaskTracker(tracker, 50,
           'Namespace hierarchy');
       return tf.graph.hierarchy.build(graph, hierarchyParams, hierarchyTracker);
     }.bind(this))

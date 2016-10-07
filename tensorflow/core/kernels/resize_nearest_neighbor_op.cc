@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -59,11 +59,11 @@ class ResizeNearestNeighborOp : public OpKernel {
 
     for (int b = 0; b < st.batch_size; ++b) {
       for (int y = 0; y < st.out_height; ++y) {
-        const int in_y =
+        const int64 in_y =
             std::min(static_cast<int64>(floorf(y * st.height_scale)),
                      (st.in_height - 1));
         for (int x = 0; x < st.out_width; ++x) {
-          const int in_x =
+          const int64 in_x =
               std::min(static_cast<int64>(floorf(x * st.width_scale)),
                        (st.in_width - 1));
           for (int c = 0; c < st.channels; ++c) {
@@ -126,31 +126,18 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
     typename TTypes<T, 4>::Tensor output_data = output->tensor<T, 4>();
 
     const float height_scale =
-        (align_corners_ && in_height > 1)
-            ? (out_height - 1) / static_cast<float>(in_height - 1)
-            : out_height / static_cast<float>(in_height);
+        CalculateResizeScale(out_height, in_height, align_corners_);
     const float width_scale =
-        (align_corners_ && in_width > 1)
-            ? (out_width - 1) / static_cast<float>(in_width - 1)
-            : out_width / static_cast<float>(in_width);
-
-    for (int c = 0; c < channels; ++c) {
-      for (int y = 0; y < out_height; ++y) {
-        for (int x = 0; x < out_width; ++x) {
-          for (int b = 0; b < batch_size; ++b) {
-            output_data(b, y, x, c) = T(0);
-          }
-        }
-      }
-    }
+        CalculateResizeScale(out_width, in_width, align_corners_);
+    output_data.setZero();
 
     for (int c = 0; c < channels; ++c) {
       for (int y = 0; y < in_height; ++y) {
-        const int out_y = std::min(static_cast<int64>(floorf(y * height_scale)),
-                                   (out_height - 1));
+        const int64 out_y = std::min(
+            static_cast<int64>(floorf(y * height_scale)), (out_height - 1));
 
         for (int x = 0; x < in_width; ++x) {
-          const int out_x = std::min(
+          const int64 out_x = std::min(
               static_cast<int64>(floorf(x * width_scale)), (out_width - 1));
 
           for (int b = 0; b < batch_size; ++b) {
@@ -193,49 +180,14 @@ class ResizeNearestNeighborGPUOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input.shape().DebugString()));
-    const Tensor& shape_t = context->input(1);
-    OP_REQUIRES(context, shape_t.dims() == 1,
-                errors::InvalidArgument("shape_t must be 1-dimensional",
-                                        shape_t.shape().DebugString()));
-    OP_REQUIRES(context, shape_t.NumElements() == 2,
-                errors::InvalidArgument("shape_t must have two elements",
-                                        shape_t.shape().DebugString()));
-
-    auto sizes = shape_t.vec<int32>();
-    OP_REQUIRES(context, sizes(0) > 0 && sizes(1) > 0,
-                errors::InvalidArgument("shape_t's elements must be positive"));
-
-    // Initialize shape to the batch size of the input, then add
-    // the rest of the dimensions
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(
-        context, context->allocate_output(0, TensorShape({input.dim_size(0), sizes(0),
-                                                          sizes(1), input.dim_size(3)}),
-                                          &output));
-
-    const int64 batch_size = input.dim_size(0);
-    const int64 in_height = input.dim_size(1);
-    const int64 in_width = input.dim_size(2);
-    const int64 channels = input.dim_size(3);
-    const int64 out_height = output->dim_size(1);
-    const int64 out_width = output->dim_size(2);
-
-    const float height_scale =
-        (align_corners_ && out_height > 1)
-            ? (in_height - 1) / static_cast<float>(out_height - 1)
-            : in_height / static_cast<float>(out_height);
-    const float width_scale =
-        (align_corners_ && out_width > 1)
-            ? (in_width - 1) / static_cast<float>(out_width - 1)
-            : in_width / static_cast<float>(out_width);
+    ImageResizerState st(align_corners_);
+    st.ValidateAndCreateOutput(context, input);
+    if (!context->status().ok()) return;
 
     bool status = ResizeNearestNeighbor<T>(
-        input.flat<T>().data(), batch_size, in_height,
-        in_width, channels, out_height, out_width,
-        height_scale, width_scale, output->flat<T>().data(),
+        input.flat<T>().data(), st.batch_size, st.in_height, st.in_width,
+        st.channels, st.out_height, st.out_width, st.height_scale,
+        st.width_scale, st.output->flat<T>().data(),
         context->eigen_gpu_device());
 
     if (!status) {
@@ -303,13 +255,9 @@ class ResizeNearestNeighborGPUOpGrad : public OpKernel {
     const int64 out_width = output->dim_size(2);
 
     const float height_scale =
-        (align_corners_ && in_height > 1)
-            ? (out_height - 1) / static_cast<float>(in_height - 1)
-            : out_height / static_cast<float>(in_height);
+        CalculateResizeScale(out_height, in_height, align_corners_);
     const float width_scale =
-        (align_corners_ && in_width > 1)
-            ? (out_width - 1) / static_cast<float>(in_width - 1)
-            : out_width / static_cast<float>(in_width);
+        CalculateResizeScale(out_width, in_width, align_corners_);
 
     bool status = ResizeNearestNeighborBackward(
         input.flat<T>().data(), batch_size, in_height,

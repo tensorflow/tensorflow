@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,6 +35,18 @@ class UniqueTest(tf.test.TestCase):
     for i in range(len(x)):
       self.assertEqual(x[i], tf_y[tf_idx[i]])
 
+  def testString(self):
+    indx = np.random.randint(65, high=122, size=7000)
+    x = [chr(i) for i in indx]
+    with self.test_session() as sess:
+      y, idx = tf.unique(x)
+      tf_y, tf_idx = sess.run([y, idx])
+
+    self.assertEqual(len(x), len(tf_idx))
+    self.assertEqual(len(tf_y), len(np.unique(x)))
+    for i in range(len(x)):
+      self.assertEqual(x[i], tf_y[tf_idx[i]].decode('ascii'))
+
 
 class UniqueWithCountsTest(tf.test.TestCase):
 
@@ -51,6 +63,22 @@ class UniqueWithCountsTest(tf.test.TestCase):
     for value, count in zip(tf_y, tf_count):
       self.assertEqual(count, np.sum(x == value))
 
+  def testString(self):
+    indx = np.random.randint(65, high=122, size=7000)
+    x = [chr(i) for i in indx]
 
-if __name__ == "__main__":
+    with self.test_session() as sess:
+      y, idx, count = tf.unique_with_counts(x)
+      tf_y, tf_idx, tf_count = sess.run([y, idx, count])
+
+    self.assertEqual(len(x), len(tf_idx))
+    self.assertEqual(len(tf_y), len(np.unique(x)))
+    for i in range(len(x)):
+      self.assertEqual(x[i], tf_y[tf_idx[i]].decode('ascii'))
+    for value, count in zip(tf_y, tf_count):
+      v = [1 if x[i] == value.decode('ascii') else 0 for i in range(7000)]
+      self.assertEqual(count, sum(v))
+
+
+if __name__ == '__main__':
   tf.test.main()

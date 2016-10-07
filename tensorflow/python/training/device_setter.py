@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import device as pydev
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
 
@@ -73,14 +73,14 @@ class _ReplicaDeviceChooser(object):
     """
     if not self._merge_devices and op.device:
       return op.device
-    current_device = pydev.from_string(op.device or "")
-    spec = pydev.Device()
+    current_device = pydev.DeviceSpec.from_string(op.device or "")
+    spec = pydev.DeviceSpec()
     if self._ps_tasks and self._ps_device:
-      node_def = op if isinstance(op, graph_pb2.NodeDef) else op.node_def
+      node_def = op if isinstance(op, node_def_pb2.NodeDef) else op.node_def
       if node_def.op in self._ps_ops:
         device_string = "%s/task:%d" % (self._ps_device, self._next_task())
         if self._merge_devices:
-          spec = pydev.from_string(device_string)
+          spec = pydev.DeviceSpec.from_string(device_string)
           spec.merge_from(current_device)
           return spec.to_string()
         else:
@@ -88,7 +88,7 @@ class _ReplicaDeviceChooser(object):
     if self._worker_device:
       if not self._merge_devices:
         return self._worker_device
-      spec = pydev.from_string(self._worker_device)
+      spec = pydev.DeviceSpec.from_string(self._worker_device)
 
     if not self._merge_devices:
       return ""
@@ -150,7 +150,7 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
     else:
       cluster_spec = server_lib.ClusterSpec(cluster).as_dict()
     # Get ps_job_name from ps_device by striping "/job:".
-    ps_job_name = ps_device.lstrip("/job:")
+    ps_job_name = pydev.DeviceSpec.from_string(ps_device).job
     if ps_job_name not in cluster_spec or cluster_spec[ps_job_name] is None:
       return None
     ps_tasks = len(cluster_spec[ps_job_name])

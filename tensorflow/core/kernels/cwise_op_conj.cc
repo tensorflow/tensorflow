@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER_KERNEL_BUILDER(Name("Conj").Device(DEVICE_CPU),
-                        UnaryOp<CPUDevice, functor::conj<complex64>>);
+
+REGISTER2(UnaryOp, CPU, "Conj", functor::conj, complex64, complex128);
 #if GOOGLE_CUDA
-// REGISTER_KERNEL_BUILDER(Name("Conj").Device(DEVICE_GPU),
-//                         UnaryOp<GPUDevice, functor::conj<complex64>>);
+REGISTER_KERNEL_BUILDER(Name("Conj").Device(DEVICE_GPU).TypeConstraint<complex64>("T"),
+                        UnaryOp<GPUDevice, functor::conj<complex64>>);
+REGISTER_KERNEL_BUILDER(Name("Conj").Device(DEVICE_GPU).TypeConstraint<complex128>("T"),
+                        UnaryOp<GPUDevice, functor::conj<complex128>>);
 #endif
 }  // namespace tensorflow

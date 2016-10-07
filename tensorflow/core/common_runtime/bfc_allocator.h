@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -121,7 +121,8 @@ class BFCAllocator : public VisitableAllocator {
 
     bool in_use() const { return allocation_id != -1; }
 
-    string DebugString(BFCAllocator* a, bool recurse) {
+    string DebugString(BFCAllocator* a,
+                       bool recurse) NO_THREAD_SAFETY_ANALYSIS {
       string dbg;
       strings::StrAppend(&dbg, "  Size: ", strings::HumanReadableNumBytes(size),
                          " | Requested Size: ",
@@ -148,7 +149,8 @@ class BFCAllocator : public VisitableAllocator {
       explicit ChunkComparator(BFCAllocator* allocator)
           : allocator_(allocator) {}
       // Sort first by size and then use pointer address as a tie breaker.
-      bool operator()(const ChunkHandle ha, const ChunkHandle hb) const {
+      bool operator()(const ChunkHandle ha,
+                      const ChunkHandle hb) const NO_THREAD_SAFETY_ANALYSIS {
         const Chunk* a = allocator_->ChunkFromHandle(ha);
         const Chunk* b = allocator_->ChunkFromHandle(hb);
         if (a->size != b->size) {

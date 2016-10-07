@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.platform import gfile
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 
@@ -52,6 +52,7 @@ class SummaryWriter(object):
   @@add_event
   @@add_graph
   @@add_run_metadata
+  @@get_logdir
 
   @@flush
   @@close
@@ -103,6 +104,7 @@ class SummaryWriter(object):
     self._event_queue = six.moves.queue.Queue(max_queue)
     self._ev_writer = pywrap_tensorflow.EventsWriter(
         compat.as_bytes(os.path.join(self._logdir, "events")))
+    self._closed = False
     self._worker = _EventLoggerThread(self._event_queue, self._ev_writer,
                                       flush_secs)
     # For storing used tags for session.run() outputs.
@@ -111,6 +113,21 @@ class SummaryWriter(object):
     if graph is not None or graph_def is not None:
       # Calling it with both graph and graph_def for backward compatibility.
       self.add_graph(graph=graph, graph_def=graph_def)
+
+  def get_logdir(self):
+    """Returns the directory where event file will be written."""
+    return self._logdir
+
+  def reopen(self):
+    """Reopens the summary writer.
+
+    Can be called after `close()` to add more events in the same directory.
+    The events will go into a new events file.
+
+    Does nothing if the summary writer was not closed.
+    """
+    if self._closed:
+      self._closed = False
 
   def add_summary(self, summary, global_step=None):
     """Adds a `Summary` protocol buffer to the event file.
@@ -142,7 +159,7 @@ class SummaryWriter(object):
   def add_session_log(self, session_log, global_step=None):
     """Adds a `SessionLog` protocol buffer to the event file.
 
-    This method wraps the provided session in an `Event` procotol buffer
+    This method wraps the provided session in an `Event` protocol buffer
     and adds it to the event file.
 
     Args:
@@ -161,7 +178,8 @@ class SummaryWriter(object):
     Args:
       event: An `Event` protocol buffer.
     """
-    self._event_queue.put(event)
+    if not self._closed:
+      self._event_queue.put(event)
 
   def _add_graph_def(self, graph_def, global_step=None):
     graph_bytes = graph_def.SerializeToString()
@@ -265,6 +283,7 @@ class SummaryWriter(object):
     """
     self.flush()
     self._ev_writer.Close()
+    self._closed = True
 
 
 class _EventLoggerThread(threading.Thread):
@@ -343,3 +362,37 @@ def summary_iterator(path):
   """
   for r in tf_record.tf_record_iterator(path):
     yield event_pb2.Event.FromString(r)
+
+
+class SummaryWriterCache(object):
+  """Cache for summary writers.
+
+  This class caches summary writers, one per directory.
+  """
+  # Cache, keyed by directory.
+  _cache = {}
+
+  # Lock protecting _SUMMARY_WRITERS.
+  _lock = threading.RLock()
+
+  @staticmethod
+  def clear():
+    """Clear cached summary writers. Currently only used for unit tests."""
+    with SummaryWriterCache._lock:
+      SummaryWriterCache._cache = {}
+
+  @staticmethod
+  def get(logdir):
+    """Returns the SummaryWriter for the specified directory.
+
+    Args:
+      logdir: str, name of the directory.
+
+    Returns:
+      A `SummaryWriter`.
+    """
+    with SummaryWriterCache._lock:
+      if logdir not in SummaryWriterCache._cache:
+        SummaryWriterCache._cache[logdir] = SummaryWriter(
+            logdir, graph=ops.get_default_graph())
+      return SummaryWriterCache._cache[logdir]

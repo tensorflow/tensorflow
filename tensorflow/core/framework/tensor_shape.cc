@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,13 +33,14 @@ static void AppendTo(const TensorShape& s, gtl::InlinedVector<int64, 8>* vals) {
 }
 
 void TensorShape::CheckDimsEqual(int NDIMS) const {
-  CHECK_EQ(NDIMS, dims()) << "Asking for tensor of " << NDIMS
-                          << " for a tensor of " << dims() << " dimensions";
+  CHECK_EQ(NDIMS, dims()) << "Asking for tensor of " << NDIMS << "dimensions"
+                          << " from a tensor of " << dims() << " dimensions";
 }
 
 void TensorShape::CheckDimsAtLeast(int NDIMS) const {
   CHECK_GE(NDIMS, dims()) << "Asking for tensor of at least " << NDIMS
-                          << " for a tensor of " << dims() << " dimensions";
+                          << " dimensions from a tensor of " << dims()
+                          << " dimensions";
 }
 
 bool TensorShape::IsValid(const TensorShapeProto& proto) {
@@ -345,12 +346,15 @@ bool TensorShapeUtils::StartsWith(const TensorShape& shape,
 }
 
 template <typename T>
-static inline Status MakeShapeHelper(const T* dims, int n, TensorShape* out) {
+static inline Status MakeShapeHelper(const T* dims, int64 n, TensorShape* out) {
   *out = TensorShape();
   if (n > TensorShape::MaxDimensions()) {
     return errors::InvalidArgument("Too many dimensions");
   }
-  for (int i = 0; i < n; ++i) {
+  if (n < 0) {
+    return errors::InvalidArgument("Negative number of dimensions ", n);
+  }
+  for (int64 i = 0; i < n; ++i) {
     const T dim = internal::SubtleMustCopy(dims[i]);
     if (dim >= 0) {
       out->AddDim(dim);
@@ -361,9 +365,14 @@ static inline Status MakeShapeHelper(const T* dims, int n, TensorShape* out) {
   return Status::OK();
 }
 
-#define MAKE_SHAPE(T)                                                          \
-  Status TensorShapeUtils::MakeShape(const T* dims, int n, TensorShape* out) { \
-    return MakeShapeHelper(dims, n, out);                                      \
+#define MAKE_SHAPE(T)                                          \
+  Status TensorShapeUtils::MakeShape(const T* dims, int64 n,   \
+                                     TensorShape* out) {       \
+    return MakeShapeHelper(dims, n, out);                      \
+  }                                                            \
+  Status TensorShapeUtils::MakeShape(gtl::ArraySlice<T> shape, \
+                                     TensorShape* out) {       \
+    return MakeShapeHelper(shape.data(), shape.size(), out);   \
   }
 MAKE_SHAPE(int32)
 MAKE_SHAPE(int64)

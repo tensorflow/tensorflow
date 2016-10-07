@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -287,11 +287,31 @@ static void BM_ScatterAddInt64(int iters, int embedding_size) {
   BM_ScatterHelper<int64>(iters, embedding_size, "ScatterAdd");
 }
 
+static void BM_ScatterMulInt32(int iters, int embedding_size) {
+  BM_ScatterHelper<int32>(iters, embedding_size, "ScatterMul");
+}
+static void BM_ScatterMulInt64(int iters, int embedding_size) {
+  BM_ScatterHelper<int64>(iters, embedding_size, "ScatterMul");
+}
+
+static void BM_ScatterDivInt32(int iters, int embedding_size) {
+  BM_ScatterHelper<int32>(iters, embedding_size, "ScatterDiv");
+}
+static void BM_ScatterDivInt64(int iters, int embedding_size) {
+  BM_ScatterHelper<int64>(iters, embedding_size, "ScatterDiv");
+}
+
 BENCHMARK(BM_ScatterUpdateInt32)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
 BENCHMARK(BM_ScatterUpdateInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
 
 BENCHMARK(BM_ScatterAddInt32)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
 BENCHMARK(BM_ScatterAddInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
+
+BENCHMARK(BM_ScatterMulInt32)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
+BENCHMARK(BM_ScatterMulInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
+
+BENCHMARK(BM_ScatterDivInt32)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
+BENCHMARK(BM_ScatterDivInt64)->Arg(1)->Arg(10)->Arg(64)->Arg(256)->Arg(1024);
 
 }  // namespace
 }  // namespace tensorflow

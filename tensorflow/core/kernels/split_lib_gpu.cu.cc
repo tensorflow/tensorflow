@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/cuda_device_array_gpu.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
@@ -46,9 +47,12 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
 namespace {
 
 template <typename T>
-__global__ void SplitOpKernel(const T* input, int32 num_split,
-                              int32 prefix_dim_size, int32 split_dim_size,
-                              int32 suffix_dim_size, T** output_ptrs) {
+__global__ void SplitOpKernel(const T* input, int32 prefix_dim_size,
+                              int32 split_dim_size, int32 suffix_dim_size,
+                              CudaDeviceArrayStruct<T*> output_ptr_data) {
+  const int32 num_split = output_ptr_data.size;
+  T** output_ptrs = GetCudaDeviceArrayOnDevice(&output_ptr_data);
+
   eigen_assert(blockDim.y == 1);
   eigen_assert(blockDim.z == 1);
   eigen_assert(split_dim_size % num_split == 0);
@@ -79,16 +83,16 @@ __global__ void SplitOpKernel(const T* input, int32 num_split,
 
 template <typename T>
 struct SplitOpGPULaunch {
-  void Run(const Eigen::GpuDevice& d, const T* input, int32 num_split,
-           int32 prefix_dim_size, int32 split_dim_size, int32 suffix_dim_size,
-           T** output_ptrs) {
+  void Run(const Eigen::GpuDevice& d, const T* input, int32 prefix_dim_size,
+           int32 split_dim_size, int32 suffix_dim_size,
+           const CudaDeviceArrayStruct<T*>& output_ptr_data) {
     CudaLaunchConfig config = GetCudaLaunchConfig(
         prefix_dim_size * split_dim_size * suffix_dim_size, d);
 
     SplitOpKernel<
         T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        input, num_split, prefix_dim_size, split_dim_size, suffix_dim_size,
-        static_cast<T**>(output_ptrs));
+        input, prefix_dim_size, split_dim_size, suffix_dim_size,
+        output_ptr_data);
   }
 };
 

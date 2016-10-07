@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ from __future__ import print_function
 import random
 import re
 import time
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
@@ -45,8 +44,7 @@ class FIFOQueueTest(tf.test.TestCase):
 
   def testMultiQueueConstructor(self):
     with tf.Graph().as_default():
-      q = tf.FIFOQueue(5, (tf.int32, tf.float32),
-                                  shared_name="foo", name="Q")
+      q = tf.FIFOQueue(5, (tf.int32, tf.float32), shared_name="foo", name="Q")
     self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
     self.assertEquals(tf.string_ref, q.queue_ref.dtype)
     self.assertProtoEquals("""
@@ -91,6 +89,12 @@ class FIFOQueueTest(tf.test.TestCase):
       enqueue_op = q.enqueue((10.0,))
       enqueue_op.run()
 
+  def testEnqueueHalf(self):
+    with self.test_session():
+      q = tf.FIFOQueue(10, tf.float16)
+      enqueue_op = q.enqueue((10.0,))
+      enqueue_op.run()
+
   def testEnqueueWithShape(self):
     with self.test_session():
       q = tf.FIFOQueue(10, tf.float32, shapes=(3, 2))
@@ -106,6 +110,14 @@ class FIFOQueueTest(tf.test.TestCase):
                                   shapes=[(), (2,)])
       q.enqueue_many([[1, 2, 3, 4], [[1, 1], [2, 2], [3, 3], [4, 4]]]).run()
       self.assertEqual(4, q.size().eval())
+
+  def testEnqueueDictWithoutNames(self):
+    with self.test_session():
+      q = tf.FIFOQueue(10, tf.float32)
+      with self.assertRaisesRegexp(ValueError, "must have names"):
+        q.enqueue({"a": 12.0})
+      with self.assertRaisesRegexp(ValueError, "must have names"):
+        q.enqueue_many({"a": [12.0, 13.0]})
 
   def testParallelEnqueue(self):
     with self.test_session() as sess:
@@ -156,6 +168,20 @@ class FIFOQueueTest(tf.test.TestCase):
   def testDequeue(self):
     with self.test_session():
       q = tf.FIFOQueue(10, tf.float32)
+      elems = [10.0, 20.0, 30.0]
+      enqueue_ops = [q.enqueue((x,)) for x in elems]
+      dequeued_t = q.dequeue()
+
+      for enqueue_op in enqueue_ops:
+        enqueue_op.run()
+
+      for i in xrange(len(elems)):
+        vals = dequeued_t.eval()
+        self.assertEqual([elems[i]], vals)
+
+  def testDequeueHalf(self):
+    with self.test_session():
+      q = tf.FIFOQueue(10, tf.float16)
       elems = [10.0, 20.0, 30.0]
       enqueue_ops = [q.enqueue((x,)) for x in elems]
       dequeued_t = q.dequeue()
@@ -266,6 +292,16 @@ class FIFOQueueTest(tf.test.TestCase):
       enqueue_op.run()
       self.assertEqual([], dequeued_t.eval().tolist())
 
+  def testEmptyDequeueUpTo(self):
+    with self.test_session():
+      q = tf.FIFOQueue(10, tf.float32, shapes=())
+      enqueue_op = q.enqueue((10.0,))
+      dequeued_t = q.dequeue_up_to(0)
+
+      self.assertEqual([], dequeued_t.eval().tolist())
+      enqueue_op.run()
+      self.assertEqual([], dequeued_t.eval().tolist())
+
   def testEmptyDequeueManyWithNoShape(self):
     with self.test_session():
       q = tf.FIFOQueue(10, tf.float32)
@@ -301,6 +337,18 @@ class FIFOQueueTest(tf.test.TestCase):
       self.assertAllEqual(elems[0:4], dequeued_t.eval())
       self.assertAllEqual(elems[4:8], dequeued_t.eval())
 
+  def testDequeueUpToNoBlocking(self):
+    with self.test_session():
+      q = tf.FIFOQueue(10, tf.float32, ())
+      elems = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
+      enqueue_op = q.enqueue_many((elems,))
+      dequeued_t = q.dequeue_up_to(4)
+
+      enqueue_op.run()
+
+      self.assertAllEqual(elems[0:4], dequeued_t.eval())
+      self.assertAllEqual(elems[4:8], dequeued_t.eval())
+
   def testMultiDequeueMany(self):
     with self.test_session() as sess:
       q = tf.FIFOQueue(10, (tf.float32, tf.int32),
@@ -330,6 +378,29 @@ class FIFOQueueTest(tf.test.TestCase):
       self.assertAllEqual(int_elems[8], int_val)
       self.assertEqual(float_val.shape, dequeued_single_t[0].get_shape())
       self.assertEqual(int_val.shape, dequeued_single_t[1].get_shape())
+
+  def testMultiDequeueUpToNoBlocking(self):
+    with self.test_session() as sess:
+      q = tf.FIFOQueue(10, (tf.float32, tf.int32),
+                       shapes=((), (2,)))
+      float_elems = [
+          10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
+      int_elems = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10],
+                   [11, 12], [13, 14], [15, 16], [17, 18], [19, 20]]
+      enqueue_op = q.enqueue_many((float_elems, int_elems))
+      dequeued_t = q.dequeue_up_to(4)
+
+      enqueue_op.run()
+
+      float_val, int_val = sess.run(dequeued_t)
+      self.assertAllEqual(float_elems[0:4], float_val)
+      self.assertAllEqual(int_elems[0:4], int_val)
+      self.assertEqual([None], dequeued_t[0].get_shape().as_list())
+      self.assertEqual([None, 2], dequeued_t[1].get_shape().as_list())
+
+      float_val, int_val = sess.run(dequeued_t)
+      self.assertAllEqual(float_elems[4:8], float_val)
+      self.assertAllEqual(int_elems[4:8], int_val)
 
   def testHighDimension(self):
     with self.test_session():
@@ -431,6 +502,29 @@ class FIFOQueueTest(tf.test.TestCase):
       enqueue_op.run()
 
       # Dequeue 100 items in parallel on 10 threads.
+      dequeued_elems = []
+
+      def dequeue():
+        dequeued_elems.extend(sess.run(dequeued_t))
+      threads = [self.checkedThread(target=dequeue) for _ in range(10)]
+      for thread in threads:
+        thread.start()
+      for thread in threads:
+        thread.join()
+      self.assertItemsEqual(elems, dequeued_elems)
+
+  def testParallelDequeueUpTo(self):
+    with self.test_session() as sess:
+      q = tf.FIFOQueue(1000, tf.float32, shapes=())
+      elems = [10.0 * x for x in range(1000)]
+      enqueue_op = q.enqueue_many((elems,))
+      close_op = q.close()
+      dequeued_t = q.dequeue_up_to(101)
+
+      enqueue_op.run()
+      close_op.run()
+
+      # Dequeue up to 101 items in parallel on 10 threads, from closed queue.
       dequeued_elems = []
 
       def dequeue():
@@ -569,6 +663,33 @@ class FIFOQueueTest(tf.test.TestCase):
 
       self.assertAllEqual(elems, dequeued_elems)
 
+  def testBlockingDequeueUpTo(self):
+    with self.test_session() as sess:
+      q = tf.FIFOQueue(10, tf.float32, ())
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      dequeued_t = q.dequeue_up_to(4)
+
+      dequeued_elems = []
+
+      def enqueue():
+        # The enqueue_op should run after the dequeue op has blocked.
+        # TODO(mrry): Figure out how to do this without sleeping.
+        time.sleep(0.1)
+        sess.run(enqueue_op)
+
+      def dequeue():
+        dequeued_elems.extend(sess.run(dequeued_t).tolist())
+
+      enqueue_thread = self.checkedThread(target=enqueue)
+      dequeue_thread = self.checkedThread(target=dequeue)
+      enqueue_thread.start()
+      dequeue_thread.start()
+      enqueue_thread.join()
+      dequeue_thread.join()
+
+      self.assertAllEqual(elems, dequeued_elems)
+
   def testDequeueManyWithTensorParameter(self):
     with self.test_session():
       # Define a first queue that contains integer counts.
@@ -683,6 +804,53 @@ class FIFOQueueTest(tf.test.TestCase):
       close_op.run()
       dequeue_thread.join()
 
+  def testBlockingDequeueManyButNotAllFromClosedQueue(self):
+    with self.test_session() as sess:
+      q = tf.FIFOQueue(10, tf.float32, ())
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      close_op = q.close()
+      dequeued_t = q.dequeue_many(3)
+
+      enqueue_op.run()
+
+      def dequeue():
+        self.assertAllEqual(elems[:3], sess.run(dequeued_t))
+        # Expect the operation to fail due to the queue being closed.
+        with self.assertRaisesRegexp(tf.errors.OutOfRangeError,
+                                     "is closed and has insufficient"):
+          sess.run(dequeued_t)
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+      # The close_op should run after the dequeue_thread has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+      close_op.run()
+      dequeue_thread.join()
+
+  def testDequeueUpToFromClosedQueueReturnsRemainder(self):
+    with self.test_session() as sess:
+      q = tf.FIFOQueue(10, tf.float32, ())
+      elems = [10.0, 20.0, 30.0, 40.0]
+      enqueue_op = q.enqueue_many((elems,))
+      close_op = q.close()
+      dequeued_t = q.dequeue_up_to(3)
+
+      enqueue_op.run()
+
+      def dequeue():
+        self.assertAllEqual(elems[:3], sess.run(dequeued_t))
+        self.assertAllEqual(elems[3:], sess.run(dequeued_t))
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+      # The close_op should run after the dequeue_thread has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+      close_op.run()
+      dequeue_thread.join()
+
   def testEnqueueManyLargerThanCapacityWithConcurrentDequeueMany(self):
     with self.test_session() as sess:
       q = tf.FIFOQueue(4, tf.float32, ())
@@ -761,7 +929,27 @@ class FIFOQueueTest(tf.test.TestCase):
       def dequeue():
         # Expect the operation to fail due to the queue being closed.
         with self.assertRaisesRegexp(tf.errors.OutOfRangeError,
-                                      "is closed and has insufficient"):
+                                     "is closed and has insufficient"):
+          sess.run(dequeued_t)
+
+      dequeue_thread = self.checkedThread(target=dequeue)
+      dequeue_thread.start()
+      # The close_op should run after the dequeue_thread has blocked.
+      # TODO(mrry): Figure out how to do this without sleeping.
+      time.sleep(0.1)
+      close_op.run()
+      dequeue_thread.join()
+
+  def testBlockingDequeueUpToFromClosedEmptyQueue(self):
+    with self.test_session() as sess:
+      q = tf.FIFOQueue(10, tf.float32, ())
+      close_op = q.close()
+      dequeued_t = q.dequeue_up_to(4)
+
+      def dequeue():
+        # Expect the operation to fail due to the queue being closed.
+        with self.assertRaisesRegexp(tf.errors.OutOfRangeError,
+                                     "is closed and has insufficient"):
           sess.run(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=dequeue)
@@ -782,7 +970,7 @@ class FIFOQueueTest(tf.test.TestCase):
       close_op.run()
 
       # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(tf.errors.AbortedError, "is closed"):
+      with self.assertRaisesRegexp(tf.errors.CancelledError, "is closed"):
         enqueue_op.run()
 
   def testEnqueueManyToClosedQueue(self):
@@ -796,7 +984,7 @@ class FIFOQueueTest(tf.test.TestCase):
       close_op.run()
 
       # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(tf.errors.AbortedError, "is closed"):
+      with self.assertRaisesRegexp(tf.errors.CancelledError, "is closed"):
         enqueue_op.run()
 
   def testBlockingEnqueueToFullQueue(self):
@@ -1125,7 +1313,7 @@ class FIFOQueueTest(tf.test.TestCase):
   def testDtypes(self):
     with self.test_session() as sess:
       dtypes = [tf.float32, tf.float64, tf.int32, tf.uint8, tf.int16, tf.int8,
-                tf.int64, tf.bool, tf.complex64]
+                tf.int64, tf.bool, tf.complex64, tf.complex128]
       shape = (32, 4, 128)
       q = tf.FIFOQueue(32, dtypes, [shape[1:]] * len(dtypes))
 
@@ -1135,7 +1323,7 @@ class FIFOQueueTest(tf.test.TestCase):
         np_array = np.random.randint(-10, 10, shape)
         if dtype == tf.bool:
           np_array = np_array > 0
-        elif dtype == tf.complex64:
+        elif dtype in (tf.complex64, tf.complex128):
           np_array = np.sqrt(np_array.astype(np_dtype))
         else:
           np_array = np_array.astype(np_dtype)
@@ -1160,12 +1348,162 @@ class FIFOQueueTest(tf.test.TestCase):
     self.assertEqual([b"loc:@q"], dequeued_t.op.colocation_groups())
 
 
+class FIFOQueueDictTest(tf.test.TestCase):
+
+  def testConstructor(self):
+    with tf.Graph().as_default():
+      q = tf.FIFOQueue(5, (tf.int32, tf.float32), names=("i", "j"),
+                       shared_name="foo", name="Q")
+    self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
+    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
+    self.assertProtoEquals("""
+      name:'Q' op:'FIFOQueue'
+      attr { key: 'component_types' value { list {
+        type: DT_INT32 type : DT_FLOAT
+      } } }
+      attr { key: 'shapes' value { list {} } }
+      attr { key: 'capacity' value { i: 5 } }
+      attr { key: 'container' value { s: '' } }
+      attr { key: 'shared_name' value { s: 'foo' } }
+      """, q.queue_ref.op.node_def)
+    self.assertEqual(["i", "j"], q.names)
+
+  def testConstructorWithShapes(self):
+    with tf.Graph().as_default():
+      q = tf.FIFOQueue(5, (tf.int32, tf.float32), names=("i", "f"),
+                       shapes=(tf.TensorShape([1, 1, 2, 3]),
+                               tf.TensorShape([5, 8])), name="Q")
+    self.assertTrue(isinstance(q.queue_ref, tf.Tensor))
+    self.assertEquals(tf.string_ref, q.queue_ref.dtype)
+    self.assertProtoEquals("""
+      name:'Q' op:'FIFOQueue'
+      attr { key: 'component_types' value { list {
+        type: DT_INT32 type : DT_FLOAT
+      } } }
+      attr { key: 'shapes' value { list {
+        shape { dim { size: 1 }
+                dim { size: 1 }
+                dim { size: 2 }
+                dim { size: 3 } }
+        shape { dim { size: 5 }
+                dim { size: 8 } }
+      } } }
+      attr { key: 'capacity' value { i: 5 } }
+      attr { key: 'container' value { s: '' } }
+      attr { key: 'shared_name' value { s: '' } }
+      """, q.queue_ref.op.node_def)
+    self.assertEqual(["i", "f"], q.names)
+
+  def testEnqueueDequeueOneComponent(self):
+    with self.test_session() as sess:
+      q = tf.FIFOQueue(10, tf.float32, shapes=((),), names="f")
+      # Verify that enqueue() checks that when using names we must enqueue a
+      # dictionary.
+      with self.assertRaisesRegexp(ValueError, "enqueue a dictionary"):
+        enqueue_op = q.enqueue(10.0)
+      with self.assertRaisesRegexp(ValueError, "enqueue a dictionary"):
+        enqueue_op = q.enqueue((10.0,))
+      # The dictionary keys must match the queue component names.
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op = q.enqueue({})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op = q.enqueue({"x": 12})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op = q.enqueue({"f": 10.0, "s": "aa"})
+      enqueue_op = q.enqueue({"f": 10.0})
+      enqueue_op2 = q.enqueue({"f": 20.0})
+      enqueue_op3 = q.enqueue({"f": 30.0})
+      # Verify that enqueue_many() checks that when using names we must enqueue
+      # a dictionary.
+      with self.assertRaisesRegexp(ValueError, "enqueue a dictionary"):
+        enqueue_op4 = q.enqueue_many([40.0, 50.0])
+      # The dictionary keys must match the queue component names.
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op4 = q.enqueue_many({})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op4 = q.enqueue_many({"x": 12})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op4 = q.enqueue_many({"f": [40.0, 50.0], "s": ["aa", "bb"]})
+      enqueue_op4 = q.enqueue_many({"f": [40.0, 50.0]})
+      dequeue = q.dequeue()
+      dequeue_2 = q.dequeue_many(2)
+      sess.run(enqueue_op)
+      sess.run(enqueue_op2)
+      sess.run(enqueue_op3)
+      sess.run(enqueue_op4)
+      f = sess.run(dequeue["f"])
+      self.assertEqual(10.0, f)
+      f = sess.run(dequeue_2["f"])
+      self.assertEqual([20.0, 30.0], list(f))
+      f = sess.run(dequeue_2["f"])
+      self.assertEqual([40.0, 50.0], list(f))
+
+  def testEnqueueDequeueMultipleComponent(self):
+    with self.test_session() as sess:
+      q = tf.FIFOQueue(10, (tf.float32, tf.int32, tf.string),
+                       shapes=((), (), ()), names=("f", "i", "s"))
+      # Verify that enqueue() checks that when using names we must enqueue a
+      # dictionary.
+      with self.assertRaisesRegexp(ValueError, "enqueue a dictionary"):
+        enqueue_op = q.enqueue((10.0, 123, "aa"))
+      # The dictionary keys must match the queue component names.
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op = q.enqueue({})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op = q.enqueue({"x": 10.0})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op = q.enqueue({"i": 12, "s": "aa"})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op = q.enqueue({"i": 123, "s": "aa", "f": 10.0, "x": 10.0})
+      enqueue_op = q.enqueue({"i": 123, "s": "aa", "f": 10.0})
+      enqueue_op2 = q.enqueue({"i": 124, "s": "bb", "f": 20.0})
+      enqueue_op3 = q.enqueue({"i": 125, "s": "cc", "f": 30.0})
+      # Verify that enqueue_many() checks that when using names we must enqueue
+      # a dictionary.
+      with self.assertRaisesRegexp(ValueError, "enqueue a dictionary"):
+        enqueue_op4 = q.enqueue_many(([40.0, 50.0], [126, 127], ["dd", "ee"]))
+      # The dictionary keys must match the queue component names.
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op4 = q.enqueue_many({})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op4 = q.enqueue_many({"x": [10.0, 20.0]})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op4 = q.enqueue_many({"i": [12, 12], "s": ["aa", "bb"]})
+      with self.assertRaisesRegexp(ValueError, "match names of Queue"):
+        enqueue_op4 = q.enqueue_many({"f": [40.0, 50.0], "i": [126, 127],
+                                      "s": ["dd", "ee"], "x": [1, 2]})
+      enqueue_op4 = q.enqueue_many({"f": [40.0, 50.0], "i": [126, 127],
+                                    "s": ["dd", "ee"]})
+      dequeue = q.dequeue()
+      dequeue_2 = q.dequeue_many(2)
+      sess.run(enqueue_op)
+      sess.run(enqueue_op2)
+      sess.run(enqueue_op3)
+      sess.run(enqueue_op4)
+      i, f, s = sess.run([dequeue["i"], dequeue["f"], dequeue["s"]])
+      self.assertEqual(123, i)
+      self.assertEqual(10.0, f)
+      self.assertEqual(tf.compat.as_bytes("aa"), s)
+      i, f, s = sess.run([dequeue_2["i"], dequeue_2["f"], dequeue_2["s"]])
+      self.assertEqual([124, 125], list(i))
+      self.assertTrue([20.0, 30.0], list(f))
+      self.assertTrue([tf.compat.as_bytes("bb"), tf.compat.as_bytes("cc")],
+                      list(s))
+      i, f, s = sess.run([dequeue_2["i"], dequeue_2["f"], dequeue_2["s"]])
+      self.assertEqual([126, 127], list(i))
+      self.assertTrue([40.0, 50.0], list(f))
+      self.assertTrue([tf.compat.as_bytes("dd"), tf.compat.as_bytes("ee")],
+                      list(s))
+
+
 class FIFOQueueWithTimeoutTest(tf.test.TestCase):
 
   def testDequeueWithTimeout(self):
     with self.test_session(
         config=tf.ConfigProto(operation_timeout_in_ms=20)) as sess:
       q = tf.FIFOQueue(10, tf.float32)
+      self.assertEqual(tf.compat.as_bytes(""),
+                       q.queue_ref.op.get_attr("container"))
       dequeued_t = q.dequeue()
 
       # Intentionally do not run any enqueue_ops so that dequeue will block
@@ -1173,6 +1511,62 @@ class FIFOQueueWithTimeoutTest(tf.test.TestCase):
       with self.assertRaisesRegexp(tf.errors.DeadlineExceededError,
                                    "Timed out waiting for notification"):
         sess.run(dequeued_t)
+
+
+class QueueContainerTest(tf.test.TestCase):
+
+  def testContainer(self):
+    with tf.Graph().as_default():
+      with tf.container("test"):
+        q = tf.FIFOQueue(10, tf.float32)
+    self.assertEqual(tf.compat.as_bytes("test"),
+                     q.queue_ref.op.get_attr("container"))
+
+
+class FIFOQueueBenchmark(tf.test.Benchmark):
+  """Benchmark FIFOQueue operations."""
+
+  def _build_graph(self):
+    """Builds a graph that enqueues and dequeues a single float.
+
+    Returns:
+      A tuple with the graph init tensor and graph output tensor.
+    """
+    q = tf.FIFOQueue(1, "float")
+    init = q.enqueue(1.0)
+    x = q.dequeue()
+    q_inc = q.enqueue(x + 1)
+    return init, q_inc
+
+  # TODO(suharshs): Add benchmarks for:
+  #   - different capacities of the queue
+  #   - various sizes of tensors
+  #   - enqueue_many, dequeue_many
+  def _run(self, num_iters):
+    """Benchmarks enqueueing and dequeueing from a FIFOQueue.
+
+    Args:
+      num_iters: The number of iterations to run.
+
+    Returns:
+      The duration of the run in seconds.
+    """
+    graph = tf.Graph()
+    with graph.as_default():
+      init, output = self._build_graph()
+    with tf.Session(graph=graph) as session:
+      init.run()
+      _ = session.run(output)  # warm up.
+      start_time = time.time()
+      for _ in range(num_iters):
+        _ = session.run(output)
+      duration = time.time() - start_time
+    print("%f secs per enqueue-dequeue" % (duration / num_iters))
+
+    self.report_benchmark(
+        name="fifo_queue", iters=num_iters, wall_time=duration / num_iters)
+
+    return duration
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,7 +31,8 @@ class IoOpsTest(tf.test.TestCase):
     cases = ['', 'Some contents', 'Неки садржаји на српском']
     for contents in cases:
       contents = tf.compat.as_bytes(contents)
-      temp = tempfile.NamedTemporaryFile(prefix='ReadFileTest')
+      temp = tempfile.NamedTemporaryFile(
+          prefix='ReadFileTest', dir=self.get_temp_dir())
       open(temp.name, 'wb').write(contents)
       with self.test_session():
         read = tf.read_file(temp.name)
@@ -45,7 +46,8 @@ class IoOpsTest(tf.test.TestCase):
   def testMatchingFiles(self):
     cases = ['ABcDEF.GH', 'ABzDEF.GH', 'ABasdfjklDEF.GH', 'AB3DEF.GH',
              'AB4DEF.GH', 'ABDEF.GH', 'XYZ']
-    files = [tempfile.NamedTemporaryFile(prefix=c) for c in cases]
+    files = [tempfile.NamedTemporaryFile(
+        prefix=c, dir=self.get_temp_dir()) for c in cases]
 
     with self.test_session():
       # Test exact match without wildcards.

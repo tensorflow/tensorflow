@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -186,6 +186,49 @@ class SummaryWriterTestCase(tf.test.TestCase):
       sw = tf.train.SummaryWriter(test_dir, "string instead of graph object")
       sw.close()
 
+  def testCloseAndReopen(self):
+    test_dir = self._CleanTestDir("close_and_reopen")
+    sw = tf.train.SummaryWriter(test_dir)
+    sw.add_session_log(tf.SessionLog(status=SessionLog.START), 1)
+    sw.close()
+    # Sleep at least one second to make sure we get a new event file name.
+    time.sleep(1.2)
+    sw.reopen()
+    sw.add_session_log(tf.SessionLog(status=SessionLog.START), 2)
+    sw.close()
+
+    # We should now have 2 events files.
+    event_paths = sorted(glob.glob(os.path.join(test_dir, "event*")))
+    self.assertEquals(2, len(event_paths))
+
+    # Check the first file contents.
+    rr = tf.train.summary_iterator(event_paths[0])
+    # The first event should list the file_version.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals("brain.Event:2", ev.file_version)
+    # The next event should be the START message.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals(1, ev.step)
+    self.assertEquals(SessionLog.START, ev.session_log.status)
+    # We should be done.
+    self.assertRaises(StopIteration, lambda: next(rr))
+
+    # Check the second file contents.
+    rr = tf.train.summary_iterator(event_paths[1])
+    # The first event should list the file_version.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals("brain.Event:2", ev.file_version)
+    # The next event should be the START message.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals(2, ev.step)
+    self.assertEquals(SessionLog.START, ev.session_log.status)
+    # We should be done.
+    self.assertRaises(StopIteration, lambda: next(rr))
+
   # Checks that values returned from session Run() calls are added correctly to
   # summaries.  These are numpy types so we need to check they fit in the
   # protocol buffers correctly.
@@ -231,6 +274,53 @@ class SummaryWriterTestCase(tf.test.TestCase):
 
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
+
+
+class SummaryWriterCacheTest(tf.test.TestCase):
+  """SummaryWriterCache tests."""
+
+  def _test_dir(self, test_name):
+    """Create an empty dir to use for tests.
+
+    Args:
+      test_name: Name of the test.
+
+    Returns:
+      Absolute path to the test directory.
+    """
+    test_dir = os.path.join(self.get_temp_dir(), test_name)
+    if os.path.isdir(test_dir):
+      for f in glob.glob("%s/*" % test_dir):
+        os.remove(f)
+    else:
+      os.makedirs(test_dir)
+    return test_dir
+
+  def test_cache(self):
+    with tf.Graph().as_default():
+      dir1 = self._test_dir("test_cache_1")
+      dir2 = self._test_dir("test_cache_2")
+      sw1 = tf.train.SummaryWriterCache.get(dir1)
+      sw2 = tf.train.SummaryWriterCache.get(dir2)
+      sw3 = tf.train.SummaryWriterCache.get(dir1)
+      self.assertEqual(sw1, sw3)
+      self.assertFalse(sw1 == sw2)
+      sw1.close()
+      sw2.close()
+      events1 = glob.glob(os.path.join(dir1, "event*"))
+      self.assertTrue(events1)
+      events2 = glob.glob(os.path.join(dir2, "event*"))
+      self.assertTrue(events2)
+      events3 = glob.glob(os.path.join("nowriter", "event*"))
+      self.assertFalse(events3)
+
+  def test_clear(self):
+    with tf.Graph().as_default():
+      dir1 = self._test_dir("test_clear")
+      sw1 = tf.train.SummaryWriterCache.get(dir1)
+      tf.train.SummaryWriterCache.clear()
+      sw2 = tf.train.SummaryWriterCache.get(dir1)
+      self.assertFalse(sw1 == sw2)
 
 
 if __name__ == "__main__":

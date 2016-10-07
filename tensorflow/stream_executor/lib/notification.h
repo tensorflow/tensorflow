@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_NOTIFICATION_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_NOTIFICATION_H_
 
-#include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/platform/notification.h"
 
 namespace perftools {
 namespace gputools {

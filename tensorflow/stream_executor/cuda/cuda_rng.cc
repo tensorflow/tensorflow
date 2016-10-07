@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/rng.h"
-#include "third_party/gpus/cuda/include/curand.h"
+#include "cuda/include/curand.h"
 
 // Formats curandStatus_t to output prettified values into a log stream.
 std::ostream &operator<<(std::ostream &in, const curandStatus_t &status) {

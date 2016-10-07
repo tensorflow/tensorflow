@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,10 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/coding.h"
 
-#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
 namespace core {
+
+void EncodeFixed16(char* buf, uint16 value) {
+  if (port::kLittleEndian) {
+    memcpy(buf, &value, sizeof(value));
+  } else {
+    buf[0] = value & 0xff;
+    buf[1] = (value >> 8) & 0xff;
+  }
+}
 
 void EncodeFixed32(char* buf, uint32 value) {
   if (port::kLittleEndian) {
@@ -44,6 +53,12 @@ void EncodeFixed64(char* buf, uint64 value) {
     buf[6] = (value >> 48) & 0xff;
     buf[7] = (value >> 56) & 0xff;
   }
+}
+
+void PutFixed16(string* dst, uint16 value) {
+  char buf[sizeof(value)];
+  EncodeFixed16(buf, value);
+  dst->append(buf, sizeof(buf));
 }
 
 void PutFixed32(string* dst, uint32 value) {

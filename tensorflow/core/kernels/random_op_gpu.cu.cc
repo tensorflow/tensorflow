@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,8 +23,10 @@ limitations under the License.
 #include <stdio.h>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
+#include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -125,20 +127,18 @@ __global__ void __launch_bounds__(1024)
 
 // Partial specialization for GPU
 template <class Distribution>
-struct FillPhiloxRandom<GPUDevice, Distribution> {
-  typedef typename Distribution::ResultElementType T;
-  typedef GPUDevice Device;
-  void operator()(OpKernelContext*, const Device& d, random::PhiloxRandom gen,
-                  T* data, int64 size, Distribution dist) {
-    const int32 block_size = d.maxCudaThreadsPerBlock();
-    const int32 num_blocks =
-        (d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor()) /
-        block_size;
+void FillPhiloxRandom<GPUDevice, Distribution>::operator()(
+    OpKernelContext*, const GPUDevice& d, random::PhiloxRandom gen,
+    typename Distribution::ResultElementType* data, int64 size,
+    Distribution dist) {
+  const int32 block_size = d.maxCudaThreadsPerBlock();
+  const int32 num_blocks =
+      (d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor()) /
+      block_size;
 
-    FillPhiloxRandomKernelLaunch<
-        Distribution><<<num_blocks, block_size, 0, d.stream()>>>(gen, data,
-                                                                 size, dist);
-  }
+  FillPhiloxRandomKernelLaunch<
+      Distribution><<<num_blocks, block_size, 0, d.stream()>>>(gen, data, size,
+                                                               dist);
 };
 
 // Explicit instantiation of the GPU distributions functors

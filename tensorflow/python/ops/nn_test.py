@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,144 +13,16 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tests for tensorflow.ops.nn."""
+"""Tests for miscellaneous functionality in tensorflow.ops.nn."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import math
 
-import tensorflow as tf
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
-
-from tensorflow.python.ops import gen_nn_ops
-
-exp = math.exp
-log = math.log
-
-
-class SigmoidCrossEntropyWithLogitsTest(tf.test.TestCase):
-
-  def _SigmoidCrossEntropyWithLogits(self, logits, targets):
-    assert len(logits) == len(targets)
-    pred = [1 / (1 + exp(-x)) for x in logits]
-    eps = 0.0001
-    pred = [min(max(p, eps), 1 - eps) for p in pred]
-    return [-z * log(y) - (1 - z) * log(1 - y) for y, z in zip(pred, targets)]
-
-  def _Inputs(self, x=None, y=None, dtype=tf.float64, sizes=None):
-    x = [-100, -2, -2, 0, 2, 2, 2, 100] if x is None else x
-    y = [0, 0, 1, 0, 0, 1, 0.5, 1] if y is None else y
-    assert len(x) == len(y)
-    sizes = sizes if sizes else [len(x)]
-    logits = tf.constant(x, shape=sizes, dtype=dtype, name="logits")
-    targets = tf.constant(y, shape=sizes, dtype=dtype, name="targets")
-    losses = np.array(self._SigmoidCrossEntropyWithLogits(x, y)).reshape(*sizes)
-    return logits, targets, losses
-
-  def testConstructionNamed(self):
-    with self.test_session():
-      logits, targets, _ = self._Inputs()
-      loss = tf.nn.sigmoid_cross_entropy_with_logits(logits,
-                                                     targets,
-                                                     name="mylogistic")
-    self.assertEqual("mylogistic", loss.op.name)
-
-  def testLogisticOutput(self):
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu):
-        logits, targets, losses = self._Inputs(dtype=tf.float32)
-        loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, targets)
-        np_loss = np.array(losses).astype(np.float32)
-        tf_loss = loss.eval()
-      self.assertAllClose(np_loss, tf_loss, atol=0.001)
-
-  def testLogisticOutputMultiDim(self):
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu):
-        logits, targets, losses = self._Inputs(dtype=tf.float32,
-                                               sizes=[2, 2, 2])
-        loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, targets)
-        np_loss = np.array(losses).astype(np.float32)
-        tf_loss = loss.eval()
-      self.assertAllClose(np_loss, tf_loss, atol=0.001)
-
-  def testGradient(self):
-    sizes = [4, 2]
-    with self.test_session():
-      logits, targets, _ = self._Inputs(sizes=sizes)
-      loss = tf.nn.sigmoid_cross_entropy_with_logits(logits, targets)
-      err = tf.test.compute_gradient_error(logits, sizes, loss, sizes)
-    print("logistic loss gradient err = ", err)
-    self.assertLess(err, 1e-7)
-
-  def testShapeError(self):
-    with self.assertRaisesRegexp(ValueError, "must have the same shape"):
-      tf.nn.sigmoid_cross_entropy_with_logits([[2, 1]], [1, 2, 3])
-
-
-class WeightedCrossEntropyTest(tf.test.TestCase):
-
-  def _WeightedCrossEntropy(self, logits, targets, pos_coeff):
-    assert len(logits) == len(targets)
-    pred = [1 / (1 + exp(-x)) for x in logits]
-    eps = 0.0001
-    pred = [min(max(p, eps), 1 - eps) for p in pred]
-    return [-z * pos_coeff * log(y) - (1 - z) * log(1 - y)
-            for y, z in zip(pred, targets)]
-
-  def _Inputs(self, x=None, y=None, q=3.0, dtype=tf.float64, sizes=None):
-    x = [-100, -2, -2, 0, 2, 2, 2, 100] if x is None else x
-    y = [0, 0, 1, 0, 0, 1, 0.5, 1] if y is None else y
-    assert len(x) == len(y)
-    sizes = sizes if sizes else [len(x)]
-    logits = tf.constant(x, shape=sizes, dtype=dtype, name="logits")
-    targets = tf.constant(y, shape=sizes, dtype=dtype, name="targets")
-    losses = np.array(self._WeightedCrossEntropy(x, y, q)).reshape(*sizes)
-    return logits, targets, q, losses
-
-  def testConstructionNamed(self):
-    with self.test_session():
-      logits, targets, pos_weight, _ = self._Inputs()
-      loss = tf.nn.weighted_cross_entropy_with_logits(logits, targets,
-                                                      pos_weight, name="mybce")
-    self.assertEqual("mybce", loss.op.name)
-
-  def testOutput(self):
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu):
-        logits, targets, pos_weight, losses = self._Inputs(dtype=tf.float32)
-        loss = tf.nn.weighted_cross_entropy_with_logits(logits, targets,
-                                                        pos_weight)
-        np_loss = np.array(losses).astype(np.float32)
-        tf_loss = loss.eval()
-      self.assertAllClose(np_loss, tf_loss, atol=0.001)
-
-  def testOutputMultiDim(self):
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu):
-        logits, targets, pos_weight, losses = self._Inputs(dtype=tf.float32,
-                                                           sizes=[2, 2, 2])
-        loss = tf.nn.weighted_cross_entropy_with_logits(logits, targets,
-                                                        pos_weight)
-        np_loss = np.array(losses).astype(np.float32)
-        tf_loss = loss.eval()
-      self.assertAllClose(np_loss, tf_loss, atol=0.001)
-
-  def testGradient(self):
-    sizes = [4, 2]
-    with self.test_session():
-      logits, targets, pos_weight, _ = self._Inputs(sizes=sizes)
-      loss = tf.nn.weighted_cross_entropy_with_logits(logits, targets,
-                                                      pos_weight)
-      err = tf.test.compute_gradient_error(logits, sizes, loss, sizes)
-    print("logistic loss gradient err = ", err)
-    self.assertLess(err, 1e-7)
-
-  def testShapeError(self):
-    with self.assertRaisesRegexp(ValueError, "must have the same shape"):
-      tf.nn.weighted_cross_entropy_with_logits([[2, 1]], [1, 2, 3], 2.0)
+import tensorflow as tf
 
 
 class ZeroFractionTest(tf.test.TestCase):
@@ -211,279 +83,86 @@ class SoftmaxTest(tf.test.TestCase):
     self.assertLess(err, eps)
 
 
-class AtrousConv2DTest(tf.test.TestCase):
+class LogPoissonLossTest(tf.test.TestCase):
 
-  def _upsample_filters(self, filters, rate):
-    """Upsamples the filters by a factor of rate along the spatial dimensions.
+  def _log_poisson_loss(self, x, z, compute_full_loss=False):
+    lpl = np.exp(x) - z * x
+    if compute_full_loss:
+      stirling_approx = z * np.log(z) - z + 0.5 * np.log(2. * np.pi * z)
+      lpl += np.ma.masked_array(stirling_approx, mask=(z <= 1)).filled(0.)
+    return lpl
 
-    Args:
-      filters: [h, w, in_depth, out_depth]. Original filters.
-      rate: An int, specifying the upsampling rate.
-
-    Returns:
-      filters_up: [h_up, w_up, in_depth, out_depth]. Upsampled filters with
-        h_up = h + (h - 1) * (rate - 1)
-        w_up = w + (w - 1) * (rate - 1)
-        containing (rate - 1) zeros between consecutive filter values along
-        the filters' spatial dimensions.
-    """
-    if rate == 1:
-      return filters
-    # [h, w, in_depth, out_depth] -> [in_depth, out_depth, h, w]
-    filters_up = np.transpose(filters, [2, 3, 0, 1])
-    ker = np.zeros([rate, rate])
-    ker[0, 0] = 1
-    filters_up = np.kron(filters_up, ker)[:, :, :-(rate-1), :-(rate-1)]
-    # [in_depth, out_depth, h_up, w_up] -> [h_up, w_up, in_depth, out_depth]
-    filters_up = np.transpose(filters_up, [2, 3, 0, 1])
-    self.assertEqual(np.sum(filters), np.sum(filters_up))
-    return filters_up
-
-  def testAtrousConv2DForward(self):
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu):
-        # Input: [batch, height, width, input_depth]
-        height = 15
-        for width in [15, 16]:  # Test both odd and even width.
-          x_shape = [2, height, width, 2]
-          x = np.arange(np.prod(x_shape), dtype=np.float32).reshape(x_shape)
-
-          # Filter: [kernel_height, kernel_width, input_depth, output_depth]
-          for kernel_height in range(1, 5):
-            for kernel_width in range(1, 5):
-              f_shape = [kernel_height, kernel_width, 2, 2]
-              f = np.arange(np.prod(f_shape), dtype=np.float32).reshape(f_shape)
-
-              for rate in range(1, 5):
-                f_up = self._upsample_filters(f, rate)
-
-                for padding in ["SAME", "VALID"]:
-                  y1 = tf.nn.atrous_conv2d(x, f, rate, padding=padding)
-                  y2 = tf.nn.conv2d(x, f_up, strides=[1, 1, 1, 1],
-                                    padding=padding)
-                  self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-2,
-                                      atol=1e-2)
-
-  def testAtrousSequence(self):
-    """Tests optimization of sequence of atrous convolutions.
-
-    Verifies that a sequence of `atrous_conv2d` operations with identical `rate`
-    parameters, 'SAME' `padding`, and `filters` with odd heights/ widths:
-
-        net = atrous_conv2d(net, filters1, rate, padding="SAME")
-        net = atrous_conv2d(net, filters2, rate, padding="SAME")
-        ...
-        net = atrous_conv2d(net, filtersK, rate, padding="SAME")
-
-    is equivalent to:
-
-        pad = ...  # padding so that the input dims are multiples of rate
-        net = space_to_batch(net, paddings=pad, block_size=rate)
-        net = conv2d(net, filters1, strides=[1, 1, 1, 1], padding="SAME")
-        net = conv2d(net, filters2, strides=[1, 1, 1, 1], padding="SAME")
-        ...
-        net = conv2d(net, filtersK, strides=[1, 1, 1, 1], padding="SAME")
-        net = batch_to_space(net, crops=pad, block_size=rate)
-    """
-    padding = "SAME"  # The padding needs to be "SAME"
-    np.random.seed(1)  # Make it reproducible.
-
+  def testLogPoissonLoss(self):
+    x_shape = [5, 10]
+    x_np = np.random.randn(*x_shape).astype(np.float32)
+    z_np = np.random.randint(0, 5, size=x_shape).astype(np.float32)
+    y_np = self._log_poisson_loss(x_np, z_np, compute_full_loss=False)
+    y_np_stirling = self._log_poisson_loss(x_np, z_np, compute_full_loss=True)
     with self.test_session():
-      # Input: [batch, height, width, input_depth]
-      for height in range(15, 17):
-        for width in range(15, 17):
-          x_shape = [3, height, width, 2]
-          x = np.random.random_sample(x_shape).astype(np.float32)
-
-          for kernel in [1, 3, 5]:  # The kernel size needs to be odd.
-            # Filter: [kernel_height, kernel_width, input_depth, output_depth]
-            f_shape = [kernel, kernel, 2, 2]
-            f = 1e-2 * np.random.random_sample(f_shape).astype(np.float32)
-
-            for rate in range(2, 4):
-              # y1: three atrous_conv2d in a row.
-              y1 = tf.nn.atrous_conv2d(x, f, rate, padding=padding)
-              y1 = tf.nn.atrous_conv2d(y1, f, rate, padding=padding)
-              y1 = tf.nn.atrous_conv2d(y1, f, rate, padding=padding)
-              # y2: space_to_batch, three conv2d in a row, batch_to_space
-              pad_bottom = 0 if height % rate == 0 else rate - height % rate
-              pad_right = 0 if width % rate == 0 else rate - width % rate
-              pad = [[0, pad_bottom], [0, pad_right]]
-              y2 = tf.space_to_batch(x, paddings=pad, block_size=rate)
-              y2 = tf.nn.conv2d(y2, f, strides=[1, 1, 1, 1], padding=padding)
-              y2 = tf.nn.conv2d(y2, f, strides=[1, 1, 1, 1], padding=padding)
-              y2 = tf.nn.conv2d(y2, f, strides=[1, 1, 1, 1], padding=padding)
-              y2 = tf.batch_to_space(y2, crops=pad, block_size=rate)
-              self.assertAllClose(y1.eval(), y2.eval(), rtol=1e-2, atol=1e-2)
+      y_tf = tf.nn.log_poisson_loss(x_np, z_np, compute_full_loss=False)
+      y_tf_stirling = tf.nn.log_poisson_loss(x_np, z_np, compute_full_loss=True)
+      y_tf_np = y_tf.eval()
+      y_tf_np_stirling = y_tf_stirling.eval()
+    eps = 1e-3
+    self.assertAllClose(y_tf_np, y_np, eps)
+    self.assertAllClose(y_tf_np_stirling, y_np_stirling, eps)
 
   def testGradient(self):
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu):
-        # Input: [batch, height, width, input_depth]
-        x_shape = [2, 5, 6, 2]
-        # Filter: [kernel_height, kernel_width, input_depth, output_depth]
-        f_shape = [3, 3, 2, 2]
-        # Output: [batch, height, width, output_depth]
-        y_shape = [2, 5, 6, 2]
-
-        np.random.seed(1)  # Make it reproducible.
-        x_val = np.random.random_sample(x_shape).astype(np.float32)
-        f_val = np.random.random_sample(f_shape).astype(np.float32)
-        x = tf.constant(x_val, name="x", dtype=tf.float32)
-        f = tf.constant(f_val, name="f", dtype=tf.float32)
-
-        for rate in range(1, 4):
-          output = tf.nn.atrous_conv2d(x, f, rate=rate, padding="SAME")
-          err = tf.test.compute_gradient_error(
-              [x, f], [x_shape, f_shape], output, y_shape)
-          print("atrous_conv2d gradient err = %g " % err)
-          err_tolerance = 1e-3
-          self.assertLess(err, err_tolerance)
-
-
-class Conv2DTransposeTest(tf.test.TestCase):
-
-  def testConv2DTransposeSingleStride(self):
+    x_shape = [5, 10]
+    x_np = np.random.randn(*x_shape).astype(np.float64)
+    z_np = np.random.randint(0, 5, size=x_shape).astype(np.float64)
     with self.test_session():
-      strides = [1, 1, 1, 1]
+      x_tf = tf.constant(x_np)
+      y_tf = tf.nn.log_poisson_loss(x_tf, z_np, compute_full_loss=False)
+      y_tf_stirling = tf.nn.log_poisson_loss(x_tf, z_np, compute_full_loss=True)
+      err = tf.test.compute_gradient_error(x_tf, x_shape, y_tf, x_shape)
+      err_stirling = tf.test.compute_gradient_error(x_tf, x_shape,
+                                                    y_tf_stirling, x_shape)
+    eps = 1e-6
+    self.assertLess(err, eps)
+    self.assertLess(err_stirling, eps)
 
-      # Input, output: [batch, height, width, depth]
-      x_shape = [2, 6, 4, 3]
-      y_shape = [2, 6, 4, 2]
 
-      # Filter: [kernel_height, kernel_width, output_depth, input_depth]
-      f_shape = [3, 3, 2, 3]
+class LogSoftmaxTest(tf.test.TestCase):
 
-      x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
-      f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
-      output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
-                                      padding="SAME")
-      value = output.eval()
+  def _log_softmax(self, x):
+    assert len(x.shape) == 2
+    m = x.max(1)[:, np.newaxis]
+    u = x - m
+    return u - np.log(np.sum(np.exp(u), 1, keepdims=True))
 
-      # We count the number of cells being added at the locations in the output.
-      # At the center, #cells=kernel_height * kernel_width
-      # At the corners, #cells=ceil(kernel_height/2) * ceil(kernel_width/2)
-      # At the borders, #cells=ceil(kernel_height/2)*kernel_width or
-      #                        kernel_height * ceil(kernel_width/2)
-
-      for n in xrange(x_shape[0]):
-        for k in xrange(f_shape[2]):
-          for w in xrange(y_shape[2]):
-            for h in xrange(y_shape[1]):
-              target = 4 * 3.0
-              h_in = h > 0 and h < y_shape[1] - 1
-              w_in = w > 0 and w < y_shape[2] - 1
-              if h_in and w_in:
-                target += 5 * 3.0
-              elif h_in or w_in:
-                target += 2 * 3.0
-              self.assertAllClose(target, value[n, h, w, k])
-
-  def testConv2DTransposeSame(self):
+  def testLogSoftmax(self):
+    x_shape = [5, 10]
+    x_np = np.random.randn(*x_shape).astype(np.float32)
+    y_np = self._log_softmax(x_np)
     with self.test_session():
-      strides = [1, 2, 2, 1]
-
-      # Input, output: [batch, height, width, depth]
-      x_shape = [2, 6, 4, 3]
-      y_shape = [2, 12, 8, 2]
-
-      # Filter: [kernel_height, kernel_width, output_depth, input_depth]
-      f_shape = [3, 3, 2, 3]
-
-      x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
-      f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
-      output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
-                                      padding="SAME")
-      value = output.eval()
-
-      for n in xrange(x_shape[0]):
-        for k in xrange(f_shape[2]):
-          for w in xrange(y_shape[2]):
-            for h in xrange(y_shape[1]):
-              target = 3.0
-              # We add a case for locations divisible by the stride.
-              h_in = h % strides[1] == 0 and h > 0 and h < y_shape[1] - 1
-              w_in = w % strides[2] == 0 and w > 0 and w < y_shape[2] - 1
-              if h_in and w_in:
-                target += 9.0
-              elif h_in or w_in:
-                target += 3.0
-              self.assertAllClose(target, value[n, h, w, k])
-
-  def testConv2DTransposeValid(self):
-    with self.test_session():
-      strides = [1, 2, 2, 1]
-
-      # Input, output: [batch, height, width, depth]
-      x_shape = [2, 6, 4, 3]
-      y_shape = [2, 13, 9, 2]
-
-      # Filter: [kernel_height, kernel_width, output_depth, input_depth]
-      f_shape = [3, 3, 2, 3]
-
-      x = tf.constant(1.0, shape=x_shape, name="x", dtype=tf.float32)
-      f = tf.constant(1.0, shape=f_shape, name="filter", dtype=tf.float32)
-      output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
-                                      padding="VALID")
-      value = output.eval()
-
-      cache_values = np.zeros(y_shape, dtype=np.float32)
-
-      # The amount of padding added
-      pad = 1
-
-      for n in xrange(x_shape[0]):
-        for k in xrange(f_shape[2]):
-          for w in xrange(pad, y_shape[2] - pad):
-            for h in xrange(pad, y_shape[1] - pad):
-              target = 3.0
-              # We add a case for locations divisible by the stride.
-              h_in = h % strides[
-                  1] == 0 and h > pad and h < y_shape[1] - 1 - pad
-              w_in = w % strides[
-                  2] == 0 and w > pad and w < y_shape[2] - 1 - pad
-              if h_in and w_in:
-                target += 9.0
-              elif h_in or w_in:
-                target += 3.0
-              cache_values[n, h, w, k] = target
-
-          # copy values in the border
-          cache_values[n, :, 0, k] = cache_values[n, :, 1, k]
-          cache_values[n, :, -1, k] = cache_values[n, :, -2, k]
-          cache_values[n, 0, :, k] = cache_values[n, 1, :, k]
-          cache_values[n, -1, :, k] = cache_values[n, -2, :, k]
-
-    self.assertAllClose(cache_values, value)
+      x_tf = tf.constant(x_np)
+      y_tf = tf.nn.log_softmax(x_tf)
+      y_tf_np = y_tf.eval()
+    eps = 1e-3
+    self.assertAllClose(y_tf_np, y_np, eps)
 
   def testGradient(self):
-    x_shape = [2, 6, 4, 3]
-    f_shape = [3, 3, 2, 3]
-    y_shape = [2, 12, 8, 2]
-    strides = [1, 2, 2, 1]
-    np.random.seed(1)  # Make it reproducible.
-    x_val = np.random.random_sample(x_shape).astype(np.float64)
-    f_val = np.random.random_sample(f_shape).astype(np.float64)
+    x_shape = [5, 10]
+    x_np = np.random.randn(*x_shape).astype(np.float64)
     with self.test_session():
-      x = tf.constant(x_val, name="x", dtype=tf.float32)
-      f = tf.constant(f_val, name="f", dtype=tf.float32)
-      output = tf.nn.conv2d_transpose(x, f, y_shape, strides=strides,
-                                      padding="SAME")
-      err = tf.test.compute_gradient_error(
-          [x, f], [x_shape, f_shape], output, y_shape)
-    print("DeConv gradient err = %g " % err)
-    err_tolerance = 0.0005
-    self.assertLess(err, err_tolerance)
+      x_tf = tf.constant(x_np)
+      y_tf = tf.nn.log_softmax(x_tf)
+      err = tf.test.compute_gradient_error(x_tf, x_shape, y_tf, x_shape)
+    eps = 1e-7
+    self.assertLess(err, eps)
 
 
 class L2LossTest(tf.test.TestCase):
 
   def testL2Loss(self):
-    with self.test_session():
-      x = tf.constant([1.0, 0.0, 3.0, 2.0], shape=[2, 2], name="x")
-      l2loss = tf.nn.l2_loss(x)
-      value = l2loss.eval()
-    self.assertAllClose(7.0, value)
+    for dtype in [tf.float32, tf.float64]:
+      with self.test_session():
+        x = tf.constant([1.0, 0.0, 3.0, 2.0], shape=[2, 2], name="x",
+                        dtype=dtype)
+        l2loss = tf.nn.l2_loss(x)
+        value = l2loss.eval()
+      self.assertAllClose(7.0, value)
 
   def testGradient(self):
     x_shape = [20, 7, 3]
@@ -501,8 +180,14 @@ class L2LossTest(tf.test.TestCase):
 class L2NormalizeTest(tf.test.TestCase):
 
   def _l2Normalize(self, x, dim):
-    norm = np.apply_along_axis(np.linalg.norm, dim, x)
-    return x / np.expand_dims(norm, dim)
+    if isinstance(dim, list):
+      norm = np.linalg.norm(x, axis=tuple(dim))
+      for d in dim:
+        norm = np.expand_dims(norm, d)
+      return x / norm
+    else:
+      norm = np.apply_along_axis(np.linalg.norm, dim, x)
+      return x / np.expand_dims(norm, dim)
 
   def testL2Normalize(self):
     x_shape = [20, 7, 3]
@@ -514,6 +199,17 @@ class L2NormalizeTest(tf.test.TestCase):
         x_tf = tf.constant(x_np, name="x")
         y_tf = tf.nn.l2_normalize(x_tf, dim)
         self.assertAllClose(y_np, y_tf.eval())
+
+  def testL2NormalizeDimArray(self):
+    x_shape = [20, 7, 3]
+    np.random.seed(1)
+    x_np = np.random.random_sample(x_shape).astype(np.float32)
+    dim = [1, 2]
+    y_np = self._l2Normalize(x_np, dim)
+    with self.test_session():
+      x_tf = tf.constant(x_np, name="x")
+      y_tf = tf.nn.l2_normalize(x_tf, dim)
+      self.assertAllClose(y_np, y_tf.eval())
 
   def testL2NormalizeGradient(self):
     x_shape = [20, 7, 3]
@@ -672,511 +368,11 @@ class DropoutTest(tf.test.TestCase):
     _ = tf.nn.dropout(t, keep_prob, noise_shape=[x_dim, 1])
     _ = tf.nn.dropout(t, keep_prob, noise_shape=[1, 1])
 
-
-class BatchNormalizationTest(tf.test.TestCase):
-
-  def _npBatchNorm(self, x, m, v, beta, gamma, epsilon,
-                   scale_after_normalization, shift_after_normalization):
-    y = (x - m) / np.sqrt(v + epsilon)
-    y = y * gamma if scale_after_normalization else y
-    return y + beta if shift_after_normalization else y
-
-  def _opsBatchNorm(self, x, m, v, beta, gamma, epsilon,
-                    scale_after_normalization, shift_after_normalization):
-    y = (x - m) * tf.rsqrt(v + epsilon)
-    if scale_after_normalization:
-      y = gamma * y
-    return y + beta if shift_after_normalization else y
-
-  def _tfBatchNormV1(self, x, m, v, beta, gamma, epsilon,
-                     scale_after_normalization):
-    """Original implementation."""
-    # _batch_norm_with_global_normalization is deprecated in v9
-    tf.get_default_graph().graph_def_versions.producer = 8
-    # pylint: disable=protected-access
-    return gen_nn_ops._batch_norm_with_global_normalization(
-        x, m, v, beta, gamma, epsilon, scale_after_normalization)
-    # pylint: enable=protected-access
-
-  def _tfBatchNormV1BW(self, x, m, v, beta, gamma, epsilon,
-                       scale_after_normalization):
-    """Re-implementation of the original kernel for backward compatibility."""
-    return tf.nn.batch_norm_with_global_normalization(
-        x, m, v, beta, gamma, epsilon, scale_after_normalization)
-
-  def _tfBatchNormV2(self, x, m, v, beta, gamma, epsilon,
-                     scale_after_normalization, shift_after_normalization):
-    """New implementation."""
-    return tf.nn.batch_normalization(
-        x, m, v, beta if shift_after_normalization else None,
-        gamma if scale_after_normalization else None, epsilon)
-
-  def testBatchNorm(self):
-    x_shape = [3, 5, 4, 2]
-    param_shape = [2]
-    x_val = np.random.random_sample(x_shape).astype(np.float32)
-    m_val = np.random.random_sample(param_shape).astype(np.float32)
-    v_val = np.random.random_sample(param_shape).astype(np.float32)
-    beta_val = np.random.random_sample(param_shape).astype(np.float32)
-    gamma_val = np.random.random_sample(param_shape).astype(np.float32)
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu) as sess:
-        x = tf.constant(x_val, name="x")
-        m = tf.constant(m_val, name="m")
-        v = tf.constant(v_val, name="v")
-        beta = tf.constant(beta_val, name="beta")
-        gamma = tf.constant(gamma_val, name="gamma")
-        epsilon = 0.001
-        for scale_after_normalization in [True, False]:
-          for shift_after_normalization in [True, False]:
-            bn2 = self._tfBatchNormV2(
-                x, m, v, beta, gamma, epsilon, scale_after_normalization,
-                shift_after_normalization)
-            bn1bw = self._tfBatchNormV1BW(
-                x, m, v, beta, gamma, epsilon, scale_after_normalization)
-            bn1 = self._tfBatchNormV1(
-                x, m, v, beta, gamma, epsilon, scale_after_normalization)
-            on = self._opsBatchNorm(
-                x, m, v, beta, gamma, epsilon, scale_after_normalization,
-                shift_after_normalization)
-            np_bn = self._npBatchNorm(
-                x_val, m_val, v_val, beta_val, gamma_val, epsilon,
-                scale_after_normalization, shift_after_normalization)
-            tf_bn_v2, tf_bn_v1bw, tf_bn_v1, ops_bn = sess.run(
-                [bn2, bn1bw, bn1, on])
-            self.assertAllClose(np_bn, ops_bn, atol=0.00001)
-            self.assertAllClose(np_bn, tf_bn_v2, atol=0.00001)
-            self.assertAllClose(tf_bn_v2, ops_bn, atol=0.00001)
-            # shift_after_normalization=False is not supported in v1.
-            if shift_after_normalization:
-              self.assertAllClose(np_bn, tf_bn_v1bw, atol=0.00001)
-              self.assertAllClose(np_bn, tf_bn_v1, atol=0.00001)
-              self.assertAllClose(tf_bn_v1, ops_bn, atol=0.00001)
-              self.assertAllClose(tf_bn_v1bw, ops_bn, atol=0.00001)
-
-  def _testBatchNormGradient(self, param_index, tag, scale_after_normalization,
-                             shift_after_normalization, version,
-                             err_tolerance=1e-11):
-    x_shape = [3, 5, 4, 5]
-    param_shape = [5]
-    np.random.seed(1)  # Make it reproducible.
-    x_val = np.random.random_sample(x_shape).astype(np.float64)
-    m_val = np.random.random_sample(param_shape).astype(np.float64)
-    v_val = np.random.random_sample(param_shape).astype(np.float64)
-    beta_val = np.random.random_sample(param_shape).astype(np.float64)
-    gamma_val = np.random.random_sample(param_shape).astype(np.float64)
-    with self.test_session():
-      x = tf.constant(x_val, name="x")
-      m = tf.constant(m_val, name="m")
-      v = tf.constant(v_val, name="v")
-      beta = tf.constant(beta_val, name="beta")
-      gamma = tf.constant(gamma_val, name="gamma")
-      epsilon = 0.001
-      if version == 1:
-        output = self._tfBatchNormV1(
-            x, m, v, beta, gamma, epsilon, scale_after_normalization)
-      elif version == 2:
-        output = self._tfBatchNormV2(
-            x, m, v, beta, gamma, epsilon, scale_after_normalization,
-            shift_after_normalization)
-      else:
-        print("Invalid version", version)
-        raise ValueError()
-      all_params = [x, m, v, beta, gamma]
-      all_shapes = [x_shape, param_shape, param_shape, param_shape, param_shape]
-      err = tf.test.compute_gradient_error(
-          all_params[param_index], all_shapes[param_index], output, x_shape)
-    print("Batch normalization v%d %s gradient %s scale and %s shift err = " %
-          (version, tag, "with" if scale_after_normalization else "without",
-           "with" if shift_after_normalization else "without"),
-          err)
-    self.assertLess(err, err_tolerance)
-
-  def _testBatchNormGradientInAllNeedConfigs(
-      self, param_index, tag, err_tolerance=1e-11):
-    for scale_after_normalization in [True, False]:
-      for shift_after_normalization in [True, False]:
-        # shift_after_normalization=False is not supported in version 1.
-        for v in ([1, 2] if shift_after_normalization else [2]):
-          self._testBatchNormGradient(
-              param_index, tag, scale_after_normalization,
-              shift_after_normalization, v, err_tolerance)
-
-  def testBatchNormInputGradient(self):
-    self._testBatchNormGradientInAllNeedConfigs(0, "x")
-
-  def testBatchNormMeanGradient(self):
-    self._testBatchNormGradientInAllNeedConfigs(1, "mean")
-
-  def testBatchNormVarianceGradient(self):
-    self._testBatchNormGradientInAllNeedConfigs(2, "variance",
-                                                err_tolerance=1e-03)
-
-  def testBatchNormBetaGradient(self):
-    # Since beta does not exist when scale_after_normalization=False, we only
-    # test for scale_after_normalization=True.
-    for scale_after_normalization in [True, False]:
-      for v in [1, 2]:
-        self._testBatchNormGradient(3, "beta", scale_after_normalization, True,
-                                    v)
-
-  def testBatchNormGammaGradient(self):
-    # If scale_after_normalization is False, backprop for gamma in v1
-    # will be 0. In version 2 of the API, if scale_after_normalization is False,
-    # gamma is not used at all, and the gradient is None, which displeases the
-    # gradient checker.
-    for scale_after_normalization in [True, False]:
-      self._testBatchNormGradient(4, "gamma", scale_after_normalization, True,
-                                  1)
-    for shift_after_normalization in [True, False]:
-      self._testBatchNormGradient(4, "gamma", True, shift_after_normalization,
-                                  2)
-
-  def testBatchNormGradImpl(self):
-    x_shape = [7, 5, 4, 6]
-    param_shape = [6]
-    np.random.seed(1)  # Make it reproducible.
-    x_val = np.random.random_sample(x_shape).astype(np.float32)
-    m_val = np.random.random_sample(param_shape).astype(np.float32)
-    v_val = np.random.random_sample(param_shape).astype(np.float32)
-    beta_val = np.random.random_sample(param_shape).astype(np.float32)
-    gamma_val = np.random.random_sample(param_shape).astype(np.float32)
-    backprop_val = np.random.random_sample(x_shape).astype(np.float32)
-    for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu) as sess:
-        x = tf.constant(x_val, name="x")
-        m = tf.constant(m_val, name="m")
-        v = tf.constant(v_val, name="v")
-        beta = tf.constant(beta_val, name="beta")
-        gamma = tf.constant(gamma_val, name="gamma")
-        backprop = tf.constant(backprop_val, name="backprop")
-        epsilon = 0.001
-        for scale_after_normalization in [True, False]:
-          # _batch_norm_with_global_normalization_grad is deprecated in v9
-          tf.get_default_graph().graph_def_versions.producer = 8
-          dx, dm, dv, db, dg = (
-              gen_nn_ops._batch_norm_with_global_normalization_grad(
-              x, m, v, gamma, backprop, epsilon, scale_after_normalization))
-          on = self._opsBatchNorm(
-              x, m, v, beta, gamma, epsilon, scale_after_normalization, True)
-          odx, odm, odv, odb, odg = tf.gradients(
-              [on], [x, m, v, beta, gamma], [backprop])
-          if scale_after_normalization:
-            all_grads = sess.run([dx, dm, dv, db, dg, odx, odm, odv, odb, odg])
-            to_check = ["dx", "dm", "dv", "db", "dg"]
-          else:
-            all_grads = sess.run([dx, dm, dv, db, odx, odm, odv, odb])
-            to_check = ["dx", "dm", "dv", "db"]
-          for i, _ in enumerate(to_check):
-            self.assertAllClose(
-                all_grads[i + len(to_check)], all_grads[i], atol=0.000001)
-
-  def testBatchNormKeepDims(self):
-    """Test for tf.nn.moments(..., keep_dims=True / False).
-
-    Make sure that parameters with shape (1, 1, 1, depth) yield the same
-    result as parameters with shape (depth)
-    """
-    x_shape = (3, 5, 4, 2)
-    param_shape = (2)
-    keep_dims_param_shape = (1, 1, 1, 2)
-    x_val = np.random.random_sample(x_shape).astype(np.float32)
-    m_val = np.random.random_sample(param_shape).astype(np.float32)
-    v_val = np.random.random_sample(param_shape).astype(np.float32)
-    beta_val = np.random.random_sample(param_shape).astype(np.float32)
-    gamma_val = np.random.random_sample(param_shape).astype(np.float32)
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu) as sess:
-        x = tf.constant(x_val, name="x")
-        m = tf.constant(m_val, name="m")
-        v = tf.constant(v_val, name="v")
-        beta = tf.constant(beta_val, name="beta")
-        gamma = tf.constant(gamma_val, name="gamma")
-        keep_dims_m = tf.reshape(m, keep_dims_param_shape, name="keep_dims_m")
-        keep_dims_v = tf.reshape(v, keep_dims_param_shape, name="keep_dims_v")
-        keep_dims_beta = tf.reshape(
-            beta, keep_dims_param_shape, name="keep_dims_beta")
-        keep_dims_gamma = tf.reshape(
-            gamma, keep_dims_param_shape, name="keep_dims_gamma")
-        epsilon = 0.001
-        for scale_after_normalization in [True, False]:
-          for shift_after_normalization in [True, False]:
-            bn = self._tfBatchNormV2(
-                x, m, v, beta, gamma, epsilon, scale_after_normalization,
-                shift_after_normalization)
-            keep_dims_bn = self._tfBatchNormV2(
-                x, keep_dims_m, keep_dims_v, keep_dims_beta,
-                keep_dims_gamma, epsilon, scale_after_normalization,
-                shift_after_normalization)
-            tf_batch_norm, keep_dims_tf_batch_norm = sess.run(
-                [bn, keep_dims_bn])
-            self.assertEquals(x_shape, tf_batch_norm.shape)
-            self.assertEquals(x_shape, keep_dims_tf_batch_norm.shape)
-            self.assertAllClose(
-                tf_batch_norm, keep_dims_tf_batch_norm, atol=0.000001)
-
-  def _testBatchNormArbitraryShapes(self, x_shape, param_shape, atol=0.0001):
-    x_val = np.random.random_sample(x_shape).astype(np.float32)
-    m_val = np.random.random_sample(param_shape).astype(np.float32)
-    v_val = np.random.random_sample(param_shape).astype(np.float32)
-    beta_val = np.random.random_sample(param_shape).astype(np.float32)
-    gamma_val = np.random.random_sample(param_shape).astype(np.float32)
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu) as sess:
-        x = tf.constant(x_val, name="x")
-        m = tf.constant(m_val, name="m")
-        v = tf.constant(v_val, name="v")
-        beta = tf.constant(beta_val, name="beta")
-        gamma = tf.constant(gamma_val, name="gamma")
-        epsilon = 0.001
-        for scale_after_normalization in [True, False]:
-          for shift_after_normalization in [True, False]:
-            bn = self._tfBatchNormV2(
-                x, m, v, beta, gamma, epsilon, scale_after_normalization,
-                shift_after_normalization)
-            np_batch_norm = self._npBatchNorm(
-                x_val, m_val, v_val, beta_val, gamma_val, epsilon,
-                scale_after_normalization, shift_after_normalization)
-            [tf_batch_norm] = sess.run([bn])
-            self.assertEquals(x_shape, np_batch_norm.shape)
-            self.assertEquals(x_shape, tf_batch_norm.shape)
-            self.assertAllClose(np_batch_norm, tf_batch_norm, atol=atol)
-
-  def testBatchNormArbitraryShapes(self):
-    """Test for a variety of shapes and moments.
-
-    Batch normalization is expected to work regardless of the position and
-    dimensionality of the 'depth' axis/axes.
-    """
-    self._testBatchNormArbitraryShapes((3, 3), (1, 3))
-    self._testBatchNormArbitraryShapes((3, 3), (3, 1))
-    self._testBatchNormArbitraryShapes((3, 2, 4, 5), (1, 2, 1, 1))
-    self._testBatchNormArbitraryShapes((2, 3, 2, 4, 5), (1, 1, 1, 4, 5),
-                                       atol=0.005)
-
-
-class SufficientStatisticsTest(tf.test.TestCase):
-
-  def _npSuffStats(self, x, axes, shift, keep_dims):
-    axis = tuple(axes)
-    if shift:
-      shift_value = x[[slice(None) if i not in set(axis) else slice(0, 1)
-                       for i in xrange(x.ndim)]]
-      m_ss = np.sum(x - shift_value, axis=axis, keepdims=keep_dims)
-      v_ss = np.sum(
-          (x - shift_value) * (x - shift_value),
-          axis=axis,
-          keepdims=keep_dims)
-    else:
-      shift_value = None
-      m_ss = np.sum(x, axis=axis, keepdims=keep_dims)
-      v_ss = np.sum(x * x, axis=axis, keepdims=keep_dims)
-    count = 1.0
-    for d in xrange(x.ndim):
-      if d in set(axes):
-        count *= x.shape[d]
-    if not keep_dims:
-      shift_value = np.squeeze(shift_value, axis=axis)
-    return count, m_ss, v_ss, shift_value
-
-  def _opSuffStats(self, x, axes, shift, keep_dims):
-    return tf.nn.sufficient_statistics(x, axes, shift, keep_dims)
-
-  def _testSuffStats(self, x_shape, axes, shift, keep_dims, has_shape):
-    x_val = np.random.random_sample(x_shape).astype(np.float32)
-    np_c, np_m, np_v, np_s = self._npSuffStats(x_val, axes, shift, keep_dims)
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu) as sess:
-        if has_shape:
-          x = tf.constant(x_val, name="x")
-          x.set_shape(x_shape)
-          op_c, op_m, op_v, op_s = self._opSuffStats(x, axes, shift, keep_dims)
-          if shift:
-            tf_c, tf_m, tf_v, tf_s = sess.run([op_c, op_m, op_v, op_s])
-          else:
-            tf_c, tf_m, tf_v = sess.run([op_c, op_m, op_v])
-        else:
-          x = tf.placeholder(dtype=tf.float32,
-                             shape=[None] * len(x_shape),
-                             name="x")
-          op_c, op_m, op_v, op_s = self._opSuffStats(x, axes, shift, keep_dims)
-          if shift:
-            tf_c, tf_m, tf_v, tf_s = sess.run(
-                [op_c, op_m, op_v, op_s],
-                feed_dict={x: x_val})
-          else:
-            tf_c, tf_m, tf_v = sess.run(
-                [op_c, op_m, op_v],
-                feed_dict={x: x_val})
-        self.assertAllClose(np_c, tf_c, atol=0.000001)
-        self.assertAllClose(np_m, tf_m, atol=0.000001)
-        self.assertAllClose(np_v, tf_v, atol=0.000001)
-        if shift:
-          self.assertAllClose(np_s, tf_s, atol=0.000001)
-
-  def testSuffStats(self):
-    for has_shape in [True, False]:
-      for keep_dims in [True, False]:
-        for shift in [True, False]:
-          self._testSuffStats([2, 3], [1], shift, keep_dims, has_shape)
-          self._testSuffStats([2, 3], [0], shift, keep_dims, has_shape)
-          self._testSuffStats([1, 2, 3], [0, 2], shift, keep_dims, has_shape)
-
-
-class NormalizeMomentsTest(tf.test.TestCase):
-
-  def _npNormalizeMoments(self, counts, mean_ss, variance_ss, shift):
-    mean = mean_ss / counts
-    variance = variance_ss / counts - mean * mean
-    if shift is not None:
-      mean += shift
-    return mean, variance
-
-  def _opNormalizeMoments(self, counts, mean_ss, variance_ss, shift):
-    return tf.nn.normalize_moments(counts, mean_ss, variance_ss, shift)
-
-  def _testNormalizeMoments(self, shape, shift):
-    counts = np.ones([1]).astype(np.float32)
-    mean_ss = np.random.random_sample(shape).astype(np.float32)
-    variance_ss = np.random.random_sample(shape).astype(np.float32)
-    variance_ss *= variance_ss
-    if shift:
-      shift_v = np.random.random_sample(shape).astype(np.float32)
-    else:
-      shift_v = None
-    npm, npv = self._npNormalizeMoments(counts, mean_ss, variance_ss, shift_v)
-    for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu) as sess:
-        tf_counts = tf.constant(counts, name="counts")
-        tf_mean_ss = tf.constant(mean_ss, name="mean_ss")
-        tf_variance_ss = tf.constant(variance_ss, name="variance_ss")
-        if shift:
-          tf_shift_v = tf.constant(shift_v, name="shift")
-        else:
-          tf_shift_v = None
-        opm, opv = self._opNormalizeMoments(tf_counts, tf_mean_ss,
-                                            tf_variance_ss, tf_shift_v)
-        tfm, tfv = sess.run([opm, opv])
-        self.assertAllClose(npm, tfm, atol=0.000001)
-        self.assertAllClose(npv, tfv, atol=0.000001)
-
-  def testNormalizeMoments(self):
-    for shift in [True, False]:
-      self._testNormalizeMoments([3], shift)
-      self._testNormalizeMoments([2, 3], shift)
-
-
-class MomentsTest(tf.test.TestCase):
-
-  def RunMomentTestWithDynamicShape(self, shape, axes, keep_dims):
-    with self.test_session():
-      # shape = [batch, width, height, depth]
-      assert len(shape) == 4
-
-      x_numpy = np.random.normal(size=shape).astype(np.float32)
-      x = tf.placeholder(tf.float32, shape=[None] * len(shape))
-
-      mean, var = tf.nn.moments(x, axes, keep_dims=keep_dims)
-
-      num_elements = np.prod([shape[i] for i in axes])
-
-      ax = tuple(axes)
-      expected_mean = np.sum(
-          x_numpy, axis=ax, keepdims=keep_dims) / num_elements
-      expected_mean_squared = np.multiply(expected_mean, expected_mean)
-      expected_x_squared = np.sum(
-          np.multiply(x_numpy, x_numpy),
-          axis=ax,
-          keepdims=keep_dims) / num_elements
-      expected_variance = expected_x_squared - expected_mean_squared
-
-      # Check that the moments are correct.
-      self.assertAllClose(expected_mean, mean.eval(feed_dict={x: x_numpy}))
-      self.assertAllClose(expected_variance, var.eval(feed_dict={x: x_numpy}))
-
-  def RunMomentTest(self, shape, axes, keep_dims):
-    with self.test_session():
-      # shape = [batch, width, height, depth]
-      assert len(shape) == 4
-
-      x_numpy = np.random.normal(size=shape).astype(np.float32)
-      x = tf.constant(x_numpy)
-
-      mean, var = tf.nn.moments(x, axes, keep_dims=keep_dims)
-
-      num_elements = np.prod([shape[i] for i in axes])
-
-      ax = tuple(axes)
-      expected_mean = np.sum(
-          x_numpy, axis=ax, keepdims=keep_dims) / num_elements
-      expected_mean_squared = np.multiply(expected_mean, expected_mean)
-      expected_x_squared = np.sum(
-          np.multiply(x_numpy, x_numpy),
-          axis=ax,
-          keepdims=keep_dims) / num_elements
-      expected_variance = expected_x_squared - expected_mean_squared
-
-      # Check that the moments are correct.
-      self.assertAllClose(expected_mean, mean.eval())
-      self.assertAllClose(expected_variance, var.eval())
-
-  def testBasic(self):
-    for keep_dims in [False, True]:
-      self.RunMomentTest(shape=[2, 3, 5, 4], axes=[0], keep_dims=keep_dims)
-      self.RunMomentTestWithDynamicShape(
-          shape=[2, 3, 5, 4], axes=[0], keep_dims=keep_dims)
-
-  def testGlobalNormalization(self):
-    for keep_dims in [False, True]:
-      self.RunMomentTest(
-          shape=[2, 3, 5, 4], axes=[0, 1, 2], keep_dims=keep_dims)
-      self.RunMomentTestWithDynamicShape(
-          shape=[2, 3, 5, 4], axes=[0, 1, 2], keep_dims=keep_dims)
-
-  def testAxes(self):
-    for keep_dims in [False, True]:
-      self.RunMomentTest(
-          shape=[2, 3, 5, 4], axes=[1, 2, 3], keep_dims=keep_dims)
-      self.RunMomentTestWithDynamicShape(
-          shape=[2, 3, 5, 4], axes=[1, 2, 3], keep_dims=keep_dims)
-
-  def _testGlobalGradient(self, from_y="mean"):
-    with self.test_session():
-      x_shape = [3, 5, 4, 2]
-      x_val = np.random.random_sample(x_shape).astype(np.float64)
-      x = tf.constant(x_val)
-      x.set_shape(x_shape)
-
-      axes = [0, 1, 2]
-      y_shape = [2]  # Depth of x
-      out_mean, out_var = tf.nn.moments(x, axes)
-      if from_y == "mean":
-        y = out_mean
-      elif from_y == "var":
-        y = out_var
-      err = tf.test.compute_gradient_error(x, x_shape, y, y_shape)
-      print("Moments %s gradient err = %g" % (from_y, err))
-      self.assertLess(err, 1e-11)
-
-  def testMeanGlobalGradient(self):
-    self._testGlobalGradient(from_y="mean")
-
-  def testVarGlobalGradient(self):
-    self._testGlobalGradient(from_y="var")
-
-  def testOutputNamesNoKeep(self):
-    """Make sure the output names are stable."""
-    with self.test_session():
-      mean, var = tf.nn.moments(tf.constant([1]), [0], keep_dims=False)
-      self.assertEquals(mean.op.name, "moments/normalize/mean")
-      self.assertEquals(var.op.name, "moments/normalize/variance")
-
-  def testOutputNamesKeep(self):
-    """Make sure the output names are stable."""
-    with self.test_session():
-      mean, var = tf.nn.moments(tf.constant([1]), [0], keep_dims=True)
-      self.assertEquals(mean.op.name, "moments/normalize/mean")
-      self.assertEquals(var.op.name, "moments/normalize/variance")
+  def testNoDropoutFast(self):
+    x = tf.zeros((5,))
+    for p in 1, tf.constant(1.0):
+      y = tf.nn.dropout(x, keep_prob=p)
+      self.assertTrue(x is y)
 
 
 class ComputeSampledLogitsTest(tf.test.TestCase):
@@ -1503,6 +699,16 @@ class ComputeSampledLogitsTest(tf.test.TestCase):
 
       self.assertAllClose(
           sampled_softmax_loss_np, sampled_softmax_loss_tf.eval(), 1e-4)
+
+
+class CReluTest(tf.test.TestCase):
+
+  def test(self):
+    x = np.random.rand(3, 4).astype(np.float32)
+    y = np.concatenate([x * (x > 0), -x * (x < 0)], axis=1)
+    with self.test_session():
+      z = tf.nn.crelu(tf.constant(x)).eval()
+      self.assertAllClose(y, z, 1e-4)
 
 
 if __name__ == "__main__":

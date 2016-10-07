@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ of the subclasses.
 @@GradientDescentOptimizer
 @@AdadeltaOptimizer
 @@AdagradOptimizer
+@@AdagradDAOptimizer
 @@MomentumOptimizer
 @@AdamOptimizer
 @@FtrlOptimizer
@@ -94,6 +95,12 @@ more information about how to configure a distributed TensorFlow program.
 @@SessionManager
 @@ClusterSpec
 @@replica_device_setter
+@@Scaffold
+@@MonitoredTrainingSession
+@@SessionCreator
+@@ChiefSessionCreator
+@@WorkerSessionCreator
+@@MonitoredSession
 
 ## Summary Operations
 
@@ -113,6 +120,7 @@ details.
 
 @@scalar_summary
 @@image_summary
+@@audio_summary
 @@histogram_summary
 @@zero_fraction
 
@@ -131,7 +139,20 @@ overview of summaries, event files, and visualization in TensorBoard.
 ## Training utilities
 
 @@global_step
+@@get_global_step
+@@assert_global_step
 @@write_graph
+@@SessionRunHook
+@@LoggingTensorHook
+@@StopAtStepHook
+@@CheckpointSaverHook
+@@StepCounterHook
+@@NanLossDuringTrainingError
+@@NanTensorHook
+@@SummarySaverHook
+@@SessionRunArgs
+@@SessionRunContext
+@@SessionRunValues
 
 """
 # pylint: enable=line-too-long
@@ -150,6 +171,8 @@ from tensorflow.python.ops import state_ops
 
 from tensorflow.python.training.adadelta import AdadeltaOptimizer
 from tensorflow.python.training.adagrad import AdagradOptimizer
+from tensorflow.python.training.adagrad_da import AdagradDAOptimizer
+from tensorflow.python.training.proximal_adagrad import ProximalAdagradOptimizer
 from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.ftrl import FtrlOptimizer
 from tensorflow.python.training.momentum import MomentumOptimizer
@@ -157,6 +180,7 @@ from tensorflow.python.training.moving_averages import ExponentialMovingAverage
 from tensorflow.python.training.optimizer import Optimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
+from tensorflow.python.training.proximal_gradient_descent import ProximalGradientDescentOptimizer
 from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizer
 
 # Utility classes for training.
@@ -170,7 +194,21 @@ from tensorflow.python.training.queue_runner import *
 from tensorflow.python.training import input as _input
 from tensorflow.python.training.input import *
 
+from tensorflow.python.training.basic_session_run_hooks import LoggingTensorHook
+from tensorflow.python.training.basic_session_run_hooks import StopAtStepHook
+from tensorflow.python.training.basic_session_run_hooks import CheckpointSaverHook
+from tensorflow.python.training.basic_session_run_hooks import StepCounterHook
+from tensorflow.python.training.basic_session_run_hooks import NanLossDuringTrainingError
+from tensorflow.python.training.basic_session_run_hooks import NanTensorHook
+from tensorflow.python.training.basic_session_run_hooks import SummarySaverHook
+from tensorflow.python.training.basic_loops import basic_train_loop
 from tensorflow.python.training.device_setter import replica_device_setter
+from tensorflow.python.training.monitored_session import Scaffold
+from tensorflow.python.training.monitored_session import MonitoredTrainingSession
+from tensorflow.python.training.monitored_session import SessionCreator
+from tensorflow.python.training.monitored_session import ChiefSessionCreator
+from tensorflow.python.training.monitored_session import WorkerSessionCreator
+from tensorflow.python.training.monitored_session import MonitoredSession
 from tensorflow.python.training.saver import generate_checkpoint_state_proto
 from tensorflow.python.training.saver import get_checkpoint_state
 from tensorflow.python.training.saver import latest_checkpoint
@@ -178,12 +216,20 @@ from tensorflow.python.training.saver import Saver
 from tensorflow.python.training.saver import update_checkpoint_state
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.training.saver import import_meta_graph
+from tensorflow.python.training.session_run_hook import SessionRunHook
+from tensorflow.python.training.session_run_hook import SessionRunArgs
+from tensorflow.python.training.session_run_hook import SessionRunContext
+from tensorflow.python.training.session_run_hook import SessionRunValues
 from tensorflow.python.training.session_manager import SessionManager
 from tensorflow.python.training.summary_io import summary_iterator
 from tensorflow.python.training.summary_io import SummaryWriter
+from tensorflow.python.training.summary_io import SummaryWriterCache
 from tensorflow.python.training.supervisor import Supervisor
 from tensorflow.python.training.training_util import write_graph
 from tensorflow.python.training.training_util import global_step
+from tensorflow.python.training.training_util import get_global_step
+from tensorflow.python.training.training_util import assert_global_step
+from tensorflow.python.pywrap_tensorflow import do_quantize_training_on_graphdef
 from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
 
 
@@ -193,7 +239,7 @@ from tensorflow.core.example.feature_pb2 import *
 from tensorflow.core.protobuf.saver_pb2 import *
 
 # Utility op.  Open Source. TODO(touts): move to nn?
-from tensorflow.python.training.learning_rate_decay import exponential_decay
+from tensorflow.python.training.learning_rate_decay import *
 
 
 # Distributed computing support
@@ -222,11 +268,11 @@ __all__.extend([
     "FeatureLists",
     "Features",
     "FloatList",
-    "InferenceExample",
     "Int64List",
     "LooperThread",
     "SaverDef",
     "SequenceExample",
+    "do_quantize_training_on_graphdef",
     "export_meta_graph",
     "generate_checkpoint_state_proto",
     "import_meta_graph",

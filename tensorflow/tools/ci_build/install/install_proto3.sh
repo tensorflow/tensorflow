@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,19 +16,18 @@
 
 set -e
 
-# Select bazel version.
-PROTOBUF_VERSION="3.0.0-beta-2"
-
 # Install protobuf3.
-mkdir /protobuf
-cd /protobuf
-curl -fSsL -O https://github.com/google/protobuf/releases/download/v$PROTOBUF_VERSION/protobuf-cpp-$PROTOBUF_VERSION.tar.gz
-tar zxf protobuf-cpp-$PROTOBUF_VERSION.tar.gz
-cd protobuf-$PROTOBUF_VERSION
-./autogen.sh
-./configure
-make
-make install
-make clean
-ldconfig
-cd /; rm -rf /protobuf
+
+# Select protobuf version.
+PROTOBUF_VERSION="3.1.0"
+
+PROTOBUF_URL="https://github.com/google/protobuf/releases/download/v${PROTOBUF_VERSION}/protoc-${PROTOBUF_VERSION}-linux-x86_64.zip"
+PROTOBUF_ZIP=$(basename "${PROTOBUF_URL}")
+UNZIP_DEST="google-protobuf"
+
+wget -q "${PROTOBUF_URL}"
+unzip "${PROTOBUF_ZIP}" -d "${UNZIP_DEST}"
+cp "${UNZIP_DEST}/bin/protoc" /usr/local/bin/
+
+rm -f "${PROTOBUF_ZIP}"
+rm -rf "${UNZIP_DEST}"

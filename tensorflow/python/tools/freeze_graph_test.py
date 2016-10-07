@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,8 +47,7 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
       saver = tf.train.Saver()
       saver.save(sess, checkpoint_prefix, global_step=0,
                  latest_filename=checkpoint_state_name)
-      tf.train.write_graph(sess.graph.as_graph_def(), self.get_temp_dir(),
-                           input_graph_name)
+      tf.train.write_graph(sess.graph, self.get_temp_dir(), input_graph_name)
 
     # We save out the graph to disk, and then call the const conversion
     # routine.

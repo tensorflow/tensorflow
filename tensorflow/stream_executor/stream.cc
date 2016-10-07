@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -277,6 +277,93 @@ Stream &Stream::ThenRecordEvent(Event *event) {
   return *this;
 }
 
+Stream &Stream::ThenBatchNormalizationForward(
+    const DeviceMemory<float> &x, const DeviceMemory<float> &scale,
+    const DeviceMemory<float> &offset,
+    const DeviceMemory<float> &estimated_mean,
+    const DeviceMemory<float> &estimated_variance,
+    const dnn::BatchDescriptor &x_desc,
+    const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+    DeviceMemory<float> *y, DeviceMemory<float> *batch_mean,
+    DeviceMemory<float> *batch_var, DeviceMemory<float> *saved_mean,
+    DeviceMemory<float> *saved_inv_var, bool is_training,
+    std::function<const DeviceMemory<float> &()> var_to_inv_var,
+    std::function<void()> inv_var_to_var) {
+  VLOG_CALL(PARAM(x), PARAM(scale), PARAM(offset), PARAM(x_desc),
+            PARAM(scale_offset_desc), PARAM(epsilon), PARAM(y));
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoBatchNormalizationForward(
+          this, x, scale, offset, estimated_mean, estimated_variance, x_desc,
+          scale_offset_desc, epsilon, y, batch_mean, batch_var, saved_mean,
+          saved_inv_var, is_training, std::move(var_to_inv_var),
+          std::move(inv_var_to_var)));
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenBatchNormalizationBackward(
+    const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
+    const DeviceMemory<float> &scale, const DeviceMemory<float> &mean,
+    const DeviceMemory<float> &variance, const dnn::BatchDescriptor &x_desc,
+    const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+    DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
+    DeviceMemory<float> *offset_backprop) {
+  VLOG_CALL(PARAM(y_backprop), PARAM(x), PARAM(scale), PARAM(x_desc),
+            PARAM(scale_offset_desc), PARAM(epsilon), PARAM(x_backprop),
+            PARAM(scale_backprop), PARAM(offset_backprop));
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoBatchNormalizationBackward(
+          this, y_backprop, x, scale, mean, variance, x_desc, scale_offset_desc,
+          epsilon, x_backprop, scale_backprop, offset_backprop));
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveWithScratch(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<Eigen::half> &input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<Eigen::half> &filter_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<Eigen::half> *output,
+    ScratchAllocator *scratch_allocator) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(convolution_descriptor), PARAM(output_descriptor),
+            PARAM(output));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoConvolve(
+          this, input_descriptor, input_data, filter_descriptor, filter_data,
+          convolution_descriptor, output_descriptor, output,
+          /*scratch_allocator=*/scratch_allocator, dnn::AlgorithmConfig(),
+          nullptr));
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
 Stream &Stream::ThenConvolveWithScratch(
     const dnn::BatchDescriptor &input_descriptor,
     const DeviceMemory<float> &input_data,
@@ -295,7 +382,76 @@ Stream &Stream::ThenConvolveWithScratch(
       CheckError(dnn->DoConvolve(
           this, input_descriptor, input_data, filter_descriptor, filter_data,
           convolution_descriptor, output_descriptor, output,
-          /*scratch_allocator=*/scratch_allocator));
+          /*scratch_allocator=*/scratch_allocator, dnn::AlgorithmConfig(),
+          nullptr));
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveWithAlgorithm(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<float> &input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<float> &filter_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &output_descriptor, DeviceMemory<float> *output,
+    ScratchAllocator *scratch_allocator,
+    const dnn::AlgorithmConfig &algorithm_config,
+    dnn::ProfileResult *output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(convolution_descriptor), PARAM(output_descriptor),
+            PARAM(output));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolve(
+          this, input_descriptor, input_data, filter_descriptor, filter_data,
+          convolution_descriptor, output_descriptor, output, scratch_allocator,
+          algorithm_config, output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveWithAlgorithm(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<Eigen::half> &input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<Eigen::half> &filter_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
+    const dnn::AlgorithmConfig &algorithm_config,
+    dnn::ProfileResult *output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(convolution_descriptor), PARAM(output_descriptor),
+            PARAM(output));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolve(
+          this, input_descriptor, input_data, filter_descriptor, filter_data,
+          convolution_descriptor, output_descriptor, output, scratch_allocator,
+          algorithm_config, output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
     } else {
       SetError();
       LOG(WARNING)
@@ -369,7 +525,111 @@ Stream &Stream::ThenConvolveBackwardDataWithScratch(
       CheckError(dnn->DoConvolveBackwardData(
           this, filter_descriptor, filter_data, output_descriptor,
           backward_output_data, convolution_descriptor, input_descriptor,
-          backward_input_data, scratch_allocator));
+          backward_input_data, scratch_allocator, dnn::AlgorithmConfig(),
+          nullptr));
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveBackwardDataWithAlgorithm(
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<float> &filter_data,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<float> backward_output_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &input_descriptor,
+    DeviceMemory<float> *backward_input_data,
+    ScratchAllocator *scratch_allocator,
+    const dnn::AlgorithmConfig &algorithm_config,
+    dnn::ProfileResult *output_profile_result) {
+  VLOG_CALL(PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(output_descriptor), PARAM(backward_output_data),
+            PARAM(convolution_descriptor), PARAM(input_descriptor),
+            PARAM(backward_input_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolveBackwardData(
+          this, filter_descriptor, filter_data, output_descriptor,
+          backward_output_data, convolution_descriptor, input_descriptor,
+          backward_input_data, scratch_allocator, algorithm_config,
+          output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveBackwardDataWithAlgorithm(
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<Eigen::half> &filter_data,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<Eigen::half> backward_output_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &input_descriptor,
+    DeviceMemory<Eigen::half> *backward_input_data,
+    ScratchAllocator *scratch_allocator,
+    const dnn::AlgorithmConfig &algorithm_config,
+    dnn::ProfileResult *output_profile_result) {
+  VLOG_CALL(PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(output_descriptor), PARAM(backward_output_data),
+            PARAM(convolution_descriptor), PARAM(input_descriptor),
+            PARAM(backward_input_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolveBackwardData(
+          this, filter_descriptor, filter_data, output_descriptor,
+          backward_output_data, convolution_descriptor, input_descriptor,
+          backward_input_data, scratch_allocator, algorithm_config,
+          output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveBackwardDataWithScratch(
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<Eigen::half> &filter_data,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<Eigen::half> backward_output_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &input_descriptor,
+    DeviceMemory<Eigen::half> *backward_input_data,
+    ScratchAllocator *scratch_allocator) {
+  VLOG_CALL(PARAM(filter_descriptor), PARAM(filter_data),
+            PARAM(output_descriptor), PARAM(backward_output_data),
+            PARAM(convolution_descriptor), PARAM(input_descriptor),
+            PARAM(backward_input_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoConvolveBackwardData(
+          this, filter_descriptor, filter_data, output_descriptor,
+          backward_output_data, convolution_descriptor, input_descriptor,
+          backward_input_data, scratch_allocator, dnn::AlgorithmConfig(),
+          nullptr));
     } else {
       SetError();
       LOG(WARNING)
@@ -413,7 +673,111 @@ Stream &Stream::ThenConvolveBackwardFilterWithScratch(
       CheckError(dnn->DoConvolveBackwardFilter(
           this, input_descriptor, input_data, output_descriptor,
           backward_output_data, convolution_descriptor, filter_descriptor,
-          backward_filter_data, scratch_allocator));
+          backward_filter_data, scratch_allocator, dnn::AlgorithmConfig(),
+          nullptr));
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveBackwardFilterWithAlgorithm(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<float> &input_data,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<float> backward_output_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::FilterDescriptor &filter_descriptor,
+    DeviceMemory<float> *backward_filter_data,
+    ScratchAllocator *scratch_allocator,
+    const dnn::AlgorithmConfig &algorithm_config,
+    dnn::ProfileResult *output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(output_descriptor), PARAM(backward_output_data),
+            PARAM(convolution_descriptor), PARAM(filter_descriptor),
+            PARAM(backward_filter_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolveBackwardFilter(
+          this, input_descriptor, input_data, output_descriptor,
+          backward_output_data, convolution_descriptor, filter_descriptor,
+          backward_filter_data, scratch_allocator, algorithm_config,
+          output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveBackwardFilterWithScratch(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<Eigen::half> &input_data,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<Eigen::half> backward_output_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::FilterDescriptor &filter_descriptor,
+    DeviceMemory<Eigen::half> *backward_filter_data,
+    ScratchAllocator *scratch_allocator) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(output_descriptor), PARAM(backward_output_data),
+            PARAM(convolution_descriptor), PARAM(filter_descriptor),
+            PARAM(backward_filter_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoConvolveBackwardFilter(
+          this, input_descriptor, input_data, output_descriptor,
+          backward_output_data, convolution_descriptor, filter_descriptor,
+          backward_filter_data, scratch_allocator, dnn::AlgorithmConfig(),
+          nullptr));
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveBackwardFilterWithAlgorithm(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<Eigen::half> &input_data,
+    const dnn::BatchDescriptor &output_descriptor,
+    DeviceMemory<Eigen::half> backward_output_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::FilterDescriptor &filter_descriptor,
+    DeviceMemory<Eigen::half> *backward_filter_data,
+    ScratchAllocator *scratch_allocator,
+    const dnn::AlgorithmConfig &algorithm_config,
+    dnn::ProfileResult *output_profile_result) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
+            PARAM(output_descriptor), PARAM(backward_output_data),
+            PARAM(convolution_descriptor), PARAM(filter_descriptor),
+            PARAM(backward_filter_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoConvolveBackwardFilter(
+          this, input_descriptor, input_data, output_descriptor,
+          backward_output_data, convolution_descriptor, filter_descriptor,
+          backward_filter_data, scratch_allocator, algorithm_config,
+          output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
     } else {
       SetError();
       LOG(WARNING)
@@ -436,6 +800,57 @@ Stream &Stream::ThenConvolveBackwardFilter(
       input_descriptor, input_data, output_descriptor, backward_output_data,
       convolution_descriptor, filter_descriptor, backward_filter_data,
       /*scratch_allocator=*/nullptr);
+}
+
+template <typename T>
+Stream &Stream::ThenConvolveBackwardBiasImpl(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<T> &input_data,
+    const dnn::BatchDescriptor &bias_descriptor,
+    DeviceMemory<T> *backward_bias_data) {
+  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data), PARAM(bias_descriptor),
+            PARAM(backward_bias_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoConvolveBackwardBias(this, input_descriptor, input_data,
+                                             bias_descriptor,
+                                             backward_bias_data));
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenConvolveBackwardBias(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<double> &input_data,
+    const dnn::BatchDescriptor &bias_descriptor,
+    DeviceMemory<double> *backward_bias_data) {
+  return ThenConvolveBackwardBiasImpl(input_descriptor, input_data,
+                                      bias_descriptor, backward_bias_data);
+}
+
+Stream &Stream::ThenConvolveBackwardBias(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<float> &input_data,
+    const dnn::BatchDescriptor &bias_descriptor,
+    DeviceMemory<float> *backward_bias_data) {
+  return ThenConvolveBackwardBiasImpl(input_descriptor, input_data,
+                                      bias_descriptor, backward_bias_data);
+}
+
+Stream &Stream::ThenConvolveBackwardBias(
+    const dnn::BatchDescriptor &input_descriptor,
+    const DeviceMemory<Eigen::half> &input_data,
+    const dnn::BatchDescriptor &bias_descriptor,
+    DeviceMemory<Eigen::half> *backward_bias_data) {
+  return ThenConvolveBackwardBiasImpl(input_descriptor, input_data,
+                                      bias_descriptor, backward_bias_data);
 }
 
 Stream &Stream::ThenMatMul(const DeviceMemory<float> &input_data,
@@ -555,6 +970,30 @@ Stream &Stream::ThenPoolForward(
   return *this;
 }
 
+Stream &Stream::ThenPoolForward(
+    const dnn::PoolingDescriptor &pooling_dimensions,
+    const dnn::BatchDescriptor &input_dimensions,
+    const DeviceMemory<Eigen::half> &input_data,
+    const dnn::BatchDescriptor &output_dimensions,
+    DeviceMemory<Eigen::half> *output_data) {
+  VLOG_CALL(PARAM(pooling_dimensions), PARAM(input_dimensions),
+            PARAM(input_data), PARAM(output_dimensions), PARAM(output_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoPoolForward(this, pooling_dimensions, input_dimensions,
+                                    input_data, output_dimensions,
+                                    output_data));
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
 Stream &Stream::ThenPoolBackward(
     const dnn::PoolingDescriptor &pooling_dimensions,
     const dnn::BatchDescriptor &input_dimensions,
@@ -563,6 +1002,33 @@ Stream &Stream::ThenPoolBackward(
     const DeviceMemory<float> &output_data,
     const DeviceMemory<float> &input_diff_data,
     DeviceMemory<float> *output_diff_data) {
+  VLOG_CALL(PARAM(pooling_dimensions), PARAM(input_dimensions),
+            PARAM(input_data), PARAM(output_dimensions), PARAM(output_data),
+            PARAM(input_diff_data), PARAM(output_diff_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoPoolBackward(this, pooling_dimensions, input_dimensions,
+                                     input_data, output_dimensions, output_data,
+                                     input_diff_data, output_diff_data));
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenPoolBackward(
+    const dnn::PoolingDescriptor &pooling_dimensions,
+    const dnn::BatchDescriptor &input_dimensions,
+    const DeviceMemory<Eigen::half> &input_data,
+    const dnn::BatchDescriptor &output_dimensions,
+    const DeviceMemory<Eigen::half> &output_data,
+    const DeviceMemory<Eigen::half> &input_diff_data,
+    DeviceMemory<Eigen::half> *output_diff_data) {
   VLOG_CALL(PARAM(pooling_dimensions), PARAM(input_dimensions),
             PARAM(input_data), PARAM(output_dimensions), PARAM(output_data),
             PARAM(input_diff_data), PARAM(output_diff_data));
@@ -591,6 +1057,52 @@ Stream &Stream::ThenNormalize(
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoNormalize(this, normalize_descriptor, input_data,
                                   output_data));
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenNormalizeWithDimensions(
+    const dnn::NormalizeDescriptor &normalize_descriptor,
+    const dnn::BatchDescriptor &dimensions,
+    const DeviceMemory<float> &input_data, DeviceMemory<float> *output_data) {
+  VLOG_CALL(PARAM(normalize_descriptor), PARAM(dimensions), PARAM(input_data),
+            PARAM(output_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoNormalizeWithDimensions(
+          this, normalize_descriptor, dimensions, input_data, output_data));
+    } else {
+      SetError();
+      LOG(WARNING)
+          << "attempting to perform DNN operation using StreamExecutor "
+             "without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenNormalizeBackwardWithDimensions(
+    const dnn::NormalizeDescriptor &normalize_descriptor,
+    const dnn::BatchDescriptor &dimensions, const DeviceMemory<float> &raw_data,
+    const DeviceMemory<float> &normalized_data,
+    const DeviceMemory<float> &normalized_variable_gradient,
+    DeviceMemory<float> *raw_variable_gradient) {
+  VLOG_CALL(PARAM(normalize_descriptor), PARAM(dimensions), PARAM(raw_data),
+            PARAM(normalized_data), PARAM(normalized_variable_gradient),
+            PARAM(raw_variable_gradient));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoNormalizeBackwardWithDimensions(
+          this, normalize_descriptor, dimensions, raw_data, normalized_data,
+          normalized_variable_gradient, raw_variable_gradient));
     } else {
       SetError();
       LOG(WARNING)
@@ -2468,6 +2980,24 @@ Stream &Stream::ThenBlasTrsv(blas::UpperLower uplo, blas::Transpose trans,
 
 Stream &Stream::ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
                              uint64 m, uint64 n, uint64 k, float alpha,
+                             const DeviceMemory<Eigen::half> &a, int lda,
+                             const DeviceMemory<Eigen::half> &b, int ldb,
+                             float beta,
+                             DeviceMemory<Eigen::half> *c, int ldc) {
+  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
+            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
+            PARAM(beta), PARAM(c), PARAM(ldc));
+
+  ThenBlasImpl<blas::Transpose, blas::Transpose, uint64, uint64, uint64, float,
+               const DeviceMemory<Eigen::half> &, int,
+               const DeviceMemory<Eigen::half> &, int,
+               float, DeviceMemory<Eigen::half> *, int> impl;
+  return impl(this, &blas::BlasSupport::DoBlasGemm, transa, transb, m, n, k,
+              alpha, a, lda, b, ldb, beta, c, ldc);
+}
+
+Stream &Stream::ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
+                             uint64 m, uint64 n, uint64 k, float alpha,
                              const DeviceMemory<float> &a, int lda,
                              const DeviceMemory<float> &b, int ldb, float beta,
                              DeviceMemory<float> *c, int ldc) {
@@ -3296,6 +3826,79 @@ Stream &Stream::ThenMemset32(DeviceMemoryBase *location, const uint32 &pattern,
     LOG(INFO) << "stream " << this
               << " did not memset GPU location; source: " << location
               << "; size: " << size << "; pattern: " << std::hex << pattern;
+  }
+  return *this;
+}
+
+Stream &Stream::ThenRnnForward(
+    const dnn::RnnDescriptor &rnn_desc,
+    const dnn::RnnSequenceTensorDescriptor &input_desc,
+    const DeviceMemory<float> &input_data,
+    const dnn::RnnStateTensorDescriptor &input_h_desc,
+    const DeviceMemory<float> &input_h_data,
+    const dnn::RnnStateTensorDescriptor &input_c_desc,
+    const DeviceMemory<float> &input_c_data, const DeviceMemory<float> &params,
+    const dnn::RnnSequenceTensorDescriptor &output_desc,
+    DeviceMemory<float> *output_data,
+    const dnn::RnnStateTensorDescriptor &output_h_desc,
+    DeviceMemory<float> *output_h_data,
+    const dnn::RnnStateTensorDescriptor &output_c_desc,
+    DeviceMemory<float> *output_c_data, bool is_training,
+    ScratchAllocator *reserve_space_allocator,
+    ScratchAllocator *workspace_allocator) {
+  // TODO(zhengxq): add VLOG PARAM calls.
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoRnnForward(
+          this, rnn_desc, input_desc, input_data, input_h_desc, input_h_data,
+          input_c_desc, input_c_data, params, output_desc, output_data,
+          output_h_desc, output_h_data, output_c_desc, output_c_data,
+          is_training, reserve_space_allocator, workspace_allocator));
+    } else {
+      SetError();
+      LOG(WARNING) << "Attempting to call ThenRnnForward without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenRnnBackward(
+    const dnn::RnnDescriptor &rnn_desc,
+    const dnn::RnnSequenceTensorDescriptor &input_desc,
+    const DeviceMemory<float> &input_data,
+    const dnn::RnnStateTensorDescriptor &input_h_desc,
+    const DeviceMemory<float> &input_h_data,
+    const dnn::RnnStateTensorDescriptor &input_c_desc,
+    const DeviceMemory<float> &input_c_data, const DeviceMemory<float> &params,
+    const dnn::RnnSequenceTensorDescriptor &output_desc,
+    const DeviceMemory<float> &output_data,
+    const dnn::RnnStateTensorDescriptor &output_h_desc,
+    const DeviceMemory<float> &output_h_data,
+    const dnn::RnnStateTensorDescriptor &output_c_desc,
+    const DeviceMemory<float> &output_c_data,
+    const DeviceMemory<float> &output_backprop_data,
+    const DeviceMemory<float> &output_h_backprop_data,
+    const DeviceMemory<float> &output_c_backprop_data,
+    DeviceMemory<float> *input_backprop_data,
+    DeviceMemory<float> *input_h_backprop_data,
+    DeviceMemory<float> *input_c_backprop_data,
+    DeviceMemory<float> *params_backprop_data,
+    DeviceMemory<uint8> *reserve_space_data,
+    ScratchAllocator *workspace_allocator) {
+  // TODO(zhengxq): add VLOG PARAM calls.
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoRnnBackward(
+          this, rnn_desc, input_desc, input_data, input_h_desc, input_h_data,
+          input_c_desc, input_c_data, params, output_desc, output_data,
+          output_h_desc, output_h_data, output_c_desc, output_c_data,
+          output_backprop_data, output_h_backprop_data, output_c_backprop_data,
+          input_backprop_data, input_h_backprop_data, input_c_backprop_data,
+          params_backprop_data, reserve_space_data, workspace_allocator));
+    } else {
+      SetError();
+      LOG(WARNING) << "Attempting to call ThenRnnBackward without DNN support";
+    }
   }
   return *this;
 }

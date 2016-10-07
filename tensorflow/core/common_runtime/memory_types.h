@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,9 +22,21 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Returns an error iff *g running on 'device_type' has memory type
-// mismatch for any edge's source and destination.
+// Returns an error iff *g running on a single device of 'device_type'
+// has memory type mismatch for any edge's source and destination.
 Status ValidateMemoryTypes(DeviceType device_type, const Graph* g);
+
+// Updates '*g' so that every edge's source and destination has
+// compatible memory types by inserting proper HostSend/Recv and
+// Send/HostRecv nodes.  'device_type' specifies the type of device on
+// which '*g' is going to run on and that device has the name
+// 'device_name'.
+//
+// Returns OK if '*g' is updated properly (ValidateMemoryTypes(g) must
+// be OK). Otherwise, returns an error and '*g' may be in an
+// invalidate state and the caller should discard it.
+Status EnsureMemoryTypes(DeviceType device_type, const string& device_name,
+                         Graph* g);
 
 // Get the memory type for 'index'th output of node 'n' in graph 'g', when
 // running on 'device_type'.

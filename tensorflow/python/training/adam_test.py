@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ def adam_update_numpy(param, g_t, t, m, v, alpha=0.001, beta1=0.9, beta2=0.999,
 class AdamOptimizerTest(tf.test.TestCase):
 
   def testSparse(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
@@ -79,7 +79,7 @@ class AdamOptimizerTest(tf.test.TestCase):
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
   def testBasic(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
@@ -116,7 +116,7 @@ class AdamOptimizerTest(tf.test.TestCase):
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
   def testTensorLearningRate(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
@@ -152,41 +152,8 @@ class AdamOptimizerTest(tf.test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
-  def testFloat64(self):
-    with self.test_session():
-      opt = tf.train.AdamOptimizer()
-
-      # compute_gradients.
-      values = [1.0, 3.0]
-      good_vars = [tf.Variable([v]) for v in values]
-      bad_loss = tf.constant(2.0, tf.float64, name="bad_loss")
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_loss.*expected.*float32",
-          opt.compute_gradients, bad_loss, good_vars)
-      bad_vars = [
-          tf.Variable(np.array([v], np.float64), name="bad_var")
-          for v in values]
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_var.*expected.*float32",
-          opt.compute_gradients, tf.cast(bad_vars[0] + bad_vars[1], tf.float32),
-          bad_vars)
-      opt.compute_gradients(good_vars[0] + good_vars[1], good_vars)
-
-      # apply_gradients.
-      bad_grads = [
-          tf.constant([0.1], dtype=np.float64, name="bad_grad"),
-          tf.constant([0.01])]
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_grad.*expected.*float32",
-          opt.apply_gradients, zip(bad_grads, good_vars))
-      good_grads = [tf.constant([0.01]), tf.constant([0.02])]
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_var.*expected.*float32",
-          opt.apply_gradients, zip(good_grads, bad_vars))
-      opt.apply_gradients(zip(good_grads, good_vars))
-
   def testSharing(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
@@ -225,6 +192,25 @@ class AdamOptimizerTest(tf.test.TestCase):
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
+
+  def testTwoSessions(self):
+    optimizer = tf.train.AdamOptimizer()
+    g = tf.Graph()
+    with g.as_default():
+      with tf.Session():
+        var0 = tf.Variable(np.array([1.0, 2.0]), name="v0")
+        grads0 = tf.constant(np.array([0.1, 0.1]))
+        optimizer.apply_gradients([(grads0, var0)])
+
+    gg = tf.Graph()
+    with gg.as_default():
+      with tf.Session():
+        var0 = tf.Variable(np.array([1.0, 2.0]), name="v0")
+        grads0 = tf.constant(np.array([0.1, 0.1]))
+
+        # If the optimizer saves any state not keyed by graph the following line
+        # fails.
+        optimizer.apply_gradients([(grads0, var0)])
 
 
 if __name__ == "__main__":

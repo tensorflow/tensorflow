@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,17 +20,23 @@ limitations under the License.
 
 namespace tensorflow {
 
-void Shard(int num_workers, thread::ThreadPool* workers, int64 total,
+void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
            int64 cost_per_unit, std::function<void(int64, int64)> work) {
   CHECK_GE(total, 0);
   if (total == 0) {
     return;
   }
-  if (num_workers <= 1) {
+  if (max_parallelism <= 1) {
     // Just inline the whole work since we only have 1 thread (core).
     work(0, total);
     return;
   }
+#ifdef EIGEN_USE_NONBLOCKING_THREAD_POOL
+  if (max_parallelism >= workers->NumThreads()) {
+    workers->ParallelFor(total, cost_per_unit, work);
+    return;
+  }
+#endif
   cost_per_unit = std::max(1LL, cost_per_unit);
   // We shard [0, total) into "num_shards" shards.
   //   1 <= num_shards <= num worker threads
@@ -40,7 +46,7 @@ void Shard(int num_workers, thread::ThreadPool* workers, int64 total,
   // is 10us.
   static const int64 kMinCostPerShard = 10000;
   const int num_shards =
-      std::max<int>(1, std::min(static_cast<int64>(num_workers),
+      std::max<int>(1, std::min(static_cast<int64>(max_parallelism),
                                 total * cost_per_unit / kMinCostPerShard));
 
   // Each shard contains up to "block_size" units. [0, total) is sharded

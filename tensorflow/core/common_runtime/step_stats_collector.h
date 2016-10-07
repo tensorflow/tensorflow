@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,29 +22,26 @@ limitations under the License.
 
 namespace tensorflow {
 
-class CostModel;
+class CostModelManager;
 class Graph;
-class Node;
 class NodeExecStats;
 class StepStats;
 
 class StepStatsCollector {
  public:
-  explicit StepStatsCollector(
-      StepStats* ss,
-      std::unordered_map<const Graph*, CostModel*>* cost_models = nullptr);
+  explicit StepStatsCollector(StepStats* ss);
 
-  void UpdateCostModel(const NodeExecStats* nt, const Graph* graph,
-                       const Node* node);
+  void BuildCostModel(
+      CostModelManager* cost_model_manager,
+      const std::unordered_map<string, const Graph*>& device_map);
+
   void Save(const string& device, NodeExecStats* nt);
 
   void Swap(StepStats* ss);
 
  private:
-  friend class StepStatsMgr;
   mutex mu_;
   StepStats* step_stats_ GUARDED_BY(mu_);
-  std::unordered_map<const Graph*, CostModel*>* cost_models_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

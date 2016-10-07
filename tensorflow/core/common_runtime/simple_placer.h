@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,17 +33,20 @@ namespace tensorflow {
 // devices the given DeviceSet, respecting the following constraints:
 //
 // 1. Existing device assignments remain unchanged.
-// 2. Requested (partial or complete) device specifications in the
-//    are granted.
+// 2. Requested (partial or complete) device specifications given by device name
+//    for each node are granted.
 // 3. Nodes connected by edges of a reference type are colocated on
 //    the same device.
-// 4. Given nodes "A" and "B", if node "B" has the device specification
-//    "@A", nodes "A" and "B" will be colocated on the same device.
+// 4. Given nodes "A" and "B", if node "B" has a colocation group
+//    "@loc:A", nodes "A" and "B" will be colocated on the same device.
 //
 // The implementation builds a constraint graph with the same set of
 // nodes, and edges that represent colocation constraints between
 // nodes.  Each connected component in the resulting constraint graph
-// is then assigned to a single device.
+// is then assigned to a set of valid devices.
+//
+// Run() will finally assign the device to each node given the list of
+// possible devices.
 //
 // TODO(mrry): "Soft" constraints, such as "place node 'x' as close as
 // possible to node 'y' while respecting the other constraints"?
@@ -57,20 +60,14 @@ class SimplePlacer {
 
   // Creates an instance of the SimplePlacer algorithm for the given
   // Graph "graph" (nodes in which may or may not be assigned) on the
-  // given DeviceSet "devices". The "name_to_id_map" maps the names of
-  // nodes in "g" to their numerical ID.
+  // given DeviceSet "devices".
   //
-  // REQUIRES: for all mappings (k, v) in "name_to_id_map",
-  // graph.FindNodeId(v)->name() == k.
-  //
-  // The "graph", "devices", and "name_to_id_map" pointer arguments
+  // The "graph", and "devices" pointer arguments
   // are borrowed by this SimplePlacer, and must outlive it.
   SimplePlacer(Graph* graph, const DeviceSet* devices,
-               const NodeNameToIdMap* name_to_id_map,
                const SessionOptions* options);
 
-  SimplePlacer(Graph* graph, const DeviceSet* devices,
-               const NodeNameToIdMap* name_to_id_map);
+  SimplePlacer(Graph* graph, const DeviceSet* devices);
 
   ~SimplePlacer();
 
@@ -82,11 +79,17 @@ class SimplePlacer {
   Status Run();
 
  private:
-  Status GetNodeByName(const string& name, Node** out_node) const;
+  // Returns true if the device type of 'candidate_device_name' is
+  // found in 'devices'.
+  bool CanAssignToDevice(const string& candidate_device_name,
+                         const std::vector<Device*> devices) const;
+
+  // Assigns 'node's devices to 'assigned_device', and logs the
+  // placement if the SessionOptions entry in 'options_' requests it.
+  void AssignAndLog(const string& assigned_device, Node* node) const;
 
   Graph* const graph_;                           // Not owned.
   const DeviceSet* const devices_;               // Not owned.
-  const NodeNameToIdMap* const name_to_id_map_;  // Not owned.
   const SessionOptions* options_;                // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(SimplePlacer);

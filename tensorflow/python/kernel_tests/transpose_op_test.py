@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -107,8 +107,13 @@ class TransposeTest(tf.test.TestCase):
     self._compare(x, use_gpu=False)
     self._compare(x, use_gpu=True)
 
-  def test1D(self):
+  def testRank1(self):
     self._compareCpu(np.arange(0., 2), [0])
+
+  def test1D(self):
+    vector = np.arange(0, 2).reshape((1, 1, 1, 2, 1))
+    self._compare(vector, use_gpu=False)
+    self._compare(vector, use_gpu=True)
 
   def testNop(self):
     self._compareCpu(np.arange(0, 6).reshape([3, 2]).astype(np.float32), [0, 1])
@@ -116,6 +121,13 @@ class TransposeTest(tf.test.TestCase):
   def testSimple(self):
     self._compareCpu(np.arange(0, 8).reshape([2, 4]).astype(np.float32),
                      np.array([1, 0]).astype(np.int32))
+
+  def testHalf(self):
+    self._compare(np.arange(0, 21).reshape([3, 7]).astype(np.float16))
+    self._compare(
+        np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.float16))
+    self._compare(
+        np.arange(0, 16).reshape([1, 2, 1, 2, 1, 2, 1, 2]).astype(np.float16))
 
   def testFloat(self):
     self._compare_cpu_gpu(np.arange(0, 21).reshape([3, 7]).astype(np.float32))
@@ -131,7 +143,7 @@ class TransposeTest(tf.test.TestCase):
     self._compare_cpu_gpu(
         np.arange(0, 16).reshape([1, 2, 1, 2, 1, 2, 1, 2]).astype(np.float64))
 
-  def testSComplex(self):
+  def testComplex64(self):
     self._testBoth(np.complex(1, 2) *
                    np.arange(0, 21).reshape([3, 7]).astype(np.complex64))
     self._testBoth(np.complex(1, 2) *
@@ -139,6 +151,15 @@ class TransposeTest(tf.test.TestCase):
     self._testBoth(
         np.complex(1, 2) *
         np.arange(0, 1260).reshape([2, 3, 5, 7, 2, 3]).astype(np.complex64))
+
+  def testComplex128(self):
+    self._testBoth(np.complex(1, 2) *
+                   np.arange(0, 21).reshape([3, 7]).astype(np.complex128))
+    self._testBoth(np.complex(1, 2) *
+                   np.arange(0, 210).reshape([2, 3, 5, 7]).astype(np.complex128))
+    self._testBoth(
+        np.complex(1, 2) *
+        np.arange(0, 1260).reshape([2, 3, 5, 7, 2, 3]).astype(np.complex128))
 
   def testInt8(self):
     self._testBoth(np.arange(0, 21).reshape([3, 7]).astype(np.int8))
@@ -205,7 +226,7 @@ class TransposeTest(tf.test.TestCase):
     self._testError(np.arange(0., 2 ** 11).reshape([2] * 11),
                     np.arange(11),
                     "not implemented")
-    with self.assertRaises(IndexError):
+    with self.assertRaises(ValueError):
       tf.transpose(np.arange(0., 30).reshape([2, 3, 5]), [0, 1, 3])
     self._testError(np.arange(0., 30).reshape([2, 3, 5]),
                     [0, 1, 1],

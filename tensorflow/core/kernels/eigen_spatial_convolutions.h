@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,16 +22,12 @@ namespace Eigen {
 
 namespace internal {
 
-// These optimizations require vector instructions
-#ifdef EIGEN_VECTORIZE
-
 // TODO: Consolidate this part of the code with the image patch extraction code
 // since they are both very similar.
 template <typename NewDimension, DenseIndex Rows, DenseIndex Cols,
           typename ArgType, typename Device, typename Scalar_, typename Index,
-          typename nocontract_t, typename contract_t, int Side,
-          size_t packet_size, bool inner_dim_contiguous,
-          bool inner_dim_reordered, int Alignment>
+          typename nocontract_t, typename contract_t, int Side, int packet_size,
+          bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment>
 class TensorContractionInputMapper<
     Scalar_, Index, Side,
     TensorEvaluator<
@@ -64,6 +60,7 @@ class TensorContractionInputMapper<
   typedef SubMapper LinearMapper;
   typedef typename packet_traits<Scalar>::type Packet;
 
+  EIGEN_DEVICE_FUNC
   TensorContractionInputMapper(
       const TensorEvaluator<
           const TensorReshapingOp<
@@ -80,7 +77,7 @@ class TensorContractionInputMapper<
       m_patch_cols = tensor.impl().dimensions()[2];
       m_num_patches = tensor.impl().dimensions()[3];
     } else {
-      static const int NumDims = tensor.impl().dimensions().size();
+      const int NumDims = tensor.impl().dimensions().size();
       patch_depth = tensor.impl().dimensions()[NumDims - 1];
       patch_rows = tensor.impl().dimensions()[NumDims - 2];
       m_patch_cols = tensor.impl().dimensions()[NumDims - 3];
@@ -102,7 +99,7 @@ class TensorContractionInputMapper<
       m_inputRows = tensor.impl().impl().dimensions()[1];
       m_inputCols = tensor.impl().impl().dimensions()[2];
     } else {
-      static const int NumDims = tensor.impl().impl().dimensions().size();
+      const int NumDims = tensor.impl().impl().dimensions().size();
       m_inputRows = tensor.impl().impl().dimensions()[NumDims - 2];
       m_inputCols = tensor.impl().impl().dimensions()[NumDims - 3];
     }
@@ -124,6 +121,7 @@ class TensorContractionInputMapper<
     m_fastDimZero = internal::TensorIntDivisor<Index>(patch_depth);
   }
 
+  EIGEN_DEVICE_FUNC
   TensorContractionInputMapper(const TensorContractionInputMapper& base_mapper)
       : m_impl(base_mapper.m_impl) {
     m_patch_cols = base_mapper.m_patch_cols;
@@ -457,9 +455,8 @@ class TensorContractionInputMapper<
 
 template <typename NewDimension, DenseIndex Rows, DenseIndex Cols,
           typename ArgType, typename Device, typename Scalar, typename Index,
-          typename nocontract_t, typename contract_t, int Side,
-          size_t packet_size, bool inner_dim_contiguous,
-          bool inner_dim_reordered, int Alignment>
+          typename nocontract_t, typename contract_t, int Side, int packet_size,
+          bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment>
 class TensorContractionSubMapper<
     Scalar, Index, Side,
     TensorEvaluator<
@@ -523,8 +520,8 @@ class TensorContractionSubMapper<
   }
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Packet loadPacket(Index i,
                                                           Index j) const {
-    return m_base_mapper.template loadPacket(i + m_depth_offset,
-                                             j + m_col_offset);
+    return m_base_mapper.template loadPacket<Alignment>(i + m_depth_offset,
+                                                        j + m_col_offset);
   }
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE Scalar
@@ -628,13 +625,13 @@ class TensorContractionSubMapper<
 
 template <typename NewDimension, DenseIndex Rows, DenseIndex Cols,
           typename ArgType, typename Device, typename Scalar, typename Index,
-          typename nocontract_t, typename contract_t, int Side,
-          size_t packet_size, bool inner_dim_contiguous,
-          bool inner_dim_reordered, int Alignment, int nr>
+          typename nocontract_t, typename contract_t, int packet_size,
+          bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment,
+          int nr>
 struct gemm_pack_rhs<
     Scalar, Index,
     TensorContractionSubMapper<
-        Scalar, Index, Side,
+        Scalar, Index, Rhs,
         TensorEvaluator<
             const TensorReshapingOp<
                 NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >,
@@ -643,7 +640,7 @@ struct gemm_pack_rhs<
         inner_dim_reordered, Alignment>,
     nr, ColMajor, false, false> {
   typedef TensorContractionSubMapper<
-      Scalar, Index, Side,
+      Scalar, Index, Rhs,
       TensorEvaluator<
           const TensorReshapingOp<
               NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >,
@@ -653,8 +650,10 @@ struct gemm_pack_rhs<
       SubMapper;
   typedef SubMapper DataMapper;
 
+  EIGEN_DEVICE_FUNC
   static inline Index ceil_div(Index a, Index b) { return (a + b - 1) / b; }
 
+  EIGEN_DEVICE_FUNC
   EIGEN_DONT_INLINE void operator()(Scalar* block, const DataMapper& rhs,
                                     Index depth, Index cols, Index stride = 0,
                                     Index offset = 0) const {
@@ -662,7 +661,6 @@ struct gemm_pack_rhs<
     eigen_assert(offset == 0);
 
     EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE);
-    typedef typename DataMapper::LinearMapper LinearMapper;
     typedef typename packet_traits<Scalar>::type Packet;
 
     const Index packet_cols4 = (cols / 4) * 4;
@@ -717,18 +715,18 @@ struct gemm_pack_rhs<
                   std::min<Index>(peeled_k - c * patch_rows * patch_depth -
                                       r * patch_depth + startDepth,
                                   patch_depth);
-              eigen_assert(max_depth % packet_size == 0);
+              eigen_assert((max_depth - startDepth) % packet_size == 0);
               for (Index d = startDepth; d < max_depth; d += packet_size) {
                 eigen_assert(k < peeled_k);
                 PacketBlock<Packet, 4> kernel;
-                kernel.packet[0] =
-                    pad0 ? pset1<Packet>(0) : rhs.packetNoPadding(d, idx0);
-                kernel.packet[1] =
-                    pad1 ? pset1<Packet>(0) : rhs.packetNoPadding(d, idx1);
-                kernel.packet[2] =
-                    pad2 ? pset1<Packet>(0) : rhs.packetNoPadding(d, idx2);
-                kernel.packet[3] =
-                    pad3 ? pset1<Packet>(0) : rhs.packetNoPadding(d, idx3);
+                kernel.packet[0] = pad0 ? pset1<Packet>(Scalar(0))
+                                        : rhs.packetNoPadding(d, idx0);
+                kernel.packet[1] = pad1 ? pset1<Packet>(Scalar(0))
+                                        : rhs.packetNoPadding(d, idx1);
+                kernel.packet[2] = pad2 ? pset1<Packet>(Scalar(0))
+                                        : rhs.packetNoPadding(d, idx2);
+                kernel.packet[3] = pad3 ? pset1<Packet>(Scalar(0))
+                                        : rhs.packetNoPadding(d, idx3);
                 ptranspose(kernel);
                 pstoreu(block + 0 * packet_size, kernel.packet[0]);
                 pstoreu(block + 1 * packet_size, kernel.packet[1]);
@@ -799,7 +797,83 @@ struct gemm_pack_rhs<
   }
 };
 
-#endif  // EIGEN_VECTORIZE
+// Special case for non-vectorized types such as float16.
+template <typename NewDimension, DenseIndex Rows, DenseIndex Cols,
+          typename ArgType, typename Device, typename Scalar, typename Index,
+          typename nocontract_t, typename contract_t, bool inner_dim_contiguous,
+          bool inner_dim_reordered, int Alignment, int nr>
+struct gemm_pack_rhs<
+    Scalar, Index,
+    TensorContractionSubMapper<
+        Scalar, Index, Rhs,
+        TensorEvaluator<
+            const TensorReshapingOp<
+                NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >,
+            Device>,
+        nocontract_t, contract_t, 1, inner_dim_contiguous, inner_dim_reordered,
+        Alignment>,
+    nr, ColMajor, false, false> {
+  typedef TensorContractionSubMapper<
+      Scalar, Index, Rhs,
+      TensorEvaluator<
+          const TensorReshapingOp<
+              NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >,
+          Device>,
+      nocontract_t, contract_t, 1, inner_dim_contiguous, inner_dim_reordered,
+      Alignment>
+      SubMapper;
+  typedef SubMapper DataMapper;
+
+  EIGEN_DEVICE_FUNC
+  static inline Index ceil_div(Index a, Index b) { return (a + b - 1) / b; }
+
+  EIGEN_DEVICE_FUNC
+  EIGEN_DONT_INLINE void operator()(Scalar* block, const DataMapper& rhs,
+                                    Index depth, Index cols, Index stride = 0,
+                                    Index offset = 0) const {
+    eigen_assert(stride == 0);
+    eigen_assert(offset == 0);
+
+    EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE);
+
+    const Index packet_cols4 = (cols / 4) * 4;
+
+    for (Index j2 = 0; j2 < packet_cols4; j2 += 4) {
+      const SubMapper dm0 = rhs.getLinearMapper(0, j2 + 0);
+      const SubMapper dm1 = rhs.getLinearMapper(0, j2 + 1);
+      const SubMapper dm2 = rhs.getLinearMapper(0, j2 + 2);
+      const SubMapper dm3 = rhs.getLinearMapper(0, j2 + 3);
+
+      if (!rhs.nonStandardPatches()) {
+        for (Index k = 0; k < depth; k++) {
+          block[0] = dm0.loadCoeffStandard(k);
+          block[1] = dm1.loadCoeffStandard(k);
+          block[2] = dm2.loadCoeffStandard(k);
+          block[3] = dm3.loadCoeffStandard(k);
+          block += 4;
+        }
+      } else {
+        for (Index k = 0; k < depth; k++) {
+          block[0] = dm0(k);
+          block[1] = dm1(k);
+          block[2] = dm2(k);
+          block[3] = dm3(k);
+          block += 4;
+        }
+      }
+    }
+
+    // copy the remaining columns one at a time (nr==1)
+    for (Index j2 = packet_cols4; j2 < cols; ++j2) {
+      const SubMapper dm0 = rhs.getLinearMapper(0, j2);
+      for (Index k = 0; k < depth; k++) {
+        *block = dm0(k);
+        block += 1;
+      }
+    }
+  }
+};
+
 }  // end namespace internal
 
 /** SpatialConvolution
@@ -827,36 +901,40 @@ struct gemm_pack_rhs<
   *
   */
 template <typename Input, typename Kernel>
-EIGEN_ALWAYS_INLINE static const typename internal::conditional<
-    internal::traits<Input>::Layout == ColMajor,
-    TensorReshapingOp<
-        const DSizes<typename internal::traits<Input>::Index,
-                     internal::traits<Input>::NumDimensions>,
-        const TensorContractionOp<
-            const array<IndexPair<typename internal::traits<Input>::Index>, 1>,
-            const TensorReshapingOp<
-                const DSizes<typename internal::traits<Input>::Index, 2>,
-                const Kernel>,
-            const TensorReshapingOp<
-                const DSizes<typename internal::traits<Input>::Index, 2>,
-                const TensorImagePatchOp<Dynamic, Dynamic, const Input> > > >,
-    TensorReshapingOp<
-        const DSizes<typename internal::traits<Input>::Index,
-                     internal::traits<Input>::NumDimensions>,
-        const TensorContractionOp<
-            const array<IndexPair<typename internal::traits<Input>::Index>, 1>,
-            const TensorReshapingOp<
-                const DSizes<typename internal::traits<Input>::Index, 2>,
-                const TensorImagePatchOp<Dynamic, Dynamic, const Input> >,
-            const TensorReshapingOp<
-                const DSizes<typename internal::traits<Input>::Index, 2>,
-                const Kernel> > > >::type
-SpatialConvolution(const Input& input, const Kernel& kernel,
-                   const DenseIndex row_stride = 1,
-                   const DenseIndex col_stride = 1,
-                   const PaddingType padding_type = PADDING_SAME,
-                   const DenseIndex row_in_stride = 1,
-                   const DenseIndex col_in_stride = 1) {
+EIGEN_DEVICE_FUNC
+    EIGEN_ALWAYS_INLINE static const typename internal::conditional<
+        internal::traits<Input>::Layout == ColMajor,
+        TensorReshapingOp<
+            const DSizes<typename internal::traits<Input>::Index,
+                         internal::traits<Input>::NumDimensions>,
+            const TensorContractionOp<
+                const array<IndexPair<typename internal::traits<Input>::Index>,
+                            1>,
+                const TensorReshapingOp<
+                    const DSizes<typename internal::traits<Input>::Index, 2>,
+                    const Kernel>,
+                const TensorReshapingOp<
+                    const DSizes<typename internal::traits<Input>::Index, 2>,
+                    const TensorImagePatchOp<Dynamic, Dynamic,
+                                             const Input> > > >,
+        TensorReshapingOp<
+            const DSizes<typename internal::traits<Input>::Index,
+                         internal::traits<Input>::NumDimensions>,
+            const TensorContractionOp<
+                const array<IndexPair<typename internal::traits<Input>::Index>,
+                            1>,
+                const TensorReshapingOp<
+                    const DSizes<typename internal::traits<Input>::Index, 2>,
+                    const TensorImagePatchOp<Dynamic, Dynamic, const Input> >,
+                const TensorReshapingOp<
+                    const DSizes<typename internal::traits<Input>::Index, 2>,
+                    const Kernel> > > >::type
+    SpatialConvolution(const Input& input, const Kernel& kernel,
+                       const DenseIndex row_stride = 1,
+                       const DenseIndex col_stride = 1,
+                       const PaddingType padding_type = PADDING_SAME,
+                       const DenseIndex row_in_stride = 1,
+                       const DenseIndex col_in_stride = 1) {
   typedef typename internal::traits<Input>::Index TensorIndex;
   TensorRef<Tensor<typename internal::traits<Input>::Scalar,
                    internal::traits<Input>::NumDimensions,
@@ -870,9 +948,9 @@ SpatialConvolution(const Input& input, const Kernel& kernel,
   EIGEN_STATIC_ASSERT(
       internal::traits<Input>::Layout == internal::traits<Kernel>::Layout,
       YOU_MADE_A_PROGRAMMING_MISTAKE);
-  static const bool isColMajor = (internal::traits<Input>::Layout == ColMajor);
+  const bool isColMajor = (internal::traits<Input>::Layout == ColMajor);
 
-  static const int NumDims = internal::traits<Input>::NumDimensions;
+  const int NumDims = internal::traits<Input>::NumDimensions;
 
   // Number of filters to apply. This is the same as the output depth of the
   // result

@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,7 +27,6 @@ import time
 
 import six
 
-from google.protobuf import text_format
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.util import test_log_pb2
 # timeline is outside of the platform target, but is brought in by the target
@@ -35,6 +34,7 @@ from tensorflow.core.util import test_log_pb2
 from tensorflow.python.client import timeline
 from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging as logging
 
 # When a subclass of the Benchmark class is created, it is added to
 # the registry automatically
@@ -66,12 +66,22 @@ def _global_report_benchmark(
     if not isinstance(extras, dict):
       raise TypeError("extras must be a dict")
 
+    logging.info(
+        "Benchmark [%s] iters: %d, wall_time: %g, cpu_time: %g,"
+        "throughput: %g" %
+        (name,
+         iters if iters is not None else -1,
+         wall_time if wall_time is not None else -1,
+         cpu_time if cpu_time is not None else -1,
+         throughput if throughput is not None else -1))
+
   test_env = os.environ.get(TEST_REPORTER_TEST_ENV, None)
   if test_env is None:
     # Reporting was not requested
     return
 
-  entry = test_log_pb2.BenchmarkEntry()
+  entries = test_log_pb2.BenchmarkEntries()
+  entry = entries.entry.add()
   entry.name = name
   if iters is not None:
     entry.iters = iters
@@ -88,13 +98,13 @@ def _global_report_benchmark(
       else:
         entry.extras[k].string_value = str(v)
 
-  serialized_entry = text_format.MessageToString(entry)
+  serialized_entry = entries.SerializeToString()
 
   mangled_name = name.replace("/", "__")
   output_path = "%s%s" % (test_env, mangled_name)
   if gfile.Exists(output_path):
     raise IOError("File already exists: %s" % output_path)
-  with gfile.GFile(output_path, "w") as out:
+  with gfile.GFile(output_path, "wb") as out:
     out.write(serialized_entry)
 
 
@@ -164,6 +174,7 @@ class Benchmark(six.with_metaclass(_BenchmarkRegistrar, object)):
       wall_time: (optional) Total wall time in seconds
       throughput: (optional) Throughput (in MB/s)
       extras: (optional) Dict mapping string keys to additional benchmark info.
+        Values may be either floats or values that are convertible to strings.
       name: (optional) Override the BenchmarkEntry name with `name`.
         Otherwise it is inferred from the top-level method name.
     """
@@ -189,7 +200,8 @@ class TensorFlowBenchmark(Benchmark):
                        burn_iters=2,
                        min_iters=10,
                        store_trace=False,
-                       name=None):
+                       name=None,
+                       extras=None):
     """Run an op or tensor in the given session.  Report the results.
 
     Args:
@@ -205,6 +217,12 @@ class TensorFlowBenchmark(Benchmark):
         in the extras field "full_trace_chrome_format".
       name: (optional) Override the BenchmarkEntry name with `name`.
         Otherwise it is inferred from the top-level method name.
+      extras: (optional) Dict mapping string keys to additional benchmark info.
+        Values may be either floats or values that are convertible to strings.
+
+    Returns:
+      A `dict` containing the key-value pairs that were passed to
+      `report_benchmark`.
     """
     for _ in range(burn_iters):
       sess.run(op_or_tensor, feed_dict=feed_dict)
@@ -218,7 +236,7 @@ class TensorFlowBenchmark(Benchmark):
       delta = end_time - start_time
       deltas[i] = delta
 
-    extras = {}
+    extras = extras if extras is not None else {}
     if store_trace:
       run_options = config_pb2.RunOptions(
           trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -238,11 +256,12 @@ class TensorFlowBenchmark(Benchmark):
 
     median_delta = _median(deltas)
 
-    self.report_benchmark(
-        iters=min_iters,
-        wall_time=median_delta,
-        extras=extras,
-        name=name)
+    benchmark_values = {"iters": min_iters,
+                        "wall_time": median_delta,
+                        "extras": extras,
+                        "name": name}
+    self.report_benchmark(**benchmark_values)
+    return benchmark_values
 
 
 def _run_benchmarks(regex):

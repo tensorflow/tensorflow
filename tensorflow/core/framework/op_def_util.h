@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,6 +27,10 @@ namespace tensorflow {
 
 // Performs a consistency check across the fields of the op_def.
 Status ValidateOpDef(const OpDef& op_def);
+
+// Check if an op is deprecated at the given GraphDef version.  If the op is
+// deprecated at a future version, a warning will be logged.
+Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version);
 
 // Validates that attr_value satisfies the type and constraints from attr.
 // REQUIRES: attr has already been validated.

@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import logging
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import queue_runner
 
@@ -98,7 +98,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   # total_num_replicas=52 and make sure this number matches how many physical
   # replicas you started in your job.
 
-  # Some models have startup_delays to help stablize the model but when using
+  # Some models have startup_delays to help stabilize the model but when using
   # sync_replicas training, set it to 0.
 
   # Now you can call `minimize()` or `compute_gradients()` and
@@ -118,7 +118,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   chief_queue_runner and get_init_tokens_op generated from this optimizer.
 
   ```python
-  # After the session is created by the superviser and before the main while
+  # After the session is created by the Supervisor and before the main while
   # loop:
   if is_chief and FLAGS.sync_replicas:
     sv.start_queue_runners(sess, [chief_queue_runner])
@@ -335,7 +335,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     local_step = array_ops.reshape(local_step, ())
     is_stale = math_ops.less(local_step, global_step)
 
-    with ops.op_scope(inputs, None, self._name):
+    with ops.name_scope(name, self._name, inputs) as name:
       for grad, var in grads_and_vars:
         var_list.append(var)
         with ops.device(var.device):
@@ -411,7 +411,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         with ops.control_dependencies([final_train_ops]):
           token = sync_token_queue.dequeue()
           train_op = state_ops.scatter_update(self._local_steps,
-                                              self._replica_id, token)
+                                              self._replica_id,
+                                              token, name=name)
 
         with ops.control_dependencies(clear_queue_ops):
           # Sync_op needs to insert tokens to the token queue at the end of the

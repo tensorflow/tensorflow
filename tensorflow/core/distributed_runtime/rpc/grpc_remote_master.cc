@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,11 +17,11 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_interface.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_master_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/master.pb.h"
-#include "tensorflow/core/protobuf/master_service.grpc.pb.h"
 
 namespace tensorflow {
 
@@ -38,6 +38,7 @@ class GrpcRemoteMaster : public MasterInterface {
                        const CreateSessionRequest* request,
                        CreateSessionResponse* response) override {
     ::grpc::ClientContext ctx;
+    ctx.set_fail_fast(false);
     SetDeadline(&ctx, call_options->GetTimeout());
     return FromGrpcStatus(stub_->CreateSession(&ctx, *request, response));
   }
@@ -46,6 +47,7 @@ class GrpcRemoteMaster : public MasterInterface {
                        const ExtendSessionRequest* request,
                        ExtendSessionResponse* response) override {
     ::grpc::ClientContext ctx;
+    ctx.set_fail_fast(false);
     SetDeadline(&ctx, call_options->GetTimeout());
     return FromGrpcStatus(stub_->ExtendSession(&ctx, *request, response));
   }
@@ -53,6 +55,7 @@ class GrpcRemoteMaster : public MasterInterface {
   Status RunStep(CallOptions* call_options, const RunStepRequest* request,
                  RunStepResponse* response) override {
     ::grpc::ClientContext ctx;
+    ctx.set_fail_fast(false);
     SetDeadline(&ctx, call_options->GetTimeout());
     return FromGrpcStatus(stub_->RunStep(&ctx, *request, response));
   }
@@ -61,6 +64,7 @@ class GrpcRemoteMaster : public MasterInterface {
                       const CloseSessionRequest* request,
                       CloseSessionResponse* response) override {
     ::grpc::ClientContext ctx;
+    ctx.set_fail_fast(false);
     SetDeadline(&ctx, call_options->GetTimeout());
     return FromGrpcStatus(stub_->CloseSession(&ctx, *request, response));
   }
@@ -69,6 +73,7 @@ class GrpcRemoteMaster : public MasterInterface {
                      const ListDevicesRequest* request,
                      ListDevicesResponse* response) override {
     ::grpc::ClientContext ctx;
+    ctx.set_fail_fast(false);
     SetDeadline(&ctx, call_options->GetTimeout());
     return FromGrpcStatus(stub_->ListDevices(&ctx, *request, response));
   }
@@ -76,6 +81,7 @@ class GrpcRemoteMaster : public MasterInterface {
   Status Reset(CallOptions* call_options, const ResetRequest* request,
                ResetResponse* response) override {
     ::grpc::ClientContext ctx;
+    ctx.set_fail_fast(false);
     SetDeadline(&ctx, call_options->GetTimeout());
     return FromGrpcStatus(stub_->Reset(&ctx, *request, response));
   }

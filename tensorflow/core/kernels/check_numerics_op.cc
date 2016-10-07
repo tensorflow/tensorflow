@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ limitations under the License.
 #include <numeric>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 
@@ -64,11 +65,10 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
     // Check to see if any element of the tensor is NaN or Inf.
     int fp_props =
         std::accumulate(data, data + size, 0, [](const int& x, const T& y) {
-          int prop = std::fpclassify(y);
           int result = x;
-          if (prop == FP_INFINITE) {
+          if (Eigen::numext::isinf(y)) {
             result |= kInfBit;
-          } else if (prop == FP_NAN) {
+          } else if (Eigen::numext::isnan(y)) {
             result |= kNaNBit;
           }
           return result;
@@ -183,15 +183,19 @@ class CheckNumericsOp<GPUDevice, T> : public OpKernel {
 
 }  // namespace
 
-REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T"),
-                        CheckNumericsOp<CPUDevice, float>);
-REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<double>("T"),
-                        CheckNumericsOp<CPUDevice, double>);
+#define REGISTER_CPU_KERNEL(T)                                         \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("CheckNumerics").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      CheckNumericsOp<CPUDevice, T>);
+TF_CALL_half(REGISTER_CPU_KERNEL);
+TF_CALL_float(REGISTER_CPU_KERNEL);
+TF_CALL_double(REGISTER_CPU_KERNEL);
+
 #if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        CheckNumericsOp<GPUDevice, Eigen::half>);
 REGISTER_KERNEL_BUILDER(Name("CheckNumerics")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<float>("T"),

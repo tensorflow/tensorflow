@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,7 +31,9 @@ limitations under the License.
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
+#if GOOGLE_CUDA
 typedef Eigen::GpuDevice GPUDevice;
+#endif  // GOOGLE_CUDA
 
 // --------------------------------------------------------------------------
 template <typename Device, typename T>
@@ -40,7 +42,9 @@ class PackOp : public OpKernel {
   typedef std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>
       ConstMatrixVector;
 
-  explicit PackOp(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit PackOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("axis", &axis_));
+  }
 
   void Compute(OpKernelContext* c) override {
     OpInputList values;
@@ -55,8 +59,18 @@ class PackOp : public OpKernel {
                       values[0].shape().DebugString(), " != values[", i,
                       "].shape = ", values[i].shape().DebugString()));
     }
+
+    int expanded_num_dims = values[0].dims() + 1;
+    int axis = axis_;
+    if (axis < 0) axis += expanded_num_dims;
+
+    OP_REQUIRES(c, 0 <= axis && axis < expanded_num_dims,
+                errors::InvalidArgument("axis = ", axis_, " not in [",
+                                        -expanded_num_dims, ", ",
+                                        expanded_num_dims, ")"));
+
     TensorShape output_shape(values[0].shape());
-    output_shape.InsertDim(0, num);
+    output_shape.InsertDim(axis, num);
 
     // In the num = 1 case, just reshape the input
     if (num == 1) {
@@ -70,9 +84,22 @@ class PackOp : public OpKernel {
     Tensor* output;
     OP_REQUIRES_OK(c, c->allocate_output(0, output_shape, &output));
 
+    int64 before_dim = 1;
+    for (int i = 0; i < axis; ++i) {
+      before_dim *= output_shape.dim_size(i);
+    }
+
+    int64 after_dim = 1;
+    for (int i = axis + 1; i < output_shape.dims(); ++i) {
+      after_dim *= output_shape.dim_size(i);
+    }
+
+    const int64 axis_dim = output_shape.dim_size(axis);
+
     const int64 output_size = output->NumElements();
     if (output_size > 0) {
-      auto output_flat = output->shaped<T, 2>({1, output_size});
+      auto output_flat =
+          output->shaped<T, 2>({before_dim, after_dim * axis_dim});
 
       // Except for shapes, pack is a special case of concat, so we reuse the
       // same computational kernels.
@@ -80,8 +107,9 @@ class PackOp : public OpKernel {
       inputs_flat.reserve(num);
       for (int i = 0; i < num; ++i) {
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
-            values[i].shaped<T, 2>({1, values[i].NumElements()})));
+            values[i].shaped<T, 2>({before_dim, after_dim})));
       }
+#if GOOGLE_CUDA
       if (std::is_same<Device, GPUDevice>::value) {
         // Switching indexing to int64 might cause performance issues.
         // Hence, we keep int32 indexing in the GPU kernel unless we need to
@@ -91,11 +119,15 @@ class PackOp : public OpKernel {
         } else {
           ConcatGPU64<T>(c->eigen_gpu_device(), inputs_flat, &output_flat);
         }
-      } else {
-        ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+        return;
       }
+#endif  // GOOGLE_CUDA
+      ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
     }
   }
+
+ private:
+  int axis_;
 };
 
 #define REGISTER_PACK(type)                                      \
@@ -104,10 +136,8 @@ class PackOp : public OpKernel {
       PackOp<CPUDevice, type>)
 
 TF_CALL_ALL_TYPES(REGISTER_PACK);
-REGISTER_PACK(quint8);
-REGISTER_PACK(qint8);
-REGISTER_PACK(qint32);
-REGISTER_PACK(bfloat16);
+TF_CALL_QUANTIZED_TYPES(REGISTER_PACK);
+TF_CALL_bfloat16(REGISTER_PACK);
 
 #undef REGISTER_PACK
 

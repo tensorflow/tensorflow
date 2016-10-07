@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ class TypeIndex {
   bool operator!=(const TypeIndex& rhs) const { return (hash_ != rhs.hash_); }
   ~TypeIndex() {}
 
-  string name() const { return "[RTTI disabled for Android]"; }
+  const char* name() const { return "[RTTI disabled for Android]"; }
   uint64 hash_code() const { return hash_; }
 
   // Returns a TypeIndex object that corresponds to a typename.

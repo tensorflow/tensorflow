@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,14 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import tensorflow as tf
 
 
 class GradientDescentOptimizerTest(tf.test.TestCase):
 
   def testBasic(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype)
@@ -46,7 +45,7 @@ class GradientDescentOptimizerTest(tf.test.TestCase):
             [3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01], var1.eval())
 
   def testTensorLearningRate(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
         var1 = tf.Variable([3.0, 4.0], dtype=dtype)
@@ -67,43 +66,8 @@ class GradientDescentOptimizerTest(tf.test.TestCase):
         self.assertAllCloseAccordingToType(
             [3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01], var1.eval())
 
-  def testFloat64(self):
-    with self.test_session():
-      opt = tf.train.GradientDescentOptimizer(3.0)
-
-      # compute_gradients.
-      values = [1.0, 3.0]
-      good_vars = [tf.Variable([v]) for v in values]
-      bad_loss = tf.constant(2.0, tf.float64, name="bad_loss")
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_loss.*expected.*float32",
-          opt.compute_gradients, bad_loss, good_vars)
-      bad_vars = [
-          tf.Variable(np.array([v], np.float64), name="bad_var")
-          for v in values
-      ]
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_var.*expected.*float32",
-          opt.compute_gradients, tf.cast(bad_vars[0] + bad_vars[1], tf.float32),
-          bad_vars)
-      opt.compute_gradients(good_vars[0] + good_vars[1], good_vars)
-
-      # apply_gradients.
-      bad_grads = [
-          tf.constant([0.1], dtype=np.float64, name="bad_grad"),
-          tf.constant([0.01])
-      ]
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_grad.*expected.*float32",
-          opt.apply_gradients, zip(bad_grads, good_vars))
-      good_grads = [tf.constant([0.01]), tf.constant([0.02])]
-      self.assertRaisesRegexp(
-          ValueError, r"Invalid type.*float64.*bad_var.*expected.*float32",
-          opt.apply_gradients, zip(good_grads, bad_vars))
-      opt.apply_gradients(zip(good_grads, good_vars))
-
   def testGradWrtRef(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         opt = tf.train.GradientDescentOptimizer(3.0)
         values = [1.0, 3.0]
@@ -114,7 +78,7 @@ class GradientDescentOptimizerTest(tf.test.TestCase):
           self.assertAllCloseAccordingToType([1.0], grad.eval())
 
   def testWithGlobalStep(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         global_step = tf.Variable(0, trainable=False)
         var0 = tf.Variable([1.0, 2.0], dtype=dtype)
@@ -138,7 +102,7 @@ class GradientDescentOptimizerTest(tf.test.TestCase):
         self.assertAllCloseAccordingToType(1, global_step.eval())
 
   def testSparseBasic(self):
-    for dtype in [tf.half, tf.float32]:
+    for dtype in [tf.half, tf.float32, tf.float64]:
       with self.test_session():
         var0 = tf.Variable([[1.0], [2.0]], dtype=dtype)
         var1 = tf.Variable([[3.0], [4.0]], dtype=dtype)

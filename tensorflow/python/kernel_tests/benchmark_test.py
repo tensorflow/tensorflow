@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import random
 
 import tensorflow as tf
 
-from google.protobuf import text_format
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.platform import benchmark
 
@@ -170,19 +169,19 @@ class BenchmarkTest(tf.test.TestCase):
       expected_3.name = "TestReportingBenchmark.op_benchmark"
       expected_3.iters = 1000
 
-      read_benchmark_1 = tf.gfile.GFile(expected_output_file, "r").read()
-      read_benchmark_1 = text_format.Merge(
-          read_benchmark_1, test_log_pb2.BenchmarkEntry())
+      def read_benchmark_entry(f):
+        s = tf.gfile.GFile(f, "rb").read()
+        entries = test_log_pb2.BenchmarkEntries.FromString(s)
+        self.assertEquals(1, len(entries.entry))
+        return entries.entry[0]
+
+      read_benchmark_1 = read_benchmark_entry(expected_output_file)
       self.assertProtoEquals(expected_1, read_benchmark_1)
 
-      read_benchmark_2 = tf.gfile.GFile(expected_output_file_2, "r").read()
-      read_benchmark_2 = text_format.Merge(
-          read_benchmark_2, test_log_pb2.BenchmarkEntry())
+      read_benchmark_2 = read_benchmark_entry(expected_output_file_2)
       self.assertProtoEquals(expected_2, read_benchmark_2)
 
-      read_benchmark_3 = tf.gfile.GFile(expected_output_file_3, "r").read()
-      read_benchmark_3 = text_format.Merge(
-          read_benchmark_3, test_log_pb2.BenchmarkEntry())
+      read_benchmark_3 = read_benchmark_entry(expected_output_file_3)
       self.assertEquals(expected_3.name, read_benchmark_3.name)
       self.assertEquals(expected_3.iters, read_benchmark_3.iters)
       self.assertGreater(read_benchmark_3.wall_time, 0)

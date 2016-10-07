@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@ namespace functor {
 
 typedef Eigen::GpuDevice GPUDevice;
 typedef std::complex<float> complex64;
+typedef std::complex<double> complex128;
 
 // Partial specialization of UnaryFunctor<Device=GPUDevice, Functor>.
 template <typename Functor>
@@ -45,18 +46,18 @@ struct UnaryFunctor<GPUDevice, Functor> {
 };
 
 // Partial specialization of BinaryFunctor<Device=GPUDevice, Functor>.
-template <typename Functor, int NDIMS>
-struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
+template <typename Functor, int NDIMS, bool has_errors>
+struct BinaryFunctor<GPUDevice, Functor, NDIMS, has_errors> {
   void operator()(const GPUDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in0,
-                  typename Functor::tin_type in1) {
+                  typename Functor::tin_type in1, bool* error) {
     To32Bit(out).device(d) =
         To32Bit(in0).binaryExpr(in1, typename Functor::func());
   }
 
   void Left(const GPUDevice& d, typename Functor::tout_type out,
             typename Functor::tscalar_type scalar,
-            typename Functor::tin_type in) {
+            typename Functor::tin_type in, bool* error) {
     typedef typename Functor::out_type Tout;
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
@@ -66,7 +67,7 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
 
   void Right(const GPUDevice& d, typename Functor::tout_type out,
              typename Functor::tin_type in,
-             typename Functor::tscalar_type scalar) {
+             typename Functor::tscalar_type scalar, bool* error) {
     typedef typename Functor::out_type Tout;
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
@@ -79,7 +80,8 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
              typename TTypes<typename Functor::in_type, NDIMS>::ConstTensor in0,
              typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast0,
              typename TTypes<typename Functor::in_type, NDIMS>::ConstTensor in1,
-             typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast1) {
+             typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast1,
+             bool* error) {
     typedef typename Functor::in_type T;
     typename Functor::func func;
     if ((NDIMS == 2) && Functor::use_bcast_optimization &&
@@ -103,7 +105,7 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
 };
 
 // Macros to explicitly instantiate kernels on GPU for multiple types
-// (T0, T1, etc.) for UnaryFunctor (e.g., functor:sqrt).
+// (T0, T1, etc.) for UnaryFunctor (e.g., functor::sqrt).
 #define DEFINE_UNARY1(F, T) template struct UnaryFunctor<GPUDevice, F<T> >
 #define DEFINE_UNARY2(F, T0, T1) \
   DEFINE_UNARY1(F, T0);          \
@@ -117,13 +119,18 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
 #define DEFINE_UNARY5(F, T0, T1, T2, T3, T4) \
   DEFINE_UNARY2(F, T0, T1);                  \
   DEFINE_UNARY3(F, T2, T3, T4)
+#define DEFINE_UNARY6(F, T0, T1, T2, T3, T4, T5) \
+  DEFINE_UNARY2(F, T0, T1);                      \
+  DEFINE_UNARY4(F, T2, T3, T4, T5)
 
 // Macros to explicitly instantiate kernels on GPU for multiple types
 // (T0, T1, etc.) for BinaryFunctor.
 #define DEFINE_BINARY1(F, T)                         \
   template struct BinaryFunctor<GPUDevice, F<T>, 1>; \
   template struct BinaryFunctor<GPUDevice, F<T>, 2>; \
-  template struct BinaryFunctor<GPUDevice, F<T>, 3>
+  template struct BinaryFunctor<GPUDevice, F<T>, 3>; \
+  template struct BinaryFunctor<GPUDevice, F<T>, 4>; \
+  template struct BinaryFunctor<GPUDevice, F<T>, 5>
 #define DEFINE_BINARY2(F, T0, T1) \
   DEFINE_BINARY1(F, T0);          \
   DEFINE_BINARY1(F, T1)
@@ -145,6 +152,15 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS> {
 #define DEFINE_BINARY8(F, T0, T1, T2, T3, T4, T5, T6, T7) \
   DEFINE_BINARY4(F, T0, T1, T2, T3);                      \
   DEFINE_BINARY4(F, T4, T5, T6, T7)
+#define DEFINE_BINARY9(F, T0, T1, T2, T3, T4, T5, T6, T7, T8) \
+  DEFINE_BINARY4(F, T0, T1, T2, T3);                          \
+  DEFINE_BINARY5(F, T4, T5, T6, T7, T8)
+#define DEFINE_BINARY10(F, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9) \
+  DEFINE_BINARY5(F, T0, T1, T2, T3, T4);                           \
+  DEFINE_BINARY5(F, T5, T6, T7, T8, T9)
+#define DEFINE_BINARY11(F, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10) \
+  DEFINE_BINARY5(F, T0, T1, T2, T3, T4);                                \
+  DEFINE_BINARY6(F, T5, T6, T7, T8, T9, T10)
 
 }  // end namespace functor
 }  // end namespace tensorflow

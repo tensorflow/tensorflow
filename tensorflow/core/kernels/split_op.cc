@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/kernels/cuda_device_array.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
@@ -182,9 +183,9 @@ class SplitOpCPU : public SplitOpBase<CPUDevice, T> {
 
 template <typename T>
 struct SplitOpGPULaunch {
-  void Run(const Eigen::GpuDevice& d, const T* input, int32 split_dim,
-           int32 prefix_dim_size, int32 split_dim_size, int32 suffix_dim_size,
-           T** output_ptrs_vec);
+  void Run(const Eigen::GpuDevice& d, const T* input, int32 prefix_dim_size,
+           int32 split_dim_size, int32 suffix_dim_size,
+           const CudaDeviceArrayStruct<T*>& output_ptr_data);
 };
 
 // Partial specialization for GPU
@@ -219,44 +220,24 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
     TensorShape output_shape(input_shape);
     output_shape.set_dim(split_dim, split_dim_output_size);
 
-    AllocatorAttributes attr;
-    attr.set_on_host(true);
-    attr.set_gpu_compatible(true);
+    CudaDeviceArrayOnHost<T*> ptrs(context, num_split);
+    OP_REQUIRES_OK(context, ptrs.Init());
 
-    Tensor output_ptrs_on_host;
-    Tensor output_ptrs_on_gpu;
-    int64 output_ptrs_total_bytes = static_cast<int64>(sizeof(T*) * num_split);
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DT_INT8, TensorShape{output_ptrs_total_bytes},
-                                &output_ptrs_on_host, attr));
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DT_INT8, TensorShape{output_ptrs_total_bytes},
-                                &output_ptrs_on_gpu));
-    T** output_ptrs_on_host_arr =
-        reinterpret_cast<T**>(output_ptrs_on_host.flat<int8>().data());
     for (int i = 0; i < num_split; ++i) {
       Tensor* result = nullptr;
       OP_REQUIRES_OK(context,
                      context->allocate_output(i, output_shape, &result));
-      output_ptrs_on_host_arr[i] = result->flat<T>().data();
+      ptrs.Set(i, result->flat<T>().data());
     }
     if (prefix_dim_size * split_dim_output_size * suffix_dim_size == 0) {
       return;
     }
-    auto stream = context->op_device_context()->stream();
-    perftools::gputools::DeviceMemoryBase output_ptrs_base{
-        output_ptrs_on_gpu.flat<int8>().data(), static_cast<uint64>(num_split)};
-    TensorReference tensor_ref(output_ptrs_on_host);
-    stream->ThenMemcpy(&output_ptrs_base,
-                       output_ptrs_on_host.flat<int8>().data(),
-                       output_ptrs_total_bytes);
-    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, [tensor_ref]() { tensor_ref.Unref(); });
-    SplitOpGPULaunch<T>().Run(
-        context->eigen_device<GPUDevice>(), input.flat<T>().data(), num_split,
-        prefix_dim_size, split_dim_size, suffix_dim_size,
-        reinterpret_cast<T**>(output_ptrs_on_gpu.flat<int8>().data()));
-    OP_REQUIRES(context, stream->ok(),
+    OP_REQUIRES_OK(context, ptrs.Finalize());
+
+    SplitOpGPULaunch<T>().Run(context->eigen_device<GPUDevice>(),
+                              input.flat<T>().data(), prefix_dim_size,
+                              split_dim_size, suffix_dim_size, ptrs.data());
+    OP_REQUIRES(context, context->op_device_context()->stream()->ok(),
                 errors::Internal("Launch of gpu kernel for SplitOp failed"));
   }
 };

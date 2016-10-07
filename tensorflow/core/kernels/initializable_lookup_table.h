@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,6 +43,26 @@ class InitializableLookupTable : public LookupInterface {
   //   specific to their failure modes.
   Status Find(const Tensor& keys, Tensor* values,
               const Tensor& default_value) final;
+
+  // Returns errors::Unimplemented.
+  Status Insert(const Tensor& keys, const Tensor& values) final {
+    return errors::Unimplemented(
+        "Insert not supported by InitializableLookupTable implementations");
+  }
+
+  Status ExportValues(OpKernelContext* context) final {
+    return errors::Unimplemented(
+        "ExportValues not supported by InitializableLookupTable "
+        "implementations");
+  }
+
+  Status ImportValues(const Tensor& keys, const Tensor& values) final {
+    return errors::Unimplemented(
+        "ImportValues not supported by InitializableLookupTable "
+        "implementations");
+  }
+
+  TensorShape value_shape() const final { return TensorShape(); }
 
   // Returns whether the table was initialized and is ready to serve lookups.
   bool is_initialized() const { return is_initialized_; }

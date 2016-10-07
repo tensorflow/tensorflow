@@ -40,12 +40,12 @@ The problem arises when you want to reuse this model. Assume you want to
 apply your image filter to 2 different images, `image1` and `image2`.
 You want both images processed by the same filter with the same parameters.
 You can call `my_image_filter()` twice, but this will create two sets
-of variables:
+of variables, 4 variables in each one, for a total of 8 variables.
 
 ```python
-# First call creates one set of variables.
+# First call creates one set of 4 variables.
 result1 = my_image_filter(image1)
-# Another set is created in the second call.
+# Another set of 4 variables is created in the second call.
 result2 = my_image_filter(image2)
 ```
 
@@ -207,7 +207,7 @@ with tf.variable_scope("foo"):
     v = tf.get_variable("v", [1])
 with tf.variable_scope("foo", reuse=True):
     v1 = tf.get_variable("v", [1])
-assert v1 == v
+assert v1 is v
 ```
 
 ### Basics of `tf.variable_scope()`
@@ -234,7 +234,7 @@ with tf.variable_scope("foo"):
     v = tf.get_variable("v", [1])
     tf.get_variable_scope().reuse_variables()
     v1 = tf.get_variable("v", [1])
-assert v1 == v
+assert v1 is v
 ```
 
 Note that you *cannot* set the `reuse` flag to `False`. The reason behind
@@ -285,8 +285,8 @@ with tf.variable_scope(foo_scope)
 with tf.variable_scope(foo_scope, reuse=True)
     v1 = tf.get_variable("v", [1])
     w1 = tf.get_variable("w", [1])
-assert v1 == v
-assert w1 == w
+assert v1 is v
+assert w1 is w
 ```
 
 When opening a variable scope using a previously existing scope

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,4 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=wildcard-import
+from tensorflow.contrib.framework.python.framework.checkpoint_utils import *
+from tensorflow.contrib.framework.python.framework.deprecation import deprecated
+from tensorflow.contrib.framework.python.framework.deprecation import deprecated_args
+from tensorflow.contrib.framework.python.framework.deprecation import deprecated_arg_values
 from tensorflow.contrib.framework.python.framework.tensor_util import *

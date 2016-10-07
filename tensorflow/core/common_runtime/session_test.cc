@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ TEST(SessionTest, InvalidTargetReturnsNull) {
   EXPECT_TRUE(
       StringPiece(s.error_message())
           .contains(
-              "No session factory registered for the given session options."));
+              "No session factory registered for the given session options"));
 }
 
 // Register a fake session factory to test error handling paths in

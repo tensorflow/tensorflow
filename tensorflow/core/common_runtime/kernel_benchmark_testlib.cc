@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
@@ -39,7 +39,6 @@ namespace test {
 
 Benchmark::Benchmark(const string& device, Graph* g,
                      const SessionOptions* options, Graph* init) {
-
   SessionOptions default_options;
   if (!options) {
     options = &default_options;
@@ -115,50 +114,61 @@ string GetRendezvousKey(const Node* node) {
 void Benchmark::RunWithArgs(
     const std::vector<std::pair<const Node*, Tensor>>& inputs,
     const std::vector<const Node*>& outputs, int iters) {
-  if (device_) {
-    // Gets inputs' and outputs' rendezvous keys.
-    std::vector<std::pair<string, Tensor>> in;
-    for (const auto& p : inputs) {
-      in.push_back({GetRendezvousKey(p.first), p.second});
-    }
-    std::vector<string> out;
-    for (const auto& n : outputs) {
-      out.push_back(GetRendezvousKey(n));
-    }
-    Tensor unused;  // In benchmark, we don't care the return value.
-    bool is_dead;
-
-    // Warm up
-    Executor::Args args;
-    args.rendezvous = rendez_;
-    args.runner = [this](std::function<void()> closure) {
-      pool_->Schedule(closure);
-    };
-    for (int i = 0; i < 3; ++i) {
-      for (const auto& p : in) {
-        rendez_->Send(p.first, Rendezvous::Args(), p.second, false);
-      }
-      TF_CHECK_OK(exec_->Run(args));
-      for (const string& key : out) {
-        rendez_->Recv(key, Rendezvous::Args(), &unused, &is_dead);
-      }
-    }
-    TF_CHECK_OK(device_->Sync());
-
-    testing::StartTiming();
-    while (iters-- > 0) {
-      for (const auto& p : in) {
-        rendez_->Send(p.first, Rendezvous::Args(), p.second, false);
-      }
-      TF_CHECK_OK(exec_->Run(args));
-      for (const string& key : out) {
-        rendez_->Recv(key, Rendezvous::Args(), &unused, &is_dead);
-      }
-    }
-
-    TF_CHECK_OK(device_->Sync());
-    testing::StopTiming();
+  if (!device_ || iters == 0) {
+    return;
   }
+  // Gets inputs' and outputs' rendezvous keys.
+  std::vector<std::pair<string, Tensor>> in;
+  for (const auto& p : inputs) {
+    in.push_back({GetRendezvousKey(p.first), p.second});
+  }
+  std::vector<string> out;
+  for (const auto& n : outputs) {
+    out.push_back(GetRendezvousKey(n));
+  }
+  Tensor unused;  // In benchmark, we don't care the return value.
+  bool is_dead;
+
+  // Warm up
+  Executor::Args args;
+  args.rendezvous = rendez_;
+  args.runner = [this](std::function<void()> closure) {
+    pool_->Schedule(closure);
+  };
+  static const int kWarmupRuns = 3;
+  for (int i = 0; i < kWarmupRuns; ++i) {
+    for (const auto& p : in) {
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
+      rendez_->Send(parsed, Rendezvous::Args(), p.second, false);
+    }
+    TF_CHECK_OK(exec_->Run(args));
+    for (const string& key : out) {
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
+      rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead);
+    }
+  }
+  TF_CHECK_OK(device_->Sync());
+  VLOG(3) << kWarmupRuns << " warmup runs done.";
+
+  testing::StartTiming();
+  while (iters-- > 0) {
+    for (const auto& p : in) {
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
+      rendez_->Send(parsed, Rendezvous::Args(), p.second, false);
+    }
+    TF_CHECK_OK(exec_->Run(args));
+    for (const string& key : out) {
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
+      rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead);
+    }
+  }
+
+  TF_CHECK_OK(device_->Sync());
+  testing::StopTiming();
 }
 
 }  // end namespace test

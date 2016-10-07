@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -73,6 +73,14 @@ class ArgMaxTest(tf.test.TestCase):
   def testInt64(self):
     self._testBasic(np.int64)
     self._testDim(np.int64)
+
+  def testEmpty(self):
+    with self.test_session():
+      for op in tf.argmin, tf.argmax:
+        with self.assertRaisesOpError(
+            r"Reduction axis 0 is empty in shape \[0\]"):
+          op([], 0).eval()
+
 
 if __name__ == "__main__":
   tf.test.main()

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -76,9 +76,6 @@ class ScalarStrictTest(tf.test.TestCase):
   def testFill(self):
     self.check(tf.fill, (2, 3), 'dims must be a vector', [3, 3])
     self.check(tf.fill, ([2], [3]), 'value must be a scalar', [3, 3])
-
-  def testAssert(self):
-    self.check(tf.Assert, ([True], (7,)), 'should be a scalar', None)
 
   def testPad(self):
     self.check(tf.pad, (7, [[1, 2]]),

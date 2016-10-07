@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@ limitations under the License.
 #include "grpc++/grpc++.h"
 #include "grpc++/security/credentials.h"
 
+#include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
-#include "tensorflow/core/distributed_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"

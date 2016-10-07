@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,6 +57,8 @@ class BCastGradArgsOp : public OpKernel {
     Output(ctx, 0, bcast.grad_x_reduce_idx());
     Output(ctx, 1, bcast.grad_y_reduce_idx());
   }
+
+  bool IsExpensive() override { return false; }
 
  private:
   void Output(OpKernelContext* ctx, int idx, const BCast::Vec& v) {

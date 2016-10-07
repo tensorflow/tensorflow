@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -158,7 +158,7 @@ void TableBuilder::Flush() {
   WriteBlock(&r->data_block, &r->pending_handle);
   if (ok()) {
     r->pending_index_entry = true;
-    r->status = r->file->Flush();
+    // We don't flush the underlying file as that can be slow.
   }
 }
 

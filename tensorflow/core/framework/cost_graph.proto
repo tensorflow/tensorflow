@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+option java_outer_classname = "CostGraphProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+
+message CostGraphDef {
+  message Node {
+    // The name of the node. Names are globally unique.
+    string name = 1;
+
+    // The device of the node. Can be empty if the node is mapped to the
+    // default partition or partitioning hasn't been run yet.
+    string device = 2;
+
+    // The id of the node. Node ids are only unique inside a partition.
+    int32 id = 3;
+
+    // Inputs of this node. They must be executed before this node can be
+    // executed. An input is a particular output of another node, specified
+    // by the node id and the output index.
+    message InputInfo {
+      int32 preceding_node = 1;
+      int32 preceding_port = 2;
+    }
+    repeated InputInfo input_info = 4;
+
+    // Outputs of this node.
+    message OutputInfo {
+      int64 size = 1;
+      // If >= 0, the output is an alias of an input. Note that an alias input
+      // may itself be an alias. The algorithm will therefore need to follow
+      // those pointers.
+      int64 alias_input_port = 2;
+    }
+    repeated OutputInfo output_info = 5;
+
+    // Temporary memory used by this node.
+    int64 temporary_memory_size = 6;
+
+    // Estimate of the computational cost of this node.
+    int64 compute_cost = 9;
+
+    // If true, the output is permanent: it can't be discarded, because this
+    // node is part of the "final output". Nodes may depend on final nodes.
+    bool is_final = 7;
+
+    // Ids of the control inputs for this node.
+    repeated int32 control_input = 8;
+  }
+  repeated Node node = 1;
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,15 +13,45 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+#
+# Usage: ci_build.sh <CONTAINER_TYPE> [--dockerfile <DOCKERFILE_PATH>]
+#                    <COMMAND>
+#
+# CONTAINER_TYPE: Type of the docker container used the run the build:
+#                 e.g., (cpu | gpu | android | tensorboard)
+#
+# DOCKERFILE_PATH: (Optional) Path to the Dockerfile used for docker build.
+#                  If this optional value is not supplied (via the
+#                  --dockerfile flag), default Dockerfiles in the same
+#                  directory as this script will be used.
+#
+# COMMAND: Command to be executed in the docker container, e.g.,
+#          tensorflow/tools/ci_build/builds/pip.sh gpu
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/builds/builds_common.sh"
 
 # Get the command line arguments.
 CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
 shift 1
-COMMAND=("$@")
 
-# Figure out the directory where this script is.
-SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
+# Dockerfile to be used in docker build
+DOCKERFILE_PATH="${SCRIPT_DIR}/Dockerfile.${CONTAINER_TYPE}"
+DOCKER_CONTEXT_PATH="${SCRIPT_DIR}"
+
+if [[ "$1" == "--dockerfile" ]]; then
+  DOCKERFILE_PATH="$2"
+  DOCKER_CONTEXT_PATH=$(dirname "${DOCKERFILE_PATH}")
+  echo "Using custom Dockerfile path: ${DOCKERFILE_PATH}"
+  echo "Using custom docker build context path: ${DOCKER_CONTEXT_PATH}"
+  shift 2
+fi
+
+if [[ ! -f "${DOCKERFILE_PATH}" ]]; then
+  die "Invalid Dockerfile path: \"${DOCKERFILE_PATH}\""
+fi
+
+COMMAND=("$@")
 
 # Validate command line arguments.
 if [ "$#" -lt 1 ] || [ ! -e "${SCRIPT_DIR}/Dockerfile.${CONTAINER_TYPE}" ]; then
@@ -37,15 +67,21 @@ if [ "$#" -lt 1 ] || [ ! -e "${SCRIPT_DIR}/Dockerfile.${CONTAINER_TYPE}" ]; then
   exit 1
 fi
 
-
 # Optional arguments - environment variables. For example:
 # CI_DOCKER_EXTRA_PARAMS='-it --rm' CI_COMMAND_PREFIX='' tensorflow/tools/ci_build/ci_build.sh CPU /bin/bash
-if [[ "${CI_DOCKER_EXTRA_PARAMS}" != *"--rm"* ]]; then
-  CI_DOCKER_EXTRA_PARAMS="--rm ${CI_DOCKER_EXTRA_PARAMS}"
-fi
 CI_TENSORFLOW_SUBMODULE_PATH="${CI_TENSORFLOW_SUBMODULE_PATH:-.}"
-CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/with_the_same_user ${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
+CI_COMMAND_PREFIX=("${CI_COMMAND_PREFIX[@]:-${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/with_the_same_user "\
+"${CI_TENSORFLOW_SUBMODULE_PATH}/tensorflow/tools/ci_build/builds/configured ${CONTAINER_TYPE}}")
 
+if [[ ! -z "${TF_BUILD_DISABLE_GCP}" ]] &&
+   [[ "${TF_BUILD_DISABLE_GCP}" != "0" ]]; then
+  CI_COMMAND_PREFIX+=("--disable-gcp")
+fi
+
+# cmake (CPU) builds do not require configuration.
+if [[ "${CONTAINER_TYPE}" == "cmake" ]]; then
+  CI_COMMAND_PREFIX=""
+fi
 
 # Helper function to traverse directories up until given file is found.
 function upsearch () {
@@ -84,7 +120,7 @@ DOCKER_IMG_NAME=$(echo "${DOCKER_IMG_NAME}" | sed -e 's/=/_/g' -e 's/,/-/g')
 DOCKER_IMG_NAME=$(echo "${DOCKER_IMG_NAME}" | tr '[:upper:]' '[:lower:]')
 
 # Print arguments.
-echo "WORKSAPCE: ${WORKSPACE}"
+echo "WORKSPACE: ${WORKSPACE}"
 echo "CI_DOCKER_EXTRA_PARAMS: ${CI_DOCKER_EXTRA_PARAMS[@]}"
 echo "COMMAND: ${COMMAND[@]}"
 echo "CI_COMMAND_PREFIX: ${CI_COMMAND_PREFIX[@]}"
@@ -97,12 +133,20 @@ echo ""
 # Build the docker container.
 echo "Building container (${DOCKER_IMG_NAME})..."
 docker build -t ${DOCKER_IMG_NAME} \
-    -f ${SCRIPT_DIR}/Dockerfile.${CONTAINER_TYPE} ${SCRIPT_DIR}
+    -f "${DOCKERFILE_PATH}" "${DOCKER_CONTEXT_PATH}"
+
+# Check docker build status
+if [[ $? != "0" ]]; then
+  die "ERROR: docker build failed. Dockerfile is at ${DOCKERFILE_PATH}"
+fi
 
 # Run the command inside the container.
 echo "Running '${COMMAND[@]}' inside ${DOCKER_IMG_NAME}..."
 mkdir -p ${WORKSPACE}/bazel-ci_build-cache
-docker run \
+# By default we cleanup - remove the container once it finish running (--rm)
+# and share the PID namespace (--pid=host) so the process inside does not have
+# pid 1 and SIGKILL is propagated to the process inside (jenkins can kill it).
+docker run --rm --pid=host \
     -v ${WORKSPACE}/bazel-ci_build-cache:${WORKSPACE}/bazel-ci_build-cache \
     -e "CI_BUILD_HOME=${WORKSPACE}/bazel-ci_build-cache" \
     -e "CI_BUILD_USER=$(id -u --name)" \

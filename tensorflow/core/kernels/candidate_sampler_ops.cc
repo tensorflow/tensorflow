@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -190,7 +190,7 @@ class ComputeAccidentalHitsOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& in_true_candidates = context->input(0);
-    TensorShape in_true_candidates_shape = in_true_candidates.shape();
+    const TensorShape& in_true_candidates_shape = in_true_candidates.shape();
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(in_true_candidates_shape) &&
                              in_true_candidates_shape.dim_size(1) == num_true_,
                 errors::InvalidArgument(

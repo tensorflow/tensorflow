@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,15 +21,53 @@ from __future__ import print_function
 import copy
 
 
-class Device(object):
-  """Represents a Device."""
+class DeviceSpec(object):
+  """Represents a (possibly partial) specification for a TensorFlow device.
+
+  `DeviceSpec`s are used throughout TensorFlow to describe where state is stored
+  and computations occur. Using `DeviceSpec` allows you to parse device spec
+  strings to verify their validity, merge them or compose them programmatically.
+
+  Example:
+
+  ```python
+  # Place the operations on device "GPU:0" in the "ps" job.
+  device_spec = DeviceSpec(job="ps", device_type="GPU", device_index=0)
+  with tf.device(device_spec):
+    # Both my_var and squared_var will be placed on /job:ps/device:GPU:0.
+    my_var = tf.Variable(..., name="my_variable")
+    squared_var = tf.square(my_var)
+  ```
+
+  If a `DeviceSpec` is partially specified, it will be merged with other
+  `DeviceSpec`s according to the scope in which it is defined. `DeviceSpec`
+  components defined in inner scopes take precedence over those defined in
+  outer scopes.
+
+  ```python
+  with tf.device(DeviceSpec(job="train", )):
+    with tf.device(DeviceSpec(job="ps", device_type="GPU", device_index=0):
+      # Nodes created here will be assigned to /job:ps/device:GPU:0.
+    with tf.device(DeviceSpec(device_type="GPU", device_index=1):
+      # Nodes created here will be assigned to /job:train/device:GPU:1.
+  ```
+
+  A `DeviceSpec` consists of 5 components -- each of
+  which is optionally specified:
+
+  * Job: The job name.
+  * Replica: The replica index.
+  * Task: The task index.
+  * Device type: The device type string (e.g. "CPU" or "GPU").
+  * Device index: The device index.
+  """
 
   def __init__(self, job=None, replica=None, task=None, device_type=None,
                device_index=None):
-    """Create a new device object.
+    """Create a new `DeviceSpec` object.
 
     Args:
-      job: string.  Optional device job name.
+      job: string.  Optional job name.
       replica: int.  Optional replica index.
       task: int.  Optional task index.
       device_type: Optional device type string (e.g. "CPU" or "GPU")
@@ -88,7 +126,7 @@ class Device(object):
       self._task = None
 
   def parse_from_string(self, spec):
-    """Parse a Device name into its components.
+    """Parse a `DeviceSpec` name into its components.
 
     Args:
       spec: a string of the form
@@ -99,7 +137,7 @@ class Device(object):
       All entries are optional.
 
     Returns:
-      The Device, for convenience.
+      The `DeviceSpec`.
 
     Raises:
       ValueError: if the spec was not valid.
@@ -135,10 +173,10 @@ class Device(object):
     return self
 
   def merge_from(self, dev):
-    """Merge the properties of "dev" into this Device.
+    """Merge the properties of "dev" into this `DeviceSpec`.
 
     Args:
-      dev: a Device.
+      dev: a `DeviceSpec`.
     """
     if dev.job is not None:
       self.job = dev.job
@@ -152,11 +190,11 @@ class Device(object):
       self.device_index = dev.device_index
 
   def to_string(self):
-    """Return a Device specification string.
+    """Return a string representation of this `DeviceSpec`.
 
     Returns:
-      a string of the form /job:<name>/replica:<id>/task:<id>/device:cpu:<id>
-      or /job:<name>/replica:<id>/task:<id>/device:cpu:<id>.
+      a string of the form
+      /job:<name>/replica:<id>/task:<id>/device:<device_type>:<id>.
     """
     dev = ""
     if self.job is not None:
@@ -172,22 +210,22 @@ class Device(object):
       dev += "/device:%s:%s" % (self.device_type, device_index_string)
     return dev
 
+  @staticmethod
+  def from_string(spec):
+    """Construct a `DeviceSpec` from a string.
 
-def from_string(spec):
-  """Construct a Device from a string.
+    Args:
+      spec: a string of the form
+       /job:<name>/replica:<id>/task:<id>/device:CPU:<id>
+      or
+       /job:<name>/replica:<id>/task:<id>/device:GPU:<id>
+      as cpu and gpu are mutually exclusive.
+      All entries are optional.
 
-  Args:
-    spec: a string of the form
-     /job:<name>/replica:<id>/task:<id>/device:CPU:<id>
-    or
-     /job:<name>/replica:<id>/task:<id>/device:GPU:<id>
-    as cpu and gpu are mutually exclusive.
-    All entries are optional.
-
-  Returns:
-    A Device.
-  """
-  return Device().parse_from_string(spec)
+    Returns:
+      A DeviceSpec.
+    """
+    return DeviceSpec().parse_from_string(spec)
 
 
 def check_valid(spec):
@@ -199,18 +237,18 @@ def check_valid(spec):
   Raises:
     An exception if the spec is invalid.
   """
-  # Construct a device.  It will assert a failure if spec is invalid.
-  from_string(spec)
+  # Construct a DeviceSpec.  It will assert a failure if spec is invalid.
+  DeviceSpec.from_string(spec)
 
 
 def canonical_name(device):
-  """Returns a canonical name for the given device or device name."""
+  """Returns a canonical name for the given `DeviceSpec` or device name."""
   if device is None:
     return ""
-  if isinstance(device, Device):
+  if isinstance(device, DeviceSpec):
     return device.to_string()
   else:
-    device = from_string(device)
+    device = DeviceSpec.from_string(device)
     return device.to_string()
 
 
@@ -220,17 +258,17 @@ def merge_device(spec):
   This can be used to merge partial specifications of devices. The
   innermost setting for a device field takes precedence. For example:
 
-    with tf.Device(MergeDevice("/device:GPU:0"))
+    with tf.device(merge_device("/device:GPU:0"))
       # Nodes created here have device "/device:GPU:0"
-      with tf.Device(MergeDevice("/job:worker")):
+      with tf.device(merge_device("/job:worker")):
         # Nodes created here have device "/job:worker/device:GPU:0"
-        with tf.Device(MergeDevice("/device:CPU:0")):
+        with tf.device(merge_device("/device:CPU:0")):
           # Nodes created here have device "/job:worker/device:CPU:0"
-          with tf.Device(MergeDevice("/job:ps")):
+          with tf.device(merge_device("/job:ps")):
             # Nodes created here have device "/job:ps/device:CPU:0"
 
   Args:
-    spec: A device or a device spec string (partially) describing the
+    spec: A `DeviceSpec` or a device spec string (partially) describing the
       device that should be used for all nodes created in the scope of
       the returned device function's with block.
 
@@ -240,10 +278,10 @@ def merge_device(spec):
   Raises:
     ValueError: if the spec was not valid.
   """
-  if not isinstance(spec, Device):
-    spec = from_string(spec or "")
+  if not isinstance(spec, DeviceSpec):
+    spec = DeviceSpec.from_string(spec or "")
   def _device_function(node_def):
-    current_device = from_string(node_def.device or "")
+    current_device = DeviceSpec.from_string(node_def.device or "")
     copy_spec = copy.copy(spec)
     copy_spec.merge_from(current_device)  # current_device takes precedence.
     return copy_spec

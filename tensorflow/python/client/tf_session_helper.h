@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,39 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_CLIENT_TF_SESSION_HELPER_H_
 #define TENSORFLOW_PYTHON_CLIENT_TF_SESSION_HELPER_H_
 
-#ifdef PyArray_Type
-#error "Numpy cannot be included before tf_session_helper.h."
-#endif
+// Must be included first
+#include "tensorflow/python/lib/core/numpy.h"
 
-// Disallow Numpy 1.7 deprecated symbols.
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-
-// We import_array in the tensorflow init function only.
-#define PY_ARRAY_UNIQUE_SYMBOL _tensorflow_numpy_api
-#ifndef TF_IMPORT_NUMPY
-#define NO_IMPORT_ARRAY
-#endif
-
-#include <Python.h>
-
-#include "numpy/arrayobject.h"
-
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/public/tensor_c_api.h"
 
 namespace tensorflow {
 
 // Container types for the various arguments and temporary values used
 // in the wrapper.
-
-// A FeedVector is a vector of tensor name and numpy array pairs. The
-// name is a borrowed C string.
-typedef tensorflow::gtl::InlinedVector<std::pair<const char*, PyArrayObject*>,
-                                       8>
-    FeedVector;
 
 // A NameVector is a vector of tensor or operation names, as borrowed
 // C strings.
@@ -70,6 +50,9 @@ Safe_PyObjectPtr make_safe(PyObject* o);
 // stolen by the implementation (i.e. the implementation will
 // eventually call Py_DECREF on each array input).
 //
+// The PyObject* feed_dict must be a dictionary mapping strings to
+// NumPy arrays. This function does not modify its reference count.
+//
 // On success, the tensors corresponding to output_names[0,noutputs-1]
 // are placed in out_values[], and these outputs[] become the property
 // of the caller (the caller must eventually call Py_DECREF on them).
@@ -77,8 +60,8 @@ Safe_PyObjectPtr make_safe(PyObject* o);
 // On failure, out_status contains a tensorflow::Status with an error
 // message.
 void TF_Run_wrapper(TF_Session* session, const TF_Buffer* run_options,
-                    const FeedVector& inputs, const NameVector& output_names,
-                    const NameVector& target_nodes, Status* out_status,
+                    PyObject* feed_dict, const NameVector& output_names,
+                    const NameVector& target_nodes, TF_Status* out_status,
                     PyObjectVector* out_values, TF_Buffer* run_outputs);
 
 // Set up the graph with the intended feeds and fetches for partial run.
@@ -92,11 +75,14 @@ void TF_Run_wrapper(TF_Session* session, const TF_Buffer* run_options,
 // NOTE: This is EXPERIMENTAL and subject to change.
 void TF_PRunSetup_wrapper(TF_Session* session, const NameVector& input_names,
                           const NameVector& output_names,
-                          const NameVector& target_nodes, Status* out_status,
-                          char** out_handle);
+                          const NameVector& target_nodes, TF_Status* out_status,
+                          const char** out_handle);
 
 // Continue to run the graph with additional feeds and fetches. The
 // execution state is uniquely identified by the handle.
+//
+// The PyObject* feed_dict must be a dictionary mapping strings to
+// NumPy arrays. This function does not modify its reference count.
 //
 // On success,  the tensors corresponding to output_names[0,noutputs-1]
 // are placed in out_values[], and these outputs[] become the property
@@ -107,13 +93,12 @@ void TF_PRunSetup_wrapper(TF_Session* session, const NameVector& input_names,
 //
 // NOTE: This is EXPERIMENTAL and subject to change.
 void TF_PRun_wrapper(TF_Session* session, const char* handle,
-                     const FeedVector& inputs, const NameVector& output_names,
-                     Status* out_status, PyObjectVector* out_values);
+                     PyObject* feed_dict, const NameVector& output_names,
+                     TF_Status* out_status, PyObjectVector* out_values);
 
-// Import numpy.  This wrapper function exists so that the
-// PY_ARRAY_UNIQUE_SYMBOL can be safely defined in a .cc file to
-// avoid weird linking issues.
-void ImportNumpy();
+// Wrapper for TF_Reset that converts the string vectors to character arrays.
+void TF_Reset_wrapper(const TF_SessionOptions* opt,
+                      const NameVector& containers, TF_Status* out_status);
 
 // Convenience wrapper around EqualGraphDef to make it easier to wrap.
 // Returns an explanation if a difference is found, or the empty string

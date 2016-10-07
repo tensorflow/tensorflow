@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,7 +32,8 @@ struct Pad {
   void operator()(const Device& d, typename TTypes<T, Dims>::Tensor output,
                   typename TTypes<T, Dims>::ConstTensor input,
                   Eigen::array<std::pair<int32, int32>, Dims> paddings) {
-    if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
+    if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value &&
+        (output.size() <= std::numeric_limits<int32>::max())) {
       To32Bit(output).device(d) = To32Bit(input).pad(paddings);
     } else {
       output.device(d) = input.pad(paddings);

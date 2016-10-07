@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/core/distributed_runtime/process_util.h"
+#include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/remote_device.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
@@ -250,7 +250,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
       finder.GetRemoteDevices(env_->local_devices, &remote_devices);
       SessionOptions options;
       options.config = req->config();
-      MasterSessionInterface* session =
+      MasterSession* session =
           env_->master_session_factory(options, env_, &remote_devices);
       GraphDef* gdef =
           const_cast<CreateSessionRequest*>(req)->mutable_graph_def();
@@ -273,7 +273,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
 void Master::ExtendSession(const ExtendSessionRequest* req,
                            ExtendSessionResponse* resp, MyClosure done) {
   mu_.lock();
-  MasterSessionInterface* session = nullptr;
+  MasterSession* session = nullptr;
   session = gtl::FindPtrOrNull(sessions_, req->session_handle());
   if (session == nullptr) {
     mu_.unlock();
@@ -295,8 +295,7 @@ void Master::RunStep(CallOptions* opts, const RunStepRequest* req,
                      RunStepResponse* resp, MyClosure done) {
   mu_.lock();
   uint64 start_time = env_->env->NowMicros();
-  MasterSessionInterface* session =
-      gtl::FindPtrOrNull(sessions_, req->session_handle());
+  MasterSession* session = gtl::FindPtrOrNull(sessions_, req->session_handle());
   if (session == nullptr) {
     mu_.unlock();
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
@@ -316,7 +315,7 @@ void Master::RunStep(CallOptions* opts, const RunStepRequest* req,
 
 void Master::CloseSession(const CloseSessionRequest* req,
                           CloseSessionResponse* resp, MyClosure done) {
-  MasterSessionInterface* session = nullptr;
+  MasterSession* session = nullptr;
   {
     mu_.lock();
     auto iter = sessions_.find(req->session_handle());
@@ -392,7 +391,7 @@ void Master::Reset(const ResetRequest* req, ResetResponse* resp,
                    MyClosure done) {
   // Vector to hold the session pointers present in the sessions_
   // (string->Session*) map.
-  std::vector<MasterSessionInterface*> sessions;
+  std::vector<MasterSession*> sessions;
   {
     mutex_lock l(mu_);
     for (const auto& entry : sessions_) {
@@ -405,7 +404,7 @@ void Master::Reset(const ResetRequest* req, ResetResponse* resp,
 
   SchedClosure([sessions, done]() {
     Status s;
-    for (MasterSessionInterface* session : sessions) {
+    for (MasterSession* session : sessions) {
       s.Update(session->Close());
     }
     done(s);

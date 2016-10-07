@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,29 +21,29 @@ namespace tensorflow {
 /* static */
 void BCast::Reverse(Vec* shape) { std::reverse(shape->begin(), shape->end()); }
 
-BCast::BCast(const Vec& sx, const Vec& sy) {
-  if (sx == sy) {
+BCast::BCast(const Vec& sx, const Vec& sy, const bool fewer_dims_optimization) {
+  if (sx == sy && TF_PREDICT_TRUE(fewer_dims_optimization)) {
     // Fast path for common case of identical shapes for sx and sy
     int64 elements = 1;
     const int n = sx.size();
     output_.resize(n);
     for (int i = 0; i < n; i++) {
-      int64 dim = sx[i];
+      const int64 dim = sx[i];
       elements *= dim;
       output_[i] = dim;
     }
+    result_.push_back(elements);
     x_reshape_.push_back(elements);
     y_reshape_.push_back(elements);
     x_bcast_.push_back(1);
     y_bcast_.push_back(1);
-    result_.push_back(elements);
     // grad_x_reduce_ and grad_y_reduce_ are left as empty
   } else {
     // Reverse the shape of x and y for convenience.
     // After the reverse, 0-th is the inner-most dimension.
     Vec x = sx;
-    Reverse(&x);
     Vec y = sy;
+    Reverse(&x);
     Reverse(&y);
 
     // 1-extend and align x and y so that they are the same size.
@@ -108,11 +108,18 @@ BCast::BCast(const Vec& sx, const Vec& sy) {
         // Both side are 1s.
         grad_x_reduce_idx_.push_back(n - 1 - i);
         grad_y_reduce_idx_.push_back(n - 1 - i);
+        if (!TF_PREDICT_TRUE(fewer_dims_optimization)) {
+          result_.push_back(o_i);
+          x_reshape_.push_back(x_i);
+          x_bcast_.push_back(bx_i);
+          y_reshape_.push_back(y_i);
+          y_bcast_.push_back(by_i);
+        }
         continue;
-      } else if (prev == curr) {
-        // It is a run of the same cases (no broadcast, x broadcast to
-        // y, y broadcast to x). We can reshape the input so that fewer
-        // dimensions are involved in the intermediate computation.
+      } else if (TF_PREDICT_TRUE(fewer_dims_optimization) && prev == curr) {
+        // It is a run of the same cases(no broadcast, x broadcast to y, y
+        // broadcast to x). We can reshape the input so that fewer dimensions
+        // are involved in the intermediate computation.
         result_.back() *= o_i;
         x_reshape_.back() *= x_i;
         x_bcast_.back() *= bx_i;
@@ -148,6 +155,20 @@ BCast::BCast(const Vec& sx, const Vec& sy) {
     Reverse(&grad_x_reduce_idx_);
     Reverse(&grad_y_reduce_idx_);
   }
+}
+
+BCast::Vec BCast::FromShape(const TensorShape& shape) {
+  const int N = shape.dims();
+  BCast::Vec ret(N);
+  for (int i = 0; i < N; ++i) {
+    ret[i] = shape.dim_size(i);
+  }
+  return ret;
+}
+
+TensorShape BCast::ToShape(const BCast::Vec& vec) {
+  TensorShape shape(vec);
+  return shape;
 }
 
 }  // end namespace tensorflow

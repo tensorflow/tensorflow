@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,9 +13,58 @@
 # limitations under the License.
 # ==============================================================================
 
+# TODO(ptucker,ipolosukhin): Improve descriptions.
+"""High level API for learning with TensorFlow.
+
+## Estimators
+
+Train and evaluate TensorFlow models.
+
+@@BaseEstimator
+@@Estimator
+@@ModeKeys
+@@DNNClassifier
+@@DNNRegressor
+@@TensorFlowEstimator
+@@LinearClassifier
+@@LinearRegressor
+@@TensorFlowRNNClassifier
+@@TensorFlowRNNRegressor
+
+## Graph actions
+
+Perform various training, evaluation, and inference actions on a graph.
+
+@@NanLossDuringTrainingError
+@@RunConfig
+@@evaluate
+@@infer
+@@run_feeds
+@@run_n
+@@train
+
+## Input processing
+
+Queue and read batched input data.
+
+@@extract_dask_data
+@@extract_dask_labels
+@@extract_pandas_data
+@@extract_pandas_labels
+@@extract_pandas_matrix
+@@read_batch_examples
+@@read_batch_features
+@@read_batch_record_features
+
+"""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=wildcard-import
 from tensorflow.contrib.learn.python.learn import *
+from tensorflow.python.util.all_util import make_all
 
+__all__ = make_all(__name__)
+__all__.append('datasets')

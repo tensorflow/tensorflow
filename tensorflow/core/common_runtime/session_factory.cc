@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,9 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb_text.h"
 #include "tensorflow/core/public/session_options.h"
+
 namespace tensorflow {
 namespace {
 
@@ -56,6 +58,10 @@ const string RegisteredFactoriesErrorMessageLocked() {
   }
   return strings::StrCat("Registered factories are {",
                          str_util::Join(factory_types, ", "), "}.");
+}
+string SessionOptionsToString(const SessionOptions& options) {
+  return strings::StrCat("target: \"", options.target, "\" config: ",
+                         ProtoShortDebugString(options.config));
 }
 }  // namespace
 
@@ -92,13 +98,15 @@ Status SessionFactory::GetFactory(const SessionOptions& options,
       factory_types.push_back(candidate_factory.first);
     }
     return errors::Internal(
-        "Multiple session factories registered for the given session options. "
-        "Candidate factories are {",
+        "Multiple session factories registered for the given session "
+        "options: {",
+        SessionOptionsToString(options), "} Candidate factories are {",
         str_util::Join(factory_types, ", "), "}. ",
         RegisteredFactoriesErrorMessageLocked());
   } else {
     return errors::NotFound(
-        "No session factory registered for the given session options. ",
+        "No session factory registered for the given session options: {",
+        SessionOptionsToString(options), "} ",
         RegisteredFactoriesErrorMessageLocked());
   }
 }

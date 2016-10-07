@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -53,25 +53,12 @@ class MatrixTriangularSolveOpTest(tf.test.TestCase):
         b = np.tile(b, batch_dims + [1, 1])
 
       with self.test_session():
-        # Test the batch version, which works for ndim >= 2
-        tf_ans = tf.batch_matrix_triangular_solve(
-            a, b, lower=lower, adjoint=adjoint)
+        tf_ans = tf.matrix_triangular_solve(a, b, lower=lower, adjoint=adjoint)
         out = tf_ans.eval()
-
         np_ans = np.linalg.solve(a_np, b)
-
         self.assertEqual(np_ans.shape, tf_ans.get_shape())
         self.assertEqual(np_ans.shape, out.shape)
         self.assertAllClose(np_ans, out)
-
-        if a.ndim == 2:
-          # Test the simple version
-          tf_ans = tf.matrix_triangular_solve(
-              a, b, lower=lower, adjoint=adjoint)
-          out = tf_ans.eval()
-          self.assertEqual(np_ans.shape, tf_ans.get_shape())
-          self.assertEqual(np_ans.shape, out.shape)
-          self.assertAllClose(np_ans, out)
 
   def testSolve(self):
     # 2x2 matrices, single right-hand side.

@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,21 +18,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
-from tensorflow.python.ops import common_shapes
-from tensorflow.python.ops import constant_op
 # Import gradients to register _IndexedSlicesToTensor.
+from tensorflow.python.ops import control_flow_ops
 import tensorflow.python.ops.gradients  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import compat
 
 
 class TensorTest(test_util.TensorFlowTestCase):
@@ -61,19 +65,24 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
     indices = [[1, 2], [2, 0], [3, 4]]
     values = [b"a", b"b", b"c"]
     shape = [4, 5]
-    sp = ops.SparseTensor(indices, values, shape)
-    self.assertEqual(sp.indices.dtype, dtypes.int64)
-    self.assertEqual(sp.values.dtype, dtypes.string)
-    self.assertEqual(sp.shape.dtype, dtypes.int64)
-    with self.test_session() as sess:
-      value = sp.eval()
-      self.assertAllEqual(indices, value.indices)
-      self.assertAllEqual(values, value.values)
-      self.assertAllEqual(shape, value.shape)
-      sess_run_value = sess.run(sp)
-      self.assertAllEqual(sess_run_value.indices, value.indices)
-      self.assertAllEqual(sess_run_value.values, value.values)
-      self.assertAllEqual(sess_run_value.shape, value.shape)
+    sp_value = ops.SparseTensorValue(indices, values, shape)
+    for sp in [
+        ops.SparseTensor(indices, values, shape),
+        ops.SparseTensor.from_value(sp_value),
+        ops.SparseTensor.from_value(ops.SparseTensor(indices, values, shape))]:
+      self.assertEqual(sp.indices.dtype, dtypes.int64)
+      self.assertEqual(sp.values.dtype, dtypes.string)
+      self.assertEqual(sp.shape.dtype, dtypes.int64)
+
+      with self.test_session() as sess:
+        value = sp.eval()
+        self.assertAllEqual(indices, value.indices)
+        self.assertAllEqual(values, value.values)
+        self.assertAllEqual(shape, value.shape)
+        sess_run_value = sess.run(sp)
+        self.assertAllEqual(sess_run_value.indices, value.indices)
+        self.assertAllEqual(sess_run_value.values, value.values)
+        self.assertAllEqual(sess_run_value.shape, value.shape)
 
 
 class IndexedSlicesTest(test_util.TensorFlowTestCase):
@@ -114,7 +123,7 @@ class NodeDefConstructorTest(test_util.TensorFlowTestCase):
     nodedef = ops._NodeDef("foo", "bar", device="/device:baz:*")
     self.assertProtoEquals("op:'foo' name:'bar' device:'/device:baz:*'",
                            nodedef)
-    nodedef = ops._NodeDef("foo", "bar", device=pydev.Device(job="j"))
+    nodedef = ops._NodeDef("foo", "bar", device=pydev.DeviceSpec(job="j"))
     self.assertProtoEquals("op:'foo' name:'bar' device:'/job:j'", nodedef)
 
 
@@ -223,7 +232,8 @@ class OperationTest(test_util.TensorFlowTestCase):
         "op:'noop' name:'myop' device:'/job:goo/device:GPU:0' ",
         op.node_def)
     op = ops.Operation(ops._NodeDef("noop", "op2"), ops.Graph(), [], [])
-    op._set_device(pydev.Device(job="muu", device_type="CPU", device_index=0))
+    op._set_device(pydev.DeviceSpec(job="muu", device_type="CPU",
+                                    device_index=0))
     self.assertProtoEquals(
         "op:'noop' name:'op2' device:'/job:muu/device:CPU:0'",
         op.node_def)
@@ -256,6 +266,8 @@ class OperationTest(test_util.TensorFlowTestCase):
       ops.Operation(ops._NodeDef("op", "-invalid"), g)
     with self.assertRaises(ValueError):
       ops.Operation(ops._NodeDef("op", "/invalid"), g)
+    with self.assertRaises(ValueError):
+      ops.Operation(ops._NodeDef("op", "invalid:0"), g)
 
   def testShapeFunctionAbsence(self):
     def _test():
@@ -270,6 +282,39 @@ class OperationTest(test_util.TensorFlowTestCase):
                        output_types = [dtypes.float32])
     self.assertEqual(tensor_shape.unknown_shape(),
                      _apply_op(g, "an_op", [], [dtypes.float32]).get_shape())
+
+  def testConvertToTensorPreferred(self):
+    with self.test_session():
+      values = [2, 3, 5, 7]
+      tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.float32)
+      self.assertEqual(dtypes.float32, tensor.dtype)
+
+    with self.test_session():
+      # Convert empty tensor to anything
+      values = []
+      tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.int64)
+      self.assertEqual(dtypes.int64, tensor.dtype)
+
+    with self.test_session():
+      # The preferred dtype is a type error and will convert to
+      # float32 instead.
+      values = [1.23]
+      tensor = ops.convert_to_tensor(values, preferred_dtype=dtypes.int64)
+      self.assertEqual(dtypes.float32, tensor.dtype)
+
+  def testConvertToInvalidTensorType(self):
+    with self.assertRaises(TypeError):
+      # Forcing an invalid dtype should fail with a type error.
+      values = [1.23]
+      _ = ops.convert_to_tensor(values, dtype=dtypes.int64)
+
+  def testNoConvert(self):
+    # Operation cannot be converted to Tensor
+    op = control_flow_ops.no_op()
+    with self.assertRaisesRegexp(TypeError,
+                                 r"Can't convert Operation '.*' to Tensor"):
+      ops.convert_to_tensor(op)
+
 
 class CreateOpTest(test_util.TensorFlowTestCase):
 
@@ -439,6 +484,20 @@ class NameStackTest(test_util.TensorFlowTestCase):
     self.assertEqual("foo_1", g.unique_name("foo"))
     self.assertEqual("foo_3", g.unique_name("foo"))
 
+  def testInvalidNameRaisesError(self):
+    g = ops.Graph()
+    with g.name_scope(""):  # Should not raise
+      pass
+    with g.name_scope("foo/"):  # Should not raise
+      with g.name_scope("_bar"):  # Should not raise
+        pass
+    with self.assertRaises(ValueError):
+      with g.name_scope("foo:0"):
+        pass
+    with self.assertRaises(ValueError):
+      with g.name_scope("_bar"):
+        pass
+
 
 class NameTest(test_util.TensorFlowTestCase):
 
@@ -526,9 +585,8 @@ class DeviceTest(test_util.TensorFlowTestCase):
 
   def testDeviceFull(self):
     g = ops.Graph()
-    with g.device(pydev.Device(job="worker", replica=2, task=0,
-                               device_type="CPU",
-                               device_index=3)):
+    with g.device(pydev.DeviceSpec(job="worker", replica=2, task=0,
+                                   device_type="CPU", device_index=3)):
       g.create_op("an_op", [], [dtypes.float32])
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
@@ -750,7 +808,7 @@ class ObjectWithName(object):
 
 class CollectionTest(test_util.TensorFlowTestCase):
 
-  def testadd_to_collection(self):
+  def test_add_to_collection(self):
     g = ops.Graph()
     g.add_to_collection("key", 12)
     g.add_to_collection("other", "foo")
@@ -799,7 +857,45 @@ class CollectionTest(test_util.TensorFlowTestCase):
     empty_coll_ref3 = g.get_collection_ref("empty")
     self.assertTrue(empty_coll_ref3 is empty_coll_ref)
 
-  def testDefaulGraph(self):
+  def test_add_to_collections_uniquify(self):
+    g = ops.Graph()
+    g.add_to_collections([1, 2, 1], "key")
+    # Make sure "key" is not added twice
+    self.assertEqual(["key"], g.get_collection(1))
+
+  def test_add_to_collections_from_list(self):
+    g = ops.Graph()
+    g.add_to_collections(["abc", "123"], "key")
+    self.assertEqual(["key"], g.get_collection("abc"))
+    self.assertEqual(["key"], g.get_collection("123"))
+
+  def test_add_to_collections_from_tuple(self):
+    g = ops.Graph()
+    g.add_to_collections(("abc", "123"), "key")
+    self.assertEqual(["key"], g.get_collection("abc"))
+    self.assertEqual(["key"], g.get_collection("123"))
+
+  def test_add_to_collections_from_generator(self):
+    g = ops.Graph()
+    def generator():
+      yield "abc"
+      yield "123"
+    g.add_to_collections(generator(), "key")
+    self.assertEqual(["key"], g.get_collection("abc"))
+    self.assertEqual(["key"], g.get_collection("123"))
+
+  def test_add_to_collections_from_set(self):
+    g = ops.Graph()
+    g.add_to_collections(set(["abc", "123"]), "key")
+    self.assertEqual(["key"], g.get_collection("abc"))
+    self.assertEqual(["key"], g.get_collection("123"))
+
+  def test_add_to_collections_from_string(self):
+    g = ops.Graph()
+    g.add_to_collections("abc", "key")
+    self.assertEqual(["key"], g.get_collection("abc"))
+
+  def test_default_graph(self):
     with ops.Graph().as_default():
       ops.add_to_collection("key", 90)
       ops.add_to_collection("key", 100)
@@ -811,7 +907,7 @@ def an_op(g):
   return _apply_op(g, "an_op", [], [dtypes.float32])
 
 
-ops.NoGradient("an_op")
+ops.NotDifferentiable("an_op")
 
 
 def copy_op(x):
@@ -1037,20 +1133,20 @@ class OpScopeTest(test_util.TensorFlowTestCase):
         g0.create_op("a", [], [dtypes.float32]),
         g0.create_op("b", [], [dtypes.float32])]
     with self.assertRaises(ValueError):
-      with ops.op_scope(values, None):
+      with ops.name_scope(None, values=values):
         pass
     with self.assertRaises(ValueError):
-      with ops.op_scope(values, None, None):
+      with ops.name_scope(None, None, values):
         pass
 
   def testEmptyScopeName(self):
     g0 = ops.Graph()
     a = g0.create_op("a", [], [dtypes.float32])
     b = g0.create_op("b", [], [dtypes.float32])
-    with ops.op_scope([a, b], "") as scope:
+    with ops.name_scope("", values=[a, b]) as scope:
       self.assertEqual("", scope)
       self.assertEqual(g0, ops.get_default_graph())
-    with ops.op_scope([a, b], "", "my_default_scope") as scope:
+    with ops.name_scope("", "my_default_scope", [a, b]) as scope:
       self.assertEqual("", scope)
       self.assertEqual(g0, ops.get_default_graph())
 
@@ -1060,22 +1156,22 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     b = g0.create_op("b", [], [dtypes.float32])
     scope_name = "my_scope"
     default_scope_name = "my_default_scope"
-    with ops.op_scope([a, b], scope_name, default_scope_name) as scope:
+    with ops.name_scope(scope_name, default_scope_name, [a, b]) as scope:
       self.assertEqual("%s/" % scope_name, scope)
       self.assertEqual(g0, ops.get_default_graph())
-    with ops.op_scope([a, b], None, default_scope_name) as scope:
+    with ops.name_scope(None, default_scope_name, [a, b]) as scope:
       self.assertEqual("%s/" % default_scope_name, scope)
       self.assertEqual(g0, ops.get_default_graph())
 
   def _testGraphElements(self, graph_elements):
     scope_name = "my_scope"
-    with ops.op_scope(graph_elements, scope_name) as scope:
+    with ops.name_scope(scope_name, values=graph_elements) as scope:
       self.assertEqual("%s/" % scope_name, scope)
       self.assertEqual(graph_elements[0].graph, ops.get_default_graph())
     g1 = ops.Graph()
     c = g1.create_op("c", [], [dtypes.float32])
     with self.assertRaises(ValueError):
-      with ops.op_scope(graph_elements + [c], scope_name):
+      with ops.name_scope(scope_name, values=graph_elements + [c]):
         pass
 
   def testTensor(self):
@@ -1145,6 +1241,51 @@ class GraphTest(test_util.TensorFlowTestCase):
     self.assertEqual(a, g.as_graph_element(ConvertibleObj()))
     with self.assertRaises(TypeError):
       g.as_graph_element(NonConvertibleObj())
+
+
+class AttrScopeTest(test_util.TensorFlowTestCase):
+
+  def _get_test_attrs(self):
+    x = control_flow_ops.no_op()
+    try:
+      a = compat.as_text(x.get_attr("_A"))
+    except ValueError:
+      a = None
+    try:
+      b = compat.as_text(x.get_attr("_B"))
+    except ValueError:
+      b = None
+    print(a, b)
+    return (a, b)
+
+  def testNoLabel(self):
+    with self.test_session():
+      self.assertAllEqual((None, None), self._get_test_attrs())
+
+  def testLabelMap(self):
+    with self.test_session() as sess:
+      a1 = self._get_test_attrs()
+      with sess.graph._attr_scope(
+          {"_A": attr_value_pb2.AttrValue(s=compat.as_bytes("foo"))}):
+        a2 = self._get_test_attrs()
+        with sess.graph._attr_scope(
+            {"_A": None,
+             "_B": attr_value_pb2.AttrValue(s=compat.as_bytes("bar"))}):
+          a3 = self._get_test_attrs()
+          with sess.graph._attr_scope(
+              {"_A": attr_value_pb2.AttrValue(s=compat.as_bytes("baz"))}):
+            a4 = self._get_test_attrs()
+          a5 = self._get_test_attrs()
+        a6 = self._get_test_attrs()
+      a7 = self._get_test_attrs()
+
+      self.assertAllEqual((None, None), a1)
+      self.assertAllEqual(("foo", None), a2)
+      self.assertAllEqual((None, "bar"), a3)
+      self.assertAllEqual(("baz", "bar"), a4)
+      self.assertAllEqual((None, "bar"), a5)
+      self.assertAllEqual(("foo", None), a6)
+      self.assertAllEqual((None, None), a7)
 
 ops.RegisterShape("KernelLabel")(common_shapes.scalar_shape)
 
@@ -1378,8 +1519,57 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
       old = test_ops.old()
       g.graph_def_versions.producer = versions.GRAPH_DEF_VERSION
       with self.test_session(graph=g):
-        with self.assertRaisesOpError(self._error()):
+        with self.assertRaisesRegexp(errors.UnimplementedError, self._error()):
           old.run()
+
+
+class DenseTensorLikeTypeTest(test_util.TensorFlowTestCase):
+
+  def testSuccess(self):
+    op = ops.Operation(ops._NodeDef("noop", "myop"), ops.Graph(),
+                       [], [dtypes.float32])
+    t = op.outputs[0]
+    self.assertTrue(ops.is_dense_tensor_like(t))
+
+    v = variables.Variable([17])
+    self.assertTrue(ops.is_dense_tensor_like(v))
+
+  class BadClassNoName(object):
+    pass
+
+  class BadClassBadName(object):
+
+    def name(self):
+      pass
+
+  class BadClassNoDtype(object):
+
+    @property
+    def name(self):
+      pass
+
+  class BadClassBadDtype(object):
+
+    @property
+    def name(self):
+      pass
+
+    def dtype(self):
+      pass
+
+  def testBadClass(self):
+    with self.assertRaisesRegexp(TypeError, "`name`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassNoName)
+    with self.assertRaisesRegexp(TypeError, "`name`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassBadName)
+    with self.assertRaisesRegexp(TypeError, "`dtype`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassNoDtype)
+    with self.assertRaisesRegexp(TypeError, "`dtype`"):
+      ops.register_dense_tensor_like_type(
+          DenseTensorLikeTypeTest.BadClassBadDtype)
 
 
 if __name__ == "__main__":

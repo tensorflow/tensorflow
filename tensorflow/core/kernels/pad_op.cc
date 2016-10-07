@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ class PadOp : public OpKernel {
     const Tensor& in1 = context->input(1);
     const int dims = in0.dims();
     static const int kMinDims = 0;
-    static const int kMaxDims = 5;
+    static const int kMaxDims = 6;
     OP_REQUIRES(context, kMinDims <= dims && dims <= kMaxDims,
                 errors::Unimplemented("inputs rank not in [", kMinDims, ",",
                                       kMaxDims, "]: ", dims));
@@ -76,10 +76,20 @@ class PadOp : public OpKernel {
       OP_REQUIRES(context, before_d >= 0 && after_d >= 0,
                   errors::InvalidArgument("Paddings must be non-negative: ",
                                           before_d, " ", after_d));
-      const int size_d =
+      const int64 size_d =
           (allow_legacy_scalars() && d == in0.dims()) ? 1 : in0.dim_size(d);
       output_shape.AddDim(before_d + size_d + after_d);
     }
+
+    // If there is no padding to be done, forward the input to output.
+    if (output_shape.num_elements() == in0.NumElements()) {
+      // When num_elements == 0, shape may have changed.
+      Tensor out;
+      CHECK(out.CopyFrom(in0, output_shape));
+      context->set_output(0, out);
+      return;
+    }
+
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
@@ -105,9 +115,12 @@ class PadOp : public OpKernel {
       case 5:
         Operate<5>(context, in0.tensor<T, 5>(), paddings, output);
         break;
+      case 6:
+        Operate<6>(context, in0.tensor<T, 6>(), paddings, output);
+        break;
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument("Only ranks up to 5 supported: ",
+                    errors::InvalidArgument("Only ranks up to 6 supported: ",
                                             in0.shape().DebugString()));
     }
   }
@@ -156,7 +169,8 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 2);    \
   DECLARE_GPU_SPEC(T, 3);    \
   DECLARE_GPU_SPEC(T, 4);    \
-  DECLARE_GPU_SPEC(T, 5);
+  DECLARE_GPU_SPEC(T, 5);    \
+  DECLARE_GPU_SPEC(T, 6);
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 }  // namespace functor

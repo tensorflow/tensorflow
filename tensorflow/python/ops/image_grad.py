@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,10 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_image_ops
 
 
@@ -70,21 +70,54 @@ def _ResizeBilinearGrad(op, grad):
 
 @ops.RegisterShape("ResizeNearestNeighborGrad")
 def _ResizeShape(op):
-  """Shape function for the resize grad ops."""
-  input_shape = op.inputs[0].get_shape().with_rank(4)
-  size = tensor_util.constant_value(op.inputs[1])
-  if size is not None:
-    height = size[0]
-    width = size[1]
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[1])
+
+
+ops.RegisterShape("ResizeBilinearGrad")(common_shapes.call_cpp_shape_fn)
+
+
+@ops.RegisterShape("CropAndResizeGradImage")
+def _CropAndResizeGradImageShape(op):
+  return common_shapes.call_cpp_shape_fn(op, input_tensors_needed=[3])
+
+
+ops.RegisterShape("CropAndResizeGradBoxes")(common_shapes.call_cpp_shape_fn)
+
+
+@ops.RegisterGradient("CropAndResize")
+def _CropAndResizeGrad(op, grad):
+  """The derivatives for crop_and_resize.
+
+  We back-propagate to the image only when the input image tensor has floating
+  point dtype but we always back-propagate to the input boxes tensor.
+
+  Args:
+    op: The CropAndResize op.
+    grad: The tensor representing the gradient w.r.t. the output.
+
+  Returns:
+    The gradients w.r.t. the input image, boxes, as well as the always-None
+    gradients w.r.t. box_ind and crop_size.
+  """
+  image = op.inputs[0]
+  if image.get_shape().is_fully_defined():
+    image_shape = image.get_shape().as_list()
   else:
-    height = None
-    width = None
-  return [
-      tensor_shape.TensorShape([input_shape[0], height, width, input_shape[3]])
-  ]
+    image_shape = array_ops.shape(image)
 
+  allowed_types = [dtypes.float16, dtypes.float32, dtypes.float64]
+  if op.inputs[0].dtype in allowed_types:
+    # pylint: disable=protected-access
+    grad0 = gen_image_ops.crop_and_resize_grad_image(grad,
+                                                     op.inputs[1],
+                                                     op.inputs[2],
+                                                     image_shape,
+                                                     T=op.get_attr("T"))
+    # pylint: enable=protected-access
+  else:
+    grad0 = None
 
-@ops.RegisterShape("ResizeBilinearGrad")
-def _ResizeBilinearGradShape(op):
-  """Shape function for ResizeBilinearGrad."""
-  return [op.inputs[1].get_shape()]
+  grad1 = gen_image_ops.crop_and_resize_grad_boxes(grad, op.inputs[0],
+                                                   op.inputs[1], op.inputs[2])
+
+  return [grad0, grad1, None, None]

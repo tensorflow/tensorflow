@@ -7,10 +7,10 @@ TensorFlow computation graphs are powerful but complicated. The graph visualizat
 
 To see your own graph, run TensorBoard pointing it to the log directory of the job, click on the graph tab on the top pane and select the appropriate run using the menu at the upper left corner. For in depth information on how to run TensorBoard and make sure you are logging all the necessary information, see [TensorBoard: Visualizing Learning](../../how_tos/summaries_and_tensorboard/index.md).
 
-You can interact with an instance of TensorBoard looking at data from a
-[CIFAR-10](../../tutorials/deep_cnn/index.md) training session, including the
+You can interact with an instance of TensorBoard looking at data from an
+[MNIST](../../tutorials/mnist/beginners/index.md) training session, including the
 graph visualization, by clicking
-[here](https://www.tensorflow.org/tensorboard/cifar.html#graphs).
+[here](https://www.tensorflow.org/tensorboard/index.html#graphs).
 
 ## Name scoping and nodes
 
@@ -248,4 +248,73 @@ The images below show the CIFAR-10 model with tensor shape information:
   </tr>
 </table>
 
+## Runtime statistics
 
+Often it is useful to collect runtime metadata for a run, such as total memory
+usage, total compute time, and tensor shapes for nodes. The code example below
+is a snippet from the train and test section of a modification of the
+[simple MNIST tutorial](http://tensorflow.org/tutorials/mnist/beginners/index.md),
+in which we have recorded summaries and runtime statistics. See the [Summaries Tutorial](../../how_tos/summaries_and_tensorboard/index.md#serializing-the-data)
+for details on how to record summaries.
+Full source is [here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/mnist_with_summaries.py).
+
+```python
+  # Train the model, and also write summaries.
+  # Every 10th step, measure test-set accuracy, and write test summaries
+  # All other steps, run train_step on training data, & add training summaries
+
+  def feed_dict(train):
+    """Make a TensorFlow feed_dict: maps data onto Tensor placeholders."""
+    if train or FLAGS.fake_data:
+      xs, ys = mnist.train.next_batch(100, fake_data=FLAGS.fake_data)
+      k = FLAGS.dropout
+    else:
+      xs, ys = mnist.test.images, mnist.test.labels
+      k = 1.0
+    return {x: xs, y_: ys, keep_prob: k}
+
+  for i in range(FLAGS.max_steps):
+    if i % 10 == 0:  # Record summaries and test-set accuracy
+      summary, acc = sess.run([merged, accuracy], feed_dict=feed_dict(False))
+      test_writer.add_summary(summary, i)
+      print('Accuracy at step %s: %s' % (i, acc))
+    else:  # Record train set summaries, and train
+      if i % 100 == 99:  # Record execution stats
+        run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
+        summary, _ = sess.run([merged, train_step],
+                              feed_dict=feed_dict(True),
+                              options=run_options,
+                              run_metadata=run_metadata)
+        train_writer.add_run_metadata(run_metadata, 'step%d' % i)
+        train_writer.add_summary(summary, i)
+        print('Adding run metadata for', i)
+      else:  # Record a summary
+        summary, _ = sess.run([merged, train_step], feed_dict=feed_dict(True))
+        train_writer.add_summary(summary, i)
+```
+
+This code will emit runtime statistics for every 100th step starting at step99.
+
+When you launch tensorboard and go to the Graph tab, you will now see options
+under "Session runs" which correspond to the steps where run metadata was added.
+Selecting one of these runs will show you the snapshot of the network at that
+step, fading out unused nodes. In the controls on the left hand side, you will
+be able to color the nodes by total memory or total compute time. Additionally,
+clicking on a node will display the exact total memory, compute time, and
+tensor output sizes.
+
+
+<table width="100%;">
+  <tr style="height: 380px">
+    <td>
+      <img src="../../images/colorby_compute_time.png" alt="Color by compute time" title="Color by compute time"/>
+    </td>
+    <td>
+      <img src="../../images/run_metadata_graph.png" alt="Run metadata graph" title="Run metadata graph" />
+    </td>
+    <td>
+      <img src="../../images/run_metadata_infocard.png" alt="Run metadata info card" title="Run metadata info card" />
+    </td>
+  </tr>
+</table>

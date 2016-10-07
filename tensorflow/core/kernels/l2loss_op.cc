@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/l2loss_op.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/l2loss_op.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -54,6 +54,7 @@ class L2LossOp : public OpKernel {
 
 REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
+REGISTER_KERNEL(Eigen::half);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA
@@ -67,6 +68,8 @@ namespace functor {
   extern template struct L2Loss<GPUDevice, T>;
 
 DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
+DECLARE_GPU_SPEC(Eigen::half);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -77,6 +80,8 @@ DECLARE_GPU_SPEC(float);
       L2LossOp<GPUDevice, T>);
 
 REGISTER_GPU_KERNEL(float);
+REGISTER_GPU_KERNEL(double);
+REGISTER_GPU_KERNEL(Eigen::half);
 #undef REGISTER_GPU_KERNEL
 
 #endif  // GOOGLE_CUDA

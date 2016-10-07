@@ -12,7 +12,10 @@ package(default_visibility = ["//visibility:private"])
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
+exports_files([
+    "LICENSE",
+    "placeholder.txt",
+])
 
 load(
     "//tensorflow:tensorflow.bzl",
@@ -31,7 +34,7 @@ cc_binary(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":gen_proto_text_functions_lib",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_proto_parsing",
     ],
 )
 
@@ -39,8 +42,15 @@ cc_library(
     name = "gen_proto_text_functions_lib",
     srcs = ["gen_proto_text_functions_lib.cc"],
     hdrs = ["gen_proto_text_functions_lib.h"],
+    linkopts = [
+        "-lm",
+        "-lpthread",
+    ] + select({
+        "//tensorflow:darwin": [],
+        "//conditions:default": ["-lrt"],
+    }),
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_proto_parsing",
     ],
 )
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,9 +32,8 @@ static Status ReadEntireFile(Env* env, const string& filename,
   uint64 file_size = 0;
   TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
   contents->resize(file_size);
-  RandomAccessFile* file;
+  std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
-  std::unique_ptr<RandomAccessFile> make_sure_file_gets_deleted(file);
   StringPiece data;
   TF_RETURN_IF_ERROR(file->Read(0, file_size, &data, &(*contents)[0]));
   if (data.size() != file_size) {

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -51,34 +51,56 @@ TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_WRITE_OR_ADD_GPU);
 
 #undef TENSOR_ARRAY_WRITE_OR_ADD
 
+#define TENSOR_ARRAY_SET_ZERO(Device, T)                                      \
+  template <>                                                                 \
+  Status TensorSetZero<Device, T>(OpKernelContext * ctx, Tensor * value) {    \
+    functor::SetZeroFunctor<Device, T> set_zero_functor;                      \
+    set_zero_functor(ctx->template eigen_device<Device>(), value->flat<T>()); \
+    return Status::OK();                                                      \
+  }
+
+#define TENSOR_ARRAY_SET_ZERO_CPU(T) TENSOR_ARRAY_SET_ZERO(CPUDevice, T)
+TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_CPU)
+#undef TENSOR_ARRAY_SET_ZERO_CPU
+
+#if GOOGLE_CUDA
+
+#define TENSOR_ARRAY_SET_ZERO_GPU(T) TENSOR_ARRAY_SET_ZERO(GPUDevice, T)
+TF_CALL_GPU_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_GPU);
+#undef TENSOR_ARRAY_SET_ZERO_GPU
+
+#endif  // GOOGLE_CUDA
+
+#undef TENSOR_ARRAY_SET_ZERO
+
 }  // namespace tensor_array
 
-Status TensorArray::LockedRead(const int32 index, PersistentTensor* value) {
+std::atomic<int64> TensorArray::tensor_array_counter{0};
+
+Status TensorArray::CopyShapesFrom(TensorArray* rhs) {
+  mutex_lock l(mu_);
+  mutex_lock l_rhs(rhs->mu_);
   TF_RETURN_IF_ERROR(LockedReturnIfClosed());
-  if (index < 0 || static_cast<size_t>(index) >= tensors_.size()) {
-    return errors::InvalidArgument("Tried to read from index ", index,
-                                   " but array size is: ", tensors_.size());
+  TF_RETURN_IF_ERROR(rhs->LockedReturnIfClosed());
+  if (tensors_.size() != rhs->tensors_.size()) {
+    return errors::InvalidArgument(
+        "TensorArray sizes do not match during CopyShapesFrom: ",
+        handle_.vec<string>()(1), " has size ", tensors_.size(), " but rhs ",
+        rhs->handle_.vec<string>()(1), " has size ", rhs->tensors_.size());
   }
-  TensorAndState& t = tensors_[index];
-  if (!t.written) {
-    return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
-                                   ": Could not read from TensorArray index ",
-                                   index,
-                                   " because it has not yet been written to.");
+  for (std::size_t i = 0; i < tensors_.size(); ++i) {
+    // Skip "soft copy" of indices which have not been written.
+    if (!rhs->tensors_[i].written) continue;
+
+    // Copy the shape over.
+    tensors_[i].shape = rhs->tensors_[i].shape;
+    // Mark as written.  Reads will know that if written is true and
+    // read is false, and cleared is false, to return zeros of the
+    // appropriate shape.  Future aggregating writes will only use the shape
+    // for validation.
+    tensors_[i].written = true;
   }
-  if (t.cleared) {
-    return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
-                                   ": Could not read index ", index,
-                                   " twice because it was cleared after a "
-                                   "previous read (perhaps try setting "
-                                   "clear_after_read = false?).");
-  }
-  *value = t.tensor;
-  if (clear_after_read_) {
-    t.tensor = PersistentTensor();
-    t.cleared = true;
-  }
-  t.read = true;
+
   return Status::OK();
 }
 

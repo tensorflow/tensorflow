@@ -1,13 +1,13 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed under the Apache License, Version 2.0 (the 'License');
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
 http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
+distributed under the License is distributed on an 'AS IS' BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
@@ -15,17 +15,17 @@ limitations under the License.
 
 module TF.Backend {
   interface ResolveReject {resolve: Function; reject: Function; }
-  /*
-  * Manages many fetch requests. Launches up to nSimultaneousRequests
-  * simultaneously, and maintains a LIFO queue of requests to process when
-  * more urls are requested than can be handled at once. The queue can be cleared.
-  *
-  * When a request is made, a Promise is returned which resolves with the parsed
-  * JSON result from the request.
-  */
-
+  /**
+   * Manages many fetch requests. Launches up to nSimultaneousRequests
+   * simultaneously, and maintains a LIFO queue of requests to process when
+   * more urls are requested than can be handled at once. The queue can be
+   * cleared.
+   *
+   * When a request is made, a Promise is returned which resolves with the
+   * parsed JSON result from the request.
+   */
   export class RequestCancellationError extends Error {
-    public name = "RequestCancellationError";
+    public name = 'RequestCancellationError';
   }
 
   export class RequestNetworkError extends Error {
@@ -36,7 +36,7 @@ module TF.Backend {
     constructor(req: XMLHttpRequest, url) {
       super();
       this.message = `RequestNetworkError: ${req.status} at ${url}`;
-      this.name = "RequestNetworkError";
+      this.name = 'RequestNetworkError';
       this.req = req;
       this.url = url;
     }
@@ -58,31 +58,39 @@ module TF.Backend {
     /* Gives a promise that loads assets from given url (respects queuing) */
     public request(url: string): Promise<any> {
       var promise = new Promise((resolve, reject) => {
-        var resolver = {resolve: resolve, reject: reject};
-        this._queue.push(resolver);
-        this.launchRequests();
-      }).then(() => {
-        return this.promiseWithRetries(url, this._maxRetries);
-      }).then((response) => {
-        // Success - Let's free space for another active reqest, and launch it
-        this._nActiveRequests--;
-        this.launchRequests();
-        return response;
-      }, (rejection) => {
-        if (rejection.name === "RequestNetworkError") {
-          // If we failed due to network error, we should decrement
-          // _nActiveRequests because this request was active
-          this._nActiveRequests--;
-          this.launchRequests();
-        }
-        return Promise.reject(rejection);
-      });
+                      var resolver = {resolve: resolve, reject: reject};
+                      this._queue.push(resolver);
+                      this.launchRequests();
+                    })
+                        .then(() => {
+                          return this.promiseWithRetries(url, this._maxRetries);
+                        })
+                        .then(
+                            (response) => {
+                              // Success - Let's free space for another active
+                              // reqest, and launch it
+                              this._nActiveRequests--;
+                              this.launchRequests();
+                              return response;
+                            },
+                            (rejection) => {
+                              if (rejection.name === 'RequestNetworkError') {
+                                // If we failed due to network error, we should
+                                // decrement
+                                // _nActiveRequests because this request was
+                                // active
+                                this._nActiveRequests--;
+                                this.launchRequests();
+                              }
+                              return Promise.reject(rejection);
+                            });
       return promise;
     }
 
     public clearQueue() {
       while (this._queue.length > 0) {
-        this._queue.pop().reject(new RequestCancellationError("Request cancelled by clearQueue"));
+        this._queue.pop().reject(
+            new RequestCancellationError('Request cancelled by clearQueue'));
       }
     }
 
@@ -97,7 +105,8 @@ module TF.Backend {
     }
 
     private launchRequests() {
-      while (this._nActiveRequests < this._nSimultaneousRequests && this._queue.length > 0) {
+      while (this._nActiveRequests < this._nSimultaneousRequests &&
+             this._queue.length > 0) {
         this._nActiveRequests++;
         this._queue.pop().resolve();
       }
@@ -107,7 +116,7 @@ module TF.Backend {
      * Try to request a given URL using overwritable _promiseFromUrl method.
      * If the request fails for any reason, we will retry up to maxRetries
      * times. In practice, this will help us paper over transient network issues
-     * like "502 Bad Gateway".
+     * like '502 Bad Gateway'.
      * By default, Chrome displays network errors in console, so
      * the user will be able to tell when the requests are failing. I think this
      * is a feature, if the request failures and retries are causing any
@@ -129,7 +138,7 @@ module TF.Backend {
     protected _promiseFromUrl(url) {
       return new Promise((resolve, reject) => {
         var req = new XMLHttpRequest();
-        req.open("GET", url);
+        req.open('GET', url);
         req.onload = function() {
           if (req.status === 200) {
             resolve(JSON.parse(req.responseText));

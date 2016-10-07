@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -55,6 +55,17 @@
 # Python unit tests to run in exclusive mode (i.e., not concurrently with
 # other tests), separated with colons
 #
+# TF_BUILD_FILTER_INSTALL_TESTS_BY_TAG: If set to a non-empty string
+# (e.g., "local"), will filter the Python install-tests by that string as
+# bazel tags. Multiple filter tags can be used. Both the inclusive filtering
+# mode and the exclusive filtering mode can be used. For example:
+#
+#   TF_BUILD_FILTER_INSTALL_TESTS_BY_TAG="local,-manual"
+#
+# will let the script run the Python unit tests that have the tag "local"
+# and do not have the tag "manual". The "-" marks the exclusive filtering
+# mode. The inclusive mode is the default. Use commas to separate the tags.
+#
 # If the environmental variable NO_TEST_ON_INSTALL is set to any non-empty
 # value, the script will exit after the pip install step.
 
@@ -70,22 +81,36 @@
 #   depends on CheckValid() and ToString(), both defined externally
 # tensorflow/python/framework/file_system_test.py:
 #   depends on having the .so which is not shipped in the pip package.
-#
+# tensorflow/contrib/quantization/*:
+#   These depend on an .so mechanism that's not shipped in the pip package.
+# tensorflow/python/platform/default/*_test.py:
+#   These are obsolete and replaced by corresponding files in python/platform.
+#   They will be removed in the future.
+
 PY_TEST_BLACKLIST="${PY_TEST_BLACKLIST}:"\
 "tensorflow/python/framework/ops_test.py:"\
 "tensorflow/python/util/protobuf/compare_test.py:"\
 "tensorflow/python/framework/device_test.py:"\
-"tensorflow/python/framework/file_system_test.py"
+"tensorflow/python/framework/file_system_test.py:"\
+"tensorflow/contrib/quantization/python/dequantize_op_test.py:"\
+"tensorflow/contrib/quantization/python/quantized_conv_ops_test.py:"\
+"tensorflow/contrib/quantization/tools/quantize_graph_test.py:"\
+"tensorflow/contrib/session_bundle/exporter_test.py:"\
+"tensorflow/contrib/session_bundle/session_bundle_test.py:"\
+"tensorflow/python/platform/default/_resource_loader_test.py:"\
+"tensorflow/python/platform/default/flags_test.py:"\
+"tensorflow/python/platform/default/logging_test.py:"\
+"tensorflow/contrib/learn/nonlinear_test.py:"
 
 # Test blacklist: GPU-only
 PY_TEST_GPU_BLACKLIST="${PY_TEST_GPU_BLACKLIST}:"\
+"tensorflow/python/client/session_test.py:"\
 "tensorflow/python/framework/function_test.py:"\
 "tensorflow/contrib/tensor_forest/python/kernel_tests/scatter_add_ndim_op_test.py"
 
 # Tests that should be run in the exclusive mode (i.e., not parallel with
 # other tests)
-PY_TEST_EXCLUSIVE_LIST="tensorflow/python/platform/gfile_test.py:"\
-"tensorflow/python/platform/default/gfile_test.py"
+PY_TEST_EXCLUSIVE_LIST=""
 
 # Append custom list of exclusive tests
 if [[ ! -z "${TF_BUILD_EXTRA_EXCLUSIVE_INSTALL_TESTS}" ]]; then
@@ -171,7 +196,6 @@ PY_TEST_LOG_DIR=$(realpath ${PY_TEST_LOG_DIR_REL})  # Absolute path
 
 mkdir ${PY_TEST_LOG_DIR}
 
-
 # Copy source files that are required by the tests but are not included in the
 # PIP package
 
@@ -215,11 +239,141 @@ rm -rf ${PY_TEST_DIR}/tensorflow/core/lib/jpeg
 cp -r tensorflow/core/lib/jpeg ${PY_TEST_DIR}/tensorflow/core/lib
 rm -rf ${PY_TEST_DIR}/tensorflow/core/lib/png
 cp -r tensorflow/core/lib/png ${PY_TEST_DIR}/tensorflow/core/lib
+rm -rf ${PY_TEST_DIR}/tensorflow/core/lib/gif
+cp -r tensorflow/core/lib/gif ${PY_TEST_DIR}/tensorflow/core/lib
+
+# Copy test data from tensorflow/contrib/ffmpeg
+
+mkdir -p ${PY_TEST_DIR}/tensorflow/contrib/ffmpeg
+rm -rf ${PY_TEST_DIR}/tensorflow/contrib/ffmpeg/testdata
+cp -r tensorflow/contrib/ffmpeg/testdata ${PY_TEST_DIR}
 
 # Run tests
 DIR0=$(pwd)
 ALL_PY_TESTS_0=$(find tensorflow/{contrib,examples,models,python,tensorboard} \
     -type f \( -name "*_test.py" -o -name "test_*.py" \) | sort)
+
+
+# Subroutine for filtering test file names by a bazel tag.
+filter_tests_by_bazel_tag() {
+  # Usage: filter_tests_by_bazel_tag (--inclusive | --exclusive)
+  #            <BAZEL_TAG> <INPUT_TESTS>
+  #
+  #   E.g., filter_tests_by_bazel_tag --inclusive "local"
+  #             "dir1/test1.py dir2/test2.py"
+  #
+  # Use the flag --inclusive so that only the tests that have the tag will be
+  # included in the returned string.
+  # Use the flag --exclusive so that the returned string will consist of only
+  # the tests that do not have the tag.
+  # INPUT_TESTS are the name of the input Python unit test files, seperated by
+  # spaces.
+  #
+  # The output string (through stdout) is: OUTPUT_TESTS | DISCARDED_TESTS
+  # That is: a list of tests that passed the filter, followed by " | ",
+  # followed by a list of tests that are discarded
+
+  FILTER_MODE=$1
+  TAG=$2
+  INPUT_TESTS=$3
+
+  # Input sanity checks
+  if [[ "${FILTER_MODE}" != "--inclusive" ]] &&
+     [[ "${FILTER_MODE}" != "--exclusive" ]]; then
+    echo "ERROR: Unrecognized filter mode: ${FILTER_MODE}"
+    exit 1
+  fi
+  if [[ -z "${TAG}" ]]; then
+    echo "ERROR: Bazal tag is not supplied"
+    exit 1
+  fi
+  if [[ -z "${INPUT_TESTS}" ]]; then
+    echo "ERROR: INPUT_TESTS is not supplied"
+    exit 1
+  fi
+
+  # Check bazel on path
+  if [[ -z $(which bazel) ]]; then
+    echo "ERROR: bazel is not on path"
+    exit 1
+  fi
+
+  # Get all bazel targets that have the specified tag
+  BAZEL_TARGETS=\
+$(bazel query "kind(py_test, attr(tags, "${TAG}", //tensorflow/...))" | sort)
+
+  TARGET_ALIASES=":"
+  for TARGET in ${BAZEL_TARGETS}; do
+    # Transform, e.g., //tensorflow/python/kernel_tests:xent_op_test -->
+    #                  python-xent_op_test
+    # to be compared with the transformed strings from the Python unit test
+    # file names.
+    TARGET_1=$(echo "${TARGET}" | sed "s/:/ /g")
+    TARGET_PATH_1=$(echo "${TARGET_1}" | sed "s/\/\// /g" | sed "s/\// /g" \
+                    | awk '{print $2}')
+    TARGET_BASE_NAME=$(echo "${TARGET_1}" | awk '{print $NF}')
+    TARGET_ALIAS="${TARGET_PATH_1}-${TARGET_BASE_NAME}"
+
+    TARGET_ALIASES="${TARGET_ALIASES}${TARGET_ALIAS}:"
+  done
+  TARGET_ALIASES="${TARGET_ALIASES}:"
+
+  # Filter the list of tests obtained from listing files with the bazel query
+  # results.
+  TESTS_PASSED_FILTER=""
+  TESTS_BLOCKED_BY_FILTER=""
+  for PY_TEST in ${INPUT_TESTS}; do
+    # Transform, e.g., tensorflow/python/kernel_tests/xent_op_test.py -->
+    #                  python-xent_op_test
+    PY_TEST_PATH_1=$(echo "${PY_TEST}" | sed "s/\// /g" | awk '{print $2}')
+    PY_TEST_BASE_NAME=$(echo "${PY_TEST}" | sed "s/\// /g" \
+                        | awk '{print $NF}' | sed "s/\.py//g")
+    PY_TEST_ALIAS="${PY_TEST_PATH_1}-${PY_TEST_BASE_NAME}"
+
+    TO_INCLUDE=0
+    if [[ "${TARGET_ALIASES}" == *"${PY_TEST_ALIAS}"* ]] && \
+       [[ "${FILTER_MODE}" == "--inclusive" ]]; then
+      TO_INCLUDE=1
+    elif [[ "${TARGET_ALIASES}" != *"${PY_TEST_ALIAS}"* ]] && \
+         [[ "${FILTER_MODE}" == "--exclusive" ]]; then
+      TO_INCLUDE=1
+    fi
+
+    if [[ ${TO_INCLUDE} == 1 ]]; then
+      TESTS_PASSED_FILTER="${TESTS_PASSED_FILTER} ${PY_TEST}"
+    else
+      TESTS_BLOCKED_BY_FILTER="${TESTS_BLOCKED_BY_FILTER} ${PY_TEST}"
+    fi
+  done
+
+  echo "${TESTS_PASSED_FILTER} | ${TESTS_BLOCKED_BY_FILTER}"
+}
+
+
+if [[ ${TF_BUILD_FILTER_INSTALL_TESTS_BY_TAG} != "" ]]; then
+  # Iteratively apply the filter tags
+  TAGS=(${TF_BUILD_FILTER_INSTALL_TESTS_BY_TAG//,/ })
+  for TAG in ${TAGS[@]}; do
+    if [[ ${TAG} == "-"* ]]; then
+      MODE="--exclusive"
+      TAG_1=$(echo ${TAG} | sed 's/-//')
+    else
+      MODE="--inclusive"
+      TAG_1=${TAG}
+    fi
+
+    FILTER_OUTPUT=$(filter_tests_by_bazel_tag ${MODE} \
+                   "${TAG_1}" "${ALL_PY_TESTS_0}")
+    ALL_PY_TESTS_0=$(echo "${FILTER_OUTPUT}" | cut -d \| -f 1)
+    DISCARDED_TESTS=$(echo "${FILTER_OUTPUT}" | cut -d \| -f 2)
+    N_DISCARDED=$(echo "${DISCARDED_TESTS}" | wc -w)
+
+    echo ""
+    echo "Skipping ${N_DISCARDED} test(s) due to filter tag \"${TAG}\":"
+    echo "${DISCARDED_TESTS}"
+    echo ""
+  done
+fi
 
 # Move the exclusive tests to the back of the list
 EXCLUSIVE_LIST="$(echo "${PY_TEST_EXCLUSIVE_LIST}" | sed -e 's/:/ /g')"
@@ -281,6 +435,11 @@ while true; do
 
   ITER_COUNTER=0
   while true; do
+    # Break if the end is reached
+    if [[ "${TEST_COUNTER}" -ge "${PY_TEST_COUNT}" ]]; then
+      break;
+    fi
+
     # for TEST_FILE_PATH in ${ALL_PY_TESTS}; do
     TEST_FILE_PATH=${ALL_PY_TESTS[TEST_COUNTER]}
 
@@ -306,8 +465,8 @@ while true; do
     TEST_INDICES="${TEST_INDICES} ${TEST_COUNTER}"
     TEST_FILE_PATHS="${TEST_FILE_PATHS} ${TEST_FILE_PATH}"
 
-    # Copy to a separate directory to guard against the possibility of picking up
-    # modules in the source directory
+    # Copy to a separate directory to guard against the possibility of picking
+    # up modules in the source directory
     cp ${TEST_FILE_PATH} ${PY_TEST_DIR}/
 
     TEST_BASENAME=$(basename "${TEST_FILE_PATH}")
@@ -321,19 +480,20 @@ while true; do
     TEST_LOG=$(realpath ${TEST_LOG_REL})  # Absolute path
     TEST_LOGS="${TEST_LOGS} ${TEST_LOG}"
 
+    # Launch test asynchronously
     "${SCRIPT_DIR}/py_test_delegate.sh" \
       "${PYTHON_BIN_PATH}" "${PY_TEST_DIR}/${TEST_BASENAME}" "${TEST_LOG}" &
 
-    if [[ $(echo "${TEST_COUNTER} >= ${N_PAR_TESTS}" | bc -l) == "1" ]]; then
+    if [[ "${TEST_COUNTER}" -ge "${N_PAR_TESTS}" ]]; then
       # Run in exclusive mode
-      if [[ $(echo "${TEST_COUNTER} > ${N_PAR_TESTS}" | bc -l) == "1" ]]; then
+      if [[ "${TEST_COUNTER}" -gt "${N_PAR_TESTS}" ]]; then
         echo "Run test exclusively: ${PY_TEST_DIR}/${TEST_BASENAME}"
       fi
       break
     fi
 
-    if [[ $(echo "${ITER_COUNTER} >= ${N_JOBS}" | bc -l) == "1" ]] ||
-       [[ $(echo "${TEST_COUNTER} >= ${PY_TEST_COUNT}" | bc -l) == "1" ]]; then
+    if [[ "${ITER_COUNTER}" -ge "${N_JOBS}" ]] ||
+       [[ "${TEST_COUNTER}" -ge "${PY_TEST_COUNT}" ]]; then
       break
     fi
 
@@ -380,7 +540,8 @@ while true; do
     ((K++))
   done
 
-  if [[ $(echo "${TEST_COUNTER} >= ${PY_TEST_COUNT}" | bc -l) == "1" ]]; then
+  # Stop if the end is reached
+  if [[ "${TEST_COUNTER}" -ge "${PY_TEST_COUNT}" ]]; then
     break;
   fi
 done
@@ -390,6 +551,7 @@ rm -rf ${TF_INSTALL_PATH}/python/tools
 rm -rf ${TF_INSTALL_PATH}/examples/image_retraining
 rm -rf ${PY_TEST_DIR}/tensorflow/core/lib/jpeg
 rm -rf ${PY_TEST_DIR}/tensorflow/core/lib/png
+rm -rf ${PY_TEST_DIR}/testdata
 
 echo ""
 echo "${PY_TEST_COUNT} Python test(s):" \

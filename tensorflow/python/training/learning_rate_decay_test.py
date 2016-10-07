@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import math
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -50,7 +52,7 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       self.assertAllClose(decayed_lr.eval(), .1, 1e-6)
       # Decayed learning rate
       assign_100.op.run()
-      expected = .1 * 0.96**(100 // 3)
+      expected = .1 * 0.96 ** (100 // 3)
       self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
 
   def testVariables(self):
@@ -69,8 +71,228 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       self.assertAllClose(decayed_lr.eval(), .1, 1e-6)
       # Decayed learning rate
       assign_100.op.run()
-      expected = .1 * 0.96**(100 // 3)
+      expected = .1 * 0.96 ** (100 // 3)
       self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+  def testPiecewiseConstant(self):
+    with self.test_session():
+      x = variables.Variable(-999)
+      assign_100 = x.assign(100)
+      assign_105 = x.assign(105)
+      assign_110 = x.assign(110)
+      assign_120 = x.assign(120)
+      assign_999 = x.assign(999)
+      pc = learning_rate_decay.piecewise_constant(x, [100, 110, 120],
+                                                  [1.0, 0.1, 0.01, 0.001])
+
+      variables.initialize_all_variables().run()
+      self.assertAllClose(pc.eval(), 1.0, 1e-6)
+      assign_100.op.run()
+      self.assertAllClose(pc.eval(), 1.0, 1e-6)
+      assign_105.op.run()
+      self.assertAllClose(pc.eval(), 0.1, 1e-6)
+      assign_110.op.run()
+      self.assertAllClose(pc.eval(), 0.1, 1e-6)
+      assign_120.op.run()
+      self.assertAllClose(pc.eval(), 0.01, 1e-6)
+      assign_999.op.run()
+      self.assertAllClose(pc.eval(), 0.001, 1e-6)
+
+  def testPiecewiseConstantEdgeCases(self):
+    with self.test_session():
+      with self.assertRaises(ValueError):
+        x_int = variables.Variable(0, dtype=variables.dtypes.int32)
+        boundaries, values = [-1.0, 1.0], [1, 2, 3]
+        learning_rate_decay.piecewise_constant(x_int, boundaries, values)
+      with self.assertRaises(ValueError):
+        x = variables.Variable(0.0)
+        boundaries, values = [-1.0, 1.0], [1.0, 2, 3]
+        learning_rate_decay.piecewise_constant(x, boundaries, values)
+
+
+class LinearDecayTest(test_util.TensorFlowTestCase):
+
+  def testHalfWay(self):
+    with self.test_session():
+      step = 5
+      lr = 0.05
+      end_lr = 0.0
+      decayed_lr = learning_rate_decay.polynomial_decay(lr, step, 10, end_lr)
+      expected = lr * 0.5
+      self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+  def testEnd(self):
+    with self.test_session():
+      step = 10
+      lr = 0.05
+      end_lr = 0.001
+      decayed_lr = learning_rate_decay.polynomial_decay(lr, step, 10, end_lr)
+      expected = end_lr
+      self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+  def testHalfWayWithEnd(self):
+    with self.test_session():
+      step = 5
+      lr = 0.05
+      end_lr = 0.001
+      decayed_lr = learning_rate_decay.polynomial_decay(lr, step, 10, end_lr)
+      expected = (lr + end_lr) * 0.5
+      self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+  def testBeyondEnd(self):
+    with self.test_session():
+      step = 15
+      lr = 0.05
+      end_lr = 0.001
+      decayed_lr = learning_rate_decay.polynomial_decay(lr, step, 10, end_lr)
+      expected = end_lr
+      self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+  def testBeyondEndWithCycle(self):
+    with self.test_session():
+      step = 15
+      lr = 0.05
+      end_lr = 0.001
+      decayed_lr = learning_rate_decay.polynomial_decay(lr, step, 10, end_lr,
+                                                        cycle=True)
+      expected = (lr - end_lr) * 0.25 + end_lr
+      self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+
+class SqrtDecayTest(test_util.TensorFlowTestCase):
+
+  def testHalfWay(self):
+    with self.test_session():
+      step = 5
+      lr = 0.05
+      end_lr = 0.0
+      power = 0.5
+      decayed_lr = learning_rate_decay.polynomial_decay(lr, step, 10, end_lr,
+                                                        power=power)
+      expected = lr * 0.5 ** power
+      self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+  def testEnd(self):
+    with self.test_session():
+      step = 10
+      lr = 0.05
+      end_lr = 0.001
+      power = 0.5
+      decayed_lr = learning_rate_decay.polynomial_decay(lr, step, 10, end_lr,
+                                                        power=power)
+      expected = end_lr
+      self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+  def testHalfWayWithEnd(self):
+    with self.test_session():
+      step = 5
+      lr = 0.05
+      end_lr = 0.001
+      power = 0.5
+      decayed_lr = learning_rate_decay.polynomial_decay(lr, step, 10, end_lr,
+                                                        power=power)
+      expected = (lr - end_lr) * 0.5 ** power + end_lr
+      self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+  def testBeyondEnd(self):
+    with self.test_session():
+      step = 15
+      lr = 0.05
+      end_lr = 0.001
+      power = 0.5
+      decayed_lr = learning_rate_decay.polynomial_decay(lr, step, 10, end_lr,
+                                                        power=power)
+      expected = end_lr
+      self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+  def testBeyondEndWithCycle(self):
+    with self.test_session():
+      step = 15
+      lr = 0.05
+      end_lr = 0.001
+      power = 0.5
+      decayed_lr = learning_rate_decay.polynomial_decay(lr, step, 10, end_lr,
+                                                        power=power, cycle=True)
+      expected = (lr - end_lr) * 0.25 ** power + end_lr
+      self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+
+
+class ExponentialDecayTest(test_util.TensorFlowTestCase):
+
+  def testDecay(self):
+    initial_lr = 0.1
+    k = 10
+    decay_rate = 0.96
+    step = state_ops.variable_op([], dtypes.int32)
+    assign_step = state_ops.assign(step, 0)
+    increment_step = state_ops.assign_add(step, 1)
+    decayed_lr = learning_rate_decay.natural_exp_decay(initial_lr, step,
+                                                       k, decay_rate)
+    with self.test_session():
+      assign_step.op.run()
+      for i in range(k+1):
+        expected = initial_lr * math.exp(-i / k * decay_rate)
+        self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+        increment_step.op.run()
+
+  def testStaircase(self):
+    initial_lr = 0.1
+    k = 10
+    decay_rate = 0.96
+    step = state_ops.variable_op([], dtypes.int32)
+    assign_step = state_ops.assign(step, 0)
+    increment_step = state_ops.assign_add(step, 1)
+    decayed_lr = learning_rate_decay.natural_exp_decay(initial_lr,
+                                                       step,
+                                                       k,
+                                                       decay_rate,
+                                                       staircase=True)
+    with self.test_session():
+      assign_step.op.run()
+      for i in range(k+1):
+        expected = initial_lr * math.exp(-decay_rate * (i // k))
+        self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+        increment_step.op.run()
+
+
+class InverseDecayTest(test_util.TensorFlowTestCase):
+
+  def testDecay(self):
+    initial_lr = 0.1
+    k = 10
+    decay_rate = 0.96
+    step = state_ops.variable_op([], dtypes.int32)
+    assign_step = state_ops.assign(step, 0)
+    increment_step = state_ops.assign_add(step, 1)
+    decayed_lr = learning_rate_decay.inverse_time_decay(initial_lr,
+                                                        step,
+                                                        k,
+                                                        decay_rate)
+    with self.test_session():
+      assign_step.op.run()
+      for i in range(k+1):
+        expected = initial_lr / (1 + i / k * decay_rate)
+        self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+        increment_step.op.run()
+
+  def testStaircase(self):
+    initial_lr = 0.1
+    k = 10
+    decay_rate = 0.96
+    step = state_ops.variable_op([], dtypes.int32)
+    assign_step = state_ops.assign(step, 0)
+    increment_step = state_ops.assign_add(step, 1)
+    decayed_lr = learning_rate_decay.inverse_time_decay(initial_lr,
+                                                        step,
+                                                        k,
+                                                        decay_rate,
+                                                        staircase=True)
+    with self.test_session():
+      assign_step.op.run()
+      for i in range(k+1):
+        expected = initial_lr / (1 + decay_rate * (i // k))
+        self.assertAllClose(decayed_lr.eval(), expected, 1e-6)
+        increment_step.op.run()
 
 
 if __name__ == "__main__":

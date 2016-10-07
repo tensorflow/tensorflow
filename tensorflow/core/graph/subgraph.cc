@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -157,6 +157,9 @@ static Status PruneForTargets(Graph* g, const subgraph::NameIndex& name_index,
   }
   PruneForReverseReachability(g, targets);
 
+  // Reconnect nodes with no outgoing edges to the sink node
+  FixupSourceAndSinkEdges(g);
+
   return Status::OK();
 }
 
@@ -232,7 +235,15 @@ Status RewriteGraphForExecution(
         "Must specify at least one target to fetch or execute.");
   }
 
-  std::unordered_set<string> endpoints(fed_outputs.begin(), fed_outputs.end());
+  std::unordered_set<string> endpoints;
+  for (const string& endpoint_name : fed_outputs) {
+    auto result = endpoints.insert(endpoint_name);
+    if (!result.second) {
+      return errors::InvalidArgument("Endpoint \"", endpoint_name,
+                                     "\" fed more than once.");
+    }
+  }
+
   for (const auto& fetch : fetch_outputs) {
     if (endpoints.count(fetch) > 0) {
       return errors::InvalidArgument(fetch, " is both fed and fetched.");

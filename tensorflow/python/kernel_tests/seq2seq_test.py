@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -82,7 +82,7 @@ class Seq2SeqTest(tf.test.TestCase):
     with self.test_session() as sess:
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
         inp = [tf.constant(0.5, shape=[2, 2])] * 2
-        cell = tf.nn.rnn_cell.BasicLSTMCell(2)
+        cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=True)
         _, enc_state = tf.nn.rnn(cell, inp, dtype=tf.float32)
         dec_inp = [tf.constant(i, tf.int32, shape=[2]) for i in range(3)]
         dec, mem = tf.nn.seq2seq.embedding_rnn_decoder(
@@ -94,14 +94,15 @@ class Seq2SeqTest(tf.test.TestCase):
 
         res = sess.run([mem])
         self.assertEqual(1, len(res))
-        self.assertEqual((2, 4), res[0].shape)
+        self.assertEqual((2, 2), res[0].c.shape)
+        self.assertEqual((2, 2), res[0].h.shape)
 
   def testEmbeddingRNNSeq2Seq(self):
     with self.test_session() as sess:
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
         enc_inp = [tf.constant(1, tf.int32, shape=[2]) for i in range(2)]
         dec_inp = [tf.constant(i, tf.int32, shape=[2]) for i in range(3)]
-        cell = tf.nn.rnn_cell.BasicLSTMCell(2)
+        cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=True)
         dec, mem = tf.nn.seq2seq.embedding_rnn_seq2seq(
             enc_inp, dec_inp, cell, num_encoder_symbols=2,
             num_decoder_symbols=5, embedding_size=2)
@@ -111,7 +112,22 @@ class Seq2SeqTest(tf.test.TestCase):
         self.assertEqual((2, 5), res[0].shape)
 
         res = sess.run([mem])
-        self.assertEqual((2, 4), res[0].shape)
+        self.assertEqual((2, 2), res[0].c.shape)
+        self.assertEqual((2, 2), res[0].h.shape)
+
+        # Test with state_is_tuple=False.
+        with tf.variable_scope("no_tuple"):
+          cell1 = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=False)
+          dec, mem = tf.nn.seq2seq.embedding_rnn_seq2seq(
+              enc_inp, dec_inp, cell1, num_encoder_symbols=2,
+              num_decoder_symbols=5, embedding_size=2)
+          sess.run([tf.initialize_all_variables()])
+          res = sess.run(dec)
+          self.assertEqual(3, len(res))
+          self.assertEqual((2, 5), res[0].shape)
+
+          res = sess.run([mem])
+          self.assertEqual((2, 4), res[0].shape)
 
         # Test externally provided output projection.
         w = tf.get_variable("proj_w", [2, 5])
@@ -151,7 +167,7 @@ class Seq2SeqTest(tf.test.TestCase):
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
         enc_inp = [tf.constant(1, tf.int32, shape=[2]) for i in range(2)]
         dec_inp = [tf.constant(i, tf.int32, shape=[2]) for i in range(3)]
-        cell = tf.nn.rnn_cell.BasicLSTMCell(2)
+        cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=True)
         dec, mem = tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
             enc_inp, dec_inp, cell, num_symbols=5, embedding_size=2)
         sess.run([tf.initialize_all_variables()])
@@ -160,7 +176,19 @@ class Seq2SeqTest(tf.test.TestCase):
         self.assertEqual((2, 5), res[0].shape)
 
         res = sess.run([mem])
-        self.assertEqual((2, 4), res[0].shape)
+        self.assertEqual((2, 2), res[0].c.shape)
+        self.assertEqual((2, 2), res[0].h.shape)
+
+        # Test when num_decoder_symbols is provided, the size of decoder output
+        # is num_decoder_symbols.
+        with tf.variable_scope("decoder_symbols_seq2seq"):
+          dec, mem = tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
+              enc_inp, dec_inp, cell, num_symbols=5, num_decoder_symbols=3,
+              embedding_size=2)
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run(dec)
+        self.assertEqual(3, len(res))
+        self.assertEqual((2, 3), res[0].shape)
 
         # Test externally provided output projection.
         w = tf.get_variable("proj_w", [2, 5])
@@ -235,6 +263,97 @@ class Seq2SeqTest(tf.test.TestCase):
         res = sess.run([mem])
         self.assertEqual((2, 2), res[0].shape)
 
+  def testDynamicAttentionDecoder1(self):
+    with self.test_session() as sess:
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        cell = tf.nn.rnn_cell.GRUCell(2)
+        inp = tf.constant(0.5, shape=[2, 2, 2])
+        enc_outputs, enc_state = tf.nn.dynamic_rnn(cell, inp, dtype=tf.float32)
+        attn_states = enc_outputs
+        dec_inp = [tf.constant(0.4, shape=[2, 2])] * 3
+        dec, mem = tf.nn.seq2seq.attention_decoder(
+            dec_inp, enc_state,
+            attn_states, cell, output_size=4)
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run(dec)
+        self.assertEqual(3, len(res))
+        self.assertEqual((2, 4), res[0].shape)
+
+        res = sess.run([mem])
+        self.assertEqual((2, 2), res[0].shape)
+
+  def testDynamicAttentionDecoder2(self):
+    with self.test_session() as sess:
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        cell = tf.nn.rnn_cell.GRUCell(2)
+        inp = tf.constant(0.5, shape=[2, 2, 2])
+        enc_outputs, enc_state = tf.nn.dynamic_rnn(cell, inp, dtype=tf.float32)
+        attn_states = enc_outputs
+        dec_inp = [tf.constant(0.4, shape=[2, 2])] * 3
+        dec, mem = tf.nn.seq2seq.attention_decoder(
+            dec_inp, enc_state,
+            attn_states, cell, output_size=4,
+            num_heads=2)
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run(dec)
+        self.assertEqual(3, len(res))
+        self.assertEqual((2, 4), res[0].shape)
+
+        res = sess.run([mem])
+        self.assertEqual((2, 2), res[0].shape)
+
+  def testAttentionDecoderStateIsTuple(self):
+    with self.test_session() as sess:
+      with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+        cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=True)
+        cell = tf.nn.rnn_cell.MultiRNNCell(cells=[cell] * 2,
+                                           state_is_tuple=True)
+        inp = [tf.constant(0.5, shape=[2, 2])] * 2
+        enc_outputs, enc_state = tf.nn.rnn(cell, inp, dtype=tf.float32)
+        attn_states = tf.concat(1, [tf.reshape(e, [-1, 1, cell.output_size])
+                                    for e in enc_outputs])
+        dec_inp = [tf.constant(0.4, shape=[2, 2])] * 3
+        dec, mem = tf.nn.seq2seq.attention_decoder(
+            dec_inp, enc_state,
+            attn_states, cell, output_size=4)
+        sess.run([tf.initialize_all_variables()])
+        res = sess.run(dec)
+        self.assertEqual(3, len(res))
+        self.assertEqual((2, 4), res[0].shape)
+
+        res = sess.run([mem])
+        self.assertEqual(2, len(res[0]))
+        self.assertEqual((2, 2), res[0][0].c.shape)
+        self.assertEqual((2, 2), res[0][0].h.shape)
+        self.assertEqual((2, 2), res[0][1].c.shape)
+        self.assertEqual((2, 2), res[0][1].h.shape)
+
+    def testDynamicAttentionDecoderStateIsTuple(self):
+      with self.test_session() as sess:
+        with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
+          cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=True)
+          cell = tf.nn.rnn_cell.MultiRNNCell(cells=[cell] * 2,
+                                             state_is_tuple=True)
+          inp = tf.constant(0.5, shape=[2, 2, 2])
+          enc_outputs, enc_state = tf.nn.rnn(cell, inp, dtype=tf.float32)
+          attn_states = tf.concat(1, [tf.reshape(e, [-1, 1, cell.output_size])
+                                      for e in enc_outputs])
+          dec_inp = [tf.constant(0.4, shape=[2, 2])] * 3
+          dec, mem = tf.nn.seq2seq.attention_decoder(
+              dec_inp, enc_state,
+              attn_states, cell, output_size=4)
+          sess.run([tf.initialize_all_variables()])
+          res = sess.run(dec)
+          self.assertEqual(3, len(res))
+          self.assertEqual((2, 4), res[0].shape)
+
+          res = sess.run([mem])
+          self.assertEqual(2, len(res[0]))
+          self.assertEqual((2, 2), res[0][0].c.shape)
+          self.assertEqual((2, 2), res[0][0].h.shape)
+          self.assertEqual((2, 2), res[0][1].c.shape)
+          self.assertEqual((2, 2), res[0][1].h.shape)
+
   def testEmbeddingAttentionDecoder(self):
     with self.test_session() as sess:
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
@@ -260,7 +379,7 @@ class Seq2SeqTest(tf.test.TestCase):
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):
         enc_inp = [tf.constant(1, tf.int32, shape=[2]) for i in range(2)]
         dec_inp = [tf.constant(i, tf.int32, shape=[2]) for i in range(3)]
-        cell = tf.nn.rnn_cell.BasicLSTMCell(2)
+        cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=True)
         dec, mem = tf.nn.seq2seq.embedding_attention_seq2seq(
             enc_inp, dec_inp, cell, num_encoder_symbols=2,
             num_decoder_symbols=5, embedding_size=2)
@@ -270,7 +389,22 @@ class Seq2SeqTest(tf.test.TestCase):
         self.assertEqual((2, 5), res[0].shape)
 
         res = sess.run([mem])
-        self.assertEqual((2, 4), res[0].shape)
+        self.assertEqual((2, 2), res[0].c.shape)
+        self.assertEqual((2, 2), res[0].h.shape)
+
+        # Test with state_is_tuple=False.
+        with tf.variable_scope("no_tuple"):
+          cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=False)
+          dec, mem = tf.nn.seq2seq.embedding_attention_seq2seq(
+              enc_inp, dec_inp, cell, num_encoder_symbols=2,
+              num_decoder_symbols=5, embedding_size=2)
+          sess.run([tf.initialize_all_variables()])
+          res = sess.run(dec)
+          self.assertEqual(3, len(res))
+          self.assertEqual((2, 5), res[0].shape)
+
+          res = sess.run([mem])
+          self.assertEqual((2, 4), res[0].shape)
 
         # Test externally provided output projection.
         w = tf.get_variable("proj_w", [2, 5])
@@ -315,7 +449,7 @@ class Seq2SeqTest(tf.test.TestCase):
         dec_inp_dict["1"] = [
             tf.constant(i, tf.int32, shape=[2]) for i in range(4)]
         dec_symbols_dict = {"0": 5, "1": 6}
-        cell = tf.nn.rnn_cell.BasicLSTMCell(2)
+        cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=True)
         outputs_dict, state_dict = tf.nn.seq2seq.one2many_rnn_seq2seq(
             enc_inp, dec_inp_dict, cell, 2, dec_symbols_dict, embedding_size=2)
 
@@ -327,9 +461,11 @@ class Seq2SeqTest(tf.test.TestCase):
         self.assertEqual(4, len(res))
         self.assertEqual((2, 6), res[0].shape)
         res = sess.run([state_dict["0"]])
-        self.assertEqual((2, 4), res[0].shape)
+        self.assertEqual((2, 2), res[0].c.shape)
+        self.assertEqual((2, 2), res[0].h.shape)
         res = sess.run([state_dict["1"]])
-        self.assertEqual((2, 4), res[0].shape)
+        self.assertEqual((2, 2), res[0].c.shape)
+        self.assertEqual((2, 2), res[0].h.shape)
 
         # Test that previous-feeding model ignores inputs after the first, i.e.
         # dec_inp_dict2 has different inputs from dec_inp_dict after the first
@@ -414,7 +550,8 @@ class Seq2SeqTest(tf.test.TestCase):
       def SampleGRUSeq2Seq(enc_inp, dec_inp, weights, per_example_loss):
         """Example sequence-to-sequence model that uses GRU cells."""
         def GRUSeq2Seq(enc_inp, dec_inp):
-          cell = tf.nn.rnn_cell.MultiRNNCell([tf.nn.rnn_cell.GRUCell(24)] * 2)
+          cell = tf.nn.rnn_cell.MultiRNNCell([tf.nn.rnn_cell.GRUCell(24)] * 2,
+                                             state_is_tuple=True)
           return tf.nn.seq2seq.embedding_attention_seq2seq(
               enc_inp, dec_inp, cell, num_encoder_symbols=classes,
               num_decoder_symbols=classes, embedding_size=24)
@@ -457,7 +594,8 @@ class Seq2SeqTest(tf.test.TestCase):
       def SampleGRUSeq2Seq(enc_inp, dec_inp, weights):
         """Example sequence-to-sequence model that uses GRU cells."""
         def GRUSeq2Seq(enc_inp, dec_inp):
-          cell = tf.nn.rnn_cell.MultiRNNCell([tf.nn.rnn_cell.GRUCell(24)] * 2)
+          cell = tf.nn.rnn_cell.MultiRNNCell([tf.nn.rnn_cell.GRUCell(24)] * 2,
+                                             state_is_tuple=True)
           return tf.nn.seq2seq.embedding_attention_seq2seq(
               enc_inp, dec_inp, cell, num_encoder_symbols=classes,
               num_decoder_symbols=classes, embedding_size=24,
@@ -585,25 +723,44 @@ class Seq2SeqTest(tf.test.TestCase):
           self.assertAllClose(v_true.eval(), v_false.eval())
 
     def EmbeddingRNNSeq2SeqF(enc_inp, dec_inp, feed_previous):
-      cell = tf.nn.rnn_cell.BasicLSTMCell(2)
+      cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=True)
+      return tf.nn.seq2seq.embedding_rnn_seq2seq(
+          enc_inp, dec_inp, cell, num_encoder_symbols,
+          num_decoder_symbols, embedding_size=2, feed_previous=feed_previous)
+
+    def EmbeddingRNNSeq2SeqNoTupleF(enc_inp, dec_inp, feed_previous):
+      cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=False)
       return tf.nn.seq2seq.embedding_rnn_seq2seq(
           enc_inp, dec_inp, cell, num_encoder_symbols,
           num_decoder_symbols, embedding_size=2, feed_previous=feed_previous)
 
     def EmbeddingTiedRNNSeq2Seq(enc_inp, dec_inp, feed_previous):
-      cell = tf.nn.rnn_cell.BasicLSTMCell(2)
+      cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=True)
+      return tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
+          enc_inp, dec_inp, cell, num_decoder_symbols, embedding_size=2,
+          feed_previous=feed_previous)
+
+    def EmbeddingTiedRNNSeq2SeqNoTuple(enc_inp, dec_inp, feed_previous):
+      cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=False)
       return tf.nn.seq2seq.embedding_tied_rnn_seq2seq(
           enc_inp, dec_inp, cell, num_decoder_symbols, embedding_size=2,
           feed_previous=feed_previous)
 
     def EmbeddingAttentionSeq2Seq(enc_inp, dec_inp, feed_previous):
-      cell = tf.nn.rnn_cell.BasicLSTMCell(2)
+      cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=True)
       return tf.nn.seq2seq.embedding_attention_seq2seq(
           enc_inp, dec_inp, cell, num_encoder_symbols,
           num_decoder_symbols, embedding_size=2, feed_previous=feed_previous)
 
-    for model in (EmbeddingRNNSeq2SeqF, EmbeddingTiedRNNSeq2Seq,
-                  EmbeddingAttentionSeq2Seq):
+    def EmbeddingAttentionSeq2SeqNoTuple(enc_inp, dec_inp, feed_previous):
+      cell = tf.nn.rnn_cell.BasicLSTMCell(2, state_is_tuple=False)
+      return tf.nn.seq2seq.embedding_attention_seq2seq(
+          enc_inp, dec_inp, cell, num_encoder_symbols,
+          num_decoder_symbols, embedding_size=2, feed_previous=feed_previous)
+
+    for model in (EmbeddingRNNSeq2SeqF, EmbeddingRNNSeq2SeqNoTupleF,
+                  EmbeddingTiedRNNSeq2Seq, EmbeddingTiedRNNSeq2SeqNoTuple,
+                  EmbeddingAttentionSeq2Seq, EmbeddingAttentionSeq2SeqNoTuple):
       TestModel(model)
 
 

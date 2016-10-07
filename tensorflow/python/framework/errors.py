@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,10 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import traceback
 import warnings
 
 from tensorflow.core.lib.core import error_codes_pb2
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.util import compat
 
 
 class OpError(Exception):
@@ -38,8 +41,8 @@ class OpError(Exception):
     """Creates a new `OpError` indicating that a particular op failed.
 
     Args:
-      node_def: The `graph_pb2.NodeDef` proto representing the op that failed,
-        if known; otherwise None.
+      node_def: The `node_def_pb2.NodeDef` proto representing the op that
+        failed, if known; otherwise None.
       op: The `ops.Operation` that failed, if known; otherwise None.
       message: The message string describing the failure.
       error_code: The `error_codes_pb2.Code` describing the error.
@@ -83,8 +86,8 @@ class OpError(Exception):
 
   def __str__(self):
     if self._op is not None:
-      output = ["%s\nCaused by op %r, defined at:\n"
-                % (self.message, self._op.name,)]
+      output = ["%s\n\nCaused by op %r, defined at:\n" % (self.message,
+                                                          self._op.name,)]
       curr_traceback_list = traceback.format_list(self._op.traceback)
       output.extend(curr_traceback_list)
       original_op = self._op._original_op
@@ -121,6 +124,8 @@ class OpError(Exception):
             output.extend(line)
 
         original_op = original_op._original_op
+      output.append("\n%s (see above for traceback): %s\n" %
+                    (type(self).__name__, self.message))
       return ''.join(output)
     else:
       return self.message
@@ -425,14 +430,39 @@ _CODE_TO_EXCEPTION_CLASS = {
     DATA_LOSS: DataLossError,
 }
 
+_EXCEPTION_CLASS_TO_CODE = dict((
+    (class_, code) for (code, class_) in _CODE_TO_EXCEPTION_CLASS.items()))
+
+
+def exception_type_from_error_code(error_code):
+  return _CODE_TO_EXCEPTION_CLASS[error_code]
+
+
+def error_code_from_exception_type(cls):
+  return _EXCEPTION_CLASS_TO_CODE[cls]
+
 
 def _make_specific_exception(node_def, op, message, error_code):
   try:
-    exc_type = _CODE_TO_EXCEPTION_CLASS[error_code]
+    exc_type = exception_type_from_error_code(error_code)
     return exc_type(node_def, op, message)
   except KeyError:
     warnings.warn("Unknown error code: %d" % error_code)
     return UnknownError(node_def, op, message, error_code)
+
+
+@contextlib.contextmanager
+def raise_exception_on_not_ok_status():
+  try:
+    status = pywrap_tensorflow.TF_NewStatus()
+    yield status
+    if pywrap_tensorflow.TF_GetCode(status) != 0:
+      raise _make_specific_exception(
+          None, None,
+          compat.as_text(pywrap_tensorflow.TF_Message(status)),
+          pywrap_tensorflow.TF_GetCode(status))
+  finally:
+    pywrap_tensorflow.TF_DeleteStatus(status)
 
 
 # These are documented in client/client_lib.py.

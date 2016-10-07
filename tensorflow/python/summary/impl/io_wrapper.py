@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -91,3 +91,11 @@ def Exists(path):
     return gcs.Exists(path)
   else:
     return gfile.Exists(path)
+
+
+def Size(path):
+  """Returns the number of bytes in the given file. Doesn't work on GCS."""
+  if gcs.IsGCSPath(path):
+    raise NotImplementedError("io_wrapper.Size doesn't support GCS paths")
+  else:
+    return gfile.Open(path).size()

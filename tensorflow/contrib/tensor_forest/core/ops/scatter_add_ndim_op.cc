@@ -1,4 +1,4 @@
-// Copyright 2016 Google Inc. All Rights Reserved.
+// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,28 +15,39 @@
 // ScatterAddNdim implements a scatter_add that can operate on sparse
 // updates without being limited to the first dimension for indices.
 
+#include "tensorflow/contrib/tensor_forest/core/ops/tree_utils.h"
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/logging.h"
 
 
 namespace tensorflow {
 
-REGISTER_OP("ScatterAddNdim")
-  .Input("input: Ref(float)")
-  .Input("indices: int32")
-  .Input("deltas: float")
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
+using tensorforest::CheckTensorBounds;
 
-  .Doc(R"doc(
+REGISTER_OP("ScatterAddNdim")
+    .Input("input: Ref(float)")
+    .Input("indices: int32")
+    .Input("deltas: float")
+    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .Doc(R"doc(
   Add elements in deltas to mutable input according to indices.
 
   input: A N-dimensional float tensor to mutate.
   indices:= A 2-D int32 tensor. The size of dimension 0 is the number of
     deltas, the size of dimension 1 is the rank of the input.  `indices[i]`
-    gives the coordinates of input that `deltas[i]` should add to
+    gives the coordinates of input that `deltas[i]` should add to.  If
+    `indices[i]` does not fully specify a location (it has less indices than
+    there are dimensions in `input`), it is assumed that they are start
+    indices and that deltas contains enough values to fill in the remaining
+    input dimensions.
   deltas: `deltas[i]` is the value to add to input at index indices[i][:]
 )doc");
-
 
 class ScatterAddNdim : public OpKernel {
  public:
@@ -47,16 +58,15 @@ class ScatterAddNdim : public OpKernel {
     const Tensor& indices_tensor = context->input(1);
     const Tensor& deltas_tensor = context->input(2);
 
-    OP_REQUIRES(context, deltas_tensor.shape().dims() == 1,
-                errors::InvalidArgument(
-                    "deltas should be one-dimensional"));
     if (indices_tensor.shape().dim_size(0) > 0) {
       OP_REQUIRES(context, indices_tensor.shape().dims() == 2,
                   errors::InvalidArgument(
                       "indices should be two-dimensional"));
+      const int32 delta_dims = deltas_tensor.shape().dims();
       OP_REQUIRES(
           context,
-          indices_tensor.shape().dim_size(1) == input_tensor.shape().dims(),
+          indices_tensor.shape().dim_size(1) + delta_dims ==
+          input_tensor.shape().dims() + 1,
           errors::InvalidArgument(
               "Number of indices dimensions should be the same as input "
               "rank."));
@@ -70,16 +80,33 @@ class ScatterAddNdim : public OpKernel {
       return;
     }
 
+    // Check tensor bounds.
+    if (!CheckTensorBounds(context, input_tensor)) return;
+    if (!CheckTensorBounds(context, indices_tensor)) return;
+    if (!CheckTensorBounds(context, deltas_tensor)) return;
+
     auto input = input_tensor.flat<float>();
 
     const auto indices = indices_tensor.tensor<int32, 2>();
     const auto deltas = deltas_tensor.unaligned_flat<float>();
 
-    const int32 num_dims = indices_tensor.shape().dim_size(1);
+    const int32 num_dims = static_cast<int32>(
+        indices_tensor.shape().dim_size(1));
+
+    // Figure out if indices don't specify a complete position in the
+    // input tensor.
+    int32 num_data_per_index = 1;
+    for (int32 i = 0; i < input_tensor.shape().dims() - num_dims; ++i) {
+      num_data_per_index *= input_tensor.shape().dim_size(num_dims + i);
+    }
 
     // Calculate index multipliers.
     std::vector<int32> multipliers;
-    int32 last_size = input.size();
+    OP_REQUIRES(
+        context, input.size() < std::numeric_limits<int32>::max(),
+        errors::InvalidArgument(
+            "Input must contain less than 2^31 total elements"));
+    int32 last_size = static_cast<int32>(input.size());
 
     for (int32 j = 0; j < num_dims; j++) {
       const int32 m = last_size / input_tensor.shape().dim_size(j);
@@ -89,11 +116,17 @@ class ScatterAddNdim : public OpKernel {
 
     // Perform updates.
     for (int32 i = 0; i < indices_tensor.shape().dim_size(0); i++) {
-      int32 index = 0;
+      int32 start_index = 0;
       for (int32 j = 0; j < num_dims; j++) {
-        index += indices(i, j) * multipliers[j];
+        start_index += indices(i, j) * multipliers[j];
       }
-      input(index) += deltas(i);
+      for (int32 offset = 0; offset < num_data_per_index; ++offset) {
+        const int32 input_index = start_index + offset;
+        const int32 delta_index = i * num_data_per_index + offset;
+        CHECK(input_index < input.size());
+        CHECK(delta_index < deltas.size());
+        input(input_index) += deltas(delta_index);
+      }
     }
   }
 };

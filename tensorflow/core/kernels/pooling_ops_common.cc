@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,10 +58,12 @@ PoolParameters::PoolParameters(OpKernelContext* context,
                   "or pooling across width/height."));
 
   if (depth_window == 1) {
-    OP_REQUIRES_OK(context, Get2dOutputSize(
-                                tensor_in_rows, tensor_in_cols, window_rows,
-                                window_cols, row_stride, col_stride, padding,
-                                &out_height, &out_width, &pad_rows, &pad_cols));
+    OP_REQUIRES_OK(
+        context, GetWindowedOutputSize(tensor_in_rows, window_rows, row_stride,
+                                       padding, &out_height, &pad_rows));
+    OP_REQUIRES_OK(
+        context, GetWindowedOutputSize(tensor_in_cols, window_cols, col_stride,
+                                       padding, &out_width, &pad_cols));
   } else {
     // Our current version of depthwise max pooling does not support
     // any padding, and expects the depth_window to equal the
@@ -124,6 +126,7 @@ namespace functor {
   extern template struct TransformDepth<GPUDevice, T, Eigen::DenseIndex>;
 
 DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(Eigen::half);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -153,9 +156,9 @@ void DnnPoolingOp<T>::Compute(
                                 ShapeFromFormat(FORMAT_NCHW, tensor_in.shape(),
                                                 data_format),
                                 &transformed_input));
-    functor::NHWCToNCHW<GPUDevice, T>()(context->eigen_device<Device>(),
-                                        tensor_in.tensor<T, 4>(),
-                                        transformed_input.tensor<T, 4>());
+    functor::NHWCToNCHW<GPUDevice, T, 4>()(context->eigen_device<Device>(),
+                                           tensor_in.tensor<T, 4>(),
+                                           transformed_input.tensor<T, 4>());
   } else {
     transformed_input = tensor_in;
   }
@@ -213,7 +216,7 @@ void DnnPoolingOp<T>::Compute(
   if (data_format == FORMAT_NHWC) {
     /// Transform the output data from NCHW back to NHWC
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
-    functor::NCHWToNHWC<GPUDevice, T>()(
+    functor::NCHWToNHWC<GPUDevice, T, 4>()(
         context->eigen_device<Device>(),
         toConstTensor(transformed_output).template tensor<T, 4>(),
         tensor_out->tensor<T, 4>());
@@ -292,19 +295,19 @@ void DnnPoolingGradOp<T>::Compute(
       // For AvgPoolGrad, the original input tensor is not necessary. However,
       // cudnn still requires them to run, although they do not affect the
       // results.
-      functor::NHWCToNCHW<GPUDevice, T>()(context->eigen_device<Device>(),
-                                          tensor_in->tensor<T, 4>(),
-                                          transformed_input.tensor<T, 4>());
+      functor::NHWCToNCHW<GPUDevice, T, 4>()(context->eigen_device<Device>(),
+                                             tensor_in->tensor<T, 4>(),
+                                             transformed_input.tensor<T, 4>());
     }
     if (tensor_out) {
       // For AvgPoolGrad, the original output tensor is not necessary. However,
       // cudnn still requires them to run, although they do not affect the
       // results.
-      functor::NHWCToNCHW<GPUDevice, T>()(context->eigen_device<Device>(),
-                                          tensor_out->tensor<T, 4>(),
-                                          transformed_output.tensor<T, 4>());
+      functor::NHWCToNCHW<GPUDevice, T, 4>()(context->eigen_device<Device>(),
+                                             tensor_out->tensor<T, 4>(),
+                                             transformed_output.tensor<T, 4>());
     }
-    functor::NHWCToNCHW<GPUDevice, T>()(
+    functor::NHWCToNCHW<GPUDevice, T, 4>()(
         context->eigen_device<Device>(), out_backprop.tensor<T, 4>(),
         transformed_output_backprop.tensor<T, 4>());
   }
@@ -361,14 +364,16 @@ void DnnPoolingGradOp<T>::Compute(
   if (data_format == FORMAT_NHWC) {
     /// Transform the output data from NCHW back to NHWC.
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
-    functor::NCHWToNHWC<GPUDevice, T>()(
+    functor::NCHWToNHWC<GPUDevice, T, 4>()(
         context->eigen_device<Device>(),
         toConstTensor(transformed_input_backprop).template tensor<T, 4>(),
         input_backprop->tensor<T, 4>());
   }
 }
 
+template class DnnPoolingOp<Eigen::half>;
 template class DnnPoolingOp<float>;
+template class DnnPoolingGradOp<Eigen::half>;
 template class DnnPoolingGradOp<float>;
 
 #endif  // GOOGLE_CUDA

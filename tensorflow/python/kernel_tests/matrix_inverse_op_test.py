@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,16 +30,13 @@ class InverseOpTest(tf.test.TestCase):
         y = x.astype(np_type)
         with self.test_session():
           # Verify that x^{-1} * x == Identity matrix.
-          if x.ndim == 2:
-            inv = tf.matrix_inverse(y, adjoint=adjoint)
-            tf_ans = tf.matmul(inv, y, transpose_b=adjoint)
-            np_ans = np.identity(y.shape[-1])
-          else:
-            inv = tf.batch_matrix_inverse(y, adjoint=adjoint)
-            tf_ans = tf.batch_matmul(inv, y, adj_y=adjoint)
+          inv = tf.matrix_inverse(y, adjoint=adjoint)
+          tf_ans = tf.batch_matmul(inv, y, adj_y=adjoint)
+          np_ans = np.identity(y.shape[-1])
+          if x.ndim > 2:
             tiling = list(y.shape)
             tiling[-2:] = [1, 1]
-            np_ans = np.tile(np.identity(y.shape[-1]), tiling)
+            np_ans = np.tile(np_ans, tiling)
           out = tf_ans.eval()
           self.assertAllClose(np_ans, out)
           self.assertShapeEqual(y, tf_ans)

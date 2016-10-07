@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/util/tensor_slice_writer.h"
+
+#include <array>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -260,6 +262,85 @@ void TensorSliceWriteTestHelper::CheckEntries(const string& fname) {
     const int16 data[] = {10, 11, 12, 13, 14};
     EXPECT_EQ(ArraySize(data), ss.data().int_val_size());
     ExpectIdenticalIntArrays(data, ArraySize(data), ss.data().int_val().data());
+  }
+}
+
+template <typename DT>
+size_t BytesPerElementHelper(DT value) {
+  SavedSlice ss;
+  std::array<DT, 1> lo_data;
+  std::fill(lo_data.begin(), lo_data.end(), value);
+  TensorSliceWriter::SaveData(lo_data.data(), lo_data.size(), &ss);
+  int lo_byte_size = ss.ByteSize();
+
+  std::array<DT, 1001> hi_data;
+  std::fill(hi_data.begin(), hi_data.end(), value);
+  TensorSliceWriter::SaveData(hi_data.data(), hi_data.size(), &ss);
+  int hi_byte_size = ss.ByteSize();
+
+  return (hi_byte_size - lo_byte_size) / (hi_data.size() - lo_data.size());
+}
+
+TEST(TensorSliceWriteTest, CheckpointSize) {
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_BOOL),
+            BytesPerElementHelper<bool>(false));
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_BOOL),
+            BytesPerElementHelper<bool>(true));
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_FLOAT),
+            BytesPerElementHelper<float>(-1.0));
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_DOUBLE),
+            BytesPerElementHelper<double>(-1.0));
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_COMPLEX64),
+            BytesPerElementHelper<complex64>(-1.0));
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_COMPLEX128),
+            BytesPerElementHelper<complex128>(-1.0));
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_INT32),
+            BytesPerElementHelper<int32>(-1));
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_INT64),
+            BytesPerElementHelper<int64>(-1));
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_UINT16),
+            BytesPerElementHelper<uint16>(std::numeric_limits<uint16>::max()));
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_UINT8),
+            BytesPerElementHelper<uint8>(std::numeric_limits<uint8>::max()));
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_INT8),
+            BytesPerElementHelper<int8>(-1));
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_INT16),
+            BytesPerElementHelper<int16>(-1));
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_QINT8),
+            BytesPerElementHelper<qint8>(-1));
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_QUINT8),
+            BytesPerElementHelper<quint8>(std::numeric_limits<uint8>::max()));
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_QINT32),
+            BytesPerElementHelper<qint32>(-1));
+  EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_HALF),
+            BytesPerElementHelper<Eigen::half>(Eigen::half(-1.0)));
+}
+
+TEST(TensorSliceWriteTest, SizeErrors) {
+  const string filename = io::JoinPath(testing::TmpDir(), "checkpoint");
+
+  TensorSliceWriter writer(filename, CreateTableTensorSliceBuilder);
+
+  // Add a 300MB int8 tensor slice, which will fail because it expands to 3GB.
+  {
+    TensorShape shape({300, 1000000});
+    TensorSlice slice = TensorSlice::ParseOrDie("-:-");
+    const std::vector<int8> data(300000000, -1);
+    Status s = writer.Add("test1", shape, slice, data.data());
+    EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+    EXPECT_TRUE(StringPiece(s.error_message())
+                    .contains("Tensor slice is too large to serialize"));
+  }
+
+  // Add a large string tensor slice, which will fail.
+  {
+    TensorShape shape({256, 1024});
+    TensorSlice slice = TensorSlice::ParseOrDie("-:-");
+    const std::vector<string> data(256 * 1024, std::string(8192, 'f'));
+    Status s = writer.Add("test2", shape, slice, data.data());
+    EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+    EXPECT_TRUE(StringPiece(s.error_message())
+                    .contains("Tensor slice is too large to serialize"));
   }
 }
 

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,8 +23,10 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "tensorflow/core/lib/jpeg/jpeg_handle.h"
+#include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
@@ -52,7 +54,7 @@ class FewerArgsForCompiler {
       : datasize_(datasize),
         flags_(flags),
         pnwarn_(nwarn),
-        allocate_output_(allocate_output),
+        allocate_output_(std::move(allocate_output)),
         height_read_(0),
         height_(0),
         stride_(0) {
@@ -103,6 +105,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   cinfo.client_data = &jpeg_jmpbuf;
   jerr.error_exit = CatchError;
   if (setjmp(jpeg_jmpbuf)) {
+    delete[] tempdata;
     return nullptr;
   }
 
@@ -148,6 +151,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   if (cinfo.output_width <= 0 || cinfo.output_height <= 0) {
     LOG(ERROR) << "Invalid image size: " << cinfo.output_width << " x "
                << cinfo.output_height;
+    jpeg_destroy_decompress(&cinfo);
     return nullptr;
   }
   if (total_size >= (1LL << 29)) {
@@ -243,6 +247,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
     output_line += stride;
   }
   delete[] tempdata;
+  tempdata = NULL;
 
   // Convert the RGB data to RGBA, with alpha set to 0xFF to indicate
   // opacity.

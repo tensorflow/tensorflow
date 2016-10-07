@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,8 +56,8 @@ namespace tensorflow {
 //   // Create a var.
 //   MyVar* my_var = new MyVar;
 //   my_var.val = Tensor(DT_FLOAT, my_shape);
-//   my_val.val.flat<float>().setZeros();   // 0 initialized.
-//   ctx->SetStatus(rm.Create("my_container", "my_name", my_val));
+//   my_var.val.flat<float>().setZeros();   // 0 initialized.
+//   ctx->SetStatus(rm.Create("my_container", "my_name", my_var));
 //
 //   // += a variable.
 //   MyVar* my_var = nullptr;
@@ -122,6 +122,9 @@ class ResourceMgr {
 
   // Deletes all resources in all containers.
   void Clear();
+
+  // Returns a text description for all resources.
+  string DebugString() const;
 
  private:
   typedef std::pair<TypeIndex, string> Key;

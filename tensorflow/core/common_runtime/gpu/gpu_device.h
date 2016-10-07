@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -48,6 +48,9 @@ class BaseGPUDevice : public LocalDevice {
 
   ~BaseGPUDevice() override;
 
+  // Initialize the device and return the status of initialization.
+  Status Init(const SessionOptions& options);
+
   // GPU devices require the Op Compute method to save a reference to
   // any temporary tensors that are allocated until the Op execution
   // completes.
@@ -81,6 +84,8 @@ class BaseGPUDevice : public LocalDevice {
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
 
+  gpu::StreamExecutor* executor_;  // not owned
+
  private:
   struct StreamGroup {
     gpu::Stream* compute;
@@ -89,11 +94,13 @@ class BaseGPUDevice : public LocalDevice {
     gpu::Stream* device_to_device;
   };
   gtl::InlinedVector<StreamGroup, 4> streams_;
+  gtl::InlinedVector<char*, 4> scratch_;
   std::vector<GPUDeviceContext*> device_contexts_;
   GpuDeviceInfo* gpu_device_info_ = nullptr;
   mutex trace_mu_;
   int gpu_id_ = -1;
   const bool sync_every_op_ = false;
+  const int32 max_streams_;
   std::unique_ptr<EventMgr> em_;
 
   void ReinitializeDevice(OpKernelContext* context, PerOpGpuDevice* device,
@@ -102,21 +109,30 @@ class BaseGPUDevice : public LocalDevice {
 
 class BaseGPUDeviceFactory : public DeviceFactory {
  public:
-  void CreateDevices(const SessionOptions& options, const string& name_prefix,
-                     std::vector<Device*>* devices) override;
+  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
+                       std::vector<Device*>* devices) override;
 
  private:
-  LocalDevice* CreateGPUDevice(const SessionOptions& options,
-                               const string& name, int gpu_id);
+  Status CreateGPUDevice(const SessionOptions& options, const string& name,
+                         int gpu_id, BaseGPUDevice** out_device);
 
-  virtual LocalDevice* CreateGPUDevice(const SessionOptions& options,
-                                       const string& name, Bytes memory_limit,
-                                       BusAdjacency bus_adjacency, int gpu_id,
-                                       const string& physical_device_desc,
-                                       Allocator* gpu_allocator,
-                                       Allocator* cpu_allocator) = 0;
+  virtual BaseGPUDevice* CreateGPUDevice(const SessionOptions& options,
+                                         const string& name, Bytes memory_limit,
+                                         BusAdjacency bus_adjacency, int gpu_id,
+                                         const string& physical_device_desc,
+                                         Allocator* gpu_allocator,
+                                         Allocator* cpu_allocator) = 0;
 
-  void GetValidDeviceIds(std::vector<int>* ids);
+  // Returns into 'ids' the list of valid GPU ids, in the order that
+  // they should map to logical gpu ids "/gpu:0", "/gpu:1", etc, based
+  // upon 'visible_device_list', a comma-separated list of 'visible
+  // gpu ids'.
+  Status GetValidDeviceIds(const string& visible_device_list,
+                           std::vector<int>* ids);
+
+  // visible_gpu_initialized_[gpu_id] is true if visible GPU gpu_id
+  // has been initialized by the process.
+  std::unordered_map<int, bool> visible_gpu_initialized_;
 };
 
 }  // namespace tensorflow

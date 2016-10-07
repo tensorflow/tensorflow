@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/work_sharder.h"
 
+#include <atomic>
 #include <vector>
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
@@ -26,15 +27,17 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-void RunSharding(int64 num_workers, int64 total, int64 cost_per_unit) {
-  thread::ThreadPool threads(Env::Default(), "test", 16);
+void RunSharding(int64 num_workers, int64 total, int64 cost_per_unit,
+                 thread::ThreadPool* threads) {
   mutex mu;
   int64 num_shards = 0;
   int64 num_done_work = 0;
   std::vector<bool> work(total, false);
-  Shard(num_workers, &threads, total, cost_per_unit,
-        [&mu, &num_shards, &num_done_work, &work](int start, int limit) {
+  Shard(num_workers, threads, total, cost_per_unit,
+        [=, &mu, &num_shards, &num_done_work, &work](int64 start, int64 limit) {
           VLOG(1) << "Shard [" << start << "," << limit << ")";
+          EXPECT_GE(start, 0);
+          EXPECT_LE(limit, total);
           mutex_lock l(mu);
           ++num_shards;
           for (; start < limit; ++start) {
@@ -43,17 +46,17 @@ void RunSharding(int64 num_workers, int64 total, int64 cost_per_unit) {
             work[start] = true;
           }
         });
-  EXPECT_LE(num_shards, num_workers + 1);
   EXPECT_EQ(num_done_work, total);
   LOG(INFO) << num_workers << " " << total << " " << cost_per_unit << " "
             << num_shards;
 }
 
 TEST(Shard, Basic) {
+  thread::ThreadPool threads(Env::Default(), "test", 16);
   for (auto workers : {0, 1, 2, 3, 5, 7, 10, 11, 15, 100, 1000}) {
     for (auto total : {0, 1, 7, 10, 64, 100, 256, 1000, 9999}) {
       for (auto cost_per_unit : {0, 1, 11, 102, 1003, 10005, 1000007}) {
-        RunSharding(workers, total, cost_per_unit);
+        RunSharding(workers, total, cost_per_unit, &threads);
       }
     }
   }
@@ -61,20 +64,15 @@ TEST(Shard, Basic) {
 
 TEST(Shard, OverflowTest) {
   thread::ThreadPool threads(Env::Default(), "test", 3);
-  mutex mu;
   for (auto workers : {1, 2, 3}) {
     const int64 total_elements = 1LL << 32;
-    const int64 cost_per_unit = 10000;
-    int num_shards = 0;
-    int64 num_elements = 0;
+    const int64 cost_per_unit = 10;
+    std::atomic<int64> num_elements(0);
     Shard(workers, &threads, total_elements, cost_per_unit,
-          [&mu, &num_shards, &num_elements](int64 start, int64 limit) {
-            mutex_lock l(mu);
-            ++num_shards;
+          [&num_elements](int64 start, int64 limit) {
             num_elements += limit - start;
           });
-    EXPECT_EQ(num_shards, workers);
-    EXPECT_EQ(num_elements, total_elements);
+    EXPECT_EQ(num_elements.load(), total_elements);
   }
 }
 

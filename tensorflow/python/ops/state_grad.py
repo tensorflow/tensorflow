@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,16 +22,24 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import state_ops
 
-ops.NoGradient("Assign")
+# TODO(b/31222613): These ops may be differentiable, and there may be
+# latent bugs here.
+ops.NotDifferentiable("Assign")
 
 
-ops.NoGradient("AssignAdd")
+ops.NotDifferentiable("AssignAdd")
 
 
-ops.NoGradient("AssignSub")
+ops.NotDifferentiable("AssignSub")
 
 
-ops.NoGradient("ScatterAdd")
+ops.NotDifferentiable("ScatterAdd")
 
 
-ops.NoGradient("ScatterSub")
+ops.NotDifferentiable("ScatterSub")
+
+
+ops.NotDifferentiable("ScatterMul")
+
+
+ops.NotDifferentiable("ScatterDiv")

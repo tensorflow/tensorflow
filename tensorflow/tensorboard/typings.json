@@ -1,13 +1,15 @@
 {
   "name": "tensorflow-vis",
-  "ambientDependencies": {
-    "chai-3.2.0": "github:DefinitelyTyped/DefinitelyTyped/chai/chai-3.2.0.d.ts#9c25433c84251bfe72bf0030a95edbbb2c81c9d5",
-    "d3": "github:DefinitelyTyped/DefinitelyTyped/d3/d3.d.ts#eb59a40d3c2f3257e34ec2ede181046230814a41",
-    "es6-promise": "github:DefinitelyTyped/DefinitelyTyped/es6-promise/es6-promise.d.ts#e9be3cecf8a326d3e220c52b42d218169a7bb9f2",
-    "lodash": "github:DefinitelyTyped/DefinitelyTyped/lodash/lodash.d.ts#eb835aa72f45eee4246b1de8beeffe2010c689e6",
-    "mocha": "github:DefinitelyTyped/DefinitelyTyped/mocha/mocha.d.ts#484544d14d400190b20f270341c97b16adc0f1ef",
-    "polymer": "github:DefinitelyTyped/DefinitelyTyped/polymer/polymer.d.ts#e9be3cecf8a326d3e220c52b42d218169a7bb9f2",
-    "sinon": "registry:dt/sinon#1.16.0+20160317120654",
-    "webcomponents.js": "github:DefinitelyTyped/DefinitelyTyped/webcomponents.js/webcomponents.js.d.ts#e9be3cecf8a326d3e220c52b42d218169a7bb9f2"
+  "dependencies": {},
+  "globalDependencies": {
+    "chai": "registry:dt/chai#3.4.0+20160317120654",
+    "d3": "registry:dt/d3#0.0.0+20160514171929",
+    "es6-promise": "registry:dt/es6-promise#0.0.0+20160423074304",
+    "lodash": "registry:dt/lodash#3.10.0+20160330154726",
+    "mocha": "registry:dt/mocha#2.2.5+20160317120654",
+    "polymer": "registry:dt/polymer#1.1.6+20160922133320",
+    "sinon": "registry:dt/sinon#1.16.0+20160517064723",
+    "three": "registry:dt/three#0.0.0+20160802154944",
+    "webcomponents.js": "registry:dt/webcomponents.js#0.6.0+20160728153134"
   }
 }

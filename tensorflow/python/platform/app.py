@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +25,6 @@ from tensorflow.python.platform import flags
 
 def run(main=None):
   f = flags.FLAGS
-  f._parse_flags()
+  flags_passthrough = f._parse_flags()
   main = main or sys.modules['__main__'].main
-  sys.exit(main(sys.argv))
+  sys.exit(main(sys.argv[:1] + flags_passthrough))

@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -116,6 +116,33 @@ TEST_F(ScannerTest, One) {
 TEST_F(ScannerTest, OneLiteral) {
   EXPECT_FALSE(Scanner("abc").OneLiteral("abC").GetResult());
   EXPECT_TRUE(Scanner("abc").OneLiteral("ab").OneLiteral("c").GetResult());
+}
+
+TEST_F(ScannerTest, ScanUntil) {
+  StringPiece remaining, match;
+  EXPECT_TRUE(Scanner(R"(' \1 \2 \3 \' \\'rest)")
+                  .OneLiteral("'")
+                  .ScanUntil('\'')
+                  .OneLiteral("'")
+                  .GetResult(&remaining, &match));
+  EXPECT_EQ(R"( \\'rest)", remaining.ToString());
+  EXPECT_EQ(R"(' \1 \2 \3 \')", match.ToString());
+
+  // The "scan until" character is not present.
+  remaining = match = "unset";
+  EXPECT_FALSE(Scanner(R"(' \1 \2 \3 \\rest)")
+                   .OneLiteral("'")
+                   .ScanUntil('\'')
+                   .GetResult(&remaining, &match));
+  EXPECT_EQ("unset", remaining.ToString());
+  EXPECT_EQ("unset", match.ToString());
+
+  // Scan until an escape character.
+  remaining = match = "";
+  EXPECT_TRUE(
+      Scanner(R"(123\456)").ScanUntil('\\').GetResult(&remaining, &match));
+  EXPECT_EQ(R"(\456)", remaining.ToString());
+  EXPECT_EQ("123", match.ToString());
 }
 
 TEST_F(ScannerTest, ScanEscapedUntil) {

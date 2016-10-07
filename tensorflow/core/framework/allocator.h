@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_ALLOCATOR_H_
 
 #include <stdlib.h>
-#include <unistd.h>
 
 #include <limits>
 
@@ -188,19 +187,6 @@ class Allocator {
     return 0;
   }
 
-  // is_simple<T>::value if T[] can be safely constructed and destructed
-  // without running T() and ~T().  We do not use std::is_trivial<T>
-  // directly because std::complex<float> and std::complex<double> are
-  // not trival, but their arrays can be constructed and destructed
-  // without running their default ctors and dtors.
-  template <typename T>
-  struct is_simple {
-    static constexpr bool value =
-        std::is_trivial<T>::value || std::is_same<T, Eigen::half>::value ||
-        std::is_same<T, complex64>::value ||
-        std::is_same<T, complex128>::value || is_quantized<T>::value;
-  };
-
   // Fills in 'stats' with statistics collected by this allocator.
   virtual void GetStats(AllocatorStats* stats) { stats->Clear(); }
 
@@ -208,7 +194,7 @@ class Allocator {
   // No constructors or destructors are run for simple types
   template <typename T>
   void RunCtor(T* p, size_t n) {
-    static_assert(is_simple<T>::value, "T is not a simple type.");
+    static_assert(is_simple_type<T>::value, "T is not a simple type.");
   }
 
   template <typename T>
@@ -230,11 +216,6 @@ class Allocator {
   // TODO(jeff): Maybe provide some interface to give info about
   // current allocation state (total number of bytes available for
   // allocation, number of bytes free on device, etc.)
-};
-
-template <>
-struct Allocator::is_simple<bfloat16> {
-  static const bool value = true;
 };
 
 // Allocator-specific constructors and destructors are used for
@@ -295,10 +276,9 @@ Allocator* cpu_allocator();
 // AllocatorStats. By default, it's disabled.
 void EnableCPUAllocatorStats(bool enable);
 
-// If 'enable' is true, the process-wide cpu allocator collects
-// detailed statistics. This can be slow, so this is disabled by
-// default.
-void EnableCPUAllocatorDetailedStats(bool enable);
+// If 'enable' is true, the process-wide cpu allocator collects full
+// statistics. By default, it's disabled.
+void EnableCPUAllocatorFullStats(bool enable);
 
 // Abstract interface of an object that does the underlying suballoc/free of
 // memory for a higher-level allocator.

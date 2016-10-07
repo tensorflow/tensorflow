@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -76,6 +76,19 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
           'Number of updates should be same as number of indices.'):
         self.ops.scatter_add_ndim(input_data, indices, updates).run()
         self.assertAllEqual(init_val, input_data.eval())
+
+  def testIncompleteIndices(self):
+    input_data = tf.Variable([[[1., 2., 3.], [4., 5., 6.]],
+                              [[7., 8., 9.], [10., 11., 12.]]])
+    indices = [[0, 0], [1, 1]]
+    updates = [[100., 200., 300.], [400., 500., 600.]]
+
+    with self.test_session():
+      tf.initialize_all_variables().run()
+      self.ops.scatter_add_ndim(input_data, indices, updates).run()
+      self.assertAllEqual([[[101., 202., 303.], [4., 5., 6.]],
+                           [[7., 8., 9.], [410., 511., 612.]]],
+                          input_data.eval())
 
 
 if __name__ == '__main__':

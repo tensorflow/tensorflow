@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ template <typename Device, typename T>
 class SoftmaxOp : public OpKernel {
  public:
   explicit SoftmaxOp(OpKernelConstruction* context) : OpKernel(context) {
-    log_ = StringPiece(name()).starts_with("Log");
+    log_ = StringPiece(type_string()).starts_with("Log");
   }
 
   void Compute(OpKernelContext* context) override {

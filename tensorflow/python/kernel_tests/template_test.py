@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -103,7 +103,27 @@ class TemplateTest(tf.test.TestCase):
     self.assertEqual(v1, v2)
     self.assertNotEqual(v1, v3)
     self.assertEqual("s1/dummy:0", v1.name)
-    self.assertEqual("s1_2/dummy:0", v3.name)
+    self.assertEqual("s1_1/dummy:0", v3.name)
+
+  def test_unique_name_raise_error(self):
+    tmpl1 = template.make_template("_", var_scoped_function, unique_name_="s1")
+    tmpl1()
+    tmpl2 = template.make_template("_", var_scoped_function, unique_name_="s1")
+    with self.assertRaises(ValueError):
+      tmpl2()
+
+  def test_unique_name_and_reuse(self):
+    tmpl1 = template.make_template("_", var_scoped_function, unique_name_="s1")
+    v1 = tmpl1()
+    v2 = tmpl1()
+
+    tf.get_variable_scope().reuse_variables()
+    tmpl2 = template.make_template("_", var_scoped_function, unique_name_="s1")
+    v3 = tmpl2()
+
+    self.assertEqual(v1, v2)
+    self.assertEqual(v1, v3)
+    self.assertEqual("s1/dummy:0", v1.name)
 
   def test_template_in_scope(self):
     tmpl1 = template.make_template("s1", var_scoped_function)
@@ -131,7 +151,7 @@ class TemplateTest(tf.test.TestCase):
     self.assertEqual(v1, v2)
     self.assertNotEqual(v1, v3)
     self.assertEqual("s1/test/dummy:0", v1.name)
-    self.assertEqual("s1_2/test/dummy:0", v3.name)
+    self.assertEqual("s1_1/test/dummy:0", v3.name)
 
     with self.assertRaises(ValueError):
       tmpl1("not_test")
@@ -153,7 +173,7 @@ class TemplateTest(tf.test.TestCase):
     self.assertEqual(v1, v2)
     self.assertNotEqual(v1, v3)
     self.assertEqual("s1/test/dummy:0", v1.name)
-    self.assertEqual("s1_2/test/dummy:0", v3.name)
+    self.assertEqual("s1_1/test/dummy:0", v3.name)
 
   def test_enforces_no_extra_trainable_variables(self):
     tmpl = template.make_template("s", function_with_create, trainable=True)
@@ -184,7 +204,7 @@ class TemplateTest(tf.test.TestCase):
     self.assertEqual(v1, v2)
     self.assertNotEqual(v1, v3)
     self.assertEqual("s1/nested/x:0", v1.name)
-    self.assertEqual("s1_2/nested/x:0", v3.name)
+    self.assertEqual("s1_1/nested/x:0", v3.name)
 
   def test_nested_templates(self):
     def nested_template():
@@ -204,8 +224,53 @@ class TemplateTest(tf.test.TestCase):
     self.assertEqual(v1, v2)
     self.assertNotEqual(v1, v3)
     self.assertEqual("s1/nested_1/dummy:0", v1.name)
-    self.assertEqual("s1_2/nested_1/dummy:0", v3.name)
+    self.assertEqual("s1_1/nested_1/dummy:0", v3.name)
 
+  def test_immediate_scope_creation(self):
+    # Create templates in scope a then call in scope b. make_template should
+    # capture the scope the first time it is called, and make_immediate_template
+    # should capture the scope at construction time.
+    with tf.variable_scope("ctor_scope"):
+      tmpl_immed = template.make_template(
+          "a", var_scoped_function, True)  # create scope here
+      tmpl_defer = template.make_template(
+          "b", var_scoped_function, False)  # default: create scope at __call__
+    with tf.variable_scope("call_scope"):
+      inner_imm_var = tmpl_immed()
+      inner_defer_var = tmpl_defer()
+    outer_imm_var = tmpl_immed()
+    outer_defer_var = tmpl_defer()
+
+    self.assertNotEqual(inner_imm_var, inner_defer_var)
+    self.assertEqual(outer_imm_var, inner_imm_var)
+    self.assertEqual(outer_defer_var, inner_defer_var)
+
+    self.assertEqual("ctor_scope/a/dummy:0", inner_imm_var.name)
+    self.assertEqual("call_scope/b/dummy:0", inner_defer_var.name)
+
+  def test_scope_access(self):
+    # Ensure that we can access the scope inside the template, because the name
+    # of that scope may be different from the name we pass to make_template, due
+    # to having been made unique by variable_scope.
+    with tf.variable_scope("foo"):
+      # Create two templates with the same name, ensure scopes are made unique.
+      ta = template.make_template("bar", var_scoped_function, True)
+      tb = template.make_template("bar", var_scoped_function, True)
+
+    # Ensure we can get the scopes before either template is actually called.
+    self.assertEqual(ta.var_scope.name, "foo/bar")
+    self.assertEqual(tb.var_scope.name, "foo/bar_1")
+
+    with tf.variable_scope("foo_2"):
+      # Create a template which defers scope creation.
+      tc = template.make_template("blah", var_scoped_function, False)
+
+    # Before we call the template, the scope property will be set to None.
+    self.assertEqual(tc.var_scope, None)
+    tc()
+
+    # Template is called at the top level, so there is no preceding "foo_2".
+    self.assertEqual(tc.var_scope.name, "blah")
 
 if __name__ == "__main__":
   tf.test.main()

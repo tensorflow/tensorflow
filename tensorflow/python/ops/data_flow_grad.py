@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 
@@ -64,20 +63,20 @@ def _DynamicStitchGrads(op, grad):
   return indices_grad + values_grad
 
 
-ops.NoGradient("Queue")
-ops.NoGradient("QueueEnqueue")
-ops.NoGradient("QueueEnqueueMany")
-ops.NoGradient("QueueDequeue")
-ops.NoGradient("QueueDequeueMany")
-ops.NoGradient("QueueDequeueUpTo")
-ops.NoGradient("QueueClose")
-ops.NoGradient("QueueSize")
+ops.NotDifferentiable("Queue")
+ops.NotDifferentiable("QueueEnqueue")
+ops.NotDifferentiable("QueueEnqueueMany")
+ops.NotDifferentiable("QueueDequeue")
+ops.NotDifferentiable("QueueDequeueMany")
+ops.NotDifferentiable("QueueDequeueUpTo")
+ops.NotDifferentiable("QueueClose")
+ops.NotDifferentiable("QueueSize")
 
-ops.NoGradient("Stack")
-ops.NoGradient("StackPush")
-ops.NoGradient("StackPop")
-ops.NoGradient("StackClose")
+ops.NotDifferentiable("Stack")
+ops.NotDifferentiable("StackPush")
+ops.NotDifferentiable("StackPop")
+ops.NotDifferentiable("StackClose")
 
-ops.NoGradient("GetSessionHandle")
-ops.NoGradient("GetSessionTensor")
-ops.NoGradient("DeleteSessionTensor")
+ops.NotDifferentiable("GetSessionHandle")
+ops.NotDifferentiable("GetSessionTensor")
+ops.NotDifferentiable("DeleteSessionTensor")

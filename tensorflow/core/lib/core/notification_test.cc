@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -74,6 +74,12 @@ TEST(NotificationTest, TestMultipleThreadsWaitingOnNotification) {
   n.Notify();
   delete thread_pool;  // Wait for all closures to finish.
   EXPECT_EQ(4, counter);
+}
+
+TEST(NotificationTest, TestWaitWithTimeoutOnNotifiedNotification) {
+  Notification n;
+  n.Notify();
+  EXPECT_TRUE(WaitForNotificationWithTimeout(&n, 1000));
 }
 
 }  // namespace

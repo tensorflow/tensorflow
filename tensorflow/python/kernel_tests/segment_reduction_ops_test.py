@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
+
+from tensorflow.python.util.all_util import reveal_undocumented
 
 
 class SegmentReductionHelper(tf.test.TestCase):
@@ -70,7 +72,9 @@ class SegmentReductionOpTest(SegmentReductionHelper):
     dtypes = [tf.float32,
               tf.float64,
               tf.int64,
-              tf.int32]
+              tf.int32,
+              tf.complex64,
+              tf.complex128]
 
     # Each item is np_op1, np_op2, tf_op
     ops_list = [(np.add, None, tf.segment_sum),
@@ -80,13 +84,22 @@ class SegmentReductionOpTest(SegmentReductionHelper):
                 (np.minimum, None, tf.segment_min),
                 (np.maximum, None, tf.segment_max)]
 
+    # A subset of ops has been enabled for complex numbers
+    complex_ops_list = [(np.add, None, tf.segment_sum),
+                        (np.ndarray.__mul__, None, tf.segment_prod)]
+
     n = 10
     shape = [n, 2]
     indices = [i // 3 for i in range(n)]
     for dtype in dtypes:
+      if dtype in (tf.complex64, tf.complex128):
+        curr_ops_list = complex_ops_list
+      else:
+        curr_ops_list = ops_list
+
       with self.test_session(use_gpu=False):
         tf_x, np_x = self._input(shape, dtype=dtype)
-        for np_op1, np_op2, tf_op in ops_list:
+        for np_op1, np_op2, tf_op in curr_ops_list:
           np_ans = self._segmentReduce(indices, np_x, np_op1, np_op2)
           s = tf_op(data=tf_x, segment_ids=indices)
           tf_ans = s.eval()
@@ -208,18 +221,21 @@ class SegmentReductionOpTest(SegmentReductionHelper):
 
 
 class UnsortedSegmentSumTest(SegmentReductionHelper):
+  use_gpu = False
 
   def testValues(self):
     dtypes = [tf.float32,
               tf.float64,
               tf.int64,
-              tf.int32]
+              tf.int32,
+              tf.complex64,
+              tf.complex128]
     indices_flat = np.array([0, 4, 0, 8, 3, 8, 4, 7, 7, 3])
     num_segments = 12
     for indices in indices_flat, indices_flat.reshape(5, 2):
       shape = indices.shape + (2,)
       for dtype in dtypes:
-        with self.test_session(use_gpu=False):
+        with self.test_session(use_gpu=self.use_gpu):
           tf_x, np_x = self._input(shape, dtype=dtype)
           np_ans = self._segmentReduce(indices,
                                        np_x,
@@ -239,7 +255,7 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
     num_segments = max(indices_flat) + 3
     for indices in indices_flat, indices_flat.reshape(5, 2):
       shape = indices.shape + (num_cols,)
-      with self.test_session():
+      with self.test_session(use_gpu=self.use_gpu):
         tf_x, np_x = self._input(shape, dtype=tf.float64)
         s = tf.unsorted_segment_sum(data=tf_x,
                                     segment_ids=indices,
@@ -264,7 +280,7 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
     num_cols = 2
     shape = [n, num_cols]
     num_segments = max(indices) + 1
-    with self.test_session():
+    with self.test_session(use_gpu=self.use_gpu):
       tf_x, np_x = self._input(shape, dtype=tf.float64)
       # Results from UnsortedSegmentSum
       unsorted_s = tf.unsorted_segment_sum(data=tf_x,
@@ -290,12 +306,33 @@ class UnsortedSegmentSumTest(SegmentReductionHelper):
     self.assertAllClose(unsorted_jacob_n, sorted_jacob_n, rtol=1e-3, atol=1e-3)
 
   def testBadIndices(self):
-    with self.test_session():
+    # Note: GPU kernel does not return the out-of-range error needed for this
+    # test, so this test is marked as cpu-only.
+    with self.test_session(use_gpu=False):
       for bad in [[-1]], [[7]]:
         unsorted = tf.unsorted_segment_sum([[17]], bad, num_segments=2)
         with self.assertRaisesOpError(
             r"segment_ids\[0,0\] = %d is out of range \[0, 2\)" % bad[0][0]):
           unsorted.eval()
+
+  def testEmptySecondDimension(self):
+    dtypes = [np.float32,
+              np.float64,
+              np.int64,
+              np.int32,
+              np.complex64,
+              np.complex128]
+    with self.test_session(use_gpu=self.use_gpu):
+      for dtype in dtypes:
+        for itype in (np.int32, np.int64):
+          data = np.zeros((2, 0), dtype=dtype)
+          segment_ids = np.array([0, 1], dtype=itype)
+          unsorted = tf.unsorted_segment_sum(data, segment_ids, 2)
+          self.assertAllEqual(unsorted.eval(), np.zeros((2, 0), dtype=dtype))
+
+
+class UnsortedSegmentSumGpuTest(UnsortedSegmentSumTest):
+  use_gpu = True
 
 
 class SparseSegmentReductionHelper(SegmentReductionHelper):
@@ -313,6 +350,12 @@ class SparseSegmentReductionHelper(SegmentReductionHelper):
 
 
 class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
+
+  def setUp(self):
+    reveal_undocumented("tensorflow.python."
+                        "sparse_segment_mean_grad", tf)
+    reveal_undocumented("tensorflow.python."
+                        "sparse_segment_sqrt_n_grad", tf)
 
   def testValues(self):
     dtypes = [tf.float32,
@@ -365,7 +408,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
         s.eval()
 
-  def testIndiciesInvalid1(self):
+  def testIndicesInvalid1(self):
     tf_x, _ = self._input([10, 4], dtype=tf.float32)
     ops_list = [tf.sparse_segment_sum, tf.sparse_segment_mean]
     segment_indices = [0, 1, 2, 2]
@@ -377,7 +420,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
             r"indices\[1\] == -1 out of range \[0, 10\)"):
           s.eval()
 
-  def testIndiciesInvalid2(self):
+  def testIndicesInvalid2(self):
     tf_x, _ = self._input([10, 4], dtype=tf.float32)
     ops_list = [tf.sparse_segment_sum, tf.sparse_segment_mean]
     segment_indices = [0, 1, 2, 2]

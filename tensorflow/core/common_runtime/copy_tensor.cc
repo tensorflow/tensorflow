@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 
+#include <atomic>
+#include <utility>
 #include <vector>
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -23,11 +25,11 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-static bool initialization_done = false;
-
 struct RegistrationInfo {
   RegistrationInfo(DeviceType s, DeviceType r, CopyTensor::CopyFunction cf)
-      : sender_device_type(s), receiver_device_type(r), copy_function(cf) {}
+      : sender_device_type(std::move(s)),
+        receiver_device_type(r),
+        copy_function(cf) {}
   DeviceType sender_device_type;
   DeviceType receiver_device_type;
   CopyTensor::CopyFunction copy_function;
@@ -44,14 +46,12 @@ std::vector<RegistrationInfo>* MutableRegistry() {
 }  // namespace
 
 // static
-void CopyTensor::ViaDMA(const string& edge_name,
-                        DeviceContext* send_dev_context,
+void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
                         DeviceContext* recv_dev_context, Device* src,
                         Device* dst, const AllocatorAttributes src_alloc_attr,
                         const AllocatorAttributes dst_alloc_attr,
                         const Tensor* input, Tensor* output,
                         StatusCallback done) {
-  initialization_done = true;
   port::Tracing::ScopedAnnotation annotation(edge_name);
   VLOG(1) << "Copy " << edge_name;
 
@@ -110,11 +110,6 @@ void CopyTensor::ViaDMA(const string& edge_name,
 Status CopyTensor::Register(DeviceType sender_device_type,
                             DeviceType receiver_device_type,
                             CopyFunction copy_function) {
-  if (initialization_done) {
-    return errors::FailedPrecondition(
-        "May only register CopyTensor functions during before the first tensor "
-        "is copied.");
-  }
   std::vector<RegistrationInfo>* registry = MutableRegistry();
   registry->emplace_back(sender_device_type, receiver_device_type,
                          copy_function);

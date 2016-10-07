@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -55,9 +55,16 @@ class GuardedPhiloxRandom {
   // given number of samples, and can be used without a lock.
   random::PhiloxRandom ReserveSamples128(int64 samples);
 
-  // Reserve a certain number of 32-bit samples
+  // Reserve a certain number of 32-bit samples.
   random::PhiloxRandom ReserveSamples32(int64 samples) {
     return ReserveSamples128((samples + 3) / 4);
+  }
+
+  // Reserve enough random samples in the generator for the given output count.
+  random::PhiloxRandom ReserveRandomOutputs(int64 output_count,
+                                            int multiplier) {
+    int64 conservative_sample_count = output_count * multiplier;
+    return ReserveSamples128(conservative_sample_count);
   }
 
  private:

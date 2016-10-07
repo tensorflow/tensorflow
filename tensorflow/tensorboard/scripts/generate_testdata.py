@@ -1,4 +1,4 @@
-# Copyright 2015 Google Inc. All Rights Reserved.
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -107,7 +107,6 @@ def WriteHistogramSeries(writer, tag, mu_sigma_tuples, n=20):
 
 def WriteImageSeries(writer, tag, n_images=1):
   """Write a few dummy images to writer."""
-  # 1x1 transparent GIF.
   step = 0
   session = tf.Session()
   p = tf.placeholder("uint8", (1, 4, 4, 3))
@@ -117,6 +116,42 @@ def WriteImageSeries(writer, tag, n_images=1):
     summ = session.run(s, feed_dict={p: im})
     writer.add_summary(summ, step)
     step += 20
+  session.close()
+
+
+def WriteAudioSeries(writer, tag, n_audio=1):
+  """Write a few dummy audio clips to writer."""
+  step = 0
+  session = tf.Session()
+
+  min_frequency_hz = 440
+  max_frequency_hz = 880
+  sample_rate = 4000
+  duration_frames = sample_rate * 0.5  # 0.5 seconds.
+  frequencies_per_run = 1
+  num_channels = 2
+
+  p = tf.placeholder("float32", (frequencies_per_run, duration_frames,
+                                 num_channels))
+  s = tf.audio_summary(tag, p, sample_rate)
+
+  for _ in xrange(n_audio):
+    # Generate a different frequency for each channel to show stereo works.
+    frequencies = np.random.random_integers(
+        min_frequency_hz, max_frequency_hz,
+        size=(frequencies_per_run, num_channels))
+    tiled_frequencies = np.tile(frequencies, (1, duration_frames))
+    tiled_increments = np.tile(
+        np.arange(0, duration_frames), (num_channels, 1)).T.reshape(
+            1, duration_frames * num_channels)
+    tones = np.sin(2.0 * np.pi * tiled_frequencies * tiled_increments /
+                   sample_rate)
+    tones = tones.reshape(frequencies_per_run, duration_frames, num_channels)
+
+    summ = session.run(s, feed_dict={p: tones})
+    writer.add_summary(summ, step)
+    step += 20
+  session.close()
 
 
 def GenerateTestData(path):
@@ -132,6 +167,7 @@ def GenerateTestData(path):
                                            [1, 1]])
   WriteImageSeries(writer1, "im1")
   WriteImageSeries(writer1, "im2")
+  WriteAudioSeries(writer1, "au1")
 
   run2_path = os.path.join(path, "run2")
   os.makedirs(run2_path)
@@ -144,6 +180,7 @@ def GenerateTestData(path):
   WriteHistogramSeries(writer2, "histo2", [[0, 1], [0.3, 1], [0.5, 1], [0.7, 1],
                                            [1, 1]])
   WriteImageSeries(writer2, "im1")
+  WriteAudioSeries(writer2, "au2")
 
   graph_def = tf.GraphDef()
   node1 = graph_def.node.add()

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 # Usage:
 #   create_tf_cluster.sh <num_workers> <num_parameter_servers>
 #
-# In addition, this script obeys values in the folllowing environment variables:
+# In addition, this script obeys values in the following environment variables:
 #   TF_DIST_LOCAL_CLUSTER:        create TensorFlow cluster on local machine
 #   TF_DIST_SERVER_DOCKER_IMAGE:  overrides the default docker image to launch
 #                                 TensorFlow (GRPC) servers with
@@ -167,10 +167,10 @@ fi
 "${KUBECTL_BIN}" create -f "${K8S_YAML}"
 
 # Wait for external IP of worker services to become available
-get_tf_worker_external_ip() {
-  # Usage: gen_tf_worker_external_ip <WORKER_INDEX>
-  # E.g.,  gen_tf_worker_external_ip 2
-  echo $("${KUBECTL_BIN}" get svc | grep "^tf-worker${1}" | \
+get_tf_external_ip() {
+  # Usage: gen_tf_worker_external_ip <JOB_NAME> <TASK_INDEX>
+  # E.g.,  gen_tf_worker_external_ip ps 2
+  echo $("${KUBECTL_BIN}" get svc | grep "^tf-${1}${2}" | \
          awk '{print $3}' | grep -E "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+")
 }
 
@@ -182,21 +182,21 @@ if [[ ${IS_LOCAL_CLUSTER} == "0" ]]; then
   while true; do
     sleep 1
     ((COUNTER++))
-    if [[ $(echo "${COUNTER}>${GCLOUD_OP_MAX_STEPS}" | bc -l) == "1" ]]; then
+    if [[ "${COUNTER}" -gt "${GCLOUD_OP_MAX_STEPS}" ]]; then
       die "Reached maximum polling steps while waiting for external IP "\
 "of tf-worker0 service to emerge"
     fi
 
-    EXTERN_IPS=""
+    WORKER_EXTERN_IPS=""
     WORKER_INDEX=0
-    N_AVAILABLE_EXTERNAL_IPS=0
+    N_AVAILABLE_WORKER_EXTERNAL_IPS=0
     while true; do
-      SVC_EXTERN_IP=$(get_tf_worker_external_ip ${WORKER_INDEX})
+      SVC_EXTERN_IP=$(get_tf_external_ip worker ${WORKER_INDEX})
 
       if [[ ! -z "${SVC_EXTERN_IP}" ]]; then
-        EXTERN_IPS="${EXTERN_IPS} ${SVC_EXTERN_IP}"
+        WORKER_EXTERN_IPS="${WORKER_EXTERN_IPS} ${SVC_EXTERN_IP}"
 
-        ((N_AVAILABLE_EXTERNAL_IPS++))
+        ((N_AVAILABLE_WORKER_EXTERNAL_IPS++))
       fi
 
       ((WORKER_INDEX++))
@@ -205,16 +205,42 @@ if [[ ${IS_LOCAL_CLUSTER} == "0" ]]; then
       fi
     done
 
-    if [[ ${N_AVAILABLE_EXTERNAL_IPS} == ${NUM_WORKERS} ]]; then
+    PS_EXTERN_IPS=""
+    PS_INDEX=0
+    N_AVAILABLE_PS_EXTERNAL_IPS=0
+    while true; do
+      SVC_EXTERN_IP=$(get_tf_external_ip ps ${PS_INDEX})
+
+      if [[ ! -z "${SVC_EXTERN_IP}" ]]; then
+        PS_EXTERN_IPS="${PS_EXTERN_IPS} ${SVC_EXTERN_IP}"
+
+        ((N_AVAILABLE_PS_EXTERNAL_IPS++))
+      fi
+
+      ((PS_INDEX++))
+      if [[ ${PS_INDEX} == ${NUM_PARAMETER_SERVERS} ]]; then
+        break;
+      fi
+    done
+
+    if [[ ${N_AVAILABLE_WORKER_EXTERNAL_IPS} == ${NUM_WORKERS} ]] && \
+       [[ ${N_AVAILABLE_PS_EXTERNAL_IPS} == ${NUM_PARAMETER_SERVERS} ]]; then
       break;
     fi
   done
 
   GRPC_SERVER_URLS=""
-  for IP in ${EXTERN_IPS}; do
+  for IP in ${WORKER_EXTERN_IPS}; do
     GRPC_SERVER_URLS="${GRPC_SERVER_URLS} grpc://${IP}:${GRPC_PORT}"
   done
-  echo "GRPC URLs of tf-workers: ${GRPC_SERVER_URLS}"
+
+  GRPC_PS_URLS=""
+  for IP in ${PS_EXTERN_IPS}; do
+    GRPC_PS_URLS="${GRPC_PS_URLS} grpc://${IP}:${GRPC_PORT}"
+  done
+
+  echo "GRPC URLs of tf-worker instances: ${GRPC_SERVER_URLS}"
+  echo "GRPC URLs of tf-ps instances: ${GRPC_PS_URLS}"
 
 else
   echo "Waiting for tf pods to be all running..."
@@ -224,7 +250,7 @@ else
   while true; do
     sleep 1
     ((COUNTER++))
-    if [[ $(echo "${COUNTER}>${GCLOUD_OP_MAX_STEPS}" | bc -l) == "1" ]]; then
+    if [[ "${COUNTER}" -gt "${GCLOUD_OP_MAX_STEPS}" ]]; then
       die "Reached maximum polling steps while waiting for all tf pods to "\
 "be running in local k8s TensorFlow cluster"
     fi
@@ -251,3 +277,4 @@ fi
 
 
 echo "Cluster setup complete."
+echo ""

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
 
 namespace tensorflow {
@@ -77,6 +76,7 @@ SELECT_FUNCTOR(double);
 SELECT_FUNCTOR(int32);
 SELECT_FUNCTOR(int64);
 SELECT_FUNCTOR(complex64);
+SELECT_FUNCTOR(complex128);
 
 #undef SELECT_FUNCTOR
 

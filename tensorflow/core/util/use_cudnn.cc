@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,19 +17,34 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-bool CanUseCudnn() {
-  const char* tf_use_cudnn = getenv("TF_USE_CUDNN");
-  if (tf_use_cudnn != nullptr) {
-    string tf_use_cudnn_str = tf_use_cudnn;
-    if (tf_use_cudnn_str == "0") {
+static bool ReadBoolFromEnvVar(const char* env_var_name, bool default_val) {
+  const char* tf_env_var_val = getenv(env_var_name);
+  if (tf_env_var_val != nullptr) {
+    StringPiece tf_env_var_val_str(tf_env_var_val);
+    if (tf_env_var_val_str == "0") {
       return false;
     }
+    return true;
   }
-  return true;
+  return default_val;
 }
 
+bool CanUseCudnn() { return ReadBoolFromEnvVar("TF_USE_CUDNN", true); }
+
+bool CudnnUseAutotune() {
+  return ReadBoolFromEnvVar("TF_CUDNN_USE_AUTOTUNE", true);
+}
+
+namespace internal {
+
+bool AvgPoolUseCudnn() {
+  return ReadBoolFromEnvVar("TF_AVGPOOL_USE_CUDNN", false);
+}
+
+}  // namespace internal
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
+#include <utility>
 #include <vector>
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/iterator.h"
-#include "tensorflow/core/lib/io/match.h"
 #include "tensorflow/core/lib/io/table.h"
 #include "tensorflow/core/lib/io/table_options.h"
 #include "tensorflow/core/platform/env.h"
@@ -40,6 +40,7 @@ TensorSliceReader::Table::~Table() {}
 namespace {
 class TensorSliceReaderTable : public TensorSliceReader::Table {
  public:
+  // Takes ownership of 'f'.
   explicit TensorSliceReaderTable(RandomAccessFile* f, table::Table* t)
       : file_(f), table_(t) {}
 
@@ -61,7 +62,7 @@ class TensorSliceReaderTable : public TensorSliceReader::Table {
   }
 
  private:
-  RandomAccessFile* file_;
+  RandomAccessFile* file_;  // Owns.
   table::Table* table_;
 };
 }  // namespace
@@ -70,7 +71,7 @@ Status OpenTableTensorSliceReader(const string& fname,
                                   TensorSliceReader::Table** result) {
   *result = nullptr;
   Env* env = Env::Default();
-  RandomAccessFile* f = nullptr;
+  std::unique_ptr<RandomAccessFile> f;
   Status s = env->NewRandomAccessFile(fname, &f);
   if (s.ok()) {
     uint64 file_size;
@@ -78,9 +79,9 @@ Status OpenTableTensorSliceReader(const string& fname,
     if (s.ok()) {
       table::Options options;
       table::Table* table;
-      s = table::Table::Open(options, f, file_size, &table);
+      s = table::Table::Open(options, f.get(), file_size, &table);
       if (s.ok()) {
-        *result = new TensorSliceReaderTable(f, table);
+        *result = new TensorSliceReaderTable(f.release(), table);
         return Status::OK();
       } else {
         s = Status(s.code(),
@@ -92,7 +93,6 @@ Status OpenTableTensorSliceReader(const string& fname,
     }
   }
   LOG(WARNING) << "Could not open " << fname << ": " << s;
-  delete f;
   return s;
 }
 
@@ -107,9 +107,9 @@ TensorSliceReader::TensorSliceReader(const string& filepattern,
 TensorSliceReader::TensorSliceReader(const string& filepattern,
                                      OpenTableFunction open_function,
                                      int preferred_shard)
-    : filepattern_(filepattern), open_function_(open_function) {
+    : filepattern_(filepattern), open_function_(std::move(open_function)) {
   VLOG(1) << "TensorSliceReader for " << filepattern;
-  Status s = io::GetMatchingFiles(Env::Default(), filepattern, &fnames_);
+  Status s = Env::Default()->GetMatchingPaths(filepattern, &fnames_);
   if (!s.ok()) {
     status_ = errors::InvalidArgument(
         "Unsuccessful TensorSliceReader constructor: "
@@ -170,7 +170,9 @@ void TensorSliceReader::LoadShard(int shard) const {
     TensorShape ssm_shape(ssm.shape());
     for (const TensorSliceProto& tsp : ssm.slice()) {
       TensorSlice ss_slice(tsp);
-      RegisterTensorSlice(ssm.name(), ssm_shape, ssm.type(), fname, ss_slice);
+      status_ = RegisterTensorSlice(ssm.name(), ssm_shape, ssm.type(), fname,
+                                    ss_slice, &tensors_);
+      if (!status_.ok()) return;
     }
   }
 }
@@ -194,40 +196,6 @@ const TensorSliceSet* TensorSliceReader::FindTensorSlice(
 }
 
 TensorSliceReader::~TensorSliceReader() { gtl::STLDeleteValues(&tensors_); }
-
-void TensorSliceReader::RegisterTensorSlice(const string& name,
-                                            const TensorShape& shape,
-                                            DataType type, const string& tag,
-                                            const TensorSlice& slice) const {
-  TensorSliceSet* tss = gtl::FindPtrOrNull(tensors_, name);
-  // Create a tensor slice set if needed
-  if (!tss) {
-    tss = new TensorSliceSet(shape, type);
-    tensors_.insert(std::make_pair(name, tss));
-  } else {
-    // Check if the shapes match
-    TensorShape tss_shape(tss->shape());
-    if (!shape.IsSameSize(tss_shape)) {
-      status_ =
-          errors::Internal("Incompatible tensor shapes detected for tensor ",
-                           name, ": existing = ", tss_shape.DebugString(),
-                           ", new = ", shape.DebugString());
-      return;
-    }
-    if (type != tss->type()) {
-      status_ =
-          errors::Internal("Incompatible tensor types detected for tensor ",
-                           name, ": existing = ", DataTypeString(tss->type()),
-                           ", new = ", DataTypeString(type));
-      return;
-    }
-  }
-  // Register the tensor slices without the actual data.
-  Status s = tss->Register(slice, tag, nullptr);
-  if (!s.ok()) {
-    status_ = s;
-  }
-}
 
 bool TensorSliceReader::HasTensor(const string& name, TensorShape* shape,
                                   DataType* type) const {
@@ -294,6 +262,7 @@ Status TensorSliceReader::GetTensor(
     default:
       return errors::Unimplemented("Data type not supported");
   }
+#undef READER_COPY
 
   if (!success) {
     return errors::NotFound(name, " not found in checkpoint file");
@@ -320,7 +289,13 @@ const string TensorSliceReader::DebugString() const {
     for (auto e : Tensors()) {
       strings::StrAppend(&shape_str, e.first, " (",
                          EnumName_DataType(e.second->type()), ") ",
-                         e.second->shape().DebugString(), "\n");
+                         e.second->shape().DebugString());
+      // Indicates if a tensor has more than 1 slice (i.e., it's partitioned).
+      const int num_slices = e.second->Slices().size();
+      if (num_slices > 1) {
+        strings::StrAppend(&shape_str, ", ", num_slices, " slices");
+      }
+      strings::StrAppend(&shape_str, "\n");
     }
   }
   return shape_str;

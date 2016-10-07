@@ -1,4 +1,4 @@
-/* Copyright 2015 Google Inc. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/types.h"
-#if defined(__linux) && !defined(__ANDROID__)
+#if defined(__linux__) && !defined(__ANDROID__)
 #include <sched.h>
 #endif
 #include <stdio.h>
@@ -41,7 +41,7 @@ string Hostname() {
 }
 
 int NumSchedulableCPUs() {
-#if defined(__linux) && !defined(__ANDROID__)
+#if defined(__linux__) && !defined(__ANDROID__)
   cpu_set_t cpuset;
   if (sched_getaffinity(0, sizeof(cpu_set_t), &cpuset) == 0) {
     return CPU_COUNT(&cpuset);
@@ -77,6 +77,10 @@ void* aligned_malloc(size_t size, int minimum_alignment) {
 
 void aligned_free(void* aligned_memory) { free(aligned_memory); }
 
+void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
+  // No-op.
+}
+
 std::size_t MallocExtension_GetAllocatedSize(const void* p) { return 0; }
 
 void AdjustFilenameForLogging(string* filename) {
@@ -111,6 +115,8 @@ bool Snappy_Uncompress(const char* input, size_t length, char* output) {
   return false;
 #endif
 }
+
+string Demangle(const char* mangled) { return mangled; }
 
 }  // namespace port
 }  // namespace tensorflow
