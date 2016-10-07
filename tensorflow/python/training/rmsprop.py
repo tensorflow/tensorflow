@@ -26,6 +26,14 @@ mean_square = decay * mean_square{t-1} + (1-decay) * gradient ** 2
 mom = momentum * mom{t-1} + learning_rate * g_t / sqrt(mean_square + epsilon)
 delta = - mom
 
+The centered version additionally maintains a moving (discounted) average of the
+gradients, and uses that average to estimate the variance:
+
+mean_grad = decay * mean_square{t-1} + (1-decay) * gradient
+mean_square = decay * mean_square{t-1} + (1-decay) * gradient ** 2
+mom = momentum * mom{t-1} + learning_rate * g_t /
+    sqrt(mean_square - mean_grad**2 + epsilon)
+delta = - mom
 """
 
 from __future__ import absolute_import
@@ -70,8 +78,8 @@ class RMSPropOptimizer(optimizer.Optimizer):
       use_locking: If True use locks for update operation.
       centered: If True, gradients are normalized by the estimated variance of
         the gradient; if False, by the uncentered second moment. Setting this to
-        True may helps with training, but is slightly more expensive in terms of
-        computation and memory.
+        True may help with training, but is slightly more expensive in terms of
+        computation and memory. Defaults to False.
       name: Optional name prefix for the operations created when applying
         gradients. Defaults to "RMSProp".
     """
