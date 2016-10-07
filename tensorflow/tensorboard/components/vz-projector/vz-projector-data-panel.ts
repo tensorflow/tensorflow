@@ -25,15 +25,20 @@ export let DataPanelPolymer = PolymerElement({
   properties: {
     selectedTensor: {type: String, observer: '_selectedTensorChanged'},
     selectedRun: {type: String, observer: '_selectedRunChanged'},
-    colorOption: {type: Object, notify: true, observer: '_colorOptionChanged'},
-    labelOption: {type: String, notify: true},
+    selectedColorOptionName: {
+      type: String,
+      notify: true,
+      observer: '_selectedColorOptionNameChanged'
+    },
+    selectedLabelOption:
+        {type: String, notify: true, observer: '_selectedLabelOptionChanged'},
     normalizeData: Boolean
   }
 });
 
 export class DataPanel extends DataPanelPolymer {
-  labelOption: string;
-  colorOption: ColorOption;
+  selectedLabelOption: string;
+  selectedColorOptionName: string;
 
   private normalizeData: boolean;
   private labelOptions: string[];
@@ -98,7 +103,7 @@ export class DataPanel extends DataPanelPolymer {
     } else {
       this.labelOptions = ['label'];
     }
-    this.labelOption = this.labelOptions[Math.max(0, labelIndex)];
+    this.selectedLabelOption = this.labelOptions[Math.max(0, labelIndex)];
 
     // Color by options.
     let standardColorOption: ColorOption[] = [
@@ -147,7 +152,7 @@ export class DataPanel extends DataPanelPolymer {
       standardColorOption.push({name: 'Metadata', isSeparator: true});
     }
     this.colorOptions = standardColorOption.concat(metadataColorOption);
-    this.colorOption = this.colorOptions[0];
+    this.selectedColorOptionName = this.colorOptions[0].name;
   }
 
   setNormalizeData(normalizeData: boolean) {
@@ -206,13 +211,28 @@ export class DataPanel extends DataPanelPolymer {
     });
   }
 
-  _colorOptionChanged() {
-    if (this.colorOption.map == null) {
+  _selectedLabelOptionChanged() {
+    this.projector.setSelectedLabelOption(this.selectedLabelOption);
+  }
+
+  _selectedColorOptionNameChanged() {
+    let colorOption: ColorOption;
+    for (let i = 0; i < this.colorOptions.length; i++) {
+      if (this.colorOptions[i].name === this.selectedColorOptionName) {
+        colorOption = this.colorOptions[i];
+        break;
+      }
+    }
+    if (!colorOption) {
+      return;
+    }
+
+    if (colorOption.map == null) {
       this.colorLegendRenderInfo = null;
-    } else if (this.colorOption.items) {
-      let items = this.colorOption.items.map(item => {
+    } else if (colorOption.items) {
+      let items = colorOption.items.map(item => {
         return {
-          color: this.colorOption.map(item.label),
+          color: colorOption.map(item.label),
           label: item.label,
           count: item.count
         };
@@ -221,9 +241,10 @@ export class DataPanel extends DataPanelPolymer {
     } else {
       this.colorLegendRenderInfo = {
         items: null,
-        thresholds: this.colorOption.thresholds
+        thresholds: colorOption.thresholds
       };
     }
+    this.projector.setSelectedColorOption(colorOption);
   }
 
   private tensorWasReadFromFile(rawContents: string, fileName: string) {

@@ -58,9 +58,7 @@ export let ProjectorPolymer = PolymerElement({
   is: 'vz-projector',
   properties: {
     // Private.
-    routePrefix: String,
-    labelOption: {type: String, observer: '_labelOptionChanged'},
-    colorOption: {type: Object, observer: '_colorOptionChanged'}
+    routePrefix: String
   }
 });
 
@@ -84,8 +82,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   private dataProvider: DataProvider;
   private inspectorPanel: InspectorPanel;
 
-  private colorOption: ColorOption;
-  private labelOption: string;
+  private selectedColorOption: ColorOption;
+  private selectedLabelOption: string;
   private routePrefix: string;
   private normalizeData: boolean;
   private selectedProjection: Projection;
@@ -123,15 +121,18 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.setupUIControls();
   }
 
-  _labelOptionChanged() {
+  setSelectedLabelOption(labelOption: string) {
+    this.selectedLabelOption = labelOption;
     let labelAccessor = (i: number): string => {
-      return this.currentDataSet.points[i].metadata[this.labelOption] as string;
+      return this.currentDataSet.points[i]
+          .metadata[this.selectedLabelOption] as string;
     };
     this.scatterPlot.setLabelAccessor(labelAccessor);
-    this.metadataCard.setLabelOption(this.labelOption);
+    this.metadataCard.setLabelOption(this.selectedLabelOption);
   }
 
-  _colorOptionChanged() {
+  setSelectedColorOption(colorOption: ColorOption) {
+    this.selectedColorOption = colorOption;
     this.updateScatterPlot();
   }
 
@@ -224,7 +225,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       return null;
     }
     const colorer = (i: number) => {
-      let value = this.currentDataSet.points[i].metadata[this.colorOption.name];
+      let value =
+          this.currentDataSet.points[i].metadata[this.selectedColorOption.name];
       if (value == null) {
         return POINT_COLOR_MISSING;
       }
@@ -485,8 +487,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     });
 
     this.scatterPlot = new ScatterPlot(
-        this.getScatterContainer(),
-        i => '' + this.currentDataSet.points[i].metadata[this.labelOption],
+        this.getScatterContainer(), i => '' +
+            this.currentDataSet.points[i].metadata[this.selectedLabelOption],
         this, this);
     this.createVisualizers(false);
 
@@ -509,8 +511,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     let hoverText = null;
     if (hoverIndex != null) {
       const point = this.currentDataSet.points[hoverIndex];
-      if (point.metadata[this.labelOption]) {
-        hoverText = point.metadata[this.labelOption].toString();
+      if (point.metadata[this.selectedLabelOption]) {
+        hoverText = point.metadata[this.selectedLabelOption].toString();
       }
     }
     this.updateScatterPlot();
@@ -522,8 +524,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
   private updateScatterPlot() {
     const pointColors = this.generateScatterPlotColorArray(
-        this.getLegendPointColorer(this.colorOption), this.selectedPointIndices,
-        this.neighborsOfFirstPoint, this.hoverPointIndex);
+        this.getLegendPointColorer(this.selectedColorOption),
+        this.selectedPointIndices, this.neighborsOfFirstPoint,
+        this.hoverPointIndex);
     const pointScaleFactors = this.generateScatterPlotScaleFactorArray(
         this.selectedPointIndices, this.neighborsOfFirstPoint,
         this.hoverPointIndex);
@@ -635,8 +638,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     state.cameraTarget = this.scatterPlot.getCameraTarget();
 
     // Save the color and label by options.
-    state.colorOption = this.colorOption;
-    state.labelOption = this.labelOption;
+    state.selectedColorOptionName = this.dataPanel.selectedColorOptionName;
+    state.selectedLabelOption = this.selectedLabelOption;
 
     return state;
   }
@@ -646,15 +649,16 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     for (let i = 0; i < state.projections.length; i++) {
       this.currentDataSet.points[i].projections = state.projections[i];
     }
+    if (state.selectedProjection === 'tsne') {
+      this.currentDataSet.hasTSNERun = true;
+    }
     this.showTab(state.selectedProjection);
 
     this.notifySelectionChanged(state.selectedPoints);
 
     // Load the color and label by options.
-    this.colorOption = state.colorOption;
-    this.labelOption = state.labelOption;
-    this.set('colorOption', this.colorOption);
-    this.set('labelOption', this.labelOption);
+    this.dataPanel.selectedColorOptionName = state.selectedColorOptionName;
+    this.selectedLabelOption = state.selectedLabelOption;
 
     this.scatterPlot.setCameraPositionAndTarget(
         state.cameraPosition, state.cameraTarget);
