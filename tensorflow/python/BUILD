@@ -1876,6 +1876,15 @@ cuda_py_test(
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
+cuda_py_test(
+    name = "sync_replicas_optimizer_test",
+    size = "medium",
+    srcs = [
+        "training/sync_replicas_optimizer_test.py",
+    ],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
 py_library(
     name = "timeline",
     srcs = ["client/timeline.py"],
