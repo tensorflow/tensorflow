@@ -2168,3 +2168,15 @@ cuda_py_test(
     ],
     main = "ops/batch_norm_benchmark.py",
 )
+
+cuda_py_test(
+    name = "concat_benchmark",
+    srcs = [
+        "ops/concat_benchmark.py",
+    ],
+    additional_deps = [
+        ":nn_ops",
+        "//tensorflow:tensorflow_py",
+    ],
+    main = "ops/concat_benchmark.py",
+)
