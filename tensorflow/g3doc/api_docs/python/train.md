@@ -3769,6 +3769,29 @@ TensorBoard. Most users pass a graph in the constructor instead.
 
 - - -
 
+#### `tf.train.SummaryWriter.add_meta_graph(meta_graph_def, global_step=None)` {#SummaryWriter.add_meta_graph}
+
+Adds a `MetaGraphDef` to the event file.
+
+The `MetaGraphDef` allows running the given graph via
+`saver.import_meta_graph()`.
+
+##### Args:
+
+
+*  <b>`meta_graph_def`</b>: A `MetaGraphDef` object, often as retured by
+    `saver.export_meta_graph()`.
+*  <b>`global_step`</b>: Number. Optional global step counter to record with the
+    graph.
+
+##### Raises:
+
+
+*  <b>`TypeError`</b>: If both `meta_graph_def` is not an instance of `MetaGraphDef`.
+
+
+- - -
+
 #### `tf.train.SummaryWriter.add_run_metadata(run_metadata, tag, global_step=None)` {#SummaryWriter.add_run_metadata}
 
 Adds a metadata information for a single session.run() call.
