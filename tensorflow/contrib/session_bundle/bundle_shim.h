@@ -71,6 +71,14 @@ Status ConvertNamedSignaturesToSignatureDef(const Signatures& signatures,
                                             MetaGraphDef* meta_graph_def);
 
 }  // namespace internal
+
+// Loads a SavedModel from either a session-bundle path or a SavedModel bundle
+// path.
+Status LoadSessionBundleOrSavedModelBundle(
+    const SessionOptions& session_options, const RunOptions& run_options,
+    const string& export_dir, const std::unordered_set<string>& tags,
+    SavedModelBundle* bundle);
+
 }  // namespace serving
 }  // namespace tensorflow
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_BUNDLE_SHIM_H_

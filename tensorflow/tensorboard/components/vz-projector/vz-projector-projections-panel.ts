@@ -104,6 +104,13 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
   }
 
   private setupUIControls() {
+    // Tabs
+    const self = this;
+    this.dom.selectAll('.ink-tab').on('click', function() {
+      let id = this.getAttribute('data-tab');
+      self.showTab(id);
+    });
+
     // Unknown why, but the polymer toggle button stops working
     // as soon as you do d3.select() on it.
     let tsneToggle = this.querySelector('#tsne-toggle') as HTMLInputElement;
@@ -157,6 +164,12 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.clearCentroids();
 
     this.setupAllInputsInCustomTab();
+
+    this.dom.select('#tsne-sampling')
+        .style('display', dataSet.points.length > SAMPLE_SIZE ? null : 'none');
+    this.dom.select('#pca-sampling')
+        .style('display', dataSet.dim[1] > PCA_SAMPLE_DIM ? null : 'none');
+    this.showTab('pca');
   }
 
   metadataChanged(metadata: MetadataInfo) {
@@ -177,13 +190,21 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
         this.searchByMetadataOptions[Math.max(0, searchByMetadataIndex)];
   }
 
-  public showProjectionTab(projection: Projection) {
-    if (projection === 'pca') {
+  public showTab(id: Projection) {
+    let tab = this.dom.select('.ink-tab[data-tab="' + id + '"]');
+    let pane =
+        d3.select((tab.node() as HTMLElement).parentNode.parentNode.parentNode);
+    pane.selectAll('.ink-tab').classed('active', false);
+    tab.classed('active', true);
+    pane.selectAll('.ink-panel-content').classed('active', false);
+    pane.select('.ink-panel-content[data-panel="' + id + '"]')
+        .classed('active', true);
+    if (id === 'pca') {
       this.currentDataSet.stopTSNE();
       this.showPCA();
-    } else if (projection === 'tsne') {
+    } else if (id === 'tsne') {
       this.showTSNE();
-    } else if (projection === 'custom') {
+    } else if (id === 'custom') {
       this.currentDataSet.stopTSNE();
       this.showCustom();
     }

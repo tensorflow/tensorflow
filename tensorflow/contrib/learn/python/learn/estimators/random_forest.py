@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.platform import tf_logging as logging
 
 
 def _assert_float32(tensors):
@@ -209,11 +210,16 @@ class TensorForestEstimator(estimator.BaseEstimator):
     Returns:
       Tuple of train `Operation` and loss `Tensor`.
     """
-    features, _, spec = data_ops.ParseDataTensorOrDict(features)
+    features, _, weights, spec = data_ops.ParseDataTensorOrDict(features)
     labels = data_ops.ParseLabelTensorOrDict(targets)
     features, labels = self._feature_engineering_fn(features, labels)
     _assert_float32(features)
     _assert_float32(labels)
+
+    if weights is not None:
+      if 'input_weights' in self.training_args:
+        logging.warning('Replacing input_weights in training_args.')
+      self.training_args['input_weights'] = weights
 
     graph_builder = self.graph_builder_class(
         self.params, device_assigner=self.device_assigner,
@@ -237,7 +243,7 @@ class TensorForestEstimator(estimator.BaseEstimator):
     graph_builder = self.graph_builder_class(
         self.params, device_assigner=self.device_assigner, training=False,
         **self.construction_args)
-    features, keys, spec = data_ops.ParseDataTensorOrDict(features)
+    features, keys, _, spec = data_ops.ParseDataTensorOrDict(features)
     features, _ = self._feature_engineering_fn(features, None)
     _assert_float32(features)
     output_dict = {
@@ -248,7 +254,7 @@ class TensorForestEstimator(estimator.BaseEstimator):
     return output_dict
 
   def _get_eval_ops(self, features, targets, metrics):
-    features, _, spec = data_ops.ParseDataTensorOrDict(features)
+    features, _, _, spec = data_ops.ParseDataTensorOrDict(features)
     labels = data_ops.ParseLabelTensorOrDict(targets)
     features, labels = self._feature_engineering_fn(features, labels)
     _assert_float32(features)

@@ -1209,8 +1209,8 @@ free in Python.
 [validation-macros]:https://www.tensorflow.org/code/tensorflow/core/lib/core/errors.h
 [op_def_builder]:https://www.tensorflow.org/code/tensorflow/core/framework/op_def_builder.h
 [register_types]:https://www.tensorflow.org/code/tensorflow/core/framework/register_types.h
-[FinalizeAttr]:https://www.tensorflow.org/code/tensorflow/core/framework/op_def_builder.cc#FinalizeAttr
-[DataTypeString]:https://www.tensorflow.org/code/tensorflow/core/framework/types.cc#DataTypeString
+[FinalizeAttr]:https://www.tensorflow.org/code/tensorflow/core/framework/op_def_builder.cc
+[DataTypeString]:https://www.tensorflow.org/code/tensorflow/core/framework/types.cc
 [python-BUILD]:https://www.tensorflow.org/code/tensorflow/python/BUILD
 [types-proto]:https://www.tensorflow.org/code/tensorflow/core/framework/types.proto
 [TensorShapeProto]:https://www.tensorflow.org/code/tensorflow/core/framework/tensor_shape.proto

@@ -745,11 +745,10 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
     // allocate_temp()?  Note that without major refactorings to Saver, it's
     // hard for the caller of the tensor bundle module to allocate these
     // precisely-shaped scratch storage.
-    // TODO(zongheng): implement an important optimization: if the stored slice
-    // is a subset of the to-restore slice, directly read the stored slice into
-    // the latter's already-allocated backing buffer.
 
     // Optimization for the common case: stored slice == to-restore slice.
+    // TODO(zongheng): also include the case where "slice_spec" is full ("-"),
+    // and "stored_slice" is logically full but contains actual extents.
     if (stored_slice == slice_spec) {
       VLOG(1) << "Optimized for common case: directly copying into "
                  "pre-allocated buffer; spec: "
@@ -800,12 +799,18 @@ bool BundleReader::Contains(StringPiece key) {
   return Valid() && (this->key() == key);
 }
 
-Status BundleReader::LookupTensorShape(StringPiece key, TensorShape* shape) {
+Status BundleReader::LookupDtypeAndShape(StringPiece key, DataType* dtype,
+                                         TensorShape* shape) {
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
-
+  *dtype = entry.dtype();
   *shape = TensorShape(entry.shape());
   return Status::OK();
+}
+
+Status BundleReader::LookupTensorShape(StringPiece key, TensorShape* shape) {
+  DataType ignored;
+  return LookupDtypeAndShape(key, &ignored, shape);
 }
 
 string BundleReader::DebugString() {

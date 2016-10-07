@@ -272,6 +272,7 @@ py_library(
         "framework/graph_util.py",
         "framework/importer.py",
         "framework/load_library.py",
+        "framework/meta_graph.py",
         "framework/random_seed.py",
         "framework/tensor_util.py",
     ],
@@ -322,6 +323,7 @@ py_library(
     deps = [
         ":device_lib",
         ":framework_test_lib",
+        ":gradient_checker",
         ":platform_test",
     ],
 )
@@ -1579,6 +1581,7 @@ py_library(
         ":sparse_ops",
         ":state_ops",
         ":string_ops",
+        ":summary",
         ":training_ops_gen",
         ":variable_scope",
         ":variables",
@@ -1873,6 +1876,15 @@ cuda_py_test(
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
+cuda_py_test(
+    name = "sync_replicas_optimizer_test",
+    size = "medium",
+    srcs = [
+        "training/sync_replicas_optimizer_test.py",
+    ],
+    additional_deps = ["//tensorflow:tensorflow_py"],
+)
+
 py_library(
     name = "timeline",
     srcs = ["client/timeline.py"],
@@ -1968,7 +1980,6 @@ cuda_py_tests(
         "training/rmsprop_test.py",
         "training/saver_test.py",
         "training/slot_creator_test.py",
-        "training/summary_writer_test.py",
         "training/tensorboard_logging_test.py",
         "training/training_ops_test.py",
     ],
@@ -2088,6 +2099,7 @@ py_tests(
         "summary/impl/gcs_file_loader_test.py",
         "summary/impl/reservoir_test.py",
         "summary/summary_test.py",
+        "summary/writer/writer_test.py",
     ],
     additional_deps = [
         ":summary",
@@ -2165,4 +2177,16 @@ cuda_py_test(
         "//tensorflow:tensorflow_py",
     ],
     main = "ops/batch_norm_benchmark.py",
+)
+
+cuda_py_test(
+    name = "concat_benchmark",
+    srcs = [
+        "ops/concat_benchmark.py",
+    ],
+    additional_deps = [
+        ":nn_ops",
+        "//tensorflow:tensorflow_py",
+    ],
+    main = "ops/concat_benchmark.py",
 )

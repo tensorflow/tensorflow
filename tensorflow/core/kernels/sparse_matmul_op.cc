@@ -1034,7 +1034,7 @@ inline BlockingCounter* SparseMatMul<TL, TR>::CreateSparseSlices(
           new SparseSlice<TL>(num_rows, num_cols, slice_block_size);
       (*mat_slices)[i][j] = sparse_slice;
       thread_pool->workers->Schedule(
-          std::bind(work, sparse_slice, slice, slice_num_cols * j));
+          [=]() { work(sparse_slice, slice, slice_num_cols * j); });
     }
   }
   return counter;
@@ -1133,7 +1133,7 @@ inline BlockingCounter* SparseMatMul<TL, TR>::ShuffleMatrix(
   DCHECK_LE(num_out_rows, buffer->dimension(0));
   for (int i = std::max(1, num_threads); i > 0; --i) {
     end = start + num_out_rows / i;
-    thread_pool->workers->Schedule(std::bind(shuffle_work, start, end));
+    thread_pool->workers->Schedule([=]() { shuffle_work(start, end); });
     num_out_rows -= (end - start);
     start = end;
   }

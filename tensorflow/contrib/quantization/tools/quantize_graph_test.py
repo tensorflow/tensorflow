@@ -350,7 +350,14 @@ class QuantizeGraphTest(tf.test.TestCase):
                                                [input_constant_name])
     quantize_graph.set_attr_dtype(identity_node, "T", tf.float32)
     float_graph_def.node.extend([identity_node])
-    test_graph(float_graph_def, {}, [identity_name])
+
+    mul_name = "mul"
+    mul_node = quantize_graph.create_node("Mul", mul_name,
+                                          [identity_name, identity_name])
+    quantize_graph.set_attr_dtype(mul_node, "T", tf.float32)
+    float_graph_def.node.extend([mul_node])
+
+    test_graph(float_graph_def, {}, [mul_name])
 
   def test_keep_control_edges(self):
     no_op_name = "no_op"

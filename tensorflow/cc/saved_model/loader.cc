@@ -102,10 +102,9 @@ Status Restore(const RunOptions& run_options, const string& export_dir,
 
 }  // namespace
 
-Status LoadSavedModel(const string& export_dir,
+Status LoadSavedModel(const SessionOptions& session_options,
+                      const RunOptions& run_options, const string& export_dir,
                       const std::unordered_set<string>& tags,
-                      const SessionOptions& session_options,
-                      const RunOptions& run_options,
                       SavedModelBundle* const bundle) {
   if (!MaybeSavedModelDirectory(export_dir)) {
     return Status(error::Code::NOT_FOUND,

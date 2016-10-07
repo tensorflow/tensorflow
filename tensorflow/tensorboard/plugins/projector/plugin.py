@@ -106,55 +106,55 @@ class ProjectorPlugin(TBPlugin):
 
   def _serve_runs(self, query_params):
     """Returns a list of runs that have embeddings."""
-    self.handler.send_json_response(list(self.configs.keys()))
+    self.handler.respond(list(self.configs.keys()), 'application/json')
 
   def _serve_info(self, query_params):
     run = query_params.get('run')
     if run is None:
-      self.handler.send_error(400, 'query parameter "run" is required')
+      self.handler.respond('query parameter "run" is required',
+                           'text/plain', 400)
       return
     if run not in self.configs:
-      self.handler.send_error(400, 'Unknown run: %s' % run)
+      self.handler.respond('Unknown run: %s' % run, 'text/plain', 400)
       return
-
     config = self.configs[run]
     reader = self._get_reader_for_run(run)
     var_map = reader.get_variable_to_shape_map()
-    embedding_map = {name: {
-        'name': name,
-        'shape': shape,
-        'metadataFile': self._get_metadata_file_for_tensor(name, config)
-    }
+    metadata_file = lambda t: self._get_metadata_file_for_tensor(t, config)
+    self.handler.respond(
+        {'checkpointFile': config.model_checkpoint_path,
+         'tensors': {name: {'name': name,
+                            'shape': shape,
+                            'metadataFile': metadata_file(name)}
                      for name, shape in six.iteritems(var_map)
-                     if len(shape) == 2}
-    self.handler.send_json_response({
-        'tensors': embedding_map,
-        'checkpointFile': config.model_checkpoint_path,
-    })
+                     if len(shape) == 2}},
+        'application/json')
 
   def _serve_metadata(self, query_params):
     run = query_params.get('run')
     if run is None:
-      self.handler.send_error(400, 'query parameter "run" is required')
+      self.handler.respond('query parameter "run" is required',
+                           'text/plain', 400)
       return
 
     name = query_params.get('name')
     if name is None:
-      self.handler.send_error(400, 'query parameter "name" is required')
+      self.handler.respond('query parameter "name" is required',
+                           'text/plain', 400)
       return
     if run not in self.configs:
-      self.handler.send_error(400, 'Unknown run: %s' % run)
+      self.handler.respond('Unknown run: %s' % run, 'text/plain', 400)
       return
 
     config = self.configs[run]
     fpath = self._get_metadata_file_for_tensor(name, config)
     if not fpath:
-      self.handler.send_error(
-          400, 'Not metadata file found for tensor %s in the config file %s' %
-          (name, self.config_fpaths[run]))
+      self.handler.respond(
+          'Not metadata file found for tensor %s in the config file %s' %
+          (name, self.config_fpaths[run]), 'text/plain', 400)
       return
     if not file_io.file_exists(fpath) or file_io.is_directory(fpath):
-      self.handler.send_error(400, '%s is not a file' % fpath)
+      self.handler.respond('%s is not a file' % fpath, 'text/plain', 400)
       return
 
     with file_io.FileIO(fpath, 'r') as f:
@@ -163,32 +163,35 @@ class ProjectorPlugin(TBPlugin):
         lines.append(line)
         if len(lines) >= LIMIT_NUM_POINTS:
           break
-    self.handler.send_gzip_response(''.join(lines), 'text/plain')
+    self.handler.respond(''.join(lines), 'text/plain')
 
   def _serve_tensor(self, query_params):
     run = query_params.get('run')
     if run is None:
-      self.handler.send_error(400, 'query parameter "run" is required')
+      self.handler.respond('query parameter "run" is required',
+                           'text/plain', 400)
       return
 
     name = query_params.get('name')
     if name is None:
-      self.handler.send_error(400, 'query parameter "name" is required')
+      self.handler.respond('query parameter "name" is required',
+                           'text/plain', 400)
       return
 
     if run not in self.configs:
-      self.handler.send_error(400, 'Unknown run: %s' % run)
+      self.handler.respond('Unknown run: %s' % run, 'text/plain', 400)
       return
 
     reader = self._get_reader_for_run(run)
     config = self.configs[run]
     if not reader.has_tensor(name):
-      self.handler.send_error(400, 'Tensor %s not found in checkpoint dir %s' %
-                              (name, config.model_checkpoint_path))
+      self.handler.respond('Tensor %s not found in checkpoint dir %s' %
+                           (name, config.model_checkpoint_path),
+                           'text/plain', 400)
       return
     tensor = reader.get_tensor(name)
     # Sample the tensor
     tensor = tensor[:LIMIT_NUM_POINTS]
     # Stream it as TSV.
     tsv = '\n'.join(['\t'.join([str(val) for val in row]) for row in tensor])
-    self.handler.send_gzip_response(tsv, 'text/plain')
+    self.handler.respond(tsv, 'text/tab-separated-values')

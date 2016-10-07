@@ -314,7 +314,8 @@ bool TestFastParse(const string& serialized, Example* example) {
         if (!name_and_feature.second.ParseBytesList(&list)) return false;
         auto* result_list = value.mutable_bytes_list();
         for (auto& bytes : list) {
-          result_list->add_value(std::move(bytes));
+          auto* new_value = result_list->add_value();
+          new_value->swap(bytes);
         }
         break;
       }

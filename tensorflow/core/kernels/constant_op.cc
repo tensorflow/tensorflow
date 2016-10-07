@@ -57,6 +57,7 @@ REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
       Name("Const").Device(DEVICE_##D).TypeConstraint<TYPE>("dtype"), \
       ConstantOp);
 REGISTER_KERNEL(GPU, Eigen::half);
+REGISTER_KERNEL(GPU, bfloat16);
 REGISTER_KERNEL(GPU, float);
 REGISTER_KERNEL(GPU, double);
 REGISTER_KERNEL(GPU, uint8);

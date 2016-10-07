@@ -171,10 +171,28 @@ Status LoadSavedModelFromLegacySessionBundlePath(
       session_options, run_options, session_bundle_export_dir, &session_bundle);
 
   // Convert the session-bundle to a saved-model-bundle.
-  return internal::ConvertSessionBundleToSavedModelBundle(session_bundle,
-                                                          saved_model_bundle);
+  return ConvertSessionBundleToSavedModelBundle(session_bundle,
+                                                saved_model_bundle);
 }
 
 }  // namespace internal
+
+Status LoadSessionBundleOrSavedModelBundle(
+    const SessionOptions& session_options, const RunOptions& run_options,
+    const string& export_dir,
+    const std::unordered_set<string>& saved_model_tags,
+    SavedModelBundle* saved_model_bundle) {
+  if (MaybeSavedModelDirectory(export_dir)) {
+    return LoadSavedModel(session_options, run_options, export_dir,
+                          saved_model_tags, saved_model_bundle);
+  } else if (IsPossibleExportDirectory(export_dir)) {
+    return internal::LoadSavedModelFromLegacySessionBundlePath(
+        session_options, run_options, export_dir, saved_model_bundle);
+  }
+  return Status(error::Code::NOT_FOUND,
+                "Session bundle or SavedModel bundle not found at specified "
+                "export location");
+}
+
 }  // namespace serving
 }  // namespace tensorflow

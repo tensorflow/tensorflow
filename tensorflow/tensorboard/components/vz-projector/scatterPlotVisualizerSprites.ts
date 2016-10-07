@@ -50,17 +50,17 @@ const VERTEX_SHADER = `
 
     // Transform current vertex by modelViewMatrix (model world position and
     // camera world position matrix).
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    vec4 cameraSpacePos = modelViewMatrix * vec4(position, 1.0);
 
     // Project vertex in camera-space to screen coordinates using the camera's
     // projection matrix.
-    gl_Position = projectionMatrix * mvPosition;
+    gl_Position = projectionMatrix * cameraSpacePos;
 
     // Create size attenuation (if we're in 3D mode) by making the size of
     // each point inversly proportional to its distance to the camera.
     float outputPointSize = pointSize;
     if (sizeAttenuation) {
-      outputPointSize = -pointSize / mvPosition.z;
+      outputPointSize = -pointSize / cameraSpacePos.z;
     }
 
     gl_PointSize =
@@ -94,12 +94,34 @@ const FRAGMENT_SHADER = `
     } else {
       // Discard pixels outside the radius so points are rendered as circles.
       vec2 uv = gl_PointCoord.xy - 0.5;
-      if (length(uv) > 0.5) discard;
+      float uvLenSquared = dot(uv, uv);
+      if (uvLenSquared > (0.5 * 0.5)) {
+        discard;
+      }
 
       // If the point is not an image, just color it.
       gl_FragColor = vec4(vColor, 1.0);
     }
     ${THREE.ShaderChunk['fog_fragment']}
+  }`;
+
+const FRAGMENT_SHADER_PICKING = `
+  varying vec2 xyIndex;
+  varying vec3 vColor;
+
+  uniform bool isImage;
+
+  void main() {
+    if (isImage) {
+      gl_FragColor = vec4(vColor, 1);
+    } else {
+      vec2 pointCenterToHere = gl_PointCoord.xy - vec2(0.5, 0.5);
+      float lenSquared = dot(pointCenterToHere, pointCenterToHere);
+      if (lenSquared > (0.5 * 0.5)) {
+        discard;
+      }
+      gl_FragColor = vec4(vColor, 1);
+    }
   }`;
 
 /**
@@ -149,7 +171,7 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
       fogNear: {type: 'f', value: this.fog.near},
       fogFar: {type: 'f', value: this.fog.far},
       sizeAttenuation: {type: 'bool', value: this.sceneIs3D},
-      isImage: {type: 'bool', value: !!this.image},
+      isImage: {type: 'bool', value: (this.image != null)},
       pointSize: {type: 'f', value: pointSize}
     };
 
@@ -169,7 +191,7 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
     this.pickingMaterial = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
       vertexShader: VERTEX_SHADER,
-      fragmentShader: FRAGMENT_SHADER,
+      fragmentShader: FRAGMENT_SHADER_PICKING,
       transparent: false,
       depthTest: true,
       depthWrite: true,
@@ -297,20 +319,21 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
   onResize(newWidth: number, newHeight: number) {}
   onSetLabelAccessor(labelAccessor: (index: number) => string) {}
 
-  onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {
+  onPickingRender(rc: RenderContext) {
     if (!this.geometry) {
       return;
     }
-    // Fog changes point colors, which alters the IDs.
-    this.fog.near = Infinity;
-    this.fog.far = Infinity;
 
     this.points.material = this.pickingMaterial;
-    this.pickingMaterial.uniforms.isImage.value = false;
 
     let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     colors.array = this.pickingColors;
     colors.needsUpdate = true;
+
+    let scaleFactors =
+        this.geometry.getAttribute('scaleFactor') as THREE.BufferAttribute;
+    scaleFactors.array = rc.pointScaleFactors;
+    scaleFactors.needsUpdate = true;
   }
 
   onRender(rc: RenderContext) {

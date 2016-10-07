@@ -1761,6 +1761,41 @@ def create_feature_spec_for_parsing(feature_columns):
   return features_config
 
 
+def _create_sequence_feature_spec_for_parsing(sequence_feature_columns,
+                                              allow_missing_by_default=False):
+  """Prepares a feature spec for parsing `tf.SequenceExample`s.
+
+  Args:
+    sequence_feature_columns: an iterable containing all the feature columns.
+      All items should be instances of classes derived from `_FeatureColumn`.
+    allow_missing_by_default: whether to set `allow_missing=True` by default for
+      `FixedLenSequenceFeature`s.
+  Returns:
+    A dict mapping feature keys to `FixedLenSequenceFeature` or `VarLenFeature`.
+  """
+  feature_spec = create_feature_spec_for_parsing(sequence_feature_columns)
+  sequence_feature_spec = {}
+  for key, feature in feature_spec.items():
+    if isinstance(feature, parsing_ops.VarLenFeature):
+      sequence_feature = feature
+    elif isinstance(feature, parsing_ops.FixedLenFeature):
+      default_is_set = feature.default_value is not None
+      if default_is_set:
+        logging.warning(
+            'Found default value {} for feature "{}". Ignoring this value and '
+            'setting `allow_missing=True` instead.'.
+            format(feature.default_value, key))
+      sequence_feature = parsing_ops.FixedLenSequenceFeature(
+          shape=feature.shape,
+          dtype=feature.dtype,
+          allow_missing=(allow_missing_by_default or default_is_set))
+    else:
+      raise TypeError(
+          "Unsupported feature type: {}".format(type(feature).__name__))
+    sequence_feature_spec[key] = sequence_feature
+  return sequence_feature_spec
+
+
 def make_place_holder_tensors_for_base_features(feature_columns):
   """Returns placeholder tensors for inference.
 

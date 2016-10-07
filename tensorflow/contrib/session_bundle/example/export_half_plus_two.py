@@ -32,9 +32,12 @@ from __future__ import print_function
 import tensorflow as tf
 from tensorflow.contrib.session_bundle import exporter
 
+tf.app.flags.DEFINE_string("export_dir", "/tmp/half_plus_two",
+                           "Directory where to export inference model.")
+FLAGS = tf.app.flags.FLAGS
+
 
 def Export():
-  export_path = "/tmp/half_plus_two"
   with tf.Session() as sess:
     # Make model parameters a&b variables instead of constants to
     # exercise the variable reloading mechanisms.
@@ -122,7 +125,7 @@ def Export():
         named_graph_signatures=named_graph_signature,
         assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS),
         assets_callback=CopyAssets)
-    export.export(export_path, global_step_tensor, sess)
+    export.export(FLAGS.export_dir, global_step_tensor, sess)
 
 
 def main(_):
