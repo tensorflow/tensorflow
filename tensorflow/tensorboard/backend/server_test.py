@@ -77,7 +77,10 @@ class TensorboardServerTest(tf.test.TestCase):
     self._connection.request('GET', path)
     response = self._connection.getresponse()
     self.assertEqual(response.status, 200)
-    return json.loads(response.read().decode('utf-8'))
+    data = response.read()
+    if response.getheader('Content-Encoding') == 'gzip':
+      data = gzip.GzipFile('', 'rb', 9, BytesIO(data)).read()
+    return json.loads(data.decode('utf-8'))
 
   def testBasicStartup(self):
     """Start the server up and then shut it down immediately."""
@@ -96,7 +99,7 @@ class TensorboardServerTest(tf.test.TestCase):
   def testDirectoryTraversal(self):
     """Attempt a directory traversal attack."""
     response = self._get('/..' * 30 + '/etc/passwd')
-    self.assertEqual(response.status, 404)
+    self.assertEqual(response.status, 400)
 
   def testLogdir(self):
     """Test the status code and content of the data/logdir endpoint."""
@@ -119,6 +122,37 @@ class TensorboardServerTest(tf.test.TestCase):
                                          'audio': ['audio'],
                                          'graph': True,
                                          'run_metadata': ['test run']}})
+
+  def testApplicationPaths_getCached(self):
+    """Test the format of the /data/runs endpoint."""
+    for path in ('/',):  # TODO(jart): '/app.js' in open source
+      connection = http_client.HTTPConnection(
+          'localhost', self._server.server_address[1])
+      connection.request('GET', path)
+      response = connection.getresponse()
+      self.assertEqual(response.status, 200, msg=path)
+      self.assertEqual(response.getheader('Cache-Control'),
+                       'private, max-age=3600', msg=path)
+      connection.close()
+
+  def testDataPaths_disableAllCaching(self):
+    """Test the format of the /data/runs endpoint."""
+    for path in ('/data/runs',
+                 '/data/logdir',
+                 '/data/scalars?run=run1&tag=simple_values',
+                 '/data/scalars?run=run1&tag=simple_values&format=csv',
+                 '/data/images?run=run1&tag=image',
+                 '/data/individualImage?run=run1&tag=image&index=0',
+                 '/data/audio?run=run1&tag=audio',
+                 '/data/run_metadata?run=run1&tag=test%20run'):
+      connection = http_client.HTTPConnection(
+          'localhost', self._server.server_address[1])
+      connection.request('GET', path)
+      response = connection.getresponse()
+      self.assertEqual(response.status, 200, msg=path)
+      self.assertEqual(response.getheader('Expires'), '0', msg=path)
+      response.read()
+      connection.close()
 
   def testHistograms(self):
     """Test the format of /data/histograms."""
@@ -260,6 +294,12 @@ class TensorboardServerTest(tf.test.TestCase):
     self.assertIsNone(response.getheader('Content-Encoding'))
     graph = text_format.Parse(response.read(), tf.GraphDef())
     self.assertEqual(len(graph.node), 2)
+
+  def testAcceptGzip_doesNotCompressImage(self):
+    response = self._get('/data/individualImage?run=run1&tag=image&index=0',
+                         {'Accept-Encoding': 'gzip'})
+    self.assertEqual(response.status, 200)
+    self.assertEqual(response.getheader('Content-Encoding'), None)
 
   def testRunMetadata(self):
     """Test retrieving the run metadata information."""
