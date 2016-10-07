@@ -24,7 +24,9 @@ import time
 
 import tensorflow as tf
 
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.python.framework import meta_graph
 
 
 class SummaryWriterTestCase(tf.test.TestCase):
@@ -50,6 +52,9 @@ class SummaryWriterTestCase(tf.test.TestCase):
     self.assertTrue(abs(t - time.time()) < 5)
 
   def _assertEventsWithGraph(self, test_dir, g, has_shapes):
+    meta_graph_def = meta_graph.create_meta_graph_def(
+        graph_def=g.as_graph_def(add_shapes=has_shapes))
+
     rr = self._EventsReader(test_dir)
 
     # The first event should list the file_version.
@@ -64,6 +69,14 @@ class SummaryWriterTestCase(tf.test.TestCase):
     ev_graph = tf.GraphDef()
     ev_graph.ParseFromString(ev.graph_def)
     self.assertProtoEquals(g.as_graph_def(add_shapes=has_shapes), ev_graph)
+
+    # The next event should have the metagraph.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals(0, ev.step)
+    ev_meta_graph = meta_graph_pb2.MetaGraphDef()
+    ev_meta_graph.ParseFromString(ev.meta_graph_def)
+    self.assertProtoEquals(meta_graph_def, ev_meta_graph)
 
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))

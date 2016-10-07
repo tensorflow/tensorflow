@@ -22,7 +22,9 @@ import time
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import summary_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util import event_pb2
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary.writer.event_file_writer import EventFileWriter
@@ -40,6 +42,7 @@ class SummaryToEventTransformer(object):
   @@add_summary
   @@add_session_log
   @@add_graph
+  @@add_meta_graph
   @@add_run_metadata
   """
 
@@ -78,6 +81,14 @@ class SummaryToEventTransformer(object):
     if graph is not None or graph_def is not None:
       # Calling it with both graph and graph_def for backward compatibility.
       self.add_graph(graph=graph, graph_def=graph_def)
+      # Also export the meta_graph_def in this case.
+      # graph may itself be a graph_def due to positional arguments
+      maybe_graph_as_def = (
+          graph.as_graph_def(add_shapes=True) if isinstance(graph, ops.Graph)
+          else graph)
+      self.add_meta_graph(
+          meta_graph.create_meta_graph_def(
+              graph_def=graph_def or maybe_graph_as_def))
 
   def add_summary(self, summary, global_step=None):
     """Adds a `Summary` protocol buffer to the event file.
@@ -174,6 +185,28 @@ class SummaryToEventTransformer(object):
                       "or the deprecated `GraphDef`")
     # Finally, add the graph_def to the summary writer.
     self._add_graph_def(true_graph_def, global_step)
+
+  def add_meta_graph(self, meta_graph_def, global_step=None):
+    """Adds a `MetaGraphDef` to the event file.
+
+    The `MetaGraphDef` allows running the given graph via
+    `saver.import_meta_graph()`.
+
+    Args:
+      meta_graph_def: A `MetaGraphDef` object, often as retured by
+        `saver.export_meta_graph()`.
+      global_step: Number. Optional global step counter to record with the
+        graph.
+
+    Raises:
+      TypeError: If both `meta_graph_def` is not an instance of `MetaGraphDef`.
+    """
+    if not isinstance(meta_graph_def, meta_graph_pb2.MetaGraphDef):
+      raise TypeError("meta_graph_def must be type MetaGraphDef, saw type: %s"
+                      % type(meta_graph_def))
+    meta_graph_bytes = meta_graph_def.SerializeToString()
+    event = event_pb2.Event(meta_graph_def=meta_graph_bytes)
+    self._add_event(event, global_step)
 
   def add_run_metadata(self, run_metadata, tag, global_step=None):
     """Adds a metadata information for a single session.run() call.

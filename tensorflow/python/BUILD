@@ -272,6 +272,7 @@ py_library(
         "framework/graph_util.py",
         "framework/importer.py",
         "framework/load_library.py",
+        "framework/meta_graph.py",
         "framework/random_seed.py",
         "framework/tensor_util.py",
     ],
