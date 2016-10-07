@@ -19,6 +19,7 @@ limitations under the License.
 <link rel="import" href="../iron-collapse/iron-collapse.html">
 <link rel="import" href="../paper-input/paper-textarea.html">
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
+<link rel="import" href="../paper-tooltip/paper-tooltip.html">
 <link rel="import" href="styles.html">
 
 <dom-module id="vz-projector-bookmark-panel">
@@ -114,7 +115,16 @@ paper-button {
 <!-- Bookmarking controls -->
 <div id="bookmark-container">
   <div id="header">
-    <div id="title">BOOKMARKS</div>
+    <div id="title">
+      BOOKMARKS
+      <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+      <paper-tooltip animation-delay="0" position="top" offset="0">
+        The bookmarks drawer allows you to bookmark a set of views into the
+        projection, saving camera position, selected points, as well as any
+        highlighting you may have. You can then download the file to save it
+        permanently, and later upload it to again view your bookmarks.
+      </paper-tooltip>
+    </div>
     <div id="icon-container">
       <!-- Icons and event handlers are inverted because the tray expands upwards. -->
       <paper-icon-button id="expand-more"

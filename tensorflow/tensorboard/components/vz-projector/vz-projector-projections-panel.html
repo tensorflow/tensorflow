@@ -17,6 +17,7 @@ limitations under the License.
 
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../iron-collapse/iron-collapse.html">
+<link rel="import" href="../paper-dropdown-menu/paper-dropdown-menu.html">
 <link rel="import" href="../paper-toggle-button/paper-toggle-button.html">
 <link rel="import" href="../paper-listbox/paper-listbox.html">
 <link rel="import" href="../paper-item/paper-item.html">
@@ -27,9 +28,11 @@ limitations under the License.
 <link rel="import" href="../paper-tooltip/paper-tooltip.html">
 <link rel="import" href="../paper-input/paper-input.html">
 <link rel="import" href="../paper-button/paper-button.html">
+<link rel="import" href="styles.html">
 
 <dom-module id="vz-projector-projections-panel">
 <template>
+<style include="vz-projector-styles"></style>
 <style>
 
 .slider {
@@ -166,13 +169,6 @@ paper-listbox .pca-item {
   border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
-.help-icon {
-  width: 15px;
-  height: 15px;
-  margin: 0;
-  padding: 0;
-}
-
 paper-tooltip {
   max-width: 200px;
   --paper-tooltip: {
@@ -221,6 +217,24 @@ paper-icon-button[active] {
 
 .two-columns :first-child {
   margin-right: 15px;
+}
+
+.dropdown-item {
+  justify-content: space-between;
+}
+
+#z-container {
+  display: flex;
+  align-items: center;
+}
+
+#z-checkbox {
+  margin: 27px 0 0 5px;
+  width: 18px;
+}
+
+#z-dropdown {
+  flex-grow: 1;
 }
 
 </style>
@@ -286,26 +300,39 @@ paper-icon-button[active] {
   <p style="color: #880E4F; font-weight: bold;">
     For fast results, your data will be sampled down to [[getPcaSampledDim()]] dimensions, so the PCA computation is approximate.
   </p>
-  <label>X</label>
-  <paper-listbox class="has-border" selected="{{pcaX}}">
-    <template is="dom-repeat" items="[[pcaComponents]]">
-      <paper-item class="pca-item">Component #[[item]]</paper-item>
-    </template>
-  </paper-listbox>
+
+  <paper-dropdown-menu style="width: 100%" no-animations label="X">
+    <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{pcaX}}">
+      <template is="dom-repeat" items="[[pcaComponents]]">
+        <paper-item class="dropdown-item" value="[[item]]" label="Component #[[item]]">
+          Component #[[item]]
+        </paper-item>
+      </template>
+    </paper-listbox>
+  </paper-dropdown-menu>
   <br/>
-  <label>Y</label>
-  <paper-listbox class="has-border" selected="{{pcaY}}">
-    <template is="dom-repeat" items="[[pcaComponents]]">
-      <paper-item class="pca-item">Component #[[item]]</paper-item>
-    </template>
-  </paper-listbox>
+  <paper-dropdown-menu style="width: 100%" no-animations label="Y">
+    <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{pcaY}}">
+      <template is="dom-repeat" items="[[pcaComponents]]">
+        <paper-item class="dropdown-item" value="[[item]]" label="Component #[[item]]">
+          Component #[[item]]
+        </paper-item>
+      </template>
+    </paper-listbox>
+  </paper-dropdown-menu>
   <br/>
-  <paper-checkbox id="z-checkbox" checked="{{hasPcaZ}}">Z</paper-checkbox>
-  <paper-listbox class="has-border" disabled="true" selected="{{pcaZ}}">
-    <template is="dom-repeat" items="[[pcaComponents]]">
-      <paper-item disabled="[[!hasPcaZ]]" class="pca-item">Component #[[item]]</paper-item>
-    </template>
-  </paper-listbox>
+  <div id="z-container">
+    <paper-dropdown-menu no-animations label="Z" disabled="[[!hasPcaZ]]" id="z-dropdown">
+      <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{pcaZ}}">
+        <template is="dom-repeat" items="[[pcaComponents]]">
+          <paper-item class="dropdown-item" value="[[item]]" label="Component #[[item]]">
+            Component #[[item]]
+          </paper-item>
+        </template>
+      </paper-listbox>
+    </paper-dropdown-menu>
+    <paper-checkbox id="z-checkbox" checked="{{hasPcaZ}}"></paper-checkbox>
+  </div>
 </div>
 <!-- Custom Controls -->
 <div data-panel="custom" class="ink-panel-content">
@@ -314,6 +341,15 @@ paper-icon-button[active] {
     <code style="padding: 2px;">.*</code> button to enable
     regex mode. The search is case insensitive.
   <p>
+  <paper-dropdown-menu style="width: 100%" no-animations label="Search by">
+    <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedSearchByMetadataOption}}">
+      <template is="dom-repeat" items="[[searchByMetadataOptions]]">
+        <paper-item class="dropdown-item" value="[[item]]" label="[[item]]">
+          [[item]]
+        </paper-item>
+      </template>
+    </paper-listbox>
+  </paper-dropdown-menu>
   <h3>Horizontal</h3>
   <div class="two-columns">
     <vz-projector-input id="xLeft" label="Left"></vz-projector-input>

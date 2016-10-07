@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import curses
 from curses import textpad
 
@@ -33,14 +34,16 @@ class CursesUI(object):
   """
 
   CLI_PROMPT = "tfdbg> "
-  CLI_EXIT_CMDS = ["exit", "quit"]
+  CLI_EXIT_COMMANDS = ["exit", "quit"]
   CLI_TERMINATOR_KEY = 7  # Terminator key for input text box.
   CLI_TAB_KEY = ord("\t")
+  REGEX_SEARCH_PREFIX = "/"
 
   # Possible Enter keys. 343 is curses key code for the num-pad Enter key when
   # num lock is off.
   CLI_CR_KEYS = [ord("\n"), ord("\r"), 343]
 
+  _SCROLL_REFRESH = "refresh"
   _SCROLL_UP = "up"
   _SCROLL_DOWN = "down"
   _SCROLL_HOME = "home"
@@ -56,6 +59,17 @@ class CursesUI(object):
 
     self._command_handler_registry = (
         debugger_cli_common.CommandHandlerRegistry())
+
+    # Create tab completion registry and register the empty-str (top-level)
+    # tab-completion context with it.
+    self._tab_completion_registry = debugger_cli_common.TabCompletionRegistry()
+
+    # Create top-level tab-completion context and register the exit and help
+    # commands.
+    self._tab_completion_registry.register_tab_comp_context(
+        [""], self.CLI_EXIT_COMMANDS +
+        [debugger_cli_common.CommandHandlerRegistry.HELP_COMMAND] +
+        debugger_cli_common.CommandHandlerRegistry.HELP_COMMAND_ALIASES)
 
     self._command_history_store = debugger_cli_common.CommandHistory()
 
@@ -76,8 +90,13 @@ class CursesUI(object):
     self._pending_command = ""
 
     # State related to screen output.
+    self._output_pad = None
     self._curr_unwrapped_output = None
     self._curr_wrapped_output = None
+
+    # NamedTuple for rectangular locations on screen
+    self.rectangle = collections.namedtuple("rectangle",
+                                            "top left bottom right")
 
   def _init_layout(self):
     """Initialize the layout of UI components.
@@ -92,12 +111,29 @@ class CursesUI(object):
     self._title_row = 0
 
     # Top row index of the output pad.
+    # A "pad" is a curses object that holds lines of text and not limited to
+    # screen size. It can be rendered on the screen partially with scroll
+    # parameters specified.
     self._output_top_row = 1
+
+    # Number of rows that the output pad has.
+    self._output_num_rows = (
+        self._max_y - self._output_top_row - self._command_textbox_height - 1)
 
     # Row index of scroll information line: Taking into account the zero-based
     # row indexing and the command textbox area under the scroll information
     # row.
     self._output_scroll_row = self._max_y - 1 - self._command_textbox_height
+
+    # Tab completion bottom row.
+    self._candidates_top_row = self._output_scroll_row - 4
+    self._candidates_bottom_row = self._output_scroll_row - 1
+
+    # Maximum number of lines the candidates display can have.
+    self._candidates_max_lines = int(self._output_num_rows / 2)
+
+    # Font attribute for search and highlighting.
+    self._search_highlight_font_attr = "bw_reversed"
 
   def _screen_init(self):
     """Screen initialization.
@@ -116,6 +152,7 @@ class CursesUI(object):
     curses.init_pair(3, curses.COLOR_GREEN, curses.COLOR_BLACK)
     curses.init_pair(4, curses.COLOR_YELLOW, curses.COLOR_BLACK)
     curses.init_pair(5, curses.COLOR_BLUE, curses.COLOR_BLACK)
+    curses.init_pair(6, curses.COLOR_BLACK, curses.COLOR_WHITE)
 
     self._color_pairs = {}
     self._color_pairs["white"] = curses.color_pair(1)
@@ -123,6 +160,15 @@ class CursesUI(object):
     self._color_pairs["green"] = curses.color_pair(3)
     self._color_pairs["yellow"] = curses.color_pair(4)
     self._color_pairs["blue"] = curses.color_pair(5)
+
+    # Black-white reversed
+    self._color_pairs["bw_reversed"] = curses.color_pair(6)
+
+    # A_BOLD is not really a "color". But place it here for convenience.
+    self._color_pairs["bold"] = curses.A_BOLD
+
+    # Default color pair to use when a specified color pair does not exist.
+    self._default_color_pair = self._color_pairs["white"]
 
   def _screen_launch(self):
     """Launch the curses screen."""
@@ -181,8 +227,37 @@ class CursesUI(object):
 
     return exit_token
 
-  def register_command_handler(self, *args, **kwargs):
-    self._command_handler_registry.register_command_handler(*args, **kwargs)
+  def register_command_handler(self,
+                               prefix,
+                               handler,
+                               help_info,
+                               prefix_aliases=None):
+    """A wrapper around CommandHandlerRegistry.register_command_handler().
+
+    In addition to calling the wrapped register_command_handler() method, this
+    method also registers the top-level tab-completion context based on the
+    command prefixes and their aliases.
+
+    See the doc string of the wrapped method for more details on the args.
+
+    Args:
+      prefix: (str) command prefix.
+      handler: (callable) command handler.
+      help_info: (str) help information.
+      prefix_aliases: (list of str) aliases of the command prefix.
+    """
+
+    self._command_handler_registry.register_command_handler(
+        prefix, handler, help_info, prefix_aliases=prefix_aliases)
+
+    self._tab_completion_registry.extend_comp_items("", [prefix])
+    if prefix_aliases:
+      self._tab_completion_registry.extend_comp_items("", prefix_aliases)
+
+  def register_tab_comp_context(self, *args, **kwargs):
+    """Wrapper around TabCompletionRegistry.register_tab_comp_context()."""
+
+    self._tab_completion_registry.register_tab_comp_context(*args, **kwargs)
 
   def set_help_intro(self, help_intro):
     """Set an introductory message to the help output of the command registry.
@@ -241,7 +316,9 @@ class CursesUI(object):
         if exit_token is not None:
           return exit_token
       elif terminator == self.CLI_TAB_KEY:
-        pass  # TODO(cais): Implement tab completion.
+        tab_completed = self._tab_complete(command)
+        self._pending_command = tab_completed
+        self._cmd_ptr = 0
       elif pending_command_changed:
         self._pending_command = command
 
@@ -292,18 +369,33 @@ class CursesUI(object):
       An exit token object. None value means that the UI loop should not exit.
       A non-None value means the UI loop should exit.
     """
-    if command in self.CLI_EXIT_CMDS:
+
+    if command in self.CLI_EXIT_COMMANDS:
       # Explicit user command-triggered exit: EXPLICIT_USER_EXIT as the exit
       # token.
       return debugger_cli_common.EXPLICIT_USER_EXIT
+
+    if command:
+      self._command_history_store.add_command(command)
+
+    if (len(command) > len(self.REGEX_SEARCH_PREFIX) and
+        command.startswith(self.REGEX_SEARCH_PREFIX) and
+        self._curr_unwrapped_output):
+      # Regex search and highlighting in screen output.
+      regex = command[len(self.REGEX_SEARCH_PREFIX):]
+
+      # TODO(cais): Support scrolling to matches.
+      # TODO(cais): Display warning message on screen if no match.
+      self._display_output(self._curr_unwrapped_output, highlight_regex=regex)
+      self._command_pointer = 0
+      self._pending_command = ""
+      return
 
     prefix, args = self._parse_command(command)
 
     if not prefix:
       # Empty command: take no action. Should not exit.
       return
-
-    self._command_history_store.add_command(command)
 
     screen_info = {"cols": self._max_x}
     if self._command_handler_registry.is_registered(prefix):
@@ -327,8 +419,7 @@ class CursesUI(object):
     if exit_token is not None:
       return exit_token
 
-    self._display_lines(screen_output)
-
+    self._display_output(screen_output)
     self._command_pointer = 0
     self._pending_command = ""
 
@@ -395,6 +486,9 @@ class CursesUI(object):
       # Make Enter key the terminator
       self._textbox_curr_terminator = x
       return self.CLI_TERMINATOR_KEY
+    elif x == self.CLI_TAB_KEY:
+      self._textbox_curr_terminator = self.CLI_TAB_KEY
+      return self.CLI_TERMINATOR_KEY
     elif x == curses.KEY_PPAGE:
       self._scroll_output(self._SCROLL_UP)
       return x
@@ -437,7 +531,8 @@ class CursesUI(object):
       self._screen_create_command_window()
       if self._curr_unwrapped_output is not None:
         # Force render screen output again, under new screen size.
-        self._display_lines(self._curr_unwrapped_output)
+        self._output_pad = self._display_output(
+            self._curr_unwrapped_output, is_refresh=True)
 
       # Force return from the textbox edit(), so that the textbox can be
       # redrawn.
@@ -501,13 +596,69 @@ class CursesUI(object):
     self._screen_refresh()
 
   def _screen_new_output_pad(self, rows, cols):
-    self._output_pad = curses.newpad(rows, cols)
+    """Generate a new pad on the screen.
 
-  def _display_lines(self, output):
+    Args:
+      rows: (int) Number of rows the pad will have: not limited to screen size.
+      cols: (int) Number of columns the pad will have: not limited to screen
+        size.
+
+    Returns:
+      A curses textpad object.
+    """
+
+    return curses.newpad(rows, cols)
+
+  def _display_output(self, output, is_refresh=False, highlight_regex=None):
+    """Display text output in a scrollable text pad.
+
+    Args:
+      output: A RichTextLines object that is the screen output text.
+      is_refresh: (bool) Is this a refreshing display with existing output.
+      highlight_regex: (str) Optional string representing the regex used to
+        search and highlight in the current screen output.
+    """
+
+    if highlight_regex:
+      output = debugger_cli_common.regex_find(
+          output, highlight_regex, font_attr=self._search_highlight_font_attr)
+    else:
+      self._curr_unwrapped_output = output
+
+    self._curr_wrapped_output = debugger_cli_common.wrap_rich_text_lines(
+        output, self._max_x - 1)
+
+    (self._output_pad, self._output_pad_height,
+     self._output_pad_width) = self._display_lines(self._curr_wrapped_output,
+                                                   self._output_num_rows)
+
+    # Size of view port on screen, which is always smaller or equal to the
+    # screen size.
+    self._output_pad_screen_height = self._output_num_rows - 1
+    self._output_pad_screen_width = self._max_x - 1
+    self._output_pad_screen_location = self.rectangle(
+        top=self._output_top_row,
+        left=0,
+        bottom=self._output_top_row + self._output_num_rows,
+        right=self._output_pad_screen_width)
+
+    if is_refresh:
+      self._scroll_output(self._SCROLL_REFRESH)
+    else:
+      self._output_pad_row = 0
+      self._scroll_output(self._SCROLL_HOME)
+
+  def _display_lines(self, output, min_num_rows):
     """Display RichTextLines object on screen.
 
     Args:
       output: A RichTextLines object.
+      min_num_rows: (int) Minimum number of output rows.
+
+    Returns:
+      1) The text pad object used to display the text.
+      2) (int) number of rows of the text pad, which may exceed screen size.
+      3) (int) number of columns of the text pad.
 
     Raises:
       ValueError: If input argument "output" is invalid.
@@ -517,59 +668,31 @@ class CursesUI(object):
       raise ValueError(
           "Output is required to be an instance of RichTextLines, but is not.")
 
-    self._curr_unwrapped_output = output
-
     # TODO(cais): Cut off output with too many lines to prevent overflow issues
     # in curses.
-
-    cols = self._max_x
-    self._curr_wrapped_output = debugger_cli_common.wrap_rich_text_lines(
-        output, cols - 1)
-
     self._screen_refresh()
 
-    # Minimum number of rows that the output area has to have: Screen height
-    # space above the output region, the height of the command textbox and
-    # the single scroll information row.
-    min_rows = (
-        self._max_y - self._output_top_row - self._command_textbox_height - 1)
-
-    rows = max(min_rows, len(self._curr_wrapped_output.lines))
+    # Number of rows the output area will have.
+    rows = max(min_num_rows, len(output.lines))
 
     # Size of the output pad, which may exceed screen size and require
     # scrolling.
-    self._output_pad_height = rows
-    self._output_pad_width = cols
-
-    # Size of view port on screen, which is always smaller or equal to the
-    # screen size.
-    self._output_pad_scr_height = min_rows - 1
-    self._output_pad_scr_width = cols
+    cols = self._max_x - 1
 
     # Create new output pad.
-    self._screen_new_output_pad(rows, cols)
+    pad = self._screen_new_output_pad(rows, cols)
 
-    for i in xrange(len(self._curr_wrapped_output.lines)):
-      if i in self._curr_wrapped_output.font_attr_segs:
+    for i in xrange(len(output.lines)):
+      if i in output.font_attr_segs:
         self._screen_add_line_to_output_pad(
-            i,
-            self._curr_wrapped_output.lines[i],
-            color_segments=self._curr_wrapped_output.font_attr_segs[i])
+            pad, i, output.lines[i], color_segments=output.font_attr_segs[i])
       else:
-        self._screen_add_line_to_output_pad(i,
-                                            self._curr_wrapped_output.lines[i])
+        self._screen_add_line_to_output_pad(pad, i, output.lines[i])
 
-    # 1st row of the output pad to be displayed: Scroll to top first.
-    self._output_pad_row = 0
+    return pad, rows, cols
 
-    # The location of the rectangular viewport on the screen.
-    self._output_pad_scr_loc = [
-        self._output_top_row, 0, self._output_top_row + min_rows, cols
-    ]
-    self._scroll_output("home")
-
-  def _screen_add_line_to_output_pad(self, row, txt, color_segments=None):
-    """Render a line in screen output pad.
+  def _screen_add_line_to_output_pad(self, pad, row, txt, color_segments=None):
+    """Render a line in a text pad.
 
     Assumes: segments in color_segments are sorted in ascending order of the
     beginning index.
@@ -577,6 +700,7 @@ class CursesUI(object):
     default color.
 
     Args:
+      pad: The text pad to render the line in.
       row: Row index, as an int.
       txt: The text to be displayed on the specified row, as a str.
       color_segments: A list of 3-tuples. Each tuple represents the beginning
@@ -588,10 +712,8 @@ class CursesUI(object):
       TypeError: If color_segments is not of type list.
     """
 
-    default_color_pair = self._color_pairs["white"]
-
     if not color_segments:
-      self._output_pad.addstr(row, 0, txt, default_color_pair)
+      pad.addstr(row, 0, txt, self._default_color_pair)
       return
 
     if not isinstance(color_segments, list):
@@ -605,37 +727,37 @@ class CursesUI(object):
       pass
     else:
       all_segments.append((0, color_segments[0][0]))
-      all_color_pairs.append(default_color_pair)
+      all_color_pairs.append(self._default_color_pair)
 
     for (curr_start, curr_end, curr_color), (next_start, _, _) in zip(
         color_segments, color_segments[1:] + [(len(txt), None, None)]):
       all_segments.append((curr_start, curr_end))
 
-      # TODO(cais): Deal with the case in which the color pair is unavailable.
-      all_color_pairs.append(self._color_pairs[curr_color])
+      all_color_pairs.append(
+          self._color_pairs.get(curr_color, self._default_color_pair))
 
       if curr_end < next_start:
         # Fill in the gap with the default color.
         all_segments.append((curr_end, next_start))
-        all_color_pairs.append(default_color_pair)
+        all_color_pairs.append(self._default_color_pair)
 
     # Finally, draw all the segments.
     for segment, color_pair in zip(all_segments, all_color_pairs):
-      self._output_pad.addstr(row, segment[0], txt[segment[0]:segment[1]],
-                              color_pair)
+      pad.addstr(row, segment[0], txt[segment[0]:segment[1]], color_pair)
 
-  def _screen_scroll_output_pad(self):
-    self._output_pad.refresh(self._output_pad_row, 0,
-                             self._output_pad_scr_loc[0],
-                             self._output_pad_scr_loc[1],
-                             self._output_pad_scr_loc[2],
-                             self._output_pad_scr_loc[3])
+  def _screen_scroll_output_pad(self, pad, viewport_top, viewport_left,
+                                screen_location_top, screen_location_left,
+                                screen_location_bottom, screen_location_right):
+    pad.refresh(viewport_top, viewport_left, screen_location_top,
+                screen_location_left, screen_location_bottom,
+                screen_location_right)
 
   def _scroll_output(self, direction):
     """Scroll the output pad.
 
     Args:
-      direction: _SCROLL_UP, _SCROLL_DOWN, _SCROLL_HOME or _SCROLL_END
+      direction: _SCROLL_REFRESH, _SCROLL_UP, _SCROLL_DOWN, _SCROLL_HOME or
+        _SCROLL_END
 
     Raises:
       ValueError: On invalid scroll direction.
@@ -645,14 +767,16 @@ class CursesUI(object):
       # No output pad is present. Do nothing.
       return
 
-    if direction == self._SCROLL_UP:
+    if direction == self._SCROLL_REFRESH:
+      pass
+    elif direction == self._SCROLL_UP:
       # Scroll up
       if self._output_pad_row - 1 >= 0:
         self._output_pad_row -= 1
     elif direction == self._SCROLL_DOWN:
       # Scroll down
       if self._output_pad_row + 1 < (
-          self._output_pad_height - self._output_pad_scr_height):
+          self._output_pad_height - self._output_pad_screen_height):
         self._output_pad_row += 1
     elif direction == self._SCROLL_HOME:
       # Scroll to top
@@ -660,18 +784,22 @@ class CursesUI(object):
     elif direction == self._SCROLL_END:
       # Scroll to bottom
       self._output_pad_row = (
-          self._output_pad_height - self._output_pad_scr_height - 1)
+          self._output_pad_height - self._output_pad_screen_height - 1)
     else:
       raise ValueError("Unsupported scroll mode: %s" % direction)
 
     # Actually scroll the output pad: refresh with new location.
-    self._screen_scroll_output_pad()
+    self._screen_scroll_output_pad(self._output_pad, self._output_pad_row, 0,
+                                   self._output_pad_screen_location.top,
+                                   self._output_pad_screen_location.left,
+                                   self._output_pad_screen_location.bottom,
+                                   self._output_pad_screen_location.right)
 
-    if self._output_pad_height > self._output_pad_scr_height + 1:
+    if self._output_pad_height > self._output_pad_screen_height + 1:
       # Display information about the scrolling of tall screen output.
       self._scroll_info = "--- Scroll: %.2f%% " % (100.0 * (
           float(self._output_pad_row) /
-          (self._output_pad_height - self._output_pad_scr_height - 1)))
+          (self._output_pad_height - self._output_pad_screen_height - 1)))
       if len(self._scroll_info) < self._max_x:
         self._scroll_info += "-" * (self._max_x - len(self._scroll_info))
       self._screen_draw_text_line(
@@ -681,3 +809,95 @@ class CursesUI(object):
       self._scroll_info = "-" * self._max_x
       self._screen_draw_text_line(
           self._output_scroll_row, self._scroll_info, color="green")
+
+  def _tab_complete(self, command_str):
+    """Perform tab completion.
+
+    Obtains tab completion candidates.
+    If there are no candidates, return command_str and take no other actions.
+    If there are candidates, display the candidates on screen and return
+    command_str + (common prefix of the candidates).
+
+    Args:
+      command_str: (str) The str in the command input textbox when Tab key is
+        hit.
+
+    Returns:
+      (str) Completed string. Could be the same as command_str if no completion
+      candidate is available. If candidate(s) are available, return command_str
+      appended by the common prefix of the candidates.
+    """
+
+    command_str = command_str.lstrip()
+
+    if not command_str:
+      # Empty (top-level) context.
+      context = ""
+      prefix = ""
+      items = []
+    else:
+      items = command_str.split(" ")
+      if len(items) == 1:
+        # Single word: top-level context.
+        context = ""
+        prefix = items[0]
+      else:
+        # Multiple words.
+        context = items[0]
+        prefix = items[-1]
+
+    candidates, common_prefix = self._tab_completion_registry.get_completions(
+        context, prefix)
+
+    if candidates and len(candidates) > 1:
+      self._display_candidates(candidates)
+    else:
+      # In the case of len(candidates) == 1, the single completion will be
+      # entered to the textbox automatically. So there is no need to show any
+      # candidates.
+      self._display_candidates([])
+
+    if common_prefix:
+      # Common prefix is not None and non-empty. The completed string will
+      # incorporate the common prefix.
+      return " ".join(items[:-1] + [common_prefix])
+    else:
+      return " ".join(items)
+
+  def _display_candidates(self, candidates):
+    """Show candidates (e.g., tab-completion candidates) on multiple lines.
+
+    Args:
+      candidates: (list of str) candidates.
+    """
+
+    if self._curr_unwrapped_output:
+      # Force refresh screen output.
+      self._scroll_output(self._SCROLL_REFRESH)
+
+    if not candidates:
+      return
+
+    candidates_prefix = "Candidates: "
+    candidates_line = candidates_prefix + " ".join(candidates)
+    candidates_output = debugger_cli_common.RichTextLines(
+        candidates_line,
+        font_attr_segs={
+            0: [(len(candidates_prefix), len(candidates_line), "yellow")]
+        })
+
+    candidates_output = debugger_cli_common.wrap_rich_text_lines(
+        candidates_output, self._max_x - 1)
+
+    # Calculate how many lines the candidate text should occupy. Limit it to
+    # a maximum value.
+    candidates_num_rows = min(
+        len(candidates_output.lines), self._candidates_max_lines)
+    self._candidates_top_row = (
+        self._candidates_bottom_row - candidates_num_rows + 1)
+
+    # Render the candidate text on screen.
+    pad, _, _ = self._display_lines(candidates_output, 0)
+    self._screen_scroll_output_pad(
+        pad, 0, 0, self._candidates_top_row, 0,
+        self._candidates_top_row + candidates_num_rows - 1, self._max_x - 1)

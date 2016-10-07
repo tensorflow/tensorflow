@@ -42,6 +42,10 @@ tf_custom_op_library(
         "kernels/zero_initializer_op.h",
         "ops/variable_ops.cc",
     ],
+    gpu_srcs = [
+        "kernels/zero_initializer_op_gpu.cu.cc",
+        "kernels/zero_initializer_op.h",
+    ],
 )
 
 tf_gen_op_libs(

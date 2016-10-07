@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 from six import iteritems
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.ops import array_ops as tf_array_ops
@@ -99,7 +100,10 @@ def flatten_tree(tree, leaves=None):
   """
   if leaves is None:
     leaves = []
-  if is_iterable(tree):
+  if isinstance(tree, dict):
+    for _, child in iteritems(tree):
+      flatten_tree(child, leaves)
+  elif is_iterable(tree):
     for child in tree:
       flatten_tree(child, leaves)
   else:
@@ -121,14 +125,23 @@ def transform_tree(tree, fn, iterable_type=tuple):
     The hierarchy of the output tree mimics the one of the input tree.
   """
   if is_iterable(tree):
-    if isinstance(tree, list):
-      return [transform_tree(child, fn) for child in tree]
+    if isinstance(tree, dict):
+      res = tree.__new__(type(tree))
+      res.__init__(
+          (k, transform_tree(child, fn)) for k, child in iteritems(tree))
+      return res
     elif isinstance(tree, tuple):
-      # this works for named tupled as well:
-      return tree.__new__(type(tree),
-                          (transform_tree(child, fn) for child in tree))
-    elif isinstance(tree, dict):
-      return {k: transform_tree(child, fn) for k, child in iteritems(tree)}
+      # NamedTuple?
+      if hasattr(tree, "_asdict"):
+        res = tree.__new__(type(tree), **transform_tree(tree._asdict(), fn))
+      else:
+        res = tree.__new__(type(tree),
+                           (transform_tree(child, fn) for child in tree))
+      return res
+    elif isinstance(tree, collections.Sequence):
+      res = tree.__new__(type(tree))
+      res.__init__(transform_tree(child, fn) for child in tree)
+      return res
     else:
       return iterable_type(transform_tree(child, fn) for child in tree)
   else:
@@ -430,8 +443,9 @@ def make_placeholder_from_tensor(t, scope=None):
   Raises:
     TypeError: if `t` is not `None` or a `tf.Tensor`.
   """
-  return tf_array_ops.placeholder(dtype=t.dtype, shape=t.get_shape(),
-                                  name=placeholder_name(t, scope=scope))
+  return tf_array_ops.placeholder(
+      dtype=t.dtype, shape=t.get_shape(), name=placeholder_name(
+          t, scope=scope))
 
 
 def make_placeholder_from_dtype_and_shape(dtype, shape=None, scope=None):
@@ -449,5 +463,5 @@ def make_placeholder_from_dtype_and_shape(dtype, shape=None, scope=None):
   Returns:
     A newly created tf.placeholder.
   """
-  return tf_array_ops.placeholder(dtype=dtype, shape=shape,
-                                  name=placeholder_name(scope=scope))
+  return tf_array_ops.placeholder(
+      dtype=dtype, shape=shape, name=placeholder_name(scope=scope))

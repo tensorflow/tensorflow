@@ -111,6 +111,8 @@ tensorflow/core/kernels/ctc_decoder_ops.cc
 tensorflow/core/kernels/conv_ops_using_gemm.cc
 tensorflow/core/kernels/conv_ops_fused.cc
 tensorflow/core/kernels/conv_ops.cc
+tensorflow/core/kernels/conv_grad_filter_ops.cc
+tensorflow/core/kernels/conv_grad_input_ops.cc
 tensorflow/core/kernels/conv_grad_ops.cc
 tensorflow/core/kernels/control_flow_ops.cc
 tensorflow/core/kernels/constant_op.cc
