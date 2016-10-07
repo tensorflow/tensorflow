@@ -353,7 +353,7 @@ export class ScatterPlotVisualizer3DLabels implements ScatterPlotVisualizer {
     this.dataSet = dataSet;
   }
 
-  onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {
+  onPickingRender(rc: RenderContext) {
     this.material.uniforms.texture.value = this.glyphTexture.texture;
     this.material.uniforms.picking.value = true;
 

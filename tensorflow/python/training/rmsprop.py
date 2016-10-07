@@ -54,11 +54,12 @@ class RMSPropOptimizer(optimizer.Optimizer):
                momentum=0.0,
                epsilon=1e-10,
                use_locking=False,
+               centered=False,
                name="RMSProp"):
     """Construct a new RMSProp optimizer.
 
-    Note that in dense implement of this algorithm, m_t and v_t will 
-    update even if g is zero, but in sparse implement, m_t and v_t 
+    Note that in dense implement of this algorithm, m_t and v_t will
+    update even if g is zero, but in sparse implement, m_t and v_t
     will not update in iterations g is zero.
 
     Args:
@@ -67,6 +68,10 @@ class RMSPropOptimizer(optimizer.Optimizer):
       momentum: A scalar tensor.
       epsilon: Small value to avoid zero denominator.
       use_locking: If True use locks for update operation.
+      centered: If True, gradients are normalized by the estimated variance of
+        the gradient; if False, by the uncentered second moment. Setting this to
+        True may helps with training, but is slightly more expensive in terms of
+        computation and memory.
       name: Optional name prefix for the operations created when applying
         gradients. Defaults to "RMSProp".
     """
@@ -75,6 +80,7 @@ class RMSPropOptimizer(optimizer.Optimizer):
     self._decay = decay
     self._momentum = momentum
     self._epsilon = epsilon
+    self._centered = centered
 
     # Tensors for learning rate and momentum.  Created in _prepare.
     self._learning_rate_tensor = None
@@ -84,8 +90,11 @@ class RMSPropOptimizer(optimizer.Optimizer):
 
   def _create_slots(self, var_list):
     for v in var_list:
-      val = constant_op.constant(1.0, dtype=v.dtype, shape=v.get_shape())
-      self._get_or_make_slot(v, val, "rms", self._name)
+      val_rms = constant_op.constant(1.0, dtype=v.dtype, shape=v.get_shape())
+      self._get_or_make_slot(v, val_rms, "rms", self._name)
+      if self._centered:
+        val_mg = constant_op.constant(0.0, dtype=v.dtype, shape=v.get_shape())
+        self._get_or_make_slot(v, val_mg, "mg", self._name)
       self._zeros_slot(v, "momentum", self._name)
 
   def _prepare(self):
@@ -100,23 +109,57 @@ class RMSPropOptimizer(optimizer.Optimizer):
   def _apply_dense(self, grad, var):
     rms = self.get_slot(var, "rms")
     mom = self.get_slot(var, "momentum")
-    return training_ops.apply_rms_prop(
-        var, rms, mom,
-        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
-        math_ops.cast(self._decay_tensor, var.dtype.base_dtype),
-        math_ops.cast(self._momentum_tensor, var.dtype.base_dtype),
-        math_ops.cast(self._epsilon_tensor, var.dtype.base_dtype),
-        grad, use_locking=self._use_locking).op
+    if self._centered:
+      mg = self.get_slot(var, "mg")
+      return training_ops.apply_centered_rms_prop(
+          var,
+          mg,
+          rms,
+          mom,
+          math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+          math_ops.cast(self._decay_tensor, var.dtype.base_dtype),
+          math_ops.cast(self._momentum_tensor, var.dtype.base_dtype),
+          math_ops.cast(self._epsilon_tensor, var.dtype.base_dtype),
+          grad,
+          use_locking=self._use_locking).op
+    else:
+      return training_ops.apply_rms_prop(
+          var,
+          rms,
+          mom,
+          math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+          math_ops.cast(self._decay_tensor, var.dtype.base_dtype),
+          math_ops.cast(self._momentum_tensor, var.dtype.base_dtype),
+          math_ops.cast(self._epsilon_tensor, var.dtype.base_dtype),
+          grad,
+          use_locking=self._use_locking).op
 
   def _apply_sparse(self, grad, var):
     rms = self.get_slot(var, "rms")
     mom = self.get_slot(var, "momentum")
-    return training_ops.sparse_apply_rms_prop(
-        var, rms, mom,
-        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
-        math_ops.cast(self._decay_tensor, var.dtype.base_dtype),
-        math_ops.cast(self._momentum_tensor, var.dtype.base_dtype),
-        math_ops.cast(self._epsilon_tensor, var.dtype.base_dtype),
-        grad.values,
-        grad.indices,
-        use_locking=self._use_locking)
+    if self._centered:
+      mg = self.get_slot(var, "mg")
+      return training_ops.sparse_apply_centered_rms_prop(
+          var,
+          mg,
+          rms,
+          mom,
+          math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+          math_ops.cast(self._decay_tensor, var.dtype.base_dtype),
+          math_ops.cast(self._momentum_tensor, var.dtype.base_dtype),
+          math_ops.cast(self._epsilon_tensor, var.dtype.base_dtype),
+          grad.values,
+          grad.indices,
+          use_locking=self._use_locking)
+    else:
+      return training_ops.sparse_apply_rms_prop(
+          var,
+          rms,
+          mom,
+          math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+          math_ops.cast(self._decay_tensor, var.dtype.base_dtype),
+          math_ops.cast(self._momentum_tensor, var.dtype.base_dtype),
+          math_ops.cast(self._epsilon_tensor, var.dtype.base_dtype),
+          grad.values,
+          grad.indices,
+          use_locking=self._use_locking)
