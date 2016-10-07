@@ -40,7 +40,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import coordinator
@@ -88,7 +87,6 @@ def _make_saver(graph, keep_checkpoint_max=5):
 
 def _restore_from_checkpoint(session, graph, checkpoint_path, saver=None):
   logging.info('Loading model from checkpoint: %s.', checkpoint_path)
-  assert gfile.Glob(checkpoint_path)
   saver = saver or _make_saver(graph)
   if saver:
     saver.restore(session, checkpoint_path)

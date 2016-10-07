@@ -25,7 +25,7 @@ from __future__ import division
 from __future__ import print_function
 ```
 
-* Use `six` to write compatible code (for example `six.range`).
+* Use `six` to write compatible code (for example `six.moves.range`).
 
 
 ## Bazel BUILD rules

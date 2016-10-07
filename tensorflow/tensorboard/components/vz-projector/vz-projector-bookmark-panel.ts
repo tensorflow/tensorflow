@@ -115,6 +115,7 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
           savedStates[i].isSelected = false;
           this.push('savedStates', savedStates[i]);
         }
+        this.loadSavedState(0);
       }.bind(this);
       fileReader.readAsText(file);
     }.bind(this));
@@ -135,7 +136,10 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
   _radioButtonHandler(evt: Event) {
     let index =
         +(evt.target as Element).parentElement.getAttribute('data-index');
+    this.loadSavedState(index);
+  }
 
+  loadSavedState(index: number) {
     for (let i = 0; i < this.savedStates.length; i++) {
       if (this.savedStates[i].isSelected) {
         this.savedStates[i].isSelected = false;
