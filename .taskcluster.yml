@@ -1,0 +1,148 @@
+# The version is always required
+version: 0
+# Top level metadata is always required
+metadata:
+  name: "TaskCluster TensorFlow build"
+  description: "Building CPU & GPU TensorFlow"
+  owner: "{{ event.head.user.email }}" # the user who sent the pr/push e-mail will be inserted here
+  source: "{{ event.head.repo.url }}"  # the repo where the pr came from will be inserted here
+tasks:
+  ## PULL REQUEST FOR GPU BUILDS
+  # What kind of environment will you need (docker, windows, etc...)
+  - provisionerId: "{{ taskcluster.docker.provisionerId }}"
+    # Be careful with spacing under the lines with dashes. Next line should begin under the word, not under the dash.
+    # Worker types correspond to particular machine types (aws size, etc...)
+    # worker types may be added by priveleged taskcluster users at https://tools.taskcluster.net/aws-provisioner
+    workerType: "deepspeech-worker"
+    extra:
+      github:
+        # This must be set in order access GitHub info from inside your environment
+        env: true
+        # Events that will trigger this task
+        events:
+          - pull_request.opened
+          - pull_request.synchronize
+          - pull_request.reopened
+    payload:
+      maxRunTime: 14400
+      image: "ubuntu:14.04"
+      command:
+        - "/bin/bash"
+        - "--login"
+        - "-c"
+        - "set -xe && apt-get -qq update && apt-get -qq -y install realpath git build-essential python-virtualenv python-dev libblas-dev liblapack-dev gfortran swig wget software-properties-common zip zlib1g-dev unzip && echo 'oracle-java8-installer shared/accepted-oracle-license-v1-1 select true' | debconf-set-selections && add-apt-repository --yes ppa:webupd8team/java && apt-get -qq update && DEBIAN_FRONTEND=noninteractive apt-get -qq -y --force-yes --no-install-recommends install oracle-java8-installer && adduser --system --home /home/build-user build-user && cd /home/build-user && echo '#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}} && ./setup.sh --cuda && ./build.sh --gpu' > run.sh && chmod +x run.sh && sudo -H -u build-user /bin/bash run.sh"
+      artifacts:
+        "public":
+          type: "directory"
+          path: "/tmp/artifacts/"
+          expires: "{{ '7 days' | $fromNow }}"
+    # Each task also requires explicit metadata
+    metadata:
+      name: "TaskCluster TensorFlow GPU"
+      description: "Building TensorFlow with GPU support"
+      owner: "{{ event.head.user.email }}"
+      source: "{{ event.head.repo.url }}"
+
+  ## PUSH TO MAIN REPO FOR GPU BUILDS
+  # What kind of environment will you need (docker, windows, etc...)
+  - provisionerId: "{{ taskcluster.docker.provisionerId }}"
+    # Be careful with spacing under the lines with dashes. Next line should begin under the word, not under the dash.
+    # Worker types correspond to particular machine types (aws size, etc...)
+    # worker types may be added by priveleged taskcluster users at https://tools.taskcluster.net/aws-provisioner
+    workerType: "deepspeech-worker"
+    extra:
+      github:
+        # This must be set in order access GitHub info from inside your environment
+        env: true
+        # Events that will trigger this task
+        events:
+          - push
+        branches:
+          - v1.0.0-warpctc
+    routes:
+      - "index.project.deepspeech.tensorflow.pip.{{ event.head.repo.branch }}.gpu"
+      - "index.project.deepspeech.tensorflow.pip.{{ event.head.repo.branch }}.{{ event.head.sha }}.gpu"
+      - "index.project.deepspeech.tensorflow.pip.gpu.{{ event.head.sha }}"
+    payload:
+      maxRunTime: 14400
+      image: "ubuntu:14.04"
+      command:
+        - "/bin/bash"
+        - "--login"
+        - "-c"
+        - "set -xe && apt-get -qq update && apt-get -qq -y install realpath git build-essential python-virtualenv python-dev libblas-dev liblapack-dev gfortran swig wget software-properties-common zip zlib1g-dev unzip && echo 'oracle-java8-installer shared/accepted-oracle-license-v1-1 select true' | debconf-set-selections && add-apt-repository --yes ppa:webupd8team/java && apt-get -qq update && DEBIAN_FRONTEND=noninteractive apt-get -qq -y --force-yes --no-install-recommends install oracle-java8-installer && adduser --system --home /home/build-user build-user && cd /home/build-user/ && echo '#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}} && ./setup.sh --cuda && ./build.sh --gpu' > run.sh && chmod +x run.sh && sudo -H -u build-user /bin/bash run.sh"
+      artifacts:
+        "public":
+          type: "directory"
+          path: "/tmp/artifacts/"
+          expires: "{{ '6 months' | $fromNow }}"
+    # Each task also requires explicit metadata
+    metadata:
+      name: "TaskCluster TensorFlow GPU"
+      description: "Building TensorFlow with GPU support"
+      owner: "{{ event.head.user.email }}"
+      source: "{{ event.head.repo.url }}"
+
+  ## PULL REQUEST FOR CPU BUILDS
+  - provisionerId: "{{ taskcluster.docker.provisionerId }}"
+    workerType: "deepspeech-worker"
+    extra:
+      github:
+        env: true
+        events:
+          - pull_request.opened
+          - pull_request.synchronize
+          - pull_request.reopened
+    payload:
+      maxRunTime: 7200
+      image: "ubuntu:14.04"
+      command:
+        - "/bin/bash"
+        - "--login"
+        - "-c"
+        - "set -xe && apt-get -qq update && apt-get -qq -y install realpath git build-essential python-virtualenv python-dev libblas-dev liblapack-dev gfortran swig wget software-properties-common zip zlib1g-dev unzip && echo 'oracle-java8-installer shared/accepted-oracle-license-v1-1 select true' | debconf-set-selections && add-apt-repository --yes ppa:webupd8team/java && apt-get -qq update && DEBIAN_FRONTEND=noninteractive apt-get -qq -y --force-yes --no-install-recommends install oracle-java8-installer && adduser --system --home /home/build-user build-user && cd /home/build-user/ && echo '#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}} && ./setup.sh && ./build.sh' > run.sh && chmod +x run.sh && sudo -H -u build-user /bin/bash run.sh"
+      artifacts:
+        "public":
+          type: "directory"
+          path: "/tmp/artifacts/"
+          expires: "{{ '7 days' | $fromNow }}"
+    # Each task also requires explicit metadata
+    metadata:
+      name: "TaskCluster TensorFlow CPU only"
+      description: "Building TensorFlow with CPU only support"
+      owner: "{{ event.head.user.email }}"
+      source: "{{ event.head.repo.url }}"
+
+  ## PUSH TO MAIN REPO FOR CPU BUILDS
+  - provisionerId: "{{ taskcluster.docker.provisionerId }}"
+    workerType: "deepspeech-worker"
+    extra:
+      github:
+        env: true
+        events:
+          - push
+        branches:
+          - v1.0.0-warpctc
+    routes:
+      - "index.project.deepspeech.tensorflow.pip.{{ event.head.repo.branch }}.cpu"
+      - "index.project.deepspeech.tensorflow.pip.{{ event.head.repo.branch }}.{{ event.head.sha }}.cpu"
+      - "index.project.deepspeech.tensorflow.pip.cpu.{{ event.head.sha }}"
+    payload:
+      maxRunTime: 7200
+      image: "ubuntu:14.04"
+      command:
+        - "/bin/bash"
+        - "--login"
+        - "-c"
+        - "set -xe && apt-get -qq update && apt-get -qq -y install realpath git build-essential python-virtualenv python-dev libblas-dev liblapack-dev gfortran swig wget software-properties-common zip zlib1g-dev unzip && echo 'oracle-java8-installer shared/accepted-oracle-license-v1-1 select true' | debconf-set-selections && add-apt-repository --yes ppa:webupd8team/java && apt-get -qq update && DEBIAN_FRONTEND=noninteractive apt-get -qq -y --force-yes --no-install-recommends install oracle-java8-installer && adduser --system --home /home/build-user build-user && cd /home/build-user/ && echo '#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}} && ./setup.sh && ./build.sh' > run.sh && chmod +x run.sh && sudo -H -u build-user /bin/bash run.sh"
+      artifacts:
+        "public":
+          type: "directory"
+          path: "/tmp/artifacts/"
+          expires: "{{ '6 months' | $fromNow }}"
+    # Each task also requires explicit metadata
+    metadata:
+      name: "TaskCluster TensorFlow CPU only"
+      description: "Building TensorFlow with CPU only support"
+      owner: "{{ event.head.user.email }}"
+      source: "{{ event.head.repo.url }}"
