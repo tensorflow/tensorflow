@@ -31,6 +31,16 @@ namespace tensorflow {
 struct SavedModelBundle {
   std::unique_ptr<Session> session;
   MetaGraphDef meta_graph_def;
+
+  // A TensorFlow Session does not Close itself on destruction. To avoid
+  // resource leaks, we explicitly call Close on Sessions that we create.
+  ~SavedModelBundle() {
+    if (session) {
+      session->Close();
+    }
+  }
+
+  SavedModelBundle() = default;
 };
 
 // Loads a SavedModel from the specified export directory. The meta graph def to

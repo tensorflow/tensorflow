@@ -55,6 +55,24 @@ class LoaderTest : public ::testing::Test {
   }
 };
 
+// Test for resource leaks related to TensorFlow session closing requirements
+// when loading and unloading large numbers of SavedModelBundles.
+// TODO(sukritiramesh): Increase run iterations and move outside of the test
+// suite.
+TEST_F(LoaderTest, ResourceLeakTest) {
+  SavedModelBundle bundle;
+  SessionOptions session_options;
+  RunOptions run_options;
+
+  const string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPb);
+  for (int i = 0; i < 100; ++i) {
+    TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
+                                {kSavedModelTagServe}, &bundle));
+    CheckSavedModelBundle(bundle);
+  }
+}
+
 TEST_F(LoaderTest, TagMatch) {
   SavedModelBundle bundle;
   SessionOptions session_options;
