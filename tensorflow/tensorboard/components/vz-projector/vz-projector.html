@@ -81,6 +81,7 @@ limitations under the License.
 #left-pane {
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   min-width: 312px;
   width: 312px;
   border-right: 1px solid rgba(0, 0, 0, 0.1);
@@ -340,6 +341,11 @@ limitations under the License.
 #help3dDialog h3:first-child {
   margin-top: 0;
 }
+
+#data-panel {
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  overflow-y: auto;
+}
 </style>
 <div id="wrapper-notify-msg">
   <div id="notify-msgs"></div>
@@ -348,6 +354,7 @@ limitations under the License.
 <div id="container">
   <div id="left-pane" class="ink-panel">
     <vz-projector-projections-panel id="projections-panel"></vz-projector-projections-panel>
+    <vz-projector-data-panel id="data-panel"></vz-projector-data-panel>
   </div>
   <div id="main" class="ink-panel">
     <div class="ink-panel-menubar">
@@ -396,23 +403,9 @@ limitations under the License.
     </div>
   </div>
   <div id="right-pane" class="ink-panel">
-    <div class="ink-panel-header">
-      <div class="ink-tab-group">
-        <div data-tab="data" class="active ink-tab" title="Setup data">Data</div>
-        <div data-tab="inspector" class="ink-tab" title="Inspect data">Inspector</div>
-      </div>
-    </div>
-
-    <!-- Inspector UI controls -->
-    <div data-panel="inspector" class="ink-panel-content">
+    <div class="ink-panel-content active">
       <vz-projector-inspector-panel id="inspector-panel"></vz-projector-inspector-panel>
     </div>
-
-    <!-- Data UI controls -->
-    <div data-panel="data" class="active ink-panel-content">
-      <vz-projector-data-panel id="data-panel"></vz-projector-data-panel>
-    </div>
-
     <div id="bookmark-panel-container">
       <vz-projector-bookmark-panel id="bookmark-panel"></vz-projector-bookmark-panel>
     </div>

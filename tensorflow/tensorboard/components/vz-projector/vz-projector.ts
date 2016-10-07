@@ -442,18 +442,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.dom.select('span.dim').text(this.currentDataSet.dim[1]);
 
     this.projectionsPanel.dataSetUpdated(this.currentDataSet, this.dim);
-    this.showTab('pca');
   }
 
   private setupUIControls() {
-    let self = this;
-
-    // Global tabs
-    this.dom.selectAll('.ink-tab').on('click', function() {
-      let id = this.getAttribute('data-tab');
-      self.showTab(id);
-    });
-
     // View controls
     this.querySelector('#reset-zoom').addEventListener('click', () => {
       this.scatterPlot.resetZoom();
@@ -577,25 +568,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
         .style('display', totalNumPoints > 0 ? null : 'none');
     this.inspectorPanel.updateInspectorPane(
         selectedPointIndices, neighborsOfFirstPoint);
-    if (neighborsOfFirstPoint.length > 0) {
-      this.showTab('inspector');
-    }
     this.updateScatterPlot();
-  }
-
-  public showTab(id: string) {
-    let tab = this.dom.select('.ink-tab[data-tab="' + id + '"]');
-    let pane =
-        d3.select((tab.node() as HTMLElement).parentNode.parentNode.parentNode);
-    pane.selectAll('.ink-tab').classed('active', false);
-    tab.classed('active', true);
-    pane.selectAll('.ink-panel-content').classed('active', false);
-    pane.select('.ink-panel-content[data-panel="' + id + '"]')
-        .classed('active', true);
-
-    if (['pca', 'tsne', 'custom'].indexOf(id) !== -1) {
-      this.projectionsPanel.showProjectionTab(id as Projection);
-    }
   }
 
   setProjection(
@@ -652,7 +625,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     if (state.selectedProjection === 'tsne') {
       this.currentDataSet.hasTSNERun = true;
     }
-    this.showTab(state.selectedProjection);
+    this.projectionsPanel.showTab(state.selectedProjection);
 
     this.notifySelectionChanged(state.selectedPoints);
 

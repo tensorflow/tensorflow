@@ -136,8 +136,7 @@ limitations under the License.
   font-weight: 500;
   font-size: 14px;
   text-transform: uppercase;
-  margin-top: 20px;
-  margin-bottom: 5px;
+  margin: 0;
 }
 
 .ink-panel-header h3 {
@@ -240,9 +239,22 @@ paper-icon-button[active] {
 </style>
 <div class="ink-panel-header">
   <div class="ink-tab-group">
-    <div data-tab="tsne" class="ink-tab projection-tab" title="t-distributed stochastic neighbor embedding">t-SNE</div>
-    <div data-tab="pca" class="ink-tab projection-tab" title="Principal component analysis">PCA</div>
-    <div data-tab="custom" class="ink-tab projection-tab" title="Linear projection of two custom vectors">Custom</div>
+
+    <div data-tab="tsne" id="tsne-tab" class="ink-tab projection-tab">t-SNE</div>
+    <paper-tooltip for="tsne-tab" position="bottom" animation-delay="0" fit-to-visible-bounds>
+      t-distributed stochastic neighbor embedding
+    </paper-tooltip>
+
+    <div data-tab="pca" id="pca-tab" class="ink-tab projection-tab">PCA</div>
+    <paper-tooltip for="pca-tab" position="bottom" animation-delay="0" fit-to-visible-bounds>
+      Principal component analysis
+    </paper-tooltip>
+
+    <div data-tab="custom" id="custom-tab" class="ink-tab projection-tab" title="Linear projection of two custom vectors">Custom</div>
+    <paper-tooltip for="custom-tab" position="bottom" animation-delay="0" fit-to-visible-bounds>
+      Search for two vectors upon which to project all points.
+    </paper-tooltip>
+
   </div>
 </div>
 <!-- TSNE Controls -->
@@ -342,11 +354,6 @@ paper-icon-button[active] {
 </div>
 <!-- Custom Controls -->
 <div data-panel="custom" class="ink-panel-content">
-  <p>
-    Search for two vectors upon which to project all points. Click the
-    <code style="padding: 2px;">.*</code> button to enable
-    regex mode. The search is case insensitive.
-  <p>
   <paper-dropdown-menu style="width: 100%" no-animations label="Search by">
     <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedSearchByMetadataOption}}">
       <template is="dom-repeat" items="[[searchByMetadataOptions]]">
@@ -356,12 +363,10 @@ paper-icon-button[active] {
       </template>
     </paper-listbox>
   </paper-dropdown-menu>
-  <h3>Horizontal</h3>
   <div class="two-columns">
     <vz-projector-input id="xLeft" label="Left"></vz-projector-input>
     <vz-projector-input id="xRight" label="Right"></vz-projector-input>
   </div>
-  <h3>Vertical</h3>
   <div class="two-columns">
     <vz-projector-input id="yUp" label="Up"></vz-projector-input>
     <vz-projector-input id="yDown" label="Down"></vz-projector-input>
