@@ -211,7 +211,7 @@ void DirectSession::SchedClosure(thread::ThreadPool* pool,
   // safe given the reasoning above.
   c();
 #else
-  pool->Schedule(c);
+  pool->Schedule(std::move(c));
 #endif  // __ANDROID__
 }
 
@@ -402,7 +402,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   args.rendezvous = run_state.rendez;
   args.cancellation_manager = cancellation_manager_;
   args.runner = [this, pool](Executor::Args::Closure c) {
-    SchedClosure(pool, c);
+    SchedClosure(pool, std::move(c));
   };
   args.session_state = &session_state_;
   args.tensor_store = &run_state.tensor_store;
@@ -509,9 +509,9 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   ExecutorsAndKeys* executors_and_keys;
   RunStateArgs run_state_args;
   run_state_args.is_partial_run = true;
-  Status s = GetOrCreateExecutors(pool, input_names, output_names, target_nodes,
-                                  &executors_and_keys, &run_state_args);
-  TF_RETURN_IF_ERROR(s);
+  TF_RETURN_IF_ERROR(GetOrCreateExecutors(pool, input_names, output_names,
+                                          target_nodes, &executors_and_keys,
+                                          &run_state_args));
 
   // Create the run state and save it for future PRun calls.
   RunState* run_state = new RunState(input_names, output_names);
@@ -543,7 +543,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   args.rendezvous = run_state->rendez;
   args.cancellation_manager = cancellation_manager_;
   args.runner = [this, pool](Executor::Args::Closure c) {
-    SchedClosure(pool, c);
+    SchedClosure(pool, std::move(c));
   };
   args.session_state = &session_state_;
   args.tensor_store = &run_state->tensor_store;
@@ -801,10 +801,10 @@ Status DirectSession::GetOrCreateExecutors(
   // We could consider some other signature instead of sorting that
   // preserves the same property to avoid the sort in the future.
   std::vector<string> inputs_sorted(inputs.begin(), inputs.end());
-  std::vector<string> outputs_sorted(outputs.begin(), outputs.end());
-  std::vector<string> tn_sorted(target_nodes.begin(), target_nodes.end());
   std::sort(inputs_sorted.begin(), inputs_sorted.end());
+  std::vector<string> outputs_sorted(outputs.begin(), outputs.end());
   std::sort(outputs_sorted.begin(), outputs_sorted.end());
+  std::vector<string> tn_sorted(target_nodes.begin(), target_nodes.end());
   std::sort(tn_sorted.begin(), tn_sorted.end());
 
   const string key = strings::StrCat(str_util::Join(inputs_sorted, ","), "->",
