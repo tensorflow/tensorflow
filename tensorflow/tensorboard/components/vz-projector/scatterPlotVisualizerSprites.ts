@@ -50,17 +50,17 @@ const VERTEX_SHADER = `
 
     // Transform current vertex by modelViewMatrix (model world position and
     // camera world position matrix).
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    vec4 cameraSpacePos = modelViewMatrix * vec4(position, 1.0);
 
     // Project vertex in camera-space to screen coordinates using the camera's
     // projection matrix.
-    gl_Position = projectionMatrix * mvPosition;
+    gl_Position = projectionMatrix * cameraSpacePos;
 
     // Create size attenuation (if we're in 3D mode) by making the size of
     // each point inversly proportional to its distance to the camera.
     float outputPointSize = pointSize;
     if (sizeAttenuation) {
-      outputPointSize = -pointSize / mvPosition.z;
+      outputPointSize = -pointSize / cameraSpacePos.z;
     }
 
     gl_PointSize =
