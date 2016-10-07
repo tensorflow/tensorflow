@@ -119,6 +119,7 @@ class EinsumTest(tf.test.TestCase):
     'ijk,jklm->il',
     'ij,jk,kl->il',
     'ijk->i',
+    'ijk->kji',
   ]
 
   # where axes are not in order
@@ -126,6 +127,8 @@ class EinsumTest(tf.test.TestCase):
     'ji,kj->ik',
     'ikl,kji->kl',
     'klj,lki->ij',
+    'ijk,ilj->kli',
+    'kij,mkb->ijmb',
   ]
 
   # more than two arguments
@@ -133,6 +136,7 @@ class EinsumTest(tf.test.TestCase):
     'ijk,ijl,ikl->i',
     'i,ijk,j->k',
     'ij,ij,jk,kl->il',
+    'ij,kj,il,jm->ml',
   ]
 
   invalid_cases = [

@@ -94,7 +94,9 @@ def einsum(axes, *inputs):
   """
   A generalized contraction between tensors of arbitrary dimension.
 
-  Like numpy.einsum.
+  Like numpy.einsum, but does not support:
+  -- ellipses (subscripts like 'ij...,jk...->ik...')
+  -- subscripts that reduce to scalars
   """
 
   match = re.match('([a-z,]+)->([a-z]+)', axes)
@@ -105,12 +107,22 @@ def einsum(axes, *inputs):
   idx_in = match.group(1).split(',')
   idx_out = match.group(2)
   idx_all = set(''.join(idx_in))
-
+  indices = str(idx_all)
 
   assert len(idx_in) == len(inputs), \
     "Expected %d inputs but only got %d" % (len(idx_in), len(inputs))
 
-  # transpose inputs so axes are in alphabetical order
+  missing_idx = set(idx_out).difference(idx_all)
+  assert not missing_idx, \
+    "Unknown ouput axes: %s" % missing_idx
+
+  def axis_cmp(ax1, ax2):
+    i1, i2 = idx_out.find(ax1), idx_out.find(ax2)
+    if i1 == i2:
+      return indices.find(ax1) - indices.find(ax2)
+    return i1 - i2
+
+  # transpose inputs so axes are in order
   for i, (input_, axes_) in enumerate(zip(inputs, idx_in)):
     assert input_.get_shape().ndims == len(axes_), \
       "Input %d with axes %s has incorrect" \
@@ -118,16 +130,12 @@ def einsum(axes, *inputs):
         i, axes_, len(axes_), input_.get_shape().ndims
       )
 
-    sorted_idx = sorted(axes_)
+    sorted_idx = sorted(axes_, cmp=axis_cmp)
 
     if list(axes_) != sorted_idx:
       permuted = [axes_.find(ax) for ax in sorted_idx]
       inputs[i] = array_ops.transpose(input_, permuted)
       idx_in[i] = sorted_idx
-
-  missing_idx = set(idx_out).difference(idx_all)
-  assert not missing_idx, \
-    "Unknown ouput axes: %s" % missing_idx
 
   reduction_idx = []
   shapes = [[dim if dim else -1
@@ -135,7 +143,7 @@ def einsum(axes, *inputs):
             for tensor in inputs]
 
   # validate shapes for broadcasting
-  for j, ax in enumerate(sorted(idx_all)):
+  for j, ax in enumerate(sorted(idx_all, cmp=axis_cmp)):
     dims = []
     for i, idx in enumerate(idx_in):
       if ax not in idx:
