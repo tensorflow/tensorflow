@@ -35,6 +35,89 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
 
+def _embeddings_from_arguments(column, args, weight_collections, trainable):
+  """Returns embeddings for a column based on the computed arguments.
+
+  Args:
+   column: the column name.
+   args: the _DeepEmbeddingLookupArguments for this column.
+   weight_collections: collections to store weights in.
+   trainable: whether these embeddings should be trainable.
+
+  Returns:
+   the embeddings.
+
+  Raises:
+   ValueError: if not possible to create.
+  """
+  if args.hashed:
+    embeddings = contrib_variables.model_variable(
+        name='weights',
+        shape=[args.vocab_size],
+        dtype=dtypes.float32,
+        initializer=args.initializer,
+        trainable=trainable,
+        collections=weight_collections)
+
+    return embedding_ops.hashed_embedding_lookup_sparse(
+        embeddings, args.input_tensor, args.dimension,
+        combiner=args.combiner, name='lookup')
+
+  if args.shared_embedding_name is not None:
+    shared_embedding_collection_name = (
+        'SHARED_EMBEDDING_COLLECTION_' + args.shared_embedding_name.upper())
+    graph = ops.get_default_graph()
+    shared_embedding_collection = (
+        graph.get_collection_ref(shared_embedding_collection_name))
+    shape = [args.vocab_size, args.dimension]
+    if shared_embedding_collection:
+      if len(shared_embedding_collection) > 1:
+        raise ValueError('Collection %s can only contain one '
+                         '(partitioned) variable.'
+                         % shared_embedding_collection_name)
+      else:
+        embeddings = shared_embedding_collection[0]
+        if embeddings.get_shape() != shape:
+          raise ValueError('The embedding variable with name {} already '
+                           'exists, but its shape does not match required '
+                           'embedding shape  here. Please make sure to use '
+                           'different shared_embedding_name for different '
+                           'shared embeddings.'.format(
+                               args.shared_embedding_name))
+    else:
+      embeddings = contrib_variables.model_variable(
+          name=args.shared_embedding_name,
+          shape=shape,
+          dtype=dtypes.float32,
+          initializer=args.initializer,
+          trainable=trainable,
+          collections=weight_collections)
+      graph.add_to_collection(shared_embedding_collection_name, embeddings)
+  else:
+    embeddings = contrib_variables.model_variable(
+        name='weights',
+        shape=[args.vocab_size, args.dimension],
+        dtype=dtypes.float32,
+        initializer=args.initializer,
+        trainable=trainable,
+        collections=weight_collections)
+
+  if isinstance(embeddings, variables.Variable):
+    embeddings = [embeddings]
+  else:
+    embeddings = embeddings._get_variable_list()  # pylint: disable=protected-access
+  # pylint: disable=protected-access
+  _maybe_restore_from_checkpoint(
+      column._checkpoint_path(), embeddings)
+  return embedding_ops.safe_embedding_lookup_sparse(
+      embeddings,
+      args.input_tensor,
+      sparse_weights=args.weight_tensor,
+      default_id=0,
+      combiner=args.combiner,
+      name=column.name + 'weights')
+
+
 def input_from_feature_columns(columns_to_tensors,
                                feature_columns,
                                weight_collections=None,
@@ -105,14 +188,24 @@ def input_from_feature_columns(columns_to_tensors,
       with variable_scope.variable_scope(None,
                                          default_name=column.name,
                                          values=columns_to_tensors.values()):
+        transformed_tensor = transformer.transform(column)
         try:
-          transformed_tensor = transformer.transform(column)
           # pylint: disable=protected-access
-          output_tensors.append(column._to_dnn_input_layer(
-              transformed_tensor, weight_collections, trainable))
-        except ValueError as e:
-          raise ValueError('Error creating input layer for column: {}.\n'
-                           '{}'.format(column.name, e))
+          arguments = column._deep_embedding_lookup_arguments(
+              transformed_tensor)
+          output_tensors.append(_embeddings_from_arguments(column,
+                                                           arguments,
+                                                           weight_collections,
+                                                           trainable))
+
+        except NotImplementedError as ee:
+          try:
+            # pylint: disable=protected-access
+            output_tensors.append(column._to_dnn_input_layer(
+                transformed_tensor, weight_collections, trainable))
+          except ValueError as e:
+            raise ValueError('Error creating input layer for column: {}.\n'
+                             '{}, {}'.format(column.name, e, ee))
     return array_ops.concat(1, output_tensors)
 
 
@@ -264,7 +357,7 @@ def joint_weighted_sum_from_feature_columns(columns_to_tensors,
       transformed_tensor = transformer.transform(column)
       try:
         embedding_lookup_arguments.append(
-            column._to_embedding_lookup_arguments(transformed_tensor))   # pylint: disable=protected-access
+            column._wide_embedding_lookup_arguments(transformed_tensor))   # pylint: disable=protected-access
       except NotImplementedError:
         raise NotImplementedError('Real-valued columns are not supported. '
                                   'Use weighted_sum_from_feature_columns '
@@ -280,7 +373,7 @@ def joint_weighted_sum_from_feature_columns(columns_to_tensors,
         'bias_weight',
         shape=[num_outputs],
         initializer=init_ops.zeros_initializer,
-        collections=fc._add_variable_collection(weight_collections))  # pylint: disable=protected-access
+        collections=_add_variable_collection(weight_collections))
     _log_variable(bias)
     predictions = nn_ops.bias_add(predictions_no_bias, bias)
 
@@ -358,7 +451,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
     for column in sorted(set(feature_columns), key=lambda x: x.key):
       transformed_tensor = transformer.transform(column)
       try:
-        embedding_lookup_arguments = column._to_embedding_lookup_arguments(  # pylint: disable=protected-access
+        embedding_lookup_arguments = column._wide_embedding_lookup_arguments(  # pylint: disable=protected-access
             transformed_tensor)
         variable, predictions = _create_embedding_lookup(
             column,
@@ -392,7 +485,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
         'bias_weight',
         shape=[num_outputs],
         initializer=init_ops.zeros_initializer,
-        collections=fc._add_variable_collection(weight_collections))  # pylint: disable=protected-access
+        collections=_add_variable_collection(weight_collections))
     _log_variable(bias)
     predictions = nn_ops.bias_add(predictions_no_bias, bias)
 
@@ -588,3 +681,10 @@ class _Transformer(object):
           feature_column.name))
 
     return self._columns_to_tensors[feature_column]
+
+
+def _add_variable_collection(weight_collections):
+  if weight_collections:
+    weight_collections = list(
+        set(list(weight_collections) + [ops.GraphKeys.VARIABLES]))
+  return weight_collections

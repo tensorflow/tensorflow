@@ -75,10 +75,7 @@ import abc
 import collections
 import math
 
-from tensorflow.contrib.framework.python.framework import checkpoint_utils
 from tensorflow.contrib.framework.python.framework import deprecation
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
-from tensorflow.contrib.layers.python.layers import embedding_ops
 from tensorflow.contrib.layers.python.ops import bucketization_op
 from tensorflow.contrib.layers.python.ops import sparse_feature_cross_op
 from tensorflow.contrib.lookup import lookup_ops as contrib_lookup_ops
@@ -91,17 +88,33 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
 
-class _EmbeddingLookupArguments(
-    collections.namedtuple("_EmbeddingLookupArguments",
+class _LinearEmbeddingLookupArguments(
+    collections.namedtuple("_LinearEmbeddingLookupArguments",
                            ["input_tensor",
                             "weight_tensor",
                             "vocab_size",
                             "initializer",
                             "combiner"])):
+  """Represents the information needed from a column for embedding lookup.
+
+  Used to to compute DNN inputs and weighted sum.
+  """
+  pass
+
+
+class _DeepEmbeddingLookupArguments(
+    collections.namedtuple("_DeepEmbeddingLookupArguments",
+                           ["input_tensor",
+                            "weight_tensor",
+                            "vocab_size",
+                            "initializer",
+                            "combiner",
+                            "dimension",
+                            "shared_embedding_name",
+                            "hashed"])):
   """Represents the information needed from a column for embedding lookup.
 
   Used to to compute DNN inputs and weighted sum.
@@ -169,10 +182,15 @@ class _FeatureColumn(object):
     """Returns a Tensor as an input to the first layer of neural network."""
     raise ValueError("Calling an abstract method.")
 
-  # It is expected that classes implement either to_embedding_lookup_arguments
+  def _deep_embedding_lookup_arguments(self, input_tensor):
+    """Returns arguments to embedding lookup to build an input layer."""
+    raise NotImplementedError(
+        "No deep embedding lookup arguments for column {}.".format(self))
+
+  # It is expected that classes implement either wide_embedding_lookup_arguments
   # or to_dense_tensor to be used in linear models.
   # pylint: disable=unused-argument
-  def _to_embedding_lookup_arguments(self, input_tensor):
+  def _wide_embedding_lookup_arguments(self, input_tensor):
     """Returns arguments to look up embeddings for this column."""
     raise NotImplementedError("Calling an abstract method.")
 
@@ -326,8 +344,8 @@ class _SparseColumn(_FeatureColumn,
         "Please use embedding_column or one_hot_column. column: {}".format(
             self))
 
-  def _to_embedding_lookup_arguments(self, input_tensor):
-    return _EmbeddingLookupArguments(
+  def _wide_embedding_lookup_arguments(self, input_tensor):
+    return _LinearEmbeddingLookupArguments(
         input_tensor=self.id_tensor(input_tensor),
         weight_tensor=self.weight_tensor(input_tensor),
         vocab_size=self.length,
@@ -593,8 +611,8 @@ class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
         "Please use embedding_column or one_hot_column. column: {}".format(
             self))
 
-  def _to_embedding_lookup_arguments(self, input_tensor):
-    return _EmbeddingLookupArguments(
+  def _wide_embedding_lookup_arguments(self, input_tensor):
+    return _LinearEmbeddingLookupArguments(
         input_tensor=self.id_tensor(input_tensor),
         weight_tensor=self.weight_tensor(input_tensor),
         vocab_size=self.length,
@@ -709,8 +727,8 @@ class _OneHotColumn(_FeatureColumn,
         math_ops.equal(array_ops.rank(dense_id_tensor), 2),
         ["Tensor should be of shape: [batch, max num multivalent values]"])
     with ops.control_dependencies([check_shape_op]):
-    # One hot must be float for tf.concat reasons since all other inputs to
-    # input_layer are float32.
+      # One hot must be float for tf.concat reasons since all other inputs to
+      # input_layer are float32.
       one_hot_id_tensor = array_ops.one_hot(
           dense_id_tensor, depth=self.length, on_value=1.0, off_value=0.0)
 
@@ -813,31 +831,16 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
       self.sparse_id_column.insert_transformed_feature(columns_to_tensors)
     columns_to_tensors[self] = columns_to_tensors[self.sparse_id_column]
 
-  def _to_dnn_input_layer(self,
-                          input_tensor,
-                          weight_collections=None,
-                          trainable=True):
-    is_shared_embedding = self.shared_embedding_name is not None
-    output, embedding_weights = _create_embedding_lookup(
+  def _deep_embedding_lookup_arguments(self, input_tensor):
+    return _DeepEmbeddingLookupArguments(
         input_tensor=self.sparse_id_column.id_tensor(input_tensor),
         weight_tensor=self.sparse_id_column.weight_tensor(input_tensor),
         vocab_size=self.length,
         dimension=self.dimension,
-        weight_collections=_add_variable_collection(weight_collections),
         initializer=self.initializer,
         combiner=self.combiner,
-        trainable=trainable,
-        name=self.shared_embedding_name,
-        is_shared_embedding=is_shared_embedding)
-
-    if self.ckpt_to_load_from is not None:
-      weights_to_restore = embedding_weights
-      if len(embedding_weights) == 1:
-        weights_to_restore = embedding_weights[0]
-      checkpoint_utils.init_from_checkpoint(
-          self.ckpt_to_load_from,
-          {self.tensor_name_in_ckpt: weights_to_restore})
-    return output
+        shared_embedding_name=self.shared_embedding_name,
+        hashed=False)
 
   def _checkpoint_path(self):
     if self.ckpt_to_load_from is not None:
@@ -845,7 +848,7 @@ class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
     return None
 
   # pylint: disable=unused-argument
-  def _to_embedding_lookup_arguments(self, input_tensor):
+  def _wide_embedding_lookup_arguments(self, input_tensor):
     raise ValueError("Column {} is not supported in linear models. "
                      "Please use sparse_column.".format(self))
 
@@ -1033,20 +1036,16 @@ class _HashedEmbeddingColumn(collections.namedtuple(
   def insert_transformed_feature(self, columns_to_tensors):
     columns_to_tensors[self] = columns_to_tensors[self.column_name]
 
-  def _to_dnn_input_layer(self,
-                          input_tensor,
-                          weight_collections=None,
-                          trainable=True):
-    embeddings = _create_embeddings(
-        shape=[self.size],
+  def _deep_embedding_lookup_arguments(self, input_tensor):
+    return _DeepEmbeddingLookupArguments(
+        input_tensor=input_tensor,
+        weight_tensor=None,
+        vocab_size=self.size,
         initializer=self.initializer,
-        dtype=dtypes.float32,
-        trainable=trainable,
-        weight_collections=_add_variable_collection(weight_collections))
-
-    return embedding_ops.hashed_embedding_lookup_sparse(
-        embeddings, input_tensor, self.dimension,
-        combiner=self.combiner, name="lookup")
+        combiner=self.combiner,
+        dimension=self.dimension,
+        shared_embedding_name=None,
+        hashed=True)
 
 
 def hashed_embedding_column(column_name,
@@ -1396,8 +1395,8 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
 
     return sparse_id_values
 
-  def _to_embedding_lookup_arguments(self, input_tensor):
-    return _EmbeddingLookupArguments(
+  def _wide_embedding_lookup_arguments(self, input_tensor):
+    return _LinearEmbeddingLookupArguments(
         input_tensor=self.to_sparse_tensor(input_tensor),
         weight_tensor=None,
         vocab_size=self.length * self.source_column.dimension,
@@ -1586,8 +1585,8 @@ class _CrossedColumn(_FeatureColumn,
       return self.ckpt_to_load_from, self.tensor_name_in_ckpt
     return None
 
-  def _to_embedding_lookup_arguments(self, input_tensor):
-    return _EmbeddingLookupArguments(
+  def _wide_embedding_lookup_arguments(self, input_tensor):
+    return _LinearEmbeddingLookupArguments(
         input_tensor=input_tensor,
         weight_tensor=None,
         vocab_size=self.length,
@@ -1854,181 +1853,3 @@ class _SparseIdLookupConfig(
     return super(_SparseIdLookupConfig, cls).__new__(cls, vocabulary_file, keys,
                                                      num_oov_buckets,
                                                      vocab_size, default_value)
-
-
-def _add_variable_collection(weight_collections):
-  if weight_collections:
-    weight_collections = list(
-        set(list(weight_collections) + [ops.GraphKeys.VARIABLES]))
-  return weight_collections
-
-
-def _create_embeddings(shape,
-                       dtype,
-                       initializer,
-                       trainable,
-                       weight_collections,
-                       name=None):
-  """Creates embedding variable.
-
-  If called within the scope of a partitioner, will partition the variable and
-  return a list of `tf.Variable`. If no partitioner is specified, returns a list
-  with just one variable.
-
-  Args:
-    shape: shape of the embeddding. Note this is not the shape of partitioned
-      variables.
-    dtype: type of the embedding. Also the shape of each partitioned variable.
-    initializer: A variable initializer function to be used in embedding
-      variable initialization.
-    trainable: If `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    weight_collections: List of graph collections to which embedding variables
-      are added.
-    name: A string. The name of the embedding variable.
-
-  Returns:
-    A list of `tf.Variable` containing the partitioned embeddings.
-
-  Raises:
-    ValueError: If initializer is None or not callable.
-  """
-  if name is None:
-    name = "weights"
-  if not initializer:
-    raise ValueError("initializer must be defined.")
-  if not callable(initializer):
-    raise ValueError("initializer must be callable.")
-  embeddings = contrib_variables.model_variable(
-      name=name,
-      shape=shape,
-      dtype=dtype,
-      initializer=initializer,
-      trainable=trainable,
-      collections=weight_collections)
-  if isinstance(embeddings, variables.Variable):
-    return [embeddings]
-  else:  # Else it should be of type `_PartitionedVariable`.
-    return embeddings._get_variable_list()  # pylint: disable=protected-access
-
-
-def _create_shared_embeddings(name, shape, dtype, initializer, trainable,
-                              weight_collections):
-  """Creates or reuse shared embedding variable.
-
-  If called within the scope of a partitioner, will partition the variable and
-  return a list of `tf.Variable`. If no partitioner is specified, returns a list
-  with just one variable.
-
-  Args:
-    name: A string specifying the name of the embedding variable.
-    shape: shape of the embeddding. Note this is not the shape of partitioned
-      variables.
-    dtype: type of the embedding. Also the shape of each partitioned variable.
-    initializer: A variable initializer function to be used in embedding
-      variable initialization.
-    trainable: If `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    weight_collections: List of graph collections to which embedding variables
-      are added.
-
-  Returns:
-    A list of `tf.Variable` containing the partitioned embeddings.
-
-  Raises:
-    ValueError: If initializer is None or not callable, or shape of existing
-      embedding does not match required shape.
-  """
-  if not initializer:
-    raise ValueError("initializer must be defined.")
-  if not callable(initializer):
-    raise ValueError("initializer must be callable.")
-
-  shared_embedding_collection_name = (
-      "SHARED_EMBEDDING_COLLECTION_" + name.upper())
-  graph = ops.get_default_graph()
-  shared_embedding_collection = (
-      graph.get_collection_ref(shared_embedding_collection_name))
-  if shared_embedding_collection:
-    if len(shared_embedding_collection) > 1:
-      raise ValueError("Collection %s can only contain one "
-                       "(partitioned) variable."
-                       % shared_embedding_collection_name)
-    else:
-      embeddings = shared_embedding_collection[0]
-      if embeddings.get_shape() != shape:
-        raise ValueError("The embedding variable with name {} already exists, "
-                         "but its shape does not match required embedding shape"
-                         " here. Please make sure to use different "
-                         "shared_embedding_name for different shared "
-                         "embeddings.".format(name))
-  else:
-    embeddings = contrib_variables.model_variable(
-        name=name,
-        shape=shape,
-        dtype=dtype,
-        initializer=initializer,
-        trainable=trainable,
-        collections=weight_collections)
-    graph.add_to_collection(shared_embedding_collection_name, embeddings)
-
-  if isinstance(embeddings, variables.Variable):
-    return [embeddings]
-  else:  # Else it should be of type `_PartitionedVariable`.
-    return embeddings._get_variable_list()  # pylint: disable=protected-access
-
-
-def _create_embedding_lookup(input_tensor, weight_tensor, vocab_size, dimension,
-                             weight_collections, initializer, combiner,
-                             trainable, name="weights",
-                             is_shared_embedding=False):
-  """Creates embedding variable and does a lookup.
-
-  Args:
-    input_tensor: A `SparseTensor` which should contain sparse id to look up.
-    weight_tensor: A `SparseTensor` with the same shape and indices as
-      `input_tensor`, which contains the float weights corresponding to each
-      sparse id, or None if all weights are assumed to be 1.0.
-    vocab_size: An integer specifying the vocabulary size.
-    dimension: An integer specifying the embedding vector dimension.
-    weight_collections: List of graph collections to which weights are added.
-    initializer: A variable initializer function to be used in embedding
-      variable initialization.
-    combiner: A string specifying how to reduce if the sparse column is
-      multivalent. Currently "mean", "sqrtn" and "sum" are supported:
-        * "sum": do not normalize features in the column
-        * "mean": do l1 normalization on features in the column
-        * "sqrtn": do l2 normalization on features in the column
-      For more information: `tf.embedding_lookup_sparse`.
-    trainable: If `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    name: A string specifying the name of the embedding variable.
-    is_shared_embedding: An bool indicating if this is creating shared embedding
-      variable.
-
-  Returns:
-    A Tensor with shape [batch_size, dimension] and embedding Variable.
-  """
-
-  if is_shared_embedding:
-    embeddings = _create_shared_embeddings(
-        name=name,
-        shape=[vocab_size, dimension],
-        dtype=dtypes.float32,
-        initializer=initializer,
-        trainable=trainable,
-        weight_collections=weight_collections)
-  else:
-    embeddings = _create_embeddings(name=name,
-                                    shape=[vocab_size, dimension],
-                                    dtype=dtypes.float32,
-                                    initializer=initializer,
-                                    trainable=trainable,
-                                    weight_collections=weight_collections)
-  return embedding_ops.safe_embedding_lookup_sparse(
-      embeddings,
-      input_tensor,
-      sparse_weights=weight_tensor,
-      default_id=0,
-      combiner=combiner,
-      name=name), embeddings
