@@ -419,11 +419,9 @@ export class ScatterPlot {
 
     // Create buffer for reading a single pixel.
     let pixelBuffer = new Uint8Array(4);
-    // No need to account for dpr (device pixel ratio) since the pickingTexture
-    // has the same coordinates as the mouse (flipped on y).
-    const x = e.offsetX;
-    const y = e.offsetY;
-
+    const dpr = window.devicePixelRatio || 1;
+    const x = e.offsetX * dpr;
+    const y = e.offsetY * dpr;
     // Read the pixel under the mouse from the texture.
     this.renderer.readRenderTargetPixels(
         this.pickingTexture, x, this.pickingTexture.height - y, 1, 1,
@@ -439,7 +437,7 @@ export class ScatterPlot {
     let point = getProjectedPointFromIndex(this.dataSet, i);
     let screenCoords = vector3DToScreenCoords(
         this.perspCamera, this.width, this.height, point);
-    let dpr = window.devicePixelRatio;
+    let dpr = window.devicePixelRatio || 1;
     return dist_2D(
         [e.offsetX * dpr, e.offsetY * dpr], [screenCoords[0], screenCoords[1]]);
   }
@@ -780,14 +778,18 @@ export class ScatterPlot {
     this.perspCamera.updateProjectionMatrix();
 
     // Accouting for retina displays.
-    this.renderer.setPixelRatio(window.devicePixelRatio || 1);
+    const dpr = window.devicePixelRatio || 1;
+    this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(this.width, this.height);
 
     // the picking texture needs to be exactly the same as the render texture.
     {
       const renderCanvasSize = this.renderer.getSize();
+
+      const pixelRatio = this.renderer.getPixelRatio();
       this.pickingTexture = new THREE.WebGLRenderTarget(
-          renderCanvasSize.width, renderCanvasSize.height);
+          renderCanvasSize.width * pixelRatio,
+          renderCanvasSize.height * pixelRatio);
     }
 
     this.pickingTexture.texture.minFilter = THREE.LinearFilter;
