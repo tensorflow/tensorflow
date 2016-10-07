@@ -46,7 +46,7 @@ def main(unused_args):
     return -1
 
   graph = graph_pb2.GraphDef()
-  with open(FLAGS.graph, "rb") as f:
+  with open(FLAGS.graph, "r") as f:
     if FLAGS.input_binary:
       graph.ParseFromString(f.read())
     else:
