@@ -295,7 +295,7 @@ TEST_F(SessionBundleTest, UnshardedVariableFile) {
   BasicTest(export_path);
 }
 
-TEST_F(SessionBundleTest, ServingGraph_Empty) {
+TEST_F(SessionBundleTest, ServingGraphEmpty) {
   const string path = SetupExport([](MetaGraphDef* def) {
     (*def->mutable_collection_def())[kGraphKey].clear_any_list();
   });
@@ -306,7 +306,7 @@ TEST_F(SessionBundleTest, ServingGraph_Empty) {
       << status_.error_message();
 }
 
-TEST_F(SessionBundleTest, ServingGraphAny_IncorrectType) {
+TEST_F(SessionBundleTest, ServingGraphAnyIncorrectType) {
   const string path = SetupExport([](MetaGraphDef* def) {
     // Pack an unexpected type in the GraphDef Any.
     (*def->mutable_collection_def())[kGraphKey].clear_any_list();
@@ -322,7 +322,7 @@ TEST_F(SessionBundleTest, ServingGraphAny_IncorrectType) {
       << status_.error_message();
 }
 
-TEST_F(SessionBundleTest, ServingGraphAnyValue_Corrupted) {
+TEST_F(SessionBundleTest, ServingGraphAnyValueCorrupted) {
   const string path = SetupExport([](MetaGraphDef* def) {
     // Pack an unexpected type in the GraphDef Any.
     (*def->mutable_collection_def())[kGraphKey].clear_any_list();
@@ -338,7 +338,7 @@ TEST_F(SessionBundleTest, ServingGraphAnyValue_Corrupted) {
       << status_.error_message();
 }
 
-TEST_F(SessionBundleTest, AssetFileAny_IncorrectType) {
+TEST_F(SessionBundleTest, AssetFileAnyIncorrectType) {
   const string path = SetupExport([](MetaGraphDef* def) {
     // Pack an unexpected type in the AssetFile Any.
     (*def->mutable_collection_def())[kAssetsKey].clear_any_list();
@@ -355,7 +355,7 @@ TEST_F(SessionBundleTest, AssetFileAny_IncorrectType) {
       << status_.error_message();
 }
 
-TEST_F(SessionBundleTest, AssetFileAny_ValueCorrupted) {
+TEST_F(SessionBundleTest, AssetFileAnyValueCorrupted) {
   const string path = SetupExport([](MetaGraphDef* def) {
     // Pack an unexpected type in the AssetFile Any.
     (*def->mutable_collection_def())[kAssetsKey].clear_any_list();
@@ -371,7 +371,7 @@ TEST_F(SessionBundleTest, AssetFileAny_ValueCorrupted) {
       << status_.error_message();
 }
 
-TEST_F(SessionBundleTest, InitOp_TooManyValues) {
+TEST_F(SessionBundleTest, InitOpTooManyValues) {
   const string path = SetupExport([](MetaGraphDef* def) {
     // Pack multiple init ops in to the collection.
     (*def->mutable_collection_def())[kInitOpKey].clear_node_list();
