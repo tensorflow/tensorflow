@@ -323,6 +323,7 @@ py_library(
     deps = [
         ":device_lib",
         ":framework_test_lib",
+        ":gradient_checker",
         ":platform_test",
     ],
 )
