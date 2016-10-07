@@ -81,9 +81,14 @@ void CheckpointReader::GetTensor(
   if (reader_ != nullptr) {
     status = reader_->GetTensor(name, out_tensor);
   } else {
-    std::unique_ptr<Tensor> tensor(new Tensor);
-    status = v2_reader_->Lookup(name, tensor.get());
-    if (status.ok()) std::swap(*out_tensor, tensor);
+    tensorflow::DataType dtype;
+    tensorflow::TensorShape shape;
+    status = v2_reader_->LookupDtypeAndShape(name, &dtype, &shape);
+    if (status.ok()) {
+      out_tensor->reset(new Tensor(dtype, shape));
+      status = v2_reader_->Lookup(name, out_tensor->get());
+      if (!status.ok()) out_tensor->reset();
+    }
   }
   if (!status.ok()) {
     Set_TF_Status_from_Status(out_status, status);
