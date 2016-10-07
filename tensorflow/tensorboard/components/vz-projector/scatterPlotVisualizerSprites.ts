@@ -325,7 +325,6 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
     }
 
     this.points.material = this.pickingMaterial;
-    this.pickingMaterial.uniforms.isImage.value = false;
 
     let colors = this.geometry.getAttribute('color') as THREE.BufferAttribute;
     colors.array = this.pickingColors;
