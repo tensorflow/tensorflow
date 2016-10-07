@@ -412,8 +412,8 @@ export interface State {
   cameraTarget?: vector.Point3D;
 
   /** Color by option. */
-  colorOption?: ColorOption;
+  selectedColorOptionName?: string;
 
   /** Label by option. */
-  labelOption?: string;
+  selectedLabelOption?: string;
 }

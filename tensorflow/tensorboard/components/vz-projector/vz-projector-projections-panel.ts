@@ -157,6 +157,11 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     this.clearCentroids();
 
     this.setupAllInputsInCustomTab();
+
+    this.dom.select('#tsne-sampling')
+        .style('display', dataSet.points.length > SAMPLE_SIZE ? null : 'none');
+    this.dom.select('#pca-sampling')
+        .style('display', dataSet.dim[1] > PCA_SAMPLE_DIM ? null : 'none');
   }
 
   metadataChanged(metadata: MetadataInfo) {

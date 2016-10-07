@@ -36,6 +36,7 @@ import six
 
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import session_run_hook
@@ -189,7 +190,13 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
           ops.get_default_graph().as_graph_def(add_shapes=True),
           self._checkpoint_dir,
           "graph.pbtxt")
-      self._summary_writer.add_graph(ops.get_default_graph())
+      saver_def = self._saver.saver_def if self._saver else None
+      graph = ops.get_default_graph()
+      meta_graph_def = meta_graph.create_meta_graph_def(
+          graph_def=graph.as_graph_def(add_shapes=True),
+          saver_def=saver_def)
+      self._summary_writer.add_graph(graph)
+      self._summary_writer.add_meta_graph(meta_graph_def)
 
     return SessionRunArgs(self._global_step_tensor)
 

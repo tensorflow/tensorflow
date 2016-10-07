@@ -132,7 +132,7 @@ paper-item {
   <!-- Label by -->
   <template is="dom-if" if="[[_hasChoices(labelOptions)]]">
     <paper-dropdown-menu style="width: 100%" no-animations label="Label by">
-      <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{labelOption}}">
+      <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedLabelOption}}">
         <template is="dom-repeat" items="[[labelOptions]]">
           <paper-item style="justify-content: space-between;" value="[[item]]" label="[[item]]">
             [[item]]
@@ -145,9 +145,9 @@ paper-item {
   <!-- Color by -->
   <template is="dom-if" if="[[_hasChoices(colorOptions)]]">
     <paper-dropdown-menu id="colorby" style="width: 100%" no-animations label="Color by">
-      <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{colorOption}}">
+      <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedColorOptionName}}">
         <template is="dom-repeat" items="[[colorOptions]]">
-          <paper-item style="justify-content: space-between;" class$="[[getSeparatorClass(item.isSeparator)]]" value="[[item]]" label="[[item.name]]" disabled="[[item.isSeparator]]">
+          <paper-item style="justify-content: space-between;" class$="[[getSeparatorClass(item.isSeparator)]]" value="[[item.name]]" label="[[item.name]]" disabled="[[item.isSeparator]]">
             [[item.name]]
             <span class="item-details">[[item.desc]]</span>
           </paper-item>

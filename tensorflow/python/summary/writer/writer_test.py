@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for training_coordinator.py."""
 from __future__ import absolute_import
 from __future__ import division
@@ -24,7 +23,10 @@ import shutil
 import time
 
 import tensorflow as tf
+
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.python.framework import meta_graph
 
 
 class SummaryWriterTestCase(tf.test.TestCase):
@@ -50,6 +52,9 @@ class SummaryWriterTestCase(tf.test.TestCase):
     self.assertTrue(abs(t - time.time()) < 5)
 
   def _assertEventsWithGraph(self, test_dir, g, has_shapes):
+    meta_graph_def = meta_graph.create_meta_graph_def(
+        graph_def=g.as_graph_def(add_shapes=has_shapes))
+
     rr = self._EventsReader(test_dir)
 
     # The first event should list the file_version.
@@ -65,6 +70,14 @@ class SummaryWriterTestCase(tf.test.TestCase):
     ev_graph.ParseFromString(ev.graph_def)
     self.assertProtoEquals(g.as_graph_def(add_shapes=has_shapes), ev_graph)
 
+    # The next event should have the metagraph.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals(0, ev.step)
+    ev_meta_graph = meta_graph_pb2.MetaGraphDef()
+    ev_meta_graph.ParseFromString(ev.meta_graph_def)
+    self.assertProtoEquals(meta_graph_def, ev_meta_graph)
+
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
 
@@ -73,12 +86,12 @@ class SummaryWriterTestCase(tf.test.TestCase):
     sw = tf.train.SummaryWriter(test_dir)
 
     sw.add_session_log(tf.SessionLog(status=SessionLog.START), 1)
-    sw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="mee",
-                                                      simple_value=10.0)]),
-                   10)
-    sw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="boo",
-                                                      simple_value=20.0)]),
-                   20)
+    sw.add_summary(
+        tf.Summary(value=[tf.Summary.Value(
+            tag="mee", simple_value=10.0)]), 10)
+    sw.add_summary(
+        tf.Summary(value=[tf.Summary.Value(
+            tag="boo", simple_value=20.0)]), 20)
     with tf.Graph().as_default() as g:
       tf.constant([0], name="zero")
     sw.add_graph(g, global_step=30)
@@ -241,9 +254,10 @@ class SummaryWriterTestCase(tf.test.TestCase):
       # Test the summary can be passed serialized.
       summ = tf.Summary(value=[tf.Summary.Value(tag="i", simple_value=1.0)])
       sw.add_summary(summ.SerializeToString(), i.eval())
-      sw.add_summary(tf.Summary(value=[tf.Summary.Value(tag="l",
-                                                        simple_value=2.0)]),
-                     l.eval())
+      sw.add_summary(
+          tf.Summary(value=[tf.Summary.Value(
+              tag="l", simple_value=2.0)]),
+          l.eval())
       sw.close()
 
     rr = self._EventsReader(test_dir)

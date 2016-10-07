@@ -109,7 +109,7 @@ export class ScatterPlotVisualizerAxes implements ScatterPlotVisualizer {
     }
   }
 
-  onPickingRender(camera: THREE.Camera, cameraTarget: THREE.Vector3) {}
+  onPickingRender(renderContext: RenderContext) {}
   onRender(renderContext: RenderContext) {}
   onUpdate() {}
   onResize(newWidth: number, newHeight: number) {}
