@@ -559,8 +559,8 @@ will not update in iterations g is zero.
 *  <b>`use_locking`</b>: If True use locks for update operation.
 *  <b>`centered`</b>: If True, gradients are normalized by the estimated variance of
     the gradient; if False, by the uncentered second moment. Setting this to
-    True may helps with training, but is slightly more expensive in terms of
-    computation and memory.
+    True may help with training, but is slightly more expensive in terms of
+    computation and memory. Defaults to False.
 *  <b>`name`</b>: Optional name prefix for the operations created when applying
     gradients. Defaults to "RMSProp".
 
