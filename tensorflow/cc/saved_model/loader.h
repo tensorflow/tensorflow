@@ -37,10 +37,9 @@ struct SavedModelBundle {
 // be loaded is identified by the supplied tags, corresponding exactly to the
 // set of tags used at SavedModel build time. Returns a SavedModel bundle with a
 // session and the requested meta graph def, if found.
-Status LoadSavedModel(const string& export_dir,
+Status LoadSavedModel(const SessionOptions& session_options,
+                      const RunOptions& run_options, const string& export_dir,
                       const std::unordered_set<string>& tags,
-                      const SessionOptions& session_options,
-                      const RunOptions& run_options,
                       SavedModelBundle* const bundle);
 
 // Checks whether the provided directory could contain a SavedModel. Note that

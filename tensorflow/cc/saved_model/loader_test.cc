@@ -62,8 +62,8 @@ TEST_F(LoaderTest, TagMatch) {
 
   const string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPb);
-  TF_ASSERT_OK(LoadSavedModel(export_dir, {kSavedModelTagServe},
-                              session_options, run_options, &bundle));
+  TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
+                              {kSavedModelTagServe}, &bundle));
   CheckSavedModelBundle(bundle);
 }
 
@@ -74,8 +74,8 @@ TEST_F(LoaderTest, NoTagMatch) {
 
   const string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPb);
-  Status st = LoadSavedModel(export_dir, {"missing-tag"}, session_options,
-                             run_options, &bundle);
+  Status st = LoadSavedModel(session_options, run_options, export_dir,
+                             {"missing-tag"}, &bundle);
   EXPECT_FALSE(st.ok());
   EXPECT_TRUE(
       StringPiece(st.error_message())
@@ -90,8 +90,8 @@ TEST_F(LoaderTest, NoTagMatchMultiple) {
 
   const string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPb);
-  Status st = LoadSavedModel(export_dir, {kSavedModelTagServe, "missing-tag"},
-                             session_options, run_options, &bundle);
+  Status st = LoadSavedModel(session_options, run_options, export_dir,
+                             {kSavedModelTagServe, "missing-tag"}, &bundle);
   EXPECT_FALSE(st.ok());
   EXPECT_TRUE(
       StringPiece(st.error_message())
@@ -106,8 +106,8 @@ TEST_F(LoaderTest, PbtxtFormat) {
 
   const string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPbTxt);
-  TF_ASSERT_OK(LoadSavedModel(export_dir, {kSavedModelTagServe},
-                              session_options, run_options, &bundle));
+  TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
+                              {kSavedModelTagServe}, &bundle));
   CheckSavedModelBundle(bundle);
 }
 
@@ -118,8 +118,8 @@ TEST_F(LoaderTest, ShardedVariables) {
 
   const string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
-  TF_ASSERT_OK(LoadSavedModel(export_dir, {kSavedModelTagServe},
-                              session_options, run_options, &bundle));
+  TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
+                              {kSavedModelTagServe}, &bundle));
   CheckSavedModelBundle(bundle);
 }
 
@@ -130,8 +130,8 @@ TEST_F(LoaderTest, InvalidExportPath) {
 
   const string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), "missing-path");
-  Status st = LoadSavedModel(export_dir, {kSavedModelTagServe}, session_options,
-                             run_options, &bundle);
+  Status st = LoadSavedModel(session_options, run_options, export_dir,
+                             {kSavedModelTagServe}, &bundle);
   EXPECT_FALSE(st.ok());
 }
 

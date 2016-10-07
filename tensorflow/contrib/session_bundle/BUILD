@@ -265,6 +265,13 @@ cc_library(
 
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 
+filegroup(
+    name = "saved_model_half_plus_two",
+    srcs = glob([
+        "testdata/saved_model_half_plus_two/**",
+    ]),
+)
+
 cc_library(
     name = "bundle_shim",
     srcs = ["bundle_shim.cc"],
@@ -291,6 +298,7 @@ cc_test(
     size = "small",
     srcs = ["bundle_shim_test.cc"],
     data = [
+        ":saved_model_half_plus_two",
         "//tensorflow/contrib/session_bundle/example:half_plus_two",
     ],
     # Link in all registered kernels.
