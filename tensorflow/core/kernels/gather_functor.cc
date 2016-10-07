@@ -45,4 +45,8 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 }  // namespace functor
 }  // namespace tensorflow
 
+#else
+
+#include "tensorflow/core/kernels/gather_functor.h"
+
 #endif  // GOOGLE_CUDA
