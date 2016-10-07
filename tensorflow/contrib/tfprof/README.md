@@ -362,7 +362,7 @@ statistics for those ops without accidently missing or including extra ops.
 tfprof exposes the following Python API to add op information and logging.
 
 ```python
-  def write_op_log(graph, log_dir, op_log=None)
+tf.contrib.tfprof.tfprof_logger.write_op_log(graph, log_dir, op_log=None)
 ```
 
 <b>--checkpoint_path:</b>
