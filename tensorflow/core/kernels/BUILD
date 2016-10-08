@@ -88,14 +88,19 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "concat_lib",
-    srcs = ["concat_lib_cpu.cc"],
+    srcs = [
+        "concat_lib_cpu.cc",
+        "concat_lib_gpu.cc",
+    ],
     hdrs = [
         "concat_lib.h",
         "concat_lib_cpu.h",
     ],
     gpu_srcs = [
-        "concat_lib_gpu.cu.cc",
+        "concat_lib_gpu_impl.cu.cc",
         "concat_lib.h",
+        "cuda_device_array.h",
+        "cuda_device_array_gpu.h",
     ],
     deps = [
         ":bounds_check",

@@ -666,13 +666,15 @@ class _VariableStore(object):
         variable_dtype = dtype.base_dtype
 
     # Create the variable.
-    v = variables.Variable(initial_value=init_val,
-                           name=name,
-                           trainable=trainable,
-                           collections=collections,
-                           caching_device=caching_device,
-                           dtype=variable_dtype,
-                           validate_shape=validate_shape)
+    v = variables.Variable(
+        initial_value=init_val,
+        name=name,
+        trainable=trainable,
+        collections=collections,
+        caching_device=caching_device,
+        dtype=variable_dtype,
+        validate_shape=validate_shape,
+        expected_shape=shape)
     self._vars[name] = v
     logging.vlog(1, "Created variable %s with shape %s and init %s", v.name,
                  format(shape), initializer)

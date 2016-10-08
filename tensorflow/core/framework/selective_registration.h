@@ -35,20 +35,27 @@ limitations under the License.
 //    for a tool that can be used to generate ops_to_register.h.
 #include "ops_to_register.h"
 
-// Op kernel classes for which ShouldRegisterOpKernel returns false will not be
-// registered.
-#define SHOULD_REGISTER_OP_KERNEL(clz) \
-  (strstr(kNecessaryOpKernelClasses, "," clz ",") != nullptr)
-
-// Ops for which ShouldRegisterOp returns false will not be registered.
-#define SHOULD_REGISTER_OP(op) ShouldRegisterOp(op)
-
-// If kRequiresSymbolicGradients is false, then no gradient ops are registered.
-#define SHOULD_REGISTER_OP_GRADIENT kRequiresSymbolicGradients
+// ops_to_register should define macros for:
+//
+//   SHOULD_REGISTER_OP_KERNEL(clz)
+//   SHOULD_REGISTER_OP(op)
+//   SHOULD_REGISTER_OP_GRADIENT
+//   # same as SHOULD_REGISTER_OP, but invoked from a non-constexpr location.
+//   SHOULD_REGISTER_OP_NON_CONSTEXPR(op)
+//
+// Except for SHOULD_REGISTER_OP_NON_CONSTEXPR, the macros should be defined
+// using constexprs. See selective_registration_util.h for some utilities that
+// can be used.
+#if (!defined(SHOULD_REGISTER_OP_KERNEL) || !defined(SHOULD_REGISTER_OP) || \
+     !defined(SHOULD_REGISTER_OP_GRADIENT) ||                               \
+     !defined(SHOULD_REGISTER_OP_NON_CONSTEXPR))
+static_assert(false, "ops_to_register.h must define SHOULD_REGISTER macros");
+#endif
 
 #else
-#define SHOULD_REGISTER_OP_KERNEL(filename) true
+#define SHOULD_REGISTER_OP_KERNEL(clz) true
 #define SHOULD_REGISTER_OP(op) true
+#define SHOULD_REGISTER_OP_NON_CONSTEXPR(op) true
 #define SHOULD_REGISTER_OP_GRADIENT true
 #endif
 

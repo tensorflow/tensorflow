@@ -31,10 +31,10 @@ static constexpr char kClassifyOutputScores[] = "scores";
 // Key in the signature def map for `default` signatures.
 static constexpr char kDefaultSignatureDefKey[] = "default";
 
-// Predict method name.
+// Predict method name used in a SignatureDef.
 static constexpr char kPredictMethodName[] = "tensorflow/serving/predict";
 
-// Regression method name.
+// Regression method name used in a SignatureDef.
 static constexpr char kRegressMethodName[] = "tensorflow/serving/regress";
 
 // Common key used for signature inputs.

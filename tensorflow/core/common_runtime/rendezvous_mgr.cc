@@ -120,8 +120,6 @@ void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
                                            const Rendezvous::Args& send_args,
                                            const Rendezvous::Args& recv_args,
                                            const Tensor& in, bool is_dead) {
-    Status s = status;
-
     // If "in" is an uninitialized tensor, do copy-construction to preserve
     // the uninitialized state, along with data type and shape info, which
     // is useful for debugger purposes.
@@ -133,10 +131,10 @@ void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
       delete out;
     };
 
-    if (s.ok() && in.IsInitialized()) {
+    if (status.ok() && in.IsInitialized()) {
       SameWorkerRecvDone(parsed, send_args, recv_args, in, out, final_callback);
     } else {
-      final_callback(s);
+      final_callback(status);
     }
   });
 }

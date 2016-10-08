@@ -81,7 +81,7 @@ export class InspectorPanel extends PolymerClass {
     } else {
       this.selectedPointIndex = null;
     }
-    this.updateIsolateButton(indices.length);
+    this.updateFilterButtons(indices.length + neighbors.length);
     this.updateNeighborsList(neighbors);
     if (neighbors.length === 0) {
       this.updateSearchResults(indices);
@@ -200,7 +200,7 @@ export class InspectorPanel extends PolymerClass {
     });
   }
 
-  private updateIsolateButton(numPoints: number) {
+  private updateFilterButtons(numPoints: number) {
     if (numPoints > 1) {
       this.setFilterButton.text(`Isolate ${numPoints} points`)
           .attr('disabled', null);
@@ -266,7 +266,7 @@ export class InspectorPanel extends PolymerClass {
     this.setFilterButton.on('click', () => {
       this.projector.filterDataset();
       this.resetFilterButton.attr('disabled', null);
-      this.updateIsolateButton(0);
+      this.updateFilterButtons(0);
     });
 
     this.resetFilterButton.on('click', () => {

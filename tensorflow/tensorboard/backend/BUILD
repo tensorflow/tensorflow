@@ -17,7 +17,7 @@ py_library(
         "//tensorflow/python:summary",
         "//tensorflow/python:util",
         "//tensorflow/tensorboard:plugins",
-        "//tensorflow/tensorboard/lib/python:json_util",
+        "//tensorflow/tensorboard/lib/python:http",
     ],
 )
 

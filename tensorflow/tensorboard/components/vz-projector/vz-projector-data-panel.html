@@ -30,7 +30,7 @@ limitations under the License.
 <style include="vz-projector-styles"></style>
 <style>
 .container {
-  padding: 0 20px;
+  padding: 20px;
 }
 
 input[type=file] {
@@ -69,24 +69,28 @@ paper-item {
   color: gray;
   font-size: 12px;
 }
+
+paper-dropdown-menu {
+  width: 100%;
+}
+
+paper-dropdown-menu paper-item {
+  justify-content: space-between;
+}
+
+.title {
+  color: black;
+  font-weight: 500;
+}
+
+#upload-buttons {
+  display: flex;
+  justify-content: space-between;
+}
 </style>
 
 <div class="container">
-  <!-- Upload buttons -->
-  <div style="display: flex; justify-content: space-between;">
-    <!-- Upload data -->
-    <div>
-      <button id="upload" title="Upload a TSV file" class="ink-button">Upload data</button>
-      <input type="file" id="file" name="file"/>
-    </div>
-
-    <!-- Upload metadata -->
-    <div>
-      <button id="upload-metadata" title="Upload a TSV metadata file" class="ink-button">Upload Metadata</button>
-      <input type="file" id="file-metadata" name="file-metadata"/>
-    </div>
-  </div>
-
+  <div class="title">DATA</div>
   <div class="dirs">
     <div class="dir">Checkpoint: <span id="checkpoint-file"></span></div>
     <div class="dir">Metadata: <span id="metadata-file"></span></div>
@@ -103,10 +107,10 @@ paper-item {
 
   <!-- List of runs -->
   <template is="dom-if" if="[[_hasChoices(runNames)]]">
-    <paper-dropdown-menu no-animations label="[[_getNumRunsLabel(runNames)]] found">
+    <paper-dropdown-menu no-animations vertical-align="bottom" label="[[_getNumRunsLabel(runNames)]] found">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedRun}}">
         <template is="dom-repeat" items="[[runNames]]">
-          <paper-item style="justify-content: space-between;" value="[[item]]" label="[[item]]">
+          <paper-item value="[[item]]" label="[[item]]">
             [[item]]
           </paper-item>
         </template>
@@ -116,10 +120,10 @@ paper-item {
 
   <template is="dom-if" if="[[tensorNames]]">
     <!-- List of tensors in checkpoint -->
-    <paper-dropdown-menu no-animations label="[[_getNumTensorsLabel(tensorNames)]] found">
+    <paper-dropdown-menu no-animations vertical-align="bottom" label="[[_getNumTensorsLabel(tensorNames)]] found">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedTensor}}">
         <template is="dom-repeat" items="[[tensorNames]]">
-          <paper-item style="justify-content: space-between;" value="[[item.name]]" label="[[item.name]]">
+          <paper-item value="[[item.name]]" label="[[item.name]]">
             [[item.name]]
             <span class="item-details">
               [[item.shape.0]]x[[item.shape.1]]
@@ -131,10 +135,10 @@ paper-item {
   </template>
   <!-- Label by -->
   <template is="dom-if" if="[[_hasChoices(labelOptions)]]">
-    <paper-dropdown-menu style="width: 100%" no-animations label="Label by">
-      <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{labelOption}}">
+    <paper-dropdown-menu no-animations vertical-align="bottom" label="Label by">
+      <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedLabelOption}}">
         <template is="dom-repeat" items="[[labelOptions]]">
-          <paper-item style="justify-content: space-between;" value="[[item]]" label="[[item]]">
+          <paper-item value="[[item]]" label="[[item]]">
             [[item]]
           </paper-item>
         </template>
@@ -144,10 +148,10 @@ paper-item {
 
   <!-- Color by -->
   <template is="dom-if" if="[[_hasChoices(colorOptions)]]">
-    <paper-dropdown-menu id="colorby" style="width: 100%" no-animations label="Color by">
-      <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{colorOption}}">
+    <paper-dropdown-menu id="colorby" no-animations vertical-align="bottom" label="Color by">
+      <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedColorOptionName}}">
         <template is="dom-repeat" items="[[colorOptions]]">
-          <paper-item style="justify-content: space-between;" class$="[[getSeparatorClass(item.isSeparator)]]" value="[[item]]" label="[[item.name]]" disabled="[[item.isSeparator]]">
+          <paper-item class$="[[getSeparatorClass(item.isSeparator)]]" value="[[item.name]]" label="[[item.name]]" disabled="[[item.isSeparator]]">
             [[item.name]]
             <span class="item-details">[[item.desc]]</span>
           </paper-item>
@@ -156,6 +160,20 @@ paper-item {
     </paper-dropdown-menu>
     <vz-projector-legend render-info="[[colorLegendRenderInfo]]"></vz-projector-legend>
   </template>
+
+  <!-- Upload buttons -->
+  <div id="upload-buttons">
+    <!-- Upload data -->
+    <div>
+      <button id="upload" title="Upload a TSV file" class="ink-button">Upload data</button>
+      <input type="file" id="file" name="file"/>
+    </div>
+    <!-- Upload metadata -->
+    <div>
+      <button id="upload-metadata" title="Upload a TSV metadata file" class="ink-button">Upload Metadata</button>
+      <input type="file" id="file-metadata" name="file-metadata"/>
+    </div>
+  </div>
 </div>
 <!-- Closing global template -->
 </template>

@@ -91,23 +91,44 @@ def print_header(ops_and_kernels, ops):
   print('#ifndef OPS_TO_REGISTER')
   print('#define OPS_TO_REGISTER')
 
-  print('constexpr inline bool ShouldRegisterOp(const char op[]) {')
+  # Prints an expression that will be true if the macro variable s matches
+  # any of <vals> and false otherwise. Is implemented with plain comparison
+  # to avoid using strcmp or strstr, which are not constexpr in all compilers.
+  #
+  # For each string in <vals>, this emits a comparison between s and the value.
+  # The comparison is done with a size comparison test and then char-by-char
+  # Note that sizeof("abc") is 4 for single-byte chars; the extra +1 is from
+  # the 0 terminator.
+  def print_constexpr_comparison_macro_body(vals):
+    print('  (false\\')
+    for v in vals:
+      v_check = ''
+      v_check += 'sizeof(s) == %s \\\n       ' % (1 + len(v))
+      for i, ch in enumerate(v):
+        v_check += ('&& s[%s < sizeof(s) ? %s : 0] == \'%s\' \\\n         ' %
+                    (i, i, ch))
+      print('     || (' + v_check + ')\\')
+    print('  )')
+
+  print('#define SHOULD_REGISTER_OP(s) \\')
+  print_constexpr_comparison_macro_body(sorted(ops))
+
+  print('inline bool ShouldRegisterOpNonConstexpr(const char * op) {')
   print('  return false')
   for op in sorted(ops):
     print('     || (strcmp(op, "%s") == 0)' % op)
   print('  ;')
   print('}')
+  print('#define SHOULD_REGISTER_OP_NON_CONSTEXPR(op) \\')
+  print('    ShouldRegisterOpNonConstexpr(op)')
 
-  line = 'const char kNecessaryOpKernelClasses[] = ","\n'
-  for _, kernel_class in ops_and_kernels:
-    line += '"%s,"\n' % kernel_class
-  line += ';'
-  print(line)
+  print('#define SHOULD_REGISTER_OP_KERNEL(s) \\')
+  print_constexpr_comparison_macro_body([c for _, c in ops_and_kernels])
 
-  print('const bool kRequiresSymbolicGradients = %s;' %
+  print('#define SHOULD_REGISTER_OP_GRADIENT %s' %
         ('true' if 'SymbolicGradient' in ops else 'false'))
 
-  print('#endif')
+  print('#endif  // OPS_TO_REGISTER')
 
 
 def main(unused_argv):

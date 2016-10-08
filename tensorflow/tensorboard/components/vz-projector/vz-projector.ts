@@ -46,7 +46,7 @@ const POINT_COLOR_MISSING = 'black';
 const POINT_SCALE_DEFAULT = 1.0;
 const POINT_SCALE_SELECTED = 1.2;
 const POINT_SCALE_NEIGHBOR = 1.2;
-const POINT_SCALE_HOVER = 1.3;
+const POINT_SCALE_HOVER = 1.2;
 
 /**
  * The minimum number of dimensions the data should have to automatically
@@ -58,9 +58,7 @@ export let ProjectorPolymer = PolymerElement({
   is: 'vz-projector',
   properties: {
     // Private.
-    routePrefix: String,
-    labelOption: {type: String, observer: '_labelOptionChanged'},
-    colorOption: {type: Object, observer: '_colorOptionChanged'}
+    routePrefix: String
   }
 });
 
@@ -84,8 +82,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   private dataProvider: DataProvider;
   private inspectorPanel: InspectorPanel;
 
-  private colorOption: ColorOption;
-  private labelOption: string;
+  private selectedColorOption: ColorOption;
+  private selectedLabelOption: string;
   private routePrefix: string;
   private normalizeData: boolean;
   private selectedProjection: Projection;
@@ -95,6 +93,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   private bookmarkPanel: BookmarkPanel;
   private projectionsPanel: ProjectionsPanel;
   private metadataCard: MetadataCard;
+
+  private statusBar: d3.Selection<HTMLElement>;
 
   ready() {
     this.selectionChangedListeners = [];
@@ -111,6 +111,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.projectionsPanel = this.$['projections-panel'] as ProjectionsPanel;
     this.projectionsPanel.initialize(this);
     this.metadataCard = this.$['metadata-card'] as MetadataCard;
+    this.statusBar = this.dom.select('#status-bar');
 
     getDataProvider(this.routePrefix, dataProvider => {
       this.dataProvider = dataProvider;
@@ -120,15 +121,18 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.setupUIControls();
   }
 
-  _labelOptionChanged() {
+  setSelectedLabelOption(labelOption: string) {
+    this.selectedLabelOption = labelOption;
     let labelAccessor = (i: number): string => {
-      return this.currentDataSet.points[i].metadata[this.labelOption] as string;
+      return this.currentDataSet.points[i]
+          .metadata[this.selectedLabelOption] as string;
     };
     this.scatterPlot.setLabelAccessor(labelAccessor);
-    this.metadataCard.setLabelOption(this.labelOption);
+    this.metadataCard.setLabelOption(this.selectedLabelOption);
   }
 
-  _colorOptionChanged() {
+  setSelectedColorOption(colorOption: ColorOption) {
+    this.selectedColorOption = colorOption;
     this.updateScatterPlot();
   }
 
@@ -168,8 +172,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   }
 
   filterDataset() {
-    this.setCurrentDataSet(
-        this.currentDataSet.getSubset(this.selectedPointIndices));
+    let indices = this.selectedPointIndices.concat(
+        this.neighborsOfFirstPoint.map(n => n.index));
+    this.setCurrentDataSet(this.currentDataSet.getSubset(indices));
     this.clearSelectionAndHover();
     this.scatterPlot.recreateScene();
   }
@@ -220,7 +225,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       return null;
     }
     const colorer = (i: number) => {
-      let value = this.currentDataSet.points[i].metadata[this.colorOption.name];
+      let value =
+          this.currentDataSet.points[i].metadata[this.selectedColorOption.name];
       if (value == null) {
         return POINT_COLOR_MISSING;
       }
@@ -283,7 +289,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
     let dst = 0;
 
-    if (hoverPointIndex) {
+    if (hoverPointIndex != null) {
       scale[dst++] = LABEL_SCALE_LARGE;
     }
 
@@ -356,7 +362,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
           colors[dst++] = c.b;
         }
       } else {
-        if (legendPointColorer) {
+        if (legendPointColorer != null) {
           for (let i = 0; i < n; ++i) {
             const c = new THREE.Color(legendPointColorer(i));
             colors[dst++] = c.r;
@@ -399,7 +405,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     }
 
     // Color the hover point.
-    if (hoverPointIndex) {
+    if (hoverPointIndex != null) {
       const c = new THREE.Color(POINT_COLOR_HOVER);
       let dst = hoverPointIndex * 3;
       colors[dst++] = c.r;
@@ -436,18 +442,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.dom.select('span.dim').text(this.currentDataSet.dim[1]);
 
     this.projectionsPanel.dataSetUpdated(this.currentDataSet, this.dim);
-    this.showTab('pca');
   }
 
   private setupUIControls() {
-    let self = this;
-
-    // Global tabs
-    this.dom.selectAll('.ink-tab').on('click', function() {
-      let id = this.getAttribute('data-tab');
-      self.showTab(id);
-    });
-
     // View controls
     this.querySelector('#reset-zoom').addEventListener('click', () => {
       this.scatterPlot.resetZoom();
@@ -481,8 +478,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     });
 
     this.scatterPlot = new ScatterPlot(
-        this.getScatterContainer(),
-        i => '' + this.currentDataSet.points[i].metadata[this.labelOption],
+        this.getScatterContainer(), i => '' +
+            this.currentDataSet.points[i].metadata[this.selectedLabelOption],
         this, this);
     this.createVisualizers(false);
 
@@ -502,21 +499,25 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
   private onHover(hoverIndex: number) {
     this.hoverPointIndex = hoverIndex;
-    let hoverText: string = '';
+    let hoverText = null;
     if (hoverIndex != null) {
       const point = this.currentDataSet.points[hoverIndex];
-      if (point.metadata[this.labelOption]) {
-        hoverText = point.metadata[this.labelOption].toString();
+      if (point.metadata[this.selectedLabelOption]) {
+        hoverText = point.metadata[this.selectedLabelOption].toString();
       }
     }
     this.updateScatterPlot();
-    this.dom.select('#hoverInfo').text(hoverText);
+    if (this.selectedPointIndices.length === 0) {
+      this.statusBar.style('display', hoverText ? null : 'none');
+      this.statusBar.text(hoverText);
+    }
   }
 
   private updateScatterPlot() {
     const pointColors = this.generateScatterPlotColorArray(
-        this.getLegendPointColorer(this.colorOption), this.selectedPointIndices,
-        this.neighborsOfFirstPoint, this.hoverPointIndex);
+        this.getLegendPointColorer(this.selectedColorOption),
+        this.selectedPointIndices, this.neighborsOfFirstPoint,
+        this.hoverPointIndex);
     const pointScaleFactors = this.generateScatterPlotScaleFactorArray(
         this.selectedPointIndices, this.neighborsOfFirstPoint,
         this.hoverPointIndex);
@@ -561,29 +562,13 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       neighborsOfFirstPoint: knn.NearestEntry[]) {
     this.selectedPointIndices = selectedPointIndices;
     this.neighborsOfFirstPoint = neighborsOfFirstPoint;
-    this.dom.select('#hoverInfo')
-        .text(`Selected ${selectedPointIndices.length} points`);
+    let totalNumPoints =
+        this.selectedPointIndices.length + neighborsOfFirstPoint.length;
+    this.statusBar.text(`Selected ${totalNumPoints} points`)
+        .style('display', totalNumPoints > 0 ? null : 'none');
     this.inspectorPanel.updateInspectorPane(
         selectedPointIndices, neighborsOfFirstPoint);
-    if (neighborsOfFirstPoint.length > 0) {
-      this.showTab('inspector');
-    }
     this.updateScatterPlot();
-  }
-
-  public showTab(id: string) {
-    let tab = this.dom.select('.ink-tab[data-tab="' + id + '"]');
-    let pane =
-        d3.select((tab.node() as HTMLElement).parentNode.parentNode.parentNode);
-    pane.selectAll('.ink-tab').classed('active', false);
-    tab.classed('active', true);
-    pane.selectAll('.ink-panel-content').classed('active', false);
-    pane.select('.ink-panel-content[data-panel="' + id + '"]')
-        .classed('active', true);
-
-    if (['pca', 'tsne', 'custom'].indexOf(id) !== -1) {
-      this.projectionsPanel.showProjectionTab(id as Projection);
-    }
   }
 
   setProjection(
@@ -626,8 +611,8 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     state.cameraTarget = this.scatterPlot.getCameraTarget();
 
     // Save the color and label by options.
-    state.colorOption = this.colorOption;
-    state.labelOption = this.labelOption;
+    state.selectedColorOptionName = this.dataPanel.selectedColorOptionName;
+    state.selectedLabelOption = this.selectedLabelOption;
 
     return state;
   }
@@ -637,15 +622,16 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     for (let i = 0; i < state.projections.length; i++) {
       this.currentDataSet.points[i].projections = state.projections[i];
     }
-    this.showTab(state.selectedProjection);
+    if (state.selectedProjection === 'tsne') {
+      this.currentDataSet.hasTSNERun = true;
+    }
+    this.projectionsPanel.showTab(state.selectedProjection);
 
     this.notifySelectionChanged(state.selectedPoints);
 
     // Load the color and label by options.
-    this.colorOption = state.colorOption;
-    this.labelOption = state.labelOption;
-    this.set('colorOption', this.colorOption);
-    this.set('labelOption', this.labelOption);
+    this.dataPanel.selectedColorOptionName = state.selectedColorOptionName;
+    this.selectedLabelOption = state.selectedLabelOption;
 
     this.scatterPlot.setCameraPositionAndTarget(
         state.cameraPosition, state.cameraTarget);

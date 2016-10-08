@@ -673,9 +673,8 @@ class UnrollLSTMTest(tf.test.TestCase):
         m = self._BuildForward(weights, inp, mode)
       gdef = g.as_graph_def()
       finish = time.time()
-      tf.logging.info("time: %f txt size: %d gdef bin size: %d",
-                      finish - start, len(str(gdef)),
-                      len(gdef.SerializeToString()))
+      tf.logging.info("time: %f txt size: %d gdef bin size: %d", finish - start,
+                      len(str(gdef)), len(gdef.SerializeToString()))
       with g.as_default(), tf.Session(config=cfg) as sess:
         return sess.run(m)
 
@@ -703,9 +702,8 @@ class UnrollLSTMTest(tf.test.TestCase):
         dw = tf.gradients([loss], [weights])
       gdef = g.as_graph_def()
       finish = time.time()
-      tf.logging.info("time: %f txt size: %d gdef bin size: %d",
-                      finish - start, len(str(gdef)),
-                      len(gdef.SerializeToString()))
+      tf.logging.info("time: %f txt size: %d gdef bin size: %d", finish - start,
+                      len(str(gdef)), len(gdef.SerializeToString()))
       with g.as_default(), tf.Session(config=cfg) as sess:
         return sess.run(dw)
 
@@ -781,6 +779,64 @@ class ModuleFunctionTest(tf.test.TestCase):
       with tf.Session() as sess:
         self.assertAllEqual([[1]], sess.run(y))
         self.assertAllEqual([[5]], sess.run(z))
+
+
+class VariableHoistingTest(tf.test.TestCase):
+
+  def _testSimpleModel(self, use_forward_func):
+
+    def _Model(x):
+      w = tf.get_variable(
+          "w", (64, 64), initializer=tf.random_uniform_initializer(seed=312))
+      b = tf.get_variable("b", (64), initializer=tf.zeros_initializer),
+      return tf.sigmoid(tf.matmul(x, w) + b)
+
+    @function.Defun()
+    def Model(x):
+      return _Model(x)
+
+    cvars = []
+
+    @function.Defun()
+    def Grad(x, y0):
+      if use_forward_func:
+        y = Model(x)
+      else:
+        y = _Model(x)
+      loss = tf.reduce_mean(tf.reduce_sum(y0 * tf.log(y), 1), 0)
+      dw, db = tf.gradients(loss, function.get_extra_args())
+      cvars.extend(function.get_extra_vars())
+      return loss, dw, db
+
+    g = tf.Graph()
+    with g.as_default():
+      x = tf.random_normal([64, 64], seed=100)
+      y0 = tf.random_normal([64, 64], seed=200)
+      with tf.variable_scope("Foo"):
+        loss, dw, db = Grad(x, y0)
+
+    self.assertEqual(2, len(cvars))
+    w, b = cvars[:2]
+    self.assertEqual("Foo/w", w.op.name)
+    self.assertEqual("Foo/b", b.op.name)
+
+    with self.test_session(graph=g) as sess:
+      sess.run(tf.initialize_all_variables())
+      w, b, x, y0, loss, dw, db = sess.run([w, b, x, y0, loss, dw, db])
+
+    self.assertAllEqual(w.shape, (64, 64))
+    self.assertAllClose(np.sum(w), 2050.44)
+    self.assertAllEqual(b.shape, (64,))
+    self.assertAllClose(np.sum(b), 0.0)
+    self.assertAllClose(loss, -2.27, rtol=1e-2)
+    self.assertAllEqual(dw.shape, (64, 64))
+    self.assertAllClose(np.sum(dw), -1.04, rtol=1e-2)
+    self.assertAllEqual(db.shape, (64,))
+    self.assertAllClose(np.sum(db), 0.509, rtol=1e-2)
+
+  def testBasic(self):
+    self._testSimpleModel(True)
+    self._testSimpleModel(False)
 
 
 if __name__ == "__main__":
