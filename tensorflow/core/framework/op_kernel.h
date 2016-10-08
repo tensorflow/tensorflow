@@ -1075,8 +1075,7 @@ class Name : public KernelDefBuilder {
   // not sufficient - the compiler can't evaluate the entire KernelDefBuilder at
   // compilation time, so this method doesn't actually reduce code size.
   explicit Name(const char* op)
-      : KernelDefBuilder(
-            SHOULD_REGISTER_OP_NON_CONSTEXPR(op) ? op : "_no_register") {}
+      : KernelDefBuilder(SHOULD_REGISTER_OP(op) ? op : "_no_register") {}
 };
 
 }  // namespace register_kernel
@@ -1087,9 +1086,6 @@ class Name : public KernelDefBuilder {
 #define REGISTER_KERNEL_BUILDER_UNIQ_HELPER(ctr, kernel_builder, ...) \
   REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, __VA_ARGS__)
 
-// Note that the SHOULD_REGISTER_OP_KERNEL is repeated because on mac, the
-// first one doesn't cause removal of the call to new __VA_ARGS__, so that
-// class is not stripped from the binary.
 #define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)          \
   static ::tensorflow::kernel_factory::OpKernelRegistrar                \
       registrar__body__##ctr##__object(                                 \
@@ -1098,10 +1094,8 @@ class Name : public KernelDefBuilder {
               : nullptr,                                                \
           #__VA_ARGS__, [](::tensorflow::OpKernelConstruction* context) \
                             -> ::tensorflow::OpKernel* {                \
-            return SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__)              \
-                       ? new __VA_ARGS__(context)                       \
-                       : nullptr;                                       \
-          });
+                              return new __VA_ARGS__(context);          \
+                            });
 
 void* GlobalKernelRegistry();
 
