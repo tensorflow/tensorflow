@@ -19,7 +19,6 @@ import {ProjectorInput} from './vz-projector-input';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
 
-
 // tslint:disable-next-line
 export let ProjectionsPanelPolymer = PolymerElement({
   is: 'vz-projector-projections-panel',
@@ -139,22 +138,22 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       this.projector.currentDataSet.stopTSNE();
     });
 
-    let perplexityInput = this.dom.select('.tsne-perplexity input');
+    let perplexitySlider = this.$$('#perplexity-slider') as HTMLInputElement;
     let updatePerplexity = () => {
-      this.perplexity = +perplexityInput.property('value');
+      this.perplexity = +perplexitySlider.value;
       this.dom.select('.tsne-perplexity span').text(this.perplexity);
     };
-    perplexityInput.property('value', this.perplexity)
-        .on('input', updatePerplexity);
+    perplexitySlider.value = this.perplexity.toString();
+    perplexitySlider.addEventListener('change', updatePerplexity);
     updatePerplexity();
 
-    let learningRateInput = this.dom.select('.tsne-learning-rate input');
+    let learningRateInput =
+        this.$$('#learning-rate-slider') as HTMLInputElement;
     let updateLearningRate = () => {
-      let val = +learningRateInput.property('value');
-      this.learningRate = Math.pow(10, val);
+      this.learningRate = Math.pow(10, +learningRateInput.value);
       this.dom.select('.tsne-learning-rate span').text(this.learningRate);
     };
-    learningRateInput.property('value', 1).on('input', updateLearningRate);
+    learningRateInput.addEventListener('change', updateLearningRate);
     updateLearningRate();
   }
 

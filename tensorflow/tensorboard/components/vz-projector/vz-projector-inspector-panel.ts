@@ -254,12 +254,15 @@ export class InspectorPanel extends PolymerClass {
     });
 
     // Nearest neighbors controls.
-    let numNNInput = this.dom.select('.num-nn input');
+    let numNNInput = this.$$('#nn-slider') as HTMLInputElement;
     let updateNumNN = () => {
-      this.numNN = +numNNInput.property('value');
+      this.numNN = +numNNInput.value;
       this.dom.select('.num-nn span').text(this.numNN);
+      if (this.selectedPointIndex != null) {
+        this.projector.notifySelectionChanged([this.selectedPointIndex]);
+      }
     };
-    numNNInput.on('input', updateNumNN);
+    numNNInput.addEventListener('change', updateNumNN);
     updateNumNN();
 
     // Filtering dataset.
