@@ -28,7 +28,6 @@ from collections import namedtuple
 from math import sqrt
 import os
 
-from sklearn import metrics
 import tensorflow as tf
 from tensorflow.contrib import learn
 from tensorflow.contrib.layers import batch_norm, convolution2d
@@ -132,22 +131,38 @@ def res_net(x, y, activation=tf.nn.relu):
   net_shape = net.get_shape().as_list()
   net = tf.reshape(net, [-1, net_shape[1] * net_shape[2] * net_shape[3]])
 
-  return learn.models.logistic_regression(net, y)
+  target = tf.one_hot(y, depth=10, dtype=tf.float32)
+  return learn.models.logistic_regression(net, target)
+
+def res_net_model(x, y):
+  prediction, loss = res_net(x, y)
+  predicted = tf.argmax(prediction, 1)
+  accuracy = tf.equal(predicted, tf.cast(y, tf.int64))
+  predictions = {'prob': prediction, 'class': predicted, 'accuracy': accuracy}
+  train_op = tf.contrib.layers.optimize_loss(
+      loss, tf.contrib.framework.get_global_step(),
+      optimizer='Adagrad', learning_rate=0.001)
+  return predictions, loss, train_op
 
 # Download and load MNIST data.
 mnist = learn.datasets.load_dataset('mnist')
 
 # Create a new resnet classifier.
-classifier = learn.TensorFlowEstimator(
-    model_fn=res_net, n_classes=10, batch_size=100, steps=100,
-    learning_rate=0.001, continue_training=True)
+classifier = learn.Estimator(model_fn=res_net_model)
 
-for step in xrange(100):
-  # Train model and save summaries into logdir.
-  classifier.fit(
-      mnist.train.images, mnist.train.labels, logdir='models/resnet/')
+tf.logging.set_verbosity(tf.logging.INFO)  # Show training logs. (avoid silence)
 
-  # Calculate accuracy.
-  score = metrics.accuracy_score(
-      mnist.test.labels, classifier.predict(mnist.test.images, batch_size=64))
-  print('Accuracy: {0:f}'.format(score))
+# Train model and save summaries into logdir.
+classifier.fit(
+    mnist.train.images, mnist.train.labels, batch_size=100, steps=1000)
+
+# Calculate accuracy.
+result = classifier.evaluate(
+    x=mnist.test.images, y=mnist.test.labels,
+    metrics={
+        'accuracy': learn.metric_spec.MetricSpec(
+            metric_fn=tf.contrib.metrics.streaming_accuracy,
+            prediction_key='accuracy'),
+    })
+score = result['accuracy']
+print('Accuracy: {0:f}'.format(score))
