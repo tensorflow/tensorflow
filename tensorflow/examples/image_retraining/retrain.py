@@ -461,8 +461,8 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
                     img.convert('RGB').save(output, 'JPEG')
                 image_data = output.getvalue()
     bottleneck_values = run_bottleneck_on_image(sess, image_data,
-                                                    jpeg_data_tensor,
-                                                    bottleneck_tensor)     
+                                                jpeg_data_tensor,
+                                                bottleneck_tensor)
     bottleneck_string = ','.join(str(x) for x in bottleneck_values)
     with open(bottleneck_path, 'w') as bottleneck_file:
       bottleneck_file.write(bottleneck_string)
