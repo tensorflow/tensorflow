@@ -93,12 +93,17 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
     const Graph* g = (it).first;
     const CostModel* cm = (it).second;
     for (Node* node : g->nodes()) {
-      if (node->name() == y->name()) {
+      if (node->name() == y->name() || node->name() == y_neg->name()) {
         EXPECT_LE(8, cm->MaxMemorySize(node, 0));
-        EXPECT_EQ(5, cm->AllocationId(node, 0));
-      } else if (node->name() == y_neg->name()) {
-        EXPECT_LE(8, cm->MaxMemorySize(node, 0));
-        EXPECT_EQ(7, cm->AllocationId(node, 0));
+        TensorShapeProto shape = cm->MaxMemoryShape(node, 0);
+        EXPECT_EQ(2, shape.dim_size());
+        EXPECT_EQ(2, shape.dim(0).size());
+        EXPECT_EQ(1, shape.dim(1).size());
+        if (node->name() == y->name()) {
+          EXPECT_EQ(5, cm->AllocationId(node, 0));
+        } else {
+          EXPECT_EQ(7, cm->AllocationId(node, 0));
+        }
       }
       EXPECT_LE(0, cm->MaxExecutionTime(node));
       EXPECT_GE(run_duration_micros, cm->MaxExecutionTime(node));
@@ -167,10 +172,12 @@ static void TestHWAccelerator(bool enableHWTrace) {
     const Graph* g = (it).first;
     const CostModel* cm = (it).second;
     for (Node* node : g->nodes()) {
-      if (node->name() == y->name()) {
+      if (node->name() == y->name() || node->name() == y_neg->name()) {
         EXPECT_LE(8, cm->MaxMemorySize(node, 0));
-      } else if (node->name() == y_neg->name()) {
-        EXPECT_LE(8, cm->MaxMemorySize(node, 0));
+        TensorShapeProto shape = cm->MaxMemoryShape(node, 0);
+        EXPECT_EQ(2, shape.dim_size());
+        EXPECT_EQ(2, shape.dim(0).size());
+        EXPECT_EQ(1, shape.dim(1).size());
       }
       EXPECT_LE(0, cm->MaxExecutionTime(node));
       EXPECT_GE(run_duration_micros, cm->MaxExecutionTime(node));
