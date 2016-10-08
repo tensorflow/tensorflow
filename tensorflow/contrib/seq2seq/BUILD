@@ -7,22 +7,19 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 py_library(
     name = "seq2seq_py",
-    srcs = [
-        "__init__.py",
-        "python/seq2seq/__init__.py",
-        "python/seq2seq/loss_ops.py",
-        "python/seq2seq/layers_ops.py",
-    ],
+    srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
     srcs_version = "PY2AND3",
 )
 
-py_test(
-    name = "loss_ops_test",
-    srcs = glob(["python/kernel_test/loss_ops_test.py"]),
-    srcs_version = "PY2AND3",
-    deps = [
+cuda_py_test(
+    name = "layers_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/layers_test.py"],
+    additional_deps = [
         ":seq2seq_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
@@ -30,11 +27,11 @@ py_test(
     ],
 )
 
-py_test(
-    name = "layers_ops_test",
-    srcs = glob(["python/kernel_test/layers_ops_test.py"]),
-    srcs_version = "PY2AND3",
-    deps = [
+cuda_py_test(
+    name = "loss_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/loss_test.py"],
+    additional_deps = [
         ":seq2seq_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",

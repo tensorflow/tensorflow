@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,17 +13,24 @@
 # limitations under the License.
 # ==============================================================================
 
-"""## Seq2seq functions for use in neural networks
-
-"""
-
+"""Tests for contrib.seq2seq.python.seq2seq.layers_ops."""
+# pylint: disable=unused-import,g-bad-import-order
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+# pylint: enable=unused-import
 
-# pylint: disable=unused-import,wildcard-import
-from tensorflow.contrib.seq2seq.python.seq2seq.loss_ops import *
-from tensorflow.contrib.seq2seq.python.seq2seq.layers_ops import *
-from tensorflow.python.util.all_util import make_all
+import tensorflow as tf
 
-__all__ = make_all(__name__)
+
+class LayersTest(tf.test.TestCase):
+
+  def testRNNDecoder(self):
+    pass
+
+  def testRNNDecoderAttention(self):
+    pass
+
+
+if __name__ == '__main__':
+  tf.test.main()
