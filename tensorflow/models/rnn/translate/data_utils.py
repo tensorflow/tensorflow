@@ -26,6 +26,7 @@ import tarfile
 from six.moves import urllib
 
 from tensorflow.python.platform import gfile
+import tensorflow as tf
 
 # Special vocabulary symbols - we always put them at the start.
 _PAD = b"_PAD"
@@ -137,6 +138,7 @@ def create_vocabulary(vocabulary_path, data_path, max_vocabulary_size,
         counter += 1
         if counter % 100000 == 0:
           print("  processing line %d" % counter)
+        line = tf.compat.as_bytes(line)
         tokens = tokenizer(line) if tokenizer else basic_tokenizer(line)
         for w in tokens:
           word = _DIGIT_RE.sub(b"0", w) if normalize_digits else w
