@@ -453,13 +453,13 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
     if not gfile.Exists(image_path):
       tf.logging.fatal('File does not exist %s', image_path)
     jpgext = ['jpg', 'jpeg', 'JPG', 'JPEG']
-        if (image_path.split('.')[-1] in jpgext):
-            image_data = gfile.FastGFile(image_path, 'rb').read()
-        else:
-            with BytesIO() as output:
-                with Image.open(image_path) as img:
-                    img.convert('RGB').save(output, 'JPEG')
-                image_data = output.getvalue()
+    if (image_path.split('.')[-1] in jpgext):
+      image_data = gfile.FastGFile(image_path, 'rb').read()
+    else:
+      with BytesIO() as output:
+        with Image.open(image_path) as img:
+          img.convert('RGB').save(output, 'JPEG')
+        image_data = output.getvalue()
     bottleneck_values = run_bottleneck_on_image(sess, image_data,
                                                 jpeg_data_tensor,
                                                 bottleneck_tensor)
