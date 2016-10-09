@@ -229,9 +229,9 @@ while true; do
       cudnn_alt_lib_path="${CUDNN_INSTALL_PATH}/libcudnn.dylib"
     fi
     if [ -f "$cudnn_lib_path" ]; then
-      REALVAL=`readlink -f ${cudnn_lib_path}`
+      REALVAL=`greadlink -f ${cudnn_lib_path}`
     else
-      REALVAL=`readlink -f ${cudnn_alt_lib_path}`
+      REALVAL=`greadlink -f ${cudnn_alt_lib_path}`
     fi
 
     # Extract the version of the SONAME, if it was indeed symlinked to
