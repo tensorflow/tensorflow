@@ -9,8 +9,7 @@ to predict flower species based on sepal/petal geometry. You'll write code to
 perform the following five steps:
 
 1.  Load CSVs containing Iris training/test data into a TensorFlow `Dataset`
-2.  Construct a [neural network classifier]
-    (../../api_docs/python/contrib.learn.md#DNNClassifier)
+2.  Construct a [neural network classifier](../../api_docs/python/contrib.learn.md#DNNClassifier)
 3.  Fit the model using the training data
 4.  Evaluate the accuracy of the model
 5.  Classify new samples
@@ -108,10 +107,8 @@ Sepal Length | Sepal Width | Petal Length | Petal Width | Species
 For this tutorial, the Iris data has been randomized and split into two separate
 CSVs:
 
-*   A training set of 120 samples ([iris_training.csv]
-    (http://download.tensorflow.org/data/iris_training.csv))
-*   A test set of 30 samples ([iris_test.csv]
-    (http://download.tensorflow.org/data/iris_test.csv)).
+*   A training set of 120 samples ([iris_training.csv](http://download.tensorflow.org/data/iris_training.csv))
+*   A test set of 30 samples ([iris_test.csv](http://download.tensorflow.org/data/iris_test.csv)).
 
 Place these files in the same directory as your Python code.
 
@@ -132,9 +129,8 @@ method in `learn.datasets.base`. The `load_csv()` method takes two required
 arguments:
 
 *   `filename`, which takes the filepath to the CSV file
-*   `target_dtype`, which takes the [`numpy` datatype]
-    (http://docs.scipy.org/doc/numpy/user/basics.types.html) of the dataset's
-    target value.
+*   `target_dtype`, which takes the [`numpy` datatype](http://docs.scipy.org/doc/numpy/user/basics.types.html)
+    of the dataset's target value.
 
 Here, the target (the value you're training the model to predict) is flower
 species, which is an integer from 0&ndash;2, so the appropriate `numpy` datatype
@@ -197,14 +193,14 @@ accordingly to `4` to hold all the data.
 Then, the code creates a `DNNClassifier` model using the following arguments:
 
 *   `feature_columns=feature_columns`. The set of feature columns defined above.
-*   `hidden_units=[10, 20, 10]`. Three [hidden layers]
-    (http://stats.stackexchange.com/questions/181/how-to-choose-the-number-of-hidden-layers-and-nodes-in-a-feedforward-neural-netw),
+*   `hidden_units=[10, 20, 10]`. Three
+    [hidden layers](http://stats.stackexchange.com/questions/181/how-to-choose-the-number-of-hidden-layers-and-nodes-in-a-feedforward-neural-netw),
     containing 10, 20, and 10 neurons, respectively.
 *   `n_classes=3`. Three target classes, representing the three Iris species.
 *   `model_dir=/tmp/iris_model`. The directory in which TensorFlow will save
     checkpoint data during model training. For more on logging and monitoring
-    with TensorFlow, see [Logging and Monitoring Basics with tf.contrib.learn]
-    (../monitors/index.md).
+    with TensorFlow, see
+    [Logging and Monitoring Basics with tf.contrib.learn](../monitors/index.md).
 
 ## Fit the DNNClassifier to the Iris Training Data {#fit-dnnclassifier}
 
@@ -297,8 +293,7 @@ second sample is *Iris virginica*.
     [Large-scale Linear Models with TensorFlow](../linear/overview.md).
 
 *   To build your own Estimator using tf.contrib.learn APIs, check out [Building
-    Machine Learning Estimator in TensorFlow]
-    (http://terrytangyuan.github.io/2016/07/08/understand-and-build-tensorflow-estimator/).
+    Machine Learning Estimator in TensorFlow](http://terrytangyuan.github.io/2016/07/08/understand-and-build-tensorflow-estimator/).
 
 *   To experiment with neural network modeling and visualization in the browser,
     check out [Deep Playground](http://playground.tensorflow.org/).
