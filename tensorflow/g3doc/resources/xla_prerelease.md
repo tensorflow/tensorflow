@@ -57,7 +57,7 @@ operations are high level, e.g., arbitrary sized vector and matrix
 operations. This makes the compiler easy to target from TensorFlow, and
 preserves enough information to allow sophisticated scheduling and optimization.
 The following tutorial provides introductory information about XLA. More details
-follow in the [Operation Semantics] (#operation_semantics) section.
+follow in the [Operation Semantics](#operation_semantics) section.
 
 It is important to note that the XLA framework is not set in stone. In
 particular, while it is unlikely that the semantics of existing operations will
@@ -688,11 +688,9 @@ dimension of size `r`.
 Notes:
 
 1.  This follows the typical definition of a dot operator, as in other numeric
-    libraries such as [numpy]
-    (http://docs.scipy.org/doc/numpy/reference/generated/numpy.dot.html).
+    libraries such as [numpy](http://docs.scipy.org/doc/numpy/reference/generated/numpy.dot.html).
 2.  There is currently no support for the general tensor dot operator
-    [numpy.tensordot]
-    (http://docs.scipy.org/doc/numpy/reference/generated/numpy.tensordot.html#numpy.tensordot).
+    [numpy.tensordot](http://docs.scipy.org/doc/numpy/reference/generated/numpy.tensordot.html#numpy.tensordot).
 
 ### Element-wise binary arithmetic operations
 
