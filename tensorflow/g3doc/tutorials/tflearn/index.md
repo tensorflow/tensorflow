@@ -35,10 +35,12 @@ IRIS_TRAINING = "iris_training.csv"
 IRIS_TEST = "iris_test.csv"
 
 # Load datasets.
-training_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TRAINING,
-                                                       target_dtype=np.int)
-test_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TEST,
-                                                   target_dtype=np.int)
+training_set = tf.contrib.learn.datasets.base.load_csv_with_header(filename=IRIS_TRAINING,
+                                                                   target_dtype=np.int,
+                                                                   features_dtype=np.float64)
+test_set = tf.contrib.learn.datasets.base.load_csv_with_header(filename=IRIS_TEST,
+                                                               target_dtype=np.int,
+                                                               features_dtype=np.float64)
 
 # Specify that all features have real-value data
 feature_columns = [tf.contrib.layers.real_valued_column("", dimension=4)]
@@ -124,17 +126,21 @@ import numpy as np
 ```
 
 Next, load the training and test sets into `Dataset`s using the
-[`load_csv()`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/datasets/base.py)
-method in `learn.datasets.base`. The `load_csv()` method takes two required
-arguments:
+[`load_csv_with_header()`](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/datasets/base.py)
+method in `learn.datasets.base`. The `load_csv_with_header()` method takes
+three required arguments:
 
 *   `filename`, which takes the filepath to the CSV file
 *   `target_dtype`, which takes the [`numpy` datatype](http://docs.scipy.org/doc/numpy/user/basics.types.html)
     of the dataset's target value.
+*   `features_dtype`, which takes the [`numpy` datatype](http://docs.scipy.org/doc/numpy/user/basics.types.html)
+    of the dataset's feature values.
 
 Here, the target (the value you're training the model to predict) is flower
 species, which is an integer from 0&ndash;2, so the appropriate `numpy` datatype
-is `np.int`:
+is `np.int`, while the features (in our case Sepal Length, Sepal Width, Petal
+Length and Petal Width) are given as positive floats, which makes `np.float64`
+a suitable choice:
 
 ```python
 # Data sets
@@ -142,10 +148,12 @@ IRIS_TRAINING = "iris_training.csv"
 IRIS_TEST = "iris_test.csv"
 
 # Load datasets.
-training_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TRAINING,
-                                                       target_dtype=np.int)
-test_set = tf.contrib.learn.datasets.base.load_csv(filename=IRIS_TEST,
-                                                   target_dtype=np.int)
+training_set = tf.contrib.learn.datasets.base.load_csv_with_header(filename=IRIS_TRAINING,
+                                                                   target_dtype=np.int,
+                                                                   features_dtype=np.float64)
+test_set = tf.contrib.learn.datasets.base.load_csv_with_header(filename=IRIS_TEST,
+                                                               target_dtype=np.int,
+                                                               features_dtype=np.float64)
 ```
 
 `Dataset`s in tf.contrib.learn are
