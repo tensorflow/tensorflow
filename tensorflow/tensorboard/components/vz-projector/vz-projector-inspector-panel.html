@@ -16,6 +16,7 @@ limitations under the License.
 -->
 
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../paper-slider/paper-slider.html">
 
 <link rel="import" href="styles.html">
 <link rel="import" href="vz-projector-input.html">
@@ -149,8 +150,14 @@ limitations under the License.
     <button class="button clear-selection">Clear selection</button>
   </div>
   <div class="slider num-nn">
-    <label>Number of neighbors</label>
-    <input type="range" min="5" max="1000" value="100"></input>
+    <label>
+      Number of neighbors
+      <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+      <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
+        The number of neighbors (in the original space) to show when clicking on a point.
+      </paper-tooltip>
+    </label>
+    <paper-slider id="nn-slider" pin min="5" max="1000" value="100"></paper-slider>
     <span></span>
   </div>
   <div class="search-by">
@@ -175,7 +182,7 @@ limitations under the License.
         <a class="euclidean" href="javascript:void(0);">euclidean</a>
       </div>
     </div>
-    <p>Nearest points:
+    <p>Nearest points in the original space:
     <div class="nn-list"></div>
   </div>
   <div class="matches-list">

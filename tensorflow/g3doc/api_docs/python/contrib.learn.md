@@ -3464,7 +3464,7 @@ Use `parse_fn` if you need to do parsing / processing on single examples.
 
 - - -
 
-### `tf.contrib.learn.read_batch_features(file_pattern, batch_size, features, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, feature_queue_capacity=100, reader_num_threads=1, parser_num_threads=1, parse_fn=None, name=None)` {#read_batch_features}
+### `tf.contrib.learn.read_batch_features(file_pattern, batch_size, features, reader, randomize_input=True, num_epochs=None, queue_capacity=10000, feature_queue_capacity=100, reader_num_threads=1, parse_fn=None, name=None)` {#read_batch_features}
 
 Adds operations to read, queue, batch and parse `Example` protos.
 
@@ -3497,8 +3497,6 @@ All ops are added to the default graph.
 *  <b>`feature_queue_capacity`</b>: Capacity of the parsed features queue. Set this
     value to a small number, for example 5 if the parsed features are large.
 *  <b>`reader_num_threads`</b>: The number of threads to read examples.
-*  <b>`parser_num_threads`</b>: The number of threads to parse examples.
-    records to read at once
 *  <b>`parse_fn`</b>: Parsing function, takes `Example` Tensor returns parsed
     representation. If `None`, no parsing is done.
 *  <b>`name`</b>: Name of resulting op.
@@ -3515,7 +3513,7 @@ All ops are added to the default graph.
 
 - - -
 
-### `tf.contrib.learn.read_batch_record_features(file_pattern, batch_size, features, randomize_input=True, num_epochs=None, queue_capacity=10000, reader_num_threads=1, parser_num_threads=1, name='dequeue_record_examples')` {#read_batch_record_features}
+### `tf.contrib.learn.read_batch_record_features(file_pattern, batch_size, features, randomize_input=True, num_epochs=None, queue_capacity=10000, reader_num_threads=1, name='dequeue_record_examples')` {#read_batch_record_features}
 
 Reads TFRecord, queues, batches and parses `Example` proto.
 
@@ -3536,7 +3534,6 @@ See more detailed description in `read_examples`.
     tf.initialize_local_variables() as shown in the tests.
 *  <b>`queue_capacity`</b>: Capacity for input queue.
 *  <b>`reader_num_threads`</b>: The number of threads to read examples.
-*  <b>`parser_num_threads`</b>: The number of threads to parse examples.
 *  <b>`name`</b>: Name of resulting op.
 
 ##### Returns:

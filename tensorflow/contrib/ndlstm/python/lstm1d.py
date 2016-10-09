@@ -57,9 +57,10 @@ def ndlstm_base_unrolled(inputs, noutput, scope=None, reverse=False):
     if reverse:
       inputs_u = list(reversed(inputs_u))
     for i in xrange(length):
-      with tf.variable_scope(scope, "SeqLstmStep", [inputs_u[i]]):
-        output, state = lstm_cell(inputs_u[i], state)
-        output_u += [output]
+      if i > 0:
+        tf.get_variable_scope().reuse_variables()
+      output, state = lstm_cell(inputs_u[i], state)
+      output_u += [output]
     if reverse:
       output_u = list(reversed(output_u))
     outputs = tf.pack(output_u)
@@ -150,8 +151,9 @@ def sequence_to_final(inputs, noutput, scope=None, name=None, reverse=False):
     if reverse:
       inputs_u = list(reversed(inputs_u))
     for i in xrange(length):
-      with tf.variable_scope(scope, "SequenceToFinalStep", [inputs_u[i]]):
-        output, state = lstm(inputs_u[i], state)
+      if i > 0:
+        tf.get_variable_scope().reuse_variables()
+      output, state = lstm(inputs_u[i], state)
     outputs = tf.reshape(output, [batch_size, noutput], name=name)
     return outputs
 

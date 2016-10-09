@@ -2419,10 +2419,10 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   """Repeat `body` while the condition `cond` is true.
 
   `cond` is a callable returning a boolean scalar tensor. `body` is a callable
-  returning a (possibly nested) tuple or list of tensors of the same
+  returning a (possibly nested) tuple, namedtuple or list of tensors of the same
   arity (length and structure) and types as `loop_vars`. `loop_vars` is a
-  (possibly nested) tuple or list of tensors that is passed to both `cond`
-  and `body`. `cond` and `body` both take as many arguments as there are
+  (possibly nested) tuple, namedtuple or list of tensors that is passed to both
+  `cond` and `body`. `cond` and `body` both take as many arguments as there are
   `loop_vars`.
 
   While `cond` evaluates to true, `body` is executed.
@@ -2475,8 +2475,8 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
   Args:
     cond: A callable that represents the termination condition of the loop.
     body: A callable that represents the loop body.
-    loop_vars: A (possibly nested) tuple or list of numpy array, `Tensor`,
-      and `TensorArray` objects.
+    loop_vars: A (possibly nested) tuple, namedtuple or list of numpy array,
+      `Tensor`, and `TensorArray` objects.
     shape_invariants: The shape invariants for the loop variables.
     parallel_iterations: The number of iterations allowed to run in parallel.
     back_prop: Whether backprop is enabled for this while loop.
@@ -2501,12 +2501,14 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
     r = tf.while_loop(c, b, [i])
     ```
 
-  Example with nesting:
+  Example with nesting and a namedtuple:
 
     ```python
-    ijk_0 = (tf.constant(0), (tf.constant(1), tf.constant(2)))
-    c = lambda i, (j, k): i < 10
-    b = lambda i, (j, k): (i + 1, ((j + k), (j - k)))
+    import collections
+    Pair = collections.namedtuple('Pair', 'j, k')
+    ijk_0 = (tf.constant(0), Pair(tf.constant(1), tf.constant(2)))
+    c = lambda i, p: i < 10
+    b = lambda i, p: (i + 1, Pair((p.j + p.k), (p.j - p.k)))
     ijk_final = tf.while_loop(c, b, ijk_0)
     ```
 

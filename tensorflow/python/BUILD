@@ -1876,7 +1876,7 @@ cuda_py_test(
     additional_deps = ["//tensorflow:tensorflow_py"],
 )
 
-cuda_py_test(
+tf_py_test(
     name = "sync_replicas_optimizer_test",
     size = "medium",
     srcs = [

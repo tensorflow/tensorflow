@@ -28,29 +28,13 @@ limitations under the License.
 <link rel="import" href="../paper-tooltip/paper-tooltip.html">
 <link rel="import" href="../paper-input/paper-input.html">
 <link rel="import" href="../paper-button/paper-button.html">
+<link rel="import" href="../paper-slider/paper-slider.html">
 <link rel="import" href="styles.html">
 
 <dom-module id="vz-projector-projections-panel">
 <template>
 <style include="vz-projector-styles"></style>
 <style>
-
-.slider {
-  display: flex;
-  align-items: center;
-  margin-bottom: 10px;
-  justify-content: space-between;
-}
-
-.slider span {
-  width: 35px;
-  text-align: right;
-}
-
-.slider label {
-  width: 100%;
-}
-
 /* Ink Framework */
 
 /* - Buttons */
@@ -286,7 +270,7 @@ paper-icon-button[active] {
         between 5 and 50.
       </paper-tooltip>
     </label>
-    <input type="range" min="2" max="100"></input>
+    <paper-slider id="perplexity-slider" pin min="2" max="100" value="30"></paper-slider>
     <span></span>
   </div>
   <div class="slider tsne-learning-rate">
@@ -298,7 +282,9 @@ paper-icon-button[active] {
         with smaller datasets requiring smaller learning rates.
       </paper-tooltip>
     </label>
-    <input type="range" min="-3" max="2"></input>
+    <paper-slider id="learning-rate-slider" snaps min="-3" max="2" step="1"
+        value="1" max-markers="6">
+    </paper-slider>
     <span></span>
   </div>
   <p>

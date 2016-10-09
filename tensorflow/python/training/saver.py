@@ -902,7 +902,8 @@ class Saver(object):
                builder=None,
                defer_build=False,
                allow_empty=False,
-               write_version=saver_pb2.SaverDef.V1):
+               write_version=saver_pb2.SaverDef.V1,
+               pad_step_number=False):
     """Creates a `Saver`.
 
     The constructor adds ops to save and restore variables.
@@ -972,6 +973,9 @@ class Saver(object):
         currently, and will be switched to the more memory-efficient V2 format
         in the future.  If set to V2, the Saver is still able to restore from
         old V1 checkpoints.
+      pad_step_number: if True, pads the global step number in the checkpoint
+        filepaths to some fixed width (8 by default).  This is turned off by
+        default.
 
     Raises:
       TypeError: If `var_list` is invalid.
@@ -994,6 +998,7 @@ class Saver(object):
     self._allow_empty = allow_empty
     self._is_empty = None
     self._write_version = write_version
+    self._pad_step_number = pad_step_number
     if not defer_build:
       self.build()
     if self.saver_def:
@@ -1265,6 +1270,9 @@ class Saver(object):
       if not isinstance(global_step, compat.integral_types):
         global_step = training_util.global_step(sess, global_step)
       checkpoint_file = "%s-%d" % (save_path, global_step)
+      if self._pad_step_number:
+        # Zero-pads the step numbers, so that they are sorted when listed.
+        checkpoint_file = "%s-%s" % (save_path, "{:08d}".format(global_step))
     else:
       checkpoint_file = save_path
       if os.path.basename(

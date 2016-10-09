@@ -34,6 +34,8 @@ class Lstm1DTest(tf.test.TestCase):
       inputs = tf.constant(_rand(17, 1, 5))
       outputs = lstm1d.ndlstm_base(inputs, 8)
       tf.initialize_all_variables().run()
+      names = [v.name for v in tf.trainable_variables()]
+      self.assertEqual(len(names), 2)
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (17, 1, 8))
 
@@ -85,6 +87,8 @@ class Lstm1DTest(tf.test.TestCase):
       inputs = tf.constant(_rand(17, 6, 5))
       outputs = lstm1d.sequence_to_final(inputs, 8)
       tf.initialize_all_variables().run()
+      names = [v.name for v in tf.trainable_variables()]
+      self.assertEqual(len(names), 2)
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), (6, 8))
 
