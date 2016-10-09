@@ -221,6 +221,22 @@ Status ReadInputByChunk(const RandomAccessFile* file, size_t offset,
   return Status::OK();
 }
 
+// Returns whether "slice_spec" is a full slice, with respect to the full shape.
+//
+// This can happen say, when "slice_spec" is
+// "TensorSlice(full_tensor_shape.dims())", or when it is "TensorSlice({{0,
+// dim(0)}, ..., {0, dim(N)}})" -- a degenerate case we need to guard against.
+bool IsFullSlice(const TensorSlice& slice_spec,
+                 const TensorShape& full_tensor_shape) {
+  if (slice_spec.IsFull()) {
+    return true;
+  } else {
+    TensorShape sliced_shape;
+    slice_spec.SliceTensorShape(full_tensor_shape, &sliced_shape);
+    return sliced_shape == full_tensor_shape;
+  }
+}
+
 }  // namespace
 
 string DataFilename(StringPiece prefix, int32 shard_id, int32 num_shards) {
@@ -290,6 +306,11 @@ Status BundleWriter::AddSlice(StringPiece full_tensor_key,
                               const TensorShape& full_tensor_shape,
                               const TensorSlice& slice_spec,
                               const Tensor& slice_tensor) {
+  // If just a singleton full slice, use the regular Add() to be more efficient.
+  if (IsFullSlice(slice_spec, full_tensor_shape)) {
+    return Add(full_tensor_key, slice_tensor);
+  }
+
   CHECK_NE(full_tensor_key, kHeaderEntryKey);
   if (!status_.ok()) return status_;
 

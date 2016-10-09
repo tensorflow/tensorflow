@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 import tensorflow as tf
 
 from tensorflow.python.util import net_lib
@@ -155,7 +157,9 @@ class SyncReplicasOptimizerV2Test(tf.test.TestCase):
 
     # The global step should have been updated and the variables should now have
     # the new values after the average of the gradients are applied.
-    self.assertAllEqual(1, global_step.eval(session=sessions[1]))
+    while global_step.eval(session=sessions[1]) != 1:
+      time.sleep(0.01)
+
     self.assertAllClose(0-(0.1+0.3)/2*2.0, var_0_g_1.eval(session=sessions[1]))
     self.assertAllClose(1-(0.9+1.1)/2*2.0, var_1_g_1.eval(session=sessions[1]))
     self.assertAllClose([[3.0], [4.0-(0.1+0.3)/2*2.0]],

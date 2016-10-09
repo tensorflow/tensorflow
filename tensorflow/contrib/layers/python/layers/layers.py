@@ -781,9 +781,10 @@ def flatten(inputs,
 
 def _sparse_inner_flatten(inputs, new_rank):
   """Helper function for `inner_flatten`."""
-  outer_dimensions = array_ops.slice(
-      inputs.shape, [0], [new_rank - 1], name='collect_outer_dims')
-  new_shape = array_ops.concat(0, (outer_dimensions, [-1]))
+  outer_dimensions = inputs.shape[:new_rank - 1]
+  inner_dimensions = inputs.shape[new_rank - 1:]
+  new_shape = array_ops.concat(0, (outer_dimensions,
+                                   [math_ops.reduce_prod(inner_dimensions)]))
   flattened = sparse_ops.sparse_reshape(inputs, new_shape)
   return flattened
 
