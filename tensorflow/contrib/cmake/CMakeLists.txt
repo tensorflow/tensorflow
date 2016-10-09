@@ -56,6 +56,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 endif()
 
 # External dependencies
+include(zlib)
 include(gif)
 include(png)
 include(jpeg)
@@ -64,9 +65,9 @@ include(jsoncpp)
 include(farmhash)
 include(highwayhash)
 include(protobuf)
-find_package(ZLIB REQUIRED)
 
 set(tensorflow_EXTERNAL_LIBRARIES
+    ${zlib_STATIC_LIBRARIES}
     ${gif_STATIC_LIBRARIES}
     ${png_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}
@@ -74,16 +75,24 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${farmhash_STATIC_LIBRARIES}
     ${highwayhash_STATIC_LIBRARIES}
     ${protobuf_STATIC_LIBRARIES}
-    ${ZLIB_LIBRARIES}
 )
 set(tensorflow_EXTERNAL_DEPENDENCIES
-  gif_copy_headers_to_destination png_copy_headers_to_destination jpeg_copy_headers_to_destination jsoncpp farmhash_copy_headers_to_destination highwayhash_copy_headers_to_destination protobuf eigen)
+    zlib_copy_headers_to_destination
+    gif_copy_headers_to_destination
+    png_copy_headers_to_destination
+    jpeg_copy_headers_to_destination
+    jsoncpp
+    farmhash_copy_headers_to_destination
+    highwayhash_copy_headers_to_destination
+    protobuf
+    eigen)
 
 include_directories(
     # Source and generated code.
     ${tensorflow_source_dir}
     ${CMAKE_CURRENT_BINARY_DIR}
     # External dependencies.
+    ${zlib_INCLUDE_DIR}
     ${gif_INCLUDE_DIR}
     ${png_INCLUDE_DIR}
     ${jpeg_INCLUDE_DIR}
@@ -92,7 +101,6 @@ include_directories(
     ${farmhash_INCLUDE_DIR}
     ${highwayhash_INCLUDE_DIR}
     ${PROTOBUF_INCLUDE_DIRS}
-    ${ZLIB_INCLUDE_DIRS}
 )
 
 if(tensorflow_ENABLE_SSL_SUPPORT)

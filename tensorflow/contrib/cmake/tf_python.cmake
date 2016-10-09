@@ -41,9 +41,6 @@ if(NOT NUMPY_INCLUDE_DIR)
   endif(${NUMPY_NOT_FOUND})
 endif(NOT NUMPY_INCLUDE_DIR)
 
-# 3. Resolve the installed version of zlib (for libz.so).
-find_package(ZLIB REQUIRED)
-
 
 ########################################################
 # Build the Python directory structure.
