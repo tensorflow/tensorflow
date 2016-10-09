@@ -22,6 +22,7 @@ from tensorflow.contrib.framework.python.framework import checkpoint_utils
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import embedding_ops
 from tensorflow.contrib.layers.python.layers import feature_column as fc
+from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -35,7 +36,11 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
 
-def _embeddings_from_arguments(column, args, weight_collections, trainable):
+def _embeddings_from_arguments(column,
+                               args,
+                               weight_collections,
+                               trainable,
+                               output_rank=2):
   """Returns embeddings for a column based on the computed arguments.
 
   Args:
@@ -43,6 +48,8 @@ def _embeddings_from_arguments(column, args, weight_collections, trainable):
    args: the _DeepEmbeddingLookupArguments for this column.
    weight_collections: collections to store weights in.
    trainable: whether these embeddings should be trainable.
+   output_rank: the desired rank of the returned `Tensor`. Inner dimensions will
+     be combined to produce the desired rank.
 
   Returns:
    the embeddings.
@@ -50,6 +57,10 @@ def _embeddings_from_arguments(column, args, weight_collections, trainable):
   Raises:
    ValueError: if not possible to create.
   """
+  input_tensor = layers._inner_flatten(args.input_tensor, output_rank)  # pylint: disable=protected-access
+  weight_tensor = None if args.weight_tensor is None else layers._inner_flatten(  # pylint: disable=protected-access
+      args.weight_tensor, output_rank)
+
   if args.hashed:
     embeddings = contrib_variables.model_variable(
         name='weights',
@@ -60,7 +71,7 @@ def _embeddings_from_arguments(column, args, weight_collections, trainable):
         collections=weight_collections)
 
     return embedding_ops.hashed_embedding_lookup_sparse(
-        embeddings, args.input_tensor, args.dimension,
+        embeddings, input_tensor, args.dimension,
         combiner=args.combiner, name='lookup')
 
   if args.shared_embedding_name is not None:
@@ -111,11 +122,58 @@ def _embeddings_from_arguments(column, args, weight_collections, trainable):
       column._checkpoint_path(), embeddings)
   return embedding_ops.safe_embedding_lookup_sparse(
       embeddings,
-      args.input_tensor,
-      sparse_weights=args.weight_tensor,
+      input_tensor,
+      sparse_weights=weight_tensor,
       default_id=0,
       combiner=args.combiner,
       name=column.name + 'weights')
+
+
+def _input_from_feature_columns(columns_to_tensors,
+                                feature_columns,
+                                weight_collections,
+                                trainable,
+                                scope,
+                                output_rank):
+  """Implementation of `input_from(_sequence)_feature_columns`."""
+  check_feature_columns(feature_columns)
+  with variable_scope.variable_scope(scope,
+                                     default_name='input_from_feature_columns',
+                                     values=columns_to_tensors.values()):
+    output_tensors = []
+    transformer = _Transformer(columns_to_tensors)
+    if weight_collections:
+      weight_collections = list(set(list(weight_collections) +
+                                    [ops.GraphKeys.VARIABLES]))
+
+    for column in sorted(set(feature_columns), key=lambda x: x.key):
+      with variable_scope.variable_scope(None,
+                                         default_name=column.name,
+                                         values=columns_to_tensors.values()):
+        transformed_tensor = transformer.transform(column)
+        try:
+          # pylint: disable=protected-access
+          arguments = column._deep_embedding_lookup_arguments(
+              transformed_tensor)
+          output_tensors.append(_embeddings_from_arguments(
+              column,
+              arguments,
+              weight_collections,
+              trainable,
+              output_rank=output_rank))
+
+        except NotImplementedError as ee:
+          try:
+            # pylint: disable=protected-access
+            output_tensors.append(column._to_dnn_input_layer(
+                transformed_tensor,
+                weight_collections,
+                trainable,
+                output_rank=output_rank))
+          except ValueError as e:
+            raise ValueError('Error creating input layer for column: {}.\n'
+                             '{}, {}'.format(column.name, e, ee))
+    return array_ops.concat(output_rank - 1, output_tensors)
 
 
 def input_from_feature_columns(columns_to_tensors,
@@ -174,39 +232,55 @@ def input_from_feature_columns(columns_to_tensors,
   Raises:
     ValueError: if FeatureColumn cannot be consumed by a neural network.
   """
-  check_feature_columns(feature_columns)
-  with variable_scope.variable_scope(scope,
-                                     default_name='input_from_feature_columns',
-                                     values=columns_to_tensors.values()):
-    output_tensors = []
-    transformer = _Transformer(columns_to_tensors)
-    if weight_collections:
-      weight_collections = list(set(list(weight_collections) +
-                                    [ops.GraphKeys.VARIABLES]))
+  return _input_from_feature_columns(columns_to_tensors,
+                                     feature_columns,
+                                     weight_collections,
+                                     trainable,
+                                     scope,
+                                     output_rank=2)
 
-    for column in sorted(set(feature_columns), key=lambda x: x.key):
-      with variable_scope.variable_scope(None,
-                                         default_name=column.name,
-                                         values=columns_to_tensors.values()):
-        transformed_tensor = transformer.transform(column)
-        try:
-          # pylint: disable=protected-access
-          arguments = column._deep_embedding_lookup_arguments(
-              transformed_tensor)
-          output_tensors.append(_embeddings_from_arguments(column,
-                                                           arguments,
-                                                           weight_collections,
-                                                           trainable))
 
-        except NotImplementedError as ee:
-          try:
-            # pylint: disable=protected-access
-            output_tensors.append(column._to_dnn_input_layer(
-                transformed_tensor, weight_collections, trainable))
-          except ValueError as e:
-            raise ValueError('Error creating input layer for column: {}.\n'
-                             '{}, {}'.format(column.name, e, ee))
-    return array_ops.concat(1, output_tensors)
+def sequence_input_from_feature_columns(columns_to_tensors,
+                                        feature_columns,
+                                        weight_collections=None,
+                                        trainable=True,
+                                        scope=None):
+  """Builds inputs for sequence models from `FeatureColumn`s.
+
+  See documentation for `input_from_feature_columns`. The following types of
+  `FeatureColumn` are permitted in `feature_columns`: `_OneHotColumn`,
+  `_EmbeddingColumn`, `_HashedEmbeddingColumn`, `_RealValuedColumn`,
+  `_DataFrameColumn`. In addition, columns in `feature_columns` may not be
+  constructed using any of the following: `HashedEmbeddingColumn`,
+  `BucketizedColumn`, `CrossedColumn`.
+
+  Args:
+    columns_to_tensors: A mapping from feature column to tensors. 'string' key
+      means a base feature (not-transformed). It can have FeatureColumn as a
+      key too. That means that FeatureColumn is already transformed by input
+      pipeline. For example, `inflow` may have handled transformations.
+    feature_columns: A set containing all the feature columns. All items in the
+      set should be instances of classes derived by FeatureColumn.
+    weight_collections: List of graph collections to which weights are added.
+    trainable: If `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    scope: Optional scope for variable_scope.
+
+  Returns:
+    A Tensor which can be consumed by hidden layers in the neural network.
+
+  Raises:
+    ValueError: if FeatureColumn cannot be consumed by a neural network.
+  """
+  _check_supported_sequence_columns(feature_columns)
+  _check_forbidden_sequence_columns(feature_columns)
+
+  return _input_from_feature_columns(columns_to_tensors,
+                                     feature_columns,
+                                     weight_collections,
+                                     trainable,
+                                     scope,
+                                     output_rank=3)
 
 
 def _create_embedding_lookup(column,
@@ -309,7 +383,6 @@ def _create_joint_embedding_lookup(columns_to_tensors,
         combiner='sum',
         name='_weights')
     return variable, predictions
-
 
 
 def joint_weighted_sum_from_feature_columns(columns_to_tensors,
@@ -466,6 +539,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
             default_name=column.name,
             values=columns_to_tensors.values()):
           tensor = column._to_dense_tensor(transformed_tensor)  # pylint: disable=protected-access
+          tensor = fc._reshape_real_valued_tensor(tensor, 2, column.name)  # pylint: disable=protected-access
           variable = [contrib_variables.model_variable(
               name='weight',
               shape=[tensor.get_shape()[1], num_outputs],
@@ -688,3 +762,60 @@ def _add_variable_collection(weight_collections):
     weight_collections = list(
         set(list(weight_collections) + [ops.GraphKeys.VARIABLES]))
   return weight_collections
+
+
+# TODO(jamieas): remove the following logic once all FeatureColumn types are
+# supported for sequences.
+# pylint: disable=protected-access
+_SUPPORTED_SEQUENCE_COLUMNS = (fc._OneHotColumn,
+                               fc._EmbeddingColumn,
+                               fc._RealValuedColumn)
+
+_FORBIDDEN_SEQUENCE_COLUMNS = (fc._HashedEmbeddingColumn,
+                               fc._BucketizedColumn,
+                               fc._CrossedColumn)
+
+
+def _check_supported_sequence_columns(feature_columns):
+  """Asserts `feature_columns` are in `_SUPPORTED_SEQUENCE_COLUMNS`."""
+  for col in feature_columns:
+    if not isinstance(col, _SUPPORTED_SEQUENCE_COLUMNS):
+      raise ValueError(
+          'FeatureColumn type {} is not currently supported for sequence data.'.
+          format(type(col).__name__))
+
+
+def _get_parent_columns(feature_column):
+  """Returns the tuple of `FeatureColumn`s that `feature_column` depends on."""
+  if isinstance(feature_column, (fc._WeightedSparseColumn,
+                                 fc._OneHotColumn,
+                                 fc._EmbeddingColumn,)):
+    return (feature_column.sparse_id_column,)
+  if isinstance(feature_column, (fc._BucketizedColumn,)):
+    return (feature_column.source_column,)
+  if isinstance(feature_column, (fc._CrossedColumn)):
+    return tuple(feature_column.columns)
+  return tuple()
+
+
+def _gather_feature_columns(feature_columns):
+  """Returns a list of all parent `FeatureColumns` of `feature_columns`."""
+  gathered = list(feature_columns)
+  i = 0
+  while i < len(gathered):
+    for column in _get_parent_columns(gathered[i]):
+      if column not in gathered:
+        gathered.append(column)
+    i += 1
+  return gathered
+
+
+def _check_forbidden_sequence_columns(feature_columns):
+  """Recursively cecks `feature_columns` for `_FORBIDDEN_SEQUENCE_COLUMNS`."""
+  all_feature_columns = _gather_feature_columns(feature_columns)
+  for feature_column in all_feature_columns:
+    if isinstance(feature_column, _FORBIDDEN_SEQUENCE_COLUMNS):
+      raise ValueError(
+          'Column {} is of type {}, which is not currently supported for '
+          'sequences.'.format(feature_column.name,
+                              type(feature_column).__name__))

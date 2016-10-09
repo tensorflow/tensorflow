@@ -76,13 +76,13 @@ import collections
 import math
 
 from tensorflow.contrib.framework.python.framework import deprecation
+from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.layers.python.ops import bucketization_op
 from tensorflow.contrib.layers.python.ops import sparse_feature_cross_op
 from tensorflow.contrib.lookup import lookup_ops as contrib_lookup_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
@@ -178,7 +178,8 @@ class _FeatureColumn(object):
   def _to_dnn_input_layer(self,
                           input_tensor,
                           weight_collection=None,
-                          trainable=True):
+                          trainable=True,
+                          output_rank=2):
     """Returns a Tensor as an input to the first layer of neural network."""
     raise ValueError("Calling an abstract method.")
 
@@ -338,7 +339,8 @@ class _SparseColumn(_FeatureColumn,
   def _to_dnn_input_layer(self,
                           input_tensor,
                           weight_collections=None,
-                          trainable=True):
+                          trainable=True,
+                          output_rank=2):
     raise ValueError(
         "SparseColumn is not supported in DNN. "
         "Please use embedding_column or one_hot_column. column: {}".format(
@@ -605,7 +607,8 @@ class _WeightedSparseColumn(_FeatureColumn, collections.namedtuple(
   def _to_dnn_input_layer(self,
                           input_tensor,
                           weight_collections=None,
-                          trainable=True):
+                          trainable=True,
+                          output_rank=2):
     raise ValueError(
         "WeightedSparseColumn is not supported in DNN. "
         "Please use embedding_column or one_hot_column. column: {}".format(
@@ -697,7 +700,8 @@ class _OneHotColumn(_FeatureColumn,
   def _to_dnn_input_layer(self,
                           transformed_input_tensor,
                           unused_weight_collections=None,
-                          unused_trainable=False):
+                          unused_trainable=False,
+                          output_rank=2):
     """Returns a Tensor as an input to the first layer of neural network.
 
     Args:
@@ -705,6 +709,7 @@ class _OneHotColumn(_FeatureColumn,
       in `insert_transformed_feature`.
       unused_weight_collections: Unused. One hot encodings are not variable.
       unused_trainable: Unused. One hot encodings are not trainable.
+      output_rank: the desired rank of the output `Tensor`.
 
     Returns:
       A multihot Tensor to be fed into the first layer of neural network.
@@ -719,21 +724,22 @@ class _OneHotColumn(_FeatureColumn,
       raise ValueError("one_hot_column does not yet support "
                        "weighted_sparse_column. Column: {}".format(self))
 
-    dense_id_tensor = sparse_ops.sparse_tensor_to_dense(
-        self.sparse_id_column.id_tensor(transformed_input_tensor),
-        default_value=-1)
+    # Reshape ID column to `output_rank`.
+    sparse_id_column = self.sparse_id_column.id_tensor(transformed_input_tensor)
+    # pylint: disable=protected-access
+    sparse_id_column = layers._inner_flatten(sparse_id_column, output_rank)
 
-    check_shape_op = control_flow_ops.Assert(
-        math_ops.equal(array_ops.rank(dense_id_tensor), 2),
-        ["Tensor should be of shape: [batch, max num multivalent values]"])
-    with ops.control_dependencies([check_shape_op]):
-      # One hot must be float for tf.concat reasons since all other inputs to
-      # input_layer are float32.
-      one_hot_id_tensor = array_ops.one_hot(
-          dense_id_tensor, depth=self.length, on_value=1.0, off_value=0.0)
+    dense_id_tensor = sparse_ops.sparse_tensor_to_dense(sparse_id_column,
+                                                        default_value=-1)
+
+    # One hot must be float for tf.concat reasons since all other inputs to
+    # input_layer are float32.
+    one_hot_id_tensor = array_ops.one_hot(
+        dense_id_tensor, depth=self.length, on_value=1.0, off_value=0.0)
 
     # Reduce to get a multi-hot per example.
-    return math_ops.reduce_sum(one_hot_id_tensor, reduction_indices=[1])
+    return math_ops.reduce_sum(
+        one_hot_id_tensor, reduction_indices=[output_rank - 1])
 
 
 class _EmbeddingColumn(_FeatureColumn, collections.namedtuple(
@@ -1099,6 +1105,51 @@ def hashed_embedding_column(column_name,
                                 initializer)
 
 
+def _reshape_real_valued_tensor(input_tensor, output_rank, column_name=None):
+  """Reshaping logic for dense, numeric `Tensors`.
+
+  Follows the following rules:
+    1. If `output_rank > input_rank + 1` raise a `ValueError`.
+    2. If `output_rank == input_rank + 1`, expand `input_tensor` by one
+       dimension and return
+    3. If `output_rank == input_rank`, return `input_tensor`.
+    4. If `output_rank < input_rank`, flatten the inner dimensions of
+       `input_tensor` and return a `Tensor` with `output_rank`
+
+  Args:
+    input_tensor: a dense `Tensor` to be reshaped.
+    output_rank: the desired rank of the reshaped `Tensor`.
+    column_name: (optional) the name of the associated column. Used for error
+      messages.
+  Returns:
+    A `Tensor` with the same entries as `input_tensor` and rank `output_rank`.
+  Raises:
+    ValueError: if `output_rank > input_rank + 1`.
+  """
+  input_rank = input_tensor.get_shape().ndims
+  if input_rank is not None:
+    if output_rank > input_rank + 1:
+      error_string = ("Rank of input Tensor ({}) should be the same as "
+                      "output_rank ({}). For example, sequence data should "
+                      "typically be 3 dimensional (rank 3) while non-sequence "
+                      "data is typically 2 dimensional (rank 2).".format(
+                          input_rank, output_rank))
+      if column_name is not None:
+        error_string += "Error while processing column {}.".format(column_name)
+      raise ValueError(error_string)
+    if output_rank == input_rank + 1:
+      logging.warning(
+          "Rank of input Tensor ({}) should be the same as output_rank ({}) "
+          "for column. Will attempt to expand dims. It is highly recommended "
+          "that you resize your input, as this behavior may change.".format(
+              input_rank, output_rank))
+      return array_ops.expand_dims(input_tensor, -1, name="expand_dims")
+    if output_rank == input_rank:
+      return input_tensor
+  # Here, either `input_rank` is unknown or it is greater than `output_rank`.
+  return layers._inner_flatten(input_tensor, output_rank)  # pylint: disable=protected-access
+
+
 class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
     "_RealValuedColumn",
     ["column_name", "dimension", "default_value", "dtype", "normalizer"])):
@@ -1154,19 +1205,17 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
     """
     # Transform the input tensor according to the normalizer function + reshape.
     input_tensor = self._normalized_input_tensor(columns_to_tensors[self.name])
-    batch_size = input_tensor.get_shape().as_list()[0]
-    batch_size = int(batch_size) if batch_size else -1
-    flattened_shape = [batch_size, self.dimension]
-    columns_to_tensors[self] = array_ops.reshape(
-        math_ops.to_float(input_tensor), flattened_shape, name="reshape")
+    columns_to_tensors[self] = math_ops.to_float(input_tensor)
 
   # pylint: disable=unused-argument
   def _to_dnn_input_layer(self,
-                          transformed_input_tensor,
+                          input_tensor,
                           weight_collections=None,
-                          trainable=True):
-    """Returns a Tensor as an input to the first layer of neural network."""
-    return transformed_input_tensor
+                          trainable=True,
+                          output_rank=2):
+    if input_tensor.dtype != dtypes.float32:
+      input_tensor = math_ops.to_float(input_tensor)
+    return _reshape_real_valued_tensor(input_tensor, output_rank, self.name)
 
   def _to_dense_tensor(self, input_tensor):
     return input_tensor
@@ -1354,7 +1403,10 @@ class _BucketizedColumn(_FeatureColumn, collections.namedtuple(
   def _to_dnn_input_layer(self,
                           input_tensor,
                           weight_collections=None,
-                          trainable=True):
+                          trainable=True,
+                          output_rank=2):
+    if output_rank != 2:
+      raise ValueError("BucketizedColumn currently only supports output_rank=2")
     return array_ops.reshape(
         array_ops.one_hot(
             math_ops.to_int64(input_tensor),
@@ -1576,7 +1628,8 @@ class _CrossedColumn(_FeatureColumn,
   def _to_dnn_input_layer(self,
                           input_tensor,
                           weight_collections=None,
-                          trainable=True):
+                          trainable=True,
+                          output_rank=2):
     raise ValueError("CrossedColumn is not supported in DNN. "
                      "Please use embedding_column. column: {}".format(self))
 
@@ -1680,18 +1733,11 @@ class DataFrameColumn(_FeatureColumn,
   def _to_dnn_input_layer(self,
                           input_tensor,
                           weight_collections=None,
-                          trainable=True):
-    # DataFrame typically provides Tensors of shape [batch_size],
-    # but Estimator requires shape [batch_size, 1]
-    dims = input_tensor.get_shape().ndims
-    if dims == 0:
-      raise ValueError(
-          "Can't build input layer from tensor of shape (): {}".format(
-              self.column_name))
-    elif dims == 1:
-      return array_ops.expand_dims(input_tensor, 1, name="expand_dims")
-    else:
-      return input_tensor
+                          trainable=True,
+                          output_rank=2):
+    if input_tensor.dtype != dtypes.float32:
+      input_tensor = math_ops.to_float(input_tensor)
+    return _reshape_real_valued_tensor(input_tensor, output_rank, self.name)
 
   def _to_dense_tensor(self, input_tensor):
     return self._to_dnn_input_layer(input_tensor)

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import numpy as np
 import tensorflow as tf
 
@@ -720,6 +721,310 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
         trainable=True)
     # There should  one trainable variable for embeded sparse
     self.assertEqual(1, len(tf.trainable_variables()))
+
+
+class SequenceInputFromFeatureColumnTest(tf.test.TestCase):
+
+  def testSupportedColumns(self):
+    measurement = tf.contrib.layers.real_valued_column("measurements")
+    country = tf.contrib.layers.sparse_column_with_hash_bucket(
+        "country", 100)
+    pets = tf.contrib.layers.sparse_column_with_hash_bucket(
+        "pets", 100)
+    ids = tf.contrib.layers.sparse_column_with_integerized_feature(
+        "id", 100)
+
+    country_x_pets = tf.contrib.layers.crossed_column(
+        [country, pets], 100)
+    country_x_pets_onehot = tf.contrib.layers.one_hot_column(
+        country_x_pets)
+    bucketized_measurement = tf.contrib.layers.bucketized_column(
+        measurement, [.25, .5, .75])
+    embedded_id = tf.contrib.layers.embedding_column(
+        ids, 100)
+
+    # `_BucketizedColumn` is not supported.
+    self.assertRaisesRegexp(
+        ValueError,
+        "FeatureColumn type _BucketizedColumn is not currently supported",
+        tf.contrib.layers.sequence_input_from_feature_columns,
+        {}, [measurement, bucketized_measurement])
+
+    # `_CrossedColumn` is not supported.
+    self.assertRaisesRegexp(
+        ValueError,
+        "FeatureColumn type _CrossedColumn is not currently supported",
+        tf.contrib.layers.sequence_input_from_feature_columns,
+        {}, [embedded_id, country_x_pets])
+
+    # `country_x_pets_onehot` depends on a `_CrossedColumn` which is forbidden.
+    self.assertRaisesRegexp(
+        ValueError,
+        "Column country_X_pets .* _CrossedColumn",
+        tf.contrib.layers.sequence_input_from_feature_columns,
+        {}, [embedded_id, country_x_pets_onehot])
+
+  def testRealValuedColumn(self):
+    batch_size = 4
+    sequence_length = 8
+    dimension = 3
+
+    np.random.seed(1111)
+    measurement_input = np.random.rand(batch_size, sequence_length, dimension)
+    measurement_column = tf.contrib.layers.real_valued_column("measurements")
+    columns_to_tensors = {"measurements": tf.constant(measurement_input)}
+    model_input_tensor = tf.contrib.layers.sequence_input_from_feature_columns(
+        columns_to_tensors, [measurement_column])
+
+    with self.test_session() as sess:
+      model_inputs = sess.run(model_input_tensor)
+    self.assertAllClose(measurement_input, model_inputs)
+
+  def testRealValuedColumnWithExtraDimensions(self):
+    batch_size = 4
+    sequence_length = 8
+    dimensions = [3, 4, 5]
+
+    np.random.seed(2222)
+    measurement_input = np.random.rand(batch_size, sequence_length, *dimensions)
+    measurement_column = tf.contrib.layers.real_valued_column("measurements")
+    columns_to_tensors = {"measurements": tf.constant(measurement_input)}
+    model_input_tensor = tf.contrib.layers.sequence_input_from_feature_columns(
+        columns_to_tensors, [measurement_column])
+
+    expected_shape = [batch_size, sequence_length, np.prod(dimensions)]
+    reshaped_measurements = np.reshape(measurement_input, expected_shape)
+
+    with self.test_session() as sess:
+      model_inputs = sess.run(model_input_tensor)
+
+    self.assertAllClose(reshaped_measurements, model_inputs)
+
+  def testRealValuedColumnWithNormalizer(self):
+    batch_size = 4
+    sequence_length = 8
+    dimension = 3
+    normalizer = lambda x: x - 2
+
+    np.random.seed(3333)
+    measurement_input = np.random.rand(batch_size, sequence_length, dimension)
+    measurement_column = tf.contrib.layers.real_valued_column(
+        "measurements", normalizer=normalizer)
+    columns_to_tensors = {"measurements": tf.constant(measurement_input)}
+    model_input_tensor = tf.contrib.layers.sequence_input_from_feature_columns(
+        columns_to_tensors, [measurement_column])
+
+    with self.test_session() as sess:
+      model_inputs = sess.run(model_input_tensor)
+    self.assertAllClose(normalizer(measurement_input), model_inputs)
+
+  def testRealValuedColumnWithMultiDimensionsAndNormalizer(self):
+    batch_size = 4
+    sequence_length = 8
+    dimensions = [3, 4, 5]
+    normalizer = lambda x: x / 2.0
+
+    np.random.seed(1234)
+    measurement_input = np.random.rand(batch_size, sequence_length, *dimensions)
+    measurement_column = tf.contrib.layers.real_valued_column(
+        "measurements", normalizer=normalizer)
+    columns_to_tensors = {"measurements": tf.constant(measurement_input)}
+    model_input_tensor = tf.contrib.layers.sequence_input_from_feature_columns(
+        columns_to_tensors, [measurement_column])
+
+    expected_shape = [batch_size, sequence_length, np.prod(dimensions)]
+    reshaped_measurements = np.reshape(measurement_input, expected_shape)
+
+    with self.test_session() as sess:
+      model_inputs = sess.run(model_input_tensor)
+
+    self.assertAllClose(normalizer(reshaped_measurements), model_inputs)
+
+  def testOneHotColumnFromSparseColumnWithKeys(self):
+    ids_tensor = tf.SparseTensor(
+        values=["c", "b",
+                "a", "c", "b",
+                "b"],
+        indices=[[0, 0, 0], [0, 1, 0],
+                 [1, 0, 0], [1, 0, 1], [1, 1, 0],
+                 [3, 2, 0]],
+        shape=[4, 3, 2])
+
+    ids_column = tf.contrib.layers.sparse_column_with_keys(
+        "ids", ["a", "b", "c", "unseen"])
+    one_hot_column = tf.contrib.layers.one_hot_column(ids_column)
+    columns_to_tensors = {"ids": ids_tensor}
+    model_input_tensor = tf.contrib.layers.sequence_input_from_feature_columns(
+        columns_to_tensors, [one_hot_column])
+
+    with self.test_session() as sess:
+      tf.initialize_all_variables().run()
+      tf.initialize_all_tables().run()
+      model_input = sess.run(model_input_tensor)
+
+    expected_input_shape = np.array([4, 3, 4])
+    expected_model_input = np.array(
+        [[[0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 0]],
+         [[1, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 0]],
+         [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+         [[0, 0, 0, 0], [0, 0, 0, 0], [0, 1, 0, 0]]], dtype=np.float32)
+
+    self.assertAllEqual(expected_input_shape, model_input.shape)
+    self.assertAllClose(expected_model_input, model_input)
+
+  def testOneHotColumnFromSparseColumnWithHashBucket(self):
+    hash_buckets = 10
+    ids_tensor = tf.SparseTensor(
+        values=["c", "b",
+                "a", "c", "b",
+                "b"],
+        indices=[[0, 0, 0], [0, 1, 0],
+                 [1, 0, 0], [1, 0, 1], [1, 1, 0],
+                 [3, 2, 0]],
+        shape=[4, 3, 2])
+
+    hashed_ids_column = tf.contrib.layers.sparse_column_with_hash_bucket(
+        "ids", hash_buckets)
+    one_hot_column = tf.contrib.layers.one_hot_column(hashed_ids_column)
+    columns_to_tensors = {"ids": ids_tensor}
+    model_input_tensor = tf.contrib.layers.sequence_input_from_feature_columns(
+        columns_to_tensors, [one_hot_column])
+
+    with self.test_session() as sess:
+      tf.initialize_all_variables().run()
+      tf.initialize_all_tables().run()
+      model_input = sess.run(model_input_tensor)
+
+    expected_input_shape = np.array([4, 3, hash_buckets])
+    self.assertAllEqual(expected_input_shape, model_input.shape)
+
+  def testEmbeddingColumn(self):
+    hash_buckets = 10
+    embedding_dimension = 5
+    ids_tensor = tf.SparseTensor(
+        values=["c", "b",
+                "a", "c", "b",
+                "b"],
+        indices=[[0, 0, 0], [0, 1, 0],
+                 [1, 0, 0], [1, 0, 1], [1, 1, 0],
+                 [3, 2, 0]],
+        shape=[4, 3, 2])
+
+    expected_input_shape = np.array([4, 3, embedding_dimension])
+
+    hashed_ids_column = tf.contrib.layers.sparse_column_with_hash_bucket(
+        "ids", hash_buckets)
+    embedded_column = tf.contrib.layers.embedding_column(
+        hashed_ids_column, embedding_dimension)
+    columns_to_tensors = {"ids": ids_tensor}
+    model_input_tensor = tf.contrib.layers.sequence_input_from_feature_columns(
+        columns_to_tensors, [embedded_column])
+
+    with self.test_session() as sess:
+      tf.initialize_all_variables().run()
+      tf.initialize_all_tables().run()
+      model_input = sess.run(model_input_tensor)
+
+    self.assertAllEqual(expected_input_shape, model_input.shape)
+
+  def testEmbeddingColumnGradient(self):
+    hash_buckets = 1000
+    embedding_dimension = 3
+    ids_tensor = tf.SparseTensor(
+        values=["c", "b",
+                "a", "c", "b",
+                "b"],
+        indices=[[0, 0, 0], [0, 1, 0],
+                 [1, 0, 0], [1, 0, 1], [1, 1, 0],
+                 [3, 2, 0]],
+        shape=[4, 3, 2])
+
+    hashed_ids_column = tf.contrib.layers.sparse_column_with_hash_bucket(
+        "ids", hash_buckets)
+    embedded_column = tf.contrib.layers.embedding_column(
+        hashed_ids_column, embedding_dimension, combiner="sum")
+    columns_to_tensors = {"ids": ids_tensor}
+    model_input_tensor = tf.contrib.layers.sequence_input_from_feature_columns(
+        columns_to_tensors,
+        [embedded_column],
+        weight_collections=["my_collection"])
+    embedding_weights = tf.get_collection("my_collection")
+    gradient_tensor = tf.gradients(model_input_tensor, embedding_weights)
+    with self.test_session() as sess:
+      tf.initialize_all_variables().run()
+      tf.initialize_all_tables().run()
+      model_input, gradients = sess.run([model_input_tensor, gradient_tensor])
+
+    expected_input_shape = [4, 3, embedding_dimension]
+    self.assertAllEqual(expected_input_shape, model_input.shape)
+
+    # `ids_tensor` consists of 7 instances of <empty>, 3 occurences of "b",
+    # 2 occurences of "c" and 1 instance of "a".
+    expected_gradient_values = sorted([7., 3., 2., 1.] * embedding_dimension)
+    actual_gradient_values = np.sort(gradients[0].values, axis=None)
+    self.assertAllClose(expected_gradient_values, actual_gradient_values)
+
+  def testMultipleColumns(self):
+    batch_size = 4
+    sequence_length = 3
+    measurement_dimension = 5
+    country_hash_size = 10
+    max_id = 200
+    id_embedding_dimension = 11
+    normalizer = lambda x: x / 10.0
+
+    measurement_tensor = tf.random_uniform(
+        [batch_size, sequence_length, measurement_dimension])
+    country_tensor = tf.SparseTensor(
+        values=["us", "ca",
+                "ru", "fr", "ca",
+                "mx"],
+        indices=[[0, 0, 0], [0, 1, 0],
+                 [1, 0, 0], [1, 0, 1], [1, 1, 0],
+                 [3, 2, 0]],
+        shape=[4, 3, 2])
+    id_tensor = tf.SparseTensor(
+        values=[2, 5,
+                26, 123, 1,
+                0],
+        indices=[[0, 0, 0], [0, 0, 1], [0, 1, 1],
+                 [1, 0, 0], [1, 1, 0],
+                 [3, 2, 0]],
+        shape=[4, 3, 2])
+
+    columns_to_tensors = {"measurements": measurement_tensor,
+                          "country": country_tensor,
+                          "id": id_tensor}
+
+    measurement_column = tf.contrib.layers.real_valued_column(
+        "measurements", normalizer=normalizer)
+    country_column = tf.contrib.layers.sparse_column_with_hash_bucket(
+        "country", country_hash_size)
+    id_column = tf.contrib.layers.sparse_column_with_integerized_feature(
+        "id", max_id)
+
+    onehot_country_column = tf.contrib.layers.one_hot_column(country_column)
+    embedded_id_column = tf.contrib.layers.embedding_column(
+        id_column, id_embedding_dimension)
+
+    model_input_columns = [measurement_column,
+                           onehot_country_column,
+                           embedded_id_column]
+
+    model_input_tensor = tf.contrib.layers.sequence_input_from_feature_columns(
+        columns_to_tensors, model_input_columns)
+    self.assertEqual(tf.float32, model_input_tensor.dtype)
+
+    with self.test_session() as sess:
+      tf.initialize_all_variables().run()
+      tf.initialize_all_tables().run()
+      model_input = sess.run(model_input_tensor)
+
+    expected_input_shape = [
+        batch_size,
+        sequence_length,
+        measurement_dimension + country_hash_size + id_embedding_dimension]
+    self.assertAllEqual(expected_input_shape, model_input.shape)
 
 
 class WeightedSumTest(tf.test.TestCase):
