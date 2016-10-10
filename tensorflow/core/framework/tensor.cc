@@ -677,14 +677,50 @@ bool Tensor::CanUseDMA() const {
 #undef CASE
 
 namespace {
+
+/**
+ * from left dim to right dim , recursive print
+ */
+template<typename T>
+void PrintOneDim(T* data, int dim_index, gtl::InlinedVector<int64, 4> shape,
+		int64 limit, string* result, int64* data_index, int shape_size) {
+	int element_count = shape[dim_index];
+	//the bottom of the tensor
+	if (dim_index == shape_size - 1) {
+		for (int i = 0; i < element_count; i++) {
+			if (*data_index >= limit) {
+				return;
+			}
+			if (i > 0)
+				strings::StrAppend(result, " ");
+			strings::StrAppend(result, data[(*data_index)++]);
+		}
+		return;
+	}
+	//loop every element of one dim
+	for (int i = 0; i < element_count; i++) {
+		strings::StrAppend(result, "[");
+		//as for each element ,print the sub-element
+		PrintOneDim(data, dim_index + 1, shape, limit, result, data_index,
+				shape_size);
+		strings::StrAppend(result, "]");
+	}
+}
+
 template <typename T>
 string SummarizeArray(int64 limit, int64 num_elts, const char* data) {
   string ret;
   const T* array = reinterpret_cast<const T*>(data);
-  for (int64 i = 0; i < limit; ++i) {
-    if (i > 0) strings::StrAppend(&ret, " ");
-    strings::StrAppend(&ret, array[i]);
-  }
+
+  int64 data_index = 0;
+  gtl::InlinedVector<int64, 4> shape = tensor_shape.dim_sizes();
+  int shape_size = tensor_shape.dims();
+  PrintOneDim(array, 0, shape, limit, &ret, &data_index, shape_size);
+
+//  for (int64 i = 0; i < limit; ++i) {
+//    if (i > 0) strings::StrAppend(&ret, " ");
+//    strings::StrAppend(&ret, array[i]);
+//  }
   if (num_elts > limit) strings::StrAppend(&ret, "...");
   return ret;
 }
