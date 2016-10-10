@@ -223,7 +223,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     if response == debugger_cli_common.EXPLICIT_USER_EXIT:
       # Explicit user "exit" command leads to sys.exit(1).
       print(
-          "Note: user exited from debugger CLI: sys.exit(1) called.",
+          "Note: user exited from debugger CLI: Calling sys.exit(1).",
           file=sys.stderr)
       sys.exit(1)
 
@@ -364,12 +364,9 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       action = framework.OnRunStartAction.DEBUG_RUN
       debug_urls = self._get_run_debug_urls()
 
-    annotations = {
-        debugger_cli_common.EXIT_TOKEN_KEY: framework.OnRunStartResponse(
-            action, debug_urls)
-    }
-
-    return debugger_cli_common.RichTextLines([], annotations=annotations)
+    # Raise CommandLineExit exception to cause the CLI to exit.
+    raise debugger_cli_common.CommandLineExit(
+        exit_token=framework.OnRunStartResponse(action, debug_urls))
 
   def _on_run_start_step_handler(self, args, screen_info=None):
     """Command handler for "invoke_stepper" command during on-run-start."""
@@ -379,13 +376,10 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     # No parsing is currently necessary for invoke_stepper. This may change
     # in the future when the command has arguments.
 
-    action = framework.OnRunStartAction.INVOKE_STEPPER
-    annotations = {
-        debugger_cli_common.EXIT_TOKEN_KEY: framework.OnRunStartResponse(action,
-                                                                         [])
-    }
-
-    return debugger_cli_common.RichTextLines([], annotations=annotations)
+    # Raise CommandLineExit exception to cause the CLI to exit.
+    raise debugger_cli_common.CommandLineExit(
+        exit_token=framework.OnRunStartResponse(
+            framework.OnRunStartAction.INVOKE_STEPPER, []))
 
   def _run_end_run_command_handler(self, args, screen_info=None):
     """Handler for incorrectly entered run command at run-end prompt."""

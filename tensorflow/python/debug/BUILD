@@ -68,10 +68,7 @@ py_library(
     name = "curses_ui",
     srcs = ["cli/curses_ui.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":debugger_cli_common",
-        "//tensorflow:tensorflow_py",
-    ],
+    deps = [":debugger_cli_common"],
 )
 
 py_library(
@@ -84,7 +81,6 @@ py_library(
         ":debug_data",
         ":debugger_cli_common",
         ":framework",
-        "//tensorflow:tensorflow_py",  # TODO(cais): Change in buildozer.yml.
         "//tensorflow/python:session",
     ],
 )
@@ -244,7 +240,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":local_cli",
-        "//tensorflow:tensorflow_py",  # TODO(cais): Buildozer rule.
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_test_lib",
     ],
 )

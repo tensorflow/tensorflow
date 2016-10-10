@@ -279,7 +279,7 @@ class OnRunEndResponse(object):
     pass
 
 
-class BaseDebugWrapperSession(object):
+class BaseDebugWrapperSession(session.SessionInterface):
   """Base class of debug-wrapper session classes.
 
   Concrete classes that inherit from this class need to implement the abstract
@@ -322,6 +322,14 @@ class BaseDebugWrapperSession(object):
     else:
       raise ValueError(
           "Invalid OnSessionInitAction value: %s" % response.action)
+
+  @property
+  def graph(self):
+    return self._sess.graph
+
+  @property
+  def sess_str(self):
+    return self._sess.sess_str
 
   @property
   def session(self):
@@ -393,6 +401,11 @@ class BaseDebugWrapperSession(object):
     # Currently run_end_resp is only a placeholder. No action is taken on it.
 
     return retvals
+
+  def partial_run_setup(self, fetches, feeds=None):
+    """Sets up the feeds and fetches for partial runs in the session."""
+    raise NotImplementedError(
+        "partial_run_setup is not implemented for debug-wrapper sessions.")
 
   def partial_run(self, handle, fetches, feed_dict=None):
     raise NotImplementedError(

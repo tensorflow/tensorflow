@@ -290,6 +290,22 @@ class CursesTest(test_util.TensorFlowTestCase):
     # After 3rd scrolling (PageUp).
     self.assertIn("Scroll: 4.17%", ui.scroll_messages[3])
 
+  def testCutOffTooManyOutputLines(self):
+    ui = MockCursesUI(
+        40,
+        80,
+        command_sequence=[string_to_codes("babble -n 20\n"), self._EXIT])
+
+    # Modify max_output_lines so that this test doesn't use too much time or
+    # memory.
+    ui.max_output_lines = 10
+
+    ui.register_command_handler("babble", self._babble, "")
+    ui.run_ui()
+
+    self.assertEqual(["bar"] * 10 + ["Output cut off at 10 lines!"],
+                     ui.wrapped_outputs[0].lines)
+
   def testRunUIScrollTallOutputEndHome(self):
     """Scroll tall output with PageDown and PageUp."""
 
