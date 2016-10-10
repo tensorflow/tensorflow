@@ -1063,8 +1063,7 @@ Then, row_pooling_sequence should satisfy:
 4.  length(row_pooling_sequence) = output_row_length+1
 
 For more details on fractional max pooling, see this paper:
-[Benjamin Graham, Fractional Max-Pooling]
-(http://arxiv.org/abs/1412.6071)
+[Benjamin Graham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071)
 
 ##### Args:
 
@@ -1181,9 +1180,8 @@ The reduction never includes out-of-bounds positions.
 
 Morphological operators are non-linear filters used in image processing.
 
-[Greyscale morphological dilation]
-(https://en.wikipedia.org/wiki/Dilation_(morphology)) is the max-sum counterpart
-of standard sum-product convolution:
+[Greyscale morphological dilation](https://en.wikipedia.org/wiki/Dilation_(morphology))
+is the max-sum counterpart of standard sum-product convolution:
 
     output[b, y, x, c] =
         max_{dy, dx} input[b,
@@ -1196,9 +1194,8 @@ The `filter` is usually called structuring function. Max-pooling is a special
 case of greyscale morphological dilation when the filter assumes all-zero
 values (a.k.a. flat structuring function).
 
-[Greyscale morphological erosion]
-(https://en.wikipedia.org/wiki/Erosion_(morphology)) is the min-sum counterpart
-of standard sum-product convolution:
+[Greyscale morphological erosion](https://en.wikipedia.org/wiki/Erosion_(morphology))
+is the min-sum counterpart of standard sum-product convolution:
 
     output[b, y, x, c] =
         min_{dy, dx} input[b,
@@ -1372,8 +1369,7 @@ each component is divided by the weighted, squared sum of inputs within
     output = input / (bias + alpha * sqr_sum) ** beta
 
 For details, see [Krizhevsky et al., ImageNet classification with deep
-convolutional neural networks (NIPS 2012)]
-(http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks).
+convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks).
 
 ##### Args:
 
@@ -2789,8 +2785,8 @@ Candidate Sampling training algorithms can speed up your step times by
 only considering a small randomly-chosen subset of contrastive classes
 (called candidates) for each batch of training examples.
 
-See our [Candidate Sampling Algorithms Reference]
-(../../extras/candidate_sampling.pdf)
+See our
+[Candidate Sampling Algorithms Reference](../../extras/candidate_sampling.pdf)
 
 ### Sampled Loss Functions
 
@@ -3221,9 +3217,9 @@ Batch normalization.
 
 As described in http://arxiv.org/abs/1502.03167.
 Normalizes a tensor by `mean` and `variance`, and applies (optionally) a
-`scale` \\\\(\gamma\\\\) to it, as well as an `offset` \\\\(\\beta\\\\):
+`scale` \\(\gamma\\) to it, as well as an `offset` \\(\beta\\):
 
-\\\\(\\frac{\gamma(x-\mu)}{\sigma}+\\beta\\\\)
+\\(\frac{\gamma(x-\mu)}{\sigma}+\beta\\)
 
 `mean`, `variance`, `offset` and `scale` are all expected to be of one of two
 shapes:
@@ -3251,9 +3247,9 @@ shapes:
 *  <b>`x`</b>: Input `Tensor` of arbitrary dimensionality.
 *  <b>`mean`</b>: A mean `Tensor`.
 *  <b>`variance`</b>: A variance `Tensor`.
-*  <b>`offset`</b>: An offset `Tensor`, often denoted \\\\(\\beta\\\\) in equations, or
+*  <b>`offset`</b>: An offset `Tensor`, often denoted \\(\beta\\) in equations, or
     None. If present, will be added to the normalized tensor.
-*  <b>`scale`</b>: A scale `Tensor`, often denoted \\\\(\gamma\\\\) in equations, or
+*  <b>`scale`</b>: A scale `Tensor`, often denoted \\(\gamma\\) in equations, or
     `None`. If present, the scale is applied to the normalized tensor.
 *  <b>`variance_epsilon`</b>: A small float number to avoid dividing by 0.
 *  <b>`name`</b>: A name for this operation (optional).
