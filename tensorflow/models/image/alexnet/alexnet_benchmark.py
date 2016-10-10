@@ -33,6 +33,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 from datetime import datetime
 import math
 import time
@@ -40,13 +41,7 @@ import time
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-
-FLAGS = tf.app.flags.FLAGS
-
-tf.app.flags.DEFINE_integer('batch_size', 128,
-                            """Batch size.""")
-tf.app.flags.DEFINE_integer('num_batches', 100,
-                            """Number of batches to run.""")
+FLAGS = None
 
 
 def print_activations(t):
@@ -233,4 +228,19 @@ def main(_):
 
 
 if __name__ == '__main__':
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--batch_size',
+      type=int,
+      default=128,
+      help='Batch size.'
+  )
+  parser.add_argument(
+      '--num_batches',
+      type=int,
+      default=100,
+      help='Number of batches to run.'
+  )
+  FLAGS = parser.parse_args()
+
   tf.app.run()

@@ -35,6 +35,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import os.path
 import re
 import sys
@@ -44,23 +45,7 @@ import numpy as np
 from six.moves import urllib
 import tensorflow as tf
 
-FLAGS = tf.app.flags.FLAGS
-
-# classify_image_graph_def.pb:
-#   Binary representation of the GraphDef protocol buffer.
-# imagenet_synset_to_human_label_map.txt:
-#   Map from synset ID to a human readable string.
-# imagenet_2012_challenge_label_map_proto.pbtxt:
-#   Text representation of a protocol buffer mapping a label to synset ID.
-tf.app.flags.DEFINE_string(
-    'model_dir', '/tmp/imagenet',
-    """Path to classify_image_graph_def.pb, """
-    """imagenet_synset_to_human_label_map.txt, and """
-    """imagenet_2012_challenge_label_map_proto.pbtxt.""")
-tf.app.flags.DEFINE_string('image_file', '',
-                           """Absolute path to image file.""")
-tf.app.flags.DEFINE_integer('num_top_predictions', 5,
-                            """Display this many predictions.""")
+FLAGS = None
 
 # pylint: disable=line-too-long
 DATA_URL = 'http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz'
@@ -209,4 +194,35 @@ def main(_):
 
 
 if __name__ == '__main__':
+  parser = argparse.ArgumentParser()
+  # classify_image_graph_def.pb:
+  #   Binary representation of the GraphDef protocol buffer.
+  # imagenet_synset_to_human_label_map.txt:
+  #   Map from synset ID to a human readable string.
+  # imagenet_2012_challenge_label_map_proto.pbtxt:
+  #   Text representation of a protocol buffer mapping a label to synset ID.
+  parser.add_argument(
+      '--model_dir',
+      type=str,
+      default='/tmp/imagenet',
+      help="""\
+      Path to classify_image_graph_def.pb,
+      imagenet_synset_to_human_label_map.txt, and
+      imagenet_2012_challenge_label_map_proto.pbtxt.\
+      """
+  )
+  parser.add_argument(
+      '--image_file',
+      type=str,
+      default='',
+      help='Absolute path to image file.'
+  )
+  parser.add_argument(
+      '--num_top_predictions',
+      type=int,
+      default=5,
+      help='Display this many predictions.'
+  )
+  FLAGS = parser.parse_args()
+
   tf.app.run()
