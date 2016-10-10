@@ -119,7 +119,6 @@ py_test(
     size = "small",
     srcs = ["python/ops/variables_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["manual"],
     deps = ["//tensorflow:tensorflow_py"],
 )
 
