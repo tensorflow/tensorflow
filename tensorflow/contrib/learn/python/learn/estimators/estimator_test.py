@@ -353,6 +353,18 @@ class EstimatorTest(tf.test.TestCase):
         tf.contrib.testing.latest_events(est.model_dir), ['loss'])
     self.assertEqual(len(loss_summary), 1)
 
+  def testLossInGraphCollection(self):
+
+    class _LossCheckerHook(tf.train.SessionRunHook):
+
+      def begin(self):
+        self.loss_collection = tf.get_collection(tf.GraphKeys.LOSSES)
+
+    hook = _LossCheckerHook()
+    est = tf.contrib.learn.Estimator(model_fn=linear_model_fn)
+    est.fit(input_fn=boston_input_fn, steps=200, monitors=[hook])
+    self.assertTrue(hook.loss_collection)
+
   def test_export_returns_exported_dirname(self):
     expected = '/path/to/some_dir'
     with tf.test.mock.patch.object(estimator, 'export') as mock_export_module:

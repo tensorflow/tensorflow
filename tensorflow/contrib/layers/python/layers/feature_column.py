@@ -706,7 +706,7 @@ class _OneHotColumn(_FeatureColumn,
 
     Args:
       transformed_input_tensor: A tensor that has undergone the transformations
-      in `insert_transformed_feature`.
+      in `insert_transformed_feature`. Rank should be >= `output_rank`.
       unused_weight_collections: Unused. One hot encodings are not variable.
       unused_trainable: Unused. One hot encodings are not trainable.
       output_rank: the desired rank of the output `Tensor`.
@@ -1135,7 +1135,8 @@ def _reshape_real_valued_tensor(input_tensor, output_rank, column_name=None):
                       "data is typically 2 dimensional (rank 2).".format(
                           input_rank, output_rank))
       if column_name is not None:
-        error_string += "Error while processing column {}.".format(column_name)
+        error_string = ("Error while processing column {}.".format(column_name)
+                        + error_string)
       raise ValueError(error_string)
     if output_rank == input_rank + 1:
       logging.warning(
@@ -1203,7 +1204,7 @@ class _RealValuedColumn(_FeatureColumn, collections.namedtuple(
         key means a base feature (not-transformed). It can have _FeatureColumn
         as a key too. That means that _FeatureColumn is already transformed.
     """
-    # Transform the input tensor according to the normalizer function + reshape.
+    # Transform the input tensor according to the normalizer function.
     input_tensor = self._normalized_input_tensor(columns_to_tensors[self.name])
     columns_to_tensors[self] = math_ops.to_float(input_tensor)
 

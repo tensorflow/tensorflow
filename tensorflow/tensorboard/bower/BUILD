@@ -35,7 +35,7 @@ filegroup(
         "@iron_validatable_behavior//:iron_validatable_behavior",
         "@lodash//:lodash",
         "@neon_animation//:neon_animation",
-        "@numericjs_numeric_1_2_6_min_js//file",
+        "@numericjs_numeric_min_js//file",
         "@paper_behaviors//:paper_behaviors",
         "@paper_button//:paper_button",
         "@paper_checkbox//:paper_checkbox",

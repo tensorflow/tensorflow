@@ -180,7 +180,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                     SimpleGraphExecutionState* execution_state,
                     ProfileHandler* ph, RunStepResponse* resp);
   void ProcessDeviceStats(ProfileHandler* ph,
-                          SimpleGraphExecutionState* execution_state,
+                          const SimpleGraphExecutionState* execution_state,
                           const DeviceStepStats& ds, bool is_rpc);
 
   string DetailText(const NodeDef& def, const NodeExecStats& ns) {
@@ -724,7 +724,7 @@ void MasterSession::ReffedClientGraph::ProcessStats(
 }
 
 void MasterSession::ReffedClientGraph::ProcessDeviceStats(
-    ProfileHandler* ph, SimpleGraphExecutionState* execution_state,
+    ProfileHandler* ph, const SimpleGraphExecutionState* execution_state,
     const DeviceStepStats& ds, bool is_rpc) {
   const string& dev_name = ds.device();
   VLOG(1) << "Device " << dev_name << " reports stats for "
@@ -736,9 +736,8 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
       ph->RecordOneOp(dev_name, ns, true /*is_copy*/, "", ns.node_name(),
                       ns.timeline_label());
     } else {
-      NodeDef ndef;
-      Status s = execution_state->GlobalNodeDefByName(ns.node_name(), &ndef);
-      const bool found_node_in_graph = s.ok();
+      const Node* node = execution_state->get_node_by_name(ns.node_name());
+      const bool found_node_in_graph = node != nullptr;
       if (!found_node_in_graph && ns.timeline_label().empty()) {
         // The counter incrementing is not thread-safe. But we don't really
         // care.
@@ -752,12 +751,13 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
         }
         continue;
       }
-      string optype = found_node_in_graph ? ndef.op() : ns.node_name();
+      string optype =
+          found_node_in_graph ? node->type_string() : ns.node_name();
       string details;
       if (!ns.timeline_label().empty()) {
         details = ns.timeline_label();
       } else if (found_node_in_graph) {
-        details = DetailText(ndef, ns);
+        details = DetailText(node->def(), ns);
       } else {
         // Leave details string empty
       }
@@ -892,10 +892,8 @@ Status MasterSession::Create(GraphDef* graph_def) {
   SimpleGraphExecutionStateOptions options;
   options.device_set = &devices_;
   options.session_options = &session_opts_;
-  execution_state_.reset(
-      new SimpleGraphExecutionState(graph_def->library(), options));
-  TF_RETURN_IF_ERROR(execution_state_->Create(graph_def));
-
+  TF_RETURN_IF_ERROR(SimpleGraphExecutionState::MakeForBaseGraph(
+      graph_def, options, &execution_state_));
   return Status::OK();
 }
 

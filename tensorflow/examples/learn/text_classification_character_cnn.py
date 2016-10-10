@@ -28,16 +28,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-from sklearn import metrics
-import pandas
+import argparse
 
+import numpy as np
+import pandas
+from sklearn import metrics
 import tensorflow as tf
+
 from tensorflow.contrib import learn
 
-FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_bool('test_with_fake_data', False,
-                         'Test the example code with fake data.')
+FLAGS = None
 
 MAX_DOCUMENT_LENGTH = 100
 N_FILTERS = 10
@@ -107,4 +107,13 @@ def main(unused_argv):
 
 
 if __name__ == '__main__':
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--test_with_fake_data',
+      default=False,
+      help='Test the example code with fake data.',
+      action='store_true'
+  )
+  FLAGS = parser.parse_args()
+
   tf.app.run()
