@@ -54,8 +54,8 @@ def register_prior(variational, prior):
   """
   if not isinstance(variational, st.StochasticTensor):
     raise TypeError("variational must be a DistributionTensor")
-  if not isinstance(prior, distributions.BaseDistribution):
-    raise TypeError("prior must be a BaseDistribution")
+  if not isinstance(prior, distributions.Distribution):
+    raise TypeError("prior must be a Distribution")
   ops.add_to_collection(VI_PRIORS, (variational, prior))
 
 
@@ -149,7 +149,7 @@ def elbo(log_likelihood,
 
   Raises:
     TypeError: if variationals in `variational_with_prior` are not
-      `DistributionTensor`s or if priors are not `BaseDistribution`s.
+      `DistributionTensor`s or if priors are not `Distribution`s.
     TypeError: if form is not a valid ELBOForms constant.
     ValueError: if `variational_with_prior` is None and there are no
       `DistributionTensor`s upstream of `log_likelihood`.
@@ -315,6 +315,6 @@ def _find_variational_and_priors(model,
     raise TypeError("variationals must be DistributionTensors")
   if not all([p is None or isinstance(p, distributions.Distribution)
               for p in variational_with_prior.values()]):
-    raise TypeError("priors must be BaseDistributions")
+    raise TypeError("priors must be Distributions")
 
   return variational_with_prior

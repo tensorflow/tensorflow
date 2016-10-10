@@ -42,23 +42,9 @@ _DISTRIBUTION_PUBLIC_METHOD_WRAPPERS = [
 
 
 @six.add_metaclass(abc.ABCMeta)
-class BaseDistribution(object):
-  """Simple abstract base class for probability distributions.
-
-  Implementations of core distributions to be included in the `distributions`
-  module should subclass `Distribution`. This base class may be useful to users
-  that want to fulfill a simpler distribution contract.
-  """
-
-  @abc.abstractmethod
-  def sample_n(self, n, seed=None, name="sample"):
-    # See `Distribution.sample_n` for docstring.
-    pass
-
-  @abc.abstractmethod
-  def log_prob(self, value, name="log_prob"):
-    # See `Distribution.log_prob` for docstring.
-    pass
+class _BaseDistribution(object):
+  """Abstract base class needed for resolving subclass hierarchy."""
+  pass
 
 
 def _copy_fn(fn):
@@ -141,9 +127,9 @@ class _DistributionMeta(abc.ABCMeta):
     """
     if not baseclasses:  # Nothing to be done for Distribution
       raise TypeError("Expected non-empty baseclass.  Does Distribution "
-                      "not subclass BaseDistribution?")
+                      "not subclass _BaseDistribution?")
     base = baseclasses[0]
-    if base == BaseDistribution:  # Nothing to be done for Distribution
+    if base == _BaseDistribution:  # Nothing to be done for Distribution
       return abc.ABCMeta.__new__(mcs, classname, baseclasses, attrs)
     if not issubclass(base, Distribution):
       raise TypeError("First parent class declared for %s must be "
@@ -183,7 +169,7 @@ class _DistributionMeta(abc.ABCMeta):
 
 
 @six.add_metaclass(_DistributionMeta)
-class Distribution(BaseDistribution):
+class Distribution(_BaseDistribution):
   """A generic probability distribution base class.
 
   `Distribution` is a base class for constructing and organizing properties
@@ -457,7 +443,7 @@ class Distribution(BaseDistribution):
       return self._batch_shape()
 
   def _get_batch_shape(self):
-    raise NotImplementedError("get_batch_shape is not implemented")
+    return tensor_shape.TensorShape(None)
 
   def get_batch_shape(self):
     """Shape of a single sample from a single event index as a `TensorShape`.
@@ -485,7 +471,7 @@ class Distribution(BaseDistribution):
       return self._event_shape()
 
   def _get_event_shape(self):
-    raise NotImplementedError("get_event_shape is not implemented")
+    return tensor_shape.TensorShape(None)
 
   def get_event_shape(self):
     """Shape of a single sample from a single batch as a `TensorShape`.
@@ -560,7 +546,7 @@ class Distribution(BaseDistribution):
                 self.get_event_shape()))
         x.set_shape(inferred_shape)
       elif x.get_shape().ndims is not None and x.get_shape().ndims > 0:
-        x.get_shape()[0].merge_with(sample_shape)
+        x.get_shape()[0].merge_with(sample_shape[0])
         if batch_ndims is not None and batch_ndims > 0:
           x.get_shape()[1:1+batch_ndims].merge_with(self.get_batch_shape())
         if event_ndims is not None and event_ndims > 0:
@@ -858,9 +844,3 @@ class Distribution(BaseDistribution):
       total = np.prod(sample_shape_static_val,
                       dtype=dtypes.int32.as_numpy_dtype())
     return sample_shape, total
-
-
-distribution_util.override_docstring_if_empty(
-    BaseDistribution.sample_n, doc_str=Distribution.sample_n.__doc__)
-distribution_util.override_docstring_if_empty(
-    BaseDistribution.log_prob, doc_str=Distribution.log_prob.__doc__)
