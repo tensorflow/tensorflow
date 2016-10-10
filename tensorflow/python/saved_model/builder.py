@@ -67,7 +67,7 @@ class SavedModelBuilder(object):
     builder.add_meta_graph_and_variables(sess,
                                     ["foo-tag"],
                                     signature_def_map=foo_signatures,
-                                    asset_collection=foo_assets)
+                                    assets_collection=foo_assets)
   ...
 
   with tf.Session(graph=tf.Graph()) as sess:
