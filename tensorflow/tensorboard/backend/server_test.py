@@ -102,10 +102,9 @@ class TensorboardServerTest(tf.test.TestCase):
     self.assertEqual(response.status, 400)
 
   def testLogdir(self):
-    """Test the status code and content of the data/logdir endpoint."""
-    response = self._get('/data/logdir')
-    self.assertEqual(response.status, 200)
-    self.assertEqual(response.read().decode('utf-8'), '/foo/logdir/argument')
+    """Test the format of the data/logdir endpoint."""
+    parsed_object = self._getJson('/data/logdir')
+    self.assertEqual(parsed_object, {'logdir': '/foo/logdir/argument'})
 
   def testRuns(self):
     """Test the format of the /data/runs endpoint."""
