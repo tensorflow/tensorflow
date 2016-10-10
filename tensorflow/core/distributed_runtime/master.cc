@@ -256,6 +256,8 @@ void Master::CreateSession(const CreateSessionRequest* req,
           const_cast<CreateSessionRequest*>(req)->mutable_graph_def();
       Status create_status = session->Create(gdef);
       if (!create_status.ok()) {
+        // Takes ownership of `session` (and destroys it).
+        session->Close();
         done(create_status);
         return;
       }

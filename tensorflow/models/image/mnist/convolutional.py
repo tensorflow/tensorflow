@@ -23,6 +23,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import gzip
 import os
 import sys
@@ -47,10 +48,7 @@ EVAL_BATCH_SIZE = 64
 EVAL_FREQUENCY = 100  # Number of steps between evaluations.
 
 
-tf.app.flags.DEFINE_boolean("self_test", False, "True if running a self test.")
-tf.app.flags.DEFINE_boolean('use_fp16', False,
-                            "Use half floats instead of full floats if True.")
-FLAGS = tf.app.flags.FLAGS
+FLAGS = None
 
 
 def data_type():
@@ -323,4 +321,19 @@ def main(argv=None):  # pylint: disable=unused-argument
 
 
 if __name__ == '__main__':
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+      '--use_fp16',
+      default=False,
+      help='Use half floats instead of full floats if True.',
+      action='store_true'
+  )
+  parser.add_argument(
+      '--self_test',
+      default=False,
+      action='store_true',
+      help='True if running a self test.'
+  )
+  FLAGS = parser.parse_args()
+
   tf.app.run()

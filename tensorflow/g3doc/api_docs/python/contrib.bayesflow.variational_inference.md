@@ -72,7 +72,7 @@ e.g. `q(Z) = q(z1)q(z2)q(z3)`.
 
 
 *  <b>`TypeError`</b>: if variationals in `variational_with_prior` are not
-    `DistributionTensor`s or if priors are not `BaseDistribution`s.
+    `DistributionTensor`s or if priors are not `Distribution`s.
 *  <b>`TypeError`</b>: if form is not a valid ELBOForms constant.
 *  <b>`ValueError`</b>: if `variational_with_prior` is None and there are no
     `DistributionTensor`s upstream of `log_likelihood`.

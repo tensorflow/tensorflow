@@ -272,24 +272,25 @@ class FeatureColumnTest(tf.test.TestCase):
 
   def testRealValuedColumnReshaping(self):
     """Tests reshaping behavior of `RealValuedColumn`."""
-    id_tensor_shape = [2, 5, 6, 3]
+    batch_size = 4
+    sequence_length = 8
+    dimensions = [3, 4, 5]
 
-    sparse_column = tf.contrib.layers.sparse_column_with_keys(
-        "animals", ["squirrel", "moose", "dragon", "octopus"])
-    one_hot = tf.contrib.layers.one_hot_column(sparse_column)
+    np.random.seed(2222)
+    input_shape = [batch_size, sequence_length] + dimensions
+    real_valued_input = np.random.rand(*input_shape)
+    real_valued_column = tf.contrib.layers.real_valued_column("values")
 
-    vocab_size = len(sparse_column.lookup_config.keys)
-    id_tensor = _sparse_id_tensor(id_tensor_shape, vocab_size)
-
-    for output_rank in range(1, len(id_tensor_shape) + 1):
+    for output_rank in range(1, 3 + len(dimensions)):
       with tf.variable_scope("output_rank_{}".format(output_rank)):
-        one_hot_output = one_hot._to_dnn_input_layer(
-            id_tensor, output_rank=output_rank)
+        real_valued_output = real_valued_column._to_dnn_input_layer(
+            tf.constant(real_valued_input, dtype=tf.float32),
+            output_rank=output_rank)
       with self.test_session() as sess:
-        one_hot_value = sess.run(one_hot_output)
-        expected_shape = (
-            id_tensor_shape[:output_rank - 1] + [vocab_size])
-        self.assertEquals(expected_shape, list(one_hot_value.shape))
+        real_valued_eval = sess.run(real_valued_output)
+      expected_shape = (input_shape[:output_rank - 1] +
+                        [np.prod(input_shape[output_rank - 1:])])
+      self.assertEquals(expected_shape, list(real_valued_eval.shape))
 
   def testBucketizedColumnNameEndsWithUnderscoreBucketized(self):
     a = tf.contrib.layers.bucketized_column(

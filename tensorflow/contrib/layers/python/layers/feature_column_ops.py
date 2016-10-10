@@ -57,9 +57,12 @@ def _embeddings_from_arguments(column,
   Raises:
    ValueError: if not possible to create.
   """
-  input_tensor = layers._inner_flatten(args.input_tensor, output_rank)  # pylint: disable=protected-access
-  weight_tensor = None if args.weight_tensor is None else layers._inner_flatten(  # pylint: disable=protected-access
-      args.weight_tensor, output_rank)
+  # pylint: disable=protected-access
+  input_tensor = layers._inner_flatten(args.input_tensor, output_rank)
+  weight_tensor = None
+  if args.weight_tensor is not None:
+    weight_tensor = layers._inner_flatten(args.weight_tensor, output_rank)
+  # pylint: enable=protected-access
 
   if args.hashed:
     embeddings = contrib_variables.model_variable(
@@ -134,11 +137,12 @@ def _input_from_feature_columns(columns_to_tensors,
                                 weight_collections,
                                 trainable,
                                 scope,
-                                output_rank):
+                                output_rank,
+                                default_name):
   """Implementation of `input_from(_sequence)_feature_columns`."""
   check_feature_columns(feature_columns)
   with variable_scope.variable_scope(scope,
-                                     default_name='input_from_feature_columns',
+                                     default_name=default_name,
                                      values=columns_to_tensors.values()):
     output_tensors = []
     transformer = _Transformer(columns_to_tensors)
@@ -237,7 +241,8 @@ def input_from_feature_columns(columns_to_tensors,
                                      weight_collections,
                                      trainable,
                                      scope,
-                                     output_rank=2)
+                                     output_rank=2,
+                                     default_name='input_from_feature_columns')
 
 
 def sequence_input_from_feature_columns(columns_to_tensors,
@@ -275,12 +280,14 @@ def sequence_input_from_feature_columns(columns_to_tensors,
   _check_supported_sequence_columns(feature_columns)
   _check_forbidden_sequence_columns(feature_columns)
 
-  return _input_from_feature_columns(columns_to_tensors,
-                                     feature_columns,
-                                     weight_collections,
-                                     trainable,
-                                     scope,
-                                     output_rank=3)
+  return _input_from_feature_columns(
+      columns_to_tensors,
+      feature_columns,
+      weight_collections,
+      trainable,
+      scope,
+      output_rank=3,
+      default_name='sequence_input_from_feature_columns')
 
 
 def _create_embedding_lookup(column,
@@ -521,10 +528,11 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
     output_tensors = []
     column_to_variable = dict()
     transformer = _Transformer(columns_to_tensors)
+    # pylint: disable=protected-access
     for column in sorted(set(feature_columns), key=lambda x: x.key):
       transformed_tensor = transformer.transform(column)
       try:
-        embedding_lookup_arguments = column._wide_embedding_lookup_arguments(  # pylint: disable=protected-access
+        embedding_lookup_arguments = column._wide_embedding_lookup_arguments(
             transformed_tensor)
         variable, predictions = _create_embedding_lookup(
             column,
@@ -538,8 +546,8 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
             None,
             default_name=column.name,
             values=columns_to_tensors.values()):
-          tensor = column._to_dense_tensor(transformed_tensor)  # pylint: disable=protected-access
-          tensor = fc._reshape_real_valued_tensor(tensor, 2, column.name)  # pylint: disable=protected-access
+          tensor = column._to_dense_tensor(transformed_tensor)
+          tensor = fc._reshape_real_valued_tensor(tensor, 2, column.name)
           variable = [contrib_variables.model_variable(
               name='weight',
               shape=[tensor.get_shape()[1], num_outputs],
@@ -552,8 +560,8 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
       output_tensors.append(predictions)
       column_to_variable[column] = variable
       _log_variable(variable)
-      _maybe_restore_from_checkpoint(column._checkpoint_path(), variable)  # pylint: disable=protected-access
-
+      _maybe_restore_from_checkpoint(column._checkpoint_path(), variable)
+    # pylint: enable=protected-access
     predictions_no_bias = math_ops.add_n(output_tensors)
     bias = contrib_variables.model_variable(
         'bias_weight',
@@ -799,7 +807,7 @@ def _get_parent_columns(feature_column):
 
 
 def _gather_feature_columns(feature_columns):
-  """Returns a list of all parent `FeatureColumns` of `feature_columns`."""
+  """Returns a list of all ancestor `FeatureColumns` of `feature_columns`."""
   gathered = list(feature_columns)
   i = 0
   while i < len(gathered):

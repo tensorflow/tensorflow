@@ -23,8 +23,13 @@ import {dist_2D, Point3D} from './vector';
 
 const BACKGROUND_COLOR = 0xffffff;
 
-const MAX_ZOOM = 10;
-const MIN_ZOOM = .05;
+/**
+ * The length of the cube (diameter of the circumscribing sphere) where all the
+ * points live.
+ */
+const CUBE_LENGTH = 2;
+const MAX_ZOOM = 5 * CUBE_LENGTH;
+const MIN_ZOOM = 0.025 * CUBE_LENGTH;
 
 // Constants relating to the camera parameters.
 const FOV_VERTICAL = 70;
@@ -203,6 +208,8 @@ export class ScatterPlot {
     this.cameraControls =
         new (THREE as any)
             .OrbitControls(this.perspCamera, this.renderer.domElement);
+    this.cameraControls.minDistance = MIN_ZOOM;
+    this.cameraControls.maxDistance = MAX_ZOOM;
     // Start is called when the user stars interacting with
     // orbit controls.
     this.cameraControls.addEventListener('start', () => {
@@ -553,11 +560,12 @@ export class ScatterPlot {
     // Determine max and min of each axis of our data.
     let xExtent = d3.extent(this.dataSet.points, (p, i) => this.xAccessor(i));
     let yExtent = d3.extent(this.dataSet.points, (p, i) => this.yAccessor(i));
-    this.xScale.domain(xExtent).range([-1, 1]);
-    this.yScale.domain(yExtent).range([-1, 1]);
+    let range = [-CUBE_LENGTH / 2, CUBE_LENGTH / 2];
+    this.xScale.domain(xExtent).range(range);
+    this.yScale.domain(yExtent).range(range);
     if (this.zAccessor) {
       let zExtent = d3.extent(this.dataSet.points, (p, i) => this.zAccessor(i));
-      this.zScale.domain(zExtent).range([-1, 1]);
+      this.zScale.domain(zExtent).range(range);
     }
 
     // Determine 3d coordinates of each data point.
