@@ -41,16 +41,15 @@ namespace tensorflow {
 namespace serving {
 namespace {
 
-auto* load_attempt = monitoring::Counter<1>::New(
-    "/tensorflow/contrib/session_bundle/load_attempt", "model_path",
-    "The number of times a session bundle was requested to be loaded.");
-auto* load_success = monitoring::Counter<1>::New(
-    "/tensorflow/contrib/session_bundle/load_success", "model_path",
-    "The number of times a session bundle was successfully loaded.");
+auto* load_attempt_count = monitoring::Counter<2>::New(
+    "/tensorflow/contrib/session_bundle/load_attempt_count", "model_path",
+    "status",
+    "The number of times a SessionBundle was requested to be loaded.");
 auto* load_latency = monitoring::Counter<1>::New(
     "/tensorflow/contrib/session_bundle/load_latency", "model_path",
-    "Latency in microseconds for session bundles that were succesfully "
-    "loaded.");
+    "Latency in microseconds for SessionBundles that were succesfully loaded.");
+constexpr char kLoadAttemptFail[] = "fail";
+constexpr char kLoadAttemptSuccess[] = "success";
 
 // Create a session using the given options and load the graph.
 Status CreateSessionFromGraphDef(const SessionOptions& options,
@@ -137,24 +136,11 @@ Status RunInitOp(const RunOptions& run_options, const StringPiece export_dir,
                       nullptr /* outputs */, &run_metadata);
 }
 
-}  // namespace
-
-Status LoadSessionBundleFromPath(const SessionOptions& options,
-                                 const StringPiece export_dir,
-                                 SessionBundle* const bundle) {
-  TF_RETURN_IF_ERROR(LoadSessionBundleFromPathUsingRunOptions(
-      options, RunOptions(), export_dir, bundle));
-  return Status::OK();
-}
-
-Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
-                                                const RunOptions& run_options,
-                                                const StringPiece export_dir,
-                                                SessionBundle* const bundle) {
-  load_attempt->GetCell(export_dir.ToString())->IncrementBy(1);
+Status LoadSessionBundleFromPathUsingRunOptionsInternal(
+    const SessionOptions& options, const RunOptions& run_options,
+    const StringPiece export_dir, SessionBundle* const bundle) {
   LOG(INFO) << "Attempting to load a SessionBundle from: " << export_dir;
   LOG(INFO) << "Using RunOptions: " << DebugStringIfAvailable(run_options);
-  const uint64 start_microseconds = Env::Default()->NowMicros();
   TF_RETURN_IF_ERROR(
       GetMetaGraphDefFromExport(export_dir, &(bundle->meta_graph_def)));
 
@@ -210,18 +196,47 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
                                  bundle->session.get()));
   }
 
+  return Status::OK();
+}
+
+}  // namespace
+
+Status LoadSessionBundleFromPath(const SessionOptions& options,
+                                 const StringPiece export_dir,
+                                 SessionBundle* const bundle) {
+  TF_RETURN_IF_ERROR(LoadSessionBundleFromPathUsingRunOptions(
+      options, RunOptions(), export_dir, bundle));
+  return Status::OK();
+}
+
+Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
+                                                const RunOptions& run_options,
+                                                const StringPiece export_dir,
+                                                SessionBundle* const bundle) {
+  const uint64 start_microseconds = Env::Default()->NowMicros();
+  const Status status = LoadSessionBundleFromPathUsingRunOptionsInternal(
+      options, run_options, export_dir, bundle);
+
   const uint64 load_latency_microsecs = [&]() -> uint64 {
     const uint64 end_microseconds = Env::Default()->NowMicros();
     // Avoid clock skew.
     if (end_microseconds < start_microseconds) return 0;
     return end_microseconds - start_microseconds;
   }();
-  LOG(INFO) << "Done loading SessionBundle. Took " << load_latency_microsecs
-            << " microseconds.";
-  load_success->GetCell(export_dir.ToString())->IncrementBy(1);
+  auto log_and_count = [&](const string& status_str) {
+    LOG(INFO) << "Loading SessionBundle: " << status_str << ". Took "
+              << load_latency_microsecs << " microseconds.";
+    load_attempt_count->GetCell(export_dir.ToString(), status_str)
+        ->IncrementBy(1);
+  };
+  if (status.ok()) {
+    log_and_count(kLoadAttemptSuccess);
+  } else {
+    log_and_count(kLoadAttemptFail);
+  }
   load_latency->GetCell(export_dir.ToString())
       ->IncrementBy(load_latency_microsecs);
-  return Status::OK();
+  return status;
 }
 
 bool IsPossibleExportDirectory(const StringPiece directory) {
