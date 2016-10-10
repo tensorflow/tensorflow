@@ -651,7 +651,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "quantize_and_dequantize_op_test",
     size = "small",
     srcs = ["quantize_and_dequantize_op_test.cc"],
@@ -659,6 +659,7 @@ tf_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":quantize_and_dequantize_op",
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
