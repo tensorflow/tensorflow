@@ -26,7 +26,7 @@ from setuptools import find_packages, setup, Command
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
 
-_VERSION = '0.10.0'
+_VERSION = '0.11.0rc0'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',

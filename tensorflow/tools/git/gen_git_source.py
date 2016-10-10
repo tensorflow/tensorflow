@@ -138,10 +138,9 @@ def get_git_version(git_base_path):
   Args:
     git_base_path: where the .git directory is located
   Returns:
-    A string representing the git version
+    A bytestring representing the git version
   """
-
-  unknown_label = "unknown"
+  unknown_label = b"unknown"
   try:
     val = subprocess.check_output(["git", "-C", git_base_path, "describe",
                                    "--long", "--dirty", "--tags"]).strip()

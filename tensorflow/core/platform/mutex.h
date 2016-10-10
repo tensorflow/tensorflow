@@ -27,7 +27,7 @@ enum ConditionResult { kCond_Timeout, kCond_MaybeNotified };
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/platform/google/mutex.h"
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
-    defined(PLATFORM_GOOGLE_ANDROID)
+    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_WINDOWS)
 #include "tensorflow/core/platform/default/mutex.h"
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform

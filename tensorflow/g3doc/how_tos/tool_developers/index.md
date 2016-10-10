@@ -11,11 +11,11 @@ those kind of tools.
 
 ## Protocol Buffers
 
-All of TensorFlow's file formats are based on [Protocol Buffers]
-(https://developers.google.com/protocol-buffers/?hl=en), so to start
-it's worth getting familiar with how they work. The summary is that you define
-data structures in text files, and the protobuf tools generate classes in C,
-Python, and other languages that can load, save, and access the data in a
+All of TensorFlow's file formats are based on
+[Protocol Buffers](https://developers.google.com/protocol-buffers/?hl=en), so to
+start it's worth getting familiar with how they work. The summary is that you
+define data structures in text files, and the protobuf tools generate classes in
+C, Python, and other languages that can load, save, and access the data in a
 friendly way. We often refer to Protocol Buffers as protobufs, and I'll use
 that convention in this guide.
 

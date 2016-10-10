@@ -315,6 +315,11 @@ def _find_cudnn_lib_path(repository_ctx, cudnn_install_basedir, symlink_files):
         cudnn_install_basedir))
 
 
+def _cudart_static_linkopt(cpu_value):
+  """Returns additional platform-specific linkopts for cudart."""
+  return "" if cpu_value == "Darwin" else "\"-lrt\","
+
+
 def _tpl(repository_ctx, tpl, substitutions={}, out=None):
   if not out:
     out = tpl.replace(":", "/")
@@ -364,8 +369,11 @@ def _create_dummy_repository(repository_ctx):
                                       _DEFAULT_CUDNN_VERSION)
 
   # Set up BUILD file for cuda/.
-  _file(repository_ctx, "cuda:BUILD")
   _file(repository_ctx, "cuda:build_defs.bzl")
+  _tpl(repository_ctx, "cuda:BUILD",
+       {
+           "%{cudart_static_linkopt}": _cudart_static_linkopt(cpu_value),
+       })
   _tpl(repository_ctx, "cuda:platform.bzl",
        {
            "%{cuda_version}": _DEFAULT_CUDA_VERSION,
@@ -460,8 +468,11 @@ def _create_cuda_repository(repository_ctx):
     repository_ctx.symlink(cudnn_lib_path, "cuda/" + symlink_files.cuda_dnn_lib)
 
   # Set up BUILD file for cuda/
-  _file(repository_ctx, "cuda:BUILD")
   _file(repository_ctx, "cuda:build_defs.bzl")
+  _tpl(repository_ctx, "cuda:BUILD",
+       {
+           "%{cudart_static_linkopt}": _cudart_static_linkopt(cpu_value),
+       })
   _tpl(repository_ctx, "cuda:platform.bzl",
        {
            "%{cuda_version}": cuda_version,

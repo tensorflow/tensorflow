@@ -16,8 +16,7 @@ large-scale regression and classification problems with sparse input features
 you're interested in learning more about how Wide & Deep Learning works, please
 check out our [research paper](http://arxiv.org/abs/1606.07792).
 
-![Wide & Deep Spectrum of Models]
-(../../images/wide_n_deep.svg "Wide & Deep")
+![Wide & Deep Spectrum of Models](../../images/wide_n_deep.svg "Wide & Deep")
 
 The figure above shows a comparison of a wide model (logistic regression with
 sparse features and transformations), a deep model (feed-forward neural network
@@ -62,8 +61,9 @@ https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/w
        $ sudo pip install pandas
        ```
 
-    If you have trouble installing pandas, consult the [instructions]
-(http://pandas.pydata.org/pandas-docs/stable/install.html) on the pandas site.
+    If you have trouble installing pandas, consult the
+    [instructions](http://pandas.pydata.org/pandas-docs/stable/install.html)
+    on the pandas site.
 
 4. Execute the tutorial code with the following command to train the linear
 model described in this tutorial:
@@ -130,9 +130,9 @@ concatenated with the continuous features, and then fed into the hidden layers
 of a neural network in the forward pass. The embedding values are initialized
 randomly, and are trained along with all other model parameters to minimize the
 training loss. If you're interested in learning more about embeddings, check out
-the TensorFlow tutorial on [Vector Representations of Words]
-(https://www.tensorflow.org/versions/r0.9/tutorials/word2vec/index.html), or
-[Word Embedding](https://en.wikipedia.org/wiki/Word_embedding) on Wikipedia.
+the TensorFlow tutorial on
+[Vector Representations of Words](https://www.tensorflow.org/versions/r0.9/tutorials/word2vec/index.html),
+or [Word Embedding](https://en.wikipedia.org/wiki/Word_embedding) on Wikipedia.
 
 We'll configure the embeddings for the categorical columns using
 `embedding_column`, and concatenate them with the continuous columns:
@@ -259,8 +259,8 @@ for key in sorted(results):
 The first line of the output should be something like `accuracy: 0.84429705`. We
 can see that the accuracy was improved from about 83.6% using a wide-only linear
 model to about 84.4% using a Wide & Deep model. If you'd like to see a working
-end-to-end example, you can download our [example code]
-(https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/wide_n_deep_tutorial.py).
+end-to-end example, you can download our
+[example code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/learn/wide_n_deep_tutorial.py).
 
 Note that this tutorial is just a quick example on a small dataset to get you
 familiar with the API. Wide & Deep Learning will be even more powerful if you

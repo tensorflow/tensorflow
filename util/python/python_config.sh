@@ -46,7 +46,7 @@ function main {
 }
 
 function python_path {
-  python - <<END
+  $PYTHON_BIN_PATH - <<END
 from __future__ import print_function
 import site
 import os
@@ -80,7 +80,7 @@ END
 }
 
 function default_python_path {
-  PYTHON_ARG="$1" python - <<END
+  PYTHON_ARG="$1" $PYTHON_BIN_PATH - <<END
 from __future__ import print_function
 import os
 

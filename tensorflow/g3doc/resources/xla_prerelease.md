@@ -57,7 +57,7 @@ operations are high level, e.g., arbitrary sized vector and matrix
 operations. This makes the compiler easy to target from TensorFlow, and
 preserves enough information to allow sophisticated scheduling and optimization.
 The following tutorial provides introductory information about XLA. More details
-follow in the [Operation Semantics] (#operation_semantics) section.
+follow in the [Operation Semantics](#operation_semantics) section.
 
 It is important to note that the XLA framework is not set in stone. In
 particular, while it is unlikely that the semantics of existing operations will
@@ -127,8 +127,8 @@ an `xla::Client` object.
 
 The `ComputationBuilder` class provides a convenient programming interface to
 construct XLA computations. The semantics of XLA operations with links
-to `ComputationBuilder` methods are documented in [Operation Semantics]
-(#operation_semantics).
+to `ComputationBuilder` methods are documented in
+[Operation Semantics](#operation_semantics).
 
 Here is the part that JIT-compiles the graph (step 2):
 
@@ -688,11 +688,9 @@ dimension of size `r`.
 Notes:
 
 1.  This follows the typical definition of a dot operator, as in other numeric
-    libraries such as [numpy]
-    (http://docs.scipy.org/doc/numpy/reference/generated/numpy.dot.html).
+    libraries such as [numpy](http://docs.scipy.org/doc/numpy/reference/generated/numpy.dot.html).
 2.  There is currently no support for the general tensor dot operator
-    [numpy.tensordot]
-    (http://docs.scipy.org/doc/numpy/reference/generated/numpy.tensordot.html#numpy.tensordot).
+    [numpy.tensordot](http://docs.scipy.org/doc/numpy/reference/generated/numpy.tensordot.html#numpy.tensordot).
 
 ### Element-wise binary arithmetic operations
 
@@ -1355,10 +1353,10 @@ shape of the output array. The array `pred` must have the same dimensionality as
 
 For each element `P` of `pred`, the corresponding element of the output array is
 taken from `on_true` if the value of `P` is `true`, and from `on_false` if the
-value of `P` is `false`. As a restricted form of [broadcasting]
-(#broadcasting_semantics), `pred` can be a scalar of type `PRED`. In this case,
-the output array is taken wholly from `on_true` if `pred` is `true`, and from
-`on_false` if `pred` is `false`.
+value of `P` is `false`. As a restricted form of
+[broadcasting](#broadcasting_semantics), `pred` can be a scalar of type `PRED`.
+In this case, the output array is taken wholly from `on_true` if `pred` is
+`true`, and from `on_false` if `pred` is `false`.
 
 Example with non-scalar `pred`:
 
@@ -1477,8 +1475,8 @@ let s: s32 = 5;
 let t: (f32[10], s32) = tuple(v, s);
 ```
 
-Tuples can be deconstructed (accessed) via the [`GetTupleElement`]
-(#gettupleelement) operation.
+Tuples can be deconstructed (accessed) via the
+[`GetTupleElement`](#gettupleelement) operation.
 
 ### While
 
@@ -1553,8 +1551,8 @@ by replicating it over rows to get:
     |1 2 3| + |7 8 9| = |8  10 12|
     |4 5 6|   |7 8 9|   |11 13 15|
 
-In Numpy, this is called [broadcasting]
-(http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+In Numpy, this is called
+[broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
 
 ### Principles
 
@@ -1690,8 +1688,7 @@ Examples:
 A special case arises, and is also supported, where each of the input arrays has
 a degenerate dimension at a different index. In this case, we get an "outer
 operation": (2,1) and (1,3) broadcast to (2,3). For more examples, consult the
-[Numpy documentation on broadcasting]
-(http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+[Numpy documentation on broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
 
 ### Broadcast composition
 

@@ -24,6 +24,9 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
+// TODO(mrry): Prevent this Windows.h #define from leaking out of our headers.
+#undef ERROR
+
 namespace tensorflow {
 const int INFO = 0;            // base_logging::INFO;
 const int WARNING = 1;         // base_logging::WARNING;

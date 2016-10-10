@@ -84,7 +84,7 @@ class BaseTest(tf.test.TestCase):
     classifier.fit(iris.data, iris.target, max_steps=100)
     score = accuracy_score(iris.target, classifier.predict(iris.data))
     self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
-    # TODO(ipolosukhin): Check that summaries are correclty written.
+    # TODO(ipolosukhin): Check that summaries are correctly written.
 
   def testIrisContinueTraining(self):
     iris = datasets.load_iris()
