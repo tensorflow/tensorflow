@@ -698,7 +698,6 @@
   * [`viterbi_decode`](../../api_docs/python/contrib.crf.md#viterbi_decode)
 
 * **[Statistical distributions (contrib)](../../api_docs/python/contrib.distributions.md)**:
-  * [`BaseDistribution`](../../api_docs/python/contrib.distributions.md#BaseDistribution)
   * [`Bernoulli`](../../api_docs/python/contrib.distributions.md#Bernoulli)
   * [`BernoulliWithSigmoidP`](../../api_docs/python/contrib.distributions.md#BernoulliWithSigmoidP)
   * [`Beta`](../../api_docs/python/contrib.distributions.md#Beta)
