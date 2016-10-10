@@ -708,7 +708,8 @@ void PrintOneDim(T* data, int dim_index, gtl::InlinedVector<int64, 4> shape,
 }
 
 template <typename T>
-string SummarizeArray(int64 limit, int64 num_elts, const char* data) {
+string SummarizeArray(int64 limit, int64 num_elts, const char* data
+    ,TensorShape tensor_shape) {
   string ret;
   const T* array = reinterpret_cast<const T*>(data);
 
@@ -736,40 +737,40 @@ string Tensor::SummarizeValue(int64 max_entries) const {
   const char* data = limit > 0 ? tensor_data().data() : nullptr;
   switch (dtype()) {
     case DT_HALF:
-      return SummarizeArray<Eigen::half>(limit, num_elts, data);
+      return SummarizeArray<Eigen::half>(limit, num_elts, data, shape_);
       break;
     case DT_FLOAT:
-      return SummarizeArray<float>(limit, num_elts, data);
+      return SummarizeArray<float>(limit, num_elts, data, shape_);
       break;
     case DT_DOUBLE:
-      return SummarizeArray<double>(limit, num_elts, data);
+      return SummarizeArray<double>(limit, num_elts, data, shape_);
       break;
     case DT_INT32:
-      return SummarizeArray<int32>(limit, num_elts, data);
+      return SummarizeArray<int32>(limit, num_elts, data, shape_);
       break;
     case DT_UINT8:
     case DT_QUINT8:
-      return SummarizeArray<uint8>(limit, num_elts, data);
+      return SummarizeArray<uint8>(limit, num_elts, data, shape_);
       break;
     case DT_UINT16:
     case DT_QUINT16:
-      return SummarizeArray<uint16>(limit, num_elts, data);
+      return SummarizeArray<uint16>(limit, num_elts, data, shape_);
       break;
     case DT_INT16:
     case DT_QINT16:
-      return SummarizeArray<int16>(limit, num_elts, data);
+      return SummarizeArray<int16>(limit, num_elts, data, shape_);
       break;
     case DT_INT8:
     case DT_QINT8:
-      return SummarizeArray<int8>(limit, num_elts, data);
+      return SummarizeArray<int8>(limit, num_elts, data, shape_);
       break;
     case DT_INT64:
-      return SummarizeArray<int64>(limit, num_elts, data);
+      return SummarizeArray<int64>(limit, num_elts, data, shape_);
       break;
     case DT_BOOL:
       // TODO(tucker): Is it better to emit "True False..."?  This
       // will emit "1 0..." which is more compact.
-      return SummarizeArray<bool>(limit, num_elts, data);
+      return SummarizeArray<bool>(limit, num_elts, data, shape_);
       break;
     default: {
       // All irregular cases
