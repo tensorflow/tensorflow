@@ -23,6 +23,7 @@ import shutil
 import sys
 import tempfile
 
+# Google-internal import(s).
 from tensorflow.python.debug import debug_data
 from tensorflow.python.debug import framework
 from tensorflow.python.debug.cli import analyzer_cli
@@ -37,7 +38,7 @@ _DUMP_ROOT_PREFIX = "tfdbg_"
 class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
   """Concrete subclass of BaseDebugWrapperSession implementing a local CLI."""
 
-  def __init__(self, sess, dump_root=None):
+  def __init__(self, sess, dump_root=None, log_usage=True):
     """Constructor of LocalCLIDebugWrapperSession.
 
     Args:
@@ -46,11 +47,15 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         a directory that does not exist or an empty directory. If the directory
         does not exist, it will be created by the debugger core during debug
         run() calls and removed afterwards.
+      log_usage: (bool) Whether the usage of this class is to be logged.
 
     Raises:
       ValueError: If dump_root is an existing and non-empty directory or if
         dump_root is a file.
     """
+
+    if log_usage:
+      pass  # No logging for open-source.
 
     framework.BaseDebugWrapperSession.__init__(self, sess)
 
