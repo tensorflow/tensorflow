@@ -285,28 +285,47 @@ DirectSession::~DirectSession() {
   flib_def_.reset(nullptr);
 }
 
-void DirectSession::MaybeInitializeExecutionState(const GraphDef& graph) {
+Status DirectSession::MaybeInitializeExecutionState(
+    const GraphDef& graph, bool* out_already_initialized) {
   // If already initialized, do nothing.
   if (flib_def_ && execution_state_) {
-    return;
+    *out_already_initialized = true;
+    return Status::OK();
   }
   // Set up the per-session execution state.
+  // NOTE(mrry): The function library created here will be used for
+  // all subsequent extensions of the graph.
   flib_def_.reset(
       new FunctionLibraryDefinition(OpRegistry::Global(), graph.library()));
   SimpleGraphExecutionStateOptions options;
   options.device_set = &device_set_;
   options.session_options = &options_;
-  execution_state_.reset(
-      new SimpleGraphExecutionState(graph.library(), options));
+  // TODO(mrry,suharshs): We explicitly copy `graph` so that
+  // `MakeForBaseGraph()` can take ownership of its
+  // contents. Previously this happened implicitly in calls to the
+  // `SimpleGraphExecutionState`. Other sessions call
+  // `MakeForBaseGraph` in such a way that we can destructively read
+  // the passed-in `GraphDef`. In principle we could do the same here,
+  // with a wider refactoring; we might revise the direct session so
+  // that it copies the graph fewer times.
+  GraphDef temp(graph);
+  TF_RETURN_IF_ERROR(SimpleGraphExecutionState::MakeForBaseGraph(
+      &temp, options, &execution_state_));
+  graph_created_ = true;
+  *out_already_initialized = false;
+  return Status::OK();
 }
 
 Status DirectSession::Create(const GraphDef& graph) {
-  mutex_lock l(graph_def_lock_);
-  if (graph_created_) {
-    return errors::AlreadyExists(
-        "A Graph has already been created for this session.");
+  if (graph.node_size() > 0) {
+    mutex_lock l(graph_def_lock_);
+    if (graph_created_) {
+      return errors::AlreadyExists(
+          "A Graph has already been created for this session.");
+    }
+    return ExtendLocked(graph);
   }
-  return ExtendLocked(graph);
+  return Status::OK();
 }
 
 Status DirectSession::Extend(const GraphDef& graph) {
@@ -316,12 +335,16 @@ Status DirectSession::Extend(const GraphDef& graph) {
 }
 
 Status DirectSession::ExtendLocked(const GraphDef& graph) {
-  MaybeInitializeExecutionState(graph);
-  std::unique_ptr<SimpleGraphExecutionState> state;
-  TF_RETURN_IF_ERROR(execution_state_->Extend(graph, &state));
-  execution_state_.swap(state);
-
-  graph_created_ = true;  // In case this is first call
+  bool already_initialized;
+  // If this is the first call, we can initialize the execution state
+  // with `graph` and do not need to call `Extend()`.
+  TF_RETURN_IF_ERROR(
+      MaybeInitializeExecutionState(graph, &already_initialized));
+  if (already_initialized) {
+    std::unique_ptr<SimpleGraphExecutionState> state;
+    TF_RETURN_IF_ERROR(execution_state_->Extend(graph, &state));
+    execution_state_.swap(state);
+  }
   return Status::OK();
 }
 
@@ -949,7 +972,7 @@ Status DirectSession::GetOrCreateExecutors(
 }
 
 Status DirectSession::CreateGraphs(
-    const BuildGraphOptions& options,
+    const BuildGraphOptions& subgraph_options,
     std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
     std::unique_ptr<FunctionLibraryDefinition>* flib_def,
     RunStateArgs* run_state_args) {
@@ -960,23 +983,23 @@ Status DirectSession::CreateGraphs(
   SimpleGraphExecutionState* execution_state = nullptr;
   if (options_.config.graph_options().place_pruned_graph()) {
     // Because we are placing pruned graphs, we need to create a
-    // new SimpleGraphExecutorState for every new unseen graph,
+    // new SimpleGraphExecutionState for every new unseen graph,
     // and then place it.
     SimpleGraphExecutionStateOptions prune_options;
     prune_options.device_set = &device_set_;
     prune_options.session_options = &options_;
-    temp_exec_state_holder.reset(new SimpleGraphExecutionState(
-        execution_state_->original_graph_def().library(), prune_options));
-    temp_exec_state_holder->SetStatefulPlacements(stateful_placements_);
-
-    TF_RETURN_IF_ERROR(temp_exec_state_holder->Extend(
-        execution_state_->original_graph_def(), &temp_exec_state_holder));
+    prune_options.stateful_placements = stateful_placements_;
+    TF_RETURN_IF_ERROR(SimpleGraphExecutionState::MakeForPrunedGraph(
+        execution_state_->original_graph_def().library(), prune_options,
+        execution_state_->original_graph_def(), subgraph_options,
+        &temp_exec_state_holder, &client_graph));
     execution_state = temp_exec_state_holder.get();
   } else {
     execution_state = execution_state_.get();
+    TF_RETURN_IF_ERROR(
+        execution_state->BuildGraph(subgraph_options, &client_graph));
   }
 
-  TF_RETURN_IF_ERROR(execution_state->BuildGraph(options, &client_graph));
   auto current_stateful_placements = execution_state->GetStatefulPlacements();
   // Update our current state based on the execution_state's
   // placements.  If there are any mismatches for a node,

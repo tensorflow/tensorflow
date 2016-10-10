@@ -244,13 +244,8 @@ TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
   (*options.config.mutable_device_count())["CPU"] = 2;
   std::unique_ptr<Session> session(NewSession(options));
   ASSERT_TRUE(session != nullptr);
-  TF_ASSERT_OK(session->Create(def));
-  std::vector<std::pair<string, Tensor>> inputs;
-  std::vector<string> output_names = {y->name() + ":0"};
-  std::vector<Tensor> outputs;
-
   // Should return an error.
-  ASSERT_FALSE(session->Run(inputs, output_names, {}, &outputs).ok());
+  ASSERT_FALSE(session->Create(def).ok());
 
   // Fix placement and run again
   def.Clear();
@@ -258,7 +253,8 @@ TEST_F(DirectSessionMinusAXTest, InvalidDevice) {
   test::graph::ToGraphDef(&graph, &def);
   session.reset(NewSession(options));
   TF_ASSERT_OK(session->Create(def));
-  TF_ASSERT_OK(session->Run(inputs, output_names, {}, &outputs));
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(session->Run({}, {y->name() + ":0"}, {}, &outputs));
 }
 
 TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts) {
@@ -454,12 +450,10 @@ TEST(DirectSessionTest, PlacePrunedGraph) {
     test::graph::ToGraphDef(&g, &def);
 
     // By default, we place the entire graph, so we should fail the
-    // call to Run, even if we don't run the bad op.
+    // call to Create.
     SessionOptions options;
     std::unique_ptr<Session> sess(NewSession(options));
-    TF_ASSERT_OK(sess->Create(def));
-    std::vector<Tensor> outputs;
-    auto s = sess->Run({}, {x->name() + ":0"}, {}, &outputs);
+    auto s = sess->Create(def);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
   }
 
