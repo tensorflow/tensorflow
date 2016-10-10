@@ -79,7 +79,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:pooling_ops",
         "//third_party/eigen3",
-        "@gemmlowp//:eight_bit_int_gemm",
+        "@gemmlowp//:gemmlowp",
     ],
 )
 
@@ -104,7 +104,7 @@ tf_custom_op_library(
         "//tensorflow/core/kernels:concat_lib_hdrs",
         "//tensorflow/core/kernels:ops_util_hdrs",
         "//tensorflow/core/kernels:pooling_ops_hdrs",
-        "@gemmlowp//:eight_bit_int_gemm",
+        "@gemmlowp//:gemmlowp",
     ],
 )
 
