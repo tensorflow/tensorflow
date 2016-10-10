@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/contrib/session_bundle/bundle_shim.h"
 
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/contrib/session_bundle/bundle_shim_constants.h"
 #include "tensorflow/contrib/session_bundle/test_util.h"
 #include "tensorflow/core/example/example.pb.h"
@@ -79,11 +80,11 @@ void LoadAndValidateSavedModelBundle(const string& export_dir,
 
   EXPECT_EQ(1, regression_signature_def.inputs_size());
   TensorInfo input_tensor_info =
-      regression_signature_def.inputs().find(kSignatureInputs)->second;
+      regression_signature_def.inputs().find(kRegressInputs)->second;
   EXPECT_EQ(1, regression_signature_def.outputs_size());
 
   TensorInfo output_tensor_info =
-      regression_signature_def.outputs().find(kSignatureOutputs)->second;
+      regression_signature_def.outputs().find(kRegressOutputs)->second;
   ValidateHalfPlusTwo(saved_model_bundle, input_tensor_info.name(),
                       output_tensor_info.name());
 }
@@ -147,10 +148,10 @@ TEST(BundleShimTest, DefaultSignatureRegression) {
   const auto actual_signature_def =
       meta_graph_def.signature_def().find(kDefaultSignatureDefKey);
   EXPECT_EQ("foo-input", actual_signature_def->second.inputs()
-                             .find(kSignatureInputs)
+                             .find(kRegressInputs)
                              ->second.name());
   EXPECT_EQ("foo-output", actual_signature_def->second.outputs()
-                              .find(kSignatureOutputs)
+                              .find(kRegressOutputs)
                               ->second.name());
   EXPECT_EQ(kRegressMethodName, actual_signature_def->second.method_name());
 }
@@ -175,7 +176,7 @@ TEST(BundleShimTest, DefaultSignatureClassification) {
   const auto actual_signature_def =
       meta_graph_def.signature_def().find(kDefaultSignatureDefKey);
   EXPECT_EQ("foo-input", actual_signature_def->second.inputs()
-                             .find(kSignatureInputs)
+                             .find(kClassifyInputs)
                              ->second.name());
   EXPECT_EQ("foo-classes", actual_signature_def->second.outputs()
                                .find(kClassifyOutputClasses)
@@ -197,8 +198,8 @@ TEST(BundleShimTest, DefaultSignatureGeneric) {
   Signatures signatures;
   GenericSignature* generic_signature =
       signatures.mutable_default_signature()->mutable_generic_signature();
-  generic_signature->mutable_map()->insert({kSignatureInputs, input_binding});
-  generic_signature->mutable_map()->insert({kSignatureOutputs, output_binding});
+  generic_signature->mutable_map()->insert({kPredictInputs, input_binding});
+  generic_signature->mutable_map()->insert({kPredictOutputs, output_binding});
 
   MetaGraphDef meta_graph_def;
   (*meta_graph_def.mutable_collection_def())[kSignaturesKey]
@@ -213,12 +214,12 @@ TEST(BundleShimTest, NamedSignatureWrongType) {
   Signatures signatures;
 
   RegressionSignature* inputs_regression_signature =
-      (*signatures.mutable_named_signatures())[kSignatureInputs]
+      (*signatures.mutable_named_signatures())[kRegressInputs]
           .mutable_regression_signature();
   inputs_regression_signature->mutable_input()->set_tensor_name("foo-input");
 
   RegressionSignature* outputs_regression_signature =
-      (*signatures.mutable_named_signatures())[kSignatureOutputs]
+      (*signatures.mutable_named_signatures())[kRegressOutputs]
           .mutable_regression_signature();
   outputs_regression_signature->mutable_output()->set_tensor_name("foo-output");
 
@@ -242,12 +243,12 @@ TEST(BundleShimTest, NamedSignatureGenericInputsAndOutputs) {
 
   Signatures signatures;
   GenericSignature* input_generic_signature =
-      (*signatures.mutable_named_signatures())[kSignatureInputs]
+      (*signatures.mutable_named_signatures())[kPredictInputs]
           .mutable_generic_signature();
   input_generic_signature->mutable_map()->insert({"foo-input", input_binding});
 
   GenericSignature* output_generic_signature =
-      (*signatures.mutable_named_signatures())[kSignatureOutputs]
+      (*signatures.mutable_named_signatures())[kPredictOutputs]
           .mutable_generic_signature();
   output_generic_signature->mutable_map()->insert(
       {"foo-output", output_binding});
@@ -283,8 +284,8 @@ TEST(BundleShimTest, NamedSignatureGenericNoInputsOrOutputs) {
   GenericSignature* generic_signature =
       (*signatures.mutable_named_signatures())["unknown"]
           .mutable_generic_signature();
-  generic_signature->mutable_map()->insert({kSignatureInputs, input_binding});
-  generic_signature->mutable_map()->insert({kSignatureOutputs, output_binding});
+  generic_signature->mutable_map()->insert({kPredictInputs, input_binding});
+  generic_signature->mutable_map()->insert({kPredictOutputs, output_binding});
 
   MetaGraphDef meta_graph_def;
   (*meta_graph_def.mutable_collection_def())[kSignaturesKey]
@@ -303,7 +304,7 @@ TEST(BundleShimTest, NamedSignatureGenericOnlyInput) {
 
   Signatures signatures;
   GenericSignature* input_generic_signature =
-      (*signatures.mutable_named_signatures())[kSignatureInputs]
+      (*signatures.mutable_named_signatures())[kPredictInputs]
           .mutable_generic_signature();
   input_generic_signature->mutable_map()->insert({"foo-input", input_binding});
 

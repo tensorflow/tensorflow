@@ -283,6 +283,7 @@ cc_library(
         ":session_bundle",
         ":signature",
         "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/cc/saved_model:signature_constants",
     ] + if_not_mobile([
         ":manifest_proto_cc",
         "//tensorflow/core:core_cpu",
@@ -299,6 +300,7 @@ cc_test(
     srcs = ["bundle_shim_test.cc"],
     data = [
         ":saved_model_half_plus_two",
+        "//tensorflow/cc/saved_model:signature_constants",
         "//tensorflow/contrib/session_bundle/example:half_plus_two",
     ],
     # Link in all registered kernels.

@@ -17,6 +17,11 @@ cc_library(
 )
 
 cc_library(
+    name = "signature_constants",
+    hdrs = ["signature_constants.h"],
+)
+
+cc_library(
     name = "loader",
     srcs = ["loader.cc"],
     hdrs = ["loader.h"],
