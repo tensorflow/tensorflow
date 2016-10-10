@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 import {runAsyncTask, updateMessage} from './async';
-import {DataPoint, DataSet, DatasetMetadata, PointMetadata, MetadataInfo, ColumnStats} from './data';
+import {ColumnStats, DataPoint, DataSet, DatasetMetadata, MetadataInfo, PointMetadata, State} from './data';
+
 
 /** Maximum number of colors supported in the color map. */
 const NUM_COLORS_COLOR_MAP = 20;
@@ -30,6 +31,8 @@ export interface TensorInfo {
   shape: [number, number];
   /** The path to the metadata file associated with the tensor. */
   metadataFile: string;
+  /** The path to the bookmarks file associated with the tensor. */
+  bookmarksFile: string;
 }
 
 /** Information for the model checkpoint. */
@@ -65,6 +68,9 @@ export interface DataProvider {
    * default tensor exists.
    */
   getDefaultTensor(run: string, callback: (tensorName: string) => void): void;
+
+  getBookmarks(run: string, tensorName: string, callback: (r: State[]) => void):
+      void;
 }
 
 /**
@@ -140,6 +146,19 @@ class ServerDataProvider implements DataProvider {
       // Return the first tensor as default if there is only 1 tensor.
       callback(tensorNames.length === 1 ? tensorNames[0] : null);
     });
+  }
+
+  getBookmarks(
+      run: string, tensorName: string, callback: (r: State[]) => void) {
+    let msgId = updateMessage('Fetching bookmarks...');
+    d3.json(
+        `${this.routePrefix}/bookmarks?run=${run}&name=${tensorName}`,
+        (err, bookmarks) => {
+          updateMessage(null, msgId);
+          if (!err) {
+            callback(bookmarks as State[]);
+          }
+        });
   }
 }
 
@@ -239,7 +258,7 @@ function parseMetadata(content: string): Promise<MetadataInfo> {
     let columnStats: ColumnStats[] = columnNames.map(name => {
       return {
         name: name,
-        isNumeric: true,
+        isNumeric: false,
         tooManyUniqueValues: false,
         min: Number.POSITIVE_INFINITY,
         max: Number.NEGATIVE_INFINITY
@@ -312,6 +331,7 @@ function fetchImage(url: string): Promise<HTMLImageElement> {
 
 type DemoDataset = {
   fpath: string; metadata_path?: string; metadata?: DatasetMetadata;
+  bookmarks_path?: string;
   shape: [number, number];
 };
 
@@ -377,7 +397,8 @@ class DemoDataProvider implements DataProvider {
       tensorsInfo[name] = {
         name: name,
         shape: demoInfo.shape,
-        metadataFile: demoInfo.metadata_path
+        metadataFile: demoInfo.metadata_path,
+        bookmarksFile: demoInfo.bookmarks_path
       };
     }
     callback({
@@ -446,5 +467,10 @@ class DemoDataProvider implements DataProvider {
       metadata.datasetInfo = demoDataSet.metadata;
       callback(metadata);
     });
+  }
+
+  getBookmarks(
+      run: string, tensorName: string, callback: (r: State[]) => void) {
+    callback([]);
   }
 }

@@ -243,17 +243,20 @@ class TensorboardServerTest(tf.test.TestCase):
         'var1': {
             'shape': [1, 2],
             'name': 'var1',
-            'metadataFile': None
+            'metadataFile': None,
+            'bookmarksFile': None,
         },
         'var2': {
             'shape': [10, 10],
             'name': 'var2',
-            'metadataFile': None
+            'metadataFile': None,
+            'bookmarksFile': None,
         },
         'var3': {
             'shape': [100, 100],
             'name': 'var3',
-            'metadataFile': None
+            'metadataFile': None,
+            'bookmarksFile': None,
         }
     })
 
