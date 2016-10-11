@@ -1867,6 +1867,7 @@ tf_kernel_libraries(
         "sparse_to_dense_op",
         "sparse_xent_op",
         "serialize_sparse_op",
+        "sparse_tensors_map_ops",
     ],
     deps = [
         ":bounds_check",

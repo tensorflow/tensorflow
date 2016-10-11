@@ -227,6 +227,9 @@ TemporaryVariable
 DestroyTemporaryVariable
 
 # sparse_ops
+AddSparseToTensorsMap
+AddManySparseToTensorsMap
+TakeManySparseFromTensorsMap
 DeserializeManySparse
 SerializeManySparse
 SerializeSparse
