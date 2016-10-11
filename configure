@@ -49,6 +49,12 @@ while true; do
   # Retry
 done
 
+if is_windows; then
+  TF_NEED_GCP=0
+  TF_NEED_HDFS=0
+  TF_NEED_CUDA=0
+fi
+
 while [ "$TF_NEED_GCP" == "" ]; do
   read -p "Do you wish to build TensorFlow with "\
 "Google Cloud Platform support? [y/N] " INPUT
@@ -118,7 +124,7 @@ echo "$SWIG_PATH" > tensorflow/tools/swig/swig_path
 # git hash propagation
 GEN_GIT_SOURCE=tensorflow/tools/git/gen_git_source.py
 chmod a+x ${GEN_GIT_SOURCE}
-"${PYTHON_BIN_PATH}" ${GEN_GIT_SOURCE} --configure ${SOURCE_BASE_DIR}
+"${PYTHON_BIN_PATH}" ${GEN_GIT_SOURCE} --configure "${SOURCE_BASE_DIR}"
 
 ## Set up Cuda-related environment settings
 

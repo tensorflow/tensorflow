@@ -114,7 +114,7 @@ function setup_python {
     exit 1
   fi
   local python_lib_path
-  # Split python_path into an array of paths, this allows path cotaining spaces
+  # Split python_path into an array of paths, this allows path containing spaces
   IFS=',' read -r -a python_lib_path <<< $(python_path)
   echo "Found possible Python library paths:"
   for x in "${python_lib_path[@]}"; do
@@ -147,12 +147,13 @@ function setup_python {
     fi
   done
 
-# ln -sf is acutally implemented as copying in msys since creating symbolic links is privileged on Windows.
-# But copying is too slow, so invoke mklink to create junctions on Windows.
+# ln -sf is actually implemented as copying in msys since creating symbolic
+# links is privileged on Windows. But copying is too slow, so invoke mklink
+# to create junctions on Windows.
   if is_windows; then
-    cmd  /c "mklink /J util\\python\\python_include \"${python_include}\""
-    cmd  /c "mklink /J util\\python\\python_lib \"${python_lib}\""
-    cmd  /c "mklink /J third_party\\py\\numpy\\numpy_include \"${numpy_include}\""
+    cmd /c "mklink /J util\\python\\python_include \"${python_include}\""
+    cmd /c "mklink /J util\\python\\python_lib \"${python_lib}\""
+    cmd /c "mklink /J third_party\\py\\numpy\\numpy_include \"${numpy_include}\""
   else
     ln -sf "${python_include}" util/python/python_include
     ln -sf "${python_lib}" util/python/python_lib
@@ -190,7 +191,8 @@ function check_python {
       exit 1
     fi
     if is_windows; then
-      # In msys, readlink path just doesn't work, because no symbolic link on Windows
+      # In msys, readlink <path> doesn't work, because no symbolic link on
+      # Windows. readlink -f <path> returns the real path of a junction.
       true_path=$(readlink -f "${x}")
     else
       true_path=$(readlink "${x}")

@@ -113,8 +113,8 @@ def configure(src_base_path, debug=False):
       open(os.path.join(gen_path, target), "w").write("")
     else:
       try:
-        # In python 3.5, symlink function exists even on Windows
-        # But requires previliaged right, otherwise a OSError will be thrown
+        # In python 3.5, symlink function exists even on Windows. But requires
+        # Windows Admin privileges, otherwise an OSError will be thrown.
         if hasattr(os, 'symlink'):
           os.symlink(src, os.path.join(gen_path, target))
         else:
