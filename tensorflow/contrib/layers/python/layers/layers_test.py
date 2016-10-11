@@ -30,15 +30,29 @@ from tensorflow.contrib.layers.python.layers import layers as _layers
 
 class AvgPool2DTest(tf.test.TestCase):
 
+  def testInvalidDataFormat(self):
+    height, width = 3, 6
+    images = np.random.uniform(size=(5, height, width, 3))
+    with self.assertRaisesRegexp(
+        ValueError, 'data_format has to be either NCHW or NHWC.'):
+      tf.contrib.layers.avg_pool2d(images, [3, 3], data_format='CHWN')
+
   def testCreateAvgPool(self):
-    height, width = 3, 3
+    height, width = 3, 6
     images = np.random.uniform(size=(5, height, width, 3))
     output = tf.contrib.layers.avg_pool2d(images, [3, 3])
     self.assertEquals(output.op.name, 'AvgPool2D/AvgPool')
-    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 3])
+
+  def testCreateAvgPoolNCHW(self):
+    height, width = 3, 6
+    images = np.random.uniform(size=(5, 2, height, width))
+    output = tf.contrib.layers.avg_pool2d(images, [3, 3], data_format='NCHW')
+    self.assertEquals(output.op.name, 'AvgPool2D/AvgPool')
+    self.assertListEqual(output.get_shape().as_list(), [5, 2, 1, 2])
 
   def testCollectOutputs(self):
-    height, width = 3, 3
+    height, width = 3, 6
     images = tf.random_uniform((5, height, width, 3), seed=1)
     output = tf.contrib.layers.avg_pool2d(images, [3, 3],
                                           outputs_collections='outputs')
@@ -47,33 +61,40 @@ class AvgPool2DTest(tf.test.TestCase):
     self.assertEquals(output_collected, output)
 
   def testCreateSquareAvgPool(self):
-    height, width = 3, 3
+    height, width = 3, 6
     images = tf.random_uniform((5, height, width, 3), seed=1)
     output = tf.contrib.layers.avg_pool2d(images, 3)
     self.assertEquals(output.op.name, 'AvgPool2D/AvgPool')
-    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 3])
 
   def testCreateAvgPoolWithScope(self):
-    height, width = 3, 3
+    height, width = 3, 6
     images = tf.random_uniform((5, height, width, 3), seed=1)
     output = tf.contrib.layers.avg_pool2d(images, [3, 3], scope='pool1')
     self.assertEquals(output.op.name, 'pool1/AvgPool')
 
   def testCreateAvgPoolWithSamePadding(self):
-    height, width = 3, 3
+    height, width = 3, 6
     images = tf.random_uniform((5, height, width, 3), seed=1)
     output = tf.contrib.layers.avg_pool2d(images, [3, 3], padding='SAME')
-    self.assertListEqual(output.get_shape().as_list(), [5, 2, 2, 3])
+    self.assertListEqual(output.get_shape().as_list(), [5, 2, 3, 3])
+
+  def testCreateAvgPoolWithSamePaddingNCHW(self):
+    height, width = 3, 6
+    images = tf.random_uniform((5, 3, height, width), seed=1)
+    output = tf.contrib.layers.avg_pool2d(images, [3, 3], padding='SAME',
+                                          data_format='NCHW')
+    self.assertListEqual(output.get_shape().as_list(), [5, 3, 2, 3])
 
   def testCreateAvgPoolStrideWithSamePadding(self):
-    height, width = 3, 3
+    height, width = 3, 6
     images = tf.random_uniform((5, height, width, 3), seed=1)
     output = tf.contrib.layers.avg_pool2d(images, [3, 3], stride=1,
                                           padding='SAME')
     self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
 
   def testGlobalAvgPool(self):
-    height, width = 3, 3
+    height, width = 3, 6
     images = tf.random_uniform((5, height, width, 3), seed=1)
     output = tf.contrib.layers.avg_pool2d(images, images.get_shape()[1:3],
                                           stride=1)
@@ -1749,15 +1770,29 @@ class LayerNormTest(tf.test.TestCase):
 
 class MaxPool2DTest(tf.test.TestCase):
 
+  def testInvalidDataFormat(self):
+    height, width = 3, 6
+    images = np.random.uniform(size=(5, height, width, 3))
+    with self.assertRaisesRegexp(
+        ValueError, 'data_format has to be either NCHW or NHWC.'):
+      tf.contrib.layers.max_pool2d(images, [3, 3], data_format='CHWN')
+
   def testCreateMaxPool(self):
-    height, width = 3, 3
+    height, width = 3, 6
     images = np.random.uniform(size=(5, height, width, 3)).astype(np.float32)
     output = tf.contrib.layers.max_pool2d(images, [3, 3])
     self.assertEquals(output.op.name, 'MaxPool2D/MaxPool')
-    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 3])
+
+  def testCreateMaxPoolNCHW(self):
+    height, width = 3, 6
+    images = np.random.uniform(size=(5, 3, height, width)).astype(np.float32)
+    output = tf.contrib.layers.max_pool2d(images, [3, 3], data_format='NCHW')
+    self.assertEquals(output.op.name, 'MaxPool2D/MaxPool')
+    self.assertListEqual(output.get_shape().as_list(), [5, 3, 1, 2])
 
   def testCollectOutputs(self):
-    height, width = 3, 3
+    height, width = 3, 6
     images = tf.random_uniform((5, height, width, 3), seed=1)
     output = tf.contrib.layers.max_pool2d(images, [3, 3],
                                           outputs_collections='outputs')
@@ -1766,33 +1801,40 @@ class MaxPool2DTest(tf.test.TestCase):
     self.assertEquals(output_collected, output)
 
   def testCreateSquareMaxPool(self):
-    height, width = 3, 3
+    height, width = 3, 6
     images = tf.random_uniform((5, height, width, 3), seed=1)
     output = tf.contrib.layers.max_pool2d(images, 3)
     self.assertEquals(output.op.name, 'MaxPool2D/MaxPool')
-    self.assertListEqual(output.get_shape().as_list(), [5, 1, 1, 3])
+    self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 3])
 
   def testCreateMaxPoolWithScope(self):
-    height, width = 3, 3
+    height, width = 3, 6
     images = tf.random_uniform((5, height, width, 3), seed=1)
     output = tf.contrib.layers.max_pool2d(images, [3, 3], scope='pool1')
     self.assertEquals(output.op.name, 'pool1/MaxPool')
 
   def testCreateMaxPoolWithSamePadding(self):
-    height, width = 3, 3
+    height, width = 3, 6
     images = tf.random_uniform((5, height, width, 3), seed=1)
     output = tf.contrib.layers.max_pool2d(images, [3, 3], padding='SAME')
-    self.assertListEqual(output.get_shape().as_list(), [5, 2, 2, 3])
+    self.assertListEqual(output.get_shape().as_list(), [5, 2, 3, 3])
+
+  def testCreateMaxPoolWithSamePaddingNCHW(self):
+    height, width = 3, 6
+    images = tf.random_uniform((5, 3, height, width), seed=1)
+    output = tf.contrib.layers.max_pool2d(images, [3, 3], padding='SAME',
+                                          data_format='NCHW')
+    self.assertListEqual(output.get_shape().as_list(), [5, 3, 2, 3])
 
   def testCreateMaxPoolStrideWithSamePadding(self):
-    height, width = 3, 3
+    height, width = 3, 6
     images = tf.random_uniform((5, height, width, 3), seed=1)
     output = tf.contrib.layers.max_pool2d(images, [3, 3], stride=1,
                                           padding='SAME')
     self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
 
   def testGlobalMaxPool(self):
-    height, width = 3, 3
+    height, width = 3, 6
     images = tf.random_uniform((5, height, width, 3), seed=1)
     output = tf.contrib.layers.max_pool2d(images, images.get_shape()[1:3],
                                           stride=1)

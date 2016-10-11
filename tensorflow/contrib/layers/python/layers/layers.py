@@ -71,12 +71,16 @@ __all__ = ['avg_pool2d',
            'legacy_linear',
            'legacy_relu']
 
+DATA_FORMAT_NCHW = 'NCHW'
+DATA_FORMAT_NHWC = 'NHWC'
+
 
 @add_arg_scope
 def avg_pool2d(inputs,
                kernel_size,
                stride=2,
                padding='VALID',
+               data_format=DATA_FORMAT_NHWC,
                outputs_collections=None,
                scope=None):
   """Adds a 2D average pooling op.
@@ -84,7 +88,9 @@ def avg_pool2d(inputs,
   It is assumed that the pooling is done per image but not in batch or channels.
 
   Args:
-    inputs: A `Tensor` of size [batch_size, height, width, channels].
+    inputs: A 4-D tensor of shape `[batch_size, height, width, channels]` if
+      `data_format` is `NHWC`, and `[batch_size, channels, height, width]` if
+      `data_format` is `NCHW`.
     kernel_size: A list of length 2: [kernel_height, kernel_width] of the
       pooling kernel over which the op is computed. Can be an int if both
       values are the same.
@@ -92,20 +98,33 @@ def avg_pool2d(inputs,
       Can be an int if both strides are the same. Note that presently
       both strides must have the same value.
     padding: The padding method, either 'VALID' or 'SAME'.
+    data_format: A string. `NHWC` (default) and `NCHW` are supported.
     outputs_collections: The collections to which the outputs are added.
     scope: Optional scope for name_scope.
 
   Returns:
     A `Tensor` representing the results of the pooling operation.
+
+  Raises:
+    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
   """
+  if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
+    raise ValueError('data_format has to be either NCHW or NHWC.')
   with ops.name_scope(scope, 'AvgPool2D', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
+    if data_format == DATA_FORMAT_NHWC:
+      ksize = [1, kernel_h, kernel_w, 1]
+      strides = [1, stride_h, stride_w, 1]
+    else:
+      ksize = [1, 1, kernel_h, kernel_w]
+      strides = [1, 1, stride_h, stride_w]
     outputs = nn.avg_pool(inputs,
-                          ksize=[1, kernel_h, kernel_w, 1],
-                          strides=[1, stride_h, stride_w, 1],
-                          padding=padding)
+                          ksize=ksize,
+                          strides=strides,
+                          padding=padding,
+                          data_format=data_format)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
@@ -1055,6 +1074,7 @@ def max_pool2d(inputs,
                kernel_size,
                stride=2,
                padding='VALID',
+               data_format=DATA_FORMAT_NHWC,
                outputs_collections=None,
                scope=None):
   """Adds a 2D Max Pooling op.
@@ -1062,7 +1082,9 @@ def max_pool2d(inputs,
   It is assumed that the pooling is done per image but not in batch or channels.
 
   Args:
-    inputs: A `Tensor` of size [batch_size, height, width, channels].
+    inputs: A 4-D tensor of shape `[batch_size, height, width, channels]` if
+      `data_format` is `NHWC`, and `[batch_size, channels, height, width]` if
+      `data_format` is `NCHW`.
     kernel_size: A list of length 2: [kernel_height, kernel_width] of the
       pooling kernel over which the op is computed. Can be an int if both
       values are the same.
@@ -1070,6 +1092,7 @@ def max_pool2d(inputs,
       Can be an int if both strides are the same. Note that presently
       both strides must have the same value.
     padding: The padding method, either 'VALID' or 'SAME'.
+    data_format: A string. `NHWC` (default) and `NCHW` are supported.
     outputs_collections: The collections to which the outputs are added.
     scope: Optional scope for name_scope.
 
@@ -1077,16 +1100,26 @@ def max_pool2d(inputs,
     A `Tensor` representing the results of the pooling operation.
 
   Raises:
+    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
     ValueError: If 'kernel_size' is not a 2-D list
   """
+  if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
+    raise ValueError('data_format has to be either NCHW or NHWC.')
   with ops.name_scope(scope, 'MaxPool2D', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
+    if data_format == DATA_FORMAT_NHWC:
+      ksize = [1, kernel_h, kernel_w, 1]
+      strides = [1, stride_h, stride_w, 1]
+    else:
+      ksize = [1, 1, kernel_h, kernel_w]
+      strides = [1, 1, stride_h, stride_w]
     outputs = nn.max_pool(inputs,
-                          ksize=[1, kernel_h, kernel_w, 1],
-                          strides=[1, stride_h, stride_w, 1],
-                          padding=padding)
+                          ksize=ksize,
+                          strides=strides,
+                          padding=padding,
+                          data_format=data_format)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
