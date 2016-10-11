@@ -292,4 +292,39 @@ TEST(SparseOpsTest, SparseDenseCwise_ShapeFn) {
   }
 }
 
+TEST(SparseOpsTest, AddSparseToTensorsMap_ShapeFn) {
+  ShapeInferenceTestOp op("AddSparseToTensorsMap");
+
+  // Rank checks.
+  INFER_ERROR("must be rank 2", op, "[1];?;?");
+  INFER_ERROR("must be rank 1", op, "?;[];?");
+  INFER_ERROR("must be rank 1", op, "?;?;[]");
+
+  // output is always scalar
+  INFER_OK(op, "?;?;?", "[]");
+}
+
+TEST(SparseOpsTest, AddManySparseToTensorsMap_ShapeFn) {
+  ShapeInferenceTestOp op("AddManySparseToTensorsMap");
+
+  // Rank checks.
+  INFER_ERROR("must be rank 2", op, "[1];?;?");
+  INFER_ERROR("must be rank 1", op, "?;[];?");
+  INFER_ERROR("must be rank 1", op, "?;?;[]");
+
+  // output is always matrix of [?].
+  INFER_OK(op, "?;?;?", "[?]");
+}
+
+TEST(SparseOpsTest, TakeManySparseFromTensorsMap_ShapeFn) {
+  ShapeInferenceTestOp op("TakeManySparseFromTensorsMap");
+
+  // Rank checks.
+  INFER_ERROR("must be rank 1", op, "[?,1]");
+
+  // output is always [?,?];[?];[?].
+  INFER_OK(op, "?", "[?,?];[?];[?]");
+  INFER_OK(op, "[?]", "[?,?];[?];[?]");
+}
+
 }  // end namespace tensorflow

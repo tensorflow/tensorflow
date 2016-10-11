@@ -395,6 +395,12 @@ TF_CALL_float(REGISTER_CPU_KERNELS);
 #if GOOGLE_CUDA
 // The slow version (but compiles for GPU)
 
+// A dummy type to group forward backward data autotune results together.
+struct ConvBackwardDataAutoTuneGroup {};
+typedef AutoTuneSingleton<ConvBackwardDataAutoTuneGroup, ConvParameters,
+                          perftools::gputools::dnn::AlgorithmConfig>
+    AutoTuneConvBwdData;
+
 // Backprop for input.
 template <typename Device, class T>
 class Conv2DSlowBackpropInputOp : public OpKernel {
@@ -638,7 +644,8 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
     };
     AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune_ &&
-        !autotune_results_.Find(conv_parameters, &algorithm_config)) {
+        !AutoTuneConvBwdData::GetInstance()->Find(conv_parameters,
+                                                  &algorithm_config)) {
       std::vector<AlgorithmType> algorithms;
       CHECK(stream->parent()->GetConvolveBackwardDataAlgorithms(&algorithms));
       ProfileResult best_result;
@@ -680,7 +687,8 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
       algorithm_config.set_algorithm(best_result.algorithm());
       algorithm_config.set_algorithm_no_scratch(
           best_result_no_scratch.algorithm());
-      autotune_results_.Insert(conv_parameters, algorithm_config);
+      AutoTuneConvBwdData::GetInstance()->Insert(conv_parameters,
+                                                 algorithm_config);
     }
     bool cudnn_launch_status =
         stream
@@ -738,8 +746,6 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
   Padding padding_;
   bool use_cudnn_;
   TensorFormat data_format_;
-  AutoTuneMap<ConvParameters, perftools::gputools::dnn::AlgorithmConfig>
-      autotune_results_;
   bool cudnn_use_autotune_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Conv2DSlowBackpropInputOp);

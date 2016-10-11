@@ -74,13 +74,10 @@ class QuantizeAndDequantizeOp : public OpKernel {
 
     auto input_min = input_min_tensor.scalar<T>();
     auto input_max = input_max_tensor.scalar<T>();
-
-    input_min() = input_min_;
-    input_max() = input_max_;
-
     functor::QuantizeAndDequantizeOneScaleFunctor<Device, T> functor;
     functor(ctx->template eigen_device<Device>(), input.template flat<T>(),
             signed_input_, num_bits_, range_given_, input_min, input_max,
+            static_cast<T>(input_min_), static_cast<T>(input_max_),
             output->template flat<T>());
   }
 
@@ -99,11 +96,11 @@ struct QuantizeAndDequantizeOneScaleFunctor<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::ConstVec input,
                   const bool signed_input, const int num_bits,
                   const bool range_given, typename TTypes<T>::Scalar input_min,
-                  typename TTypes<T>::Scalar input_max,
-                  typename TTypes<T>::Vec out) {
+                  typename TTypes<T>::Scalar input_max, const T input_min_init,
+                  const T input_max_init, typename TTypes<T>::Vec out) {
     QuantizeAndDequantizeOneScaleImpl<CPUDevice, T>::Compute(
         d, input, signed_input, num_bits, range_given, input_min, input_max,
-        out);
+        input_min_init, input_max_init, out);
   }
 };
 }  // namespace functor

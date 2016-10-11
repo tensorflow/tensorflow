@@ -5,12 +5,12 @@ Evidence Lower BOund. `log p(x) >= ELBO`.
 Optimization objective for inference of hidden variables by variational
 inference.
 
-This function is meant to be used in conjunction with `DistributionTensor`.
-The user should build out the inference network, using `DistributionTensor`s
+This function is meant to be used in conjunction with `StochasticTensor`.
+The user should build out the inference network, using `StochasticTensor`s
 as latent variables, and the generative network. `elbo` at minimum needs
-`p(x|Z)` and assumes that all `DistributionTensor`s upstream of `p(x|Z)` are
+`p(x|Z)` and assumes that all `StochasticTensor`s upstream of `p(x|Z)` are
 the variational distributions. Use `register_prior` to register `Distribution`
-priors for each `DistributionTensor`. Alternatively, pass in
+priors for each `StochasticTensor`. Alternatively, pass in
 `variational_with_prior` specifying all variational distributions and their
 priors.
 
@@ -44,8 +44,8 @@ e.g. `q(Z) = q(z1)q(z2)q(z3)`.
 
 
 *  <b>`log_likelihood`</b>: `Tensor` log p(x|Z).
-*  <b>`variational_with_prior`</b>: dict from `DistributionTensor` q(Z) to
-    `Distribution` p(Z). If `None`, defaults to all `DistributionTensor`
+*  <b>`variational_with_prior`</b>: dict from `StochasticTensor` q(Z) to
+    `Distribution` p(Z). If `None`, defaults to all `StochasticTensor`
     objects upstream of `log_likelihood` with priors registered with
     `register_prior`.
 *  <b>`keep_batch_dim`</b>: bool. Whether to keep the batch dimension when summing
@@ -63,9 +63,9 @@ e.g. `q(Z) = q(z1)q(z2)q(z3)`.
 
 
 *  <b>`TypeError`</b>: if variationals in `variational_with_prior` are not
-    `DistributionTensor`s or if priors are not `Distribution`s.
+    `StochasticTensor`s or if priors are not `Distribution`s.
 *  <b>`TypeError`</b>: if form is not a valid ELBOForms constant.
 *  <b>`ValueError`</b>: if `variational_with_prior` is None and there are no
-    `DistributionTensor`s upstream of `log_likelihood`.
+    `StochasticTensor`s upstream of `log_likelihood`.
 *  <b>`ValueError`</b>: if any variational does not have a prior passed or registered.
 

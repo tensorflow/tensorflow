@@ -534,6 +534,14 @@ class FunctionTest(tf.test.TestCase):
         # NOTE: We still do not support capturing control deps.
         _ = Foo(x)
 
+  def testStableName(self):
+
+    @function.Defun()
+    def Foo(x, y, z):
+      return tf.tanh(tf.matmul(x, y) + z)
+
+    self.assertEqual("Foo_19571794", Foo.instantiate([tf.float32] * 3).name)
+
 
 class FunctionOverloadTest(tf.test.TestCase):
 
@@ -804,7 +812,10 @@ class VariableHoistingTest(tf.test.TestCase):
       else:
         y = _Model(x)
       loss = tf.reduce_mean(tf.reduce_sum(y0 * tf.log(y), 1), 0)
-      dw, db = tf.gradients(loss, function.get_extra_args())
+      arg_w, arg_b = function.get_extra_args()
+      self.assertEqual(arg_w.get_shape(), tf.TensorShape([64, 64]))
+      self.assertEqual(arg_b.get_shape(), tf.TensorShape([64]))
+      dw, db = tf.gradients(loss, [arg_w, arg_b])
       cvars.extend(function.get_extra_vars())
       return loss, dw, db
 

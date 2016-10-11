@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption, DataSet, Projection, State, MetadataInfo} from './data';
-import {DataProvider, getDataProvider} from './data-loader';
+import {ColorOption, DataSet, MetadataInfo, Projection, State} from './data';
+import {DataProvider, getDataProvider, TensorInfo} from './data-loader';
 import {HoverContext, HoverListener} from './hoverContext';
 import * as knn from './knn';
 import {Mode, ScatterPlot} from './scatterPlot';
@@ -106,16 +106,16 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.dataPanel = this.$['data-panel'] as DataPanel;
     this.inspectorPanel = this.$['inspector-panel'] as InspectorPanel;
     this.inspectorPanel.initialize(this);
-    this.bookmarkPanel = this.$['bookmark-panel'] as BookmarkPanel;
-    this.bookmarkPanel.initialize(this);
     this.projectionsPanel = this.$['projections-panel'] as ProjectionsPanel;
     this.projectionsPanel.initialize(this);
     this.metadataCard = this.$['metadata-card'] as MetadataCard;
     this.statusBar = this.dom.select('#status-bar');
+    this.bookmarkPanel = this.$['bookmark-panel'] as BookmarkPanel;
 
     getDataProvider(this.routePrefix, dataProvider => {
       this.dataProvider = dataProvider;
       this.dataPanel.initialize(this, dataProvider);
+      this.bookmarkPanel.initialize(this, dataProvider);
     });
     this.scopeSubtree(this.$$('#wrapper-notify-msg'), true);
     this.setupUIControls();
@@ -162,6 +162,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     // height can grow indefinitely.
     let container = this.dom.select('#container');
     container.style('height', container.property('clientHeight') + 'px');
+  }
+
+  setSelectedTensor(run: string, tensorInfo: TensorInfo) {
+    this.bookmarkPanel.setSelectedTensor(run, tensorInfo);
   }
 
   /**
@@ -606,6 +610,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     }
 
     state.selectedProjection = this.selectedProjection;
+    state.is3d = this.projectionsPanel.is3d;
     state.selectedPoints = this.selectedPointIndices;
     state.cameraPosition = this.scatterPlot.getCameraPosition();
     state.cameraTarget = this.scatterPlot.getCameraTarget();
@@ -625,6 +630,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     if (state.selectedProjection === 'tsne') {
       this.currentDataSet.hasTSNERun = true;
     }
+    this.projectionsPanel.is3d = state.is3d;
     this.projectionsPanel.showTab(state.selectedProjection);
 
     this.notifySelectionChanged(state.selectedPoints);

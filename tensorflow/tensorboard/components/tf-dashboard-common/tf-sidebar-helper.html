@@ -28,6 +28,7 @@ To use it, create the tf-sidebar-helper with the required properties. To extend
 it with extra configuration components, add them to the element's component:
 
 <tf-sidebar-helper
+  backend: "[[backend]]",
   categories: "{{outputCategories}}",
   colorScale: "[[colorScale]]",
   run2tag: "[[run2tag]]",
@@ -62,7 +63,8 @@ tf-run-selector.
     <content></content>
     <div class="sidebar-section">
       <tf-run-selector
-        id="runSelector"g4
+        id="runSelector"
+        backend="[[backend]]"
         runs="[[runs]]"
         color-scale="[[colorScale]]"
         out-selected="{{selectedRuns}}"
@@ -110,6 +112,11 @@ tf-run-selector.
     Polymer({
       is: "tf-sidebar-helper",
       properties: {
+        /**
+         * The backend object used to issue requests.
+         */
+        backend: Object,
+
         /**
          * This is an output of the categories that the user selected to
          * separate the different tags. Each category here should be given its

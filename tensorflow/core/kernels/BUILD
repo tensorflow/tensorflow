@@ -293,6 +293,7 @@ cc_library(
         ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 
@@ -661,7 +662,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "quantize_and_dequantize_op_test",
     size = "small",
     srcs = ["quantize_and_dequantize_op_test.cc"],
@@ -669,6 +670,7 @@ tf_cc_test(
         ":ops_testutil",
         ":ops_util",
         ":quantize_and_dequantize_op",
+        "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1886,6 +1888,7 @@ tf_kernel_libraries(
         "sparse_to_dense_op",
         "sparse_xent_op",
         "serialize_sparse_op",
+        "sparse_tensors_map_ops",
     ],
     deps = [
         ":bounds_check",

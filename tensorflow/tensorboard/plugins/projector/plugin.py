@@ -35,6 +35,7 @@ INFO_ROUTE = '/info'
 TENSOR_ROUTE = '/tensor'
 METADATA_ROUTE = '/metadata'
 RUNS_ROUTE = '/runs'
+BOOKMARKS_ROUTE = '/bookmarks'
 
 # Limit for the number of points we send to the browser.
 LIMIT_NUM_POINTS = 50000
@@ -52,6 +53,7 @@ class ProjectorPlugin(TBPlugin):
         INFO_ROUTE: self._serve_info,
         TENSOR_ROUTE: self._serve_tensor,
         METADATA_ROUTE: self._serve_metadata,
+        BOOKMARKS_ROUTE: self._serve_bookmarks,
     }
 
   def _read_config_files(self, run_paths):
@@ -97,11 +99,23 @@ class ProjectorPlugin(TBPlugin):
     return reader
 
   def _get_metadata_file_for_tensor(self, tensor_name, config):
+    embedding_info = self._get_embedding_info_for_tensor(tensor_name, config)
+    if embedding_info:
+      return embedding_info.metadata_path
+    return None
+
+  def _get_bookmarks_file_for_tensor(self, tensor_name, config):
+    embedding_info = self._get_embedding_info_for_tensor(tensor_name, config)
+    if embedding_info:
+      return embedding_info.bookmarks_path
+    return None
+
+  def _get_embedding_info_for_tensor(self, tensor_name, config):
     if not config.embedding:
       return None
     for info in config.embedding:
       if info.tensor_name == tensor_name:
-        return info.metadata_path
+        return info
     return None
 
   def _serve_runs(self, query_params):
@@ -121,14 +135,20 @@ class ProjectorPlugin(TBPlugin):
     reader = self._get_reader_for_run(run)
     var_map = reader.get_variable_to_shape_map()
     metadata_file = lambda t: self._get_metadata_file_for_tensor(t, config)
-    self.handler.respond(
-        {'checkpointFile': config.model_checkpoint_path,
-         'tensors': {name: {'name': name,
-                            'shape': shape,
-                            'metadataFile': metadata_file(name)}
-                     for name, shape in six.iteritems(var_map)
-                     if len(shape) == 2}},
-        'application/json')
+    bookmarks_file = lambda t: self._get_bookmarks_file_for_tensor(t, config)
+    self.handler.respond({
+        'checkpointFile':
+            config.model_checkpoint_path,
+        'tensors': {
+            name: {
+                'name': name,
+                'shape': shape,
+                'metadataFile': metadata_file(name),
+                'bookmarksFile': bookmarks_file(name)
+            }
+            for name, shape in six.iteritems(var_map) if len(shape) == 2
+        }
+    }, 'application/json')
 
   def _serve_metadata(self, query_params):
     run = query_params.get('run')
@@ -195,3 +215,36 @@ class ProjectorPlugin(TBPlugin):
     # Stream it as TSV.
     tsv = '\n'.join(['\t'.join([str(val) for val in row]) for row in tensor])
     self.handler.respond(tsv, 'text/tab-separated-values')
+
+  def _serve_bookmarks(self, query_params):
+    run = query_params.get('run')
+    if not run:
+      self.handler.respond('query parameter "run" is required', 'text/plain',
+                           400)
+      return
+
+    name = query_params.get('name')
+    if name is None:
+      self.handler.respond('query parameter "name" is required', 'text/plain',
+                           400)
+      return
+
+    if run not in self.configs:
+      self.handler.respond('Unknown run: %s' % run, 'text/plain', 400)
+      return
+
+    config = self.configs[run]
+    fpath = self._get_bookmarks_file_for_tensor(name, config)
+    if not fpath:
+      self.handler.respond(
+          'No bookmarks file found for tensor %s in the config file %s' %
+          (name, self.config_fpaths[run]), 'text/plain', 400)
+      return
+    if not file_io.file_exists(fpath) or file_io.is_directory(fpath):
+      self.handler.respond('%s is not a file' % fpath, 'text/plain', 400)
+      return
+
+    bookmarks_json = None
+    with file_io.FileIO(fpath, 'r') as f:
+      bookmarks_json = f.read()
+    self.handler.respond(bookmarks_json, 'application/json')

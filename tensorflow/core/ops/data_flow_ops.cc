@@ -1508,6 +1508,40 @@ key_dtype: Type of the table keys.
 value_dtype: Type of the table values.
 )doc");
 
+REGISTER_OP("MutableDenseHashTable")
+    .Input("empty_key: key_dtype")
+    .Output("table_handle: Ref(string)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .Attr("use_node_name_sharing: bool = false")
+    .Attr("key_dtype: type")
+    .Attr("value_dtype: type")
+    .Attr("value_shape: shape = {}")
+    .Attr("initial_num_buckets: int = 131072")  // 2^17
+    .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
+    .Doc(R"doc(
+Creates an empty hash table that uses tensors as the backing store. It uses
+"open addressing" with quadratic reprobing to resolve collisions.
+
+This op creates a mutable hash table, specifying the type of its keys and
+values. Each value must be a scalar. Data can be inserted into the table using
+the insert operations. It does not support the initialization operation.
+
+empty_key: The key to use to represent empty buckets internally. Must not
+  be used in insert or lookup operations.
+table_handle: Handle to a table.
+container: If non-empty, this table is placed in the given container.
+  Otherwise, a default container is used.
+shared_name: If non-empty, this table is shared under the given name across
+  multiple sessions.
+key_dtype: Type of the table keys.
+value_dtype: Type of the table values.
+value_shape: The shape of each value.
+initial_num_buckets: The initial number of hash table buckets. Must be a power
+  to 2.
+)doc");
+
 REGISTER_OP("InitializeTable")
     .Input("table_handle: Ref(string)")
     .Input("keys: Tkey")

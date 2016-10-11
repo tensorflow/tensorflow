@@ -116,6 +116,18 @@ def _get_weight_tensor(features, weight_column_name):
         shape=(-1,))
 
 
+def _reshape_targets(targets):
+  """"Reshapes targets into [batch_size, 1] to be compatible with logits."""
+  check_shape_op = control_flow_ops.Assert(
+      math_ops.less_equal(array_ops.rank(targets), 2),
+      ["targets shape should be either [batch_size, 1] or [batch_size]"])
+  with ops.control_dependencies([check_shape_op]):
+    targets = array_ops.reshape(targets,
+                                shape=[array_ops.shape(targets)[0], 1])
+
+  return targets
+
+
 def _rescale_eval_loss(loss, weights):
   """Rescales evaluation loss according to the given weights.
 
@@ -254,6 +266,7 @@ def _dnn_classifier_model_fn(features, targets, mode, params):
     logits = nn.bias_add(logits, _centered_bias(num_label_columns))
 
   if mode == estimator.ModeKeys.TRAIN:
+    targets = _reshape_targets(targets)
     loss = loss_fn(logits, targets,
                    weight=_get_weight_tensor(features, weight_column_name))
 
@@ -269,6 +282,7 @@ def _dnn_classifier_model_fn(features, targets, mode, params):
   elif mode == estimator.ModeKeys.EVAL:
     predictions = _predictions(logits=logits, n_classes=n_classes)
 
+    targets = _reshape_targets(targets)
     weight = _get_weight_tensor(features, weight_column_name)
     training_loss = loss_fn(logits, targets, weight=weight)
     loss = _rescale_eval_loss(training_loss, weight)

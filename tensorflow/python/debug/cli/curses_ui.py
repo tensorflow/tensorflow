@@ -20,6 +20,8 @@ from __future__ import print_function
 import collections
 import curses
 from curses import textpad
+import signal
+import sys
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -98,6 +100,9 @@ class CursesUI(object):
     self.rectangle = collections.namedtuple("rectangle",
                                             "top left bottom right")
 
+    # Register signal handler for SIGINT.
+    signal.signal(signal.SIGINT, self._interrupt_handler)
+
   def _init_layout(self):
     """Initialize the layout of UI components.
 
@@ -135,6 +140,8 @@ class CursesUI(object):
     # Font attribute for search and highlighting.
     self._search_highlight_font_attr = "bw_reversed"
 
+    self.max_output_lines = 10000
+
   def _screen_init(self):
     """Screen initialization.
 
@@ -152,7 +159,8 @@ class CursesUI(object):
     curses.init_pair(3, curses.COLOR_GREEN, curses.COLOR_BLACK)
     curses.init_pair(4, curses.COLOR_YELLOW, curses.COLOR_BLACK)
     curses.init_pair(5, curses.COLOR_BLUE, curses.COLOR_BLACK)
-    curses.init_pair(6, curses.COLOR_BLACK, curses.COLOR_WHITE)
+    curses.init_pair(6, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+    curses.init_pair(7, curses.COLOR_BLACK, curses.COLOR_WHITE)
 
     self._color_pairs = {}
     self._color_pairs["white"] = curses.color_pair(1)
@@ -160,9 +168,10 @@ class CursesUI(object):
     self._color_pairs["green"] = curses.color_pair(3)
     self._color_pairs["yellow"] = curses.color_pair(4)
     self._color_pairs["blue"] = curses.color_pair(5)
+    self._color_pairs["magenta"] = curses.color_pair(6)
 
     # Black-white reversed
-    self._color_pairs["bw_reversed"] = curses.color_pair(6)
+    self._color_pairs["bw_reversed"] = curses.color_pair(7)
 
     # A_BOLD is not really a "color". But place it here for convenience.
     self._color_pairs["bold"] = curses.A_BOLD
@@ -198,6 +207,9 @@ class CursesUI(object):
     curses.nocbreak()
     curses.echo()
     curses.endwin()
+
+    # Remove SIGINT handler.
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
   def run_ui(self, init_command=None, title=None, title_color=None):
     """Run the Curses CLI.
@@ -398,19 +410,17 @@ class CursesUI(object):
       return
 
     screen_info = {"cols": self._max_x}
+    exit_token = None
     if self._command_handler_registry.is_registered(prefix):
-      screen_output = self._command_handler_registry.dispatch_command(
-          prefix, args, screen_info=screen_info)
-
+      try:
+        screen_output = self._command_handler_registry.dispatch_command(
+            prefix, args, screen_info=screen_info)
+      except debugger_cli_common.CommandLineExit as e:
+        exit_token = e.exit_token
     else:
       screen_output = debugger_cli_common.RichTextLines([
           "ERROR: Invalid command prefix \"%s\"" % prefix
       ])
-
-    exit_token = None
-    if debugger_cli_common.EXIT_TOKEN_KEY in screen_output.annotations:
-      exit_token = screen_output.annotations[
-          debugger_cli_common.EXIT_TOKEN_KEY]
 
     # Clear active command history. Until next up/down history navigation
     # occurs, it will stay empty.
@@ -628,6 +638,16 @@ class CursesUI(object):
     self._curr_wrapped_output = debugger_cli_common.wrap_rich_text_lines(
         output, self._max_x - 1)
 
+    # Limit number of lines displayed to avoid curses overflow problems.
+    if self._curr_wrapped_output.num_lines() > self.max_output_lines:
+      self._curr_wrapped_output = self._curr_wrapped_output.slice(
+          0, self.max_output_lines)
+      self._curr_wrapped_output.lines.append("Output cut off at %d lines!" %
+                                             self.max_output_lines)
+      self._curr_wrapped_output.font_attr_segs[self.max_output_lines] = [
+          (0, len(output.lines[-1]), "magenta")
+      ]
+
     (self._output_pad, self._output_pad_height,
      self._output_pad_width) = self._display_lines(self._curr_wrapped_output,
                                                    self._output_num_rows)
@@ -668,8 +688,6 @@ class CursesUI(object):
       raise ValueError(
           "Output is required to be an instance of RichTextLines, but is not.")
 
-    # TODO(cais): Cut off output with too many lines to prevent overflow issues
-    # in curses.
     self._screen_refresh()
 
     # Number of rows the output area will have.
@@ -901,3 +919,11 @@ class CursesUI(object):
     self._screen_scroll_output_pad(
         pad, 0, 0, self._candidates_top_row, 0,
         self._candidates_top_row + candidates_num_rows - 1, self._max_x - 1)
+
+  def _interrupt_handler(self, signal_num, frame):
+    _ = signal_num  # Unused.
+    _ = frame  # Unused.
+
+    self._screen_terminate()
+    print("\ntfdbg: caught SIGINT; calling sys.exit(1).", file=sys.stderr)
+    sys.exit(1)

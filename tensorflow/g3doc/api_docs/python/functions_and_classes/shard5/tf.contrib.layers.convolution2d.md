@@ -16,7 +16,9 @@ greater than one.
 ##### Args:
 
 
-*  <b>`inputs`</b>: a 4-D tensor  `[batch_size, height, width, channels]`.
+*  <b>`inputs`</b>: a 4-D tensor of shape `[batch_size, height, width, channels]` if
+    `data_format` is `NHWC`, and `[batch_size, channels, height, width]` if
+    `data_format` is `NCHW`.
 *  <b>`num_outputs`</b>: integer, the number of output filters.
 *  <b>`kernel_size`</b>: a list of length 2 `[kernel_height, kernel_width]` of
     of the filters. Can be an int if both values are the same.
@@ -24,9 +26,10 @@ greater than one.
     Can be an int if both strides are the same. Note that presently
     both strides must have the same value.
 *  <b>`padding`</b>: one of `VALID` or `SAME`.
+*  <b>`data_format`</b>: A string. `NHWC` (default) and `NCHW` are supported.
 *  <b>`rate`</b>: integer. If less than or equal to 1, a standard convolution is used.
     If greater than 1, than the a'trous convolution is applied and `stride`
-    must be set to 1.
+    must be set to 1, `data_format` must be set to `NHWC`.
 *  <b>`activation_fn`</b>: activation function, set to None to skip it and maintain
     a linear activation.
 *  <b>`normalizer_fn`</b>: normalization function to use instead of `biases`. If
@@ -54,5 +57,7 @@ greater than one.
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: if both 'rate' and `stride` are larger than one.
+*  <b>`ValueError`</b>: if `data_format` is neither `NHWC` nor `NCHW`.
+*  <b>`ValueError`</b>: if `rate` is larger than one and `data_format` is `NCHW`.
+*  <b>`ValueError`</b>: if both `rate` and `stride` are larger than one.
 

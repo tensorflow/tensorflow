@@ -49,14 +49,21 @@ Construct and execute TensorFlow graphs in Go.
 
     a. Copying it to a system location, e.g.,
 
-       ```sh
-       cp ${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow/libtensorflow.so /usr/local/lib
-       ```
+    ```sh
+    cp ${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow/libtensorflow.so /usr/local/lib
+    ```
 
-       OR
+    OR
 
-    b. Setting the `LD_LIBRARY_PATH=${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow`
-       environment variable (`DYLD_LIBRARY_PATH` on Mac OS X).
+    b. Setting the
+    `LD_LIBRARY_PATH=${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow`
+    environment variable (`DYLD_LIBRARY_PATH` on Mac OS X).
+
+4.  Generate wrapper functions for TensorFlow ops:
+
+    ```sh
+    go generate github.com/tensorflow/tensorflow/tensorflow/go/op
+    ```
 
 After this, the `go` tool should be usable as normal. For example:
 

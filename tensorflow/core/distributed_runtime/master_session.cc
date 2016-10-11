@@ -887,6 +887,7 @@ Status MasterSession::Create(GraphDef* graph_def) {
     // TODO(b/29900832): Fix this or remove the option.
     LOG(WARNING) << "Distributed session does not support the "
                     "place_pruned_graph option.";
+    session_opts_.config.mutable_graph_options()->set_place_pruned_graph(false);
   }
 
   SimpleGraphExecutionStateOptions options;
@@ -1066,7 +1067,7 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
   ph = rcg->GetProfileHandler(step_id, count, req->options());
   if (ph) {
     pss.collect_timeline = true;
-    pss.collect_rpcs = true;
+    pss.collect_rpcs = ph->should_collect_rpcs();
   }
 
   TF_RETURN_IF_ERROR(rcg->RunPartitions(env_, step_id, count,

@@ -28,6 +28,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import event_accumulator as ea
+from tensorflow.python.training import saver
 
 
 class _EventGenerator(object):
@@ -136,6 +137,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
                   ea.HISTOGRAMS: [],
                   ea.COMPRESSED_HISTOGRAMS: [],
                   ea.GRAPH: False,
+                  ea.META_GRAPH: False,
                   ea.RUN_METADATA: []}
     self._real_constructor = ea.EventAccumulator
     self._real_generator = ea._GeneratorFromPath
@@ -176,6 +178,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         ea.HISTOGRAMS: ['hst1', 'hst2'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1', 'hst2'],
         ea.GRAPH: False,
+        ea.META_GRAPH: False,
         ea.RUN_METADATA: []
     })
 
@@ -200,6 +203,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         ea.HISTOGRAMS: ['hst1', 'hst2'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1', 'hst2'],
         ea.GRAPH: False,
+        ea.META_GRAPH: False,
         ea.RUN_METADATA: []
     })
 
@@ -444,6 +448,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         ea.HISTOGRAMS: ['hst1'],
         ea.COMPRESSED_HISTOGRAMS: ['hst1'],
         ea.GRAPH: False,
+        ea.META_GRAPH: False,
         ea.RUN_METADATA: []
     })
 
@@ -631,6 +636,9 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
       _ = tf.constant([2.0, 1.0])
     # Add a graph to the summary writer.
     writer.add_graph(graph)
+    meta_graph_def = saver.export_meta_graph(
+        graph_def=graph.as_graph_def(add_shapes=True))
+    writer.add_meta_graph(meta_graph_def)
 
     run_metadata = tf.RunMetadata()
     device_stats = run_metadata.step_stats.dev_stats.add()
@@ -657,6 +665,7 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
             ea.HISTOGRAMS: [],
             ea.COMPRESSED_HISTOGRAMS: [],
             ea.GRAPH: True,
+            ea.META_GRAPH: True,
             ea.RUN_METADATA: ['test run']
         })
     id_events = acc.Scalars('id')
@@ -689,6 +698,44 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
       self.assertEqual(i, id_events[i].value)
       self.assertEqual(i * i, sq_events[i].value)
     self.assertProtoEquals(graph.as_graph_def(add_shapes=True), acc.Graph())
+    self.assertProtoEquals(meta_graph_def, acc.MetaGraph())
+
+  def testGraphFromMetaGraphBecomesAvailable(self):
+    """Test accumulator by writing values and then reading them."""
+
+    directory = os.path.join(self.get_temp_dir(), 'metagraph_test_values_dir')
+    if gfile.IsDirectory(directory):
+      gfile.DeleteRecursively(directory)
+    gfile.MkDir(directory)
+
+    writer = tf.train.SummaryWriter(directory, max_queue=100)
+
+    with tf.Graph().as_default() as graph:
+      _ = tf.constant([2.0, 1.0])
+    # Add a graph to the summary writer.
+    meta_graph_def = saver.export_meta_graph(
+        graph_def=graph.as_graph_def(add_shapes=True))
+    writer.add_meta_graph(meta_graph_def)
+
+    writer.flush()
+
+    # Verify that we can load those events properly
+    acc = ea.EventAccumulator(directory)
+    acc.Reload()
+    self.assertTagsEqual(
+        acc.Tags(),
+        {
+            ea.IMAGES: [],
+            ea.AUDIO: [],
+            ea.SCALARS: [],
+            ea.HISTOGRAMS: [],
+            ea.COMPRESSED_HISTOGRAMS: [],
+            ea.GRAPH: True,
+            ea.META_GRAPH: True,
+            ea.RUN_METADATA: []
+        })
+    self.assertProtoEquals(graph.as_graph_def(add_shapes=True), acc.Graph())
+    self.assertProtoEquals(meta_graph_def, acc.MetaGraph())
 
 
 if __name__ == '__main__':

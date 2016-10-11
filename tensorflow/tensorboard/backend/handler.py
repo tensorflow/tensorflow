@@ -177,7 +177,7 @@ class TensorboardHandler(BaseHTTPServer.BaseHTTPRequestHandler):
   def _serve_logdir(self, unused_query_params):
     """Writes out the logdir argument with which this tensorboard was started.
     """
-    self.respond(self._logdir, 'text/plain')
+    self.respond({'logdir': self._logdir}, 'application/json')
 
   def _serve_scalars(self, query_params):
     """Given a tag and single run, return array of ScalarEvents.

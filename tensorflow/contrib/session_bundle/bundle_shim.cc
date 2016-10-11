@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/contrib/session_bundle/bundle_shim.h"
 
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/contrib/session_bundle/bundle_shim_constants.h"
 #include "tensorflow/contrib/session_bundle/manifest.pb.h"
 #include "tensorflow/contrib/session_bundle/session_bundle.h"
@@ -57,9 +58,9 @@ Status ConvertDefaultSignatureToSignatureDef(const Signatures& signatures,
     SignatureDef signature_def;
     signature_def.set_method_name(kRegressMethodName);
     AddInputToSignatureDef(regression_signature.input().tensor_name(),
-                           kSignatureInputs, &signature_def);
+                           kRegressInputs, &signature_def);
     AddOutputToSignatureDef(regression_signature.output().tensor_name(),
-                            kSignatureOutputs, &signature_def);
+                            kRegressOutputs, &signature_def);
     (*meta_graph_def->mutable_signature_def())[kDefaultSignatureDefKey] =
         signature_def;
     return Status::OK();
@@ -70,7 +71,7 @@ Status ConvertDefaultSignatureToSignatureDef(const Signatures& signatures,
     SignatureDef signature_def;
     signature_def.set_method_name(kClassifyMethodName);
     AddInputToSignatureDef(classification_signature.input().tensor_name(),
-                           kSignatureInputs, &signature_def);
+                           kClassifyInputs, &signature_def);
     AddOutputToSignatureDef(classification_signature.classes().tensor_name(),
                             kClassifyOutputClasses, &signature_def);
     AddOutputToSignatureDef(classification_signature.scores().tensor_name(),
@@ -89,9 +90,9 @@ Status ConvertNamedSignaturesToSignatureDef(const Signatures& signatures,
   Signature input_signature, output_signature;
   // Ensure that named signatures corresponding to `inputs` and `outputs` keys
   // exist.
-  if (!GetNamedSignature(kSignatureInputs, *meta_graph_def, &input_signature)
+  if (!GetNamedSignature(kPredictInputs, *meta_graph_def, &input_signature)
            .ok() ||
-      !GetNamedSignature(kSignatureOutputs, *meta_graph_def, &output_signature)
+      !GetNamedSignature(kPredictOutputs, *meta_graph_def, &output_signature)
            .ok()) {
     return Status(error::Code::INVALID_ARGUMENT,
                   "Named signatures can only be up-converted if entries "

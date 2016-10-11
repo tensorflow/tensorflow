@@ -32,11 +32,11 @@ struct QuantizeAndDequantizeOneScaleFunctor<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::ConstVec input,
                   bool signed_input, int num_bits, bool range_given,
                   typename TTypes<T>::Scalar input_min,
-                  typename TTypes<T>::Scalar input_max,
-                  typename TTypes<T>::Vec out) {
+                  typename TTypes<T>::Scalar input_max, const T input_min_init,
+                  const T input_max_init, typename TTypes<T>::Vec out) {
     QuantizeAndDequantizeOneScaleImpl<GPUDevice, T>::Compute(
         d, input, signed_input, range_given, num_bits, input_min, input_max,
-        out);
+        input_min_init, input_max_init, out);
   }
 };
 }  // end namespace functor

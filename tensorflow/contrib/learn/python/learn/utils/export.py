@@ -296,7 +296,7 @@ def _export_estimator(estimator,
       features, _ = input_fn()
       examples = None
       if input_feature_key is not None:
-        examples = features[input_feature_key]
+        examples = features.pop(input_feature_key)
 
     if not features and not examples:
       raise ValueError('Either features or examples must be defined.')

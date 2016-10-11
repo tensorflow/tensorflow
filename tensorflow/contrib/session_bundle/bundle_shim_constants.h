@@ -19,29 +19,8 @@ limitations under the License.
 namespace tensorflow {
 namespace serving {
 
-// Classification method name used in a SignatureDef.
-static constexpr char kClassifyMethodName[] = "tensorflow/serving/classify";
-
-// Classification classes output.
-static constexpr char kClassifyOutputClasses[] = "classes";
-
-// Classification scores output.
-static constexpr char kClassifyOutputScores[] = "scores";
-
 // Key in the signature def map for `default` signatures.
 static constexpr char kDefaultSignatureDefKey[] = "default";
-
-// Predict method name used in a SignatureDef.
-static constexpr char kPredictMethodName[] = "tensorflow/serving/predict";
-
-// Regression method name used in a SignatureDef.
-static constexpr char kRegressMethodName[] = "tensorflow/serving/regress";
-
-// Common key used for signature inputs.
-static constexpr char kSignatureInputs[] = "inputs";
-
-// Common key used for signature outputs.
-static constexpr char kSignatureOutputs[] = "outputs";
 
 }  // namespace serving
 }  // namespace tensorflow

@@ -1678,7 +1678,8 @@ The `save_path` argument is typically a value previously returned from a
 ##### Raises:
 
 
-*  <b>`ValueError`</b>: If the given `save_path` does not point to a file.
+*  <b>`ValueError`</b>: DEPRECATED, do not rely on this Error.  If the given
+    `save_path` does not point to a file.
 
 
 

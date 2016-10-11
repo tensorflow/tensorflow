@@ -126,8 +126,19 @@ class DistributionUtilTest(tf.test.TestCase):
       new_logits, new_p = distribution_util.get_logits_and_prob(
           logits=logits, validate_args=True)
 
-      self.assertAllClose(logits, new_logits.eval())
       self.assertAllClose(p, new_p.eval())
+      self.assertAllClose(logits, new_logits.eval())
+
+  def testGetLogitsAndProbLogitsMultidimensional(self):
+    p = np.array([0.2, 0.3, 0.5], dtype=np.float32)
+    logits = np.log(p)
+
+    with self.test_session():
+      new_logits, new_p = distribution_util.get_logits_and_prob(
+          logits=logits, multidimensional=True, validate_args=True)
+
+      self.assertAllClose(new_p.eval(), p)
+      self.assertAllClose(new_logits.eval(), logits)
 
   def testGetLogitsAndProbProbability(self):
     p = np.array([0.01, 0.2, 0.5, 0.7, .99], dtype=np.float32)
@@ -146,7 +157,7 @@ class DistributionUtilTest(tf.test.TestCase):
       new_logits, new_p = distribution_util.get_logits_and_prob(
           p=p, multidimensional=True, validate_args=True)
 
-      self.assertAllClose(special.logit(p), new_logits.eval())
+      self.assertAllClose(np.log(p), new_logits.eval())
       self.assertAllClose(p, new_p.eval())
 
   def testGetLogitsAndProbProbabilityValidateArgs(self):

@@ -1348,11 +1348,16 @@ class Saver(object):
       save_path: Path where parameters were previously saved.
 
     Raises:
-      ValueError: If the given `save_path` does not point to a file.
+      ValueError: DEPRECATED, do not rely on this Error.  If the given
+        `save_path` does not point to a file.
     """
     if self._is_empty:
       return
 
+    # NOTE(zongheng): checking at the Python layer prevents the underlying
+    # restore Op to handle more than one checkpoint format, potentially.  This
+    # is a DEPRECATED error and might be removed in the future.
+    #
     # Performs this check only for V1, as the V2 restore op can read either a
     # V1 ckpt or a V2 ckpt, making this check invalid.
     if self.saver_def.version == saver_pb2.SaverDef.V1:

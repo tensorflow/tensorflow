@@ -1797,10 +1797,15 @@ def create_feature_spec_for_parsing(feature_columns):
 
   Args:
     feature_columns: An iterable containing all the feature columns. All items
-      should be instances of classes derived from _FeatureColumn.
+      should be instances of classes derived from _FeatureColumn, unless
+      feature_columns is a dict -- in which case, this should be true of all
+      values in the dict.
   Returns:
     A dict mapping feature keys to FixedLenFeature or VarLenFeature values.
   """
+  if isinstance(feature_columns, dict):
+    feature_columns = feature_columns.values()
+
   features_config = {}
   for column in feature_columns:
     features_config.update(_get_feature_config(column))
