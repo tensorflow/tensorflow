@@ -1105,11 +1105,6 @@ void* GlobalKernelRegistry();
 Status FindKernelDef(DeviceType device_type, const NodeDef& node_def,
                      const KernelDef** def, string* kernel_class_name);
 
-// Treats 'registry_ptr' as a pointer to KernelRegistry. For each kernel 'k'
-// registered with the current library's global kernel registry (obtained by
-// calling GlobalKernelRegistry()), inserts 'k' into registry_ptr.
-extern "C" void RegisterKernels(void* registry_ptr);
-
 // Writes a list of all registered kernels to LOG(INFO), to help users debug
 // missing kernel errors.
 void LogAllRegisteredKernels();

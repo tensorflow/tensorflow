@@ -171,12 +171,6 @@ class OpListOpRegistry : public OpRegistryInterface {
   std::unordered_map<string, const OpRegistrationData*> index_;
 };
 
-// Treats 'registry_ptr' as a pointer to OpRegistry, and calls
-// registry_ptr->Register(op_def) for each op_def that has been registered with
-// the current library's global op registry (obtained by calling
-// OpRegistry::Global().
-extern "C" void RegisterOps(void* registry_ptr);
-
 // Support for defining the OpDef (specifying the semantics of the Op and how
 // it should be created) and registering it in the OpRegistry::Global()
 // registry.  Usage:
