@@ -416,4 +416,7 @@ export interface State {
 
   /** Label by option. */
   selectedLabelOption?: string;
+
+  /** Whether the state is a 3d view. If false, the state is a 2d view. */
+  is3d?: boolean;
 }

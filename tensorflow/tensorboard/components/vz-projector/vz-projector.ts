@@ -610,6 +610,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     }
 
     state.selectedProjection = this.selectedProjection;
+    state.is3d = this.projectionsPanel.is3d;
     state.selectedPoints = this.selectedPointIndices;
     state.cameraPosition = this.scatterPlot.getCameraPosition();
     state.cameraTarget = this.scatterPlot.getCameraTarget();
@@ -629,6 +630,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     if (state.selectedProjection === 'tsne') {
       this.currentDataSet.hasTSNERun = true;
     }
+    this.projectionsPanel.is3d = state.is3d;
     this.projectionsPanel.showTab(state.selectedProjection);
 
     this.notifySelectionChanged(state.selectedPoints);
