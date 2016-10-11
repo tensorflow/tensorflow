@@ -673,6 +673,94 @@ class MutableHashTableOpTest(tf.test.TestCase):
       self.assertAllEqual((b"brain", b"salad", b"n/a"), result)
 
 
+class MutableDenseHashTableOpTest(tf.test.TestCase):
+
+  def testMutableDenseHashTable(self):
+    with self.test_session():
+      keys = tf.constant([11, 12, 13], tf.int64)
+      values = tf.constant([0, 1, 2], tf.int64)
+      table = tf.contrib.lookup.MutableDenseHashTable(
+          tf.int64, tf.int64, default_value=-1, empty_key=0)
+      self.assertAllEqual(0, table.size().eval())
+
+      table.insert(keys, values).run()
+      self.assertAllEqual(3, table.size().eval())
+
+      input_string = tf.constant([11, 12, 15], tf.int64)
+      output = table.lookup(input_string)
+      self.assertAllEqual([3], output.get_shape())
+
+      result = output.eval()
+      self.assertAllEqual([0, 1, -1], result)
+
+  def testReprobe(self):
+    with self.test_session():
+      # Insert 6 keys into a table with 8 buckets.
+      # The values are chosen to make sure collisions occur when using GCC STL
+      keys = tf.constant([11, 12, 13, 19, 20, 21], tf.int64)
+      values = tf.constant([51, 52, 53, 54, 55, 56], tf.int64)
+      table = tf.contrib.lookup.MutableDenseHashTable(
+          tf.int64,
+          tf.int64,
+          default_value=-1,
+          empty_key=0,
+          initial_num_buckets=8)
+      self.assertAllEqual(0, table.size().eval())
+
+      table.insert(keys, values).run()
+      self.assertAllEqual(6, table.size().eval())
+
+      input_string = tf.constant([10, 11, 12, 13, 14, 19, 20, 21, 22], tf.int64)
+      output = table.lookup(input_string)
+      self.assertAllEqual([9], output.get_shape())
+
+      result = output.eval()
+      self.assertAllEqual([-1, 51, 52, 53, -1, 54, 55, 56, -1], result)
+
+  def testChangeEmptyKey(self):
+    with self.test_session():
+      keys = tf.constant([11, 0, 13], tf.int64)
+      values = tf.constant([0, 1, 2], tf.int64)
+      table = tf.contrib.lookup.MutableDenseHashTable(
+          tf.int64, tf.int64, default_value=-1, empty_key=12)
+      self.assertAllEqual(0, table.size().eval())
+
+      table.insert(keys, values).run()
+      self.assertAllEqual(3, table.size().eval())
+
+      input_string = tf.constant([11, 0, 15], tf.int64)
+      output = table.lookup(input_string)
+      self.assertAllEqual([3], output.get_shape())
+
+      result = output.eval()
+      self.assertAllEqual([0, 1, -1], result)
+
+  def testErrors(self):
+    with self.test_session():
+      table = tf.contrib.lookup.MutableDenseHashTable(
+          tf.int64, tf.int64, default_value=-1, empty_key=0)
+ 
+      # Inserting the empty key returns an error
+      keys = tf.constant([11, 0], tf.int64)
+      values = tf.constant([0, 1], tf.int64)
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError, "empty_key"):
+        table.insert(keys, values).run()
+ 
+      # Looking up the empty key returns an error
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError, "empty_key"):
+        table.lookup(keys).eval()
+
+      table2 = tf.contrib.lookup.MutableDenseHashTable(
+          tf.int64,
+          tf.int64,
+          default_value=-1,
+          empty_key=17,
+          initial_num_buckets=12)
+      with self.assertRaisesRegexp(tf.errors.InvalidArgumentError,
+                                   "initial_num_buckets must be"):
+        self.assertAllEqual(0, table2.size().eval())
+
+
 class StringToIndexTest(tf.test.TestCase):
 
   def test_string_to_index(self):

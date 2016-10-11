@@ -57,6 +57,7 @@ LookupTableFind
 LookupTableImport
 LookupTableInsert
 LookupTableSize
+MutableDenseHashTable
 MutableHashTable
 MutableHashTableOfTensors
 Mutex
