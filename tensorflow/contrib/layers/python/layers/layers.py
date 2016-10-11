@@ -387,6 +387,7 @@ def convolution2d(inputs,
                   kernel_size,
                   stride=1,
                   padding='SAME',
+                  data_format=DATA_FORMAT_NHWC,
                   rate=1,
                   activation_fn=nn.relu,
                   normalizer_fn=None,
@@ -414,7 +415,9 @@ def convolution2d(inputs,
   greater than one.
 
   Args:
-    inputs: a 4-D tensor  `[batch_size, height, width, channels]`.
+    inputs: a 4-D tensor of shape `[batch_size, height, width, channels]` if
+      `data_format` is `NHWC`, and `[batch_size, channels, height, width]` if
+      `data_format` is `NCHW`.
     num_outputs: integer, the number of output filters.
     kernel_size: a list of length 2 `[kernel_height, kernel_width]` of
       of the filters. Can be an int if both values are the same.
@@ -422,9 +425,10 @@ def convolution2d(inputs,
       Can be an int if both strides are the same. Note that presently
       both strides must have the same value.
     padding: one of `VALID` or `SAME`.
+    data_format: A string. `NHWC` (default) and `NCHW` are supported.
     rate: integer. If less than or equal to 1, a standard convolution is used.
       If greater than 1, than the a'trous convolution is applied and `stride`
-      must be set to 1.
+      must be set to 1, `data_format` must be set to `NHWC`.
     activation_fn: activation function, set to None to skip it and maintain
       a linear activation.
     normalizer_fn: normalization function to use instead of `biases`. If
@@ -449,17 +453,26 @@ def convolution2d(inputs,
     a tensor representing the output of the operation.
 
   Raises:
-    ValueError: if both 'rate' and `stride` are larger than one.
+    ValueError: if `data_format` is neither `NHWC` nor `NCHW`.
+    ValueError: if `rate` is larger than one and `data_format` is `NCHW`.
+    ValueError: if both `rate` and `stride` are larger than one.
   """
   with variable_scope.variable_scope(scope, 'Conv', [inputs],
                                      reuse=reuse) as sc:
+    if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
+      raise ValueError('data_format has to be either NCHW or NHWC.')
+    if rate > 1 and data_format == DATA_FORMAT_NCHW:
+      raise ValueError('If rate > 1, data_format must be NHWC')
     inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
     if rate > 1 and (stride_h > 1 or stride_w > 1):
       raise ValueError('Only one of rate or stride can be larger than one')
-    num_filters_in = utils.last_dimension(inputs.get_shape(), min_rank=4)
+    if data_format == DATA_FORMAT_NHWC:
+      num_filters_in = utils.last_dimension(inputs.get_shape(), min_rank=4)
+    else:
+      num_filters_in = inputs.get_shape().dims[1]
     weights_shape = [kernel_h, kernel_w,
                      num_filters_in, num_outputs]
     weights_collections = utils.get_variable_collections(
@@ -474,8 +487,12 @@ def convolution2d(inputs,
     if rate > 1:
       outputs = nn.atrous_conv2d(inputs, weights, rate, padding=padding)
     else:
-      outputs = nn.conv2d(inputs, weights, [1, stride_h, stride_w, 1],
-                          padding=padding)
+      if data_format == DATA_FORMAT_NHWC:
+        strides = [1, stride_h, stride_w, 1]
+      else:
+        strides = [1, 1, stride_h, stride_w]
+      outputs = nn.conv2d(
+          inputs, weights, strides, padding=padding, data_format=data_format)
     if normalizer_fn is not None:
       normalizer_params = normalizer_params or {}
       outputs = normalizer_fn(outputs, **normalizer_params)
@@ -490,7 +507,7 @@ def convolution2d(inputs,
                                           regularizer=biases_regularizer,
                                           collections=biases_collections,
                                           trainable=trainable)
-        outputs = nn.bias_add(outputs, biases)
+        outputs = nn.bias_add(outputs, biases, data_format=data_format)
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections,
