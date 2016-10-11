@@ -214,10 +214,8 @@ def input_from_feature_columns(columns_to_tensors,
     age_buckets = bucketized_column(
         source_column=age,
         boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
-    occupation_x_age = crossed_column(columns=[occupation, age_buckets],
-                                      hash_bucket_size=10000)
 
-    feature_columns=[occupation_emb, occupation_x_age]
+    feature_columns=[occupation_emb, age_buckets]
 
   Args:
     columns_to_tensors: A mapping from feature column to tensors. 'string' key
@@ -488,8 +486,6 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
 
     occupation = sparse_column_with_hash_bucket(column_name="occupation",
                                               hash_bucket_size=1000)
-    occupation_emb = embedding_column(sparse_id_column=occupation, dimension=16,
-                                     combiner="sum")
     age = real_valued_column("age")
     age_buckets = bucketized_column(
         source_column=age,
@@ -497,7 +493,7 @@ def weighted_sum_from_feature_columns(columns_to_tensors,
     occupation_x_age = crossed_column(columns=[occupation, age_buckets],
                                       hash_bucket_size=10000)
 
-    feature_columns=[occupation_emb, occupation_x_age]
+    feature_columns=[age_buckets, occupation, occupation_x_age]
 
   Args:
     columns_to_tensors: A mapping from feature column to tensors. 'string' key
