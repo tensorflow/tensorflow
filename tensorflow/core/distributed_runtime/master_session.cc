@@ -1066,7 +1066,7 @@ Status MasterSession::DoRunWithLocalExecution(CallOptions* opts,
   ph = rcg->GetProfileHandler(step_id, count, req->options());
   if (ph) {
     pss.collect_timeline = true;
-    pss.collect_rpcs = true;
+    pss.collect_rpcs = ph->should_collect_rpcs();
   }
 
   TF_RETURN_IF_ERROR(rcg->RunPartitions(env_, step_id, count,
