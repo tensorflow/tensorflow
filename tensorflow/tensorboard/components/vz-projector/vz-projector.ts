@@ -110,11 +110,11 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.projectionsPanel.initialize(this);
     this.metadataCard = this.$['metadata-card'] as MetadataCard;
     this.statusBar = this.dom.select('#status-bar');
+    this.bookmarkPanel = this.$['bookmark-panel'] as BookmarkPanel;
 
     getDataProvider(this.routePrefix, dataProvider => {
       this.dataProvider = dataProvider;
       this.dataPanel.initialize(this, dataProvider);
-      this.bookmarkPanel = this.$['bookmark-panel'] as BookmarkPanel;
       this.bookmarkPanel.initialize(this, dataProvider);
     });
     this.scopeSubtree(this.$$('#wrapper-notify-msg'), true);
