@@ -98,6 +98,8 @@ class FileSystem {
   virtual Status IsDirectory(const string& fname);
 };
 
+// START_SKIP_DOXYGEN
+
 #ifndef SWIG
 // Degenerate file system that provides no implementations.
 class NullFileSystem : public FileSystem {
@@ -159,6 +161,8 @@ class NullFileSystem : public FileSystem {
   }
 };
 #endif
+
+// END_SKIP_DOXYGEN
 
 /// A file abstraction for randomly reading the contents of a file.
 class RandomAccessFile {

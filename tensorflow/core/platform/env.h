@@ -343,6 +343,7 @@ class EnvWrapper : public Env {
   Env* target_;
 };
 
+/// Represents a thread used to run a Tensorflow function.
 class Thread {
  public:
   Thread() {}
@@ -382,6 +383,8 @@ Status WriteBinaryProto(Env* env, const string& fname,
 Status ReadBinaryProto(Env* env, const string& fname,
                        ::tensorflow::protobuf::MessageLite* proto);
 
+// START_SKIP_DOXYGEN
+
 namespace register_file_system {
 
 template <typename Factory>
@@ -393,6 +396,8 @@ struct Register {
 };
 
 }  // namespace register_file_system
+
+// END_SKIP_DOXYGEN
 
 }  // namespace tensorflow
 

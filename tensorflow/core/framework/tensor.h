@@ -466,6 +466,8 @@ class Tensor {
 
 // Implementation details
 
+// START_SKIP_DOXYGEN
+
 // Interface to access the raw ref-counted data buffer.
 class TensorBuffer : public core::RefCounted {
  public:
@@ -658,6 +660,8 @@ inline Tensor& Tensor::operator=(Tensor&& other) {
   }
   return *this;
 }
+
+// END_SKIP_DOXYGEN
 
 }  // namespace tensorflow
 
