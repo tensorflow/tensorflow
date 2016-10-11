@@ -22,46 +22,13 @@ import functools
 import inspect
 import re
 
+from tensorflow.contrib.framework.python.framework import decorator_utils
 from tensorflow.python.platform import tf_logging as logging
-
-
-def _get_qualified_name(function):
-  # Python 3
-  if hasattr(function, '__qualname__'):
-    return function.__qualname__
-
-  # Python 2
-  if hasattr(function, 'im_class'):
-    return function.im_class.__name__ + '.' + function.__name__
-  return function.__name__
-
-
-def _add_deprecation_to_docstring(
-    doc, instructions, no_doc_str, suffix_str, notice):
-  """Adds a deprecation notice to a docstring."""
-  if not doc:
-    lines = [no_doc_str]
-  else:
-    lines = doc.splitlines()
-    lines[0] += ' ' + suffix_str
-
-  notice = [''] + notice + [instructions]
-
-  if len(lines) > 1:
-    # Make sure that we keep our distance from the main body
-    if lines[1].strip():
-      notice.append('')
-
-    lines[1:1] = notice
-  else:
-    lines += notice
-
-  return '\n'.join(lines)
 
 
 def _add_deprecated_function_notice_to_docstring(doc, date, instructions):
   """Adds a deprecation notice to a docstring for deprecated functions."""
-  return _add_deprecation_to_docstring(
+  return decorator_utils.add_notice_to_docstring(
       doc, instructions,
       'DEPRECATED FUNCTION',
       '(deprecated)', [
@@ -71,7 +38,7 @@ def _add_deprecated_function_notice_to_docstring(doc, date, instructions):
 
 def _add_deprecated_arg_notice_to_docstring(doc, date, instructions):
   """Adds a deprecation notice to a docstring for deprecated arguments."""
-  return _add_deprecation_to_docstring(
+  return decorator_utils.add_notice_to_docstring(
       doc, instructions,
       'DEPRECATED FUNCTION ARGUMENTS',
       '(deprecated arguments)', [
@@ -87,13 +54,6 @@ def _validate_deprecation_args(date, instructions):
     raise ValueError('Date must be YYYY-MM-DD.')
   if not instructions:
     raise ValueError('Don\'t deprecate things without conversion instructions!')
-
-
-def _validate_callable(func, decorator_name):
-  if not hasattr(func, '__call__'):
-    raise ValueError(
-        '%s is not a function. If this is a property, '
-        'apply @%s after @property.' % (func, decorator_name))
 
 
 def deprecated(date, instructions):
@@ -128,13 +88,14 @@ def deprecated(date, instructions):
 
   def deprecated_wrapper(func):
     """Deprecation wrapper."""
-    _validate_callable(func, 'deprecated')
+    decorator_utils.validate_callable(func, 'deprecated')
     @functools.wraps(func)
     def new_func(*args, **kwargs):
       logging.warning(
           '%s (from %s) is deprecated and will be removed after %s.\n'
           'Instructions for updating:\n%s',
-          _get_qualified_name(func), func.__module__, date, instructions)
+          decorator_utils.get_qualified_name(func), func.__module__, date,
+          instructions)
       return func(*args, **kwargs)
     new_func.__doc__ = _add_deprecated_function_notice_to_docstring(
         func.__doc__, date, instructions)
@@ -178,7 +139,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names):
 
   def deprecated_wrapper(func):
     """Deprecation decorator."""
-    _validate_callable(func, 'deprecated_args')
+    decorator_utils.validate_callable(func, 'deprecated_args')
 
     arg_spec = inspect.getargspec(func)
     deprecated_positions = [
@@ -213,7 +174,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names):
         logging.warning(
             'Calling %s (from %s) with %s is deprecated and will be removed '
             'after %s.\nInstructions for updating:\n%s',
-            _get_qualified_name(func), func.__module__,
+            decorator_utils.get_qualified_name(func), func.__module__,
             arg_name, date, instructions)
       return func(*args, **kwargs)
     new_func.__doc__ = _add_deprecated_arg_notice_to_docstring(
@@ -257,7 +218,7 @@ def deprecated_arg_values(date, instructions, **deprecated_kwargs):
 
   def deprecated_wrapper(func):
     """Deprecation decorator."""
-    _validate_callable(func, 'deprecated_arg_values')
+    decorator_utils.validate_callable(func, 'deprecated_arg_values')
     @functools.wraps(func)
     def new_func(*args, **kwargs):
       """Deprecation wrapper."""
@@ -267,7 +228,7 @@ def deprecated_arg_values(date, instructions, **deprecated_kwargs):
           logging.warning(
               'Calling %s (from %s) with %s=%s is deprecated and will be '
               'removed after %s.\nInstructions for updating:\n%s',
-              _get_qualified_name(func), func.__module__,
+              decorator_utils.get_qualified_name(func), func.__module__,
               arg_name, arg_value, date, instructions)
       return func(*args, **kwargs)
     new_func.__doc__ = _add_deprecated_arg_notice_to_docstring(
