@@ -887,6 +887,7 @@ Status MasterSession::Create(GraphDef* graph_def) {
     // TODO(b/29900832): Fix this or remove the option.
     LOG(WARNING) << "Distributed session does not support the "
                     "place_pruned_graph option.";
+    session_opts_.config.mutable_graph_options()->set_place_pruned_graph(false);
   }
 
   SimpleGraphExecutionStateOptions options;
