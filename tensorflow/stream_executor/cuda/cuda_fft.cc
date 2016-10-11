@@ -57,7 +57,7 @@ namespace dynload {
       static void *f;                                                          \
       port::Status s =                                                         \
           port::Env::Default->GetSymbolFromLibrary(GetDsoHandle(), kName, &f); \
-      CHECK(f.ok()) << "could not find " << kName                              \
+      CHECK(s.ok()) << "could not find " << kName                              \
                     << " in cuFFT DSO; dlerror: " << s.error_message();        \
       return reinterpret_cast<FuncPointerT>(f);                                \
     }                                                                          \
