@@ -274,7 +274,7 @@ survival function, which are more accurate than `1 - cdf(x)` when `x >> 1`.
 
 #### `tf.contrib.distributions.BernoulliWithSigmoidP.logits` {#BernoulliWithSigmoidP.logits}
 
-
+Log-odds of success.
 
 
 - - -
@@ -306,7 +306,7 @@ Name prepended to all ops created by this `Distribution`.
 
 #### `tf.contrib.distributions.BernoulliWithSigmoidP.p` {#BernoulliWithSigmoidP.p}
 
-
+Probability of success.
 
 
 - - -
