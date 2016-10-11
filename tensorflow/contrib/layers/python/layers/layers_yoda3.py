@@ -80,7 +80,7 @@ def avg_pool2d(inputs,
                stride=2,
                padding='VALID',
                outputs_collections=None,
-               data_format='NHWC',
+               data_format='NCHW',
                scope=None):
   """Adds a 2D average pooling op.
 
@@ -330,7 +330,7 @@ def bias_add(inputs,
              variables_collections=None,
              outputs_collections=None,
              trainable=True,
-             data_format='NHWC',
+             data_format='NCHW',
              scope=None):
   """Adds a bias to the inputs.
 
@@ -395,7 +395,7 @@ def convolution2d(inputs,
                   variables_collections=None,
                   outputs_collections=None,
                   trainable=True,
-                  data_format='NHWC',
+                  data_format='NCHW',
                   scope=None):
   """Adds a 2D convolution followed by an optional batch_norm layer.
 
@@ -1085,7 +1085,7 @@ def max_pool2d(inputs,
                stride=2,
                padding='VALID',
                outputs_collections=None,
-               data_format='NHWC',
+               data_format='NCHW',
                scope=None):
   """Adds a 2D Max Pooling op.
 
@@ -1465,10 +1465,9 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
 @add_arg_scope
 def fused_batch_norm(inputs,
                decay=0.999,
-               center=True,
-               scale=True,
                epsilon=0.001,
                activation_fn=None,
+               scale=True, center=True,
                initializers={},
                updates_collections=ops.GraphKeys.UPDATE_OPS,
                is_training=True,
@@ -1476,8 +1475,7 @@ def fused_batch_norm(inputs,
                variables_collections=None,
                outputs_collections=None,
                trainable=True,
-               batch_weights=None,
-               data_format='NHWC',
+               data_format='NCHW',
                scope=None):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
   This is the interface for the FusedBatchNorm kernel
@@ -1505,11 +1503,11 @@ def fused_batch_norm(inputs,
     inputs: a tensor with 2 or more dimensions, where the first dimension has
       `batch_size`. The normalization is over all but the last dimension.
     decay: decay for the moving average.
-    center: True only. This is added to be compatible with original batch_norm
-    scale: True only. This is added to be compatible with original batch_norm
     epsilon: small float added to variance to avoid dividing by zero.
     activation_fn: activation function, default set to None to skip it and
       maintain a linear activation.
+    center: True only. This is added to be compatible with original batch_norm
+    scale: True only. This is added to be compatible with original batch_norm
     updates_collections: collections to collect the update ops for computation.
       The updates_ops need to be executed with the train_op.
       If None, a control dependency would be added to make sure the updates are
@@ -1525,7 +1523,11 @@ def fused_batch_norm(inputs,
     outputs_collections: collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-    batch_weights: None only, just be compatible with original batch_norm
+    batch_weights: An optional tensor of shape `[batch_size]`,
+      containing a frequency weight for each batch item. If present,
+      then the batch normalization uses weighted mean and
+      variance. (This can be used to correct for bias in training
+      example selection.)
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     scope: Optional scope for `variable_scope`.
 
@@ -1537,8 +1539,6 @@ def fused_batch_norm(inputs,
   """
   with variable_scope.variable_scope(scope, 'BatchNorm', [inputs],
                                      reuse=reuse) as sc:
-    if batch_weights is not None:
-      raise ValueError('FusedBatchNorm must be used with batch_weights is None')
     if (not scale) or (not center):
       raise ValueError('FusedBatchNorm must be used with both scale and center')
     if data_format not in ['NCHW', 'NHWC']:
@@ -1561,6 +1561,10 @@ def fused_batch_norm(inputs,
       inputs = array_ops.reshape(inputs, new_shape)
 
     inputs_shape = inputs.get_shape()
+    inputs_rank = inputs_shape.ndims
+    if inputs_rank is None:
+      raise ValueError('Inputs %s has undefined rank.' % inputs.name)
+
     if data_format == 'NCHW':
       axis = [0, 2, 3]
       params_shape = inputs_shape[1:2]
