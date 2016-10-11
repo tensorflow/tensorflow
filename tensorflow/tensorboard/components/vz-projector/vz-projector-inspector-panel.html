@@ -38,7 +38,6 @@ limitations under the License.
 
 .buttons {
   display: flex;
-  margin-bottom: 10px;
   height: 60px;
 }
 
@@ -119,13 +118,36 @@ limitations under the License.
 }
 
 .options a {
+  color: #727272;
+  font-size: 13px;
+  margin-left: 12px;
   text-decoration: none;
-  color: black;
 }
 
 .options a.selected {
-  color: black;
-  border-bottom: 2px solid black;
+  color: #009EFE;
+}
+
+.neighbors-options {
+  margin-top: 6px;
+}
+
+.neighbors-options .option-label, .distance .option-label {
+  color: #727272;
+  margin-right: 2px;
+  width: auto;
+}
+
+.num-neighbors-container {
+  display: inline-block;
+}
+
+#nn-slider {
+  margin: 0 -12px 0 10px;
+}
+
+.euclidian {
+  margin-right: 10px;
 }
 
 .matches-list .row {
@@ -149,17 +171,6 @@ limitations under the License.
     <button class="button set-filter">Isolate selection</button>
     <button class="button clear-selection">Clear selection</button>
   </div>
-  <div class="slider num-nn">
-    <label>
-      Number of neighbors
-      <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
-      <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
-        The number of neighbors (in the original space) to show when clicking on a point.
-      </paper-tooltip>
-    </label>
-    <paper-slider id="nn-slider" pin min="5" max="1000" value="100"></paper-slider>
-    <span></span>
-  </div>
   <div class="search-by">
     <vz-projector-input id="search-box" label="Query"></vz-projector-input>
     <paper-dropdown-menu no-animations label="by">
@@ -174,18 +185,32 @@ limitations under the License.
   </div>
 </div>
 <div class="results">
-  <div class="nn">
-    <div class="distance">
-      Distance:
-      <div class="options">
-        <a class="selected cosine" href="javascript:void(0);">cosine</a> |
-        <a class="euclidean" href="javascript:void(0);">euclidean</a>
+  <div class="nn" style="display: none">
+    <div class="neighbors">
+      Neighbors
+      <div class="neighbors-options">
+        <div class="slider num-nn">
+          <span class="option-label">quantity</span>
+          <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
+          <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
+            The number of neighbors (in the original space) to show when clicking on a point.
+          </paper-tooltip>
+          <paper-slider id="nn-slider" pin min="5" max="1000" value="100"></paper-slider>
+          <span class="nn-count"></span>
+        </div>
+      </div>
+      <div class="distance">
+        <span class="option-label">distance</span>
+        <div class="options">
+          <a class="selected cosine" href="javascript:void(0);">COSINE</a>
+          <a class="euclidean" href="javascript:void(0);">EUCLIDIAN</a>
+        </div>
       </div>
     </div>
     <p>Nearest points in the original space:
     <div class="nn-list"></div>
   </div>
-  <div class="matches-list">
+  <div class="matches-list" style="display: none">
     <div class="list"></div>
     <div class="limit-msg">Showing only the first 100 results...</div>
   </div>
