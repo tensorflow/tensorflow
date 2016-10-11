@@ -48,7 +48,7 @@ genrule(
         "rm -rf /tmp/half_plus_two; " +
         "$(PYTHON_BIN_PATH) $(locations :export_half_plus_two); " +
         "cp -r /tmp/half_plus_two/* $(@D)/half_plus_two; " +
-        "rm -rf /tmp/half_plus_two_v2; " +
+        "rm -rf /tmp/half_plus_two_ckpt_v2; " +
         "$(PYTHON_BIN_PATH) $(locations :export_half_plus_two)  --export_dir=/tmp/half_plus_two_ckpt_v2 --use_checkpoint_v2=true; " +
         "cp -r /tmp/half_plus_two_ckpt_v2/* $(@D)/half_plus_two_ckpt_v2",
     tools = [
