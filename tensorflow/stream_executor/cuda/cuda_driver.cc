@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 
-#include <dlfcn.h>
 #include <map>
 #include <stdint.h>
 #include <stdlib.h>
@@ -61,11 +60,17 @@ namespace dynload {
       static auto status = internal::CachedDsoLoader::GetLibcudaDsoHandle(); \
       return status.ValueOrDie();                                            \
     }                                                                        \
-    static FuncPointerT DynLoad() {                                          \
-      static void *f = dlsym(GetDsoHandle(), kName);                         \
-      CHECK(f != nullptr) << "could not find " << kName                      \
-                          << "in libcuda DSO; dlerror: " << dlerror();       \
+    static FuncPointerT LoadOrDie() {                                        \
+      void *f;                                                               \
+      port::Status s = port::Env::Default()->GetSymbolFromLibrary(           \
+          GetDsoHandle(), kName, &f);                                        \
+      CHECK(s.ok()) << "could not find " << kName                            \
+                    << " in libcuda DSO; dlerror: " << s.error_message();    \
       return reinterpret_cast<FuncPointerT>(f);                              \
+    }                                                                        \
+    static FuncPointerT DynLoad() {                                          \
+      static FuncPointerT f = LoadOrDie();                                   \
+      return f;                                                              \
     }                                                                        \
     template <typename... Args>                                              \
     CUresult operator()(Args... args) {                                      \
