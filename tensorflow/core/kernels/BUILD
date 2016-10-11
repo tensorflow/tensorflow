@@ -292,6 +292,7 @@ cc_library(
         ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 
