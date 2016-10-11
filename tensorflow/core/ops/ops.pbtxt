@@ -12670,7 +12670,7 @@ op {
   }
   output_arg {
     name: "backprops"
-    description: "The gradients:\n`gradients * features * (features > 0) * (features < 6)`."
+    description: "The gradients:\n`gradients * (features > 0) * (features < 6)`."
     type_attr: "T"
   }
   attr {
