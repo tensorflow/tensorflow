@@ -50,10 +50,11 @@ class Bernoulli(distribution.Distribution):
       logits: An N-D `Tensor` representing the log-odds
         of a positive event. Each entry in the `Tensor` parametrizes
         an independent Bernoulli distribution where the probability of an event
-        is sigmoid(logits).
+        is sigmoid(logits). Only one of `logits` or `p` should be passed in.
       p: An N-D `Tensor` representing the probability of a positive
           event. Each entry in the `Tensor` parameterizes an independent
-          Bernoulli distribution.
+          Bernoulli distribution. Only one of `logits` or `p` should be passed
+          in.
       dtype: dtype for samples.
       validate_args: `Boolean`, default `False`.  Whether to validate that
         `0 <= p <= 1`. If `validate_args` is `False`, and the inputs are
@@ -87,10 +88,12 @@ class Bernoulli(distribution.Distribution):
 
   @property
   def logits(self):
+    """Log-odds of success."""
     return self._logits
 
   @property
   def p(self):
+    """Probability of success."""
     return self._p
 
   @property

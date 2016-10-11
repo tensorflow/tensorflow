@@ -120,12 +120,13 @@ class Multinomial(distribution.Distribution):
       logits: Floating point tensor representing the log-odds of a
         positive event with shape broadcastable to `[N1,..., Nm, k], m >= 0`,
         and the same dtype as `n`. Defines this as a batch of `N1 x ... x Nm`
-        different `k` class Multinomial distributions.
+        different `k` class Multinomial distributions. Only one of `logits` or
+        `p` should be passed in.
       p:  Positive floating point tensor with shape broadcastable to
         `[N1,..., Nm, k]` `m >= 0` and same dtype as `n`.  Defines this as
         a batch of `N1 x ... x Nm` different `k` class Multinomial
         distributions. `p`'s components in the last portion of its shape should
-        sum up to 1.
+        sum up to 1. Only one of `logits` or `p` should be passed in.
       validate_args: `Boolean`, default `False`.  Whether to assert valid
         values for parameters `n` and `p`, and `x` in `prob` and `log_prob`.
         If `False`, correct behavior is not guaranteed.
@@ -181,14 +182,16 @@ class Multinomial(distribution.Distribution):
     return self._n
 
   @property
-  def p(self):
-    """Event probabilities."""
-    return self._p
+  def logits(self):
+    """Vector of coordinatewise logits."""
+    return self._logits
 
   @property
-  def logits(self):
-    """Log-odds."""
-    return self._logits
+  def p(self):
+    """Vector of probabilities summing to one.
+
+    Each element is the probability of drawing that coordinate."""
+    return self._p
 
   def _batch_shape(self):
     return array_ops.shape(self._broadcast_shape)
