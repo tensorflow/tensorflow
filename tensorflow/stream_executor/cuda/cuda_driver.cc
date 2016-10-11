@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 
-#include <dlfcn.h>
 #include <map>
 #include <stdint.h>
 #include <stdlib.h>
@@ -53,25 +52,29 @@ namespace cuda {
 
 namespace dynload {
 
-#define PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(__name)                              \
-  struct DynLoadShim__##__name {                                             \
-    static const char *kName;                                                \
-    using FuncPointerT = std::add_pointer<decltype(::__name)>::type;         \
-    static void *GetDsoHandle() {                                            \
-      static auto status = internal::CachedDsoLoader::GetLibcudaDsoHandle(); \
-      return status.ValueOrDie();                                            \
-    }                                                                        \
-    static FuncPointerT DynLoad() {                                          \
-      static void *f = dlsym(GetDsoHandle(), kName);                         \
-      CHECK(f != nullptr) << "could not find " << kName                      \
-                          << "in libcuda DSO; dlerror: " << dlerror();       \
-      return reinterpret_cast<FuncPointerT>(f);                              \
-    }                                                                        \
-    template <typename... Args>                                              \
-    CUresult operator()(Args... args) {                                      \
-      return DynLoad()(args...);                                             \
-    }                                                                        \
-  } __name;                                                                  \
+#define PERFTOOLS_GPUTOOLS_CUDNN_WRAP(__name)                           \
+  struct DynLoadShim__##__name {                                        \
+    static const char *kName;                                           \
+    typedef std::add_pointer<decltype(::__name)>::type FuncPointerT;    \
+    static FuncPointerT LoadOrDie() {                                   \
+      void *f;                                                          \
+      port::Status s = port::Env::Default()->GetSymbolFromLibrary(      \
+          GetDsoHandle(), kName, &f);                                   \
+      CHECK(s.ok()) << "could not find " << kName                       \
+                    << " in cudnn DSO; dlerror: " << s.error_message(); \
+      return reinterpret_cast<FuncPointerT>(f);                         \
+    }                                                                   \
+    static FuncPointerT DynLoad() {                                     \
+      static FuncPointerT f = LoadOrDie();                              \
+      return f;                                                         \
+    }                                                                   \
+    template <typename... Args>                                         \
+    cudnnStatus_t operator()(CUDAExecutor *parent, Args... args) {      \
+      cuda::ScopedActivateExecutorContext sac{parent};                  \
+      cudnnStatus_t retval = DynLoad()(args...);                        \
+      return retval;                                                    \
+    }                                                                   \
+  } __name;                                                             \
   const char *DynLoadShim__##__name::kName = #__name;
 
 PERFTOOLS_GPUTOOLS_LIBCUDA_WRAP(cuCtxCreate_v2);

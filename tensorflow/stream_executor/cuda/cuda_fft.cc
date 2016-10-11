@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_fft.h"
 
-#include <dlfcn.h>
-
 #include <complex>
 
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
@@ -26,6 +24,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dso_loader.h"
+#include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -46,26 +45,28 @@ namespace dynload {
 // manner on first use. This dynamic loading technique is used to avoid DSO
 // dependencies on vendor libraries which may or may not be available in the
 // deployed binary environment.
-#define PERFTOOLS_GPUTOOLS_CUFFT_WRAP(__name)                              \
-  struct DynLoadShim__##__name {                                           \
-    static const char *kName;                                              \
-    using FuncPointerT = std::add_pointer<decltype(::__name)>::type;       \
-    static void *GetDsoHandle() {                                          \
-      static auto status = internal::CachedDsoLoader::GetCufftDsoHandle(); \
-      return status.ValueOrDie();                                          \
-    }                                                                      \
-    static FuncPointerT DynLoad() {                                        \
-      static void *f = dlsym(GetDsoHandle(), kName);                       \
-      CHECK(f != nullptr) << "could not find " << kName                    \
-                          << " in cuFFT DSO; dlerror: " << dlerror();      \
-      return reinterpret_cast<FuncPointerT>(f);                            \
-    }                                                                      \
-    template <typename... Args>                                            \
-    cufftResult operator()(CUDAExecutor * parent, Args... args) {          \
-      cuda::ScopedActivateExecutorContext sac{parent};                     \
-      return DynLoad()(args...);                                           \
-    }                                                                      \
-  } __name;                                                                \
+#define PERFTOOLS_GPUTOOLS_CUFFT_WRAP(__name)                                  \
+  struct DynLoadShim__##__name {                                               \
+    static const char *kName;                                                  \
+    using FuncPointerT = std::add_pointer<decltype(::__name)>::type;           \
+    static void *GetDsoHandle() {                                              \
+      static auto status = internal::CachedDsoLoader::GetCufftDsoHandle();     \
+      return status.ValueOrDie();                                              \
+    }                                                                          \
+    static FuncPointerT DynLoad() {                                            \
+      static void *f;                                                          \
+      port::Status s =                                                         \
+          port::Env::Default->GetSymbolFromLibrary(GetDsoHandle(), kName, &f); \
+      CHECK(f.ok()) << "could not find " << kName                              \
+                    << " in cuFFT DSO; dlerror: " << s.error_message();        \
+      return reinterpret_cast<FuncPointerT>(f);                                \
+    }                                                                          \
+    template <typename... Args>                                                \
+    cufftResult operator()(CUDAExecutor *parent, Args... args) {               \
+      cuda::ScopedActivateExecutorContext sac{parent};                         \
+      return DynLoad()(args...);                                               \
+    }                                                                          \
+  } __name;                                                                    \
   const char *DynLoadShim__##__name::kName = #__name;
 
 #define CUFFT_ROUTINE_EACH(__macro)                                         \
