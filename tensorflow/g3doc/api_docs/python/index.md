@@ -240,6 +240,7 @@
   * [`reduce_max`](../../api_docs/python/math_ops.md#reduce_max)
   * [`reduce_mean`](../../api_docs/python/math_ops.md#reduce_mean)
   * [`reduce_min`](../../api_docs/python/math_ops.md#reduce_min)
+  * [`reduce_nnz`](../../api_docs/python/math_ops.md#reduce_nnz)
   * [`reduce_prod`](../../api_docs/python/math_ops.md#reduce_prod)
   * [`reduce_sum`](../../api_docs/python/math_ops.md#reduce_sum)
   * [`round`](../../api_docs/python/math_ops.md#round)
