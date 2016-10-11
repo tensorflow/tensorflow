@@ -85,7 +85,7 @@ part and the deep part of the model.
 import tensorflow as tf
 
 # Categorical base columns.
-gender = tf.contrib.layers.sparse_column_with_keys(column_name="gender", keys=["female", "male"])
+gender = tf.contrib.layers.sparse_column_with_keys(column_name="gender", keys=["Female", "Male"])
 race = tf.contrib.layers.sparse_column_with_keys(column_name="race", keys=[
   "Amer-Indian-Eskimo", "Asian-Pac-Islander", "Black", "Other", "White"])
 education = tf.contrib.layers.sparse_column_with_hash_bucket("education", hash_bucket_size=1000)
