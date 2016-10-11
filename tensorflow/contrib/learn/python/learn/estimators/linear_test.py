@@ -223,21 +223,22 @@ class LinearClassifierTest(tf.test.TestCase):
   def testLogisticFractionalLabels(self):
     """Tests logistic training with fractional labels."""
 
-    def get_input_fn(label):
-      def input_fn():
-        return {
-            'age': tf.constant([[1], [2]]),
-        }, tf.constant([[label], [0]])
-      return input_fn
+    def input_fn():
+      return {
+          'age': tf.constant([[1], [2]]),
+      }, tf.constant([[.7], [0]], dtype=tf.float32)
 
     age = tf.contrib.layers.real_valued_column('age')
 
     classifier = tf.contrib.learn.LinearClassifier(
-        feature_columns=[age])
-    classifier.fit(input_fn=get_input_fn(0.7), steps=100)
-    loss1 = classifier.evaluate(input_fn=get_input_fn(0.7), steps=1)['loss']
-    loss2 = classifier.evaluate(input_fn=get_input_fn(1.0), steps=1)['loss']
-    self.assertLess(loss1, loss2)
+        feature_columns=[age],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+    classifier.fit(input_fn=input_fn, steps=500)
+
+    predictions_proba = classifier.predict_proba(input_fn=input_fn)
+    # Prediction probabilities mirror the target column, which proves that the
+    # classifier learns from float input.
+    self.assertAllClose(predictions_proba, [[.3, .7], [1., 0.]], atol=.1)
 
   def testTrainWithPartitionedVariables(self):
     """Tests training with partitioned variables."""
