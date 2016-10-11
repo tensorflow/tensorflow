@@ -30,6 +30,15 @@ from tensorflow.contrib.learn.python.learn.estimators import estimator_test_util
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 
 
+def _prepare_iris_data_for_logistic_regression():
+  # Converts iris data to a logistic regression problem.
+  iris = tf.contrib.learn.datasets.load_iris()
+  ids = np.where((iris.target == 0) | (iris.target == 1))
+  iris = tf.contrib.learn.datasets.base.Dataset(data=iris.data[ids],
+                                                target=iris.target[ids])
+  return iris
+
+
 def _iris_input_fn():
   iris = tf.contrib.learn.datasets.load_iris()
   return {
@@ -92,7 +101,7 @@ class LinearClassifierTest(tf.test.TestCase):
     self.assertLess(loss2, 0.01)
     self.assertTrue('centered_bias_weight' in classifier.get_variable_names())
 
-  def testMultiClass(self):
+  def testMultiClass_MatrixData(self):
     """Tests multi-class classification using matrix data as input."""
     feature_column = tf.contrib.layers.real_valued_column('feature',
                                                           dimension=4)
@@ -103,6 +112,88 @@ class LinearClassifierTest(tf.test.TestCase):
 
     classifier.fit(input_fn=_iris_input_fn, steps=100)
     scores = classifier.evaluate(input_fn=_iris_input_fn, steps=100)
+    self.assertGreater(scores['accuracy'], 0.9)
+
+  def testMultiClass_MatrixData_Target1D(self):
+    """Same as the last test, but target shape is [150] instead of [150, 1]."""
+    def _input_fn():
+      iris = tf.contrib.learn.datasets.load_iris()
+      return {
+          'feature': tf.constant(iris.data, dtype=tf.float32)
+      }, tf.constant(iris.target, shape=[150], dtype=tf.int32)
+
+    feature_column = tf.contrib.layers.real_valued_column('feature',
+                                                          dimension=4)
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        n_classes=3,
+        feature_columns=[feature_column])
+
+    classifier.fit(input_fn=_input_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self.assertGreater(scores['accuracy'], 0.9)
+
+  def testMultiClass_NpMatrixData(self):
+    """Tests multi-class classification using numpy matrix data as input."""
+    iris = tf.contrib.learn.datasets.load_iris()
+    train_x = iris.data
+    train_y = iris.target
+    feature_column = tf.contrib.layers.real_valued_column('', dimension=4)
+    classifier = tf.contrib.learn.LinearClassifier(
+        n_classes=3,
+        feature_columns=[feature_column])
+
+    classifier.fit(x=train_x, y=train_y, steps=100)
+    scores = classifier.evaluate(x=train_x, y=train_y, steps=1)
+    self.assertGreater(scores['accuracy'], 0.9)
+
+  def testLogisticRegression_MatrixData(self):
+    """Tests binary classification using matrix data as input."""
+    def _input_fn():
+      iris = _prepare_iris_data_for_logistic_regression()
+      return {
+          'feature': tf.constant(iris.data, dtype=tf.float32)
+      }, tf.constant(iris.target, shape=[100, 1], dtype=tf.int32)
+
+    feature_column = tf.contrib.layers.real_valued_column('feature',
+                                                          dimension=4)
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        feature_columns=[feature_column])
+
+    classifier.fit(input_fn=_input_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self.assertGreater(scores['accuracy'], 0.9)
+
+  def testLogisticRegression_MatrixData_Target1D(self):
+    """Same as the last test, but target shape is [100] instead of [100, 1]."""
+    def _input_fn():
+      iris = _prepare_iris_data_for_logistic_regression()
+      return {
+          'feature': tf.constant(iris.data, dtype=tf.float32)
+      }, tf.constant(iris.target, shape=[100], dtype=tf.int32)
+
+    feature_column = tf.contrib.layers.real_valued_column('feature',
+                                                          dimension=4)
+
+    classifier = tf.contrib.learn.LinearClassifier(
+        feature_columns=[feature_column])
+
+    classifier.fit(input_fn=_input_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self.assertGreater(scores['accuracy'], 0.9)
+
+  def testLogisticRegression_NpMatrixData(self):
+    """Tests binary classification using numpy matrix data as input."""
+    iris = _prepare_iris_data_for_logistic_regression()
+    train_x = iris.data
+    train_y = iris.target
+    feature_columns = [tf.contrib.layers.real_valued_column('', dimension=4)]
+    classifier = tf.contrib.learn.LinearClassifier(
+        feature_columns=feature_columns)
+
+    classifier.fit(x=train_x, y=train_y, steps=100)
+    scores = classifier.evaluate(x=train_x, y=train_y, steps=1)
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testWeightAndBiasNames(self):
