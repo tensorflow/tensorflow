@@ -105,7 +105,7 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
       RTLD_LAZY | (load_kind == LoadKind::kLocal ? RTLD_LOCAL : RTLD_GLOBAL);
   string path_string = path.ToString();
   port::Status s =
-      port::Env::Default->LoadLibrary(path_string.c_str(), dso_handle);
+      port::Env::Default()->LoadLibrary(path_string.c_str(), dso_handle);
   if (!s.ok()) {
     LOG(INFO) << "Couldn't open CUDA library " << path
               << ". LD_LIBRARY_PATH: " << getenv("LD_LIBRARY_PATH");
