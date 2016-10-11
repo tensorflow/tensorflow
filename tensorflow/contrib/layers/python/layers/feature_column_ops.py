@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework.python.framework import checkpoint_utils
+from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import embedding_ops
 from tensorflow.contrib.layers.python.layers import feature_column as fc
@@ -244,7 +245,7 @@ def input_from_feature_columns(columns_to_tensors,
                                      output_rank=2,
                                      default_name='input_from_feature_columns')
 
-
+@experimental
 def sequence_input_from_feature_columns(columns_to_tensors,
                                         feature_columns,
                                         weight_collections=None,
@@ -630,6 +631,62 @@ def parse_feature_columns_from_examples(serialized,
   for column in sorted(set(feature_columns), key=lambda x: x.key):
     transformer.transform(column)
   return columns_to_tensors
+
+
+def parse_feature_columns_from_sequence_examples(
+    serialized,
+    context_feature_columns,
+    sequence_feature_columns,
+    name=None,
+    example_name=None):
+  """Parses tf.SequenceExamples to extract tensors for given `FeatureColumn`s.
+
+  Args:
+    serialized: A scalar (0-D Tensor) of type string, a single serialized
+      `SequenceExample` proto.
+    context_feature_columns: An iterable containing the feature columns for
+      context features. All items should be instances of classes derived from
+      `_FeatureColumn`. Can be `None`.
+    sequence_feature_columns: An iterable containing the feature columns for
+      sequence features. All items should be instances of classes derived from
+      `_FeatureColumn`. Can be `None`.
+    name: A name for this operation (optional).
+    example_name: A scalar (0-D Tensor) of type string (optional), the names of
+      the serialized proto.
+
+  Returns:
+    A tuple consisting of:
+    context_features: a dict mapping `FeatureColumns` from
+      `context_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
+    sequence_features: a dict mapping `FeatureColumns` from
+      `sequence_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
+  """
+  # Sequence example parsing requires a single (scalar) example.
+  try:
+    serialized = array_ops.reshape(serialized, [])
+  except ValueError as e:
+    raise ValueError(
+        'serialized must contain as single sequence example. Batching must be '
+        'done after parsing for sequence examples. Error: {}'.format(e))
+
+  if context_feature_columns is None:
+    context_feature_columns = []
+  if sequence_feature_columns is None:
+    sequence_feature_columns = []
+
+  check_feature_columns(context_feature_columns)
+  context_feature_spec = fc.create_feature_spec_for_parsing(
+      context_feature_columns)
+
+  check_feature_columns(sequence_feature_columns)
+  sequence_feature_spec = fc._create_sequence_feature_spec_for_parsing(  # pylint: disable=protected-access
+      sequence_feature_columns, allow_missing_by_default=False)
+
+  return parsing_ops.parse_single_sequence_example(serialized,
+                                                   context_feature_spec,
+                                                   sequence_feature_spec,
+                                                   example_name,
+                                                   name)
 
 
 def _log_variable(variable):

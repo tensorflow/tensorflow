@@ -1869,6 +1869,79 @@ class ParseExampleTest(tf.test.TestCase):
       self.assertAllEqual(output[wire_cast].indices.eval(), [[0, 0], [0, 1]])
       self.assertAllEqual(output[wire_cast].values.eval(), [2, 0])
 
+  def testParseSequenceExample(self):
+    location_keys = ["east_side", "west_side", "nyc"]
+    embedding_dimension = 10
+
+
+    location = tf.contrib.layers.sparse_column_with_keys(
+        "location", keys=location_keys)
+    location_onehot = tf.contrib.layers.one_hot_column(location)
+    wire_cast = tf.contrib.layers.sparse_column_with_keys(
+        "wire_cast", ["marlo", "omar", "stringer"])
+    wire_cast_embedded = tf.contrib.layers.embedding_column(
+        wire_cast, dimension=embedding_dimension)
+    measurements = tf.contrib.layers.real_valued_column("measurements", dimension=2)
+
+    context_feature_columns = [location_onehot]
+    sequence_feature_columns = [wire_cast_embedded, measurements]
+
+    sequence_example = tf.train.SequenceExample(
+        context=tf.train.Features(feature={
+            "location": tf.train.Feature(
+                bytes_list=tf.train.BytesList(
+                    value=[b"west_side"])),
+        }),
+        feature_lists=tf.train.FeatureLists(feature_list={
+            "wire_cast": tf.train.FeatureList(feature=[
+                tf.train.Feature(bytes_list=tf.train.BytesList(
+                    value=[b"marlo", b"stringer"])),
+                tf.train.Feature(bytes_list=tf.train.BytesList(
+                    value=[b"omar", b"stringer", b"marlo"])),
+                tf.train.Feature(bytes_list=tf.train.BytesList(
+                    value=[b"marlo"])),
+
+            ]),
+            "measurements": tf.train.FeatureList(feature=[
+                tf.train.Feature(float_list=tf.train.FloatList(
+                    value=[0.2, 0.3])),
+                tf.train.Feature(float_list=tf.train.FloatList(
+                    value=[0.1, 0.8])),
+                tf.train.Feature(float_list=tf.train.FloatList(
+                    value=[0.5, 0.0])),
+            ])
+        }))
+
+
+    ctx, seq = tf.contrib.layers.parse_feature_columns_from_sequence_examples(
+         serialized=sequence_example.SerializeToString(),
+         context_feature_columns=context_feature_columns,
+         sequence_feature_columns=sequence_feature_columns)
+
+    self.assertIn("location", ctx)
+    self.assertIsInstance(ctx["location"], tf.SparseTensor)
+    self.assertIn("wire_cast", seq)
+    self.assertIsInstance(seq["wire_cast"], tf.SparseTensor)
+    self.assertIn("measurements", seq)
+    self.assertIsInstance(seq["measurements"], tf.Tensor)
+
+    with self.test_session() as sess:
+      location_val, wire_cast_val, measurement_val = sess.run([
+          ctx["location"], seq["wire_cast"], seq["measurements"]])
+
+    self.assertAllEqual(location_val.indices, np.array([[0]]))
+    self.assertAllEqual(location_val.values, np.array([b"west_side"]))
+    self.assertAllEqual(location_val.shape, np.array([1]))
+
+    self.assertAllEqual(wire_cast_val.indices, np.array(
+        [[0, 0], [0, 1], [1, 0], [1, 1], [1, 2], [2, 0]]))
+    self.assertAllEqual(wire_cast_val.values, np.array(
+        [b"marlo", b"stringer", b"omar", b"stringer", b"marlo", b"marlo"]))
+    self.assertAllEqual(wire_cast_val.shape, np.array([3, 3]))
+
+    self.assertAllClose(
+        measurement_val, np.array([[0.2, 0.3], [0.1, 0.8], [0.5, 0.0]]))
+
 
 class InferRealValuedColumnTest(tf.test.TestCase):
 
