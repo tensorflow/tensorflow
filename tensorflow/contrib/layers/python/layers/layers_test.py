@@ -25,7 +25,7 @@ import tensorflow as tf
 # TODO(sguada) Expose tf.with_dependencies
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.contrib.layers.python.layers import layers as _layers
-
+from tensorflow.python.ops import state_ops
 
 
 class AvgPool2DTest(tf.test.TestCase):
@@ -1261,11 +1261,23 @@ class FCTest(tf.test.TestCase):
 
 class BatchNormTest(tf.test.TestCase):
 
+  def _addBesselsCorrection(self, sample_size, expected_var):
+    correction_factor = sample_size / (sample_size - 1)
+    expected_var *= correction_factor
+    return  expected_var, correction_factor
+
   def testUnknownShape(self):
     with tf.Graph().as_default() as g, self.test_session(g):
       inputs = tf.placeholder(dtype=tf.float32)
       with self.assertRaisesRegexp(ValueError, 'undefined rank'):
         tf.contrib.layers.batch_norm(inputs)
+
+  def testInvalidDataFormat(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      inputs = tf.placeholder(dtype=tf.float32)
+      with self.assertRaisesRegexp(
+          ValueError, 'data_format has to be either NCHW or NHWC.'):
+        tf.contrib.layers.batch_norm(inputs, data_format='CHWN')
 
   def testUnknownLastDim(self):
     with tf.Graph().as_default() as g, self.test_session(g):
@@ -1274,13 +1286,30 @@ class BatchNormTest(tf.test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'undefined last dimension'):
         tf.contrib.layers.batch_norm(inputs)
 
-  def testCreateOp(self):
+  def testWeightedMomentsFused(self):
+    with tf.Graph().as_default() as g, self.test_session(g):
+      inputs = tf.placeholder(dtype=tf.float32, shape=(5, 3, 3, 7))
+      batch_weights = tf.placeholder(dtype=tf.float32)
+      with self.assertRaisesRegexp(ValueError,
+                                   'Weighted mean and variance'):
+        tf.contrib.layers.batch_norm(
+            inputs, batch_weights=batch_weights, fused=True)
+
+  def _testCreateOp(self, fused):
     height, width = 3, 3
     with self.test_session():
-      images = np.random.uniform(size=(5, height, width, 3))
-      output = tf.contrib.layers.batch_norm(images)
-      self.assertTrue(output.op.name.startswith('BatchNorm/batchnorm'))
+      images = np.random.uniform(size=(5, height, width, 3)).astype('f')
+      output = tf.contrib.layers.batch_norm(images, fused=fused)
+      expected_name = ('BatchNorm/FusedBatchNorm' if fused else
+                       'BatchNorm/batchnorm')
+      self.assertTrue(output.op.name.startswith(expected_name))
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
+
+  def testCreateOpDefault(self):
+    self._testCreateOp(False)
+
+  def testCreateOpFused(self):
+    self._testCreateOp(True)
 
   def testCreateVariables(self):
     height, width = 3, 3
@@ -1361,16 +1390,33 @@ class BatchNormTest(tf.test.TestCase):
       self.assertEqual(len(moving_variance), 1)
       self.assertEqual(moving_variance[0].op.name, 'BatchNorm/moving_variance')
 
-  def testNoneUpdatesCollections(self):
-    height, width = 3, 3
-    with self.test_session() as sess:
-      image_shape = (10, height, width, 3)
+  def _testNoneUpdatesCollections(self, fused, data_format='NHWC'):
+    height, width = 2, 2
+    batch_size = 10
+    channels = 3
+    np.random.seed(1)
+    use_gpu = fused
+    with self.test_session(use_gpu=use_gpu) as sess:
+      if data_format == 'NHWC':
+        image_shape = (batch_size, height, width, channels)
+        axis = (0, 1, 2)
+      else:
+        image_shape = (batch_size, channels, height, width)
+        axis = (0, 2, 3)
       image_values = np.random.rand(*image_shape)
-      expected_mean = np.mean(image_values, axis=(0, 1, 2))
-      expected_var = np.var(image_values, axis=(0, 1, 2))
+      expected_mean = np.mean(image_values, axis=axis)
+      expected_var = np.var(image_values, axis=axis)
+      if fused:
+        # Add Bessel's correction
+        expected_var, _ = self._addBesselsCorrection(
+            batch_size * height * width, expected_var)
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
-      output = tf.contrib.layers.batch_norm(images, decay=0.1,
-                                            updates_collections=None)
+      output = tf.contrib.layers.batch_norm(
+          images,
+          decay=0.1,
+          updates_collections=None,
+          fused=fused,
+          data_format=data_format)
       # updates_ops are not added to UPDATE_OPS collection.
       self.assertEqual(tf.get_collection(tf.GraphKeys.UPDATE_OPS), [])
       # Initialize all variables
@@ -1381,8 +1427,8 @@ class BatchNormTest(tf.test.TestCase):
           'BatchNorm/moving_variance')[0]
       mean, variance = sess.run([moving_mean, moving_variance])
       # After initialization moving_mean == 0 and moving_variance == 1.
-      self.assertAllClose(mean, [0] * 3)
-      self.assertAllClose(variance, [1] * 3)
+      self.assertAllClose(mean, [0] * channels)
+      self.assertAllClose(variance, [1] * channels)
       for _ in range(10):
         sess.run([output])
       mean = moving_mean.eval()
@@ -1392,15 +1438,39 @@ class BatchNormTest(tf.test.TestCase):
       self.assertAllClose(mean, expected_mean)
       self.assertAllClose(variance, expected_var)
 
-  def testDelayedUpdateMovingVars(self):
-    height, width = 3, 3
-    with self.test_session() as sess:
-      image_shape = (10, height, width, 3)
+  def testNoneUpdatesCollectionsDefault(self):
+    self._testNoneUpdatesCollections(False)
+
+  def testNoneUpdatesCollectionsFusedNCHW(self):
+    if tf.test.is_gpu_available():
+      self._testNoneUpdatesCollections(True, data_format='NCHW')
+
+  def testNoneUpdatesCollectionsFusedNHWC(self):
+    self._testNoneUpdatesCollections(True, data_format='NHWC')
+
+  def _testDelayedUpdateMovingVars(self, fused, data_format='NHWC'):
+    height, width = 2, 2
+    batch_size = 10
+    channels = 3
+    np.random.seed(1)
+    use_gpu = fused
+    with self.test_session(use_gpu=use_gpu) as sess:
+      if data_format == 'NHWC':
+        image_shape = (batch_size, height, width, channels)
+        axis = (0, 1, 2)
+      else:
+        image_shape = (batch_size, channels, height, width)
+        axis = (0, 2, 3)
       image_values = np.random.rand(*image_shape)
-      expected_mean = np.mean(image_values, axis=(0, 1, 2))
-      expected_var = np.var(image_values, axis=(0, 1, 2))
+      expected_mean = np.mean(image_values, axis=axis)
+      expected_var = np.var(image_values, axis=axis)
+      if fused:
+        # Add Bessel's correction
+        expected_var, correction_factor = self._addBesselsCorrection(
+            batch_size * height * width, expected_var)
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
-      output = tf.contrib.layers.batch_norm(images, decay=0.1)
+      output = tf.contrib.layers.batch_norm(
+          images, decay=0.1, fused=fused, data_format=data_format)
       update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
       # updates_ops are added to UPDATE_OPS collection.
       self.assertEqual(len(update_ops), 2)
@@ -1415,8 +1485,8 @@ class BatchNormTest(tf.test.TestCase):
           'BatchNorm/moving_variance')[0]
       mean, variance = sess.run([moving_mean, moving_variance])
       # After initialization moving_mean == 0 and moving_variance == 1.
-      self.assertAllClose(mean, [0] * 3)
-      self.assertAllClose(variance, [1] * 3)
+      self.assertAllClose(mean, [0] * channels)
+      self.assertAllClose(variance, [1] * channels)
       for _ in range(10):
         sess.run([output])
       mean = moving_mean.eval()
@@ -1424,7 +1494,26 @@ class BatchNormTest(tf.test.TestCase):
       # After 10 updates with decay 0.1 moving_mean == expected_mean and
       # moving_variance == expected_var.
       self.assertAllClose(mean, expected_mean)
+      if fused:
+        # Add Bessel's correction
+        moving_variance_corrected = moving_variance / correction_factor
+        correct_moving_variance = state_ops.assign(moving_variance,
+                                                   moving_variance_corrected)
+        sess.run(correct_moving_variance)
       self.assertAllClose(variance, expected_var)
+
+  def testDelayedUpdateMovingVarsDefault(self):
+    self._testDelayedUpdateMovingVars(False)
+
+  def testDelayedUpdateMovingVarsFusedNCHW(self):
+    if tf.test.is_gpu_available():
+      self._testDelayedUpdateMovingVars(True, data_format='NCHW')
+
+  def testDelayedUpdateMovingVarsFusedNHWC(self):
+    self._testDelayedUpdateMovingVars(True, data_format='NHWC')
+
+  def testDelayedUpdateMovingVars(self):
+    self._testDelayedUpdateMovingVars(False)
 
   def testEvalMovingVars(self):
     height, width = 3, 3
@@ -1461,23 +1550,29 @@ class BatchNormTest(tf.test.TestCase):
       self.assertAllClose(mean, expected_mean)
       self.assertAllClose(variance, expected_var)
 
-  def testReuseVars(self):
+  def _testReuseVars(self, fused):
     height, width = 3, 3
+    batch_size = 10
+    channels = 3
     with self.test_session() as sess:
-      image_shape = (10, height, width, 3)
+      image_shape = (batch_size, height, width, channels)
       image_values = np.random.rand(*image_shape)
       expected_mean = np.mean(image_values, axis=(0, 1, 2))
       expected_var = np.var(image_values, axis=(0, 1, 2))
+      if fused:
+        # Add Bessel's correction
+        expected_var, correction_factor = self._addBesselsCorrection(
+            batch_size * height * width, expected_var)
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
-      output_train = tf.contrib.layers.batch_norm(images,
-                                                  decay=0.1,
-                                                  is_training=True,
-                                                  scope='BN')
-      output_eval = tf.contrib.layers.batch_norm(images,
-                                                 decay=0.1,
-                                                 is_training=False,
-                                                 scope='BN',
-                                                 reuse=True)
+      output_train = tf.contrib.layers.batch_norm(
+          images, decay=0.1, is_training=True, scope='BN', fused=fused)
+      output_eval = tf.contrib.layers.batch_norm(
+          images,
+          decay=0.1,
+          is_training=False,
+          scope='BN',
+          reuse=True,
+          fused=fused)
       # Initialize all variables
       sess.run(tf.initialize_all_variables())
       moving_mean = tf.contrib.framework.get_variables(
@@ -1486,8 +1581,8 @@ class BatchNormTest(tf.test.TestCase):
           'BN/moving_variance')[0]
       mean, variance = sess.run([moving_mean, moving_variance])
       # After initialization moving_mean == 0 and moving_variance == 1.
-      self.assertAllClose(mean, [0] * 3)
-      self.assertAllClose(variance, [1] * 3)
+      self.assertAllClose(mean, [0] * channels)
+      self.assertAllClose(variance, [1] * channels)
       update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
       with tf.control_dependencies(update_ops):
         barrier = tf.no_op(name='barrier')
@@ -1502,22 +1597,51 @@ class BatchNormTest(tf.test.TestCase):
       # After 10 updates with decay 0.1 moving_mean == expected_mean and
       # moving_variance == expected_var.
       self.assertAllClose(mean, expected_mean)
+      if fused:
+        # Add Bessel's correction
+        moving_variance_corrected = moving_variance / correction_factor
+        correct_moving_variance = state_ops.assign(moving_variance,
+                                                   moving_variance_corrected)
+        sess.run(correct_moving_variance)
       self.assertAllClose(variance, expected_var)
       # After convergence output_train and output_eval should be the same.
       self.assertAllClose(sess.run([output_train]), sess.run([output_eval]))
 
-  def testIsTrainingVariable(self):
-    height, width = 3, 3
-    with self.test_session() as sess:
-      image_shape = (10, height, width, 3)
+  def testReuseVarsDefault(self):
+    self._testReuseVars(False)
+
+  def testReuseVarsFused(self):
+    self._testReuseVars(True)
+
+  def _testIsTrainingVariable(self, fused, data_format='NHWC'):
+    height, width = 2, 2
+    batch_size = 10
+    channels = 3
+    np.random.seed(1)
+    use_gpu = fused
+    np.random.seed(1)
+    with self.test_session(use_gpu=use_gpu) as sess:
+      if data_format == 'NHWC':
+        image_shape = (batch_size, height, width, channels)
+        axis = (0, 1, 2)
+      else:
+        image_shape = (batch_size, channels, height, width)
+        axis = (0, 2, 3)
       image_values = np.random.rand(*image_shape)
-      expected_mean = np.mean(image_values, axis=(0, 1, 2))
-      expected_var = np.var(image_values, axis=(0, 1, 2))
+      expected_mean = np.mean(image_values, axis=axis)
+      expected_var = np.var(image_values, axis=axis)
+      if fused:
+        # Add Bessel's correction
+        expected_var, correction_factor = self._addBesselsCorrection(
+            batch_size * height * width, expected_var)
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
       is_training = tf.Variable(True)
-      output = tf.contrib.layers.batch_norm(images,
-                                            decay=0.1,
-                                            is_training=is_training)
+      output = tf.contrib.layers.batch_norm(
+          images,
+          decay=0.1,
+          is_training=is_training,
+          fused=fused,
+          data_format=data_format)
       # Initialize all variables
       sess.run(tf.initialize_all_variables())
       moving_mean = tf.contrib.framework.get_variables(
@@ -1526,8 +1650,8 @@ class BatchNormTest(tf.test.TestCase):
           'BatchNorm/moving_variance')[0]
       mean, variance = sess.run([moving_mean, moving_variance])
       # After initialization moving_mean == 0 and moving_variance == 1.
-      self.assertAllClose(mean, [0] * 3)
-      self.assertAllClose(variance, [1] * 3)
+      self.assertAllClose(mean, [0] * channels)
+      self.assertAllClose(variance, [1] * channels)
       # Before updates the outputs are different depending of is_training.
       output_true = sess.run([output], {is_training: True})
       output_false = sess.run([output], {is_training: False})
@@ -1546,8 +1670,24 @@ class BatchNormTest(tf.test.TestCase):
       self.assertAllClose(variance, expected_var)
       # After updates to convergence the outputs don't depend on is_training.
       output_true = sess.run([output], {is_training: True})
+      if fused:
+        # Add Bessel's correction
+        moving_variance_corrected = moving_variance / correction_factor
+        correct_moving_variance = state_ops.assign(moving_variance,
+                                                   moving_variance_corrected)
+        sess.run(correct_moving_variance)
       output_false = sess.run([output], {is_training: False})
       self.assertAllClose(output_true, output_false)
+
+  def testIsTrainingVariableDefault(self):
+    self._testIsTrainingVariable(False)
+
+  def testIsTrainingVariableFusedNCHW(self):
+    if tf.test.is_gpu_available():
+      self._testIsTrainingVariable(True, data_format='NCHW')
+
+  def testIsTrainingVariableFusedNHWC(self):
+    self._testIsTrainingVariable(True, data_format='NHWC')
 
   def testNoUpdatesWhenIsTrainingFalse(self):
     height, width = 3, 3
@@ -1605,19 +1745,37 @@ class BatchNormTest(tf.test.TestCase):
       self.assertAllClose(moving_mean.eval(), [0] * 3)
       self.assertAllClose(moving_variance.eval(), [1] * 3)
 
-  def testNoneUpdatesCollectionIsTrainingVariable(self):
-    height, width = 3, 3
-    with self.test_session() as sess:
-      image_shape = (10, height, width, 3)
+  def _testNoneUpdatesCollectionIsTrainingVariable(self,
+                                                   fused,
+                                                   data_format='NHWC'):
+    height, width = 2, 2
+    batch_size = 10
+    channels = 3
+    np.random.seed(1)
+    use_gpu = fused
+    with self.test_session(use_gpu=use_gpu) as sess:
+      if data_format == 'NHWC':
+        image_shape = (batch_size, height, width, channels)
+        axis = (0, 1, 2)
+      else:
+        image_shape = (batch_size, channels, height, width)
+        axis = (0, 2, 3)
       image_values = np.random.rand(*image_shape)
-      expected_mean = np.mean(image_values, axis=(0, 1, 2))
-      expected_var = np.var(image_values, axis=(0, 1, 2))
+      expected_mean = np.mean(image_values, axis=axis)
+      expected_var = np.var(image_values, axis=axis)
+      if fused:
+        # Add Bessel's correction
+        expected_var, correction_factor = self._addBesselsCorrection(
+            batch_size * height * width, expected_var)
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
       is_training = tf.Variable(True)
-      output = tf.contrib.layers.batch_norm(images,
-                                            decay=0.1,
-                                            updates_collections=None,
-                                            is_training=is_training)
+      output = tf.contrib.layers.batch_norm(
+          images,
+          decay=0.1,
+          updates_collections=None,
+          is_training=is_training,
+          fused=fused,
+          data_format=data_format)
       # updates_ops are not added to UPDATE_OPS collection.
       self.assertEqual(tf.get_collection(tf.GraphKeys.UPDATE_OPS), [])
       # Initialize all variables
@@ -1628,13 +1786,13 @@ class BatchNormTest(tf.test.TestCase):
           'BatchNorm/moving_variance')[0]
       mean, variance = sess.run([moving_mean, moving_variance])
       # After initialization moving_mean == 0 and moving_variance == 1.
-      self.assertAllClose(mean, [0] * 3)
-      self.assertAllClose(variance, [1] * 3)
+      self.assertAllClose(mean, [0] * channels)
+      self.assertAllClose(variance, [1] * channels)
       # When is_training is False batch_norm doesn't update moving_vars.
       for _ in range(10):
         sess.run([output], {is_training: False})
-      self.assertAllClose(moving_mean.eval(), [0] * 3)
-      self.assertAllClose(moving_variance.eval(), [1] * 3)
+      self.assertAllClose(moving_mean.eval(), [0] * channels)
+      self.assertAllClose(moving_variance.eval(), [1] * channels)
       # Before updates the outputs are different depending of is_training.
       output_true = sess.run([output], {is_training: True})
       output_false = sess.run([output], {is_training: False})
@@ -1648,28 +1806,58 @@ class BatchNormTest(tf.test.TestCase):
       self.assertAllClose(moving_variance.eval(), expected_var)
       # After updates to convergence the outputs don't depend on is_training.
       output_true = sess.run([output], {is_training: True})
+      if fused:
+        # Add Bessel's correction
+        moving_variance_corrected = moving_variance / correction_factor
+        correct_moving_variance = state_ops.assign(moving_variance,
+                                                   moving_variance_corrected)
+        sess.run(correct_moving_variance)
       output_false = sess.run([output], {is_training: False})
       self.assertTrue(np.allclose(output_true, output_false))
 
-  def testTrainMovingVars(self):
-    """Test that the gradients are stable while the moving_mean is updated.
+  def testNoneUpdatesCollectionIsTrainingVariableDefault(self):
+    self._testNoneUpdatesCollectionIsTrainingVariable(False)
 
-    Since the moving_mean is used as shift to compute the tf.momments, the
-    gradients could diverge, this test checks that gradients remains stable
-    while the moving_mean is updated.
-    """
+  def testNoneUpdatesCollectionIsTrainingVariableFusedNCHW(self):
+    if tf.test.is_gpu_available():
+      self._testNoneUpdatesCollectionIsTrainingVariable(
+          True, data_format='NCHW')
+
+  def testNoneUpdatesCollectionIsTrainingVariableFusedNHWC(self):
+    self._testNoneUpdatesCollectionIsTrainingVariable(True, data_format='NHWC')
+
+  def _testTrainMovingVars(self, fused, data_format='NHWC'):
+    # Test that the gradients are stable while the moving_mean is updated.
+    # Since the moving_mean is used as shift to compute the tf.momments, the
+    # gradients could diverge, this test checks that gradients remains stable
+    # while the moving_mean is updated.
     height, width = 7, 7
-    num_channels = 32
-    with self.test_session() as sess:
-      image_shape = (10, height, width, num_channels)
+    batch_size = 10
+    channels = 32
+    np.random.seed(1)
+    use_gpu = fused
+    with self.test_session(use_gpu=use_gpu) as sess:
+      if data_format == 'NHWC':
+        image_shape = (batch_size, height, width, channels)
+        axis = (0, 1, 2)
+      else:
+        image_shape = (batch_size, channels, height, width)
+        axis = (0, 2, 3)
       image_values = np.random.rand(*image_shape) + 2
-      expected_mean = np.mean(image_values, axis=(0, 1, 2))
-      expected_var = np.var(image_values, axis=(0, 1, 2))
+      expected_mean = np.mean(image_values, axis=axis)
+      expected_var = np.var(image_values, axis=axis)
+      if fused:
+        # Add Bessel's correction
+        expected_var, _ = self._addBesselsCorrection(
+            batch_size * height * width, expected_var)
       images = tf.constant(image_values, shape=image_shape, dtype=tf.float32)
-      output = tf.contrib.layers.batch_norm(images,
-                                            decay=0.2,
-                                            updates_collections=None,
-                                            is_training=True)
+      output = tf.contrib.layers.batch_norm(
+          images,
+          decay=0.2,
+          updates_collections=None,
+          is_training=True,
+          fused=fused,
+          data_format=data_format)
       self.assertEqual(tf.get_collection(tf.GraphKeys.UPDATE_OPS), [])
 
       objective = tf.reduce_sum(output)
@@ -1683,39 +1871,50 @@ class BatchNormTest(tf.test.TestCase):
           'BatchNorm/moving_variance')[0]
       mean, variance = sess.run([moving_mean, moving_variance])
       # After initialization moving_mean == 0 and moving_variance == 1.
-      self.assertAllClose(mean, [0] * num_channels)
-      self.assertAllClose(variance, [1] * num_channels)
+      self.assertAllClose(mean, [0] * channels)
+      self.assertAllClose(variance, [1] * channels)
 
       # Initial input gradients.
       images_gradients_value = sess.run(images_gradients)
       for _ in range(10):
         np_output, new_images_gradients = sess.run([output, images_gradients])
         # The outputs should be close to 0.0 mean and 1.0 variance
-        self.assertAllClose(np.mean(np_output, axis=(0, 1, 2)),
-                            [0] * num_channels, rtol=0.1, atol=0.1)
-        self.assertAllClose(np.var(np_output, axis=(0, 1, 2)),
-                            [1] * num_channels, rtol=0.1, atol=0.1)
+        self.assertAllClose(
+            np.mean(
+                np_output, axis=axis), [0] * channels, rtol=0.1, atol=0.1)
+        self.assertAllClose(
+            np.var(np_output, axis=axis), [1] * channels, rtol=0.1, atol=0.1)
         # The gradients should change slowly while updating moving_mean.
         max_diff = np.max(np.abs(images_gradients_value - new_images_gradients))
-        self.assertGreater(max_diff, 0.0)
+        self.assertGreaterEqual(max_diff, 0.0)
         self.assertLess(max_diff, 5e-5)
       self.assertAllClose(moving_mean.eval(), expected_mean)
       self.assertAllClose(moving_variance.eval(), expected_var)
+
+  def testTrainMovingVarsDefault(self):
+    self._testTrainMovingVars(False)
+
+  def testTrainMovingVarsFusedNCHW(self):
+    if tf.test.is_gpu_available():
+      self._testTrainMovingVars(True, data_format='NCHW')
+
+  def testTrainMovingVarsFusedNHWC(self):
+    self._testTrainMovingVars(True, data_format='NHWC')
 
   def testCustomInitializer(self):
     height, width = 3, 3
     channels = 3
     with self.test_session() as sess:
-      images = np.ones((5, height, width, channels))*9.0
-      beta = tf.constant_initializer(np.ones(channels)*5.0)
-      gamma = tf.constant_initializer(np.ones(channels)*2.0)
-      mean = tf.constant_initializer(np.ones(channels)*5.0)
-      variance = tf.constant_initializer(np.ones(channels)*4.0)
+      images = (np.ones((5, height, width, channels)) * 9.0).astype('f')
+      beta = tf.constant_initializer((np.ones(channels) * 5.0).astype('f'))
+      gamma = tf.constant_initializer((np.ones(channels) * 2.0).astype('f'))
+      mean = tf.constant_initializer((np.ones(channels) * 5.0).astype('f'))
+      variance = tf.constant_initializer((np.ones(channels) * 4.0).astype('f'))
       output = tf.contrib.layers.batch_norm(images,
                                             is_training=False,
                                             scale=True,
                                             epsilon=0.0,
-                                            initializers={
+                                            param_initializers={
                                               'beta': beta,
                                               'gamma': gamma,
                                               'moving_mean': mean,
