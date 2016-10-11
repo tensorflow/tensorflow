@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 import copy
 import inspect
 import itertools
@@ -79,6 +80,12 @@ class ModeKeys(object):
   TRAIN = 'train'
   EVAL = 'eval'
   INFER = 'infer'
+
+
+class ModelFnOps(
+    collections.namedtuple('ModelFnOps', ['predictions', 'loss', 'training_op',
+                                          'default_metrics', 'signature_fn'])):
+  pass
 
 
 def _get_input_fn(x, y, input_fn, feed_fn, batch_size, shuffle=False, epochs=1):
@@ -230,6 +237,9 @@ def _make_metrics_ops(metrics, features, targets, predictions):
 
     if isinstance(name, tuple):
       # Multi-head metrics.
+      if len(name) != 2:
+        raise ValueError('Invalid metric for {}. It returned a tuple with '
+                         'len {}, expected 2.'.format(name, len(name)))
       if not isinstance(predictions, dict):
         raise ValueError(
             'Metrics passed provide (name, prediction), '

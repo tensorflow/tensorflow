@@ -53,6 +53,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training as train
 
 _CLASSES = "classes"
@@ -712,6 +713,12 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
     if enable_centered_bias is None:
       enable_centered_bias = True
       dnn_linear_combined._changing_default_center_bias()  # pylint: disable=protected-access
+
+    if isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
+      enable_centered_bias = False
+      logging.warning("centered_bias is not supported with SDCA, "
+                      "please disable it explicitly.")
+    self._weight_column_name = weight_column_name
     self._joint_weights = _joint_weights
     super(LinearRegressor, self).__init__(
         model_dir=model_dir,
@@ -737,20 +744,21 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
         layers.weighted_sum_from_feature_columns(
             columns_to_tensors=features,
             feature_columns=self._linear_feature_columns,
-            num_outputs=self._target_column.num_label_columns,
+            num_outputs=self._head.logits_dimension,
             weight_collections=[self._linear_model.get_scope_name()],
             scope=self._linear_model.get_scope_name()))
-    with ops.control_dependencies([self._centered_bias()]):
-      loss = self._target_column.loss(logits, targets, features)
-      logging_ops.scalar_summary("loss", loss)
+    _add_bias_column(self._linear_feature_columns, features, bias, targets,
+                     columns_to_variables)
 
-      _add_bias_column(self._linear_feature_columns, features, bias, targets,
-                       columns_to_variables)
+    def _train_op_fn(unused_loss):
+      return  self._linear_optimizer.get_train_step(
+          columns_to_variables, self._weight_column_name,
+          self._loss_type(), features, targets, global_step)
 
-    train_op = self._linear_optimizer.get_train_step(
-        columns_to_variables, self._target_column.weight_column_name,
-        self._loss_type(), features, targets, global_step)
-    return train_op, loss
+    model_fn_ops = self._head.head_ops(features, targets,
+                                       estimator.ModeKeys.TRAIN, _train_op_fn,
+                                       logits=logits)
+    return model_fn_ops.training_op, model_fn_ops.loss
 
   def _loss_type(self):
     return "squared_loss"

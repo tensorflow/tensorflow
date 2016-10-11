@@ -22,6 +22,7 @@ import six
 
 from tensorflow.contrib import losses
 from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.framework import deprecated
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -30,6 +31,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 
 
+@deprecated(
+    "2016-11-07",
+    "This file will be removed after the deprecation date."
+    "Please switch to "
+    "third_party/tensorflow/contrib/learn/python/learn/estimators/head.py")
 def regression_target(label_name=None,
                       weight_column_name=None,
                       target_dimension=1):
@@ -54,6 +60,11 @@ def regression_target(label_name=None,
 # TODO(zakaria): Add logistic_regression_target
 
 
+@deprecated(
+    "2016-11-07",
+    "This file will be removed after the deprecation date."
+    "Please switch to "
+    "third_party/tensorflow/contrib/learn/python/learn/estimators/head.py")
 def multi_class_target(n_classes, label_name=None, weight_column_name=None):
   """Creates a _TargetColumn for multi class single label classification.
 
@@ -85,6 +96,11 @@ def multi_class_target(n_classes, label_name=None, weight_column_name=None):
                                  weight_column_name=weight_column_name)
 
 
+@deprecated(
+    "2016-11-07",
+    "This file will be removed after the deprecation date."
+    "Please switch to "
+    "third_party/tensorflow/contrib/learn/python/learn/estimators/head.py")
 def binary_svm_target(label_name=None, weight_column_name=None):
   """Creates a _TargetColumn for binary classification with SVMs.
 
@@ -105,6 +121,11 @@ def binary_svm_target(label_name=None, weight_column_name=None):
                                 weight_column_name=weight_column_name)
 
 
+@deprecated(
+    "2016-11-07",
+    "This file will be removed after the deprecation date."
+    "Please switch to "
+    "third_party/tensorflow/contrib/learn/python/learn/estimators/head.py")
 class ProblemType(object):
   UNSPECIFIED = 0
   CLASSIFICATION = 1
@@ -416,6 +437,11 @@ def _run_metrics(predictions, targets, metrics, weights):
   return result
 
 
+@deprecated(
+    "2016-11-07",
+    "This file will be removed after the deprecation date."
+    "Please switch to "
+    "third_party/tensorflow/contrib/learn/python/learn/estimators/head.py")
 def get_default_binary_metrics_for_eval(thresholds):
   """Returns a dictionary of basic metrics for logistic regression.
 

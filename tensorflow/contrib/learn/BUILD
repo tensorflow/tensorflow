@@ -430,6 +430,18 @@ py_test(
 )
 
 py_test(
+    name = "head_test",
+    size = "small",
+    srcs = ["python/learn/estimators/head_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "dnn_test",
     size = "medium",
     srcs = ["python/learn/estimators/dnn_test.py"],
