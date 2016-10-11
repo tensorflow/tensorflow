@@ -13,6 +13,8 @@ exports_files(["LICENSE"])
 filegroup(
     name = "android_srcs",
     srcs = [
+        "naming.cc",
+        "naming.h",
         "tensor_bundle.cc",
         "tensor_bundle.h",
     ],
@@ -23,6 +25,7 @@ cc_library(
     srcs = ["tensor_bundle.cc"],
     hdrs = ["tensor_bundle.h"],
     deps = [
+        ":naming",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
@@ -32,6 +35,13 @@ cc_library(
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
     ],
+)
+
+cc_library(
+    name = "naming",
+    srcs = ["naming.cc"],
+    hdrs = ["naming.h"],
+    deps = ["//tensorflow/core:lib"],
 )
 
 cc_test(
