@@ -258,7 +258,7 @@ function parseMetadata(content: string): Promise<MetadataInfo> {
     let columnStats: ColumnStats[] = columnNames.map(name => {
       return {
         name: name,
-        isNumeric: false,
+        isNumeric: true,
         tooManyUniqueValues: false,
         min: Number.POSITIVE_INFINITY,
         max: Number.NEGATIVE_INFINITY
