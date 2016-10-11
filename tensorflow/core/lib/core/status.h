@@ -25,6 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+/// Denotes success or failure of a call in Tensorflow.
 class Status {
  public:
   /// Create a success status.
