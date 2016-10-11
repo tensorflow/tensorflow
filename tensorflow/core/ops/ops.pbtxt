@@ -220,6 +220,52 @@ op {
   description: "*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
 }
 op {
+  name: "AddManySparseToTensorsMap"
+  input_arg {
+    name: "sparse_indices"
+    description: "2-D.  The `indices` of the minibatch `SparseTensor`.\n`sparse_indices[:, 0]` must be ordered values in `[0, N)`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sparse_values"
+    description: "1-D.  The `values` of the minibatch `SparseTensor`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sparse_shape"
+    description: "1-D.  The `shape` of the minibatch `SparseTensor`.\nThe minibatch size `N == sparse_shape[0]`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_handles"
+    description: "1-D.  The handles of the `SparseTensor` now stored in the\n`SparseTensorsMap`.  Shape: `[N]`."
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The container name for the `SparseTensorsMap` created by this op."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The shared name for the `SparseTensorsMap` created by this op.\nIf blank, the new Operation\'s unique name is used."
+  }
+  summary: "Add an `N`-minibatch `SparseTensor` to a `SparseTensorsMap`, return `N` handles."
+  description: "A `SparseTensor` of rank `R` is represented by three tensors: `sparse_indices`,\n`sparse_values`, and `sparse_shape`, where\n\n```sparse_indices.shape[1] == sparse_shape.shape[0] == R```\n\nAn `N`-minibatch of `SparseTensor` objects is represented as a `SparseTensor`\nhaving a first `sparse_indices` column taking values between `[0, N)`, where\nthe minibatch size `N == sparse_shape[0]`.\n\nThe input `SparseTensor` must have rank `R` greater than 1, and the first\ndimension is treated as the minibatch dimension.  Elements of the `SparseTensor`\nmust be sorted in increasing order of this first dimension.  The stored\n`SparseTensor` objects pointed to by each row of the output `sparse_handles`\nwill have rank `R-1`.\n\nThe `SparseTensor` values can then be read out as part of a minibatch by passing\nthe given keys as vector elements to `TakeManySparseFromTensorsMap`.  To ensure\nthe correct `SparseTensorsMap` is accessed, ensure that the same\n`container` and `shared_name` are passed to that Op.  If no `shared_name`\nis provided here, instead use the *name* of the Operation created by calling\n`AddManySparseToTensorsMap` as the `shared_name` passed to\n`TakeManySparseFromTensorsMap`.  Ensure the Operations are colocated."
+  is_stateful: true
+}
+op {
   name: "AddN"
   input_arg {
     name: "inputs"
@@ -262,6 +308,52 @@ op {
   summary: "Add all input tensors element wise."
   is_aggregate: true
   is_commutative: true
+}
+op {
+  name: "AddSparseToTensorsMap"
+  input_arg {
+    name: "sparse_indices"
+    description: "2-D.  The `indices` of the `SparseTensor`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sparse_values"
+    description: "1-D.  The `values` of the `SparseTensor`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sparse_shape"
+    description: "1-D.  The `shape` of the `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_handle"
+    description: "0-D.  The handle of the `SparseTensor` now stored in the\n`SparseTensorsMap`."
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The container name for the `SparseTensorsMap` created by this op."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The shared name for the `SparseTensorsMap` created by this op.\nIf blank, the new Operation\'s unique name is used."
+  }
+  summary: "Add a `SparseTensor` to a `SparseTensorsMap` return its handle."
+  description: "A `SparseTensor` is represented by three tensors: `sparse_indices`,\n`sparse_values`, and `sparse_shape`.\n\nThis operator takes the given `SparseTensor` and adds it to a container\nobject (a `SparseTensorsMap`).  A unique key within this container is generated\nin the form of an `int64`, and this is the value that is returned.\n\nThe `SparseTensor` can then be read out as part of a minibatch by passing\nthe key as a vector element to `TakeManySparseFromTensorsMap`.  To ensure\nthe correct `SparseTensorsMap` is accessed, ensure that the same\n`container` and `shared_name` are passed to that Op.  If no `shared_name`\nis provided here, instead use the *name* of the Operation created by calling\n`AddSparseToTensorsMap` as the `shared_name` passed to\n`TakeManySparseFromTensorsMap`.  Ensure the Operations are colocated."
+  is_stateful: true
 }
 op {
   name: "AdjustContrast"
@@ -18269,6 +18361,53 @@ op {
     }
   }
   summary: "A Reader that outputs the records from a TensorFlow Records file."
+  is_stateful: true
+}
+op {
+  name: "TakeManySparseFromTensorsMap"
+  input_arg {
+    name: "sparse_handles"
+    description: "1-D, The `N` serialized `SparseTensor` objects.\nShape: `[N]`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_indices"
+    description: "2-D.  The `indices` of the minibatch `SparseTensor`."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_values"
+    description: "1-D.  The `values` of the minibatch `SparseTensor`."
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "sparse_shape"
+    description: "1-D.  The `shape` of the minibatch `SparseTensor`."
+    type: DT_INT64
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    description: "The `dtype` of the `SparseTensor` objects stored in the\n`SparseTensorsMap`."
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The container name for the `SparseTensorsMap` read by this op."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "The shared name for the `SparseTensorsMap` read by this op.\nIt should not be blank; rather the `shared_name` or unique Operation name\nof the Op that created the original `SparseTensorsMap` should be used."
+  }
+  summary: "Read `SparseTensors` from a `SparseTensorsMap` and concatenate them."
+  description: "The input `sparse_handles` must be an `int64` matrix of shape `[N, 1]` where\n`N` is the minibatch size and the rows correspond to the output handles of\n`AddSparseToTensorsMap` or `AddManySparseToTensorsMap`.  The ranks of the\noriginal `SparseTensor` objects that went into the given input ops must all\nmatch.  When the final `SparseTensor` is created, it has rank one\nhigher than the ranks of the incoming `SparseTensor` objects\n(they have been concatenated along a new row dimension on the left).\n\nThe output `SparseTensor` object\'s shape values for all dimensions but the\nfirst are the max across the input `SparseTensor` objects\' shape values\nfor the corresponding dimensions.  Its first shape value is `N`, the minibatch\nsize.\n\nThe input `SparseTensor` objects\' indices are assumed ordered in\nstandard lexicographic order.  If this is not the case, after this\nstep run `SparseReorder` to restore index ordering.\n\nFor example, if the handles represent an input, which is a `[2, 3]` matrix\nrepresenting two original `SparseTensor` objects:\n\n```\n    index = [ 0]\n            [10]\n            [20]\n    values = [1, 2, 3]\n    shape = [50]\n```\n\nand\n\n```\n    index = [ 2]\n            [10]\n    values = [4, 5]\n    shape = [30]\n```\n\nthen the final `SparseTensor` will be:\n\n```\n    index = [0  0]\n            [0 10]\n            [0 20]\n            [1  2]\n            [1 10]\n    values = [1, 2, 3, 4, 5]\n    shape = [2 50]\n```"
   is_stateful: true
 }
 op {
