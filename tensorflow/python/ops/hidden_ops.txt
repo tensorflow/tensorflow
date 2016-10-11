@@ -159,6 +159,12 @@ AddN
 All
 Any
 BatchMatMul
+BatchFFT
+BatchFFT2D
+BatchFFT3D
+BatchIFFT
+BatchIFFT2D
+BatchIFFT3D
 Complex
 Conj
 Max
