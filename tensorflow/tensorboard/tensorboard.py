@@ -26,7 +26,6 @@ import argparse
 import os
 import socket
 
-from tensorflow.python.platform import app
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import status_bar
 from tensorflow.python.platform import (
@@ -36,76 +35,15 @@ from tensorflow.python.summary import (
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import server
 
-FLAGS = None
 
+def add_arguments(parser):
+  """Adds the arguments for the tensorboard CLI to the provided parser.
 
-def main(unused_argv=None):
-  logdir = os.path.expanduser(FLAGS.logdir)
-  event_file = os.path.expanduser(FLAGS.event_file)
-
-  if FLAGS.debug:
-    logging.set_verbosity(logging.DEBUG)
-    logging.info('TensorBoard is in debug mode.')
-
-  if FLAGS.inspect:
-    logging.info('Not bringing up TensorBoard, but inspecting event files.')
-    efi.inspect(logdir, event_file, FLAGS.tag)
-    return 0
-
-  if not logdir:
-    msg = ('A logdir must be specified. Run `tensorboard --help` for '
-           'details and examples.')
-    logging.error(msg)
-    print(msg)
-    return -1
-
-  logging.info('Starting TensorBoard in directory %s', os.getcwd())
-  path_to_run = server.ParseEventFilesSpec(logdir)
-  logging.info('TensorBoard path_to_run is: %s', path_to_run)
-
-  multiplexer = event_multiplexer.EventMultiplexer(
-      size_guidance=server.TENSORBOARD_SIZE_GUIDANCE,
-      purge_orphaned_data=FLAGS.purge_orphaned_data)
-  server.StartMultiplexerReloadingThread(multiplexer, path_to_run,
-                                         FLAGS.reload_interval)
-  try:
-    tb_server = server.BuildServer(multiplexer, FLAGS.host, FLAGS.port, logdir)
-  except socket.error:
-    if FLAGS.port == 0:
-      msg = 'Unable to find any open ports.'
-      logging.error(msg)
-      print(msg)
-      return -2
-    else:
-      msg = 'Tried to connect to port %d, but address is in use.' % FLAGS.port
-      logging.error(msg)
-      print(msg)
-      return -3
-
-  try:
-    tag = resource_loader.load_resource('tensorboard/TAG').strip()
-    logging.info('TensorBoard is tag: %s', tag)
-  except IOError:
-    logging.info('Unable to read TensorBoard tag')
-    tag = ''
-
-  status_bar.SetupStatusBarInsideGoogle('TensorBoard %s' % tag, FLAGS.port)
-  print('Starting TensorBoard %s on port %d' % (tag, FLAGS.port))
-
-  if FLAGS.host == "0.0.0.0":
-    try:
-      host = socket.gethostbyname(socket.gethostname())
-      print('(You can navigate to http://%s:%d)' % (host, FLAGS.port))
-    except socket.gaierror:
-      pass
-  else:
-    print('(You can navigate to http://%s:%d)' % (FLAGS.host, FLAGS.port))
-
-  tb_server.serve_forever()
-
-
-if __name__ == '__main__':
-  parser = argparse.ArgumentParser()
+  Args:
+    parser: argparse.ArgumentParser
+  Returns:
+    the same parser after adding the tensorboard CLI arguments.
+  """
   parser.add_argument(
       '--logdir',
       type=str,
@@ -199,6 +137,75 @@ if __name__ == '__main__':
       default=60,
       help='How often the backend should load more data.'
   )
-  FLAGS = parser.parse_args()
+  return parser
 
-  app.run()
+
+def main(args, unused_argv=None):
+  logdir = os.path.expanduser(args.logdir)
+  event_file = os.path.expanduser(args.event_file)
+
+  if args.debug:
+    logging.set_verbosity(logging.DEBUG)
+    logging.info('TensorBoard is in debug mode.')
+
+  if args.inspect:
+    logging.info('Not bringing up TensorBoard, but inspecting event files.')
+    efi.inspect(logdir, event_file, args.tag)
+    return 0
+
+  if not logdir:
+    msg = ('A logdir must be specified. Run `tensorboard --help` for '
+           'details and examples.')
+    logging.error(msg)
+    print(msg)
+    return -1
+
+  logging.info('Starting TensorBoard in directory %s', os.getcwd())
+  path_to_run = server.ParseEventFilesSpec(logdir)
+  logging.info('TensorBoard path_to_run is: %s', path_to_run)
+
+  multiplexer = event_multiplexer.EventMultiplexer(
+      size_guidance=server.TENSORBOARD_SIZE_GUIDANCE,
+      purge_orphaned_data=args.purge_orphaned_data)
+  server.StartMultiplexerReloadingThread(multiplexer, path_to_run,
+                                         args.reload_interval)
+  try:
+    tb_server = server.BuildServer(multiplexer, args.host, args.port, logdir)
+  except socket.error:
+    if args.port == 0:
+      msg = 'Unable to find any open ports.'
+      logging.error(msg)
+      print(msg)
+      return -2
+    else:
+      msg = 'Tried to connect to port %d, but address is in use.' % args.port
+      logging.error(msg)
+      print(msg)
+      return -3
+
+  try:
+    tag = resource_loader.load_resource('tensorboard/TAG').strip()
+    logging.info('TensorBoard is tag: %s', tag)
+  except IOError:
+    logging.info('Unable to read TensorBoard tag')
+    tag = ''
+
+  status_bar.SetupStatusBarInsideGoogle('TensorBoard %s' % tag, args.port)
+  print('Starting TensorBoard %s on port %d' % (tag, args.port))
+
+  if args.host == "0.0.0.0":
+    try:
+      host = socket.gethostbyname(socket.gethostname())
+      print('(You can navigate to http://%s:%d)' % (host, args.port))
+    except socket.gaierror:
+      pass
+  else:
+    print('(You can navigate to http://%s:%d)' % (args.host, args.port))
+
+  tb_server.serve_forever()
+
+
+if __name__ == '__main__':
+  argv_parser = add_arguments(argparse.ArgumentParser())
+  parsed_argv, unknown = argv_parser.parse_known_args()
+  main(parsed_argv, unused_argv=unknown)
