@@ -121,6 +121,7 @@ class MetricCollectorGetter {
 //
 // This class is thread-safe.
 class CollectionRegistry {
+  mutable mutex mu_;
  public:
   ~CollectionRegistry() = default;
 
@@ -176,8 +177,6 @@ class CollectionRegistry {
   // TF environment, mainly used for timestamping.
   Env* const env_;
 
-  mutable mutex mu_;
-
   // Information required for collection.
   struct CollectionInfo {
     const AbstractMetricDef* const metric_def;
@@ -227,6 +226,7 @@ inline void CollectValue(const int64& value, Point* const point) {
 //
 // This class is thread-safe.
 class Collector {
+  mutable mutex mu_;
  public:
   Collector(const uint64 collection_time_millis)
       : collected_metrics_(new CollectedMetrics()),
@@ -260,7 +260,6 @@ class Collector {
       LOCKS_EXCLUDED(mu_);
 
  private:
-  mutable mutex mu_;
   std::unique_ptr<CollectedMetrics> collected_metrics_ GUARDED_BY(mu_);
   const uint64 collection_time_millis_;
 

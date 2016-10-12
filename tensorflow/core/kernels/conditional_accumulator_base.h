@@ -45,6 +45,8 @@ namespace tensorflow {
  * (3) the internal global_step value (current_global_step_) is incremented by 1
  */
 class ConditionalAccumulatorBase : public ResourceBase {
+ protected:
+  mutex mu_;
  public:
   // Args:
   //   dtype: The datatype of the gradients to be accumulated.
@@ -125,7 +127,6 @@ class ConditionalAccumulatorBase : public ResourceBase {
   const DataType dtype_;
   const PartialTensorShape shape_;
   const string name_;
-  mutex mu_;
   int counter_ GUARDED_BY(mu_);
   int64 current_global_step_ GUARDED_BY(mu_);
 
