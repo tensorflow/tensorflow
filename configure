@@ -8,8 +8,22 @@ pushd `dirname $0` #> /dev/null
 SOURCE_BASE_DIR=`pwd -P`
 popd > /dev/null
 
+PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
+function is_windows() {
+  # On windows, the shell script is actually running in msys
+  if [[ "${PLATFORM}" =~ msys_nt* ]]; then
+    true
+  else
+    false
+  fi
+}
+
 function bazel_clean_and_fetch() {
-  bazel clean --expunge
+  # bazel clean --expunge currently doesn't work on Windows
+  # TODO(pcloudy): Re-enable it after bazel clean --expunge is fixed.
+  if ! is_windows; then
+    bazel clean --expunge
+  fi
   bazel fetch //tensorflow/...
 }
 
@@ -34,6 +48,12 @@ while true; do
   PYTHON_BIN_PATH=""
   # Retry
 done
+
+if is_windows; then
+  TF_NEED_GCP=0
+  TF_NEED_HDFS=0
+  TF_NEED_CUDA=0
+fi
 
 while [ "$TF_NEED_GCP" == "" ]; do
   read -p "Do you wish to build TensorFlow with "\
@@ -104,7 +124,7 @@ echo "$SWIG_PATH" > tensorflow/tools/swig/swig_path
 # git hash propagation
 GEN_GIT_SOURCE=tensorflow/tools/git/gen_git_source.py
 chmod a+x ${GEN_GIT_SOURCE}
-${PYTHON_BIN_PATH} ${GEN_GIT_SOURCE} --configure ${SOURCE_BASE_DIR}
+"${PYTHON_BIN_PATH}" ${GEN_GIT_SOURCE} --configure "${SOURCE_BASE_DIR}"
 
 ## Set up Cuda-related environment settings
 
