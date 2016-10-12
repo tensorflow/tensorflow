@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 import {DataSet, MetadataInfo, PCA_SAMPLE_DIM, Projection, SAMPLE_SIZE} from './data';
 import * as vector from './vector';
 import {Projector} from './vz-projector';
@@ -199,7 +200,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
 
   private showTSNE() {
     this.projector.setProjection(
-        'tsne',
+        'tsne', this.is3d ? 3 : 2,
         // Accessors.
         i => this.currentDataSet.points[i].projections['tsne-0'],
         i => this.currentDataSet.points[i].projections['tsne-1'],
@@ -242,13 +243,11 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
       let z = this.pcaZ - 1;
 
       this.projector.setProjection(
-          'pca',
+          'pca', this.is3d ? 3 : 2,
           // Accessors.
           i => this.currentDataSet.points[i].projections['pca-' + x],
           i => this.currentDataSet.points[i].projections['pca-' + y],
-          this.is3d ?
-              (i => this.currentDataSet.points[i].projections['pca-' + z]) :
-              null,
+          i => this.currentDataSet.points[i].projections['pca-' + z],
           // Axis labels.
           'pca-' + x, 'pca-' + y);
     });
@@ -270,7 +269,7 @@ export class ProjectionsPanel extends ProjectionsPanelPolymer {
     let yLabel = this.centroidValues.yUp + ' → ' + this.centroidValues.yDown;
 
     this.projector.setProjection(
-        'custom',
+        'custom', 2,
         // Accessors.
         i => this.currentDataSet.points[i].projections['linear-x'],
         i => this.currentDataSet.points[i].projections['linear-y'],

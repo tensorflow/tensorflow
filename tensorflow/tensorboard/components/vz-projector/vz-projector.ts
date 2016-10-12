@@ -450,25 +450,21 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     if (this.normalizeData) {
       this.currentDataSet.normalize();
     }
-    this.scatterPlot.setDataSet(this.currentDataSet, this.dataSet.spriteImage);
-    this.updateScatterPlot();
     this.dim = this.currentDataSet.dim[1];
     this.dom.select('span.numDataPoints').text(this.currentDataSet.dim[0]);
     this.dom.select('span.dim').text(this.currentDataSet.dim[1]);
 
     this.projectionsPanel.dataSetUpdated(this.currentDataSet, this.dim);
+
+    this.scatterPlot.setDataSet(this.currentDataSet, this.dataSet.spriteImage);
+    this.updateScatterPlot();
   }
 
   private setupUIControls() {
     // View controls
     this.querySelector('#reset-zoom').addEventListener('click', () => {
       this.scatterPlot.resetZoom();
-    });
-    this.querySelector('#zoom-in').addEventListener('click', () => {
-      this.scatterPlot.zoomStep(2);
-    });
-    this.querySelector('#zoom-out').addEventListener('click', () => {
-      this.scatterPlot.zoomStep(0.5);
+      this.scatterPlot.startOrbitAnimation();
     });
 
     let selectModeButton = this.querySelector('#selectMode');
@@ -587,21 +583,21 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
   }
 
   setProjection(
-      projection: Projection, xAccessor: (index: number) => number,
+      projection: Projection, dimensionality: number,
+      xAccessor: (index: number) => number,
       yAccessor: (index: number) => number,
       zAccessor: (index: number) => number, xAxisLabel: string,
       yAxisLabel: string, deferUpdate = false) {
     this.selectedProjection = projection;
+    this.scatterPlot.setDimensions(dimensionality);
     this.scatterPlot.showTickLabels(false);
     this.scatterPlot.setPointAccessors(xAccessor, yAccessor, zAccessor);
     this.scatterPlot.setAxisLabels(xAxisLabel, yAxisLabel);
     if (!deferUpdate) {
       this.scatterPlot.update();
     }
-    // Don't animate if we've defered updating as expensive computation is
-    // happening to compute the projections, and there's no reason to animate
-    // around non-existence projections.
-    this.scatterPlot.recreateScene(!deferUpdate /** animate */);
+
+    this.scatterPlot.recreateScene();
   }
 
   notifyProjectionsUpdated() {
