@@ -106,21 +106,12 @@ filegroup(
 
 cc_library(
     name = "session_bundle",
-    srcs = ["session_bundle.cc"],
     hdrs = ["session_bundle.h"],
-    copts = if_ios(["-DGOOGLE_LOGGING"]),
     visibility = ["//visibility:public"],
     deps = [
+        ":session_bundle_lite",
         ":signature",
-    ] + if_not_mobile([
-        ":manifest_proto_cc",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/util/tensor_bundle:naming",
-        # mobile not supported yet
-    ]),
+    ],
 )
 
 # This is a lite version of the session_bundle target that does not link in any
@@ -200,21 +191,6 @@ py_test(
     ],
 )
 
-cc_library(
-    name = "signature",
-    srcs = ["signature.cc"],
-    hdrs = ["signature.h"],
-    visibility = ["//visibility:public"],
-    deps = if_not_mobile([
-        ":manifest_proto_cc",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:tensorflow_opensource",
-        # mobile not supported yet
-    ]),
-)
-
 # This is a lite version of the signature target that does not link in any
 # Tensorflow ops in order to minimize its size. Clients using this should
 # link any required ops manually.
@@ -229,6 +205,17 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         # mobile not supported yet
+    ]),
+)
+
+cc_library(
+    name = "signature",
+    hdrs = ["signature.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":signature_lite",
+    ] + if_not_mobile([
+        "//tensorflow/core:tensorflow_opensource",
     ]),
 )
 
