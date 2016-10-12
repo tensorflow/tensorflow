@@ -143,8 +143,15 @@ class ServerDataProvider implements DataProvider {
   getDefaultTensor(run: string, callback: (tensorName: string) => void) {
     this.retrieveCheckpointInfo(run, checkpointInfo => {
       let tensorNames = Object.keys(checkpointInfo.tensors);
-      // Return the first tensor as default if there is only 1 tensor.
-      callback(tensorNames.length === 1 ? tensorNames[0] : null);
+      // Return the first tensor that has metadata.
+      for (let i = 0; i < tensorNames.length; i++) {
+        let tensorName = tensorNames[i];
+        if (checkpointInfo.tensors[tensorName].metadataFile) {
+          callback(tensorName);
+          return;
+        }
+      }
+      callback(tensorNames.length >= 1 ? tensorNames[0] : null);
     });
   }
 
