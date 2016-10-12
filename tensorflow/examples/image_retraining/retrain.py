@@ -472,7 +472,7 @@ def get_or_create_bottleneck(sess, image_lists, label_name, index, image_dir,
 def read_image2RGBbytes(image_path):
   """Read images into bytes stream.
 
-   For jpg/jpeg, gfile.FastGFile is enugh
+   For jpg/jpeg, gfile.FastGFile is enough.
    For others like gif, png, use PIL to open them and convert them into RGB arrays. Then save them into bytes stream.
 
   Args:
