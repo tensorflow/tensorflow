@@ -39,8 +39,10 @@ def confusion_matrix(predictions, labels, num_classes=None, dtype=dtypes.int32,
   classification task. Both prediction and labels must be 1-D arrays of
   the same shape in order for this function to work.
 
-  Class labels are expected to start at 0. E.g., if there were
-  three classes then the possible labels would be `[0, 1, 2]`.
+  If `num_classes` is None, then `num_classes` will be set to the one plus
+  the maximum value in either predictions or labels.
+  Class labels are expected to start at 0. E.g., if `num_classes` was
+  three, then the possible labels would be `[0, 1, 2]`.
 
   If `weights` is not `None`, then each prediction contributes its
   corresponding weight to the total value of the confusion matrix cell.
@@ -48,12 +50,16 @@ def confusion_matrix(predictions, labels, num_classes=None, dtype=dtypes.int32,
   For example:
 
   ```python
-    tf.contrib.metrics.confusion_matrix([1, 2, 3], [2, 2, 3]) ==>
-      [[0, 0, 0, 0]
-       [0, 0, 1, 0]
-       [0, 0, 1, 0]
-       [0, 0, 0, 1]]
+    tf.contrib.metrics.confusion_matrix([1, 2, 4], [2, 2, 4]) ==>
+        [[0 0 0 0 0]
+         [0 0 1 0 0]
+         [0 0 1 0 0]
+         [0 0 0 0 0]
+         [0 0 0 0 1]]
   ```
+
+  Note that the possible labels are assumed to be `[0, 1, 2, 3, 4]`,
+  resulting in a 5x5 confusion matrix.
 
   Args:
     predictions: A 1-D array representing the predictions for a given
