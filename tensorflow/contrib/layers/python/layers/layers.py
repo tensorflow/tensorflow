@@ -39,6 +39,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.training import moving_averages
 
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
@@ -55,6 +56,7 @@ __all__ = ['avg_pool2d',
            'dropout',
            'flatten',
            'fully_connected',
+           'fused_batch_norm',
            'layer_norm',
            'linear',
            'max_pool2d',
@@ -78,6 +80,7 @@ def avg_pool2d(inputs,
                stride=2,
                padding='VALID',
                outputs_collections=None,
+               data_format='NHWC',
                scope=None):
   """Adds a 2D average pooling op.
 
@@ -93,18 +96,28 @@ def avg_pool2d(inputs,
       both strides must have the same value.
     padding: The padding method, either 'VALID' or 'SAME'.
     outputs_collections: The collections to which the outputs are added.
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
     scope: Optional scope for name_scope.
 
   Returns:
     A `Tensor` representing the results of the pooling operation.
   """
   with ops.name_scope(scope, 'AvgPool2D', [inputs]) as sc:
+    if data_format not in ['NCHW', 'NHWC']:
+      raise ValueError('Data format %s is not supported' % data_format)
     inputs = ops.convert_to_tensor(inputs)
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
+    if data_format=='NHWC':
+      ksize=[1, kernel_h, kernel_w, 1]
+      strides=[1, stride_h, stride_w, 1]
+    else:
+      ksize=[1, 1, kernel_h, kernel_w]
+      strides=[1, 1, stride_h, stride_w]
     outputs = nn.avg_pool(inputs,
-                          ksize=[1, kernel_h, kernel_w, 1],
-                          strides=[1, stride_h, stride_w, 1],
+                          ksize=ksize,
+                          strides=strides,
+                          data_format=data_format,
                           padding=padding)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
@@ -317,6 +330,7 @@ def bias_add(inputs,
              variables_collections=None,
              outputs_collections=None,
              trainable=True,
+             data_format='NHWC',
              scope=None):
   """Adds a bias to the inputs.
 
@@ -336,6 +350,7 @@ def bias_add(inputs,
     outputs_collections: collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
     scope: Optional scope for variable_scope.
 
   Returns:
@@ -355,7 +370,7 @@ def bias_add(inputs,
                                       regularizer=regularizer,
                                       collections=biases_collections,
                                       trainable=trainable)
-    outputs = nn.bias_add(inputs, biases)
+    outputs = nn.bias_add(inputs, biases, data_format=data_format)
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections,
@@ -380,6 +395,7 @@ def convolution2d(inputs,
                   variables_collections=None,
                   outputs_collections=None,
                   trainable=True,
+                  data_format='NHWC',
                   scope=None):
   """Adds a 2D convolution followed by an optional batch_norm layer.
 
@@ -420,10 +436,11 @@ def convolution2d(inputs,
     reuse: whether or not the layer and its variables should be reused. To be
       able to reuse the layer scope must be given.
     variables_collections: optional list of collections for all the variables or
-      a dictionary containing a different list of collection per variable.
+      a dictionay containing a different list of collection per variable.
     outputs_collections: collection to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
     scope: Optional scope for `variable_scope`.
 
   Returns:
@@ -434,13 +451,25 @@ def convolution2d(inputs,
   """
   with variable_scope.variable_scope(scope, 'Conv', [inputs],
                                      reuse=reuse) as sc:
+    if data_format not in ['NCHW', 'NHWC']:
+      raise ValueError('Data format %s is not supported' % data_format)
     inputs = ops.convert_to_tensor(inputs)
     dtype = inputs.dtype.base_dtype
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
     if rate > 1 and (stride_h > 1 or stride_w > 1):
       raise ValueError('Only one of rate or stride can be larger than one')
-    num_filters_in = utils.last_dimension(inputs.get_shape(), min_rank=4)
+
+    if data_format=='NHWC':
+      axis = 3
+      strides = [1, stride_h, stride_w, 1]
+    else:
+      axis = 1
+      strides = [1, 1, stride_h, stride_w]
+    num_filters_in = inputs.get_shape()[axis].value
+    if num_filters_in is None:
+      raise ValueError('num_filters_in must be known but is None')
+
     weights_shape = [kernel_h, kernel_w,
                      num_filters_in, num_outputs]
     weights_collections = utils.get_variable_collections(
@@ -455,8 +484,8 @@ def convolution2d(inputs,
     if rate > 1:
       outputs = nn.atrous_conv2d(inputs, weights, rate, padding=padding)
     else:
-      outputs = nn.conv2d(inputs, weights, [1, stride_h, stride_w, 1],
-                          padding=padding)
+      outputs = nn.conv2d(inputs, weights, strides,
+                          padding=padding, data_format=data_format)
     if normalizer_fn is not None:
       normalizer_params = normalizer_params or {}
       outputs = normalizer_fn(outputs, **normalizer_params)
@@ -471,7 +500,7 @@ def convolution2d(inputs,
                                           regularizer=biases_regularizer,
                                           collections=biases_collections,
                                           trainable=trainable)
-        outputs = nn.bias_add(outputs, biases)
+        outputs = nn.bias_add(outputs, biases, data_format=data_format)
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections,
@@ -1056,6 +1085,7 @@ def max_pool2d(inputs,
                stride=2,
                padding='VALID',
                outputs_collections=None,
+               data_format='NHWC',
                scope=None):
   """Adds a 2D Max Pooling op.
 
@@ -1071,6 +1101,7 @@ def max_pool2d(inputs,
       both strides must have the same value.
     padding: The padding method, either 'VALID' or 'SAME'.
     outputs_collections: The collections to which the outputs are added.
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
     scope: Optional scope for name_scope.
 
   Returns:
@@ -1080,14 +1111,26 @@ def max_pool2d(inputs,
     ValueError: If 'kernel_size' is not a 2-D list
   """
   with ops.name_scope(scope, 'MaxPool2D', [inputs]) as sc:
+    if data_format not in ['NCHW', 'NHWC']:
+      raise ValueError('Data format %s is not supported' % data_format)
     inputs = ops.convert_to_tensor(inputs)
     kernel_h, kernel_w = utils.two_element_tuple(kernel_size)
     stride_h, stride_w = utils.two_element_tuple(stride)
+
+    if data_format=='NHWC':
+      ksize=[1, kernel_h, kernel_w, 1]
+      strides=[1, stride_h, stride_w, 1]
+    else:
+      ksize=[1, 1, kernel_h, kernel_w]
+      strides=[1, 1, stride_h, stride_w]
+
     outputs = nn.max_pool(inputs,
-                          ksize=[1, kernel_h, kernel_w, 1],
-                          strides=[1, stride_h, stride_w, 1],
+                          ksize=ksize,
+                          strides=strides,
+                          data_format=data_format,
                           padding=padding)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
 
 
 @add_arg_scope
@@ -1417,6 +1460,195 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
       multiples.append(array_ops.ones([input_rank - 1 - dim], dtypes.int32))
     multiples = array_ops.concat(0, multiples)
     return math_ops.div(inputs, array_ops.tile(lengths, multiples))
+
+
+@add_arg_scope
+def fused_batch_norm(inputs,
+               decay=0.999,
+               center=True,
+               scale=True,
+               epsilon=0.001,
+               activation_fn=None,
+               initializers={},
+               updates_collections=ops.GraphKeys.UPDATE_OPS,
+               is_training=True,
+               reuse=None,
+               variables_collections=None,
+               outputs_collections=None,
+               trainable=True,
+               batch_weights=None,
+               data_format='NHWC',
+               scope=None):
+  """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
+  This is the interface for the FusedBatchNorm kernel
+
+    "Batch Normalization: Accelerating Deep Network Training by Reducing
+    Internal Covariate Shift"
+
+    Sergey Ioffe, Christian Szegedy
+
+  Can be used as a normalizer function for conv2d and fully_connected.
+
+  Note: When is_training is True the moving_mean and moving_variance need to be
+  updated, by default the update_ops are placed in `tf.GraphKeys.UPDATE_OPS` so
+  they need to be added as a dependency to the `train_op`, example:
+
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    if update_ops:
+      updates = tf.group(*update_ops)
+      total_loss = control_flow_ops.with_dependencies([updates], total_loss)
+
+  One can set updates_collections=None to force the updates in place, but that
+  can have speed penalty, specially in distributed settings.
+
+  Args:
+    inputs: a tensor with 2 or more dimensions, where the first dimension has
+      `batch_size`. The normalization is over all but the last dimension.
+    decay: decay for the moving average.
+    center: True only. This is added to be compatible with original batch_norm
+    scale: True only. This is added to be compatible with original batch_norm
+    epsilon: small float added to variance to avoid dividing by zero.
+    activation_fn: activation function, default set to None to skip it and
+      maintain a linear activation.
+    updates_collections: collections to collect the update ops for computation.
+      The updates_ops need to be executed with the train_op.
+      If None, a control dependency would be added to make sure the updates are
+      computed in place.
+    is_training: whether or not the layer is in training mode. In training mode
+      it would accumulate the statistics of the moments into `moving_mean` and
+      `moving_variance` using an exponential moving average with the given
+      `decay`. When it is not in training mode then it would use the values of
+      the `moving_mean` and the `moving_variance`.
+    reuse: whether or not the layer and its variables should be reused. To be
+      able to reuse the layer scope must be given.
+    variables_collections: optional collections for the variables.
+    outputs_collections: collections to add the outputs.
+    trainable: If `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    batch_weights: None only, just be compatible with original batch_norm
+    data_format: A string. 'NHWC' and 'NCHW' are supported.
+    scope: Optional scope for `variable_scope`.
+
+  Returns:
+    A `Tensor` representing the output of the operation.
+
+  Raises:
+    ValueError: if rank or last dimension of `inputs` is undefined.
+  """
+  with variable_scope.variable_scope(scope, 'BatchNorm', [inputs],
+                                     reuse=reuse) as sc:
+    if batch_weights is not None:
+      raise ValueError('FusedBatchNorm must be used with batch_weights is None')
+    if (not scale) or (not center):
+      raise ValueError('FusedBatchNorm must be used with both scale and center')
+    if data_format not in ['NCHW', 'NHWC']:
+      raise ValueError('Data format %s is not supported' % data_format)
+
+    inputs = ops.convert_to_tensor(inputs)
+    original_shape = inputs.get_shape()
+    original_rank = original_shape.ndims
+    if original_rank is None:
+      raise ValueError('Inputs %s has undefined rank' % inputs.name)
+    elif original_rank not in [2, 4]:
+      raise ValueError('Inputs %s has unsupported rank. \
+          Expected 2 or 4 but got %d' % (inputs.name, original_rank))
+    if original_rank == 2:
+      channels = inputs.get_shape()[-1].value
+      if channels is None:
+        raise ValueError('channel dimension must be known but is None')
+      new_shape = [-1, channels, 1, 1] if data_format == 'NCHW' else \
+          [-1, 1, 1, channels]
+      inputs = array_ops.reshape(inputs, new_shape)
+
+    inputs_shape = inputs.get_shape()
+    if data_format == 'NCHW':
+      axis = [0, 2, 3]
+      params_shape = inputs_shape[1:2]
+    else:
+      axis = [0, 1, 2]
+      params_shape = inputs_shape[-1:]
+    if not params_shape.is_fully_defined():
+      raise ValueError('Inputs %s has undefined channel dimension %s.' % (
+          inputs.name, params_shape))
+
+    # Allocate parameters for the beta and gamma of the normalization.
+    dtype = inputs.dtype.base_dtype
+    beta_collections = utils.get_variable_collections(variables_collections,
+                                                      'beta')
+    beta_initializer = initializers.get('beta', init_ops.zeros_initializer)
+    beta = variables.model_variable('beta',
+                                    shape=params_shape,
+                                    dtype=dtype,
+                                    initializer=beta_initializer,
+                                    collections=beta_collections,
+                                    trainable=trainable)
+    gamma_collections = utils.get_variable_collections(variables_collections,
+                                                       'gamma')
+    gamma_initializer = initializers.get('gamma', init_ops.ones_initializer)
+    gamma = variables.model_variable('gamma',
+                                     shape=params_shape,
+                                     dtype=dtype,
+                                     initializer=gamma_initializer,
+                                     collections=gamma_collections,
+                                     trainable=trainable)
+    # Create moving_mean and moving_variance variables and add them to the
+    # appropiate collections.
+    moving_mean_collections = utils.get_variable_collections(
+        variables_collections, 'moving_mean')
+    moving_mean_initializer = initializers.get('moving_mean', init_ops.zeros_initializer)
+    moving_mean = variables.model_variable(
+        'moving_mean',
+        shape=params_shape,
+        dtype=dtype,
+        initializer=moving_mean_initializer,
+        trainable=False,
+        collections=moving_mean_collections)
+    moving_variance_collections = utils.get_variable_collections(
+        variables_collections, 'moving_variance')
+    moving_variance_initializer = initializers.get('moving_variance', init_ops.ones_initializer)
+    moving_variance = variables.model_variable(
+        'moving_variance',
+        shape=params_shape,
+        dtype=dtype,
+        initializer=moving_variance_initializer,
+        trainable=False,
+        collections=moving_variance_collections)
+
+    outputs, mean, variance = utils.smart_cond(is_training,
+        lambda: nn.fused_batch_norm(inputs, gamma, beta,
+          mean=None,
+          variance=None,
+          data_format=data_format,
+          is_training=True,
+          epsilon=epsilon + 1e-12),
+        lambda: nn.fused_batch_norm(inputs, gamma, beta,
+          mean=moving_mean,
+          variance=moving_variance,
+          data_format=data_format,
+          is_training=False,
+          epsilon=epsilon + 1e-12)
+        )
+
+    update_moving_mean = moving_averages.assign_moving_average(
+        moving_mean, mean, decay)
+    update_moving_variance = moving_averages.assign_moving_average(
+        moving_variance, variance, decay)
+    if updates_collections is None:
+      outputs = utils.smart_cond(is_training,
+          lambda : control_flow_ops.with_dependencies(
+            [update_moving_mean, update_moving_variance], outputs),
+          lambda : outputs)
+    else:
+      ops.add_to_collections(updates_collections, update_moving_mean)
+      ops.add_to_collections(updates_collections, update_moving_variance)
+
+    outputs.set_shape(inputs_shape)
+    if original_shape.ndims == 2:
+      outputs = array_ops.reshape(outputs, original_shape)
+    if activation_fn is not None:
+      outputs = activation_fn(outputs)
+    return utils.collect_named_outputs(outputs_collections,
+                                       sc.original_name_scope, outputs)
 
 
 def legacy_fully_connected(x,
