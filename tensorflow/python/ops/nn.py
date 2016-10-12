@@ -1029,7 +1029,7 @@ def fused_batch_norm(x, scale, offset,  # pylint: disable=invalid-name
       offset,
       mean,
       variance,
-      epsilon=epsilon,
+      epsilon=epsilon + 1e-12,
       data_format=data_format,
       is_training=is_training,
       name=name)
