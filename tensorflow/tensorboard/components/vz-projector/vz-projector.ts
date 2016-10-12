@@ -485,6 +485,10 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     });
 
     window.addEventListener('resize', () => {
+      let container = this.dom.select('#container');
+      let parentHeight =
+          (container.node().parentNode as HTMLElement).clientHeight;
+      container.style('height', parentHeight + 'px');
       this.scatterPlot.resize();
     });
 
