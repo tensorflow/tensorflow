@@ -41,7 +41,7 @@ export interface CheckpointInfo {
   checkpointFile: string;
 }
 
-export type ServingMode = 'server' | 'proto';
+export type ServingMode = 'demo' | 'server' | 'proto';
 
 /** Interface between the data storage and the UI. */
 export interface DataProvider {
@@ -266,14 +266,13 @@ class ProtoDataProvider implements DataProvider {
  */
 export function getDataProvider(servingMode: ServingMode, dataProto: DataProto,
     routePrefix: string, callback: (dp: DataProvider) => void) {
-  if (servingMode === 'server') {
+  if (servingMode === 'demo') {
+    callback(new DemoDataProvider());
+  } else if (servingMode === 'server') {
     if (!routePrefix) {
       throw 'route-prefix is a required parameter';
     }
-    d3.json(`${routePrefix}/runs`, (err, runs) => {
-      callback(
-        err ? new DemoDataProvider() : new ServerDataProvider(routePrefix));
-    });
+    callback(new ServerDataProvider(routePrefix));
   } else if (servingMode === 'proto' && dataProto != null) {
     callback(new ProtoDataProvider(dataProto));
   }
