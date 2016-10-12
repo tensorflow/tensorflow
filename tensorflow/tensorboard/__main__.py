@@ -17,12 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
 import sys
 
-from tensorflow.tensorboard.tensorboard import add_arguments
 from tensorflow.tensorboard.tensorboard import main
 
 if __name__ == '__main__':
-  args, unknown = add_arguments(argparse.ArgumentParser()).parse_known_args()
-  sys.exit(main(args, unused_argv=unknown))
+  sys.exit(main())
