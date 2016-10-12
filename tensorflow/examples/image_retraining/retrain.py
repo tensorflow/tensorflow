@@ -481,8 +481,8 @@ def read_image2RGBbytes(image_path):
   Returns:
     Bytes stream for RGB arrays of the image which can be fed directly into image_data_tensor in tensorflow.session.
   """
-  jpgext = ['jpg', 'jpeg', 'JPG', 'JPEG']
-  if (image_path.split('.')[-1] in jpgext):
+  jpgext = ['.jpg', '.jpeg', '.JPG', '.JPEG']
+  if (os.path.splitext(image_path)[1] in jpgext):
     image_data = gfile.FastGFile(image_path, 'rb').read()
   else:
     with BytesIO() as output:
