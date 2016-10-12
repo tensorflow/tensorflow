@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption, DataSet, MetadataInfo, Projection, State} from './data';
-import {DataProvider, getDataProvider, TensorInfo} from './data-loader';
+import {ColorOption, DataSet, MetadataInfo, Projection, State, DataProto} from './data';
+import {DataProvider, getDataProvider, TensorInfo, ServingMode} from './data-loader';
 import {HoverContext, HoverListener} from './hoverContext';
 import * as knn from './knn';
 import {Mode, ScatterPlot} from './scatterPlot';
@@ -57,8 +57,9 @@ const THRESHOLD_DIM_NORMALIZE = 50;
 export let ProjectorPolymer = PolymerElement({
   is: 'vz-projector',
   properties: {
-    // Private.
-    routePrefix: String
+    routePrefix: String,
+    dataProto: {type: String, observer: '_dataProtoChanged'},
+    servingMode: String
   }
 });
 
@@ -66,6 +67,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
                                                            HoverContext {
   // The working subset of the data source's original data set.
   currentDataSet: DataSet;
+  servingMode: ServingMode;
 
   private selectionChangedListeners: SelectionChangedListener[];
   private hoverListeners: HoverListener[];
@@ -101,7 +103,6 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.hoverListeners = [];
     this.selectedPointIndices = [];
     this.neighborsOfFirstPoint = [];
-
     this.dom = d3.select(this);
     this.dataPanel = this.$['data-panel'] as DataPanel;
     this.inspectorPanel = this.$['inspector-panel'] as InspectorPanel;
@@ -111,14 +112,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     this.metadataCard = this.$['metadata-card'] as MetadataCard;
     this.statusBar = this.dom.select('#status-bar');
     this.bookmarkPanel = this.$['bookmark-panel'] as BookmarkPanel;
-
-    getDataProvider(this.routePrefix, dataProvider => {
-      this.dataProvider = dataProvider;
-      this.dataPanel.initialize(this, dataProvider);
-      this.bookmarkPanel.initialize(this, dataProvider);
-    });
     this.scopeSubtree(this.$$('#wrapper-notify-msg'), true);
     this.setupUIControls();
+    this.initializeDataProvider();
   }
 
   setSelectedLabelOption(labelOption: string) {
@@ -221,6 +217,21 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
    */
   notifyHoverOverPoint(pointIndex: number) {
     this.hoverListeners.forEach(l => l(pointIndex));
+  }
+
+  _dataProtoChanged(dataProtoString: string) {
+    let dataProto = dataProtoString ?
+        JSON.parse(dataProtoString) as DataProto : null;
+    this.initializeDataProvider(dataProto);
+  }
+
+  private initializeDataProvider(dataProto?: DataProto) {
+    getDataProvider(this.servingMode, dataProto, this.routePrefix,
+        dataProvider => {
+      this.dataProvider = dataProvider;
+      this.dataPanel.initialize(this, dataProvider);
+      this.bookmarkPanel.initialize(this, dataProvider);
+    });
   }
 
   private getLegendPointColorer(colorOption: ColorOption):

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {runAsyncTask, updateMessage} from './async';
-import {ColumnStats, DataPoint, DataSet, DatasetMetadata, MetadataInfo, PointMetadata, State} from './data';
+import {ColumnStats, DataPoint, DataSet, DatasetMetadata, MetadataInfo, PointMetadata, State, DataProto} from './data';
 
 
 /** Maximum number of colors supported in the color map. */
@@ -40,6 +40,8 @@ export interface CheckpointInfo {
   tensors: {[name: string]: TensorInfo};
   checkpointFile: string;
 }
+
+export type ServingMode = 'server' | 'proto';
 
 /** Interface between the data storage and the UI. */
 export interface DataProvider {
@@ -78,8 +80,6 @@ export interface DataProvider {
  * by a checkpoint file).
  */
 class ServerDataProvider implements DataProvider {
-  /** Prefix added to the http requests when asking the server for data. */
-  static DEFAULT_ROUTE_PREFIX = 'data';
   private routePrefix: string;
   private runCheckpointInfoCache: {[run: string]: CheckpointInfo} = {};
 
@@ -169,25 +169,114 @@ class ServerDataProvider implements DataProvider {
   }
 }
 
+class ProtoDataProvider implements DataProvider {
+  private dataProto: DataProto;
+
+  constructor(dataProto: DataProto) {
+    this.dataProto = dataProto;
+  }
+
+  retrieveRuns(callback: (runs: string[]) => void): void {
+    callback(['proto']);
+  }
+
+  retrieveCheckpointInfo(run: string, callback: (d: CheckpointInfo) => void) {
+    callback({
+      tensors: {
+        'proto': {
+          name: 'proto',
+          shape: this.dataProto.shape,
+          metadataFile: 'proto',
+          bookmarksFile: null
+        }
+      },
+      checkpointFile: 'proto'
+    });
+  }
+
+  retrieveTensor(run: string, tensorName: string,
+      callback: (ds: DataSet) => void) {
+    callback(this.flatArrayToDataset(this.dataProto.tensor));
+  }
+
+  retrieveMetadata(run: string, tensorName: string,
+      callback: (r: MetadataInfo) => void): void {
+    let columnNames = this.dataProto.metadata.columns.map(c => c.name);
+    let n = this.dataProto.shape[0];
+    let pointsMetadata: PointMetadata[] = new Array(n);
+    this.dataProto.metadata.columns.forEach(c => {
+      let values = c.numericValues || c.stringValues;
+      for (let i = 0; i < n; i++) {
+        pointsMetadata[i] = pointsMetadata[i] || {};
+        pointsMetadata[i][c.name] = values[i];
+      }
+    });
+    callback({
+      stats: analyzeMetadata(columnNames, pointsMetadata),
+      pointsInfo: pointsMetadata
+    });
+  }
+
+  getDefaultTensor(run: string, callback: (tensorName: string) => void): void {
+    callback('proto');
+  }
+
+  getBookmarks(run: string, tensorName: string,
+      callback: (r: State[]) => void): void {
+    return callback([]);
+  }
+
+  private flatArrayToDataset(tensor: number[]): DataSet {
+    let points: DataPoint[] = [];
+    let n = this.dataProto.shape[0];
+    let d = this.dataProto.shape[1];
+    if (n * d !== tensor.length) {
+      throw 'The shape doesn\'t match the length of the flattened array';
+    }
+    for (let i = 0; i < n; i++) {
+      let vector: number[] = [];
+      let offset = i * d;
+      for (let j = 0; j < d; j++) {
+        vector.push(tensor[offset++]);
+      }
+      points.push({
+        vector: vector,
+        metadata: {},
+        projections: null,
+        projectedPoint: null,
+        index: i
+      });
+    }
+    return new DataSet(points);
+  }
+}
+
 /**
  * Returns a data provider, depending on what is available. The detection of
  * a server backend is done by issuing an HTTP request at /data/info and seeing
  * if it returns 200 or 404.
  *
+ * @param servingMode Information how the data served (server, proto, etc.).
+ * @param dataProto The projector data, in a proto format. Available if
+ *     serving mode is 'proto'.
  * @param routePrefix The prefix to add to the url routes when asking for data
  *     from the backend. For example, when hosted inside tensorboard, the route
  *     is prefixed by the plugin name.
  * @param callback Called with the data provider.
  */
-export function getDataProvider(
+export function getDataProvider(servingMode: ServingMode, dataProto: DataProto,
     routePrefix: string, callback: (dp: DataProvider) => void) {
-  if (routePrefix == null) {
-    routePrefix = ServerDataProvider.DEFAULT_ROUTE_PREFIX;
-  }
-  d3.json(`${routePrefix}/runs`, (err, runs) => {
-    callback(
+  if (servingMode === 'server') {
+    if (!routePrefix) {
+      throw 'route-prefix is a required parameter';
+    }
+    d3.json(`${routePrefix}/runs`, (err, runs) => {
+      callback(
         err ? new DemoDataProvider() : new ServerDataProvider(routePrefix));
-  });
+    });
+  } else if (servingMode === 'proto' && dataProto != null) {
+    callback(new ProtoDataProvider(dataProto));
+  }
 }
 
 export function parseRawTensors(
@@ -249,11 +338,64 @@ function parseTensors(content: string, delim = '\t'): Promise<DataPoint[]> {
   });
 }
 
+function analyzeMetadata(columnNames, pointsMetadata: PointMetadata[]):
+    ColumnStats[] {
+  let columnStats: ColumnStats[] = columnNames.map(name => {
+    return {
+      name: name,
+      isNumeric: true,
+      tooManyUniqueValues: false,
+      min: Number.POSITIVE_INFINITY,
+      max: Number.NEGATIVE_INFINITY
+    };
+  });
+  let mapOfValues = columnNames.map(() => d3.map<number>());
+  pointsMetadata.forEach(metadata => {
+    columnNames.forEach((name: string, colIndex: number) => {
+      let stats = columnStats[colIndex];
+      let map = mapOfValues[colIndex];
+      let value = metadata[name];
+
+      // Skip missing values.
+      if (value == null) {
+        return;
+      }
+
+      if (!stats.tooManyUniqueValues) {
+        if (map.has(value)) {
+          map.set(value, map.get(value) + 1);
+        } else {
+          map.set(value, 1);
+        }
+        if (map.size() > NUM_COLORS_COLOR_MAP) {
+          stats.tooManyUniqueValues = true;
+        }
+      }
+      if (isNaN(value as any)) {
+        stats.isNumeric = false;
+      } else {
+        metadata[name] = +value;
+        stats.min = Math.min(stats.min, +value);
+        stats.max = Math.max(stats.max, +value);
+      }
+    });
+  });
+  columnStats.forEach((stats, colIndex) => {
+    let map = mapOfValues[colIndex];
+    if (!stats.tooManyUniqueValues) {
+      stats.uniqueEntries = map.entries().map(e => {
+        return {label: e.key, count: e.value};
+      });
+    }
+  });
+  return columnStats;
+}
+
 function parseMetadata(content: string): Promise<MetadataInfo> {
   return runAsyncTask('Parsing metadata...', () => {
     let lines = content.split('\n').filter(line => line.trim().length > 0);
     let hasHeader = lines[0].indexOf('\t') >= 0;
-    let allMetadata: PointMetadata[] = [];
+    let pointsMetadata: PointMetadata[] = [];
     // If the first row doesn't contain metadata keys, we assume that the values
     // are labels.
     let columnNames = ['label'];
@@ -261,65 +403,20 @@ function parseMetadata(content: string): Promise<MetadataInfo> {
       columnNames = lines[0].split('\t');
       lines = lines.slice(1);
     }
-
-    let columnStats: ColumnStats[] = columnNames.map(name => {
-      return {
-        name: name,
-        isNumeric: true,
-        tooManyUniqueValues: false,
-        min: Number.POSITIVE_INFINITY,
-        max: Number.NEGATIVE_INFINITY
-      };
-    });
-    let mapOfValues = columnNames.map(() => d3.map<number>());
     lines.forEach((line: string) => {
       let rowValues = line.split('\t');
       let metadata: PointMetadata = {};
-      allMetadata.push(metadata);
+      pointsMetadata.push(metadata);
       columnNames.forEach((name: string, colIndex: number) => {
         let value = rowValues[colIndex];
-        let map = mapOfValues[colIndex];
-        let stats = columnStats[colIndex];
         // Normalize missing values.
         value = (value === '' ? null : value);
         metadata[name] = value;
-
-        // Skip missing values.
-        if (value == null) {
-          return;
-        }
-
-        // Update stats.
-        if (!stats.tooManyUniqueValues) {
-          if (map.has(value)) {
-            map.set(value, map.get(value) + 1);
-          } else {
-            map.set(value, 1);
-          }
-          if (map.size() > NUM_COLORS_COLOR_MAP) {
-            stats.tooManyUniqueValues = true;
-          }
-        }
-        if (isNaN(value as any)) {
-          stats.isNumeric = false;
-        } else {
-          metadata[name] = +value;
-          stats.min = Math.min(stats.min, +value);
-          stats.max = Math.max(stats.max, +value);
-        }
       });
     });
-    columnStats.forEach((stats, colIndex) => {
-      let map = mapOfValues[colIndex];
-      if (!stats.tooManyUniqueValues) {
-        stats.uniqueEntries = map.entries().map(e => {
-          return {label: e.key, count: e.value};
-        });
-      }
-    });
     return {
-      stats: columnStats,
-      pointsInfo: allMetadata
+      stats: analyzeMetadata(columnNames, pointsMetadata),
+      pointsInfo: pointsMetadata
     } as MetadataInfo;
   }, METADATA_MSG_ID).then(metadata => {
     updateMessage(null, METADATA_MSG_ID);

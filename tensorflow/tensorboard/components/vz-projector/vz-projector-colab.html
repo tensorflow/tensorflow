@@ -16,38 +16,17 @@ limitations under the License.
 -->
 
 <link rel="import" href="../polymer/polymer.html">
-<link rel="import" href="../tf-dashboard-common/tf-no-data-warning.html">
 <link rel="import" href="vz-projector.html">
-
-<dom-module id="vz-projector-dashboard">
+<dom-module id="vz-projector-colab">
 <template>
-  <tf-no-data-warning
-    data-type="projector"
-    show-warning="[[dataNotFound]]"
-  ></tf-no-data-warning>
-  <template is="dom-if" if="[[!dataNotFound]]">
-    <vz-projector
-      id="projector"
-      route-prefix="[[routePrefix]]"
-      serving-mode="server"
-    ></vz-projector>
-  </template>
+<vz-projector serving-mode="proto" data-proto="[[dataProto]]"></vz-projector>
+</template>
 <script>
-(function() {
 Polymer({
-  is: 'vz-projector-dashboard',
+  is: 'vz-projector-colab',
   properties: {
-    dataNotFound: Boolean,
-    routePrefix: String
-  },
-  ready() {
-    var self = this;
-    d3.json(this.routePrefix + '/runs', function(err, runs) {
-      self.dataNotFound = (runs.length === 0);
-    });
+    dataProto: Object
   }
 });
-})();
 </script>
-</template>
 </dom-module>
