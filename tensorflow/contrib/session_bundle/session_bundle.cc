@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/tensor_bundle/naming.h"
 
 namespace tensorflow {
 namespace serving {
@@ -85,7 +86,7 @@ void AddAssetsTensorsToInputs(const StringPiece export_dir,
         io::JoinPath(export_dir, kAssetsDirectory, asset.filename()));
     inputs->push_back(
         {asset.tensor_binding().tensor_name(), assets_file_tensor});
-    }
+  }
 }
 
 // Historically, model exporter(exporter.py) takes only saver with
@@ -104,7 +105,7 @@ void AddAssetsTensorsToInputs(const StringPiece export_dir,
 // distributed among the export.index and export.data-?????-of-????? files.
 string GetVariablesFilename(const StringPiece export_dir) {
   const char kVariablesFilename[] = "export";
-  const char kVariablesIndexFilename[] = "export.index";  // V2 ckpts
+  const string kVariablesIndexFilename = MetaFilename("export");  // V2 ckpts
   const char kVariablesFilenamePattern[] = "export-\?\?\?\?\?-of-\?\?\?\?\?";
   if (Env::Default()->FileExists(
           io::JoinPath(export_dir, kVariablesFilename)) ||

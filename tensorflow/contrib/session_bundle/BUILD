@@ -118,6 +118,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/util/tensor_bundle:naming",
         # mobile not supported yet
     ]),
 )
@@ -139,6 +140,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/util/tensor_bundle:naming",
         # mobile not supported yet
     ]),
 )
