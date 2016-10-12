@@ -43,6 +43,9 @@ const POINT_COLOR_SELECTED = 0xFA6666;
 const POINT_COLOR_HOVER = 0x760B4F;
 const POINT_COLOR_MISSING = 'black';
 
+const LABELS_3D_COLOR_UNSELECTED = 0xFFFFFF;
+const LABELS_3D_COLOR_NO_SELECTION = 0xFFFFFF;
+
 const POINT_SCALE_DEFAULT = 1.0;
 const POINT_SCALE_SELECTED = 1.2;
 const POINT_SCALE_NEIGHBOR = 1.2;
@@ -355,6 +358,15 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     return scale;
   }
 
+  private get3DLabelModeButton(): any {
+    return this.querySelector('#labels3DMode');
+  }
+
+  private get3DLabelMode(): boolean {
+    const label3DModeButton = this.get3DLabelModeButton();
+    return (label3DModeButton as any).active;
+  }
+
   private generateScatterPlotColorArray(
       legendPointColorer: (index: number) => string,
       selectedPointIndices: number[], neighborsOfFirstPoint: knn.NearestEntry[],
@@ -365,12 +377,20 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
 
     const colors = new Float32Array(this.currentDataSet.points.length * 3);
 
+    let unselectedColor = POINT_COLOR_UNSELECTED;
+    let noSelectionColor = POINT_COLOR_NO_SELECTION;
+
+    if (this.get3DLabelMode()) {
+      unselectedColor = LABELS_3D_COLOR_UNSELECTED;
+      noSelectionColor = LABELS_3D_COLOR_NO_SELECTION;
+    }
+
     // Give all points the unselected color.
     {
       const n = this.currentDataSet.points.length;
       let dst = 0;
       if (selectedPointIndices.length > 0) {
-        const c = new THREE.Color(POINT_COLOR_UNSELECTED);
+        const c = new THREE.Color(unselectedColor);
         for (let i = 0; i < n; ++i) {
           colors[dst++] = c.r;
           colors[dst++] = c.g;
@@ -385,7 +405,7 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
             colors[dst++] = c.b;
           }
         } else {
-          const c = new THREE.Color(POINT_COLOR_NO_SELECTION);
+          const c = new THREE.Color(noSelectionColor);
           for (let i = 0; i < n; ++i) {
             colors[dst++] = c.r;
             colors[dst++] = c.g;
@@ -477,10 +497,11 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       this.scatterPlot.setDayNightMode((nightModeButton as any).active);
     });
 
-    let labels3DModeButton = this.querySelector('#labels3DMode');
+    const labels3DModeButton = this.get3DLabelModeButton();
     labels3DModeButton.addEventListener('click', () => {
       this.createVisualizers((labels3DModeButton as any).active);
       this.scatterPlot.recreateScene();
+      this.updateScatterPlot();
       this.scatterPlot.update();
     });
 
