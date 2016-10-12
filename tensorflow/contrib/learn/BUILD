@@ -357,18 +357,6 @@ py_test(
 )
 
 py_test(
-    name = "basic_session_run_hooks_test",
-    size = "small",
-    srcs = ["python/learn/tests/basic_session_run_hooks_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
-
-py_test(
     name = "tensor_signature_test",
     srcs = ["python/learn/estimators/tensor_signature_test.py"],
     srcs_version = "PY2AND3",
@@ -430,15 +418,10 @@ py_test(
 )
 
 py_test(
-    name = "dnn_test",
-    size = "medium",
-    srcs = ["python/learn/estimators/dnn_test.py"],
-    shard_count = 4,
+    name = "head_test",
+    size = "small",
+    srcs = ["python/learn/estimators/head_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "manual",  # http://b/31934515
-        "notap",
-    ],
     deps = [
         ":learn",
         "//tensorflow:tensorflow_py",
@@ -447,9 +430,10 @@ py_test(
 )
 
 py_test(
-    name = "dnn_sampled_softmax_classifier_test",
-    size = "large",
-    srcs = ["python/learn/estimators/dnn_sampled_softmax_classifier_test.py"],
+    name = "dnn_test",
+    size = "medium",
+    srcs = ["python/learn/estimators/dnn_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "manual",  # http://b/31934515

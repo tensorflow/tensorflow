@@ -19,7 +19,7 @@ limitations under the License.
  * render callback.
  */
 export class RenderContext {
-  camera: THREE.PerspectiveCamera;
+  camera: THREE.Camera;
   cameraTarget: THREE.Vector3;
   screenWidth: number;
   screenHeight: number;
@@ -35,9 +35,9 @@ export class RenderContext {
   labelStrokeColor: number;
 
   constructor(
-      camera: THREE.PerspectiveCamera, cameraTarget: THREE.Vector3,
-      screenWidth: number, screenHeight: number,
-      nearestCameraSpacePointZ: number, farthestCameraSpacePointZ: number,
+      camera: THREE.Camera, cameraTarget: THREE.Vector3, screenWidth: number,
+      screenHeight: number, nearestCameraSpacePointZ: number,
+      farthestCameraSpacePointZ: number,
       labelAccessor: (index: number) => string, pointColors: Float32Array,
       pointScaleFactors: Float32Array, visibleLabelIndices: Uint32Array,
       visibleLabelScaleFactors: Float32Array,

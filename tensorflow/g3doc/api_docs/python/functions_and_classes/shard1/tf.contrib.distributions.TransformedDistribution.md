@@ -19,7 +19,7 @@ A Transformed Distribution exposes `sample` and `pdf`:
   * `sample`: `y = f(x)`, after drawing a sample of X.
   * `pdf`: `p(y) = p(x) / det|J(x)| = p(g(y)) / det|J(g(y))|`
 
-A simple example constructing a Log-Normal distribution from a Normal
+A simple example constructing a Logit-Normal distribution from a Normal
 distribution:
 
 ```python

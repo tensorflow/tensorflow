@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 /* tslint:disable:no-namespace variable-name */
 
-module TF {
+module VZ {
   export class DistributionChart {
     private run2datasets: {[run: string]: Plottable.Dataset};
     protected runs: string[];

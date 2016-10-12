@@ -126,6 +126,7 @@ def _monitored_train(graph,
                      supervisor_save_model_secs=600,
                      supervisor_save_model_steps=None,
                      keep_checkpoint_max=5,
+                     supervisor_save_summaries_secs=None,
                      supervisor_save_summaries_steps=100,
                      feed_fn=None,
                      steps=None,
@@ -173,8 +174,12 @@ def _monitored_train(graph,
       keep. As new files are created, older files are deleted. If None or 0,
       all checkpoint files are kept. This is simply passed as the max_to_keep
       arg to `tf.Saver` constructor.
+    supervisor_save_summaries_secs: Save summaries every
+      `supervisor_save_summaries_secs` seconds when training.
     supervisor_save_summaries_steps: Save summaries every
-      `supervisor_save_summaries_steps` seconds when training.
+      `supervisor_save_summaries_steps` steps when training. Exactly one of
+      `supervisor_save_model_steps` and `supervisor_save_model_secs` should be
+      specified, and the other should be None.
     feed_fn: A function that is called every iteration to produce a `feed_dict`
       passed to `session.run` calls. Optional.
     steps: Trains for this many steps (e.g. current global step + `steps`).
@@ -267,6 +272,7 @@ def _monitored_train(graph,
               summary_writer=summary_writer))
       all_hooks.append(
           basic_session_run_hooks.SummarySaverHook(
+              save_secs=supervisor_save_summaries_secs,
               save_steps=supervisor_save_summaries_steps,
               summary_writer=summary_writer,
               scaffold=scaffold))

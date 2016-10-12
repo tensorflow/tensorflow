@@ -28,7 +28,6 @@ cc_library(
     deps = [
         ":constants",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
@@ -45,7 +44,9 @@ tf_cc_test(
     deps = [
         ":constants",
         ":loader",
+        ":signature_constants",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

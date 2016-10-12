@@ -254,7 +254,6 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
-
     classifier.fit(input_fn=_input_fn_train, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn_eval, steps=1)
     # Weighted cross entropy = (-7*log(0.25)-3*log(0.75))/10 = 1.06
@@ -289,7 +288,6 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
-
     classifier.fit(input_fn=_input_fn_train, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn_eval, steps=1)
     # The model should learn (y = x) because of the weights, so the accuracy
@@ -411,6 +409,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     def _my_metric_op(predictions, targets):
       # For the case of binary classification, the 2nd column of "predictions"
       # denotes the model predictions.
+      targets = tf.to_float(targets)
       predictions = tf.slice(predictions, [0, 1], [-1, 1])
       return tf.reduce_sum(tf.mul(predictions, targets))
 
@@ -437,7 +436,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
 
     # Test the case where the 2nd element of the key is neither "classes" nor
     # "probabilities".
-    with self.assertRaises(ValueError):
+    with self.assertRaises(KeyError):
       classifier.evaluate(
           input_fn=_input_fn_train,
           steps=100,
@@ -536,7 +535,6 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     self.assertNotIn('dnn/logits/weights', classifier.get_variable_names())
     self.assertEquals(1, len(classifier.linear_bias_))
     self.assertEquals(2, len(classifier.linear_weights_))
-    print(classifier.linear_weights_)
     self.assertEquals(1, len(classifier.linear_weights_['linear/age/weight']))
     self.assertEquals(
         100, len(classifier.linear_weights_['linear/language/weights']))
@@ -842,7 +840,7 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
         scores['my_error'])
 
     # Tests that when the key is a tuple, an error is raised.
-    with self.assertRaises(TypeError):
+    with self.assertRaises(KeyError):
       regressor.evaluate(
           input_fn=_input_fn_train,
           steps=1,

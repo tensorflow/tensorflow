@@ -946,8 +946,6 @@
   * [`sigmoid_cross_entropy`](../../api_docs/python/contrib.losses.md#sigmoid_cross_entropy)
   * [`softmax_cross_entropy`](../../api_docs/python/contrib.losses.md#softmax_cross_entropy)
   * [`sparse_softmax_cross_entropy`](../../api_docs/python/contrib.losses.md#sparse_softmax_cross_entropy)
-  * [`sum_of_pairwise_squares`](../../api_docs/python/contrib.losses.md#sum_of_pairwise_squares)
-  * [`sum_of_squares`](../../api_docs/python/contrib.losses.md#sum_of_squares)
 
 * **[RNN (contrib)](../../api_docs/python/contrib.rnn.md)**:
   * [`AttentionCellWrapper`](../../api_docs/python/contrib.rnn.md#AttentionCellWrapper)
@@ -1002,6 +1000,7 @@
   * [`bucket`](../../api_docs/python/contrib.training.md#bucket)
   * [`bucket_by_sequence_length`](../../api_docs/python/contrib.training.md#bucket_by_sequence_length)
   * [`NextQueuedSequenceBatch`](../../api_docs/python/contrib.training.md#NextQueuedSequenceBatch)
+  * [`rejection_sample`](../../api_docs/python/contrib.training.md#rejection_sample)
   * [`resample_at_rate`](../../api_docs/python/contrib.training.md#resample_at_rate)
   * [`SequenceQueueingStateSaver`](../../api_docs/python/contrib.training.md#SequenceQueueingStateSaver)
   * [`stratified_sample`](../../api_docs/python/contrib.training.md#stratified_sample)
