@@ -2382,10 +2382,6 @@ tensor shape, the initializer will raise a `ValueError`.
 
   An initializer that generates tensors with constant values.
 
-##### Raises:
-
-*  <b>`ValueError`</b>: Too many elements provided. Needed at most 6, but received 8
-
 ##### Examples:
 
   The following example can be rewritten using a numpy.ndarray instead
@@ -2429,8 +2425,9 @@ tensor shape, the initializer will raise a `ValueError`.
   >>> with tf.Session():
   >>>   x = tf.get_variable('x', shape=[2, 3], initializer=init)
 
-```
-  
+
+*  <b>`ValueError`</b>: Too many elements provided. Needed at most 6, but received 8
+  ```
 - - -
 
 ### `tf.random_normal_initializer(mean=0.0, stddev=1.0, seed=None, dtype=tf.float32)` {#random_normal_initializer}
