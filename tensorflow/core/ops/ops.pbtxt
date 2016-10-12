@@ -6862,7 +6862,7 @@ op {
     default_value {
       b: false
     }
-    description: "When set to True, generates the pooling sequence in a\npseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin\nGraham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for\ndifference between pseudorandom and random."
+    description: "When set to True, generates the pooling sequence in a\npseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin\nGraham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for\ndifference between pseudorandom and random."
   }
   attr {
     name: "overlapping"
@@ -6996,7 +6996,7 @@ op {
     default_value {
       b: false
     }
-    description: "When set to True, generates the pooling sequence in a\npseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin\nGraham, Fractional Max-Pooling] (http://arxiv.org/abs/1412.6071) for\ndifference between pseudorandom and random."
+    description: "When set to True, generates the pooling sequence in a\npseudorandom fashion, otherwise, in a random fashion. Check paper [Benjamin\nGraham, Fractional Max-Pooling](http://arxiv.org/abs/1412.6071) for\ndifference between pseudorandom and random."
   }
   attr {
     name: "overlapping"

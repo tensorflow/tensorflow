@@ -1088,8 +1088,7 @@ class Session(BaseSession):
     sess.run(...)
   ```
 
-  The [`ConfigProto`]
-  (https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
+  The [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
   protocol buffer exposes various configuration options for a
   session. For example, to create a session that uses soft constraints
   for device placement, and log the resulting placement decisions,
@@ -1127,8 +1126,8 @@ class Session(BaseSession):
 
     Args:
       target: (Optional.) The execution engine to connect to.
-        Defaults to using an in-process engine. See [Distributed Tensorflow]
-        (https://www.tensorflow.org/how_tos/distributed/index.html)
+        Defaults to using an in-process engine. See
+        [Distributed Tensorflow](https://www.tensorflow.org/how_tos/distributed/index.html)
         for more examples.
       graph: (Optional.) The `Graph` to be launched (described above).
       config: (Optional.) A [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
