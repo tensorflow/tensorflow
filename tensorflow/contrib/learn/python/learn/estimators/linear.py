@@ -34,7 +34,6 @@ from tensorflow.contrib.framework.python.ops import variables as contrib_variabl
 from tensorflow.contrib.layers.python.layers import target_column
 from tensorflow.contrib.learn.python.learn import evaluable
 from tensorflow.contrib.learn.python.learn import metric_spec
-from tensorflow.contrib.learn.python.learn import session_run_hook
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
 from tensorflow.contrib.learn.python.learn.estimators import estimator
@@ -54,6 +53,7 @@ from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training as train
 
 _CLASSES = "classes"
@@ -253,11 +253,26 @@ def _linear_classifier_model_fn(features, targets, mode, params):
 
 
 def sdca_classifier_model_fn(features, targets, mode, params):
-  """Estimator's linear model_fn."""
+  """Estimator's model_fn for the SDCA optimizer.
+
+  Args:
+    features: feature `Tensor` or `dict`. See the Estimator documentation.
+    targets: targets `Tensor` or `dict`. See the Estimator documentation.
+    mode: the mode. See the Estimator documentation.
+    params: a `dict` with entries for "feature_columns", "optimizer",
+      "weight_column_name", "loss_type", and optionally "update_weights_hook".
+
+  Returns:
+    Tuple of predictions, loss, and train_op.
+
+  Raises:
+    ValueError: if the parameters are invalid.
+  """
   feature_columns = params["feature_columns"]
   optimizer = params["optimizer"]
   weight_column_name = params["weight_column_name"]
   loss_type = params["loss_type"]
+  update_weights_hook = params.get("update_weights_hook")
 
   if not isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
     raise ValueError("Optimizer must be of type SDCAOptimizer")
@@ -284,9 +299,12 @@ def sdca_classifier_model_fn(features, targets, mode, params):
   train_op = None
   if mode == estimator.ModeKeys.TRAIN:
     global_step = contrib_variables.get_global_step()
-    train_op = optimizer.get_train_step(
-        columns_to_variables, weight_column_name, loss_type, features,
-        targets, global_step)
+    sdca_model, train_op = optimizer.get_train_step(columns_to_variables,
+                                                    weight_column_name,
+                                                    loss_type, features,
+                                                    targets, global_step)
+    if update_weights_hook is not None:
+      update_weights_hook.set_parameters(sdca_model, train_op)
 
   predictions = {}
   predictions[_LOGISTIC] = math_ops.sigmoid(logits)
@@ -301,6 +319,28 @@ def sdca_classifier_model_fn(features, targets, mode, params):
 def _get_default_optimizer(feature_columns):
   learning_rate = min(0.2, 1.0 / math.sqrt(len(feature_columns)))
   return train.FtrlOptimizer(learning_rate=learning_rate)
+
+
+class _SdcaUpdateWeightsHook(session_run_hook.SessionRunHook):
+  """SessionRunHook to update and shrink SDCA model weights."""
+
+  def __init__(self):
+    pass
+
+  def set_parameters(self, sdca_model, train_op):
+    self._sdca_model = sdca_model
+    self._train_op = train_op
+
+  def begin(self):
+    """Construct the update_weights op.
+
+    The op is implicitly added to the default graph.
+    """
+    self._update_op = self._sdca_model.update_weights(self._train_op)
+
+  def before_run(self, run_context):
+    """Return the update_weights op so that it is executed during this run."""
+    return session_run_hook.SessionRunArgs(self._update_op)
 
 
 class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
@@ -432,15 +472,23 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
       self._optimizer = _get_optimizer(optimizer)
     num_ps_replicas = config.num_ps_replicas if config else 0
 
+    chief_hook = None
     if isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
       assert not _joint_weight, ("_joint_weight is incompatible with the"
                                  " SDCAOptimizer")
       model_fn = sdca_classifier_model_fn
+      # We use a hook to perform the weight update and shrink step only on the
+      # chief. Because the SdcaModel constructed by the estimator within the
+      # call to fit() but we need to pass the hook to fit(), we pass the hook
+      # as a parameter to the model_fn and have that propagate the model to the
+      # hook.
+      chief_hook = _SdcaUpdateWeightsHook()
       params = {
           "feature_columns": feature_columns,
           "optimizer": self._optimizer,
           "weight_column_name": weight_column_name,
           "loss_type": "logistic_loss",
+          "update_weights_hook": chief_hook,
       }
     else:
       model_fn = _linear_classifier_model_fn
@@ -462,6 +510,10 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
         params=params,
         feature_engineering_fn=feature_engineering_fn)
 
+    self._additional_run_hook = None
+    if self._estimator.config.is_chief:
+      self._additional_run_hook = chief_hook
+
   def get_estimator(self):
     return self._estimator
 
@@ -469,22 +521,24 @@ class LinearClassifier(evaluable.Evaluable, trainable.Trainable):
           monitors=None, max_steps=None):
     """See trainable.Trainable."""
     # TODO(roumposg): Remove when deprecated monitors are removed.
-    if monitors is not None:
-      deprecated_monitors = [
-          m for m in monitors
-          if not isinstance(m, session_run_hook.SessionRunHook)
-      ]
-      for monitor in deprecated_monitors:
-        monitor.set_estimator(self)
-        monitor._lock_estimator()  # pylint: disable=protected-access
+    if monitors is None:
+      monitors = []
+    deprecated_monitors = [
+        m for m in monitors
+        if not isinstance(m, session_run_hook.SessionRunHook)
+    ]
+    for monitor in deprecated_monitors:
+      monitor.set_estimator(self)
+      monitor._lock_estimator()  # pylint: disable=protected-access
 
+    if self._additional_run_hook:
+      monitors.append(self._additional_run_hook)
     result = self._estimator.fit(x=x, y=y, input_fn=input_fn, steps=steps,
                                  batch_size=batch_size, monitors=monitors,
                                  max_steps=max_steps)
 
-    if monitors is not None:
-      for monitor in deprecated_monitors:
-        monitor._unlock_estimator()  # pylint: disable=protected-access
+    for monitor in deprecated_monitors:
+      monitor._unlock_estimator()  # pylint: disable=protected-access
 
     return result
 
@@ -751,9 +805,10 @@ class LinearRegressor(dnn_linear_combined.DNNLinearCombinedRegressor):
                      columns_to_variables)
 
     def _train_op_fn(unused_loss):
-      return  self._linear_optimizer.get_train_step(
+      sdca_model, train_op = self._linear_optimizer.get_train_step(
           columns_to_variables, self._weight_column_name,
           self._loss_type(), features, targets, global_step)
+      return sdca_model.update_weights(train_op)
 
     model_fn_ops = self._head.head_ops(features, targets,
                                        estimator.ModeKeys.TRAIN, _train_op_fn,
