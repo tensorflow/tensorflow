@@ -30,6 +30,7 @@ import re
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.debug import debug_data
+from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import tensor_format
 
@@ -44,11 +45,9 @@ HANG_SUFFIX = "|- "
 DEPTH_TEMPLATE = "(%d) "
 OP_TYPE_TEMPLATE = "[%s] "
 
-# String consntats for control inputs/outputs, etc.
+# String constants for control inputs/outputs, etc.
 CTRL_LABEL = "(Ctrl) "
 ELLIPSIS = "..."
-
-DEFAULT_NDARRAY_DISPLAY_THRESHOLD = 2000
 
 
 class DebugAnalyzer(object):
@@ -68,6 +67,10 @@ class DebugAnalyzer(object):
 
     # Argument parsers for command handlers.
     self._arg_parsers = {}
+
+    # Default threshold number of elements above which ellipses will be used
+    # when printing the value of the tensor.
+    self.default_ndarray_display_threshold = 2000
 
     # Parser for list_tensors.
     ap = argparse.ArgumentParser(
@@ -187,11 +190,22 @@ class DebugAnalyzer(object):
     ap.add_argument(
         "tensor_name",
         type=str,
-        help="Name of the tensor, e.g., hidden1/Wx_plus_b/MatMul:0")
+        help="Name of the tensor, followed by any slicing indices, "
+        "e.g., hidden1/Wx_plus_b/MatMul:0, "
+        "hidden1/Wx_plus_b/MatMul:0[1, :]")
+    ap.add_argument(
+        "-n",
+        "--number",
+        dest="number",
+        type=int,
+        default=-1,
+        help="0-based dump number for the specified tensor. "
+        "Required for tensor with multiple dumps.")
+
     ap.add_argument(
         "-a",
         "--all",
-        dest="all",
+        dest="print_all",
         action="store_true",
         help="Print the tensor in its entirety, i.e., do not use ellipses.")
     self._arg_parsers["print_tensor"] = ap
@@ -455,15 +469,22 @@ class DebugAnalyzer(object):
       Output text lines as a RichTextLines object.
     """
 
+    parsed = self._arg_parsers["print_tensor"].parse_args(args)
+
     if screen_info and "cols" in screen_info:
       np_printoptions = {"linewidth": screen_info["cols"]}
     else:
       np_printoptions = {}
 
-    parsed = self._arg_parsers["print_tensor"].parse_args(args)
+    # Determine if there parsed.tensor_name contains any indexing (slicing).
+    if parsed.tensor_name.count("[") == 1 and parsed.tensor_name.endswith("]"):
+      tensor_name = parsed.tensor_name[:parsed.tensor_name.index("[")]
+      tensor_slicing = parsed.tensor_name[parsed.tensor_name.index("["):]
+    else:
+      tensor_name = parsed.tensor_name
+      tensor_slicing = ""
 
-    node_name, output_slot = debug_data.parse_node_or_tensor_name(
-        parsed.tensor_name)
+    node_name, output_slot = debug_data.parse_node_or_tensor_name(tensor_name)
     if output_slot is None:
       return self._error("\"%s\" is not a valid tensor name" %
                          parsed.tensor_name)
@@ -484,25 +505,102 @@ class DebugAnalyzer(object):
           matching_data.append(datum)
 
     if not matching_data:
+      # No dump for this tensor.
       return self._error(
           "Tensor \"%s\" did not generate any dumps." % parsed.tensor_name)
-
-    # TODO(cais): In the case of multiple dumps from the same tensor, require
-    #   explicit specification of the DebugOp and the temporal order.
-    if len(matching_data) > 1:
-      return self._error(
-          "print_tensor logic for multiple dumped records has not been "
-          "implemented.")
-
-    tensor = matching_data[0].get_tensor()
-    if parsed.all:
-      np_printoptions["threshold"] = tensor.size
+    elif len(matching_data) == 1:
+      # There is only one dump for this tensor.
+      if parsed.number <= 0:
+        return self._format_tensor(
+            matching_data[0].get_tensor(),
+            matching_data[0].watch_key,
+            np_printoptions,
+            print_all=parsed.print_all,
+            tensor_slicing=tensor_slicing)
+      else:
+        return self._error(
+            "Invalid number (%d) for tensor %s, which generated one dump." %
+            (parsed.number, parsed.tensor_name))
     else:
-      np_printoptions["threshold"] = DEFAULT_NDARRAY_DISPLAY_THRESHOLD
+      # There are more than one dumps for this tensor.
+      if parsed.number < 0:
+        lines = [
+            "Tensor \"%s\" generated %d dumps:" % (parsed.tensor_name,
+                                                   len(matching_data))
+        ]
+
+        for i, datum in enumerate(matching_data):
+          rel_time = (datum.timestamp - self._debug_dump.t0) / 1000.0
+          lines.append("#%d [%.3f ms] %s" % (i, rel_time, datum.watch_key))
+
+        lines.append("")
+        lines.append(
+            "Use the -n (--number) flag to specify which dump to print.")
+        lines.append("For example:")
+        lines.append("  print_tensor %s -n 0" % parsed.tensor_name)
+
+        return debugger_cli_common.RichTextLines(lines)
+      elif parsed.number >= len(matching_data):
+        return self._error(
+            "Specified number (%d) exceeds the number of available dumps "
+            "(%d) for tensor %s" %
+            (parsed.number, len(matching_data), parsed.tensor_name))
+      else:
+        return self._format_tensor(
+            matching_data[parsed.number].get_tensor(),
+            matching_data[parsed.number].watch_key + " (dump #%d)" %
+            parsed.number,
+            np_printoptions,
+            print_all=parsed.print_all,
+            tensor_slicing=tensor_slicing)
+
+  def _format_tensor(self,
+                     tensor,
+                     watch_key,
+                     np_printoptions,
+                     print_all=False,
+                     tensor_slicing=None):
+    """Generate formatted str to represent a tensor or its slices.
+
+    Args:
+      tensor: (numpy ndarray) The tensor value.
+      watch_key: (str) Tensor debug watch key.
+      np_printoptions: (dict) Numpy tensor formatting options.
+      print_all: (bool) Whether the tensor is to be displayed in its entirety,
+        instead of printing ellipses, even if its number of elements exceeds
+        the default numpy display threshold.
+        (Note: Even if this is set to true, the screen output can still be cut
+         off by the UI frontend if it consist of more lines than the frontend
+         can handle.)
+      tensor_slicing: (str or None) Slicing of the tensor, e.g., "[:, 1]". If
+        None, no slicing will be performed on the tensor.
+
+    Returns:
+      (str) Formatted str representing the (potentially sliced) tensor.
+
+    Raises:
+      ValueError: If tehsor_slicing is not a valid numpy ndarray slicing str.
+    """
+
+    if tensor_slicing:
+      # Validate the indexing.
+      if not command_parser.validate_slicing_string(tensor_slicing):
+        raise ValueError("Invalid tensor-slicing string.")
+
+      value = eval("tensor" + tensor_slicing)  # pylint: disable=eval-used
+      sliced_name = watch_key + tensor_slicing
+    else:
+      value = tensor
+      sliced_name = watch_key
+
+    if print_all:
+      np_printoptions["threshold"] = value.size
+    else:
+      np_printoptions["threshold"] = self.default_ndarray_display_threshold
 
     return tensor_format.format_tensor(
-        tensor,
-        matching_data[0].watch_key,
+        value,
+        sliced_name,
         include_metadata=True,
         np_printoptions=np_printoptions)
 
