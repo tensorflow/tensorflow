@@ -32,7 +32,7 @@ from tensorflow.python.ops import nn
 
 
 @deprecated(
-    "2016-11-07",
+    "2016-11-12",
     "This file will be removed after the deprecation date."
     "Please switch to "
     "third_party/tensorflow/contrib/learn/python/learn/estimators/head.py")
@@ -61,7 +61,7 @@ def regression_target(label_name=None,
 
 
 @deprecated(
-    "2016-11-07",
+    "2016-11-12",
     "This file will be removed after the deprecation date."
     "Please switch to "
     "third_party/tensorflow/contrib/learn/python/learn/estimators/head.py")
@@ -97,7 +97,7 @@ def multi_class_target(n_classes, label_name=None, weight_column_name=None):
 
 
 @deprecated(
-    "2016-11-07",
+    "2016-11-12",
     "This file will be removed after the deprecation date."
     "Please switch to "
     "third_party/tensorflow/contrib/learn/python/learn/estimators/head.py")
@@ -122,7 +122,7 @@ def binary_svm_target(label_name=None, weight_column_name=None):
 
 
 @deprecated(
-    "2016-11-07",
+    "2016-11-12",
     "This file will be removed after the deprecation date."
     "Please switch to "
     "third_party/tensorflow/contrib/learn/python/learn/estimators/head.py")
@@ -438,7 +438,7 @@ def _run_metrics(predictions, targets, metrics, weights):
 
 
 @deprecated(
-    "2016-11-07",
+    "2016-11-12",
     "This file will be removed after the deprecation date."
     "Please switch to "
     "third_party/tensorflow/contrib/learn/python/learn/estimators/head.py")
