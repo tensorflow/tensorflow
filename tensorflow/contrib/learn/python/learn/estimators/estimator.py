@@ -381,7 +381,7 @@ class BaseEstimator(
           provided.
     """
     logging.warning('The current implementation of partial_fit is not optimized'
-                    'for use in a loop. Consider using fit() instead.')
+                    ' for use in a loop. Consider using fit() instead.')
     return self.fit(x=x, y=y, input_fn=input_fn, steps=steps,
                     batch_size=batch_size, monitors=monitors)
 
@@ -612,26 +612,26 @@ class BaseEstimator(
 
   def _check_inputs(self, features, targets):
     if self._features_info is not None:
-      logging.warning('Given features: %s, required signatures: %s.',
-                      str(features), str(self._features_info))
+      logging.debug('Given features: %s, required signatures: %s.',
+                    str(features), str(self._features_info))
       if not tensor_signature.tensors_compatible(features, self._features_info):
         raise ValueError('Features are incompatible with given information. '
                          'Given features: %s, required signatures: %s.' %
                          (str(features), str(self._features_info)))
     else:
       self._features_info = tensor_signature.create_signatures(features)
-      logging.info('Setting feature info to %s', str(self._features_info))
+      logging.debug('Setting feature info to %s.', str(self._features_info))
     if targets is not None:
       if self._targets_info is not None:
-        logging.warning('Given targets: %s, required signatures: %s.',
-                        str(targets), str(self._targets_info))
+        logging.debug('Given targets: %s, required signatures: %s.',
+                      str(targets), str(self._targets_info))
         if not tensor_signature.tensors_compatible(targets, self._targets_info):
           raise ValueError('Targets are incompatible with given information. '
                            'Given targets: %s, required signatures: %s.' %
                            (str(targets), str(self._targets_info)))
       else:
         self._targets_info = tensor_signature.create_signatures(targets)
-        logging.info('Setting targets info to %s', str(self._targets_info))
+        logging.debug('Setting targets info to %s', str(self._targets_info))
 
   def _train_model(self,
                    input_fn,
@@ -939,7 +939,7 @@ class Estimator(BaseEstimator):
                          'arguments, but not None params (%s) are passed.' %
                          (model_fn, params))
       if params is None and 'params' in model_fn_args:
-        logging.warning('Estimator\'s model_fn (%s) has includes params '
+        logging.warning('Estimator\'s model_fn (%s) includes params '
                         'argument, but params are not passed to Estimator.',
                         model_fn)
     self._model_fn = model_fn
