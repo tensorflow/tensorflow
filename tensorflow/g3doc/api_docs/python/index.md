@@ -1002,6 +1002,7 @@
   * [`bucket`](../../api_docs/python/contrib.training.md#bucket)
   * [`bucket_by_sequence_length`](../../api_docs/python/contrib.training.md#bucket_by_sequence_length)
   * [`NextQueuedSequenceBatch`](../../api_docs/python/contrib.training.md#NextQueuedSequenceBatch)
+  * [`rejection_sample`](../../api_docs/python/contrib.training.md#rejection_sample)
   * [`resample_at_rate`](../../api_docs/python/contrib.training.md#resample_at_rate)
   * [`SequenceQueueingStateSaver`](../../api_docs/python/contrib.training.md#SequenceQueueingStateSaver)
   * [`stratified_sample`](../../api_docs/python/contrib.training.md#stratified_sample)
