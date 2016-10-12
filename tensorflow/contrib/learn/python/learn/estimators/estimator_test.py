@@ -61,7 +61,10 @@ def boston_eval_fn():
 
 
 def linear_model_params_fn(features, target, mode, params):
-  assert mode in ('train', 'eval', 'infer')
+  assert mode in (
+      tf.contrib.learn.ModeKeys.TRAIN,
+      tf.contrib.learn.ModeKeys.EVAL,
+      tf.contrib.learn.ModeKeys.INFER)
   prediction, loss = (
       tf.contrib.learn.models.linear_regression_zero_init(features, target)
   )
@@ -72,7 +75,10 @@ def linear_model_params_fn(features, target, mode, params):
 
 
 def linear_model_fn(features, target, mode):
-  assert mode in ('train', 'eval', 'infer')
+  assert mode in (
+      tf.contrib.learn.ModeKeys.TRAIN,
+      tf.contrib.learn.ModeKeys.EVAL,
+      tf.contrib.learn.ModeKeys.INFER)
   prediction, loss = (
       tf.contrib.learn.models.linear_regression_zero_init(features, target)
   )
@@ -119,6 +125,46 @@ class CheckCallsMonitor(tf.contrib.learn.monitors.BaseMonitor):
 
 
 class EstimatorTest(tf.test.TestCase):
+
+  def testInvalidModelFn_no_train_op(self):
+    def _invalid_model_fn(features, target):
+      # pylint: disable=unused-argument
+      tf.Variable(42.0, 'weight')
+      return None, None, None
+    est = tf.contrib.learn.Estimator(model_fn=_invalid_model_fn)
+    with self.assertRaisesRegexp(ValueError, 'Missing train_op'):
+      est.fit(input_fn=boston_input_fn, steps=1)
+
+  def testInvalidModelFn_no_loss(self):
+    def _invalid_model_fn(features, target, mode):
+      # pylint: disable=unused-argument
+      w = tf.Variable(42.0, 'weight')
+      loss = 100.0 - w
+      train_op = w.assign_add(loss / 100.0)
+      if mode == tf.contrib.learn.ModeKeys.EVAL:
+        loss = None
+      return None, loss, train_op
+    est = tf.contrib.learn.Estimator(model_fn=_invalid_model_fn)
+    est.fit(input_fn=boston_input_fn, steps=1)
+    with self.assertRaisesRegexp(ValueError, 'Missing loss'):
+      est.evaluate(input_fn=boston_eval_fn, steps=1)
+
+  def testInvalidModelFn_no_prediction(self):
+    def _invalid_model_fn(features, target):
+      # pylint: disable=unused-argument
+      w = tf.Variable(42.0, 'weight')
+      loss = 100.0 - w
+      train_op = w.assign_add(loss / 100.0)
+      return None, loss, train_op
+    est = tf.contrib.learn.Estimator(model_fn=_invalid_model_fn)
+    est.fit(input_fn=boston_input_fn, steps=1)
+    est.evaluate(input_fn=boston_eval_fn, steps=1)
+    with self.assertRaisesRegexp(ValueError, 'Missing prediction'):
+      est.predict(input_fn=boston_input_fn)
+    with self.assertRaisesRegexp(ValueError, 'Missing prediction'):
+      est.predict(
+          input_fn=functools.partial(boston_input_fn, num_epochs=1),
+          as_iterable=True)
 
   def testCustomConfig(self):
     test_random_seed = 5783452

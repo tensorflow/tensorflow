@@ -53,6 +53,8 @@ from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
@@ -893,8 +895,15 @@ class Estimator(BaseEstimator):
 
     Args:
       model_fn: Model function, takes features and targets tensors or dicts of
-                tensors and returns predictions and loss tensors.
-                Supports next three signatures for the function:
+                tensors and returns tuple of:
+
+          * predictions: `Tensor`, `SparseTensor` or dictionary of same.
+              Can also be any type that is convertible to a `Tensor` or
+              `SparseTensor`, or dictionary of same.
+          * loss: Scalar loss `Tensor`.
+          * train_op: Training update `Tensor` or `Operation`.
+
+         Supports next three signatures for the function:
 
           * `(features, targets) -> (predictions, loss, train_op)`
           * `(features, targets, mode) -> (predictions, loss, train_op)`
@@ -953,10 +962,48 @@ class Estimator(BaseEstimator):
     model_fn_args = _get_arguments(self._model_fn)
     if 'mode' in model_fn_args:
       if 'params' in model_fn_args:
-        return self._model_fn(features, targets, mode=mode, params=self.params)
+        predictions, loss, train_op = self._model_fn(
+            features, targets, mode=mode, params=self.params)
       else:
-        return self._model_fn(features, targets, mode=mode)
-    return self._model_fn(features, targets)
+        predictions, loss, train_op = self._model_fn(
+            features, targets, mode=mode)
+    else:
+      predictions, loss, train_op = self._model_fn(features, targets)
+
+    # Validate train_op.
+    if train_op is None:
+      if mode == ModeKeys.TRAIN:
+        raise ValueError('Missing train_op.')
+    elif not isinstance(train_op, ops.Operation):
+      train_op = ops.convert_to_tensor(train_op).op
+
+    # Validate loss.
+    if loss is None:
+      if mode in (ModeKeys.TRAIN, ModeKeys.EVAL):
+        raise ValueError('Missing loss.')
+    else:
+      loss = ops.convert_to_tensor(loss)
+      loss_shape = loss.get_shape()
+      if loss_shape.num_elements() not in (None, 1):
+        raise ValueError('Loss must be scalar: %s.' % loss)
+      if not loss_shape.is_compatible_with(tensor_shape.scalar()):
+        loss = array_ops.reshape(loss, [])
+
+    # Validate predictions.
+    if predictions is None:
+      if mode == ModeKeys.INFER:
+        raise ValueError('Missing predictions.')
+    else:
+      if isinstance(predictions, dict):
+        predictions = {
+            k: contrib_framework.convert_to_tensor_or_sparse_tensor(v)
+            for k, v in six.iteritems(predictions)
+        }
+      else:
+        predictions = contrib_framework.convert_to_tensor_or_sparse_tensor(
+            predictions)
+
+    return predictions, loss, train_op
 
   def _get_train_ops(self, features, targets):
     """Method that builds model graph and returns trainer ops.

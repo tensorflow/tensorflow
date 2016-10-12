@@ -165,7 +165,7 @@ def _monitored_train(graph,
       current loss. A `0` or negative value disables logging.
     supervisor_is_chief: Whether the current process is the chief supervisor in
       charge of restoring the model and running standard services.
-    supervisor_master: The master string to use when preparing the session.      
+    supervisor_master: The master string to use when preparing the session.
     supervisor_save_model_secs: Save checkpoints every this many seconds. Can
         not be specified with `supervisor_save_model_steps`.
     supervisor_save_model_steps: Save checkpoints every this many steps. Can not
