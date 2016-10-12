@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 import {State} from './data';
+import {DataProvider, TensorInfo} from './data-loader';
 import {Projector} from './vz-projector';
 // tslint:disable-next-line:no-unused-variable
 import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
@@ -25,6 +26,7 @@ export let BookmarkPanelPolymer = PolymerElement({
 
 export class BookmarkPanel extends BookmarkPanelPolymer {
   private projector: Projector;
+  private dataProvider: DataProvider;
 
   // A list containing all of the saved states.
   private savedStates: State[];
@@ -38,8 +40,19 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
     this.setupUploadButton();
   }
 
-  initialize(projector: Projector) {
+  initialize(projector: Projector, dataProvider: DataProvider) {
     this.projector = projector;
+    this.dataProvider = dataProvider;
+  }
+
+  setSelectedTensor(run: string, tensorInfo: TensorInfo) {
+    if (tensorInfo && tensorInfo.bookmarksFile) {
+      this.loadAllStates([]);
+      // Get any bookmarks that may come when the projector starts up.
+      this.dataProvider.getBookmarks(run, tensorInfo.name, bookmarks => {
+        this.loadAllStates(bookmarks);
+      });
+    }
   }
 
   /** Handles a click on show bookmarks tray button. */
@@ -109,16 +122,19 @@ export class BookmarkPanel extends BookmarkPanelPolymer {
       let fileReader = new FileReader();
       fileReader.onload = function(evt) {
         let str: string = (evt.target as any).result;
-
         let savedStates = JSON.parse(str);
-        for (let i = 0; i < savedStates.length; i++) {
-          savedStates[i].isSelected = false;
-          this.push('savedStates', savedStates[i]);
-        }
+        this.loadAllStates(savedStates);
         this.loadSavedState(0);
       }.bind(this);
       fileReader.readAsText(file);
     }.bind(this));
+  }
+
+  loadAllStates(savedStates: State[]) {
+    for (let i = 0; i < savedStates.length; i++) {
+      savedStates[i].isSelected = false;
+      this.push('savedStates', savedStates[i]);
+    }
   }
 
   /** Deselects any selected state selection. */

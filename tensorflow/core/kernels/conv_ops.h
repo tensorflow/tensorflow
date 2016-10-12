@@ -57,10 +57,6 @@ class LaunchConv2DOp<Eigen::GpuDevice, T> {
               const Tensor& input, const Tensor& filter, int row_stride,
               int col_stride, const Eigen::PaddingType& padding, Tensor* output,
               TensorFormat data_format);
-
- private:
-  AutoTuneMap<ConvParameters, perftools::gputools::dnn::AlgorithmConfig>
-      autotune_results_;
 };
 #endif  // GOOGLE_CUDA
 

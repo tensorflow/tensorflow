@@ -267,7 +267,7 @@ struct ApplyCenteredRMSProp<CPUDevice, T> {
                   typename TTypes<T>::ConstFlat grad) {
     ms.device(d) += (grad.square() - ms) * (static_cast<T>(1) - rho());
     mg.device(d) += (grad - mg) * (static_cast<T>(1) - rho());
-    auto denom = ms + epsilon() - mg.square();
+    auto denom = (ms - mg.square()) + epsilon();
     mom.device(d) = mom * momentum() + (grad * lr()) / denom.sqrt();
     var.device(d) -= mom;
   }

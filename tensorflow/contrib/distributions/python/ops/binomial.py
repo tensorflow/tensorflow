@@ -113,10 +113,12 @@ class Binomial(distribution.Distribution):
       logits: Floating point tensor representing the log-odds of a
         positive event with shape broadcastable to `[N1,..., Nm]` `m >= 0`, and
         the same dtype as `n`. Each entry represents logits for the probability
-        of success for independent Binomial distributions.
+        of success for independent Binomial distributions. Only one of
+        `logits` or `p` should be passed in.
       p:  Positive floating point tensor with shape broadcastable to
         `[N1,..., Nm]` `m >= 0`, `p in [0, 1]`. Each entry represents the
-        probability of success for independent Binomial distributions.
+        probability of success for independent Binomial distributions. Only one
+        of `logits` or `p` should be passed in.
       validate_args: `Boolean`, default `False`.  Whether to assert valid values
         for parameters `n`, `p`, and `x` in `prob` and `log_prob`.
         If `False` and inputs are invalid, correct behavior is not guaranteed.
@@ -163,7 +165,7 @@ class Binomial(distribution.Distribution):
 
   @property
   def logits(self):
-    """Log-odds."""
+    """Log-odds of success."""
     return self._logits
 
   @property

@@ -30,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 
 
 def assert_close(
@@ -108,11 +109,14 @@ def get_logits_and_prob(
   Args:
     logits: Numeric `Tensor` representing log-odds.
     p: Numeric `Tensor` representing probabilities.
-    multidimensional: Given `p` a [N1, N2, ... k] dimensional tensor,
-      whether the last dimension represents the probability between k classes.
-      This will additionally assert that the values in the last dimension
-      sum to one. If `False`, will instead assert that each value is in
-      `[0, 1]`.
+    multidimensional: `Boolean`, default `False`.
+      If `True`, represents whether the last dimension of `logits` or `p`,
+      a [N1, N2, ... k] dimensional tensor, represent the
+      logits / probability between k classes. For `p`, this will
+      additionally assert that the values in the last dimension sum to one.
+
+      If `False`, this will instead assert that each value of `p` is in
+      `[0, 1]`, and will do nothing to `logits`.
     validate_args: `Boolean`, default `False`.  Whether to assert `0 <= p <= 1`
       if multidimensional is `False`, otherwise that the last dimension of `p`
       sums to one.
@@ -134,7 +138,10 @@ def get_logits_and_prob(
     elif p is None:
       logits = array_ops.identity(logits, name="logits")
       with ops.name_scope("p"):
-        p = math_ops.sigmoid(logits)
+        if multidimensional:
+          p = nn.softmax(logits)
+        else:
+          p = math_ops.sigmoid(logits)
     elif logits is None:
       with ops.name_scope("p"):
         p = array_ops.identity(p)
@@ -150,7 +157,17 @@ def get_logits_and_prob(
                 p, one, message="p has components greater than 1.")]
           p = control_flow_ops.with_dependencies(dependencies, p)
       with ops.name_scope("logits"):
-        logits = math_ops.log(p) - math_ops.log(1. - p)
+        if multidimensional:
+          # Here we don't compute the multidimensional case, in a manner
+          # consistent with respect to the unidimensional case. We do so
+          # following the TF convention. Typically, you might expect to see
+          # logits = log(p) - log(gather(p, pivot)). A side-effect of being
+          # consistent with the TF approach is that the unidimensional case
+          # implicitly handles the second dimension but the multidimensional
+          # case explicitly keeps the pivot dimension.
+          logits = math_ops.log(p)
+        else:
+          logits = math_ops.log(p) - math_ops.log(1. - p)
     return (logits, p)
 
 

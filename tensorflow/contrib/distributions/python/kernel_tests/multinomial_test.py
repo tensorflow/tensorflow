@@ -41,7 +41,7 @@ class MultinomialTest(tf.test.TestCase):
       self.assertEqual(tf.TensorShape([2]), dist.get_event_shape())
       self.assertEqual(tf.TensorShape([3, 2]), dist.get_batch_shape())
 
-  def testNProperty(self):
+  def testN(self):
     p = [[0.1, 0.2, 0.7], [0.2, 0.3, 0.5]]
     n = [[3.], [4]]
     with self.test_session():
@@ -49,7 +49,7 @@ class MultinomialTest(tf.test.TestCase):
       self.assertEqual((2, 1), dist.n.get_shape())
       self.assertAllClose(n, dist.n.eval())
 
-  def testPProperty(self):
+  def testP(self):
     p = [[0.1, 0.2, 0.7]]
     with self.test_session():
       dist = tf.contrib.distributions.Multinomial(n=3., p=p)
@@ -57,12 +57,14 @@ class MultinomialTest(tf.test.TestCase):
       self.assertEqual((1, 3), dist.logits.get_shape())
       self.assertAllClose(p, dist.p.eval())
 
-  def testLogitsProperty(self):
-    logits = [[0., 9., -0.5]]
+  def testLogits(self):
+    p = np.array([[0.1, 0.2, 0.7]], dtype=np.float32)
+    logits = np.log(p) - 50.
     with self.test_session():
       multinom = tf.contrib.distributions.Multinomial(n=3., logits=logits)
       self.assertEqual((1, 3), multinom.p.get_shape())
       self.assertEqual((1, 3), multinom.logits.get_shape())
+      self.assertAllClose(p, multinom.p.eval())
       self.assertAllClose(logits, multinom.logits.eval())
 
   def testPmfNandCountsAgree(self):

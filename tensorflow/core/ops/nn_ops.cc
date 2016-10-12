@@ -1444,7 +1444,7 @@ Computes rectified linear 6 gradients for a Relu6 operation.
 gradients: The backpropagated gradients to the corresponding Relu6 operation.
 features: The features passed as input to the corresponding Relu6 operation.
 backprops: The gradients:
-  `gradients * features * (features > 0) * (features < 6)`.
+  `gradients * (features > 0) * (features < 6)`.
 )doc");
 
 REGISTER_OP("Elu")

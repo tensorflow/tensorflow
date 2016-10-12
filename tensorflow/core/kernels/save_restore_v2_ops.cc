@@ -155,8 +155,6 @@ class RestoreV2 : public OpKernel {
                    shape_and_slices);
 
     const string& prefix_string = prefix.scalar<string>()();
-    const auto& tensor_names_flat = tensor_names.flat<string>();
-    const auto& shape_and_slices_flat = shape_and_slices.flat<string>();
 
     // Intention: we plan to use the RestoreV2 op as a backward-compatible
     // reader as we upgrade to the V2 format.  This allows transparent upgrade.
@@ -172,55 +170,9 @@ class RestoreV2 : public OpKernel {
                     /* preferred_shard */ -1, /* restore_slice */ true);
       return;
     }
-
     // If found, invokes the V2 reader.
-    BundleReader reader(env, prefix_string);
-    OP_REQUIRES_OK(context, reader.status());
-    VLOG(1) << "BundleReader, prefix: " << prefix_string;
-
-    // TODO(zongheng): potential optimization: one Seek() in first lookup.
-    // TODO(zongheng): consider measuring speed and issuing concurrent lookups
-    // within a fixed memory budget.
-    TensorShape restored_full_shape;
-    Tensor* restored_tensor = nullptr;
-    for (size_t i = 0; i < tensor_names_flat.size(); ++i) {
-      const string& tensor_name = tensor_names_flat(i);
-      const string& shape_and_slice = shape_and_slices_flat(i);
-      OP_REQUIRES_OK(
-          context, reader.LookupTensorShape(tensor_name, &restored_full_shape));
-
-      if (shape_and_slice.empty()) {
-        // Lookup the full tensor.
-        OP_REQUIRES_OK(context, context->allocate_output(i, restored_full_shape,
-                                                         &restored_tensor));
-        OP_REQUIRES_OK(context, reader.Lookup(tensor_name, restored_tensor));
-      } else {
-        // Lookup the slice.
-        TensorShape parsed_full_shape;
-        TensorSlice parsed_slice;
-        TensorShape parsed_slice_shape;
-
-        OP_REQUIRES_OK(context, checkpoint::ParseShapeAndSlice(
-                                    shape_and_slice, &parsed_full_shape,
-                                    &parsed_slice, &parsed_slice_shape));
-        OP_REQUIRES(context, restored_full_shape.IsSameSize(parsed_full_shape),
-                    errors::InvalidArgument(
-                        "Shape in shape_and_slice spec ",
-                        parsed_full_shape.DebugString(),
-                        " does not match the shape stored in checkpoint: ",
-                        restored_full_shape.DebugString()));
-
-        OP_REQUIRES_OK(context, context->allocate_output(i, parsed_slice_shape,
-                                                         &restored_tensor));
-        OP_REQUIRES_OK(context, reader.LookupSlice(tensor_name, parsed_slice,
-                                                   restored_tensor));
-      }
-      OP_REQUIRES(
-          context, dtypes_[i] == restored_tensor->dtype(),
-          errors::InvalidArgument("Expected dtype ", DataTypeString(dtypes_[i]),
-                                  " does not equal restored dtype ",
-                                  DataTypeString(restored_tensor->dtype())));
-    }
+    OP_REQUIRES_OK(context, RestoreTensorsV2(context, prefix, tensor_names,
+                                             shape_and_slices, dtypes_));
   }
 
  private:

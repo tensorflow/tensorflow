@@ -182,10 +182,23 @@ class OperatorShapeTest(test_util.TensorFlowTestCase):
     scalar_expanded = array_ops.expand_dims(scalar, [0])
     self.assertEqual(scalar_expanded.get_shape(), (1,))
 
-  def testSqueeze(self):
+  def testSqueezeScalar(self):
     scalar = "hello"
     scalar_squeezed = array_ops.squeeze(scalar, ())
     self.assertEqual(scalar_squeezed.get_shape(), ())
+
+  def testSqueezeMatrix(self):
+    matrix = [[1, 2, 3]]
+    matrix_squeezed = array_ops.squeeze(matrix, [0])
+    self.assertEqual(matrix_squeezed.get_shape(), (3))
+
+    with self.assertRaises(ValueError):
+      matrix_squeezed = array_ops.squeeze(matrix, [1])
+
+  def testSqueezeScalarDim(self):
+    matrix = [[1, 2, 3]]
+    matrix_squeezed = array_ops.squeeze(matrix, 0)
+    self.assertEqual(matrix_squeezed.get_shape(), (3))
 
 
 class ReverseTest(test_util.TensorFlowTestCase):

@@ -256,7 +256,7 @@ paper-icon-button[active] {
     <label>Dimension</label>
     <div class="two-way-toggle">
       <span>2D</span>
-      <paper-toggle-button id="tsne-toggle" checked>3D</paper-toggle-button>
+      <paper-toggle-button id="tsne-toggle" checked="{{is3d}}">3D</paper-toggle-button>
     </div>
   </div>
   <div class="slider tsne-perplexity">
@@ -335,7 +335,7 @@ paper-icon-button[active] {
         </template>
       </paper-listbox>
     </paper-dropdown-menu>
-    <paper-checkbox id="z-checkbox" checked="{{hasPcaZ}}"></paper-checkbox>
+    <paper-checkbox id="z-checkbox" checked="{{is3d}}"></paper-checkbox>
   </div>
 </div>
 <!-- Custom Controls -->

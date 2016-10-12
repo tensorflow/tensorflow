@@ -921,10 +921,19 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+tf_py_test(
     name = "sparse_serialization_ops_test",
     size = "small",
     srcs = ["sparse_serialization_ops_test.py"],
+    additional_deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+tf_py_test(
+    name = "sparse_tensors_map_ops_test",
+    size = "small",
+    srcs = ["sparse_tensors_map_ops_test.py"],
     additional_deps = [
         "//tensorflow:tensorflow_py",
     ],

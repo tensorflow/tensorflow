@@ -177,6 +177,8 @@ export class DataPanel extends DataPanelPolymer {
         this.projector.updateDataSet(ds, null);
       }
     });
+    this.projector.setSelectedTensor(
+        this.selectedRun, this.checkpointInfo.tensors[this.selectedTensor]);
   }
 
   _selectedRunChanged() {

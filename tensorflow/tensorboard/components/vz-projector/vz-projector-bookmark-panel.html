@@ -110,13 +110,21 @@ paper-button {
   background: white;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
+paper-textarea {
+  --paper-input-container-input: {
+    font-size: 12px;
+  }
+  --paper-font-caption: {
+    display: none
+  }
+}
 </style>
 
 <!-- Bookmarking controls -->
 <div id="bookmark-container">
   <div id="header">
     <div id="title">
-      BOOKMARKS
+      BOOKMARKS ([[savedStates.length]])
       <paper-icon-button icon="help" class="help-icon"></paper-icon-button>
       <paper-tooltip animation-delay="0" position="top" offset="0">
         The bookmarks drawer allows you to bookmark a set of views into the

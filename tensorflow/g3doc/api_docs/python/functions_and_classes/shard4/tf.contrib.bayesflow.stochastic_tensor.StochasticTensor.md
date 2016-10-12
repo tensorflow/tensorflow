@@ -31,8 +31,8 @@ reparameterized distributions; it will also return None if the value type is
 *  <b>`dist_value_type`</b>: a `_StochasticValueType`, which will determine what the
       `value` of this `StochasticTensor` will be. If not provided, the
       value type set with the `value_type` context manager will be used.
-*  <b>`loss_fn`</b>: callable that takes `(dt, dt.value(), influenced_loss)`, where
-      `dt` is this `StochasticTensor`, and returns a `Tensor` loss. By
+*  <b>`loss_fn`</b>: callable that takes `(st, st.value(), influenced_loss)`, where
+      `st` is this `StochasticTensor`, and returns a `Tensor` loss. By
       default, `loss_fn` is the `score_function`, or more precisely, the
       integral of the score function, such that when the gradient is taken,
       the score function results. See the `stochastic_gradient_estimators`

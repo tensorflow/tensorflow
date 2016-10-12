@@ -174,6 +174,20 @@ class SoftmaxTest(tf.test.TestCase):
       with self.assertRaises(tf.errors.InvalidArgumentError):
         tf.nn.softmax([1., 2., 3., 4.], dim=100).eval()
 
+  def testLargeDims(self):
+    # Make sure that we properly handle large inputs. See
+    # https://github.com/tensorflow/tensorflow/issues/4425 for details
+    for dims in [129, 256]:
+      ones = np.random.rand(dims, dims).astype(np.float32)
+      np_softmax = self._npSoftmax(ones)
+
+      for use_gpu in [True, False]:
+        with self.test_session(use_gpu=use_gpu) as sess:
+          x = tf.placeholder(tf.float32)
+          y = tf.nn.softmax(x)
+          tf_softmax = sess.run(y, feed_dict={x: ones})
+        self.assertAllClose(tf_softmax, np_softmax)
+
 
 if __name__ == "__main__":
   tf.test.main()

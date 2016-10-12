@@ -253,6 +253,15 @@ class GrpcServerTest(tf.test.TestCase):
     sess.close()
     blocking_thread.join()
 
+  def testInteractiveSession(self):
+    server = tf.train.Server.create_local_server()
+    # Session creation will warn (in C++) that the place_pruned_graph option
+    # is not supported, but it should successfully ignore it.
+    sess = tf.InteractiveSession(server.target)
+    c = tf.constant(42.0)
+    self.assertEqual(42.0, c.eval())
+    sess.close()
+
   def testSetConfiguration(self):
     config = tf.ConfigProto(
         gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.1))

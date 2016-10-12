@@ -37,6 +37,7 @@ import tensorflow as tf
 
 from google.protobuf import text_format
 from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import ProjectorConfig
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import server
@@ -44,6 +45,7 @@ from tensorflow.tensorboard.plugins import REGISTERED_PLUGINS
 
 
 class TensorboardServerTest(tf.test.TestCase):
+  _only_use_meta_graph = False  # Server data contains only a GraphDef
 
   # Number of scalar-containing events to make.
   _SCALAR_COUNT = 99
@@ -102,10 +104,9 @@ class TensorboardServerTest(tf.test.TestCase):
     self.assertEqual(response.status, 400)
 
   def testLogdir(self):
-    """Test the status code and content of the data/logdir endpoint."""
-    response = self._get('/data/logdir')
-    self.assertEqual(response.status, 200)
-    self.assertEqual(response.read().decode('utf-8'), '/foo/logdir/argument')
+    """Test the format of the data/logdir endpoint."""
+    parsed_object = self._getJson('/data/logdir')
+    self.assertEqual(parsed_object, {'logdir': '/foo/logdir/argument'})
 
   def testRuns(self):
     """Test the format of the /data/runs endpoint."""
@@ -115,13 +116,16 @@ class TensorboardServerTest(tf.test.TestCase):
     self.assertTrue(isinstance(run_json['run1']['firstEventTimestamp'],
                                numbers.Number))
     del run_json['run1']['firstEventTimestamp']
-    self.assertEqual(run_json, {'run1': {'compressedHistograms': ['histogram'],
-                                         'scalars': ['simple_values'],
-                                         'histograms': ['histogram'],
-                                         'images': ['image'],
-                                         'audio': ['audio'],
-                                         'graph': True,
-                                         'run_metadata': ['test run']}})
+    self.assertEqual(run_json, {'run1': {
+        'compressedHistograms': ['histogram'],
+        'scalars': ['simple_values'],
+        'histograms': ['histogram'],
+        'images': ['image'],
+        'audio': ['audio'],
+        # if only_use_meta_graph, the graph is extracted from the metagraph
+        'graph': True,
+        'meta_graph': self._only_use_meta_graph,
+        'run_metadata': ['test run']}})
 
   def testApplicationPaths_getCached(self):
     """Test the format of the /data/runs endpoint."""
@@ -243,17 +247,20 @@ class TensorboardServerTest(tf.test.TestCase):
         'var1': {
             'shape': [1, 2],
             'name': 'var1',
-            'metadataFile': None
+            'metadataFile': None,
+            'bookmarksFile': None,
         },
         'var2': {
             'shape': [10, 10],
             'name': 'var2',
-            'metadataFile': None
+            'metadataFile': None,
+            'bookmarksFile': None,
         },
         'var3': {
             'shape': [100, 100],
             'name': 'var3',
-            'metadataFile': None
+            'metadataFile': None,
+            'bookmarksFile': None,
         }
     })
 
@@ -342,7 +349,13 @@ class TensorboardServerTest(tf.test.TestCase):
     node2 = graph_def.node.add()
     node2.name = 'b'
     node2.attr['very_large_attr'].s = b'a' * 2048  # 2 KB attribute
-    writer.add_graph(graph_def)
+
+    meta_graph_def = meta_graph_pb2.MetaGraphDef(graph_def=graph_def)
+
+    if self._only_use_meta_graph:
+      writer.add_meta_graph(meta_graph_def)
+    else:
+      writer.add_graph(graph_def)
 
     # Add a simple run metadata event.
     run_metadata = tf.RunMetadata()
@@ -408,6 +421,11 @@ class TensorboardServerTest(tf.test.TestCase):
       sess.run(tf.initialize_all_variables())
       saver = tf.train.Saver()
       saver.save(sess, checkpoint_path)
+
+
+class TensorboardServerUsingMetagraphOnlyTest(TensorboardServerTest):
+  # Tests new ability to use only the MetaGraphDef
+  _only_use_meta_graph = True  # Server data contains only a MetaGraphDef
 
 
 class ParseEventFilesSpecTest(tf.test.TestCase):

@@ -16,6 +16,12 @@ py_library(
 )
 
 py_library(
+    name = "signature_constants",
+    srcs = ["signature_constants.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
     name = "builder",
     srcs = ["builder.py"],
     srcs_version = "PY2AND3",

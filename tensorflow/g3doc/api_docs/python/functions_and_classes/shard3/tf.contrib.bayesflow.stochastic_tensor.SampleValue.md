@@ -9,10 +9,10 @@ Example:
 mu = tf.zeros((2,3))
 sigma = tf.ones((2, 3))
 with sg.value_type(sg.SampleValue(n=4)):
-  dt = sg.DistributionTensor(
+  st = sg.StochasticTensor(
     distributions.Normal, mu=mu, sigma=sigma)
 # draws 4 samples each with shape (2, 3) and concatenates
-assertEqual(dt.value().get_shape(), (4, 2, 3))
+assertEqual(st.value().get_shape(), (4, 2, 3))
 ```
 - - -
 

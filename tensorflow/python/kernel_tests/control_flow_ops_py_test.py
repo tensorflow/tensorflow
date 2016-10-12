@@ -68,39 +68,6 @@ def isum(s):
   return r_s
 
 
-class AssertTest(tf.test.TestCase):
-
-  def testGuardedAssertDoesNotCopyWhenTrue(self):
-    with self.test_session(use_gpu=True) as sess:
-      with tf.device("/gpu:0"):
-        value = tf.constant(1.0)
-      with tf.device("/cpu:0"):
-        true = tf.constant(True)
-        guarded_assert = tf.Assert(true, [value], name="guarded")
-        unguarded_assert = gen_logging_ops._assert(
-            true, [value], name="unguarded")
-      opts = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-      guarded_metadata = tf.RunMetadata()
-      sess.run(guarded_assert, options=opts, run_metadata=guarded_metadata)
-      unguarded_metadata = tf.RunMetadata()
-      sess.run(unguarded_assert, options=opts, run_metadata=unguarded_metadata)
-      guarded_nodestat_names = [
-          n.node_name for d in guarded_metadata.step_stats.dev_stats
-          for n in d.node_stats]
-      unguarded_nodestat_names = [
-          n.node_name for d in unguarded_metadata.step_stats.dev_stats
-          for n in d.node_stats]
-      guarded_memcpy_nodestat_names = [
-          n for n in guarded_nodestat_names if "MEMCPYDtoH" in n]
-      unguarded_memcpy_nodestat_names = [
-          n for n in unguarded_nodestat_names if "MEMCPYDtoH" in n]
-      if "GPU" in [d.device_type for d in device_lib.list_local_devices()]:
-        # A copy was performed for the unguarded assert
-        self.assertLess(0, len(unguarded_memcpy_nodestat_names))
-      # No copy was performed for the guarded assert
-      self.assertEqual([], guarded_memcpy_nodestat_names)
-
-
 class ControlFlowTest(tf.test.TestCase):
 
   def testRefIdentity(self):
@@ -540,7 +507,7 @@ class ControlFlowTest(tf.test.TestCase):
                  ]
       self.assertAllEqual(dense_gv, [0.0, 2.0])
 
-  # Microbenchmark: 10,000 iterations took 0.21s.
+  # Microbenchmark: 250,000 iterations/s.
   def testWhile_1(self):
     with self.test_session():
       n = tf.constant(0)
@@ -767,7 +734,6 @@ class ControlFlowTest(tf.test.TestCase):
         _, r = tf.while_loop(c, b, [i, x],
                              [i.get_shape(),
                               tensor_shape.TensorShape([None, 5])])
-
 
   def _testNestedWhile_1(self, use_gpu):
     with self.test_session(use_gpu=use_gpu):
@@ -2131,6 +2097,38 @@ class ControlFlowTest(tf.test.TestCase):
       with self.assertRaises(ValueError):
         sess.run(tensor_list[0])
 
+  def testWhilePyFuncBasic(self):
+    def func(x):
+      return np.square(x)
+
+    with self.test_session():
+      r = tf.while_loop(
+          lambda i, v: i < 4,
+          lambda i, v: [i + 1, tf.py_func(func, [v], [tf.float32])[0]],
+          [tf.constant(0), tf.constant(2.0, tf.float32)],
+          [tensor_shape.unknown_shape(), tensor_shape.unknown_shape()])
+      self.assertEqual(r[1].eval(), 65536.0)
+
+  def testWhileFuncBasic(self):
+    @function.Defun(tf.float32)
+    def func(x):
+      return tf.square(tf.square(x))
+
+    with self.test_session():
+      x = tf.constant(2.0, tf.float32)
+      r = tf.while_loop(
+          lambda i, v: i < 2,
+          lambda i, v: [i + 1, func(v)],
+          [tf.constant(0), x],
+          [tensor_shape.unknown_shape(), tensor_shape.unknown_shape()])
+      self.assertEqual(r[1].eval(), 65536.0)
+
+      r = tf.gradients(r, x)[0]
+      self.assertEqual(r.eval(), 524288.0)
+      self.assertEqual(len([op for op in x.graph.get_operations()
+                            if op.type == "Stack"]),
+                       1)
+
 
 class TupleTest(tf.test.TestCase):
 
@@ -2215,37 +2213,38 @@ class TupleTest(tf.test.TestCase):
 
       self.assertEquals(1, var.eval())
 
-  def testWhilePyFuncBasic(self):
-    def func(x):
-      return np.square(x)
 
-    with self.test_session():
-      r = tf.while_loop(
-          lambda i, v: i < 4,
-          lambda i, v: [i + 1, tf.py_func(func, [v], [tf.float32])[0]],
-          [tf.constant(0), tf.constant(2.0, tf.float32)],
-          [tensor_shape.unknown_shape(), tensor_shape.unknown_shape()])
-      self.assertEqual(r[1].eval(), 65536.0)
+class AssertTest(tf.test.TestCase):
 
-  def testWhileFuncBasic(self):
-    @function.Defun(tf.float32)
-    def func(x):
-      return tf.square(tf.square(x))
-
-    with self.test_session():
-      x = tf.constant(2.0, tf.float32)
-      r = tf.while_loop(
-          lambda i, v: i < 2,
-          lambda i, v: [i + 1, func(v)],
-          [tf.constant(0), x],
-          [tensor_shape.unknown_shape(), tensor_shape.unknown_shape()])
-      self.assertEqual(r[1].eval(), 65536.0)
-
-      r = tf.gradients(r, x)[0]
-      self.assertEqual(r.eval(), 524288.0)
-      self.assertEqual(len([op for op in x.graph.get_operations()
-                            if op.type == "Stack"]),
-                       1)
+  def testGuardedAssertDoesNotCopyWhenTrue(self):
+    with self.test_session(use_gpu=True) as sess:
+      with tf.device("/gpu:0"):
+        value = tf.constant(1.0)
+      with tf.device("/cpu:0"):
+        true = tf.constant(True)
+        guarded_assert = tf.Assert(true, [value], name="guarded")
+        unguarded_assert = gen_logging_ops._assert(
+            true, [value], name="unguarded")
+      opts = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+      guarded_metadata = tf.RunMetadata()
+      sess.run(guarded_assert, options=opts, run_metadata=guarded_metadata)
+      unguarded_metadata = tf.RunMetadata()
+      sess.run(unguarded_assert, options=opts, run_metadata=unguarded_metadata)
+      guarded_nodestat_names = [
+          n.node_name for d in guarded_metadata.step_stats.dev_stats
+          for n in d.node_stats]
+      unguarded_nodestat_names = [
+          n.node_name for d in unguarded_metadata.step_stats.dev_stats
+          for n in d.node_stats]
+      guarded_memcpy_nodestat_names = [
+          n for n in guarded_nodestat_names if "MEMCPYDtoH" in n]
+      unguarded_memcpy_nodestat_names = [
+          n for n in unguarded_nodestat_names if "MEMCPYDtoH" in n]
+      if "GPU" in [d.device_type for d in device_lib.list_local_devices()]:
+        # A copy was performed for the unguarded assert
+        self.assertLess(0, len(unguarded_memcpy_nodestat_names))
+      # No copy was performed for the guarded assert
+      self.assertEqual([], guarded_memcpy_nodestat_names)
 
 if __name__ == "__main__":
   tf.test.main()

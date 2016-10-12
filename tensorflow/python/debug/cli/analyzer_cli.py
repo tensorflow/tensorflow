@@ -48,6 +48,8 @@ OP_TYPE_TEMPLATE = "[%s] "
 CTRL_LABEL = "(Ctrl) "
 ELLIPSIS = "..."
 
+DEFAULT_NDARRAY_DISPLAY_THRESHOLD = 2000
+
 
 class DebugAnalyzer(object):
   """Analyzer for debug data from dump directories."""
@@ -186,6 +188,12 @@ class DebugAnalyzer(object):
         "tensor_name",
         type=str,
         help="Name of the tensor, e.g., hidden1/Wx_plus_b/MatMul:0")
+    ap.add_argument(
+        "-a",
+        "--all",
+        dest="all",
+        action="store_true",
+        help="Print the tensor in its entirety, i.e., do not use ellipses.")
     self._arg_parsers["print_tensor"] = ap
 
     # TODO(cais): Implement list_nodes.
@@ -486,8 +494,14 @@ class DebugAnalyzer(object):
           "print_tensor logic for multiple dumped records has not been "
           "implemented.")
 
+    tensor = matching_data[0].get_tensor()
+    if parsed.all:
+      np_printoptions["threshold"] = tensor.size
+    else:
+      np_printoptions["threshold"] = DEFAULT_NDARRAY_DISPLAY_THRESHOLD
+
     return tensor_format.format_tensor(
-        matching_data[0].get_tensor(),
+        tensor,
         matching_data[0].watch_key,
         include_metadata=True,
         np_printoptions=np_printoptions)

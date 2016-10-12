@@ -431,20 +431,37 @@ class FeatureColumnTest(tf.test.TestCase):
                            real_valued_col1, real_valued_col2,
                            bucketized_col1, bucketized_col2,
                            cross_col])
-    config = tf.contrib.layers.create_feature_spec_for_parsing(feature_columns)
-    self.assertDictEqual({
+    expected_config = {
         "sparse_column": tf.VarLenFeature(tf.string),
-        "sparse_column_for_embedding": tf.VarLenFeature(tf.string),
+        "sparse_column_for_embedding":
+            tf.VarLenFeature(tf.string),
         "id_column": tf.VarLenFeature(tf.string),
         "id_weights_column": tf.VarLenFeature(tf.float32),
-        "real_valued_column1": tf.FixedLenFeature([1], dtype=tf.float32),
-        "real_valued_column2": tf.FixedLenFeature([5], dtype=tf.float32),
+        "real_valued_column1": tf.FixedLenFeature(
+            [1], dtype=tf.float32),
+        "real_valued_column2": tf.FixedLenFeature(
+            [5], dtype=tf.float32),
         "real_valued_column_for_bucketization1":
-            tf.FixedLenFeature([1], dtype=tf.float32),
+            tf.FixedLenFeature(
+                [1], dtype=tf.float32),
         "real_valued_column_for_bucketization2":
-            tf.FixedLenFeature([4], dtype=tf.float32),
+            tf.FixedLenFeature(
+                [4], dtype=tf.float32),
         "cross_aaa": tf.VarLenFeature(tf.string),
-        "cross_bbb": tf.VarLenFeature(tf.string)}, config)
+        "cross_bbb": tf.VarLenFeature(tf.string)
+    }
+
+    config = tf.contrib.layers.create_feature_spec_for_parsing(feature_columns)
+    self.assertDictEqual(expected_config, config)
+
+    # Test that the same config is parsed out if we pass a dictionary.
+    feature_columns_dict = {
+        str(i): val
+        for i, val in enumerate(feature_columns)
+    }
+    config = tf.contrib.layers.create_feature_spec_for_parsing(
+        feature_columns_dict)
+    self.assertDictEqual(expected_config, config)
 
   def testCreateFeatureSpec_RealValuedColumnWithDefaultValue(self):
     real_valued_col1 = tf.contrib.layers.real_valued_column(

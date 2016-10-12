@@ -249,7 +249,7 @@ class DeprecationTest(tf.test.TestCase):
   def test_prop_wrong_order(self, mock_warning):
 
     with self.assertRaisesRegexp(
-        ValueError, "apply @deprecated after @property"):
+        ValueError, "apply @deprecated before @property"):
       # pylint: disable=unused-variable
 
       class _Object(object):

@@ -96,10 +96,13 @@ typedef Eigen::GpuDevice Device;
 template <>
 Status DoTranspose<Device>(const Device& d, const Tensor& in,
                            const gtl::ArraySlice<int32> perm, Tensor* out) {
-  CHECK_GE(in.dims(), 2);
   CHECK_EQ(in.dims(), out->dims());
   CHECK_EQ(in.dims(), perm.size());
   CHECK_EQ(in.dtype(), out->dtype());
+  if (in.dims() <= 1) {
+    *out = in;
+    return Status::OK();
+  }
   switch (in.dtype()) {
     case DT_BOOL:
     case DT_INT8:

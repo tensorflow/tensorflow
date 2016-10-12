@@ -75,6 +75,41 @@ class DNNClassifierTest(tf.test.TestCase):
     self.assertGreater(scores['accuracy'], 0.9)
     self.assertLess(scores['loss'], 0.3)
 
+  def testLogisticRegression_MatrixData_Target1D(self):
+    """Same as the last test, but target shape is [100] instead of [100, 1]."""
+    def _input_fn():
+      iris = _prepare_iris_data_for_logistic_regression()
+      return {
+          'feature': tf.constant(iris.data, dtype=tf.float32)
+      }, tf.constant(iris.target, shape=[100], dtype=tf.int32)
+
+    cont_features = [
+        tf.contrib.layers.real_valued_column('feature', dimension=4)]
+
+    classifier = tf.contrib.learn.DNNClassifier(
+        feature_columns=cont_features,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    classifier.fit(input_fn=_input_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self.assertGreater(scores['accuracy'], 0.9)
+
+  def testLogisticRegression_NpMatrixData(self):
+    """Tests binary classification using numpy matrix data as input."""
+    iris = _prepare_iris_data_for_logistic_regression()
+    train_x = iris.data
+    train_y = iris.target
+    feature_columns = [tf.contrib.layers.real_valued_column('', dimension=4)]
+    classifier = tf.contrib.learn.DNNClassifier(
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    classifier.fit(x=train_x, y=train_y, steps=100)
+    scores = classifier.evaluate(x=train_x, y=train_y, steps=1)
+    self.assertGreater(scores['accuracy'], 0.8)
+
   def testLogisticRegression_TensorData(self):
     """Tests binary classification using tensor data as input."""
     def _input_fn(num_epochs=None):
@@ -165,6 +200,43 @@ class DNNClassifierTest(tf.test.TestCase):
     scores = classifier.evaluate(input_fn=_iris_input_multiclass_fn, steps=1)
     self.assertGreater(scores['accuracy'], 0.8)
     self.assertLess(scores['loss'], 0.3)
+
+  def testMultiClass_MatrixData_Target1D(self):
+    """Same as the last test, but target shape is [150] instead of [150, 1]."""
+    def _input_fn():
+      iris = tf.contrib.learn.datasets.load_iris()
+      return {
+          'feature': tf.constant(iris.data, dtype=tf.float32)
+      }, tf.constant(iris.target, shape=[150], dtype=tf.int32)
+
+    cont_features = [
+        tf.contrib.layers.real_valued_column('feature', dimension=4)]
+
+    classifier = tf.contrib.learn.DNNClassifier(
+        n_classes=3,
+        feature_columns=cont_features,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    classifier.fit(input_fn=_input_fn, steps=200)
+    scores = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self.assertGreater(scores['accuracy'], 0.8)
+
+  def testMultiClass_NpMatrixData(self):
+    """Tests multi-class classification using numpy matrix data as input."""
+    iris = tf.contrib.learn.datasets.load_iris()
+    train_x = iris.data
+    train_y = iris.target
+    feature_columns = [tf.contrib.layers.real_valued_column('', dimension=4)]
+    classifier = tf.contrib.learn.DNNClassifier(
+        n_classes=3,
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=3))
+
+    classifier.fit(x=train_x, y=train_y, steps=200)
+    scores = classifier.evaluate(x=train_x, y=train_y, steps=1)
+    self.assertGreater(scores['accuracy'], 0.8)
 
   def testLoss(self):
     """Tests loss calculation."""
@@ -523,6 +595,41 @@ class DNNRegressorTest(tf.test.TestCase):
 
     regressor.fit(input_fn=_iris_input_logistic_fn, steps=200)
     scores = regressor.evaluate(input_fn=_iris_input_logistic_fn, steps=1)
+    self.assertLess(scores['loss'], 0.3)
+
+  def testRegression_MatrixData_Target1D(self):
+    """Same as the last test, but target shape is [100] instead of [100, 1]."""
+    def _input_fn():
+      iris = _prepare_iris_data_for_logistic_regression()
+      return {
+          'feature': tf.constant(iris.data, dtype=tf.float32)
+      }, tf.constant(iris.target, shape=[100], dtype=tf.int32)
+
+    cont_features = [
+        tf.contrib.layers.real_valued_column('feature', dimension=4)]
+
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=cont_features,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    regressor.fit(input_fn=_input_fn, steps=200)
+    scores = regressor.evaluate(input_fn=_input_fn, steps=1)
+    self.assertLess(scores['loss'], 0.3)
+
+  def testRegression_NpMatrixData(self):
+    """Tests binary classification using numpy matrix data as input."""
+    iris = _prepare_iris_data_for_logistic_regression()
+    train_x = iris.data
+    train_y = iris.target
+    feature_columns = [tf.contrib.layers.real_valued_column('', dimension=4)]
+    regressor = tf.contrib.learn.DNNRegressor(
+        feature_columns=feature_columns,
+        hidden_units=[3, 3],
+        config=tf.contrib.learn.RunConfig(tf_random_seed=1))
+
+    regressor.fit(x=train_x, y=train_y, steps=200)
+    scores = regressor.evaluate(x=train_x, y=train_y, steps=1)
     self.assertLess(scores['loss'], 0.3)
 
   def testRegression_TensorData(self):
