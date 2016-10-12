@@ -115,7 +115,9 @@ function setup_python {
   fi
   local python_lib_path
   # Split python_path into an array of paths, this allows path containing spaces
-  IFS=',' read -r -a python_lib_path <<< $(python_path)
+  IFS=','
+  python_lib_path=($(python_path))
+  unset IFS
   echo "Found possible Python library paths:"
   for x in "${python_lib_path[@]}"; do
     echo "  $x"
