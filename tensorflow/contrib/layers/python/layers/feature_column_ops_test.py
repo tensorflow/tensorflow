@@ -644,7 +644,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     hashed_sparse = tf.contrib.layers.sparse_column_with_hash_bucket("wire", 10)
     wire_tensor = tf.SparseTensor(values=["omar", "stringer", "marlo"],
                                   indices=[[0, 0], [1, 0], [1, 1]],
-                                  shape=[2, 2])
+                                  shape=[3, 2])
     features = {"wire": wire_tensor}
     embeded_sparse = tf.contrib.layers.embedding_column(
         hashed_sparse, 1, combiner="sum", initializer=init_ops.ones_initializer)
@@ -653,18 +653,18 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
     with self.test_session():
       tf.initialize_all_variables().run()
       # score: (number of values)
-      self.assertAllEqual(output.eval(), [[1.], [2.]])
+      self.assertAllEqual(output.eval(), [[1.], [2.], [0.]])
 
   def testEmbeddingColumnWithWeightedSparseColumnForDNN(self):
     ids = tf.contrib.layers.sparse_column_with_keys(
         "ids", ["marlo", "omar", "stringer"])
     ids_tensor = tf.SparseTensor(values=["stringer", "stringer", "marlo"],
                                  indices=[[0, 0], [1, 0], [1, 1]],
-                                 shape=[2, 2])
+                                 shape=[3, 2])
     weighted_ids = tf.contrib.layers.weighted_sparse_column(ids, "weights")
     weights_tensor = tf.SparseTensor(values=[10.0, 20.0, 30.0],
                                      indices=[[0, 0], [1, 0], [1, 1]],
-                                     shape=[2, 2])
+                                     shape=[3, 2])
     features = {"ids": ids_tensor,
                 "weights": weights_tensor}
     embeded_sparse = tf.contrib.layers.embedding_column(
@@ -675,7 +675,7 @@ class CreateInputLayersForDNNsTest(tf.test.TestCase):
       tf.initialize_all_variables().run()
       tf.initialize_all_tables().run()
       # score: (sum of weights)
-      self.assertAllEqual(output.eval(), [[10.], [50.]])
+      self.assertAllEqual(output.eval(), [[10.], [50.], [0.]])
 
   def testInputLayerWithCollectionsForDNN(self):
     real_valued = tf.contrib.layers.real_valued_column("price")
@@ -960,7 +960,7 @@ class SequenceInputFromFeatureColumnTest(tf.test.TestCase):
 
     # `ids_tensor` consists of 7 instances of <empty>, 3 occurences of "b",
     # 2 occurences of "c" and 1 instance of "a".
-    expected_gradient_values = sorted([7., 3., 2., 1.] * embedding_dimension)
+    expected_gradient_values = sorted([0., 3., 2., 1.] * embedding_dimension)
     actual_gradient_values = np.sort(gradients[0].values, axis=None)
     self.assertAllClose(expected_gradient_values, actual_gradient_values)
 

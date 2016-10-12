@@ -128,7 +128,6 @@ def _embeddings_from_arguments(column,
       embeddings,
       input_tensor,
       sparse_weights=weight_tensor,
-      default_id=0,
       combiner=args.combiner,
       name=column.name + 'weights')
 
@@ -326,7 +325,6 @@ def _create_embedding_lookup(column,
         variable,
         embedding_lookup_arguments.input_tensor,
         sparse_weights=embedding_lookup_arguments.weight_tensor,
-        default_id=0,
         combiner=embedding_lookup_arguments.combiner,
         name=column.name + '_weights')
     return variable, predictions
@@ -385,7 +383,6 @@ def _create_joint_embedding_lookup(columns_to_tensors,
         variable,
         sparse_tensor,
         sparse_weights=None,
-        default_id=0,
         combiner='sum',
         name='_weights')
     return variable, predictions
