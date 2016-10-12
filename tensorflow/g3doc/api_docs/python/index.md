@@ -741,6 +741,13 @@
   * [`WishartCholesky`](../../api_docs/python/contrib.distributions.md#WishartCholesky)
   * [`WishartFull`](../../api_docs/python/contrib.distributions.md#WishartFull)
 
+* **[Random variable transformations (contrib)](../../api_docs/python/contrib.distributions.bijector.md)**:
+  * [`Bijector`](../../api_docs/python/contrib.distributions.bijector.md#Bijector)
+  * [`Exp`](../../api_docs/python/contrib.distributions.bijector.md#Exp)
+  * [`Identity`](../../api_docs/python/contrib.distributions.bijector.md#Identity)
+  * [`Inline`](../../api_docs/python/contrib.distributions.bijector.md#Inline)
+  * [`ScaleAndShift`](../../api_docs/python/contrib.distributions.bijector.md#ScaleAndShift)
+
 * **[FFmpeg (contrib)](../../api_docs/python/contrib.ffmpeg.md)**:
   * [`decode_audio`](../../api_docs/python/contrib.ffmpeg.md#decode_audio)
   * [`encode_audio`](../../api_docs/python/contrib.ffmpeg.md#encode_audio)

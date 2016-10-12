@@ -1,65 +1,113 @@
 A Transformed Distribution.
 
-A Transformed Distribution models `p(y)` given a base distribution `p(x)`,
-an invertible transform, `y = f(x)`, and the determinant of the Jacobian of
-`f(x)`.
+A Transformed Distribution models `p(y)` given a base distribution `p(x)`, and
+a deterministic, invertible, differentiable transform, `Y = g(X)`. The
+transform is typically an instance of the `Bijector` class and the base
+distribution is typically an instance of the `Distribution` class.
 
 Shapes, type, and reparameterization are taken from the base distribution.
 
-#### Mathematical details
+Write `P(Y=y)` for cumulative density function of random variable (rv) `Y` and
+`p` for its derivative wrt to `Y`.  Assume that `Y=g(X)` where `g` is
+continuous and `X=g^{-1}(Y)`. Write `J` for the Jacobian (of some function).
 
-* `p(x)` - probability distribution for random variable X
-* `p(y)` - probability distribution for random variable Y
-* `f` - transform
-* `g` - inverse transform, `g(f(x)) = x`
-* `J(x)` - Jacobian of f(x)
+A `TransformedDistribution` alters the input/outputs of a `Distribution`
+associated with rv `X` in the following ways:
 
-A Transformed Distribution exposes `sample` and `pdf`:
+  * `sample`:
 
-  * `sample`: `y = f(x)`, after drawing a sample of X.
-  * `pdf`: `p(y) = p(x) / det|J(x)| = p(g(y)) / det|J(g(y))|`
+    Mathematically:
 
-A simple example constructing a Logit-Normal distribution from a Normal
+    ```
+    Y = g(X)
+    ```
+
+    Programmatically:
+
+    ```python
+    return bijector.forward(distribution.sample(...))
+    ```
+
+  * `log_prob`:
+
+    Mathematically:
+
+    ```
+    (log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)
+    ```
+
+    Programmatically:
+
+    ```python
+    return (bijector.inverse_log_det_jacobian(x) +
+            distribution.log_prob(bijector.inverse(x))
+    ```
+
+  * `log_cdf`:
+
+    Mathematically:
+
+    ```
+    (log o P o g^{-1})(y)
+    ```
+
+    Programmatically:
+
+    ```python
+    return distribution.log_prob(bijector.inverse(x))
+    ```
+
+  * and similarly for: `cdf`, `prob`, `log_survival_function`,
+   `survival_function`.
+
+A simple example constructing a Log-Normal distribution from a Normal
 distribution:
 
 ```python
-logit_normal = TransformedDistribution(
-  base_dist_cls=tf.contrib.distributions.Normal,
-  mu=mu,
-  sigma=sigma,
-  transform=lambda x: tf.sigmoid(x),
-  inverse=lambda y: tf.log(y) - tf.log(1. - y),
-  log_det_jacobian=(lambda x:
-      tf.reduce_sum(tf.log(tf.sigmoid(x)) + tf.log(1. - tf.sigmoid(x)),
-                    reduction_indices=[-1])))
-  name="LogitNormalTransformedDistribution"
-)
+ds = tf.contrib.distributions
+log_normal = ds.TransformedDistribution(
+  base_distribution=ds.Normal(mu=mu, sigma=sigma),
+  bijector=ds.bijector.Exp(),
+  name="LogNormalTransformedDistribution")
+```
+
+A `LogNormal` made from callables:
+
+```python
+ds = tf.contrib.distributions
+log_normal = ds.TransformedDistribution(
+  base_distribution=ds.Normal(mu=mu, sigma=sigma),
+  bijector=ds.bijector.Inline(
+    forward_fn=tf.exp,
+    inverse_fn=tf.log,
+    inverse_log_det_jacobian_fn=(
+      lambda y: -tf.reduce_sum(tf.log(x), reduction_indices=-1)),
+  name="LogNormalTransformedDistribution")
+```
+
+Another example constructing a Normal from a StandardNormal:
+
+```python
+ds = tf.contrib.distributions
+normal = ds.TransformedDistribution(
+  base_distribution=ds.Normal(mu=0, sigma=1),
+  bijector=ds.bijector.ScaleAndShift(loc=mu, scale=sigma, event_ndims=0),
+  name="NormalTransformedDistribution")
 ```
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.__init__(base_dist_cls, transform, inverse, log_det_jacobian, name='TransformedDistribution', **base_dist_args)` {#TransformedDistribution.__init__}
+#### `tf.contrib.distributions.TransformedDistribution.__init__(base_distribution, bijector, name='TransformedDistribution')` {#TransformedDistribution.__init__}
 
 Construct a Transformed Distribution.
 
 ##### Args:
 
 
-*  <b>`base_dist_cls`</b>: the base distribution class to transform. Must be a
-      subclass of `Distribution`.
-*  <b>`transform`</b>: a callable that takes a `Tensor` sample from `base_dist` and
-      returns a `Tensor` of the same shape and type. `x => y`.
-*  <b>`inverse`</b>: a callable that computes the inverse of transform. `y => x`. If
-      None, users can only call `log_pdf` on values returned by `sample`.
-*  <b>`log_det_jacobian`</b>: a callable that takes a `Tensor` sample from `base_dist`
-      and returns the log of the determinant of the Jacobian of `transform`.
+*  <b>`base_distribution`</b>: The base distribution class to transform. Typically an
+    instance of `Distribution`.
+*  <b>`bijector`</b>: The object responsible for calculating the transformation.
+    Typically an instance of `Bijector`.
 *  <b>`name`</b>: The name for the distribution.
-*  <b>`**base_dist_args`</b>: kwargs to pass on to dist_cls on construction.
-
-##### Raises:
-
-
-*  <b>`TypeError`</b>: if `base_dist_cls` is not a subclass of
-      `Distribution`.
 
 
 - - -
@@ -108,6 +156,13 @@ independent distributions of this kind the instance represents.
 
 
 *  <b>`batch_shape`</b>: `Tensor`.
+
+
+- - -
+
+#### `tf.contrib.distributions.TransformedDistribution.bijector` {#TransformedDistribution.bijector}
+
+Function transforming x => y.
 
 
 - - -
@@ -196,13 +251,6 @@ Same meaning as `event_shape`. May be only partially defined.
 
 - - -
 
-#### `tf.contrib.distributions.TransformedDistribution.inverse` {#TransformedDistribution.inverse}
-
-Inverse function of transform, y => x.
-
-
-- - -
-
 #### `tf.contrib.distributions.TransformedDistribution.is_continuous` {#TransformedDistribution.is_continuous}
 
 
@@ -242,13 +290,6 @@ a more accurate answer than simply taking the logarithm of the `cdf` when
 
 *  <b>`logcdf`</b>: a `Tensor` of shape `sample_shape(x) + self.batch_shape` with
     values of type `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.TransformedDistribution.log_det_jacobian` {#TransformedDistribution.log_det_jacobian}
-
-Function computing the log determinant of the Jacobian of transform.
 
 
 - - -
@@ -308,8 +349,8 @@ Log probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `TransformedDistribution`:
 
-Implements `(log o p o g)(y) - (log o det o J o g)(y)`,
-where `g` is the inverse of `transform`.
+Implements `(log o p o g^{-1})(y) + (log o det o J o g^{-1})(y)`,
+where `g^{-1}` is the inverse of `transform`.
 
 Also raises a `ValueError` if `inverse` was not provided to the
 distribution and `y` was not returned from `sample`.
@@ -483,8 +524,8 @@ Probability density/mass function (depending on `is_continuous`).
 
 Additional documentation from `TransformedDistribution`:
 
-Implements `p(g(y)) / det|J(g(y))|`, where `g` is the inverse of
-`transform`.
+Implements `p(g^{-1}(y)) det|J(g^{-1}(y))|`, where `g^{-1}` is the
+inverse of `transform`.
 
 Also raises a `ValueError` if `inverse` was not provided to the
 distribution and `y` was not returned from `sample`.
@@ -534,7 +575,7 @@ Generate `n` samples.
 Additional documentation from `TransformedDistribution`:
 
 Samples from the base distribution and then passes through
-the transform.
+the bijector's forward transform.
 
 ##### Args:
 
@@ -586,13 +627,6 @@ survival_function(x) = P[X > x]
 
   Tensor` of shape `sample_shape(x) + self.batch_shape` with values of type
     `self.dtype`.
-
-
-- - -
-
-#### `tf.contrib.distributions.TransformedDistribution.transform` {#TransformedDistribution.transform}
-
-Function transforming x => y.
 
 
 - - -
