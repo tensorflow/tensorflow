@@ -45,6 +45,56 @@ from tensorflow.python.training.session_run_hook import SessionRunArgs
 from tensorflow.python.training.summary_io import SummaryWriterCache
 
 
+class _SecondOrStepTimer(object):
+  """Timer that triggers at most once every N seconds or once every N steps.
+  """
+
+  def __init__(self, every_secs=None, every_steps=None):
+    self._every_secs = every_secs
+    self._every_steps = every_steps
+    self._last_triggered_step = None
+    self._last_triggered_time = None
+
+    if self._every_secs is None and self._every_steps is None:
+      raise ValueError("Either every_secs or every_steps should be provided.")
+    if (self._every_secs is not None) and (self._every_steps is not None):
+      raise ValueError("Can not provide both every_secs and every_steps.")
+
+  def should_trigger_for_step(self, step):
+    """Return true if the timer should trigger for the specified step.
+
+    Args:
+      step: Training step to trigger on.
+
+    Returns:
+      True if the difference between the current time and the time of the last
+      trigger exceeds `every_secs`, or if the difference between the current
+      step and the last triggered step exceeds `every_steps`. False otherwise.
+    """
+    if self._last_triggered_step == step:
+      return False
+
+    if self._last_triggered_step is None:
+      return True
+
+    if self._every_secs is not None:
+      if time.time() >= self._last_triggered_time + self._every_secs:
+        return True
+
+    if self._every_steps is not None:
+      if step >= self._last_triggered_step + self._every_steps:
+        return True
+
+    return False
+
+  def update_last_triggered_step(self, step):
+    self._last_triggered_time = time.time()
+    self._last_triggered_step = step
+
+  def last_triggered_step(self):
+    return self._last_triggered_step
+
+
 class LoggingTensorHook(session_run_hook.SessionRunHook):
   """Prints given tensors every N iteration.
 
@@ -165,26 +215,17 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     self._summary_writer = SummaryWriterCache.get(checkpoint_dir)
     self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
     self._scaffold = scaffold
-    self._save_secs = save_secs
-    self._save_steps = save_steps
-    self._last_saved_time = None
-    self._last_saved_step = None
-
-    if save_steps is None and save_secs is None:
-      raise ValueError("Either save_steps or save_secs should be provided")
-    if (save_steps is not None) and (save_secs is not None):
-      raise ValueError("Can not provide both save_steps and save_secs.")
+    self._timer = _SecondOrStepTimer(every_secs=save_secs,
+                                     every_steps=save_steps)
 
   def begin(self):
-    self._last_saved_time = None
-    self._last_saved_step = None
     self._global_step_tensor = training_util.get_global_step()
     if self._global_step_tensor is None:
       raise RuntimeError(
           "Global step should be created to use CheckpointSaverHook.")
 
   def before_run(self, run_context):  # pylint: disable=unused-argument
-    if self._last_saved_time is None:
+    if self._timer.last_triggered_step() is None:
       # Write graph in the first call.
       training_util.write_graph(
           ops.get_default_graph().as_graph_def(add_shapes=True),
@@ -202,28 +243,18 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
 
   def after_run(self, run_context, run_values):
     global_step = run_values.results
-    if self._last_saved_time is None:
+    if self._timer.should_trigger_for_step(global_step):
+      self._timer.update_last_triggered_step(global_step)
       self._save(global_step, run_context.session)
-
-    if self._save_steps is not None:
-      if global_step >= self._last_saved_step + self._save_steps:
-        self._save(global_step, run_context.session)
-
-    if self._save_secs is not None:
-      if time.time() >= self._last_saved_time + self._save_secs:
-        self._save(global_step, run_context.session)
 
   def end(self, session):
     last_step = session.run(training_util.get_global_step())
-    self._save(last_step, session)
+    if last_step != self._timer.last_triggered_step():
+      self._save(last_step, session)
 
   def _save(self, step, session):
     """Saves the latest checkpoint."""
-    if step == self._last_saved_step:
-      return
     logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
-    self._last_saved_time = time.time()
-    self._last_saved_step = step
     if self._saver is None:
       self._scaffold.saver.save(session, self._save_path, global_step=step)
     else:
@@ -320,6 +351,7 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
 
   def __init__(self,
                save_steps=100,
+               save_secs=None,
                output_dir=None,
                summary_writer=None,
                scaffold=None,
@@ -327,7 +359,9 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
     """Initializes a `SummarySaver` monitor.
 
     Args:
-      save_steps: `int`, save summaries every N steps. See `EveryN`.
+      save_steps: `int`, save summaries every N steps. Exactly one of
+          `save_secs` and `save_steps` should be set.
+      save_secs: `int`, save summaries every N seconds.
       output_dir: `string`, the directory to save the summaries to. Only used
           if no `summary_writer` is supplied.
       summary_writer: `SummaryWriter`. If `None` and an `output_dir` was passed,
@@ -337,24 +371,26 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
           buffer, as output by TF summary methods like `scalar_summary` or
           `merge_all_summaries`.
     """
-    # TODO(ipolosukhin): Implement every N seconds.
     self._summary_op = summary_op
     self._summary_writer = summary_writer
     if summary_writer is None and output_dir:
       self._summary_writer = SummaryWriterCache.get(output_dir)
     self._scaffold = scaffold
-    self._save_steps = save_steps
+    self._timer = _SecondOrStepTimer(every_secs=save_secs,
+                                     every_steps=save_steps)
     # TODO(mdan): Throw an error if output_dir and summary_writer are None.
 
   def begin(self):
-    self._last_saved_step = None
-    self._request_summary = True
+    self._next_step = None
     self._global_step_tensor = training_util.get_global_step()
     if self._global_step_tensor is None:
       raise RuntimeError(
           "Global step should be created to use SummarySaverHook.")
 
   def before_run(self, run_context):  # pylint: disable=unused-argument
+    self._request_summary = (
+        self._next_step is None or
+        self._timer.should_trigger_for_step(self._next_step))
     requests = {"global_step": self._global_step_tensor}
     if self._request_summary:
       if self._summary_op is not None:
@@ -371,18 +407,17 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
 
     global_step = run_values.results["global_step"]
 
-    if self._last_saved_step is None:
+    if self._next_step is None:
       self._summary_writer.add_session_log(
           SessionLog(status=SessionLog.START), global_step)
 
     if self._request_summary:
-      self._last_saved_step = global_step
+      self._timer.update_last_triggered_step(global_step)
       if "summary" in run_values.results:
         self._summary_writer.add_summary(run_values.results["summary"],
                                          global_step)
 
-    self._request_summary = (
-        global_step >= self._last_saved_step + self._save_steps - 1)
+    self._next_step = global_step + 1
 
   def end(self, session=None):
     if self._summary_writer:

@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import random
+import numpy as np
 import tensorflow as tf
 
 from tensorflow.contrib.learn.python import learn
@@ -53,7 +54,8 @@ class InferredfeatureColumnTest(tf.test.TestCase):
         optimizer=custom_optimizer,
         config=learn.RunConfig(tf_random_seed=1))
     classifier.fit(x_train, y_train, steps=400)
-    score = accuracy_score(y_test, classifier.predict(x_test))
+    predictions = np.array(list(classifier.predict(x_test)))
+    score = accuracy_score(y_test, predictions)
 
     self.assertGreater(score, 0.65, "Failed with score = {0}".format(score))
 
@@ -145,7 +147,8 @@ class CustomOptimizer(tf.test.TestCase):
         optimizer=custom_optimizer,
         config=learn.RunConfig(tf_random_seed=1))
     classifier.fit(x_train, y_train, steps=400)
-    score = accuracy_score(y_test, classifier.predict(x_test))
+    predictions = np.array(list(classifier.predict(x_test)))
+    score = accuracy_score(y_test, predictions)
 
     self.assertGreater(score, 0.65, "Failed with score = {0}".format(score))
 

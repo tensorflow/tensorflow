@@ -239,19 +239,6 @@ bool IsFullSlice(const TensorSlice& slice_spec,
 
 }  // namespace
 
-string DataFilename(StringPiece prefix, int32 shard_id, int32 num_shards) {
-  DCHECK_GT(num_shards, 0);
-  DCHECK_LT(shard_id, num_shards);
-  return strings::Printf("%.*s.data-%05d-of-%05d",
-                         static_cast<int>(prefix.size()), prefix.data(),
-                         shard_id, num_shards);
-}
-
-string MetaFilename(StringPiece prefix) {
-  return strings::Printf("%.*s.index", static_cast<int>(prefix.size()),
-                         prefix.data());
-}
-
 BundleWriter::BundleWriter(Env* env, StringPiece prefix)
     : env_(env), prefix_(prefix.ToString()), out_(nullptr), size_(0) {
   status_ =

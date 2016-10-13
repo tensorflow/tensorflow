@@ -33,7 +33,7 @@ static void AppendTo(const TensorShape& s, gtl::InlinedVector<int64, 8>* vals) {
 }
 
 void TensorShape::CheckDimsEqual(int NDIMS) const {
-  CHECK_EQ(NDIMS, dims()) << "Asking for tensor of " << NDIMS << "dimensions"
+  CHECK_EQ(NDIMS, dims()) << "Asking for tensor of " << NDIMS << " dimensions"
                           << " from a tensor of " << dims() << " dimensions";
 }
 

@@ -43,7 +43,7 @@ class BaseTest(tf.test.TestCase):
     feature_columns = learn.infer_real_valued_columns_from_input(x)
     regressor = learn.LinearRegressor(feature_columns=feature_columns)
     regressor.fit(x, y, max_steps=100)
-    score = mean_squared_error(y, regressor.predict(x))
+    score = mean_squared_error(y, np.array(list(regressor.predict(x))))
     self.assertLess(score, 1.0, "Failed with score = {0}".format(score))
 
   def testIris(self):
@@ -52,7 +52,7 @@ class BaseTest(tf.test.TestCase):
         feature_columns=learn.infer_real_valued_columns_from_input(iris.data),
         n_classes=3)
     classifier.fit(iris.data, [x for x in iris.target], max_steps=100)
-    score = accuracy_score(iris.target, classifier.predict(iris.data))
+    score = accuracy_score(iris.target, list(classifier.predict(iris.data)))
     self.assertGreater(score, 0.7, "Failed with score = {0}".format(score))
 
   def testIrisAllVariables(self):
@@ -82,7 +82,7 @@ class BaseTest(tf.test.TestCase):
         feature_columns=learn.infer_real_valued_columns_from_input(iris.data),
         n_classes=3, model_dir=output_dir)
     classifier.fit(iris.data, iris.target, max_steps=100)
-    score = accuracy_score(iris.target, classifier.predict(iris.data))
+    score = accuracy_score(iris.target, list(classifier.predict(iris.data)))
     self.assertGreater(score, 0.5, "Failed with score = {0}".format(score))
     # TODO(ipolosukhin): Check that summaries are correctly written.
 
@@ -92,9 +92,9 @@ class BaseTest(tf.test.TestCase):
         feature_columns=learn.infer_real_valued_columns_from_input(iris.data),
         n_classes=3)
     classifier.fit(iris.data, iris.target, steps=100)
-    score1 = accuracy_score(iris.target, classifier.predict(iris.data))
+    score1 = accuracy_score(iris.target, list(classifier.predict(iris.data)))
     classifier.fit(iris.data, iris.target, steps=500)
-    score2 = accuracy_score(iris.target, classifier.predict(iris.data))
+    score2 = accuracy_score(iris.target, list(classifier.predict(iris.data)))
     self.assertGreater(
         score2, score1,
         "Failed with score2 {0} <= score1 {1}".format(score2, score1))
@@ -120,9 +120,10 @@ class BaseTest(tf.test.TestCase):
         feature_columns=learn.infer_real_valued_columns_from_input(iris.data),
         n_classes=3)
     classifier.fit(iris_data(), iris_target(), max_steps=500)
-    score1 = accuracy_score(iris.target, classifier.predict(iris.data))
+    score1 = accuracy_score(iris.target,
+                            list(classifier.predict(iris.data)))
     score2 = accuracy_score(iris.target,
-                            classifier.predict(iris_predict_data()))
+                            list(classifier.predict(iris_predict_data())))
     self.assertGreater(score1, 0.5, "Failed with score = {0}".format(score1))
     self.assertEqual(score2, score1, "Scores from {0} iterator doesn't "
                      "match score {1} from full "
@@ -137,7 +138,7 @@ class BaseTest(tf.test.TestCase):
           feature_columns=learn.infer_real_valued_columns_from_input(iris.data),
           n_classes=3)
       classifier.fit(iris.data, iris.target, max_steps=250)
-      score = log_loss(iris.target, classifier.predict_proba(iris.data))
+      score = log_loss(iris.target, list(classifier.predict_proba(iris.data)))
       self.assertLess(score, 0.8, "Failed with score = {0}".format(score))
 
   def testBoston(self):
@@ -146,7 +147,8 @@ class BaseTest(tf.test.TestCase):
     regressor = learn.LinearRegressor(
         feature_columns=learn.infer_real_valued_columns_from_input(boston.data))
     regressor.fit(boston.data, boston.target, max_steps=500)
-    score = mean_squared_error(boston.target, regressor.predict(boston.data))
+    score = mean_squared_error(
+        boston.target, np.array(list(regressor.predict(boston.data))))
     self.assertLess(score, 150, "Failed with score = {0}".format(score))
 
   def testUnfitted(self):

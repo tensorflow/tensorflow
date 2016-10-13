@@ -33,12 +33,8 @@ class TransformedDistributionTest(tf.test.TestCase):
       # Note: the Jacobian callable only works for this example; more generally
       # you may or may not need a reduce_sum.
       log_normal = tf.contrib.distributions.TransformedDistribution(
-          base_dist_cls=tf.contrib.distributions.Normal,
-          mu=mu,
-          sigma=sigma,
-          transform=lambda x: tf.exp(x),
-          inverse=lambda y: tf.log(y),
-          log_det_jacobian=(lambda x: x))
+          base_distribution=tf.contrib.distributions.Normal(mu=mu, sigma=sigma),
+          bijector=tf.contrib.distributions.bijector.Exp(event_ndims=0))
       sp_dist = stats.lognorm(s=sigma, scale=np.exp(mu))
 
       # sample
@@ -67,12 +63,8 @@ class TransformedDistributionTest(tf.test.TestCase):
       mu = 3.0
       sigma = 0.02
       log_normal = tf.contrib.distributions.TransformedDistribution(
-          base_dist_cls=tf.contrib.distributions.Normal,
-          mu=mu,
-          sigma=sigma,
-          transform=lambda x: tf.exp(x),
-          inverse=None,
-          log_det_jacobian=(lambda x: tf.reduce_sum(x)))
+          base_distribution=tf.contrib.distributions.Normal(mu=mu, sigma=sigma),
+          bijector=tf.contrib.distributions.bijector.Exp(event_ndims=0))
 
       sample = log_normal.sample_n(1)
       sample_val, log_pdf_val = sess.run([sample, log_normal.log_pdf(sample)])
@@ -81,10 +73,6 @@ class TransformedDistributionTest(tf.test.TestCase):
                                scale=np.exp(mu)),
           log_pdf_val,
           atol=1e-2)
-
-      with self.assertRaisesRegexp(ValueError,
-                                   "was not returned from `sample`"):
-        log_normal.log_pdf(tf.constant(3.0))
 
 
 if __name__ == "__main__":
