@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import {HoverContext} from './hoverContext';
-import {RenderContext} from './renderContext';
+import {LabelRenderParams, RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
 import {ScatterPlotVisualizerAxes} from './scatterPlotVisualizerAxes';
 import {SelectionContext} from './selectionContext';
@@ -131,11 +131,7 @@ export class ScatterPlot {
 
   private pointColors: Float32Array;
   private pointScaleFactors: Float32Array;
-  private labelIndices: Uint32Array;
-  private labelScaleFactors: Float32Array;
-  private labelStrokeColor: number;
-  private labelFillColor: number;
-  private labelDefaultFontSize: number;
+  private labels: LabelRenderParams;
 
   private selecting = false;
   private nearestPoint: number;
@@ -639,8 +635,7 @@ export class ScatterPlot {
         this.camera, this.orbitCameraControls.target, this.width, this.height,
         cameraSpacePointExtents[0], cameraSpacePointExtents[1],
         this.labelAccessor, this.pointColors, this.pointScaleFactors,
-        this.labelIndices, this.labelScaleFactors, this.labelDefaultFontSize,
-        this.labelStrokeColor, this.labelFillColor);
+        this.labels);
 
     // Render first pass to picking target. This render fills pickingTexture
     // with colors that are actually point ids, so that sampling the texture at
@@ -697,15 +692,9 @@ export class ScatterPlot {
     this.pointScaleFactors = scaleFactors;
   }
 
-  setVisibleLabels(
-      visibleLabelIndices: Uint32Array, visibleLabelScaleFactors: Float32Array,
-      labelStrokeColor: number, labelFillColor: number,
-      labelDefaultFontSize: number) {
-    this.labelIndices = visibleLabelIndices;
-    this.labelScaleFactors = visibleLabelScaleFactors;
-    this.labelStrokeColor = labelStrokeColor;
-    this.labelFillColor = labelFillColor;
-    this.labelDefaultFontSize = labelDefaultFontSize;
+  /** Set the labels to rendered */
+  setLabels(labels: LabelRenderParams) {
+    this.labels = labels;
   }
 
   getMode(): Mode { return this.mode; }

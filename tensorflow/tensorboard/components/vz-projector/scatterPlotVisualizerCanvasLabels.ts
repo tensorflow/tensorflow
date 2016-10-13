@@ -48,15 +48,15 @@ export class ScatterPlotVisualizerCanvasLabels implements
 
   /** Render all of the non-overlapping visible labels to the canvas. */
   private makeLabels(rc: RenderContext) {
-    if (rc.labelIndices.length === 0) {
+    if ((rc.labels == null) || (rc.labels.pointIndices.length === 0)) {
       return;
     }
 
     let strokeStylePrefix: string;
     let fillStylePrefix: string;
     {
-      const ls = new THREE.Color(rc.labelStrokeColor).multiplyScalar(255);
-      const lc = new THREE.Color(rc.labelFillColor).multiplyScalar(255);
+      const ls = new THREE.Color(rc.labels.strokeColor).multiplyScalar(255);
+      const lc = new THREE.Color(rc.labels.fillColor).multiplyScalar(255);
       strokeStylePrefix = 'rgba(' + ls.r + ',' + ls.g + ',' + ls.b + ',';
       fillStylePrefix = 'rgba(' + lc.r + ',' + lc.g + ',' + lc.b + ',';
     }
@@ -77,7 +77,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
       .range([0.1, 1]);
 
     const camPos = rc.camera.position;
-    const camToTarget = new THREE.Vector3().copy(camPos).sub(rc.cameraTarget);
+    const camToTarget = camPos.clone().sub(rc.cameraTarget);
 
     this.gc.lineWidth = 6;
     this.gc.textBaseline = 'middle';
@@ -87,13 +87,13 @@ export class ScatterPlotVisualizerCanvasLabels implements
     // Shift the label to the right of the point circle.
     const xShift = 4;
 
-    const n = Math.min(MAX_LABELS_ON_SCREEN, rc.labelIndices.length);
+    const n = Math.min(MAX_LABELS_ON_SCREEN, rc.labels.pointIndices.length);
     for (let i = 0; i < n; ++i) {
-      const index = rc.labelIndices[i];
+      const index = rc.labels.pointIndices[i];
       const point = getProjectedPointFromIndex(this.dataSet, index);
 
       // discard points that are behind the camera
-      const camToPoint = new THREE.Vector3().copy(camPos).sub(point);
+      const camToPoint = camPos.clone().sub(point);
       if (camToTarget.dot(camToPoint) < 0) {
         continue;
       }
@@ -115,13 +115,16 @@ export class ScatterPlotVisualizerCanvasLabels implements
       if (grid.insert(textBoundingBox, true)) {
         const text = rc.labelAccessor(index);
         const fontSize =
-            rc.labelDefaultFontSize * rc.labelScaleFactors[i] * dpr;
+            rc.labels.defaultFontSize * rc.labels.scaleFactors[i] * dpr;
         this.gc.font = fontSize + 'px roboto';
 
         // Now, check with properly computed width.
         textBoundingBox.hiX += this.gc.measureText(text).width - 1;
         if (grid.insert(textBoundingBox)) {
-          const opacity = this.sceneIs3D ? opacityMap(camToPoint.length()) : 1;
+          let opacity = 1;
+          if (this.sceneIs3D && (rc.labels.useSceneOpacityFlags[i] === 1)) {
+            opacity = opacityMap(camToPoint.length());
+          }
           this.gc.strokeStyle = strokeStylePrefix + opacity + ')';
           this.gc.fillStyle = fillStylePrefix + opacity + ')';
           this.gc.strokeText(text, x, y);

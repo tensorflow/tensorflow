@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import {ColorOption, DataSet, MetadataInfo, Projection, State, DataProto} from './data';
-import {DataProvider, getDataProvider, TensorInfo, ServingMode} from './data-loader';
+import {ColorOption, DataProto, DataSet, MetadataInfo, Projection, State} from './data';
+import {DataProvider, getDataProvider, ServingMode, TensorInfo} from './data-loader';
 import {HoverContext, HoverListener} from './hoverContext';
 import * as knn from './knn';
+import {LabelRenderParams} from './renderContext';
 import {Mode, ScatterPlot} from './scatterPlot';
 import {ScatterPlotVisualizer3DLabels} from './scatterPlotVisualizer3DLabels';
 import {ScatterPlotVisualizerCanvasLabels} from './scatterPlotVisualizerCanvasLabels';
@@ -34,8 +35,8 @@ import {PolymerElement, PolymerHTMLElement} from './vz-projector-util';
 const LABEL_FONT_SIZE = 10;
 const LABEL_SCALE_DEFAULT = 1.0;
 const LABEL_SCALE_LARGE = 1.7;
-const LABEL_FILL_COLOR = 0xFFFFFF;
-const LABEL_STROKE_COLOR = 0x000000;
+const LABEL_FILL_COLOR = 0x000000;
+const LABEL_STROKE_COLOR = 0xFFFFFF;
 
 const POINT_COLOR_UNSELECTED = 0x888888;
 const POINT_COLOR_NO_SELECTION = 0x7575D9;
@@ -253,33 +254,40 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     return colorer;
   }
 
-  private getVisibleLabelCount(
+  private generateVisibleLabelRenderParams(
       selectedPointIndices: number[], neighborsOfFirstPoint: knn.NearestEntry[],
-      hoverPointIndex: number) {
-    return selectedPointIndices.length + neighborsOfFirstPoint.length +
-        ((hoverPointIndex != null) ? 1 : 0);
-  }
-
-  private generateVisibleLabelIndicesArray(
-      selectedPointIndices: number[], neighborsOfFirstPoint: knn.NearestEntry[],
-      hoverPointIndex: number): Uint32Array {
+      hoverPointIndex: number): LabelRenderParams {
     if (this.currentDataSet == null) {
-      return new Uint32Array(0);
+      return null;
     }
 
-    const visibleLabels = new Uint32Array(this.getVisibleLabelCount(
-        selectedPointIndices, neighborsOfFirstPoint, hoverPointIndex));
+    const n = selectedPointIndices.length + neighborsOfFirstPoint.length +
+        ((hoverPointIndex != null) ? 1 : 0);
+
+    const visibleLabels = new Uint32Array(n);
+    const scale = new Float32Array(n);
+    const opacityFlags = new Int8Array(n);
+
+    scale.fill(LABEL_SCALE_DEFAULT);
+    opacityFlags.fill(1);
+
     let dst = 0;
 
     if (hoverPointIndex != null) {
-      visibleLabels[dst++] = hoverPointIndex;
+      visibleLabels[dst] = hoverPointIndex;
+      scale[dst] = LABEL_SCALE_LARGE;
+      opacityFlags[dst] = 0;
+      ++dst;
     }
 
     // Selected points
     {
       const n = selectedPointIndices.length;
       for (let i = 0; i < n; ++i) {
-        visibleLabels[dst++] = selectedPointIndices[i];
+        visibleLabels[dst] = selectedPointIndices[i];
+        scale[dst] = LABEL_SCALE_LARGE;
+        opacityFlags[dst] = (n === 1) ? 0 : 1;
+        ++dst;
       }
     }
 
@@ -291,35 +299,9 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
       }
     }
 
-    return visibleLabels;
-  }
-
-  private generateVisibleLabelScaleFactorsArray(
-      selectedPointIndices: number[], neighborsOfFirstPoint: knn.NearestEntry[],
-      hoverPointIndex: number): Float32Array {
-    if (this.currentDataSet == null) {
-      return new Float32Array(0);
-    }
-
-    const scale = new Float32Array(this.getVisibleLabelCount(
-        selectedPointIndices, neighborsOfFirstPoint, hoverPointIndex));
-    scale.fill(LABEL_SCALE_DEFAULT);
-
-    let dst = 0;
-
-    if (hoverPointIndex != null) {
-      scale[dst++] = LABEL_SCALE_LARGE;
-    }
-
-    // Selected points
-    {
-      const n = selectedPointIndices.length;
-      for (let i = 0; i < n; ++i) {
-        scale[dst++] = LABEL_SCALE_LARGE;
-      }
-    }
-
-    return scale;
+    return new LabelRenderParams(
+        visibleLabels, scale, opacityFlags, LABEL_FONT_SIZE, LABEL_FILL_COLOR,
+        LABEL_STROKE_COLOR);
   }
 
   private generateScatterPlotScaleFactorArray(
@@ -557,17 +539,13 @@ export class Projector extends ProjectorPolymer implements SelectionContext,
     const pointScaleFactors = this.generateScatterPlotScaleFactorArray(
         this.selectedPointIndices, this.neighborsOfFirstPoint,
         this.hoverPointIndex);
-    const visibleLabelIndices = this.generateVisibleLabelIndicesArray(
+    const labels = this.generateVisibleLabelRenderParams(
         this.selectedPointIndices, this.neighborsOfFirstPoint,
         this.hoverPointIndex);
-    const visibleLabelScaleFactors = this.generateVisibleLabelScaleFactorsArray(
-        this.selectedPointIndices, this.neighborsOfFirstPoint,
-        this.hoverPointIndex);
+
     this.scatterPlot.setPointColors(pointColors);
     this.scatterPlot.setPointScaleFactors(pointScaleFactors);
-    this.scatterPlot.setVisibleLabels(
-        visibleLabelIndices, visibleLabelScaleFactors, LABEL_STROKE_COLOR,
-        LABEL_FILL_COLOR, LABEL_FONT_SIZE);
+    this.scatterPlot.setLabels(labels);
     this.scatterPlot.render();
   }
 
