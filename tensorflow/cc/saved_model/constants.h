@@ -18,6 +18,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+// SavedModel assets directory.
+constexpr char kSavedModelAssetsDirectory[] = "assets";
+
+// SavedModel assets key for graph collection-def.
+constexpr char kSavedModelAssetsKey[] = "saved_model_assets";
+
 // SavedModel proto filename.
 constexpr char kSavedModelFilenamePb[] = "saved_model.pb";
 

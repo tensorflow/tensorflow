@@ -44,7 +44,12 @@ class LoaderTest : public ::testing::Test {
     return example.SerializeAsString();
   }
 
-  void CheckSavedModelBundle(const SavedModelBundle& bundle) {
+  void CheckSavedModelBundle(const string& export_dir,
+                             const SavedModelBundle& bundle) {
+    const string asset_path =
+        io::JoinPath(export_dir, kSavedModelAssetsDirectory, "foo.txt");
+    EXPECT_TRUE(Env::Default()->FileExists(asset_path));
+
     // Retrieve the regression signature from meta graph def.
     const auto signature_def_map = bundle.meta_graph_def.signature_def();
     const auto signature_def = signature_def_map.at(kRegressMethodName);
@@ -85,7 +90,7 @@ TEST_F(LoaderTest, ResourceLeakTest) {
   for (int i = 0; i < 100; ++i) {
     TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
                                 {kSavedModelTagServe}, &bundle));
-    CheckSavedModelBundle(bundle);
+    CheckSavedModelBundle(export_dir, bundle);
   }
 }
 
@@ -98,7 +103,7 @@ TEST_F(LoaderTest, TagMatch) {
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
   TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
                               {kSavedModelTagServe}, &bundle));
-  CheckSavedModelBundle(bundle);
+  CheckSavedModelBundle(export_dir, bundle);
 }
 
 TEST_F(LoaderTest, NoTagMatch) {
@@ -142,7 +147,7 @@ TEST_F(LoaderTest, PbtxtFormat) {
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPbTxt);
   TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
                               {kSavedModelTagServe}, &bundle));
-  CheckSavedModelBundle(bundle);
+  CheckSavedModelBundle(export_dir, bundle);
 }
 
 TEST_F(LoaderTest, SingleShardVariables) {
@@ -154,7 +159,7 @@ TEST_F(LoaderTest, SingleShardVariables) {
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPb);
   TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
                               {kSavedModelTagServe}, &bundle));
-  CheckSavedModelBundle(bundle);
+  CheckSavedModelBundle(export_dir, bundle);
 }
 
 TEST_F(LoaderTest, InvalidExportPath) {
