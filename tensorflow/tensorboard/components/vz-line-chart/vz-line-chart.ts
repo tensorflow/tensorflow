@@ -527,9 +527,9 @@ module VZ {
     }
 
     public renderTo(targetSVG: d3.Selection<any>) {
-      this.outer.renderTo(targetSVG);
       this.targetSVG = targetSVG;
       this.setViewBox();
+      this.outer.renderTo(targetSVG);
     }
 
     /** There's an issue in Chrome where the svg overflow is a bit
@@ -541,13 +541,15 @@ module VZ {
     private setViewBox() {
       // There's an issue in Firefox where if we measure with the old viewbox
       // set, we get horrible results.
-      this.targetSVG.attr('viewBox', '');
+      this.targetSVG.attr('viewBox', null);
 
-      let svg = this.targetSVG.node() as HTMLElement;
-      let brect = svg.getBoundingClientRect();
-      let w = brect.width;
-      let h = brect.height;
-      this.targetSVG.attr('viewBox', `0 0 ${w + 1} ${h + 1}`);
+      let parent = this.targetSVG.node().parentNode as HTMLElement;
+      let w = parent.clientWidth;
+      let h = parent.clientHeight;
+      this.targetSVG.attr({
+        'height': h,
+        'viewBox': `0 0 ${w + 1} ${h + 1}`,
+      });
     }
 
     public redraw() {

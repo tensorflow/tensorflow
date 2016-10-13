@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import hashlib
 import sys
 import numpy as np
 
@@ -197,8 +198,8 @@ def log_combinations(n, counts, name="log_combinations"):
   # The sum should be along the last dimension of counts.  This is the
   # "distribution" dimension. Here n a priori represents the sum of counts.
   with ops.name_scope(name, values=[n, counts]):
-    n = array_ops.identity(n, name="n")
-    counts = array_ops.identity(counts, name="counts")
+    n = ops.convert_to_tensor(n, name="n")
+    counts = ops.convert_to_tensor(counts, name="counts")
     total_permutations = math_ops.lgamma(n + 1)
     counts_factorial = math_ops.lgamma(counts + 1)
     redundant_permutations = math_ops.reduce_sum(counts_factorial,
@@ -395,6 +396,14 @@ def pick_vector(cond,
     return array_ops.slice(array_ops.concat(0, (true_vector, false_vector)),
                            [math_ops.select(cond, 0, n)],
                            [math_ops.select(cond, n, -1)])
+
+
+def gen_new_seed(seed, salt):
+  """Generate a new seed, from the given seed and salt."""
+  if seed:
+    string = (str(seed) + salt).encode("utf-8")
+    return int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
+  return None
 
 
 def override_docstring_if_empty(fn, doc_str):

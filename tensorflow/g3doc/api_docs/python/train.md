@@ -4401,14 +4401,16 @@ such as saving a last checkpoint.
 Saves summaries every N steps.
 - - -
 
-#### `tf.train.SummarySaverHook.__init__(save_steps=100, output_dir=None, summary_writer=None, scaffold=None, summary_op=None)` {#SummarySaverHook.__init__}
+#### `tf.train.SummarySaverHook.__init__(save_steps=100, save_secs=None, output_dir=None, summary_writer=None, scaffold=None, summary_op=None)` {#SummarySaverHook.__init__}
 
 Initializes a `SummarySaver` monitor.
 
 ##### Args:
 
 
-*  <b>`save_steps`</b>: `int`, save summaries every N steps. See `EveryN`.
+*  <b>`save_steps`</b>: `int`, save summaries every N steps. Exactly one of
+      `save_secs` and `save_steps` should be set.
+*  <b>`save_secs`</b>: `int`, save summaries every N seconds.
 *  <b>`output_dir`</b>: `string`, the directory to save the summaries to. Only used
       if no `summary_writer` is supplied.
 *  <b>`summary_writer`</b>: `SummaryWriter`. If `None` and an `output_dir` was passed,

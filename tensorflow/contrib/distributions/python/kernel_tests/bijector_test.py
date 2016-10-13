@@ -23,9 +23,19 @@ import math
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.contrib.distributions.python.ops.bijector import _Exp
-from tensorflow.contrib.distributions.python.ops.bijector import _Identity
-from tensorflow.contrib.distributions.python.ops.bijector import _ShiftAndScale
+bijectors = tf.contrib.distributions.bijector
+
+
+class BaseBijectorTest(tf.test.TestCase):
+  """Tests properties of the Bijector base-class."""
+
+  def testBijector(self):
+    with self.test_session():
+      with self.assertRaisesRegexp(
+          TypeError,
+          ("Can't instantiate abstract class Bijector "
+           "with abstract methods __init__")):
+        bijectors.Bijector()
 
 
 class IdentityBijectorTest(tf.test.TestCase):
@@ -33,7 +43,7 @@ class IdentityBijectorTest(tf.test.TestCase):
 
   def testBijector(self):
     with self.test_session():
-      bijector = _Identity()
+      bijector = bijectors.Identity()
       self.assertEqual("Identity", bijector.name)
       x = [[[0.],
             [1.]]]
@@ -50,7 +60,7 @@ class ExpBijectorTest(tf.test.TestCase):
 
   def testBijector(self):
     with self.test_session():
-      bijector = _Exp(event_ndims=1)
+      bijector = bijectors.Exp(event_ndims=1)
       self.assertEqual("Exp", bijector.name)
       x = [[[1.],
             [2.]]]
@@ -63,14 +73,39 @@ class ExpBijectorTest(tf.test.TestCase):
       self.assertAllClose([[0., -math.log(2.)]], jac.eval())
 
 
-class _ShiftAndScaleBijectorTest(tf.test.TestCase):
+class InlineBijectorTest(tf.test.TestCase):
+  """Tests the correctness of the inline constructed bijector."""
+
+  def testBijector(self):
+    with self.test_session():
+      exp = bijectors.Exp(event_ndims=1)
+      inline = bijectors.Inline(
+          forward_fn=tf.exp,
+          inverse_fn=tf.log,
+          inverse_log_det_jacobian_fn=(
+              lambda y: -tf.reduce_sum(tf.log(x), reduction_indices=-1)),
+          name="Exp")
+
+      self.assertEqual(exp.name, inline.name)
+      x = [[[1., 2.],
+            [3., 4.],
+            [5., 6.]]]
+      self.assertAllClose(exp.forward(x).eval(), inline.forward(x).eval())
+      self.assertAllClose(exp.inverse(x).eval(), inline.inverse(x).eval())
+      self.assertAllClose(exp.inverse_log_det_jacobian(x).eval(),
+                          inline.inverse_log_det_jacobian(x).eval())
+
+
+class ScaleAndShiftBijectorTest(tf.test.TestCase):
+  """Tests the correctness of the Y = scale * x + loc transformation."""
 
   def testProperties(self):
     with self.test_session():
       mu = -1.
       sigma = 2.
-      bijector = _ShiftAndScale(loc=mu, scale=sigma)
-      self.assertEqual("ShiftAndScale", bijector.name)
+      bijector = bijectors.ScaleAndShift(
+          loc=mu, scale=sigma)
+      self.assertEqual("ScaleAndShift", bijector.name)
 
   def testNoBatchScalar(self):
     with self.test_session() as sess:
@@ -85,7 +120,8 @@ class _ShiftAndScaleBijectorTest(tf.test.TestCase):
       for run in (static_run, dynamic_run):
         mu = -1.
         sigma = 2.  # Scalar.
-        bijector = _ShiftAndScale(loc=mu, scale=sigma)
+        bijector = bijectors.ScaleAndShift(
+            loc=mu, scale=sigma)
         self.assertEqual(0, bijector.shaper.batch_ndims.eval())  # "no batches"
         self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is scalar"
         x = [1., 2, 3]  # Three scalar samples (no batches).
@@ -107,7 +143,8 @@ class _ShiftAndScaleBijectorTest(tf.test.TestCase):
       for run in (static_run, dynamic_run):
         mu = -1.
         sigma = 2.  # Scalar.
-        bijector = _ShiftAndScale(loc=mu, scale=sigma)
+        bijector = bijectors.ScaleAndShift(
+            loc=mu, scale=sigma)
         self.assertEqual(0, bijector.shaper.batch_ndims.eval())  # "no batches"
         self.assertEqual(0, bijector.shaper.event_ndims.eval())  # "is scalar"
         x = [[1., 2, 3],
@@ -134,7 +171,8 @@ class _ShiftAndScaleBijectorTest(tf.test.TestCase):
       for run in (static_run, dynamic_run):
         mu = [1.]
         sigma = [1.]  # One batch, scalar.
-        bijector = _ShiftAndScale(loc=mu, scale=sigma)
+        bijector = bijectors.ScaleAndShift(
+            loc=mu, scale=sigma)
         self.assertEqual(
             1, bijector.shaper.batch_ndims.eval())  # "one batch dim"
         self.assertEqual(
@@ -158,7 +196,8 @@ class _ShiftAndScaleBijectorTest(tf.test.TestCase):
       for run in (static_run, dynamic_run):
         mu = [1., -1]
         sigma = [1., 1]  # Univariate, two batches.
-        bijector = _ShiftAndScale(loc=mu, scale=sigma)
+        bijector = bijectors.ScaleAndShift(
+            loc=mu, scale=sigma)
         self.assertEqual(
             1, bijector.shaper.batch_ndims.eval())  # "one batch dim"
         self.assertEqual(
@@ -182,7 +221,8 @@ class _ShiftAndScaleBijectorTest(tf.test.TestCase):
       for run in (static_run, dynamic_run):
         mu = [1., -1]
         sigma = np.eye(2, dtype=np.float32)
-        bijector = _ShiftAndScale(loc=mu, scale=sigma, event_ndims=1)
+        bijector = bijectors.ScaleAndShift(
+            loc=mu, scale=sigma, event_ndims=1)
         self.assertEqual(0, bijector.shaper.batch_ndims.eval())  # "no batches"
         self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [1., 1]
@@ -205,7 +245,8 @@ class _ShiftAndScaleBijectorTest(tf.test.TestCase):
       for run in (static_run, dynamic_run):
         mu = 1.
         sigma = np.eye(2, dtype=np.float32)
-        bijector = _ShiftAndScale(loc=mu, scale=sigma, event_ndims=1)
+        bijector = bijectors.ScaleAndShift(
+            loc=mu, scale=sigma, event_ndims=1)
         self.assertEqual(0, bijector.shaper.batch_ndims.eval())  # "no batches"
         self.assertEqual(1, bijector.shaper.event_ndims.eval())  # "is vector"
         x = [1., 1]
@@ -231,7 +272,8 @@ class _ShiftAndScaleBijectorTest(tf.test.TestCase):
       feed_dict = {x: x_value, mu: mu_value, sigma: sigma_value, event_ndims:
                    event_ndims_value}
 
-      bijector = _ShiftAndScale(loc=mu, scale=sigma, event_ndims=event_ndims)
+      bijector = bijectors.ScaleAndShift(
+          loc=mu, scale=sigma, event_ndims=event_ndims)
       self.assertEqual(0, sess.run(bijector.shaper.batch_ndims, feed_dict))
       self.assertEqual(1, sess.run(bijector.shaper.event_ndims, feed_dict))
       self.assertAllClose([[2., 0]], sess.run(bijector.forward(x), feed_dict))
@@ -252,7 +294,8 @@ class _ShiftAndScaleBijectorTest(tf.test.TestCase):
       for run in (static_run, dynamic_run):
         mu = [[1., -1]]
         sigma = np.array([np.eye(2, dtype=np.float32)])
-        bijector = _ShiftAndScale(loc=mu, scale=sigma, event_ndims=1)
+        bijector = bijectors.ScaleAndShift(
+            loc=mu, scale=sigma, event_ndims=1)
         self.assertEqual(
             1, bijector.shaper.batch_ndims.eval())  # "one batch dim"
         self.assertEqual(
@@ -276,7 +319,8 @@ class _ShiftAndScaleBijectorTest(tf.test.TestCase):
       feed_dict = {x: x_value, mu: mu_value, sigma: sigma_value,
                    event_ndims: event_ndims_value}
 
-      bijector = _ShiftAndScale(loc=mu, scale=sigma, event_ndims=event_ndims)
+      bijector = bijectors.ScaleAndShift(
+          loc=mu, scale=sigma, event_ndims=event_ndims)
       self.assertEqual(1, sess.run(bijector.shaper.batch_ndims, feed_dict))
       self.assertEqual(1, sess.run(bijector.shaper.event_ndims, feed_dict))
       self.assertAllClose([[[2., 0]]], sess.run(bijector.forward(x), feed_dict))

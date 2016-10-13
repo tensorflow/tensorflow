@@ -513,13 +513,17 @@ class Tensor(object):
       # ...
     ```
 
+    This disallows ambiguities between testing the Python value vs testing the
+    dynamic condition of the `Tensor`.
+
     Raises:
       `TypeError`.
     """
     raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
                     "Use `if t is not None:` instead of `if t:` to test if a "
-                    "tensor is defined, and use the logical TensorFlow ops "
-                    "to test the value of a tensor.")
+                    "tensor is defined, and use TensorFlow ops such as "
+                    "tf.cond to execute subgraphs conditioned on the value of "
+                    "a tensor.")
 
   def __nonzero__(self):
     """Dummy method to prevent a tensor from being used as a Python `bool`.
@@ -531,8 +535,9 @@ class Tensor(object):
     """
     raise TypeError("Using a `tf.Tensor` as a Python `bool` is not allowed. "
                     "Use `if t is not None:` instead of `if t:` to test if a "
-                    "tensor is defined, and use the logical TensorFlow ops "
-                    "to test the value of a tensor.")
+                    "tensor is defined, and use TensorFlow ops such as "
+                    "tf.cond to execute subgraphs conditioned on the value of "
+                    "a tensor.")
 
   def eval(self, feed_dict=None, session=None):
     """Evaluates this tensor in a `Session`.

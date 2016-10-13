@@ -14,48 +14,62 @@ limitations under the License.
 ==============================================================================*/
 
 /**
+ * LabelRenderParams describes the set of points that should have labels
+ * rendered next to them.
+ */
+export class LabelRenderParams {
+  pointIndices: Float32Array;
+  scaleFactors: Float32Array;
+  useSceneOpacityFlags: Int8Array;  // booleans
+  defaultFontSize: number;
+  fillColor: number;
+  strokeColor: number;
+
+  constructor(
+      pointIndices: Float32Array, scaleFactors: Float32Array,
+      useSceneOpacityFlags: Int8Array, defaultFontSize: number,
+      fillColor: number, strokeColor: number) {
+    this.pointIndices = pointIndices;
+    this.scaleFactors = scaleFactors;
+    this.useSceneOpacityFlags = useSceneOpacityFlags;
+    this.defaultFontSize = defaultFontSize;
+    this.fillColor = fillColor;
+    this.strokeColor = strokeColor;
+  }
+}
+
+/**
  * RenderContext contains all of the state required to color and render the data
  * set. ScatterPlot passes this to every attached visualizer as part of the
  * render callback.
  */
 export class RenderContext {
-  camera: THREE.PerspectiveCamera;
+  camera: THREE.Camera;
   cameraTarget: THREE.Vector3;
   screenWidth: number;
   screenHeight: number;
   nearestCameraSpacePointZ: number;
   farthestCameraSpacePointZ: number;
-  labelAccessor: (index: number) => string;
   pointColors: Float32Array;
   pointScaleFactors: Float32Array;
-  labelIndices: Uint32Array;
-  labelScaleFactors: Float32Array;
-  labelDefaultFontSize: number;
-  labelFillColor: number;
-  labelStrokeColor: number;
+  labelAccessor: (index: number) => string;
+  labels: LabelRenderParams;
 
   constructor(
-      camera: THREE.PerspectiveCamera, cameraTarget: THREE.Vector3,
-      screenWidth: number, screenHeight: number,
-      nearestCameraSpacePointZ: number, farthestCameraSpacePointZ: number,
+      camera: THREE.Camera, cameraTarget: THREE.Vector3, screenWidth: number,
+      screenHeight: number, nearestCameraSpacePointZ: number,
+      farthestCameraSpacePointZ: number,
       labelAccessor: (index: number) => string, pointColors: Float32Array,
-      pointScaleFactors: Float32Array, visibleLabelIndices: Uint32Array,
-      visibleLabelScaleFactors: Float32Array,
-      visibleLabelDefaultFontSize: number, visibleLabelFillColor: number,
-      visibleLabelStrokeColor: number) {
+      pointScaleFactors: Float32Array, labels: LabelRenderParams) {
     this.camera = camera;
     this.cameraTarget = cameraTarget;
     this.screenWidth = screenWidth;
     this.screenHeight = screenHeight;
     this.nearestCameraSpacePointZ = nearestCameraSpacePointZ;
     this.farthestCameraSpacePointZ = farthestCameraSpacePointZ;
-    this.labelAccessor = labelAccessor;
     this.pointColors = pointColors;
     this.pointScaleFactors = pointScaleFactors;
-    this.labelIndices = visibleLabelIndices;
-    this.labelScaleFactors = visibleLabelScaleFactors;
-    this.labelDefaultFontSize = visibleLabelDefaultFontSize;
-    this.labelFillColor = visibleLabelFillColor;
-    this.labelStrokeColor = visibleLabelStrokeColor;
+    this.labelAccessor = labelAccessor;
+    this.labels = labels;
   }
 }

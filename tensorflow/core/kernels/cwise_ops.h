@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cmath>
 #include <functional>
+#include <typeinfo>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -236,6 +237,48 @@ struct functor_traits<scalar_compose_op<Scalar, UnaryFunctor, BinaryFunctor>> {
   };
 };
 
+#if EIGEN_COMP_GNUC && __cplusplus > 199711L
+#define DISABLE_FLOAT_EQUALITY_WARNING \
+  _Pragma("GCC diagnostic push")       \
+      _Pragma("GCC diagnostic ignored \"-Wfloat-equal\"")
+#define ENABLE_FLOAT_EQUALITY_WARNING _Pragma("GCC diagnostic pop")
+#else
+#define DISABLE_FLOAT_EQUALITY_WARNING
+#define ENABLE_FLOAT_EQUALITY_WARNING
+#endif
+
+template <typename Scalar>
+struct scalar_round_op_google {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
+  operator()(const Scalar& x) const {
+    EIGEN_STATIC_ASSERT((!NumTraits<Scalar>::IsComplex),
+                        NUMERIC_TYPE_MUST_BE_REAL)
+
+    Scalar round_val;
+    round_val = Eigen::numext::floor(x);
+    const Scalar fraction = x - round_val;
+    if (fraction > Scalar(.5)) {
+      round_val += Scalar(1.0);
+    } else if (fraction == Scalar(.5)) {
+      const Scalar nearest_even_int =
+          round_val - Scalar(2) * Eigen::numext::floor(Scalar(.5) * x);
+      bool is_odd = (nearest_even_int == Scalar(1));
+      if (is_odd) {
+        round_val += Scalar(1);
+      }
+    }
+    return round_val;
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<scalar_round_op_google<Scalar>> {
+  enum { Cost = 4 * NumTraits<Scalar>::AddCost, PacketAccess = false };
+};
+
+#undef ENABLE_FLOAT_EQUALITY_WARNING
+#undef DISABLE_FLOAT_EQUALITY_WARNING
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -397,6 +440,9 @@ struct isfinite : base<T, Eigen::internal::scalar_isfinite_op<T>, bool> {};
 
 template <typename T>
 struct floor : base<T, Eigen::internal::scalar_floor_op<T>> {};
+
+template <typename T>
+struct round : base<T, Eigen::internal::scalar_round_op_google<T>> {};
 
 template <typename T>
 struct ceil : base<T, Eigen::internal::scalar_ceil_op<T>> {};

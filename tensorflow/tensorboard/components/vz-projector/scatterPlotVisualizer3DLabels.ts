@@ -20,6 +20,7 @@ import {createTexture} from './util';
 
 const FONT_SIZE = 80;
 const ONE_OVER_FONT_SIZE = 1 / FONT_SIZE;
+const LABEL_SCALE = 2.2;  // at 1:1 texel/pixel ratio
 const LABEL_COLOR = 'black';
 const LABEL_BACKGROUND = 'white';
 const MAX_CANVAS_DIMENSION = 8192;
@@ -48,17 +49,6 @@ const VERTEX_SHADER = `
     varying vec2 vUv;
     varying vec3 vColor;
 
-    float getPointScale() {
-      float normalScale = 3.0;
-      // Distance to the camera (world coordinates.) This is the scale factor.
-      // Note that positions of verts are in world space, scaled so that the
-      // lineheight is 1.
-      vec4 posCamSpace = modelViewMatrix * vec4(position, 1.0);
-      float distToCam = length(posCamSpace.z);
-      float scale = max(min(distToCam * 10.0, normalScale), distToCam * 2.0);
-      return scale * ${ONE_OVER_FONT_SIZE};
-    }
-
     void main() {
       vUv = uv;
       vColor = color;
@@ -76,10 +66,10 @@ const VERTEX_SHADER = `
 
       mat4 pointToCamera = mat4(vRight, vUp, vAt, vec4(0, 0, 0, 1));
 
-      vec2 posObj = posObj * getPointScale();
+      vec2 scaledPos = posObj * ${ONE_OVER_FONT_SIZE} * ${LABEL_SCALE};
 
-      vec4 posRotated = pointToCamera * vec4(posObj, 0.00001, 1.0);
-      vec4 mvPosition = modelViewMatrix * (vec4(position, 0.0) + posRotated);
+      vec4 posRotated = pointToCamera * vec4(scaledPos, 0, 1);
+      vec4 mvPosition = modelViewMatrix * (vec4(position, 0) + posRotated);
       gl_Position = projectionMatrix * mvPosition;
     }`;
 

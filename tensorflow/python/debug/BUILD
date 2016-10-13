@@ -47,6 +47,12 @@ py_library(
 )
 
 py_library(
+    name = "command_parser",
+    srcs = ["cli/command_parser.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
     name = "tensor_format",
     srcs = ["cli/tensor_format.py"],
     srcs_version = "PY2AND3",
@@ -58,6 +64,7 @@ py_library(
     srcs = ["cli/analyzer_cli.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":command_parser",
         ":debug_data",
         ":debugger_cli_common",
         ":tensor_format",
@@ -68,7 +75,10 @@ py_library(
     name = "curses_ui",
     srcs = ["cli/curses_ui.py"],
     srcs_version = "PY2AND3",
-    deps = [":debugger_cli_common"],
+    deps = [
+        ":command_parser",
+        ":debugger_cli_common",
+    ],
 )
 
 py_library(
@@ -196,6 +206,19 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":debugger_cli_common",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "command_parser_test",
+    size = "small",
+    srcs = [
+        "cli/command_parser_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":command_parser",
         "//tensorflow/python:framework_test_lib",
     ],
 )

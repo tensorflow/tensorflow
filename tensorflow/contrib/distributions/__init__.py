@@ -97,6 +97,7 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
+from tensorflow.contrib.distributions.python.ops import bijector
 from tensorflow.contrib.distributions.python.ops.bernoulli import *
 from tensorflow.contrib.distributions.python.ops.beta import *
 from tensorflow.contrib.distributions.python.ops.binomial import *

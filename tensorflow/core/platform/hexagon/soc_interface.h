@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_HEXAGON_GEMM_WRAPPER_H_
-#define TENSORFLOW_PLATFORM_HEXAGON_GEMM_WRAPPER_H_
+#ifndef TENSORFLOW_PLATFORM_HEXAGON_SOC_INTERFACE_H_
+#define TENSORFLOW_PLATFORM_HEXAGON_SOC_INTERFACE_H_
 
 // Declaration of APIs provided by hexagon shared library. This header is shared
 // with both hexagon library built with qualcomm SDK and tensorflow.
-// All functions defined here must have prefix "hexagon_gemm_wrapper" to avoid
+// All functions defined here must have prefix "soc_interface" to avoid
 // naming conflicts.
 #ifdef __cplusplus
 extern "C" {
@@ -26,14 +26,14 @@ extern "C" {
 // Returns the version of loaded hexagon wrapper shared library.
 // You should assert that the version matches the expected version before
 // calling APIs defined in this header.
-int hexagon_gemm_wrapper_GetWrapperVersion();
+int soc_interface_GetWrapperVersion();
 // Returns the version of hexagon binary.
 // You should assert that the version matches the expected version before
 // calling APIs defined in this header.
-int hexagon_gemm_wrapper_GetHexagonBinaryVersion();
+int soc_interface_GetHexagonBinaryVersion();
 // TODO(satok): Support gemm APIs via RPC
 #ifdef __cplusplus
 }
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_PLATFORM_HEXAGON_GEMM_WRAPPER_H_
+#endif  // TENSORFLOW_PLATFORM_HEXAGON_SOC_INTERFACE_H_
