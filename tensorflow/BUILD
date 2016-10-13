@@ -127,6 +127,7 @@ filegroup(
         "//tensorflow/contrib/quantization/kernels/hexagon:all_files",
         "//tensorflow/contrib/quantization/tools:all_files",
         "//tensorflow/contrib/rnn:all_files",
+        "//tensorflow/contrib/seq2seq:all_files",
         "//tensorflow/contrib/session_bundle:all_files",
         "//tensorflow/contrib/session_bundle/example:all_files",
         "//tensorflow/contrib/slim:all_files",
