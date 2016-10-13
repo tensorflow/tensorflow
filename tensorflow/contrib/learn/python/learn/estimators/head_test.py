@@ -48,6 +48,19 @@ class RegressionModelHeadTest(tf.test.TestCase):
                                    None, logits=prediction)
       self.assertAlmostEqual(2. / 3, sess.run(model_fn_ops.loss), places=3)
 
+  def testErrorInSparseTensorTarget(self):
+    head = head_lib._regression_head()
+    with tf.Graph().as_default():
+      prediction = tf.constant([[1.], [1.], [3.]])
+      targets = tf.SparseTensor(
+          indices=tf.constant([[0, 0], [1, 0], [2, 0]], dtype=tf.int64),
+          values=tf.constant([0., 1., 1.]),
+          shape=[3, 1])
+      with self.assertRaisesRegexp(
+          ValueError, "SparseTensor is not supported as a target"):
+        head.head_ops({}, targets, tf.contrib.learn.ModeKeys.TRAIN, None,
+                      logits=prediction)
+
 
 class MultiClassModelHeadTest(tf.test.TestCase):
 
@@ -62,6 +75,19 @@ class MultiClassModelHeadTest(tf.test.TestCase):
                                    tf.contrib.learn.ModeKeys.TRAIN,
                                    None, logits=logits)
       self.assertAlmostEqual(.81326163, sess.run(model_fn_ops.loss))
+
+  def testErrorInSparseTensorTarget(self):
+    head = head_lib._multi_class_head(n_classes=2)
+    with tf.Graph().as_default():
+      prediction = tf.constant([[1.], [1.], [3.]])
+      targets = tf.SparseTensor(
+          indices=tf.constant([[0, 0], [1, 0], [2, 0]], dtype=tf.int64),
+          values=tf.constant([0, 1, 1]),
+          shape=[3, 1])
+      with self.assertRaisesRegexp(
+          ValueError, "SparseTensor is not supported as a target"):
+        head.head_ops({}, targets, tf.contrib.learn.ModeKeys.TRAIN, None,
+                      logits=prediction)
 
   def testBinaryClassificationWithWeights(self):
     head = head_lib._multi_class_head(

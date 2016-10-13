@@ -329,7 +329,7 @@ class _RegressionHead(_Head):
     Returns:
       A tuple of training Loss and additional_train_op (possibly None)
     """
-    target = target[self._label_name] if isinstance(target, dict) else target
+    target = _check_target(target, self._label_name)
 
     centered_bias_step = None
     if self._enable_centered_bias:
@@ -353,7 +353,7 @@ class _RegressionHead(_Head):
 
   def _eval_op(self, features, target, logits=None, logits_input=None,
                name="eval_op"):
-    target = target[self._label_name] if isinstance(target, dict) else target
+    target = _check_target(target, self._label_name)
     if self._enable_centered_bias:
       logits = nn.bias_add(logits, _centered_bias(
           self.logits_dimension,
@@ -473,7 +473,7 @@ class _MultiClassHead(_Head):
     Returns:
       A tuple of training Loss and additional_train_op (possibly None)
     """
-    target = target[self._label_name] if isinstance(target, dict) else target
+    target = _check_target(target, self._label_name)
 
     centered_bias_step = None
     if self._enable_centered_bias:
@@ -497,7 +497,7 @@ class _MultiClassHead(_Head):
 
   def _eval_op(self, features, target, logits=None, logits_input=None,
                name="eval_op"):
-    target = target[self._label_name] if isinstance(target, dict) else target
+    target = _check_target(target, self._label_name)
     if self._enable_centered_bias:
       logits = nn.bias_add(logits, _centered_bias(
           self.logits_dimension,
@@ -589,6 +589,13 @@ class _MultiClassHead(_Head):
                                metrics_lib.streaming_recall_at_thresholds,
                                threshold))
     return metrics
+
+
+def _check_target(target, label_name):
+  target = target[label_name] if isinstance(target, dict) else target
+  if isinstance(target, ops.SparseTensor):
+    raise ValueError("SparseTensor is not supported as a target/label.")
+  return target
 
 
 class _BinarySvmHead(_MultiClassHead):
