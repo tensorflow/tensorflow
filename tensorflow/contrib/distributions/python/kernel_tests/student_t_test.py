@@ -130,16 +130,17 @@ class StudentTTest(tf.test.TestCase):
       mu_v = 3.0
       sigma_v = np.sqrt(10.0)
       n = tf.constant(100)
+
+      tf.set_random_seed(654321)
       student = tf.contrib.distributions.StudentT(
-          name="student_t1", df=df, mu=mu, sigma=sigma)
+          df=df, mu=mu, sigma=sigma, name="student_t1")
       samples1 = student.sample_n(n, seed=123456).eval()
 
-    # We need to start another test session, since this resets the internal
-    # state.
-    with self.test_session():
+      tf.set_random_seed(654321)
       student2 = tf.contrib.distributions.StudentT(
-          name="student_t2", df=df, mu=mu, sigma=sigma)
+          df=df, mu=mu, sigma=sigma, name="student_t2")
       samples2 = student2.sample_n(n, seed=123456).eval()
+
       self.assertAllClose(samples1, samples2)
 
   def testStudentSampleSmallDfNoNan(self):

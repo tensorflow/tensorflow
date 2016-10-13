@@ -245,6 +245,23 @@ class BetaTest(tf.test.TestCase):
                           stats.beta.var(a, b),
                           atol=1e-1)
 
+  # Test that sampling with the same seed twice gives the same results.
+  def testBetaSampleMultipleTimes(self):
+    with self.test_session():
+      a_val = 1.
+      b_val = 2.
+      n_val = 100
+
+      tf.set_random_seed(654321)
+      beta1 = tf.contrib.distributions.Beta(a=a_val, b=b_val, name="beta1")
+      samples1 = beta1.sample_n(n_val, seed=123456).eval()
+
+      tf.set_random_seed(654321)
+      beta2 = tf.contrib.distributions.Beta(a=a_val, b=b_val, name="beta2")
+      samples2 = beta2.sample_n(n_val, seed=123456).eval()
+
+      self.assertAllClose(samples1, samples2)
+
   def testBetaSampleMultidimensional(self):
     with self.test_session():
       a = np.random.rand(3, 2, 2).astype(np.float32)
