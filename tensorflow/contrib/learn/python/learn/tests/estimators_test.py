@@ -29,37 +29,6 @@ from tensorflow.contrib.learn.python.learn.estimators._sklearn import accuracy_s
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import train_test_split
 
 
-# TODO(b/29580537): Remove when we deprecate feature column inference.
-class InferredfeatureColumnTest(tf.test.TestCase):
-  """Custom optimizer tests."""
-
-  def testIrisMomentum(self):
-    random.seed(42)
-
-    iris = datasets.load_iris()
-    x_train, x_test, y_train, y_test = train_test_split(iris.data,
-                                                        iris.target,
-                                                        test_size=0.2,
-                                                        random_state=42)
-
-    def custom_optimizer():
-      return tf.train.MomentumOptimizer(learning_rate=0.01, momentum=0.9)
-
-    cont_features = [
-        tf.contrib.layers.real_valued_column("", dimension=4)]
-    classifier = learn.DNNClassifier(
-        feature_columns=cont_features,
-        hidden_units=[10, 20, 10],
-        n_classes=3,
-        optimizer=custom_optimizer,
-        config=learn.RunConfig(tf_random_seed=1))
-    classifier.fit(x_train, y_train, steps=400)
-    predictions = np.array(list(classifier.predict(x_test)))
-    score = accuracy_score(y_test, predictions)
-
-    self.assertGreater(score, 0.65, "Failed with score = {0}".format(score))
-
-
 class FeatureEngineeringFunctionTest(tf.test.TestCase):
   """Tests feature_engineering_fn."""
 
