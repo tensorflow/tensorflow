@@ -72,8 +72,10 @@ export class ScatterPlotVisualizerCanvasLabels implements
       grid = new CollisionGrid(bb, pixw / 25, pixh / 50);
     }
 
-    const opacityRange =
-        rc.farthestCameraSpacePointZ - rc.nearestCameraSpacePointZ;
+    let opacityMap = d3.scale.pow().exponent(Math.E)
+      .domain([rc.farthestCameraSpacePointZ, rc.nearestCameraSpacePointZ])
+      .range([0.1, 1]);
+
     const camPos = rc.camera.position;
     const camToTarget = new THREE.Vector3().copy(camPos).sub(rc.cameraTarget);
 
@@ -119,14 +121,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
         // Now, check with properly computed width.
         textBoundingBox.hiX += this.gc.measureText(text).width - 1;
         if (grid.insert(textBoundingBox)) {
-          let p = new THREE.Vector3(point[0], point[1], point[2]);
-          const distFromNearestPoint =
-              camPos.distanceTo(p) - rc.nearestCameraSpacePointZ;
-          // Opacity is scaled between 0.2 and 1, based on how far a label is
-          // from the camera (Unless we are in 2d mode, in which case opacity is
-          // just 1!)
-          const opacity =
-              this.sceneIs3D ? 1.2 - distFromNearestPoint / opacityRange : 1;
+          const opacity = this.sceneIs3D ? opacityMap(camToPoint.length()) : 1;
           this.gc.strokeStyle = strokeStylePrefix + opacity + ')';
           this.gc.fillStyle = fillStylePrefix + opacity + ')';
           this.gc.strokeText(text, x, y);
