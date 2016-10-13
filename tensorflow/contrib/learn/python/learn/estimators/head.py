@@ -758,7 +758,6 @@ def _log_loss_with_two_classes(logits, target):
 
 
 def _softmax_cross_entropy_loss(logits, target):
-  # sigmoid_cross_entropy_with_logits requires [batch_size, 1] target.
   # Check that we got int32/int64 for classification.
   if (not target.dtype.is_compatible_with(dtypes.int64) and
       not target.dtype.is_compatible_with(dtypes.int32)):
