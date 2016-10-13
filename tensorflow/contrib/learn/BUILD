@@ -582,7 +582,7 @@ py_test(
 py_test(
     name = "ops_test",
     size = "small",
-    srcs = ["python/learn/ops/tests/ops_test.py"],
+    srcs = ["python/learn/ops/ops_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
@@ -594,7 +594,7 @@ py_test(
 py_test(
     name = "seq2seq_ops_test",
     size = "small",
-    srcs = ["python/learn/ops/tests/seq2seq_ops_test.py"],
+    srcs = ["python/learn/ops/seq2seq_ops_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":learn",
