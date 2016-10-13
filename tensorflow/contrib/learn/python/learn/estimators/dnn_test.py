@@ -114,11 +114,13 @@ class DNNClassifierTest(tf.test.TestCase):
     """Tests binary classification using tensor data as input."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[.8], [.2], [.1]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[.8], [0.2], [.1]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              shape=[3, 2])
       }
       return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
 
@@ -149,11 +151,13 @@ class DNNClassifierTest(tf.test.TestCase):
     """Tests binary classification with float labels."""
     def _input_fn_float_label(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[50], [20], [10]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[50], [20], [10]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              shape=[3, 2])
       }
       target = tf.constant([[0.8], [0.], [0.2]], dtype=tf.float32)
       return features, target
@@ -334,11 +338,13 @@ class DNNClassifierTest(tf.test.TestCase):
     """Tests predict and predict_prob methods with as_iterable=False."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[.8], [.2], [.1]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[.8], [.2], [.1]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              shape=[3, 2])
       }
       return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
 
@@ -370,11 +376,13 @@ class DNNClassifierTest(tf.test.TestCase):
     """Tests predict and predict_prob methods with as_iterable=True."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[.8], [.2], [.1]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[.8], [.2], [.1]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              shape=[3, 2])
       }
       return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
 
@@ -407,10 +415,13 @@ class DNNClassifierTest(tf.test.TestCase):
 
   def testCustomMetrics(self):
     """Tests custom evaluation metrics."""
-    def _input_fn_train():
+    def _input_fn(num_epochs=None):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       target = tf.constant([[1], [0], [0], [0]])
-      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
+      features = {
+          'x': tf.train.limit_epochs(
+              tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=num_epochs),
+      }
       return features, target
 
     def _my_metric_op(predictions, targets):
@@ -426,9 +437,9 @@ class DNNClassifierTest(tf.test.TestCase):
         hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    classifier.fit(input_fn=_input_fn_train, steps=100)
+    classifier.fit(input_fn=_input_fn, steps=100)
     scores = classifier.evaluate(
-        input_fn=_input_fn_train,
+        input_fn=_input_fn,
         steps=100,
         metrics={
             'my_accuracy': MetricSpec(
@@ -444,7 +455,8 @@ class DNNClassifierTest(tf.test.TestCase):
     self.assertTrue(
         set(['loss', 'my_accuracy', 'my_precision', 'my_metric'
             ]).issubset(set(scores.keys())))
-    predictions = classifier.predict(input_fn=_input_fn_train)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predictions = np.array(list(classifier.predict(input_fn=predict_input_fn)))
     self.assertEqual(_sklearn.accuracy_score([1, 0, 0, 0], predictions),
                      scores['my_accuracy'])
 
@@ -452,7 +464,7 @@ class DNNClassifierTest(tf.test.TestCase):
     # "probabilities".
     with self.assertRaisesRegexp(KeyError, 'bad_type'):
       classifier.evaluate(
-          input_fn=_input_fn_train,
+          input_fn=_input_fn,
           steps=100,
           metrics={
               'bad_name': MetricSpec(
@@ -463,11 +475,13 @@ class DNNClassifierTest(tf.test.TestCase):
     """Tests that insures you can save and reload a trained model."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[.8], [.2], [.1]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[.8], [.2], [.1]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              shape=[3, 2])
       }
       return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
 
@@ -486,7 +500,8 @@ class DNNClassifierTest(tf.test.TestCase):
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
     classifier.fit(input_fn=_input_fn, steps=100)
-    predictions1 = classifier.predict(input_fn=_input_fn)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predictions1 = classifier.predict(input_fn=predict_input_fn)
     del classifier
 
     classifier2 = tf.contrib.learn.DNNClassifier(
@@ -495,18 +510,20 @@ class DNNClassifierTest(tf.test.TestCase):
         feature_columns=feature_columns,
         hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
-    predictions2 = classifier2.predict(input_fn=_input_fn)
+    predictions2 = classifier2.predict(input_fn=predict_input_fn)
     self.assertEqual(list(predictions1), list(predictions2))
 
   def testTrainWithPartitionedVariables(self):
     """Tests training with partitioned variables."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[.8], [.2], [.1]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[.8], [.2], [.1]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              shape=[3, 2])
       }
       return features, tf.constant([[1], [0], [0]], dtype=tf.int32)
 
@@ -637,11 +654,13 @@ class DNNRegressorTest(tf.test.TestCase):
     """Tests regression using tensor data as input."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[.8], [.15], [0.]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -757,11 +776,13 @@ class DNNRegressorTest(tf.test.TestCase):
     target = [1., 0., 0.2]
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[0.8], [0.15], [0.]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              shape=[3, 2])
       }
       return features, tf.constant(target, dtype=tf.float32)
 
@@ -789,11 +810,13 @@ class DNNRegressorTest(tf.test.TestCase):
     target = [1., 0., 0.2]
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[0.8], [0.15], [0.]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              shape=[3, 2])
       }
       return features, tf.constant(target, dtype=tf.float32)
 
@@ -820,10 +843,13 @@ class DNNRegressorTest(tf.test.TestCase):
 
   def testCustomMetrics(self):
     """Tests custom evaluation metrics."""
-    def _input_fn_train():
+    def _input_fn(num_epochs=None):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       target = tf.constant([[1.], [0.], [0.], [0.]])
-      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
+      features = {
+          'x': tf.train.limit_epochs(
+              tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=num_epochs),
+      }
       return features, target
 
     def _my_metric_op(predictions, targets):
@@ -834,9 +860,9 @@ class DNNRegressorTest(tf.test.TestCase):
         hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    regressor.fit(input_fn=_input_fn_train, steps=100)
+    regressor.fit(input_fn=_input_fn, steps=100)
     scores = regressor.evaluate(
-        input_fn=_input_fn_train,
+        input_fn=_input_fn,
         steps=1,
         metrics={
             'my_error': tf.contrib.metrics.streaming_mean_squared_error,
@@ -845,7 +871,8 @@ class DNNRegressorTest(tf.test.TestCase):
     self.assertIn('loss', set(scores.keys()))
     self.assertIn('my_error', set(scores.keys()))
     self.assertIn('my_metric', set(scores.keys()))
-    predictions = regressor.predict(input_fn=_input_fn_train)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predictions = np.array(list(regressor.predict(input_fn=predict_input_fn)))
     self.assertAlmostEqual(
         _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
         scores['my_error'])
@@ -853,20 +880,22 @@ class DNNRegressorTest(tf.test.TestCase):
     # Tests that when the key is a tuple, an error is raised.
     with self.assertRaises(KeyError):
       regressor.evaluate(
-          input_fn=_input_fn_train,
+          input_fn=_input_fn,
           steps=1,
-          metrics={('my_error', 'predictions'
-                   ): tf.contrib.metrics.streaming_mean_squared_error})
+          metrics={('my_error', 'predictions'):
+                   tf.contrib.metrics.streaming_mean_squared_error})
 
   def testTrainSaveLoad(self):
     """Tests that insures you can save and reload a trained model."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[0.8], [0.15], [0.]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -901,11 +930,13 @@ class DNNRegressorTest(tf.test.TestCase):
     """Tests training with partitioned variables."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[0.8], [0.15], [0.]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 
@@ -937,11 +968,13 @@ class DNNRegressorTest(tf.test.TestCase):
     """Tests that we can disable centered bias."""
     def _input_fn(num_epochs=None):
       features = {
-          'age': tf.train.limit_epochs(tf.constant([[0.8], [0.15], [0.]]),
-                                       num_epochs=num_epochs),
-          'language': tf.SparseTensor(values=['en', 'fr', 'zh'],
-                                      indices=[[0, 0], [0, 1], [2, 0]],
-                                      shape=[3, 2])
+          'age': tf.train.limit_epochs(
+              tf.constant([[0.8], [0.15], [0.]]), num_epochs=num_epochs),
+          'language': tf.SparseTensor(
+              values=tf.train.limit_epochs(
+                  ['en', 'fr', 'zh'], num_epochs=num_epochs),
+              indices=[[0, 0], [0, 1], [2, 0]],
+              shape=[3, 2])
       }
       return features, tf.constant([1., 0., 0.2], dtype=tf.float32)
 

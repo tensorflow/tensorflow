@@ -417,7 +417,7 @@ class BaseEstimator(
       AS_ITERABLE_DATE, AS_ITERABLE_INSTRUCTIONS, as_iterable=False)
   def predict(
       self, x=None, input_fn=None, batch_size=None, outputs=None,
-      as_iterable=False):
+      as_iterable=True):
     """Returns predictions for given features.
 
     Args:
@@ -793,7 +793,7 @@ class BaseEstimator(
     return result
 
   def _infer_model(
-      self, input_fn, feed_fn=None, outputs=None, as_iterable=False):
+      self, input_fn, feed_fn=None, outputs=None, as_iterable=True):
     # Check that model has been trained.
     checkpoint_path = saver.latest_checkpoint(self._model_dir)
     if not checkpoint_path:

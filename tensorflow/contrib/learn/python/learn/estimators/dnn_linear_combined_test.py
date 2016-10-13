@@ -369,7 +369,7 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     def _input_fn_train():
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       target = tf.constant([[1], [0], [0], [0]])
-      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
+      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32)}
       return features, target
 
     def _input_fn_predict():
@@ -385,25 +385,20 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
 
     classifier.fit(input_fn=_input_fn_train, steps=100)
 
-    probs = classifier.predict_proba(input_fn=_input_fn_predict)
+    probs = list(classifier.predict_proba(input_fn=_input_fn_predict))
     self.assertAllClose([[0.75, 0.25]] * 4, probs, 0.05)
-    classes = classifier.predict(input_fn=_input_fn_predict)
-    self.assertListEqual([0] * 4, list(classes))
-
-    probs = classifier.predict_proba(
-        input_fn=_input_fn_predict, as_iterable=True)
-    self.assertAllClose([[0.75, 0.25]] * 4, list(probs), 0.05)
-    classes = classifier.predict(
-        input_fn=_input_fn_predict, as_iterable=True)
-    self.assertListEqual([0] * 4, list(classes))
+    classes = list(classifier.predict(input_fn=_input_fn_predict))
+    self.assertListEqual([0] * 4, classes)
 
   def testCustomMetrics(self):
     """Tests custom evaluation metrics."""
 
-    def _input_fn_train():
+    def _input_fn(num_epochs=None):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       target = tf.constant([[1], [0], [0], [0]])
-      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
+      features = {
+          'x': tf.train.limit_epochs(
+              tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=num_epochs)}
       return features, target
 
     def _my_metric_op(predictions, targets):
@@ -418,9 +413,9 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
         dnn_feature_columns=[tf.contrib.layers.real_valued_column('x')],
         dnn_hidden_units=[3, 3])
 
-    classifier.fit(input_fn=_input_fn_train, steps=100)
+    classifier.fit(input_fn=_input_fn, steps=100)
     scores = classifier.evaluate(
-        input_fn=_input_fn_train,
+        input_fn=_input_fn,
         steps=100,
         metrics={
             'my_accuracy': tf.contrib.metrics.streaming_accuracy,
@@ -430,7 +425,9 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     self.assertTrue(
         set(['loss', 'my_accuracy', 'my_precision', 'my_metric'
             ]).issubset(set(scores.keys())))
-    predictions = classifier.predict(input_fn=_input_fn_train)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predictions = np.array(
+        list(classifier.predict(input_fn=predict_input_fn)))
     self.assertEqual(_sklearn.accuracy_score([1, 0, 0, 0], predictions),
                      scores['my_accuracy'])
 
@@ -438,14 +435,14 @@ class DNNLinearCombinedClassifierTest(tf.test.TestCase):
     # "probabilities".
     with self.assertRaises(KeyError):
       classifier.evaluate(
-          input_fn=_input_fn_train,
+          input_fn=_input_fn,
           steps=100,
           metrics={('bad_name', 'bad_type'): tf.contrib.metrics.streaming_auc})
 
     # Test the case where the tuple of the key doesn't have 2 elements.
     with self.assertRaises(ValueError):
       classifier.evaluate(
-          input_fn=_input_fn_train,
+          input_fn=_input_fn,
           steps=100,
           metrics={
               ('bad_length_name', 'classes', 'bad_length'):
@@ -808,10 +805,11 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
 
   def testCustomMetrics(self):
     """Tests custom evaluation metrics."""
-    def _input_fn_train():
+    def _input_fn(num_epochs=None):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       target = tf.constant([[1.], [0.], [0.], [0.]])
-      features = {'x': tf.ones(shape=[4, 1], dtype=tf.float32),}
+      features = {'x': tf.train.limit_epochs(
+          tf.ones(shape=[4, 1], dtype=tf.float32), num_epochs=num_epochs)}
       return features, target
 
     def _my_metric_op(predictions, targets):
@@ -823,9 +821,9 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
         dnn_hidden_units=[3, 3],
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
-    regressor.fit(input_fn=_input_fn_train, steps=100)
+    regressor.fit(input_fn=_input_fn, steps=100)
     scores = regressor.evaluate(
-        input_fn=_input_fn_train,
+        input_fn=_input_fn,
         steps=1,
         metrics={
             'my_error': tf.contrib.metrics.streaming_mean_squared_error,
@@ -834,7 +832,8 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
     self.assertIn('loss', set(scores.keys()))
     self.assertIn('my_error', set(scores.keys()))
     self.assertIn('my_metric', set(scores.keys()))
-    predictions = regressor.predict(input_fn=_input_fn_train)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predictions = np.array(list(regressor.predict(input_fn=predict_input_fn)))
     self.assertAlmostEqual(
         _sklearn.mean_squared_error(np.array([1, 0, 0, 0]), predictions),
         scores['my_error'])
@@ -842,17 +841,18 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
     # Tests that when the key is a tuple, an error is raised.
     with self.assertRaises(KeyError):
       regressor.evaluate(
-          input_fn=_input_fn_train,
+          input_fn=_input_fn,
           steps=1,
           metrics={('my_error', 'predictions'
                    ): tf.contrib.metrics.streaming_mean_squared_error})
 
   def testTrainSaveLoad(self):
     """Tests regression with restarting training / evaluate."""
-    def _input_fn():
+    def _input_fn(num_epochs=None):
       # Create 4 rows of (y = x)
       target = tf.constant([[100.], [3.], [2.], [2.]])
-      features = {'x': tf.constant([[100.], [3.], [2.], [2.]])}
+      features = {'x': tf.train.limit_epochs(
+          tf.constant([[100.], [3.], [2.], [2.]]), num_epochs=num_epochs)}
       return features, target
 
     model_dir = tempfile.mkdtemp()
@@ -864,13 +864,14 @@ class DNNLinearCombinedRegressorTest(tf.test.TestCase):
         model_dir=model_dir,
         config=tf.contrib.learn.RunConfig(tf_random_seed=1))
 
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
     classifier = new_estimator()
     classifier.fit(input_fn=_input_fn, steps=100)
-    predictions = classifier.predict(input_fn=_input_fn)
+    predictions = list(classifier.predict(input_fn=predict_input_fn))
     del classifier
 
     classifier = new_estimator()
-    predictions2 = classifier.predict(input_fn=_input_fn)
+    predictions2 = list(classifier.predict(input_fn=predict_input_fn))
     self.assertAllClose(predictions, predictions2)
 
   def testTrainWithPartitionedVariables(self):
