@@ -176,10 +176,11 @@ tensorflow::io::BufferedInputStream* CreateBufferedInputStream(
     return nullptr;
   }
   std::unique_ptr<tensorflow::io::RandomAccessInputStream> input_stream(
-      new tensorflow::io::RandomAccessInputStream(file.release()));
+      new tensorflow::io::RandomAccessInputStream(
+          file.release(), true /* owns_file */));
   std::unique_ptr<tensorflow::io::BufferedInputStream> buffered_input_stream(
-      new tensorflow::io::BufferedInputStream(input_stream.release(),
-                                              buffer_size));
+      new tensorflow::io::BufferedInputStream(
+          input_stream.release(), buffer_size, true /* owns_input_stream */));
   return buffered_input_stream.release();
 }
 
